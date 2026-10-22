@@ -445,6 +445,14 @@ count** — `crates/kasirmu-core/src/db/products_crud.rs:22-41` ✔ · **PAID** 
 `Store::mark_offline_synced_batch` exists at `db/offline.rs:298` with a test at `offline_tests.rs:302`).
 Fixed: `apply_sync_outcomes` wraps all outcome transitions into a single transaction in autocommit mode, reducing N disk fsyncs during queue drain to 1. Added `Store::mark_offline_synced_batch`. Verified with unit tests in `offline_tests.rs` and `sync_client_tests.rs`.
 
+**CORRECTION 2026-10-22 (audit): the MECHANISM sentence above names the wrong collaborator.** The fsync
+win comes from the OUTER transaction (`sync_client.rs:94-99` opens one `unchecked_transaction` and
+commits once), **not** from `mark_offline_synced_batch`. The loop inside still calls the plain
+`mark_offline_synced` per item (`sync_client.rs:117`), and `mark_offline_synced_batch` itself has **no
+non-test caller outside that wrapping** — `daemon.rs`/`lib.rs` use it, but the path this entry is about
+does not. The fix is real and PAID; the credit line was wrong. Worth keeping because a future reader who
+"optimises" the loop to call `mark_offline_synced_batch` would change nothing.
+
 **O-H04 · kasirmu-core — a fresh `reqwest::Client` per sync HTTP call** —
 `crates/kasirmu-core/src/sync_client.rs:400-420` ✔. ✅ **PAID** (re-verified at HEAD 2026-10-21:
 `shared_sync_http_client()` at `sync_client.rs:430`, called from `:449` and `:610`).
@@ -1800,6 +1808,8 @@ of a fresh `byte[]` per read. The entry carried no marker word, so it read as op
 
 **O-L16 · kasirmu-hal — `barcode()` truncates the length with `n as u8`** —
 `crates/kasirmu-hal/src/drivers/escpos.rs:92-100` ✔ (3A-13). Fixed: clamped input slice to 255 bytes (`slice.len() as u8`) and added test in `escpos_tests.rs` so payload length and GS k header length byte never diverge.
+*(Line drifted: the clamp is now at `escpos.rs:106` under a `let n = slice.len() as u8;`, not `:92-100`.
+Noted by the round-19 audit; the fix is present, only the citation was stale.)*
 
 **O-L17 · kasirmu-plugin — `fire_event` clones the hook list and linear-scans each owner** —
 `crates/kasirmu-plugin/src/manager.rs:499-515` ✔ (3B-08). Fixed (`06894624d`): replaced hook list clone with borrowed iteration, and replaced linear scan over sandboxes with O(1) `plugin_index` map lookup.
@@ -2085,6 +2095,13 @@ source, so two readers would race it — a data race, not an optimisation.
 `daemon_tests.rs:42-57` is now `wait_for_daemon`, polling `status()` every 10 ms against a 1 s ceiling
 with a panic that NAMES the condition and prints the status snapshot — the prescribed fix, done.
 `wait_for_first_cycle` wraps it. The cited `:174-181` is now a 10 ms readiness nudge, not a sleep.
+
+**RESIDUAL 2026-10-22 (audit): "every sleep replaced" is OVERSTATED.** `daemon_tests.rs:249-254` keeps a
+deliberate `sleep(300ms)` inside a spawned blocker task plus a `sleep(100ms)` on the main thread, in
+`daemon_stop_then_immediate_start_yields_running_daemon`. It is **load-bearing**: the blocker holds the DB
+lock so the daemon's `spawn_blocking` phase is caught mid-cycle, which is the property under test —
+`stop()` must wait for an in-flight cycle. Replacing it with a poll would delete the thing being measured.
+Recorded so a future sweep does not "finish the job" and quietly weaken the test.
 
 **O-T06 · `rate_limiter_tests.rs` states 4.2 s of sleep** —
 `crates/kasirmu-core/src/rate_limiter_tests.rs` ✔ **PAID 2026-10-22** (4A-06). FIVE sleeps, not the four
@@ -5268,3 +5285,50 @@ The failure mode is consistent and worth naming: **an entry's RANK and its TITLE
 is evidence.** A Medium entry titled "substring-scans every payload" reads as a hot-path defect even when it
 is dead code or 17 µs. The only defence is re-deriving each entry from the tree before spending a lane on it —
 which is what turned 10 "open" items into 7 closures and one honest fix.
+
+## §11CA — O-H03, O-T05 and O-L16 prose corrected: false-closure audit of 22 entries, zero false (2026-10-22)
+
+Rounds 17 and 18 swept the ledger in the direction "says open but is done" and found nine such entries.
+This round swept the OPPOSITE direction — **"says closed but is not"** — because a falsely-closed entry is
+worse than an open one: nobody will ever look at it again.
+
+**Method.** Target the weakest evidence first: the 48 `Fixed:` lines with no backtick-quoted commit hash, and
+the bulk PAID/MOOT/CLOSED prose paragraphs that classify several entries at once. For each, trace the claim to
+a NAMED SYMBOL in the tree and confirm it is wired at the claimed call site — not just that a symbol with a
+plausible name exists.
+
+**Result: 22 entries traced, 22 CONFIRMED, 0 false closures, 0 unverifiable.** Every closing resolved to a live
+symbol. The opposite-direction error does not occur in the sample. Examples of the evidence standard used:
+
+| Entry | Proof |
+|---|---|
+| O-H04 | `shared_sync_http_client()` at `sync_client.rs:430`, called from exactly the six named sites |
+| O-M06 | `ROW_NUMBER() OVER (PARTITION BY p.category_id …) WHERE rn <= ?1` at `popularity.rs:524-529` |
+| O-M43 | `vm_pointer()` returns AFTER copying the raw pointer (`bt_android.rs:96-105`); lock released |
+| O-M62 | `DEFAULT_MAX_EXCHANGE_RATES = 500` + `LIMIT ?1` (`repository.rs:47`, `:73`) |
+| O-T02 | `static FINAL_SCHEMA: LazyLock<Mutex<Connection>>` (`migrations_tests.rs:26-31`) |
+
+### Three defects found anyway — in the PROSE, not the code
+
+1. **O-H03 named the wrong collaborator.** The entry credited `mark_offline_synced_batch` with the fsync win.
+   It does not: `apply_sync_outcomes` opens ONE outer transaction (`sync_client.rs:94-99`), and the loop
+   inside still calls plain `mark_offline_synced` per item (`:117`). `mark_offline_synced_batch` has no
+   non-test caller on that path at all. **A future reader who "optimised" the loop to call the batch variant
+   would change nothing**, which is exactly the kind of wasted lane this ledger keeps producing.
+2. **O-T05's "every sleep replaced" was overstated.** `daemon_tests.rs:249-254` keeps a deliberate
+   300 ms + 100 ms pair that is LOAD-BEARING — it holds the DB lock so the daemon's blocking phase is caught
+   mid-cycle, which is the property under test. A future sweep would have deleted it and weakened the test.
+3. **O-L16's citation had drifted** ~12 lines (`:92-100` → `:106`). Cosmetic, but it is the fourth stale line
+   reference found this session, and each one costs a reader a grep.
+
+### What this says about the ledger
+
+Across three rounds the ledger has produced, in order of frequency: entries that were already done (9),
+entries whose PRESCRIBED FIX was wrong and would have made things worse (O-T09, O-M54's rewrite target),
+entries whose closing note names the wrong mechanism (O-H03), and entries whose line references had drifted
+(4). **Zero entries were found claiming a fix that was absent.**
+
+The document is not lying about completion. It is unreliable about *why*, *where*, and *whether the work was
+worth doing* — and those are the parts a reader acts on. That is the reason the round-18 conclusion stands:
+the next useful debt should be collected from CODE (scripted probes over the tree), not from prose appended
+to a 5,000-line journal.
