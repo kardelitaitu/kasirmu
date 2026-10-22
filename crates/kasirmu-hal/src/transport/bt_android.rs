@@ -44,32 +44,91 @@ use crate::error::HalError;
 /// The Serial Port Profile service UUID. Every SPP device answers this.
 pub const SPP_UUID: &str = "00001101-0000-1000-8000-00805F9B34FB";
 
-// `jni::JavaVM` is not `Clone` on 0.21, so the VM lives behind the mutex and
-// every caller works through a shared reference (`attach_current_thread`
-// takes `&self`).
+// `jni::JavaVM` is not `Clone` on 0.21, so the VM lives behind the mutex. The
+// guard is held ONLY long enough to copy the raw `sys::JavaVM` pointer out —
+// see [`vm_pointer`]. `JavaVM` is a `#[repr(transparent)]` wrapper over that
+// one pointer, so the copy is the whole value, and re-wrapping it outside the
+// lock (`JavaVM::from_raw`) is what lets a blocking `connect`/`read` run
+// without holding the mutex (O-M43).
 static VM: Mutex<Option<JavaVM>> = Mutex::new(None);
 
-/// Store the JVM captured by [`JNI_OnLoad`]. Idempotent; the last writer wins.
+/// Store the JVM captured by [`JNI_OnLoad`]. **Set-once: the first VM wins and
+/// later calls are ignored.**
+///
+/// Idempotence here is not cosmetic. [`vm_pointer`] hands out raw pointers to
+/// the stored `JavaVM` with no lock held, so a second `JNI_OnLoad` that
+/// *replaced* the slot would drop the old `JavaVM` and leave every in-flight
+/// caller attaching on a dangling pointer. Keeping the first writer makes the
+/// pointer ART hands us stable for the life of the process.
 pub fn set_java_vm(vm: JavaVM) {
-    // A poisoned lock still holds the previous value, which is better than a
-    // panic inside JNI_OnLoad (ART would abort the process over that).
+    // A poisoned lock still holds whatever was set before, which is better than
+    // a panic inside JNI_OnLoad (ART would abort the process over that) — but
+    // the slot is still written at most once.
+    //
+    // Both arms are the same two lines on purpose: on the success path the
+    // guard is `MutexGuard<Option<JavaVM>>`, on the poisoned path it is
+    // `&mut Option<JavaVM>`, and a shared helper over the two would need a
+    // trait the std surface does not offer. A `vm` passed after the first
+    // writer drops HERE, outside the lock, which is what makes the slot
+    // genuinely immutable once filled.
     match VM.lock() {
-        Ok(mut guard) => *guard = Some(vm),
-        Err(poisoned) => *poisoned.into_inner() = Some(vm),
+        Ok(mut slot) => {
+            if slot.is_none() {
+                *slot = Some(vm);
+            }
+        }
+        Err(poisoned) => {
+            let mut slot = poisoned.into_inner();
+            if slot.is_none() {
+                *slot = Some(vm);
+            }
+        }
     }
 }
 
-/// Attach the calling thread and run `f` with the guard.
-pub(crate) fn with_env<T>(
-    f: impl FnOnce(&mut JNIEnv) -> jni::errors::Result<T>,
-) -> Result<T, HalError> {
+/// Copy the captured JVM's raw pointer out of [`VM`], releasing the lock before
+/// the caller attaches or runs any JNI call.
+///
+/// **The lock scope is this function and nothing else.** It is deliberately
+/// three statements wide so that "the mutex is not held across `connect` or
+/// `read`" is checkable by eye, rather than asserted in a comment over a
+/// 30-line function.
+fn vm_pointer() -> Result<*mut jni::sys::JavaVM, HalError> {
     let guard = match VM.lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
-    let vm = guard.as_ref().ok_or_else(|| {
-        HalError::Bluetooth("JNI VM not captured (JNI_OnLoad did not run)".into())
-    })?;
+    guard
+        .as_ref()
+        .map(JavaVM::get_java_vm_pointer)
+        .ok_or_else(|| HalError::Bluetooth("JNI VM not captured (JNI_OnLoad did not run)".into()))
+}
+
+/// Attach the calling thread and run `f` with the guard.
+///
+/// The [`VM`] mutex is NOT held here: [`vm_pointer`] drops it before the
+/// attach, so a thread blocked inside `f` (a multi-second RFCOMM `connect`, a
+/// `read` waiting for bytes) stalls only itself, not every other Bluetooth
+/// operation in the process.
+pub(crate) fn with_env<T>(
+    f: impl FnOnce(&mut JNIEnv) -> jni::errors::Result<T>,
+) -> Result<T, HalError> {
+    // Lock released on return from `vm_pointer`; nothing below holds it.
+    let vm_ptr = vm_pointer()?;
+    // SAFETY: `vm_ptr` was copied out of the `JavaVM` stored by `set_java_vm`,
+    // which is set-once (see its doc) and never dropped or replaced for the
+    // life of the process — ART owns the underlying `sys::JavaVM` and hands it
+    // over exactly once from `JNI_OnLoad`, so the pointee outlives this call.
+    // `from_raw` only null-checks and re-wraps the pointer (`JavaVM` is
+    // `#[repr(transparent)]`); it neither takes ownership nor frees anything on
+    // drop, so the temporary below is a borrow in all but type. That is exactly
+    // what makes this conversion sound where `Clone` — unavailable on jni 0.21 —
+    // would have been: `&self` cannot escape the guard, a raw pointer can.
+    let vm = unsafe { JavaVM::from_raw(vm_ptr) }
+        .map_err(|e| HalError::Bluetooth(format!("jni vm: {e}")))?;
+    // `env` (the attach guard) detaches this thread when it drops, and it is
+    // declared before the closure runs, so it outlives every use of `&mut env`
+    // in `f` and in the error mapping below.
     let mut env = vm
         .attach_current_thread()
         .map_err(|e| HalError::Bluetooth(format!("jni attach: {e}")))?;
