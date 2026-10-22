@@ -197,26 +197,27 @@ impl Store<'_> {
             //    (`legacy-backfill:` + product id) so a re-run cannot append a second
             //    copy of the same healing; the row is a derived placeholder, not an
             //    event, so its delta is updated in place if the shortfall moves again.
-            for (product_id, shortfall, sku) in shortfalls {
+            //    (O-L01: prepare_cached statement once above the shortfall loop).
+            if !shortfalls.is_empty() {
                 let insert_sql = "INSERT INTO stock_movements (id, item_id, location_id, delta, reason, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(id) DO UPDATE SET delta = excluded.delta, created_at = excluded.created_at";
-                tx.execute(
-                    insert_sql,
-                    params![
+                let mut insert_stmt = tx.prepare_cached(insert_sql)?;
+                for (product_id, shortfall, sku) in shortfalls {
+                    insert_stmt.execute(params![
                         format!("{LEGACY_BACKFILL_REASON}:{product_id}"),
                         product_id,
                         canonical_default_loc,
                         shortfall,
                         LEGACY_BACKFILL_REASON,
                         now,
-                    ],
-                )?;
-                tracing::info!(
-                    sku = %sku,
-                    product_id = %product_id,
-                    delta = shortfall,
-                    reason = LEGACY_BACKFILL_REASON,
-                    "rebuild_stock_summary: closed a legacy ledger shortfall with one compensating movement — this stock predates the ADR #6 ledger and has no movement behind it, so it is visible in the movement history by design"
-                );
+                    ])?;
+                    tracing::info!(
+                        sku = %sku,
+                        product_id = %product_id,
+                        delta = shortfall,
+                        reason = LEGACY_BACKFILL_REASON,
+                        "rebuild_stock_summary: closed a legacy ledger shortfall with one compensating movement — this stock predates the ADR #6 ledger and has no movement behind it, so it is visible in the movement history by design"
+                    );
+                }
             }
 
             // 3. Clear the materialised cache FOR THE SCOPE ONLY — the scoped form
