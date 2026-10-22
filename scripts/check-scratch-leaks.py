@@ -15,14 +15,20 @@ caller that chose it leaked one directory per run and every test stayed green.
 Measured 2026-10-23: 1,455 directories in `target/test-scratch/`, 706 from a
 bridge harness and the rest from 30 direct `scratch_dir` call sites.
 
-THE RULE THIS ENFORCES
+THE RULES THIS ENFORCES
 ----------------------
-A LEAK is a `scratch_dir` call whose result is never paired with a removal.
-That cannot be decided by reading one line, so this gate does the thing that
-CAN be decided mechanically and is nearly as good: it caps the number of
-unguarded call sites at a committed budget, per file. Any call site that adds
-to the budget fails, which forces the author to either migrate to `ScratchDir`
-or state, in this file, why theirs is the exception.
+1. LEAKED DIRECTORY. A `scratch_dir` call whose result is never paired with a
+   removal. That cannot be decided by reading one line, so this gate does what
+   CAN be decided mechanically: it caps unguarded call sites at a committed
+   per-file budget. Any site that adds to the budget fails, forcing the author
+   to either migrate to `ScratchDir` or raise the number in a reviewable commit.
+
+2. DROPPED GUARD. A `ScratchDir` built as a local and handed back as only its
+   path — the guard then drops at the closing brace and deletes the directory it
+   was created for. This was a REAL defect on 2026-10-23: it made twelve
+   recovery tests fail with SQLite `CannotOpen`, which was misread as a broken
+   filesystem and investigated for hours. The gate is falsified by
+   reintroducing exactly that shape (see `find_dropped_guards`).
 
 A budget is not a fix. It is the difference between a leak nobody can add to
 and a leak nobody knows the size of.
@@ -231,6 +237,76 @@ def detector_still_sees_a_call() -> bool:
     return True
 
 
+def find_dropped_guards() -> list[str]:
+    """Find functions that build a ScratchDir and return only its PATH.
+
+    This is the defect that made twelve recovery tests fail on 2026-10-23. A
+    constructor like
+
+        let scratch = ScratchDir::new(prefix);
+        Self(scratch.path().to_path_buf())
+
+    returns a value that outlives the guard, so the guard drops at the closing
+    brace, DELETES the directory, and every later file operation inside it fails
+    with SQLite CannotOpen (extended code 14) -- which reads as an environment
+    problem, not as a lifetime bug. The upstream symptom was a 165-line bisect
+    concluding "the filesystem refuses SQLite in this one directory".
+
+    The rule: within one function body, if a ScratchDir is BOUND to a local and
+    the body also returns a `.path().to_path_buf()` / `Self(...path...)` that
+    drops that binding, the guard does not reach the returned value.
+    A function that stores the guard itself (`Self(scratch)`) is correct and is
+    not reported.
+    """
+    findings: list[str] = []
+    for root in SCAN_ROOTS:
+        base = REPO / root
+        if not base.is_dir():
+            continue
+        for path in base.rglob("*.rs"):
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if "ScratchDir::new" not in text:
+                continue
+            rel = path.relative_to(REPO).as_posix()
+            for match in re.finditer(r"\bfn\s+\w+\s*\(", text):
+                body_start = text.find("{", match.start())
+                if body_start == -1:
+                    continue
+                depth = 0
+                end = len(text)
+                for i in range(body_start, len(text)):
+                    if text[i] == "{":
+                        depth += 1
+                    elif text[i] == "}":
+                        depth -= 1
+                        if depth == 0:
+                            end = i
+                            break
+                body = text[body_start:end]
+                if "ScratchDir::new" not in body:
+                    continue
+                binds_guard = re.search(
+                    r"let\s+(?:mut\s+)?(\w+)\s*(?::[^=]+)?=\s*[^;]*ScratchDir::new", body
+                )
+                if not binds_guard:
+                    continue
+                name = binds_guard.group(1)
+                # Does the body hand back only the path while the guard dies here?
+                drops_to_path = re.search(
+r"Self\s*\(\s*" + re.escape(name) + r"\s*\.\s*path\s*\(\s*\)", body
+                ) or re.search(
+r"return\s+" + re.escape(name) + r"\s*\.\s*path\s*\(\s*\)\s*\.\s*to_path_buf", body
+                )
+                # Storing the guard itself is the correct shape.
+                stores_guard = re.search(
+                    r"Self\s*\(\s*" + re.escape(name) + r"\s*\)", body
+                )
+                if drops_to_path and not stores_guard:
+                    line = text.count(chr(10), 0, match.start()) + 1
+                    findings.append(rel + ":" + str(line))
+    return findings
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
@@ -259,6 +335,11 @@ def main() -> int:
 
     counts = scan()
     total = sum(counts.values())
+
+    # Second defect class, same root cause: a guard that never reaches the value
+    # it was created for. Checked BEFORE the budget so it reports even when the
+    # budget is at zero (which it now is).
+    dropped = find_dropped_guards()
 
     if args.update:
         BUDGET_FILE.write_text(
@@ -290,6 +371,26 @@ def main() -> int:
 
     print(f"unguarded scratch_dir sites: {total} across {len(counts)} file(s)")
     print(f"budgeted:                    {budget.get('total')}")
+
+    if dropped:
+        print("", file=sys.stderr)
+        print("GUARD DROPPED BEFORE ITS VALUE IS RETURNED:", file=sys.stderr)
+        for line in dropped:
+            print(f"  {line}", file=sys.stderr)
+        print("", file=sys.stderr)
+        print(
+            "A ScratchDir built as a local and returned as .path().to_path_buf()",
+            file=sys.stderr,
+        )
+        print(
+            "deletes its own directory when the function returns. Store the guard",
+            file=sys.stderr,
+        )
+        print(
+            "instead: Self(scratch), and read scratch.path() at the accessors.",
+            file=sys.stderr,
+        )
+        return 1
 
     if regressions:
         print("", file=sys.stderr)
