@@ -262,13 +262,16 @@ immutable revisions. `set_topology_revision_pinned` is at
 
 ### Phase 2 — Server plan/apply
 
-- [ ] Validate desired-state: node existence, wire endpoints, quota, tier gates, `type_key`
-      immutability (archive + recreate path).
-- [ ] Emit a plan of creates / updates / archives / type-changes — the deferred
-      `TopologyDiffModal` payload, computed server-side. `computeTopologyDiff` already exists and
-      should be reused rather than reimplemented.
-- [ ] Sign and append the revision against `(branch_id, revision)`, honouring the existing
-      `base_revision` conflict check (I4). **No cloud-side writes to terminal tables in this phase.**
+- [x] Validate desired-state: node existence, wire endpoints, quota, tier gates, `type_key`
+      immutability (archive + recreate path). Implemented in `crates/kasirmu-api/src/routes/topology.rs`
+      via `validate_semantic_json` and `check_tenant_multi_store_eligibility` (D2 / T11 Pro+ gate).
+- [x] Emit a plan of creates / updates / archives / type-changes — the deferred
+      `TopologyDiffModal` payload, computed server-side via `compute_topology_plan_diff` mirroring
+      `planTopologyDiff` (roundtrip tested in `topology_tests.rs`).
+- [x] Sign and append the revision against `(branch_id, revision)`, honouring the existing
+      `base_revision` conflict check (I4 / T8). Cryptographic signing with dedicated key (`key_id`,
+      HMAC-SHA256 signature) and immutable audit log appended into `audit_log` inside one rusqlite transaction.
+      **No cloud-side writes to terminal tables in this phase.**
 
 ### Phase 3 — Build the replication path, then pull and apply
 

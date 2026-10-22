@@ -391,6 +391,18 @@ pub fn router_with_openapi(
             get(routes::images::get_image_missing),
         )
         .route("/api/v1/images/{hash16}", get(routes::images::get_image))
+        .route(
+            "/api/v1/topology/plan",
+            post(routes::topology::topology_plan_handler),
+        )
+        .route(
+            "/api/v1/topology/publish",
+            post(routes::topology::topology_publish_handler),
+        )
+        .route(
+            "/api/v1/topology/revisions/pull",
+            get(routes::topology::topology_pull_handler),
+        )
         // Read-tier gate runs INSIDE auth (auth inserts claims first, then
         // this gates GETs against them) — spec 0047 F3.
         .layer(middleware::from_fn(read_tiers::read_gate_middleware));
