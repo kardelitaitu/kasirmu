@@ -597,6 +597,11 @@ BEGIN
             ('topology_revisions', 'published_at', 'TEXT', NULL::text, true),
             ('topology_revisions', 'published_by', 'TEXT', NULL::text, true),
             ('topology_revisions', 'tenant_id', 'TEXT', '''default''', true),
+            ('topology_revisions', 'org_id', 'TEXT', '''''', true),
+            ('topology_revisions', 'actor', 'TEXT', '''''', true),
+            ('topology_revisions', 'key_id', 'TEXT', '''''', true),
+            ('topology_revisions', 'signature', 'TEXT', '''''', true),
+            ('topology_revisions', 'base_revision', 'BIGINT', NULL::text, false),
             ('over_quota_markers', 'id', 'BIGINT', NULL::text, true),
             ('over_quota_markers', 'resource_id', 'TEXT', NULL::text, true),
             ('over_quota_markers', 'resource_type', 'TEXT', NULL::text, true),
@@ -1960,7 +1965,7 @@ CREATE TABLE IF NOT EXISTS topology_revisions (
     -- enabling RLS is a policy decision the repo keeps separate from schema, and
     -- the generator surfaces uncovered tenant_id tables as a visible comment
     -- rather than failing (ADR #46 §9).
-    tenant_id               TEXT NOT NULL DEFAULT 'default',
+    tenant_id               TEXT NOT NULL DEFAULT 'default', org_id TEXT NOT NULL DEFAULT '', actor TEXT NOT NULL DEFAULT '', key_id TEXT NOT NULL DEFAULT '', signature TEXT NOT NULL DEFAULT '', base_revision BIGINT,
 
     UNIQUE (branch_id, revision)
 );

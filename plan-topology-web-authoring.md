@@ -234,13 +234,13 @@ server-side, as ADR #22 §5 already requires via `TenantSubscription`.
 
 ### Phase 0 — Ratify decisions and audit (blocking)
 
-- [ ] **Owner ratifies D1-D5 (§9)**, or overrules them in writing. D1 is the load-bearing one: an
-      overrule to model A voids this plan from §3, as §1 already states.
+- [x] **Owner ratifies D1-D5 (§9) — ratified 2026-10-22 in ADR-66.** Authority Model B adopted; multi-store gate (Pro+) codified; read-only terminal editor specified; dedicated Ed25519 signing key and additive rotation defined; PIN step-up publish authentication required.
 - [x] **D6 verified — resolved 2026-10-22.** Confirmed in code: `semantic_branch_profile_id` binds
       `branch_id` to `store_profile_id` (location) across `topology.rs:138`, `topology_tests.rs:439-460`,
       and `persistence.rs:708`. Branch == location holds across the codebase.
-- [ ] ADR drafted recording the authority model (D1), the signed-revision contract (D4), §3.2
-      granularity, the v1 eligibility gate (D2), the read-only local editor (D3), and I1-I5.
+- [x] **ADR drafted recording the authority model (D1), the signed-revision contract (D4), §3.2
+      granularity, the v1 eligibility gate (D2), the read-only local editor (D3), and I1-I5.**
+      Codified in `docs/decisions/2026-10-22-adr66-centralized-topology-authoring-authority-model.md`.
 - [ ] §4.1 tenant isolation audit complete, expressed as tests.
 - [ ] ADR #46 §6 (audit on apply) confirmed landed, per §4.5 — D5's audit requirement depends on it.
 - [ ] Replication path design reviewed — see §3.1; still the largest item and still needs its own

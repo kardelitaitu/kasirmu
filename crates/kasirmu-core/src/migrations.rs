@@ -506,6 +506,12 @@ pub const ALL: &[Migration] = &[
         id: "20261025_product_activity_created_at.sql",
         sql: include_str!("../migrations/20261025_product_activity_created_at.sql"),
     },
+    // ADR-66 (Centralized Topology Authoring Phase 1): metadata columns on topology_revisions
+    // (org_id, actor, key_id, signature, base_revision) for signed revision replication.
+    Migration {
+        id: "20261026_topology_revisions_metadata.sql",
+        sql: include_str!("../migrations/20261026_topology_revisions_metadata.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.
