@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { openRestaurantSidebarRow } from './helpers';
 
 /**
@@ -26,7 +27,7 @@ import { openRestaurantSidebarRow } from './helpers';
 
 const TIMEOUT = 20_000;
 
-async function openMenuEditor(page: import('@playwright/test').Page): Promise<void> {
+async function openMenuEditor(page: Page): Promise<void> {
   await openRestaurantSidebarRow(page, 'menu-editor');
   await expect(page.locator('[data-testid="restaurant-menu-editor-header"]')).toBeVisible({
     timeout: TIMEOUT,

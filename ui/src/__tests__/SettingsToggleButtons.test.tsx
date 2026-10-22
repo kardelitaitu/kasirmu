@@ -24,6 +24,7 @@ import { LocaleContext } from '@/i18n/LocaleContext';
 import { getAvailableLocales, getLocaleLabel } from '@/i18n';
 import type { ReactLocalization } from '@fluent/react';
 import type { SyncSettingsDto } from '@/api/offline';
+import type * as AuthContextModule from '@/contexts/AuthContext';
 
 // ── Session under test: the settings role gate ──────────────────────
 // SettingsPage.tsx:204-208 gates the whole shell on
@@ -56,7 +57,7 @@ const { authValue } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/contexts/AuthContext', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/contexts/AuthContext')>()),
+  ...(await importOriginal<typeof AuthContextModule>()),
   useAuth: () => authValue,
 }));
 

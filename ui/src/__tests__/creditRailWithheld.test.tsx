@@ -29,6 +29,8 @@ import { renderWithFluentSync } from './test-utils/render';
 import { ToastProvider } from '@/components/Toast';
 import salesFtl from '@/locales/sales.ftl?raw';
 import PaymentModal from '@/features/sales/PaymentModal';
+import type * as CurrencyApi from '@/api/currency';
+import type * as SettingsApi from '@/api/settings';
 
 const getPrimaryLocationScoped = vi.hoisted(() => vi.fn());
 const getLocalPaymentMethodsScoped = vi.hoisted(() => vi.fn());
@@ -43,7 +45,7 @@ vi.mock('@/api/local-payment', () => ({
   readStaticQrPayload: vi.fn().mockResolvedValue(null),
 }));
 vi.mock('@/api/currency', async () => {
-  const actual = await vi.importActual<typeof import('@/api/currency')>('@/api/currency');
+  const actual = await vi.importActual<typeof CurrencyApi>('@/api/currency');
   return {
     ...actual,
     listCurrenciesScoped: vi.fn(() => Promise.resolve([
@@ -58,7 +60,7 @@ vi.mock('@/api/currency', async () => {
   };
 });
 vi.mock('@/api/settings', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/api/settings')>();
+  const actual = await importOriginal<typeof SettingsApi>();
   return {
     ...actual,
     getCreditSettingsScoped: vi.fn(() => Promise.resolve(mockCreditSettings.current)),

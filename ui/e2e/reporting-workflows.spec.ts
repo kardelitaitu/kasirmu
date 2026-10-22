@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { loginAs, establishWorkspace, navigateViaSidebar } from './helpers';
 
 /**
@@ -27,7 +28,7 @@ const SCREEN_TIMEOUT = 8_000;
  *
  * Called with no section/item it just establishes the workspace.
  */
-async function goTo(page: import('@playwright/test').Page, section?: string, item?: string) {
+async function goTo(page: Page, section?: string, item?: string) {
   if (section && item) await navigateViaSidebar(page, section, item);
   else await establishWorkspace(page);
 }

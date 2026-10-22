@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import {
   openRestaurantPosWithItem as openRestaurantPosWithItemShared,
   openRestaurantCart as openRestaurantCartShared,
@@ -47,12 +48,12 @@ const TIMEOUT = 15_000;
 
 // The two-shell cart setup is shared — `openRestaurantPosWithItem` in `helpers.ts`. The
 // 'staff' role is explicit and was this spec's role before the extraction.
-async function openRestaurantPosWithItem(page: import('@playwright/test').Page) {
+async function openRestaurantPosWithItem(page: Page) {
   await openRestaurantPosWithItemShared(page, 'staff');
 }
 
 /** Add a product and press Charge, returning the modal locator. */
-async function openRestaurantPaymentModal(page: import('@playwright/test').Page) {
+async function openRestaurantPaymentModal(page: Page) {
   await openRestaurantPosWithItem(page);
 
   // The mock auto-opens a shift, which is the Charge button's precondition.

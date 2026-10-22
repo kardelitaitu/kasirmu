@@ -41,6 +41,8 @@ import { SETTINGS_SCREENS } from '@/features/settings/screens/registry';
 import { KEPT_SECTIONS } from '@/features/settings/hooks/useSettingsHashSection';
 import { INITIAL_LOAD_DEBOUNCE_MS, withSyncDefaults } from '@/contexts/SettingsContext';
 import { setShellKind } from '@/utils/shellKind';
+import type * as BrandingApi from '@/api/branding';
+import type * as AuthContextModule from '@/contexts/AuthContext';
 
 // KEPT_SECTIONS is imported, not copied: the sweep below compares it against the
 // nav items and the screen registry rather than adding a fourth list of the 14
@@ -52,7 +54,7 @@ import { setShellKind } from '@/utils/shellKind';
 // test-setup.ts installs: the load/save error-path tests need branding to go
 // through the per-file invokeMock so brand calls fail WITH the other commands.
 vi.mock('@/api/branding', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/api/branding')>()),
+  ...(await importOriginal<typeof BrandingApi>()),
 }));
 
 // ── Session under test: the role gate reads session.role_name ──────
@@ -75,7 +77,7 @@ const { authState, sessions } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/contexts/AuthContext', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/contexts/AuthContext')>()),
+  ...(await importOriginal<typeof AuthContextModule>()),
   useAuth: () => ({
     session: authState.session,
     pickerTicket: null,

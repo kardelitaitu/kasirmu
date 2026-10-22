@@ -7,6 +7,7 @@ import { HardwareAccelProvider } from '@/contexts/HardwareAccelContext';
 import KdsScreen from '@/features/kds/KdsScreen';
 import kdsFtl from '@/locales/kds.ftl?raw';
 import type { KdsOrder } from '@/api/kds';
+import type * as TicketSlaModule from '@/features/kds/hooks/useTicketSla';
 
 // ── Zone-preference store (ZONE-TESTS) ──────────────────────────────
 // The real useKdsPreferences persists and notifies; this store mirrors
@@ -130,7 +131,7 @@ vi.mock('@/features/kds/hooks/useTicketSla', async (importOriginal) => ({
   // the real module: kdsThresholdMinutes.ts derives the UI minute ceilings
   // from them (2026-09-15 ruling), and KdsHeaderRight imports that helper, so
   // a whole-module mock here makes those names undefined at import time.
-  ...(await importOriginal<typeof import('@/features/kds/hooks/useTicketSla')>()),
+  ...(await importOriginal<typeof TicketSlaModule>()),
   useTicketSla: (..._args: unknown[]) => mockUseTicketSla(),
 }));
 

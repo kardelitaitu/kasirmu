@@ -70,7 +70,7 @@
      `--color-info`, `-bg` and `-subtle` do), so those two rendered their
      FALLBACK forever and topologyThemeParity flagged them as phantom tokens.
      Use the tokens the design system actually defines. */
-  background: var(--color-info-subtle, rgba(59, 130, 246, 0.1));
+  background: var(--color-info-subtle);
   color: var(--color-info);
   border: 1px solid var(--color-border);
   white-space: nowrap;

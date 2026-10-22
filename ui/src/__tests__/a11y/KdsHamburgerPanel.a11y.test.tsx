@@ -16,11 +16,12 @@ import { KdsHamburgerPanel } from '@/features/kds/KdsHamburgerPanel';
 import { DEFAULT_SETTINGS, type KdsSettings } from '@/features/kds/kdsSettingsModel';
 import { DEFAULT_COLORS_DARK } from '@/features/kds/kdsCardColors';
 import kdsFtl from '@/locales/kds.ftl?raw';
+import type * as ThemeProviderModule from '@/app/ThemeProvider';
 
 // Partial mock: the axe-helper's provider stack needs the REAL ThemeProvider,
 // so only the optional hook is overridden.
 vi.mock('@/app/ThemeProvider', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/app/ThemeProvider')>()),
+  ...(await importOriginal<typeof ThemeProviderModule>()),
   useOptionalTheme: () => null,
 }));
 vi.mock('@/contexts/HardwareAccelContext', () => ({ useOptionalHardwareAccel: () => null }));

@@ -6,9 +6,10 @@ import {
   type UsePosHeldCartsParams,
 } from '@/features/sales/hooks/usePosHeldCarts';
 import { listOpenBillsScoped, getHeldCartScoped } from '@/api/sales';
+import type * as SalesApi from '@/api/sales';
 
 vi.mock('@/api/sales', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/api/sales')>();
+  const actual = await importOriginal<typeof SalesApi>();
   return {
     ...actual,
     listOpenBillsScoped: vi.fn(() => Promise.resolve([])),

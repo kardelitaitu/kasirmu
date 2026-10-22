@@ -12,6 +12,7 @@ import { waitFor } from '@testing-library/react';
 import { renderWithProviders, checkA11y } from './axe-helper';
 import kioskFtl from '@/locales/kiosk.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
+import type * as CurrencyContextModule from '@/contexts/CurrencyContext';
 
 const FTL = [sharedFtl, kioskFtl];
 
@@ -28,7 +29,7 @@ vi.mock('@/api/products', () => ({
 }));
 
 vi.mock('@/contexts/CurrencyContext', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/contexts/CurrencyContext')>()),
+  ...(await importOriginal<typeof CurrencyContextModule>()),
   useCurrency: () => ({ currency: 'IDR', setCurrency: vi.fn(), loading: false }),
 }));
 

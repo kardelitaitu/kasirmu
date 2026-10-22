@@ -15,6 +15,7 @@ import type { ReactNode } from 'react';
 
 import { SubscriptionProvider, useSubscription, useAdminGate, usePreExpiryReauth } from '@/contexts/SubscriptionContext';
 import type { SubscriptionCapabilities } from '@/api/subscription';
+import type * as SubscriptionApi from '@/api/subscription';
 
 // ── Opt out of the global SubscriptionContext stub ─────────────────────
 // The setupFile installs a safe-default mock for `useSubscription`
@@ -37,7 +38,7 @@ vi.mock('@/api/subscription', async (importOriginal) => ({
   // Spread the real module so named imports elsewhere in the graph (e.g.
   // OverQuotaCard's perLocationMarkers, added with the per-location quota
   // caps) resolve even though this suite only spies on one function.
-  ...(await importOriginal<typeof import('@/api/subscription')>()),
+  ...(await importOriginal<typeof SubscriptionApi>()),
   getSubscriptionCapabilities: (...args: unknown[]) =>
     mocks.getSubscriptionCapabilities(...args),
 }));

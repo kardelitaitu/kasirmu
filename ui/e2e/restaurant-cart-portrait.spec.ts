@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
 
 /**
@@ -18,7 +19,7 @@ const TIMEOUT = 15_000;
 
 test.use({ viewport: { width: 800, height: 1280 } });
 
-async function openRestaurantPortrait(page: import('@playwright/test').Page) {
+async function openRestaurantPortrait(page: Page) {
   await loginAs(page, 'staff', '1234');
   await selectWorkspace(page, WORKSPACES.RESTAURANT_POS);
   const cards = page.locator('.restaurant-card');

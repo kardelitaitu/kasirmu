@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
 
 /**
@@ -50,7 +51,7 @@ const TIMEOUT = 20_000;
  * persisted state). Counting `.kds-ticket` instead would be perturbed by the 60s
  * auto-generator; reading the numbers lets the assertion name the exact ticket.
  */
-async function boardNumbers(page: import('@playwright/test').Page): Promise<number[]> {
+async function boardNumbers(page: Page): Promise<number[]> {
   await expect(page.locator('.kds-ticket').first()).toBeVisible({ timeout: TIMEOUT });
   return page.locator('.kds-ticket').evaluateAll((tickets) =>
     tickets

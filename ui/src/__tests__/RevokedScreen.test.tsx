@@ -14,6 +14,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen, waitFor, fireEvent } from '@testing-library/react';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 import RevokedScreen from '@/features/auth/RevokedScreen';
+import type * as ToastModule from '@/components/Toast';
 import sharedFtl from '@/locales/shared.ftl?raw';
 
 const mockPickExportPath = vi.fn();
@@ -30,7 +31,7 @@ vi.mock('@/components/StatusBar', () => ({
 }));
 
 vi.mock('@/components/Toast', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/components/Toast')>();
+  const actual = await importOriginal<typeof ToastModule>();
   return {
     ...actual,
     useToast: () => ({ addToast: (...args: unknown[]) => mockAddToast(...args) }),

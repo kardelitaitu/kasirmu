@@ -28,6 +28,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { BrandProvider } from '@/contexts/BrandContext';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import { LocaleContext } from '@/i18n/LocaleContext';
+import type * as AuthContextModule from '@/contexts/AuthContext';
 import { getAvailableLocales, getLocaleLabel } from '@/i18n';
 
 // The topology section body is stubbed so the deep-link scope hints can be
@@ -72,7 +73,7 @@ const { authValue } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/contexts/AuthContext', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/contexts/AuthContext')>()),
+  ...(await importOriginal<typeof AuthContextModule>()),
   useAuth: () => authValue,
 }));
 

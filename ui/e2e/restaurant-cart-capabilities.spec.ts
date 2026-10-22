@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { openRestaurantPosWithItem as openRestaurantPosWithItemShared } from './helpers';
 
 /**
@@ -41,7 +42,7 @@ const TIMEOUT = 15_000;
 // cart controls that need no `settings:edit`, so the least-privileged account that can reach
 // the till is the one that should exercise them. Round 161 parameterised the shared helper
 // rather than quietly promoting this spec to owner.
-async function openRestaurantPosWithItem(page: import('@playwright/test').Page) {
+async function openRestaurantPosWithItem(page: Page) {
   await openRestaurantPosWithItemShared(page, 'staff');
 }
 

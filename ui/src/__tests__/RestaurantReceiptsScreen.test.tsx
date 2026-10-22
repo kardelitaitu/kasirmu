@@ -11,6 +11,11 @@ import { ToastProvider } from '@/components/Toast';
 import { BrandProvider } from '@/contexts/BrandContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import RestaurantReceiptsScreen from '@/features/restaurant/screens/RestaurantReceiptsScreen';
+import type * as SettingsApi from '@/api/settings';
+import type * as ReceiptFormatApi from '@/api/receipt-format';
+import type * as HardwareApi from '@/api/hardware';
+import type * as SalesApi from '@/api/sales';
+import type * as KdsApi from '@/api/kds';
 
 beforeEach(() => {
   vi.mocked(useSubscription).mockReturnValue({
@@ -39,7 +44,7 @@ vi.mock('@/contexts/AuthContext', () => ({
 // Make the async settings/user-preference + hardware API calls resolve in tests
 // so the save flow completes deterministically.
 vi.mock('@/api/settings', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/api/settings')>();
+  const actual = await importOriginal<typeof SettingsApi>();
   return {
     ...actual,
     getUserPreferencesScoped: vi.fn().mockResolvedValue({}),
@@ -53,7 +58,7 @@ vi.mock('@/api/settings', async (importOriginal) => {
 });
 
 vi.mock('@/api/receipt-format', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/api/receipt-format')>();
+  const actual = await importOriginal<typeof ReceiptFormatApi>();
   return {
     ...actual,
     getReceiptFormatScoped: vi.fn().mockResolvedValue({
@@ -84,7 +89,7 @@ vi.mock('@/api/receipt-format', async (importOriginal) => {
 
 
 vi.mock('@/api/hardware', async () => {
-  const actual = await vi.importActual<typeof import('@/api/hardware')>('@/api/hardware');
+  const actual = await vi.importActual<typeof HardwareApi>('@/api/hardware');
   return {
     ...actual,
     listDisplays: vi.fn(() => Promise.resolve([])),
@@ -94,7 +99,7 @@ vi.mock('@/api/hardware', async () => {
 });
 
 vi.mock('@/api/sales', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/api/sales')>();
+  const actual = await importOriginal<typeof SalesApi>();
   return {
     ...actual,
     printSalesReceipt: vi.fn().mockResolvedValue({ printed: true }),
@@ -102,7 +107,7 @@ vi.mock('@/api/sales', async (importOriginal) => {
 });
 
 vi.mock('@/api/kds', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/api/kds')>();
+  const actual = await importOriginal<typeof KdsApi>();
   return {
     ...actual,
     printKdsChitScoped: vi.fn().mockResolvedValue(true),

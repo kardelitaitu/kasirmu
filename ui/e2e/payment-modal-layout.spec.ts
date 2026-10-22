@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
 
 /**
@@ -18,7 +19,7 @@ import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
 
 const TIMEOUT = 15_000;
 
-async function openModal(page: import('@playwright/test').Page) {
+async function openModal(page: Page) {
   await loginAs(page, 'staff', '1234');
   await selectWorkspace(page, WORKSPACES.RESTAURANT_POS);
 

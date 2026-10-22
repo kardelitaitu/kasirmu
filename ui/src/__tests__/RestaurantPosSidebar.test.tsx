@@ -13,6 +13,8 @@ import kdsFtl from '@/locales/kds.ftl?raw';
 import PosScreen from '@/features/sales/PosScreen';
 import RestaurantReceiptsScreen from '@/features/restaurant/screens/RestaurantReceiptsScreen';
 import type { Product } from '@/types/domain';
+import type * as SettingsApi from '@/api/settings';
+import type * as HardwareApi from '@/api/hardware';
 
 const mockProducts = [
   {
@@ -98,7 +100,7 @@ vi.mock('@/features/sales/useBarcodeScanner', async () => {
 });
 
 vi.mock('@/api/settings', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/api/settings')>();
+  const actual = await importOriginal<typeof SettingsApi>();
   return {
     ...actual,
     getReceiptSettingsScoped: vi.fn().mockResolvedValue({ showTableNumber: false }),
@@ -116,7 +118,7 @@ vi.mock('@/api/shifts', () => ({
 }));
 
 vi.mock('@/api/hardware', async () => {
-  const actual = await vi.importActual<typeof import('@/api/hardware')>('@/api/hardware');
+  const actual = await vi.importActual<typeof HardwareApi>('@/api/hardware');
   return {
     ...actual,
     listDisplays: vi.fn(() => Promise.resolve([])),

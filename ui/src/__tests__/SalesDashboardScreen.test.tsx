@@ -10,6 +10,7 @@ import salesFtl from '@/locales/sales.ftl?raw';
 import SalesDashboardScreen from '@/features/sales/SalesDashboardScreen';
 import { registerSalesWidgets } from '@/features/sales/widgets';
 import { clearWidgets } from '@/registries/widget-registry';
+import type * as CurrencyContextModule from '@/contexts/CurrencyContext';
 
 const SAMPLE_SUMMARY = [
   { sale_id: 'sale-1', total_minor: 1250, currency: 'USD', line_count: 2, status: 'completed', created_at: '2026-06-28T10:00:00Z' },
@@ -38,7 +39,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 // is defined on the mock" and took all five cases in this file down. Spreading means the
 // next hook the widgets read cannot do that again.
 vi.mock('@/contexts/CurrencyContext', async () => {
-  const actual = await vi.importActual<typeof import('@/contexts/CurrencyContext')>(
+  const actual = await vi.importActual<typeof CurrencyContextModule>(
     '@/contexts/CurrencyContext',
   );
   const store = { currency: 'USD', setCurrency: vi.fn(), loading: false };
