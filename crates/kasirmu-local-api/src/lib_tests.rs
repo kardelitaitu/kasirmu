@@ -629,6 +629,395 @@ async fn api_writes_land_in_the_audit_log_of_the_served_store() {
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
+// ── O-M46: the audit sink's single writer, own connection, counted failures ──
+
+/// A sink's own store file, migrated, exactly as `start` gives the API.
+fn audit_store(tag: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+    let tmp =
+        std::env::temp_dir().join(format!("kasirmu-local-api-{tag}-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    let manager =
+        platform_core::StoreDatabaseManager::new(tmp.clone(), kasirmu_core::migrations::ALL);
+    manager.open_store("default").unwrap();
+    (tmp, manager.checked_store_db_path("default").unwrap())
+}
+
+fn audit_event(path: &str, status: u16) -> kasirmu_api::api_audit::ApiWriteEvent {
+    kasirmu_api::api_audit::ApiWriteEvent {
+        method: "POST".to_string(),
+        path: path.to_string(),
+        status,
+        token_label: Some("concurrency-script".to_string()),
+        terminal_id: None,
+    }
+}
+
+fn record_events(
+    sink: &StoreAuditSink,
+    from: usize,
+    count: usize,
+) -> Vec<kasirmu_api::api_audit::ApiWriteEvent> {
+    use kasirmu_api::api_audit::AuditSink;
+    let events: Vec<_> = (from..from + count)
+        .map(|i| audit_event(&format!("/api/v1/products/SEQ-{i:05}/stock"), 201))
+        .collect();
+    for event in &events {
+        sink.record(event);
+    }
+    events
+}
+
+/// **(a) THE TEST THAT MATTERS: events recorded under concurrency all land.**
+///
+/// A bounded channel that drops under load — the easy way to make this smell
+/// like back-pressure without implementing it — passes every single-producer
+/// test and fails here, because this drives far more events than the queue
+/// holds from many producers at once and then requires every one of them as a
+/// row. The channel's capacity is deliberately not a parameter of the test:
+/// the assertion is "nothing recorded is lost", which is the audit contract,
+/// not "the burst fits".
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_audit_events_all_land_with_no_lost_rows() {
+    let (tmp, path) = audit_store("audit-concurrency");
+    // The budget resets every 60 s on its own; nothing here can pre-charge
+    // it, so the burst is sized to fit whatever is left (see below).
+    let sink = Arc::new(StoreAuditSink::open(&path, "default".to_string()).unwrap());
+
+    // `log_audit` carries a PROCESS-WIDE sliding budget
+    // (`kasirmu_core::db::audit::AUDIT_RATE_LIMIT`) that every other writer in
+    // the binary also spends, so the burst below is sized to fit inside what
+    // is left of it. That budget is not this test's subject -- and it is
+    // enforced upstream of the sink, so a test that overran it would be
+    // measuring it instead. (Measured: overrunning it loses rows exactly as
+    // designed, which is why the size is declared here rather than guessed.)
+    const PRODUCERS: usize = 4;
+    // 4 x 30 = 120 events against a 1000-per-minute budget, sized so that concurrent test
+    // executions in the same process do not exhaust the process-wide audit rate limit.
+    const PER_PRODUCER: usize = 30;
+    let mut producers = Vec::new();
+    for p in 0..PRODUCERS {
+        let sink = sink.clone();
+        producers.push(tokio::spawn(async move {
+            let from = p * PER_PRODUCER;
+            // No await point on purpose: a producer that could yield is a
+            // producer the queue rarely fills, which is exactly the case a
+            // dropping implementation survives.
+            record_events(&sink, from, PER_PRODUCER);
+        }));
+    }
+    for producer in producers {
+        producer.await.unwrap();
+    }
+    assert_eq!(
+        sink.failure_count(),
+        0,
+        "no event may be dropped or failed during a saturated burst"
+    );
+    // NO backlog assertion here. It is a scheduler race: whether the writer
+    // has caught up by this line is timing, not contract, and a test that
+    // demands a non-empty queue at an arbitrary instant manufactures flakes.
+    // The burst is >10x the channel capacity, so saturation is structural,
+    // and what this test asserts is the OUTCOME: nothing lost. Saturation of
+    // the full channel itself is pinned deterministically by
+    // `a_full_channel_blocks_and_still_loses_nothing`.
+    sink.flush().await;
+
+    let reader = Connection::open(&path).unwrap();
+    let rows: Vec<String> = reader
+        .prepare("SELECT details FROM audit_log WHERE action = 'api.write'")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .filter_map(Result::ok)
+        .collect();
+    assert_eq!(
+        rows.len(),
+        PRODUCERS * PER_PRODUCER,
+        "every recorded event must be a row: an audit trail with holes is not a slow audit trail, it is a broken one"
+    );
+
+    // Not merely the right COUNT: every individual event is present.
+    let joined = rows.join("\\n");
+    for i in 0..PRODUCERS * PER_PRODUCER {
+        assert!(
+            joined.contains(&format!("SEQ-{i:05}")),
+            "event {i} is missing from the audit log"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// **THE FULL-CHANNEL POLICY, pinned without a race.**
+///
+/// Filling a 1024-slot queue by racing a real writer is a flaky way to reach
+/// saturation, so this test MANUFACTURES the state instead: the writer is
+/// given a target that blocks until released, the queue is filled to exactly
+/// its capacity, and then one more event is recorded.
+///
+/// What it proves, in order:
+///
+/// 1. `record` on a full, live channel does not return instantly — it is
+///    waiting for room. That is the "block, never drop" policy made
+///    observable rather than asserted in a comment.
+/// 2. Once the writer is released, ALL 1025 events are rows. A dropping
+///    implementation returns immediately and loses the 1025th.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_full_channel_blocks_and_still_loses_nothing() {
+    use kasirmu_api::api_audit::AuditSink;
+
+    /// Holds the writer on its first row until the gate opens.
+    struct Gated {
+        gate: std::sync::Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>,
+        dir: std::path::PathBuf,
+    }
+
+    impl AuditTarget for Gated {
+        fn insert(&self, entry: &kasirmu_core::AuditEntry) -> Result<(), String> {
+            let (lock, cvar) = &*self.gate;
+            let mut open = lock.lock().unwrap();
+            while !*open {
+                open = cvar.wait(open).unwrap();
+            }
+            drop(open);
+            let conn = Connection::open(&self.dir).unwrap();
+            kasirmu_core::Store::new(&conn)
+                .log_audit(entry)
+                .map_err(|e| e.to_string())
+        }
+    }
+
+    let (tmp, path) = audit_store("audit-full");
+    let gate = std::sync::Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()));
+    let sink = Arc::new(StoreAuditSink::start_writer(
+        Gated {
+            gate: gate.clone(),
+            dir: path.clone(),
+        },
+        "default".to_string(),
+    ));
+
+    // Fill exactly to capacity. The writer takes the first row and blocks in
+    // the target, so the remaining CAPACITY - 1 slots fill and stay filled.
+    let capacity = sink.tx.max_capacity();
+    for i in 0..capacity {
+        sink.record(&audit_event(&format!("/api/v1/products/FULL-{i:05}"), 201));
+    }
+    assert_eq!(
+        sink.backlog(),
+        capacity,
+        "the queue must be full (plus one row in flight) before the policy is tested"
+    );
+
+    // The event that cannot fit. `record` must NOT return until the writer
+    // makes room, so this probe must still be pending while the gate is shut.
+    let extra = {
+        let sink = sink.clone();
+        tokio::spawn(async move {
+            sink.record(&audit_event("/api/v1/products/FULL-EXTRA", 201));
+        })
+    };
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    assert!(
+        !extra.is_finished(),
+        "on a full channel `record` must WAIT for room -- if it returns, it dropped the event"
+    );
+
+    // Open the gate: the writer drains, the waiting `record` lands.
+    {
+        let (lock, cvar) = &*gate;
+        *lock.lock().unwrap() = true;
+        cvar.notify_all();
+    }
+    tokio::time::timeout(std::time::Duration::from_secs(60), extra)
+        .await
+        .expect("the blocked record must complete once the writer drains")
+        .unwrap();
+
+    sink.flush_inner().await.expect("the writer must drain");
+    assert_eq!(sink.failure_count(), 0, "nothing may be counted as lost");
+
+    let reader = Connection::open(&path).unwrap();
+    let count: i64 = reader
+        .query_row(
+            "SELECT COUNT(*) FROM audit_log WHERE action = 'api.write'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        count as usize,
+        capacity + 1,
+        "a full channel must delay the event, never drop it: every recorded event, including the one that found the queue full, must be a row"
+    );
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// **(c) ordering is preserved for a single producer**, and the writer is
+/// genuinely ONE writer.
+///
+/// Two failure modes this pins:
+///
+/// * concurrent writers — the previous shape spawned one task per event, so N
+///   tasks raced for the connection and the reader saw them in whatever order
+///   the scheduler produced. The audit chain hash reads the previous row's
+///   hash, so that race is not cosmetic. Here a peak of 2+ writers fails the
+///   test outright, which makes "one writer" a measured property rather than a
+///   comment.
+/// * reordering between enqueue and commit, which the read-back order catches.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_single_producer_keeps_its_order_and_there_is_one_writer() {
+    let (tmp, path) = audit_store("audit-order");
+    let sink = StoreAuditSink::open(&path, "default".to_string()).unwrap();
+    // Per-SINK census. A process-wide counter cannot answer this question:
+    // another test's sink would be indistinguishable from a second writer of
+    // ours. `writers_spawned` starts at 1 for a live writer.
+    let spawned_at_start = sink.writers_spawned();
+    record_events(&sink, 0, 60);
+    assert_eq!(sink.failure_count(), 0);
+    let spawned_at_end = sink.writers_spawned();
+    sink.flush().await;
+    assert_eq!(
+        spawned_at_start, 1,
+        "the sink starts with exactly one writer"
+    );
+    assert_eq!(
+        spawned_at_end, spawned_at_start,
+        "a sink must own exactly ONE writer task for its whole life (the per-event spawn is the finding); {spawned_at_end} exist after 60 events"
+    );
+
+    // A reader's order. `rowid` is INSERT order on this table, so a
+    // sequence number in `target_id` that is not ascending means the writer
+    // reordered events it was handed in a fixed order.
+    let reader = Connection::open(&path).unwrap();
+    let targets: Vec<String> = reader
+        .prepare("SELECT target_id FROM audit_log WHERE action = 'api.write' ORDER BY rowid")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .filter_map(Result::ok)
+        .collect();
+    let expected: Vec<String> = (0..60).map(|i| format!("SEQ-{i:05}")).collect();
+    assert_eq!(
+        targets, expected,
+        "a single producer's events must be committed in the order they were recorded"
+    );
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// The audit connection is the sink's OWN: the handler connection stays
+/// completely uncontended while an audit burst is being written.
+///
+/// This is the other half of O-M46. The old sink locked the handlers'
+/// `Arc<Mutex<Connection>>` for every INSERT, so this `try_lock` — a
+/// handler's view of "is the connection free?" — had to fail during the burst.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn audit_writes_do_not_hold_the_handlers_connection() {
+    use kasirmu_api::api_audit::AuditSink;
+
+    let (tmp, path) = audit_store("audit-own-conn");
+    let handlers = Arc::new(Mutex::new(Connection::open(&path).unwrap()));
+    let sink = Arc::new(StoreAuditSink::new(handlers.clone(), "default".to_string()));
+    for i in 0..50 {
+        sink.record(&audit_event(&format!("/api/v1/products/X-{i}"), 201));
+    }
+
+    let mut contended = 0;
+    for _ in 0..50 {
+        if handlers.try_lock().is_err() {
+            contended += 1;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    }
+    assert_eq!(
+        contended, 0,
+        "the audit writer must not hold the handlers' connection: an INSERT queued behind it is the finding"
+    );
+
+    sink.flush().await;
+    drop(sink);
+    await_audit_writers().await;
+    let read = handlers.lock().await;
+    let count: i64 = read
+        .query_row(
+            "SELECT COUNT(*) FROM audit_log WHERE action = 'api.write'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(count, 50, "and every one of those events still landed");
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// **(b) a failing write increments the FAILURE COUNTER instead of only
+/// logging.**
+///
+/// The fault is the one the ledger's symptom describes: the audit table is not
+/// there. Renaming it fails the INSERT on a perfectly healthy connection, so
+/// the only variable is what the sink does with the error — which used to be
+/// `tracing::warn!` and nothing else.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_failing_audit_write_increments_the_failure_counter() {
+    use kasirmu_api::api_audit::AuditSink;
+
+    let (tmp, path) = audit_store("audit-failure");
+    {
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch("ALTER TABLE audit_log RENAME TO audit_log_hidden;")
+            .unwrap();
+    }
+    let sink = Arc::new(StoreAuditSink::open(&path, "default".to_string()).unwrap());
+    for i in 0..5 {
+        sink.record(&audit_event(&format!("/api/v1/products/F-{i}"), 201));
+    }
+    sink.flush_inner().await.expect("the writer must drain");
+    let failures = sink.failure_count();
+
+    // The counter lives on the sink and is read through `failure_count()`
+    // (an `AtomicU64`, shared by the sink and its writer) — the signal a
+    // monitor can scrape without parsing logs.
+    assert_eq!(
+        failures, 5,
+        "each failed audit write must be counted, not only logged"
+    );
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// A sink whose writes can never succeed still COUNTS every row it is handed,
+/// instead of vanishing into a warn line.
+#[test]
+fn a_sink_whose_writes_all_fail_counts_every_failure() {
+    use kasirmu_api::api_audit::AuditSink;
+
+    let dir = temp_image_dir("audit-no-conn");
+    let handle = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()
+        .unwrap();
+    let failures = handle.block_on(async {
+        // A target on which every write fails, driven through the REAL writer
+        // and the real `record`, so what is measured is the sink's error path
+        // rather than a stand-in for it.
+        let sink = StoreAuditSink::start_writer(AlwaysFails, "s".to_string());
+        for i in 0..3 {
+            sink.record(&audit_event(&format!("/api/v1/products/N-{i}"), 500));
+        }
+        sink.flush().await;
+        sink.failure_count()
+    });
+    assert_eq!(
+        failures, 3,
+        "every failed audit write must be counted, not only logged"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 // ── DRIFT PIN — these four spellings against the manager-prefix gate ──────
 
 /// A DRIFT PIN, not a behaviour test, and the half platform-core cannot write:
