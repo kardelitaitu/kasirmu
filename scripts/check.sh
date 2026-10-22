@@ -185,6 +185,10 @@ step "unsafe safety comments (tree)" "python3 scripts/verify-unsafe-safety.py" p
 # before. Pair it with `--self-test` so a broken matcher cannot report a clean zero.
 step "state closure after await (self-test)" "python3 scripts/check-state-closure-after-await.py --self-test" python3 scripts/check-state-closure-after-await.py --self-test
 step "state closure after await (report)" "python3 scripts/check-state-closure-after-await.py" python3 scripts/check-state-closure-after-await.py
+# Re-entry guards: list write handlers whose only guard is a state flag. Report mode
+# with self-test, matching state-closure-after-await above.
+step "reentry guards (self-test)" "python3 scripts/check-reentry-guards.py --self-test" python3 scripts/check-reentry-guards.py --self-test
+step "reentry guards (report)" "python3 scripts/check-reentry-guards.py" python3 scripts/check-reentry-guards.py
 # Ratchet on react-hooks/exhaustive-deps. `npm run lint` is `eslint .` with no --max-warnings 0, so
 # it exits 0 while reporting 58 warnings -- and that rule is the ONLY automated check for a stale
 # closure. Item 69 found five callbacks listing `userId`, which no component body ever read, while
