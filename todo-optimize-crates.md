@@ -6795,3 +6795,89 @@ rustfmt --edition 2021 --check                   -> clean on my hunks;
 ```
 
 **Ledger: 144 defined, 143 closed, 1 open.**
+
+## §11CT — O-M79 resolved: the unguarded scratch helper, 1,455 leaked directories, and a gate that graded nothing (2026-10-23)
+
+Landed in `52ac568ae` plus the fixture migration commits that follow it.
+
+### The number
+
+`target/test-scratch/` held **1,455** directories. Round 32 removed the 706 that came
+from a bridge harness dropping its guard. This round went after the rest: 30 direct
+`kasirmu_test_support::scratch_dir` call sites across 20 files.
+
+Their three prefixes, grouped by static name:
+
+| prefix | count | what it was |
+|---|---|---|
+| `oz-pos-test-csv-*` / `-empty-*` | 74 | export tests |
+| `oz-test-backup-*` | 38 | one backup test |
+| `kasirmu-*` (other lanes) | remainder | already covered or not mine |
+
+### Why it leaked: the API offers two ways and only one is safe
+
+`scratch_dir(prefix) -> PathBuf` returns a bare path whose drop deletes NOTHING.
+`ScratchDir::new(prefix)` returns a guard whose `Drop` calls `remove_dir_all`. Both sit
+in the same crate, and the module's own "which helper to use" table listed the unguarded
+one FIRST, as though "you manage the lifetime" were an ordinary choice.
+
+The `oz-test-backup` site shows the failure exactly: it called `remove_file` on the
+`.db` INSIDE the directory and then walked away from the directory itself, with a comment
+explaining the Windows open-handle concern that made it careful about the file. The
+careful half was careful; the other half leaked.
+
+### The real defect was that nothing could see it
+
+The crate had a test proving `ScratchDir` cleans up — `scratch_dir_removes_itself_on_drop`.
+It had **no test** proving `scratch_dir` does not. So the two APIs were assumed
+interchangeable, and 30 callers picked the one that leaks while every suite stayed green.
+
+Added `scratch_dir_does_not_remove_itself_and_that_is_the_hazard`, which asserts the
+hazard deliberately: if someone ever gives `scratch_dir` a guard, that test fails and the
+author must read why the two are not interchangeable. Rewrote the selection table to put
+`ScratchDir::new` first and added an explicit warning block to `scratch_dir`'s docs.
+
+### A fifth copy of the scratch root, deleted
+
+`platform/sync/src/test_helpers.rs` carried its own hand-written copy of "walk up from
+CARGO_MANIFEST_DIR for a directory holding Cargo.lock and target/". That was the fourth
+copy of the same logic. It now delegates to `kasirmu_test_support::scratch_dir`.
+
+### The gate, and the two ways I built it wrong first
+
+`scripts/check-scratch-leaks.py` counts unguarded call sites per file against a
+committed budget (`scripts/scratch-leak-budget.json`), wired into `scripts/check.sh` and
+`dev-ci.yml#static-gates` as `scratch-leak-gate`. A budget rather than a ban, because a
+few sites legitimately need a path that outlives any guard.
+
+**Mistake 1 — file-level pairing.** My first version treated a file as clean if it called
+`remove_dir_all` ANYWHERE. I injected a leak into `fiscal_tests.rs` to prove the gate fired;
+it exited 0. The file already cleaned up elsewhere, so the new leak inherited the file-wide
+credit. Fixed by pairing per function scope.
+
+**Mistake 2 — the actual bug.** After the fix, the injected leak STILL passed. The cause was
+`delegating_wrapper()`: a `for` loop over `fn scratch_dir(` definitions that fell through to
+`return True` when the loop body never ran. **Every file in the workspace was therefore
+exempted, and the gate graded nothing at all while printing `OK`.** Two leaks injected into
+two different crates both passed. Fixed with an explicit `saw_one` flag.
+
+That is the same defect class as the scan-and-pass gates this project has shipped before,
+and it arrived inside the gate written to catch that class. The lesson is narrow and
+repeatable: **a predicate that is vacuously true over an empty set is indistinguishable from
+a passing gate.** Only injecting a known-bad input found it.
+
+### Falsification, after both fixes
+
+```
+inject unguarded call into crates/kasirmu-core/src/db/fiscal_tests.rs   -> exit 1
+inject unguarded call into platform/sync/src/image_push_tests.rs         -> exit 1
+restore both                                                            -> exit 0
+point CALL_RE at a pattern that matches nothing                         -> exit 2
+   ('DETECTOR WENT DEAF', failing probe named)
+```
+
+The detector is graded over nine synthetic shapes BEFORE any real file is read — qualified,
+imported, spaced calls; definition, doc mention, line comment; and three scope-pairing
+cases including the exact one that fooled mistake 1.
+
+### Ledger: 145 defined, 144 closed, 1 open.
