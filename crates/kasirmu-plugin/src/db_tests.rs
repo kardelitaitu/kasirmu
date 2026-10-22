@@ -26,6 +26,84 @@ fn sql_validation_regexes_compile() {
     }
 }
 
+// ── O-M47: the cached keyword regexes keep the WORD-BOUNDARY rule ──
+
+/// The keyword set is now compiled once into a `OnceLock` instead of once per
+/// call. This pins the property that a cache keyed on the keyword TEXT could
+/// most easily break: `contains_word` matches a WHOLE WORD (`\b{kw}\b`), so a
+/// blocked keyword appearing only as a SUBSTRING of a longer identifier must
+/// stay allowed, while the bare word must stay rejected.
+///
+/// Both directions matter and for different reasons. A too-loose matcher
+/// rejects legitimate plugin SQL (a column called `pragma_notes`, a table called
+/// `tableau`), which is a false positive a user cannot work around. A
+/// too-strict one lets `ATTACH` reach the engine, which is the security hole
+/// the whole function exists to close.
+#[test]
+fn cached_keyword_regexes_preserve_word_boundary_semantics() {
+    // (keyword, a statement that must be ACCEPTED because the keyword is only a
+    //  substring of a longer identifier, and one that must be REJECTED bare)
+    let cases: [(&str, &str); 3] = [
+        ("PRAGMA", "SELECT * FROM test_pragma_notes"),
+        ("TABLE", "SELECT * FROM test_tableau"),
+        ("ATTACH", "SELECT * FROM test_attached_items"),
+    ];
+    for (keyword, allowed) in cases {
+        assert!(
+            !contains_word(&allowed.to_uppercase(), keyword),
+            "{keyword} as a substring of a longer identifier must not match: {allowed}"
+        );
+    }
+
+    // And the bare word, in each surrounding form a statement can present it,
+    // is still caught. This is the direction that fails OPEN if it regresses.
+    for keyword in ["PRAGMA", "TABLE", "ATTACH"] {
+        for statement in [
+            format!("{keyword} foo"),
+            format!("  {keyword}  "),
+            format!("SELECT 1; {keyword}"),
+            format!("({keyword})"),
+        ] {
+            assert!(
+                contains_word(&statement.to_uppercase(), keyword),
+                "a bare {keyword} must still match: {statement}"
+            );
+        }
+    }
+}
+
+/// Every keyword the cache answers for compiles, and each one MATCHES itself.
+///
+/// The sibling of `sql_validation_regexes_compile` for the O-M47 cache: a
+/// pattern typo, or a keyword added to `validate_sql` but missed by
+/// `build_keyword_regexes`, fails here rather than at the first plugin call in
+/// a live process.
+#[test]
+fn keyword_regex_cache_compiles_and_matches_every_keyword() {
+    let cached = keyword_regexes();
+    assert!(
+        !cached.blocked.is_empty(),
+        "the blocked-keyword cache must not be empty"
+    );
+    for (keyword, regex) in &cached.blocked {
+        assert!(
+            regex.is_match(keyword),
+            "the cached regex for {keyword} must match its own keyword"
+        );
+    }
+    // The three keywords `validate_sql` matches outside BLOCKED_KEYWORDS.
+    for (keyword, regex) in [
+        ("PRAGMA", &cached.pragma),
+        ("ALTER", &cached.alter),
+        ("TABLE", &cached.table),
+    ] {
+        assert!(
+            regex.is_match(keyword),
+            "the cached regex for {keyword} must match its own keyword"
+        );
+    }
+}
+
 // ── PLG-A: comments cannot hide a table reference ───────────────────
 
 /// Every comment form that used to defeat the extraction regexes must now be

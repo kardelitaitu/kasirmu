@@ -193,6 +193,13 @@ const CTE_PATTERN: &str = r#"(?i)\bWITH\s+(?:RECURSIVE\s+)?([A-Za-z_][A-Za-z0-9_
 /// `, <name> AS (` for comma-separated CTEs.
 const CTE_COMMA_PATTERN: &str = r#"(?i),\s*([A-Za-z_][A-Za-z0-9_]*)\s+AS\s*\("#;
 
+/// Word-boundary template for a blocked keyword: `(?i)\b<escaped keyword>\b`.
+///
+/// The `{}` is replaced by `regex::escape(keyword)` at cache-build time, so the
+/// resulting pattern is valid for any keyword text (including the multi-word
+/// entries in `BLOCKED_KEYWORDS`). See `compile_keyword`.
+const KEYWORD_PATTERN: &str = r"(?i)\b{}\b";
+
 /// Compile a static SQL-validation regex, compiled once into a `OnceLock`.
 ///
 /// # Invariant
@@ -313,20 +320,108 @@ pub fn ensure_no_quoted_identifiers(sql: &str) -> Result<(), PluginError> {
     Ok(())
 }
 
-/// Check if `text` contains `keyword` as a whole word (bounded by non-alphanumeric chars).
+/// The word-boundary regexes `validate_sql` tests every statement against.
 ///
-/// PLG-B: the compile result is unwrapped rather than degraded to `false`.
-/// `regex::escape` makes the pattern valid by construction, so a failure is an
-/// unreachable programming error — and `false` means "keyword absent", which is
-/// the fail-OPEN direction on a security check. Matches the `sql_regex`
-/// invariant policy a few lines above.
-fn contains_word(text: &str, keyword: &str) -> bool {
-    let pattern = format!(r"(?i)\b{}\b", regex::escape(keyword));
+/// Before O-M47 each of these was built per call: `contains_word` ran `format!`
+/// and `Regex::new` on every invocation, and `validate_sql` invokes it once per
+/// `BLOCKED_KEYWORDS` entry plus PRAGMA plus the two ALTER/TABLE checks — about
+/// sixteen compilations per plugin `exec`/`query`. The keyword set is fixed at
+/// compile time, so caching it removes that cost without changing which
+/// statements are rejected: the patterns, and therefore the matches, are
+/// exactly the ones the old code built inline.
+///
+/// The cache also holds ALTER, TABLE and PRAGMA even though they are not in
+/// `BLOCKED_KEYWORDS` — `validate_sql` tests those separately, with their own
+/// error messages, and they carried the same compile-per-call cost.
+struct KeywordRegexes {
+    /// One regex per `BLOCKED_KEYWORDS` entry, in the same order.
+    blocked: Vec<(&'static str, Regex)>,
+    /// `PRAGMA` — blocked on its own, ahead of the table-reference scan.
+    pragma: Regex,
+    /// `ALTER`, which together with [`Self::table`] rejects ALTER TABLE.
+    alter: Regex,
+    /// `TABLE`, which together with [`Self::alter`] rejects ALTER TABLE.
+    table: Regex,
+}
+
+/// Build the [`KeywordRegexes`] cache.
+///
+/// Every keyword compiled here is a compile-time constant, and
+/// `keyword_regexes_compile_and_match` (test module) compiles AND matches all of
+/// them under CI, so the `expect` inside [`compile_keyword`] cannot fire for any
+/// keyword that `validate_sql` actually uses.
+fn build_keyword_regexes() -> KeywordRegexes {
+    let blocked = BLOCKED_KEYWORDS
+        .iter()
+        .map(|kw| (*kw, compile_keyword(kw)))
+        .collect::<Vec<_>>();
+    KeywordRegexes {
+        blocked,
+        pragma: compile_keyword("PRAGMA"),
+        alter: compile_keyword("ALTER"),
+        table: compile_keyword("TABLE"),
+    }
+}
+
+/// The keyword regex cache, built once on first use.
+fn keyword_regexes() -> &'static KeywordRegexes {
+    static KEYWORD_REGEXES: OnceLock<KeywordRegexes> = OnceLock::new();
+    KEYWORD_REGEXES.get_or_init(build_keyword_regexes)
+}
+
+/// Compile the word-boundary pattern for a single keyword.
+///
+/// Unlike `sql_regex` above, the pattern is assembled at runtime from
+/// [`KEYWORD_PATTERN`] and the keyword — but this is still not a fallible
+/// operation, for the same reason `contains_word` documented before the regexes
+/// were cached: `regex::escape` makes the result valid by construction.
+fn compile_keyword(keyword: &str) -> Regex {
     // SAFETY: the keyword is `regex::escape`d, so the pattern is valid by
-    // construction; this cannot fail for any input.
-    Regex::new(&pattern)
+    // construction; `keyword_regexes_compile_and_match` compiles every keyword
+    // in the set at CI time. `KEYWORD_PATTERN` is the only literal supplied.
+    Regex::new(&KEYWORD_PATTERN.replace("{}", &regex::escape(keyword)))
         .expect("escaped keyword pattern must compile")
-        .is_match(text)
+}
+
+/// The regex for a `validate_sql` keyword, from the [`keyword_regexes`] cache.
+///
+/// `validate_sql` only ever passes `BLOCKED_KEYWORDS` entries or the literals
+/// `"PRAGMA"`, `"ALTER"` and `"TABLE"`, so the search below always hits.
+///
+/// # Invariant
+///
+/// An unknown keyword panics rather than being compiled fresh or reported as
+/// absent. A fresh compile would quietly restore the per-call cost this cache
+/// exists to remove; reporting absent would be the fail-OPEN direction that
+/// `contains_word`'s PLG-B note forbids on a security check. Panicking makes a
+/// keyword added to `validate_sql` without being added to
+/// [`build_keyword_regexes`] fail loudly in the first test that exercises it.
+fn keyword_regex(keyword: &'static str) -> &'static Regex {
+    let cached = keyword_regexes();
+    let found = match keyword {
+        "PRAGMA" => Some(&cached.pragma),
+        "ALTER" => Some(&cached.alter),
+        "TABLE" => Some(&cached.table),
+        _ => cached
+            .blocked
+            .iter()
+            .find(|(kw, _)| *kw == keyword)
+            .map(|(_, re)| re),
+    };
+    found.unwrap_or_else(|| {
+        let known = cached
+            .blocked
+            .iter()
+            .map(|(kw, _)| *kw)
+            .chain(["PRAGMA", "ALTER", "TABLE"])
+            .collect::<Vec<_>>()
+            .join(", ");
+        panic!("keyword '{keyword}' has no cached regex (known: {known})")
+    })
+}
+
+fn contains_word(text: &str, keyword: &'static str) -> bool {
+    keyword_regex(keyword).is_match(text)
 }
 
 /// Remove SQL comments from `sql`, leaving string literals intact (PLG-A).
