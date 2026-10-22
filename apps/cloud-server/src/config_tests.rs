@@ -453,3 +453,34 @@ fn qris_acquirer_env_unset_is_generic_and_set_is_kept() {
         },
     );
 }
+
+/// OZ_ENFORCE_PLANS fails OPEN in production, and that is now visible.
+///
+/// The flag is a plain `env_bool`: unset / `0` / a misspelling disables the
+/// sync plan gate. Correct for dev, silently open in production. The fix is a
+/// WARNING rather than a refusal, so this test pins the CONDITION that drives
+/// it rather than the log call (which would need a subscriber to observe, and a
+/// test on the cargo-tracing wiring rather than on this rule).
+///
+/// The second half matters as much as the first: a production deployment WITH
+/// the flag must NOT warn, or the warning becomes noise and gets ignored — the
+/// same fate as any warning that fires unconditionally.
+#[test]
+fn plan_gating_warning_is_conditional_on_production_and_the_flag() {
+    // The warned combination: production, gate open.
+    assert!(
+        should_warn_plan_gating_disabled(true, false),
+        "OZ_PRODUCTION=1 with OZ_ENFORCE_PLANS off must warn: the plan gate is open"
+    );
+    // No warning when the gate is actually closed (enforced).
+    assert!(
+        !should_warn_plan_gating_disabled(true, true),
+        "a production deployment WITH plan gating on must not warn"
+    );
+    // No warning in dev: unset is the documented dev default.
+    assert!(
+        !should_warn_plan_gating_disabled(false, false),
+        "a non-production deployment must not warn; unset is the dev default"
+    );
+    assert!(!should_warn_plan_gating_disabled(false, true));
+}

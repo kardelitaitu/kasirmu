@@ -252,6 +252,7 @@ impl CloudServerConfig {
         );
 
         validate_production(production, api_secret.as_deref(), admin_key.as_deref())?;
+        warn_plan_gating_disabled(production, enforce_plans);
 
         // Read the acquirer *after* the production flag exists locally, so the
         // same value that reaches the wire is the value the warnings below are
@@ -421,6 +422,37 @@ fn warn_qris_acquirer_pitfalls(production: bool, acquirer: Option<&str>) {
     }
 }
 
+/// Warn when a production build will run with plan gating OFF.
+///
+/// `OZ_ENFORCE_PLANS` is an ordinary `env_bool`, so an unset (or misspelled,
+/// or `0`/`false`) value disables the sync plan gate entirely. That is the
+/// correct default for development — the flag exists so dev and test keep
+/// working — but in production it silently turns a paid feature boundary into
+/// an open one, and the failure is invisible: every request succeeds.
+///
+/// **Warned, never refused.** `validate_production` deliberately refuses only
+/// the two credentials whose absence is an open door (`OZ_API_SECRET`,
+/// `OZ_ADMIN_KEY`); refusing here would break a legitimate production
+/// deployment that has not started selling plans yet, which is not this
+/// file's call. The warning names the exact variable so an operator reading
+/// startup logs can see the gate is open.
+/// The RULE behind [`warn_plan_gating_disabled`], split out so a test can pin it.
+///
+/// Separating the predicate from the `tracing::warn!` call is deliberate: a test
+/// that observes a log line is testing the subscriber wiring, not the rule. This
+/// function is the whole decision, and the warning above it is just the side
+/// effect of it being true.
+const fn should_warn_plan_gating_disabled(production: bool, enforce_plans: bool) -> bool {
+    production && !enforce_plans
+}
+
+fn warn_plan_gating_disabled(production: bool, enforce_plans: bool) {
+    if should_warn_plan_gating_disabled(production, enforce_plans) {
+        tracing::warn!(
+            "OZ_ENFORCE_PLANS is not enabled while OZ_PRODUCTION=1: the sync plan gate is OPEN, so tenants on the free plan (or with no plan row) are NOT rejected. Set OZ_ENFORCE_PLANS=1 to enforce it. Warned, not refused: a production deployment that has not started selling plans yet is legitimate."
+        );
+    }
+}
 /// Parse a positive integer from an injectable lookup.
 ///
 /// Returns `default` when the variable is unset, empty, or not a positive
