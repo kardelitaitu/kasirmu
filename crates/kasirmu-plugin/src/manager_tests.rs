@@ -18,7 +18,7 @@ fn create_plugin_dir(
     lua_content: &str,
     perms: &[&str],
 ) -> (tempfile::TempDir, PathBuf) {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let plugin_dir = dir.path().join(name);
     std::fs::create_dir(&plugin_dir).unwrap();
 
@@ -157,7 +157,7 @@ fn pending_discount_large_percent() {
 
 #[test]
 fn plugin_without_permissions_is_rejected() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let plugin_dir = dir.path().join("no-perms");
     std::fs::create_dir(&plugin_dir).unwrap();
     // No [permissions] section at all — should be rejected.
@@ -188,7 +188,7 @@ fn plugin_with_cart_read_permission_succeeds() {
 
 #[test]
 fn multiple_plugins_with_valid_permissions_all_load() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     for (i, name) in ["plug-a", "plug-b"].iter().enumerate() {
         let plugin_dir = dir.path().join(name);
         std::fs::create_dir(&plugin_dir).unwrap();
@@ -218,7 +218,7 @@ required_permissions = ["cart:read"]
 
 #[test]
 fn plugin_with_unknown_permission_is_rejected() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let plugin_dir = dir.path().join("unknown-perm");
     std::fs::create_dir(&plugin_dir).unwrap();
     std::fs::write(
@@ -244,7 +244,7 @@ required_permissions = ["cart:read", "super:admin"]
 
 #[test]
 fn plugin_with_all_permission_types_is_accepted() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let plugin_dir = dir.path().join("all-perms");
     std::fs::create_dir(&plugin_dir).unwrap();
     std::fs::write(
@@ -289,7 +289,7 @@ fn permission_display_format() {
 
 #[test]
 fn plugin_manager_new_with_empty_dir() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let mgr = PluginManager::new(dir.path()).unwrap();
     assert!(mgr.drain_pending_discounts().is_empty());
 }
@@ -390,7 +390,7 @@ fn real_example_plugin_hook_executes_without_error() {
 
 #[test]
 fn drain_pending_discounts_empty_after_fresh_init() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let mgr = PluginManager::new(dir.path()).unwrap();
     assert!(mgr.drain_pending_discounts().is_empty());
 }
@@ -439,7 +439,7 @@ oz.register_hook("sale.before_complete", "my_hook")
 
 #[test]
 fn fire_sale_before_complete_no_hooks() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let mgr = PluginManager::new(dir.path()).unwrap();
 
     let result = mgr.fire_sale_before_complete(&[], 0, "USD", "anon");
@@ -600,7 +600,7 @@ oz.register_hook("sale.before_complete", "hook_b")
 
 #[test]
 fn validate_order_returns_empty_when_no_hook() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let mgr = PluginManager::new(dir.path()).unwrap();
     let errors = mgr.validate_order(&[], 0, "USD").unwrap();
     assert!(errors.is_empty());
@@ -608,7 +608,7 @@ fn validate_order_returns_empty_when_no_hook() {
 
 #[test]
 fn apply_discount_returns_none_when_no_hook() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let mgr = PluginManager::new(dir.path()).unwrap();
     let result = mgr.apply_discount(&[]).unwrap();
     assert!(result.is_none());
@@ -616,7 +616,7 @@ fn apply_discount_returns_none_when_no_hook() {
 
 #[test]
 fn calc_line_tax_returns_none_when_no_hook() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let mgr = PluginManager::new(dir.path()).unwrap();
     let result = mgr.calc_line_tax("SKU", 1, 100, "USD").unwrap();
     assert!(result.is_none());
@@ -624,7 +624,7 @@ fn calc_line_tax_returns_none_when_no_hook() {
 
 #[test]
 fn validate_order_with_non_empty_lines_no_hook() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let mgr = PluginManager::new(dir.path()).unwrap();
     let lines = [line("A", 1, 500, "IDR"), line("B", 2, 250, "IDR")];
     let errors = mgr.validate_order(&lines, 1000, "IDR").unwrap();
@@ -633,7 +633,7 @@ fn validate_order_with_non_empty_lines_no_hook() {
 
 #[test]
 fn apply_discount_with_non_empty_lines_no_hook() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let mgr = PluginManager::new(dir.path()).unwrap();
     let lines = [line("A", 3, 500, "USD")];
     let result = mgr.apply_discount(&lines).unwrap();
@@ -644,7 +644,7 @@ fn apply_discount_with_non_empty_lines_no_hook() {
 
 #[test]
 fn fire_event_unregistered_event_is_noop() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let mgr = PluginManager::new(dir.path()).unwrap();
 
     let _lua = mgr.runtime.inner();
@@ -782,7 +782,7 @@ fn cross_plugin_globals_do_not_overwrite() {
     // Both plugins define `shared_name`; with a single global namespace
     // the second load would overwrite the first. Isolated envs must keep
     // each plugin's function intact, so firing runs BOTH hooks.
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     create_isolation_pair(dir.path());
     grant_all_declared(dir.path());
     let mgr = PluginManager::new(dir.path()).unwrap();
@@ -799,7 +799,7 @@ fn cross_plugin_globals_do_not_overwrite() {
 
 #[test]
 fn duplicate_plugin_ids_are_rejected() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     for sub in ["a", "b"] {
         let plugin_dir = dir.path().join(sub);
         std::fs::create_dir_all(&plugin_dir).unwrap();
@@ -819,7 +819,7 @@ fn duplicate_plugin_ids_are_rejected() {
 fn hook_order_is_deterministic_by_plugin_id() {
     // Plugins load in id-sorted order (PLG-04), so hook execution order is
     // reproducible even though the temp dir iteration order is arbitrary.
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     for (subdir, name, target) in [
         ("zebra", "zebra", "from-zebra"),
         ("alpha", "alpha", "from-alpha"),
@@ -861,7 +861,7 @@ fn hook_order_is_deterministic_by_plugin_id() {
 fn legacy_validate_order_aggregates_per_plugin() {
     // Two plugins each define a legacy global `validate_order`; the manager
     // must consult each plugin's own env and aggregate both error sets.
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     for (subdir, name, msg) in [
         ("one", "one", "error-from-one"),
         ("two", "two", "error-from-two"),
@@ -898,7 +898,7 @@ fn aggregate_plugin_memory_limit_exceeded_protects_vm() {
     // across ALL loaded plugins collectively.
     // Plugin A allocates a large string (~6 MiB). Plugin B attempts another ~6 MiB.
     // The aggregate allocation must hit the 10 MiB ceiling and fail safely.
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
 
     let plugin_a = dir.path().join("plugin-a");
     std::fs::create_dir_all(&plugin_a).unwrap();

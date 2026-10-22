@@ -6,7 +6,7 @@ use crate::manager::PluginManager;
 /// permissions, plus an optional grants file body. Mirrors the fixture helper
 /// used by `manager_tests.rs` / `loader_tests.rs`.
 fn plugin_dir(declared: &[&str], grants_json: Option<&str>) -> tempfile::TempDir {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let plugin = dir.path().join("p");
     std::fs::create_dir_all(&plugin).unwrap();
     std::fs::write(
@@ -32,7 +32,7 @@ fn plugin_dir(declared: &[&str], grants_json: Option<&str>) -> tempfile::TempDir
 
 #[test]
 fn absent_grants_file_is_empty_not_an_error() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let grants = load(dir.path()).unwrap();
     assert!(grants.is_empty());
     assert!(grants.granted_for("anything").is_empty());
@@ -40,7 +40,7 @@ fn absent_grants_file_is_empty_not_an_error() {
 
 #[test]
 fn parses_a_well_formed_grants_file() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     std::fs::write(
         dir.path().join(GRANTS_FILE_NAME),
         r#"{"schema_version":1,"grants":{"p":["cart:read","log:write"]}}"#,
@@ -58,7 +58,7 @@ fn parses_a_well_formed_grants_file() {
 
 #[test]
 fn malformed_json_is_an_error_naming_the_file() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     std::fs::write(dir.path().join(GRANTS_FILE_NAME), "{ not json").unwrap();
 
     let err = load(dir.path()).unwrap_err().to_string();
@@ -70,7 +70,7 @@ fn malformed_json_is_an_error_naming_the_file() {
 
 #[test]
 fn unknown_permission_in_a_grant_is_rejected_by_name() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     std::fs::write(
         dir.path().join(GRANTS_FILE_NAME),
         r#"{"schema_version":1,"grants":{"p":["cart:read","cart:DELETE"]}}"#,
@@ -93,7 +93,7 @@ fn unknown_permission_in_a_grant_is_rejected_by_name() {
 fn unknown_top_level_field_is_rejected_rather_than_ignored() {
     // A typo in the KEY ("grant" for "grants") must not read as "no approvals"
     // — that would silently disable the gate on every plugin at once.
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     std::fs::write(
         dir.path().join(GRANTS_FILE_NAME),
         r#"{"schema_version":1,"grant":{"p":["cart:read"]}}"#,
@@ -105,7 +105,7 @@ fn unknown_top_level_field_is_rejected_rather_than_ignored() {
 
 #[test]
 fn wrong_schema_version_is_rejected() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     std::fs::write(
         dir.path().join(GRANTS_FILE_NAME),
         r#"{"schema_version":99,"grants":{"p":["cart:read"]}}"#,
@@ -240,7 +240,7 @@ fn the_shipped_example_plugin_is_granted_and_loads() {
     );
 
     // Build a plugins dir whose single entry is the example, and load it.
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let plugin = dir.path().join("example-discount");
     std::fs::create_dir_all(&plugin).unwrap();
     for entry in std::fs::read_dir(&example).unwrap() {

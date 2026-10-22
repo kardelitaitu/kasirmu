@@ -223,7 +223,7 @@ fn extract_to_keeps_legit_subdirectories() {
         ("migrations/b.sql", b"-- b"),
     ]);
     let archive = KasirpkArchive::from_bytes(&bytes, "sub.kasirpkg").unwrap();
-    let dest = tempfile::tempdir().unwrap();
+    let dest = kasirmu_test_support::tempdir();
     archive.extract_to(dest.path()).unwrap();
     assert!(dest.path().join("scripts/a.lua").exists());
     assert!(dest.path().join("migrations/b.sql").exists());
@@ -313,7 +313,7 @@ fn extract_to_directory() {
     ]);
 
     let archive = KasirpkArchive::from_bytes(&bytes, "extract.kasirpkg").unwrap();
-    let dest = tempfile::tempdir().unwrap();
+    let dest = kasirmu_test_support::tempdir();
     archive.extract_to(dest.path()).unwrap();
 
     // All files should be written
@@ -339,7 +339,7 @@ fn extract_to_with_subdirectories() {
     ]);
 
     let archive = KasirpkArchive::from_bytes(&bytes, "sub.kasirpkg").unwrap();
-    let dest = tempfile::tempdir().unwrap();
+    let dest = kasirmu_test_support::tempdir();
     archive.extract_to(dest.path()).unwrap();
 
     assert!(dest.path().join("manifest.json").exists());
@@ -362,7 +362,7 @@ fn extract_scripts_and_migrations_only() {
     ]);
 
     let archive = KasirpkArchive::from_bytes(&bytes, "x.kasirpkg").unwrap();
-    let dest = tempfile::tempdir().unwrap();
+    let dest = kasirmu_test_support::tempdir();
     archive.extract_scripts_and_migrations(dest.path()).unwrap();
 
     // Scripts and migrations extracted
@@ -487,7 +487,7 @@ fn open_from_file() {
     let manifest = br#"{"id": "file-test", "name": "FileTest", "version": "1.0.0"}"#;
     let bytes = build_kasirpkg(&[("manifest.json", manifest)]);
 
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let kasirpkg_path = dir.path().join("test.kasirpkg");
     std::fs::write(&kasirpkg_path, &bytes).unwrap();
 
@@ -508,7 +508,7 @@ fn extract_to_creates_dest_dir() {
     let bytes = build_kasirpkg(&[("manifest.json", manifest)]);
 
     let archive = KasirpkArchive::from_bytes(&bytes, "c.kasirpkg").unwrap();
-    let dest = tempfile::tempdir().unwrap();
+    let dest = kasirmu_test_support::tempdir();
     let sub_dir = dest.path().join("nested/dir");
     archive.extract_to(&sub_dir).unwrap();
     assert!(sub_dir.join("manifest.json").exists());
@@ -527,7 +527,7 @@ fn extract_scripts_and_migrations_creates_dirs() {
     ]);
 
     let archive = KasirpkArchive::from_bytes(&bytes, "m.kasirpkg").unwrap();
-    let dest = tempfile::tempdir().unwrap();
+    let dest = kasirmu_test_support::tempdir();
     let sub = dest.path().join("extracted");
     archive.extract_scripts_and_migrations(&sub).unwrap();
 
@@ -888,7 +888,7 @@ fn extract_scripts_and_migrations_is_unchanged_by_the_index() {
         ("readme.txt", b"ignored"),
     ]);
     let archive = KasirpkArchive::from_bytes(&bytes, "ext.kasirpkg").unwrap();
-    let dest = tempfile::tempdir().unwrap();
+    let dest = kasirmu_test_support::tempdir();
     archive.extract_scripts_and_migrations(dest.path()).unwrap();
 
     // Flattened to the filename, as before — every script and migration lands.

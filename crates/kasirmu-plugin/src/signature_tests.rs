@@ -232,7 +232,7 @@ fn disk_scripts(dir: &Path) -> Vec<(String, Vec<u8>)> {
 #[test]
 fn no_signature_and_no_key_is_allowed() {
     // The opt-in default: an install that configures no key behaves as before.
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     plugin_with_sig(dir.path(), None);
     let ok = verify_plugin(
         dir.path(),
@@ -248,7 +248,7 @@ fn no_signature_and_no_key_is_allowed() {
 
 #[test]
 fn no_signature_is_refused_when_a_key_is_configured() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     plugin_with_sig(dir.path(), None);
     let (_, pem) = test_keypair();
 
@@ -269,7 +269,7 @@ fn no_signature_is_refused_when_a_key_is_configured() {
 fn a_signature_with_no_configured_key_is_refused_not_ignored() {
     // Silently passing here would tell an author their signature was checked
     // when no check happened.
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     plugin_with_sig(dir.path(), Some("AAAA"));
 
     let err = verify_plugin(
@@ -287,7 +287,7 @@ fn a_signature_with_no_configured_key_is_refused_not_ignored() {
 
 #[test]
 fn a_valid_on_disk_signature_verifies_end_to_end() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let (private, pem) = test_keypair();
     let perms_list = perms(&["cart:read", "cart:write"]);
 
@@ -310,7 +310,7 @@ fn a_valid_on_disk_signature_verifies_end_to_end() {
 fn editing_the_script_after_signing_refuses_the_plugin() {
     // THE test this module exists for: the manifest and version are untouched,
     // only the Lua body changed -- and that must be caught.
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let (private, pem) = test_keypair();
     let perms_list = perms(&["cart:read"]);
 
@@ -336,7 +336,7 @@ fn editing_the_script_after_signing_refuses_the_plugin() {
 #[test]
 fn widening_a_permission_after_signing_refuses_the_plugin() {
     // The other escalation: same scripts, same version, one extra capability.
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let (private, pem) = test_keypair();
     let declared = perms(&["cart:read"]);
 

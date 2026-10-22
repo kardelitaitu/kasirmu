@@ -81,10 +81,9 @@ fn public_key_of(private: &Path) -> String {
 }
 
 #[test]
-#[ignore = "needs python3 + the cryptography package; run with --ignored"]
 fn signature_roundtrip_sign_then_load() {
     let script = repo_root().join("scripts/sign-plugin.py");
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = kasirmu_test_support::tempdir();
     let key = tmp.path().join("key.pem");
     let plugins = tmp.path().join("plugins");
     std::fs::create_dir(&plugins).unwrap();
