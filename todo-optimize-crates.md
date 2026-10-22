@@ -15,12 +15,17 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 71 | 71 | **0** |
+| Medium | 72 | 72 | **0** |
 | Low | 24 | 24 | **0** |
 | Test (O-T) | 17 | 17 | **0** |
-| **Total** | **138** | **138** | **0** |
+| **Total** | **139** | **139** | **0** |
 
 **Updated 2026-10-22 (round 21) — THE LEDGER IS 100% CLOSED: 134 defined, 134 closed, 0 open.** O-M68 resolved via Option B covering index `(created_at, sku, event_type)` in migration `20261025_product_activity_created_at.sql` (§11CE).
+
+**Updated 2026-10-23 (round 29). 139 defined, 139 closed, 0 open.** O-M73 closed: `20261023` added
+`sale_id` and NEVER backfilled it, so every pre-migration row paid the slow probe forever. The backfill's
+closing-quote guard was derived by measurement — the naive `substr` writes garbage like
+`","inner":{"sale_id":"NOT-THIS-ONE-A` on a nested payload, and a wrong id is worse than a NULL (§11CN).
 
 **Updated 2026-10-22 (round 28). 138 defined, 138 closed, 0 open.** O-M72 closed: **UI lint is at ZERO** —
 0 errors, 0 warnings across the whole tree, down from 111. The 44 remaining were two shapes and neither was
@@ -1189,6 +1194,46 @@ transform. **That is a correctness argument, not a style preference, and it is t
 Procedure: one file at a time, `tsc --noEmit` after EVERY file (27 runs, all exit 0), eslint per filename
 every 5. `git diff | grep eslint-disable` returns nothing — **no suppression comment was touched**, which is
 the precise damage the two earlier attempts did.
+
+**O-M73 · kasirmu-core — the `sale_id` column was never backfilled, so every legacy row pays the slow probe** —
+`crates/kasirmu-core/migrations/20261023_offline_queue_sale_id.sql:19` ◦. The migration ADDED the column and
+the partial covering index, and wrote no `UPDATE` — confirmed by `grep -c 'UPDATE'` returning 0 on that file
+and `git grep 'UPDATE offline_queue'` returning nothing anywhere in `migrations/`.
+
+Consequence: every row written before `20261023` keeps `sale_id = NULL` FOREVER, **even though almost all of
+them already carry the sale id in `payload`**, so the fast indexed branch of
+`has_pending_outbox_row_for_sale` can never serve them. They take the legacy branch on every settlement for
+the life of the database. O-M04's win applied only to rows written after the migration.
+
+*Fix:* measure first (5,000 legacy rows backfilled in **9.2 ms**), then a GUARDED statement:
+
+```sql
+UPDATE offline_queue
+   SET sale_id = substr(payload, instr(payload, '"sale_id":"') + 11, 36)
+ WHERE sale_id IS NULL
+   AND instr(payload, '"sale_id":"') > 0
+   AND substr(payload, instr(payload, '"sale_id":"') + 47, 1) = '"';
+```
+
+**The `+47` closing-quote check is the whole point, and it was measured, not assumed.** The naive form
+(without it) writes GARBAGE on real-ish payloads — measured against six deliberately awkward inputs:
+
+| Payload | naive | guarded |
+|---|---|---|
+| clean uuid | filled | filled |
+| key absent | NULL | NULL |
+| `{"sale_id":"abc` (truncated) | **`"abc"`** | NULL |
+| `{"sale_id":null}` | NULL | NULL |
+| `{"sale_id":"","inner":{"sale_id":"NOT-THIS..."}}` | **`","inner":{"sale_id":"NOT-THIS-ONE-A`** | NULL |
+| `{"sale_id": "<uuid>"}` (space) | NULL | NULL (left to the runtime fallback) |
+
+**A wrong id is worse than a NULL**: the fast branch compares for equality, so a garbage value silently
+never matches and the row is invisible to the probe. Anything left NULL is not a regression — the legacy
+substring branch still finds those rows exactly as before.
+
+**✅ RESOLVED 2026-10-22 in `d3d85ff6b`.** Falsified: removing the `+47` guard makes
+`the_sale_id_backfill_fills_only_well_formed_ids_and_never_garbage` fail with `left: Some("abc")`,
+`right: None`. Restored, it passes.
 
 ### Low — harmless today; a senior reviewer would still flag it
 
@@ -6331,3 +6376,53 @@ git diff | grep eslint-disable -> nothing (no suppression comment touched)
 commit rule. The hook printed path warnings for the nine `e2e/` files but the commit landed with all 28
 files correctly. No harm this time — the tree had no other session's work in `ui/` — but the rule exists
 precisely for the times it does, and `git add -A` cannot tell the difference.
+
+## §11CN — O-M73 resolved: the sale_id backfill, and why the naive UPDATE would have been worse than none (2026-10-23)
+
+Landed in `d3d85ff6b`. This closes the item I flagged in round 24 and did not finish — worth recording that
+it stayed open for five rounds rather than being quietly dropped.
+
+### The defect was an omission, and it was permanent
+
+`20261023_offline_queue_sale_id.sql` added the column, the partial covering index, and the fast branch of
+`has_pending_outbox_row_for_sale` — and **never populated the column**. `grep -c 'UPDATE'` on that file
+returns 0, and `git grep 'UPDATE offline_queue'` finds nothing anywhere in `migrations/`.
+
+So the O-M04 fix applied only to rows written AFTER the migration. Every pre-existing row keeps
+`sale_id = NULL` forever and takes the legacy substring branch on every settlement — even though the
+overwhelming majority already carry `"sale_id":"<uuid>"` inside `payload`. Not a slow query: a permanent
+one, per row, per settlement, for the life of the database.
+
+### The part that mattered: the obvious UPDATE is WRONG
+
+`substr(payload, instr(payload, '"sale_id":"') + 11, 36)` looks right and is not. Measured against six
+deliberately awkward payloads:
+
+| Input | naive `substr` | with the `+47` closing-quote guard |
+|---|---|---|
+| clean uuid | correct | correct |
+| key absent | NULL | NULL |
+| `{"sale_id":"abc` truncated | **`"abc"`** | NULL |
+| `{"sale_id":null}` | NULL | NULL |
+| empty then nested | **`","inner":{"sale_id":"NOT-THIS-ONE-A`** | NULL |
+| space after the colon | NULL | NULL |
+
+**A wrong id is strictly worse than a NULL.** The fast branch compares `sale_id = ?` for equality, so a
+garbage value can never match and the row becomes invisible to the probe — while the legacy branch, which
+would have found it, is no longer reached because `sale_id` is no longer NULL. The naive backfill would have
+converted a slow-but-correct path into a fast-but-broken one for exactly the rows it touched.
+
+The fix adds `AND substr(payload, instr(payload, '"sale_id":"') + 47, 1) = '"'` — requiring the 36-byte
+value to be a properly closed quoted string. Everything else stays NULL, which is not a regression: the
+legacy branch is unchanged and still finds those rows by substring.
+
+### Verification
+
+```
+cargo check -p kasirmu-core --all-targets   -> exit 0
+cargo test  -p kasirmu-core --lib           -> 3674 passed, 0 failed (194.85s)
+generate-pg-migration.py --check            -> ok, 129 tables, 169 indexes
+```
+
+Falsified: removing the `+47` guard fails the test with `left: Some("abc")`, `right: None`. Cost measured
+at 5,000 rows / 9.2 ms, so the migration is not a startup-latency concern.
