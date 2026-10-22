@@ -16,11 +16,17 @@ open work in every downstream reading this journal supplies.**
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
 | Medium | 71 | 71 | **0** |
-| Low | 23 | 23 | **0** |
+| Low | 24 | 23 | **1** |
 | Test (O-T) | 17 | 17 | **0** |
-| **Total** | **137** | **137** | **0** |
+| **Total** | **138** | **137** | **1** |
 
 **Updated 2026-10-22 (round 21) — THE LEDGER IS 100% CLOSED: 134 defined, 134 closed, 0 open.** O-M68 resolved via Option B covering index `(created_at, sku, event_type)` in migration `20261025_product_activity_created_at.sql` (§11CE).
+
+**Updated 2026-10-22 (round 26). 138 defined, 137 closed, 1 open: O-M72 (Low).** The UI gates were verified
+this session for the first time: typecheck, lint and **13,121 Vitest tests** all pass. O-M72 records that the
+ESLint autofix for the 44 remaining warnings is DESTRUCTIVE — it deleted an `eslint-disable` guard in 13 files.
+Left open rather than fixed, because a hand conversion of 44 type annotations has not been done and a
+destructive autofix is worse than the warnings.
 
 **Updated 2026-10-22 (round 25). 137 defined, 137 closed, 0 open.** O-M71 opened and closed as
 NOT-ACTIONABLE in the same round: `list_gift_cards`' four scanning shapes are a leading-wildcard `LIKE`, a
@@ -1151,6 +1157,14 @@ gift-card and audit "scans" turn out to be fixture artefacts.
 
 So the entry is closed with the measurement rather than an index, and the probe's pin at 4 stays: it now
 fails both if a shape regresses AND if someone later adds an index, forcing a deliberate re-measurement.
+
+**O-M72 · ui — the ESLint autofix for `consistent-type-imports` deletes `eslint-disable` guards** —
+`ui/eslint.config.js` (`consistent-type-imports: 'warn'`) ◦. 44 findings remain, all inline `import()` type
+annotations. Running `npx eslint . --fix` with a `--rule` override REPLACED
+`/* eslint-disable react-refresh/only-export-components */` with a single space in **13 files**, because the
+override made the disable comment itself look fixable. That silently reactivates a rule on 67 call sites.
+Reverted byte-for-byte. *Fix:* convert the 44 by hand, or run `--fix` with ONLY that rule enabled and diff
+every touched file; never with a `--rule` override that disables a rule whose suppressions are in the tree.
 
 ### Low — harmless today; a senior reviewer would still flag it
 
@@ -6128,3 +6142,56 @@ cargo test  -p kasirmu-core --test integration query_plan_probe -> 6 passed, 0 f
 cargo test  -p kasirmu-core --lib                     -> 3673 passed, 0 failed (193.70s)
 rustfmt --edition 2024 --check                        -> exit 0 on all 10 files
 ```
+
+## §11CK — O-M72 opened: the UI's 111 lint warnings are two known rules, and one autofix is destructive (2026-10-22)
+
+No production code changed this round. Recorded because the STATE of the UI gates was unknown to me until now,
+and because the attempt to improve it exposed a trap worth writing down.
+
+### The UI gates are green, verified for the first time this session
+
+| Gate | Result |
+|---|---|
+| `npm run typecheck` | exit 0 |
+| `npm run lint` | exit 0 — **111 warnings, 0 errors** |
+| `npm run test` (Vitest) | **13,121 passed, 0 failed**, 3 skipped, 3 todo — 828 files, 246 s |
+
+So the front end is not carrying hidden breakage. The 111 warnings are the only thing that looks unwell, and
+they are exactly two rules:
+
+| Rule | Count | What it is |
+|---|---|---|
+| `react-refresh/only-export-components` | 67 | a file exporting a component AND a constant, which defeats Vite fast-refresh |
+| `@typescript-eslint/consistent-type-imports` | 44 | `import()` inline type annotations instead of top-level `import type` |
+
+Both are configured as `warn` on purpose (`eslint.config.js`), and `react-refresh` is already `off` for the
+feature-registry modules where it is a documented false positive.
+
+### O-M72 — the autofix for the 44 is destructive, and it deleted a guard
+
+`consistent-type-imports` looks mechanically fixable, so I ran `eslint --fix`. **It corrupted the files.**
+With my `--rule` override in place it treated `/* eslint-disable react-refresh/only-export-components */` as a
+fixable finding and replaced it with a single space, in 13 files:
+
+```diff
+-/* eslint-disable react-refresh/only-export-components */
++ 
+```
+
+That is the worst class of autofix: it removes a SUPPRESSION, so the rule it guards becomes active and the
+next `npm run lint` would surface 67 new warnings that were deliberately silenced, in files nobody touched.
+The change was reverted with `git checkout -- ui/src/` and the tree is byte-identical to HEAD.
+
+**Recorded as O-M72, not fixed.** The 44 remain, and the fix is to convert inline `import()` annotations to
+`import type` declarations by hand — or to run `--fix` with ONLY `consistent-type-imports` enabled and
+`react-refresh` left at its configured value, then diff every file. The second is plausible but unproven,
+and a destructive autofix here costs more than 44 warnings do.
+
+### Why this is worth a section in a PERFORMANCE ledger
+
+Because the same failure has appeared five times now in different clothes: **a tool that reports success while
+doing the wrong thing.** Round 23 shipped a plan gate that passed while blind to its own target; round 24 found
+a gate running half its coverage; this round ran an autofix that reported `FIX=0` (success) after deleting a
+guard. The lesson is not "check the exit code" — every one of these exited 0. It is **diff the artifact**, which
+is why the literal-multiset tokenizer caught three previous mistakes and why `git status` after the autofix
+caught this one before it was committed.
