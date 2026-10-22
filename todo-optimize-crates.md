@@ -5819,3 +5819,98 @@ FAILING with "migration file ... has NO registry entry" while the entry was visi
 **Cargo had not rebuilt**: it ran the stale binary in 0.00s. `touch`ing the source file forced a real
 rebuild and the test passed. When a test contradicts what you can read in the file, suspect the build
 before the code.
+
+## §11CH — O-M69's class closed: the run-time WHERE builders are now graded, and the gate had to be fixed before it could see (2026-10-22)
+
+Landed in `120af25c9`. The plan probe's documented blind spot was queries whose `WHERE` is ASSEMBLED
+at run time. O-M69 lived exactly there. This round graded that whole class.
+
+### Four builders found, all now covered
+
+| Builder | File | Shape |
+|---|---|---|
+| `build_audit_where` | `db/audit.rs:207-310` | 7 optional predicates, `.join(" AND ")` — the O-M69 one |
+| `list_gift_cards` | `db/gift_cards.rs:182-232` | 4 optional predicates |
+| `list_kds_orders` / `_for_instance` | `db/kds_orders.rs:99-114`, `:156-182` | `push_str(" WHERE …")` |
+| `replay_kds_orders_since` | `db/kds_ops.rs:47-70` | `push_str(" AND status …")` |
+
+**No production visibility was widened.** The tests are sibling `_tests.rs` modules, which are CHILDREN of
+the module under test and therefore reach private items through `use super::*`. `build_audit_where` stayed
+a private `fn`; the only production diff is 12 lines of `#[cfg(test)] #[path = …]` wiring.
+
+### The first page is graded for every shape — that was the whole point
+
+§11CG recorded that only the FIRST page scanned, because the keyset cursor gives the planner a range and
+masks the defect. Every shape is therefore graded on BOTH page forms, and the test explicitly asserts that
+the cursor form still seeks — pinning the mask rather than falling for it.
+
+### Two of the shared blind spots are inherent to the whole class
+
+- `details LIKE ?` does **not** force a scan when an indexed sibling predicate is present — the outcome index
+  still serves, so the plan stays `SEARCH`. Demanding a scan there would have been a false expectation.
+- `target_id` DOES have a path (`idx_audit_log_target`, a skip-scan on `ANY(target_type)`), so a predicate on
+  a column is not automatically unindexed.
+
+### THE PART WORTH KEEPING: the gate had two bugs and the falsification found both
+
+The new checker was written, passed, and was **incorrect in two ways that both hid real scans**:
+
+1. `predicate_columns` was hand-maintained with four column names, so it MISSED `target_type`. The first
+   falsification attempt used a `target_type` predicate and the gate stayed GREEN — I was told a scan was
+   caught when the classifier had simply never heard of the column. Fixed by deriving the columns from the
+   assembled SQL instead of a literal list.
+2. `scans_in_full` granted an UNCONDITIONAL exemption to `SCAN … USING INDEX` — which is **exactly the shape
+   of O-M69**. As written, the new gate would have been blind to the defect it was built to find. It now
+   treats a non-covering index walk as a full read when a predicate names a column whose index the plan does
+   not use.
+
+Both were caught by the falsification step, and only because the falsification was run BEFORE believing the
+gate. This is the cleanest evidence yet for the rule that has driven three rounds: **a green test proves the
+test ran, not that it measures the thing.** A checker that cannot fail is indistinguishable from a checker
+that passes.
+
+### One real finding, deliberately NOT fixed
+
+`list_gift_cards`: 4 of 6 filter shapes read the whole table (`no filter`, `search only`, `issued_to only`,
+`min_balance only` → `SCAN g`). Only shapes carrying `status = ?` are served. It is **not** the O-M69 growth
+class — `gift_cards` is bounded by cards issued, not by transaction volume — so no index was added. Instead
+the count is PINNED at 4, which means the test fails both if a shape regresses AND if someone later adds an
+index (the pin must then be lowered deliberately).
+
+### Fixtures vs defects: three investigated, all three were fixtures
+
+KDS failed on a foreign key (`sales` parent must be seeded first). Gift-card `status` had 80% `active`, and
+audit actions had 40% of the log in `SECURITY_ACTIONS` — both made a scan the CORRECT plan. Measured
+threshold for the audit case: the index wins below about a quarter of the table. All three fixtures were
+corrected to realistic distributions; **no assertion was weakened.** One former `#[ignore]` became a graded
+assertion that measurably seeks.
+
+### Verification
+
+```
+cargo check -p kasirmu-core --all-targets   -> exit 0
+cargo test  -p kasirmu-core --lib           -> 3673 passed, 0 failed, 0 ignored (206.73s)
+rustfmt --edition 2024 --check              -> exit 0 on all six files
+```
+
+**3660 -> 3673** is 13 new tests (audit 6, gift_cards 4, kds 3), **zero ignored**.
+
+Also landed this round, outside the performance ledger but found while surveying it:
+
+**`OZ_ENFORCE_PLANS` fails OPEN in production, and now says so.** The flag is a plain `env_bool`,
+so unset / `0` / a misspelling silently disables the sync plan gate — correct for dev, an open paid-feature
+boundary in production, and invisible because every request succeeds. `validate_production`
+(`apps/cloud-server/src/config.rs:449`) refuses only `OZ_API_SECRET` and `OZ_ADMIN_KEY`, so nothing caught it.
+
+Fixed as a WARNING, not a refusal (`3ac336306`), following the precedent set for `MIDTRANS_QRIS_ACQUIRER`:
+refusing would break a legitimate production deployment that has not started selling plans yet. The rule is
+split into a pure `should_warn_plan_gating_disabled(production, enforce_plans)` so a test can pin the
+CONDITION rather than the log subscriber — **and the test was falsified**: dropping the `production &&` guard
+makes it fail on the dev case, which is exactly the regression that would turn the warning into noise and get
+it ignored.
+
+**Also fixed in the same commit:** an OpenAPI drift the `sale_id` column introduced. `OfflineQueueItem` gained
+`sale_id` in `d131c7c7f` (another session's O-M04 work) but the published `SyncPushItem` schema did not, and
+`push_outcome_documented_schema_matches_serde_wire_shape` was RED with the field list on both sides. Documented
+rather than loosening the test — that test derives its expectation from `serde_json::to_value` of the real
+enum, so it is the one thing standing between the wire format and the published contract.
