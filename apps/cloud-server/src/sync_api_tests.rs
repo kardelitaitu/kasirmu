@@ -2787,15 +2787,37 @@ async fn rate_limit_429_includes_retry_after_header() {
     assert!(json["retry_after_seconds"].as_u64().unwrap() > 0);
 }
 
+/// Bucket isolation, asserted from ONE exhausted bucket — O-T11.
+///
+/// Formerly two tests, `rate_limit_tenant_isolation` and
+/// `rate_limit_endpoint_isolation`, each of which burned a full 100-request
+/// burst purely as SETUP: they differed only in which neighbour they then
+/// checked was unaffected. Bringing a bucket to its cap costs
+/// `capacity + 1` HTTP round trips through auth + plan gate + body parse +
+/// handler (`rate_limit.rs` push `capacity: 100`), and requests past the
+/// cap prove nothing the cap-crossing request did not. Both neighbours can be
+/// probed against the SAME exhausted bucket, because the bucket key is
+/// `"{tenant_id}|{prefix}"` — tenant-a is not tenant-b, and push is not pull —
+/// so the two isolation axes never interfere. One 100-request setup, four
+/// assertions that together contain every assertion the two originals made:
+///
+/// | # | request | expected | was asserted by |
+/// |---|---|---|---|
+/// | 1 | tenant-a / push (101st) | 429 | both originals |
+/// | 2 | tenant-b / push | 200 OK | `rate_limit_tenant_isolation` |
+/// | 3 | tenant-a / pull | 200 OK | `rate_limit_endpoint_isolation` |
+///
+/// (Row 1 was asserted by both originals, on separate tenants; here it is one
+/// request on one tenant, which is the whole point of the fold.)
 #[tokio::test]
-async fn rate_limit_tenant_isolation() {
+async fn rate_limit_buckets_are_isolated_per_tenant_and_per_endpoint() {
     let state = shared_state();
     let app = test_router_with_state(state);
 
-    // Exhaust tenant A's push limit.
+    // Exhaust tenant A's push limit (the only 100-request burst in this test).
     let _ = send_n_push_requests(&app, Some("tenant-a"), 100).await;
 
-    // Tenant A's 101st request should be 429.
+    // 1. Tenant A's 101st PUSH request must be 429.
     let token_a = test_token(Some("tenant-a"));
     let req_a = Request::builder()
         .method("POST")
@@ -2805,9 +2827,14 @@ async fn rate_limit_tenant_isolation() {
         .body(Body::from("[]"))
         .unwrap();
     let resp_a = app.clone().oneshot(req_a).await.unwrap();
-    assert_eq!(resp_a.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        resp_a.status(),
+        StatusCode::TOO_MANY_REQUESTS,
+        "tenant A's push bucket is exhausted"
+    );
 
-    // Tenant B should still succeed (independent bucket).
+    // 2. Tenant isolation: a DIFFERENT TENANT on the SAME endpoint still
+    //    succeeds — its bucket is keyed separately.
     let token_b = test_token(Some("tenant-b"));
     let req_b = Request::builder()
         .method("POST")
@@ -2816,39 +2843,19 @@ async fn rate_limit_tenant_isolation() {
         .header("Content-Type", "application/json")
         .body(Body::from("[]"))
         .unwrap();
-    let resp_b = app.oneshot(req_b).await.unwrap();
+    let resp_b = app.clone().oneshot(req_b).await.unwrap();
     assert_eq!(
         resp_b.status(),
         StatusCode::OK,
         "tenant B should not be rate-limited when tenant A is exhausted"
     );
-}
 
-#[tokio::test]
-async fn rate_limit_endpoint_isolation() {
-    let state = shared_state();
-    let app = test_router_with_state(state);
-
-    // Exhaust push endpoint for a tenant.
-    let _ = send_n_push_requests(&app, Some("tenant-ep"), 100).await;
-
-    // Push should now be 429.
-    let token = test_token(Some("tenant-ep"));
-    let req_push = Request::builder()
-        .method("POST")
-        .uri("/api/sync/push")
-        .header("Authorization", format!("Bearer {token}"))
-        .header("Content-Type", "application/json")
-        .body(Body::from("[]"))
-        .unwrap();
-    let resp_push = app.clone().oneshot(req_push).await.unwrap();
-    assert_eq!(resp_push.status(), StatusCode::TOO_MANY_REQUESTS);
-
-    // Pull should still work (separate 300/min limit).
+    // 3. Endpoint isolation: the SAME TENANT on a DIFFERENT endpoint still
+    //    succeeds — pull has its own 300/min bucket.
     let req_pull = Request::builder()
         .method("POST")
         .uri("/api/sync/pull")
-        .header("Authorization", format!("Bearer {token}"))
+        .header("Authorization", format!("Bearer {token_a}"))
         .header("Content-Type", "application/json")
         .body(Body::from(r#"{"since":null}"#))
         .unwrap();
