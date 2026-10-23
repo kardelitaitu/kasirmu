@@ -1678,9 +1678,15 @@ exactly the role the home gate excludes, so 3a.2's required test is unsatisfiabl
 contradicting `todo-tools.md:730`. Either the documented home-stricter policy is retired, or the Tools
 grid keeps its rank and 3a.2 shrinks to the gates that have no route twin.
 
-**Decision required (owner).** Which is authoritative for the home grid — the documented front-door
-policy, or the permission vocabulary? The three sub-questions that follow, none of which a lane should
-answer:
+**RULED 2026-09-20 — this entry is CLOSED and is kept only as the record of the question.** The
+owner ruled for the documented front-door policy: *"the rank stays authoritative for the home grid; 3a.2
+is narrowed to the gates that have no route twin"* (docs/plans/_done/done-todo-owner-rulings.md:182,
+R20). The code carries the citation — ui/src/features/workspaces/tools.tsx:30 cites R20 by name and
+:282 records the same ruling — which is exactly sub-question 2 above ("should be cited *at*
+tools.tsx:180"), so that request was honoured in code even though the register below was never
+updated. The register's census (6 of 17) remains accurate; only the status line was wrong.
+
+The three sub-questions, none of which a lane should answer:
 
 1. If the permission wins, the Analytics card becomes visible to every manager. Is that intended?
 2. If the rank wins, `todo-tools.md:730` should be cited *at* `tools.tsx:180`, because the current
