@@ -208,6 +208,25 @@ def unclaimed(steps: list[str], labels: list[str]) -> list[str]:
     return [s for s in steps if s not in known]
 
 
+def duplicate_steps(steps: list[str]) -> list[str]:
+    """Labels declared more than once in check.sh.
+
+    Uniqueness is NOT implied by the coverage rule above and was missing until
+    2026-10-23: `unclaimed()` builds a SET of labels, so two steps sharing a name are
+    silently collapsed to one and BOTH read as claimed. A duplicated step then runs its
+    command twice on every matrix pass -- wasting the time the duplicate shares, and, when
+    the second copy was added by mistake, making the file claim a coverage it does not
+    have (one command, described as two).
+
+    Measured the day it was found: `scoped coverage self-test` appeared at two line
+    numbers with two different explanatory comments, and every gate was green.
+    """
+    seen: dict[str, int] = {}
+    for one in steps:
+        seen[one] = seen.get(one, 0) + 1
+    return sorted(name for name, count in seen.items() if count > 1)
+
+
 # A miniature workflow used by the ci-block cases above. Two jobs, and the step that
 # `ftl-attrs` really lives in, so the cases exercise the defect as it actually occurred:
 # a gate that named `i18n` while its step sat in `static-gates`.
@@ -346,7 +365,24 @@ def _self_test() -> int:
          ("a script that does not declare the flag is a finding",
           "python3 scripts/this-script-must-never-exist.py --self-test", 1),
     ]
+    # The UNIQUENESS rule, which the coverage rule cannot express: unclaimed() builds a
+    # set, so two steps sharing a label both read as claimed.
+
     bad = 0
+    dup_cases = [
+        ("no duplicates is clean", ["a", "b", "c"], 0),
+        ("one label twice is a finding", ["a", "b", "a"], 1),
+        ("two labels twice is two findings", ["a", "a", "b", "b"], 2),
+        ("three of one label is ONE finding", ["a", "a", "a"], 1),
+        ("an empty roster has no duplicates", [], 0),
+    ]
+    for name, labels, want in dup_cases:
+        got = len(duplicate_steps(labels))
+        if got != want:
+            bad += 1
+            print("  %-52s FAIL want=%d got=%d" % (name, want, got))
+        else:
+            print("  %-52s ok" % name)
     for name, labels, want in cases:
         got = len(unclaimed(steps, labels))
         if got != want:
@@ -383,7 +419,7 @@ def _self_test() -> int:
             print("  %-52s ok" % name)
     print("SELF-TEST %s (%d cases, no files touched)"
           % ("FAILED" if bad else "OK",
-             len(cases) + len(ci_cases) + len(st_cases) + len(schema_cases)))
+             len(cases) + len(ci_cases) + len(st_cases) + len(schema_cases) + len(dup_cases)))
     return 1 if bad else 0
 
 
@@ -404,12 +440,15 @@ def main() -> int:
     manifest = json.loads(GATES_JSON.read_text(encoding="utf-8"))
     labels = declared_labels(manifest)
     missing = unclaimed(steps, labels)
+    dupes = duplicate_steps(steps)
     ci_bad = ci_claim_findings(manifest)
     st_bad = selftest_findings(manifest)
     schema_bad = schema_findings(manifest)
 
     for name in missing:
         print("  unclaimed step: %r -- no gates.json row names it" % name)
+    for name in dupes:
+        print("  duplicated step: %r -- declared more than once in check.sh" % name)
     for line in ci_bad:
         print("  bad ci claim: %s" % line)
     for line in st_bad:
@@ -424,6 +463,11 @@ def main() -> int:
           % sum(1 for g in manifest.get("gates", []) if g.get("self_test")))
     print("checked the field vocabulary: %d gate field(s), %d runners.* key(s), %d ci.* key(s)"
           % (len(GATE_FIELDS), len(RUNNER_FIELDS), len(CI_FIELDS)))
+    if dupes:
+        print("FAIL: %d step label(s) declared more than once. A duplicate runs its command"
+              " twice and makes the file claim a coverage it does not have." % len(dupes))
+        return 1
+
     if ci_bad or st_bad or schema_bad:
         print("FAIL: %d bad ci claim(s), %d bad self_test claim(s), %d unknown field(s). A wrong"
               " job name tells an auditor a gate is enforced somewhere it is not; an"
