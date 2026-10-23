@@ -930,6 +930,16 @@ if command -v npm &>/dev/null && [ -f website/package-lock.json ]; then
         step "website npm ci" "cd website; npm ci --no-audit --no-fund" npm ci --no-audit --no-fund
     fi
     step "website test" "cd website; npm test" npm test
+    # The SEO auditor reads dist/, which is BUILD OUTPUT and gitignored. Its self-test
+    # also walks the real tree, so on a clean checkout with no build it dies with ENOENT
+    # on dist/ -- measured 2026-10-23 by pointing DIST at a missing directory: exit 1,
+    # stack trace, no cases run. Guarding on the directory rather than dropping the step:
+    # a self-test that cannot run is not a pass, and it is not a failure either.
+    if [ -d dist ]; then
+        step "website seo self-test" "cd website; npm run check:seo:self-test --silent" npm run check:seo:self-test --silent
+    else
+        echo -e "${YELLOW}⚠ website seo self-test skipped (no dist/ — build the site first)${NC}"
+    fi
     cd ..
 else
     echo -e "${YELLOW}⚠ Website checks skipped (npm not found or website/package-lock.json missing)${NC}"

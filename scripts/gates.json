@@ -335,6 +335,17 @@
       }
     },
     {
+      "id": "website-seo-self-test",
+      "label": "Website SEO auditor self-test",
+      "status": "advisory",
+      "_note": "Wired 2026-10-23 (local matrix only, SELF-TEST only). website/scripts/check-seo.mjs is a POST-BUILD auditor: it walks dist/, which is gitignored build output, so it cannot run on a clean checkout. check.sh therefore runs its self-test only when dist/ exists and says so when it does not -- a self-test that cannot run is neither a pass nor a failure, and silently skipping it is the shape this whole family of gates exists to refuse. The scan itself is not gated here; CI runs check:seo in the website job where a build always exists. Writing the 23 cases found four real defects: a sitemap comparison that agreed when BOTH sides were empty, an empty docs corpus that silently demoted every article to a content page, a one-way corpus-vs-build check, and a --self-test flag declared after the live exit so it exited before the cases ran.",
+      "runners": {
+        "check.sh": [
+          "website seo self-test"
+        ]
+      }
+    },
+    {
       "id": "no-raw-params",
       "label": "No raw params (ADR #7 Phase 4)",
       "status": "required",
