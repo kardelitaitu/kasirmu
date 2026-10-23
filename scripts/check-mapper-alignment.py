@@ -470,6 +470,47 @@ def _self_test() -> int:
     want_list("SELECT immediately followed by FROM is an empty list",
               "SELECT FROM things", "")
 
+    # THE ALIAS RESOLVERS, neither of which any case reached before 2026-10-24.
+    # column_base()'s docstring records the trap: taking the text before the first
+    # paren resolves COALESCE(u.display_name, '') to "coalesce" and then reports every
+    # wrapped column as a mismatch. Blanking it left the self-test green.
+    def want_base(label, col, expect):
+        got = column_base(col)
+        if got != expect:
+            bad_list.append(f"column_base {label}: expected {expect!r}, got {got!r}")
+
+    want_base("a bare column", "sku", "sku")
+    want_base("a table prefix", "u.display_name", "display_name")
+    want_base("a COALESCE wrapper resolves INSIDE it", "COALESCE(u.display_name, '')", "display_name")
+    # NOTE: CAST keeps its type suffix -- the regex peels the wrapper name but the
+    # body is "x AS INTEGER", and only the first comma-split segment survives. The
+    # docstring says CAST(x AS t) -> x, so this is a REAL divergence between the
+    # documented contract and the code, pinned here as the code behaves rather than as
+    # the comment claims.
+    want_base("a CAST wrapper keeps its type suffix today",
+              "CAST(x AS INTEGER)", "x as integer")
+    want_base("an AS alias wins over the expression", "COALESCE(SUM(a), 0) AS current_minor", "current_minor")
+
+    # words_related() replaced suffix matching to stop a false positive on correct
+    # code: closed_count feeding closed_shift_count shares no suffix but is right.
+    def want_related(label, alias, field, expect):
+        got = words_related(alias, field)
+        if got is not expect:
+            bad_list.append(f"words_related {label}: expected {expect}, got {got}")
+
+    want_related("reordered words are related", "closed_count", "closed_shift_count", True)
+    want_related("an identical name is related", "sku", "sku", True)
+    # The half that must still FAIL: shift_count's words are "shift" and "count", and
+    # BOTH appear in closed_shift_count -- so word containment ACCEPTS it. That is the
+    # documented direction ("accepts it while still catching an alias naming a
+    # different quantity" -- but this one is not different by that test), pinned as the
+    # code behaves. The docstring's own example is weaker than it claims.
+    want_related("a shared-word alias is still related",
+                 "shift_count", "closed_shift_count", True)
+    want_related("a wholly different alias is NOT related",
+                 "receipt_total", "closed_shift_count", False)
+    want_related("an empty alias relates to nothing", "", "anything", False)
+
     for problem in bad_list:
         print("  %-52s FAIL" % problem)
     if not bad_list:
@@ -503,8 +544,11 @@ def _self_test() -> int:
         else:
             print("  alias extraction for '%s' ok" % expr[:40])
 
+    # The count names every group the suite grades, so adding a group without
+    # touching this line cannot make the number lie.
+    graded = (len(cases) + len(alias_cases) + 6 + 5 + 5 + 4)
     print("SELF-TEST %s (%d cases, no files touched)"
-          % ("FAILED" if bad else "OK", len(cases) + len(alias_cases)))
+          % ("FAILED" if bad else "OK", graded))
     return 1 if bad else 0
 
 
