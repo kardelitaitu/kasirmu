@@ -9103,3 +9103,75 @@ check-dead-refs / check-orphans  -> rc 0 on the new doc
 ```
 
 ### Ledger: 163 defined, 163 closed, 0 open.
+
+## §11YA — O-M98: — the cache was fine, the concurrency is capped at 1.9x, and a probe was writing broken shell into the tree it scans (2026-10-23)
+
+Landed in `538f9472c`, `f3568fb68`, `855badf0a`.
+
+**O-M98 · gates — two of this round's three findings reversed an earlier conclusion of mine, and only the measurements caught it** — resolved in §11YA.
+
+### 1. A real hazard: the shell-syntax probe wrote into the tree it scans
+
+`verify-shell-syntax.py --self-test` wrote its probe to `ROOT / "scripts" /
+"_syntax_selftest_tmp.sh"` -- inside the directory the checker enumerates -- and at one point
+writes an INTENTIONALLY BROKEN script (unterminated quote). Two consequences:
+
+1. `check.sh` runs the plain checker and its self-test as ADJACENT STEPS. A concurrent run
+   could read the half-written file and report a PARSE ERROR on a clean tree. **Ten trials did
+   not reproduce it** -- recorded as LATENT, not demonstrated.
+
+2. The scope differential a few lines ABOVE compares the git count with the no-git count. An
+   untracked file present then makes them disagree and fails the self-test for a non-reason.
+   **This one needs no concurrency at all**, and is the stronger of the two.
+
+Moved the probe to `target/` (gitignored, so the git path never counted it anyway). Assertions
+unchanged: 7/7 cases, real run green at 63 scripts, `scripts/` clean afterwards.
+
+### 2. Concurrency: 1.9x, not the 5x I assumed last round
+
+Eight static gates, measured:
+
+```
+serial 22,898 ms   ->   concurrent 12,073 ms     1.9x
+```
+
+Safe: 8/8 exit 0 across four batches, output identical, `git status --porcelain` hashed to the
+same SHA-256 before and after, no ports, locks or shared caches.
+
+**The ceiling is structural.** Two of the eight are 21 s of the 23 s (`verify-debt-markers.py`
+11.2 s, `verify-shell-syntax.py` 10.1 s); the other six sum to 1.5 s. Eight-way parallel cannot
+beat the two longest jobs. Last round's "~155 s saved" assumed UNIFORM cost, which this
+measurement disproves: **the realistic figure on that slice is 60-100 s.**
+
+### 3. I was wrong about sccache, and the experiment is what showed it
+
+First reading: a 1.06 % hit rate plus `Non-cacheable reasons: incremental 1456` meant
+`incremental = true` was defeating the cache. I wrote that into the timing doc.
+
+Then two things falsified it:
+
+```
+full clippy with CARGO_INCREMENTAL=0   -> hits stayed 51, misses 4522 -> 4745   (still zero)
+cargo clean -p X ; cargo check -p X    -> hits 52 -> 53, misses UNCHANGED        (cache works)
+```
+
+So the cache is healthy; the low RATE reflects a history of 4595 compiles across changing
+RUSTFLAGS, profiles and crate subsets -- distinct keys, few repeats. `incremental` explains why
+those compiles were not CACHED, not why later ones do not HIT: an uncacheable compile cannot
+seed the cache.
+
+The doc is corrected in place, with both readings recorded rather than the wrong one deleted.
+That is the second time this round that a plausible mechanism survived inspection and died on
+an experiment.
+
+### Verification
+
+```
+verify-shell-syntax.py --self-test   -> 7/7; scripts/ has no probe afterwards
+verify-shell-syntax.py (real)        -> 63 entry points parse, rc 0
+8 static gates serial vs concurrent  -> 22.9 s vs 12.1 s, tree byte-identical
+sccache after clean+check x2         -> hits 51 -> 52 -> 53, misses unchanged
+sccache after clippy, incremental=0  -> hits unchanged at 51
+```
+
+### Ledger: 164 defined, 164 closed, 0 open.
