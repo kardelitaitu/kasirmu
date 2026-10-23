@@ -497,6 +497,34 @@ is ungraded", and the harness now says so where it prints the row.
 verdict. `is_shell` was a real hole; `cleanup()` was the harness's scope. Both look identical
 in the table.
 
+#### A census that invented 20 findings, and the regex that made them
+
+Measured 2026-10-24 while auditing `scripts/gates.json` for paths that no longer exist. The
+first sweep said **20 dangling references** across 17 records, including `scripts/gates.js`,
+`ui/package.js` and `website/package.js`. It was wrong in three separate ways, and each way
+is a reusable rule:
+
+1. **A greedy path regex eats the prefix of a longer filename.** `[A-Za-z0-9_-]+(?:/[A-Za-z0-9_.-]+)+\\.(?:js|...)`
+   against `scripts/gates.json` matches `scripts/gates.js` — the `.json` extension is
+   simply not required to end where the match ends. Every "`.js` where the file is
+   `.json`" row was this artefact. Fixed with a trailing `(?![A-Za-z0-9_])`.
+2. **A prefix is a prefix.** Acting on that phantom list, a plain `str.replace` of
+   `scripts/gates.js` → `scripts/gates.json` turned every CORRECT `scripts/gates.json`
+   into `scripts/gates.jsonon`. Twelve corruptions in one pass, caught only by asserting
+   `.jsonon` was absent afterwards. If a replacement target is a prefix of a correct
+   string, the replacement needs a boundary, not a `replace`.
+3. **Prose that describes the past is not a dangling reference.** After the regex was
+   fixed, 6 references remained: `scripts/check-env-docs.mjs`, `scripts/check-links.mjs`
+   and four `skills/docs-auditor/...` paths. Read in context, every one is a sentence about
+   history — "`scripts/check-env-docs.mjs was written before anyone looked in
+   .agents/skills/docs-auditor/scripts/`" names a file that the sentence says was never
+   the real one. **Zero real findings.**
+
+The final state is `gates.json` unchanged: 134 records, valid JSON, nothing to fix. The
+hour here bought a rule, not a patch — **a path census that reports a whole family of the
+same typo is reporting its own regex**, and the correct response is to read three hits
+before writing the fixer.
+
 ### Two ways a documentation census measures the WRONG THING
 
 Both measured 2026-10-23 while trying to establish how many Rust modules lack the
