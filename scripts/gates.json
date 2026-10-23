@@ -180,6 +180,21 @@
       }
     },
     {
+      "id": "website-links",
+      "label": "Website link checker self-test",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "website link checker self-test"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "website"
+      },
+      "_note": "Added 2026-10-23. This row covers the SELF-TEST only, which is the half that was missing: CI runs `npm run check:links` = `node scripts/check-links.mjs` WITH NO FLAG, so the gate ran and its 19 liveness cases never did. The gate itself has no row here at all -- it is enforced by dev-ci.yml:240 and website.yml:147 and was never rostered, which is why nothing noticed that its proof was unrun. Found by widening verify-selftests-wired.py's CHECKER_DIRS to include website/scripts; that checker had reported 'every one is invoked' for three rounds while this file sat outside its scope."
+    },
+    {
       "id": "rust-clippy",
       "label": "Clippy",
       "status": "required",

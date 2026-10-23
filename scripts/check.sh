@@ -838,6 +838,12 @@ fi
 # Asset hygiene is stdlib-only, so it runs even when npm is unavailable above.
 # Gate: scripts/gates.json → "website-assets".
 step "website assets" "python3 scripts/verify-website-assets.py" python3 scripts/verify-website-assets.py
+# The link checker's SELF-TEST, which nothing ran. CI invokes `npm run check:links` =
+# `node scripts/check-links.mjs` WITHOUT --self-test, so the gate ran and its 19 liveness
+# cases never did -- a checker that cannot be shown to fail is worthless, which is the
+# exact sentence in its own header. Found 2026-10-23 by widening verify-selftests-wired.py
+# to the website checker directory. Needs no build: the cases are source-shape assertions.
+step "website link checker self-test" "node website/scripts/check-links.mjs --self-test" node website/scripts/check-links.mjs --self-test
 
 # ── Plugin guide / API parity (PLG-10 tail; Rust-side, always runs) ─────
 step "plugin-guide parity" "python3 scripts/verify-plugin-guide-parity.py" python3 scripts/verify-plugin-guide-parity.py
