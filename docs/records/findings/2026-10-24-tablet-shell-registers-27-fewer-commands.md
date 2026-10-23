@@ -85,6 +85,12 @@ question per site is only whether the error is caught or thrown.
 
 **FINAL GRADE, 2026-10-24: every one of the 9 is caught. None throws.**
 
+**And the checker that found all of this now has full mutation coverage.** Triage by
+`scripts/sabotage-selftests.py` on 2026-10-24: `verify-scoped-reads.py` kills **35 of 35**
+candidate functions, including the `_platform_guard_excludes_shell` this round just repaired. So
+the fix is not merely present — a harness that guts the function and re-runs the self-test
+confirms the cases notice.
+
 | site | how the error surfaces |
 |---|---|
 | `MemosScreen.tsx:210,284` | `try` → `setActionError` — the user sees an error and the memo does not save |
