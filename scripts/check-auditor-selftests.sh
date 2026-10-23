@@ -17,6 +17,21 @@
 # cases need no filesystem and survive the crate renames that silenced it once.
 set -e
 cd "$(git rev-parse --show-toplevel)"
-for t in check-env-docs check-ci-claims check-nav-paths check-dead-refs check-adr-status check-site-links check-api-surface check-cite-lines; do
-  python3 ".agents/skills/docs-auditor/scripts/$t.py" --self-test
-done
+
+# EXPLICIT CALLS, not a `for t in ...; do python3 ".../$t.py" --self-test; done` loop.
+# The loop was correct and unreadable to every tool that audits wiring: a checker looking
+# for "<name>.py --self-test" sees only the literal "$t.py", so verify-selftests-wired.py
+# reported six of these eight as UNCALLED once its scope was widened to this directory.
+# That was a false finding, and the fix could have been either side -- teach the auditor
+# to read shell loops, or stop using one. This side is better: the list of self-tests is
+# now greppable by a human and by any tool, and adding a checker means adding a line that
+# names it, instead of editing a semicolon-separated string where a typo silently drops a
+# case. Verified 2026-10-23: the same eight run, and the auditor now sees all eight.
+python3 .agents/skills/docs-auditor/scripts/check-env-docs.py --self-test
+python3 .agents/skills/docs-auditor/scripts/check-ci-claims.py --self-test
+python3 .agents/skills/docs-auditor/scripts/check-nav-paths.py --self-test
+python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py --self-test
+python3 .agents/skills/docs-auditor/scripts/check-adr-status.py --self-test
+python3 .agents/skills/docs-auditor/scripts/check-site-links.py --self-test
+python3 .agents/skills/docs-auditor/scripts/check-api-surface.py --self-test
+python3 .agents/skills/docs-auditor/scripts/check-cite-lines.py --self-test

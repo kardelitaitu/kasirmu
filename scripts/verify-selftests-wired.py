@@ -80,6 +80,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT_DIR = ROOT / "scripts"
+# Every directory that holds a checker following the verify-*/check-* convention. The
+# list, not a single directory: the docs-auditor and website checkers are checkers by the
+# same convention and were being skipped entirely (10 of them declare a --self-test).
+CHECKER_DIRS = (
+    ROOT / "scripts",
+    ROOT / ".agents" / "skills" / "docs-auditor" / "scripts",
+    ROOT / "website" / "scripts",
+)
 # Every place a self-test can legitimately be invoked from. A gate that only knows
 # about CI would call every check.sh-only self-test dead, and check.sh is a real
 # runner even though it is manual.
@@ -88,6 +96,13 @@ RUNNERS = (
     ROOT / "scripts" / "check.sh",
     ROOT / "scripts" / "check.ps1",
     ROOT / ".githooks" / "pre-commit",
+    # A runner can be a SCRIPT whose job is to run self-tests. `check-auditor-selftests.sh`
+    # loops over eight docs-auditor checkers and passes --self-test to each; it is invoked
+    # by check.sh and by dev-ci.yml, so every one of those eight IS wired. Leaving it out
+    # of this list reported six of them as uncalled the moment the checker scope was
+    # widened to their directory -- a false finding, which is the failure mode that gets
+    # a gate muted. Found 2026-10-23 by widening CHECKER_DIRS.
+    ROOT / "scripts" / "check-auditor-selftests.sh",
 )
 # verify-* and check-*. `generate-*` is deliberately absent: `generate-latest-json.mjs`
 # declares a --self-test and has three callers, but it is a GENERATOR that accepts a flag
@@ -102,18 +117,38 @@ SCRIPT_RE = re.compile(r"^(?:verify|check)-[A-Za-z0-9_-]+\.(?:py|mjs|sh)$")
 CALL_RE = re.compile(r"([A-Za-z0-9_-]+)\.(?:py|mjs|sh)\s+--self-test")
 
 
-def checkers() -> list[str]:
-    # check-*.py as well as verify-*.py. The scope was verify-only at first and that was
-    # too narrow: check-chokepoints.py declares a --self-test that no runner invokes, and
-    # the gate reported every self-test as wired. A gate whose scope is narrower than the
-    # convention it enforces cannot see half the rot it exists to catch.
-    return sorted(p.name for p in SCRIPT_DIR.iterdir()
-                  if p.is_file() and SCRIPT_RE.match(p.name))
+def checkers() -> list[Path]:
+    """Every checker file this gate audits, as a path relative to ROOT.
+
+    **A PATH, not a basename.** The scope was bare names while it covered a single
+    directory, and that only worked by accident: one directory cannot produce a collision.
+    It nearly produced one anyway -- `check-gate-runners.py` exists in BOTH `scripts/`
+    and `.agents/skills/docs-auditor/scripts/`, and they are DIFFERENT programs (the
+    scripts/ one cross-checks gates.json; the docs one fails a required gate that no
+    runner can reach). Widening the scope without changing this would have merged them
+    into one entry and hidden whichever has fewer --self-test hits.
+
+    check-*.py as well as verify-*.py. The scope was verify-only at first and that was
+    too narrow: check-chokepoints.py declares a --self-test that no runner invokes, and
+    the gate reported every self-test as wired. A gate whose scope is narrower than the
+    convention it enforces cannot see half the rot it exists to catch. The same argument
+    applies to DIRECTORIES, and it took a round to notice: the docs-auditor and website
+    checkers were outside SCRIPT_DIR entirely, so ten self-tests (8 docs-auditor + 2
+    website) were never audited at all.
+    """
+    found: list[Path] = []
+    for base in CHECKER_DIRS:
+        if not base.is_dir():
+            continue
+        for p in sorted(base.iterdir()):
+            if p.is_file() and SCRIPT_RE.match(p.name):
+                found.append(p.relative_to(ROOT))
+    return found
 
 
-def declares_selftest(name: str) -> bool:
+def declares_selftest(rel: Path) -> bool:
     try:
-        text = (SCRIPT_DIR / name).read_text(encoding="utf-8", errors="replace")
+        text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
     return bool(re.search(r"""["']--self-test["']""", text))
@@ -173,8 +208,17 @@ def called(name: str, text: str) -> bool:
 
 
 def uncalled_selftests() -> list[str]:
+    """Checkers that declare a --self-test no runner invokes, as relative paths.
+
+    `called()` still matches on the BASENAME because that is what CALL_RE extracts from a
+    runner line -- `python3 .agents/skills/.../check-cite-lines.py --self-test` yields
+    `check-cite-lines`. So the path is split here, and the collision that a basename-only
+    scope would hide is resolved by `checkers()` returning paths: two different programs
+    named check-gate-runners.py are two entries, and each is matched on its own name.
+    """
     text = runner_text()
-    return [n for n in checkers() if declares_selftest(n) and not called(n, text)]
+    return [str(rel) for rel in checkers()
+            if declares_selftest(rel) and not called(rel.name, text)]
 
 
 def self_test() -> int:
