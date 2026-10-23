@@ -43,7 +43,7 @@ impl SyncStore {
     /// Insert a conflict row.
     ///
     /// Both arms run the same statement detection's single-item path runs
-    /// ([`SyncStore::insert_conflict_locked_sqlite`] /
+    /// (`SyncStore::insert_conflict_locked_sqlite` /
     /// [`SyncStore::insert_conflict_locked_pg`]), so a row inserted here and a
     /// row inserted by detection cannot drift. The Postgres arm sets the
     /// `oz.tenant_id` GUC once for its own transaction — `sync_conflicts`

@@ -2612,9 +2612,8 @@ async fn sqlite_batch_detection_runs_the_whole_page_in_one_transaction() {
         committed += 1;
     }
     assert_eq!(committed, 300, "300 items, 300 separate detection calls");
-    assert_eq!(
+    assert!(
         conn_loop.lock().await.is_autocommit(),
-        true,
         "the batch form must have closed its one transaction"
     );
 }

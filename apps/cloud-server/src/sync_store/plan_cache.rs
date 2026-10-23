@@ -1,5 +1,5 @@
 //! Short-TTL, capacity-bounded per-tenant cache in front of
-//! [`SyncStore::get_tenant_plan`] (debt entry O-H09).
+//! `SyncStore::get_tenant_plan` (debt entry O-H09).
 //!
 //! `plan_middleware` reads a tenant's plan on EVERY `/api/sync/*` request, and the
 //! Postgres arm of `get_tenant_plan` spends four round trips on that read (pool

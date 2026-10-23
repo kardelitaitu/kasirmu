@@ -665,7 +665,7 @@ pub async fn await_audit_writers() {
 /// failure now increments the sink's shared counter, which can be read with
 /// [`StoreAuditSink::failure_count`] and is emitted on a rate-limited cadence
 /// (first failure immediately, then at most once per
-/// [`AUDIT_FAILURE_REPORT_EVERY`] for a persistent fault). Every increment
+/// `AUDIT_FAILURE_REPORT_EVERY` for a persistent fault). Every increment
 /// also logs at ERROR with the running total, so "one blip" and "broken for an
 /// hour" are distinguishable from the log alone.
 ///
@@ -787,7 +787,7 @@ impl StoreAuditSink {
     /// How many rows are queued behind the writer right now (0 when idle).
     ///
     /// The backlog that `record`'s block-on-full policy lets build. A value
-    /// that stays near [`AUDIT_CHANNEL_CAPACITY`] means requests are waiting
+    /// that stays near `AUDIT_CHANNEL_CAPACITY` means requests are waiting
     /// on the audit trail - added latency, no lost rows.
     #[must_use]
     pub fn backlog(&self) -> usize {
@@ -1068,7 +1068,7 @@ impl AuditTarget for Unavailable {
 fn count_audit_failure(failures: &AtomicU64, reports: &AtomicU64, why: &str) {
     let total = failures.fetch_add(1, Ordering::Relaxed) + 1;
     let first = total == 1;
-    let due = total % AUDIT_FAILURE_REPORT_EVERY == 0;
+    let due = total.is_multiple_of(AUDIT_FAILURE_REPORT_EVERY);
     if first || due {
         reports.fetch_add(1, Ordering::Relaxed);
         tracing::error!(

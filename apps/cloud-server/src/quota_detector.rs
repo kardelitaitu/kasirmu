@@ -88,11 +88,17 @@ pub struct TenantQuotaViolation {
     pub allowed_cap: i64,
 }
 
+/// Per-tenant map of condition key to the instant of the last recorded alert.
+type TenantConditionAlerts = HashMap<Arc<str>, Instant>;
+
+/// Alert cooldown table: tenant id mapped to its condition-key cooldown entries.
+type AlertCooldownMap = HashMap<Arc<str>, TenantConditionAlerts>;
+
 /// Thread-safe in-memory cooldown state tracker.
 /// Key is `(tenant_id, condition_key)` partitioned into nested maps with `Arc<str>` keys.
 #[derive(Clone, Default)]
 pub struct QuotaAlertState {
-    last_alerts: Arc<Mutex<HashMap<Arc<str>, HashMap<Arc<str>, Instant>>>>,
+    last_alerts: Arc<Mutex<AlertCooldownMap>>,
 }
 
 impl QuotaAlertState {
@@ -108,10 +114,10 @@ impl QuotaAlertState {
     /// O-M28: Uses borrowed `&str` lookups against `Arc<str>` keys with zero heap allocations.
     pub async fn is_suppressed(&self, tenant_id: &str, condition: &str, now: Instant) -> bool {
         let guard = self.last_alerts.lock().await;
-        if let Some(conditions) = guard.get(tenant_id) {
-            if let Some(&last) = conditions.get(condition) {
-                return now.saturating_duration_since(last) < ALERT_COOLDOWN;
-            }
+        if let Some(conditions) = guard.get(tenant_id)
+            && let Some(&last) = conditions.get(condition)
+        {
+            return now.saturating_duration_since(last) < ALERT_COOLDOWN;
         }
         false
     }
