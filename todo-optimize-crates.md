@@ -8771,3 +8771,46 @@ check.sh step 141 (cite lines)      -> FAIL, pre-existing, 16 stale citations
 ```
 
 ### Ledger: 159 defined, 159 closed, 0 open.
+
+### §11TA addendum — the sixteen citations, and why the checker's own answer was wrong six times
+
+Landed in `b0b630444`.
+
+The `cite lines` gate was red with 17 stale citations. A delegated repair resolved 16 of
+them and, in **six cases, rejected the line number the checker itself suggested**:
+
+| Site | Checker said | Actually correct | Why the checker was wrong |
+|---|---|---|---|
+| `routes/products.rs` | 398 | 464 | 398 is doc-comment prose; the claimed CALLER is at 464 |
+| `logging/lib.rs` | 343 | 424 | 343 is `init_with_file`; the doc names `init_json_with_file` |
+| `20260813_init.pg.sql` | 3887 | 3912-3916 | 3887 is an exempt-tables COMMENT; the array is at 3912 |
+| `mobile state.rs` | 503 | 499 | 503 is a migration comment, not `.app_data_dir()` |
+| `db/staff.rs` | 452 | 480-490 | 452 is a `format!` argument, not the denial TEXT quoted |
+| `desktop state.rs` | 246 | 246 (judgement) | correct, but a doc comment; `pub fn new` is at 263 |
+
+The checker matches any bare word from the doc line within a window. It is a good
+DETECTOR and a poor ORACLE, and the difference matters: **pasting its suggestion would
+have produced sixteen citations that pass the gate and point at the wrong line** -- the
+exact class of defect the gate exists to catch, laundered through the gate itself.
+
+Two things it could never have flagged, found by reading instead:
+
+- `data-residency-and-retention.md:73` carried two more stale sub-ranges on the SAME line
+  (`:553-556` -> `:651-655`, `:562-565` -> `:660-663`), both verified against the
+  marker INSERT/DELETE and both length-preserving.
+- `runbook.md:458` quoted the call as `env_usize(` when the code is
+  `env_usize_via(&lookup, ` -- a prose error beside a correct citation.
+
+The seventeenth, `ARCHITECTURE.md:576`, needed TWO numbers changed together: the checker
+named only `mobile/state.rs:163` -> `:194`, while the sibling on the same line
+(`desktop/state.rs:244`) had also drifted to `:260` and was not reported. Verified at
+source (`grep -n 'impl AppState'` on both files) rather than trusted.
+
+```
+check-cite-lines.py   -> 17 DRIFTED -> 0; OK: 189 graded citations, rc 0
+check.sh steps 138-146 -> PASS (audit stamps 8 s, cite lines 1 s, doc parity + self-test)
+check-dead-refs / check-orphans / check-audit-stamps / check-adr-status -> all rc 0
+check-auditor-selftests.sh -> rc 0
+```
+
+### Ledger: 159 defined, 159 closed, 0 open (unchanged -- this is the same entry).
