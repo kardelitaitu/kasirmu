@@ -356,7 +356,7 @@ def source_findings(arms: int, per_file: dict[str, int]) -> list[str]:
             "      A silent shrink is the failure this floor exists for: if the\n"
             "      messages were reworded, or a shape rule narrowed, the census\n"
             "      drops and a green still prints. Diff\n"
-            "      `--census-only` against the table in todo-open-debt-program.md\n"
+            "      `--census-only` against the table in done-todo-open-debt-program.md\n"
             "      Phase 5 before proceeding."
         )
 

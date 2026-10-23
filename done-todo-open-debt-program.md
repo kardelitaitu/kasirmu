@@ -1,3 +1,7 @@
+# done-todo-open-debt-program.md — Open Debt Program Master Ledger
+
+> **Renamed 2026-10-23 to `done-todo-open-debt-program.md`:** All five constituent phases are 100% complete, verified, and accepted (`done-todo-open-debt-agents-1.md` through `done-todo-open-debt-agents-5.md`).
+>
 > **This file was SPLIT on 2026-09-25 under R18.** The five phase sections moved to
 > `done-todo-open-debt-agents-1.md`, `done-todo-open-debt-agents-2.md`, `done-todo-open-debt-agents-3.md`,
 > `done-todo-open-debt-agents-4.md`, and `done-todo-open-debt-agents-5.md`, each carrying its own dated history. What stays here is the
@@ -937,4 +941,4 @@ Every phase in the Open Debt Program has now met and passed its acceptance crite
 | 4 | `done-todo-open-debt-agents-4.md` | `cargo test -p kasirmu-payment` (69 passed) · `cargo test -p kasirmu-hal` (362 passed) · `cd ui && npm run lint && npm run typecheck` (clean) · `python scripts/verify-ipc-parity.py` | **PASSED & DONE** |
 | 5 | `done-todo-open-debt-agents-5.md` | `cargo test -p kasirmu-cloud --test sync_api_tests` · `python scripts/verify-pg-tests-ran.py` | **PASSED & DONE** |
 
-**Filename decision:** Per R18 and `AGENTS.md` §7.4, this root ledger (`todo-open-debt-program.md`) keeps its `todo-` token because it serves as the overarching dispatch record and has no separate monolithic acceptance command. The completion claims and acceptance verifications are fully earned and documented in the five per-phase files.
+**Filename decision (updated 2026-10-23):** Renamed to `done-todo-open-debt-program.md` as all five constituent phases have completed and passed their individual acceptance criteria.

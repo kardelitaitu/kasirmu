@@ -86,7 +86,7 @@ ROOT_FILE_ALLOWLIST = frozenset({
     "START_TABLET_HMR.bat",
 
 
-    "todo-open-debt-program.md", "todo-review-type.md",
+    "done-todo-open-debt-program.md", "todo-review-type.md",
 
     # Owner plan docs, same class as the two above: named individually on purpose,
     # because the allowlist is names-not-patterns so adding one is a decision.
