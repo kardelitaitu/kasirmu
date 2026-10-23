@@ -26,6 +26,39 @@ function read(rel) {
   }
 }
 
+// --self-test: prove the PREDICATES still decide, before the gate runs them.
+//
+// The gate's answer is a conjunction of ~12 check() calls over parsed text. Nothing
+// proved any of them could return false, so a admits() that started answering true
+// unconditionally would have made the whole gate vacuous while still printing its ok
+// line. Measured 2026-10-23: drifting MAIN_SERVER_ORIGIN produced 8 findings and exit
+// 1, so the gate was alive -- this pins that it stays alive.
+//
+// Runs BEFORE any file is read, so it needs no checkout and cannot be affected by one.
+if (process.argv.includes('--self-test')) {
+  const cases = [];
+  const want = (name, got, expect) => {
+    if (got !== expect) cases.push(name + ': expected ' + expect + ', got ' + got);
+  };
+  // Exact origin admitted.
+  want('an exact origin is admitted', admits(" 'self' https://license.kasir.mu", 'license.kasir.mu'), true);
+  // Wildcard suffix admitted.
+  want('a wildcard suffix is admitted', admits(' https://*.kasir.mu', 'license.kasir.mu'), true);
+  // A different host is NOT admitted -- the property that makes the gate mean anything.
+  want('a foreign origin is refused', admits(" 'self' https://evil.example.test", 'license.kasir.mu'), false);
+  // The suffix match must not be fooled by a lookalike registered domain.
+  want('a lookalike suffix is refused', admits(' https://*.notkasir.mu', 'license.kasir.mu'), false);
+  // Loopback detection, which the release-CSP arm relies on.
+  want('localhost is detected', /localhost|127\.0\.0\.1/.test(' http://localhost:3080'), true);
+  want('a clean directive has no loopback', /localhost|127\.0\.0\.1/.test(' https://kasir.mu'), false);
+  if (cases.length) {
+    console.error('SELF-TEST WRONG: ' + cases.join('; '));
+    process.exit(2);
+  }
+  console.log('SELF-TEST OK (6 cases, no files read)');
+  process.exit(0);
+}
+
 const SOURCE = 'crates/kasirmu-core/src/server_origin.rs';
 const src = read(SOURCE);
 

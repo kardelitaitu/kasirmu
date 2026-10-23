@@ -214,6 +214,11 @@ step "architecture boundaries" "python3 scripts/verify-architecture-boundaries.p
 # nothing was pinning the floor itself until verify-selftests-wired.py named it uncalled.
 step "architecture boundaries self-test" "python3 scripts/verify-architecture-boundaries.py --self-test" python3 scripts/verify-architecture-boundaries.py --self-test
 step "server origins" "node scripts/check-server-origins.mjs" node scripts/check-server-origins.mjs
+# The gate's answer is a conjunction of ~12 check() calls. Nothing proved any of them
+# could return false, so an admits() that answered true unconditionally would have made
+# the whole gate vacuous while it still printed its ok line. The cases run BEFORE any
+# file is read, so they need no checkout.
+step "server origins self-test" "node scripts/check-server-origins.mjs --self-test" node scripts/check-server-origins.mjs --self-test
 step "env docs" "python .agents/skills/docs-auditor/scripts/check-env-docs.py" python .agents/skills/docs-auditor/scripts/check-env-docs.py
 step "auditor self-tests" "sh scripts/check-auditor-selftests.sh" sh scripts/check-auditor-selftests.sh
 # Every workspace member must be represented in BOTH Dockerfiles' cache stages.
