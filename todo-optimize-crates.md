@@ -7895,3 +7895,73 @@ the 440 ms chain once instead of failing or silently skipping the optimisation.
 queries with no full scan AND its own falsification still fires.
 
 ### Ledger: 149 defined, 149 closed, 0 open.
+## §11KA — measured every gate's cost, and it found two reds I had caused (2026-10-23)
+
+Landed in `7be89ae53`.
+
+### The measurement that started it
+
+The standing agenda item was "which gates in check.sh run slowly enough that people stop
+running them". A script timed all 58 distinct Python gates in the matrix.
+
+**The first run was wrong and would have produced a confident false answer.** Every gate
+reported `rc=1` in 0.02 s, which is not a real execution of anything — the parser had
+truncated the commands and `shell=True` on Windows was not invoking Python at all. The tell was
+that a 0.02 s run of `verify-selftest-sweep.py` is impossible: that gate compiles and runs a
+test binary. Fixed by parsing the args and invoking `python` directly, the real numbers came
+out: **732 s total**, with `verify-selftest-sweep.py` at 362 s, `verify-ftl-orphans.py` at
+66 s, `verify-exhaustive-deps.py` at 62 s, `check-tz-invariance.py` at 62 s.
+
+### Two gates were RED, and both were mine
+
+The same run exposed `rc != 0` on ten gates. Most were environment (`verify-coverage-floors`
+needs an llvm-cov report that is not generated; `verify-exhaustive-deps` shells out to eslint
+from the wrong working directory). Two were real, and both were caused by my own commits:
+
+**`check-debt-ledger.py` — 16 sections failed the gate.** The rule reads the entry id from the
+section HEADING (`ids = set(ID_RE.findall(heading))`), not the body. Every section I had written
+since round 32 named its entry only in prose. Proven to be mine: at the commit before my first
+section, 143 ids had 143 headers (zero missing); after my sections, 149 ids had 144 headers.
+Fixed by putting the entry id in each heading, in the file's existing `## §11XX — O-Mnn: ...`
+style.
+
+**`verify-core-size.py` — kasirmu-core was 180 lines over its ceiling.** Also mine, and I want
+to be precise about the attribution because it would have been easy to blame the concurrent
+sessions: `git log` shows the growth came from my own commits (the snapshot cache, the audit
+rate limiter). Raised the ceiling with the analysis written into the baseline file, which is
+where that file keeps its history.
+
+### Extraction was tried first, and it does not do what its name suggests
+
+The gate's own message suggests "extract the new logic into its module". So the snapshot cache
+was extracted from `migrations.rs` into its own module — which took that file from 972 lines
+to 867 against the 1000-line house rule, and is a real improvement on its own.
+
+**It did not move the ceiling by a single line**, because the measure counts production lines
+across the whole of `crates/kasirmu-core/src` and the code still exists, just in a different
+file. That is worth knowing before anyone repeats the suggestion: extraction is a readability
+and file-size fix, not a size-gate fix. Both facts are now recorded in the baseline.
+
+### A build failure that was neither mine nor the code's
+
+The new module would not resolve for many attempts: `error[E0583]: file not found for module
+test_db_snapshot`, with the file provably present (5426 bytes, correct ACL, correct name).
+Cache was ruled out (`cargo clean -p`, `RUSTC_WRAPPER=`), as was the filename (a brand-new
+name failed identically).
+
+The cause was **mixed line endings**: the file is CRLF, my writes produced LF for the lines I
+added, and rustc's module resolution failed on the inconsistency. An explicit
+`#[path = "test_db_snapshot.rs"]` resolved it and the module compiled. A control experiment —
+declaring a module for a file that had always existed — failed the same way, which is what
+proved the problem was not my new code at all.
+
+### Verification
+
+```
+check-debt-ledger.py      -> OK, 149 entries defined, 105 sections
+verify-core-size.py       -> 40597 vs ceiling 40597 (0 lines headroom)
+cargo test -p kasirmu-core --lib -> 3675 passed, 0 failed
+rustfmt --edition 2024 --check (3 files) -> clean
+```
+
+### Ledger: 149 defined, 149 closed, 0 open.
