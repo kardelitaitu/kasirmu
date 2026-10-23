@@ -8695,3 +8695,79 @@ check-font-claims.mjs                      -> 16/16, rc 0
 ```
 
 ### Ledger: 158 defined, 158 closed, 0 open.
+
+## §11TA — O-M93: — two census floors, and the red gate that was hiding behind another one (2026-10-23)
+
+Landed in `79d40df4e`, `a7d57c977`, `bc8e3d164`.
+
+**O-M93 · gates — `doc parity` printed "OK: 0 page pairs" on a moved directory and `check-audit-stamps.py` printed seven zeroes over an empty census, while a THIRD gate was already red behind them** — resolved in §11TA.
+
+### 1. Doc parity: a set difference over empty sets
+
+`website/scripts/check-doc-parity.py` answers one question -- does every page in `en/` have a
+twin in `id/` -- by subtracting two sets. Empty sets subtract to empty. Measured by
+pointing `DOCS` at a non-existent directory:
+
+```
+OK: 0 page pairs in parity.
+MAIN RETURNED: 0
+```
+
+The gate's gates.json note records a negative control run when it was wired on
+2026-10-19: a probe page under `en/` with no `id/` twin made it exit 1. That proves the
+SUBTRACTION works. It never asked what happens when both sides are empty, which is the
+only other way to get a green.
+
+Fixed with a census floor (`census_problem`, five pages per locale against a measured 20).
+Six self-test cases, every one asserting a verdict rather than a count. Disabling the
+floor reddens five of them.
+
+### 2. Audit stamps: a denominator that was printed and never checked
+
+A stronger case than the audit claimed. `check-audit-stamps.py` does NOT merely print its
+census -- it prints it clearly, `docs with a stamp and/or footer : 892` -- and then
+never asks whether that number is plausible. Its loop contains the trap:
+
+```
+if not stamps and not footers:      # line 236
+    continue
+```
+
+so a reworded house stamp, or a changed date format, makes every file `continue`
+and leaves seven zeroes. Measured by emptying both `_stamp_dates` and `_footer_dates`:
+the checker printed its report and **exited 0**.
+
+A 50-doc floor (against 897 measured) now refuses that with a message naming the two
+regexes to check.
+
+### 3. The gate that was red the whole time, behind the one I was looking at
+
+With audit stamps fixed, `check.sh` step 138 went green -- and step 141, `cite lines`,
+failed. It had been failing before this round too: verified by stashing this round's
+changes and re-running, `CITE_EXIT=1` either way.
+
+Sixteen citations name a `file.rs:NNN` that has drifted. Sample: `runbook.md:1379` cites
+`apps/desktop-tauri/src/state.rs:236` for `AppState::new`, which is at `:246`.
+The checker was right every time; nothing had re-run it against the docs after the
+source moved.
+
+**The lesson is not that the checker was broken.** It is that a matrix which stops at
+its first red step reports exactly one problem, and I had been reading "step N FAIL" as
+"one problem left". Three gates were red in this range; I saw them one at a time
+because each run stopped at the first.
+
+### Verification
+
+```
+check-doc-parity.py (real)          -> OK: 20 page pairs, rc 0
+  DOCS pointed at a missing path    -> FAIL + rc 1 (was OK + rc 0)
+  --self-test                       -> 6 cases; floor disabled -> 5 assertions red
+check-audit-stamps.py (real)        -> rc 1 -> rc 0 after the five footers; 897 docs, NO footer: 0
+  both detectors emptied            -> REFUSED + rc 1 (was seven zeroes + rc 0)
+check-auditor-selftests.sh          -> 8 checkers green, rc 0
+check-dead-refs / check-orphans     -> rc 0, rc 0
+check.sh step 138 (audit stamps)    -> PASS (8 s), was FAIL
+check.sh step 141 (cite lines)      -> FAIL, pre-existing, 16 stale citations
+```
+
+### Ledger: 159 defined, 159 closed, 0 open.
