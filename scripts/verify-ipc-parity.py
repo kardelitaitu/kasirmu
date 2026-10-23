@@ -2321,13 +2321,28 @@ def shell_blind_findings(
     # change between commands because neither input does.
     proof_cache: dict = {}
 
+    # Only the wrappers whose command this shell REGISTERS can prove anything, and there
+    # are far fewer of those than there are wrappers in the tree. Narrowing once removes
+    # most of the work below: measured 2026-10-23, `proves_shell_here` was 42 s of a 114 s
+    # profile because it ran every wrapper pattern over the text of every candidate file.
+    proving_wrappers = [wn for wn, c in wrapper_to_cmd.items() if c in registered]
+
     def proves_shell_here(path: str, masked: str) -> set:
-        """Registered commands this file calls through a wrapper other than `command`."""
+        """Registered commands this file calls through a wrapper.
+
+        The identifier set rejects a wrapper the file does not even NAME before any pattern
+        runs, which is the same inversion `_wrappers_named_in` uses for reach: "which of
+        these names appear here" is one scan, "does name N appear here" is one scan PER
+        NAME. The precise pattern still decides, so a bare-name collision is still not a
+        call -- the C17 distinction this leg exists to keep.
+        """
         got = proof_cache.get(path)
         if got is None:
+            idents = _ident_set(masked)
             got = {
-                c for wn, c in wrapper_to_cmd.items()
-                if c in registered and wrapper_res[wn].search(masked)
+                wrapper_to_cmd[wn]
+                for wn in proving_wrappers
+                if wn in idents and wrapper_res[wn].search(masked)
             }
             proof_cache[path] = got
         return got
