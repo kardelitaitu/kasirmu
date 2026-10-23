@@ -665,6 +665,20 @@ where it reads like a code error.
 clean, which is the distinction that makes a gate trustworthy. A gate that reported "0 issues"
 there would be worse than the crash.
 
+#### Re-verifying the round-90 fix, and the eighth false alarm
+
+The `check-seo.mjs` duplicate-title fix was re-planted to confirm it had survived six rounds. It
+had — for a page the gate grades. A second plant on `/admin/index.html` reported clean, which
+looked like a hole until `classify()` was read: `HEADLESS_TREES` gives those pages
+`canonicalPath: null` at :538 **by design**, and `titled` filters on that field at :982. So
+`/admin/` is a deliberately walked-past surface, and the same plant on an in-scope page
+(`/en/about/`) reddens the gate as intended.
+
+**That is the eighth time this session a measurement looked like a defect and was not.** The
+through-line across all eight is the same, and it is now the single most repeated lesson of the
+session: *the measurement is the most likely thing to be wrong.* Re-verifying a fix is worth doing
+— but a re-plant must satisfy the rule's own scope before its silence means anything.
+
 **The useful output of this round is the *list*, not the fixes.** 51 wired checkers is a roster
 anyone can re-run, and now one more of them is green. A gate nobody runs is not a gate — the same
 sentence this project has written three times about gates, now applied to the gates themselves.
