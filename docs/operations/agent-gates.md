@@ -150,6 +150,14 @@ wrong in both directions before — see the note below on why a text search is t
 docstring (`:44-49`): it is the gate that would have caught the fork losing the colon rejection, so
 "a checker that cannot fail is worse than none" and it wanted the cases somewhere harder to overlook.
 
+**Two checkers can never carry a flag, and that is a property of what they do, not an oversight.**
+`scripts/verify-docker-persistence.sh` asserts that a container REPLACEMENT leaves data behind: every
+one of its decisions is a live `docker`/HTTP response, so nothing in it can be graded without a
+daemon. `verify-docker-all.sh` used to be the same shape until 2026-10-23, when its log-rotation
+decision — pure text over a rendered config — was extracted and given 4 cases; the rest of that
+script still needs Docker. Both are wired into `scripts/check.sh` only where the part that CAN be
+graded lives. Do not "fix" either by adding a flag that grades nothing.
+
 **The absence of the flag is not the absence of a self-test.** A text search for "self-test" marks the
 fork checker as having none, and the next step is to "fix" it by adding a flag the author had already
 considered and rejected. Check by RUNNING both forms:
