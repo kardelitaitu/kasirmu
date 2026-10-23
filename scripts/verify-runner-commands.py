@@ -87,9 +87,27 @@ def live_runner_files() -> list[Path]:
     return out
 
 
+#: A shell line comment. A command inside one is DOCUMENTATION, not execution.
+SHELL_COMMENT_RE = re.compile(r"(?:^|\s)#")
+
+
+def _in_shell_comment(text: str, pos: int) -> bool:
+    """True when pos sits to the right of a #, on its own line.
+
+    A runner comments routinely quote the command they are explaining. check.sh's
+    website-link-checker step says that CI runs the checker WITHOUT --self-test and
+    names the command in prose, while the real path is website/scripts/. That sentence
+    is a reader's note, not a step, and grading it reported a correctly-moved checker
+    as a missing file (2026-10-23, found by wiring a sibling self-test).
+    """
+    line_start = text.rfind("\n", 0, pos) + 1
+    return bool(SHELL_COMMENT_RE.search(text[line_start:pos]))
+
+
 def references(text: str) -> list[str]:
-    """Every scripts/... path a runner names, in order, with repeats kept."""
-    return [m.group(1) for m in COMMAND_RE.finditer(text)]
+    """Every scripts/... path a runner names IN A COMMAND, in order, repeats kept."""
+    return [m.group(1) for m in COMMAND_RE.finditer(text)
+            if not _in_shell_comment(text, m.start())]
 
 
 def dangling(files: list[Path]) -> tuple[list[tuple[str, str]], int]:
@@ -136,10 +154,18 @@ def self_test() -> int:
     if references("run: python3 apps/foo/src/main.rs") != []:
         bad.append("a non-scripts path must not be reported as a runner reference")
 
+    # A command quoted in a COMMENT is documentation, not a step. This is the exact
+    # shape check.sh carries: the prose names the command, the step names the real path.
+    if references("# CI runs node scripts/check-links.mjs without the flag") != []:
+        bad.append("a command inside a # comment is documentation, not a runner step")
+    # ...and the real step on the next line must still be parsed, or the gate goes deaf.
+    if references("      node scripts/check-links.mjs --self-test") != ["scripts/check-links.mjs"]:
+        bad.append("a real step must still be parsed as a reference")
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (5 cases, no files touched)")
+    print("SELF-TEST OK (7 cases, no files touched)")
     return 0
 
 

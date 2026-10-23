@@ -234,6 +234,13 @@ step "auditor self-tests" "sh scripts/check-auditor-selftests.sh" sh scripts/che
 step "dockerfile workspace" "python3 scripts/verify-dockerfile-workspace.py" python3 scripts/verify-dockerfile-workspace.py
 step "dockerfile workspace self-test" "python3 scripts/verify-dockerfile-workspace.py --self-test" python3 scripts/verify-dockerfile-workspace.py --self-test
 step "unified routes" "node scripts/check-unified-routes.mjs" node scripts/check-unified-routes.mjs
+# The Caddyfile parser's failure branch had NO automated exercise: the only way to reach
+# it was to hand-craft a corrupted copy and point argv[2] at it, which nobody re-runs.
+# Writing the cases found a real defect on their first run -- a QUOTED "}" was read as a
+# block close, so `respond "}" 200` failed a Caddyfile caddy accepts (HEAD reported
+# "line 3: unmatched '}'"). Fixed by three guards; see the note beside the cases for why
+# reverting only ONE of them keeps this self-test green and that is correct, not a weak case.
+step "unified routes self-test" "node scripts/check-unified-routes.mjs --self-test" node scripts/check-unified-routes.mjs --self-test
 
 # ── Money formatting gate (IDR/JPY/KWD exp-2 regression guard) ───────────
 # Fails when production .rs code hardcodes `/ 100` division or `{}.{:02}`
