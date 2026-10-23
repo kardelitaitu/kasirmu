@@ -147,14 +147,43 @@ def targets() -> list[Path]:
 _INTERPRETERS: dict[str, str] = {}
 
 
+# Where Git for Windows puts its POSIX shells. Used only when `sh`/`bash` is not
+# already on PATH -- see _interpreter.
+_GIT_SH_CANDIDATES = (
+    r"C:\Program Files\Git\bin\sh.exe",
+    r"C:\Program Files\Git\usr\bin\sh.exe",
+    r"C:\Program Files (x86)\Git\bin\sh.exe",
+    r"C:\Program Files\Git\bin\bash.exe",
+)
+
+
 def _interpreter(name: str) -> str:
     """Absolute path to `name`, so PATH ambiguity cannot pick a different one.
 
-    Falls back to the bare name when nothing resolves, which is what the gate did
-    everywhere before; on a Linux runner the two forms are the same file.
+    **A bare-name fallback is not safe on Windows, and it was here.** `shutil.which`
+    returns None when nothing on PATH matches, and the old code then returned the bare
+    name -- which is right on a Linux runner where the two forms are the same file, and
+    wrong on Windows, where `subprocess` turns "sh" into `[WinError 2] The system cannot
+    find the file specified`. Measured 2026-10-23: `python scripts/verify-shell-syntax.py
+    --self-test` from a plain PowerShell exits 2 with exactly that, while the same call
+    under Git Bash's PATH passes 7/7 -- because `scripts/check.sh` runs it through bash
+    and inherits that PATH, so the failure only surfaced when the SELF-TEST SWEEP
+    launched it as a bare child. A gate that works when its parent happens to export the
+    right PATH is not a gate.
+
+    So: PATH first (unchanged), then the known Git-for-Windows locations, then the bare
+    name. The last fallback is kept deliberately -- on a host with no POSIX shell at all
+    this must still FAIL LOUDLY at spawn time rather than silently parse nothing, and the
+    caller reports "could not run sh" rather than a false syntax error.
     """
     if name not in _INTERPRETERS:
-        _INTERPRETERS[name] = shutil.which(name) or name
+        found = shutil.which(name)
+        if found is None and name in ("sh", "bash"):
+            for candidate in _GIT_SH_CANDIDATES:
+                if os.path.exists(candidate):
+                    found = candidate
+                    break
+        _INTERPRETERS[name] = found or name
     return _INTERPRETERS[name]
 
 
