@@ -36,7 +36,10 @@ const read = (rel: string) => fs.readFileSync(path.join(SRC, rel), 'utf-8');
 const ROOT = (() => {
   let dir = process.cwd();
   for (let up = 0; up < 6; up += 1) {
-    if (fs.existsSync(path.join(dir, 'todo-restaurant-pos-reliability.md'))) return dir;
+    if (
+      fs.existsSync(path.join(dir, 'todo-restaurant-pos-reliability.md')) ||
+      fs.existsSync(path.join(dir, 'done-todo-restaurant-pos-reliability.md'))
+    ) return dir;
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;

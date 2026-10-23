@@ -35,10 +35,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 function findRoot(): string {
-  const markers = ['todo-restaurant-pos-reliability.md'];
   let dir = process.cwd();
   for (let up = 0; up < 6; up += 1) {
-    if (markers.every((m) => fs.existsSync(path.join(dir, m)))) return dir;
+    if (
+      fs.existsSync(path.join(dir, 'done-todo-restaurant-pos-reliability.md')) ||
+      fs.existsSync(path.join(dir, 'todo-restaurant-pos-reliability.md'))
+    ) return dir;
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
@@ -47,7 +49,12 @@ function findRoot(): string {
 }
 
 const ROOT = findRoot();
-const PLAN = path.join(ROOT, 'todo-restaurant-pos-reliability.md');
+const PLAN = path.join(
+  ROOT,
+  fs.existsSync(path.join(ROOT, 'done-todo-restaurant-pos-reliability.md'))
+    ? 'done-todo-restaurant-pos-reliability.md'
+    : 'todo-restaurant-pos-reliability.md'
+);
 
 /** The evidence index: the contiguous table whose first column is `| F<n> |`. */
 function evidenceRows(): string[] {

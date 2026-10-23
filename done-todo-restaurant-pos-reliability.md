@@ -1,8 +1,8 @@
-# todo — Restaurant POS reliability: tauri-desktop + tauri-mobile
+# done-todo — Restaurant POS reliability: tauri-desktop + tauri-mobile
 
-> **Created 2026-10-09 · status: OPEN — P0–P8 DONE. F19 and F23/F24 CLOSED. P1 is clean:
+> **Created 2026-10-09 · status: COMPLETE (2026-10-23) — P0–P8 DONE. F19 and F23/F24 CLOSED. P1 is clean:
 > all settings keys wired and active (including `restaurant.dispatch_on_tab_save` wired in
-> commit 9377011c6).**
+> commit 9377011c6). Acceptance verified: IPC parity, typecheck, vitest (30 files / 418 tests).**
 >
 > **NO open code defects — the two pinned items are both CLOSED (2026-10-14, docs-auditor).**
 > The header previously read *"TWO open items are PINNED, not fixed"*, and both have since been

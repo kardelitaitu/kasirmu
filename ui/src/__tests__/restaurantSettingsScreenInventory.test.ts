@@ -21,10 +21,13 @@ import path from 'node:path';
 const REL = 'ui/src/features/restaurant/screens/RestaurantSettingsScreen.tsx';
 
 function findRoot(): string {
-  const markers = ['todo-restaurant-pos-reliability.md', REL];
   let dir = process.cwd();
   for (let up = 0; up < 6; up += 1) {
-    if (markers.every((m) => fs.existsSync(path.join(dir, m)))) return dir;
+    if (
+      (fs.existsSync(path.join(dir, 'todo-restaurant-pos-reliability.md')) ||
+       fs.existsSync(path.join(dir, 'done-todo-restaurant-pos-reliability.md'))) &&
+      fs.existsSync(path.join(dir, REL))
+    ) return dir;
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;

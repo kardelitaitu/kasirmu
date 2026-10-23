@@ -111,19 +111,10 @@ ROOT_FILE_ALLOWLIST = frozenset({
     # class: an owner plan doc at the root, added deliberately per AGENTS.md 7.4,
     # which puts plan files at the root and exempts `todo-` names in check-dead-refs.
     "todo-docs-restructure.md",
-    # todo-restaurant-pos-reliability.md — the restaurant-POS reliability plan.
-    # Same class again, and flagged by ANOTHER lane before this one: the
-    # docs-restructure plan's step-6 note identified it as tracked, clean,
-    # carrying the `todo-` token, and an owner plan doc (5,752 lines,
-    # 2026-10-09) — exactly the class ROOT_FILE_ALLOWLIST lists by name —
-    # and left it alone because that plan may not edit a script and the file
-    # was not its own. It landed 2026-10-12, after the last edit to this list,
-    # so it was simply never added.
-    #
-    # Adding it enforces the invariant stated at the top of this file
-    # ("extend the list in the same commit that adds the file") rather than
-    # making a new decision — the same reasoning as the 2026-10-02 group above.
-    "todo-restaurant-pos-reliability.md",
+    # done-todo-restaurant-pos-reliability.md — the restaurant-POS reliability plan.
+    # Earned `done-` rename on 2026-10-23 once all P0–P8 phases and F1–F24 findings
+    # passed acceptance testing.
+    "done-todo-restaurant-pos-reliability.md",
     "manager-codebase-review-checklist.md",
     "manager-codebase-review-decisions.md",
     "manager-codebase-review.md",
