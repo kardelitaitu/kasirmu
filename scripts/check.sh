@@ -275,6 +275,17 @@ step "docker digests self-test" "bash scripts/verify-docker-digests.sh --self-te
 # a COMMENT mentioning max-size as a configured service, and a zero service count made
 # `0 -eq 0` true so an empty render reported full coverage.
 step "docker all self-test" "bash scripts/verify-docker-all.sh --self-test" bash scripts/verify-docker-all.sh --self-test
+# verify-docker-persistence.sh had NO proof form and NO runner until 2026-10-24: no
+# --self-test, no companion test, no measured mutation, no note explaining the absence --
+# and the only path that reaches it is verify-docker-all.sh's STAGE 1, which --self-test
+# exits before. Measured: no live workflow names it, and check.sh had zero hits. So
+# "Persistence verified" had never been produced by CI at all, while a dated audit
+# (docs/records/audits/2026-08-31-glm-5.3f-crates-audit.md:2203) claimed it "runs the
+# volume contract in CI". The full run needs a daemon and two image builds; the self-test
+# grades the three verdicts every run depends on (the survived() substring test, the
+# collection-completeness verdict, and fail() actually exiting) plus the structural fact
+# that the block sits above the first docker call.
+step "docker persistence self-test" "bash scripts/verify-docker-persistence.sh --self-test" bash scripts/verify-docker-persistence.sh --self-test
 # verify-deploy.mjs probes the LIVE deployment (dashboard/admin/... origins) and has no
 # runner anywhere, so it was a manual script. Only its SELF-TEST is wired: the cases need
 # no network, while the probe itself reaches four public origins and must not run on every

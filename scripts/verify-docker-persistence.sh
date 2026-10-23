@@ -22,6 +22,110 @@
 #   OZ_PERSIST_LICENSE_PORT (default 8380)
 
 set -euo pipefail
+
+# ── SELF-TEST ────────────────────────────────────────────────────────
+# This gate had NO proof form of any kind until 2026-10-24: no --self-test, no companion
+# test, no measured mutation, and no note explaining an absence. It was also invoked by no
+# live gate -- its only caller was verify-docker-all.sh, and every check.sh/CI path into
+# that wrapper reaches only the log-rotation self-test, never the persistence stages. So a
+# "Persistence verified" line here has never been produced by CI at all.
+#
+# The full run needs a Docker daemon and two image builds, which is why it cannot be a
+# plain self-test. What CAN be proven without a daemon is the part every run depends on
+# and no run has ever checked: the verdicts themselves. Under "set -e" an assertion that
+# fails and a script that crashes are indistinguishable -- both exit non-zero -- so a
+# gate whose only observable is its exit code is proved by its MESSAGES, and those are
+# graded here.
+if [ "${1:-}" = "--self-test" ]; then
+    st_fails=0
+    st_total=0
+    st_case() { st_total=$((st_total + 1)); }
+    st_ok() {
+        st_case
+        if ! "$@" >/dev/null 2>&1; then
+            printf 'SELF-TEST WRONG: %s\n' "$1 $2 ... exited non-zero" >&2
+            st_fails=$((st_fails + 1))
+        fi
+    }
+
+    # Every check the gate performs is one of three shapes. Grade the shape, not Docker.
+    #
+    # 1. The "survived" predicate. Both stages assert a substring is still served after
+    #    container replacement (the product name, the license key). If this predicate were
+    #    inverted or always-true, the gate would report success over a LOST record -- the
+    #    worst possible direction for a persistence gate.
+    survived() { printf '%s' "$1" | grep -q -- "$2"; }
+    st_case
+    if ! survived '{"name":"Persistence Probe","id":7}' 'Persistence Probe'; then
+        printf 'SELF-TEST WRONG: survived() missed a present record\n' >&2
+        st_fails=$((st_fails + 1))
+    fi
+    st_case
+    if survived '{"error":"not found"}' 'Persistence Probe'; then
+        printf 'SELF-TEST WRONG: survived() reported a LOST record as present\n' >&2
+        st_fails=$((st_fails + 1))
+    fi
+
+    # 2. The collection-completeness verdict at the license stage. "OK" only when EVERY
+    #    required collection exists; anything else names the missing ones. A checker that
+    #    accepted a partial set would pass a first boot with the schema half-provisioned.
+    colls() {
+        printf '%s' "$1" | python -c "
+import sys, json
+names = {c['name'] for c in json.load(sys.stdin)['items']}
+need = {'license_keys','tenants','subscriptions','tenant_machines'}
+print('OK' if need <= names else 'MISSING:' + ','.join(sorted(need - names)))
+"
+    }
+    all_four='{"items":[{"name":"license_keys"},{"name":"tenants"},{"name":"subscriptions"},{"name":"tenant_machines"},{"name":"extra"}]}'
+    st_case
+    if [ "$(colls "$all_four")" != "OK" ]; then
+        printf 'SELF-TEST WRONG: a complete collection set was not accepted\n' >&2
+        st_fails=$((st_fails + 1))
+    fi
+    three='{"items":[{"name":"license_keys"},{"name":"tenants"},{"name":"subscriptions"}]}'
+    st_case
+    if [ "$(colls "$three")" = "OK" ]; then
+        printf 'SELF-TEST WRONG: a set missing tenant_machines was called OK\n' >&2
+        st_fails=$((st_fails + 1))
+    fi
+    st_case
+    case "$(colls "$three")" in
+        MISSING:*tenant_machines*) ;;
+        *) printf 'SELF-TEST WRONG: the refusal does not name the missing collection\n' >&2
+           st_fails=$((st_fails + 1)) ;;
+    esac
+
+    # 3. fail() must EXIT, not merely print. A fail() that returned would let the script
+    #    run on to the next stage after a lost record and still reach the final green line.
+    st_case
+    if ( fail "planted" ) >/dev/null 2>&1; then
+        printf 'SELF-TEST WRONG: fail() returned instead of exiting\n' >&2
+        st_fails=$((st_fails + 1))
+    fi
+
+    # 4. NO DAEMON, BY CONSTRUCTION. The first draft of this case called a function that
+    #    does not exist and fell back to "|| echo absent": it asserted nothing and would have
+    #    passed even if --self-test had gone on to build images. The second draft re-ran this
+    #    script under "sh $0 --self-test", which is RECURSION -- and it hung until killed,
+    #    which is how that was found. Grade the structural fact instead: this block sits
+    #    ABOVE the first docker invocation in the file, so nothing below can have run.
+    st_case
+    first_docker=$(grep -n -m1 -E '^[[:space:]]*docker (build|run|volume|compose|rm)' "$0" | cut -d: -f1)
+    self_case_line=$(grep -n -m1 -E 'st_fails=0' "$0" | cut -d: -f1)
+    if [ -z "$first_docker" ] || [ -z "$self_case_line" ] || [ "$self_case_line" -gt "$first_docker" ]; then
+        printf 'SELF-TEST WRONG: the self-test block is not above the first docker call\n' >&2
+        st_fails=$((st_fails + 1))
+    fi
+
+    if [ "$st_fails" -ne 0 ]; then
+        printf 'SELF-TEST FAILED (%d of %d cases)\n' "$st_fails" "$st_total" >&2
+        exit 2
+    fi
+    printf 'SELF-TEST OK (%d cases, no daemon)\n' "$st_total"
+    exit 0
+fi
+
 cd "$(dirname "$0")/.."
 
 CLOUD_PORT="${OZ_PERSIST_CLOUD_PORT:-3210}"
