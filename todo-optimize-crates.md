@@ -8135,3 +8135,120 @@ check-debt-ledger.py              -> OK, 151 entries, 107 sections
 ```
 
 ### Ledger: 151 defined, 151 closed, 0 open.
+
+## §11NA — O-M87: — ipc parity halved again, then a toolchain bump turned the whole matrix red and cleared (2026-10-23)
+
+Landed in `bbe13b549`..`332757bb1` (19 commits).
+
+**O-M87 · gates — `verify-ipc-parity.py` was the sweep's ceiling at 227 s; a loop inversion plus value-keyed caches take it to 88 s, and the round's real work was the 31 clippy errors the bump then exposed** — resolved in §11NA.
+
+### 1. The 2.6x, and the diagnosis that looked right and did nothing
+
+Round 47 (§11MA) left this checker at 220.8 s with a note that the cost was "the NUMBER of
+`search` calls". Re-profiling named the site: `wrapper_reach` was called once per command and
+walked all 692 runtime files per call -- 669 calls, 129 s of a 289 s `--self-test`.
+
+The first fix was the import test hoisted above the wrapper loop. It changed **nothing**
+(14.91 s -> 14.91 s), and the reason is worth recording: `if not imports_api_tree: continue`
+sat under `pat.search(text)`, which reads like a pure ordering mistake, but 260 of the 692
+files DO import the API tree, so the filter was never the bottleneck. A plausible diagnosis and
+a correct-looking fix with zero effect.
+
+What worked was not repeating the work rather than doing it faster:
+
+```
+_wrapper_reach per command     14.91 s -> 8.37 s   (_reach_index: one pass, dict lookups after)
+identifier scan per wrapper     8.37 s -> 6.48 s   (find the file's identifiers once, not per wrapper)
+strip/mask + ident memoised     88.0 s total       (lru_cache keyed on the TEXT, not id())
+```
+
+`verify-ipc-parity.py --self-test`: **227.2 s -> 88.0 s**, rc 0, output byte-identical.
+`check.sh` step 09 now reports 29 s.
+
+### 2. Why these caches are not round 46's cache
+
+Round 46's `(id(files), cmd)` memo returned another test's answer and broke three cases. Every
+cache added here is keyed on a **value**: the file text, or the identifier frozenset derived from
+it. Identical text strips identically by construction, so a hit is correct rather than lucky.
+
+The gate was then deliberately broken twice to prove it can still fail:
+
+```
+break the import test   -> rc 1, 1 FAILURE  (ui named a same-named method with no import...)
+break the identifier set -> rc 1, 6 FAILURES (real-tree leg n=0 names=[], and it SAID so)
+```
+
+### 3. The clippy 1.98 bump, and the 31 errors it exposed
+
+The workspace had not been graded under `-D warnings` for this toolchain. Clearing it took
+`--keep-going` to see the whole surface at once rather than one crate per run:
+
+| Crate | Errors | Shapes |
+|---|---|---|
+| kasirmu-logging | 2 | private intra-doc link; doc comment split by blank lines |
+| kasirmu-media | 2 | `chunks_exact` -> `as_chunks` |
+| platform-core | 1 | collapsible_if |
+| kasirmu-core | 17 | doc links, collapsible_if, type_complexity, needless_borrow, bool->int |
+| platform-sync | 24 | 14 needless_borrow, 3 collapsible_if, doc gap, `push_str` |
+| kasirmu-api | 8 | 6 collapsible_if, 2 test-only rewrites |
+| kasirmu-hal | 1 | byte-char slice -> byte string |
+| kasirmu-bridge | 7 | type_complexity, too_many_arguments, needless_borrow |
+| kasirmu-cloud | 3 | type_complexity, collapsible_if, `assert_eq!` with a bool |
+| local-api | 1 | manual `is_multiple_of` |
+| mobile-tauri / desktop-tauri | 4 | 3 collapsible_if, 1 dead field |
+
+**Zero crate-level `#![allow]`.** Two item-level allows exist and both are argued in place:
+`PushOutcome`'s large variant (boxing is a public API change to a re-exported wire type) and
+desktop `test_scratch` (a pure lifetime guard whose Drop deletes the scratch root -- deleting
+the field would delete the directory while in use). `too_many_arguments` in the bridge was fixed
+by a real `TopologyRevisionGraph` params struct, not an allow.
+
+### 4. Turning the whole matrix green found five gates that were lying or broken
+
+Each of these was RED before, and each is a different failure mode:
+
+- **`check.sh` step 27** -- `kasirmu-test-support` was a workspace member no Dockerfile primed.
+  Real gap: a new member that CI would never cache.
+- **step 31 `verify-no-hardcoded-money-format.py`** -- the self-test compared the printed root
+  with `str(tree)` case-sensitively, and Windows returned the path in a different letter case
+  than `tempfile` built. Correct refusal, red gate. Fixed to compare case-insensitively, then
+  proven still able to fail (breaking the guard reddens 2 cases).
+- **step 21 `verify-exhaustive-deps.py`** -- **the clean case was unrepresentable.** ESLint 9
+  prints its summary ONLY when there is something to report, so a zero-finding tree emitted no
+  bytes and the checker's "no summary = untrusted" rule failed every perfectly clean run. The
+  fix distinguishes "nothing to report" (rc 0, no output) from "reported nothing" (non-zero rc,
+  no output), and two new self-test cases pin both.
+- **step 08 scoped-authorization** -- `print_kasbon_settlement_slip_scoped` had a session gate
+  and no permission check on a slip carrying customer name, phone and receivable balances. Not a
+  false positive: it is a real BRIDGE-7 instance, now marked and named as the first to fix.
+- **`every_registered_route_is_documented`** -- `d83614830` registered three topology routes and
+  the OpenAPI spec was never updated. Documented, with bearerAuth, and the security-coverage walk
+  re-run green.
+
+### 5. What is still red, and why it is not code
+
+```
+step 34 test workspace   PG test enabled but the resource is unreachable
+                          (no PostgreSQL on this machine; CI supplies a real one)
+step 36 junit receipt    grades step 34's report, so it inherits that failure
+step 108 selftest sweep  verify-shell-syntax.py needs `sh` on PATH; git-bash supplies it,
+                          a bare pwsh child does not -- 50/50 pass under git-bash PATH
+```
+
+### Verification
+
+```
+cargo clippy --workspace --all-targets -- -D warnings   -> 0 errors
+verify-ipc-parity.py --self-test                        -> rc 0, 88.0 s (was 227.2 s)
+verify-exhaustive-deps.py --self-test                    -> 6 cases, rc 0
+verify-no-hardcoded-money-format.py --self-test          -> 3 CAUGHT, rc 0
+verify-scoped-authorization.sh --strict                  -> 379 scanned, 0 UNREASONED
+verify-dockerfile-workspace.py                           -> 44 members in both images
+check-debt-ledger.py                                     -> 152 entries, 108 sections
+verify-selftest-sweep.py (git-bash PATH)                 -> 50/50 OK
+nextest workspace (pg-tests off)                         -> 3771 passed, 1 failed (openapi)
+kasirmu-cloud after the spec fix                         -> 406 passed, 0 failed
+kasirmu-bridge 1542 . local-api 26 . shells 900 passed
+```
+
+### Ledger: 152 defined, 152 closed, 0 open.
