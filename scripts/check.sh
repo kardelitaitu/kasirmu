@@ -134,6 +134,14 @@ step "no-raw-params self-test" "bash scripts/verify-no-raw-params.sh --self-test
 
 # ── H-1/H-2: every registered command has a _scoped variant or allowlist entry ──
 step "scoped coverage (H-1)" "bash scripts/verify-scoped-coverage.sh" bash scripts/verify-scoped-coverage.sh
+# The gate had TWO silent failures and the twin one was not covered by any floor: with a
+# dead `_scoped` scan every command falls to the allowlist and it printed PASS with twin
+# coverage 0, while the registered floor reads only the other half of the subject. A twin
+# floor now refuses that, and both derivations carry `|| true` because under
+# `set -euo pipefail` a grep matching nothing made the whole script die at the assignment
+# with EMPTY stdout and stderr. Measured 2026-10-23: the dead-scan mutant now prints
+# "derived ZERO _scoped twin(s)" and exits 1 instead of vanishing.
+step "scoped coverage self-test" "bash scripts/verify-scoped-coverage.sh --self-test" bash scripts/verify-scoped-coverage.sh --self-test
 
 # ── H-1b: a _scoped variant must actually AUTHORIZE, not merely exist ────
 # The check above stops at "a twin exists"; this one opens the twin. A _scoped

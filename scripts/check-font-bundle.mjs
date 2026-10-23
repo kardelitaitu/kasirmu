@@ -204,6 +204,16 @@ export function freshnessVerdict({ suspects = 0, unknownGit = 0, commits = 0, he
  * when there is no assets directory, no asset file at all, or no stylesheet to read:
  * each of those is a pipeline nobody could read, not a build that contains nothing.
  * Throws carry exitCode 2, the code the tool has always used for that answer.
+ *
+ * THE TWO GUARDS BELOW ARE A CONJUNCTION, so neither can be killed on its own. That is
+ * measured, not assumed: with an EMPTY assets directory the named set is still non-empty,
+ * so the absent check reports the fonts as missing, and the .ttf/.eot refusal still fires
+ * -- an "empty" build therefore exits 2 even with the empty-listing guard reverted. The
+ * load-bearing half is the FILE-TYPE one: narrow the inventory back to .woff2/.woff and a
+ * dropped .ttf orphan becomes invisible again, which is the mutation the self-test kills.
+ * The empty-listing guard is kept because it describes the input truthfully; mutating or
+ * removing it changes no observable answer, and the report says so rather than claiming a
+ * kill it does not have.
  */
 export function readBuild(dist, { repo = path.join(HERE, '..'), freshness = null } = {}) {
   const assets = path.join(dist, 'assets');
@@ -531,6 +541,15 @@ export const SELF_TEST_CASES = [
     const u = srcUrls('src:url(x.woff2) format("woff2")');
     return { ok: u.length === 1 && u[0] === 'x.woff2', detail: JSON.stringify(u) };
   }],
+  // A literal-quote class instead of a character class (`[^'"\s]+`) is not a real
+  // mutation: js is lazy, so it backtracks past the quote and returns the same hit
+  // whenever a quote follows. It diverges only where NO quote follows, which upstream is
+  // a malformed url. Pinned so "the paren terminates" is a stated contract rather than
+  // an accident of quantifier ambiguity.
+  ['urls', 'an unquoted url() with no quote after it still ends at the paren', () => {
+    const u = srcUrls('src:url(x.woff2');
+    return { ok: u.length === 1 && u[0] === 'x.woff2', detail: JSON.stringify(u) };
+  }],
   ['urls', 'a url() outside any @font-face is not a face reference', () => {
     const t = faceTally(faceBlocks('.a{background:url(bg.png)}' + face('x.woff2') + '.b{background:url(o.png)}'));
     return { ok: t.urls.length === 2 && !t.files.includes('bg.png'), detail: 'files ' + JSON.stringify(t.files) };
@@ -638,6 +657,17 @@ export const SELF_TEST_CASES = [
     const ok = state.tallies.length === 1 && s.report.missing.length === 0 && s.report.orphans.length === 0
       && s.tally.distinct.length === 1;
     return { ok, detail: 'missing ' + JSON.stringify(s.report.missing) + ', orphans ' + JSON.stringify(s.report.orphans) };
+  }],
+  // Every ref broken at once -- a renamed asset directory, a base path that moved. The
+  // named set stays non-empty, so the ABSENT check is the only arm that can fire, and
+  // the count is 2: a predicate that only inspects the shipped side cannot pass it.
+  ['live', 'a build where EVERY referenced font is missing reports them all absent', () => {
+    const state = readBuild(tmpBuild({ 'index.css': face('a.woff2') + face('b.woff2'), 'index.js': 'j' }), { freshness: freshness() });
+    const s = state.tallies[0];
+    // face() names the remote url() first, so the two local names are a.woff2 and b.woff2
+    // (the third absent entry is the remote basename, correctly reported too).
+    const both = ['a.woff2', 'b.woff2'].every((f) => s.report.missing.includes(f));
+    return { ok: both && s.report.missing.length === 3 && s.report.orphans.length === 0, detail: JSON.stringify(s.report) };
   }],
   ['live', 'the SAME healthy build goes red when one font is deleted from it', () => {
     const files = { ...HEALTHY };
