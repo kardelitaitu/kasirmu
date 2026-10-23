@@ -120,6 +120,11 @@ step "rustdoc (deny warnings)" "RUSTDOCFLAGS='-D warnings' cargo doc --workspace
 
 # ── ADR #7 Phase 4: no raw store_id/user_id in command signatures ───────
 step "no-raw-params (ADR #7 Phase 4)" "bash scripts/verify-no-raw-params.sh" bash scripts/verify-no-raw-params.sh
+# The gate greps two exact literals ('store_id: String' / 'user_id: String') inside one
+# directory, so a rename or a type change empties its corpus and it prints PASS forever.
+# Added 2026-10-23 after the detector was measured alive (a planted unscoped parameter
+# gave VIOLATION + FAIL: 1) -- alive but UNPINNED, which is the state that rots.
+step "no-raw-params falsification" "bash scripts/test-no-raw-params.sh" bash scripts/test-no-raw-params.sh
 
 # ── H-1/H-2: every registered command has a _scoped variant or allowlist entry ──
 step "scoped coverage (H-1)" "bash scripts/verify-scoped-coverage.sh" bash scripts/verify-scoped-coverage.sh

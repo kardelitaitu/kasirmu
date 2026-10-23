@@ -294,9 +294,11 @@
       },
       "runners": {
         "check.sh": [
-          "no-raw-params"
+          "no-raw-params",
+          "no-raw-params falsification"
         ]
-      }
+      },
+      "_note": "The falsification runner was added 2026-10-23 (test-no-raw-params.sh): the gate greps two exact literals in one directory, so a rename or a type change empties its corpus silently. The detector was measured ALIVE (a planted unscoped parameter produced VIOLATION + FAIL: 1) but nothing pinned that, which is the state that rots."
     },
     {
       "id": "scoped-coverage",
