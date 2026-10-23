@@ -37,6 +37,7 @@ import argparse
 import re
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -149,9 +150,26 @@ def main() -> int:
               file=sys.stderr)
         return 2
 
+    # PARALLEL, and the order is preserved.
+    #
+    # These 50 checkers were run one at a time for a total of 362 s -- half the
+    # cost of the whole gate matrix. They are independent subprocesses with no
+    # shared state, so there is no reason to serialise them; the only thing that
+    # must survive is the REPORTED ORDER, because a summary whose line order
+    # changes run to run cannot be diffed.
+    #
+    # The worker count is a deliberate 8 rather than the core count. These are
+    # short-lived Python processes that spend most of their wall time waiting on
+    # the OS, so a small pool already saturates the useful concurrency, and a
+    # pool as wide as the machine would make 50 interpreters compete for the same
+    # CPU and finish slower -- the same shape as the test-thread ceiling measured
+    # in kasirmu-core.
+    workers = 8
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = list(pool.map(run, todo))
+
     passed, failed = [], []
-    for p in todo:
-        rc, tail = run(p)
+    for p, (rc, tail) in zip(todo, results):
         line = f"{p.name}: rc={rc} {tail}"
         (passed if verdict(rc) == "pass" else failed).append(line)
 
