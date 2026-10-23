@@ -902,7 +902,7 @@ pub fn build_router_with_plan_cache(
     plan_cache: Option<Arc<crate::sync_store::PlanCache>>,
 ) -> Router {
     // CORS allowlist shared with the kasirmu-api router
-    // (docs/archived/2026-08-15-unify-auth-and-sync.md
+    // (docs/records/audits/2026-08-15-unify-auth-and-sync.md
     // §11): documented defaults, overridable via OZ_CORS_ORIGINS.
     let cors_origins = kasirmu_api::cors_origins_from_env();
     let cors = kasirmu_api::build_cors(&cors_origins);

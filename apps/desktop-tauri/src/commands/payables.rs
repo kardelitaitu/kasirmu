@@ -1,5 +1,5 @@
 //! Tauri commands for Accounts Payable (Hutang / Beli Tempo — Phase 4 AP of
-//! `docs/plans/payment-methods-plan.md`).
+//! `docs/plans/_active/payment-methods-plan.md`).
 //!
 //! Desktop-only authoring surface, following the memo / legal-entity
 //! "desktop-first authoring IPC" precedent: raising a vendor debt, settling

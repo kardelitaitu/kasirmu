@@ -47,7 +47,7 @@
 //! the design and this shell's was the divergence, which is why the five commands
 //! above were corrected rather than the bridge. Those three bridge siblings are
 //! now the remaining instance of the same shape under R10's sweep, not a
-//! counter-example to it. Filed in `docs/records/audit-open-findings.md`.
+//! counter-example to it. Filed in `docs/records/findings/audit-open-findings.md`.
 
 use tauri::{State, command};
 

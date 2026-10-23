@@ -7,7 +7,7 @@ next: none | perf: push_batch multi-row fast path collapses N round trips into ~
 //! Sync data-store abstraction for the cloud server's sync function.
 //!
 //! This is the foundation of Phase 1.2 in
-//! `docs/archived/2026-08-15-unify-auth-and-sync.md`: the
+//! `docs/records/audits/2026-08-15-unify-auth-and-sync.md`: the
 //! whole POS data layer ([`kasirmu_core::Store`]) is a synchronous `rusqlite`
 //! borrow-wrapper used by desktop, tablet, *and* cloud clients, so it cannot
 //! be rewritten to Postgres. The cloud server therefore needs a **parallel

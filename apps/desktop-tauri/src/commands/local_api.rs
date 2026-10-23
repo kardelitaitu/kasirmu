@@ -1,5 +1,5 @@
 //! IPC surface for the loopback local API server (step 2 of
-//! `docs/guides/EXTENDING.md`).
+//! `docs/guides/developer/EXTENDING.md`).
 //!
 //! Device-level settings (`local_api.*` on the global DB, like the
 //! `lan_server.*` precedent): the server is one per machine, not per

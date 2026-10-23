@@ -75,7 +75,7 @@ pub(crate) const RESTART_WARNING: &str = concat!(
 /// fourteen credential keys sit in plaintext" while the same run printed a
 /// deny list of seventeen — and the two numbers were not even measurements of
 /// the same population: fourteen is the size of the key fixture in
-/// `crates/kasirmu-core/tests/credential_storage_form.rs` (a census of 14 keys chosen
+/// `crates/kasirmu-core/tests/integration/credential_storage_form.rs` (a census of 14 keys chosen
 /// because they have setters to walk, not because the deny list has 14 rows),
 /// nine is how many of THOSE landed cleartext in that census, and seventeen is
 /// `SECRET_KEY_DENY_LIST.len()` today. Restating any of them here rots the day

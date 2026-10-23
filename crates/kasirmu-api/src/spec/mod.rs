@@ -97,7 +97,7 @@ pub fn local_spec(port: u16) -> Value {
          server reads and writes the PRIMARY STORE's database — the same \
          data the register UI shows; note `POST /api/v1/users` therefore \
          does not create register login accounts (identity lives outside \
-         this server). See docs/guides/EXTENDING.md in the source tree \
+         this server). See docs/guides/developer/EXTENDING.md in the source tree \
          for scripting recipes.\n\n\
          ## Authentication\nJWT bearer from the Settings panel: \
          `Authorization: Bearer <token>`. Master-data writes additionally \

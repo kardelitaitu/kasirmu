@@ -336,7 +336,7 @@ pub async fn offline_queue_status_summary_scoped(
 /// `apply_sync_outcomes` aborted the command *after* Phase 2 had already pushed the
 /// items to the server. The store's rows therefore stayed `pending` and every retry
 /// re-sent them — a permanent, silent duplicate-push loop. Recorded open at
-/// `docs/records/audit-open-findings.md:1640-1650`; closed here.
+/// `docs/records/findings/audit-open-findings.md:1640-1650`; closed here.
 ///
 /// Phase 3 re-resolves the STORE scope, which is the same shape this shell's
 /// `sync_run_scoped` uses and the bridge twin uses.

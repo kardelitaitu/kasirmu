@@ -31,7 +31,7 @@ pub(crate) const SETTINGS_TABLE: &str = "settings";
 ///
 /// Indeterminate is PRINTED rather than resolved into a reassuring default: the
 /// value column is bare TEXT with no discriminator of any kind (see the module
-/// header, and the census in crates/kasirmu-core/tests/credential_storage_form.rs
+/// header, and the census in crates/kasirmu-core/tests/integration/credential_storage_form.rs
 /// which measures exactly that), so a report that guessed would be the lie this
 /// command exists to avoid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

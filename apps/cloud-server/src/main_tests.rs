@@ -169,7 +169,7 @@ async fn metrics_returns_prometheus_text() {
 }
 
 /// Smoke test for the observability counters added with the operations
-/// runbook (docs/archived/2026-08-15-unify-auth-and-sync.md §11.5 item 9): drive a REAL 429 from
+/// runbook (docs/records/audits/2026-08-15-unify-auth-and-sync.md §11.5 item 9): drive a REAL 429 from
 /// the token-mint rate limiter and a REAL 5xx from an unconfigured
 /// webhook secret, then assert the /metrics endpoint renders both
 /// counters at their expected values.

@@ -572,7 +572,7 @@ fn contains_verb_call(expr: &str, verb: &str) -> bool {
 /// the spec must be EQUAL — both paths and per-path methods. Historically
 /// the guard was one-directional and `/api/v1/settings` +
 /// `/api/sync/snapshot` drifted live-but-undocumented (found 2026-09-03
-/// while writing `docs/guides/EXTENDING.md`); this test closes that
+/// while writing `docs/guides/developer/EXTENDING.md`); this test closes that
 /// class. Set equality (not just containment) also self-verifies the
 /// source parser: a path the scan silently misses breaks the equality
 /// from the spec side, so a broken parser cannot pass vacuously.

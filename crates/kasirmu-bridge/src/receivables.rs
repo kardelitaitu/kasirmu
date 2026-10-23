@@ -1,4 +1,4 @@
-//! Accounts-receivable command bodies (Phase 3 of `docs/plans/payment-methods-plan.md`).
+//! Accounts-receivable command bodies (Phase 3 of `docs/plans/_active/payment-methods-plan.md`).
 //!
 //! Provides the session-scoped [`list_receivables_scoped`](crate::receivables::list_receivables_scoped),
 //! [`list_customer_receivables_scoped`](crate::receivables::list_customer_receivables_scoped),

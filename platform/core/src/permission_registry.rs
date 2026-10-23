@@ -601,7 +601,7 @@ pub const REGISTRY: &[PermissionEntry] = &[
         sensitive: false,
         description: "Mutate the topology graph (Apply, location creation, rename, templates, property edits).",
     },
-    // ── payables (Phase 4 AP / Hutang — docs/plans/payment-methods-plan.md) ──
+    // ── payables (Phase 4 AP / Hutang — docs/plans/_active/payment-methods-plan.md) ──
     PermissionEntry {
         key: "payables:view",
         family: "payables",
@@ -626,7 +626,7 @@ pub const REGISTRY: &[PermissionEntry] = &[
         sensitive: true,
         description: "Forgive a vendor debt without payment (money destruction — audited).",
     },
-    // ── receivables (Phase 3 AR / Piutang — docs/plans/payment-methods-plan.md) ──
+    // ── receivables (Phase 3 AR / Piutang — docs/plans/_active/payment-methods-plan.md) ──
     PermissionEntry {
         key: "receivables:view",
         family: "receivables",

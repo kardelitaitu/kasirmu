@@ -1,5 +1,5 @@
 //! Postgres data layer for the kasirmu-api REST handlers (Phase 1.2 of
-//! `docs/archived/2026-08-15-unify-auth-and-sync.md`).
+//! `docs/records/audits/2026-08-15-unify-auth-and-sync.md`).
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-api slice B: pg deep read)
 crate: kasirmu-api | status: SAFE | lint: CLEAN
