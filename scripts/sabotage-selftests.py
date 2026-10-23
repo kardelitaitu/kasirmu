@@ -228,6 +228,14 @@ def survey(limit: int | None) -> list[tuple[str, str, int, int, str]]:
             rows.append((p.name, "-", base if base is not None else -1, -1, "PATH ALREADY RED"))
             continue
         if p.suffix == ".sh":
+            # SH_FUNC is anchored at column 0, so INDENTED helpers are not candidates --
+            # which is deliberate here: verify-docker-persistence.sh defines its three
+            # graded predicates (survived, colls, fail-shape) INSIDE the --self-test
+            # block, where they cannot be reached by the live path. Its only top-level
+            # function is cleanup(), pure I/O. So this file reports 0 killed BECAUSE the
+            # harness cannot see its graded logic, not because the logic is ungraded --
+            # the assertions there were measured by hand (three verdict mutations, all
+            # killed, round 81).
             cands = text_functions(src, SH_FUNC)
         elif p.suffix == ".mjs":
             cands = text_functions(src, MJS_FUNC)
