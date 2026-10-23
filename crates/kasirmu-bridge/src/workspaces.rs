@@ -826,7 +826,14 @@ pub async fn list_workspaces_for_store_scoped(
     // entitlement filter as `list_workspaces_scoped` — a Free-tier session must
     // not enumerate tier-disallowed workspace types (e.g. kds) through the
     // terminal-management screen.
-    let (assignment, sub) = {
+    // Everything that needs the GLOBAL db is loaded HERE, before the store
+    // connection is opened. `open_store` hands back an
+    // `Arc<Mutex<rusqlite::Connection>>`, and `Connection` is not `Sync`, so that
+    // `Arc` is not `Send` -- an `async fn` awaited by a `#[tauri::command]` must
+    // be `Send`, and holding the Arc across any `.await` breaks it. That is
+    // exactly how this function failed to compile once: the read-repair added a
+    // second `ctx.lock_global().await` below the store open.
+    let (assignment, sub, global_rows) = {
         let global_db = ctx.lock_global().await;
         TenantSubscription::validate_clock_rollback(&global_db)?;
         let sub = TenantSubscription::load(&global_db, "default")?.unwrap_or_else(|| {
@@ -839,7 +846,16 @@ pub async fn list_workspaces_for_store_scoped(
         // subscription-trusting call sites.
         sub.verify_signature()?;
         let assignment = Store::new(&global_db).assignment_for_user(&session.user_id)?;
-        (assignment, sub)
+        // The read-repair's source rows, fetched while the global db is already
+        // locked. Cheap: it is one indexed listing, and it is only USED when the
+        // store db turns out to be empty (see below).
+        let global_rows = Store::new(&global_db).list_workspaces_with_entitlement(
+            &session.role_id,
+            Some(&session.user_id),
+            &store_id,
+            &sub,
+        )?;
+        (assignment, sub, global_rows)
     };
     let conn = ctx
         .db_manager
@@ -867,20 +883,12 @@ pub async fn list_workspaces_for_store_scoped(
     // `retain`, so repairing the store DB here does not weaken the entitlement
     // filter: the retained set is what gets returned, and the repair only writes
     // the rows the global DB already holds for THIS user and store.
-    if rows.is_empty() {
-        let global_rows = {
-            let global_db = ctx.lock_global().await;
-            Store::new(&global_db).list_workspaces_with_entitlement(
-                &session.role_id,
-                Some(&session.user_id),
-                &store_id,
-                &sub,
-            )?
-        };
-        if !global_rows.is_empty() {
-            repair_store_db_from_global_rows(&conn, &global_rows);
-            rows = global_rows;
-        }
+    //
+    // NO `.await` here: the store connection is not `Send`, so this block must
+    // stay synchronous (see the note above the global-db block).
+    if rows.is_empty() && !global_rows.is_empty() {
+        repair_store_db_from_global_rows(&conn, &global_rows);
+        rows = global_rows;
     }
 
     // Scope-filter through the user's assignment: a scoped member listing an
