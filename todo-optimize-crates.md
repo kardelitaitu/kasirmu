@@ -8624,3 +8624,74 @@ verify-selftests-wired.py                     -> 52 of 73, every one invoked, rc
 ```
 
 ### Ledger: 157 defined, 157 closed, 0 open.
+
+## §11SA — O-M92: — the audit was wrong three times, and the real gap was that live detectors were unpinned (2026-10-23)
+
+Landed in `3f0099acd`, `f2f767ef6`.
+
+**O-M92 · gates — a delegated audit named 17 unproven gates and its top three were all false; the genuine finding was that two live detectors had no case pinning them** — resolved in §11SA.
+
+### 1. The audit, and why I did not simply act on it
+
+A delegated audit of every enforcing `check.sh` step classified 17 gates UNPROVEN and
+ranked them by blast radius. Its top three were `ipc parity`, `skill-drift-guard` and
+`no-raw-params`. Each was checked individually rather than taken on report:
+
+| # | Audit said | Measured |
+|---|---|---|
+| 1 | ipc parity: self-test never invoked | **False.** `dev-ci.yml:1616` runs it as a blocking step; the audit grepped check.sh, .githooks, run-pre-push and gates.json but NOT .github/workflows |
+| 2 | skill-drift-guard: no proof mechanism | **False.** 10 bats files, **40 tests green**; neutering `FINDINGS[paths]+=` at detect.sh:413 makes `dead-check-regression.bats` fail at line 79 |
+| 3 | no-raw-params: no self-test, no floor | **Half true.** No self-test, yes -- but the DETECTOR IS ALIVE: a planted unscoped `store_id: String` command produced `VIOLATION` and `FAIL: 1` |
+
+**Three out of three wrong, all in the same direction: the audit looked for a marker
+(a `--self-test` flag) and treated its absence as the absence of proof.** That is the same
+mistake I made about `check-query-plans.py` last round, reproduced by an agent I briefed to
+avoid it. A grep is evidence ABOUT a file, not evidence FROM it.
+
+### 2. What was actually wrong: the detectors were alive and unpinned
+
+For `no-raw-params` and `i18n lint`, the audit's SHAPE was right even though its
+premise was not: both decide by matching exact literals that a rename or a reword
+would silently empty.
+
+**`verify-no-raw-params.sh`** greps `'store_id: String\|user_id: String'` across 84 files
+(15 hits today, all paired). `test-no-raw-params.sh` writes a probe command into the real
+command directory and asserts both directions -- it FIRES on an unscoped parameter and
+stays QUIET on one with a `_scoped` twin. Making the grep match nothing (the
+`done < <(true)` break) reddens case 1 with `rc=0, want 1` and explains that the gate is
+deaf "in the direction that matters most".
+
+**`lint-i18n.sh`** decides two of three categories by grepping vitest output for
+`[i18n]` and `Attempt to override an existing message`. vitest exits 0 when it merely WARNS,
+so a reword leaves the grep empty and the gate prints "no issues detected". The script
+fails on a non-zero vitest exit, so it catches a CRASH -- but not a silent reword.
+`test-lint-i18n.sh` EXTRACTS the two patterns out of the gate (a restated literal would
+drift from the thing it polices), plants both real warnings, and adds a clean-run
+control so a too-broad pattern cannot pass. A drifted pattern reddens exactly one case.
+
+### 3. The test caught its own author twice
+
+Both new tests failed on first run, correctly:
+
+- `test-lint-i18n.sh`'s first extraction used a character class that stopped at the
+  "]"-looking part of `\\[i18n\\]`, producing a truncated pattern. The test REFUSED to pass
+  on a pattern it could not extract, which is the behaviour the case exists to have.
+- The first planted break on `detect.sh` hit `FINDINGS[paths]+=` inside a COMMENT
+  (the file documents the historical bug there) and the bats suite stayed green. The
+  real write is at :413; only that one reddens the test. A break that lands in a comment
+  is indistinguishable, from the exit code, from a break that lands in code.
+
+### Verification
+
+```
+bash .agents/.../run-tests.sh              -> 40 bats tests green (skill-drift-guard)
+  detect.sh:413 neutered                   -> dead-check-regression.bats FAILS at line 79
+  probe deleted, file restored             -> suite green again
+test-no-raw-params.sh                      -> 2 cases ok; deaf detector -> FAIL (rc=0, want 1)
+test-lint-i18n.sh                          -> 5 cases ok; drifted pattern -> FAIL (1 case)
+check.sh steps 07 and 79-88                -> PASS, incl. both new steps
+verify-gate-completeness.py                -> every check.sh step named, rc 0
+check-font-claims.mjs                      -> 16/16, rc 0
+```
+
+### Ledger: 158 defined, 158 closed, 0 open.
