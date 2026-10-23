@@ -135,10 +135,10 @@ impl StoreDatabaseManager {
         }
 
         // Clean up per-store lock entry if no other thread is waiting on it.
-        if let Ok(mut init_locks) = self.init_locks.lock() {
-            if Arc::strong_count(&store_init_lock) <= 2 {
-                init_locks.remove(store_id);
-            }
+        if let Ok(mut init_locks) = self.init_locks.lock()
+            && Arc::strong_count(&store_init_lock) <= 2
+        {
+            init_locks.remove(store_id);
         }
 
         Ok(conn_arc)
