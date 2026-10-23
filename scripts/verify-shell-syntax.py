@@ -318,7 +318,27 @@ def self_test() -> int:
                    f"the no-git fallback sees {_fallback_count} -- one of them is "
                    f"skipping something the other checks")
 
-    scratch = ROOT / "scripts" / "_syntax_selftest_tmp.sh"
+    # THE PROBE MUST NOT LAND IN THE TREE THIS GATE SCANS. It used to be
+    # ROOT / "scripts" / "_syntax_selftest_tmp.sh" -- inside scripts/, which is exactly
+    # what this file enumerates. Two real consequences, measured 2026-10-23:
+    #
+    #   1. Below, this file writes an INTENTIONALLY BROKEN script (unterminated quote) and
+    #      leaves it on disk for a moment. Any concurrent run of the PLAIN checker -- which
+    #      check.sh also runs, as a step PAIR -- can read that half-written file and report
+    #      a PARSE ERROR on a tree that is fine.
+    #   2. The differential ABOVE compares the git count with the no-git count. An untracked
+    #      probe present during that comparison makes the two disagree and fails the
+    #      self-test for a reason that is not a scope bug.
+    #
+    # A ten-trial reproduction attempt did not trigger (1), so it is reported as LATENT
+    # rather than demonstrated -- but the write is real and the window is wider than the
+    # trial. Moving the probe under target/ removes the hazard without weakening a single
+    # assertion: check() takes any path, and target/ is gitignored, so the git path never
+    # counted the probe anyway. The differential above is unaffected because it runs
+    # BEFORE this block.
+    _scratch_dir = ROOT / "target"
+    _scratch_dir.mkdir(parents=True, exist_ok=True)
+    scratch = _scratch_dir / "_syntax_selftest_tmp.sh"
     try:
         scratch.write_text("#!/usr/bin/env sh\nset -e\necho ok\n", encoding="utf-8", newline="\n")
         ok, why = check(scratch)
