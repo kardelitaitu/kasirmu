@@ -279,6 +279,13 @@ step "docker digests self-test" "bash scripts/verify-docker-digests.sh --self-te
 # a COMMENT mentioning max-size as a configured service, and a zero service count made
 # `0 -eq 0` true so an empty render reported full coverage.
 step "docker all self-test" "bash scripts/verify-docker-all.sh --self-test" bash scripts/verify-docker-all.sh --self-test
+# verify-deploy.mjs probes the LIVE deployment (dashboard/admin/... origins) and has no
+# runner anywhere, so it was a manual script. Only its SELF-TEST is wired: the cases need
+# no network, while the probe itself reaches four public origins and must not run on every
+# matrix pass. Writing the cases found the vacuous-pass shape in its config reader -- a
+# nested dotted routes key (the [observability.logs] shape) read as an empty array -- and
+# it now refuses a config that probes zero origins.
+step "verify deploy self-test" "node website/scripts/verify-deploy.mjs --self-test" node website/scripts/verify-deploy.mjs --self-test
 step "unified routes" "node scripts/check-unified-routes.mjs" node scripts/check-unified-routes.mjs
 # The Caddyfile parser's failure branch had NO automated exercise: the only way to reach
 # it was to hand-craft a corrupted copy and point argv[2] at it, which nobody re-runs.

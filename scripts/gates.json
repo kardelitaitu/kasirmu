@@ -324,6 +324,17 @@
       }
     },
     {
+      "id": "website-deploy-probe",
+      "label": "Website deployment probe",
+      "status": "advisory",
+      "_note": "Wired 2026-10-23 (local matrix only, SELF-TEST only). website/scripts/verify-deploy.mjs probes the LIVE deployment -- dashboard, admin and the other public origins -- and had no runner anywhere, so it was a manual script. Only its self-test is wired: the cases need no network, while the probe reaches four public origins and must not run on every matrix pass. Writing the cases found the vacuous-pass shape in its config reader: a nested dotted routes key (the [observability.logs] shape) read as an empty array, and a config probing zero origins printed a clean sentence. Both now fail. Advisory because nothing enforces the probe itself.",
+      "runners": {
+        "check.sh": [
+          "verify deploy self-test"
+        ]
+      }
+    },
+    {
       "id": "no-raw-params",
       "label": "No raw params (ADR #7 Phase 4)",
       "status": "required",
