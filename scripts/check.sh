@@ -125,6 +125,12 @@ step "no-raw-params (ADR #7 Phase 4)" "bash scripts/verify-no-raw-params.sh" bas
 # Added 2026-10-23 after the detector was measured alive (a planted unscoped parameter
 # gave VIOLATION + FAIL: 1) -- alive but UNPINNED, which is the state that rots.
 step "no-raw-params falsification" "bash scripts/test-no-raw-params.sh" bash scripts/test-no-raw-params.sh
+# The classifier as UNIT cases, plus the zero floor. test-no-raw-params.sh above proves
+# the detector fires on a planted parameter, which the cases here cannot and do not
+# replace; what it cannot see is an over-matching twin lookup (a DIFFERENT fn's twin
+# covering this one) and a scan that read nothing. Writing these found that gap: before
+# the floor, neutering the grep made the gate print PASS over ZERO classified parameters.
+step "no-raw-params self-test" "bash scripts/verify-no-raw-params.sh --self-test" bash scripts/verify-no-raw-params.sh --self-test
 
 # ── H-1/H-2: every registered command has a _scoped variant or allowlist entry ──
 step "scoped coverage (H-1)" "bash scripts/verify-scoped-coverage.sh" bash scripts/verify-scoped-coverage.sh
