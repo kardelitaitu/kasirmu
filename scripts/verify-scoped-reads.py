@@ -661,9 +661,36 @@ def _platform_guard_excludes_shell(text, pos, shell):
     `!isTabletShell()` is the desktop branch, where the call is reachable. IPC parity grades
     registration per shell independently, so this cannot hide a genuinely missing one.
     """
+    # TWO SPELLINGS PER SHELL, and only two of the four used to count.
+    #
+    #   if (isTabletShell())  { ... }   -- POSITIVE tablet:   body runs ONLY on tablet.
+    #   if (!isTabletShell()) { ... }   -- NEGATED tablet:    body runs ONLY on desktop.
+    #   if (isDesktopShell()) { ... }   -- POSITIVE desktop:  body runs ONLY on desktop.
+    #   if (!isDesktopShell()){ ... }   -- NEGATED desktop:   body runs ONLY on tablet.
+    #
+    # So for shell="tablet" the exclusion forms are `isDesktopShell()` and
+    # `!isTabletShell()`; for shell="desktop" they are `isTabletShell()` and
+    # `!isDesktopShell()`.
+    #
+    # When this was written it hunted only the POSITIVE form of the OTHER shell's name, and
+    # assumed a helper called `isDesktopShell` that does not exist: measured 2026-10-24,
+    # it has ZERO occurrences outside this file. The repo spells the desktop branch
+    # `!isTabletShell()`, so the dominant idiom was invisible.
+    #
+    # Cost, measured on the tree: 5 of 34 tablet findings were false positives behind
+    # `if (!isTabletShell())` -- LicenseActivationScreen.tsx:293 (4 sites) and
+    # SettingsPage.tsx:195 (1) -- each graded as an unguarded TABLET call while the guard
+    # above it says the code never runs on tablet.
+    mine = "isTabletShell" if shell == "tablet" else "isDesktopShell"
+    # (a) the other shell's positive form, if that helper exists at all.
     other = "isDesktopShell" if shell == "tablet" else "isTabletShell"
-    pattern = re.compile(r"\bif\s*\(\s*" + other + r"\s*\(\s*\)\s*\)")
-    return _in_force(text[:pos + 1], pattern, strict_block=True)
+    # (b) THIS shell's negated form -- the one the repo actually writes.
+    up_to = text[:pos + 1]
+    if _in_force(up_to, re.compile(r"\bif\s*\(\s*" + other + r"\s*\(\s*\)\s*\)"),
+                 strict_block=True):
+        return True
+    return _in_force(up_to, re.compile(r"\bif\s*\(\s*!\s*" + mine + r"\s*\(\s*\)\s*\)"),
+                     strict_block=True)
 
 def _window_is_guarded(window):
     # Three independent facts make a window guarded, tested in the order that says the most first:
@@ -2937,7 +2964,20 @@ def _platform_guard_self_test():
         ("the same branch, graded tablet",
          "if (isTabletShell()) {\n  result = await createBackupTo(sessionToken, cache);\n}",
          "tablet", False),
-        ("negated form is the desktop branch, not a guard",
+        # THE BUG THIS CLOSES. The negated form used to be graded "not a guard" in BOTH
+        # directions, because the code hunted a helper (isDesktopShell) that does not exist
+        # in this repo and never tested the spelling the repo actually writes. Graded
+        # tablet, this is a desktop-only body, so the call can never run on tablet and the
+        # finding is a FALSE POSITIVE. Measured 2026-10-24: 5 of 34 tablet findings were
+        # behind this shape -- LicenseActivationScreen.tsx:293 (4 sites) and
+        # SettingsPage.tsx:195 (1) -- each reported as an unguarded tablet call.
+        ("negated form is the desktop branch, so it EXCLUDES tablet",
+         "if (!isTabletShell()) {\n  result = await createBackupTo(sessionToken, cache);\n}",
+         "tablet", True),
+        # And the control: the same body graded desktop is NOT excluded. Without this the
+        # case above would pass on a predicate that answers True for every shell, which is
+        # the vacuous-pass shape this file has fixed three times.
+        ("the same negated branch does not exclude desktop",
          "if (!isTabletShell()) {\n  result = await createBackupTo(sessionToken, cache);\n}",
          "desktop", False),
         # Wrapped in a function: every guard in the tree sits in one, and a guard at depth 0
