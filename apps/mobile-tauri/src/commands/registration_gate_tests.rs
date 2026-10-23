@@ -264,10 +264,25 @@ mod debt;
 // SALES_PROCESS in the bridge, so they move no debt ledger row or ceiling — only the
 // registration floor and the ledger total, which the regeneration below carried.
 //
+//
+// 428 -> 437 with the AR/AP (Piutang/Hutang) commands, 2026-10-23. Nine names landed
+// across the same two feature commits the desktop shell absorbed (be153f8cf,
+// 160734e90) and neither moved this floor nor the ledger total:
+//   * receivables: create_receivable_scoped, get_receivable_scoped,
+//     list_receivables_scoped, list_customer_receivables_scoped,
+//     record_receivable_payment_scoped, write_off_receivable_scoped,
+//     get_ar_aging_report_scoped, get_customer_receivables_summary_scoped
+//   * hardware: print_kasbon_settlement_slip_scoped
+// All nine arrive gated at the bridge layer (receivables:view / :create / :collect /
+// :writeoff, and resolve_scope for the print), so like the 425 -> 428 step they move no
+// debt ledger row or ceiling — only this floor and the ledger total, which the
+// regeneration below carried. write_off_receivable_scoped is registered sensitive in the
+// permission registry and is the one of the nine carrying real authority.
+//
 // The floor is an EQUALITY against the tree (see drift_pin_registration_floor_is_met),
 // so this number and the ledger total must move together in the same pass as the
 // registrations. Both were regenerated here rather than typed.
-const REGISTERED_FLOOR: usize = 428;
+const REGISTERED_FLOOR: usize = 437;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.
