@@ -23,12 +23,24 @@ OTHER page's `pair` against THIS page's own `slug` — it asks whether the other
 claims to pair with us, and accepts the pair even when we never claimed it.
 
 **Verified by driving the real function, 2026-10-23.** `lang` is the TARGET locale (the
-one whose path cannot be derived by prefix-swapping — see `check-seo.mjs`:763-768), so a
-correct probe is: an EN page `a` whose `pair: x` points at an ID page `x` whose own
-`pair:` points at `somewhere-else`. Asked for `a`'s ID counterpart, the function returns
-`/id/panduan/x/` — the non-reciprocal pair is accepted. Reciprocal and non-reciprocal
-inputs give the SAME answer, which is what makes the first half a defect rather than a
-different rule.
+one whose path cannot be derived by prefix-swapping — see `check-seo.mjs`:763-768).
+
+The difference between the two halves is one specific input, measured:
+
+| input | `otherPaired === slug` (first half) | `selfPaired === other.slug` (second half) |
+|---|---|---|
+| `a` names `x`, and `x` names `a` | holds | holds |
+| `a` names `x`, `x` names someone else | — | holds (so the pair is still accepted) |
+| **`a` names NOBODY, `x` names `a`** | **holds** | does not hold |
+
+That third row is the defect, and it is the only row where the halves disagree. Driven
+directly: with `a` carrying no `pair` and the ID page carrying `pair: "a"`, the shipped
+rule returns `/id/panduan/x/` while the second half alone returns `null`.
+
+It matters because the ROUTE uses `guide.data.pair ?? slug` — each page emits the
+counterpart IT declares. So a page that declares nothing has no `hreflang` on the real
+site, while this checker reports the pair as satisfied by the OTHER page's declaration.
+The checker is greener than the product.
 
 > A first attempt at this probe used two files of DIFFERENT locales while passing
 > `lang` as if it meant "the page's own locale", and reported the rule as correct. The
