@@ -301,6 +301,37 @@ reachable, that substitution also hides the function's own body from the mutatio
 the branch through the stub, and the real function through an input it can answer without
 I/O (here: a pre-filled cache).
 
+#### The census that required the flag, and the checker it uncovered
+
+The same round counted checkers by requiring the **quoted literal** `"--self-test"` in their
+source. Result: 54 with the flag, 3 without —
+
+| Checker | Why it lacks the flag | Verdict |
+|---|---|---|
+| `verify-website-assets.py` | Documents the decision at :20-27, with the mutation that justified it | **Legitimate exception** |
+| `check-replay-fork.py` | Its proof is a companion test, `scripts/test-replay-fork.py` (form 2) | **Legitimate** |
+| `check-query-plans.py` | Nothing. No self-test, no companion test, no mutation on record. | **Real gap — now fixed** |
+
+`check-query-plans.py` had zero hits for `self.?test` anywhere. Its Rust-side assertions are
+covered by the probe's own falsification test, but everything between probe output and the
+console was ungraded — and that Python half is where the file records three measured
+defects (ANSI noise, phantom blocks from cargo's "Compiling ..." lines, a plan body running
+past the harness footer). Added a `--self-test` with 14 cases over those exact shapes.
+
+**Mutation score for the new test, 5 of 5 graded functions killed:**
+
+```
+ascii_only       KILL   is_harness_line  KILL   offender_blocks  KILL
+clean_block      KILL   count_probed     KILL
+```
+
+The eight survivors are the shells that build, run cargo, and read the probe file from
+disk — they cannot be exercised without a build, and the self-test says so in its docstring.
+
+**"No self-test" is not the same as "untested."** Two of the three flag-less checkers were
+already proven; only reading which one had *nothing* found the gap. Require the quoted flag
+for the census (prose mentions are not capabilities), then read each exception.
+
 ### Two ways a documentation census measures the WRONG THING
 
 Both measured 2026-10-23 while trying to establish how many Rust modules lack the
