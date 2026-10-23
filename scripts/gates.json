@@ -313,6 +313,43 @@
       }
     },
     {
+      "id": "docker-persistence",
+      "label": "Docker volume persistence",
+      "status": "advisory",
+      "_note": "Wired 2026-10-24 (local matrix only, SELF-TEST only). scripts/verify-docker-persistence.sh had NO proof form and NO runner until then: no --self-test, no companion test, no measured mutation, no note explaining the absence. Measured that round: zero hits for the name in check.sh and in every live workflow; the only path that reaches it is verify-docker-all.sh:102 (STAGE 1), which --self-test exits before at :83-86. So its 'Persistence verified' line had never been produced by CI, while docs/records/audits/2026-08-31-glm-5.3f-crates-audit.md:2203 asserted it 'runs the volume contract in CI'. The full run needs a daemon and two image builds; the self-test grades the three verdicts every run depends on (the survived() substring test, the collection-completeness verdict, and fail() actually exiting) plus the structural fact that the block sits above the first docker call. Unchanged since: the volume contract itself still runs nowhere in CI.",
+      "runners": {
+        "check.sh": [
+          "docker persistence self-test"
+        ]
+      }
+    },
+    {
+      "id": "query-plan-formatter",
+      "label": "Query-plan report formatters",
+      "status": "required",
+      "_note": "Wired 2026-10-24 (local matrix and dev-ci, SELF-TEST only). The Python half of scripts/check-query-plans.py -- everything between the Rust probe's output and the console -- was ungraded until then, and it is where the file records three measured defects: ANSI noise, phantom blocks from cargo's own 'Compiling ...' lines, and a plan body running past the harness footer. The Rust assertions are covered by the probe's own falsification test; this row covers the formatters (ascii_only, is_harness_line, offender_blocks, clean_block, count_probed, and the two source parsers large_tables/covered_probes). Pure strings -- no build, no cargo, no daemon.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      },
+      "runners": {
+        "check.sh": [
+          "query plan formatter self-test"
+        ]
+      }
+    },
+    {
+      "id": "sabotage-mutator",
+      "label": "Sabotage mutator (the harness itself)",
+      "status": "advisory",
+      "_note": "Wired 2026-10-24 (local matrix only). scripts/sabotage-selftests.py blanks a function body in each checker and asks whether its --self-test notices. Its own worst failure mode is silent: a mutation that leaves a SYNTAX ERROR makes every checker 'fail', scoring as KILLED while proving nothing, so the harness would report a clean sheet over checkers it never tested. The self-test grades exactly that -- the mutants parse, braces inside strings do not close a function early, export function is a candidate, and self_test is never its own candidate. Advisory because it is a measurement tool for the checker population, not a shipping surface.",
+      "runners": {
+        "check.sh": [
+          "sabotage mutator self-test"
+        ]
+      }
+    },
+    {
       "id": "docker-all",
       "label": "Docker sector (all four stages)",
       "status": "advisory",
