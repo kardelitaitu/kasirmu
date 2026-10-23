@@ -8046,3 +8046,92 @@ verify-ipc-parity.py (memoised)      -> rc 1, 3 FAILURES -> reverted
 ```
 
 ### Ledger: 150 defined, 150 closed, 0 open.
+
+## §11MA — O-M86: — the ipc-parity self-test is 2.6x faster, and the fix was a loop inversion, not a cache (2026-10-23)
+
+Landed in `bbe13b549`, `dca30ea98`.
+
+**O-M86 · gates — `verify-ipc-parity.py` spent 227 s re-scanning the same 692 UI files once per command; indexing the tree once takes it to 88 s** — resolved in §11MA.
+
+### 1. The measurement that named the culprit, and the reading of it that was wrong
+
+Round 46 left this checker at 220.8 s and a note that the cost was "the NUMBER of `search`
+calls", which was right, plus an abandoned plan to fix it by memoising on `(id(files), cmd)`,
+which was wrong for the reason §11LA records. Re-profiling the whole self-test:
+
+```
+1,258,878  re.Pattern.search      173.2 s of 289.5 s
+    669    wrapper_reach          129.6 s
+  9,496    _strip_comments / _mask_imports   71.3 s
+```
+
+`wrapper_reach` was called **once per command** and walked **every** runtime file per call.
+80 gaps x 692 files x ~20 wrappers per command is the whole story.
+
+### 2. Four changes, measured one at a time
+
+Each was timed on its own so the contribution is attributable rather than assumed:
+
+| Change | `wrapper_reach` | `shell_blind_findings` |
+|---|---|---|
+| (start) | 14.91 s | 19.37 s |
+| Hoist the `imports_api_tree` test ABOVE the wrapper loop | 14.91 s | 19.37 s |
+| Cache the per-file shell proof (`proves_shell_here`) | 11.79 s | 17.49 s |
+| `_reach_index`: one pass over the tree, reused per command | 8.37 s | 13.51 s |
+| Invert the inner loop: identifiers once, not a search per wrapper | 6.48 s | 13.23 s |
+| Memoise `_strip_comments`/`_mask_imports` and the identifier set | — | — |
+| **Whole self-test** | **227.2 s -> 88.0 s** | `rc 0`, output unchanged |
+
+The first row is the interesting one: **the hoist changed nothing.** The rule read
+`if not imports_api_tree: continue` and it sat under `pat.search(text)`, which looks like a
+pure ordering mistake — but 260 of the 692 files DO import the API tree, so the filter was
+never the bottleneck. A plausible diagnosis, a correct-looking fix, and zero effect. It was
+kept because it is still the right order, but it is not what the 2.6x came from.
+
+The win came from the last two rows: not making the repeated work faster, but **not repeating
+it**. `_reach_index` computes the per-file facts once (`imports_api_tree`, bucket, which
+command each wrapper belongs to, which file defines it) and every command reads it as a dict
+lookup; `_wrappers_named_in` then replaces "does this file name wrapper w?" x |wrappers| with
+one identifier scan plus set membership.
+
+### 3. Why the caches here are not the round-46 cache
+
+Round 46's `(id(files), cmd)` cache returned another test's answer. Every cache added this
+round is keyed on a **value**: the file text, or `frozenset` of identifiers derived from it.
+Identical text strips identically and has the same identifiers *by construction*, so a hit is
+correct rather than lucky. The one `id()`-keyed structure that remains — `_REACH_INDEX_CACHE` —
+is keyed on `(id(files), len(files))` and documented with its own limit: it survives the
+address-reuse case that broke round 46 only because the length is part of the key, and it
+would still be wrong for a caller that mutated its `files` list in place. Nothing in this
+file does.
+
+That is a weaker guarantee than the value-keyed caches, and it is recorded as such rather
+than presented as safe.
+
+### 4. The gate was proven still able to fail, twice
+
+A green run after a caching change proves nothing on its own — caching is exactly the class of
+change that converts a detector into a vacuous pass. So the checker was deliberately broken
+twice and both were expected to go red:
+
+```
+break the import test        -> rc 1, 1 FAILURE
+  "ui named a same-named method with no import is NOT a wrapper reference (C17)"
+break the identifier set      -> rc 1, 6 FAILURES
+  "... real tree: ... it still reports at least one [n=0 names=[]]"
+```
+
+The second is the important one: the real-tree leg dropped to `n=0` and SAID SO. A gate that
+had gone vacuously green would have reported success.
+
+### Verification
+
+```
+verify-ipc-parity.py --self-test  -> rc 0, "self-test: OK", 27 cases + 70 guards, 192 assertions
+                                    88.0 s (was 227.2 s), output byte-identical
+planted bad import test           -> rc 1 (1 failure)
+planted empty identifier set      -> rc 1 (6 failures, real-tree leg n=0)
+check-debt-ledger.py              -> OK, 151 entries, 107 sections
+```
+
+### Ledger: 151 defined, 151 closed, 0 open.
