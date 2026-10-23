@@ -45,7 +45,14 @@ ROOT = Path(__file__).resolve().parent.parent
 
 #: Shell scripts where a shell verdict is read. check.sh decides whether the whole
 #: matrix passes, so it is the one that matters most.
-TARGETS = ("scripts/check.sh", "scripts/check-auditor-selftests.sh")
+#: Shell scripts where a shell verdict is read. check.sh decides whether the whole
+#: matrix passes. The rest are every tracked .sh under scripts/ and .agents/ -- a checker
+#: scoped to one file grades one file, and the shape is not confined to the matrix
+#: (measured: 57 tracked .sh files, 2 of them carry a conditional substitution, and the
+#: second one is outside the original two-file list).
+TARGET_DIRS = ("scripts", ".agents")
+#: Excluded by name: retired, vendored, or not shell.
+SKIP_NAMES = ("check.sh.bak", "ci.yml.bak")
 
 #: Commands that succeed on empty input, so their status is meaningless as a verdict.
 SWALLOWERS = ("tail", "head", "sed", "awk", "cat", "wc", "sort", "uniq", "true")
@@ -173,12 +180,27 @@ def self_test() -> int:
     return 0
 
 
+def targets() -> list[Path]:
+    """Every tracked shell script under TARGET_DIRS, sorted."""
+    out: list[Path] = []
+    for d in TARGET_DIRS:
+        base = ROOT / d
+        if not base.is_dir():
+            continue
+        for p in sorted(base.rglob("*.sh")):
+            if any(s in p.name for s in SKIP_NAMES):
+                continue
+            if "attic" in {q.lower() for q in p.parts}:
+                continue
+            out.append(p)
+    return out
+
+
 def main() -> int:
     bad: list[str] = []
-    for rel in TARGETS:
-        p = ROOT / rel
-        if p.is_file():
-            bad.extend(findings_in(p.read_text(encoding="utf-8", errors="replace"), rel))
+    for p in targets():
+        bad.extend(findings_in(p.read_text(encoding="utf-8", errors="replace"),
+                               p.relative_to(ROOT).as_posix()))
     for line in bad:
         print("  " + line)
     if bad:
