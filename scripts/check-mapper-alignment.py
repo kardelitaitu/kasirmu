@@ -432,7 +432,50 @@ def _self_test() -> int:
         [("a", 0), ("b", 1)],
     ))
 
-    bad = 0
+    # THE OTHER WALKER, which no case above reaches. select_column_list() ends the
+    # column list at the first TOP-LEVEL FROM, and blanking it left this self-test
+    # green (measured 2026-10-24 by scripts/sabotage-selftests.py). Its docstring at
+    # :80-84 records why a regex cannot do it: a naive non-greedy match truncates at
+    # the INNER FROM of a nested subquery and then reports every column past it as
+    # missing. stock_variance.rs was the case that exposed this.
+    #
+    # Four shapes: a plain SELECT, the nested subquery that broke it, a FROM after the
+    # subquery closes, and a query with no FROM at all.
+    bad_list: list[str] = []
+
+    def want_list(label, chunk, expect):
+        got = select_column_list(chunk)
+        if got != expect:
+            bad_list.append(f"{label}: expected {expect!r}, got {got!r}")
+
+    want_list("a plain SELECT ends at its FROM",
+              "SELECT a, b, c FROM things", "a, b, c ")
+    # The regression. The inner FROM must not end the list, so the returned text still
+    # carries the columns that follow the subquery.
+    want_list("a nested subquery does not truncate the list",
+              "SELECT a, b FROM (SELECT x FROM inner_t) t JOIN o ON t.x = o.id",
+              "a, b ")
+    # Depth is zero again after the subquery closes, so a real FROM further out is the
+    # one that ends it -- not the one inside the parens.
+    want_list("the FROM after a closed subquery ends it",
+              "SELECT a FROM (SELECT x FROM y) t, other FROM z", "a ")
+    # A SELECT with no FROM returns None, NOT the tail: the caller treats None as
+    # "not a query" and skips the chunk, which is the safe direction. Pinned because
+    # the obvious reading of the docstring ("between SELECT and its FROM") would be
+    # that a missing FROM yields everything.
+    want_list("a SELECT with no FROM is None", "SELECT a, b", None)
+    # No SELECT at all is None, not the chunk: a non-query must not be graded.
+    want_list("text with no SELECT is None", "INSERT INTO t VALUES (1)", None)
+    # And the empty list, which is the shape that reads as "no columns to check".
+    want_list("SELECT immediately followed by FROM is an empty list",
+              "SELECT FROM things", "")
+
+    for problem in bad_list:
+        print("  %-52s FAIL" % problem)
+    if not bad_list:
+        print("  %-52s ok" % "select_column_list (6 shapes, incl. the nested subquery)")
+
+    bad = len(bad_list)
     for name, lines, want in cases:
         anchor = next(i for i, l in enumerate(lines) if "row.get(" in l)
         got = collect_mapped_fields(lines, anchor)
