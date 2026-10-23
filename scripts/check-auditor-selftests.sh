@@ -42,3 +42,9 @@ python3 .agents/skills/docs-auditor/scripts/check-orphans.py --self-test
 # rows and cannot see a misclassified pair; the cases can, and all four mutations of the
 # comparison redden them.
 python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py --self-test
+# check-gate-runners.py joined 2026-10-23. It is the only checker that asks whether a
+# gate CAN BE RUN, and both of its rules fail silently in opposite ways: a dead YAML
+# reader reports every ci block as unparseable (noise, and people stop reading), while a
+# reachability rule that always said True reports a clean tree. main() now DELEGATES to
+# the same reachability() the cases grade, so the cases cannot drift from the gate.
+python3 .agents/skills/docs-auditor/scripts/check-gate-runners.py --self-test

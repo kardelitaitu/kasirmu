@@ -123,10 +123,178 @@ def npm_script_exists(root, script_name: str, inner=()) -> bool:
     return False
 
 
+#: Workflow bodies and the job keys that must come out of them.
+#: workflow_jobs() is a hand-rolled shallow YAML reader, and a false MISSING here is
+#: worse than a missed finding -- it reports a genuinely-wired gate as unreachable and
+#: trains the reader to ignore the checker. Both directions are pinned.
+JOB_CASES = (
+    ("simple jobs", "jobs:\n  build:\n    runs-on: x\n  test:\n    runs-on: x\n", {"build", "test"}),
+    # A job key with a trailing comment is still a job key.
+    ("a comment line inside jobs is skipped", "jobs:\n  # a note\n  build:\n    runs-on: x\n", {"build"}),
+    # A job whose value starts on the same line (a flow mapping) is NOT matched by the
+    # shallow reader, and that is deliberate: reporting unreadable beats inventing a key.
+    ("inline job value is not invented", "jobs:\n  build: {runs-on: x}\n", set()),
+    # The block ends at the next top-level key.
+    ("stops at the next top-level key", "jobs:\n  build:\n    runs-on: x\nenv:\n  test: 1\n", {"build"}),
+    # No jobs key at all is an empty set, and the caller reports that as unreadable.
+    ("no jobs block", "name: ci\non: push\n", set()),
+    # A step key four spaces deep is not a job. NOTE, measured rather than assumed: this
+    # case does NOT redden if the indent regex is loosened from "  " to \s+, because the
+    # deeper line is never reached -- the loop breaks at the first non-indented line, and a
+    # 4-space key sits under an already-matched 2-space parent, so the cursor has moved on.
+    # The regex is therefore REDUNDANT with the break, not load-bearing, and no case can
+    # distinguish it. Kept anyway: it states the intended nesting depth, and costs nothing
+    # if a later edit removes the break.
+    (
+        "a deeper key is a step, not a job",
+        "jobs:\n  build:\n    runs-on: x\n    steps:\n      - run: echo\n",
+        {"build"},
+    ),
+    # And the block still ends at the next top-level key even after a nested map.
+    (
+        "nested maps do not leak keys",
+        "jobs:\n  build:\n    strategy:\n      matrix:\n        os: [x]\n    runs-on: x\n",
+        {"build"},
+    ),
+)
+
+
+#: (gates, steps, expected_problem_ids) -- the reachability decision itself.
+#: `steps` stands in for the labels scripts/check.sh actually defines.
+REACH_CASES = (
+    (
+        "a step that exists makes the gate reachable",
+        [{"id": "a", "status": "required", "runners": {"check.sh": ["live step"]}}],
+        {"live step"},
+        [],
+    ),
+    (
+        "a step that does not exist is a finding -- the rust-clippy shape",
+        [{"id": "a", "status": "required", "runners": {"check.sh": ["clippy"]}}],
+        {"clippy workspace"},
+        ["a"],
+    ),
+    (
+        "one live step among dead ones is still reachable",
+        [{"id": "a", "status": "required", "runners": {"check.sh": ["live step", "gone"]}}],
+        {"live step"},
+        [],
+    ),
+    (
+        "a gate with no runners at all is a finding",
+        [{"id": "a", "status": "required", "runners": {}}],
+        {"live step"},
+        ["a"],
+    ),
+    (
+        "an advisory gate is not graded",
+        [{"id": "a", "status": "advisory", "runners": {}}],
+        set(),
+        [],
+    ),
+    (
+        "a bad ci job is a finding even when a live step exists",
+        [{"id": "a", "status": "required", "runners": {"check.sh": ["live step"]},
+          "ci": {"workflow": "wf.yml", "job": "nope"}}],
+        {"live step"},
+        ["a"],
+    ),
+    (
+        "a good ci job is reachable without any step",
+        [{"id": "a", "status": "required", "runners": {},
+          "ci": {"workflow": "wf.yml", "job": "build"}}],
+        set(),
+        [],
+    ),
+)
+
+
+def workflow_jobs_from_text(text: str) -> set:
+    """workflow_jobs() over a STRING, so the cases need no file."""
+    out, in_jobs = set(), False
+    for line in text.split(chr(10)):
+        if re.match(r"^jobs:\s*$", line):
+            in_jobs = True
+            continue
+        if in_jobs:
+            if re.match(r"^\S", line) and not line.startswith("#"):
+                if not line.strip():
+                    continue
+                break
+            m = re.match(r"^  ([A-Za-z0-9_-]+):\s*$", line)
+            if m:
+                out.add(m.group(1))
+    return out
+
+
+def reachability(gates, steps, workflow_jobs_lookup, npm_lookup):
+    """(problem_ids, checked) for a gate list. Injected lookups keep it file-free."""
+    problems, checked = [], 0
+    for g in gates:
+        if g.get("status") != "required":
+            continue
+        checked += 1
+        reachable = False
+        ci_broken = False
+        for name, listed in (g.get("runners") or {}).items():
+            listed = listed or []
+            if name == "check.sh":
+                if [x for x in listed if x in steps]:
+                    reachable = True
+            elif npm_lookup(name, listed):
+                reachable = True
+        ci = g.get("ci")
+        if ci:
+            jobs = workflow_jobs_lookup(ci.get("workflow"))
+            job = ci.get("job")
+            if jobs is None:
+                ci_broken = True
+            elif jobs and job and job not in jobs:
+                ci_broken = True
+            elif jobs and job:
+                reachable = True
+        if not reachable or ci_broken:
+            problems.append(g.get("id", "?"))
+    return problems, checked
+
+
+def self_test() -> int:
+    """Grade the YAML reader and the reachability rule; report EVERY failure."""
+    bad = []
+    for name, text, expected in JOB_CASES:
+        got = workflow_jobs_from_text(text)
+        if got != expected:
+            bad.append("  jobs %s: expected %r, got %r" % (name, expected, got))
+    workflows = {"wf.yml": {"build", "test"}}
+    for name, gates, steps, expected in REACH_CASES:
+        # None stands for an absent workflow, which main() reports as unreadable.
+        get_jobs = lambda wf: workflows.get(wf)
+        got, _ = reachability(gates, steps, get_jobs, lambda n, l: False)
+        if got != expected:
+            bad.append("  reach %s: expected %r, got %r" % (name, expected, got))
+    if bad:
+        sys.stderr.write("SELF-TEST WRONG:" + chr(10) + chr(10).join(bad) + chr(10))
+        return 2
+    print("SELF-TEST OK (%d cases, no file read)" % (len(JOB_CASES) + len(REACH_CASES)))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--self-test", action="store_true",
+                    help="run this checker's cases and exit")
     args = ap.parse_args()
+    if args.self_test:
+        return self_test()
+    # Grade both rules before the manifest. A YAML reader that stopped matching would
+    # report every ci block as unparseable (noisy, and people stop reading), while a
+    # reachability rule that always said True would report a clean tree -- the silent
+    # direction this checker exists to prevent.
+    rc = self_test()
+    if rc:
+        sys.stderr.write("RULES WENT DEAF: not trusting the manifest scan below." + chr(10))
+        return rc
 
     root = repo_root()
     gp = root / GATES
@@ -138,62 +306,50 @@ def main() -> int:
 
     gates = data.get("gates") or []
     steps = check_sh_steps(root)
+
+    def _jobs_for(workflow_name):
+        """Job keys for a workflow, or None when the workflow itself is absent."""
+        wf = root / ".github" / "workflows" / str(workflow_name or "")
+        if not wf.is_file():
+            return None
+        return workflow_jobs(wf)
+
+    # The SAME function the self-test grades -- not a copy of it. A duplicate loop here
+    # would leave the cases testing code the gate does not run, which is the "a checker
+    # that cannot fail" trap one level up.
+    problems_ids, checked = reachability(
+        gates, steps, _jobs_for, lambda n, l: npm_script_exists(root, n, l))
+
+    # Rebuild the human-readable detail for the gates that failed. Kept separate from
+    # the decision so the decision stays gradeable.
     problems = []
-    checked = 0
-
     for g in gates:
-        if g.get("status") != "required":
-            continue
-        checked += 1
         gid = g.get("id", "?")
-        runners = g.get("runners") or {}
-        reachable = False
-        ci_broken = False
+        if gid not in problems_ids:
+            if args.verbose and g.get("status") == "required":
+                pass
+            continue
         detail = []
-
-        for name, listed in runners.items():
+        for name, listed in (g.get("runners") or {}).items():
             listed = listed or []
             if name == "check.sh":
-                live = [s for s in listed if s in steps]
-                dead = [s for s in listed if s not in steps]
-                if live:
-                    reachable = True
+                dead = [x for x in listed if x not in steps]
                 if dead:
-                    detail.append("check.sh step(s) not in %s: %s"
-                                  % (CHECK_SH, ", ".join(dead)))
-            elif npm_script_exists(root, name, listed):
-                reachable = True
-            else:
+                    detail.append("check.sh step(s) not in %s: %s" % (CHECK_SH, ", ".join(dead)))
+            elif not npm_script_exists(root, name, listed):
                 detail.append("runner %r names neither a file nor an npm script "
                               "that defines %s" % (name, ", ".join(listed) or "anything"))
-
         ci = g.get("ci")
         if ci:
-            wf = root / ".github" / "workflows" / str(ci.get("workflow", ""))
+            jobs = _jobs_for(ci.get("workflow"))
             job = ci.get("job")
-            # A BAD ci block is a finding in its own right, not merely a
-            # non-contribution. The first version only *added* reachability and
-            # never removed it, so a gate whose check.sh step was fine but whose
-            # ci block named a nonexistent job still reported reachable -- the
-            # exact under-reporting this checker exists to prevent, one level up.
-            if not wf.is_file():
+            if jobs is None:
                 detail.append("ci workflow %r does not exist" % ci.get("workflow"))
-                ci_broken = True
-            else:
-                jobs = workflow_jobs(wf)
-                if jobs and job and job not in jobs:
-                    detail.append("ci job %r is not defined in %s" % (job, wf.name))
-                    ci_broken = True
-                elif jobs and job:
-                    reachable = True
-                elif not jobs:
-                    detail.append("could not parse jobs from %s" % wf.name)
-
-        if not reachable or ci_broken:
-            problems.append((gid, detail or ["no runners and no ci block"]))
-        elif detail and args.verbose:
-            print("  note %-22s %s" % (gid, "; ".join(detail)))
-
+            elif jobs and job and job not in jobs:
+                detail.append("ci job %r is not defined in %s" % (job, ci.get("workflow")))
+            elif not jobs:
+                detail.append("could not parse jobs from %s" % ci.get("workflow"))
+        problems.append((gid, detail or ["no runners and no ci block"]))
     print("check-gate-runners: %d required gate(s), %d with a reachable runner"
           % (checked, checked - len(problems)))
     if problems:
