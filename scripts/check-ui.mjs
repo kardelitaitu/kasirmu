@@ -225,7 +225,11 @@ function main() {
       console.error(`  Fix scripts/gates.json or add the missing gate here.`);
     }
   } else {
-    console.log(`  ${YELLOW}⚠ Gate manifest unreadable — manifest self-audit skipped (${gatesManifestPath})${NC}`);
+    // An unreadable manifest used to leave manifestOk TRUE and print a warning, which
+    // made the self-audit silently vacuous: the one job it has is to notice that the
+    // manifest and this runner disagree, and it cannot do that without the manifest.
+    manifestOk = false;
+    console.error(`\n${RED}✘ Gate manifest unreadable — the self-audit cannot run: ${gatesManifestPath}${NC}`);
   }
 
   console.log(`\n${BOLD}${CYAN}═══════════════════════════════════════${NC}`);
@@ -240,6 +244,19 @@ function main() {
     console.log(`  ${icon} ${r.gate} (${r.duration}s) — ${label}`);
   }
   console.log(`\n  Total: ${totalSec}s  |  ${GREEN}${pass} passed${NC}  ${YELLOW}${skip} skipped${NC}  ${fail > 0 ? `${RED}${fail} failed` : ''}${NC}`);
+
+  // THE CENSUS FLOOR. "0 failed" and "0 ran" both print a green summary, and this
+  // runner has two ways to reach the second: every gate SKIPs (no Docker, no Playwright,
+  // a missing node_modules), or the manifest is unreadable so the self-audit above is
+  // silently skipped and manifestOk stays true. Both then printed
+  // "All checks passed" — measured 2026-10-23 by tracing the counters, not assumed.
+  // A run that passed NOTHING has proven nothing, so it is now an error.
+  const nothingRan = pass === 0;
+  if (nothingRan) {
+    console.error(`\n${RED}${BOLD}✘ No gate passed: ${skip} skipped, ${fail} failed.${NC}`);
+    console.error('  A run where nothing ran is not a pass. Check Docker, Playwright and node_modules.');
+    process.exit(1);
+  }
 
   if (fail > 0 || !manifestOk) {
     console.error(`\n${RED}${BOLD}✘ Some checks failed. Fix the issues above and re-run.${NC}\n`);
