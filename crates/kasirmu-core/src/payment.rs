@@ -90,6 +90,30 @@ pub struct PaymentSplitArg {
     pub idempotency_key: Option<String>,
 }
 
+impl PaymentSplitArg {
+    /// Return the effective ADR-64 tender state, deriving it when absent:
+    /// - `cash` -> `"settled"` (Rule 1: cash is the only method written settled at record time)
+    /// - `open_bill`, `pay_later`, `credit` -> `"pending"` (deferred tenders)
+    /// - electronic tenders (`card`, `qris`, etc.) -> `"confirmed"` if gateway corroboration exists, else `"unconfirmed"` (Rule 3)
+    pub fn effective_gateway_status(&self) -> String {
+        if let Some(ref st) = self.gateway_status {
+            return st.clone();
+        }
+        let norm = self.method.to_ascii_lowercase();
+        match norm.as_str() {
+            "cash" => "settled".to_string(),
+            "open_bill" | "pay_later" | "credit" => "pending".to_string(),
+            _ => {
+                if self.gateway_reference.is_some() || self.gateway_response.is_some() {
+                    "confirmed".to_string()
+                } else {
+                    "unconfirmed".to_string()
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "payment_tests.rs"]
 mod tests;

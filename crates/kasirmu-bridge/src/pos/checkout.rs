@@ -179,6 +179,20 @@ pub fn stamp_attempt_split_keys(attempt_id: Option<&str>, splits: &mut [PaymentS
     }
 }
 
+/// Stamp ADR-64 tender states onto checkout splits when not explicitly supplied.
+///
+/// Under ADR-64 D4:
+/// - Cash is the only method written `settled` at record time.
+/// - Any uncorroborated electronic tender recorded without gateway confirmation is `unconfirmed`.
+/// - Deferred methods (e.g. `open_bill`, `pay_later`, `credit`) default to `pending`.
+pub fn stamp_tender_states(splits: &mut [PaymentSplitArg]) {
+    for split in splits.iter_mut() {
+        if split.gateway_status.is_none() {
+            split.gateway_status = Some(split.effective_gateway_status());
+        }
+    }
+}
+
 pub(super) mod replay;
 use replay::{ReplayVerdict, replay_verdict, shortfall_basket_key, validated_attempt_id};
 
@@ -504,6 +518,7 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
         // from colliding with itself on its own second row. A stale id the
         // guard refused above was re-keyed, so this stamps the fresh one.
         stamp_attempt_split_keys(effective_attempt_id.as_deref(), &mut splits);
+        stamp_tender_states(&mut splits);
 
         // Multi-terminal: terminal_id is passed to complete_sale so that
         // the sale record tracks which terminal processed it. This enables
@@ -845,6 +860,7 @@ pub async fn complete_sale_scoped(
         // from colliding with itself on its own second row. A stale id the
         // guard refused above was re-keyed, so this stamps the fresh one.
         stamp_attempt_split_keys(effective_attempt_id.as_deref(), &mut splits);
+        stamp_tender_states(&mut splits);
 
         let deduct = if stock_locations.is_empty() {
             // Same primary-location resolution the legacy

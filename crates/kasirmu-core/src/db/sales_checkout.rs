@@ -736,6 +736,7 @@ impl Store<'_> {
             for split in payment_splits {
                 let payment_id = uuid::Uuid::now_v7().to_string();
                 let method_norm = split.method.to_ascii_lowercase();
+                let gateway_status = split.effective_gateway_status();
                 tx.execute(
                     "INSERT INTO payments (id, sale_id, method, amount_minor, currency,
                                            gateway_reference, gateway_status, gateway_response,
@@ -748,7 +749,7 @@ impl Store<'_> {
                         split.amount_minor,
                         cur_str,
                         split.gateway_reference,
-                        split.gateway_status,
+                        gateway_status,
                         split.gateway_response,
                         now,
                         split.idempotency_key,
