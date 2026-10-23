@@ -75,6 +75,31 @@ So the count of **genuinely user-visible tablet breakage is 5–7, not 9**, and 
 (`open_product_images_scoped`) is a documented degraded path that already works. The remaining
 question per site is only whether the error is caught or thrown.
 
+**FINAL GRADE, 2026-10-24: every one of the 9 is caught. None throws.**
+
+| site | how the error surfaces |
+|---|---|
+| `MemosScreen.tsx:210,284` | `try` → `setActionError` — the user sees an error and the memo does not save |
+| `TerminalManagementScreen.tsx:289,383,397` | `try` → `setBindingError` — the binding panel fails to load |
+| `WarehouseConsole.tsx:112`, `WarehouseCountFlow.tsx:125` | `try` → `setLoadError` with a localized message (`warehouse-load-error`) |
+| `RetailPosScreen.tsx:881` | `catch` → `window.open` fallback, returns `false`; caller also swallows |
+| `DebtRemindersCard.tsx:127` | `try` → `console.error` only — **the user gets no feedback and no export** |
+
+**So the honest severity is: 7 sites show a user-visible error state, 1 silently does nothing, 1
+degrades to a working fallback. No site crashes and no site corrupts data.**
+
+That is a *feature-completeness* gap — "these screens are broken on tablet" — not a
+*correctness* gap. It is still worth fixing, but it changes the decision: the tablet is not
+crashing, so this does not need to block anything today, and the BR-* ruling it waits on is a
+product decision about which surfaces the tablet should carry, not a safety one.
+
+**A measurement note, because this document has now been corrected three times and the pattern
+matters more than any single number.** Each pass was honest about what it had NOT checked and said
+so in the text — registration (pass 1), mount reachability (pass 2), error handling (pass 3) — and
+each pass still produced a confident headline ("34 failures", "9 failures") from the facts it did
+have. The lesson is not "measure harder"; it is that a headline count assembled before the last
+check should be labelled a lower bound, not a finding.
+
 **The 11 topology sites are not failures.** `TopologyScreen.tsx:167-169` returns a notice before
 `TopologyScreenContent` mounts when `isTabletShell()`, and `WorkspaceHome.tsx:46-48` keeps
 `topology` off the tablet shell. So the whole topology family is deliberately tablet-blocked,
