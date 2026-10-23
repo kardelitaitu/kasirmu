@@ -319,6 +319,79 @@ def report_list(source: str) -> int:
     return 0
 
 
+def self_test() -> int:
+    """Liveness for the report formatters, which are what a reader actually sees.
+
+    This gate had NO test of any kind (found 2026-10-23 by a census requiring the
+    quoted `--self-test` literal: three checkers lacked the flag, one of them here).
+    The assertions live in Rust, so the plan DETECTOR is covered by the probe's own
+    falsification test -- but everything between the probe's output and the bytes on
+    the console is Python, and it is where this file records three measured defects:
+    ANSI noise, phantom blocks from cargo's own "Compiling ..." lines, and a plan body
+    that has to stop at the harness footer. Those are graded here on synthetic text,
+    so the case can construct the exact shape that used to be misread.
+
+    Pure: synthetic strings only. Nothing is built, run, read or written.
+    """
+    bad: list[str] = []
+
+    def want(name: str, got, expect) -> None:
+        if got != expect:
+            bad.append(f"{name}: expected {expect!r}, got {got!r}")
+
+    # ANSI colour is stripped, and anything non-ASCII becomes "?" rather than a
+    # UnicodeEncodeError on a CP1252 console -- the reason this function exists.
+    want("ANSI colour is stripped", ascii_only("\x1b[31mred\x1b[0m"), "red")
+    want("non-ascii becomes a replacement", ascii_only("caf\u00e9"), "caf?")
+
+    # cargo's status lines are noise. DEFINITION_LINE is what separates an indented
+    # cargo line from an indented plan step, so a plan step naming a version must count
+    # as a body line while "Compiling kr v0.0.41 (C:...)" must not.
+    want("a cargo status line is a definition", bool(DEFINITION_LINE.match("Compiling kasirmu-core v0.0.41 (C:)")), True)
+    want("a plan step is not a definition", bool(DEFINITION_LINE.match("SCAN TABLE refunds")), False)
+    want("the result footer is harness", is_harness_line("test result: FAILED. 0 passed"), True)
+    want("the binary line is harness",
+         is_harness_line("     Running " + "tests" + "\\" + "integration" + "\\" + "q.rs"), True)
+    want("a plan step is not harness", is_harness_line("SCAN TABLE sales"), False)
+
+    # THE PHANTOM-BLOCK BUG. A block header is only a defect when the NEXT line is the
+    # verdict; without that rule the report gained two phantom defects per run
+    # ("Compiling ...", "Running tests ..."), both indented like the gate's message.
+    noisy = "\n".join([
+        "     Running tests/integration.rs (target/debug/deps/integration.exe)",
+        "daily_revenue (crates/kasirmu-core/tests/integration/query_plan_probe.rs:1)",
+        "  reads in full: refunds (SCAN), sales (SCAN)",
+        "  plan:",
+        "    SCAN TABLE refunds",
+        "test result: FAILED. 0 passed; 1 failed",
+    ])
+    # Grade the CONTENT, not len(): a gutted offender_blocks() answers None, and
+    # len(None) kills the run with TypeError instead of naming the broken case.
+    blocks = offender_blocks(noisy) or []
+    want("exactly one defect block survives the noise", len(blocks), 1)
+    want("the block names the query", "daily_revenue" in (blocks[0] if blocks else ""), True)
+    want("the block keeps the verdict", "reads in full: refunds" in (blocks[0] if blocks else ""), True)
+    want("the block keeps the plan step", "SCAN TABLE refunds" in (blocks[0] if blocks else ""), True)
+    want("the harness footer is not in the block",
+         "test result" in (blocks[0] if blocks else ""), False)
+
+    # A header NOT followed by a verdict is cargo talking, and must produce nothing.
+    cargo_only = "Compiling kasirmu-core v0.0.41 (C:\\dev\\kasirmu)"
+    want("a header without a verdict is not a defect", offender_blocks(cargo_only), [])
+
+    # The summary line is the only place the gate says how much it looked at.
+    want("the summary is extracted",
+         count_probed("thread panicked\n3 of 12 probed queries read a LARGE table in full"),
+         "3 of 12 probed queries read a LARGE table in full")
+    want("no summary is None, not a guess", count_probed("nothing to see"), None)
+
+    if bad:
+        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
+        return 2
+    print("SELF-TEST OK (14 cases, nothing built or run)")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run the query-plan regression probe and report unindexed scans.",
@@ -333,7 +406,15 @@ def main() -> int:
         action="store_true",
         help="list the covered queries and the LARGE tables, then exit",
     )
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help="grade the report formatters on synthetic output and exit. Pure: nothing is built or run.",
+    )
     args = parser.parse_args()
+
+    if args.self_test:
+        return self_test()
 
     source = probe_source()
     if not source:
