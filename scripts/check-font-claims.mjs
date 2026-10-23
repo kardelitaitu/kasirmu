@@ -213,15 +213,22 @@ if (!bundle.ran || bundle.status !== 0) {
     swap: /font-display: swap\s+(\d+) of (\d+)/.exec(b),
     absent: /referenced but absent\s+(\d+)/.exec(b)?.[1],
     orphans: /on disk, never ref'd\s+(\d+)/.exec(b)?.[1],
+    // TWO facts, not one. The numeric line is 'unaskable' when git could not be asked, so
+    // a pattern that only accepts digits yields undefined there and the row reports
+    // "undefined commit(s)" -- right verdict, misleading sentence. Read both and say which.
     stale: /commits that could change these numbers since the build: (\d+)/.exec(b)?.[1],
+    freshness: /verdict: (CURRENT|STALE|UNKNOWN)[:\s]?([^\n]*)/.exec(b)?.[1],
   };
   const okBundle = m.blocks === '13' && m.refs?.[1] === '13' && m.refs?.[2] === '12' && m.refs?.[3] === '1'
     && m.swap?.[1] === '13' && m.swap?.[2] === '13' && m.absent === '0' && m.orphans === '0';
   check('the built font surface', okBundle,
     `blocks=${m.blocks} refs=${m.refs?.[1]} (${m.refs?.[2]} files + ${m.refs?.[3]} data) swap=${m.swap?.[1]}/${m.swap?.[2]} absent=${m.absent} orphans=${m.orphans}`,
     '13 blocks; 13 refs = 12 files + 1 data:; 13/13 swap; 0 absent; 0 orphans');
-  check('the artifact is current with HEAD', m.stale === '0', `${m.stale} commit(s) on the font surface since the build`,
-    '0 -- rebuild (cd ui && npm run build) before trusting the figures above');
+  check('the artifact is current with HEAD', m.stale === '0' && m.freshness === 'CURRENT',
+    m.freshness === undefined
+      ? 'the checker printed no verdict line, so freshness was never measured'
+      : `verdict ${m.freshness}; ${m.stale ?? 'an unaskable number of'} commit(s) on the font surface since the build`,
+    'verdict CURRENT with 0 commits -- rebuild (cd ui && npm run build) before trusting the figures above');
 }
 
 // ---- rows: the bundle-budget gate this plan now makes claims about ----------------

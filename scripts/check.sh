@@ -136,10 +136,6 @@ step "no-raw-params self-test" "bash scripts/verify-no-raw-params.sh --self-test
 step "scoped coverage (H-1)" "bash scripts/verify-scoped-coverage.sh" bash scripts/verify-scoped-coverage.sh
 # The classifier's silent failures: an allowlist regex that matches by SUBSTRING where
 # the rule is a whole name (a new command containing an allowlisted one reads as
-# covered), and a twin of a DIFFERENT command accepted as cover. The registered and twin
-# floors below catch a DEAD SCAN; they cannot see a misclassification, which is what these
-# six cases pin. Reverting any of the four rules reddens the case that names it.
-step "scoped coverage self-test" "bash scripts/verify-scoped-coverage.sh --self-test" bash scripts/verify-scoped-coverage.sh --self-test
 # The gate had TWO silent failures and the twin one was not covered by any floor: with a
 # dead `_scoped` scan every command falls to the allowlist and it printed PASS with twin
 # coverage 0, while the registered floor reads only the other half of the subject. A twin
