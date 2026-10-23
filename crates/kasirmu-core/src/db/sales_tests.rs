@@ -3567,7 +3567,7 @@ fn concurrent_complete_sale_serialized_by_begin_immediate() {
     // Use a file-based DB so two connections can access it concurrently.
     // The guard owns the directory and deletes it on drop; it must outlive
     // every thread that opens the file below.
-    let scratch = kasirmu_test_support::ScratchDir::new("oz_concurrent");
+    let scratch = kasirmu_test_support::ScratchDir::new("sale-concurrent");
     let dir = scratch.path();
     let db_path = dir.join("test.db");
 

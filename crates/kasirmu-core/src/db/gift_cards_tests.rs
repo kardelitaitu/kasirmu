@@ -765,7 +765,7 @@ fn unfreeze_gift_card_refuses_an_active_card() {
 fn freeze_gift_card_race_cannot_overwrite_a_competing_transition() {
     // The guard owns the directory and deletes it on drop, so the fixture
     // cannot be left behind by a failed assertion.
-    let scratch = kasirmu_test_support::ScratchDir::new("oz_gc_freeze_race");
+    let scratch = kasirmu_test_support::ScratchDir::new("gift-card-freeze-race");
     let dir = scratch.path();
     let db_path = dir.join("kasir.db");
     {
@@ -873,7 +873,7 @@ fn freeze_gift_card_race_cannot_overwrite_a_competing_transition() {
 fn unfreeze_gift_card_race_cannot_overwrite_a_competing_transition() {
     // The guard owns the directory and deletes it on drop, so the fixture
     // cannot be left behind by a failed assertion.
-    let scratch = kasirmu_test_support::ScratchDir::new("oz_gc_unfreeze_race");
+    let scratch = kasirmu_test_support::ScratchDir::new("gift-card-unfreeze-race");
     let dir = scratch.path();
     let db_path = dir.join("kasir.db");
     {

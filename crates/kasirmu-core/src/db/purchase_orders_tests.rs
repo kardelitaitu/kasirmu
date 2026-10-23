@@ -1067,7 +1067,7 @@ fn update_po_status_race_cannot_overwrite_a_competing_transition() {
     }
 
     // The guard owns the directory and deletes it on drop.
-    let scratch = kasirmu_test_support::ScratchDir::new("oz_po_race");
+    let scratch = kasirmu_test_support::ScratchDir::new("purchase-order-race");
     let dir = scratch.path();
     let db_path = dir.join("kasir.db");
     let po_id = {

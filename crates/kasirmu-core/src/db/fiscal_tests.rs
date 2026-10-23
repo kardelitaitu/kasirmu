@@ -498,7 +498,7 @@ fn concurrent_claims_never_issue_the_same_number() {
 
     // The guard owns the directory and deletes it on drop; keep it alive for
     // the whole test, including the spawned claimers that read the file.
-    let scratch = kasirmu_test_support::ScratchDir::new("oz_fiscal_race");
+    let scratch = kasirmu_test_support::ScratchDir::new("fiscal-race");
     let dir = scratch.path();
     let db_path = dir.join("test.db");
 

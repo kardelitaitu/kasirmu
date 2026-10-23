@@ -100,7 +100,7 @@ fn a_transition_that_lost_the_race_reports_the_conflict() {
     for _attempt in 0..8 {
         // Every attempt owns its own guarded directory; the guard deletes it
         // when this iteration's scope ends (on the early return too).
-        let scratch = kasirmu_test_support::ScratchDir::new("oz_sale_race");
+        let scratch = kasirmu_test_support::ScratchDir::new("sale-race");
         let dir = scratch.path();
         let conn = fresh_file(dir);
         let sale_id = seed_pending_sale(&conn);
@@ -243,7 +243,7 @@ fn a_transition_that_lost_the_race_reports_the_conflict() {
 #[test]
 fn a_committed_competing_transition_is_not_overwritten() {
     // The guard owns the directory and deletes it on drop.
-    let scratch = kasirmu_test_support::ScratchDir::new("oz_sale_cas");
+    let scratch = kasirmu_test_support::ScratchDir::new("sale-cas");
     let dir = scratch.path();
     let conn = fresh_file(dir);
     let sale_id = seed_pending_sale(&conn);

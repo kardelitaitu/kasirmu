@@ -524,7 +524,7 @@ fn a_failed_recipe_read_does_not_silently_skip_the_deduction() {
 fn void_sale_race_reports_the_conflict_rather_than_overwriting_a_completed_sale() {
     // The guard owns the directory and deletes it on drop; keep it alive for
     // the whole test, including the rival thread that opens the same file.
-    let scratch = kasirmu_test_support::ScratchDir::new("oz_void_race");
+    let scratch = kasirmu_test_support::ScratchDir::new("sale-void-race");
     let dir = scratch.path();
     let db_path = dir.join("kasir.db");
     let sale_id = {

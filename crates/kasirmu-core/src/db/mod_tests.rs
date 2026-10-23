@@ -27,7 +27,7 @@ fn backup_creates_valid_copy() {
     s.set_setting("audit.key", "value").unwrap();
 
     // The guard owns the directory and deletes it on drop.
-    let scratch = kasirmu_test_support::ScratchDir::new("oz_backup");
+    let scratch = kasirmu_test_support::ScratchDir::new("db-backup");
     let dir = scratch.path();
     let path = dir.join("backup.sqlite");
 

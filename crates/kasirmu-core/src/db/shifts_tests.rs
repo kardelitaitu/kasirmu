@@ -986,7 +986,7 @@ fn open_shift_failed_open_leaves_no_row() {
 #[test]
 fn open_shift_race_cannot_create_a_second_open_shift() {
     // The guard owns the directory and deletes it on drop.
-    let scratch = kasirmu_test_support::ScratchDir::new("oz_shift_race");
+    let scratch = kasirmu_test_support::ScratchDir::new("shift-race");
     let dir = scratch.path();
     let db_path = dir.join("kasir.db");
     {

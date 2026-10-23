@@ -41,7 +41,7 @@ fn setup_file_db() -> (
     std::path::PathBuf,
     kasirmu_test_support::ScratchDir,
 ) {
-    let scratch = kasirmu_test_support::ScratchDir::new("oz_scoping_conc");
+    let scratch = kasirmu_test_support::ScratchDir::new("store-scoping-concurrency");
     let dir = scratch.path().to_path_buf();
     let db_path = dir.join("test.db");
 

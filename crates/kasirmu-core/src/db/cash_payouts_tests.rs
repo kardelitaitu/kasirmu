@@ -373,7 +373,7 @@ fn payout_refused_when_shift_closes_between_read_and_write() {
     // in-memory DB is private per connection).
     // The guard owns the directory: dropping it (at the end of this test)
     // deletes it, so the fixture cannot accumulate under target/test-scratch.
-    let scratch = kasirmu_test_support::ScratchDir::new("oz_payout_race");
+    let scratch = kasirmu_test_support::ScratchDir::new("cash-payout-race");
     let dir = scratch.path();
     let db_path = dir.join("test.db");
 
