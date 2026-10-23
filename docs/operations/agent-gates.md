@@ -82,6 +82,62 @@ would sweep their half-finished work. Report it instead, and verify your own cha
 smallest command that covers it (`npm run test -- <file>`) is stronger evidence than a whole-suite run
 you cannot attribute.
 
+## The two steps of `check.sh` that cannot pass on a Windows workstation, and why
+
+Both were measured 2026-10-23 during a full-matrix sweep. Neither is a code defect and neither
+should be "fixed" by weakening the gate; both are recorded here so the next reader does not
+re-derive them.
+
+### Step 34 (`test workspace`) needs a PostgreSQL no unprivileged account can start
+
+`cargo nextest run --workspace --all-features` turns on `kasirmu-api`'s `pg-tests` feature. With no
+server reachable, `throwaway_test_pool` returns `None` and the arm panics by design:
+
+```
+PG integration: admin pool get failed: Error occurred while creating a new object: error connecting to server
+PG sale-batch test skipped: throwaway_test_pool returned None (postgres://postgres:postgres@localhost:15432/postgres)
+thread 'pg::tests::pg_create_sale_batches_product_lookup' panicked: PG test enabled but the resource is unreachable
+```
+
+CI supplies a real one (`dev-ci.yml` declares a `postgres:17-alpine` service and `OZ_TEST_PG_URL`).
+**On a Windows workstation the usual local answer -- the `oz-pg-test-15432` Docker container --
+needs a running Docker daemon, and a native install needs more privilege than an agent has.**
+Both attempts were made and both failed for environmental reasons, not configuration ones:
+
+| Attempt | Result |
+|---|---|
+| `Start-Service com.docker.service` | stays `Stopped`; `docker ps` cannot open the engine pipe |
+| `choco install postgresql17` | needs elevation; failed on a NuGet lock file it could not take |
+| EDB portable binaries, `initdb`, `pg_ctl` | initdb OK, start fails: `could not create shared memory segment: error code 1314` (`ERROR_PRIVILEGE_NOT_HELD`) on `CreateFileMapping(name=Global/PostgreSQL:...)` |
+| same, with `shared_buffers = 16MB` | fails identically at 22 MB -- it is the `Global\` namespace, not the size |
+
+So on such a host step 34 is expected red, and **step 36 (the JUnit receipt) inherits it** because
+it grades step 34's report. To verify the rest of the workspace, run the matrix with the feature
+off rather than with the step removed:
+
+```
+cargo nextest run --workspace --exclude kasirmu-app --exclude kasirmu-mobile
+```
+
+Measured that way: 3771 passed, 1 failed -- and the single failure was the OpenAPI router/spec
+drift, a real defect that has since been fixed. Nothing else in the workspace depends on PG.
+
+Do **not** add a silent skip for a missing server. The panicking arm is the design: a PG test
+that quietly does not run is indistinguishable from one that passed, which is the failure mode
+`scripts/verify-pg-tests-ran.py` exists to catch.
+
+### Step 108 (`selftest sweep`) needs `sh` on PATH, which a bare Windows child does not have
+
+`verify-shell-syntax.py` spawns `sh -n` and `bash -n`. `scripts/check.sh` runs it through bash, so
+it inherits Git's PATH and passes; the SWEEP launches it as a direct child of Python, which does
+not, and `shutil.which(`sh`)` returned `None`. The old code then fell back to the bare name and
+`subprocess` raised `[WinError 2] The system cannot find the file specified`.
+
+Fixed in the checker rather than in the caller (79a2875f1): PATH first, then the known
+Git-for-Windows locations, then the bare name. The last fallback is kept on purpose -- on a host
+with no POSIX shell at all the gate must still fail loudly at spawn time rather than parse
+nothing and report clean, and it does: breaking BOTH discovery paths yields `rc 2` with
+`could not run sh`.
 ## Writing a checker: two self-test forms, and say which you chose
 
 Ten of the twelve `scripts/check-*.py` checkers expose `--self-test`; `check-replay-fork.py` keeps its
