@@ -126,6 +126,43 @@ Do **not** add a silent skip for a missing server. The panicking arm is the desi
 that quietly does not run is indistinguishable from one that passed, which is the failure mode
 `scripts/verify-pg-tests-ran.py` exists to catch.
 
+### `git status` shows files modified when their content is IDENTICAL to HEAD
+
+Measured 2026-10-23 on this checkout, every round. Nine files report ` M` while their
+bytes match `HEAD` exactly:
+
+```
+.config/nextest.toml · apps/*/src/commands/registration_gate_tests.rs
+crates/kasirmu-bridge/src/workspaces.rs · crates/kasirmu-core/src/db/audit*.rs
+crates/kasirmu-core/tests/integration/backup_restore.rs
+crates/kasirmu-local-api/src/lib_tests.rs · scripts/scratch-leak-budget.json
+```
+
+Three commands disagree, and knowing which to trust is the whole point:
+
+| command | verdict |
+|---|---|
+| `git status --porcelain` | modified |
+| `git diff` / `git diff --stat` | **empty** |
+| `git diff-index HEAD -- <path>` | modified |
+
+Neither `git update-index --refresh` nor `git add --refresh` clears it; there is no
+`index.lock`. **The only authority is content**, and it is two commands:
+
+```bash
+git hash-object <path>            # the working tree's blob id
+git rev-parse HEAD:<path>         # the committed blob id
+```
+
+Equal ids mean there is nothing to commit, whatever `git status` says. This checkout is
+shared by several agents that write to it concurrently, and the index is a single racing
+object, so a stale stat entry is expected rather than alarming -- but a ` git add` or a
+bare `git commit -a` would still record every one of these paths, which is why §7.3
+forbids both.
+
+Do **not** "clean up" these files, and do not conclude a commit lost work. Confirm with
+the two commands above and move on.
+
 ### `npm run build` in `ui/` needs a TEMP the process can WRITE TO
 
 Measured 2026-10-23, twice in one round. With the default Windows `TEMP`
