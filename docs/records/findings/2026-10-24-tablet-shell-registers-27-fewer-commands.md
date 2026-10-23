@@ -60,15 +60,20 @@ sites actually mount on a tablet. The 34 sites split three ways:
 | **Gate false positive — an effective guard the checker could not read** | **5** | `if (!isTabletShell())`; now fixed in the checker |
 | **Unreachable on tablet** | 20 | topology notice (11), desktop-only mounts (5), no production importer (3), hook with no caller (1) |
 
-**The 9 that matter**, each traced to how a tablet reaches it:
+**The 9 that reach the code, and what each one actually does** (re-graded 2026-10-24 after
+reading the call sites' error handling, because "reaches the code" is not the same as "fails"):
 
-| site | command | reachability |
+| site | command | Effect on a tablet |
 |---|---|---|
-| `memo/MemosScreen.tsx:210,284` | `create_memo_scoped`, `revise_memo_scoped` | `memos` is a live TOOLS card; no shell gate in the file |
-| `terminals/TerminalManagementScreen.tsx:289,383,397` | `get_device_binding_scoped` ×2, `clear_device_binding_scoped` | `terminals` is a seeded admin tablet tab (`init.sql:1502`) |
-| `warehouse/WarehouseConsole.tsx:112`, `WarehouseCountFlow.tsx:125` | `list_warehouse_products_at_location` | fires on mount; `warehouse` is a tablet `WORKSPACE_ROUTE` |
-| `retail/RetailPosScreen.tsx:881` | `open_product_images_scoped` | RetailPosScreen **is** the tablet store-pos screen |
-| `reports/DebtRemindersCard.tsx:127` | `get_ap_aging_report_scoped` | `dashboard` is a tablet admin tab; user-initiated |
+| `memo/MemosScreen.tsx:210,284` | `create_memo_scoped`, `revise_memo_scoped` | inside `try` → `setActionError`; **the user sees an error and the memo does not save** |
+| `terminals/TerminalManagementScreen.tsx:289,383,397` | `get_device_binding_scoped` ×2, `clear_device_binding_scoped` | inside `try` → `setBindingError`; **binding fails to load/clear** |
+| `warehouse/WarehouseConsole.tsx:112`, `WarehouseCountFlow.tsx:125` | `list_warehouse_products_at_location` | fires on mount — needs per-site reading; likely a load failure |
+| `retail/RetailPosScreen.tsx:881` | `open_product_images_scoped` | **NOT a failure.** `ui/src/api/browser.ts:60-74` catches the rejection, logs a warning, opens a `window.open` fallback and returns `false`; the caller also `.catch(() => {})`s. The tablet has its own `open_product_images` (unscoped, global-db) in `apps/mobile-tauri/src/commands/browser.rs:32` — a NAME mismatch against the UI's `_scoped` spelling, not a missing feature. |
+| `reports/DebtRemindersCard.tsx:127` | `get_ap_aging_report_scoped` | user-initiated from a button; error path not yet read |
+
+So the count of **genuinely user-visible tablet breakage is 5–7, not 9**, and one of the nine
+(`open_product_images_scoped`) is a documented degraded path that already works. The remaining
+question per site is only whether the error is caught or thrown.
 
 **The 11 topology sites are not failures.** `TopologyScreen.tsx:167-169` returns a notice before
 `TopologyScreenContent` mounts when `isTabletShell()`, and `WorkspaceHome.tsx:46-48` keeps
