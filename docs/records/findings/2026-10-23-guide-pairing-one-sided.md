@@ -20,9 +20,20 @@ if (otherPaired === slug || selfPaired === other.slug) return url;
 Read the two halves carefully. The SECOND half is the correct one: THIS page names that
 slug, so the pair is declared by the page being checked. The FIRST half compares the
 OTHER page's `pair` against THIS page's own `slug` — it asks whether the other page
-claims to pair with us, and accepts the pair even when we never claimed it. Nothing then
-requires the claim to be reciprocal: A may say `pair: b` while B says `pair: c`, and A is
-still reported as having a counterpart.
+claims to pair with us, and accepts the pair even when we never claimed it.
+
+**Verified by driving the real function, 2026-10-23.** `lang` is the TARGET locale (the
+one whose path cannot be derived by prefix-swapping — see `check-seo.mjs`:763-768), so a
+correct probe is: an EN page `a` whose `pair: x` points at an ID page `x` whose own
+`pair:` points at `somewhere-else`. Asked for `a`'s ID counterpart, the function returns
+`/id/panduan/x/` — the non-reciprocal pair is accepted. Reciprocal and non-reciprocal
+inputs give the SAME answer, which is what makes the first half a defect rather than a
+different rule.
+
+> A first attempt at this probe used two files of DIFFERENT locales while passing
+> `lang` as if it meant "the page's own locale", and reported the rule as correct. The
+> function filters `other.locale !== lang`, so that probe skipped every candidate and
+> returned `null` — a measurement shaped by the wrong assumption, not by the code.
 
 ## Why it has not bitten
 
