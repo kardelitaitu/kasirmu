@@ -8356,3 +8356,96 @@ check-debt-ledger.py               -> 153 entries, 109 sections
 ```
 
 ### Ledger: 153 defined, 153 closed, 0 open.
+
+## §11PA — O-M89: — a gate that printed its own census instead of checking it, and the diagnostic that found its own successor (2026-10-23)
+
+Landed in `1d6a952e5`, `f5e0061a0`.
+
+**O-M89 · gates — `verify-architecture-boundaries.py` printed its population but never refused an empty one, and had no self-test at all; both are now true** — resolved in §11PA.
+
+### 1. The comment described a guard that did not exist
+
+`cargo_findings` carried this, at line 321:
+
+```
+# The Cargo half of the population: crates the graph names, and the
+# dependency edges actually followed between them. An empty graph and a graph
+# with no violation produce the same "0 blocking" without this.
+scope["crates"] += len(packages)
+```
+
+That is a correct statement of a hazard, followed by code that only COUNTS. The
+accumulator is not the guard it describes. `population_clause`'s docstring went further and
+made the omission deliberate-sounding: "Printing the population is what makes that visible
+without this tool taking an exit code away from a mode (fixtures) that legitimately has
+nothing to find."
+
+So the file said: a zero census is dangerous, and we surface it by printing a number. A
+number on a line whose exit code says PASS is read by nobody. Measured: `--metadata-file`
+with `{"packages": []}` printed "0 tracked, 0 blocking" over "0 crate(s), 0 dependency
+edge(s)" and exited **0**.
+
+### 2. What that is worth, measured rather than claimed
+
+The honest finding is that **the empty graph is not reachable through the real-run path
+today**. Attempting it: a root with no `Cargo.toml` fails first ("cargo metadata failed
+(101) ... this checker does not substitute a cached one", exit 2); a root with one crate
+and no `ui/src` fails earlier still. The floor added here is therefore **defence in
+depth against a future change** -- a cached-metadata fallback, an offline mode, a partial
+root -- not the repair of a live hole. Written that way in the code, because the
+alternative (calling it a fix) would be a false account of what was wrong.
+
+It fires correctly when the graph is genuinely too small: a 2-crate fixture gives
+
+```
+error: the Cargo graph names only 2 crate(s); a real tree has at least 5.
+A gate that walked nothing must not report clean -- this is the empty-graph shape,
+not a passing scan
+```
+
+The floor is set at 5 crates / 10 edges against a measured 41 / 603, so it cannot trip on
+growth or pruning. It is a ZERO-detector, not a number to maintain.
+
+### 3. The gate had no self-test, so nothing pinned the floor either
+
+Of the 34 scripts without `--self-test`, two are wired into `check.sh` as enforcing
+gates: this one and `check-query-plans.py`. This one already accepted `--root` and
+`--metadata-file`, i.e. it was built to be testable and simply was not tested.
+
+Seven cases added, every one asserting a VERDICT rather than a number, because a
+self-test that only checked the arithmetic could pass while `main()` ignored the result --
+the shape this file keeps producing. Anchoring mattered: the first draft asserted merely
+"some violation came back", and the planted-break run produced ONE failure instead of two,
+because the edge branch still fired. Rewritten to match the crate clause by name, the same
+break now reddens both.
+
+### 4. The diagnostic added last round found this round's omission
+
+`verify-selftests-wired.py` failed the sweep immediately after the self-test landed:
+
+```
+FAILED verify-selftests-wired.py: rc=2 SELF-TEST WRONG: live tree has 1 uncalled
+self-test(s): verify-architecture-boundaries.py
+```
+
+That is `3a28d7811`'s change working on its first real test. The sweep used to return
+only `tail[-1]` -- the count line -- so this message would have been reported as
+"39 green = 31 CAUGHT + 8 CLEAN; 1 red" with the sentence naming the file discarded. The
+wiring is in `f5e0061a0`: `check.sh` step 24 and the gate's `runners` list.
+
+### Verification
+
+```
+verify-architecture-boundaries.py --strict      -> rc 0, 41 crates / 603 edges
+verify-architecture-boundaries.py --self-test   -> SELF-TEST OK (7 cases), rc 0
+  planted: floor disabled                       -> rc 2, 2 FAILURES (both assertions)
+  a 2-crate fixture                             -> rc 2, names the crate count
+verify-selftests-wired.py --self-test           -> rc 0 (was rc 2 naming the new test)
+verify-selftest-sweep.py                        -> 51/51 OK (was 50)
+check.sh steps 23-34                            -> PASS, incl. the new step 24
+check-font-claims.mjs                           -> 16/16, rc 0 (count still 13)
+nextest --workspace (pg-tests off)              -> 10,517 passed, 0 failed, 92 skipped
+ui typecheck / lint / vitest                    -> 0 / 0 / 13,127 passed
+```
+
+### Ledger: 155 defined, 155 closed, 0 open.
