@@ -47,6 +47,15 @@ Three facts rule out the artefact reading, each measured rather than assumed:
 So a tablet user who opens Topology, Memos, Warehouse, Terminals, Email Reports or the POS
 reaches code that invokes a command the shell does not expose.
 
+**The failure shape, stated precisely.** An `invoke` of a command absent from `generate_handler!`
+rejects with an error rather than returning a value, so the call site takes its `catch`/error
+branch — a rejected promise, not a silent no-op. What a user then sees depends on the screen
+(some toast via `GlobalErrorReporter`, some catch-and-swallow, e.g.
+`RetailPosScreen.tsx:881` ends `.catch(() => {})`). **Reachability is measured; the per-screen
+user-visible effect is not.** I have not run the tablet build and clicked through these six
+screens, so this finding claims a rejected command at each of the 34 sites and does NOT claim a
+specific visible symptom per screen.
+
 ## The two halves, which the current message conflates
 
 | Class | Sites | Shape | Fix direction |
