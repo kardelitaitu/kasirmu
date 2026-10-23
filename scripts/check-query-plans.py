@@ -385,10 +385,29 @@ def self_test() -> int:
          "3 of 12 probed queries read a LARGE table in full")
     want("no summary is None, not a guess", count_probed("nothing to see"), None)
 
+    # THE TWO PROBE PARSERS, which no case reached before 2026-10-24. Both are pure
+    # regex reads of the Rust probe source, and both are load-bearing in the quiet
+    # direction: large_tables() returning [] or covered_probes() returning [] makes the
+    # gate report a smaller surface than exists, which is the anti-zero shape.
+    want("large_tables reads the declared block",
+         large_tables('const LARGE_TABLES: &[&str] = &["sales", "refunds"];'), ["sales", "refunds"])
+    want("large_tables with no block is empty",
+         large_tables("// no tables here"), [])
+    # The entry shape, taken from the real probe file rather than guessed: both fields
+    # are QUOTED strings, and origin carries "file:line (CONSTANT, KIND)".
+    want("covered_probes reads every entry",
+         covered_probes('    name: "daily_revenue",\n'
+                        '    origin: "reports/revenue.rs:125 (DAILY_REVENUE_SQL, CONSTANT)",\n'
+                        '    name: "other",\n'
+                        '    origin: "x.rs:9 (OTHER_SQL, copied)",'),
+         [("daily_revenue", "reports/revenue.rs:125 (DAILY_REVENUE_SQL, CONSTANT)"),
+          ("other", "x.rs:9 (OTHER_SQL, copied)")])
+    want("covered_probes with no entry is empty", covered_probes("// nothing"), [])
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (14 cases, nothing built or run)")
+    print("SELF-TEST OK (18 cases, nothing built or run)")
     return 0
 
 
