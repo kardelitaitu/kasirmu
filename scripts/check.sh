@@ -611,6 +611,11 @@ step "query plan gate" "python3 scripts/check-query-plans.py --check" python3 sc
 # broken regex exits 2 instead of reporting a clean tree.
 # Gate: scripts/gates.json -> "scratch-leak-gate".
 step "scratch leak gate" "python3 scripts/check-scratch-leaks.py" python3 scripts/check-scratch-leaks.py
+# The detector probe used to live INSIDE the default path, so it could not be run on its
+# own and nothing outside it exercised the census floor. Added 2026-10-23: 4 cases, the
+# last two reading the real tree, and one driving main() itself -- without that last one,
+# deleting main()'s "if FILES_READ == 0" arm left the suite green.
+step "scratch leak gate self-test" "python3 scripts/check-scratch-leaks.py --self-test" python3 scripts/check-scratch-leaks.py --self-test
 
 # ── Row-mapper alignment — a positional read vs the SELECT feeding it ──────
 # `name: row.get(3)?` couples a mapper to its SQL by POSITION, and nothing in Rust

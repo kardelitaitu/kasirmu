@@ -57,6 +57,10 @@ REPO = Path(__file__).resolve().parent.parent
 BUDGET_FILE = REPO / "scripts" / "scratch-leak-budget.json"
 SCAN_ROOTS = ("crates", "apps", "platform", "modules")
 
+#: How many .rs files the last scan() actually READ. A module-level counter rather than
+#: a return value, so scan()'s signature and every existing caller are unchanged.
+FILES_READ = 0
+
 # A call site is `kasirmu_test_support::scratch_dir(` or `scratch_dir(` after a
 # `use kasirmu_test_support::scratch_dir` import. Matching the bare name too
 # matters: 6 of the 30 original sites imported it and called it unqualified.
@@ -76,7 +80,13 @@ BUDGET_DESCRIPTION = (
 
 
 def scan() -> dict[str, int]:
-    """Count unguarded `scratch_dir` call sites per repo-relative file."""
+    """Count unguarded `scratch_dir` call sites, and record how many files were read.
+
+    The read count matters: "0 sites" and "0 files read" print the same sentence,
+    so a renamed SCAN_ROOT would leave the gate printing OK over an empty scan.
+    Measured 2026-10-23 by pointing every root at a nonexistent directory.
+    """
+    global FILES_READ
     counts: dict[str, int] = {}
     found_any = False
     for root in SCAN_ROOTS:
@@ -95,6 +105,7 @@ def scan() -> dict[str, int]:
             # `scratch_dir` so its own tests keep one import. The wrapper is
             # graded by having no body of its own, which is what makes the
             # delegation safe to exempt.
+            FILES_READ += 1
             text_probe = path.read_text(encoding="utf-8", errors="replace")
             if delegating_wrapper(text_probe):
                 continue
@@ -307,14 +318,100 @@ r"return\s+" + re.escape(name) + r"\s*\.\s*path\s*\(\s*\)\s*\.\s*to_path_buf", b
     return findings
 
 
+def self_test() -> int:
+    """Grade the two things that make this gate's OK mean anything.
+
+    No flag existed before 2026-10-23, so the only proof was the detector probe inside
+    the default path -- which a reader could not run in isolation, and which does NOT
+    cover the census floor added the same day. Both are covered here.
+    """
+    bad: list[str] = []
+    cases = 0
+
+    # 1. The detector still classifies known shapes (this is the old probe, kept as a
+    #    case rather than as an inline guard, so it is runnable on its own).
+    cases += 1
+    if not detector_still_sees_a_call():
+        bad.append("the call-site regex no longer classifies the synthetic shapes")
+
+    # 2. THE CENSUS FLOOR, driven through scan() itself rather than by asserting a
+    #    constant. Pointing every root at a nonexistent directory must leave FILES_READ
+    #    at 0 -- which is the state main() refuses. (A first draft of this case compared
+    #    FILES_READ against 0 after assigning it 0, which asserted that 0 == 0 and
+    #    controlled nothing; the mutant below proves the new form is load-bearing.)
+    global SCAN_ROOTS, FILES_READ
+    saved_roots, saved_reads = SCAN_ROOTS, FILES_READ
+    SCAN_ROOTS = ("definitely-not-a-directory",)
+    FILES_READ = 0
+    scan()
+    empty_scan = FILES_READ
+    SCAN_ROOTS, FILES_READ = saved_roots, saved_reads
+    cases += 1
+    if empty_scan != 0:
+        bad.append("a scan of nonexistent roots must read 0 files, read %d" % empty_scan)
+
+    # 3. And the real tree must read a NON-zero number of files, so the floor above is
+    #    not satisfied by accident on a healthy checkout.
+    saved_reads = FILES_READ
+    FILES_READ = 0
+    scan()
+    live_scan = FILES_READ
+    FILES_READ = saved_reads
+    cases += 1
+    if live_scan == 0:
+        bad.append("the live scan read 0 files, so the floor cannot distinguish anything")
+
+    # 4. THE FLOOR MUST ACTUALLY FIRE. Cases 2 and 3 prove scan() can tell the two
+    #    states apart; nothing until now proved main() REFUSES on the empty one. Measured:
+    #    deleting main()'s "if FILES_READ == 0" arm left the whole suite green, because no
+    #    case called main(). Driven by running main() with dead roots and a forced-0
+    #    counter, in a subprocess-free way: argv is patched so the floor arm is reached.
+    import io as _io
+    import contextlib as _ctx
+
+    def _main_exit_code_with_dead_roots() -> int:
+        global FILES_READ, SCAN_ROOTS
+        saved_argv, saved_roots = sys.argv, SCAN_ROOTS
+        saved_reads = FILES_READ
+        sys.argv = ["check-scratch-leaks.py"]
+        SCAN_ROOTS = ("definitely-not-a-directory",)
+        FILES_READ = 0
+        buf = _io.StringIO()
+        try:
+            with _ctx.redirect_stdout(buf), _ctx.redirect_stderr(buf):
+                return main()
+        finally:
+            sys.argv, SCAN_ROOTS, FILES_READ = saved_argv, saved_roots, saved_reads
+
+    cases += 1
+    if _main_exit_code_with_dead_roots() != 2:
+        bad.append("main() must return 2 when the scan read nothing; it returned "
+                   + str(_main_exit_code_with_dead_roots()))
+
+    if bad:
+        sys.stderr.write("SELF-TEST WRONG:\n" + "\n".join(bad) + "\n")
+        return 2
+    # Counted, not hardcoded: a case that runs but is not counted reads as coverage
+    # it is not -- the same failure as a gate that cannot fail.
+    print("SELF-TEST OK (%d cases; the last two read the real tree)" % cases)
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--self-test",
+        action="store_true",
+        help="run this checker's cases and exit",
+    )
     ap.add_argument(
         "--update",
         action="store_true",
         help="rewrite the budget from the current tree (only after migrating sites)",
     )
     args = ap.parse_args()
+    if args.self_test:
+        return self_test()
 
     # A gate that grades a detector nobody re-checks is this project's most
     # repeated failure. Grade the detector over synthetic source FIRST: if the
@@ -335,6 +432,19 @@ def main() -> int:
 
     counts = scan()
     total = sum(counts.values())
+
+    # THE CENSUS FLOOR. "0 sites" and "0 files read" print the same sentence. Measured
+    # 2026-10-23: renaming all four SCAN_ROOTS to nonexistent directories left this gate
+    # printing "OK: no file exceeds its unguarded-site budget" over an empty scan, and
+    # the synthetic-source probe above cannot see it -- it grades the regex, not the tree.
+    if FILES_READ == 0:
+        print("", file=sys.stderr)
+        print("SCAN READ NOTHING: 0 .rs file(s) under " + ", ".join(SCAN_ROOTS),
+              file=sys.stderr)
+        print("  The roots moved, were renamed, or the walk stopped matching. Refusing",
+              file=sys.stderr)
+        print("  to report a clean budget over a tree nobody read.", file=sys.stderr)
+        return 2
 
     # Second defect class, same root cause: a guard that never reaches the value
     # it was created for. Checked BEFORE the budget so it reports even when the
