@@ -183,7 +183,15 @@ fn trim_borders(img: &image::DynamicImage, w: u32, h: u32) -> image::DynamicImag
     for row in 0..h {
         let offset = (row as usize) * stride;
         let row_bytes = &raw[offset..offset + stride];
-        if row_bytes.chunks_exact(3).any(|pixel| pixel != corner) {
+        // `as_chunks` rather than `chunks_exact` (clippy 1.98's
+        // chunks_exact_to_as_chunks): the row is exactly `w * 3` bytes, so the tail is
+        // empty and the two spellings agree on every pixel. `.0` is the aligned part.
+        if row_bytes
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .any(|pixel| pixel != &corner)
+        {
             break;
         }
         top += 1;
@@ -199,7 +207,15 @@ fn trim_borders(img: &image::DynamicImage, w: u32, h: u32) -> image::DynamicImag
     for row in (top..h).rev() {
         let offset = (row as usize) * stride;
         let row_bytes = &raw[offset..offset + stride];
-        if row_bytes.chunks_exact(3).any(|pixel| pixel != corner) {
+        // `as_chunks` rather than `chunks_exact` (clippy 1.98's
+        // chunks_exact_to_as_chunks): the row is exactly `w * 3` bytes, so the tail is
+        // empty and the two spellings agree on every pixel. `.0` is the aligned part.
+        if row_bytes
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .any(|pixel| pixel != &corner)
+        {
             break;
         }
         bottom -= 1;
