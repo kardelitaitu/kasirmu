@@ -559,6 +559,24 @@ checked with the gate that answers "is this self-test invoked?" — and never wi
 answers "is this step rostered?". Several gates look at the same artifacts from different angles,
 and running one of them is not running the class.
 
+#### Round 93 plants: three more, all sound
+
+| gate | plant | result |
+|---|---|---|
+| `verify-debt-markers.py` | `TODO ZZ99` with no definition, in a real `.rs` file | exit 1, naming file:line and the pointer |
+| `verify-feature-registry.py` | `feature: 'planted-nonexistent-feature'` on a real `registerPage` | exit 1, naming file:line and the key, twice (Rust side and FEATUREs side) |
+| `verify-gate-completeness.py` | — | **already RED on HEAD** for three rows I had omitted (above) |
+
+**Running total: 12 gates defect-planted, 1 real gate defect** (`check-seo.mjs`) **plus 1 real
+process defect** (my own missing roster rows). The second kind was invisible to every gate I had
+been running and only surfaced because `verify-gate-completeness.py` happened to sit in the batch
+I ran this round.
+
+**The practical rule for picking the next target:** a gate is worth planting when its header makes
+a claim a plant can falsify. `verify-gate-completeness.py` ranked high precisely because its
+header says "every label DECLARED in the roster resolves to a real step" — a sentence with a
+checkable subject, unlike "this gate is important".
+
 #### Extending the sweep to EVERY function found three more unpinned detectors
 
 The sweep mutates only the FIRST candidate per checker. Triaging every survivor by mutating *all*
