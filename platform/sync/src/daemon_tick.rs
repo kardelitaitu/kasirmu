@@ -193,10 +193,10 @@ async fn push_batches(
                 persist_stamped_counter(db, transport).await;
                 // SYNC-02: carry the FULL local items (not just ids) so a
                 // conflict is resolved by the shared ADR #21 service.
-                if let Some(apply_err) = apply_push_results(db, batch, results).await {
-                    if run.error.is_none() {
-                        run.error = Some(SyncError::Replication(apply_err));
-                    }
+                if let Some(apply_err) = apply_push_results(db, batch, results).await
+                    && run.error.is_none()
+                {
+                    run.error = Some(SyncError::Replication(apply_err));
                 }
             }
             Err(e) => {

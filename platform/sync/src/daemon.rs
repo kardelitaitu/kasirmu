@@ -466,14 +466,14 @@ async fn apply_push_results(
             }
         }
 
-        if !synced_ids.is_empty() {
-            if let Err(e) = store.mark_offline_synced_batch(&synced_ids) {
-                tracing::error!(
-                    count = synced_ids.len(),
-                    error = %e,
-                    "sync daemon: failed to mark batch synced"
-                );
-            }
+        if !synced_ids.is_empty()
+            && let Err(e) = store.mark_offline_synced_batch(&synced_ids)
+        {
+            tracing::error!(
+                count = synced_ids.len(),
+                error = %e,
+                "sync daemon: failed to mark batch synced"
+            );
         }
     })
     .await;

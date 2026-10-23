@@ -296,7 +296,7 @@ fn pg_insert_sql(bind_count: usize) -> String {
     let mut next_bind = 1usize;
     for row in 0..rows {
         if row > 0 {
-            sql.push_str(",");
+            sql.push(',');
         }
         sql.push_str("\n            (");
         for (slot, column) in PushColumn::ALL.iter().enumerate() {

@@ -122,49 +122,46 @@ fn estimate_corpus() -> Vec<(&'static str, OfflineQueueItem)> {
                 r#"{"sale_id":"0190f5c0-0000-7000-8000-000000000000","reason":"customer changed mind","total":1234}"#,
             ),
         ),
-        (
-            "4096 quotes",
-            OfflineQueueItem::new("a", &"\"".repeat(4096)),
-        ),
+        ("4096 quotes", OfflineQueueItem::new("a", "\"".repeat(4096))),
         (
             "4096 backslashes",
-            OfflineQueueItem::new("a", &"\\".repeat(4096)),
+            OfflineQueueItem::new("a", "\\".repeat(4096)),
         ),
-        ("4096 tabs", OfflineQueueItem::new("a", &"\t".repeat(4096))),
+        ("4096 tabs", OfflineQueueItem::new("a", "\t".repeat(4096))),
         (
             "4480 control chars",
             OfflineQueueItem::new(
                 "a",
-                &(0u8..32).map(|b| b as char).collect::<String>().repeat(140),
+                (0u8..32).map(|b| b as char).collect::<String>().repeat(140),
             ),
         ),
         (
             "4096 bytes accented",
-            OfflineQueueItem::new("a", &"é".repeat(2048)),
+            OfflineQueueItem::new("a", "é".repeat(2048)),
         ),
         (
             "4096 bytes CJK",
-            OfflineQueueItem::new("a", &"亜".repeat(1365)),
+            OfflineQueueItem::new("a", "亜".repeat(1365)),
         ),
         (
             "4096 bytes emoji",
-            OfflineQueueItem::new("a", &"😀".repeat(1024)),
+            OfflineQueueItem::new("a", "😀".repeat(1024)),
         ),
         (
             "lone surrogate escapes",
-            OfflineQueueItem::new("a", &"\\ud800".repeat(600)),
+            OfflineQueueItem::new("a", "\\ud800".repeat(600)),
         ),
         (
             "33 KB payload",
-            OfflineQueueItem::new("b", &"x".repeat(33 * 1024)),
+            OfflineQueueItem::new("b", "x".repeat(33 * 1024)),
         ),
         (
             "128 KB payload",
-            OfflineQueueItem::new("huge", &"x".repeat(128 * 1024)),
+            OfflineQueueItem::new("huge", "x".repeat(128 * 1024)),
         ),
         (
             "24 KB ascii + 4 KB accents",
-            OfflineQueueItem::new("a", &format!("{}{}", "x".repeat(24000), "é".repeat(2048))),
+            OfflineQueueItem::new("a", format!("{}{}", "x".repeat(24000), "é".repeat(2048))),
         ),
     ];
 
@@ -279,11 +276,11 @@ fn build_batches_wire_body_respects_the_transport_budget() {
     for i in 0..12 {
         items.push(OfflineQueueItem::new(
             "complete_sale",
-            &format!(r#"{{"seq":{i},"pad":"{}"}}"#, "x".repeat(6000)),
+            format!(r#"{{"seq":{i},"pad":"{}"}}"#, "x".repeat(6000)),
         ));
     }
-    items.push(OfflineQueueItem::new("void_sale", &"\"".repeat(4096)));
-    items.push(OfflineQueueItem::new("void_sale", &"é".repeat(4096)));
+    items.push(OfflineQueueItem::new("void_sale", "\"".repeat(4096)));
+    items.push(OfflineQueueItem::new("void_sale", "é".repeat(4096)));
 
     for stamps in [false, true] {
         let budget = MAX_BATCH_BYTES

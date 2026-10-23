@@ -693,25 +693,24 @@ impl PgSyncDaemon {
             // the replay, so the next tick retries both the failed page(s) and
             // the derived-state rebuild — the same contract the per-page code
             // had ("a rebuild failure retains the anchor").
-            if tick_carried_movements {
-                if let Some(failure) =
+            if tick_carried_movements
+                && let Some(failure) =
                     rebuild_tick_summary(db, pull_since.as_deref(), pull_cursor.as_deref()).await
-                {
-                    let msg = failure.message();
-                    match failure {
-                        TickRebuild::Restored => tracing::warn!(
-                            since = ?pull_since,
-                            cursor = ?pull_cursor,
-                            "pg sync daemon: stock summary rebuild failed — pull anchor restored so the next tick retries the rebuild"
-                        ),
-                        TickRebuild::RestoreFailed(_) => tracing::error!(
-                            error = msg,
-                            "pg sync daemon: stock summary rebuild failed AND the anchor restore failed; the next tick's summary rebuild must still run to heal the cache"
-                        ),
-                    }
-                    if sync_error.is_none() {
-                        sync_error = Some(msg);
-                    }
+            {
+                let msg = failure.message();
+                match failure {
+                    TickRebuild::Restored => tracing::warn!(
+                        since = ?pull_since,
+                        cursor = ?pull_cursor,
+                        "pg sync daemon: stock summary rebuild failed — pull anchor restored so the next tick retries the rebuild"
+                    ),
+                    TickRebuild::RestoreFailed(_) => tracing::error!(
+                        error = msg,
+                        "pg sync daemon: stock summary rebuild failed AND the anchor restore failed; the next tick's summary rebuild must still run to heal the cache"
+                    ),
+                }
+                if sync_error.is_none() {
+                    sync_error = Some(msg);
                 }
             }
         }
@@ -903,7 +902,7 @@ impl TickRebuild {
 /// `stock.movement` — so a backlog of N movement pages costs one whole-ledger
 /// aggregate instead of N. See the call site in `run_tick` for why the
 /// ordering is safe and why the flag is tick-scoped rather than per page.
-
+///
 /// # Returns
 ///
 /// `None` when the rebuild succeeded (or there was nothing to rebuild);
