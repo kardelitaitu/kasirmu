@@ -268,6 +268,16 @@ def main() -> int:
         return 2
 
     total = len(equal) + len(newer) + len(older) + len(footer_only) + len(stamp_only)
+    # THE CENSUS FLOOR. Printing a denominator is not the same as checking it, and this
+    # file's own loop sets the trap: line 236 is `if not stamps and not footers: continue`,
+    # so a stamp regex that stops matching (a reworded house stamp, a changed date format)
+    # makes EVERY file `continue` and leaves a report of seven zeroes. Measured
+    # 2026-10-23 by emptying both _stamp_dates and _footer_dates: the checker printed its
+    # seven lines with 0 everywhere and exited 0.
+    #
+    # A real tree here has 892 docs carrying a stamp and/or a footer. The floor is set
+    # far below that so ordinary deletions never trip it; it exists to catch a ZERO.
+    MIN_DOCS_WITH_A_CLAIM = 50
     print("docs with a stamp and/or footer : %d" % total)
     print("  newest stamp == footer        : %d" % len(equal))
     print("  footer newer than newest stamp: %d   (re-checked without a stamp line)" % len(newer))
@@ -325,6 +335,15 @@ def main() -> int:
             print("   NOTE: %s is missing, so NOTHING is grandfathered -- every"
                   % FOOTER_BASELINE)
             print("   record above is a finding. Restore the baseline or footer them all.")
+
+    if total < MIN_DOCS_WITH_A_CLAIM:
+        print("")
+        print("REFUSED: only %d doc(s) carry a stamp or footer; a real tree has at least %d."
+              % (total, MIN_DOCS_WITH_A_CLAIM))
+        print("A report of zero findings over an empty census is not a clean tree: the loop")
+        print("skips every file whose stamp AND footer regexes both miss, so a reworded")
+        print("house stamp produces exactly these zeroes. Check STAMP_RE / FOOTER_RE.")
+        return 1
 
     if older or bad_dates or missing_footers:
         print("")
