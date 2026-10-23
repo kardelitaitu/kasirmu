@@ -7439,7 +7439,7 @@ inside `reset_audit_rate_limit_for_test(` (substring), producing 14 calls with a
 `&conn, &conn`. Fixed and counted afterwards; the compile caught what the regex silently
 wrecked.
 
-### Ledger: 150 defined, 150 closed, 0 open.
+### Ledger: 151 defined, 151 closed, 0 open.
 ## §11EA — O-M83: the audit limiter verified in all three directions; bridge checked for the same defect (2026-10-23)
 
 **O-M83 · kasirmu-core — the audit limiter verified in all three directions** — recorded in §11EA as verification of §11DB.
@@ -7967,3 +7967,82 @@ rustfmt --edition 2024 --check (3 files) -> clean
 ```
 
 ### Ledger: 149 defined, 149 closed, 0 open.
+## §11LA — O-M85: — the sweep is 36% faster, and a memoisation that broke three cases was reverted (2026-10-23)
+
+Landed in `5e96a83ba`, `a96b5361c`.
+
+**O-M85 · gates — the self-test sweep and one checker accounted for 584 s of the matrix, and the obvious fix for the checker was wrong** — resolved in §11LA.
+
+### 1. The sweep: 362 s -> 236 s
+
+`verify-selftest-sweep.py` runs every checker that declares a `--self-test` — **50 of them** —
+one at a time. They are independent subprocesses with no shared state, so there was no reason
+to serialise them; the only constraint was that the REPORTED ORDER must be stable, because a
+summary whose line order changes run to run cannot be diffed.
+
+Replaced the loop with a bounded `ThreadPoolExecutor` and `pool.map`, which preserves order.
+Eight workers, not the core count: these are short-lived processes that spend their wall time
+waiting on the OS, so a small pool already saturates the useful concurrency — and a pool as
+wide as the machine makes 50 interpreters compete for the same CPU.
+
+Measured: **362 s -> 232 s**, and the self-test still reports `SELF-TEST OK (5 cases, 50
+checker(s) would be swept)`.
+
+### 2. Why that is only a 36% win, and where the other 61% lives
+
+Benchmarking 8 / 16 / 32 workers gave 241.9 s / 237.7 s / 235.7 s — **almost no improvement from
+more parallelism**. That ruled out the loop as the bottleneck and pointed at a single checker:
+
+```
+verify-ipc-parity.py    221.6 s   <- 61% of the whole sweep
+verify-ftl-orphans.py   65.2 s
+everything else         ~15 s combined
+```
+
+So the ceiling for the sweep is that one checker, not the loop.
+
+### 3. Inside verify-ipc-parity: two safe wins, one reverted
+
+`cProfile` on the self-test put 168 s in `re.Pattern.search` across **1.26M calls**, reached
+through `wrapper_reach` (669 calls, 122 s cumulative).
+
+**Applied and kept** — the wrapper and export patterns were rebuilt with `re.escape` + compile
+inside a `files x wrappers x commands` triple loop. They are now compiled once per distinct
+name into `_WRAPPER_PATTERNS` / `_EXPORT_PATTERNS`. Same in `shell_blind_findings`, whose
+masked text is now cached per path instead of recomputed per command.
+
+Result: **227.2 s -> 220.8 s**, self-test still `OK` with byte-identical output.
+
+**Attempted and REVERTED.** Memoising `wrapper_reach` on `(id(files), cmd)` looked like the real
+fix — it would collapse the triple loop to one pass per distinct command. It broke three
+cases:
+
+```
+FAIL self-test: ui named the file that defines a wrapper is not its own user
+FAIL self-test: ui named the programmatic client is reachable without being a screen
+FAIL self-test: ui named a client that IMPORTS the wrapper is still a reference
+```
+
+The cause is the classic `id()` trap: those tests build small temporary `files` lists, and a
+freed list's address is reused by the next test, so one test reads another's cached buckets.
+The win would have been 6% (213.5 s) for a cache keyed on a value that is only unique among
+LIVE objects. Reverted in full; the checker is green again at 220.8 s.
+
+### The lesson worth keeping
+
+`id()` is a valid cache key only while the object is alive and only if nothing else can be
+allocated at the same address. For a pure function called from tests with short-lived inputs,
+that is exactly the case that fails — and it fails by returning ANOTHER test's answer, which is
+the quietest possible breakage. The output diff was the only thing that caught it, because the
+exit code was still 0 on two of the three affected assertions' siblings.
+
+### Verification
+
+```
+verify-selftest-sweep.py --self-test  -> SELF-TEST OK (5 cases, 50 checkers)
+full sweep                           -> 232.43 s (was 362 s)
+verify-ipc-parity.py --self-test     -> rc 0, self-test: OK, output unchanged
+verify-ipc-parity.py (memoised)      -> rc 1, 3 FAILURES -> reverted
+```
+
+### Ledger: 150 defined, 150 closed, 0 open.
