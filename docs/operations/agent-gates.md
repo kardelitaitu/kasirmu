@@ -421,6 +421,47 @@ over a list that could not contain those files — 0 scanned, gate green. The co
 *enters* `docs/records/` instead of pruning it. A filter downstream of an exclusion is dead
 code that reads as a fix.
 
+### Mutating shell and JavaScript, and the mutant that would have lied
+
+The sweep covered Python only for its first two rounds, which was a stated blind spot rather
+than a claim of total coverage. Widening it to 72 checkers (55 `.py`, 9 `.sh`, 8 `.mjs`)
+needed a second mechanism: Python is mutated through its AST, while `.sh` and `.mjs` are
+mutated by TEXT — locate `name() {` / `function name(`, then walk braces to find the close.
+
+**The braces must be walked over a comment-and-string-blanked copy.** A `}` inside a quoted
+message closes the function early, the blanking eats the rest of the file, the file no longer
+parses, and every self-test "fails" — scoring as KILLED while proving nothing. A mutation
+harness whose mutants are syntactically invalid reports a clean sheet over checkers it never
+tested, and that is the failure this whole exercise exists to catch. The harness now carries a
+`--self-test` (10 cases) that grades exactly this: the mutants parse, the braces balance, the
+trailing line survives, `export function` is a candidate, and `self_test` never is.
+
+**Bare `bash` is WSL here and exits 127.** The first run of the widened sweep would have
+recorded every `.sh` self-test as "catching" its mutation, because a checker that cannot start
+looks exactly like a checker that fails. Fixed with the full Git-bash path, the same rule §5
+of AGENTS.md already states.
+
+**Two scanner bugs found by triaging the survivors, both mine:**
+
+| Symptom | Cause | Effect if believed |
+|---|---|---|
+| `check-release-version.mjs`: 2 funcs, 0 killed | `MJS_FUNC` anchored on `^function`, missing `export function collectErrors(...)` | A covered checker filed as an uncovered one |
+| `verify-quota-coverage.sh` exit 127 | bare `bash` resolving to WSL | A real kill indistinguishable from a broken runner |
+
+After the fixes all three `.mjs` survivors show a killed detector (`classify`, `collectErrors`,
+`admits`), so none was a real gap.
+
+**Three `.sh` checkers stay unmutable, and the row says so.** `verify-docker-digests.sh`,
+`verify-scoped-authorization.sh` and `verify-scoped-coverage.sh` each declare exactly one
+function — `self_test` — with the detector written inline in the script body. There is no
+function to gut, so they report `NO MUTATABLE FUNCTION` rather than passing. Graded by hand
+instead: pointing `PIN_RE` at a non-matching pattern and dropping its 64-char floor both turn
+`verify-docker-digests.sh` red (exit 2), so its anti-zero case is load-bearing.
+
+**Final sweep: `72 checker(s), 19 SURVIVED, 53 killed`.** The 19 are the same I/O shells as
+before plus one `cleanup()` and three `NO MUTATABLE FUNCTION` rows; every checker that has a
+distinct detector kills at least one mutant.
+
 ### Two ways a documentation census measures the WRONG THING
 
 Both measured 2026-10-23 while trying to establish how many Rust modules lack the
