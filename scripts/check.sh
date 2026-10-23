@@ -502,6 +502,13 @@ fi
 # requirement of this repo, so unlike the bats step above there is no skip
 # branch: a missing node is a broken checkout, not an optional dependency.
 step "font-claims" "node scripts/check-font-claims.mjs" node scripts/check-font-claims.mjs
+# The rows themselves have no proof they can fail: each is an assertion about live code,
+# and an assertion written as always-true reads exactly like one that passes. Writing the
+# cases found that the first draft of the "did not run" case could not see the `ran` guard
+# at all (it chose a status that failed for a different reason), which is why the case that
+# isolates the guard is written with an ALLOWED status. The floor is pinned too: an emptied
+# results list printed "0 of 0 covered rows agreed" and exited 0 before it existed.
+step "font-claims self-test" "node scripts/check-font-claims.mjs --self-test" node scripts/check-font-claims.mjs --self-test
 
 # ── Font-bundle detector self-test ───────────────────────────────────────
 # check-font-bundle.mjs has no step of its own -- check-font-claims.mjs runs it

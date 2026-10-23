@@ -126,6 +126,31 @@ Do **not** add a silent skip for a missing server. The panicking arm is the desi
 that quietly does not run is indistinguishable from one that passed, which is the failure mode
 `scripts/verify-pg-tests-ran.py` exists to catch.
 
+### `npm run build` in `ui/` needs a TEMP the process can WRITE TO
+
+Measured 2026-10-23, twice in one round. With the default Windows `TEMP`
+(`C:\WINDOWS\TEMP`), `ui`'s vite build fails AFTER transforming all 2122 modules:
+
+```
+✗ Build failed in 10.52s
+[vite:esbuild-transpile] remove C:\WINDOWS\TEMP\esbuild-<hash>: Access is denied.
+```
+
+esbuild writes a transpile cache entry and then cannot remove it, and vite treats that
+as fatal. Nothing is wrong with the code -- `tsc -b` has already passed and the failure
+is staged in dependency order, so it reads like a source problem. Pointing TEMP at a
+directory the process owns fixes it with no other change:
+
+```powershell
+$env:TEMP='C:\dev\kasirmu\target\mstmp'; $env:TMP=$env:TEMP; cd ui; npm run build
+```
+
+This is the same class as the MSYS path-conversion trap: an environment detail that
+presents as a code failure. It matters more than it looks, because two gates depend on a
+built artifact -- `check-font-claims.mjs` ("the artifact is current with HEAD") and
+`check-seo.mjs` (which walks `dist/`) -- so a stale or missing build turns them red for a
+reason that has nothing to do with what they measure.
+
 ### Step 108 (`selftest sweep`) needs `sh` on PATH, which a bare Windows child does not have
 
 `verify-shell-syntax.py` spawns `sh -n` and `bash -n`. `scripts/check.sh` runs it through bash, so

@@ -583,7 +583,8 @@
       "runners": {
         "check.sh": [
           "font-claims",
-          "font bundle self-test"
+          "font bundle self-test",
+          "font-claims self-test"
         ]
       },
       "_note": "check-font-bundle.mjs, which check-font-claims.mjs runs, had no liveness proof of its own: its detector is a set comparison (the font files a sheet NAMES vs the files the build SHIPS), so an empty assets directory, a sheet that stops declaring faces, or a disk set narrowed to woff2 all make it agree over nothing and print 0 absent / 0 orphans, which no reader can tell from a healthy bundle. The 'font bundle self-test' step runs 35 cases, one per rule and in both directions, including the empty-input class: an empty assets directory, an assets directory with no stylesheet, a sheet that stops declaring faces, and a disk set narrowed to .woff2/.woff all either refuse (exit 2) or FAIL the declaration, never report clean. It reads no dist/, so it passes on a machine that has never built the UI and cannot pass by accident on a real build. / check-font-claims.mjs re-executes the font lane\u2019s published claims andcompares each against the expectation stated in the script, so a claimcannot rot silently. It had no caller at all: the only job that ever ranit was retired to attic/ci.yml.bak, which is exactly the failure its ownheader names \u2014 \"a documented check nobody executes becomes adescription of a past run\". 17 s. Node is a hard requirement here, sounlike skill-drift-tests there is no skip branch: a missing node is abroken checkout, not an optional dependency.",

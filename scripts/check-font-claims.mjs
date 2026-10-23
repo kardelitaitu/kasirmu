@@ -66,6 +66,86 @@ function cleanAbsence(r, allowed) {
 }
 
 
+/**
+ * A git-grep hit is a CALL only when its line is not a comment.
+ *
+ * The subagent-era defect this pins: a first draft of the tablet row counted a
+ * COMMENT naming the script as a caller, so a page about the leg satisfied the row
+ * that asks whether the leg runs. Extracted so --self-test grades it.
+ */
+function isCall(line) {
+  // Strip the `path:line:` prefix here rather than through the later `strip` helper:
+  // this function is defined above it, and calling it would be a temporal-dead-zone error
+  // the moment the self-test runs at module top level. Measured 2026-10-23.
+  const code = String(line).replace(/^[^:]+:\d+:/, '');
+  return !/^\s*(#|\/\/|\*)/.test(code);
+}
+
+/**
+ * The verdict for one run: exit 1 if any row drifted, 2 if too few rows were built.
+ *
+ * `MIN_ROWS` is the floor described at the summary. Kept here so the cases and the live
+ * run cannot disagree about what "too few" means.
+ */
+const MIN_ROWS = 10;
+function exitCodeFor(rows) {
+  if (rows.length < MIN_ROWS) return 2;
+  return rows.some((r) => !r.pass) ? 1 : 0;
+}
+
+/**
+ * Self-test for the three rules above. No command runs, no file is read.
+ */
+function selfTest() {
+  const failures = [];
+  let cases = 0;
+  const eq = (name, got, want) => {
+    cases += 1;
+    if (got !== want) failures.push(`  ${name}: expected ${want}, got ${got}`);
+  };
+
+  // cleanAbsence: a command that ran, ended in an allowed status, and printed nothing.
+  eq('a clean absence passes', cleanAbsence({ ran: true, status: 1, out: '' }, [0, 1]), true);
+  // THE BUG IT WAS WRITTEN FOR: a dead pipeline is not a zero.
+  eq('a command that never ran is not a clean absence', cleanAbsence({ ran: false, status: 128, out: '' }, [0, 1]), false);
+  // THE 'ran' GUARD NEEDS ITS OWN CASE. The one above cannot see it: status 128 is not in
+  // the allowed list either, so the row fails for the OTHER reason and deleting the guard
+  // leaves the suite green (measured). This case allows the status, so only 'ran' can
+  // decide it.
+  eq('a run that did not execute fails even when its status is allowed',
+     cleanAbsence({ ran: false, status: 1, out: '' }, [0, 1]), false);
+  eq('empty output with a bad status is not clean', cleanAbsence({ ran: true, status: 2, out: '' }, [0, 1]), false);
+  eq('a real hit is not an absence', cleanAbsence({ ran: true, status: 0, out: 'a line' }, [0, 1]), false);
+
+  // isCall: a mention in a comment is not a call.
+  eq('a bare line is a call', isCall('scripts/f.mjs:12:node scripts/x.mjs'), true);
+  eq('a # comment is not a call', isCall('scripts/f.mjs:12:  # node scripts/x.mjs'), false);
+  eq('a // comment is not a call', isCall('a.mjs:3:// node scripts/x.mjs'), false);
+  eq('a * block comment is not a call', isCall('a.mjs:3: * node scripts/x.mjs'), false);
+
+  // exitCodeFor: the floor, the drift, and the clean run.
+  const ok = Array.from({ length: MIN_ROWS }, () => ({ pass: true }));
+  eq('a full clean set exits 0', exitCodeFor(ok), 0);
+  eq('one drifted row exits 1', exitCodeFor([...ok.slice(1), { pass: false }]), 1);
+  // THE VACUOUS CASE: an empty set is not a clean set.
+  eq('an empty set exits 2', exitCodeFor([]), 2);
+  eq('one row short of the floor exits 2', exitCodeFor(ok.slice(1)), 2);
+  eq('exactly at the floor is enough', exitCodeFor(ok), 0);
+
+  if (failures.length > 0) {
+    console.error('SELF-TEST WRONG:');
+    for (const line of failures) console.error(line);
+    return 2;
+  }
+  console.log(`SELF-TEST OK (${cases} cases, no command run)`);
+  return 0;
+}
+
+if (process.argv.includes('--self-test')) {
+  process.exit(selfTest());
+}
+
+
 function check(name, pass, observed, expected) {
   results.push({ name, pass, observed, expected });
   if (!pass) worst = Math.max(worst, 1);
@@ -167,10 +247,25 @@ check('the budget gate runs in a live workflow', wfGate.ran && wfFiles.length >=
   `${wfFiles.length} live workflow(s) name it: ${wfFiles.join(', ') || 'none'}`,
   '>=1, with dev-ci.yml among them -- if this drifts the CI steps were deleted, and the `ci` block on the bundle-budget row became a lie in the same commit');
 
+// This claim was INVERTED on 2026-10-23. It asserted the ABSENCE of a budget step in
+// scripts/check.sh -- the half of notes.md item 37 that dd12da524 did not close -- and it
+// fired, correctly, the moment that step landed (the bundle-budget self-test, added with
+// the gate's own cases). That is the THIRD inversion of this shape in this file and the
+// reason the row is written as a claim either way: pointing at the deficiency is what
+// makes the fix announce itself, and pointing at the requirement afterwards is what stops
+// the fix being deleted in silence.
+//
+// The row still separates a MENTION from a CALL, for the same reason the tablet row below
+// does: the first draft of that one counted a comment naming the script as a caller.
+/** A git-grep hit with its `path:line:` prefix removed, so comment detection sees the code. */
+const strip = (l) => l.replace(/^[^:]+:\d+:/, '');
+
 const shGate = run(['git', '--no-optional-locks', 'grep', '-i', '-n', 'bundle budget', '--', 'scripts/check.sh']);
-check('scripts/check.sh has no budget step (its header claims otherwise)', cleanAbsence(shGate, [0, 1]),
-  shGate.out.trim() === '' ? 'no match (case-INsensitive: the step is capitalised "Bundle budget", so a case-sensitive grep reads an absent file)' : shGate.out.trim(),
-  '0 -- this is the half of notes.md item 37 that dd12da524 did not close');
+const shLines = shGate.out.trim() === '' ? [] : shGate.out.trim().split('\n').filter(Boolean);
+const shCalls = shLines.filter(isCall);
+check('scripts/check.sh runs the budget gate', shGate.ran && shCalls.length >= 1,
+  `${shLines.length} mention(s), ${shCalls.length} outside comments${shCalls.length ? ` -- ${strip(shCalls[0]).trim().replace(/\s+/g, ' ')}` : ''}`,
+  '>=1 non-comment step -- notes.md item 37 is closed. If this drops the step was deleted, and the bundle-budget runner label in scripts/gates.json has become a lie');
 
 // This claim was INVERTED by b89747b28: the tablet budget used to have no caller, and the
 // row existed to say so. It fired the moment the leg landed, which is the whole point of
@@ -180,9 +275,8 @@ check('scripts/check.sh has no budget step (its header claims otherwise)', clean
 // code files as well as inside .md, so the row now separates the two numbers and shows the
 // surviving line rather than asking to be believed.
 const tabletHits = run(['git', '--no-optional-locks', 'grep', '-n', 'bundle:check:mobile', '--', ...WIRING]);
-const strip = (l) => l.replace(/^[^:]+:\d+:/, '');
 const allHits = tabletHits.out.trim() ? tabletHits.out.trim().split('\n').filter(Boolean) : [];
-const codeHits = allHits.filter((l) => !/^\s*(\/\/|\*|#)/.test(strip(l)));
+const codeHits = allHits.filter(isCall);
 const tabletProse = run(['git', '--no-optional-locks', 'grep', '-l', 'bundle:check:mobile', '--', '.']);
 const proseCount = tabletProse.out.trim().split('\n').filter(Boolean).length;
 check('the tablet budget is called by the runner that exists', tabletHits.ran && codeHits.length >= 1,
@@ -278,5 +372,18 @@ if (cleanNote) console.log(`   NOTE   ${cleanNote}`);
 console.log('\n  not covered here (needs a browser): `node ui/e2e/font-visual-audit.mjs` -- the');
 console.log('  before/after pair, the type-scale table and the artifact age come from that run.');
 const n = results.filter((r) => r.pass).length;
+
+// THE FLOOR. "every covered row agreed" and "no row was covered at all" print the same
+// shape and both exited 0: measured 2026-10-23 on an emptied results list, which printed
+// "0 of 0 covered rows agreed with the plan." and returned 0. An empty reasong set is not
+// a clean bill of health -- it means the rows stopped being built, which is what happens
+// when an early return or a thrown error skips the block above.
+// (MIN_ROWS is declared once, beside exitCodeFor above.)
 console.log(`\n  ${n} of ${results.length} covered rows agreed with the plan.`);
-process.exit(worst);
+if (results.length < MIN_ROWS) {
+  console.error(`\n  DRIFT  only ${results.length} row(s) were covered, expected at least ${MIN_ROWS}.`);
+  console.error('  The claim set did not build: an early exit, a throw, or a deleted block.');
+  console.error('  Reporting a clean plan over no rows would be a pass over nothing.');
+}
+// The SAME function --self-test grades, so the floor and the drift rule cannot diverge.
+process.exit(exitCodeFor(results));
