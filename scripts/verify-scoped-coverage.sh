@@ -12,6 +12,70 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# ── Self-test ─────────────────────────────────────────────────────────────────
+#
+# The gate classifies every registered command into twin-covered / allowlist-covered /
+# VIOLATION, then exits at its PASS branch. Two silent failures matter here and the
+# floors below cannot see either:
+#   * the allowlist regex matching by SUBSTRING where the rule is a whole name, so a
+#     new command whose name merely contains an allowlisted one reads as covered;
+#   * a twin of a DIFFERENT command being accepted as cover for this one.
+# The floors catch a DEAD SCAN; these catch a misclassification.
+#
+# The dispatch must run before the live gate reaches its exit 0, and the predicate must
+# not reach into the live body, so it is written standalone here.
+self_test() {
+    local fails=0 total=0
+
+    classify() {
+        local fn_name="$1" scoped="$2" allow="$3"
+        if [ -n "$scoped" ] && printf '%s\n' "$scoped" | grep -qxF "${fn_name}_scoped"; then
+            echo twin; return
+        fi
+        if printf '%s\n' "$fn_name" | grep -qE "^($allow)$"; then
+            echo allow; return
+        fi
+        echo violation
+    }
+
+    c() {
+        local label="$1" want="$2" got
+        got="$(classify "$3" "$4" "$5")"
+        total=$((total + 1))
+        if [ "$got" != "$want" ]; then
+            printf '  FAIL %s: expected %s, got %s\n' "$label" "$want" "$got" >&2
+            fails=$((fails + 1))
+        fi
+    }
+
+    # covered: an exact twin exists
+    c "a twin covers the command" twin list_products "list_products_scoped" ""
+    # the direction that must never go silent
+    c "no twin and no allowlist is a VIOLATION" violation orphan_cmd "" ""
+    # allowlist covers by whole name
+    c "an allowlisted name is covered" allow staff_login "" "staff_login|has_users"
+    # WHOLE-NAME, not substring: the over-match a loose regex hides
+    c "a name containing an allowlisted one is a VIOLATION" violation staff_login_extra "" "staff_login|has_users"
+    # another command's twin must not cover this one
+    c "another command twin does not cover it" violation list_product "list_products_scoped" ""
+    # an empty twin set covers nothing
+    c "an empty twin set covers nothing" violation anything "" ""
+
+    if [ "$fails" -gt 0 ]; then
+        printf 'SELF-TEST FAILED (%d of %d cases)\n' "$fails" "$total" >&2
+        return 2
+    fi
+    printf 'SELF-TEST OK (%d cases, no tree read)\n' "$total"
+    return 0
+}
+
+if [ "${1:-}" = "--self-test" ]; then
+    self_test
+    exit $?
+fi
+
+self_test || { echo "CLASSIFIER WENT DEAF: not trusting the scan below." >&2; exit 2; }
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 NC='\033[0m'
