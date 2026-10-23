@@ -451,12 +451,21 @@ of AGENTS.md already states.
 After the fixes all three `.mjs` survivors show a killed detector (`classify`, `collectErrors`,
 `admits`), so none was a real gap.
 
-**Three `.sh` checkers stay unmutable, and the row says so.** `verify-docker-digests.sh`,
-`verify-scoped-authorization.sh` and `verify-scoped-coverage.sh` each declare exactly one
-function — `self_test` — with the detector written inline in the script body. There is no
-function to gut, so they report `NO MUTATABLE FUNCTION` rather than passing. Graded by hand
-instead: pointing `PIN_RE` at a non-matching pattern and dropping its 64-char floor both turn
-`verify-docker-digests.sh` red (exit 2), so its anti-zero case is load-bearing.
+**Three `.sh` checkers stay unmutable by the harness, and the row says so.** They declare
+exactly one function — `self_test` — with the detector written inline in the script body, so
+there is no function to gut and they report `NO MUTATABLE FUNCTION` rather than passing.
+Graded by hand instead, and all four mutations were killed:
+
+| Checker | Mutation | Result |
+|---|---|---|
+| `verify-docker-digests.sh` | `PIN_RE` → a non-matching pattern | exit 2 |
+| `verify-docker-digests.sh` | `PIN_RE` → drops its `{64}` floor | exit 2 |
+| `verify-scoped-authorization.sh` | `PERM` → a non-matching pattern | exit 2 |
+| `verify-scoped-authorization.sh` | `STORE` → a non-matching pattern | exit 2 |
+
+Both scripts define those patterns ONCE and pass the same value to the self-test and the live
+scan (`awk -v PERM="$PERM"`), which is why a mutation reaches the cases at all — a self-test
+grading its own private copy of a regex proves nothing about the scan.
 
 **Final sweep: `72 checker(s), 19 SURVIVED, 53 killed`.** The 19 are the same I/O shells as
 before plus one `cleanup()` and three `NO MUTATABLE FUNCTION` rows; every checker that has a
