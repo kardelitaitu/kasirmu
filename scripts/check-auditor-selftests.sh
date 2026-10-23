@@ -36,3 +36,9 @@ python3 .agents/skills/docs-auditor/scripts/check-site-links.py --self-test
 python3 .agents/skills/docs-auditor/scripts/check-api-surface.py --self-test
 python3 .agents/skills/docs-auditor/scripts/check-cite-lines.py --self-test
 python3 .agents/skills/docs-auditor/scripts/check-orphans.py --self-test
+# check-audit-stamps.py joined 2026-10-23: its whole decision is a three-branch date
+# comparison, and flipping it moves every under-reporting doc into the INFORMATIONAL
+# class -- the gate then exits 0 with the dangerous class empty. Its census floor counts
+# rows and cannot see a misclassified pair; the cases can, and all four mutations of the
+# comparison redden them.
+python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py --self-test

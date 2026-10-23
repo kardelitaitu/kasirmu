@@ -202,11 +202,105 @@ def _missing_footers(root: pathlib.Path):
     return out, baseline_absent
 
 
+#: Stamp/footer pairs and the class each must land in.
+#:
+#: WHY THESE CASES. main() decides everything with `if newest == footer / elif footer >
+#: newest / else`, three lines whose failure mode is SILENT: if the comparison flipped,
+#: every under-reporting doc would be relabelled into the informational class and the
+#: gate would exit 0 while the dangerous class sat empty. The census floor at the bottom
+#: of main() catches a DEAD regex; it cannot catch a MISCLASSIFIED pair. These can.
+CLASSIFY_CASES = (
+    ("equal dates are healthy", "Audit stamp: 2026-10-01", "> last audited 01-10-26 by x", "equal"),
+    ("earlier footer is the BUG class", "Audit stamp: 2026-10-05", "> last audited 01-10-26 by x", "older"),
+    ("later footer is informational", "Audit stamp: 2026-10-01", "> last audited 05-10-26 by x", "newer"),
+    ("stamp alone has nothing machine-read", "Audit stamp: 2026-10-01", "", "stamp_only"),
+    ("footer alone has no stamp behind it", "", "> last audited 01-10-26 by x", "footer_only"),
+    ("neither is not a claim at all", "", "", None),
+    (
+        "newest stamp governs when a doc carries two",
+        "Audit stamp: 2026-09-01\nAudit stamp: 2026-10-05",
+        "> last audited 01-09-26 by x",
+        "older",
+    ),
+)
+
+
+#: Impossible footers. detect.sh's SHAPE regex accepts 31-13-26, so a typo passes there
+#: and must be caught here.
+BAD_DATE_CASES = (
+    ("month 13", "> last audited 01-13-26 by x", True),
+    ("day 31 in a 30-day month", "> last audited 31-04-26 by x", True),
+    ("february 30", "> last audited 30-02-26 by x", True),
+    ("a real leap day is not flagged", "> last audited 29-02-24 by x", False),
+    ("an ordinary date is not flagged", "> last audited 15-06-26 by x", False),
+)
+
+
+def classify(text: str):
+    """The class one document body lands in, or None when it carries no claim.
+
+    Extracted from main() so the cases above exercise the REAL comparison rather than
+    a duplicate of it. Returns (klass, impossible_footer_triples).
+    """
+    stamps = _stamp_dates(text)
+    footers = _footer_dates(text)
+    bad = []
+    for dd, mm, yy in FOOTER_RE.findall(text):
+        try:
+            _dt.date(2000 + int(yy), int(mm), int(dd))
+        except ValueError:
+            bad.append("%s-%s-%s" % (dd, mm, yy))
+    if not stamps and not footers:
+        return None, bad
+    if not stamps:
+        return "footer_only", bad
+    if not footers:
+        return "stamp_only", bad
+    newest = max(stamps)
+    footer = footers[-1]
+    if newest == footer:
+        return "equal", bad
+    if footer > newest:
+        return "newer", bad
+    return "older", bad
+
+
+def self_test() -> int:
+    """Grade the classifier and the impossible-date rejection; report EVERY failure."""
+    bad = []
+    for name, stamps, footer, expected in CLASSIFY_CASES:
+        got, _ = classify(stamps + chr(10) + footer)
+        if got != expected:
+            bad.append("  %s: expected %r, classifier returned %r" % (name, expected, got))
+    for name, footer, should_flag in BAD_DATE_CASES:
+        _, flagged = classify(footer)
+        if should_flag and not flagged:
+            bad.append("  %s: must be flagged as an impossible date, got none" % name)
+        if not should_flag and flagged:
+            bad.append("  %s: must NOT be flagged, got %r" % (name, flagged))
+    if bad:
+        sys.stderr.write("SELF-TEST WRONG:" + chr(10) + chr(10).join(bad) + chr(10))
+        return 2
+    print("SELF-TEST OK (%d cases, no file read)" % (len(CLASSIFY_CASES) + len(BAD_DATE_CASES)))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--verbose", action="store_true",
                     help="also list agreeing files and the informational classes")
+    ap.add_argument("--self-test", action="store_true",
+                    help="run this checker's cases and exit")
     args = ap.parse_args()
+    if args.self_test:
+        return self_test()
+    # Grade the classifier BEFORE the tree. A flipped comparison would relabel every
+    # under-reporting doc into the informational class, and the census floor below
+    # counts rows rather than checking them, so it would not see it.
+    rc = self_test()
+    if rc:
+        sys.stderr.write("CLASSIFIER WENT DEAF: not trusting the tree scan below." + chr(10))
+        return rc
 
     root = pathlib.Path.cwd()
     if not (root / "AGENTS.md").is_file() and not (root / "docs").is_dir():
