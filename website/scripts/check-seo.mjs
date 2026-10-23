@@ -182,10 +182,14 @@ import { FOOTER_COLUMNS } from '../src/lib/footer-nav.ts';
 // Script-relative, not cwd-relative. It used to be the bare string 'dist', which
 // made every read in this file depend on the working directory: `npm run check:seo`
 // passes because npm runs from website/, while the same command from the repo root
-// died on ENOENT before reaching a single case. That is why the sibling
-// `check:seo:self-test` was never wired anywhere -- it could not run, so nothing
-// noticed it existed, and a self-test that cannot run is the shape this file's own
-// header says it refuses to be. REPO_ROOT below is the same idea, already applied.
+// died on ENOENT before reaching a single case. Measured 2026-10-24.
+//
+// The sibling check-links.mjs gets this right by a different route and is worth
+// naming: its `walkAll(DIST)` at :158 sits BELOW the `--self-test` exit at :143, so
+// the self-test never reaches a dist read and runs from anywhere. This file reads at
+// :659, ABOVE its gate, so the path has to be cwd-proof. Both shapes work; only one
+// of them was, and the failure was silent because the only wired invocation prefixes
+// `cd website`, which is exactly the prefix that hides a cwd bug.
 const DIST = fileURLToPath(new URL('../dist', import.meta.url));
 // This file's own location decides the repo root, so the source walk of check 14
 // works from any working directory (check 14 is the one check that reads source
