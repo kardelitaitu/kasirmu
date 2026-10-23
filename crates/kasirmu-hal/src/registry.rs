@@ -225,7 +225,8 @@ impl DriverRegistry {
         let terminal = Arc::new(crate::drivers::edc::WiredEdcTerminal::new(
             port_name, baud_rate, info,
         ));
-        self.register_terminal(id, terminal).await;
+        let resilient = Arc::new(crate::drivers::edc::ResilientEdcTerminal::new(terminal));
+        self.register_terminal(id, resilient).await;
     }
 
     /// Register a wireless EDC terminal under the given id. The setup
@@ -238,7 +239,17 @@ impl DriverRegistry {
         info: DeviceInfo,
     ) {
         let terminal = Arc::new(crate::drivers::edc::WirelessEdcTerminal::new(target, info));
-        self.register_terminal(id, terminal).await;
+        let resilient = Arc::new(crate::drivers::edc::ResilientEdcTerminal::new(terminal));
+        self.register_terminal(id, resilient).await;
+    }
+
+    /// Register any [`EdcTerminal`] driver wrapped with a resilient circuit breaker and timeout decorator.
+    pub async fn register_resilient_terminal(&self, id: &str, driver: Arc<dyn EdcTerminal>) {
+        self.register_terminal(
+            id,
+            Arc::new(crate::drivers::edc::ResilientEdcTerminal::new(driver)),
+        )
+        .await;
     }
 
     /// Register a loopback (simulator) EDC terminal under the given id.

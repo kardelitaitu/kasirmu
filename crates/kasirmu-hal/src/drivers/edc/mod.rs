@@ -21,6 +21,7 @@ next: real vendor protocol handlers, then registry-driven registration from the 
 
 pub mod loopback;
 pub mod protocol;
+pub mod resilient;
 pub mod wired;
 pub mod wireless;
 
@@ -29,6 +30,7 @@ pub use protocol::{
     LoopbackCodec, ProtocolCodec, ProtocolMessage, ingenico::IngenicoCodec, pax::PaxCodec,
     verifone::VerifoneCodec,
 };
+pub use resilient::{CircuitState, ResilientEdcConfig, ResilientEdcTerminal};
 pub use wired::WiredEdcTerminal;
 pub use wireless::{WirelessEdcTerminal, WirelessTarget};
 

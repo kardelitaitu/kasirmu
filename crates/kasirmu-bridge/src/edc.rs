@@ -213,9 +213,7 @@ async fn sync_terminal_driver(ctx: &BridgeCtx<'_>, row: &EdcTerminalConfig) {
         || row.vendor.as_deref() == Some("simulator")
     {
         let sim = Arc::new(kasirmu_hal::drivers::edc::LoopbackEdcTerminal::from_address(address));
-        ctx.registry
-            .register_loopback_terminal_with(&row.id, sim)
-            .await;
+        ctx.registry.register_resilient_terminal(&row.id, sim).await;
         return;
     }
 

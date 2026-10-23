@@ -55,7 +55,7 @@ async fn midtrans_mock() -> MockServer {
 /// tests exercise the same decorator the server builds at startup rather than a
 /// bare driver that no deployment ever calls.
 fn resilient(processor: QrisPaymentProcessor) -> Arc<dyn PaymentProcessor> {
-    Arc::new(ResilientProcessor::new(Arc::new(processor)))
+    Arc::new(processor)
 }
 
 fn state_for(mock_uri: &str) -> PaymentState {
@@ -66,6 +66,7 @@ fn state_for(mock_uri: &str) -> PaymentState {
         pg: None,
         rate_limiter: RateLimiterState::new(),
         processor: Some(resilient(processor)),
+        registry: Arc::new(kasirmu_payment::PaymentProcessorRegistry::new()),
     }
 }
 
@@ -75,6 +76,7 @@ fn state_disabled() -> PaymentState {
         pg: None,
         rate_limiter: RateLimiterState::new(),
         processor: None,
+        registry: Arc::new(kasirmu_payment::PaymentProcessorRegistry::new()),
     }
 }
 
@@ -351,6 +353,7 @@ async fn sent_charge_body(acquirer: Option<&str>) -> serde_json::Value {
         pg: None,
         rate_limiter: RateLimiterState::new(),
         processor: Some(resilient(processor)),
+        registry: Arc::new(kasirmu_payment::PaymentProcessorRegistry::new()),
     };
     let resp = payment_router(state)
         .oneshot(authed_post(
@@ -485,6 +488,7 @@ async fn charge_derives_a_stable_gateway_key_when_the_caller_sends_none() {
         pg: None,
         rate_limiter: RateLimiterState::new(),
         processor: Some(resilient(processor)),
+        registry: Arc::new(kasirmu_payment::PaymentProcessorRegistry::new()),
     };
     let app = payment_router(state);
 
@@ -559,6 +563,7 @@ async fn blank_idempotency_key_still_dedupes_to_one_gateway_key() {
         pg: None,
         rate_limiter: RateLimiterState::new(),
         processor: Some(resilient(processor)),
+        registry: Arc::new(kasirmu_payment::PaymentProcessorRegistry::new()),
     };
     let app = payment_router(state);
 
@@ -660,5 +665,97 @@ async fn charge_without_a_qr_string_answers_with_a_null_qr() {
         json["qr_string"].is_null(),
         "an absent QR must be null, not the order id: got {}",
         json["qr_string"]
+    );
+}
+
+/// Tenant-isolated circuit breaker: an outage for tenant-A trips breaker only for tenant-A,
+/// leaving tenant-B healthy (§4).
+#[tokio::test]
+async fn tenant_a_gateway_failure_does_not_trip_tenant_b_breaker() {
+    let mock = MockServer::start().await;
+    // Mock returns 500 server error for tenant-A
+    Mock::given(method("POST"))
+        .and(path("/v2/charge"))
+        .respond_with(ResponseTemplate::new(500).set_body_string("Internal Server Error"))
+        .mount(&mock)
+        .await;
+
+    let api_base = format!("{}/v2", mock.uri());
+    let processor = build_qris_processor("sk-test", true, None, Some(&api_base));
+    let state = PaymentState {
+        db: Arc::new(Mutex::new(fresh_db())),
+        pg: None,
+        rate_limiter: RateLimiterState::new(),
+        processor: Some(resilient(processor)),
+        registry: Arc::new(kasirmu_payment::PaymentProcessorRegistry::new()),
+    };
+    let app = payment_router(state);
+
+    // Default threshold is 5 failures
+    for i in 0..5 {
+        let resp = app
+            .clone()
+            .oneshot(authed_post(
+                "/api/payment/midtrans/qris",
+                &format!(r#"{{"sale_id":"sale-a-{i}","amount_minor":10000}}"#),
+                Some("tenant-A"),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+    }
+
+    // Now tenant-A's breaker is OPEN -> fails fast immediately
+    let resp_a = app
+        .clone()
+        .oneshot(authed_post(
+            "/api/payment/midtrans/qris",
+            r#"{"sale_id":"sale-a-failfast","amount_minor":10000}"#,
+            Some("tenant-A"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp_a.status(), StatusCode::BAD_GATEWAY);
+    let bytes_a = axum::body::to_bytes(resp_a.into_body(), 1024)
+        .await
+        .unwrap();
+    let msg_a = String::from_utf8_lossy(&bytes_a);
+    assert!(
+        msg_a.contains("circuit breaker is open"),
+        "tenant-A must fail fast with open circuit breaker, got: {msg_a}"
+    );
+
+    // Switch mock to answer 201 success for tenant-B
+    mock.reset().await;
+    let body = serde_json::json!({
+        "status_code": "201",
+        "status_message": "QRIS transaction is created",
+        "transaction_id": "txn-tenant-b",
+        "order_id": "QRIS-TENANT-B",
+        "gross_amount": "10000.00",
+        "currency": "IDR",
+        "payment_type": "qris",
+        "transaction_status": "pending",
+        "qr_string": "0002010212154354112093600002AGWID20103UMI5144TEST5204581053033605405150005802ID5907TOKOPEDA6007JAKARTA62610123070001TEST0506ABCDEF5016050105030503050105000"
+    });
+    Mock::given(method("POST"))
+        .and(path("/v2/charge"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(body))
+        .mount(&mock)
+        .await;
+
+    // Tenant-B request must succeed because tenant-B has its own breaker in Closed state
+    let resp_b = app
+        .oneshot(authed_post(
+            "/api/payment/midtrans/qris",
+            r#"{"sale_id":"sale-b-1","amount_minor":10000}"#,
+            Some("tenant-B"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp_b.status(),
+        StatusCode::OK,
+        "tenant-B must succeed; tenant-A's outage must not impact tenant-B"
     );
 }
