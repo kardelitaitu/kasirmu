@@ -1,11 +1,15 @@
 use super::*;
 use std::path::PathBuf;
 
-fn temp_image_dir(tag: &str) -> PathBuf {
-    let dir =
-        std::env::temp_dir().join(format!("kasirmu-local-api-{tag}-{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+/// The image directory plus its guard.
+///
+/// The guard must travel with the path: `std::env::temp_dir()` resolved to the
+/// machine-level `C:\WINDOWS\TEMP` here, where a create fails with
+/// PermissionDenied once anything stale exists, and the bare path left behind
+/// was never deleted.
+fn temp_image_dir(tag: &str) -> (PathBuf, kasirmu_test_support::ScratchDir) {
+    let scratch = kasirmu_test_support::ScratchDir::new(&format!("kasirmu-local-api-{tag}"));
+    (scratch.path().to_path_buf(), scratch)
 }
 
 #[test]
@@ -207,7 +211,7 @@ async fn minted_token_rejected_under_wrong_secret() {
 
 #[tokio::test]
 async fn server_serves_health_protected_routes_and_stops() {
-    let dir = temp_image_dir("serve");
+    let (dir, _scratch) = temp_image_dir("serve");
     let db = Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db()));
     let secret = "d".repeat(32);
     let handle = start(
@@ -348,7 +352,7 @@ async fn server_serves_health_protected_routes_and_stops() {
 
 #[tokio::test]
 async fn start_reports_port_conflict_as_error() {
-    let dir = temp_image_dir("conflict");
+    let (dir, _scratch) = temp_image_dir("conflict");
     let db = Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db()));
     let first = start(
         db.clone(),
@@ -416,9 +420,10 @@ fn primary_store_id_resolves_and_falls_back() {
 
 #[tokio::test]
 async fn serves_the_primary_store_database_not_the_global_one() {
-    let tmp =
-        std::env::temp_dir().join(format!("kasirmu-local-api-store-{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir_all(&tmp).unwrap();
+    // The guard is bound for the whole test so the store directory outlives
+    // every connection the manager hands out below.
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-local-api-store");
+    let tmp = scratch.path().to_path_buf();
     let global = kasirmu_core::migrations::fresh_db();
     global
         .execute(
@@ -535,9 +540,8 @@ fn resolve_store_id_prefers_configured_and_degrades() {
 
 #[tokio::test]
 async fn api_writes_land_in_the_audit_log_of_the_served_store() {
-    let tmp =
-        std::env::temp_dir().join(format!("kasirmu-local-api-audit-{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir_all(&tmp).unwrap();
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-local-api-audit");
+    let tmp = scratch.path().to_path_buf();
     let global = kasirmu_core::migrations::fresh_db();
     global
         .execute(
@@ -632,14 +636,29 @@ async fn api_writes_land_in_the_audit_log_of_the_served_store() {
 // ── O-M46: the audit sink's single writer, own connection, counted failures ──
 
 /// A sink's own store file, migrated, exactly as `start` gives the API.
-fn audit_store(tag: &str) -> (std::path::PathBuf, std::path::PathBuf) {
-    let tmp =
-        std::env::temp_dir().join(format!("kasirmu-local-api-{tag}-{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir_all(&tmp).unwrap();
+///
+/// Returns the directory, the store db path, AND the guard. The guard must
+/// travel with the paths: bound inside this function it would drop on return,
+/// delete the directory, and leave every later open failing with CannotOpen --
+/// which is how this helper failed on its first attempt (the same mistake as
+/// kasirmu-core's Scratch::new, one round earlier).
+fn audit_store(
+    tag: &str,
+) -> (
+    std::path::PathBuf,
+    std::path::PathBuf,
+    kasirmu_test_support::ScratchDir,
+) {
+    let scratch = kasirmu_test_support::ScratchDir::new(&format!("kasirmu-local-api-{tag}"));
+    let tmp = scratch.path().to_path_buf();
     let manager =
         platform_core::StoreDatabaseManager::new(tmp.clone(), kasirmu_core::migrations::ALL);
     manager.open_store("default").unwrap();
-    (tmp, manager.checked_store_db_path("default").unwrap())
+    (
+        tmp,
+        manager.checked_store_db_path("default").unwrap(),
+        scratch,
+    )
 }
 
 fn audit_event(path: &str, status: u16) -> kasirmu_api::api_audit::ApiWriteEvent {
@@ -678,21 +697,26 @@ fn record_events(
 /// not "the burst fits".
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_audit_events_all_land_with_no_lost_rows() {
-    let (tmp, path) = audit_store("audit-concurrency");
+    let (tmp, path, _store_scratch) = audit_store("audit-concurrency");
     // The budget resets every 60 s on its own; nothing here can pre-charge
     // it, so the burst is sized to fit whatever is left (see below).
     let sink = Arc::new(StoreAuditSink::open(&path, "default".to_string()).unwrap());
 
-    // `log_audit` carries a PROCESS-WIDE sliding budget
-    // (`kasirmu_core::db::audit::AUDIT_RATE_LIMIT`) that every other writer in
-    // the binary also spends, so the burst below is sized to fit inside what
-    // is left of it. That budget is not this test's subject -- and it is
-    // enforced upstream of the sink, so a test that overran it would be
-    // measuring it instead. (Measured: overrunning it loses rows exactly as
-    // designed, which is why the size is declared here rather than guessed.)
+    // `log_audit` carries a per-database sliding budget
+    // (`kasirmu_core::db::audit::AUDIT_RATE_LIMIT`), so the burst below is sized to
+    // fit inside it. That budget is not this test's subject -- and it is enforced upstream
+    // of the sink, so a test that overran it would be measuring it instead. (Measured:
+    // overrunning it loses rows exactly as designed, which is why the size is declared
+    // here rather than guessed.)
+    //
+    // The budget used to be PROCESS-WIDE, which made these numbers load-bearing across
+    // every test in the binary: two tests writing to their own databases still drained
+    // one shared counter. It moved into the `settings` table on 2026-10-23
+    // (per-database, matching what the limiter is for), so each store now has its own
+    // allowance and these sizes are bounded only by this test's own writes. They are kept
+    // as they were -- still correct, and re-deriving them would be churn.
     const PRODUCERS: usize = 4;
-    // 4 x 30 = 120 events against a 1000-per-minute budget, sized so that concurrent test
-    // executions in the same process do not exhaust the process-wide audit rate limit.
+    // 4 x 30 = 120 events against a 1000-per-minute budget, well inside it.
     const PER_PRODUCER: usize = 30;
     let mut producers = Vec::new();
     for p in 0..PRODUCERS {
@@ -809,7 +833,7 @@ async fn a_full_channel_delays_events_and_still_loses_nothing() {
         }
     }
 
-    let (tmp, path) = audit_store("audit-full");
+    let (tmp, path, _store_scratch) = audit_store("audit-full");
     let gate = std::sync::Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()));
     let sink = Arc::new(StoreAuditSink::start_writer(
         Gated {
@@ -821,15 +845,18 @@ async fn a_full_channel_delays_events_and_still_loses_nothing() {
 
     let capacity = sink.tx.max_capacity();
 
-    // BUDGETED against `kasirmu_core::db::audit::AUDIT_RATE_LIMIT` (1000 per
-    // 60 s window, PROCESS-WIDE). That limiter returns `Ok(())` WITHOUT
-    // writing once the budget is spent, so a test that records more than 1000
-    // rows sees a short table and reports it as sink loss — which is exactly
-    // what this test did before (1000 of 1025, looking like 25 dropped events).
-    // The reset hook is `pub(crate)` in kasirmu-core and unreachable here, so
-    // the test is sized to fit the budget instead: one event per slot would
-    // need 1024, so record FEWER than capacity and let the saturation check
-    // above wait for the backlog rather than mandate it is exactly full.
+    // BUDGETED against `kasirmu_core::db::audit::AUDIT_RATE_LIMIT` (1000 per 60 s
+    // window, PER-DATABASE since 2026-10-23). That limiter returns `Ok(())` WITHOUT
+    // writing once the budget is spent, so a test that records more than 1000 rows
+    // sees a short table and reports it as sink loss — which is exactly what this
+    // test did before (1000 of 1025, looking like 25 dropped events).
+    //
+    // The earlier fix for that was sizing the test to the budget because the counter
+    // was PROCESS-WIDE: every test in the binary spent from one allowance, so the size
+    // had to leave room for tests this one could not see. The counter is now per
+    // database (it lives in the `settings` table), so 900 is simply 900 writes
+    // against this store's own budget. The number is unchanged, and the reason it was
+    // chosen is recorded here so nobody re-derives it from a mechanism that is gone.
     const RECORDED: usize = 900;
     assert!(
         RECORDED < capacity,
@@ -914,7 +941,7 @@ async fn a_full_channel_delays_events_and_still_loses_nothing() {
 /// * reordering between enqueue and commit, which the read-back order catches.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_single_producer_keeps_its_order_and_there_is_one_writer() {
-    let (tmp, path) = audit_store("audit-order");
+    let (tmp, path, _store_scratch) = audit_store("audit-order");
     let sink = StoreAuditSink::open(&path, "default".to_string()).unwrap();
     // Per-SINK census. A process-wide counter cannot answer this question:
     // another test's sink would be indistinguishable from a second writer of
@@ -963,7 +990,7 @@ async fn a_single_producer_keeps_its_order_and_there_is_one_writer() {
 async fn audit_writes_do_not_hold_the_handlers_connection() {
     use kasirmu_api::api_audit::AuditSink;
 
-    let (tmp, path) = audit_store("audit-own-conn");
+    let (tmp, path, _store_scratch) = audit_store("audit-own-conn");
     let handlers = Arc::new(Mutex::new(Connection::open(&path).unwrap()));
     let sink = Arc::new(StoreAuditSink::new(handlers.clone(), "default".to_string()));
     for i in 0..50 {
@@ -1009,7 +1036,7 @@ async fn audit_writes_do_not_hold_the_handlers_connection() {
 async fn a_failing_audit_write_increments_the_failure_counter() {
     use kasirmu_api::api_audit::AuditSink;
 
-    let (tmp, path) = audit_store("audit-failure");
+    let (tmp, path, _store_scratch) = audit_store("audit-failure");
     {
         let conn = Connection::open(&path).unwrap();
         conn.execute_batch("ALTER TABLE audit_log RENAME TO audit_log_hidden;")
@@ -1039,7 +1066,7 @@ async fn a_failing_audit_write_increments_the_failure_counter() {
 fn a_sink_whose_writes_all_fail_counts_every_failure() {
     use kasirmu_api::api_audit::AuditSink;
 
-    let dir = temp_image_dir("audit-no-conn");
+    let (dir, _scratch) = temp_image_dir("audit-no-conn");
     let handle = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
         .enable_all()
@@ -1126,7 +1153,7 @@ fn drift_pin_local_api_settings_keys_stay_manager_owned() {
 /// left behind, and the served database still passes the boot check.
 #[tokio::test]
 async fn foreign_tenant_write_is_refused_and_leaves_the_store_bootable() {
-    let tmp = temp_image_dir("c34-foreign");
+    let (tmp, _scratch) = temp_image_dir("c34-foreign");
     let global = kasirmu_core::migrations::fresh_db();
     global
         .execute(
@@ -1252,7 +1279,7 @@ async fn foreign_tenant_write_is_refused_and_leaves_the_store_bootable() {
 /// start returning 403 to scripts that already send such a token.
 #[tokio::test]
 async fn foreign_tenant_read_is_not_gated() {
-    let dir = temp_image_dir("c34-read");
+    let (dir, _scratch) = temp_image_dir("c34-read");
     let db = Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db()));
     let secret = "g".repeat(32);
     let handle = start(
@@ -1293,7 +1320,7 @@ async fn foreign_tenant_read_is_not_gated() {
 /// named foreign tenant is. So the empty claim must be refused too.
 #[tokio::test]
 async fn empty_tenant_claim_is_also_refused() {
-    let dir = temp_image_dir("c34-empty");
+    let (dir, _scratch) = temp_image_dir("c34-empty");
     let db = Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db()));
     let secret = "h".repeat(32);
     let handle = start(
@@ -1370,7 +1397,7 @@ fn tenant_integrity_still_refuses_a_genuinely_foreign_store() {
 /// against the assembled server - not against a handler called directly.
 #[tokio::test]
 async fn embedded_surface_refuses_a_caller_supplied_tenant_at_the_mint() {
-    let dir = temp_image_dir("c39-mint");
+    let (dir, _scratch) = temp_image_dir("c39-mint");
     let db = Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db()));
     let secret = "k".repeat(32);
     let handle = start(

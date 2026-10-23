@@ -26,3 +26,10 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 reqwest = { workspace = true }
+# Fixture directories under the gitignored target/ tree. Four tests here used
+# `std::env::temp_dir()`, which on this project's Windows machines resolves to
+# the MACHINE-level C:\WINDOWS\TEMP -- creatable but not deletable, so once a
+# stale directory exists the create itself fails with PermissionDenied (os error
+# 5) and the failure reads as a broken product. It also never cleaned up: the
+# paths were bare and had no Drop.
+kasirmu-test-support = { path = "../kasirmu-test-support" }
