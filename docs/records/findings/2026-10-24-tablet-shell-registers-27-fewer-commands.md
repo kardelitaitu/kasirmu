@@ -116,9 +116,14 @@ and the checker reports it anyway.
 **The 5 false positives are now fixed in the checker.** `_platform_guard_excludes_shell`
 (`scripts/verify-scoped-reads.py:653`) knew only the POSITIVE form of the other shell's name and
 hunted a helper `isDesktopShell` that has **zero occurrences in this repo**. The dominant idiom is
-`if (!isTabletShell())`, which it could not read. Taught the negated form and pinned it with two
-cases (one asserting exclusion, one asserting the control) — reverting the fix reddens the
-self-test. **34 → 29.**
+`if (!isTabletShell())`, which it could not read.
+
+The old code read `other = "isDesktopShell" if shell == "tablet" else "isTabletShell"`, so grading
+**tablet** looked for `isDesktopShell()` — which no file in this repo contains — while the repo
+spells the desktop branch `!isTabletShell()`. Corrected to test both the other shell's positive
+form **and this shell's negated form**, with a self-test case for each direction plus a control so
+the predicate cannot pass by answering `True` for every shell. **Verified by mutation: reverting
+the fix reddens the self-test, naming the case. 34 → 29.**
 
 **Confidence, stated:** high on registration and screen registration (parsed from both
 `generate_handler!` lists and the 27 `register.tsx` files); medium-high on reachability (traced
