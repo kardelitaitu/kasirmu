@@ -26,11 +26,33 @@ pub struct Money {
 /// `serde`-default fallback only — **never construct business money this
 /// way**.
 ///
-/// This impl exists so `#[serde(default)]` fields of type `Money` (e.g.
-/// `modules/sales` `SaleLine::tax_amount`, `Sale::subtotal`) can
+/// This impl exists so `#[serde(default)]` fields of type `Money` can
 /// deserialize legacy payloads that omit the key. The currency is
 /// hard-coded to USD, which is almost certainly NOT the sale's currency —
 /// the value is a stand-in, not real money.
+///
+/// **Exactly three fields rely on it today**, all in
+/// `foundation/src/sales.rs`: `SaleLine::tax_amount`, `Sale::subtotal` and
+/// `Sale::tax_total`. Re-derive with `git grep -n 'serde(default)'` over
+/// every non-test `.rs` and read the next three lines for a `Money` type —
+/// deliberately NO LINE NUMBERS here, because the first draft of this very
+/// sentence cited :122 and :126 and both were wrong within the same edit. A
+/// field NAME survives a refactor; a line number does not. The previous
+/// revision of
+/// this comment named `modules/sales` `SaleLine::tax_amount` and
+/// `Sale::subtotal`, which had been wrong for long enough that neither field
+/// existed at that path any more, and it omitted `tax_total` entirely. A
+/// doc comment that lists call sites is a claim, and a stale claim about a
+/// STAND-IN CURRENCY is worse than no claim: it sends a reader looking in a
+/// file that no longer holds the risk.
+///
+/// The risk this fallback creates is smaller than it looks, and the reason is
+/// worth recording: `minor_units` is ZERO, so the stand-in is zero money, and
+/// `Money`'s arithmetic refuses to combine currencies. `checked_add` returns
+/// `None` on a mismatch, which is how the refund path rejects a mixed-currency
+/// line (`crates/kasirmu-bridge/src/refunds.rs:146`). A defaulted
+/// `tax_amount` therefore cannot silently corrupt a total; it can only be
+/// compared, and the comparison fails closed.
 ///
 /// All production construction goes through [`Money::zero`] or
 /// [`Money::from_major`], which take an explicit currency. Do not add new
