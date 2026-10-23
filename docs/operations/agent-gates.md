@@ -701,6 +701,30 @@ that assertion does not hold. A step that cannot fail is worse than no step: it 
 and no step sits inside a never-true conditional. Both were measured rather than assumed, because
 a census that only reports the things it expected to find is not a census.
 
+#### Acting on the census (round 97), and the roster went stale twice
+
+Three fixes, each verified:
+
+1. **Two duplicate steps removed.** `release version gate` and `updater signature verifier` ran the
+   identical `--self-test` as the unguarded pair ~110 lines above. The deciding fact was the
+   **guard**: the later block sits inside `command -v node`, so the copy there is the weaker one —
+   deleting it keeps a caller on a node-less box and halves the runtime.
+2. **The `verify-scoped-reads.py` labels un-inverted.** Measured: **46 pairs run bare-then-self-test,
+   3 run self-test-first**, and of those 3 only this one was wrong — the other two
+   (`state-closure`, `reentry-guards`) say `(self-test)` / `(report)` in their labels and carry a
+   comment explaining the order. The fixed pair now reads
+   `unguarded ambient ipc calls` then `unguarded ambient ipc calls self-test`.
+3. **Four roster rows repointed**, because each of the two fixes above left a `gates.json` row
+   naming a step that no longer existed.
+
+**That second point is the round's real lesson.** `verify-ci-docs-drift.py` caught it immediately —
+*"declares runner 'release version gate' ... but no step there matches it -- the label was either
+renamed or the step deleted"* — which is precisely the gate that was red in round 93 for the same
+underlying reason: **editing `check.sh` is a two-file change, and the second file is
+`gates.json`.** It is now the second time in five rounds; the pair belongs in the same commit, and
+running `verify-gate-completeness.py` + `verify-ci-docs-drift.py` *before* committing is what makes
+that automatic rather than remembered.
+
 **The useful output of this round is the *list*, not the fixes.** 51 wired checkers is a roster
 anyone can re-run, and now one more of them is green. A gate nobody runs is not a gate — the same
 sentence this project has written three times about gates, now applied to the gates themselves.
