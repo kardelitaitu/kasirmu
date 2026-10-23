@@ -249,7 +249,11 @@ pub struct AppState {
     /// private, self-deleting root under the gitignored `target/` tree instead
     /// of the shared `std::env::temp_dir()`. Dropping the state drops this
     /// guard, which deletes the root after the manager is gone.
+    // Never read by name: the field is a pure lifetime guard, dropped only
+    // when the state is, and its `Drop` side effect (deleting the scratch
+    // root) is the entire point. Deleting it would drop the guard early.
     #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) test_scratch: Option<TestScratch>,
 }
 

@@ -233,14 +233,12 @@ impl ImageDownloadManager {
         let mut present: std::collections::HashSet<String> = std::collections::HashSet::new();
         if let Ok(mut dir) = tokio::fs::read_dir(&images_dir).await {
             while let Ok(Some(entry)) = dir.next_entry().await {
-                if let Ok(ft) = entry.file_type().await {
-                    if ft.is_file() {
-                        if let Some(name) = entry.file_name().to_str() {
-                            if let Some(hash) = name.strip_suffix(".webp") {
-                                present.insert(hash.to_owned());
-                            }
-                        }
-                    }
+                if let Ok(ft) = entry.file_type().await
+                    && ft.is_file()
+                    && let Some(name) = entry.file_name().to_str()
+                    && let Some(hash) = name.strip_suffix(".webp")
+                {
+                    present.insert(hash.to_owned());
                 }
             }
         }
