@@ -339,10 +339,70 @@ def self_test() -> int:
     want("null lists are tolerated",
          expected_kinds({"nodeKinds": None, "endpointWorkspaceTypeKeys": None}), [])
 
+    # PHASE 1, the parity leg itself -- the half that "byte parity proves the two sides
+    # read the same file" rests on, and which no case above touched: blanking
+    # check_contract_copies() left this self-test 5/5 green (measured 2026-10-23). Its
+    # three branches are the three verdicts a checkout can earn, and the middle one is
+    # the subtle one: a ui/ tree with no contract file is DRIFT, not the server-only
+    # skip, because a moved file reads exactly like a deleted one.
+    #
+    # The branch reads only module-level paths, so it is driven by pointing those at a
+    # temp dir. No real tree is opened, and no real file is written.
+    import contextlib
+    import io
+    import tempfile
+
+    # Rebinding module globals inside a function needs the declaration, or Python
+    # treats every name as local and the first read raises UnboundLocalError.
+    global VENDORED, UI, UI_ROOT
+    real = (VENDORED, UI, UI_ROOT)
+    # The branches print their verdicts; a green run that dumps four paragraphs of
+    # repair advice trains the reader to skip the output. Swallow it and grade the
+    # RETURN VALUE, which is what main() actually acts on.
+    quiet = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet):
+            with tempfile.TemporaryDirectory() as td:
+                root = Path(td)
+                vend = root / "vendored.json"
+                ui = root / "ui" / "contract.json"
+                ui_root = root / "ui"
+
+                # Grade the PAIR, not an unpacked tuple: a gutted function answers
+                # None, and "code, skipped = None" dies of TypeError instead of naming
+                # the broken case -- a self-test has to be its own diagnostic.
+                def verdict() -> tuple:
+                    answer = check_contract_copies()
+                    return answer if isinstance(answer, tuple) else ("<not a pair>", answer)
+
+                # (a) no vendored copy: fail, and NOT a skip.
+                VENDORED, UI, UI_ROOT = vend, ui, ui_root
+                want("a missing vendored contract fails", verdict()[0], 1)
+                want("a missing vendored contract does not skip", verdict()[1], False)
+
+                # (b) vendored present, no ui/ tree at all: an honest skip.
+                vend.write_text("{}", encoding="utf-8")
+                want("a server-only checkout skips", verdict()[0], 0)
+                want("the skip is declared", verdict()[1], True)
+
+                # (c) ui/src present but the contract is gone: DRIFT, not a skip.
+                ui_root.mkdir(parents=True, exist_ok=True)
+                want("a ui tree with no contract is drift", verdict()[0], 1)
+                want("drift is not a skip", verdict()[1], False)
+
+                # (d) byte parity: identical copies pass, one differing byte fails.
+                ui.write_text('{"a": 1}', encoding="utf-8")
+                vend.write_text('{"a": 1}', encoding="utf-8")
+                want("identical copies pass", verdict(), (0, False))
+                vend.write_text('{"a": 2}', encoding="utf-8")
+                want("one differing byte fails", verdict(), (1, False))
+    finally:
+        VENDORED, UI, UI_ROOT = real
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (5 cases, no files touched)")
+    print("SELF-TEST OK (13 cases, no repository file touched)")
     return 0
 
 
