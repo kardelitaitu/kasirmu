@@ -248,6 +248,59 @@ MISSED! two files both claiming single-source-of-truth were not detected
 and exit 1 — so that case is load-bearing. Reverting restored green. That is the only
 evidence worth having, and it took two minutes, which is the point.
 
+#### The sweep, and what it found: 17 of 55 self-tests could not see their detector gutted
+
+`scripts/sabotage-selftests.py` automates that two-minute experiment. For each checker it
+blanks the body of the first top-level function that returns something (skipping
+`main`/`self_test`), runs `--self-test` on a COPY under `target/`, and records whether the
+exit code changed. Measured 2026-10-23 over the whole population:
+
+```
+sabotage: 55 checker(s), 17 SURVIVED (their self-test did not notice the gutted
+detector), 38 killed.
+```
+
+**17 survivors is not 17 bugs**, and that distinction is the whole value of running the next
+step. Rows were triaged by mutating the checker's *other* functions:
+
+| Class | Count | What it means |
+|---|---|---|
+| Helper, detector covered elsewhere | ~12 | `is_shell`, `tracked`, `scan`, `bundle_files` — blanking a lookup leaves the graded rules intact. Harmless. |
+| **Detector genuinely unpinned** | **4** | The self-test graded a RULE (a regex, a stub) but never ran the function that uses it. Real hole. |
+| Red for another reason | 1 | `verify-website-assets.py` — a false row, see below. |
+
+**The one false row was my census, again.** `verify-website-assets.py` turned up as
+"PATH ALREADY RED, unrecognized arguments: --self-test" because my filter tested
+`"--self-test" in source` — and that file carries a PARAGRAPH explaining why it deliberately
+has none (:20-27, with the mutation measurement that justified the decision). The prose was
+read as a capability. Fixed by requiring the quoted argparse literal. That single line
+would otherwise have been filed as a broken gate; it is one of the two checkers whose
+proof form is (correctly) not `--self-test`.
+
+**The four real holes, all now pinned:**
+
+1. `verify-architecture-boundaries.py` — `normalize_path` (:151) has a docstring describing
+   the `.lstrip("./")` bug it fixed (ate `../` and the leading `/`), and no case called it.
+   Seven cases green; restoring the bug left all seven green. Now 14 cases, and the bug
+   reddens three of them by name.
+2. `verify-core-size.py` — 16 cases graded masking/stripping rules; none ran `fail()`.
+   Not cosmetic: `main()` returns `fail(...)` for a violation, and `return None` exits 0,
+   so a finding would print `FAIL` and **exit success**. Now 18 cases, capturing `fail()`'s
+   answer and its stderr.
+3. `check-rust-doc-paths.py` — the self-test drove `ever_existed_stub`, a **parallel copy**
+   of a branch that lives inline in `scan()`. Blanking `scan` survived 5/5. Now 15 cases
+   that run the REAL `scan()` over synthetic docs, and the real `ever_existed()` through a
+   pre-filled cache (its cache is consulted before git, so no subprocess is needed).
+4. `check-rust-doc-paths.py` (second) — both history cases first replaced `ever_existed`
+   with a recording stub, which meant blanking the real function still survived. Caught only
+   because the sweep was re-run after the fix. **Re-run the mutation after every fix**; a
+   fix is a hypothesis until the mutant dies.
+
+**A stub is not the code.** When a self-test substitutes a function to make a branch
+reachable, that substitution also hides the function's own body from the mutation. Test both:
+the branch through the stub, and the real function through an input it can answer without
+I/O (here: a pre-filled cache).
+
 ### Two ways a documentation census measures the WRONG THING
 
 Both measured 2026-10-23 while trying to establish how many Rust modules lack the
