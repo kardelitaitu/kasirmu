@@ -509,6 +509,24 @@ unless you have first checked the plant against the rule's own predicate.** The 
 fire (`check-seo.mjs`, `check-rust-doc-paths.py`, `check-password-policy.mjs`) fired because the
 plant satisfied the predicate; the two that did not, did not.
 
+#### Five more gates defect-planted (round 92) — all sound
+
+| gate | plant | result |
+|---|---|---|
+| `check-merged-lines.py` | `const plantedSeq = 0;  useEffect(...)` in `ui/src` | exit 1, naming file:line — exactly the generator-merge shape it exists for |
+| `check-scratch-leaks.py` | an unguarded `scratch_dir` call in a real test file | exit 1, naming the file, the count and the budget (0) |
+| `check-tz-invariance.py` | live run, no plant | exit 0 — 5 zones × 426 tests, identical. Windows skips only the `tzset` preflight, which the file documents |
+| `verify-invoke-parity.py` | dropped `sessionToken` from a real invoke | exit 1: *"the Rust command requires a session_token, but the payload carries no sessionToken; the call fails at Tauri arg deserialization"* |
+| `check-rust-doc-paths.py` | a dead path citation in a real `.rs` file | exit 1, naming path and line |
+
+**Tally: 9 gates defect-planted across rounds 90-92, 1 real defect found** (`check-seo.mjs`), 8
+proven sound. The one defect was in a gate wired into two live CI jobs.
+
+The 1-in-9 rate is the useful number: defect-planting is worth the setup cost because it finds the
+failures a self-test cannot — a self-test proves the *detector* works on fixtures, and a plant
+proves the *live path* works on the real tree. They fail independently, which is why both are
+needed.
+
 #### Extending the sweep to EVERY function found three more unpinned detectors
 
 The sweep mutates only the FIRST candidate per checker. Triaging every survivor by mutating *all*
