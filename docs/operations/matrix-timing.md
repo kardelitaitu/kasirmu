@@ -68,41 +68,34 @@ round agenda with no number behind it.
 The number says the size is not the problem — **the shape is.** One step is half the
 runtime, and half the steps are free.
 
-## The build cache is mostly not caching
+## The build cache works; the history just has few repeats
 
-Measured 2026-10-23 with `sccache --show-stats` on this checkout:
+`sccache --show-stats` on this checkout reports a **1.06 % hit rate** (51 hits, 4745 misses).
+That reads as a broken cache. **It is not.** Measured directly:
 
 ```
-Compile requests            7306
-Compile requests executed   4595
-Cache hits                    51      <- 1.12 %
-Cache misses                4522
-Non-cacheable calls         2647
-
-Non-cacheable reasons:
-  incremental                 1456
-  crate-type                   612
-  multiple input files         324
-  missing input                103
-  missing output_dir            28
+cargo clean -p kasirmu-hal ; cargo check -p kasirmu-hal   -> hits 51 -> 52, misses unchanged
+cargo clean -p kasirmu-hal ; cargo check -p kasirmu-hal   -> hits 52 -> 53, misses unchanged
 ```
 
-**1.12 % hit rate on a 4595-request history.** `.cargo/config.toml` sets
-`rustc-wrapper = "sccache"` and promises "a cold `cargo check --workspace` drops from ~22s to
-~0.6s on the second run (38x)". That number cannot have come from this configuration, because
-the same file's next paragraph records why:
+The second and third compiles were served entirely from cache. The low RATE reflects what the
+history contains -- 4595 compiles across changing RUSTFLAGS, profiles and crate subsets, each a
+distinct cache key -- not a misconfiguration.
 
-> `[profile.dev] incremental = true` keeps tight edit->check loops fast but makes
-> dev-profile compiles non-cacheable for sccache.
+**One correction to an earlier reading of this file.** The first pass blamed
+`[profile.dev] incremental = true` for the misses, on the strength of sccache's own
+`Non-cacheable reasons: incremental 1456`. Setting `CARGO_INCREMENTAL=0` for a full clippy run
+removed `incremental` from that list and **still produced zero hits** (hits stayed at 51 while
+misses went 4522 -> 4745). The `incremental` counter explains why those compilations were not
+CACHED, not why later ones do not HIT: a non-cacheable compile cannot seed the cache, so the
+history is mostly un-seeded. Both readings are in the ledger; this one is the measured one.
 
-So the tradeoff is KNOWN, documented, and deliberate. 1456 of the 2647 non-cacheable calls are
-incremental compiles -- more than half. This file does not propose changing it: incremental
-builds are what make a 286-second `cargo clippy` tolerable on the SECOND run, and a cache hit
-only pays off on a cold one.
+### The consequence for the 286 s clippy step
 
-What it does record is the consequence for the matrix: **the 286 s clippy step cannot be made
-cheaper by caching, under the current profile.** Any plan that assumes a warm sccache will
-absorb it is wrong by measurement.
+It cannot be made cheaper by caching a DIFFERENT command: clippy's own output is a separate
+cache key from `cargo check`'s, and this repo's clippy runs are not repeated often enough for a
+warm entry to exist. What DOES help, on this machine, is not re-running it at all -- which is
+what `CHECK_FROM=N` is for.
 
 ## Can the static half actually run concurrently?
 
