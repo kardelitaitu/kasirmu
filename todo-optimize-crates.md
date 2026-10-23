@@ -7439,7 +7439,7 @@ inside `reset_audit_rate_limit_for_test(` (substring), producing 14 calls with a
 `&conn, &conn`. Fixed and counted afterwards; the compile caught what the regex silently
 wrecked.
 
-### Ledger: 149 defined, 149 closed, 0 open.
+### Ledger: 150 defined, 150 closed, 0 open.
 ## §11EA — O-M83: the audit limiter verified in all three directions; bridge checked for the same defect (2026-10-23)
 
 **O-M83 · kasirmu-core — the audit limiter verified in all three directions** — recorded in §11EA as verification of §11DB.
@@ -7895,9 +7895,11 @@ the 440 ms chain once instead of failing or silently skipping the optimisation.
 queries with no full scan AND its own falsification still fires.
 
 ### Ledger: 149 defined, 149 closed, 0 open.
-## §11KA — measured every gate's cost, and it found two reds I had caused (2026-10-23)
+## §11KA O-M84: — measured every gate's cost, and it found two reds I had caused (2026-10-23)
 
 Landed in `7be89ae53`.
+
+**O-M84 · gates — two gates were red from this lane's own commits, and the ledger gate reads the entry id from the heading** — resolved in §11KA.
 
 ### The measurement that started it
 
