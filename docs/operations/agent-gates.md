@@ -163,11 +163,14 @@ Skipped steps print `NN. skipping <name> (CHECK_FROM=90)... SKIPPED` and are **n
 counted as passes, which is what makes a resumed run honest. Measured that way, steps
 86-131 give **41 PASS, 1 FAIL**, and the one failure was a transient.
 
-**Step numbers in the run are NOT the numbers a text scan gives.** 34 of the `step` calls
-sit inside `if` blocks and only some of them execute, so the runtime numbering is lower
-than the count of `step "...` lines in the file. Measured the same day: `ui test` is
-runtime step **89** and static position **93**. Never derive a `CHECK_FROM` value by
-counting step lines; read the number off a real run.
+**Step numbers in the run are NOT the numbers a text scan gives.** The file holds 193
+`step "..."` lines, of which **42 are indented inside `if` blocks** and only run when
+their condition holds; the rest is whatever the run reached before it exited. So the
+runtime numbering is LOWER than a line count, by an amount that depends on the
+environment. Measured the same day: `ui test` is runtime step **89** and static position
+**93**, and a partial run's highest number was **131** against 193 lines.
+
+Never derive a `CHECK_FROM` value by counting step lines; read the number off a real run.
 
 ### One intermittent failure worth knowing about: `selftest-sweep` under a running matrix
 
