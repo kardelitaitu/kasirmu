@@ -467,9 +467,32 @@ Both scripts define those patterns ONCE and pass the same value to the self-test
 scan (`awk -v PERM="$PERM"`), which is why a mutation reaches the cases at all — a self-test
 grading its own private copy of a regex proves nothing about the scan.
 
-**Final sweep: `72 checker(s), 19 SURVIVED, 53 killed`.** The 19 are the same I/O shells as
-before plus one `cleanup()` and three `NO MUTATABLE FUNCTION` rows; every checker that has a
-distinct detector kills at least one mutant.
+**Final sweep: `72 checker(s), 17 SURVIVED, 55 killed`.** The survivors are the same I/O shells
+(`git`, `repo_root`, `tracked`, `load_floors`, `cleanup`) plus three `NO MUTATABLE FUNCTION`
+rows; every checker that has a distinct detector kills at least one mutant.
+
+#### Extending the sweep to EVERY function found three more unpinned detectors
+
+The sweep mutates only the FIRST candidate per checker. Triaging every survivor by mutating *all*
+of its functions (round 88) found three more unpinned detectors, all pure functions whose
+docstrings record a past bug and which no case ever called:
+
+| function | checker | what the docstring claims | what the code does |
+|---|---|---|---|
+| `select_column_list` | `check-mapper-alignment.py` | ends the list at the first TOP-LEVEL FROM, so a nested subquery does not truncate it | ✅ holds — pinned over 5 shapes |
+| `large_tables`, `covered_probes` | `check-query-plans.py` | regex reads of the Rust probe source | ✅ hold — pinned |
+| `column_base` | `check-mapper-alignment.py` | `CAST(x AS t)` resolves to `x` | ❌ returns `"x as integer"` |
+| `words_related` | `check-mapper-alignment.py` | accepts `closed_count`→`closed_shift_count` "while still catching `shift_count`" | ❌ `shift_count` **is accepted** — both its words appear in the field |
+
+**The two ❌ rows are pinned as the CODE behaves, not as the comment says.** Pinning them to the
+docstring would make the suite red on a tree that is green, and "fixing" the code is a behaviour
+change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
+the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
+
+**The general rule this gives:** a self-test that grades a *documented* contract is testing
+someone's memory, not the code. Run the function, see what it answers, and pin that. Where it
+disagrees with its own docstring, the disagreement is the finding — do not resolve it silently in
+either direction.
 
 #### A survivor that was neither an I/O shell nor harmless: `is_shell`
 

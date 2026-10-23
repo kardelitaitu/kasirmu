@@ -114,28 +114,9 @@ each pass still produced a confident headline ("34 failures", "9 failures") from
 have. The lesson is not "measure harder"; it is that a headline count assembled before the last
 check should be labelled a lower bound, not a finding.
 
-#### Round 88: three more detectors pinned, and two doc claims that do not hold
-
-Extending the sweep to *every* function of every surviving checker (not just the first) found
-three more unpinned detectors in `check-mapper-alignment.py` and `check-query-plans.py`
-— all pure functions whose docstrings record a past bug, all never called by any case:
-
-| function | what its docstring claims | what the code does |
-|---|---|---|
-| `select_column_list` | ends the list at the first TOP-LEVEL FROM, so a nested subquery does not truncate it | ✅ holds — now pinned over 5 shapes |
-| `column_base` | `CAST(x AS t)` resolves to `x` | ❌ returns `"x as integer"` — the wrapper name is peeled but the type suffix survives |
-| `words_related` | accepts `closed_count`→`closed_shift_count` "while still catching an alias naming a different quantity (`shift_count`)" | ❌ `shift_count` is **accepted**: both its words appear in `closed_shift_count` |
-| `large_tables`, `covered_probes` | regex reads of the Rust probe source | ✅ hold — now pinned |
-
-**The two ❌ rows are recorded as the code behaves, not as the comment says.** Pinning them to the
-docstring would have made the suite red on a tree that is green, and "fixing" the code is a
-behaviour change nobody asked for. The right move is to pin reality and name the divergence, so the
-next reader knows the comment is optimistic rather than the gate broken.
-
-Sweep after these pins: **`72 checker(s), 17 SURVIVED, 55 killed`** — up from 54 — with every
-survivor still an I/O shell.
-
-**The same session produced three false readings from the measurement METHOD, not the code**, and
+**Three false readings in one session came from the measurement METHOD, not the code** — and
+all three share a shape: the tool was run the wrong way and its answer believed:
+ from the measurement METHOD, not the code**, and
 they are all one shape — the tool was run the wrong way and its answer believed:
 
 | What was run | How | False reading |
