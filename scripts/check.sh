@@ -1120,6 +1120,13 @@ step "settled-read copies self-test" "python3 scripts/verify-settled-read-copies
 
 step "selftest sweep" "python3 scripts/verify-selftest-sweep.py" python3 scripts/verify-selftest-sweep.py
 step "selftest sweep self-test" "python3 scripts/verify-selftest-sweep.py --self-test" python3 scripts/verify-selftest-sweep.py --self-test
+# The MUTATOR itself, not the sweep. verify-selftest-sweep.py runs every checker's
+# --self-test in the tree; this runs the harness that decides whether those self-tests
+# can fail, and its own worst failure mode is silent: a mutation that leaves a syntax
+# error makes every checker "fail", scoring as KILLED while proving nothing. The cases
+# grade that the mutants PARSE, that braces inside strings do not close a function
+# early, and that self_test is never its own candidate.
+step "sabotage mutator self-test" "python3 scripts/sabotage-selftests.py --self-test" python3 scripts/sabotage-selftests.py --self-test
 
 step "runner commands" "python3 scripts/verify-runner-commands.py" python3 scripts/verify-runner-commands.py
 step "runner commands self-test" "python3 scripts/verify-runner-commands.py --self-test" python3 scripts/verify-runner-commands.py --self-test
