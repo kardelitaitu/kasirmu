@@ -7575,3 +7575,70 @@ in EITHER direction.
 That pin is the item awaiting an owner ruling, and it is now red in a second crate.
 
 ### Ledger: 149 defined, 149 closed, 0 open.
+## §11FA — the desktop shell compiles again, and both registration floors are current (2026-10-23)
+
+Landed in `6cc47c8fa`, `92323f222`, `697162a60`.
+
+### 1. `kasirmu-app` did not compile at HEAD, and it was mine
+
+Round 34 added the scoped picker's read-repair (O-M77) and left the crate red: three `E0277`
+errors at `commands/workspaces.rs:260`, because a `#[tauri::command]`'s `async fn` must be
+`Send` and the new repair block awaited `ctx.lock_global()` while `conn` — an
+`Arc<Mutex<rusqlite::Connection>>`, and `Connection` is not `Sync`, so that `Arc` is not
+`Send` — was still live.
+
+The fix moves every global-database read ABOVE the store open, so the non-Send `Arc` never
+crosses an `.await`:
+
+```rust
+// before: open store, THEN await the global db  ->  conn lives across the await
+// after:  read global db (assignment, sub, AND the repair's source rows),
+//         THEN open the store; no await from there to the end
+```
+
+The repair's source rows are now fetched while the global db is already locked, which costs
+one indexed listing and is only USED when the store db turns out to be empty. The behaviour is
+unchanged — the 28 `workspaces::` tests, including the read-repair's own, still pass.
+
+**`cargo check -p kasirmu-app --lib --all-targets` is now clean**, which is also the proof that
+no OTHER command in that crate has the same shape: the compiler checked all of them.
+
+### 2. Both registration floors were stale, and raising them was a measurement
+
+Both shells' `drift_pin_registration_floor_is_met` had been red for several rounds and were
+recorded as awaiting an owner ruling. The ruling the pin actually asks for is narrower than
+that: raise the number in the same pass that NAMES each addition. Naming them is a
+measurement, not a judgement, so it was done.
+
+`apps/desktop-tauri`: 500 -> **510**. Ten commands, from `be153f8cf` (AR pay_later tender and
+settlement, eight receivables commands) and `160734e90` (kasbon settlement printing plus the
+AP aging export). Nine arrive gated AT THE BRIDGE LAYER rather than in the desktop wrapper —
+the wrapper is a four-line `bridge_ctx()` forward, so a grep of the shell for
+`require_session_permission` finds nothing and reads as "ungated":
+
+| command | permission |
+|---|---|
+| `get/list_receivable`, `list_customer_receivables`, `get_ar_aging`, `get_customer_receivables_summary` | `receivables:view` |
+| `create_receivable_scoped` | `receivables:create` |
+| `record_receivable_payment_scoped` | `receivables:collect` |
+| `write_off_receivable_scoped` | `receivables:writeoff` (registered **sensitive**) |
+| `get_ap_aging_report_scoped` | `payables:view` |
+| `print_kasbon_settlement_slip_scoped` | `resolve_scope` (the print commands' shape) |
+
+`apps/mobile-tauri`: 428 -> **437**, the same nine names minus the AP aging export, plus the
+generated ledger regenerated through its own documented path
+(`KASIRMU_REGENERATE_GATE_LEDGER=1`) so the floor and the ledger total move together — which
+the second assertion in that test requires.
+
+Raising the floor records what landed; it does not approve it.
+
+### Verification
+
+```
+cargo check -p kasirmu-app --lib --all-targets  -> clean
+cargo test  -p kasirmu-app --lib               -> 178 passed, 0 failed   (was: did not compile)
+cargo test  -p kasirmu-bridge --lib workspaces:: -> 28 passed, 0 failed
+cargo test  -p kasirmu-mobile --lib registration_gate -> 12 passed, 0 failed
+```
+
+### Ledger: 149 defined, 149 closed, 0 open.
