@@ -449,6 +449,7 @@ if command -v python3 &>/dev/null; then
 else
     echo -e "${YELLOW}⚠ panic-inventory skipped (python3 not found)${NC}"
 fi
+step "panic inventory self-test" "python3 scripts/scan-unwrap-panic.py --self-test" python3 scripts/scan-unwrap-panic.py --self-test
 
 # ── Debt-marker gate — every TODO id must resolve to a plan definition ──
 # A marker whose work shipped is a dead pointer; a marker whose id resolves
@@ -780,7 +781,12 @@ if command -v npm &>/dev/null && [ -f ui/package-lock.json ]; then
     step "i18n lint" "bash scripts/lint-i18n.sh" bash scripts/lint-i18n.sh
     # AUDIT-27 CI-06: FTL dedupe — detect duplicate Fluent keys so local
     # validation matches check-ui.mjs and the pre-commit gate.
-    step "ftl dedupe" "python3 scripts/dedupe-ftl.py" python3 scripts/dedupe-ftl.py
+    # --dry-run is REQUIRED, not optional. Without it this script runs in APPLY mode
+    # (`write = not args.dry_run`, dedupe-ftl.py:159) and REWRITES the .ftl files, then
+    # exits 0 no matter how many it changed (:181) -- so a validation step was both
+    # mutating the tree and unable to fail. With --dry-run it reports and exits 1 whenever
+    # there is real work, which is what a gate needs.
+    step "ftl dedupe (dry run)" "python3 scripts/dedupe-ftl.py --dry-run" python3 scripts/dedupe-ftl.py --dry-run
     # Orphan gate: its own liveness cases must pass, and the whole-tree candidate count
     # should be visible locally too, not just in CI. The blocking form of this check is
     # staged-scoped in the pre-commit hook; here it runs the self-test and census.
@@ -1144,6 +1150,7 @@ step "ftl attribute requests self-test" "python3 scripts/check-ftl-attrs.py --se
 # never a build-time reason to leave them out.
 # Gate: scripts/gates.json -> "pg-schema-drift", "migration-column-types".
 step "pg schema drift" "python3 scripts/generate-pg-migration.py --check" python3 scripts/generate-pg-migration.py --check
+step "pg schema drift self-test" "python3 scripts/generate-pg-migration.py --self-test" python3 scripts/generate-pg-migration.py --self-test
 step "migration column types" "python3 scripts/verify-migration-column-types.py" python3 scripts/verify-migration-column-types.py
 step "migration column types self-test" "python3 scripts/verify-migration-column-types.py --self-test" python3 scripts/verify-migration-column-types.py --self-test
 
