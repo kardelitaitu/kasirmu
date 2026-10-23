@@ -1100,6 +1100,11 @@ step "cite lines" "python3 .agents/skills/docs-auditor/scripts/check-cite-lines.
 # green below is earned rather than vacuous). It runs from the repo root because it
 # resolves paths from __file__. Gate: scripts/gates.json -> "doc-parity".
 step "doc parity" "python3 website/scripts/check-doc-parity.py" python3 website/scripts/check-doc-parity.py
+# The gate's whole answer is a SET DIFFERENCE, and empty sets subtract to empty: a docs
+# root that was renamed printed "OK: 0 page pairs in parity" and exited 0. Measured
+# 2026-10-23 by pointing DOCS at a non-existent directory. The floor refuses a census too
+# small to describe the site; these are its cases.
+step "doc parity self-test" "python3 website/scripts/check-doc-parity.py --self-test" python3 website/scripts/check-doc-parity.py --self-test
 # `status: "required"` in gates.json is a claim that a change must pass this gate.
 # That is only true if something can reach it. Measured 2026-10-19 and this is what
 # the sweep found: six checkers were required with only a check.sh step (i.e.
