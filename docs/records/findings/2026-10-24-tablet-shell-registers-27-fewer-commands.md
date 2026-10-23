@@ -122,6 +122,11 @@ cannot make the gate red.
 
 ## What an owner must decide
 
+**Measured constraint that narrows the options: allowlisting will NOT make this green.**
+`scripts/ipc-parity-allowlist.json` already lists all 27 names under its `"tablet"` section, and
+the gate still exits 1. So "allowlist it" is not an available path — the only green paths are
+registering the commands or removing/guarding the call sites.
+
 This is the same ruling the BR-* family needs (`audit-open-findings.md`: BR-S8/BR-X4/BR-S9/
 BR-S10 — *which shell's gate set is authoritative*). The fork:
 
