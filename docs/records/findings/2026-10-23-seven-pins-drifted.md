@@ -6,16 +6,24 @@
 
 `scripts/verify-docker-digests.sh` re-resolves every `image:tag@sha256:...` pin in the
 six Dockerfiles and Compose files against the live registry. Run against the tree on
-2026-10-23 it reports **7 drifted pins across 6 distinct images**:
+2026-10-23 it reports **7 drifted PINS across 5 distinct IMAGES**:
 
-| Image | Pinned | Registry now |
-|---|---|---|
-| `debian:bookworm-slim` | `88200866dfff…` | `7ff6ba31527b…` |
-| `caddy:2-alpine` | `5f5c8640aae0…` | `eb4d35b7452d…` |
-| `alpine:3.22` | `14358309a308…` | `2e0b81d60597…` |
-| `public.ecr.aws/docker/library/redis:7-alpine` | `ff02b58f971e…` | `57e4255cc971…` |
-| `postgres:16-alpine` | `cf78e76683b9…` | `f46107955874…` |
-| `rust:1.88-slim` / `golang:1.25-alpine` | — | still current |
+| Image | Pinned | Registry now | References |
+|---|---|---|---|
+| `debian:bookworm-slim` | `88200866dfff…` | `7ff6ba31527b…` | 2 (`Dockerfile.server`, `Dockerfile.unified`) |
+| `caddy:2-alpine` | `5f5c8640aae0…` | `eb4d35b7452d…` | 1 (`Dockerfile.unified`) |
+| `alpine:3.22` | `14358309a308…` | `2e0b81d60597…` | 1 (`apps/license-server/Dockerfile`) |
+| `public.ecr.aws/docker/library/redis:7-alpine` | `ff02b58f971e…` | `57e4255cc971…` | 2 (`docker-compose.yml`, `docker-compose.e2e.yml`) |
+| `postgres:16-alpine` | `cf78e76683b9…` | `f46107955874…` | 1 (`docker-compose.pg.yml`) |
+| `rust:1.88-slim` / `golang:1.25-alpine` | — | still current | 3 |
+
+**Corrected 2026-10-24: the count above was wrong in both halves.** This line said "6
+distinct images" while its table listed five drifted images plus a "still current" row, and
+"7 drifted pins" is right only if you count REFERENCES rather than images — `debian` and
+`redis` are each pinned twice. Measured from a live run of the gate: 7 drifted references,
+5 distinct images, and the two "still current" images (`rust:1.88-slim`, `golang:1.25-alpine`,
+3 references) are not drifted at all. The number that matters for a refresh is 5 images; the
+number that matters for a diff is 7 lines.
 
 Three of the six were re-queried independently (`docker buildx imagetools inspect`) and
 returned exactly the digests the gate reported, so the finding is not an artefact of the
