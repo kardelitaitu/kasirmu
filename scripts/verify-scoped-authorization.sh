@@ -75,7 +75,8 @@ get_active_shift_scoped"
 # and its body, then classifies each. Keeping it in awk (rather than a bash
 # loop over extracted records) avoids a second level of quoting, which is where
 # a checker like this usually breaks.
-awk -v PERM="$PERM" -v STORE="$STORE" -v LISTED="$SELF_SCOPED" -v SRC="$SRC" '
+read -r -d '' AWK_PROG <<'AWK' || true
+
   BEGIN { n = split(LISTED, tmp, "\n"); for (i = 1; i <= n; i++) listed[tmp[i]] = 1 }
 
   # A new top-level fn closes the previous one. The `_scoped` test comes FIRST:
@@ -96,8 +97,12 @@ awk -v PERM="$PERM" -v STORE="$STORE" -v LISTED="$SELF_SCOPED" -v SRC="$SRC" '
     next
   }
   { if (fn != "") body = body $0 "\n" }
-  END { if (fn != "") classify() }
 
+  # NOTE: there is deliberately NO END block here. The summary END at the bottom of
+  # this program already calls classify() for the final fn. An earlier version had
+  # both, so the LAST function in the subject was classified TWICE -- found by
+  # writing the self-test, where a single leaky fn reported "UNREASONED: 2".
+  # awk allows several END blocks and runs them in order, so the duplicate was silent.
   function classify() {
     scanned++
     # Only fns that touch the store or the HAL need authorization.
@@ -129,7 +134,109 @@ awk -v PERM="$PERM" -v STORE="$STORE" -v LISTED="$SELF_SCOPED" -v SRC="$SRC" '
     printf "\n"
     exit (unreasoned > 0 ? 1 : 0)
   }
-' $(find "$SRC" -name "*.rs" ! -name "*_tests.rs")
+AWK
+
+# ── Self-test ────────────────────────────────────────────────────────────────
+#
+# The classifier is one awk function with four branches, and every branch decides
+# silently: a body that matches PERM is skipped, a body that does not match STORE is
+# skipped, a listed name is counted as explained. Break any one and the summary still
+# prints, still exits 0 when the backlog is clear, and the gate grades nothing.
+#
+# These cases drive THAT awk program -- the extracted $AWK_PROG, not a copy -- over
+# synthetic sources, so an edit to the real classifier reddens here.
+#
+# Each case: label | expected unreasoned count | source text.
+self_test() {
+  local fails=0 total=0
+
+  # $1 label, $2 expected unreasoned, $3 source
+  run_case() {
+    local label="$1" want="$2" src="$3" got
+    total=$((total + 1))
+    # scanned floor is disabled for cases by passing a generous SRC label; the floor
+    # itself is exercised separately below.
+    got=$(printf '%s' "$src" | awk -v PERM="$PERM" -v STORE="$STORE" \
+      -v LISTED="$SELF_SCOPED" -v SRC="selftest" -v FLOOR=0 "$AWK_PROG" 2>/dev/null \
+      | sed -n 's/.*UNREASONED: \([0-9]*\).*/\1/p')
+    if [ "$got" != "$want" ]; then
+      printf '  FAIL %s: expected %s unreasoned, got "%s"\n' "$label" "$want" "$got"
+      fails=$((fails + 1))
+    fi
+  }
+
+  # 1. The defect this gate exists for: a _scoped fn that reaches the store with no
+  #    permission helper and no stated reason.
+  run_case "store + no permission is UNREASONED" 1 \
+    'pub async fn leaky_scoped(session: &Session) -> Result<()> {
+       let store = resolve_store(&session);
+       Ok(())
+     }'
+
+  # 2. A permission helper satisfies the rule.
+  run_case "store + permission helper is fine" 0 \
+    'pub async fn good_scoped(session: &Session) -> Result<()> {
+       require_session_permission(&session, Sales, Write)?;
+       let store = resolve_store(&session);
+       Ok(())
+     }'
+
+  # 3. A fn that touches neither store nor HAL is out of scope, not a finding.
+  run_case "no store access is out of scope" 0 \
+    'pub async fn trivial_scoped(session: &Session) -> String { session.user_id.clone() }'
+
+  # 4. The ungated-ok escape hatch counts as explained.
+  run_case "ungated-ok marker explains it" 0 \
+    'pub async fn probe_scoped() -> Result<()> {
+       // ungated-ok: health probe discloses nothing tenant-specific
+       let store = resolve_store(&ctx);
+       Ok(())
+     }'
+
+  # 5. A name in SELF_SCOPED counts as explained.
+  run_case "a listed name is explained" 0 \
+    'pub async fn ping_scoped() -> Result<()> {
+       let store = resolve_store(&ctx);
+       Ok(())
+     }'
+
+  # 6. A NON-_scoped fn must never be graded: the gate is about twins.
+  run_case "an unscoped fn is not scanned" 0 \
+    'pub async fn leaky(session: &Session) -> Result<()> {
+       let store = resolve_store(&session);
+       Ok(())
+     }'
+
+  # 7. THE FLOOR. An empty subject must refuse rather than report a clean zero.
+  if printf '' | awk -v PERM="$PERM" -v STORE="$STORE" -v LISTED="$SELF_SCOPED" \
+      -v SRC="empty" "$AWK_PROG" >/dev/null 2>&1; then
+    : # floor fires via exit 2, handled below
+  fi
+  total=$((total + 1))
+  if printf '' | awk -v PERM="$PERM" -v STORE="$STORE" -v LISTED="$SELF_SCOPED" \
+      -v SRC="empty" "$AWK_PROG" >/dev/null 2>&1; then
+    printf '  FAIL the empty subject must exit non-zero, it exited 0\n'
+    fails=$((fails + 1))
+  fi
+
+  if [ "$fails" -gt 0 ]; then
+    printf 'SELF-TEST FAILED (%d of %d)\n' "$fails" "$total" >&2
+    return 2
+  fi
+  printf 'SELF-TEST OK (%d cases, no tree read)\n' "$total"
+  return 0
+}
+
+if [ "${1:-}" = "--self-test" ]; then
+  self_test
+  exit $?
+fi
+
+# Grade the classifier before grading the crate.
+self_test || { echo "CLASSIFIER WENT DEAF: not trusting the scan below." >&2; exit 2; }
+
+awk -v PERM="$PERM" -v STORE="$STORE" -v LISTED="$SELF_SCOPED" -v SRC="$SRC" \
+  "$AWK_PROG" $(find "$SRC" -name "*.rs" ! -name "*_tests.rs")
 rc=$?
 
 # awk exits 1 whenever it found an unreasoned fn; only --strict treats that as

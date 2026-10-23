@@ -343,7 +343,8 @@
       },
       "runners": {
         "check.sh": [
-          "scoped authorization (H-1b)"
+          "scoped authorization (H-1b)",
+          "scoped authorization self-test"
         ]
       }
     },

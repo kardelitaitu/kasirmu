@@ -134,6 +134,14 @@ step "scoped coverage (H-1)" "bash scripts/verify-scoped-coverage.sh" bash scrip
 # fn reaching the store or HAL must call a permission helper, be named in a
 # reasoned list, or carry an `// ungated-ok:` marker in its body.
 step "scoped authorization (H-1b)" "bash scripts/verify-scoped-authorization.sh --strict" bash scripts/verify-scoped-authorization.sh --strict
+# The classifier is one awk function whose four branches each decide SILENTLY: a body
+# matching PERM is skipped, a body not matching STORE is skipped, a listed name is
+# counted as explained. Disable any branch and the summary still prints and the gate
+# still exits 0 when the backlog is clear -- it grades nothing, quietly. Writing the
+# cases found a real defect: the program had TWO END blocks both calling classify(), so
+# awk ran both and the LAST function in the subject was counted twice (a single leaky fn
+# reported "UNREASONED: 2"). The floor at the bottom cannot see that.
+step "scoped authorization self-test" "bash scripts/verify-scoped-authorization.sh --self-test" bash scripts/verify-scoped-authorization.sh --self-test
 
 # ── IPC registration parity (F-008/F-050) ────────────────────────────────
 # Fails when the UI invokes a command string absent from a shell's
