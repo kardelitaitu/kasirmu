@@ -114,6 +114,21 @@ each pass still produced a confident headline ("34 failures", "9 failures") from
 have. The lesson is not "measure harder"; it is that a headline count assembled before the last
 check should be labelled a lower bound, not a finding.
 
+**The same session produced three false readings from the measurement METHOD, not the code**, and
+they are all one shape — the tool was run the wrong way and its answer believed:
+
+| What was run | How | False reading |
+|---|---|---|
+| `bash verify-docker-digests.sh 2>&1 \| tail -25` | piped | "exit 0" — it was `tail`'s status |
+| `bash -c '... ; echo RC=$?'` | chained | "exit 0" — the `echo` consumed the status |
+| `python scripts/check-testid.mjs --self-test` | **wrong interpreter** | "FAIL(1)" — it is a Node script and needs `node` |
+
+The third one is the same mistake as the first two, made again *after* both, in the same round.
+The rule that would have caught all three: **when a result contradicts what you just measured,
+suspect the measurement before the code.** The `check-testid.mjs` "failure" contradicted the
+15-of-19 mutation kill measured minutes earlier — and the kill was the trustworthy signal, because
+it went through the harness's own interpreter dispatch.
+
 **The 11 topology sites are not failures.** `TopologyScreen.tsx:167-169` returns a notice before
 `TopologyScreenContent` mounts when `isTabletShell()`, and `WorkspaceHome.tsx:46-48` keeps
 `topology` off the tablet shell. So the whole topology family is deliberately tablet-blocked,
