@@ -8449,3 +8449,86 @@ ui typecheck / lint / vitest                    -> 0 / 0 / 13,127 passed
 ```
 
 ### Ledger: 155 defined, 155 closed, 0 open.
+
+## §11QA — O-M90: — a correction: check-query-plans.py was already falsified, and I had said it was not (2026-10-23)
+
+**O-M90 · gates — the previous round listed `check-query-plans.py` as an unproven gate; it has had a permanent falsification since it was written, and running it proves that** — resolved in §11QA.
+
+### What I claimed, and what is true
+
+§11PA's closing agenda said:
+
+> `check-query-plans.py` is the last executing gate with no self-test ... It probes 27
+> production queries ... and it has the same property as a checker that was falsified: it has
+> never been shown to catch anything.
+
+**That was wrong, and it was wrong about the file's own header.** Line 33 of
+`check-query-plans.py` says, in the section titled WHY THE ASSERTION IS BELIEVABLE:
+
+```
+`forcing_a_scan_fails_the_probe` is part of the suite. It takes the daily revenue
+report's SQL, strips every WHERE predicate (the shape that scans) and REQUIRES the
+same detector the gate uses to report the table. With --check this script re-runs
+that falsification first: a probe that cannot fail is worthless, and that exact
+mistake has been made three times already in this project.
+```
+
+And `--check` enforces it: the falsification runs FIRST and a failure returns 2 with
+"FAIL: the probe cannot fail ... a green result from the plan gate would be
+worthless" (lines 346-356). The very first line of output is `falsification gate /
+ok: a forced scan is detected`.
+
+### How the error happened, because the mechanism matters more than the fact
+
+I categorized the file by grepping for `--self-test` and finding none. The project has
+a `--self-test"` convention for `verify-*.py` checkers, so a file without the flag looked
+unproven. But the falsification here is not a flag -- it is a TEST IN THE RUST SUITE that
+the gate runs as a prerequisite, which is a stronger design than a Python self-test: it
+exercises the real detector against a real SQLite plan rather than a fabricated string.
+
+**The lesson is the same one this ledger keeps recording in other costumes: I graded a
+file by an absence of a STRING rather than by running it.** A grep for a flag is not an
+inspection of a gate.
+
+### The proof, run rather than asserted
+
+To confirm the falsification is not decorative, the detector was made deaf --
+`scanned_large_tables` stubbed to return an empty `Vec` at the top of the function -- and
+the falsification test was run on its own:
+
+```
+test query_plan_probe::forcing_a_scan_fails_the_probe ... FAILED
+panicked at query_plan_probe.rs:1104:5
+test result: FAILED. 0 passed; 1 failed
+```
+
+It reddens immediately. The stub was then reverted with `git checkout --` and the file
+verified byte-identical to HEAD; `check-query-plans.py --check` is green again at 27
+probed queries.
+
+### Why this falsification is better than most of the ones in this ledger
+
+Reading it closely, `forcing_a_scan_fails_the_probe` already does the three things the
+rest of this journal keeps having to retrofit:
+
+1. **A baseline assertion first** -- the UNMUTATED query must be clean (line 1076), so a
+   failure cannot be a pre-existing defect dressed up as a caught mutation.
+2. **The mutation is asserted to have landed** -- the strips must actually have removed
+   predicates, because "on a query with no `WHERE` the mutation would be a no-op and
+   this proof would be as vacuous as the assertions it is meant to defend" (line 1061).
+3. **The real detector, not a stand-in** -- the same `scanned_large_tables` the gate uses,
+   against a real `EXPLAIN QUERY PLAN` on a seeded table.
+
+That is precisely the "a predicate vacuously true over an empty set is indistinguishable
+from a passing gate" defence, applied at the point of writing rather than after three
+rounds. It should be the template for the checkers that still lack it.
+
+### Verification
+
+```
+check-query-plans.py --check        -> rc 0, 27 queries, falsification green
+  detector made deaf                -> forcing_a_scan_fails_the_probe FAILED (1104)
+  reverted with git checkout --     -> file identical to HEAD, gate green again
+```
+
+### Ledger: 156 defined, 156 closed, 0 open.
