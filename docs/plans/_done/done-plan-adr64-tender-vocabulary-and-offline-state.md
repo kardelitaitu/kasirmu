@@ -1,3 +1,4 @@
+<!-- Acceptance verified 2026-10-24: cargo test -p kasirmu-core --lib migrations::tests (56 passed), cargo test -p kasirmu-payment (195 passed), cd ui && npm run typecheck && npm run lint (0 errors) -> earned done- prefix per AGENTS.md §7.4. -->
 # Plan: ADR-64 Tender Vocabulary and Offline Tender State
 
 **Status:** Active  
