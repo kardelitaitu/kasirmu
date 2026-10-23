@@ -67,6 +67,7 @@ must never spend 1, because 1 is the number a reader (and
 from __future__ import annotations
 
 import argparse
+import functools
 import importlib.util
 import io
 import json
@@ -302,6 +303,89 @@ def _export_pattern(name):
     return pat
 
 
+_REACH_INDEX_CACHE: list = [None, None]
+
+
+def _reach_index(files: list[tuple[str, str]]) -> dict:
+    """One pass over the UI tree, reused by every `wrapper_reach` call.
+
+    `wrapper_reach` is asked once per command and there are hundreds of commands, so the
+    version that scanned all 692 runtime files per call did the same work hundreds of
+    times: measured 2026-10-20, 669 calls and 129 s of a 289 s `--self-test`. Everything
+    the per-command walk needs is a property of a SINGLE file, so it is computed once
+    here and the walk becomes a dict lookup plus one pattern search per candidate.
+
+    Cached on the identity of `files` AND its length. The identity half is what makes
+    repeated calls in a loop cheap; the length half is the guard, because a freed list's
+    address can be reused by a later, different list, and a stale index would then answer
+    for the wrong tree -- silently, and with a plausible shape. `len` is cheap and pins
+    the common case (same address, shorter list). Never cache across a mutation of an
+    input list in place: that is the one case this does not catch. Nothing in this file
+    mutates `files`.
+    """
+    key = (id(files), len(files))
+    if _REACH_INDEX_CACHE[0] == key:
+        return _REACH_INDEX_CACHE[1]
+    by_command: dict[str, set] = {}
+    definer_of: dict[str, str] = {}
+    rows: list[tuple] = []
+    for path, text in files:
+        if path.startswith("ui/src/api/client"):
+            bucket = "client"
+        elif path.startswith("ui/src/api"):
+            bucket = "api"
+        else:
+            bucket = "runtime"
+        imports_api_tree = bool(API_TREE_IMPORT_RE.search(text))
+        rows.append((path, text, imports_api_tree, bucket))
+        # The wrapper-defining files are the api tree itself, and no other file can DEFINE
+        # a wrapper -- a screen that happens to hold `function updateProduct(...)` is a
+        # reference to them, not a definition.
+        in_api_tree = path.startswith("ui/src/api")
+        if in_api_tree or "/api/" in f"/{path}":
+            for w, c in API_WRAPPER_RE.findall(text):
+                by_command.setdefault(c, set()).add(w)
+                # First definer wins, matching the `setdefault` the map replaced.
+                if in_api_tree and w not in definer_of:
+                    definer_of[w] = path
+    index = {
+        "files": rows,
+        "definer_of": definer_of,
+        "by_command": {c: frozenset(ws) for c, ws in by_command.items()},
+    }
+    _REACH_INDEX_CACHE[0] = key
+    _REACH_INDEX_CACHE[1] = index
+    return index
+
+
+_IDENT_RE = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
+
+
+def _wrappers_named_in(text: str, wrappers) -> list[str]:
+    """Which of `wrappers` this file names as a call, in `wrappers` order.
+
+    The inversion that makes `wrapper_reach` affordable. Asking "does this file name
+    wrapper w?" once per wrapper runs |wrappers| regex searches over the file; asking
+    "which identifiers does this file hold?" runs ONE scan and then a set lookup per
+    identifier. Same answer, and on the real tree it is the difference between 1.26M
+    searches and one pass -- measured 2026-10-20, this file spent 173 s of a 289 s
+    `--self-test` inside `re.Pattern.search`, almost all of it here.
+
+    The identifier set is a SUPERSET test, so it is checked first as a cheap reject and
+    the precise pattern still decides. That keeps every distinction the original loop
+    made, and the regex remains the authority on what counts as a reference.
+    """
+    idents = set(_IDENT_RE.findall(text))
+    out = []
+    for w in wrappers:
+        if w not in idents:
+            continue
+        # Cached compiled patterns -- see _wrapper_pattern / _export_pattern.
+        if _wrapper_pattern(w).search(text):
+            out.append(w)
+    return out
+
+
 def wrapper_reach(files: list[tuple[str, str]], cmd: str) -> dict[str, list[str]]:
     """Who references the wrappers that invoke `cmd`, split by where the reference lives.
 
@@ -316,18 +400,12 @@ def wrapper_reach(files: list[tuple[str, str]], cmd: str) -> dict[str, list[str]
     `updateProduct(args)` forever while every screen imports `updateProductScoped`, and the
     parity leg counts that as the front-end asking for an unscoped door.
     """
-    wrappers = {w for path, text in files if "/api/" in f"/{path}" or path.startswith("ui/src/api")
-                for w, c in API_WRAPPER_RE.findall(text) if c == cmd}
+    index = _reach_index(files)
+    wrappers = index["by_command"].get(cmd, frozenset())
     out: dict[str, list[str]] = {"runtime": [], "client": [], "api": []}
     if not wrappers:
-            return out
-    for path, text in files:
-        if path.startswith("ui/src/api/client"):
-            bucket = "client"
-        elif path.startswith("ui/src/api"):
-            bucket = "api"
-        else:
-            bucket = "runtime"
+        return out
+    for path, text, imports_api_tree, bucket in index["files"]:
         # Whether this file refers to the WRAPPER or merely contains a member with the same
         # spelling. A bare-name match is not enough. Measured on the real tree 2026-09-26:
         # tablet `adjust_stock` was graded "reachable from the programmatic client" on
@@ -341,18 +419,14 @@ def wrapper_reach(files: list[tuple[str, str]], cmd: str) -> dict[str, list[str]
         # The import test is deliberately about the tree rather than the exact specifier:
         # `@/api/products`, `./api/products` and a relative `../api/products` all reach it,
         # and pinning one spelling would just move the false negative around.
-        imports_api_tree = bool(API_TREE_IMPORT_RE.search(text))
-        for w in wrappers:
-            # Cached compiled patterns -- see _wrapper_pattern / _export_pattern.
-            # The unbounded form rebuilt these inside a files x wrappers x
-            # commands triple loop, measured at 1.26M re.search calls / 163 s.
-            pat = _wrapper_pattern(w)
-            if not pat.search(text):
-                continue
+        # `imports_api_tree` is precomputed by _reach_index, and the import test is checked
+        # BEFORE any wrapper pattern runs. Both orders were measured 2026-10-20 with
+        # cProfile over --self-test, where re.Pattern.search cost 173 s of a 289 s run.
+        if not imports_api_tree:
+            continue
+        for w in _wrappers_named_in(text, wrappers):
             # The defining file is not a reference to itself.
-            if bucket == "api" and _export_pattern(w).search(text):
-                continue
-            if not imports_api_tree:
+            if bucket == "api" and index["definer_of"].get(w) == path:
                 continue
             out[bucket].append(f"{path}#{w}")
     return out
@@ -2018,10 +2092,19 @@ _IMPORT_STATEMENT_START_RE = re.compile(r"import\b")
 SHELL_BLIND_SECTION = SHELL_BLIND_SECTIONS[0]
 
 
+@functools.lru_cache(maxsize=4096)
 def _strip_comments(text: str) -> str:
     """`text` with // and /* */ comments blanked, newlines preserved.
 
     Blanked rather than deleted so every offset still maps to its original line.
+
+    Memoised, and the key is the TEXT rather than the path -- which is what makes this
+    safe where the round-46 `id()` cache was not (it returned another test's answer).
+    Two files with identical content genuinely strip identically, so a hit is the right
+    answer by construction, not by luck. There are 692 runtime files and this is a
+    per-character Python loop: measured 2026-10-20, `_strip_comments` and
+    `_mask_imports` together were 71 s of a 289 s `--self-test` on 9,496 calls against
+    far fewer distinct texts.
     """
     out = list(text)
     i, n = 0, len(text)
@@ -2044,6 +2127,7 @@ def _strip_comments(text: str) -> str:
     return "".join(out)
 
 
+@functools.lru_cache(maxsize=4096)
 def _mask_imports(text: str) -> str:
     """Blank `import` STATEMENTS (which may span lines), keeping offsets.
 
@@ -2218,6 +2302,25 @@ def shell_blind_findings(
     for wn in wrapper_to_cmd:
         wrapper_res[wn] = re.compile(r"(?<![\w.])" + re.escape(wn) + r"\b")
 
+    # PER-FILE PROOF CACHE. The proof below -- "this file also calls a command this
+    # shell registers" -- is a property of the FILE and the shell, not of the gap being
+    # graded. It used to be recomputed inside the (command, reference) loop, so the same
+    # file was re-proved once per gap it appeared under, each time re-running every
+    # wrapper pattern over its text. Measure the pair, not the loop: the answer cannot
+    # change between commands because neither input does.
+    proof_cache: dict = {}
+
+    def proves_shell_here(path: str, masked: str) -> set:
+        """Registered commands this file calls through a wrapper other than `command`."""
+        got = proof_cache.get(path)
+        if got is None:
+            got = {
+                c for wn, c in wrapper_to_cmd.items()
+                if c in registered and wrapper_res[wn].search(masked)
+            }
+            proof_cache[path] = got
+        return got
+
     findings = {}
     for command in sorted(gaps):
         hits = set()
@@ -2232,13 +2335,7 @@ def shell_blind_findings(
             # The file has to PROVE it executes in this shell: it must also call a command
             # this shell registers. A file that branches on the shell but only ever calls
             # this shell's names is that shell's own screen, and its gaps are not C40.
-            proves = any(
-                cmd in registered
-                and cmd != command
-                and wrapper_res[wn].search(masked)
-                for wn, cmd in wrapper_to_cmd.items()
-            )
-            if not proves:
+            if not (proves_shell_here(path, masked) - {command}):
                 continue
             spans = shell_guarded_spans(text)
             for match in wrapper_res[wrapper].finditer(masked):
