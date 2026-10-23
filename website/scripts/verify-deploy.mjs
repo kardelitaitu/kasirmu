@@ -62,52 +62,42 @@ const DELAY_MS = Number(process.env.VERIFY_DELAY_MS ?? '5000');
  */
 export function routePatterns(routesText) {
   const withoutComments = routesText.replace(/#[^\n]*/g, '');
-  // A dotted key is a fail, not an empty config: `observability.logs.routes` is
-  // the array wrangler warns about and drops, so reporting "no routes" would
-  // send the reader to add a key that is already there and dead.
-  const isDottedRoutes = (key) => {
-    const parts = key.split('.');
-    return parts.length > 1 && parts[parts.length - 1] === 'routes';
-  };
-  /** The bare key a line declares, or '' when it declares none. */
-  // A key is the first whitespace-free token of a line, up to '=', ':' or '['.
-  // Written with no regex: an earlier anchored pattern mis-read a bracket-leading
-  // line, which is exactly the shape a [table] header has.
+  /// The bare key a line declares, or '' when it declares none. A key is the
+  /// first whitespace-free token, cut at '=', ':' or ']'; a [table] header yields
+  /// its inner name. No regex: an anchored pattern here mis-read a
+  /// bracket-leading line, which is exactly the shape a header has.
   const keyOf = (line) => {
     let word = '';
     for (const ch of line.trim()) {
       if (ch === ' ' || ch === String.fromCharCode(9)) break;
       word += ch;
     }
-    let i = 0;
+    let cut = [];
     for (const ch of word) {
-      if (ch === '=' || ch === ':') break;
-      i += 1;
+      if (ch === '=' || ch === ':' || ch === ']') break;
+      cut.push(ch);
     }
-    const bare = [...word].slice(0, i).join('');
+    const bare = cut.join('');
     if (!bare.startsWith('[')) return bare;
-    let name = '';
-    for (const ch of bare.slice(1)) {
-      if (ch === ']') break;
-      name += ch;
-    }
-    return name;
+    return bare.slice(1, bare.length);
   };
   const lines = withoutComments.split('\n');
   for (let i = 0; i < lines.length; i += 1) {
+    const isHeader = lines[i].trim().startsWith('[');
     const key = keyOf(lines[i]);
-    // A header names a TABLE; the next non-blank line's word nests under it.
-    const header = lines[i].trim().startsWith('[') ? key : '';
-    let dotted = '';
-    if (!header && isDottedRoutes(key)) {
-      dotted = key;
-    } else if (header.includes('.')) {
-      const next = lines.slice(i + 1).find((l) => l.trim() !== '') ?? '';
-      const nested = keyOf(next);
-      if (nested && isDottedRoutes(header + '.' + nested)) dotted = header + '.' + nested;
-    }
-    if (dotted) {
-      throw new Error(`wrangler.toml declares '` + dotted + `'; a dotted key is not a top-level routes key`);
+    // A header names a TABLE, and the next non-blank line's word nests under it.
+    const nextLine = isHeader ? lines.slice(i + 1).find((l) => l.trim() !== '') ?? '' : '';
+    const carried = keyOf(nextLine);
+    const declared = isHeader && carried ? key + '.' + carried : key;
+    const parts = declared.split('.');
+    const last = parts[parts.length - 1];
+    // `observability.logs.routes` is the array wrangler warns about and drops;
+    // reporting it as "no routes" would send the reader to add a key that is
+    // already there and dead, so it is named as the config error it is.
+    if (parts.length > 1 && last === 'routes') {
+      // Plain concatenation, no template literal: an earlier build of this line
+      // threw on every input once this branch ran.
+      throw new Error("wrangler.toml declares '" + String(declared) + "'; a dotted key is not a top-level routes key");
     }
   }
   const arrays = [...withoutComments.matchAll(/^[ \t]*routes[ \t]*=[ \t]*\[([\s\S]*?)\]/gm)];
