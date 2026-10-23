@@ -50,7 +50,7 @@ ROOT = Path(__file__).resolve().parent.parent
 #: scoped to one file grades one file, and the shape is not confined to the matrix
 #: (measured: 57 tracked .sh files, 2 of them carry a conditional substitution, and the
 #: second one is outside the original two-file list).
-TARGET_DIRS = ("scripts", ".agents")
+TARGET_DIRS = ("scripts", ".agents", "apps", "ops", "website")
 #: Excluded by name: a retired copy of a live script. Measured 2026-10-23 -- there is
 #: currently no *.sh.bak and no .sh under attic/, so this excludes nothing today. It
 #: stays because the exclusion is a RULE (a retired file is not a verdict), and adding
