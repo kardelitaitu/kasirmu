@@ -616,7 +616,14 @@ function parsePage(file) {
     ogUrl,
     alternates,
     robots,
+    // Every <title> in the document, not just the first. The old form used
+    // `.match(...)` WITHOUT /g, so a second <title> was invisible to this gate --
+    // planted and measured 2026-10-24: a page carrying two titles still reported
+    // "SEO/HEAD OK" at exit 0, while this file's own header claims titles are
+    // "unique site-wide". A non-global match cannot see a duplicate, and a gate whose
+    // header claims an invariant it cannot observe is worse than one that omits it.
     title: html.match(/<title>([^<]*)<\/title>/)?.[1] ?? '',
+    titles: [...html.matchAll(/<title>([^<]*)<\/title>/g)].map((m) => decode(m[1])),
     description: attr(metas.find((t) => attr(t, 'name') === 'description') ?? '', 'content') ?? '',
     ld: [...html.matchAll(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)].map(
       (m) => m[1],
@@ -985,6 +992,16 @@ for (const page of titled) {
       'titles',
       page.url,
       `has a ${titleText.length}-character <title> (budget ${TITLE_BUDGET}) — the tail is ellipsised in a SERP; shorten the page name rather than relying on the brand to be dropped`,
+    );
+  }
+  // A page carrying MORE THAN ONE <title>. Browsers take the first and ignore
+  // the rest, so a duplicate is invisible in the rendered page -- which is exactly
+  // why it survives review and exactly why a gate has to catch it.
+  if (page.titles.length > 1) {
+    add(
+      'titles',
+      page.url,
+      'carries more than one <title> element -- a browser renders only the first, so the others are dead weight a crawler may read instead',
     );
   }
   // The brand belongs in a title once. "kasir.mu — Unduh kasir.mu" is what a
