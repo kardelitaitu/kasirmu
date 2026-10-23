@@ -220,6 +220,34 @@ that pipe and exit 0 when read directly. The fix is to capture `$LASTEXITCODE` i
 same statement, not through a pipeline -- the same class of trap documented above for
 `--self-test` output, one level down.
 
+### "Has a self-test" and "can fail" are different questions, and only one is greppable
+
+Measured 2026-10-23 while auditing the checker population. A text scan for a failure path
+`(SELF-TEST WRONG|return 2|assert|FAILED)` flagged four checkers as having none:
+`verify-coverage-floors.py`, `verify-doc-uniqueness.py`, `verify-invoke-parity.py` and
+`verify-settled-read-copies.py`.
+
+**All four were false positives.** They fail for reasons the scan did not guess:
+`verify-invoke-parity.py` collects into a `failed` list and prints
+"`N self-test case(s) FAILED`" at :284; `verify-coverage-floors.py` uses a `failed`
+boolean set at :105/:114/:125. Run for real, all four printed a case count and exited 0.
+
+This is the FOURTH census in two rounds to report a gap that did not exist (350 → 59 → 7
+for module docs; 4 → 0 here). The pattern is consistent enough to state as a rule:
+
+**A grep can tell you a checker DECLARES a self-test. Only a mutation can tell you it
+WORKS.** To settle it for `verify-doc-uniqueness.py` this round: the file documents its own
+historical bug at :166-170 (`str(Path(f))` backslashes on Windows, so
+`startswith('docs/')` was silently False for every file and the gate passed over a known
+live defect). Reintroducing exactly that line made its self-test print
+
+```
+MISSED! two files both claiming single-source-of-truth were not detected
+```
+
+and exit 1 — so that case is load-bearing. Reverting restored green. That is the only
+evidence worth having, and it took two minutes, which is the point.
+
 ### Two ways a documentation census measures the WRONG THING
 
 Both measured 2026-10-23 while trying to establish how many Rust modules lack the
