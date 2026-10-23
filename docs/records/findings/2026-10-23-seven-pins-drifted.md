@@ -67,6 +67,28 @@ the two apart and does not claim to.
 Wiring the scan without settling the first question would produce a gate that is
 permanently red for a reason nobody agreed to — the failure mode that gets gates muted.
 
+## Re-measured 2026-10-24: same 7 pins, and the gate does exit 1
+
+The drift is unchanged (no new pins, none refreshed) and the finding is still **open for an
+owner decision**. The re-run was worth doing for one reason: it confirmed the gate FAILS on
+what it found.
+
+```
+direct exit: 1        # bash scripts/verify-docker-digests.sh, no pipe, measured via subprocess
+```
+
+Two separate measurements said 0 before that, and both were the MEASUREMENT, not the gate:
+
+1. `bash scripts/verify-docker-digests.sh 2>&1 | tail -25` — `$?` is `tail`'s status.
+2. `bash -c 'bash verify-docker-digests.sh; echo RC=$?'` — the `echo` is the last command in
+   that shell, so it consumes the status too, which is why `process exit == RC` came back
+   **False** with RC=1. A `;` chain inside one `bash -c` is the same trap as a pipe.
+
+The rule this project keeps re-learning, now with a fresh instance: **run the thing alone,
+or read the status out of a file — never off the end of a pipeline or a chain.** A supply-chain
+gate that reports drift and exits 0 would be worse than no gate, which is exactly why the
+false reading was worth chasing down rather than accepting.
+
 ## Provenance
 
 - Gate: `scripts/verify-docker-digests.sh` (this round added its floor and self-test).
