@@ -119,8 +119,31 @@ off rather than with the step removed:
 cargo nextest run --workspace --exclude kasirmu-app --exclude kasirmu-mobile
 ```
 
-Measured that way: 3771 passed, 1 failed -- and the single failure was the OpenAPI router/spec
-drift, a real defect that has since been fixed. Nothing else in the workspace depends on PG.
+Measured that way, re-run in full on 2026-10-23 with `--no-fail-fast` so one root
+cannot hide the rest:
+
+```
+Summary [ 324.861s] 10525 tests run: 10525 passed, 92 skipped      exit 0
+```
+
+The earlier figure on this page was "3771 passed, 1 failed", and the gap between the two
+is the point: the first number came from a run that STOPPED at its first failure, exactly
+as the note two paragraphs up warns. `--no-fail-fast` is what turns "1 failed" into a
+count of everything that was verified. Nothing in this workspace depends on PG: the whole
+suite is green with the feature off.
+
+**The two totals differ by 105 tests, and the difference is the FEATURES, not the flag.**
+Measured side by side on 2026-10-23:
+
+| run | command | total |
+|---|---|---|
+| matrix step 45 | `--workspace --all-features --exclude …` | **10630** |
+| with PG off | `--workspace --exclude … --no-fail-fast` | **10525** |
+
+So "10525 passed" is not "the same 10525 that were pending a moment ago": `--all-features`
+compiles 105 more tests into the binary, almost all of them the PG arms. Do not compare a
+total from one feature set against a total from the other; the two numbers answer
+different questions.
 
 Do **not** add a silent skip for a missing server. The panicking arm is the design: a PG test
 that quietly does not run is indistinguishable from one that passed, which is the failure mode
