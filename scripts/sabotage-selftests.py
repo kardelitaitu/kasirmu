@@ -74,6 +74,11 @@ def run_self_test(path: Path) -> int | None:
 
 def survey(limit: int | None) -> list[tuple[str, str, int, int, str]]:
     """(checker, mutated function, before, after, verdict) for every candidate."""
+    # KNOWN LIMIT: Python only. mutation here is AST-based (find the function, blank its
+    # body), and shell has no equivalent, so the .sh and .mjs checkers are outside this
+    # sweep -- including verify-docker-persistence.sh, whose self-test was measured by hand
+    # instead (2026-10-24: three verdict mutations, all KILLED). A mutation score that names
+    # its own blind spot is worth more than one that silently reads as total coverage.
     files = sorted((ROOT / "scripts").glob("verify-*.py")) + sorted((ROOT / "scripts").glob("check-*.py"))
     # A substring search is not a census: verify-website-assets.py MENTIONS --self-test
     # in a paragraph explaining why it has none, and that prose was read as a capability
