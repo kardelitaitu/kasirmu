@@ -272,6 +272,13 @@ step "dockerfile workspace self-test" "python3 scripts/verify-dockerfile-workspa
 # gate printed "All pinned image digests are current." over ZERO pins and exited 0. A
 # floor now refuses that, and the self-test grades the pattern itself.
 step "docker digests self-test" "bash scripts/verify-docker-digests.sh --self-test" bash scripts/verify-docker-digests.sh --self-test
+# verify-docker-all.sh orchestrates four Docker stages and has NO step of its own: every
+# stage needs a live daemon. Only its SELF-TEST is wired, because the log-rotation
+# decision inside it is pure text analysis and can be graded without one. Writing the
+# cases found two real defects in that decision, neither about Docker: `grep -c` counted
+# a COMMENT mentioning max-size as a configured service, and a zero service count made
+# `0 -eq 0` true so an empty render reported full coverage.
+step "docker all self-test" "bash scripts/verify-docker-all.sh --self-test" bash scripts/verify-docker-all.sh --self-test
 step "unified routes" "node scripts/check-unified-routes.mjs" node scripts/check-unified-routes.mjs
 # The Caddyfile parser's failure branch had NO automated exercise: the only way to reach
 # it was to hand-craft a corrupted copy and point argv[2] at it, which nobody re-runs.

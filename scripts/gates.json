@@ -313,6 +313,17 @@
       }
     },
     {
+      "id": "docker-all",
+      "label": "Docker sector (all four stages)",
+      "status": "advisory",
+      "_note": "Wired 2026-10-23 (local matrix only, SELF-TEST only). scripts/verify-docker-all.sh orchestrates persistence, digest drift, log rotation and the OZ_DB_PATH guard. Every stage needs a live Docker daemon, so the script has no step of its own and none is added here. What IS wired is its self-test: the log-rotation decision is pure text analysis over a rendered config and needs no daemon. Writing those cases found two real defects in that decision, neither about Docker: grep -c counted a COMMENT mentioning max-size as a configured service, so an unrotated service read as covered; and a zero service count made '0 -eq 0' true, so an empty render reported full coverage. Both now fail, and all three mutations of the rule redden the case that names them. Advisory because nothing enforces the scan.",
+      "runners": {
+        "check.sh": [
+          "docker all self-test"
+        ]
+      }
+    },
+    {
       "id": "no-raw-params",
       "label": "No raw params (ADR #7 Phase 4)",
       "status": "required",

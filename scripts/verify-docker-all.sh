@@ -29,6 +29,63 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+rotation_failed=0
+
+# ── Log-rotation decision, as functions so the cases grade the live rule ─────────
+#
+# TWO silent failures live here and NEITHER is about Docker:
+#   * `grep -c` counts matching LINES anywhere in the rendered config, so a COMMENT
+#     that mentions max-size inflates the numerator and an unrotated service reads as
+#     covered -- measured 2026-10-23 on a two-service render with one comment line;
+#   * when the service count is 0, `0 -eq 0` is TRUE, so an empty render reports FULL
+#     coverage. A zero count is never 'everything configured'.
+services_with_rotation() {
+    # EXCLUDE COMMENT LINES. A rendered compose config is YAML, so a line whose first
+    # non-space character is '#' is a comment, not a setting. Counting it made an
+    # unrotated service read as covered -- measured 2026-10-23, and this very case
+    # caught it on the first run of the self-test.
+    printf '%s\n' "$1" | grep -v '^[[:space:]]*#' | grep -c "max-size: 10m" || true
+}
+
+rotation_ok() {
+    local cfg="$1" total="$2"
+    services=$(services_with_rotation "$cfg")
+    [ "$total" -eq 0 ] && return 1
+    [ "$services" -eq "$total" ]
+}
+
+self_test() {
+    local fails=0 total=0
+    chk() {
+        local label="$1" want="$2" got
+        if rotation_ok "$3" "$4"; then got=ok; else got=bad; fi
+        total=$((total + 1))
+        if [ "$got" != "$want" ]; then
+            printf '  FAIL %s: expected %s, got %s\n' "$label" "$want" "$got" >&2
+            fails=$((fails + 1))
+        fi
+    }
+    local one='services:\n  a:\n    logging:\n      options:\n        max-size: 10m'
+    local two='services:\n  a:\n    logging:\n      options:\n        max-size: 10m\n  b:\n    logging:\n      options:\n        max-size: 10m'
+    chk 'one of two services is a failure' bad "$(printf '%b' "$one")" 2
+    chk 'both services is a pass' ok "$(printf '%b' "$two")" 2
+    chk 'an empty render fails even at zero services' bad '' 0
+    local commented='services:\n  a:\n    logging:\n      options:\n        max-size: 10m\n  b:\n    # TODO add max-size: 10m'
+    chk 'a comment mentioning max-size does not count' bad "$(printf '%b' "$commented")" 2
+    if [ "$fails" -gt 0 ]; then
+        printf 'SELF-TEST FAILED (%d of %d cases)\n' "$fails" "$total" >&2
+        return 2
+    fi
+    printf 'SELF-TEST OK (%d cases, no daemon)\n' "$total"
+    return 0
+}
+
+if [ "${1:-}" = "--self-test" ]; then
+    self_test
+    exit $?
+fi
+
+
 GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
 pass() { printf "${GREEN}✔ %s${NC}\n" "$1"; }
 fail() { printf "${RED}✘ %s${NC}\n" "$1"; }
@@ -75,7 +132,6 @@ export OZ_ADMIN_KEY="${OZ_ADMIN_KEY:-rotation-check-admin-key}"
 export OZ_LICENSE_PRIVATE_KEY="${OZ_LICENSE_PRIVATE_KEY:-rotation-check-key}"
 export PG_PASSWORD="${PG_PASSWORD:-rotation-check-pg}"
 
-rotation_failed=0
 # Paths are relative to the repo root (this script cd's there above); every
 # invocation also passes --project-directory . so Compose keeps the project
 # name, the repo-root .env and the `context: .` build context it had when
@@ -102,8 +158,7 @@ for combo in "${combos[@]}"; do
     # Compare against the ACTUAL per-combo service count so a service added
     # without rotation can't slip past a loose threshold.
     total=$(docker compose --project-directory . "${args[@]}" config --services 2>/dev/null | wc -l)
-    services=$(echo "$cfg" | grep -c "max-size: 10m" || true)
-    if [ "$services" -eq "$total" ]; then
+    if rotation_ok "$cfg" "$total"; then
         echo "  ✔ $combo → $services/$total service(s) with log rotation"
     else
         echo "  ✘ $combo → only $services/$total service(s) with max-size"
