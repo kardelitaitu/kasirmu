@@ -1165,6 +1165,24 @@ def population_clause(scope: dict[str, int]) -> str:
     )
 
 
+def should_enforce_floor(metadata_is_fixture: bool, report_only: bool) -> bool:
+    """Whether this run must refuse a census too small to describe the tree.
+
+    Extracted from `main` so the self-test can pin the CALL, not only the rule. The first
+    version of the self-test proved `population_floor_violation` was correct and never
+    proved anyone called it -- and a planted break that made `main` ignore its result left
+    the self-test 7/7 green, which is precisely the "guard written, never called" failure
+    the floor itself was added to prevent. Measured 2026-10-23.
+
+    Two exemptions, both legitimate and both narrow:
+      * a METADATA FIXTURE is a synthetic graph on purpose, which is how the self-test and
+        any fixture harness supply a tree;
+      * `--report-only` already refuses to judge and says NOT JUDGING on its own line, so
+        its exit code is not a verdict to protect.
+    """
+    return not metadata_is_fixture and not report_only
+
+
 def report_human(
     tracked: list[dict[str, Any]],
     blocking: list[dict[str, Any]],
@@ -1246,6 +1264,13 @@ def self_test() -> int:
     want("a small but real tree still passes",
          population_floor_violation({"crates": 5, "dep_edges": 10}), "")
 
+    # THE CALL, not only the rule. A break that makes main() ignore the floor's answer
+    # left this self-test 7/7 green before these two cases existed -- the rule was proven
+    # and its use was not. Measured 2026-10-23 with a planted `if False`.
+    want("a real run enforces the floor", should_enforce_floor(False, False), True)
+    want("a metadata fixture is exempt", should_enforce_floor(True, False), False)
+    want("report-only is exempt", should_enforce_floor(False, True), False)
+
     if cases:
         print("SELF-TEST WRONG: " + "; ".join(cases), file=sys.stderr)
         return 2
@@ -1289,7 +1314,7 @@ def main() -> int:
         #   * --report-only, which already refuses to judge and says so on its line.
         # Every other run is claiming to describe THIS repository, and a census too small
         # to be this repository has proved nothing -- see population_floor_violation.
-        if metadata_path is None and not args.report_only:
+        if should_enforce_floor(metadata_path is not None, args.report_only):
             census_problem = population_floor_violation(scope)
             if census_problem:
                 return fail(census_problem)
