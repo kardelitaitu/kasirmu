@@ -610,6 +610,35 @@ Both methods earn their place; planting finds blind spots, running finds drift.
 ran it, and red only because a *different* lane added a gate row without updating its pin. A pin
 that another lane's commit can invalidate is a coordination surface, and this repo has several.
 
+#### The 27 `check.sh`-only checkers (round 95)
+
+Same method, the other half of the roster. Of 17 run:
+
+| outcome | count | checkers |
+|---|---|---|
+| passed | 12 | chokepoints, dead-controls, orphan-prototype-files, reentry-guards, server-origins, state-closure, testid, unified-routes, namespace-governance, root-policy, doc-uniqueness, flaky-quarantine |
+| **real defect** | 1 | `verify-core-size.py` — see the finding filed this round |
+| needed an argument | 1 | `check-ui.mjs` (its `check:all` role) |
+| needed an environment artefact | 3 | `check-bundle.mjs` (the documented `TEMP` trap), `check-font-bundle.mjs` (`ui/dist`), `verify-deployment.py` (live network) |
+
+**The `verify-core-size.py` finding is the most useful thing this round produced.** It is real,
+committed, and attributable: `7116e47c1` (another lane's ADR-64 tender work) added +24 production
+lines to `payment.rs`, taking the crate to 40616 against a 40597 ceiling. It was verified against a
+**clean `git worktree` of HEAD**, because the working tree carries stat-noise entries that would
+have muddied the attribution.
+
+**Not fixed here, deliberately.** `scripts/core-size-baseline.json`'s own description says the
+ceiling is to be moved *"deliberately as part of a change that also says why"* and warns that
+*"a ceiling that is only ever moved after the fact is a changelog rather than a ratchet"*. Raising
+it from an unrelated lane to make a tree green is exactly that failure mode — so it is filed for
+the owning lane instead.
+
+**Across rounds 94-95: 45 checkers run, 2 real defects found** (a stale pin, a ceiling overrun),
+**7 "failures" that were the caller's fault** — a missing argument, a missing build artefact, a
+needed network probe, or the repo's own documented `TEMP` trap. The ratio is the argument for
+recording how each gate is meant to be invoked: a roster of "passes as invoked" is worth far more
+than a green tick.
+
 **The useful output of this round is the *list*, not the fixes.** 51 wired checkers is a roster
 anyone can re-run, and now one more of them is green. A gate nobody runs is not a gate — the same
 sentence this project has written three times about gates, now applied to the gates themselves.
