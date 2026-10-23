@@ -15,10 +15,17 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 76 | **76** | **0** |
-| Low | 24 | 24 | **0** |
+| Medium | 99 | **99** | **0** |
+| Low | 23 | 23 | **0** |
 | Test (O-T) | 17 | 17 | **0** |
-| **Total** | **143** | **143** | **0** |
+| **Total** | **165** | **165** | **0** |
+
+> The table read `143 / 76 / 24` until 2026-10-23 (round 34). It is now RECOMPUTED from the
+> file rather than carried forward: these counts come from `check-debt-ledger.py`'s own
+> `defined_entries()`, `entries_marked_inline()` and `sections()`, so the table and the gate
+> cannot disagree. The old numbers were not wrong when written — 22 entries were added to
+> the file afterwards and only the per-round notes recorded them, which is how a summary
+> table rots while every individual entry stays correct.
 
 **Updated 2026-10-23 (round 34). 143 defined, 143 closed, 0 open.** O-M77 closed by `1924c7851`: the scoped workspace picker DOES repair from the global rows now, so the ledger was the last place still calling it open — the code and its test were already closed, and this entry lagged behind them (§11CS). The round-33 note follows, unchanged. **Earlier: 143 defined, 142 closed, 1 open.** O-M76 closed: read gate passed topology replication pull route through unchecked; mapped to `topology:write` with `pii: false` (§11CQ). O-M77 opened: cross-store workspace picker has no read-repair, left open deliberately as data-ownership decision (§11CR).
 
