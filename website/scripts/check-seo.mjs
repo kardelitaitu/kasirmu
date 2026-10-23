@@ -179,7 +179,14 @@ import { NON_PUBLIC_PAGES, SITE, isNonPublic } from '../src/lib/site.ts';
 import { DESCRIPTION_BUDGET, TITLE_BUDGET } from '../src/lib/seo.ts';
 import { FOOTER_COLUMNS } from '../src/lib/footer-nav.ts';
 
-const DIST = 'dist';
+// Script-relative, not cwd-relative. It used to be the bare string 'dist', which
+// made every read in this file depend on the working directory: `npm run check:seo`
+// passes because npm runs from website/, while the same command from the repo root
+// died on ENOENT before reaching a single case. That is why the sibling
+// `check:seo:self-test` was never wired anywhere -- it could not run, so nothing
+// noticed it existed, and a self-test that cannot run is the shape this file's own
+// header says it refuses to be. REPO_ROOT below is the same idea, already applied.
+const DIST = fileURLToPath(new URL('../dist', import.meta.url));
 // This file's own location decides the repo root, so the source walk of check 14
 // works from any working directory (check 14 is the one check that reads source
 // rather than dist, and it reaches `prototypes/`, which is outside website/).
