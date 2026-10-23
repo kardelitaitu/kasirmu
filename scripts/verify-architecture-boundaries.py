@@ -1092,13 +1092,66 @@ def new_scope() -> dict[str, int]:
     }
 
 
+# The smallest population a REAL tree can have. Every crate in this workspace has at
+# least one dependency edge, and 40+ crates are known. The floor is deliberately far
+# below the measured 41/603 so it never trips on legitimate growth or pruning -- it
+# exists to catch a ZERO, not to police a number.
+MIN_CRATES_FOR_A_REAL_TREE = 5
+MIN_DEP_EDGES_FOR_A_REAL_TREE = 10
+
+
+def population_floor_violation(scope: dict[str, int]) -> str:
+    """Why this census cannot describe a real tree, or '' when it can.
+
+    **Printing the population is not a guard, and this file said it was.** The comment
+    on `population_clause` used to end "... Printing the population is what makes that
+    visible without this tool taking an exit code away from a mode (fixtures) that
+    legitimately has nothing to find." But `cargo_findings`'s own note already stated
+    the real problem -- "An empty graph and a graph with no violation produce the same
+    '0 blocking' without this" -- and no code ever checked it. Measured 2026-10-23 with
+    `--metadata-file` carrying `{"packages": []}`: the gate printed "0 tracked
+    transitional, 0 blocking" with "0 crate(s) in the Cargo graph, 0 dependency edge(s)
+    followed" and **exited 0**. Any real failure that empties the graph -- a cargo
+    metadata failure, a wrong --root, a broken workspace -- produces the identical
+    green.
+
+    The fixture mode is a real concern rather than an excuse, so the two cases are
+    separated instead of traded off: a caller running against a SYNTHETIC root already
+    passes `--metadata-file`, and a floor is only applied when the census is expected
+    to be real. See `main`, which skips this check for a metadata fixture and for
+    `--report-only`, and enforces it otherwise.
+
+    HOW MUCH THIS ACTUALLY ADDS, measured rather than assumed. Against an empty or
+    incomplete `--root`, cargo metadata already fails first (exit 2, "no Cargo graph is
+    available and this checker does not substitute a cached one"), and a root missing
+    `ui/src` or a manifest fails before the graph is even read. So on TODAY'S code the
+    empty graph is not reachable through the real-run path: this floor is defence in
+    depth against a future change -- a cached metadata fallback, an --offline mode, a
+    partial root -- rather than a repair of a live hole. It is stated that way because
+    the alternative (claiming a fix) would be a false account of what was wrong.
+    """
+    if scope["crates"] < MIN_CRATES_FOR_A_REAL_TREE:
+        return (
+            f"the Cargo graph names only {scope['crates']} crate(s); a real tree has at "
+            f"least {MIN_CRATES_FOR_A_REAL_TREE}. A gate that walked nothing must not "
+            "report clean -- this is the empty-graph shape, not a passing scan"
+        )
+    if scope["dep_edges"] < MIN_DEP_EDGES_FOR_A_REAL_TREE:
+        return (
+            f"only {scope['dep_edges']} dependency edge(s) were followed; a real tree has "
+            f"at least {MIN_DEP_EDGES_FOR_A_REAL_TREE}. The graph was read but the edges "
+            "were not, so no boundary could have been tested"
+        )
+    return ""
+
+
 def population_clause(scope: dict[str, int]) -> str:
     """The denominator half of the green line.
 
     All three finding counts can be zero while the scope is zero too, which is
-    what --root on an empty directory produces. Printing the population is what
-    makes that visible without this tool taking an exit code away from a mode
-    (fixtures) that legitimately has nothing to find.
+    what --root on an empty directory produces. Printing the population makes that
+    VISIBLE; `population_floor_violation` is what makes it FAIL. The two are not
+    substitutes: a number in a log is read by nobody when the exit code says pass.
     """
     return (
         f" [population examined: {scope['crates']} crate(s) in the Cargo graph, "
@@ -1154,6 +1207,52 @@ def report_human(
         print(f"\nExpired baseline findings: {len(expired)}")
 
 
+def self_test() -> int:
+    """Pin the census floor, which is the half that cannot be seen from a green line.
+
+    The floor's whole job is to FAIL where the tool would otherwise print zeros and exit
+    zero, so every case here asserts a verdict rather than a number. A self-test that
+    only checked the arithmetic could pass while main() ignored the result -- the exact
+    shape this project keeps finding (a guard written, never called).
+    """
+    cases: list[str] = []
+
+    def want(name: str, got, expect) -> None:
+        if got != expect:
+            cases.append(f"{name}: expected {expect!r}, got {got!r}")
+
+    real = {"crates": 41, "dep_edges": 603}
+    want("a real census passes", population_floor_violation(real), "")
+
+    # The empty graph: cargo metadata succeeded and returned nothing. This is the shape
+    # that used to print "0 blocked" with no crates and exit 0.
+    # Anchored on the CRATE clause specifically, not merely "some violation came back":
+    # with both floors present, a graph that also has 0 edges is rejected by the edge
+    # branch too, so a weaker assertion stays green with the crate floor deleted -- which
+    # is exactly what the planted-break run showed (1 failure, not 2).
+    want("an empty graph is refused",
+         "0 crate(s)" in population_floor_violation({"crates": 0, "dep_edges": 0}), True)
+    want("the refusal names the crate count",
+         "0 crate(s)" in population_floor_violation({"crates": 0, "dep_edges": 0}), True)
+
+    # A graph that names crates but follows no edges: the boundary rules live on the
+    # EDGES, so a scan that read the nodes and not their dependencies tested nothing.
+    edge_case = population_floor_violation({"crates": 41, "dep_edges": 0})
+    want("crates without edges is refused", edge_case != "", True)
+    want("the refusal names the edge count", "0 dependency edge(s)" in edge_case, True)
+
+    # The floor must never fire on real growth or pruning: five is far below the measured
+    # 41, and the workspace has never been near it.
+    want("a small but real tree still passes",
+         population_floor_violation({"crates": 5, "dep_edges": 10}), "")
+
+    if cases:
+        print("SELF-TEST WRONG: " + "; ".join(cases), file=sys.stderr)
+        return 2
+    print("SELF-TEST OK (7 cases, no files touched)")
+    return 0
+
+
 def main() -> int:
     configure_streams()
     parser = argparse.ArgumentParser(description=__doc__)
@@ -1163,7 +1262,11 @@ def main() -> int:
     parser.add_argument("--root", type=Path, help="Repository root (defaults to the script's repository root).")
     parser.add_argument("--metadata-file", type=Path, help="Cargo metadata JSON fixture instead of running cargo metadata.")
     parser.add_argument("--baseline-file", type=Path, help="Baseline JSON path (defaults to <root>/scripts/architecture-boundaries-baseline.json).")
+    parser.add_argument("--self-test", action="store_true",
+                        help="Run the census-floor cases and exit. Pure: no file is read, none is written.")
     args = parser.parse_args()
+    if args.self_test:
+        return self_test()
     root = (args.root or Path(__file__).resolve().parent.parent).resolve()
     baseline_path = (args.baseline_file or root / "scripts" / "architecture-boundaries-baseline.json").resolve()
     metadata_path = args.metadata_file.resolve() if args.metadata_file else None
@@ -1180,6 +1283,16 @@ def main() -> int:
             + event_sink_findings(root, scope)
         )
         scope["baseline_entries"] = len(baseline)
+        # THE POPULATION FLOOR. Skipped only where an empty census is legitimate:
+        #   * --metadata-file, which is how the self-test (and any fixture) supplies a
+        #     synthetic graph on purpose;
+        #   * --report-only, which already refuses to judge and says so on its line.
+        # Every other run is claiming to describe THIS repository, and a census too small
+        # to be this repository has proved nothing -- see population_floor_violation.
+        if metadata_path is None and not args.report_only:
+            census_problem = population_floor_violation(scope)
+            if census_problem:
+                return fail(census_problem)
         tracked, blocking, stale, expired = apply_baseline(findings, baseline)
     except (ValueError, OSError) as exc:
         return fail(str(exc))
