@@ -75,23 +75,45 @@ def run_eslint() -> tuple[int, str]:
     return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
 
 
-def measure(output: str) -> tuple[int, int]:
-    """Return (warning_total, exhaustive_deps_count) or raise if the run is not trustworthy."""
+def measure(output: str, exit_code: int = 0) -> tuple[int, int]:
+    """Return (warning_total, exhaustive_deps_count) or raise if the run is not trustworthy.
+
+    EMPTY OUTPUT IS THE CLEAN CASE, and this function used to fail on it. ESLint 9 prints its
+    "✖ N problems" summary ONLY when there is something to report; a tree with zero
+    findings produces no stdout at all and exits 0. The old rule -- "no summary line means
+    the run cannot be trusted" -- therefore reported every perfectly clean tree as
+    UNTRUSTWORTHY, which is what `check.sh` step 21 did on 2026-10-23: rc 0, zero bytes on
+    stdout and stderr, and the gate demanding a summary it could never get.
+
+    The absence of a summary is still suspicious when it contradicts the exit code (a
+    non-zero run that printed nothing) or when there is output that does not parse. Both
+    still fail, and those are the cases the guard was written for: a bad flag, a config
+    error, a changed output format. What it must not do is read "nothing to report" as
+    "reported nothing".
+    """
     m = SUMMARY_RE.search(output)
     if not m:
+        if not output.strip():
+            if exit_code == 0:
+                # eslint ran, found nothing, and said nothing. A real zero.
+                return 0, 0
+            raise SystemExit(
+                "eslint exited %d and printed nothing -- the run cannot be trusted, so this "
+                "gate fails instead of reporting clean." % exit_code
+            )
         raise SystemExit(
-            "eslint produced no parseable summary line -- the run cannot be trusted, so this gate "
-            "fails instead of reporting clean.\nFirst 400 chars of output:\n" + output[:400]
+            "eslint produced output but no parseable summary line -- the run cannot be "
+            "trusted, so this gate fails instead of reporting clean.\nFirst 400 chars of "
+            "output:\n" + output[:400]
         )
     _problems, _errors, warnings = (int(g) for g in m.groups())
     deps = len(RULE_RE.findall(output))
     if deps > warnings:
         raise SystemExit(
-            f"inconsistent parse: {deps} exhaustive-deps mentions exceed {warnings} total warnings; "
-            "the output format changed and the count is meaningless."
+            f"inconsistent parse: {deps} exhaustive-deps mentions exceed {warnings} total "
+            "warnings; the output format changed and the count is meaningless."
         )
     return warnings, deps
-
 
 # A realistic eslint tail: the summary line plus per-file findings.
 ESLINT_WITH_DEPS = """
@@ -144,6 +166,16 @@ def self_test() -> int:
         bad.append("unparseable output: expected SystemExit, got a value")
     except SystemExit:
         pass
+    # THE CLEAN CASE, which this self-test could not previously express and which the
+    # gate therefore could not distinguish from a broken run: eslint 9 prints no summary
+    # when there is nothing to report, so ("", 0) must read as a real zero.
+    want("a clean tree reports a real zero", measure("", 0), (0, 0))
+    # ...but silence from a NON-ZERO exit is still not a zero.
+    try:
+        measure("", 1)
+        bad.append("silent failure: expected SystemExit, got a value")
+    except SystemExit:
+        pass
     # Fail-closed branch 2: deps > warnings means the format changed.
     try:
         measure("1 problems (0 errors, 1 warnings)\n"
@@ -156,7 +188,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (4 cases, no files touched)")
+    print("SELF-TEST OK (6 cases, no files touched)")
     return 0
 
 
@@ -176,7 +208,7 @@ def main() -> int:
     if code == 2:
         raise SystemExit(f"eslint exited 2 (usage or config error), output:\n{output[:600]}")
 
-    warnings, deps = measure(output)
+    warnings, deps = measure(output, code)
     baseline = load_baseline()
     print(f"  warnings total: {warnings}   exhaustive-deps: {deps}   cap: {baseline}")
 
