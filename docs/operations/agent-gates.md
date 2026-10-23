@@ -140,12 +140,13 @@ nothing and report clean, and it does: breaking BOTH discovery paths yields `rc 
 `could not run sh`.
 ## Writing a checker: two self-test forms, and say which you chose
 
-Ten of the twelve `scripts/check-*.py` checkers expose `--self-test`; `check-replay-fork.py` keeps its
-cases in `scripts/test-replay-fork.py` instead, and `check-dead-controls.py` has no self-test at all.
-(Measured 2026-10-11 by running each: 12 `check-*.py` exist, and
-`python3 scripts/check-replay-fork.py --self-test` exits 2 with `unrecognized arguments`. This line
-said "seven of the eight" until then, which was wrong in both directions — the population and the
-count.) Both of the first two are correct — `check-replay-fork.py` explains why at its
+Of the 16 `scripts/check-*.py` checkers, 13 expose `--self-test`; `check-replay-fork.py` keeps
+its cases in `scripts/test-replay-fork.py` instead; `check-query-plans.py` and `check-scratch-leaks.py`
+run their proof INSIDE `--check` (a detector probe over synthetic sources, first, before the tree is
+graded) rather than behind a flag. (Re-measured 2026-10-23 by walking `scripts/check-*.py`: the count
+was 12 and "check-dead-controls.py has no self-test at all" until that pass, and both numbers had been
+wrong in both directions before — see the note below on why a text search is the wrong instrument.)
+`python3 scripts/check-replay-fork.py --self-test` still exits 2 with `unrecognized arguments`. Both of the first two are correct — `check-replay-fork.py` explains why at its
 docstring (`:44-49`): it is the gate that would have caught the fork losing the colon rejection, so
 "a checker that cannot fail is worse than none" and it wanted the cases somewhere harder to overlook.
 

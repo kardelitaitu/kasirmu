@@ -175,6 +175,12 @@ step "unsafe safety comments" "python3 scripts/verify-unsafe-safety.py --self-te
 # this makes the cross-check mechanical. Reads git log against the journal, so it is cheap.
 # Gate: scripts/gates.json -> "debt-ledger".
 step "debt ledger" "python3 scripts/check-debt-ledger.py" python3 scripts/check-debt-ledger.py
+# Its four predicates have each been wrong once -- the status-report veto, the
+# case-sensitive close marker, the second section-heading shape, and the id requirement.
+# Each of those is a rule over a string, and a rule can be tidied back into the form that
+# produced the false positive while the gate goes on printing OK. The self-test pins all
+# four; reverting any one of them reddens the case that names it.
+step "debt ledger self-test" "python3 scripts/check-debt-ledger.py --self-test" python3 scripts/check-debt-ledger.py --self-test
 step "unsafe safety comments (tree)" "python3 scripts/verify-unsafe-safety.py" python3 scripts/verify-unsafe-safety.py
 # Round 201 of the restaurant-POS work found `setLines(updatedLines)` replacing state from a
 # pre-await render closure, so a line added mid-send was dropped with no message. The checker

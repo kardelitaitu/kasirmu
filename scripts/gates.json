@@ -840,7 +840,8 @@
       "status": "required",
       "runners": {
         "check.sh": [
-          "debt ledger"
+          "debt ledger",
+          "debt ledger self-test"
         ]
       },
       "_note": "Added 2026-10-21. todo-optimize-crates.md is the source of truth for what performance and correctness debt is still open, and SIX entries were caught still ranked as open work after the code had shipped: O-H23, O-H24 and O-H26 (fixed 2026-09-27 by other lanes, never marked), O-H03/O-H04/O-H08 (their own entry text said 'Fixed:' while every tier census counted them open), O-H22 (commit 49a304b97 touched the journal but added no section), and \u2014 found while writing this gate \u2014 O-H16, whose section 49a304b97 DELETED outright, replacing the body with a bare '---' while the KDS dirty_order_id fix stayed live at kds.rs:104. That last one is the worst shape: the code is correct, the record is gone, and the next reader re-derives finished work from the entry. scripts/check-debt-ledger.py reads git log and cross-checks it against the journal, honouring BOTH close conventions this file has used (a section naming the id, or an inline PAID/RESOLVED/FIXED marker in the entry body) and BOTH heading shapes (numbered-sect and the older '## 11. Round N'). It also fails an effectively-empty section body, which is exactly how the O-H16 deletion presented. Cheap: one git log and one file read."

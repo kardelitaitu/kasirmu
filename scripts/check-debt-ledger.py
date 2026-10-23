@@ -27,6 +27,20 @@ good; only whether the journal noticed a commit claiming to close something.
 EXIT CODES
     0  every closing commit has its section; every section names a defined entry
     1  at least one mismatch (printed with the action needed)
+    2  the checker's own cases failed -- do not trust the report below
+
+WHY THERE IS A SELF-TEST
+------------------------
+Every false positive this script has had is recorded inline as a comment above the rule
+that fixed it, and every one of those rules is a predicate over a string. A predicate can
+be edited back into its wrong form by someone tidying, or simply stop matching, and the
+gate keeps printing OK. The cases below pin the exact shapes that once fooled it:
+
+  * "still open" / "remain" veto      -- a status report is not a resolution
+  * "fixed-size batches" in a body    -- a fix DESCRIPTION is not a fix RECORD
+  * INLINE_CLOSE_RE case sensitivity  -- lowercase "fixed" alone must not close an entry
+  * the two section-heading shapes    -- "## 11XX" AND the older "## 11. Round 6"
+  * a bare filename beside its dir    -- a ref relative to the full path cited with it
 
 Run from the repo root:  python scripts/check-debt-ledger.py
 """
@@ -188,7 +202,93 @@ def entries_with_dead_file_refs(text: str) -> list[tuple[str, list[str]]]:
     return bad
 
 
+#: Commit subjects: (subject, should_read_as_closing). These are the strings that have
+#: actually appeared in this repo's log, plus the neighbours each rule must not swallow.
+SUBJECT_CASES = (
+    # --- closes ---
+    ("fix(core): resolve O-H23 stale receipt pointer", True),
+    ("chore(journal): close O-M57 and O-M58", True),
+    ("refactor(db): finished O-T05 cache-rebuild", True),
+    # --- does NOT close, and each line names the rule it pins ---
+    # The NOT_CLOSING veto: this subject names O-H12 and O-H17, which are the ones
+    # STILL OPEN. Without the veto the gate demanded a section for both and taught
+    # a reader to ignore it.
+    ("chore(journal): recount after thirteen closes, leaving only O-H12 open", False),
+    ("docs(journal): O-H12 remains open pending an owner ruling", False),
+    ("chore(journal): defer O-H17 to the backlog", False),
+    # No id at all, and no closing verb at all -- the two cheap negatives.
+    ("fix(core): resolve the stale receipt pointer", False),
+    ("chore(journal): touch up O-H23 wording", False),
+)
+
+
+#: Journal bodies: (name, entry header line + body, should the marker close it).
+INLINE_CASES = (
+    # The uppercase markers, and the lowercase "Fixed:" form O-H03/O-H04/O-H08 used.
+    ("**O-H03 received-amount rounding**\nFixed: by the Minor units pass.", True),
+    ("**O-H04 stock recount**\nPAID. See the section below.", True),
+    ("**O-H09 plan cache**\nRESOLVED: the cache is keyed per store.", True),
+    # The false positive: O-H02's own text says "chunk the image lookup into fixed-size
+    # batches". A \bFIXED\b match with re.IGNORECASE read that as a fix RECORD and
+    # marked a live entry closed.
+    ("**O-H02 image lookup**\nChunk the image lookup into fixed-size batches.", False),
+    # Lowercase "fixed" without the colon is a description, not a record.
+    ("**O-H02 image lookup**\nThis was fixed upstream, we only track it.", False),
+)
+
+
+#: Section headings: (heading, should_be_recognised_as_a_section).
+SECTION_CASES = (
+    # The numbered-sect convention.
+    ("## \u00a711XX -- O-H23 resolved: stale receipt pointer", True),
+    # The older round convention, which is what O-T05 shipped under. A checker that
+    # knew only the first form reported a real, documented close as a gap.
+    ("## 11. Round 6 (2026-10-21) -- O-T05 executed", True),
+    # Not a section: these are entry headers and prose headings.
+    ("### 11XX nested, not a top-level section", False),
+    ("## Debt ledger -- open items", False),
+)
+
+
+def self_test() -> int:
+    """Run the rule cases; report EVERY failure rather than stopping at the first."""
+    bad: list[str] = []
+    for subject, expected in SUBJECT_CASES:
+        got = is_closing_subject(subject)
+        if got != expected:
+            bad.append("  subject %r: expected closing=%s, got %s" % (subject, expected, got))
+    for body, expected in INLINE_CASES:
+        got = bool(INLINE_CLOSE_RE.search(body))
+        if got != expected:
+            bad.append("  inline %r: expected marked=%s, got %s"
+                       % (body.splitlines()[0], expected, got))
+    for heading, expected in SECTION_CASES:
+        got = bool(SECTION_RE.match(heading))
+        if got != expected:
+            bad.append("  heading %r: expected section=%s, got %s" % (heading, expected, got))
+    # A section split is a SET operation, which is the shape that once reported "sets
+    # agree" over two empty sets. Pin that the split actually produces one section.
+    split = sections(SECTION_CASES[0][0] + "\nbody text here\n")
+    if len(split) != 1:
+        bad.append("  sections(): expected 1 split for a single heading, got %d" % len(split))
+    if bad:
+        sys.stderr.write("SELF-TEST WRONG:\n" + "\n".join(bad) + "\n")
+        return 2
+    print("SELF-TEST OK (%d cases, no file read)"
+          % (len(SUBJECT_CASES) + len(INLINE_CASES) + len(SECTION_CASES) + 1))
+    return 0
+
+
 def main() -> int:
+    if "--self-test" in sys.argv[1:]:
+        return self_test()
+    # Grade the four predicates BEFORE grading the journal. Each of them has been wrong
+    # once already; a rule that stops matching reports a clean ledger over a dead scan.
+    rc = self_test()
+    if rc:
+        sys.stderr.write("RULES WENT DEAF: not trusting the ledger report below.\n")
+        return rc
+
     try:
         text = LEDGER.read_text(encoding="utf-8")
     except FileNotFoundError:
