@@ -593,6 +593,23 @@ Three reported failure, and each had a different cause:
 trap as rounds 90-92 in a new place: an exit code is not a verdict until you know what the tool
 requires. The third was genuine and was in a gate I had never once run.
 
+#### Final tally over the 28 never-run checkers
+
+| outcome | count |
+|---|---|
+| passed as invoked | 23 |
+| failed for a **real** reason (`check-font-claims.mjs`, count pin) | 1 |
+| needed an argument I had not supplied (`verify-commit-subjects.py --range`, `verify-updater-signature.mjs --self-test`) | 2 |
+| needed an environment artefact (`verify-pg-tests-ran.py` runs `cargo test`; `verify-coverage-floors.py` needs `coverage-probe.json`) | 2 |
+
+**1 real defect in 28** — a lower rate than the planted 1-in-12, which is the expected direction:
+running a gate needs no fixture and therefore catches fewer "the gate cannot see it" failures.
+Both methods earn their place; planting finds blind spots, running finds drift.
+
+**And note the shape of the one defect.** `check-font-claims.mjs` was green for every lane that
+ran it, and red only because a *different* lane added a gate row without updating its pin. A pin
+that another lane's commit can invalidate is a coordination surface, and this repo has several.
+
 **The useful output of this round is the *list*, not the fixes.** 51 wired checkers is a roster
 anyone can re-run, and now one more of them is green. A gate nobody runs is not a gate — the same
 sentence this project has written three times about gates, now applied to the gates themselves.
