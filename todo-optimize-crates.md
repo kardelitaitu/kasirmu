@@ -8966,3 +8966,69 @@ check.sh steps 136-146         -> PASS
 ```
 
 ### Ledger: 161 defined, 161 closed, 0 open.
+
+## §11WA — O-M96: — four more candidates, zero gaps, and the method written down so the next reader stops re-deriving it (2026-10-23)
+
+Landed in `b07ec4f60`.
+
+**O-M96 · gates — the last four string-derived candidates were all already guarded; the round's product is the decision procedure, not a fix** — resolved in §11WA.
+
+### 1. The four, each checked by constructing its failure mode
+
+| Checker | What was tried | Verdict |
+|---|---|---|
+| `check-unified-routes.mjs` | an empty Caddyfile | **rc 2**, and it has THREE census guards, each printing "the parser drifted" |
+| `check-replay-fork.py` | — | has a companion test, `scripts/test-replay-fork.py`, wired at check.sh:561 |
+| `check-ui.mjs` | — | an AGGREGATOR (runs lint/tsc/vitest); it has no detector of its own, so it has nothing to prove |
+| `check-font-claims.mjs` | read its 16 rows | each is `if (!probe.ran) exit 2` then an exact-value assertion; an empty probe makes the assertion FALSE, so it fails |
+
+**Zero real gaps.** Combined with round 54 (1 of 4), a candidate list derived from an absent
+`--self-test` string has a hit rate near one in four, and most of what it names is guarded by a
+mechanism the string-search cannot see.
+
+### 2. Why the string search is structurally unable to be right
+
+This tree uses at least four proof mechanisms:
+
+1. a `--self-test` flag (the only one a grep for `--self-test` can find);
+2. a COMPANION TEST (`test-replay-fork.py` beside `check-replay-fork.py`);
+3. a proof the checker RUNS FIRST (`check-query-plans.py --check` runs the Rust falsification
+   test `forcing_a_scan_fails_the_probe` before it grades anything);
+4. an INLINE liveness guard (`check-scratch-leaks.py::detector_still_sees_a_call()`).
+
+A grep answers "does this file contain the flag". The question that matters is "can this gate
+be shown to fail". Those are different questions, and no amount of widening the grep closes
+the gap between them.
+
+### 3. What was written down
+
+`docs/operations/how-to-tell-a-gate-can-fail.md` — the three-command procedure, the four guard
+shapes, the measured hit rates per round, and a table of the eight checkers already checked and
+cleared with the reason for each. The point is to stop the next round re-deriving it:
+four rounds have now spent effort on this list and found two defects in total.
+
+The one rule it ends on: **do not repair a gate because it lacks a flag; repair it because you
+watched it pass something it should have failed.**
+
+### 4. Two measurements taken for the next structural question
+
+`check.sh` is now **141 steps**. The tail (step 137 to the end) measures **222 s**, and the
+known heavy steps are go test (~469 s), the application shells (~359 s), the exhaustive-deps
+ratchet (~78 s) and ftl orphans (~81 s). The matrix has only grown: five of the last five
+commits touching check.sh ADDED a step, none removed one.
+
+That is a real observation and NOT a change made this round: merging gates is a structural
+decision that needs its own evidence (which steps overlap, which never fire independently), and
+round 55 did not gather enough of it to justify touching a working matrix.
+
+### Verification
+
+```
+check-unified-routes.mjs (empty Caddyfile)  -> rc 2, names the parser
+check-replay-fork.py + test-replay-fork.py  -> wired at check.sh:561
+check-font-claims.mjs                       -> 7 `process.exit(2)` ran-guards, 16 exact assertions
+check-orphans.py / check-dead-refs.py       -> rc 0 on the new doc
+matrix steps 137+                           -> 222 s
+```
+
+### Ledger: 162 defined, 162 closed, 0 open.
