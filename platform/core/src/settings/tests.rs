@@ -893,7 +893,7 @@ fn conn_execute_commits_with_transaction() {
 fn set_tracked_concurrent_threads_independent_keys() {
     use std::thread;
 
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let db_path = dir.path().join("test.db");
 
     // Create the DB with schema first.
@@ -1524,7 +1524,7 @@ fn remove_preserves_delta_history() {
 /// A wins the slot; B must retry and land the next version.
 #[test]
 fn write_delta_concurrent_same_pair_never_loses_delta() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let db_path = dir.path().join("delta-race.sqlite");
     {
         let setup = Connection::open(&db_path).unwrap();

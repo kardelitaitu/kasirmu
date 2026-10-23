@@ -8,7 +8,7 @@ use rusqlite::Connection;
 /// Helper: create an in-memory SQLite database with migrations applied,
 /// and write it to a temp file so we can pass a path.
 fn create_temp_db() -> (tempfile::TempDir, std::path::PathBuf) {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let db_path = dir.path().join("test.db");
     let mut conn = Connection::open(&db_path).unwrap();
     conn.pragma_update(None, "foreign_keys", "ON").unwrap();
@@ -224,7 +224,7 @@ fn init_module_system_with_invalid_db_path_fails() {
     // rusqlite::Connection::open is guaranteed to fail on
     // all platforms (SQLite can create new DB files but
     // cannot create parent directories).
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let bad_path = dir.path().join("nonexistent_subdir").join("db.sqlite");
 
     let result = init_module_system(&kernel, &bad_path);
@@ -293,7 +293,7 @@ fn open_reaper_connection_configures_wal_and_foreign_keys() {
 
 #[test]
 fn open_reaper_connection_fails_on_unopenable_path() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let bad_path = dir.path().join("nonexistent_subdir").join("db.sqlite");
     assert!(
         open_reaper_connection(&bad_path).is_err(),

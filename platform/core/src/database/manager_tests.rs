@@ -27,7 +27,7 @@ fn make_migrations() -> &'static [Migration] {
 }
 
 fn setup() -> (StoreDatabaseManager, TempDir) {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let manager = StoreDatabaseManager::new(dir.path().to_path_buf(), make_migrations());
     (manager, dir)
 }
@@ -346,7 +346,7 @@ fn open_store_propagates_error_not_silent_in_memory_fallback() {
     // Trigger the error by using a regular file as the data_dir —
     // create_dir_all inside open_or_create_connection will fail because
     // the "directory" is actually a file.
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let file_path = dir.path().join("blocker");
     std::fs::write(&file_path, b"block").unwrap();
     // Now file_path is a file, not a directory. When open_or_create_connection

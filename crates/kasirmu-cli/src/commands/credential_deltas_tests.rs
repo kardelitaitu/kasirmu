@@ -35,28 +35,23 @@ fn fresh_db() -> Connection {
  * the retry. Removing the directory in Drop, which unwinds do run, closes the class
  * instead of re-tuning one assert.
  */
-struct TempDir(PathBuf);
+struct TempDir(kasirmu_test_support::ScratchDir);
 
 impl TempDir {
     fn new(tag: &str) -> Self {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        // pid alone is not unique across runs; the clock makes it per-run, so no
-        // earlier failure can seed this one.
-        let path = std::env::temp_dir().join(format!("oz-cd-{tag}-{}-{nanos}", std::process::id()));
-        std::fs::create_dir_all(&path).expect("create the per-run temp dir");
-        Self(path)
+        // The two problems above are both solved by the shared helper, and its
+        // home is different from the one this fixture used: `std::env::temp_dir()`
+        // resolves the machine-level TEMP (`C:\WINDOWS\TEMP`), where an ordinary
+        // user can create but not delete, so BOTH the cleanup and — once a stale
+        // directory is there — the create itself failed there. ScratchDir lives
+        // under the gitignored `target/test-scratch/` instead. UUID-unique per
+        // call, so the pid-reuse hazard is gone without the clock.
+        Self(kasirmu_test_support::ScratchDir::new(&format!(
+            "oz-cd-{tag}"
+        )))
     }
     fn file(&self, name: &str) -> PathBuf {
-        self.0.join(name)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        self.0.path().join(name)
     }
 }
 

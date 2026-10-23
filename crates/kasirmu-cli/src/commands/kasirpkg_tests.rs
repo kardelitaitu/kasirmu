@@ -72,13 +72,17 @@ fn seeded_source_db() -> Connection {
     conn
 }
 
-/// A unique temp path (uuid keeps parallel test runs from colliding).
-fn temp_path(tag: &str) -> std::path::PathBuf {
-    std::env::temp_dir().join(format!(
-        "kasirmu-cli-kasirpkg-{tag}-{}-{}",
-        std::process::id(),
-        uuid::Uuid::new_v4()
-    ))
+/// A file path inside a fresh scratch directory, returned WITH its guard.
+///
+/// The guard must travel: a bare path here would leave the file behind forever,
+/// and `std::env::temp_dir()` is the machine-level TEMP on this project's
+/// Windows boxes, where a leftover file can never be deleted. Callers bind both
+/// halves — `let (path, _dir) = temp_path(..);` — and the drop does the cleanup
+/// the old explicit `remove_file` did only on the success path.
+fn temp_path(tag: &str) -> (std::path::PathBuf, kasirmu_test_support::ScratchDir) {
+    let dir = kasirmu_test_support::ScratchDir::new(&format!("kasirmu-cli-kasirpkg-{tag}"));
+    let path = dir.path().join("package.kasirpkg");
+    (path, dir)
 }
 
 /// Decrypt a package written by the CLI and return its settings rows.
@@ -114,8 +118,8 @@ fn setting_bytes(conn: &Connection, key: &str) -> Option<Vec<u8>> {
 /// `.kasirpkg` produced by an OLDER build looks like — and return its path.
 /// `export_kasirpkg` is the unfiltered crypto layer, so whatever is put here is
 /// what lands in the file regardless of what the CLI export arm withholds.
-fn legacy_package(rows: &[(&str, &str)]) -> std::path::PathBuf {
-    let path = temp_path("legacy");
+fn legacy_package(rows: &[(&str, &str)]) -> (std::path::PathBuf, kasirmu_test_support::ScratchDir) {
+    let (path, dir) = temp_path("legacy");
     let payload = KasirpkgPayload {
         products: vec![],
         categories: vec![],
@@ -138,7 +142,7 @@ fn legacy_package(rows: &[(&str, &str)]) -> std::path::PathBuf {
     )
     .unwrap();
     std::fs::write(&path, &bytes).unwrap();
-    path
+    (path, dir)
 }
 
 // ── egress: `kasir export` ─────────────────────────────────────────
@@ -146,7 +150,7 @@ fn legacy_package(rows: &[(&str, &str)]) -> std::path::PathBuf {
 #[test]
 fn kasirpkg_export_withholds_secret_and_device_bound_settings() {
     let conn = seeded_source_db();
-    let path = temp_path("export");
+    let (path, _dir) = temp_path("export");
     run_export_kasirpkg(&conn, path.to_str().unwrap(), "settings", PWD).unwrap();
 
     let exported: Vec<String> = exported_settings(&path)
@@ -159,7 +163,7 @@ fn kasirpkg_export_withholds_secret_and_device_bound_settings() {
             "portable package must not carry {forbidden}; got {exported:?}"
         );
     }
-    let _ = std::fs::remove_file(&path);
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
 }
 
 #[test]
@@ -168,7 +172,7 @@ fn kasirpkg_export_still_carries_ordinary_settings() {
     // the store name and currency are the point of exporting settings, so
     // they must survive the filter with their values intact.
     let conn = seeded_source_db();
-    let path = temp_path("export-plain");
+    let (path, _dir) = temp_path("export-plain");
     run_export_kasirpkg(&conn, path.to_str().unwrap(), "settings", PWD).unwrap();
 
     let rows = exported_settings(&path);
@@ -183,7 +187,7 @@ fn kasirpkg_export_still_carries_ordinary_settings() {
             .any(|(k, v)| k == keys::STORE_NAME && v == "Warung Sedap"),
         "store.name must keep its value, got {rows:?}"
     );
-    let _ = std::fs::remove_file(&path);
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
 }
 
 // ── ingress: `kasir import` ────────────────────────────────────────
@@ -221,7 +225,7 @@ fn kasirpkg_import_leaves_install_secrets_byte_identical() {
         .iter()
         .map(|key| (*key, "FROM-FOREIGN-PACKAGE"))
         .collect();
-    let path = legacy_package(&injected);
+    let (path, _dir) = legacy_package(&injected);
 
     run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false).unwrap();
 
@@ -232,7 +236,7 @@ fn kasirpkg_import_leaves_install_secrets_byte_identical() {
             "restoring an older package must leave this install's {key} byte-identical"
         );
     }
-    let _ = std::fs::remove_file(&path);
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
 }
 
 #[test]
@@ -241,7 +245,7 @@ fn kasirpkg_import_still_restores_ordinary_settings() {
     // is a sledgehammer rather than a filter.
     let conn = kasirmu_core::migrations::fresh_db();
     Settings::set(&conn, keys::STORE_NAME, "Own Store").unwrap();
-    let path = legacy_package(&[
+    let (path, _dir) = legacy_package(&[
         (keys::STORE_NAME, "Packaged Store"),
         (keys::LOCAL_API_SECRET, "FROM-FOREIGN-PACKAGE"),
     ]);
@@ -257,7 +261,7 @@ fn kasirpkg_import_still_restores_ordinary_settings() {
         None,
         "the secret row must be skipped outright, not written"
     );
-    let _ = std::fs::remove_file(&path);
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
 }
 
 // ── the manager-prefixed keys the bare predicate missed ───────────────
@@ -281,7 +285,7 @@ fn kasirpkg_export_omits_manager_owned_settings() {
     }
     Settings::set(&conn, keys::STORE_NAME, "Warung Sedap").unwrap();
 
-    let path = temp_path("export-manager");
+    let (path, _dir) = temp_path("export-manager");
     run_export_kasirpkg(&conn, path.to_str().unwrap(), "settings", PWD).unwrap();
 
     let exported: Vec<String> = exported_settings(&path)
@@ -298,7 +302,7 @@ fn kasirpkg_export_omits_manager_owned_settings() {
         exported.iter().any(|k| k == keys::STORE_NAME),
         "the refusal must stay a filter, not delete the arm: {exported:?}"
     );
-    let _ = std::fs::remove_file(&path);
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
 }
 
 #[test]
@@ -308,7 +312,7 @@ fn kasirpkg_import_refuses_machine_id_secret_and_manager_rows() {
     // a fresh install, while the ordinary rows in the SAME package still land.
     // Refusal is warn-and-continue: never an error, never a rollback.
     let conn = kasirmu_core::migrations::fresh_db();
-    let path = legacy_package(&[
+    let (path, _dir) = legacy_package(&[
         (keys::MACHINE_ID, "PLANTED-FINGERPRINT"),
         (keys::LOCAL_API_SECRET, "PLANTED-SIGNING-SECRET"),
         ("local_api.enabled", "PLANTED-INTENT"),
@@ -343,7 +347,7 @@ fn kasirpkg_import_refuses_machine_id_secret_and_manager_rows() {
             "an ordinary setting in the same package must still restore — the batch continues past a refusal"
         );
     }
-    let _ = std::fs::remove_file(&path);
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
 }
 
 #[test]
@@ -504,7 +508,7 @@ fn kasirpkg_users_arm_never_carries_national_id_or_monthly_pay() {
         "setup: the stored national id must be ciphertext, not plaintext"
     );
 
-    let path = temp_path("users-pii");
+    let (path, _dir) = temp_path("users-pii");
     run_export_kasirpkg(&conn, path.to_str().unwrap(), "users", PWD).unwrap();
 
     // Assert on what actually landed in the FILE, not on the in-memory
@@ -551,8 +555,7 @@ fn kasirpkg_users_arm_never_carries_national_id_or_monthly_pay() {
             row.keys().collect::<Vec<_>>()
         );
     }
-
-    let _ = std::fs::remove_file(&path);
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
 }
 
 /// The users arm must NOT carry `pin_hash` — the secret is blanked on export.
@@ -594,7 +597,7 @@ fn kasirpkg_users_arm_never_carries_pin_hash() {
         .create_user("alice", &phc, "Alice", "role-staff")
         .unwrap();
 
-    let path = temp_path("users-pin");
+    let (path, _dir) = temp_path("users-pin");
     run_export_kasirpkg(&conn, path.to_str().unwrap(), "users", PWD).unwrap();
 
     let bytes = std::fs::read(&path).expect("export file must exist");
@@ -630,8 +633,7 @@ fn kasirpkg_users_arm_never_carries_pin_hash() {
         Some("alice"),
         "the roster fields must still be exported"
     );
-
-    let _ = std::fs::remove_file(&path);
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
 }
 
 // ── O-M49: the import upserts, and a RE-import behaves as it always did ──
@@ -732,7 +734,7 @@ fn kasirpkg_export_refuses_to_write_a_package_it_could_not_serialize() {
     // error must leave NO FILE. Before the fix this call returned Ok, wrote a
     // package, and the products arm inside it was empty.
     let conn = kasirmu_core::migrations::fresh_db();
-    let path = temp_path("o-m50-package");
+    let (path, _dir) = temp_path("o-m50-package");
 
     // Success first, so the failure below is about the arm and not the path.
     run_export_kasirpkg(&conn, path.to_str().unwrap(), "products", PWD)
@@ -741,6 +743,13 @@ fn kasirpkg_export_refuses_to_write_a_package_it_could_not_serialize() {
         path.exists(),
         "precondition: the success path writes the package"
     );
+    // NOT redundant with `_dir`: this delete is a PRECONDITION for the
+    // assertion below, not cleanup. The arm helper takes no path, so the only
+    // way `path` could exist at that assert is if something wrote it between
+    // here and there — which is exactly the bug this pins. Removing this line
+    // (because `_dir` deletes the directory on drop) makes the assertion
+    // vacuous against a file that is still there, and it passed only because
+    // the success path had written it.
     let _ = std::fs::remove_file(&path);
 
     // The arm helper is the ONLY place an export can now fail to serialize,
@@ -823,8 +832,10 @@ fn user_fixture(id: &str, username: &str, display_name: &str, role_id: &str) -> 
 }
 
 /// Write a payload to a decryptable package and return its path.
-fn package_for(payload: &KasirpkgPayload) -> std::path::PathBuf {
-    let path = temp_path("m49");
+fn package_for(
+    payload: &KasirpkgPayload,
+) -> (std::path::PathBuf, kasirmu_test_support::ScratchDir) {
+    let (path, dir) = temp_path("m49");
     let bytes = export_kasirpkg(
         PWD,
         "Import Store",
@@ -840,7 +851,7 @@ fn package_for(payload: &KasirpkgPayload) -> std::path::PathBuf {
     )
     .unwrap();
     std::fs::write(&path, &bytes).unwrap();
-    path
+    (path, dir)
 }
 
 /// A database with the `roles` row the imported users point at.
@@ -924,7 +935,7 @@ fn kasirpkg_fresh_import_writes_every_arm() {
     // (a) A fresh import lands the expected rows, with the two CREATE-ONLY
     // arms ('/USD'/0/0 and the blanked pin_hash + inactive flag) intact.
     let conn = import_target_db();
-    let path = package_for(&first_import_payload());
+    let (path, _dir) = package_for(&first_import_payload());
     run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false).unwrap();
 
     assert_eq!(
@@ -980,8 +991,7 @@ fn kasirpkg_fresh_import_writes_every_arm() {
         (String::new(), 0),
         "a fresh import must blank the exported verifier and land the user inactive"
     );
-
-    let _ = std::fs::remove_file(&path);
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
 }
 
 #[test]
@@ -992,7 +1002,7 @@ fn kasirpkg_reimport_updates_a_stale_local_row() {
     // identical either way, so only the values separate the two clauses.
     let conn = import_target_db();
     let payload = first_import_payload();
-    let path = package_for(&payload);
+    let (path, _dir) = package_for(&payload);
     run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false).unwrap();
 
     // EVERY column the old UPDATE arm wrote is staled, plus the foreign key
@@ -1067,8 +1077,7 @@ fn kasirpkg_reimport_updates_a_stale_local_row() {
             "a re-import must not insert a second {table} row"
         );
     }
-
-    let _ = std::fs::remove_file(&path);
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
 }
 
 #[test]
@@ -1080,7 +1089,7 @@ fn kasirpkg_reimport_preserves_what_the_old_update_arm_never_touched() {
     // and its active flag, and a re-import never rewrites created_at.
     let conn = import_target_db();
     let payload = first_import_payload();
-    let path = package_for(&payload);
+    let (path, _dir) = package_for(&payload);
     run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false).unwrap();
 
     let live = kasirmu_core::auth::hash_pin("9876").expect("hash_pin");
@@ -1140,8 +1149,7 @@ fn kasirpkg_reimport_preserves_what_the_old_update_arm_never_touched() {
         created_before,
         "a re-import must not rewrite created_at"
     );
-
-    let _ = std::fs::remove_file(&path);
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
 }
 
 #[test]
@@ -1151,7 +1159,7 @@ fn kasirpkg_reimport_is_row_for_row_idempotent() {
     // any arm that inserted a duplicate, or updated a column it used to skip,
     // or skipped a column it used to update, changes the snapshot.
     let conn = import_target_db();
-    let path = package_for(&first_import_payload());
+    let (path, _dir) = package_for(&first_import_payload());
     run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false).unwrap();
     let once = snapshot(&conn);
 
@@ -1162,7 +1170,7 @@ fn kasirpkg_reimport_is_row_for_row_idempotent() {
         once, twice,
         "importing the same package twice must leave every column value unchanged"
     );
-    let _ = std::fs::remove_file(&path);
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
 }
 
 #[test]
@@ -1196,7 +1204,7 @@ fn kasirpkg_reimport_still_errors_on_a_unique_collision() {
             serde_json::to_value(user_fixture("user-1", "alice", "Alice", "role-1")).unwrap(),
         ]),
     };
-    let path = package_for(&payload);
+    let (path, _dir) = package_for(&payload);
 
     let err = run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false)
         .expect_err("a username collision from a different id must abort the import");
@@ -1222,5 +1230,7 @@ fn kasirpkg_reimport_still_errors_on_a_unique_collision() {
         "Local Alice",
         "the colliding local row must be untouched"
     );
-    let _ = std::fs::remove_file(&path);
+    // `_dir` is bound for the whole test body, so the scratch directory is
+    // removed on drop instead of by this trailing remove_file, which never ran
+    // when an assert above failed.
 }

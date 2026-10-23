@@ -37,19 +37,17 @@ fn open_db_sets_foreign_keys_pragma() {
 /// parent, so open_db has to. A fresh clone has no var/.
 #[test]
 fn open_db_creates_a_missing_parent_directory() {
-    let dir = std::env::temp_dir().join(format!(
-        "kasirmu-cli-opendb-{}-{}",
-        std::process::id(),
-        uuid::Uuid::new_v4()
-    ));
-    let nested = dir.join("var").join("nested").join("kasir.db");
+    let dir = kasirmu_test_support::ScratchDir::new("kasirmu-cli-opendb");
+    let nested = dir.path().join("var").join("nested").join("kasir.db");
     assert!(
         !nested.parent().unwrap().exists(),
         "precondition: parent is absent"
     );
     open_db(nested.to_str().unwrap()).unwrap();
     assert!(nested.exists(), "database file should exist");
-    std::fs::remove_dir_all(&dir).unwrap();
+    // No explicit cleanup: `dir` is a ScratchDir and removes itself on drop,
+    // including on a panic. The old remove_dir_all here never ran when an assert
+    // failed, and could not succeed at all under the machine-level Windows TEMP.
 }
 
 // ── List commands on empty DB ──────────────────────────────────────
@@ -544,14 +542,9 @@ fn cli3_phc_validation_rejects_non_argon2_algorithm() {
 
 #[test]
 fn restore_removes_wal_sidecars_and_replaces_database() {
-    let dir = std::env::temp_dir().join(format!(
-        "kasirmu-cli-restore-{}-{}",
-        std::process::id(),
-        uuid::Uuid::new_v4()
-    ));
-    std::fs::create_dir_all(&dir).unwrap();
-    let db_path = dir.join("live.db");
-    let backup_path = dir.join("backup.db");
+    let dir = kasirmu_test_support::ScratchDir::new("kasirmu-cli-restore");
+    let db_path = dir.path().join("live.db");
+    let backup_path = dir.path().join("backup.db");
 
     // Seed a live WAL-mode database.
     {
@@ -592,6 +585,5 @@ fn restore_removes_wal_sidecars_and_replaces_database() {
         .query_row("SELECT x FROM marker", [], |r| r.get(0))
         .unwrap();
     assert_eq!(value, "backup");
-
-    let _ = std::fs::remove_dir_all(&dir);
+    // No explicit cleanup: `dir` is a ScratchDir and removes itself on drop.
 }

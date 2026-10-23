@@ -402,7 +402,7 @@ fn run_with_empty_list_does_nothing() {
 /// bytes to protect and no snapshot path, so every pin below needs a real
 /// file beside a real directory.
 fn on_disk(name: &str) -> (Connection, tempfile::TempDir) {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let conn = Connection::open(dir.path().join(name)).unwrap();
     (conn, dir)
 }

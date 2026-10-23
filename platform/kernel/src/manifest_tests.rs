@@ -346,7 +346,7 @@ fn validate_permission_empty_domain_rejected() {
 
 #[test]
 fn load_from_file_valid() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::ScratchDir::new("manifest-valid");
     let path = dir.path().join("manifest.json");
     std::fs::write(&path, r#"{"id":"test","name":"Test","version":"1.0.0"}"#).unwrap();
 
@@ -367,7 +367,7 @@ fn load_from_file_not_found() {
 
 #[test]
 fn load_from_file_invalid_json() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::ScratchDir::new("manifest-bad-json");
     let path = dir.path().join("manifest.json");
     std::fs::write(&path, "{invalid}").unwrap();
 
@@ -377,7 +377,7 @@ fn load_from_file_invalid_json() {
 
 #[test]
 fn load_from_file_invalid_semver() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::ScratchDir::new("manifest-bad-semver");
     let path = dir.path().join("manifest.json");
     std::fs::write(&path, r#"{"id":"test","name":"Test","version":"bad"}"#).unwrap();
 
