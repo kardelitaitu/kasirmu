@@ -3016,6 +3016,28 @@ def self_test() -> int:
     case("case 10  scoped_orphans reads both shapes through the same helper",
          section_names({"scoped_orphans": mixed_scoped}, "scoped_orphans")
          == {"a_scoped", "b_scoped"})
+
+    # THE SUFFIX INVARIANT (GI-6, docs/records/findings/audit-open-findings.md). The real
+    # hazard is not the SHAPE the entry is written in -- scoped_orphans accepts objects by
+    # design -- it is that the COLLECTOR filters on endswith("_scoped") at :2432, so a name
+    # without the suffix is never collected and never examined for staleness, in either
+    # direction. Measured 2026-10-24: 21 entries, 0 without the suffix, so the hole is
+    # prospective rather than live.
+    #
+    # The first draft of this case asserted the SHAPE (that a bare name is readable) and was
+    # VACUOUS: section_names reads a bare name perfectly well, so the predicate was always
+    # true. Proven by mutation -- replacing the assertion with `True` left the suite green.
+    # The case now drives the COLLECTOR, which is the function the suffix actually gates.
+    _orphans = orphan_scoped(["ok_scoped", "plain_name"], {})
+    case("case 10  the collector keeps a suffixed orphan",
+         "ok_scoped" in _orphans)
+    case("case 10  the collector DROPS an unsuffixed name (the GI-6 blind spot)",
+         "plain_name" not in _orphans)
+    # And the invariant that makes the blind spot a correctness question rather than a
+    # preference: every entry the allowlist holds today must be one the collector can see.
+    _allow_scoped = section_names(load_allowlist(), "scoped_orphans")
+    case("case 10  every committed scoped_orphans entry is visible to the collector",
+         all(n.endswith("_scoped") for n in _allow_scoped))
     raw_would_crash = False
     try:
         set(mixed_scoped)
