@@ -482,7 +482,7 @@
       "status": "required",
       "runners": {
         "check.sh": [
-          "scoped ambient reads"
+          "unguarded ambient ipc calls self-test"
         ]
       },
       "ci": {
@@ -1067,7 +1067,7 @@
       "_note": "Added 0.0.37: the gate existed in both runners and had no record here, which is the exact blind spot this manifest exists to close -- its own description says adding a gate here is the ONLY way to add a gate, yet check.sh:245 (`step \"release version gate\"`) and dev-ci.yml#release-readiness were both already invoking `node scripts/check-release-version.mjs --self-test`. Found while building a CI-side analogue of hook_step_orphans; the three other candidates it surfaced were false positives from matching runner labels by exact key instead of the substring containment has_needle() actually uses. Nothing in the existing checker could have reported this: hook_step_orphans scans the pre-commit hook, not check.sh, and the runners-vocabulary check only validates labels that are already declared. Ships with --self-test so a regression cannot silently turn it into a no-op.",
       "runners": {
         "check.sh": [
-          "release version gate"
+          "release version self-test"
         ]
       },
       "ci": {
@@ -1082,7 +1082,7 @@
       "_note": "Added 0.0.37. scripts/verify-updater-signature.mjs (AUDIT-28 RELEASE-04/06) is the post-build check the release workflow runs BEFORE PUBLISHING: it verifies an installer against the signature in latest.json using the pubkey committed in tauri.conf.json, so a release can never go live with a signature that does not verify. Security-critical and previously the only uncatalogued gate of the four -- its neighbours release-version and updater-manifest were both reachable (the latter via release-readiness, which names the script). Its own tool is named by no gate and its label matched no needle. Local-only for the self-test: the real verification runs inside release.yml. Ships with --self-test including tamper rejection.",
       "runners": {
         "check.sh": [
-          "updater signature verifier"
+          "updater signature self-test"
         ]
       }
     },

@@ -179,8 +179,15 @@ step "ipc invoke token parity self-test" "python3 scripts/verify-invoke-parity.p
 # get_cart_deduction_location, which made every desktop sale with a stock-target item throw. This
 # reads the allowlist, finds each command's wrapper and its production call sites, and fails on any
 # call not sitting behind a token test.
-step "scoped ambient reads" "python3 scripts/verify-scoped-reads.py --self-test" python3 scripts/verify-scoped-reads.py --self-test
+# Label order fixed 2026-10-24. These two steps had the convention INVERTED versus the
+# other 46 pairs: the --self-test step came first and carried the label of the gate
+# ("scoped ambient reads"), while the bare gate came second under a different name
+# ("unguarded ambient ipc calls"). Both descriptions were accurate about their CHECK
+# and wrong about their STEP, which is the shape a future edit drops the wrong half of.
+# The other two self-test-first pairs (state-closure, reentry-guards) are deliberate and
+# say so in their labels; these two did not.
 step "unguarded ambient ipc calls" "python3 scripts/verify-scoped-reads.py" python3 scripts/verify-scoped-reads.py
+step "unguarded ambient ipc calls self-test" "python3 scripts/verify-scoped-reads.py --self-test" python3 scripts/verify-scoped-reads.py --self-test
 # P3-3. P2-6 put `#![deny(unsafe_code)]` at 38 of 43 crate roots, so the crates
 # that carry NO unsafe cannot grow any. The five that legitimately keep it
 # (kasirmu-logging syslog/eventlog FFI, kasirmu-security CredWriteW,
