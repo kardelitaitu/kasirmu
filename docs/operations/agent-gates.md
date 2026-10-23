@@ -525,6 +525,26 @@ hour here bought a rule, not a patch — **a path census that reports a whole fa
 same typo is reporting its own regex**, and the correct response is to read three hits
 before writing the fixer.
 
+**What the census DID establish, since it was run anyway:**
+
+| Fact | Measured |
+|---|---|
+| Gate records | 134 (109 required / 15 retired / 10 advisory) |
+| `required` records with NO `ci` block | **14** |
+| Records naming a workflow file that does not exist | **0** |
+| Dangling paths in `_note` prose | **0** |
+
+The 14 are `root-policy`, `docker-dry-run`, `migration`, `script-tests`,
+`gate-completeness`, `e2e`, `debt-ledger`, `core-size`, `updater-signature`,
+`server-origins`, `unified-routes`, `checker-selftest-companions`,
+`local-matrix-unlisted-gates` and `pipeline-verdicts` — all `check.sh`-only except `e2e`
+(`check:all`).
+
+**This corrects an overstatement in the round-82 notes**: `e2e` is not an anomaly in an
+otherwise CI-covered roster. It is one of fourteen required gates whose enforcement is the
+local matrix. That is a deliberate, documented posture (`check.sh` carries the rationale for
+each), not 14 defects — and the number is worth knowing before anyone "fixes" one of them.
+
 ### Two ways a documentation census measures the WRONG THING
 
 Both measured 2026-10-23 while trying to establish how many Rust modules lack the
