@@ -8252,3 +8252,107 @@ kasirmu-bridge 1542 . local-api 26 . shells 900 passed
 ```
 
 ### Ledger: 152 defined, 152 closed, 0 open.
+
+## §11OA — O-M88: — ipc parity down to 54 s in a third pass, and three environment questions answered with evidence (2026-10-23)
+
+Landed in `79a2875f1`, `f18ed49ff`, `51611e0b4`, `63f1f638a`.
+
+**O-M88 · gates — `verify-ipc-parity.py` was the sweep's ceiling at 227 s; a third pass takes it to 54.6 s, and the round's real work was closing three environment questions that had been open for several rounds** — resolved in §11OA.
+
+### 1. The third pass: 88.0 s -> 54.6 s
+
+Re-profiling after §11MA showed `re.Pattern.search` still at 66 s of 114 s. The caller was
+`proves_shell_here`, at 42 s: it ran EVERY wrapper pattern over the text of every candidate file,
+once per file, to answer "does this file call a command this shell registers?".
+
+Two changes, both the same inversion that worked for reach:
+
+```
+narrow to wrappers whose command is REGISTERED   (most wrappers cannot prove anything)
+reject by identifier membership before searching (one scan, not one scan per name)
+```
+
+**88.0 s -> 54.6 s**, rc 0, output byte-identical; `check.sh` step 09 reports 9 s (it was 29 s
+last round and 221 s two rounds ago). Cumulative: **227.2 s -> 54.6 s**, a 4.2x, in three passes.
+
+The precise pattern still decides, so a bare-name collision is still not a call -- the C17
+distinction the leg exists to keep. Proven still able to fail: emptying the identifier set
+reddens 3 cases including the real-tree one at `n=0`.
+
+Also checked, and NOT changed: the `proof_cache` is keyed on the path only, while `masked` is an
+argument, so a cross-CALL leak was possible in principle. Tested on the real tree with a
+smaller registered set: 11 findings become 8, and a repeat run reproduces exactly -- the cache
+is rebuilt per call, so it cannot leak between calls. Recorded because the key LOOKS wrong and
+a future reader will ask.
+
+### 2. PostgreSQL: three ways tried, all blocked by privilege not configuration
+
+Step 34 needs `kasirmu-api`'s `pg-tests` feature, which panics by design when no server answers.
+CI supplies one; a workstation must. Every local route was attempted and each failed for an
+environmental reason:
+
+| Attempt | Result |
+|---|---|
+| `Start-Service com.docker.service` | stays Stopped; `docker ps` cannot open the engine pipe |
+| `choco install postgresql17` | not an administrator (measured `IsInRole(Administrator)=False`); failed on a NuGet lock |
+| EDB portable zip, `initdb`, `pg_ctl` | initdb succeeds; start fails `could not create shared memory segment: error code 1314` |
+| same with `shared_buffers = 16MB` | identical failure at 22 MB -- it is the `Global\\` namespace, not the size |
+
+1314 is `ERROR_PRIVILEGE_NOT_HELD`: Windows requires `SeCreateGlobalPrivilege` for the named
+shared-memory segment, which an unprivileged account does not hold. This is a property of the
+OS, not a missing setting.
+
+**Recorded in `docs/operations/agent-gates.md` rather than worked around.** The tempting fix --
+letting step 34 skip when no server answers -- is exactly the failure mode
+`verify-pg-tests-ran.py` exists to catch: a PG test that quietly does not run is
+indistinguishable from one that passed. To verify the rest of the workspace, run nextest with
+the feature off; measured that way 3771 passed and the only failure was a real OpenAPI drift
+defect, since fixed.
+
+### 3. `sh` on PATH: a gate that only worked when its parent exported the right PATH
+
+Step 108's sweep launches `verify-shell-syntax.py` as a direct child of Python, which does not
+have Git's `bin` on PATH. `shutil.which("sh")` returned None, the old code fell back to the
+bare name, and `subprocess` raised `[WinError 2]`. The same command passed when run through
+bash, which is why only the sweep saw it.
+
+Fixed in the CHECKER (`79a2875f1`): PATH first, then the known Git-for-Windows locations, then
+the bare name. The last fallback is kept deliberately -- on a host with no POSIX shell the
+gate must fail loudly at spawn, not parse nothing and report clean. Verified by breaking BOTH
+discovery paths: `rc 2`, `could not run sh`. Self-test 7/7 from a bare PowerShell.
+
+### 4. BRIDGE-7: filed as a ruling request, with the one command that actually discloses
+
+Eleven `_scoped` functions in `hardware.rs` take a session and name no permission. They were
+already marked `ungated-ok`, and the AR/AP registration test records the precedent but says
+"Raising the floor records what landed; it does not approve it" -- so the shape was recorded, never
+ruled.
+
+Writing it up found the part that matters: `print_kasbon_settlement_slip_scoped` prints
+customer name, phone and three receivable balances. Any authenticated operator can reprint
+another customer's receivable. That is disclosure, and it is the one of the eleven where "the
+operator is at the till" is not an answer. The command landed the same day, so it has no
+dependants -- the cheapest moment to decide.
+
+Filed as `docs/decisions/2026-10-23-bridge7-hardware-permission-gap.md` with three options priced
+(gate all eleven / gate only the Kasbon slip / leave and say so) and a recommendation. **No code
+changed**: the gate stays green at 379 scanned / 0 unreasoned, and nothing was laundered as safe.
+
+### 5. UI verified green independently
+
+Delegated: typecheck 0 errors (41 s), lint 0 errors 0 warnings (77 s), vitest **828 files /
+13,127 passed** (223 s), tree clean before and after. Matches the recorded baseline exactly.
+
+### Verification
+
+```
+verify-ipc-parity.py --self-test   -> rc 0, 54.6 s (was 227.2 s two rounds ago), output identical
+verify-ipc-parity.py (real tree)   -> IPC parity: OK
+verify-shell-syntax.py --self-test -> 7/7 from a bare PowerShell child
+check.sh steps 09-33               -> PASS (step 09 in 9 s)
+check.sh step 34                   -> FAIL, expected: no PostgreSQL, see agent-gates.md
+ui typecheck / lint / test         -> 0 / 0 / 13,127 passed
+check-debt-ledger.py               -> 153 entries, 109 sections
+```
+
+### Ledger: 153 defined, 153 closed, 0 open.
