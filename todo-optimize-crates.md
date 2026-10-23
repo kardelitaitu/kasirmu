@@ -7823,3 +7823,49 @@ is still not running. Every query in that crate is PostgreSQL-specific (`$1` pla
 item stays blocked on an environment decision, not on work.
 
 ### Ledger: 149 defined, 149 closed, 0 open.
+## §11JA — UI verified green, and the snapshot cache survives a cold start (2026-10-23)
+
+Landed in the verification below; no code change.
+
+### Why this round was verification
+
+Every agenda item that needed a decision is still waiting on one: the cloud-server query-plan
+gate needs a PostgreSQL instance (5432 still refused, Docker daemon still not running), and the
+`platform-startup` crash is unexplained but unreproducible. The main Rust suites had all been
+run in the rounds that touched them. So the useful work left was to verify the surfaces that
+had NOT been checked recently, rather than to invent change.
+
+### UI: three gates, all green
+
+The UI had not been run since the topology work landed in another session's commits:
+
+```
+npm run typecheck  ->  clean
+npm run lint       ->  clean
+npm run test       ->  828 files passed (828)
+                         13127 passed | 3 skipped | 3 todo
+```
+
+`ui/` is also clean in git — no other session has in-flight work there — so these results
+describe the committed tree rather than a moving target.
+
+### The snapshot cache survives a cold start
+
+Round 37 added the disk cache for the migrated test-db snapshot and measured it warm. What was
+never checked is the case a NEW CLONE hits: no snapshot file at all. Deleted and re-ran:
+
+```
+cold: test ok (0.89 s)   + snapshot recreated on disk
+warm: test ok (0.01 s)
+```
+
+So the cache is self-healing rather than a file that must be shipped, and a fresh clone pays
+the 440 ms chain once instead of failing or silently skipping the optimisation.
+
+### Gate infrastructure re-checked
+
+`scripts/check-gate-runners.py`: **128 gates, every declared runner resolves** (148 CI steps,
+166 check.sh steps). Plus, from round 43: `check-query-plans.py` still reports 27 probed
+queries with no full scan AND its own falsification still fires.
+
+### Ledger: 149 defined, 149 closed, 0 open.
