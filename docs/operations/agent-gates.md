@@ -471,6 +471,32 @@ grading its own private copy of a regex proves nothing about the scan.
 before plus one `cleanup()` and three `NO MUTATABLE FUNCTION` rows; every checker that has a
 distinct detector kills at least one mutant.
 
+#### A survivor that was neither an I/O shell nor harmless: `is_shell`
+
+Every other survivor so far was a lookup helper. `verify-shell-syntax.py`'s `is_shell` is not:
+it decides **which files the gate parses**. Blanking it to `return None` makes the gate parse
+zero files and print a clean tree — the same anti-zero shape as the digest gate, in the gate
+that parses 63 shell entry points.
+
+The self-test around it is unusually strong (a git-vs-no-git differential, a glued-`fi` case,
+a dead-interpreter case), but no case ever *called* `is_shell`. Now pinned both ways: the
+shebang decides, not the `.sh` suffix (the docstring records seven tracked scripts the suffix
+rule got wrong), with cases for a suffix-less hook, a missing shebang, a Python shebang and an
+unreadable path. Both mutations die — `return None` and always-`False` — and the checker now
+kills **6 of 6** functions, up from 5 of 6.
+
+**And one survivor was the harness's own blind spot, not the checker's.** `verify-docker-persistence.sh`
+reports `0 killed`, and that is because `SH_FUNC` is anchored at column 0: the file's three
+graded predicates are defined *inside* the `--self-test` block, deliberately, so the live path
+cannot reach them. Its only top-level function is `cleanup()`. The three verdict mutations
+(`survived` always-true, always-false, `colls` always-OK) still each turn it red — measured
+again this round. So the row means "the harness cannot see the graded logic", not "the logic
+is ungraded", and the harness now says so where it prints the row.
+
+**The lesson, which is the same one three times now:** a survivor is a question, never a
+verdict. `is_shell` was a real hole; `cleanup()` was the harness's scope. Both look identical
+in the table.
+
 ### Two ways a documentation census measures the WRONG THING
 
 Both measured 2026-10-23 while trying to establish how many Rust modules lack the
