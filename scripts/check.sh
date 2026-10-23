@@ -616,6 +616,13 @@ step "scratch leak gate" "python3 scripts/check-scratch-leaks.py" python3 script
 # last two reading the real tree, and one driving main() itself -- without that last one,
 # deleting main()'s "if FILES_READ == 0" arm left the suite green.
 step "scratch leak gate self-test" "python3 scripts/check-scratch-leaks.py --self-test" python3 scripts/check-scratch-leaks.py --self-test
+# A pipeline exits with its LAST command's status, so `if s=$(... | tail -1)` is always
+# true and the branch meant for "nothing matched" is unreachable. This repo shipped that
+# shape for weeks in the cargo-deny block below and nobody saw it, because BOTH branches
+# printed PASS. Added 2026-10-23 after the fix; the checker was then mutated with the
+# original line and reddened, which is the only reason to trust it.
+step "pipeline verdicts" "python3 scripts/check-pipeline-verdicts.py" python3 scripts/check-pipeline-verdicts.py
+step "pipeline verdicts self-test" "python3 scripts/check-pipeline-verdicts.py --self-test" python3 scripts/check-pipeline-verdicts.py --self-test
 
 # ── Row-mapper alignment — a positional read vs the SELECT feeding it ──────
 # `name: row.get(3)?` couples a mapper to its SQL by POSITION, and nothing in Rust

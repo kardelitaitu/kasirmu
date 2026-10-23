@@ -1953,6 +1953,18 @@
           "Scratch-directory leak scan"
         ]
       }
+    },
+    {
+      "id": "pipeline-verdicts",
+      "label": "Pipeline exit-code verdicts",
+      "status": "required",
+      "_note": "Added 2026-10-23. A shell pipeline exits with its LAST command's status, so 'if s=$(... | tail -1)' is ALWAYS true and the branch meant for 'nothing matched' is unreachable. scripts/check.sh carried that shape in its cargo-deny block for weeks: both branches printed PASS, so every run looked healthy and the else was dead code. The checker grades conditions in scripts/check.sh and check-auditor-selftests.sh, both directions (a real verdict like 'grep -q' is NOT a finding), including backslash-continued lines -- a line-anchored regex missed precisely the bug it was written for, measured by reintroducing the original line. 9 self-test cases, wired beside it.",
+      "runners": {
+        "check.sh": [
+          "pipeline verdicts",
+          "pipeline verdicts self-test"
+        ]
+      }
     }
   ]
 }
