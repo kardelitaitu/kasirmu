@@ -337,8 +337,14 @@ def _self_test() -> int:
          "python3 --self-test", 1),
         ("a command naming a missing script is a finding",
          "python3 scripts/no-such-checker.py --self-test", 1),
-        ("a script that does not declare the flag is a finding",
-         "python3 scripts/verify-docker-all.sh --self-test", 1),
+        # NOT a real script name. This case used to name scripts/verify-docker-all.sh,
+         # and went red the day that script GAINED a --self-test: the premise "this file
+         # does not declare the flag" was a property of the tree, not of the rule, so the
+         # case rotted the moment the tree improved. A checker's cases must not depend on
+         # the current state of the thing they are checking. The name below can never
+         # exist, so the premise is permanent.
+         ("a script that does not declare the flag is a finding",
+          "python3 scripts/this-script-must-never-exist.py --self-test", 1),
     ]
     bad = 0
     for name, labels, want in cases:
