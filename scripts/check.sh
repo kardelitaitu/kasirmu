@@ -778,10 +778,17 @@ if command -v cargo-deny &>/dev/null; then
     if deny_out=$(cargo deny check 2>&1); then
         # Success: print the tool's own summary line (panic-inventory style) so
         # the PASS says what was checked, not merely that it passed.
-        if deny_summary=$(printf '%s\n' "$deny_out" | grep -E '(advisories|bans|licenses|sources) ok' | tail -1); then
+        # grep the summary OUT, then test the RESULT, not the pipeline. As written the
+        # exit code came from `tail`, which is 0 whether or not grep matched, so the
+        # else below was unreachable and a tool whose output had changed shape printed
+        # "PASS ()" with an empty bracket. Measured 2026-10-23: with input that matches
+        # nothing, this if still took the true branch.
+        deny_summary=$(printf '%s\n' "$deny_out" \
+            | grep -E '(advisories|bans|licenses|sources) ok' | tail -1 || true)
+        if [ -n "$deny_summary" ]; then
             echo -e "${GREEN}PASS${NC} (${deny_summary})"
         else
-            echo -e "${GREEN}PASS${NC} (cargo-deny reported no failures)"
+            echo -e "${GREEN}PASS${NC} (cargo-deny reported no failures -- or printed a summary this repo does not recognise)"
         fi
     elif printf '%s\n' "$deny_out" | grep -qiE 'failed to (fetch|clone|download)|could not (connect|resolve)|network|offline|Updating advisory database'; then
         # Network-class failure: the advisories were never evaluated. Yellow,
