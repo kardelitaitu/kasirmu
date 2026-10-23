@@ -481,7 +481,14 @@ fi
 # one is the SQLite migrate-up path and nothing enforces it off a developer machine.
 # Recorded in scripts/gates.json -> "migration".
 step "migration smoke test" "cargo run -p kasirmu-cli -- migrate" cargo run -p kasirmu-cli -- migrate
-step "migration idempotency" "cargo run -p kasirmu-cli -- migrate" cargo run -p kasirmu-cli -- migrate
+# Idempotency needs TWO runs and an assertion on the second. The command is the same one the
+# step above runs, so running it once more proves nothing on its own -- measured 2026-10-24:
+# both runs print "applying migrations..." then "migrations up to date" and exit 0, which is
+# what idempotent means here. What was missing was the check that the SECOND run succeeds:
+# run_migrate (crates/kasirmu-cli/src/commands/db.rs:17) calls migrations::run once and has
+# no flag, so a non-idempotent migration set would fail only on the second pass, and this
+# step used to be the first pass repeated. It now runs twice and fails if the second errors.
+step "migration idempotency" "run migrate twice, assert the second pass succeeds" bash -c 'set -e; cargo run -q -p kasirmu-cli -- migrate >/dev/null 2>&1; out=$(cargo run -q -p kasirmu-cli -- migrate 2>&1); echo "$out" | tail -2; echo "$out" | grep -q "migrations up to date"'
 rm -f var/kasir.db var/kasir.db-wal var/kasir.db-shm
 
 # ── Skill drift guard (blocking in CI too: dev-ci.yml#static-gates) -------
