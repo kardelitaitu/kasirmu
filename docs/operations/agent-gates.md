@@ -126,6 +126,30 @@ Do **not** add a silent skip for a missing server. The panicking arm is the desi
 that quietly does not run is indistinguishable from one that passed, which is the failure mode
 `scripts/verify-pg-tests-ran.py` exists to catch.
 
+### What a HEALTHY matrix run looks like, measured end to end
+
+`bash scripts/check.sh` on this checkout, 2026-10-23, run to its stopping point and graded
+step by step:
+
+```
+PASS=44  FAIL=1  SKIP=0        (stops at step 45)
+45. test workspace (nextest)  FAIL   <- the ONLY failure
+   Summary: 668/10630 tests run: 667 passed, 1 failed, 4 skipped
+   the failure is pg::tests::pg_create_sale_batches_product_lookup
+   "PG integration: admin pool get failed: error connecting to server"
+```
+
+That single line is the whole story of this host: **the matrix is healthy and the one red
+step is the documented missing PostgreSQL**, not a code defect. Knowing the shape of a
+good run is what separates "the suite is broken" from "this workstation has no PG", and
+the two present identically in the matrix's first red line.
+
+Note the asymmetry worth internalising: `667 passed, 1 failed` reads like a small
+problem, while `9962/10630 tests were not run` (nextest's own warning, because it stops
+at the first failure) reads like a large one. Both are the same run, and only the second
+tells you how much was NOT verified. Run with `--no-fail-fast` when the failure is
+environmental and you want the rest of the number.
+
 ### `git status` shows files modified when their content is IDENTICAL to HEAD
 
 Measured 2026-10-23 on this checkout, every round. Nine files report ` M` while their
