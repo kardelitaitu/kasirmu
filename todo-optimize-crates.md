@@ -9032,3 +9032,74 @@ matrix steps 137+                           -> 222 s
 ```
 
 ### Ledger: 162 defined, 162 closed, 0 open.
+
+## §11XA — O-M97: — the matrix is not too big, it is badly shaped: 4 steps are 79% of it and half cost nothing (2026-10-23)
+
+Landed in `6d8a763e2`, `009a2721c`, `d8226748c`.
+
+**O-M97 · gates — "the matrix has 141 steps and only grows" was a recurring agenda note with no number behind it; the number says size is not the problem** — resolved in §11XA.
+
+### 1. First, a real defect found by the measurement run itself
+
+The first attempt to time the matrix died at step 01 with a UnicodeEncodeError traceback. The
+cause was a **zero-byte stray file in the repo root whose name ended in U+F00A** (private-use
+codepoint), created at 12:26 that day, untracked and empty. Two facts, and the second is the defect:
+
+1. the file was garbage -- removed;
+
+2. **the gate crashed on it instead of naming it.** `print(f"  - {f}")` raised on a cp1252
+   stdout, so a REAL finding was lost behind a traceback.
+
+Fixed by reconfiguring stdout/stderr once at the top of `main()` (`errors="backslashreplace");
+per-line escaping cannot help because the failure is at the stream, not at the string -- tried
+that first and the traceback was identical, which is what pointed at the right layer. Verified by
+re-planting the file: it is now named and the gate exits 1.
+
+### 2. The measurement
+
+Steps 1-36 of `check.sh` (it stops at 37 on this machine, no PostgreSQL):
+
+```
+36 steps        total 538 s
+  clippy workspace            286 s   53%
+  exhaustive-deps ratchet      88 s   16%
+  rustdoc                      50 s    9%
+  no-raw-params falsification  27 s    5%
+  the other 32 steps          187 s   17%
+
+  18 of the 36 steps report 0 s
+```
+
+Split by what the step INVOKES, which is what decides whether it can be parallelised:
+
+```
+HEAVY   (cargo / npm / npx / go / docker)   8 steps   344 s
+STATIC  (pure python / node checks)        28 steps   194 s
+```
+
+### 3. What that means, stated as a ceiling rather than a hope
+
+**Merging the "X" and "X self-test" pairs saves ~0 s.** There are 46 such pairs and half the
+steps already cost nothing; merging two zero-second steps is zero. The step COUNT is a cosmetic
+number and was the wrong thing to watch for five rounds.
+
+**Parallelising the static half has a ceiling of ~155 s** -- 194 s of independent subprocesses,
+39 s if 5x. The other 344 s is cargo/npm work that does not parallelise against itself. That is
+29% of the measured total, not the "half the matrix" the step count implies.
+
+The pattern is already proven on this corpus: `verify-selftest-sweep.py` runs 50 checkers 8-wide
+and went 362 s -> 232 s in round 46.
+
+**No changes were made to `check.sh` this round.** The point was to replace a recurring
+intuition with a number before touching a working matrix, and the number changed the answer.
+
+### Verification
+
+```
+verify-root-policy.py            -> 6 self-test cases; clean tree rc 0
+  stray U+F00A file re-planted   -> named, rc 1 (was: traceback, finding lost)
+matrix steps 1-36 timings        -> measured, arithmetic re-checked (494 + 44 = 538)
+check-dead-refs / check-orphans  -> rc 0 on the new doc
+```
+
+### Ledger: 163 defined, 163 closed, 0 open.
