@@ -639,6 +639,32 @@ needed network probe, or the repo's own documented `TEMP` trap. The ratio is the
 recording how each gate is meant to be invoked: a roster of "passes as invoked" is worth far more
 than a green tick.
 
+#### The whole UI suite, end to end (round 96)
+
+`node scripts/check-ui.mjs` — the `check:all` runner, 460s — reported **3 failures of 9 steps**.
+Diagnosed one at a time, all three are environmental, and the tree is clean:
+
+| step | verdict | cause |
+|---|---|---|
+| ESLint | **Pass** (64s) | — |
+| TypeScript type check | **Pass** (37s) | — |
+| Unit tests (vitest) | **Pass** — 13,127 tests, 232s | — |
+| Data-testid compliance | **Pass** | — |
+| Perf smoke (Playwright) | **Pass** (27.5s) | — |
+| FTL dedupe | **Pass** | — |
+| `i18n lint` | FAIL | `Cannot find module @rollup/rollup-linux-x64-gnu` — a broken npm optional dep in `ui/node_modules`, not the repo |
+| `Bundle budget` + `Bundle budget (mobile)` | FAIL ×2 | the documented `TEMP` trap; with `$env:TEMP` at a writable dir both pass |
+
+**Two of the three failures are the same `TEMP` trap the gates doc already records**, which is
+the strongest argument yet for treating that entry as a standing rule rather than a note: a fresh
+clone or a new terminal hits it every time, and the failure lands 2,122 modules into a build,
+where it reads like a code error.
+
+**And `i18n lint` behaved exactly as designed.** Its own output is
+*"no i18n issues detected but the test runner crashed"* — it refuses to call a crashed runner
+clean, which is the distinction that makes a gate trustworthy. A gate that reported "0 issues"
+there would be worse than the crash.
+
 **The useful output of this round is the *list*, not the fixes.** 51 wired checkers is a roster
 anyone can re-run, and now one more of them is green. A gate nobody runs is not a gate — the same
 sentence this project has written three times about gates, now applied to the gates themselves.
