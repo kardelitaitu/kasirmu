@@ -527,6 +527,38 @@ failures a self-test cannot — a self-test proves the *detector* works on fixtu
 proves the *live path* works on the real tree. They fail independently, which is why both are
 needed.
 
+#### The gates I broke myself, and the one that caught it (round 93)
+
+Widening the sweep to claim-heavy headers turned up `verify-gate-completeness.py` **already RED on
+HEAD**, naming three steps with no roster row:
+
+```
+unclaimed step: 'docker persistence self-test'      -- no gates.json row names it
+unclaimed step: 'query plan formatter self-test'    -- no gates.json row names it
+unclaimed step: 'sabotage mutator self-test'        -- no gates.json row names it
+```
+
+**All three were mine**, added in rounds 81-92. I had run `verify-selftests-wired.py` after each
+one and it said "OK — every one is invoked by a runner", which was true: the step existed and was
+invoked. What it could not say was that **no roster row claimed the step**. That is a different
+question, and the checker that asks it was never in my verification loop.
+
+**The cost of the gap:** those three steps are invisible to `verify-ci-docs-drift.py`, which
+iterates the gates PRESENT in the manifest — so each could never be reported as
+required-but-unenforced. A step wired into `check.sh` with no row is enforcement that no audit
+can see.
+
+**Fixed**, and fixing it exposed a second, subtler error: I gave `query-plan-formatter` a `ci`
+block pointing at `dev-ci.yml/static-gates` while marking it `advisory`. `verify-ci-docs-drift.py`
+rejected that immediately — *"status advisory but job lacks continue-on-error: true"* — because an
+advisory gate may not block a job. The step does run in CI and does fail the build, so `required`
+was the honest status, not `advisory`.
+
+**The lesson is about the verification loop, not the patch.** Ten rounds of adding steps, each one
+checked with the gate that answers "is this self-test invoked?" — and never with the gate that
+answers "is this step rostered?". Several gates look at the same artifacts from different angles,
+and running one of them is not running the class.
+
 #### Extending the sweep to EVERY function found three more unpinned detectors
 
 The sweep mutates only the FIRST candidate per checker. Triaging every survivor by mutating *all*
