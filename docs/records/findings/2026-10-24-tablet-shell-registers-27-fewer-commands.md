@@ -44,8 +44,49 @@ Three facts rule out the artefact reading, each measured rather than assumed:
    `/src/main.mobile.tsx`, which `ui/vite.mobile.config.ts:118` builds to `dist-mobile` — the
    bundle `apps/mobile-tauri/tauri.conf.json` serves via `frontendDist`.
 
-So a tablet user who opens Topology, Memos, Warehouse, Terminals, Email Reports or the POS
-reaches code that invokes a command the shell does not expose.
+**CORRECTED 2026-10-24, after a per-site reachability audit: the sentence that used to sit
+here was wrong and is quoted only so the correction is traceable.**
+
+> ~~So a tablet user who opens Topology, Memos, Warehouse, Terminals, Email Reports or the POS
+> reaches code that invokes a command the shell does not expose.~~
+
+That was true for Memos, Warehouse, Terminals and the POS. It was **false for Topology and Email
+Reports**, and it was written from the registration facts above without tracing whether the call
+sites actually mount on a tablet. The 34 sites split three ways:
+
+| Class | Sites | Why |
+|---|---|---|
+| **Reachable — a real tablet failure** | **9** | see the table below |
+| **Gate false positive — an effective guard the checker could not read** | **5** | `if (!isTabletShell())`; now fixed in the checker |
+| **Unreachable on tablet** | 20 | topology notice (11), desktop-only mounts (5), no production importer (3), hook with no caller (1) |
+
+**The 9 that matter**, each traced to how a tablet reaches it:
+
+| site | command | reachability |
+|---|---|---|
+| `memo/MemosScreen.tsx:210,284` | `create_memo_scoped`, `revise_memo_scoped` | `memos` is a live TOOLS card; no shell gate in the file |
+| `terminals/TerminalManagementScreen.tsx:289,383,397` | `get_device_binding_scoped` ×2, `clear_device_binding_scoped` | `terminals` is a seeded admin tablet tab (`init.sql:1502`) |
+| `warehouse/WarehouseConsole.tsx:112`, `WarehouseCountFlow.tsx:125` | `list_warehouse_products_at_location` | fires on mount; `warehouse` is a tablet `WORKSPACE_ROUTE` |
+| `retail/RetailPosScreen.tsx:881` | `open_product_images_scoped` | RetailPosScreen **is** the tablet store-pos screen |
+| `reports/DebtRemindersCard.tsx:127` | `get_ap_aging_report_scoped` | `dashboard` is a tablet admin tab; user-initiated |
+
+**The 11 topology sites are not failures.** `TopologyScreen.tsx:167-169` returns a notice before
+`TopologyScreenContent` mounts when `isTabletShell()`, and `WorkspaceHome.tsx:46-48` keeps
+`topology` off the tablet shell. So the whole topology family is deliberately tablet-blocked,
+and the checker reports it anyway.
+
+**The 5 false positives are now fixed in the checker.** `_platform_guard_excludes_shell`
+(`scripts/verify-scoped-reads.py:653`) knew only the POSITIVE form of the other shell's name and
+hunted a helper `isDesktopShell` that has **zero occurrences in this repo**. The dominant idiom is
+`if (!isTabletShell())`, which it could not read. Taught the negated form and pinned it with two
+cases (one asserting exclusion, one asserting the control) — reverting the fix reddens the
+self-test. **34 → 29.**
+
+**Confidence, stated:** high on registration and screen registration (parsed from both
+`generate_handler!` lists and the 27 `register.tsx` files); medium-high on reachability (traced
+importers and mount paths statically, **not** confirmed on a device). The one thing still open is
+how a tablet reaches route `warehouse` — the seeded `workspace_type_screens` lists
+`products`/`inventory` but not `warehouse` itself, so it may need a deep link.
 
 **The failure shape, stated precisely.** An `invoke` of a command absent from `generate_handler!`
 rejects with an error rather than returning a value, so the call site takes its `catch`/error
