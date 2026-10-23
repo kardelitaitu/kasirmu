@@ -103,6 +103,14 @@ RUNNERS = (
     # widened to their directory -- a false finding, which is the failure mode that gets
     # a gate muted. Found 2026-10-23 by widening CHECKER_DIRS.
     ROOT / "scripts" / "check-auditor-selftests.sh",
+    # The website's npm scripts. Its checkers are invoked from package.json -- precheck
+    # runs check-password-policy.mjs and vitest, check:seo runs check-seo.mjs -- and
+    # NOTHING in check.sh or a workflow names them, because the website builds itself.
+    # Without this entry a website checker wired into precheck read as UNCALLED, which is
+    # the same false finding check-auditor-selftests.sh was added to stop: a runner that
+    # exists being reported as a missing one gets gates muted. Found 2026-10-23 while
+    # wiring check-password-policy.mjs's self-test into precheck.
+    ROOT / "website" / "package.json",
 )
 # verify-* and check-*. `generate-*` is deliberately absent: `generate-latest-json.mjs`
 # declares a --self-test and has three callers, but it is a GENERATOR that accepts a flag
