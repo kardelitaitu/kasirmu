@@ -361,6 +361,12 @@ def _reach_index(files: list[tuple[str, str]]) -> dict:
 _IDENT_RE = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
 
 
+@functools.lru_cache(maxsize=4096)
+def _ident_set(text: str) -> frozenset:
+    """Every identifier-shaped token in `text`, as a set."""
+    return frozenset(_IDENT_RE.findall(text))
+
+
 def _wrappers_named_in(text: str, wrappers) -> list[str]:
     """Which of `wrappers` this file names as a call, in `wrappers` order.
 
@@ -374,8 +380,13 @@ def _wrappers_named_in(text: str, wrappers) -> list[str]:
     The identifier set is a SUPERSET test, so it is checked first as a cheap reject and
     the precise pattern still decides. That keeps every distinction the original loop
     made, and the regex remains the authority on what counts as a reference.
+
+    The identifier scan itself is memoised ON THE TEXT (not the path, not `id()`): the
+    same bytes yield the same identifiers by construction. Round 2 of this same
+    measurement, 2026-10-20, showed `re.findall` at 2.57M calls / 45 s -- this scan was
+    being redone for every command that reached the same file.
     """
-    idents = set(_IDENT_RE.findall(text))
+    idents = _ident_set(text)
     out = []
     for w in wrappers:
         if w not in idents:
