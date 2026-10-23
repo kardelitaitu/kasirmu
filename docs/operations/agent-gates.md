@@ -577,6 +577,26 @@ a claim a plant can falsify. `verify-gate-completeness.py` ranked high precisely
 header says "every label DECLARED in the roster resolves to a real step" — a sentence with a
 checkable subject, unlike "this gate is important".
 
+#### Running the class, not one of it (round 94)
+
+The lesson from round 93 applied: instead of one gate, run **every checker wired into both
+`check.sh` and a live workflow** — 51 of them. Twenty-odd had never been run in this session.
+Three reported failure, and each had a different cause:
+
+| checker | verdict | cause |
+|---|---|---|
+| `check-font-claims.mjs` | exit 1 | **a real drift.** It pins the count of required gates with no `ci` block to `13`; the tree holds **14**. The `+1` is `pipeline-verdicts`, rostered by another lane in `01b8bd378` without updating the pin. Fixed the literal. |
+| `verify-coverage-floors.py` | exit 1 | *environmental.* It needs `coverage-probe.json`, which only exists after a `cargo llvm-cov` run. Not a defect. |
+| `verify-commit-subjects.py` | exit 2 | *by design.* It requires `--range`/`--base`; bare, it prints that and exits 2. With a range: 0 non-conforming subjects. |
+
+**Two of the three "failures" were the checker working exactly as specified**, which is the same
+trap as rounds 90-92 in a new place: an exit code is not a verdict until you know what the tool
+requires. The third was genuine and was in a gate I had never once run.
+
+**The useful output of this round is the *list*, not the fixes.** 51 wired checkers is a roster
+anyone can re-run, and now one more of them is green. A gate nobody runs is not a gate — the same
+sentence this project has written three times about gates, now applied to the gates themselves.
+
 #### Extending the sweep to EVERY function found three more unpinned detectors
 
 The sweep mutates only the FIRST candidate per checker. Triaging every survivor by mutating *all*
