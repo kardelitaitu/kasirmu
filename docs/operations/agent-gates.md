@@ -191,6 +191,34 @@ Recorded rather than dismissed because a sweeper that reports a red on a shared 
 is indistinguishable, at a glance, from one that found a real problem. If it recurs
 outside a concurrent run, treat it as real.
 
+### The 29 steps that never left a log, measured one by one
+
+`target/check-logs/` holds a log per step per run, and 29 of the current 194 steps have
+never produced one -- every step added recently, plus the UI and website block that the
+matrix never reached (it stops at 45 on a host with no PostgreSQL). Measured directly on
+2026-10-23, each run on its own:
+
+| gate | result |
+|---|---|
+| `npm run lint` (ui) | exit 0 |
+| `npm run typecheck` (ui) | exit 0, `tsc --noEmit` clean |
+| `npm run test` (ui) | **828 files, 13127 passed, 3 skipped, 3 todo** |
+| 9 self-test steps added since round 55 | all exit 0, each printing its own verdict |
+
+The 9 were: `scratch leak gate`, `font-claims`, `bundle budget`, `font bundle`,
+`commit subjects`, `ci docs drift`, `rust doc paths`, `release workflow`, `selftest
+sweep`. Every one is wired into `check.sh` AND named by a `gates.json` runner label, so
+`verify-gate-completeness.py` would fail if a later edit dropped either half.
+
+**A caution learned the hard way while doing this.** Reading "the last line" of a
+checker's output is not reliable across checkers: `check-font-bundle.mjs --self-test`
+ends with an EMPTY line after `SELF-TEST OK (35 rows)`, so a naive
+`(stdout+stderr).splitlines()[-1]` returns `''` while `stdout.strip().splitlines()[-1]`
+returns the verdict. Concatenating stdout and stderr before splitting also reorders them
+in ways that can put a case's *observed text* last — one run made
+`Refusing to print zeros for a pipeline that was not read.` look like a failure when the
+suite had passed 35/35. Match the verdict pattern; do not trust position.
+
 ### What a HEALTHY matrix run looks like, measured end to end
 
 `bash scripts/check.sh` on this checkout, 2026-10-23, run to its stopping point and graded
