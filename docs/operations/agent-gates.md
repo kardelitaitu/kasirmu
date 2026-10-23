@@ -149,6 +149,45 @@ Do **not** add a silent skip for a missing server. The panicking arm is the desi
 that quietly does not run is indistinguishable from one that passed, which is the failure mode
 `scripts/verify-pg-tests-ran.py` exists to catch.
 
+### `CHECK_FROM` reaches the steps a stopped run never got to
+
+The matrix stops at its first red step, so a single environment failure hides every later
+step. Measured 2026-10-23: the full run stopped at 45 (`test workspace`, no PostgreSQL) and
+the UI and website steps -- 86 onward -- had not executed in any run recorded here.
+
+```bash
+CHECK_FROM=90 bash scripts/check.sh
+```
+
+Skipped steps print `NN. skipping <name> (CHECK_FROM=90)... SKIPPED` and are **not**
+counted as passes, which is what makes a resumed run honest. Measured that way, steps
+86-131 give **41 PASS, 1 FAIL**, and the one failure was a transient.
+
+**Step numbers in the run are NOT the numbers a text scan gives.** 34 of the `step` calls
+sit inside `if` blocks and only some of them execute, so the runtime numbering is lower
+than the count of `step "...` lines in the file. Measured the same day: `ui test` is
+runtime step **89** and static position **93**. Never derive a `CHECK_FROM` value by
+counting step lines; read the number off a real run.
+
+### One intermittent failure worth knowing about: `selftest-sweep` under a running matrix
+
+In the run above, step 131 (`selftest sweep`) failed with
+
+```
+FAILED verify-agents-mirrors.py: rc=1 MISSED AGENTS.md  renamed header, no HEAD
+readable -- accepted but announced -- the no-git fallback was turned into a failure
+```
+
+Re-run standalone immediately afterwards, the same checker and its case pass, and three
+consecutive runs gave `40 green = 31 CAUGHT + 9 CLEAN; 0 red; exit 0` every time. The
+anchor it needs (`.githooks/pre-commit`'s "Go gate: apps/license-server" header) is
+present. So this is a TRANSIENT under concurrent load -- the checkout is shared and
+several agents write to it -- and not a defect in the case.
+
+Recorded rather than dismissed because a sweeper that reports a red on a shared checkout
+is indistinguishable, at a glance, from one that found a real problem. If it recurs
+outside a concurrent run, treat it as real.
+
 ### What a HEALTHY matrix run looks like, measured end to end
 
 `bash scripts/check.sh` on this checkout, 2026-10-23, run to its stopping point and graded
