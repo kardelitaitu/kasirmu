@@ -191,6 +191,35 @@ Recorded rather than dismissed because a sweeper that reports a red on a shared 
 is indistinguishable, at a glance, from one that found a real problem. If it recurs
 outside a concurrent run, treat it as real.
 
+### The heavy steps that had never run here, measured one by one
+
+Beyond the 29 steps above, the matrix's 21 `cargo`/`go`/`docker`/`npm` legs had never all
+been run on this host -- several are the slowest in the file and were assumed rather than
+measured. Measured 2026-10-23:
+
+| step | verdict |
+|---|---|
+| `cargo fmt --all -- --check` | clean |
+| `gofmt -l apps/license-server` | clean |
+| `go vet ./...` | clean |
+| `go test -short ./...` | `ok github.com/kasirmu/license-server` — 280s when forced with `-count=1` |
+| `cargo test --doc --workspace` | **14 doctests, 0 failed** |
+| `migration smoke test` + `idempotency` | `migrations up to date` on BOTH runs, exit 0 |
+| `test application shells` | **900 passed, 0 skipped** |
+| `ui lint` / `ui typecheck` / `ui test` | exit 0 / exit 0 / 13127 passed |
+
+Two measurement traps, both hit while doing this:
+
+**A `cached` Go result is not a run.** `go test -short ./...` reports `ok ... (cached)` and
+exits 0 without executing anything. `-count=1` forces the real run; the 280s difference
+is the point. Treat any `(cached)` in a verification log as "not measured".
+
+**`cmd | Tee-Object f | Select-Object -Last N` reports the SELECT's exit code, not the
+command's.** A migration that printed `migrations up to date` came back as exit 1 through
+that pipe and exit 0 when read directly. The fix is to capture `$LASTEXITCODE` in the
+same statement, not through a pipeline -- the same class of trap documented above for
+`--self-test` output, one level down.
+
 ### The 29 steps that never left a log, measured one by one
 
 `target/check-logs/` holds a log per step per run, and 29 of the current 194 steps have
