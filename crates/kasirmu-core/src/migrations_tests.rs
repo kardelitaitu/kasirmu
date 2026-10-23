@@ -4354,8 +4354,11 @@ fn the_reconcile_writes_the_row_the_baseline_seeds() {
 fn fresh_db_cache_holds_no_business_rows() {
     // Force the cache into existence.
     let conn = fresh_db();
-    let rows: i64 = conn
-        .query_row("SELECT COUNT(*) FROM settings", [], |r| r.get(0))
+    // One query, discarded on purpose: it forces the snapshot to be USED, so the file
+    // graded below is the one a test would really get. The assertions are about the
+    // cache file's contents, not this count -- clippy 1.98 was right that the binding
+    // was dead.
+    conn.query_row("SELECT COUNT(*) FROM settings", [], |r| r.get::<_, i64>(0))
         .unwrap();
     drop(conn);
 

@@ -40,6 +40,15 @@ use super::staff::{TRASH_RETENTION_DAYS, TrashedRole};
 use crate::error::CoreError;
 use crate::{Role, Store};
 
+/// Per-role reference counts: table name to the number of live rows pointing at the role.
+pub type RoleReferenceCounts = std::collections::HashMap<String, Vec<(&'static str, i64)>>;
+
+/// Per-role holder counts, keyed by role id.
+pub type RoleHolderCounts = std::collections::HashMap<String, i64>;
+
+/// The pair `all_role_counts_map` returns: `(references, holders)`.
+pub type RoleCountsMap = (RoleReferenceCounts, RoleHolderCounts);
+
 /// Re-exported so the authoring IPC can label preset rows without taking a
 /// `platform-core` dependency of its own. Reached through this module rather
 /// than `kasirmu_core`'s crate root because that re-export list is a shared edit
@@ -272,15 +281,7 @@ impl Store<'_> {
     ///
     /// Returns `(reference_counts_by_role, holder_counts_by_role)` in 5 total queries
     /// instead of 5N queries per role.
-    pub fn all_role_counts_map(
-        &self,
-    ) -> Result<
-        (
-            std::collections::HashMap<String, Vec<(&'static str, i64)>>,
-            std::collections::HashMap<String, i64>,
-        ),
-        CoreError,
-    > {
+    pub fn all_role_counts_map(&self) -> Result<RoleCountsMap, CoreError> {
         let mut refs_map: std::collections::HashMap<String, Vec<(&'static str, i64)>> =
             std::collections::HashMap::new();
 

@@ -673,7 +673,7 @@ async fn pack_batched_lookup_matches_the_per_hash_answer() {
 async fn pack_with_no_referenced_hashes_is_an_empty_ok_body() {
     let (state, dir, _scratch) = temp_image_dir();
     let foreign = make_webp_bodies(1, 64).pop().unwrap();
-    upload_all(&state, "tenant-b", &[foreign.clone()]).await;
+    upload_all(&state, "tenant-b", std::slice::from_ref(&foreign)).await;
     let foreign_h = sha256_hex16(&foreign);
     let resp = get_pack(&state, "tenant-a", &["aaaaaaaaaaaaaaaa", &foreign_h]).await;
     assert_eq!(resp.status(), StatusCode::OK);

@@ -169,8 +169,10 @@ fn seeded_audit_connection() -> Connection {
 ///   `idx_audit_log_action` below roughly a quarter of the table and prefers one
 ///   ordered walk above it - a real cost-model boundary, measured:
 ///
-///     2 of 3 distinct actions  -> SCAN audit_log USING INDEX idx_audit_log_created_at
-///     2 of 8 distinct actions  -> SEARCH audit_log USING INDEX idx_audit_log_action
+///   ```text
+///   2 of 3 distinct actions  -> SCAN audit_log USING INDEX idx_audit_log_created_at
+///   2 of 8 distinct actions  -> SEARCH audit_log USING INDEX idx_audit_log_action
+///   ```
 ///
 ///   A fixture with three action values put 40% of the log in the two filtered
 ///   ones and made the query scan - correctly. Grading that would have graded

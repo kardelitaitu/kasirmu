@@ -53,9 +53,9 @@ fn authed_req(
         .method(method)
         .uri(uri)
         .header("Authorization", format!("Bearer {token}"));
-    if body.is_some() {
+    if let Some(body) = body {
         builder = builder.header("Content-Type", "application/json");
-        builder.body(Body::from(body.unwrap().to_owned())).unwrap()
+        builder.body(Body::from(body.to_owned())).unwrap()
     } else {
         builder.body(Body::empty()).unwrap()
     }

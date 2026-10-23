@@ -424,22 +424,21 @@ pub fn is_revoked_in_cached_crl(
         }
     };
 
-    let sets = match parsed {
-        Some(p) => p,
-        None => {
-            let crl: CrlPayload = match serde_json::from_str(&crl_json) {
-                Ok(c) => c,
-                Err(e) => {
-                    tracing::warn!("failed to deserialize cached CRL, ignoring: {e}");
-                    return Ok(false);
-                }
-            };
-            let sets = Arc::new(ParsedCrlSets::from(&crl));
-            if let Ok(mut write_guard) = PARSED_CRL_CACHE.write() {
-                *write_guard = Some((crl_json, Arc::clone(&sets)));
+    let sets = if let Some(p) = parsed {
+        p
+    } else {
+        let crl: CrlPayload = match serde_json::from_str(&crl_json) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("failed to deserialize cached CRL, ignoring: {e}");
+                return Ok(false);
             }
-            sets
+        };
+        let sets = Arc::new(ParsedCrlSets::from(&crl));
+        if let Ok(mut write_guard) = PARSED_CRL_CACHE.write() {
+            *write_guard = Some((crl_json, Arc::clone(&sets)));
         }
+        sets
     };
 
     Ok(sets.is_revoked(license_key, tenant_id, machine_id))

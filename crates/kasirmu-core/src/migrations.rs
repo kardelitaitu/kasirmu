@@ -729,7 +729,7 @@ pub fn ensure_bootstrap_subscription(
 /// DEV-dependency and `fresh_db` is reachable from the library. Reusing the same
 /// path matters: the test-support fixtures and this snapshot cache must share one
 /// root, or the gitignore that covers `target/` stops describing reality.
-
+///
 /// Create a fresh in-memory database with all migrations already applied.
 ///
 /// Uses a [`std::sync::LazyLock`]ed pre-migrated snapshot connection.
@@ -809,13 +809,12 @@ pub fn fresh_db() -> rusqlite::Connection {
 
     if snapshot_file.is_file() {
         // Fast path: clone from the shared file.
-        let src = match rusqlite::Connection::open(&snapshot_file) {
-            Ok(c) => c,
-            Err(_) => {
-                // A torn or locked file must not fail a test: rebuild it.
-                let _ = std::fs::remove_file(&snapshot_file);
-                test_db_snapshot::build_snapshot_conn()
-            }
+        let src = if let Ok(c) = rusqlite::Connection::open(&snapshot_file) {
+            c
+        } else {
+            // A torn or locked file must not fail a test: rebuild it.
+            let _ = std::fs::remove_file(&snapshot_file);
+            test_db_snapshot::build_snapshot_conn()
         };
         {
             let backup = rusqlite::backup::Backup::new(&src, &mut fresh)

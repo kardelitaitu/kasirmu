@@ -366,6 +366,7 @@ fn payout_ids_globally_unique() {
 ///      readers (`locked`);
 ///   2. A has reached BEGIN and is blocked on that lock (the busy handler);
 ///   3. only then does B commit, releasing the lock A waits on.
+///
 /// Step 2 is a fact about A's position, not a duration.
 #[test]
 fn payout_refused_when_shift_closes_between_read_and_write() {

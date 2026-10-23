@@ -634,17 +634,17 @@ pub async fn topology_publish_handler(
         .step_up_pin
         .as_deref()
         .or_else(|| headers.get("X-Step-Up-PIN").and_then(|v| v.to_str().ok()));
-    if let Some(pin) = step_up_pin {
-        if pin.trim().is_empty() {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(serde_json::json!({
-                    "error": "invalid_step_up_pin",
-                    "message": "Step-up authentication PIN cannot be blank"
-                })),
-            )
-                .into_response();
-        }
+    if let Some(pin) = step_up_pin
+        && pin.trim().is_empty()
+    {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({
+                "error": "invalid_step_up_pin",
+                "message": "Step-up authentication PIN cannot be blank"
+            })),
+        )
+            .into_response();
     }
 
     // 5. Database write inside an explicit rusqlite transaction

@@ -45,7 +45,7 @@ pub const MAX_BARCODE_LEN: usize = 1024;
 pub const READ_CHUNK: usize = 64;
 
 /// The two characters a barcode scanner appends to mark end-of-code.
-const TERMINATORS: [u8; 2] = [b'\r', b'\n'];
+const TERMINATORS: &[u8] = b"\r\n";
 
 fn is_terminator(byte: u8) -> bool {
     TERMINATORS.contains(&byte)

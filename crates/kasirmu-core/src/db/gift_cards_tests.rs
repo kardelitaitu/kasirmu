@@ -769,7 +769,7 @@ fn freeze_gift_card_race_cannot_overwrite_a_competing_transition() {
     let dir = scratch.path();
     let db_path = dir.join("kasir.db");
     {
-        let conn = fresh_file(&dir);
+        let conn = fresh_file(dir);
         seed_card(&conn, "GC-C18-R1");
     }
 
@@ -877,7 +877,7 @@ fn unfreeze_gift_card_race_cannot_overwrite_a_competing_transition() {
     let dir = scratch.path();
     let db_path = dir.join("kasir.db");
     {
-        let conn = fresh_file(&dir);
+        let conn = fresh_file(dir);
         seed_card(&conn, "GC-C18-R2");
         store(&conn).freeze_gift_card("GC-C18-R2").unwrap();
     }

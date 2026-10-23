@@ -920,7 +920,7 @@ const ORDERED_INDEX_WALK_MARKER: &str = "USING INDEX";
 ///
 /// The source is the LHS identifier of a `SCAN` step: an alias, a table name,
 /// or a CTE name.
-fn full_read_source<'a>(step: &'a PlanStep) -> Option<(&'a str, &'a str)> {
+fn full_read_source(step: &PlanStep) -> Option<(&str, &str)> {
     let detail = step.detail.trim();
     let rest = detail.strip_prefix("SCAN ")?;
     // Split on whitespace AND commas: SQLite writes `SCAN r LEFT-JOIN` and, in a
@@ -1056,7 +1056,7 @@ fn production_queries_do_not_scan_large_tables() {
 /// predicate stripped. That is the shape that scans, and the SAME detector
 /// the gate uses must name the scanned table. If the detector ever goes deaf
 /// - a changed plan-string format, a renamed table, a `LARGE_TABLES` entry
-/// dropped - this test fails instead of the gate quietly passing everything.
+///   dropped - this test fails instead of the gate quietly passing everything.
 ///
 /// The strips are asserted to have actually removed predicates first: on a
 /// query with no `WHERE` the mutation would be a no-op and this proof would

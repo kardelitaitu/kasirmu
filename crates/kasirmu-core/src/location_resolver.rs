@@ -582,7 +582,10 @@ pub fn resolve_location_chain_for_sku(
          WHERE s.item_id = ?1 AND s.location_id IN ({placeholders}) AND s.qty > 0"
     );
     let mut stmt = conn.prepare(&sql)?;
-    let loc_strs: Vec<&str> = location_ids.iter().map(|l| l.as_str()).collect();
+    let loc_strs: Vec<&str> = location_ids
+        .iter()
+        .map(foundation::LocationId::as_str)
+        .collect();
     let mut params_vec: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(location_ids.len() + 1);
     params_vec.push(&product_id);
     for s in &loc_strs {

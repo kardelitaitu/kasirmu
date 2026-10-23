@@ -22,6 +22,15 @@ use crate::offline::OfflineQueueItem;
 /// it (`pub use kasirmu_core::sync_client::PushOutcome`), so both the
 /// `kasirmu_core::sync_client::PushOutcome` and the
 /// `platform_sync::transport::PushOutcome` import paths resolve to this enum.
+// `large_enum_variant` is allowed rather than fixed, and the reason is that the
+// clippy-suggested fix (boxing `OfflineQueueItem`) is a PUBLIC API change to a wire type
+// re-exported by `platform_sync::transport`. It would force `Box::new` at every
+// construction site across four crates -- `platform/sync`'s transport, daemon and
+// integration tests, `apps/cloud-server`'s openapi test, and this crate's own -- to save
+// bytes on a type that is constructed once per CONFLICTING item, not per successful push.
+// A conflict is the rare path; the cost the lint protects against is paid on it only.
+// Flagged by clippy 1.98 (2026-10-23) as a workspace-wide -D warnings failure.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum PushOutcome {

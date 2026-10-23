@@ -80,28 +80,24 @@ impl SecretCache {
         // Incremental eviction (O-L06): evict expired entries from the front of the queue
         // rather than doing an O(n) full sweep across the entire table.
         while let Some((_, at)) = self.order.front() {
-            if at.elapsed().as_secs() >= JWT_CACHE_TTL_SECS {
-                if let Some((old_token, old_at)) = self.order.pop_front() {
-                    if let Some(entry) = self.tokens.get(&old_token) {
-                        if entry.cached_at == old_at {
-                            self.tokens.remove(&old_token);
-                        }
-                    }
-                }
-            } else {
+            if at.elapsed().as_secs() < JWT_CACHE_TTL_SECS {
                 break;
+            }
+            if let Some((old_token, old_at)) = self.order.pop_front()
+                && let Some(entry) = self.tokens.get(&old_token)
+                && entry.cached_at == old_at
+            {
+                self.tokens.remove(&old_token);
             }
         }
 
         // Keep cache bounded to MAX_CACHE_ENTRIES_PER_SECRET.
-        if self.tokens.len() >= MAX_CACHE_ENTRIES_PER_SECRET {
-            if let Some((old_token, old_at)) = self.order.pop_front() {
-                if let Some(entry) = self.tokens.get(&old_token) {
-                    if entry.cached_at == old_at {
-                        self.tokens.remove(&old_token);
-                    }
-                }
-            }
+        if self.tokens.len() >= MAX_CACHE_ENTRIES_PER_SECRET
+            && let Some((old_token, old_at)) = self.order.pop_front()
+            && let Some(entry) = self.tokens.get(&old_token)
+            && entry.cached_at == old_at
+        {
+            self.tokens.remove(&old_token);
         }
 
         let token_arc: Arc<str> = Arc::from(token);

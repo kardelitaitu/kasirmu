@@ -193,11 +193,15 @@ impl Default for LoginRateLimiter {
 
 impl std::fmt::Debug for LoginRateLimiter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // `finish_non_exhaustive` rather than `finish`: the previous form silently
+        // omitted `max_tracked`, so two limiters with different capacities printed
+        // identically and the ".." is the honest way to say so (clippy 1.98).
         f.debug_struct("LoginRateLimiter")
             .field("max_attempts", &self.max_attempts)
             .field("window_secs", &self.window_secs)
+            .field("max_tracked", &self.max_tracked)
             .field("attempts", &"(locked)")
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 

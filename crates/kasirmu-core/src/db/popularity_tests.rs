@@ -1195,7 +1195,7 @@ fn recompute_popularity_batch_matches_single_sku_recompute() {
     }
     let per_sku: Vec<(String, f64)> = sold
         .iter()
-        .map(|s| s.as_str())
+        .map(String::as_str)
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .map(|s| {

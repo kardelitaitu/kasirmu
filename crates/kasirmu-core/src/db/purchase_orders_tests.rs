@@ -1071,7 +1071,7 @@ fn update_po_status_race_cannot_overwrite_a_competing_transition() {
     let dir = scratch.path();
     let db_path = dir.join("kasir.db");
     let po_id = {
-        let conn = fresh_file(&dir);
+        let conn = fresh_file(dir);
         seed_supplier(&conn);
         let po = store(&conn)
             .create_purchase_order("PO-RACE", "sup-po", "", "", None, &[])

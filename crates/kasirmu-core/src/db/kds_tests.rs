@@ -84,7 +84,7 @@ fn test_sale_typed(id: &str, status: crate::SaleStatus, total_minor: i64) -> Sal
         status,
         total: price(total_minor),
         currency: usd(),
-        line_count: if total_minor == 0 { 0 } else { 1 },
+        line_count: i64::from(total_minor != 0),
         payment_method: None,
         tendered_minor: None,
         discount_percent: 0,
@@ -500,7 +500,7 @@ fn list_kds_orders_with_status_filter() {
     let sale_id2 = uuid::Uuid::now_v7().to_string();
 
     for sid in [&sale_id1, &sale_id2] {
-        let test_sale = test_sale(&sid);
+        let test_sale = test_sale(sid);
         s.create_sale(&test_sale).unwrap();
     }
 
@@ -548,7 +548,7 @@ fn get_kds_queue_returns_pending_and_preparing() {
     let sale_id3 = uuid::Uuid::now_v7().to_string();
 
     for sid in [&sale_id1, &sale_id2, &sale_id3] {
-        let test_sale = test_sale(&sid);
+        let test_sale = test_sale(sid);
         s.create_sale(&test_sale).unwrap();
     }
 
@@ -642,7 +642,7 @@ fn display_number_increments_per_day() {
     let sale_id2 = uuid::Uuid::now_v7().to_string();
 
     for sid in [&sale_id1, &sale_id2] {
-        let test_sale = test_sale(&sid);
+        let test_sale = test_sale(sid);
         s.create_sale(&test_sale).unwrap();
     }
 
