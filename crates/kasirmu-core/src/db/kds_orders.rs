@@ -51,7 +51,7 @@ pub const LIST_KDS_ORDERS_BASE_SQL: &str = "SELECT id, sale_id, store_id, target
              FROM kds_orders";
 
 /// Base of `Store::get_kds_queue`: the active queue, before the optional zone
-/// filter and [`KDS_QUEUE_ORDER_BY`].
+/// filter and `KDS_QUEUE_ORDER_BY`.
 ///
 /// This is the query whose own doc names `idx_kds_orders_status_received`
 /// (`20260904_kds_indexes.sql`).

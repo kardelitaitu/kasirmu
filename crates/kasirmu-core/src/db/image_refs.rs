@@ -111,7 +111,7 @@ impl Store<'_> {
     /// so an order-sensitive caller — the pack frames run in request order —
     /// needs no side map to put the answers back.
     ///
-    /// Shares `missing_hashes`'s data-driven chunking ([`IMAGE_REFS_IN_CHUNK`]):
+    /// Shares `missing_hashes`'s data-driven chunking (`IMAGE_REFS_IN_CHUNK`):
     /// the list length comes from the caller, never from the schema, so a long
     /// list is read in MORE chunks rather than in an unscoped sweep. Absent
     /// hashes default to `false`, which is what makes a chunk that lost a row
