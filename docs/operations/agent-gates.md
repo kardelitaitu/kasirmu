@@ -261,13 +261,39 @@ detector), 38 killed.
 ```
 
 **17 survivors is not 17 bugs**, and that distinction is the whole value of running the next
-step. Rows were triaged by mutating the checker's *other* functions:
+step: a first-function mutation finds *a* helper, not necessarily the DETECTOR. Every
+survivor was re-triaged by mutating ALL of its functions (after the filter fix below the
+population is 54, not 55; the surviving rows are the same set minus one false row):
 
-| Class | Count | What it means |
-|---|---|---|
-| Helper, detector covered elsewhere | ~12 | `is_shell`, `tracked`, `scan`, `bundle_files` — blanking a lookup leaves the graded rules intact. Harmless. |
-| **Detector genuinely unpinned** | **4** | The self-test graded a RULE (a regex, a stub) but never ran the function that uses it. Real hole. |
-| Red for another reason | 1 | `verify-website-assets.py` — a false row, see below. |
+| Checker | functions | killed | Verdict |
+|---|---|---|---|
+| `verify-fluent-dynamic-families.py` | 11 | 9 | covered |
+| `check-debt-ledger.py` | 7 | 5 | covered |
+| `verify-shell-syntax.py` | 6 | 5 | covered |
+| `verify-coverage-floors.py` | 4 | 3 | covered |
+| `check-chokepoints.py` | 8 | 3 | covered |
+| `check-mapper-alignment.py` | 8 | 3 | covered |
+| `check-rust-doc-paths.py` | 4 | 3 | covered (was 0/4 — fixed this round) |
+| `verify-runner-commands.py` | 4 | 2 | covered |
+| `verify-unsafe-safety.py` | 3 | 2 | covered |
+| `verify-topology-parity.py` | 3 | 1 | covered (was 1/3 — phase 1 unpinned, fixed) |
+| `check-orphan-prototype-files.py` | 3 | 1 | covered |
+| `verify-deployment.py` | 2 | 1 | covered (`probe` is I/O; `classify` is graded) |
+| `verify-exhaustive-deps.py` | 2 | 1 | covered (`run_eslint` is I/O; `measure` is graded) |
+| `verify-flaky-quarantine.py` | 5 | 1 | covered |
+| `verify-settled-read-copies.py` | 3 | 1 | covered |
+
+**No checker has zero killed functions.** The always-surviving names are the I/O shells —
+`git`, `repo_root`, `tracked`, `tracked_files`, `repo_root`, `live_runner_files`,
+`ui_sources`, `bundle_files`, `load_floors`, `select_column_list` — because a self-test that
+touches no file cannot exercise a function whose whole job is to find files. That is the
+correct trade: the docs say a self-test is pure, so these stay unpinned **by design**, and
+the rule is that every DISTINCT DETECTOR must have at least one killed function.
+
+**Two survivors were real holes, and the triage is what found them:** `check-rust-doc-paths.py`
+(killed 0 of 4 before the fix) and `verify-topology-parity.py` (phase 1, three hand-reasoned
+branches, ungraded). Both now pin their branch, so they moved off this table's problem
+column — a survivor row is only harmless once you have counted its kills.
 
 **The one false row was my census, again.** `verify-website-assets.py` turned up as
 "PATH ALREADY RED, unrecognized arguments: --self-test" because my filter tested
@@ -277,7 +303,7 @@ read as a capability. Fixed by requiring the quoted argparse literal. That singl
 would otherwise have been filed as a broken gate; it is one of the two checkers whose
 proof form is (correctly) not `--self-test`.
 
-**The four real holes, all now pinned:**
+**The five real holes, all now pinned:**
 
 1. `verify-architecture-boundaries.py` — `normalize_path` (:151) has a docstring describing
    the `.lstrip("./")` bug it fixed (ate `../` and the leading `/`), and no case called it.
@@ -295,6 +321,12 @@ proof form is (correctly) not `--self-test`.
    with a recording stub, which meant blanking the real function still survived. Caught only
    because the sweep was re-run after the fix. **Re-run the mutation after every fix**; a
    fix is a hypothesis until the mutant dies.
+
+5. `verify-topology-parity.py` — phase 2's `expected_kinds` was graded; phase 1
+   (`check_contract_copies`), whose three branches are three different verdicts including
+   the subtle "a ui/ tree with no contract file is DRIFT, not a server-only skip", was
+   never called. Now driven through a temp dir by rebinding its three module-path globals
+   (which needs `global` — otherwise the first read raises `UnboundLocalError`).
 
 **A stub is not the code.** When a self-test substitutes a function to make a branch
 reachable, that substitution also hides the function's own body from the mutation. Test both:
