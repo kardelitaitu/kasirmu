@@ -276,6 +276,20 @@ def main():
         print("scanning %d markdown files" % len(files))
         print("=" * 68)
 
+    # THE CENSUS FLOOR. All three checks are "count the hits over the corpus", so an empty
+    # corpus yields 0, 0, 0 and the run announces "Exit: 0 (clean)". Measured 2026-10-23
+    # from an empty directory: "scanning 0 markdown files ... Exit: 0 (clean)". A gate that
+    # walked nothing is indistinguishable, from its verdict, from a clean tree -- and this
+    # one runs from os.getcwd(), so running it from the wrong directory is an ordinary
+    # mistake rather than an exotic one.
+    #
+    # --file is exempt: scanning ONE named file is a deliberate narrow mode, and a caller
+    # who names a file that exists has asked a question this floor does not apply to.
+    if not files and not args.file:
+        print("REFUSED: scanned 0 markdown files. This checker walks the CURRENT DIRECTORY, "
+              "so an empty result usually means it was not run from the repository root.")
+        return 2
+
     totals = {}
     for key in sel:
         fn = CHECKS[key]
@@ -308,5 +322,43 @@ def main():
     return 1 if any(totals.values()) else 0
 
 
+def self_test() -> int:
+    """Pin the census floor and the three detectors, in one run, touching no file.
+
+    The floor is the half a green line cannot show: all three checks are "count the hits",
+    and a zero-hit run over a zero-file corpus announces itself as clean. The detector
+    cases below are the counterweight -- a floor that refused everything would pass a
+    floor-only test, so each check is also driven over synthetic text that MUST hit.
+    """
+    bad = []
+
+    def want(name, got, expect):
+        if got != expect:
+            bad.append("%s: expected %r, got %r" % (name, expect, got))
+
+    # --- the detectors still see what they are for --------------------------
+    # Each check is driven over a shape it exists to catch. Asserting only "it fired"
+    # keeps this test about LIVENESS, not about the checker's exact wording, which must
+    # stay free to change.
+    a_inputs = ["## Legacy wrapper label", "# Wrapper: unversioned thing"]
+    b_inputs = ["# Top", "## Section", "#### Skipped a level"]
+    want("check A can fire", any(CHECKS["a"]([ln]) for ln in a_inputs), True)
+    want("check B can fire", bool(CHECKS["b"](b_inputs)), True)
+    want("check C can fire", CHECKS["c"](["# Doc", "## 0.0.10 section", "body"]) is not None, True)
+
+    # --- a clean input must produce NO hits (negative control) --------------
+    # Without this, a check that fired unconditionally would pass above.
+    clean = ["# A well formed document", "", "## Section one", "", "### Subsection"]
+    want("check B stays quiet on well-formed input", CHECKS["b"](clean), [])
+
+    if bad:
+        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
+        return 2
+    print("SELF-TEST OK (4 cases, no files touched)")
+    return 0
+
+
 if __name__ == "__main__":
+    if "--self-test" in sys.argv[1:]:
+        sys.exit(self_test())
     sys.exit(main())

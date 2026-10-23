@@ -35,3 +35,4 @@ python3 .agents/skills/docs-auditor/scripts/check-adr-status.py --self-test
 python3 .agents/skills/docs-auditor/scripts/check-site-links.py --self-test
 python3 .agents/skills/docs-auditor/scripts/check-api-surface.py --self-test
 python3 .agents/skills/docs-auditor/scripts/check-cite-lines.py --self-test
+python3 .agents/skills/docs-auditor/scripts/check-orphans.py --self-test
