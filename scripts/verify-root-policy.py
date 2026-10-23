@@ -301,6 +301,20 @@ def self_test() -> int:
 
 
 def main() -> int:
+    # A REPORT MUST NOT CRASH ON WHAT IT REPORTS. Measured 2026-10-23 in a full matrix
+    # run: a stray root file whose name ended in U+F00A (private-use codepoint) made
+    # `print` raise UnicodeEncodeError on a cp1252 stdout, so step 01 died with a
+    # traceback and the FINDING -- a real one -- was never named. Reconfiguring the stream
+    # once is the fix; per-line escaping cannot help because the failure is at the stream.
+    #
+    # errors="backslashreplace": a mangled name is still diagnosable (\uf00a points at the
+    # odd character), while dropping the line would hide the finding the gate exists for.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+        except (AttributeError, ValueError):
+            pass  # a wrapped or already-configured stream; carry on with what we have
+
     if "--self-test" in sys.argv[1:]:
         return self_test()
 
@@ -310,6 +324,16 @@ def main() -> int:
 
     findings = check(ROOT)
     if findings:
+        # NEVER let the REPORT crash on a finding. This loop printed a stray root file
+        # whose name ended in U+F00A (a private-use codepoint), and on a cp1252 stdout
+        # that raised UnicodeEncodeError at the `print` -- so the run died with a
+        # traceback instead of naming the file it had found. The finding was real and its
+        # identity was lost. Measured 2026-10-23 in a full matrix run: step 01 reported
+        # FAIL with the traceback and no filename.
+        #
+        # `backslashreplace` is the right fallback here: a mangled name is still
+        # diagnosable (`\uf00a` points straight at the odd character), while dropping the
+        # line would hide the finding the gate exists to report.
         print(f"root policy: {len(findings)} finding(s):")
         for f in findings:
             print(f"  - {f}")
