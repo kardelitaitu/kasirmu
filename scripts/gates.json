@@ -74,12 +74,14 @@
       "status": "required",
       "runners": {
         "check.sh": [
-          "i18n lint"
+          "i18n lint",
+          "i18n lint falsification"
         ],
         "check:all": [
           "i18n lint"
         ]
       },
+      "_note": "The falsification runner was added 2026-10-23 (test-lint-i18n.sh). Two of the gate's three categories are exact-string greps over vitest output, and vitest exits 0 when it merely warns -- so a reworded warning leaves the grep empty and the gate prints \"no issues detected\". The test extracts the patterns FROM the gate (a restated literal would drift), plants both real warnings, and adds a clean-run control so a too-broad pattern cannot pass.",
       "ci": {
         "workflow": "dev-ci.yml",
         "job": "i18n"

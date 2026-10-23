@@ -784,6 +784,12 @@ if command -v npm &>/dev/null && [ -f ui/package-lock.json ]; then
     # `shared-ui/locales/*.id.ftl` before they reach CI.
     cd ..
     step "i18n lint" "bash scripts/lint-i18n.sh" bash scripts/lint-i18n.sh
+    # The gate decides two of its three categories by grepping vitest output for exact
+    # strings. vitest exits 0 when it only WARNS, so a changed spelling leaves the grep
+    # empty and the gate prints "no issues detected". Added 2026-10-23: this plants both
+    # warnings and asserts the gate's OWN (extracted) patterns still match them, plus a
+    # clean-run control so a too-broad pattern cannot pass.
+    step "i18n lint falsification" "bash scripts/test-lint-i18n.sh" bash scripts/test-lint-i18n.sh
     # AUDIT-27 CI-06: FTL dedupe — detect duplicate Fluent keys so local
     # validation matches check-ui.mjs and the pre-commit gate.
     # --dry-run is REQUIRED, not optional. Without it this script runs in APPLY mode
