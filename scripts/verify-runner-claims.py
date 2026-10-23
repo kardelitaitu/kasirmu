@@ -26,11 +26,19 @@ ABSENCE, and they stay correct no matter what gets wired later -- a checker can 
 gain a runner, never lose one. Flagging those is how a gate cries wolf on the repo's own
 historical records, which is the mistake that sank two earlier attempts this session.
 
-Also exempt: files under docs/records/ and docs/archived/, .github/workflows/attic, and dated
-baselines. (docs/records/ was added 2026-10-02 when docs/archived/ was retired and became a
-one-file tombstone; this docstring had not been updated and had stopped describing SKIP_DIRS.)
-Those are evidence. A record of what was true on a given day is not drift, and rewriting
-one to match today destroys the only evidence that it ever differed.
+Also exempt: docs/archived/, .github/workflows/attic, and dated baselines. Those are
+evidence. A record of what was true on a given day is not drift, and rewriting one to
+match today destroys the only evidence that it ever differed.
+
+docs/records/ WAS exempt outright and is NOT any more (2026-10-24). The blanket skip made
+a CURRENT document exempt from the gate built to catch its claims, and it did exactly
+that: docs/records/audits/2026-08-31-glm-5.3f-crates-audit.md:2203 asserted that
+verify-docker-persistence.sh "runs the volume contract in CI" -- false for two months, in
+the one checker that could have said so. A record is now skipped only when it says of
+ITSELF that it is superseded (see SUPERSEDED), because a date in a filename records when
+something was written, not that its claims have been retired. Dated audits whose claims
+are still meant to hold are graded like any other file, which is why that one now carries
+an inline correction rather than a note below the sentence it contradicts.
 
 Exit 0 every positive claim holds, 1 at least one does not, 2 the scan saw nothing.
 """
@@ -87,6 +95,12 @@ SCAN_SUFFIX = (".md", ".yml", ".yaml", ".sh", ".rs", ".toml", ".json", ".ps1",
 # Same shape as every other scope bug in this session: an assumption about what a file
 # looks like, standing in for a question about where claims actually live.
 SCAN_NAMES = ("Dockerfile", "Dockerfile.server", "Dockerfile.unified", "AGENTS.md")
+# A record may declare itself evidence of a past day and be left alone. The marker is
+# explicit -- "SUPERSEDED", "HISTORICAL RECORD", "DO NOT TRUST THIS FOR CURRENT WIRING" --
+# rather than a filename convention, because a date in the name says when it was written,
+# not that its claims have been retired.
+SUPERSEDED = re.compile(
+    r"\b(?:SUPERSEDED|HISTORICAL RECORD|DO NOT TRUST THIS FOR CURRENT)\b", re.I)
 
 
 def live_ci_scripts() -> set[str]:
@@ -111,14 +125,49 @@ def scanned_files() -> list[Path]:
     # claims that are not claims, and the fix for that is exclusion, not a weaker
     # pattern that would also stop matching real ones.
     for dirpath, dirnames, filenames in __import__("os").walk(ROOT):
+        # docs/records/ must be ENTERED, not pruned: its dated files are evidence and its
+        # undated files are live prose. Skipping the directory wholesale made a filter on
+        # the collected paths dead code -- it ran over a list that could not contain them.
+        # Measured 2026-10-24: 0 files under docs/records/ were scanned while this gate
+        # reported "6 claim(s) checked, all hold".
         dirnames[:] = [d for d in dirnames
-                       if d.lower() not in SKIP_DIRS and not d.startswith(".git")]
+                       if d.startswith(".git")
+                       or d.lower() == "records"
+                       or d.lower() not in SKIP_DIRS]
         for fn in filenames:
             p = Path(dirpath) / fn
             if fn.endswith(SCAN_SUFFIX) or fn in SCAN_NAMES:
                 if p.resolve() == Path(__file__).resolve():
                     continue   # see below
                 out.append(p)
+    # docs/records/ holds TWO kinds of document and SKIP_DIRS treated them as one, which
+    # made a CURRENT document exempt from the gate built to catch its claims. Measured
+    # 2026-10-24: docs/records/audits/2026-08-31-...md:2203 said
+    # "verify-docker-persistence.sh runs the volume contract in CI" -- a name with ZERO
+    # hits in check.sh and none in any live workflow. The sentence was false when written
+    # and stayed false for two months, in the one gate that could have caught it.
+    #
+    # The rule is NOT "dated means skip". A dated audit is a snapshot, and the reason to
+    # leave it alone is that rewriting history destroys evidence -- but a claim it makes
+    # about TODAY's wiring still has to be answered, so the honest resolution is either to
+    # correct it (stamped, as that file now is) or to say plainly that it is superseded.
+    # A file that carries its own supersession note is evidence and is skipped; anything
+    # else in docs/records/ is graded.
+    records = (ROOT / "docs" / "records").resolve()
+    kept: list[Path] = []
+    for p in out:
+        if records not in p.resolve().parents:
+            kept.append(p)
+            continue
+        try:
+            head = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            kept.append(p)
+            continue
+        if SUPERSEDED.search(head):
+            continue
+        kept.append(p)
+    out = kept
     return sorted(out)
 
 
@@ -162,10 +211,35 @@ def self_test() -> int:
     if got and Path(got[0][0]).name in live:
         bad.append("the missing-script case must not be reported as satisfied")
 
+    # THE SCOPE RULE, which was the actual defect: docs/records/ is no longer skipped
+    # wholesale. Only a file that says of ITSELF that it is superseded is exempt.
+    # Measured 2026-10-24: the blanket skip hid a live CI claim in a current audit for
+    # two months, in the checker written to catch exactly that claim.
+    for label, text, expect_skip in (
+        ("an explicit SUPERSEDED marker excludes the file", "| SUPERSEDED 2026-01-01 |", True),
+        ("HISTORICAL RECORD excludes the file", "HISTORICAL RECORD, do not act on it", True),
+        ("DO NOT TRUST THIS FOR CURRENT excludes it",
+         "DO NOT TRUST THIS FOR CURRENT WIRING", True),
+        ("a bare date in prose does not", "written 2026-08-31, still accurate", False),
+        ("a CORRECTED note does not exclude it", "CORRECTED 2026-10-24: that was false", False),
+        ("ordinary text does not", "the gate runs in CI", False),
+    ):
+        skip = bool(SUPERSEDED.search(text))
+        if skip != expect_skip:
+            bad.append(f"{label}: expected skip={expect_skip}, got {skip}")
+
+    # And the corrected sentence must genuinely STOP being a claim, rather than being
+    # suppressed by a nearby historical word. That is the difference between fixing a
+    # false statement and teaching the checker to ignore it.
+    corrected = ("verify-docker-persistence.sh was believed to run the volume contract "
+                 "in CI -- it does not (corrected below).")
+    if claims_in(corrected):
+        bad.append("a corrected sentence must no longer carry the claim")
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (5 cases, no files touched)")
+    print("SELF-TEST OK (12 cases, no files touched)")
     return 0
 
 
