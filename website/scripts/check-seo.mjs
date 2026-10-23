@@ -493,7 +493,15 @@ function guideCounterpart(path, lang, guides = guidesCorpus) {
       if (other.locale !== lang || !other.slug) continue;
       const otherPaired = other.pair ?? other.slug;
       const selfPaired = self.pair ?? slug;
-      if (otherPaired === slug || selfPaired === other.slug) return url;
+      // ONLY this page's own declaration counts. The first half used to also accept
+      // the pair when the OTHER page named us (`otherPaired === slug`), which made
+      // this checker greener than the site: the route emits `guide.data.pair ?? slug`
+      // (see [guideSegment]/[...slug].astro:46), so a page that declares nothing
+      // ships NO hreflang while this gate reported the pair satisfied by the other
+      // side's claim. Measured 2026-10-23 — with `a` carrying no `pair` and the id
+      // page carrying `pair: "a"`, the old rule returned /id/panduan/x/ and the
+      // rule below returns null.
+      if (selfPaired === other.slug) return url;
     }
     return null;
   }
@@ -1674,6 +1682,32 @@ if (SELF_TEST) {
       'guide-counterpart',
       JSON.stringify(verdicts) === JSON.stringify([null, null, '/en/guides/', null, null]),
       JSON.stringify(verdicts),
+    );
+  }
+
+  // ── guideCounterpart: ONE-SIDED declarations are not a pair ────────────────
+  //
+  // The rule accepted a pair when the OTHER page named us, even if we named
+  // nobody. The route emits `guide.data.pair ?? slug`, so such a page ships no
+  // hreflang at all while this gate called the pair satisfied — the checker was
+  // greener than the site. Fixed 2026-10-23; these cases pin both directions.
+  {
+    const reciprocal = new Map([
+      ['/en/guides/a/', { locale: 'en', slug: 'a', pair: 'x' }],
+      ['/id/panduan/x/', { locale: 'id', slug: 'x', pair: 'a' }],
+    ]);
+    const oneSided = new Map([
+      ['/en/guides/a/', { locale: 'en', slug: 'a' }],                      // names nobody
+      ['/id/panduan/x/', { locale: 'id', slug: 'x', pair: 'a' }],          // names a
+    ]);
+    const results = [
+      guideCounterpart('/en/guides/a/', 'id', reciprocal),
+      guideCounterpart('/en/guides/a/', 'id', oneSided),
+    ];
+    expect(
+      'guide-counterpart-one-sided',
+      JSON.stringify(results) === JSON.stringify(['/id/panduan/x/', null]),
+      JSON.stringify(results),
     );
   }
 
