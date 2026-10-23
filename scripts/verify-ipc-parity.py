@@ -271,6 +271,37 @@ API_TREE_IMPORT_RE = re.compile(
 )
 
 
+# Cached regexes for the wrapper/export probes inside wrapper_reach.
+#
+# Keyed by the wrapper name, which is the only thing each pattern depends on.
+# The unbounded form called re.escape and recompiled inside a triple-nested
+# loop (files x wrappers x commands); the profiler measured that at 1.26M
+# re.search calls and 163 s of this file's 227 s self-test. These dicts turn it
+# into one compile per distinct name.
+_WRAPPER_PATTERNS = {}
+_EXPORT_PATTERNS = {}
+
+
+def _wrapper_pattern(name):
+    # A word-boundary match for a wrapper reference: foo( but not x.foo(.
+    pat = _WRAPPER_PATTERNS.get(name)
+    if pat is None:
+        pat = re.compile(r"(?<![\w.])" + re.escape(name) + r"\b")
+        _WRAPPER_PATTERNS[name] = pat
+    return pat
+
+
+def _export_pattern(name):
+    # The file that DEFINES this wrapper, so it is not a reference to itself.
+    pat = _EXPORT_PATTERNS.get(name)
+    if pat is None:
+        pat = re.compile(
+            r"export (?:const|async function|function) " + re.escape(name) + r"\b"
+        )
+        _EXPORT_PATTERNS[name] = pat
+    return pat
+
+
 def wrapper_reach(files: list[tuple[str, str]], cmd: str) -> dict[str, list[str]]:
     """Who references the wrappers that invoke `cmd`, split by where the reference lives.
 
@@ -289,7 +320,7 @@ def wrapper_reach(files: list[tuple[str, str]], cmd: str) -> dict[str, list[str]
                 for w, c in API_WRAPPER_RE.findall(text) if c == cmd}
     out: dict[str, list[str]] = {"runtime": [], "client": [], "api": []}
     if not wrappers:
-        return out
+            return out
     for path, text in files:
         if path.startswith("ui/src/api/client"):
             bucket = "client"
@@ -312,11 +343,14 @@ def wrapper_reach(files: list[tuple[str, str]], cmd: str) -> dict[str, list[str]
         # and pinning one spelling would just move the false negative around.
         imports_api_tree = bool(API_TREE_IMPORT_RE.search(text))
         for w in wrappers:
-            if not re.search(r"(?<![\w.])" + re.escape(w) + r"\b", text):
+            # Cached compiled patterns -- see _wrapper_pattern / _export_pattern.
+            # The unbounded form rebuilt these inside a files x wrappers x
+            # commands triple loop, measured at 1.26M re.search calls / 163 s.
+            pat = _wrapper_pattern(w)
+            if not pat.search(text):
                 continue
             # The defining file is not a reference to itself.
-            if bucket == "api" and re.search(r"export (?:const|async function|function) "
-                                            + re.escape(w) + r"\b", text):
+            if bucket == "api" and _export_pattern(w).search(text):
                 continue
             if not imports_api_tree:
                 continue
@@ -2170,6 +2204,20 @@ def shell_blind_findings(
             for wrapper, cmd in API_WRAPPER_RE.findall(text):
                 wrapper_to_cmd.setdefault(wrapper, cmd)
 
+    # MASKED CACHE. `_mask_imports(_strip_comments(text))` was recomputed for
+    # every command in `gaps`, and with the wrapper scan below that made the
+    # two hottest functions in this file run once per (command, wrapper) pair --
+    # 1.26M regex searches and 164 s of the 227 s self-test. The masked form of
+    # a file cannot change between iterations, so compute it once per path.
+    masked_cache: dict = {}
+
+    # PRECOMPILED wrapper patterns. The same `re.escape(wn)` string was compiled
+    # inside the innermost loop; compiling each wrapper once turns ~125k
+    # compiles into ~N.
+    wrapper_res = {}
+    for wn in wrapper_to_cmd:
+        wrapper_res[wn] = re.compile(r"(?<![\w.])" + re.escape(wn) + r"\b")
+
     findings = {}
     for command in sorted(gaps):
         hits = set()
@@ -2178,20 +2226,22 @@ def shell_blind_findings(
             if path not in shell_aware:
                 continue
             text = by_path.get(path, "")
-            masked = _mask_imports(_strip_comments(text))
+            if path not in masked_cache:
+                masked_cache[path] = _mask_imports(_strip_comments(text))
+            masked = masked_cache[path]
             # The file has to PROVE it executes in this shell: it must also call a command
             # this shell registers. A file that branches on the shell but only ever calls
             # this shell's names is that shell's own screen, and its gaps are not C40.
             proves = any(
                 cmd in registered
                 and cmd != command
-                and re.search(r"(?<![\w.])" + re.escape(wn) + r"\b", masked)
+                and wrapper_res[wn].search(masked)
                 for wn, cmd in wrapper_to_cmd.items()
             )
             if not proves:
                 continue
             spans = shell_guarded_spans(text)
-            for match in re.finditer(r"(?<![\w.])" + re.escape(wrapper) + r"\b", masked):
+            for match in wrapper_res[wrapper].finditer(masked):
                 if any(start <= match.start() < end for start, end in spans):
                     continue
                 # A render-gated handler (\`const actionsAvailable = !isTabletShell()\` then
