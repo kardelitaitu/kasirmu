@@ -445,13 +445,13 @@ pub fn run_list_category_tax_rates(
 
     let mut rows = Vec::with_capacity(categories.len());
     for cat in categories {
-        if let Some(ids) = rate_map.remove(&cat.id) {
-            if !ids.is_empty() {
-                rows.push(CategoryTaxRateRow {
-                    category_id: cat.id,
-                    tax_rate_ids: ids,
-                });
-            }
+        if let Some(ids) = rate_map.remove(&cat.id)
+            && !ids.is_empty()
+        {
+            rows.push(CategoryTaxRateRow {
+                category_id: cat.id,
+                tax_rate_ids: ids,
+            });
         }
     }
     Ok(rows)

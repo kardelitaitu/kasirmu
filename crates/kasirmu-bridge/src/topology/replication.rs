@@ -25,8 +25,8 @@ use kasirmu_core::topology::{semantic_branch_profile_id, validate_semantic_json}
 
 use super::persistence::topology_setting_key;
 use super::revisions::{
-    TopologyRevisionContext, canonical_topology_revision_payload, insert_topology_revision_scoped,
-    verify_topology_revision_signature,
+    TopologyRevisionContext, TopologyRevisionGraph, canonical_topology_revision_payload,
+    insert_topology_revision_scoped, verify_topology_revision_signature,
 };
 use crate::error::BridgeError;
 
@@ -473,14 +473,17 @@ pub fn apply_single_replicated_revision(
         item.base_revision,
     );
 
+    let graph = TopologyRevisionGraph {
+        envelope: diagram_str,
+        node_count: nodes.len(),
+        wire_count: wires.len(),
+    };
     insert_topology_revision_scoped(
         &tx,
         &item.branch_id,
         &item.tenant_id,
         incoming_rev,
-        diagram_str,
-        nodes.len(),
-        wires.len(),
+        &graph,
         &rev_ctx,
     )?;
 

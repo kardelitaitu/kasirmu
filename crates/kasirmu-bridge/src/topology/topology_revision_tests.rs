@@ -15,6 +15,13 @@ fn fresh_conn() -> rusqlite::Connection {
     crate::testing::temp_conn()
 }
 
+/// An empty graph envelope, shared by the tenant-isolation fixtures.
+const EMPTY_GRAPH: TopologyRevisionGraph<'_> = TopologyRevisionGraph {
+    envelope: "{}",
+    node_count: 0,
+    wire_count: 0,
+};
+
 use crate::error::BridgeError;
 use rusqlite::OptionalExtension;
 use serde_json::Value;
@@ -933,16 +940,12 @@ fn metadata_columns_persisted_and_read_back() {
         base_revision: Some(42),
     };
 
-    insert_topology_revision(
-        &tx,
-        "branch-meta",
-        43,
-        r#"{"nodes":[],"wires":[]}"#,
-        2,
-        1,
-        &ctx,
-    )
-    .unwrap();
+    let graph = TopologyRevisionGraph {
+        envelope: r#"{"nodes":[],"wires":[]}"#,
+        node_count: 2,
+        wire_count: 1,
+    };
+    insert_topology_revision(&tx, "branch-meta", 43, &graph, &ctx).unwrap();
     tx.commit().unwrap();
 
     let summaries = list_topology_revision_summaries(&conn, "branch-meta", 10).unwrap();
@@ -993,7 +996,7 @@ fn scoped_listing_strictly_isolates_by_tenant_and_org() {
         signature: None,
         base_revision: None,
     };
-    insert_topology_revision(&tx, "branch-common", 1, "{}", 0, 0, &ctx_a).unwrap();
+    insert_topology_revision(&tx, "branch-common", 1, &EMPTY_GRAPH, &ctx_a).unwrap();
 
     let ctx_b = TopologyRevisionContext {
         change_note: "tenant A org 2",
@@ -1007,7 +1010,7 @@ fn scoped_listing_strictly_isolates_by_tenant_and_org() {
         signature: None,
         base_revision: None,
     };
-    insert_topology_revision(&tx, "branch-common", 2, "{}", 0, 0, &ctx_b).unwrap();
+    insert_topology_revision(&tx, "branch-common", 2, &EMPTY_GRAPH, &ctx_b).unwrap();
     tx.commit().unwrap();
 
     // Isolated queries for tenant "default" + org-1 should only see revision 1

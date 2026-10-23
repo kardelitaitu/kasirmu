@@ -408,15 +408,12 @@ pub fn save_topology_json_at_key_with_registries(
     // to what `settings` now holds — a revision must be self-contained and
     // needs no reconstruction (§2).
     if let Some(ctx) = revision_ctx {
-        insert_topology_revision(
-            &tx,
-            &revision_branch_id,
-            revision,
-            &json,
-            nodes.len(),
-            wires.len(),
-            ctx,
-        )?;
+        let graph = TopologyRevisionGraph {
+            envelope: &json,
+            node_count: nodes.len(),
+            wire_count: wires.len(),
+        };
+        insert_topology_revision(&tx, &revision_branch_id, revision, &graph, ctx)?;
     }
     tx.commit()?;
     Ok(revision)

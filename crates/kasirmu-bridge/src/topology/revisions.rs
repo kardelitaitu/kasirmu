@@ -442,6 +442,22 @@ pub enum TopologyRevisionLookup {
     },
 }
 
+/// The raw row tuple returned by the single-revision SELECT in
+/// [`load_topology_revision_row`]: the deflated `diagram` envelope (if any) and
+/// the nine metadata columns in SELECT order, ending with the base revision.
+pub type TopologyRevisionRowTuple = (
+    Option<String>,
+    String,
+    String,
+    String,
+    i64,
+    String,
+    String,
+    String,
+    String,
+    Option<i64>,
+);
+
 /// Fetch one revision, preserving the distinction between "absent" and
 /// "present but pruned".
 ///
@@ -456,18 +472,7 @@ pub fn load_topology_revision_row(
 ) -> Result<TopologyRevisionLookup, BridgeError> {
     // `diagram` is read as Option<String>; the row's existence is probed
     // separately, so a deflated row is not mistaken for a missing one.
-    let row: Option<(
-        Option<String>,
-        String,
-        String,
-        String,
-        i64,
-        String,
-        String,
-        String,
-        String,
-        Option<i64>,
-    )> = conn
+    let row: Option<TopologyRevisionRowTuple> = conn
         .query_row(
             "SELECT diagram, change_note, published_at, published_by,
                     contract_schema_version, org_id, actor, key_id, signature, base_revision
@@ -788,6 +793,21 @@ pub fn audit_topology_apply(
     Ok(())
 }
 
+/// The graph payload of a revision row, plus the two counts recorded beside it.
+///
+/// Grouped rather than passed positionally: `envelope`, `node_count` and
+/// `wire_count` are three descriptions of ONE graph and are never supplied
+/// apart from one another, and eight positional parameters at the call sites
+/// is where argument-order mistakes become invisible.
+pub struct TopologyRevisionGraph<'a> {
+    /// The graph envelope serialised as JSON.
+    pub envelope: &'a str,
+    /// Number of nodes in `envelope`.
+    pub node_count: usize,
+    /// Number of wires in `envelope`.
+    pub wire_count: usize,
+}
+
 /// Insert one immutable revision row, inside the caller's transaction.
 ///
 /// `branch_id` is `""` for the unscoped legacy graph, NOT null — `UNIQUE`
@@ -803,21 +823,10 @@ pub fn insert_topology_revision(
     tx: &Transaction<'_>,
     branch_id: &str,
     revision: u64,
-    envelope: &str,
-    node_count: usize,
-    wire_count: usize,
+    graph: &TopologyRevisionGraph<'_>,
     ctx: &TopologyRevisionContext<'_>,
 ) -> Result<(), BridgeError> {
-    insert_topology_revision_scoped(
-        tx,
-        branch_id,
-        DEFAULT_TENANT_ID,
-        revision,
-        envelope,
-        node_count,
-        wire_count,
-        ctx,
-    )
+    insert_topology_revision_scoped(tx, branch_id, DEFAULT_TENANT_ID, revision, graph, ctx)
 }
 
 /// Insert an immutable revision row scoped to an explicit tenant (ADR-66).
@@ -826,9 +835,7 @@ pub fn insert_topology_revision_scoped(
     branch_id: &str,
     tenant_id: &str,
     revision: u64,
-    envelope: &str,
-    node_count: usize,
-    wire_count: usize,
+    graph: &TopologyRevisionGraph<'_>,
     ctx: &TopologyRevisionContext<'_>,
 ) -> Result<(), BridgeError> {
     let published_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
@@ -854,12 +861,12 @@ pub fn insert_topology_revision_scoped(
             tenant_id,
             revision as i64,
             ctx.change_note,
-            envelope,
+            graph.envelope,
             ctx.workspace_creations as i64,
             ctx.workspace_updates as i64,
             ctx.workspace_archives as i64,
-            node_count as i64,
-            wire_count as i64,
+            graph.node_count as i64,
+            graph.wire_count as i64,
             // The CONTRACT axis, not the envelope axis — model.rs:273-285 is
             // explicit that the two must never be conflated, and ADR #46 §7's
             // "can this still be restored?" question is answered by this one.

@@ -56,7 +56,7 @@ fn test_write_crash_report_entry_sanitizes_pii_and_appends() {
         shell: Some("desktop".to_string()),
     };
 
-    let res = write_crash_report_entry(Some(&temp_dir), &report);
+    let res = write_crash_report_entry(Some(temp_dir), &report);
     assert!(res.is_ok());
 
     let crash_file = temp_dir.join("crash_telemetry.log");
@@ -83,7 +83,7 @@ fn test_write_crash_report_entry_sanitizes_pii_and_appends() {
     );
 
     // Cleanup
-    let _ = std::fs::remove_dir_all(&temp_dir);
+    let _ = std::fs::remove_dir_all(temp_dir);
 }
 
 // ── The SETTINGS_READ gate ──────────────────────────────────────────────
@@ -318,7 +318,7 @@ async fn record_crash_report_works_without_a_session_and_still_sanitizes() {
     let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-crash-async");
     let dir = scratch.path();
 
-    let res = record_crash_report(Some(&dir), report_with_secrets()).await;
+    let res = record_crash_report(Some(dir), report_with_secrets()).await;
     assert!(
         res.is_ok(),
         "the async door must accept a session-less call: {res:?}"
@@ -340,7 +340,7 @@ async fn record_crash_report_works_without_a_session_and_still_sanitizes() {
         "the sanitizer must have run -- no [REDACTED] marker in:\n{content}"
     );
 
-    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 /// With no resolvable log directory the report goes to STDERR rather than
