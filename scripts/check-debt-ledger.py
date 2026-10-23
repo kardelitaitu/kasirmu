@@ -301,14 +301,58 @@ def self_test() -> int:
             "| **High** | 1 | **1** | **0** |\n", ""))):
         bad.append("a missing tier row must be a finding")
 
+    # THE DEAD-REF RULE, which no case reached before 2026-10-24. Its docstring records
+    # why it exists: three entries were caught by hand on 2026-10-21 pointing at files
+    # deleted weeks earlier, so an entry that cannot be opened wastes a reader's pass.
+    # Blanking entries_with_dead_file_refs left this self-test green.
+    #
+    # Three arms, each a way the obvious implementation is wrong: only the FIRST TWO
+    # citations are graded; CLOSED entries are exempt (a resolved entry legitimately
+    # cites the file its fix created); and an entry is flagged only when EVERY graded
+    # ref is missing -- one surviving path keeps it anchored.
+    # Paths are BACKTICKED, per FILE_REF_RE at :154 -- the first draft of this fixture
+    # wrote them bare and every case passed vacuously, because a regex that matches
+    # nothing finds no refs and "no refs" skips the entry. A self-test whose fixture
+    # cannot reach the rule is the failure mode this whole file is about.
+    dead_fixture = "\n".join([
+        "**O-H01 dead entry**",
+        "See `crates/ghost-does-not-exist/src/lib.rs` for the whole story.",
+        "",
+        "**O-H02 live entry**",
+        "See `crates/kasirmu-core/src/lib.rs` for the whole story.",
+        "",
+        "**O-H03 mixed refs, one survives**",
+        "See `crates/ghost-does-not-exist/src/lib.rs` and",
+        "`crates/kasirmu-core/src/lib.rs` together.",
+        "",
+        "**O-H04 closed but dead**",
+        "PAID against `crates/ghost-does-not-exist/src/lib.rs`.",
+        "",
+        "**O-H05 dead third ref**",
+        "See `crates/kasirmu-core/src/lib.rs`, `Cargo.toml`, and",
+        "`crates/ghost-does-not-exist/src/lib.rs`.",
+    ])
+    dead_hits = {entry for entry, _refs in entries_with_dead_file_refs(dead_fixture)}
+    for label, entry, expect in (
+        ("an entry whose first ref is dead is flagged", "O-H01", True),
+        ("a live first ref is not flagged", "O-H02", False),
+        ("one surviving ref keeps the entry anchored", "O-H03", False),
+        ("a closed entry is exempt even when its ref is dead", "O-H04", False),
+        ("a dead THIRD ref is out of scope", "O-H05", False),
+    ):
+        if (entry in dead_hits) is not expect:
+            bad.append("  dead-ref %s: %s flagged=%s" % (label, entry, entry in dead_hits))
+    if entries_with_dead_file_refs("**O-H06 bare**\nnothing cited here\n"):
+        bad.append("  dead-ref: an entry citing nothing must not be flagged")
+
     if bad:
         sys.stderr.write("SELF-TEST WRONG:\n" + "\n".join(bad) + "\n")
         return 2
-    # +1 for the sections() split case, +4 for the summary-table cases above. Counted
-    # explicitly because a case that runs but is not counted reads as coverage it is not
-    # -- the same shape as a gate that cannot fail.
+    # +1 for the sections() split case, +4 for the summary-table cases, +6 for the
+    # dead-ref rule. Counted explicitly because a case that runs but is not counted
+    # reads as coverage it is not -- the same shape as a gate that cannot fail.
     print("SELF-TEST OK (%d cases, no file read)"
-          % (len(SUBJECT_CASES) + len(INLINE_CASES) + len(SECTION_CASES) + 1 + 4))
+          % (len(SUBJECT_CASES) + len(INLINE_CASES) + len(SECTION_CASES) + 1 + 4 + 6))
     return 0
 
 
