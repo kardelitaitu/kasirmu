@@ -1228,6 +1228,33 @@ call sites", runs the gate **bare**, and `scripts/verify-scoped-reads.py:1048` d
 findings are all tablet. Filed as its own open item, and it is a one-word change in a workflow this
 lane will not edit: the step needs `--shell desktop,tablet`.
 
+**RE-MEASURED 2026-10-24 — the fix is still not applied, and the backlog is shrinking.** Reproduced
+from scratch, on the current tree, exactly as the entry above describes:
+
+```
+$ python scripts/verify-scoped-reads.py                 # what dev-ci.yml:1537 and check.sh:183 run
+verify-scoped-reads: 1 shell section graded by no verdict in this run -- tablet: 34 unguarded
+call site(s) across 19 file(s) and 27 command(s), 28 cleared ...
+verify-scoped-reads: clean for desktop.        exit 0
+$ python scripts/verify-scoped-reads.py --shell tablet
+FAIL: 34 call site(s) ...                 exit 1
+$ python scripts/verify-scoped-reads.py --shell desktop,tablet     # what both runners SHOULD run
+FAIL: 34 call site(s) ...                 exit 1
+```
+
+The three invocation sites are unchanged and all still default to desktop: `dev-ci.yml:1537`,
+`check.sh:183`, and the bare form in the step label. The number moved **101 → 34**, so the tablet
+backlog is two-thirds cleared — which is progress no log records, because the lane that clears it
+cannot make CI go red. The checker itself documents the trap at :1239-1263, including that the
+"visibility" line it added costs a full extra scan per ungraded section.
+
+**Still not done, and why:** the fix is one flag in two files, but applying it turns CI red against
+a 34-site backlog spread over shared UI (`ui/src/features/auth/LicenseActivationScreen.tsx`,
+`locations/topologyApply.ts`, `terminals/TerminalManagementScreen.tsx`, `design/DevToolbar.tsx`,
+`memo/MemosScreen.tsx`, `reports/DebtRemindersCard.tsx`, `app/UpdateBanner.tsx`, ...). The checker
+has no `--baseline` and no report-only mode, so there is no way to turn it on "yellow" while the
+backlog is worked off. That is an owner's call on sequencing, not a lane's.
+
 **What survives tonight, by commit.** `2050292bf` (01:31) tightened `GUARD_RE` and stands — the guard
 fix is real, and the lane holding the gate audited it at **0** false clearances across a 28-site
 sample. `85101c0c5` (01:54) and `32173bfd95` (01:36) adopted the shared allowlist schema validator in
