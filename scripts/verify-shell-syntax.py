@@ -441,16 +441,51 @@ def self_test() -> int:
                              ("bash: cannot execute: required file not found", False)):
             if _looks_like_parse_output(good) is not why_ok:
                 bad.append(f"_looks_like_parse_output({good[:48]!r}) should be {why_ok}")
+
+        # THE SCOPE RULE ITSELF. is_shell() decides WHICH files this gate parses, and it
+        # was never called by any case here -- blanking it to "return None" left this
+        # self-test green (measured 2026-10-24 by scripts/sabotage-selftests.py, which
+        # reported this file SURVIVED on exactly that function). It is not a helper: a
+        # rule that answers False for everything makes the gate parse ZERO files and
+        # report a clean tree, which is the same anti-zero shape as the digest gate.
+        #
+        # The claim is the SHEBANG, not the .sh suffix (the docstring records seven
+        # tracked scripts the suffix rule got wrong), so both directions are pinned.
+        _probe_dir = ROOT / "target" / "_syntax_selftest_scope"
+        _probe_dir.mkdir(parents=True, exist_ok=True)
+        for _name, _text, _want in (
+            ("a.sh",      "#!/usr/bin/env bash\necho ok\n", True),
+            ("b.sh",      "#!/bin/sh\necho ok\n",           True),
+            ("hooks/run", "#!/bin/sh\necho ok\n",           True),
+            ("c.sh",      "echo no shebang\n",              False),
+            ("d.sh",      "#!/usr/bin/env python3\nprint(1)\n", False),
+            ("e.txt",     "",                               False),
+        ):
+            _p = _probe_dir / _name
+            _p.parent.mkdir(parents=True, exist_ok=True)
+            _p.write_text(_text, encoding="utf-8", newline="\n")
+            if is_shell(_p) is not _want:
+                bad.append(f"is_shell({_name!r}) should be {_want}")
+        # A file that cannot be opened is not a shell script, and must not raise.
+        if is_shell(_probe_dir / "does-not-exist.sh") is not False:
+            bad.append("is_shell on a missing file must be False")
     finally:
         if scratch.exists():
             scratch.unlink()
+        # The scope probes are removed with the same rule as the parse probe: a self-test
+        # that leaves files in the tree it scans is a gate that fails itself.
+        _leftovers = ROOT / "target" / "_syntax_selftest_scope"
+        if _leftovers.exists():
+            shutil.rmtree(_leftovers, ignore_errors=True)
 
     if scratch.exists():
         bad.append("self-test left a scratch file behind")
+    if (ROOT / "target" / "_syntax_selftest_scope").exists():
+        bad.append("self-test left the scope probes behind")
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (7 cases, no files left behind)")
+    print("SELF-TEST OK (14 cases, no files left behind)")
     return 0
 
 
