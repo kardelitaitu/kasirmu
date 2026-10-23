@@ -1,7 +1,15 @@
 # The tablet shell registers 27 fewer IPC commands than the shared UI calls
 
-**Date:** 2026-10-24 · **Severity:** high · **Status:** open — needs an owner ruling on which
-shell's command surface is authoritative (the BR-* family)
+**Date:** 2026-10-24 · **Severity:** medium (revised down from high — see the final grade) ·
+**Status:** open — needs an owner ruling on which shell's command surface is authoritative (the
+BR-* family)
+
+**Read this first: the headline number moved three times in one round, and the last value is the
+only one that should be quoted.** The gate reports 34 sites. Of those, 5 are gate false positives
+(the checker has been fixed), 20 are unreachable on tablet, and 9 reach the code — of which all
+nine are caught, so **7 show a user-visible error state, 1 silently does nothing, and 1 degrades
+to a working fallback**. No site crashes. The detail below is kept in its corrected form so the
+trail is visible, which is the only reason it is safe to have been wrong twice.
 
 ## What was measured
 
