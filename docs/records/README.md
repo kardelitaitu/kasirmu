@@ -72,6 +72,7 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 | 63 | architecture | [ADR-63: The EventSink Seam — grading R10 #3 with a rule that arrived at zero](../decisions/2026-10-01-adr63-event-sink-seam.md) | Implemented (2026-10-04) — rule event-sink-seam landed in scripts/verify-architecture-boundaries.py at zero findings with no baseline; the four remaining raw-handle broadcasts were routed through BridgeCtx::emitter; R10's other three invariants are disposed of by measurement (D6 — #1 a written convention, #2/#4 struck) |
 | 64 | payments | [ADR-64: The Tender Vocabulary and the Offline Tender State — one classification per payment, and no electronic tender s…](../decisions/2026-10-02-adr64-tender-vocabulary-and-offline-tender-state.md) | Proposed (2026-10-02) — MOSTLY LANDED. D1's method vocabulary, D2's union unification, D3's two-phase PaymentResult and D4's gateway_status vocabulary have SHIPPED (migrations 20261017_payments_method_check.sql and 20261018_gateway_status_adr64_vocabulary.sql; the UI side landed in 4de069c47, the payment types in e2a323dfa). STILL TO BUILD: D1's method_kind/method_mode classification columns do NOT exist anywhere (0 hits tree-wide), and D4's RULES 1–4 (who may write settled, what sets settled_at/settled_by) are not enforced by anything. Read this record as: the vocabulary and the presentation types shipped; the classification axis and the state machine did not. Amended 2026-10-07 and re-measured 2026-10-11 — see §2.2. |
 | 65 | compliance | [ADR-65: The Compliance Chain — where fiscal integrity attaches, and the three seams a second market will exercise](../decisions/2026-10-02-adr65-compliance-chain.md) | Proposed (2026-10-02) — the anchor point is decided; no chain, no certification module and no second locale is built |
+| 66 | topology | [ADR-66: Centralized Topology Authoring — Desired-State Authority Model, Signed-Revision Contract, and Multi-Store Eligi…](../decisions/2026-10-22-adr66-centralized-topology-authoring-authority-model.md) | Ratified (2026-10-22) — ratifies D1–D5 and establishes the architectural contract for done-plan-topology-web-authoring.md |
 
 ### Research Notes
 
@@ -105,6 +106,7 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 
 **general:**
 - [Global Kernel and Region Packs — strategy note](../decisions/2026-10-02-global-kernel-and-region-pack-strategy.md)
+- [BRIDGE-7 — the hardware commands take a session but name no permission](../decisions/2026-10-23-bridge7-hardware-permission-gap.md)
 
 ## Engineering Records (`docs/records/`)
 
@@ -605,6 +607,8 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | products | [Benchmark Regression Tracking](benchmarks/regression-tracking.md) | — |
 | general | [MANAGER-2 JOURNAL - POS-SCREEN. LIVE STATE BLOCK (authoritative head, READ FIRST)](campaigns/manager-2-journal-posscreen.md) | — |
 | general | [MANAGER-2 CURRENT-STATE LEDGER (condensed; authoritative head - READ THIS FIRST)](campaigns/manager-2-journal.md) | — |
+| general | [The guide hreflang rule accepts a one-sided pair](findings/2026-10-23-guide-pairing-one-sided.md) | — |
+| general | [Seven pinned base-image digests have drifted, unnoticed](findings/2026-10-23-seven-pins-drifted.md) | — |
 | general | [Audit Closed Findings — Archive](findings/audit-closed-findings.md) | — |
 | general | [Audit Open Findings — Consolidated](findings/audit-open-findings.md) | — |
 | general | [Engineering Journal - part 1 of 8](journal/JOURNAL-part-1.md) | — |
@@ -616,6 +620,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Engineering Journal - part 7 of 8](journal/JOURNAL-part-7.md) | — |
 | general | [Engineering Journal - part 8 of 8](journal/JOURNAL-part-8.md) | — |
 | general | [Engineering Journal - index](journal/JOURNAL.md) | — |
+| general | [Note on b0e7d28a6](notes-2026-10-23-commit-message-discrepancy.md) | — |
 | general | [kasir.mu 0.0.25](releases/CHANGELOG-0.0.25.md) | — |
 | general | [kasir.mu 0.0.31](releases/CHANGELOG-0.0.31.md) | — |
 | general | [Changelog — kasir.mu 0.0.33](releases/CHANGELOG-0.0.33.md) | — |

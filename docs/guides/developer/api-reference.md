@@ -183,6 +183,11 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 <!-- regenerate: parse generate_handler! in both lib.rs for the surface, and the /// doc comments in commands/*.rs for the summaries -->
 ### `commands::analytics` (2)
 
+- **`create_receivable_scoped`** [D+T] — Raise a receivable (a customer debt). ADR #7.
+- **`get_ap_aging_report_scoped`** [D] — Generate the accounts payable aging report. ADR #7.
+- **`get_ar_aging_report_scoped`** [D+T] — Generate the accounts receivable aging report. ADR #7.
+- **`get_customer_receivables_summary_scoped`** [D+T] — Get a customer's outstanding kasbon summary. ADR #7.
+- **`get_receivable_scoped`** [D+T] — Fetch one receivable by ID. ADR #7.
 - **`get_staff_analytics_daily_scoped`** [D+T] — Per-day shift + sales series for one staff member over `[from, to]`.
 - **`get_staff_analytics_scoped`** [D+T] — Per-staff shift + sales summary for the session's store over `[from, to]`.
 
@@ -191,6 +196,8 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`export_audit_log_scoped`** [D+T] — Export the session store's audit log to CSV (AUD-09).
 - **`get_audit_review_status_scoped`** [D+T] — Fetch the session store's latest review checkpoint + unreviewed count
 - **`list_audit_log_scoped`** [D+T] — Fetch audit log entries scoped to the session's store (AUD-01).
+- **`list_customer_receivables_scoped`** [D+T] — List receivables for a specific customer. ADR #7.
+- **`list_receivables_scoped`** [D+T] — List receivables, newest first; `status` optionally filters to one lifecycle state. ADR #7.
 - **`list_security_events_scoped`** [D+T] — Read the ORGANIZATION-level security trail — logins, logouts and staff account changes — from the GLOBAL identity database.
 - **`mark_audit_reviewed_scoped`** [D+T] — Persist a server-side review checkpoint for the session's store (AUD-04).
 
@@ -202,6 +209,8 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`destroy_session`** [D+T] — Destroy an active session, invalidating the token.
 - **`has_users`** [D+T] — Check whether any staff accounts exist in the database.
 - **`impersonate_user_scoped`** [D+T] — Begin an operator impersonation session for support. The caller must present a valid operator session that holds the.
+- **`print_kasbon_settlement_slip_scoped`** [D+T] — Print a Kasbon (receivable) settlement slip. ADR #7.
+- **`record_receivable_payment_scoped`** [D+T] — Record a payment collected toward a receivable. ADR #7.
 - **`refresh_picker_ticket`** [D+T] — Mint a fresh picker ticket for a caller who already holds a valid session token.
 - **`session_keepalive`** [D+T] — Refresh the current session's TTL so long-lived screens (analytics,
 - **`staff_check_username`** [D+T] — Check a username before the PIN step (STAFF-06).
@@ -990,6 +999,7 @@ Android in-app self-updater. **Tablet-only ([T]): the module lives in `apps/mobi
 - **`set_user_workspace_instances_scoped`** [D] — Replace all instance assignments for a user. Caller permission from session. ADR #7.
 - **`suspend_surplus_workspace_instances_scoped`** [D] — Suspend surplus workspace instances after a tier downgrade. ADR #5 Phase 3c.
 - **`update_workspace_instance_scoped`** [D] — Update the editable fields of a workspace instance (admin). ADR #7.
+- **`write_off_receivable_scoped`** [D+T] — Write off a receivable (forgive the remaining balance) — a money-destruction action, terminal and audited. ADR #7.
 
 
 
