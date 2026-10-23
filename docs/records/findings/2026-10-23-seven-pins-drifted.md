@@ -104,6 +104,20 @@ question: how often to re-pin, and whether to wire the scan on a schedule. The r
 workflow's Monday cron would fire on a real rebuild most weeks, since caddy alone moves ~4x
 per month.
 
+**Independently re-verified** at the Docker Hub tag API, because the whole option withdrawal
+rests on it and a delegated claim is not evidence:
+
+```
+alpine:3.22            sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f
+alpine:3.22.7          sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f
+postgres:16-alpine     sha256:f4610795587492cd4fb887c2dc3de301b813278bb6f616992061141b5f15ac36
+postgres:16.15-alpine  sha256:f4610795587492cd4fb887c2dc3de301b813278bb6f616992061141b5f15ac36
+```
+
+Two identical pairs, and both "current" values match what `verify-docker-digests.sh` reports
+for `alpine:3.22` and `postgres:16-alpine`. So the measurement and the gate agree, and the
+"pin a version tag" option is closed on evidence rather than on a document's say-so.
+
 Not closed: the ECR pull-through path for `public.ecr.aws/docker/library/redis:7-alpine`
 was verified against the Docker Hub mirror, not ECR itself.
 
