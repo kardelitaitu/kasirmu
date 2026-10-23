@@ -829,6 +829,13 @@ pub async fn print_kasbon_settlement_slip_scoped(
     args: PrintKasbonSettlementArgs,
     session_token: &str,
 ) -> Result<PrintSalesReceiptResult, BridgeError> {
+    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
+    // authenticated operator, the same ruling that covers the other ten hardware
+    // commands in this module. Gating it is a product ruling, not a repair.
+    // Worth naming because this slip carries MORE than a sales receipt: customer
+    // name, optional phone, and the receivable balances. An operator who should not
+    // see another customer's receivable can print one today, so closing BRIDGE-7
+    // should consider this command first.
     ctx.resolve_scope(session_token)?;
     let terminal_id = ctx.terminal_id().await;
     let (config, store_info) = {
