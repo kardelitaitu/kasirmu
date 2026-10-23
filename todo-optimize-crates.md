@@ -7769,3 +7769,57 @@ python scripts/check-scratch-leaks.py       -> 0 unguarded sites
 ```
 
 ### Ledger: 149 defined, 149 closed, 0 open.
+## §11IA — the platform-startup suspicion is closed as unfounded, and api/bridge verified (2026-10-23)
+
+Landed in the verification below; no code change.
+
+### The open suspicion from round 42, and why it does not hold
+
+Round 42 left one construct standing as a possible cause of the unreproducible
+`STATUS_ACCESS_VIOLATION`: `platform-startup`'s tests that `panic!` inside a tokio task, paired
+with `Box::leak`. Reading the API shows both halves are correct as written:
+
+```rust
+pub fn spawn_daemon_registered(
+    registry: &DaemonRegistry,
+    name: &'static str,          // <-- the reason for the leak
+    fut: impl Future<Output = ()> + Send + 'static,
+)
+```
+
+**The panic is the behaviour under test.** `a_panicking_daemon_is_recorded_as_panicked` exists
+to prove the C23 fix — that a daemon which dies is RECORDED, not merely logged. Removing the
+panic would delete the test's whole subject. A task that panics is caught by tokio's
+`JoinHandle`, which is exactly how the registry learns the state.
+
+**The `Box::leak` is required by the signature, not a shortcut.** `name: &'static str` is a
+production constraint: the name is stored in a registry that outlives the spawning call, so a
+borrowed `&str` would not compile. The tests therefore pay the same cost production does — one
+small permanent string per daemon name, which in production is a fixed handful and in tests is
+a handful per test.
+
+So the suspicion recorded last round is closed as **unfounded**, and the crash remains
+unexplained rather than mis-attributed. That is the better of the two outcomes available: an
+honest open question beats a confident wrong answer that stops the next person looking.
+
+### api and bridge re-verified
+
+Round 41 changed `kasirmu-bridge/src/workspaces.rs` and the suites had not been run in full
+since:
+
+```
+cargo test -p kasirmu-api   --lib -> 374 passed, 0 failed, 14 ignored
+cargo test -p kasirmu-bridge --lib -> 1542 passed, 0 failed
+```
+
+The 14 ignored are all `#[cfg_attr(not(feature = "pg-tests"), ignore)]` — structural, not a
+reason that ages.
+
+### cloud-server's query-plan gate: confirmed to need infrastructure
+
+Re-checked rather than assumed: PostgreSQL on 5432 is still unreachable and the Docker daemon
+is still not running. Every query in that crate is PostgreSQL-specific (`$1` placeholders,
+`pg_database`, `information_schema`), so there is no SQLite-shaped subset to gate locally. The
+item stays blocked on an environment decision, not on work.
+
+### Ledger: 149 defined, 149 closed, 0 open.
