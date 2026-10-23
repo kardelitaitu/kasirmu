@@ -8814,3 +8814,84 @@ check-auditor-selftests.sh -> rc 0
 ```
 
 ### Ledger: 159 defined, 159 closed, 0 open (unchanged -- this is the same entry).
+
+## §11UA — O-M94: — a gate that enforced a convention over one directory, and the proof nobody ran in the other two (2026-10-23)
+
+Landed in `c60ac3454`, `10c3d0dd3`.
+
+**O-M94 · gates — `verify-selftests-wired.py` reported "every one is invoked" while 17 checkers sat outside its scope; widening it found a self-test no runner had ever run** — resolved in §11UA.
+
+### 1. The scope was one directory, and the file already knew that pattern
+
+`SCRIPT_DIR = ROOT / "scripts"`. Its own comment records having been burned by a narrow scope once before:
+
+> The scope was verify-only at first and that was too narrow: check-chokepoints.py
+> declares a --self-test that no runner invokes, and the gate reported every self-test
+> as wired. A gate whose scope is narrower than the convention it enforces cannot see
+> half the rot it exists to catch.
+
+It fixed the PREFIX dimension (verify-* -> verify-* and check-*) and left the DIRECTORY dimension alone.
+Measured 2026-10-23: `scripts/` held 66 checkers with a self-test, `.agents/skills/docs-auditor/scripts/`
+held 8, `website/scripts/` held 2. **Seventeen files the gate could not see, while it printed
+"52 of 73 ... every one is invoked"**.
+
+### 2. Widening it immediately produced six false findings and one real one
+
+The first widened run named seven uncalled checkers. Six were WRONG -- they are wired, through
+`scripts/check-auditor-selftests.sh`, which was not in the `RUNNERS` list:
+
+```
+for t in check-env-docs check-ci-claims ... ; do
+  python3 ".agents/skills/docs-auditor/scripts/$t.py" --self-test
+done
+```
+
+A shell LOOP is invisible to a detector that looks for "<name>.py --self-test": it sees only the
+literal `$t.py`. So the fix had two halves:
+
+1. add `check-auditor-selftests.sh` to `RUNNERS` (it is a runner), and
+2. expand the loop into eight explicit calls, so the names are greppable by a human and by any
+   tool. Adding a checker now means adding a line that names it, instead of editing a
+   semicolon-separated string where a typo silently drops a case.
+
+**The seventh finding was real.** `website/scripts/check-links.mjs` declares a 19-assertion
+self-test (:143, `if (process.argv.includes('--self-test'))`). CI runs `npm run check:links` =
+`node scripts/check-links.mjs` **without the flag**, at `dev-ci.yml:240` and `website.yml:147`.
+The gate ran; its proof never did. The file's own header says "a checker that cannot be shown to
+fail is worthless".
+
+Its gate had no roster row at all, which is why nothing noticed: `verify-gate-completeness.py`
+iterates the gates PRESENT in `gates.json`, so a gate missing from it can never be reported as
+required-but-unenforced. A row now exists for the self-test.
+
+### 3. A collision that would have hidden one of them
+
+`check-gate-runners.py` exists in BOTH `scripts/` and `.agents/skills/docs-auditor/scripts/`, and
+they are DIFFERENT programs (one cross-checks gates.json; the other fails a required gate no runner
+can reach). The gate used BASENAMES, which works by accident when there is one directory.
+`checkers()` now returns ROOT-relative PATHS, and `called()` keeps matching on the basename only
+because that is what the runner line yields.
+
+### 4. Verified by breaking it
+
+Deleting one of the eight explicit calls makes the widened gate report that exact file, with its
+path. Before this round the same deletion was invisible.
+
+And a mistake worth recording: to undo the test I used `git checkout --`, which reverted the file
+to HEAD and **threw away the expansion I had just written**. Caught by grepping for the explicit
+calls (0 found, loop still present) rather than assuming the restore worked, and the edit was
+re-applied. `git checkout` is not a safe "undo" for an uncommitted edit -- it discards it.
+
+### Verification
+
+```
+verify-selftests-wired.py            -> 52 of 73 -> **62 of 90**, rc 0
+  one explicit call deleted           -> rc 1, names the file and its path
+check-auditor-selftests.sh           -> 8 SELF-TEST OK (was a loop the auditor could not read)
+check-links.mjs --self-test          -> 19/19 assertions, rc 0 (now a check.sh step)
+verify-gate-completeness.py          -> every check.sh step named, rc 0; self-test 21 cases
+check.sh steps 116-128               -> PASS, incl. 'self-tests wired'
+check-font-claims.mjs                -> 16/16, rc 0 (required-no-ci count still 13)
+```
+
+### Ledger: 160 defined, 160 closed, 0 open.
