@@ -7642,3 +7642,60 @@ cargo test  -p kasirmu-mobile --lib registration_gate -> 12 passed, 0 failed
 ```
 
 ### Ledger: 149 defined, 149 closed, 0 open.
+## §11GA — the platform-startup access violation could not be reproduced, and what was ruled out (2026-10-23)
+
+**No code change.** This section records a negative result with the evidence that produced it,
+so the next person does not repeat the investigation.
+
+### The report
+
+A subagent migrating `platform-startup` off the Windows TEMP trap reported an intermittent
+`STATUS_ACCESS_VIOLATION (0xc0000005)`, about **2 runs in 6**, only when the whole `--lib`
+module ran in parallel, and claimed it was pre-existing.
+
+### What was measured here
+
+Ten consecutive full-module runs, none of which crashed:
+
+```
+--test-threads=16  x4  ->  104 passed each
+--test-threads=32  x6  ->  104 passed each   (higher pressure than the report)
+```
+
+Ten for ten, at both thread counts. That does not prove the flake is gone — an intermittent
+crash at 2-in-6 should have shown up in ten runs with high probability — so the more likely
+reading is that the trigger is something about that subagent's environment or timing rather
+than the code, and it has not been seen since.
+
+### What was ruled out, and how
+
+**Shared process-global state.** The crate has exactly two, and both are safe:
+
+```rust
+static RUNTIME: OnceLock<tokio::runtime::Runtime>   // multi_thread, thread-safe by design
+static REGISTRY: OnceLock<DaemonRegistry>           // Arc<Mutex<HashMap<String, DaemonHealth>>>
+```
+
+The registry tests each build their own `DaemonRegistry::new()`, so they do not share entries;
+only the runtime is shared, and a `tokio` runtime is `Sync`.
+
+**The migrated code.** The only change in `hardware_tests.rs` is five `let dir = ...` lines;
+the async HAL test bodies are byte-identical to HEAD. The crashing path —
+`DriverRegistry::default()` + `register_hardware`, which calls
+`kasirmu_hal::apply_config` — touches no directory at all, and the one branch that probes
+real hardware (`Connection::Usb` -> `UsbReceiptPrinter::discover_all`) already handles its
+error by returning an empty `Vec`.
+
+**The tests that panic on purpose.** `startup_tests.rs` has tasks that `panic!("boom")`
+inside a tokio task to prove the watchdog records `Panicked`. That is the one shape in this
+crate that could plausibly abort a process rather than unwind, and it is the first thing to
+look at if the crash ever reproduces.
+
+### Why it is recorded rather than chased
+
+A defect that cannot be reproduced cannot be fixed, only guessed at, and a guess at an
+access violation is how a real defect gets papered over. The honest output of this round is
+the ruled-out list above plus the reproduction command, so the next occurrence starts from
+evidence instead of from zero.
+
+### Ledger: 149 defined, 149 closed, 0 open.
