@@ -906,11 +906,14 @@ before being written, nothing outside this file touched. Owner named by file:
 ## The records index has no caller, and its drift report counts positions (`RI-1` parked, `RI-2`
   mechanism, added 2026-09-13 13:4x +07, tip `ae7f19c03`)
 
-**Status:** neither is repaired from here — `RI-1` is a parked decision for an owner, `RI-2` is
-not a defect. Both handed over by the records-index lane, which landed `0d5eb0e00` at 13:33 +07,
-and both re-grepped here.
+**Status:** **`RI-1` is CLOSED — the recommendation below was carried out.** Measured
+2026-10-24: `node scripts/generate-records-index.mjs --check` exits **0** ("ok: docs/records/README.md
+matches the generator"), and `.github/workflows/dev-ci.yml:923` runs exactly that command in the
+`static-gates` job — the lane this entry handed it to did what it recommended. `RI-2` remains a
+mechanism note, not a defect, and is unchanged.
 
-- **RI-1 — nothing regenerates or gates `docs/records/README.md`.** The five live runners were
+- **RI-1 — CLOSED 2026-10-24. (The text below is the original finding, kept as the record of
+  what was true on 2026-09-13; it no longer describes the tree.)** The five live runners were
   grepped individually (13:3x +07) — `.githooks`, `scripts/check.sh`, `scripts/run-pre-push.py`,
   `scripts/gates.json`, `.github/workflows` — and **none names it** (exit 1 each); the workspace
   grep's hits at this tip are 26, all prose, self-references inside the generator, or
