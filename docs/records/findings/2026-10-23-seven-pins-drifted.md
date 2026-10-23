@@ -60,12 +60,52 @@ the two apart and does not claim to.
 - **Refresh the pins deliberately** (the DOCKER-02 process), accepting the new digests.
   This is the expected outcome for a moving tag; it needs someone to sign off on the
   change, which is why it is not done here.
-- **Or pin frozen digests** and treat any future drift as a finding worth investigating.
 - **Or wire the scan** on a schedule (the retired workflow's cron was `0 5 * * 1`) and
-  accept that a weekly job will go red whenever upstream rebuilds a base image.
+  accept that a weekly job will go red whenever upstream rebuilds a base image. **This is
+  now the only real alternative** — the research above shows the scan is the only lever,
+  because every tag choice drifts at the same rate.
+- ~~Or pin frozen digests~~ — **withdrawn 2026-10-24.** Measured: the "immutable"
+  version-pinned aliases are bit-identical digests to the moving tags and are re-pushed on
+  the same upstream rebuilds. There is no tag that does not drift; `@sha256:` is the
+  immutability, and the repo already uses it.
 
 Wiring the scan without settling the first question would produce a gate that is
 permanently red for a reason nobody agreed to — the failure mode that gets gates muted.
+
+## Upstream research 2026-10-24: this drift is EXPECTED
+
+**All five tags are moving tags that upstream re-publishes on purpose.** None is frozen.
+
+| image:tag | mutable? | evidence |
+|---|---|---|
+| `debian:bookworm-slim` | yes | docker-library FAQ promises "at least monthly" Debian rebuilds |
+| `caddy:2-alpine` | yes | caddy-docker CI pushes on every commit to master |
+| `alpine:3.22` | yes | official-images stanza `Tags: 3.22.7, 3.22` |
+| `redis:7-alpine` | yes | official-images stanza `7.4.11-alpine, 7.4-alpine, 7-alpine` |
+| `postgres:16-alpine` | yes | official-images stanza `16.15-alpine, 16-alpine` |
+
+Measured cadence (repo-info commit history, 2026): debian ~monthly (16 updates in 10
+months), postgres quarterly+rebuilds, caddy bursty (~22/yr), alpine every 2-4 months.
+
+**The decisive fact:** all five were re-pushed upstream inside ONE 48-hour window,
+2026-10-21T01:35Z to 2026-10-22T01:09Z. That is a single coordinated upstream rebuild
+sweep, not five incidents. The pins were correct through ~Oct 20 and went stale together.
+
+**This kills one of the three options below.** Switching to a version-pinned tag does NOT
+reduce churn: the live Hub digests for `alpine:3.22` vs `alpine:3.22.7`,
+`postgres:16-alpine` vs `postgres:16.15-alpine`, `caddy:2-alpine` vs `caddy:2.11.7-alpine`,
+`redis:7-alpine` vs `redis:7.4.11-alpine` and `debian:bookworm-slim` vs
+`debian:bookworm-20261020-slim` are IDENTICAL PAIRS -- upstream re-pushes the pinned alias
+on every rebuild too. The `@sha256:` pin the repo already uses is the only immutability
+available, so "pin frozen digests" is not a different tag choice, it is what is already done.
+
+**What remains for the owner is purely a cadence question**, not a "did something go wrong"
+question: how often to re-pin, and whether to wire the scan on a schedule. The retired
+workflow's Monday cron would fire on a real rebuild most weeks, since caddy alone moves ~4x
+per month.
+
+Not closed: the ECR pull-through path for `public.ecr.aws/docker/library/redis:7-alpine`
+was verified against the Docker Hub mirror, not ECR itself.
 
 ## Re-measured 2026-10-24: same 7 pins, and the gate does exit 1
 
