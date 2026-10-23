@@ -255,6 +255,17 @@ step "auditor self-tests" "sh scripts/check-auditor-selftests.sh" sh scripts/che
 # unbuildable from 2026-09-13 to 2026-09-18 with nothing to catch it.
 step "dockerfile workspace" "python3 scripts/verify-dockerfile-workspace.py" python3 scripts/verify-dockerfile-workspace.py
 step "dockerfile workspace self-test" "python3 scripts/verify-dockerfile-workspace.py --self-test" python3 scripts/verify-dockerfile-workspace.py --self-test
+# The digest pin gate had NO live runner at all: its only caller was
+# .github/workflows/attic/docker-digest-drift.yml.bak, a RETIRED workflow GitHub never
+# executes. So a pin could rot for months with nothing alerting. Only the SELF-TEST is
+# wired below -- it needs no daemon and no network, so it can run on every matrix pass.
+# The SCAN itself is deliberately NOT wired: it re-resolves 11 pins against live
+# registries with up to 5 retries each, which is not something a local matrix should do
+# on every run, and making it a blocking gate is an owner decision this commit does not take.
+# Writing the cases found the worst defect in this file: with the pin pattern dead the
+# gate printed "All pinned image digests are current." over ZERO pins and exited 0. A
+# floor now refuses that, and the self-test grades the pattern itself.
+step "docker digests self-test" "bash scripts/verify-docker-digests.sh --self-test" bash scripts/verify-docker-digests.sh --self-test
 step "unified routes" "node scripts/check-unified-routes.mjs" node scripts/check-unified-routes.mjs
 # The Caddyfile parser's failure branch had NO automated exercise: the only way to reach
 # it was to hand-craft a corrupted copy and point argv[2] at it, which nobody re-runs.
