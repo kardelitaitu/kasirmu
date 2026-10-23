@@ -61,7 +61,7 @@ Caddy (reverse proxy + gzip)
 Requests pass through this pipeline (outermost first):
 
 1. **Security headers** — `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, etc.
-2. **Gzip compression — in Caddy, not in Rust.** There is no `CompressionLayer` in the server: it was removed to save ~0.01 core of CPU (`apps/cloud-server/src/main.rs:990-991`), and Caddy does the encoding (`apps/unified/Caddyfile:127` — `encode gzip`). This row claimed `CompressionLayer::new().gzip(true)` until 2026-10-11, contradicting this same document's §11.1.
+2. **Gzip compression — in Caddy, not in Rust.** There is no `CompressionLayer` in the server: it was removed to save ~0.01 core of CPU (`apps/cloud-server/src/main.rs:1008-1009`), and Caddy does the encoding (`apps/unified/Caddyfile:127` — `encode gzip`). This row claimed `CompressionLayer::new().gzip(true)` until 2026-10-11, contradicting this same document's §11.1.
 3. **CORS** — configurable origins via `OZ_CORS_ORIGINS`
 4. **Concurrency limit** — API routes: 10 concurrent; sync routes: 40 concurrent
 5. **Auth middleware** — JWT HS256 verification, extracts `ApiTokenClaims`
@@ -88,7 +88,7 @@ Two worker threads by **default**, now overridable at runtime on every deploymen
 | Component | Value |
 |-----------|-------|
 | Backend | PostgreSQL (Northflank free addon) |
-| Connection pool | `deadpool_postgres::Pool`, `OZ_DB_POOL_SIZE` connections (code default **8** — `apps/cloud-server/src/config.rs:226`) |
+| Connection pool | `deadpool_postgres::Pool`, `OZ_DB_POOL_SIZE` connections (code default **8** — `apps/cloud-server/src/config.rs:242`) |
 | Tenant isolation | `SET LOCAL oz.tenant_id` per transaction (RLS-ready) |
 | Schema | Auto-applied on first boot from `20260813_init.pg.sql` |
 | Fallback | In-memory SQLite for unported handlers only (health is PG-aware) |

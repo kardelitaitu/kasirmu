@@ -70,8 +70,8 @@ Cloud Postgres (row-level-security enforced on all tenant-bearing tables —
   one narrow exception since `20260920_audit_retention.sql`: DELETE is allowed
   only while a `settings` row with key `audit.retention_sweep_active` exists,
   which `Store::sweep_audit_retention` writes around its own deletes
-  (`SWEEP_MARKER_KEY`, `crates/kasirmu-core/src/db/audit.rs:486`, inserted at :553-556
-  and removed at :562-565, both inside the one transaction the sweep opens). An auditor asking whether audit rows can be
+  (`SWEEP_MARKER_KEY`, `crates/kasirmu-core/src/db/audit.rs:584`, inserted at :651-655
+  and removed at :660-663, both inside the one transaction the sweep opens). An auditor asking whether audit rows can be
   deleted therefore gets a two-part answer: not by any ordinary path, and yes
   by the tier retention sweep, which announces itself in the same database.
 - **Ops**: `offline_queue`, `sent_reports`, `exchange_rates`,

@@ -573,7 +573,7 @@ All 6 restructuring phases have been completed.
   number from the command, never from this sentence.
   The 131-file history was squashed into `20260813_init.sql` — not `init.sql`. `kasirmu_core::migrations::run(conn)` is invoked at
   **application-state construction**, not by a platform subsystem:
-  `apps/desktop-tauri/src/state.rs:244` (`impl AppState`), `apps/mobile-tauri/src/state.rs:163` (`impl AppState`),
+  `apps/desktop-tauri/src/state.rs:260` (`impl AppState`), `apps/mobile-tauri/src/state.rs:194` (`impl AppState`),
   `apps/cloud-server/src/db.rs:145` and `:154` (file and in-memory), `crates/kasirmu-api/src/lib.rs:466`
   (`serve()`) and `crates/kasirmu-cli`. The `:212`/`:117`/`:134`/`:457` citations this line carried were
   correct when written and have drifted with the files they name — re-derive with

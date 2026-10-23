@@ -257,7 +257,7 @@ Incident artefacts must be retained for **at least 12 months** (PCI-DSS §10.7.1
 
 > ⚠️ **This is policy, not an enforced control.** No code implements a 12-month artefact
 > floor: log retention is the caller-supplied `retention_days` parameter of
-> `kasirmu_logging::init_json_with_file` (`crates/kasirmu-logging/src/lib.rs:357`), and
+> `kasirmu_logging::init_json_with_file` (`crates/kasirmu-logging/src/lib.rs:424`), and
 > `PCI-DSS_CHECKLIST.md:111` records 10.7.1 as 📋 Planned. Treat the sentence above as a
 > requirement on operators, not a property of the system.
 

@@ -295,7 +295,7 @@ data is exposed:
 
 1. **Schema side (already shipped):** the generated PG migration enables RLS
    + a `tenant_isolation` policy on **29** tenant tables (the `RLS_TABLES` array at
-   `crates/kasirmu-core/migrations/20260813_init.pg.sql:3805-3809`; this line said 15
+   `crates/kasirmu-core/migrations/20260813_init.pg.sql:3912-3916`; this line said 15
    until 2026-10-11), and the sync data
    layer opens every transaction with `SET LOCAL oz.tenant_id`.
 2. **Cutover (must be run):** as the DB owner, run
@@ -455,7 +455,7 @@ longer exists — migrating that data requires a PocketBase backup → restore
 | `OZ_PRODUCTION` | `1` | fail-closed boot: refuses to start if either secret is unset; implies `OZ_DB_REQUIRE_TLS=1` |
 | `OZ_ENFORCE_PLANS` | `1` | reject free-plan sync (403 plan_required) |
 | `OZ_CORS_ORIGINS` | optional | extra origins beyond the default allowlist |
-| `OZ_DB_POOL_SIZE` | `8` | Postgres pool size (ignored for SQLite). The code default is **8** — `env_usize("OZ_DB_POOL_SIZE", 8)` at `apps/cloud-server/src/config.rs:226`. This row said `20` until 2026-10-11; 20 was documented in six places against a code default of 8. |
+| `OZ_DB_POOL_SIZE` | `8` | Postgres pool size (ignored for SQLite). The code default is **8** — `env_usize_via(&lookup, "OZ_DB_POOL_SIZE", 8)` at `apps/cloud-server/src/config.rs:242`. This row said `20` until 2026-10-11; 20 was documented in six places against a code default of 8. |
 | `DATABASE_URL` | `postgres://user:pass@host:5432/db?sslmode=require` | optional — switch from SQLite to the managed PostgreSQL addon (free on Northflank). Requires `sslmode=require` (fail-fast at boot). See `docs/records/audits/2026-08-15-unify-auth-and-sync.md` §Phase 3.5 for the full cutover. The image defaults to `/data/kasir.db` (SQLite); this variable overrides the connection string. |
 | `OZ_LOG_FORMAT` | `json` or unset | log output format (plain unless `json`) |
 | `OZ_APPLY_SCHEMA` | `0` post-cutover | default applies full DDL at startup; set `0` once the schema exists and the app runs as the restricted `oz_app` role (§6.3) |
@@ -873,7 +873,7 @@ nothing for one never reads as health for the other — and know which half the
 lane you are reading can even produce: `oz-cloud-server` links `kasirmu-api` and
 `kasirmu-core` only (`apps/cloud-server/Cargo.toml:19-20`), so container logs can
 carry the fallback line (its `operation` there is
-`pg_row_to_product_with_details`, `crates/kasirmu-api/src/pg/products.rs:39`) but **never**
+`pg_row_to_product_with_details`, `crates/kasirmu-api/src/pg/products.rs:134-137`) but **never**
 the sale-line one, which lives in `modules/inventory` — its absence from a
 hosted log is architecture, not health. On a device both can fire and neither
 is recorded anywhere (see the scope note above). Each line carries
@@ -1376,7 +1376,7 @@ ground truth for what actually shipped.
 
 The desktop and tablet stores are one SQLite file each, and **every app start runs the
 migration runner before anything else** — `migrations::run` is called from `AppState::new`
-before a UI exists (desktop `apps/desktop-tauri/src/state.rs:236`, tablet
+before a UI exists (desktop `apps/desktop-tauri/src/state.rs:246`, tablet
 `apps/mobile-tauri/src/state.rs:177`). "Upgrading" this product therefore means "opening the
 database with a newer build", and the runner is the only component that touches live data
 before the app can refuse anything.
@@ -1408,7 +1408,7 @@ migration SQL**:
 
 > ⚠️ **`<db>.pre-migration.bak` is ONE file, not a rotation.** It is replaced in place on every
 > upgrade that writes SQL — unlike `<db>.backup.db`, which keeps three generations
-> (`BACKUP_GENERATIONS`, `crates/kasirmu-core/src/db/mod.rs:281`). If you want history across
+> (`BACKUP_GENERATIONS`, `crates/kasirmu-core/src/db/mod.rs:294`). If you want history across
 > upgrades, copy it somewhere else before the next one.
 
 > ⚠️ **Budget disk space for three copies, not one.** At the moment of the rename the live
@@ -1453,8 +1453,8 @@ first one.
 1. **Quit the app completely** — not just close the window. The snapshot is taken by the app's
    own boot path, and the runner is the only writer you want on that file.
 2. **Confirm where the store is.** The path is `resolve_db_path(app)` = Tauri's
-   `app_data_dir()` + `kasir.db` (desktop `apps/desktop-tauri/src/state.rs:872`; tablet
-   `apps/mobile-tauri/src/state.rs:468`). The bundle identifier is `mu.kasir.app`
+   `app_data_dir()` + `kasir.db` (desktop `apps/desktop-tauri/src/state.rs:892`; tablet
+   `apps/mobile-tauri/src/state.rs:499`). The bundle identifier is `mu.kasir.app`
    (`apps/desktop-tauri/tauri.conf.json:5`), so on Windows the path is
    `%APPDATA%\mu.kasir.app\kasir.db` — **derived from those two verified inputs, not observed**;
    this runbook has no way to call the OS API. The same function copies a pre-rename store from
@@ -1491,7 +1491,7 @@ through a normal business day **and** a fresh `<db>.backup.db` exists from the n
 archive it off-machine rather than deleting it.
 
 **If it failed**, the app refuses to boot — a migration error propagates out of
-`AppState::new` (`apps/desktop-tauri/src/state.rs:236-237`). Do **not** re-run the upgrade and
+`AppState::new` (`apps/desktop-tauri/src/state.rs:246-247`). Do **not** re-run the upgrade and
 do not keep re-opening the app. Quit it, then restore:
 
 ```bash
@@ -1608,7 +1608,7 @@ designed. A custom role needs `settings:edit` added explicitly.
 **What an operator sees when they do not hold it.** The gate denies fail-closed and the renderer
 receives `{ kind: "permissionDenied", message: … }`
 (`apps/desktop-tauri/src/error.rs:124-126` and `:147`; the underlying denial text is produced
-in `crates/kasirmu-core/src/db/staff.rs:439`, e.g. `"user is inactive"`,
+in `crates/kasirmu-core/src/db/staff.rs:480-490`, e.g. `"user is inactive"`,
 `"role <id> not found"`). The UI maps that kind to the localized string
 **"You don't have permission to do this."** (`ui/src/utils/app-error.ts:248-249` →
 `app-error-permission` in `shared-ui/locales/shared.ftl:40`; the Indonesian form is
@@ -1801,7 +1801,7 @@ the swap directly, which is why the app must be closed.
 - `<db>.restore-request.json.done` is the consumed request. Safe to delete once you have read
   it.
 - The tablet's copies sit beside its own `kasir.db` in app-private storage
-  (`apps/mobile-tauri/src/state.rs:468`), which is not operator-browsable. **On that shell
+  (`apps/mobile-tauri/src/state.rs:499`), which is not operator-browsable. **On that shell
   the in-app request path is not merely unavailable in the UI — none of the three IPC commands
   is registered at all (§11.2)**, so the CLI in §11.8 is the only route an operator has there.
   Getting the file onto a machine where the CLI can reach it is part of the procedure.
