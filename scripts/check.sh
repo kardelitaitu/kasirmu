@@ -1160,10 +1160,16 @@ step "tz invariance self-test" "python3 scripts/check-tz-invariance.py --self-te
 # the tag↔version gate, the updater-manifest generator, and the signature
 # verifier each carry a --self-test (mirroring release.yml's
 # release-validate + release-publish self-test steps).
+#
+# TWO OF THESE THREE WERE REMOVED 2026-10-24 AS DUPLICATES. "release version gate" and
+# "updater signature verifier" ran the IDENTICAL command as the unguarded pair above
+# (check-release-version.mjs --self-test and verify-updater-signature.mjs --self-test),
+# from a different wiring round. The pair above is unguarded by node; this block sits
+# inside `command -v node`, so the copy HERE is the weaker one -- deleting it keeps a
+# caller on a node-less box and halves the runtime. The generator stays because nothing
+# else invokes its self-test.
 if command -v node &>/dev/null; then
-    step "release version gate" "node scripts/check-release-version.mjs --self-test" node scripts/check-release-version.mjs --self-test
     step "updater manifest generator" "node scripts/generate-latest-json.mjs --self-test" node scripts/generate-latest-json.mjs --self-test
-    step "updater signature verifier" "node scripts/verify-updater-signature.mjs --self-test" node scripts/verify-updater-signature.mjs --self-test
 else
     echo -e "${YELLOW}⚠ release toolchain checks skipped (node not found)${NC}"
 fi
