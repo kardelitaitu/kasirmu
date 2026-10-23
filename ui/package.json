@@ -9,6 +9,7 @@
     "dev": "vite",
     "dev:mobile": "vite --config vite.mobile.config.ts",
     "check:all": "node ../scripts/check-ui.mjs",
+    "check:all:self-test": "node ../scripts/check-ui.mjs --self-test",
     "build": "tsc -b && vite build",
     "build:mobile": "tsc -b && vite build --config vite.mobile.config.ts",
     "preview": "vite preview",

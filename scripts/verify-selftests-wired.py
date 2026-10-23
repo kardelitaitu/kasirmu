@@ -111,6 +111,11 @@ RUNNERS = (
     # exists being reported as a missing one gets gates muted. Found 2026-10-23 while
     # wiring check-password-policy.mjs's self-test into precheck.
     ROOT / "website" / "package.json",
+    # The UI's npm scripts, for the same reason. check-ui.mjs is invoked ONLY as
+    # `node ../scripts/check-ui.mjs` from ui/package.json's check:all — nothing in
+    # check.sh or a workflow names it, because it is the aggregator those call.
+    # Without this entry its self-test reads as UNCALLED while it is wired.
+    ROOT / "ui" / "package.json",
 )
 # verify-* and check-*. `generate-*` is deliberately absent: `generate-latest-json.mjs`
 # declares a --self-test and has three callers, but it is a GENERATOR that accepts a flag

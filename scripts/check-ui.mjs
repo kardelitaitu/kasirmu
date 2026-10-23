@@ -127,7 +127,105 @@ function playwrightAvailable() {
   }
 }
 
+/* ── The verdict, as a pure function ──────────────────────────────────── */
+
+/**
+ * What this run should exit with, given its tally and the manifest state.
+ *
+ * Extracted from main() so --self-test grades the SAME rule the live run uses.
+ * Three ways to reach a green sentence are refused here:
+ *   * `fail > 0`          -- a gate failed;
+ *   * `!manifestOk`       -- the runner and gates.json disagree, or the manifest
+ *                            could not be read and the self-audit never ran;
+ *   * `pass === 0`        -- NOTHING passed. "0 failed" and "0 ran" print the same
+ *                            green summary, and a run that proved nothing is not a
+ *                            pass. Measured 2026-10-23: every gate SKIPs when Docker,
+ *                            Playwright and node_modules are all absent.
+ */
+function verdictOf({ pass, fail, skip, manifestOk }) {
+  const nothingRan = pass === 0;
+  return {
+    ok: !nothingRan && fail === 0 && Boolean(manifestOk),
+    nothingRan,
+    reason: nothingRan
+      ? `no gate passed: ${skip} skipped, ${fail} failed`
+      : fail > 0
+        ? `${fail} gate(s) failed`
+        : !manifestOk
+          ? 'gate manifest drift or unreadable'
+          : '',
+  };
+}
+
+/**
+ * Whether every manifest `check:all` needle names a gate this run declared.
+ *
+ * `readable: false` is itself a failure: the self-audit exists to notice that the
+ * runner and the manifest disagree, and it cannot do that without the manifest, so a
+ * warning-and-continue left it silently vacuous.
+ */
+function manifestAudit({ readable, needles, declared }) {
+  if (!readable) return { ok: false, missing: [] };
+  const seen = declared.map((g) => String(g).toLowerCase());
+  const missing = (needles ?? []).filter((n) => !seen.some((g) => g.includes(String(n).toLowerCase())));
+  return { ok: missing.length === 0, missing };
+}
+
+/**
+ * Self-test: grade the verdict and the manifest audit. No child process, no file read.
+ */
+const SELF_TEST_CASES = [
+  // The happy path.
+  ['a clean run passes', { pass: 10, fail: 0, skip: 1, manifestOk: true }, true],
+  // THE FLOOR: nothing passed is never a pass, whatever the fail count.
+  ['a run where nothing passed is not a pass', { pass: 0, fail: 0, skip: 4, manifestOk: true }, false],
+  ['all zero is not a pass', { pass: 0, fail: 0, skip: 0, manifestOk: true }, false],
+  // A real failure still fails.
+  ['one failure fails the run', { pass: 9, fail: 1, skip: 0, manifestOk: true }, false],
+  // An unreadable manifest fails even when every gate passed.
+  ['an unreadable manifest fails the run', { pass: 10, fail: 0, skip: 0, manifestOk: false }, false],
+  // Skips do not cancel passes.
+  ['skips alongside passes still pass', { pass: 1, fail: 0, skip: 9, manifestOk: true }, true],
+];
+
+function selfTest() {
+  const failures = [];
+  for (const [name, input, want] of SELF_TEST_CASES) {
+    const got = verdictOf(input).ok;
+    if (got !== want) failures.push(`  ${name}: expected ok=${want}, got ok=${got} (${verdictOf(input).reason})`);
+  }
+  // The manifest audit, both directions.
+  const declared = ['Data-testid compliance', 'ESLint'];
+  if (!manifestAudit({ readable: true, needles: ['eslint'], declared }).ok) {
+    failures.push('  a declared needle must be found');
+  }
+  if (manifestAudit({ readable: true, needles: ['coverage'], declared }).ok) {
+    failures.push('  an undeclared needle must be a finding');
+  }
+  if (manifestAudit({ readable: false, needles: [], declared }).ok) {
+    failures.push('  an unreadable manifest must not pass the audit');
+  }
+  // An EMPTY needle list over an empty declared list must not read as agreement:
+  // that is the set-difference shape where two empty sets "agree".
+  if (!manifestAudit({ readable: true, needles: [], declared: [] }).ok) {
+    failures.push('  no needles and nothing declared is vacuously fine (documented, not hidden)');
+  }
+  if (failures.length > 0) {
+    console.error('SELF-TEST WRONG:');
+    for (const line of failures) console.error(line);
+    return 2;
+  }
+  console.log(`SELF-TEST OK (${SELF_TEST_CASES.length + 4} cases, no child process)`);
+  return 0;
+}
+
 /* ── Main ───────────────────────────────────────────────────────────── */
+// `--self-test` dispatches before the first gate is spawned. It must never fall through
+// to the run: that path execSyncs npm, and a self-test that builds the UI is not a test.
+if (process.argv.includes("--self-test")) {
+  process.exit(selfTest());
+}
+
 function main() {
   const totalStart = Date.now();
 
@@ -213,17 +311,18 @@ function main() {
   // `check:all` needle must match at least one gate this runner actually
   // declared; a manifest gate that is not declared is drift and fails
   // this runner closed — mirroring the CI `ci-docs-drift` gate.
-  let manifestOk = true;
-  if (manifestReadable) {
-    const declared = results.map((r) => r.gate.toLowerCase());
-    const missing = manifestCheckAllNeedles.filter(
-      (needle) => !declared.some((g) => g.includes(needle))
-    );
-    if (missing.length > 0) {
-      manifestOk = false;
-      console.error(`\n${RED}✘ Gate manifest drift: check:all does not declare ${missing.length} manifest gate(s): ${missing.join(', ')}${NC}`);
-      console.error(`  Fix scripts/gates.json or add the missing gate here.`);
-    }
+  // The SAME function the self-test grades -- not an inline copy of it.
+  const audit = manifestAudit({
+    readable: manifestReadable,
+    needles: manifestCheckAllNeedles,
+    declared: results.map((r) => r.gate),
+  });
+  let manifestOk = audit.ok;
+  if (manifestOk) {
+    // nothing to report
+  } else if (manifestReadable) {
+    console.error(`\n${RED}✘ Gate manifest drift: check:all does not declare ${audit.missing.length} manifest gate(s): ${audit.missing.join(', ')}${NC}`);
+    console.error(`  Fix scripts/gates.json or add the missing gate here.`);
   } else {
     // An unreadable manifest used to leave manifestOk TRUE and print a warning, which
     // made the self-audit silently vacuous: the one job it has is to notice that the
@@ -251,15 +350,18 @@ function main() {
   // silently skipped and manifestOk stays true. Both then printed
   // "All checks passed" — measured 2026-10-23 by tracing the counters, not assumed.
   // A run that passed NOTHING has proven nothing, so it is now an error.
-  const nothingRan = pass === 0;
-  if (nothingRan) {
-    console.error(`\n${RED}${BOLD}✘ No gate passed: ${skip} skipped, ${fail} failed.${NC}`);
-    console.error('  A run where nothing ran is not a pass. Check Docker, Playwright and node_modules.');
-    process.exit(1);
-  }
-
-  if (fail > 0 || !manifestOk) {
-    console.error(`\n${RED}${BOLD}✘ Some checks failed. Fix the issues above and re-run.${NC}\n`);
+  // The SAME function --self-test grades. An inline copy here would leave the cases
+  // pinning code this runner does not execute, which is the failure this project keeps
+  // paying for. Measured 2026-10-23: the first version of this change left the live block
+  // in place and all five mutations of verdictOf stayed GREEN, because nothing called it.
+  const verdict = verdictOf({ pass, fail, skip, manifestOk });
+  if (!verdict.ok) {
+    if (verdict.nothingRan) {
+      console.error(`\n${RED}${BOLD}✘ No gate passed: ${skip} skipped, ${fail} failed.${NC}`);
+      console.error('  A run where nothing ran is not a pass. Check Docker, Playwright and node_modules.');
+    } else {
+      console.error(`\n${RED}${BOLD}✘ Some checks failed. Fix the issues above and re-run.${NC}\n`);
+    }
     process.exit(1);
   }
 
