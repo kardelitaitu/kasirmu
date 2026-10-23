@@ -600,6 +600,10 @@ step "client type drift self-test" "python3 scripts/check-client-type-drift.py -
 # in dev-ci.yml#static-gates, and NOT in pre-commit, which must stay fast.
 # Gate: scripts/gates.json -> "query-plan-gate".
 step "query plan gate" "python3 scripts/check-query-plans.py --check" python3 scripts/check-query-plans.py --check
+# The report formatters between probe output and the console are Python, and they are
+# where this gate's three measured defects lived (ANSI noise, phantom blocks from cargo's
+# own "Compiling ..." lines, a plan body running past the harness footer). Pure: no build.
+step "query plan formatter self-test" "python3 scripts/check-query-plans.py --self-test" python3 scripts/check-query-plans.py --self-test
 
 # ── Scratch-directory leaks — an unguarded fixture dir is never deleted ──────
 # `kasirmu_test_support::scratch_dir` returns a bare PathBuf whose drop deletes
