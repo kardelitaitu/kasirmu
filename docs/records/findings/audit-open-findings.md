@@ -728,7 +728,20 @@ reproduce; each correction is inline, in the bullet that carries it.
   entries in `scoped_orphans`, of which **0 of 25** lack the suffix (11:55 +07, JSON-parsed; the file
   clean and byte-identical to HEAD at that minute) — so the hazard is prospective, not current, and it
   is a statement about the data **right now** rather than about the code, which is why it is filed here
-  instead of as a code comment. One adjacent inaccuracy was measured and then repaired underneath this
+  instead of as a code comment.
+
+**PINNED 2026-10-24 — the invariant this bullet predicted would rot is now graded.** Re-measured: the
+allowlist holds **21** entries, **0** lacking the suffix (JSON-parsed), so the data has not drifted.
+The code now asserts the invariant rather than trusting it: self-test case 10 drives the real collector
+(`orphan_scoped`) with a suffixed AND an unsuffixed name, pins that the unsuffixed one is dropped,
+and asserts every committed `scoped_orphans` entry is visible to that collector.
+
+**The first draft of that case was vacuous and the mutation found it.** It asserted the SHAPE of an
+entry (that `section_names` reads a bare name) rather than driving the COLLECTOR — and
+`section_names` reads a bare name perfectly well, so the predicate was always true. Proven by
+replacing the assertion with `True`: the suite stayed green. Rewritten against `orphan_scoped`, the
+collector mutation `c.endswith("_scoped") and` → deleted now KILLS the suite. **A case about a filter
+must run the filter**, not a function that happens to read the same data. One adjacent inaccuracy was measured and then repaired underneath this
   bullet: at 11:48 +07 the gate's summary printed "27 allowlisted" while the allowlist held 25, because
   that line counted the *detected* orphans (`all_orphans`, `:1309`/`:1313`) under the word
   "allowlisted"; by 11:55 +07 the same line printed "25 entries allowlisted, 27 orphans measured in the
