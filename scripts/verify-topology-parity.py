@@ -399,10 +399,98 @@ def self_test() -> int:
     finally:
         VENDORED, UI, UI_ROOT = real
 
+    # PHASE 2's own rules. expected_kinds() was graded above, but check_corpus() -- which
+    # is what ACTUALLY fails a stale corpus -- was never called, so blanking it stayed
+    # green (measured 2026-10-24, the same shape as phase 1). Five independent rules live
+    # in it and each one is a different way the corpus can lie, so each gets a case.
+    #
+    # Driven the same way as phase 1: point MATRIX at a fixture and grade the exit code.
+    # The fixture is derived from a tiny contract, so the 2x2 verdict grid is 4 entries.
+    import json
+
+    global MATRIX
+    real_matrix = MATRIX
+    contract_min = {
+        "schemaVersion": 2,
+        "semanticPairings": [{"source": "store", "target": "product",
+                              "relationshipType": "sells"}],
+        "nodeKinds": ["store", "product"],
+    }
+    kinds_min = expected_kinds(contract_min)          # ["store", "product"]
+    grid = {f"{s}->{t}": True for s in kinds_min for t in kinds_min}
+    row_ok = {"source": "store", "target": "product", "relationshipType": "sells",
+              "verdicts": dict(grid)}
+
+    def corpus_verdict(matrix_text: str | None) -> tuple:
+        """Write a fixture corpus and return check_corpus()'s answer.
+
+        The module binding is set through globals(): a plain "MATRIX = path" here would
+        create a LOCAL, leave the global untouched, and silently grade the real
+        repository corpus instead of the fixture -- a green self-test answering a question
+        it was never asked. This is the same trap as the UnboundLocalError above, in the
+        other direction, and it is what made the first draft of these cases fail.
+        """
+        global MATRIX
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "matrix.json"
+            if matrix_text is not None:
+                path.write_text(matrix_text, encoding="utf-8")
+            MATRIX = path
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                return check_corpus(contract_min)
+
+    def as_text(obj) -> str:
+        return json.dumps(obj, indent=2)
+
+    try:
+        good = {"contractSchemaVersion": 2, "kinds": kinds_min, "rows": [row_ok]}
+        want("a well-formed corpus passes", corpus_verdict(as_text(good)), 0)
+
+        # (1) NO corpus at all: fail, and say how to regenerate.
+        want("a missing corpus fails", corpus_verdict(None), 1)
+
+        # (2) unparseable JSON is a failure, not a traceback.
+        want("invalid JSON fails", corpus_verdict("{not json"), 1)
+
+        # (3) stale schemaVersion -- the corpus was generated against an older contract.
+        stale = dict(good, contractSchemaVersion=1)
+        want("a stale schemaVersion fails", corpus_verdict(as_text(stale)), 1)
+
+        # (4) rows that do not mirror the contract pairings, in order.
+        mismatched = dict(good, rows=[dict(row_ok, target="wrong-kind-here")])
+        want("rows that do not mirror the contract fail", corpus_verdict(as_text(mismatched)), 1)
+
+        # (5) a declared kind the corpus never probes: the corpus looks complete but
+        # proves nothing about that kind. This is the quiet direction.
+        short_kinds = dict(good, kinds=["store"])
+        want("an unprobed kind fails", corpus_verdict(as_text(short_kinds)), 1)
+
+        # (6) a row holding the wrong number of verdicts: skipped before the value check.
+        half = dict(good, rows=[dict(row_ok, verdicts={"store->store": True})])
+        want("a row with too few verdicts fails", corpus_verdict(as_text(half)), 1)
+
+        # (7) non-boolean verdicts: a string "true" is not a verdict.
+        strfy = dict(good, rows=[dict(row_ok, verdicts={k: "yes" for k in grid})])
+        want("non-boolean verdicts fail", corpus_verdict(as_text(strfy)), 1)
+
+        # (8) the all-false row. Historically the family-match rule failed and the
+        # Location row went all-false while every test still passed; a full grid of
+        # False is complete AND meaningless, so it must be refused rather than counted.
+        dead = dict(good, rows=[dict(row_ok, verdicts={k: False for k in grid})])
+        want("a row that admits no kind pair fails", corpus_verdict(as_text(dead)), 1)
+
+        # And the grade must move: a corpus with the SAME rules broken in a way the
+        # cases above do not cover (extra unexpected row) also fails, so rule 4 is
+        # pinned from both directions rather than only "missing".
+        extra = dict(good, rows=[row_ok, dict(row_ok, source="ghost")])
+        want("an unexpected extra row fails", corpus_verdict(as_text(extra)), 1)
+    finally:
+        MATRIX = real_matrix
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (13 cases, no repository file touched)")
+    print("SELF-TEST OK (23 cases, no repository file touched)")
     return 0
 
 
