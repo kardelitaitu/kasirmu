@@ -495,6 +495,20 @@ nothing, and it *reads* like a gate failure — the most misleading possible res
 "the gate missed it", check that the plant satisfies the rule's own predicate. Here that meant
 reading `hasStopword()` and discovering the rule grades PROSE, not arbitrary text.
 
+#### The same trap, twice more in one round
+
+| gate | plant | why it did not fire |
+|---|---|---|
+| `check-debt-ledger.py` | `**O-Z99 planted probe**` citing a dead path | the entry-ID pattern is `O-[HMLT]\d+`; **`Z` is not a tier**, so the heading never parsed. Re-planted as `O-H99` → exit 1, naming the entry and the path. |
+| `verify-architecture-boundaries.py` | — | not planted: a real violation means editing a crate's `Cargo.toml`, too invasive. Its `--metadata-file` fixture mode covers the logic instead. |
+
+**Two of the four plants this round were the wrong shape, and both looked exactly like a gate
+defect.** That is the single most important measurement lesson of this session, and it is worth
+stating as a rule: **a plant that does not fire proves the plant is wrong, not that the gate is —
+unless you have first checked the plant against the rule's own predicate.** The two gates that did
+fire (`check-seo.mjs`, `check-rust-doc-paths.py`, `check-password-policy.mjs`) fired because the
+plant satisfied the predicate; the two that did not, did not.
+
 #### Extending the sweep to EVERY function found three more unpinned detectors
 
 The sweep mutates only the FIRST candidate per checker. Triaging every survivor by mutating *all*
