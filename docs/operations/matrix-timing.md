@@ -68,3 +68,84 @@ round agenda with no number behind it.
 The number says the size is not the problem — **the shape is.** One step is half the
 runtime, and half the steps are free.
 
+## The build cache is mostly not caching
+
+Measured 2026-10-23 with `sccache --show-stats` on this checkout:
+
+```
+Compile requests            7306
+Compile requests executed   4595
+Cache hits                    51      <- 1.12 %
+Cache misses                4522
+Non-cacheable calls         2647
+
+Non-cacheable reasons:
+  incremental                 1456
+  crate-type                   612
+  multiple input files         324
+  missing input                103
+  missing output_dir            28
+```
+
+**1.12 % hit rate on a 4595-request history.** `.cargo/config.toml` sets
+`rustc-wrapper = "sccache"` and promises "a cold `cargo check --workspace` drops from ~22s to
+~0.6s on the second run (38x)". That number cannot have come from this configuration, because
+the same file's next paragraph records why:
+
+> `[profile.dev] incremental = true` keeps tight edit->check loops fast but makes
+> dev-profile compiles non-cacheable for sccache.
+
+So the tradeoff is KNOWN, documented, and deliberate. 1456 of the 2647 non-cacheable calls are
+incremental compiles -- more than half. This file does not propose changing it: incremental
+builds are what make a 286-second `cargo clippy` tolerable on the SECOND run, and a cache hit
+only pays off on a cold one.
+
+What it does record is the consequence for the matrix: **the 286 s clippy step cannot be made
+cheaper by caching, under the current profile.** Any plan that assumes a warm sccache will
+absorb it is wrong by measurement.
+
+## Can the static half actually run concurrently?
+
+Measured 2026-10-23 on eight representative static gates (the full 28 were not tested):
+
+```
+serial      22,898 ms
+concurrent  12,073 ms      speedup 1.9x
+```
+
+Safety: 8/8 exit 0 across four concurrent batches, output identical to serial, and
+`git status --porcelain` hashed to the SAME SHA-256 before and after. No script binds a port,
+takes a lock, or shares a cache.
+
+**The 1.9x is a structural ceiling, not a harness limitation.** Two of the eight are ~21 s of
+the 23 s total (`verify-debt-markers.py` 11.2 s, `verify-shell-syntax.py` 10.1 s); the other six
+sum to 1.5 s. Eight-way parallelism cannot beat the two longest jobs, and the same shape is
+likely to recur across the remaining 20 static steps.
+
+### The hazard the measurement found, which is independent of parallelism
+
+`verify-shell-syntax.py --self-test` wrote its probe to `ROOT / "scripts" /
+"_syntax_selftest_tmp.sh"` -- INSIDE the directory the checker enumerates. At one point it
+writes an intentionally BROKEN script (unterminated quote) and leaves it on disk briefly.
+
+Two consequences, and only one needs concurrency to bite:
+
+1. `check.sh` runs the plain checker and its self-test as ADJACENT STEPS (87/88, and the same
+   pair shape recurs at 216/221, 228/229, 470/471, 646/647, 872/873, 875/876, 886/887). A
+   concurrent rewrite would schedule them together, and the plain run could read the
+   half-written file and report a PARSE ERROR on a clean tree. **Ten deliberate trials did not
+   reproduce this**, so it is recorded as LATENT, not demonstrated.
+2. The scope differential a few lines ABOVE compares the git count against the no-git count. An
+   untracked file present during that comparison makes the two disagree and fails the self-test
+   for a reason that is not a scope bug. This one needs no concurrency at all.
+
+Fixed (`538f9472c`) by moving the probe to `target/`, which is gitignored and therefore never
+counted by the git path. Every assertion is unchanged: `check()` takes any path. Verified: 7/7
+self-test cases, real run green at 63 scripts, and `scripts/` is clean of the probe afterwards.
+
+### What this means for the parallelisation proposal
+
+The measured ceiling on the static half stays **~155 s** (194 s of independent subprocesses, at
+best 5x). Eight-way is not achievable because two jobs dominate, and the realistic figure is
+closer to 1.9-2.5x on that slice -- **call it 60-100 s, not 155 s.** The earlier estimate assumed
+uniform sizes, which this measurement disproves.
