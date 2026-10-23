@@ -19,6 +19,7 @@
     "check:strings:self-test": "node --experimental-strip-types scripts/check-ui-strings.mjs --self-test",
     "check:links": "node scripts/check-links.mjs",
     "check:seo": "node --experimental-strip-types scripts/check-seo.mjs",
+    "check:seo:self-test": "node --experimental-strip-types scripts/check-seo.mjs --self-test",
     "astro": "astro",
     "deploy": "bash ../scripts/wrangler-deploy.sh",
     "preview": "astro preview",

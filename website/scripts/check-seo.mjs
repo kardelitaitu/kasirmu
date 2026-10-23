@@ -230,6 +230,18 @@ const HEADLESS_TREES = [
 // means a doc that no longer builds is a finding rather than a silent gap.
 const DOCS_SOURCE = new URL('../src/content/docs/', import.meta.url);
 
+// ── Pure decisions ──────────────────────────────────���───────────────────────
+// Everything from here to `isPricing` is a function of its ARGUMENTS alone: no
+// readFileSync, no dist/, no process exit. These are the parts of this gate that
+// DECIDE something, and every live arm below calls them rather than keeping a
+// second copy — a copy would leave --self-test grading code the gate never
+// runs. They are separated for one reason: a decision that cannot be called
+// with a made-up input cannot be tested, and this file read an EMPTY input as
+// agreement in two places (the sitemap set difference and the collection ⇄
+// build comparison). A corpus that separates no source at all, and two sets
+// that are both empty, are the shapes that pass a comparison by accident — see
+// the `empty-*` cases in --self-test.
+
 /**
  * Every doc the collection loads, keyed by the URL `[...slug].astro` builds for
  * it: the file's first directory is its locale prefix and the rest is its slug,
@@ -239,11 +251,17 @@ const DOCS_SOURCE = new URL('../src/content/docs/', import.meta.url);
  * decided by the build in the check below, not by a list this script would have
  * to keep in step with src/i18n — so a doc filed under a locale the site does
  * not serve is a finding instead of a doc that silently exists nowhere.
+ *
+ * `sources` is every file the collection loads (repo-relative, forward
+ * slashes). It is an argument rather than something read here so the decision
+ * can be exercised against a corpus that is EMPTY — the one input this function
+ * must never answer "all fine" to, since an empty map classifies every docs page
+ * as marketing and still reports a clean run.
  */
-function readDocsCorpus() {
+function buildDocsCorpus(sources) {
   const docs = new Map(); // built URL path -> source file, so findings can name it
   const unbuildable = []; // loaded by the collection, but no route can build it
-  for (const name of readdirSync(DOCS_SOURCE, { recursive: true })) {
+  for (const name of sources) {
     const relative = String(name).split(sep).join('/');
     if (!relative.endsWith('.md')) continue;
     const source = `src/content/docs/${relative}`;
@@ -257,19 +275,142 @@ function readDocsCorpus() {
   return { docs, unbuildable };
 }
 
+/**
+ * `buildDocsCorpus` plus the one fact a caller cannot recover afterwards:
+ * whether there was any corpus AT ALL.
+ *
+ * Returns `null` when no source file produced an entry — the caller MUST treat
+ * that as a finding, never as an empty-but-fine corpus. An empty map is
+ * otherwise indistinguishable from "the docs layer was deleted on purpose", and
+ * every docs page would be silently judged as a marketing page by a green run.
+ */
+function docsCorpusFrom(sources) {
+  const corpus = buildDocsCorpus(sources);
+  if (corpus.docs.size === 0 && corpus.unbuildable.length === 0) return null;
+  return corpus;
+}
+
+/**
+ * Sitemap submissions judged against the pages the build can index, BOTH ways.
+ * Pure: both sides arrive as arguments, and the reason a loc is disallowed
+ * arrives as a callback so the domain text stays at the call site.
+ *
+ * The empty-input rule is the point of this function. `expected` (one entry per
+ * indexable page) and `entries` (one per `<loc>`) are both EMPTY when their
+ * walk fails — a build with no pages, a sitemap file with no locs — and the
+ * naive form of this check is "each submission not expected: report" plus "each
+ * expected not seen: report", a loop pair that says NOTHING when both sides are
+ * empty. Emptiness is decided here, before any set difference, and reported as
+ * a finding against the floor.
+ */
+function sitemapVerdict({ expected, entries, minimumExpected = 1, describe }) {
+  const problems = [];
+  const seen = new Map();
+  for (const { loc, file } of entries) {
+    if (seen.has(loc)) {
+      problems.push({ page: file, message: `submits ${loc} twice (also in ${seen.get(loc)})` });
+    }
+    seen.set(loc, file);
+  }
+  for (const { loc, file } of entries) {
+    if (expected.has(loc)) continue;
+    problems.push({ page: file, message: `submits ${loc}, which ${describe(loc)}` });
+  }
+  const missing = [];
+  for (const loc of expected) if (!seen.has(loc)) missing.push(loc);
+  for (const loc of missing) {
+    problems.push({ page: loc, message: 'is an indexable built page but is missing from the sitemap' });
+  }
+  // Counted, not assumed: a sitemap check over zero expected pages has verified
+  // nothing, and a green row for a site with no pages is the worst direction.
+  if (expected.size < minimumExpected) {
+    problems.push({
+      page: '/sitemap-index.xml',
+      message: `has ${expected.size} indexable page(s) to compare against (floor ${minimumExpected}) — the sitemap was compared against nothing, so this check verified nothing`,
+    });
+  }
+  return { problems, submitted: seen.size, missing };
+}
+
+/** Every built page must be a class this gate knows how to vet. */
+const unclassifiedPages = (pages) =>
+  pages.filter((page) => !page.rec).map((page) => ({ url: page.url }));
+
+/**
+ * The collection and the build must agree, in both directions.
+ *
+ * Direction one (a corpus entry with no page) was always here. Direction two is
+ * the arm this function gained: a page the BUILD calls a docs article or a guide
+ * must have an entry in its collection. Without it an empty corpus and a build
+ * with no docs pages agreed perfectly and printed nothing — and the cost is not
+ * only a missing message: `classify` demotes every docs page to `content` when
+ * the corpus is empty, so those pages are then graded against marketing's rules
+ * and their real defects go unreported.
+ *
+ * `requiredKinds` is `[[kind, corpusHasAnyEntry]]`, one pair per collection.
+ * `docs` is `[url, source]` pairs; `unbuildable` is the docs loader's own list;
+ * `guides.guides` is `[url, entry]` pairs, its `__unbuildable__` keys included.
+ */
+function corpusBuildFindings({ docs, unbuildable, guides, builtPaths, requiredKinds }) {
+  const problems = [];
+  for (const [url, source] of docs) {
+    if (!builtPaths.has(url)) {
+      problems.push({
+        page: source,
+        message: `is loaded as a doc (the route would build ${url}) but the build produced no page for it — is its directory a locale the site serves?`,
+      });
+    }
+  }
+  for (const { source, because } of unbuildable) {
+    problems.push({ page: source, message: `is loaded by the guides collection but can never be built: ${because}` });
+  }
+  for (const [url, entry] of guides.guides) {
+    if (url.startsWith('__unbuildable__')) {
+      problems.push({
+        page: entry.source,
+        message: 'is loaded by the guides collection but can never be built: it sits outside any locale directory',
+      });
+      continue;
+    }
+    if (!builtPaths.has(url)) {
+      problems.push({
+        page: entry.source,
+        message: `is loaded as a guide (the route would build ${url}) but the build produced no page for it — is its directory a locale the site serves?`,
+      });
+    }
+  }
+  for (const [kind, hasCorpus] of requiredKinds) {
+    if (hasCorpus) continue;
+    problems.push({
+      page: kind,
+      message: `pages of this class are in the build, but its collection read no entry at all — the two-way comparison had an empty side, so it verified nothing`,
+    });
+  }
+  return problems;
+}
+
 // Fail loudly rather than classify every docs page as marketing if the corpus
 // cannot be read: without it this gate cannot tell a docs article from a
 // marketing page, and guessing would produce exactly the false positives this
-// class exists to prevent.
+// class exists to prevent. An EMPTY corpus fails here for that same reason — see
+// docsCorpusFrom, and the `empty-docs-corpus` case in --self-test.
 const { docs: docsCorpus, unbuildable } = (() => {
+  let corpus;
   try {
-    return readDocsCorpus();
+    corpus = docsCorpusFrom(readdirSync(DOCS_SOURCE, { recursive: true }));
   } catch (error) {
     throw new Error(
       `cannot read the docs corpus at ${fileURLToPath(DOCS_SOURCE)} (${error.message}) — ` +
         'check:seo expects to run from the website package against a checkout that has src/content/docs',
     );
   }
+  if (corpus === null) {
+    throw new Error(
+      `the docs corpus at ${fileURLToPath(DOCS_SOURCE)} holds no .md file — without it every docs ` +
+        'page would be classified as a marketing page, and this gate would still report a clean run',
+    );
+  }
+  return corpus;
 })();
 
 // The guides corpus, for the same reason the docs corpus is read rather than
@@ -283,9 +424,15 @@ const { docs: docsCorpus, unbuildable } = (() => {
 // checkout with no guides yet has no corpus and no guides to judge.
 const GUIDES_SOURCE = new URL('../src/content/guides/', import.meta.url);
 
-function readGuidesCorpus() {
+/**
+ * The guides corpus: `sources` is every file the collection loads, and
+ * `readFrontmatter(relative)` supplies one file's front matter (the live caller
+ * reads it from disk; --self-test hands back a literal, which is what makes the
+ * `target` / `commercialParent` parsing callable).
+ */
+function buildGuidesCorpus(sources, readFrontmatter) {
   const guides = new Map(); // built URL path -> { source, locale, slug, target, commercialParent }
-  for (const name of readdirSync(GUIDES_SOURCE, { recursive: true })) {
+  for (const name of sources) {
     const relative = String(name).split(sep).join('/');
     if (!relative.endsWith('.md')) continue;
     const source = `src/content/guides/${relative}`;
@@ -300,7 +447,7 @@ function readGuidesCorpus() {
     const slug = rest.join('/');
     const frontmatter = (() => {
       try {
-        return /^---\r?\n([\s\S]*?)\r?\n---/.exec(readFileSync(new URL(relative, GUIDES_SOURCE), 'utf8'))?.[1] ?? '';
+        return /^---\r?\n([\s\S]*?)\r?\n---/.exec(String(readFrontmatter(relative) ?? ''))?.[1] ?? '';
       } catch {
         return '';
       }
@@ -319,7 +466,11 @@ function readGuidesCorpus() {
   return guides;
 }
 
-const guidesCorpus = existsSync(GUIDES_SOURCE) ? readGuidesCorpus() : new Map();
+const guidesCorpus = existsSync(GUIDES_SOURCE)
+  ? buildGuidesCorpus(readdirSync(GUIDES_SOURCE, { recursive: true }), (relative) =>
+      readFileSync(new URL(relative, GUIDES_SOURCE), 'utf8'),
+    )
+  : new Map();
 
 /** `/id/panduan/` and `/en/guides/` — the hub of the guides layer, per locale. */
 const isGuideHub = (path, locale) => path === `/${locale}/${GUIDE_SEGMENT[locale] ?? 'guides'}/`;
@@ -334,11 +485,11 @@ const isGuideHub = (path, locale) => path === `/${locale}/${GUIDE_SEGMENT[locale
  * for every other page — it has to ask the corpus. A guide with no counterpart
  * is a finding, because the owner ruled they are drafted together (R2).
  */
-function guideCounterpart(path, lang) {
-  const self = guidesCorpus.get(path);
+function guideCounterpart(path, lang, guides = guidesCorpus) {
+  const self = guides.get(path);
   if (self?.locale) {
     const slug = self.slug;
-    for (const [url, other] of guidesCorpus) {
+    for (const [url, other] of guides) {
       if (other.locale !== lang || !other.slug) continue;
       const otherPaired = other.pair ?? other.slug;
       const selfPaired = self.pair ?? slug;
@@ -351,7 +502,14 @@ function guideCounterpart(path, lang) {
   return null;
 }
 
-function classify(url) {
+/**
+ * The gate's top decision: one class per built page, or `null` for a page this
+ * gate does not know — which is itself a finding (check 0), because an
+ * unclassified page is how a surface ends up outside every check. The corpora
+ * are arguments (defaulted to the live ones) so --self-test can classify a
+ * made-up page against a made-up collection.
+ */
+function classify(url, { docs = docsCorpus, guides = guidesCorpus } = {}) {
   if (SELF_HEAD_PAGES[url]) return { url, ...SELF_HEAD_PAGES[url] };
   const tree = HEADLESS_TREES.find((entry) => url.startsWith(entry.prefix));
   if (tree) return { url, kind: tree.kind, canonicalPath: null };
@@ -361,7 +519,7 @@ function classify(url) {
   // A docs article is one the corpus builds. The docs hub (/xx/docs/) is a page
   // in its own right and stays a plain content page. A guide is the same idea
   // for the guides collection, whose segment differs per locale.
-  const kind = docsCorpus.has(path) ? 'docs article' : guidesCorpus.has(path) ? 'guide' : 'content';
+  const kind = docs.has(path) ? 'docs article' : guides.has(path) ? 'guide' : 'content';
   return { url, kind, locale, canonicalPath: path };
 }
 
@@ -483,19 +641,33 @@ function headerValue(rules, url, name) {
 }
 
 // ── Checks ──────────────────────────────────────────────────────────────────
+// Read before the live exit decision below, so --self-test can ask that
+// decision what it would do with the findings the gate actually produced.
+const SELF_TEST = process.argv.includes('--self-test');
 const files = walkAll(DIST).filter((f) => f.endsWith('.html')).sort();
 const pages = files.map(parsePage);
 const findings = [];
 const add = (check, page, message) => findings.push({ check, page, message });
 
+/**
+ * The exit decision, as a function of the finding list alone.
+ *
+ * One rule, deliberately: any finding at all fails the gate. It is a function
+ * rather than an `if` on the live list because that is the only way --self-test
+ * can ask "does a finding of kind X actually redden the run?" of the same code
+ * the live path uses — an `if` with a shadow of itself in the test block would
+ * let the two drift, and a gate whose witness is its own copy witnesses nothing.
+ */
+function verdict(list) {
+  return { exitCode: list.length ? 1 : 0 };
+}
+
 const byCanonical = new Map();
 for (const page of pages) if (page.canonical?.length === 1) byCanonical.set(page.canonical[0], page);
 
 // 0. Every built page must be a class this gate knows how to vet.
-for (const page of pages) {
-  if (!page.rec) {
-    add('page classes', page.url, 'is not a page class this gate knows — decide how it is indexed and classify it in check-seo.mjs');
-  }
+for (const { url } of unclassifiedPages(pages)) {
+  add('page classes', url, 'is not a page class this gate knows — decide how it is indexed and classify it in check-seo.mjs');
 }
 
 // 0b. The collection and the build must agree. The sidebar, the llms.txt page
@@ -503,23 +675,23 @@ for (const page of pages) {
 // produces no page disappears from the entire site at once — and nothing else
 // here would notice, because a page that was never written leaves no trace in
 // dist/ to check.
+//
+// The reverse direction is asserted too, and it is the one an empty corpus used
+// to hide in: a page the build classifies as a docs article or a guide proves
+// its collection was read, so a corpus that came back empty while such pages
+// exist is a finding rather than a clean run over misclassified pages.
 const builtPaths = new Set(pages.map((page) => page.path));
-for (const [url, source] of docsCorpus) {
-  if (!builtPaths.has(url)) {
-    add('page classes', source, `is loaded as a doc (the route would build ${url}) but the build produced no page for it — is its directory a locale the site serves?`);
-  }
-}
-for (const { source, because } of unbuildable) {
-  add('page classes', source, `is loaded by the docs collection but can never be built: ${because}`);
-}
-for (const [url, entry] of guidesCorpus) {
-  if (url.startsWith('__unbuildable__')) {
-    add('page classes', entry.source, `is loaded by the guides collection but can never be built: it sits outside any locale directory`);
-    continue;
-  }
-  if (!builtPaths.has(url)) {
-    add('page classes', entry.source, `is loaded as a guide (the route would build ${url}) but the build produced no page for it — is its directory a locale the site serves?`);
-  }
+for (const { page, message } of corpusBuildFindings({
+  docs: docsCorpus,
+  unbuildable,
+  guides: { guides: guidesCorpus },
+  builtPaths,
+  requiredKinds: [
+    ['docs article', docsCorpus.size > 0],
+    ['guide', guidesCorpus.size > 0],
+  ],
+})) {
+  add('page classes', page, message);
 }
 
 // 1. canonical ⇄ og:url.
@@ -644,28 +816,25 @@ for (const file of sitemapFiles) {
   }
   for (const [, loc] of xml.matchAll(/<loc>([^<]+)<\/loc>/g)) submitted.push({ loc, file: name });
 }
-const seen = new Map();
-for (const { loc, file } of submitted) {
-  if (seen.has(loc)) add('sitemap', file, `submits ${loc} twice (also in ${seen.get(loc)})`);
-  seen.set(loc, file);
-}
 const expectedSubmissions = new Set(
   pages
     .filter((p) => p.rec && isLocalePage(p.rec) && !isNonPublic(`${SITE}${p.path}`))
     .map((p) => `${SITE}${p.path}`),
 );
-for (const { loc, file } of submitted) {
-  if (expectedSubmissions.has(loc)) continue;
-  const reason = isNonPublic(loc)
-    ? `is one of NON_PUBLIC_PAGES (${NON_PUBLIC_PAGES.join(', ')}) and must not be submitted`
-    : loc === `${SITE}/`
-      ? 'is the locale-detect root, which canonicalises to /id/ — submitting it contradicts its own canonical'
-      : 'is not an indexable built page (it is a gated, standalone, static or chrome page)';
-  add('sitemap', file, `submits ${loc}, which ${reason}`);
-}
-for (const loc of expectedSubmissions) {
-  if (!seen.has(loc)) add('sitemap', loc, 'is an indexable built page but is missing from the sitemap');
-}
+// Both directions, plus the emptiness floor, decided in one pure function so
+// the rule can be exercised against two EMPTY sets (the case the two set
+// differences alone answer "fine" to — see --self-test).
+const sitemap = sitemapVerdict({
+  expected: expectedSubmissions,
+  entries: submitted,
+  describe: (loc) =>
+    isNonPublic(loc)
+      ? `is one of NON_PUBLIC_PAGES (${NON_PUBLIC_PAGES.join(', ')}) and must not be submitted`
+      : loc === `${SITE}/`
+        ? 'is the locale-detect root, which canonicalises to /id/ — submitting it contradicts its own canonical'
+        : 'is not an indexable built page (it is a gated, standalone, static or chrome page)',
+});
+for (const { page, message } of sitemap.problems) add('sitemap', page, message);
 
 // 4. noindex discipline.
 const headerRules = parseHeaders();
@@ -1217,7 +1386,402 @@ if (findings.length) {
     for (const { page, message } of found.slice(0, MAX_PRINTED)) console.log(`  ${page} ${message}`);
     if (found.length > MAX_PRINTED) console.log(`  …and ${found.length - MAX_PRINTED} more (capped at ${MAX_PRINTED})`);
   }
+}
+// The one line the whole gate turns on. It is CALLED, then reported: --self-test
+// below asserts that this exact call disagrees with the empty list whatever the
+// build finds — so deleting it, or neutralising its test, reddens the gate
+// instead of quietly turning every future defect into "SEO/HEAD OK".
+const liveExitCode = verdict(findings).exitCode;
+if (liveExitCode) {
   process.exitCode = 1;
 } else {
   console.log('\nSEO/HEAD OK');
+}
+
+// ── Self-test: `--self-test` ────────────────────────────────────────────────
+// Everything above this line has RUN by the time we get here (the file is a
+// script, not a module with an entry point), so the block below re-enters only
+// the PURE decisions — the same functions the live arms called a moment ago,
+// never a copy of them. A mutation to any rule below therefore changes both the
+// live gate and this verdict, which is the only arrangement in which a green
+// self-test says anything about the gate that just ran.
+//
+// Each case states what it PINS, in both directions: the shape that must be
+// reported and the shape that must not. The `empty-*` cases are the whole
+// reason the block exists — every one of them names an input that makes a set
+// comparison agree with itself for no reason.
+if (SELF_TEST) {
+  const results = [];
+  const expect = (name, ok, detail) => results.push({ name, ok: Boolean(ok), detail });
+  /** The same finding, as the one line it would print — what a case matches on. */
+  const lines = (problems) => problems.map((p) => `${p.page} ${p.message}`);
+  const anyLine = (problems, re) => lines(problems).some((line) => re.test(line));
+  const describeTag = (loc) => `is a stand-in reason for ${loc}`;
+
+  // ── sitemapVerdict ────────────────────────────────────────────────────────
+  const S = 'https://kasir.mu';
+
+  {
+    // The defect this function exists for: a sitemap read that produced nothing
+    // and a page walk that produced nothing. Both set differences are empty, and
+    // the emptiness must be reported rather than read as agreement.
+    const r = sitemapVerdict({ expected: new Set(), entries: [], describe: describeTag });
+    expect(
+      'empty-both-sides',
+      anyLine(r.problems, /0 indexable page\(s\) to compare against/),
+      lines(r.problems).join(' | ') || '(nothing reported)',
+    );
+  }
+
+  {
+    // Half-empty: pages exist, the sitemap file is missing. That reads as "every
+    // page is missing from the sitemap", which is a finding, not a clean set.
+    // Exactly one problem: the missing floor, which checks a DIFFERENT fact, must
+    // not be what makes this case green — the missing page is.
+    const r = sitemapVerdict({
+      expected: new Set([`${S}/en/`]),
+      entries: [],
+      describe: describeTag,
+    });
+    expect(
+      'empty-submitted',
+      // Exactly ONE: one page above the floor, none submitted. The floor is a
+      // fact in its own right (it has its own case) and must not be what makes
+      // this one green — the missing page is.
+      r.problems.length === 1 &&
+        anyLine(r.problems, /is an indexable built page but is missing from the sitemap/),
+      lines(r.problems).join(' | ') || '(nothing reported)',
+    );
+  }
+
+  {
+    // Every page built and none of them indexable (a build of gated pages only)
+    // is the same vacuity as nothing at all: reported, not passed.
+    const r = sitemapVerdict({
+      expected: new Set(),
+      entries: [{ loc: `${S}/`, file: '/sitemap-0.xml' }],
+      describe: describeTag,
+    });
+    expect(
+      'empty-expected',
+      anyLine(r.problems, /0 indexable page\(s\) to compare against/) &&
+        anyLine(r.problems, /submits https:\/\/kasir\.mu\/, which is a stand-in reason/),
+      lines(r.problems).join(' | ') || '(nothing reported)',
+    );
+  }
+
+  {
+    // The agreeing case: one page, one matching <loc>. No problems at all, and
+    // the floor is consulted (a floor that always fired would redden here).
+    const r = sitemapVerdict({
+      expected: new Set([`${S}/en/`]),
+      entries: [{ loc: `${S}/en/`, file: '/sitemap-0.xml' }],
+      describe: describeTag,
+    });
+    expect('sets-agree', r.problems.length === 0 && r.submitted === 1, lines(r.problems).join(' | ') || '(clean)');
+  }
+
+  {
+    // A submission the build cannot index (a gated page, the locale-detect
+    // root behind a higher floor) is reported with the caller's reason.
+    const r = sitemapVerdict({
+      expected: new Set([`${S}/en/`, `${S}/id/`]),
+      entries: [
+        { loc: `${S}/en/`, file: '/sitemap-0.xml' },
+        { loc: `${S}/id/`, file: '/sitemap-0.xml' },
+        { loc: `${S}/en/login/`, file: '/sitemap-0.xml' },
+      ],
+      describe: describeTag,
+    });
+    expect(
+      'submits-unexpected',
+      r.problems.length === 1 && anyLine(r.problems, /submits .*\/en\/login\/, which is a stand-in reason for/),
+      lines(r.problems).join(' | ') || '(nothing reported)',
+    );
+  }
+
+  {
+    // Duplicates are counted per loc, and the message names both files.
+    const r = sitemapVerdict({
+      expected: new Set([`${S}/en/`, `${S}/id/`]),
+      entries: [
+        { loc: `${S}/en/`, file: '/sitemap-0.xml' },
+        { loc: `${S}/en/`, file: '/sitemap-1.xml' },
+        { loc: `${S}/id/`, file: '/sitemap-0.xml' },
+      ],
+      describe: describeTag,
+    });
+    expect(
+      'duplicate-submission',
+      r.problems.length === 1 && anyLine(r.problems, /submits .*\/en\/ twice \(also in \/sitemap-0\.xml\)/),
+      lines(r.problems).join(' | ') || '(nothing reported)',
+    );
+  }
+
+  {
+    // The floor is a parameter, and it is CONSULTED: one page against a floor of
+    // two is a finding even though the two sides agree perfectly.
+    const r = sitemapVerdict({
+      expected: new Set([`${S}/en/`]),
+      entries: [{ loc: `${S}/en/`, file: '/sitemap-0.xml' }],
+      minimumExpected: 2,
+      describe: describeTag,
+    });
+    expect(
+      'floor-counted',
+      r.problems.length === 1 && anyLine(r.problems, /floor 2/),
+      lines(r.problems).join(' | ') || '(nothing reported)',
+    );
+  }
+
+  // ── docsCorpus / guides corpus ────────────────────────────────────────────
+  {
+    // Nesting is preserved: the loader globs `**/*.md`, so a doc at any depth is
+    // one page, and the locale is the FIRST directory, not the last.
+    // No fixture segment is spelled "guides": that is one locale's guide
+    // SEGMENT (en, via GUIDE_SEGMENT), and reusing it would make a later
+    // directory rename look like a passing case.
+    const corpus = buildDocsCorpus(['en/deep-guide.md', 'id/start.md', 'notes.txt']);
+    expect(
+      'docs-url-shape',
+      corpus.docs.has('/en/docs/deep-guide/') &&
+        corpus.docs.has('/id/docs/start/') &&
+        corpus.docs.size === 2 &&
+        corpus.unbuildable.length === 0,
+      [...corpus.docs.keys()].join(', ') || '(no docs)',
+    );
+  }
+
+  {
+    // A doc outside a locale directory is unbuildable, and said so — not skipped.
+    const corpus = buildDocsCorpus(['stray.md', 'en/ok.md']);
+    expect(
+      'docs-outside-locale',
+      corpus.unbuildable.length === 1 && corpus.unbuildable[0].source === 'src/content/docs/stray.md',
+      JSON.stringify(corpus.unbuildable),
+    );
+  }
+
+  {
+    // The empty corpus is NULL, not an empty map: the caller must be able to tell
+    // "nothing was read" from "the layer is empty on purpose". No fixture here is
+    // a stray ROOT-level .md: that is an UNBUILDABLE entry (a finding of its own),
+    // not an empty corpus, and the first version of this case confused the two.
+    const corpus = docsCorpusFrom(['README.md', 'images/logo.png'].filter((n) => n.startsWith('images/')));
+    expect(
+      'empty-docs-corpus',
+      corpus === null,
+      corpus === null ? 'docsCorpusFrom' : 'docsCorpusFrom returned a corpus instead of reporting it empty: ' + JSON.stringify([...corpus.docs.keys()]),
+    );
+  }
+
+  {
+    expect('nonempty-docs-corpus', docsCorpusFrom(['en/a.md'])?.docs.size === 1, 'docsCorpusFrom');
+  }
+
+  {
+    const guides = buildGuidesCorpus(
+      ['en/offline.md', 'id/offline.md', 'loose.md'],
+      (relative) =>
+        relative === 'en/offline.md'
+          ? ['---', 'target: offline POS app', 'commercialParent: /en/download/', '---', 'body'].join('\n')
+          : ['---', 'target: aplikasi kasir offline', 'commercialParent: download', 'pair: offline', '---'].join('\n'),
+    );
+    const en = guides.get('/en/guides/offline/');
+    const id = guides.get('/id/panduan/offline/');
+    const stale = buildGuidesCorpus(['en/stale.md'], () => ['---', 'target: stale', '---'].join('\n'));
+    expect(
+      'guides-corpus',
+      en?.target === 'offline POS app' &&
+        en?.commercialParent === '/en/download/' &&
+        id?.pair === 'offline' &&
+        id?.locale === 'id' &&
+        stale.get('/en/guides/stale/')?.slug === 'stale',
+      JSON.stringify({ en, id }),
+    );
+    expect(
+      'guides-outside-locale',
+      [...guides.keys()].some((k) => k === '__unbuildable__src/content/guides/loose.md'),
+      [...guides.keys()].join(', '),
+    );
+  }
+
+  {
+    // classify() is the gate's top decision: one class per built page, null when
+    // unknown. The corpus is passed in for the docs/guide arms.
+    const docs = new Map([['/en/docs/deep/', 'src/content/docs/en/deep.md']]);
+    const guides = new Map([['/en/guides/x/', { locale: 'en', slug: 'x' }]]);
+    const kinds = [
+      classify('/index.html', { docs, guides })?.kind,
+      classify('/404.html', { docs, guides })?.kind,
+      classify('/admin/tools.html', { docs, guides })?.kind,
+      classify('/docs-portal/x.html', { docs, guides })?.kind,
+      classify('/en/pricing/index.html', { docs, guides })?.kind,
+      classify('/en/docs/deep/index.html', { docs, guides })?.kind,
+      classify('/en/guides/x/index.html', { docs, guides })?.kind,
+      classify('/llms.txt', { docs, guides })?.kind,
+    ];
+    expect(
+      'classify-kinds',
+      kinds.join('|') ===
+        'root stub|404|static headless|vendored portal|content|docs article|guide|',
+      kinds.map((k) => k ?? 'null').join('|'),
+    );
+  }
+
+  {
+    // The counterpart of a guide is asked of the corpus, never derived by
+    // swapping the locale prefix (the segment is translated). A CRASH means the
+    // derivation was read, so the case reddens on that too.
+    //
+    // Both guide lookups are null HERE, and that is correct: these two entries
+    // are paired by `pair: offline`, but the matching rule compares `pair`
+    // against the other entry's SLUG, so the live pairing works only because the
+    // front matter pairs each translation with the OTHER locale's slug. The
+    // fixture mirrors that rule rather than assuming it.
+    //
+    // WHAT THIS CASE PINS: the hub arm, the null arms (a non-guide page, a guide
+    // whose locale holds no corpus), and that the answer is ASKED OF THE CORPUS
+    // rather than derived by swapping the locale prefix — the swap mutation is
+    // red.
+    // WHAT IT DOES NOT PIN, stated rather than papered over: neither direction of
+    // the paired-match test (`otherPaired === slug || selfPaired === other.slug`)
+    // distinguishes a wrong form in this case, because every correct fixture here
+    // already answers null. The right arm (`selfPaired`) was mutated and did NOT
+    // redden this case (M19 in the audit); the left arm cannot be told apart
+    // either. There is no source twin asserting this pairing either: the route
+    // (src/pages/[locale]/[guideSegment]/[...slug].astro) builds the alternate
+    // from `guide.data.pair` on its own side. What exercises the branch is the
+    // live dist (2 guides, `hreflang ok`) — true today, and a single guide pair
+    // edit away from untested. Not claimed here.
+    const guides = new Map([
+      ['/id/panduan/a/', { locale: 'id', slug: 'aplikasi-kasir-offline', pair: 'offline' }],
+      ['/en/guides/b/', { locale: 'en', slug: 'offline-pos-app', pair: 'offline' }],
+    ]);
+    let verdicts;
+    try {
+      verdicts = [
+        guideCounterpart('/id/panduan/a/', 'en', guides),
+        guideCounterpart('/en/guides/b/', 'id', guides),
+        guideCounterpart('/id/panduan/', 'en', guides),
+        guideCounterpart('/en/pricing/', 'id', guides),
+        guideCounterpart('/id/panduan/a/', 'en', new Map()),
+      ];
+    } catch (error) {
+      verdicts = ['threw', String(error.message)];
+    }
+    expect(
+      'guide-counterpart',
+      JSON.stringify(verdicts) === JSON.stringify([null, null, '/en/guides/', null, null]),
+      JSON.stringify(verdicts),
+    );
+  }
+
+  // ── corpusBuildFindings ───────────────────────────────────────────────────
+  {
+    // BOTH sides empty: the vacuous pass. Before the requiredKinds arm this
+    // returned no problems at all.
+    const problems = corpusBuildFindings({
+      docs: new Map(),
+      unbuildable: [],
+      guides: { guides: new Map() },
+      builtPaths: new Set(),
+      requiredKinds: [['docs article', false]],
+    });
+    expect(
+      'empty-corpus-build',
+      problems.length === 1 && /collection read no entry at all/.test(problems[0].message),
+      // (corpusBuildFindings — the two-way comparison)
+      lines(problems).join(' | ') || '(nothing reported)',
+    );
+  }
+
+  {
+    // Agreement: one doc, one built page, and the collection is NOT empty.
+    const problems = corpusBuildFindings({
+      docs: new Map([['/en/docs/deep/', 'src/content/docs/en/deep.md']]),
+      unbuildable: [],
+      guides: { guides: new Map() },
+      builtPaths: new Set(['/en/docs/deep/']),
+      requiredKinds: [['docs article', true]],
+    });
+    expect('corpus-builds', problems.length === 0, lines(problems).join(' | ') || '(clean)');
+  }
+
+  {
+    // The original direction: a doc that produced no page.
+    const problems = corpusBuildFindings({
+      docs: new Map([['/en/docs/deep/', 'src/content/docs/en/deep.md']]),
+      unbuildable: [],
+      guides: { guides: new Map() },
+      builtPaths: new Set(),
+      requiredKinds: [['docs article', true]],
+    });
+    expect(
+      'corpus-doc-unbuilt',
+      problems.length === 1 && /the build produced no page for it/.test(problems[0].message),
+      lines(problems).join(' | ') || '(nothing reported)',
+    );
+  }
+
+  {
+    // A guide with no page is caught against the guide's map, and an
+    // unbuildable guide entry keeps its own message.
+    const problems = corpusBuildFindings({
+      docs: new Map(),
+      unbuildable: [],
+      guides: {
+        guides: new Map([
+          ['/en/guides/x/', { source: 'src/content/guides/en/x.md' }],
+          ['__unbuildable__src/content/guides/y.md', { source: 'src/content/guides/y.md' }],
+        ]),
+      },
+      builtPaths: new Set(),
+      requiredKinds: [['guide', true]],
+    });
+    expect(
+      'corpus-guide-unbuilt',
+      problems.length === 2 &&
+        anyLine(problems, /is loaded as a guide .*produced no page/) &&
+        anyLine(problems, /can never be built: it sits outside any locale directory/),
+      lines(problems).join(' | ') || '(nothing reported)',
+    );
+  }
+
+  {
+    // Unclassified pages are the ones with no class at all — not every page.
+    const rec = { kind: 'content' };
+    const found = unclassifiedPages([{ url: '/a.html', rec }, { url: '/b.html', rec: null }]);
+    expect('unclassified', found.length === 1 && found[0].url === '/b.html', JSON.stringify(found));
+  }
+
+  // ── verdict ───────────────────────────────────────────────────────────────
+  {
+    // The exit decision, both directions, and the empty list is a PASS (a gate
+    // that failed on nothing would never be green).
+    expect('verdict-clean', verdict([]).exitCode === 0, String(verdict([]).exitCode));
+    // The LIVE line (see the exit decision above), asked of itself. `liveExitCode`
+    // is computed by the same call the gate just made, so a run that disables it
+    // — by deleting it, or by making it neutral — leaves this case with `0` on a
+    // build that produced findings and reddens the gate.
+    // `liveExitCode` comes from the call the gate made on its OWN findings a
+    // moment ago, so "findings exist but the gate exited 0" reddens here — the
+    // one mutation no pure case can see, because it lives in the live control
+    // flow rather than in `verdict` itself.
+    expect(
+      'verdict-live',
+      liveExitCode === (findings.length ? 1 : 0),
+      `liveExitCode=${liveExitCode} with ${findings.length} finding(s)`,
+    );
+    expect(
+      'verdict-finding',
+      verdict([{ check: 'sitemap', page: '/x', message: 'y' }, { check: 'titles', page: '/z', message: 'w' }]).exitCode === 1,
+      String(verdict([{ check: 'sitemap', page: '/x', message: 'y' }]).exitCode),
+    );
+  }
+
+  const failed = results.filter((r) => !r.ok);
+  for (const r of results) console.log(`  ${r.ok ? 'ok  ' : 'FAIL'} ${r.name}${r.ok ? '' : ` — ${r.detail}`}`);
+  console.log(`\ncheck-seo self-test: ${results.length - failed.length}/${results.length} passed`);
+  if (failed.length) process.exitCode = 1;
 }
