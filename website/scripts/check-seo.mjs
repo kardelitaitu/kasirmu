@@ -491,7 +491,11 @@ function guideCounterpart(path, lang, guides = guidesCorpus) {
     const slug = self.slug;
     for (const [url, other] of guides) {
       if (other.locale !== lang || !other.slug) continue;
-      const otherPaired = other.pair ?? other.slug;
+      // NOTE: no `otherPaired` is computed here. The removed half of this rule accepted
+      // `other.pair === slug`, and the only trace it left was this unused local, which
+      // the comment below kept quoting after the half it described was deleted. A
+      // variable that survives only inside prose is how a deleted rule reads as a live
+      // one; removed 2026-10-24.
       const selfPaired = self.pair ?? slug;
       // ONLY this page's own declaration counts. The first half used to also accept
       // the pair when the OTHER page named us (`otherPaired === slug`), which made
