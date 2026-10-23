@@ -8895,3 +8895,74 @@ check-font-claims.mjs                -> 16/16, rc 0 (required-no-ci count still 
 ```
 
 ### Ledger: 160 defined, 160 closed, 0 open.
+
+## §11VA — O-M95: — of four unproven checkers, three were already guarded and one was not (2026-10-23)
+
+Landed in `ba9c3707f`, `34989a490`.
+
+**O-M95 · gates — `check-orphans.py` announced "Exit: 0 (clean)" over zero files, while `check-debt-ledger.py` and `verify-fluent-dynamic-families.py` turned out to already fail closed** — resolved in §11VA.
+
+### 1. The candidate list, and why three of them were not gaps
+
+14 checkers referenced by `check.sh` declare no `--self-test`. Seven were already known to have
+another proof (a Rust falsification test, an inline `detector_still_sees_a_call()`, or a census
+floor added in earlier rounds). The remaining four were checked by CONSTRUCTING their failure
+mode, not by grepping for a keyword:
+
+| Checker | What was tried | Result |
+|---|---|---|
+| `check-debt-ledger.py` | emptied both detectors (`defined`, `heads`) | **rc 1**, 12 FAIL — it cross-checks the ledger against `git log`, so one side empty is caught by the other |
+| `verify-fluent-dynamic-families.py` | pointed it at an empty root | **rc 1**, 16 gap families — an empty corpus makes every family a gap, it fails closed |
+| `check-orphans.py` | ran it from an empty directory | **rc 0**, "scanning 0 markdown files ... Exit: 0 (clean)" — **a real gap** |
+| `check-server-origins.mjs` | drifted `MAIN_SERVER_ORIGIN` | **rc 1**, 8 findings — alive, but nothing pinned it |
+
+Three of the four had no defect. That ratio is the point: the candidate list came from an
+ABSENCE OF A STRING, and absence of a flag is not absence of a guard — the same error that made a
+delegated audit wrong three times in round 51.
+
+### 2. `check-orphans.py` — the one that was wrong
+
+It walks `os.getcwd()`, so running it from the wrong directory is an ordinary mistake. All three
+of its checks are "count the hits over the corpus", so an empty corpus yields `0, 0, 0` and the
+run announces `Exit: 0 (clean)`. Measured from an empty directory:
+
+```
+scanning 0 markdown files
+  A. Unversioned / orphan wrapper labels   0 finding(s)
+  B. Heading-structure orphans             0 finding(s)
+  C. Stale version headers                 0 finding(s)
+Exit: 0 (clean)
+```
+
+A census floor now refuses that with rc 2, exempting `--file` (one named file is a deliberate
+narrow mode). Its self-test drives all three checks over shapes they must catch, plus a clean
+input that must stay quiet — because a floor alone would pass with every detector dead.
+
+Neutering `check_b` reddens the self-test at case "check B can fire".
+
+### 3. `check-server-origins.mjs` — alive, unpinned
+
+Drifting `MAIN_SERVER_ORIGIN` to a foreign host produced 8 findings and rc 1, so the gate
+genuinely decides. But its answer is a conjunction of ~12 `check()` calls, and an `admits()` that
+returned `true` unconditionally would make every one of them vacuous while the gate still printed
+its ok line. Six cases now pin the predicate in both directions — exact match, wildcard suffix, a
+foreign origin refused, a LOOKALIKE suffix refused, loopback detected, loopback absent. They run
+before any file is read, so they need no checkout.
+
+Making `admits()` return `true` unconditionally reddens exactly the two refusal cases.
+
+### Verification
+
+```
+check-orphans.py               -> rc 0 on the tree; rc 2 from an empty directory (was rc 0)
+  --self-test                  -> 4 cases; check_b neutered -> 'check B can fire' FAILS, rc 2
+check-server-origins.mjs       -> rc 0; MAIN drifted -> 8 findings, rc 1 (reverted)
+  --self-test                  -> 6 cases; admits() always-true -> 2 refusal cases FAIL, rc 2
+check-auditor-selftests.sh     -> 9 SELF-TEST OK (was 8)
+verify-selftests-wired.py      -> 62 of 90 -> **64 of 90**, every one invoked
+verify-gate-completeness.py    -> every check.sh step named, rc 0
+check-font-claims.mjs          -> 16/16, rc 0
+check.sh steps 136-146         -> PASS
+```
+
+### Ledger: 161 defined, 161 closed, 0 open.
