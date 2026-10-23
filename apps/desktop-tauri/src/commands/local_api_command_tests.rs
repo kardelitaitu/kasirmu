@@ -32,7 +32,10 @@ async fn build_status_reflects_settings_and_slot() {
 #[tokio::test]
 async fn build_status_reports_running_handle() {
     let state = AppState::for_test_with_conn(kasirmu_core::migrations::fresh_db());
-    let dir = std::env::temp_dir().join(format!("kasirmu-local-api-cmd-{}", uuid::Uuid::new_v4()));
+    // Bound HERE, not returned from a helper: the guard deletes the directory
+    // on drop, so it must outlive every use of the directory below.
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-local-api-cmd");
+    let dir = scratch.path().to_path_buf();
     let handle = local_api::start(
         state.db.clone(),
         state.db_path.clone(),
@@ -56,7 +59,6 @@ async fn build_status_reports_running_handle() {
     let s = build_status(&state).await.unwrap();
     assert!(!s.running);
     assert!(s.base_url.is_none());
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[tokio::test]
@@ -93,9 +95,20 @@ async fn mint_uses_persisted_secret_stably() {
 /// pre-persisted on the raw connection before wrapping — no lock needed,
 /// `blocking_lock` would panic inside the test runtime), isolated store
 /// dir, and a probe-bound free port.
-fn lifecycle_state() -> (AppState, std::path::PathBuf, u16) {
-    let tmp = std::env::temp_dir().join(format!("kasirmu-local-api-life-{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir_all(&tmp).unwrap();
+///
+/// The scratch dir is returned WITH its `ScratchDir` guard, never as a bare
+/// path: the guard deletes the directory on drop, so building it here and
+/// returning only `tmp.join("images")` would delete the tree before the
+/// caller's server ever wrote to it. Every caller binds the guard for as long
+/// as it uses the state.
+fn lifecycle_state() -> (
+    AppState,
+    std::path::PathBuf,
+    u16,
+    kasirmu_test_support::ScratchDir,
+) {
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-local-api-life");
+    let tmp = scratch.path().to_path_buf();
     let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = probe.local_addr().unwrap().port();
     drop(probe);
@@ -104,12 +117,12 @@ fn lifecycle_state() -> (AppState, std::path::PathBuf, u16) {
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         platform_core::StoreDatabaseManager::new(tmp.clone(), kasirmu_core::migrations::ALL);
-    (state, tmp.join("images"), port)
+    (state, tmp.join("images"), port, scratch)
 }
 
 #[tokio::test]
 async fn enable_disable_cycle_binds_serves_and_persists() {
-    let (state, image_dir, port) = lifecycle_state();
+    let (state, image_dir, port, _scratch) = lifecycle_state();
     let s = run_set_enabled(&state, image_dir.clone(), true)
         .await
         .unwrap();
@@ -135,12 +148,12 @@ async fn enable_disable_cycle_binds_serves_and_persists() {
             Some("0".into())
         );
     }
-    let _ = std::fs::remove_dir_all(image_dir.parent().unwrap());
+    // `_scratch` drops here and removes the whole tree; the server is already stopped.
 }
 
 #[tokio::test]
 async fn enable_is_idempotent_while_running() {
-    let (state, image_dir, port) = lifecycle_state();
+    let (state, image_dir, port, _scratch) = lifecycle_state();
     let first = run_set_enabled(&state, image_dir.clone(), true)
         .await
         .unwrap();
@@ -152,12 +165,12 @@ async fn enable_is_idempotent_while_running() {
         second.base_url,
         Some(format!("http://127.0.0.1:{port}/api/v1"))
     );
-    let _ = std::fs::remove_dir_all(image_dir.parent().unwrap());
+    // `_scratch` drops here and removes the whole tree; nothing deletes it under the running server first.
 }
 
 #[tokio::test]
 async fn enable_with_taken_port_errors_and_stays_off() {
-    let (state, image_dir, port) = lifecycle_state();
+    let (state, image_dir, port, _scratch) = lifecycle_state();
     // Occupy the configured port before the enable attempt.
     let squatter = std::net::TcpListener::bind(("127.0.0.1", port)).unwrap();
     let err = run_set_enabled(&state, image_dir.clone(), true).await;
@@ -168,12 +181,12 @@ async fn enable_with_taken_port_errors_and_stays_off() {
         "failed enable must not persist on"
     );
     drop(squatter);
-    let _ = std::fs::remove_dir_all(image_dir.parent().unwrap());
+    // `_scratch` drops here and removes the whole tree; the failed enable left no server running.
 }
 
 #[tokio::test]
 async fn set_port_restarts_running_server_on_new_port() {
-    let (state, image_dir, old_port) = lifecycle_state();
+    let (state, image_dir, old_port, _scratch) = lifecycle_state();
     run_set_enabled(&state, image_dir.clone(), true)
         .await
         .unwrap();
@@ -208,12 +221,12 @@ async fn set_port_restarts_running_server_on_new_port() {
         .unwrap_err();
     assert!(matches!(err, AppError::Invalid(_)));
     assert!(build_status(&state).await.unwrap().running);
-    let _ = std::fs::remove_dir_all(image_dir.parent().unwrap());
+    // `_scratch` drops here and removes the whole tree; the server on `new_port` is still using it.
 }
 
 #[tokio::test]
 async fn rotate_secret_swaps_key_and_keeps_server_up() {
-    let (state, image_dir, port) = lifecycle_state();
+    let (state, image_dir, port, _scratch) = lifecycle_state();
     run_set_enabled(&state, image_dir.clone(), true)
         .await
         .unwrap();
@@ -242,12 +255,12 @@ async fn rotate_secret_swaps_key_and_keeps_server_up() {
             .await
             .is_err()
     );
-    let _ = std::fs::remove_dir_all(image_dir.parent().unwrap());
+    // `_scratch` drops here and removes the whole tree; the rotated server is still using it.
 }
 
 #[tokio::test]
 async fn set_store_restarts_server_against_new_target() {
-    let (state, image_dir, _port) = lifecycle_state();
+    let (state, image_dir, _port, _scratch) = lifecycle_state();
     // Register a second store profile on the global DB.
     {
         let db = state.db.lock().await;
@@ -287,5 +300,5 @@ async fn set_store_restarts_server_against_new_target() {
     // Empty resets to primary.
     let s = run_set_store(&state, image_dir.clone(), "").await.unwrap();
     assert_eq!(s.store_id, "default");
-    let _ = std::fs::remove_dir_all(image_dir.parent().unwrap());
+    // `_scratch` drops here and removes the whole tree after the store switch completed.
 }

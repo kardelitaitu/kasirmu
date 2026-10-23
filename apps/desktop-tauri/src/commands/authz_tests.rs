@@ -125,13 +125,17 @@ async fn session_permission_checks_global_identity_db_not_store_db() {
     }
 
     let mut state = AppState::for_test_with_conn(conn);
-    // Isolate the store DBs in a temp dir so the store-scoped file is
-    // created fresh (empty `users` table) instead of reusing temp-dir
-    // leftovers from other tests.
-    let dir = std::env::temp_dir().join(format!("oz-authz-test-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    state.db_manager =
-        platform_core::StoreDatabaseManager::new(dir.clone(), kasirmu_core::migrations::ALL);
+    // Isolate the store DBs in a fresh scratch dir so the store-scoped file
+    // is created empty (`users` table present, no rows) instead of reusing
+    // leftovers from other tests. The guard is bound HERE, in the same
+    // function that uses the directory: dropping it removes the directory, so
+    // a helper returning only the path would delete it before the store open
+    // below.
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-authz-store");
+    state.db_manager = platform_core::StoreDatabaseManager::new(
+        scratch.path().to_path_buf(),
+        kasirmu_core::migrations::ALL,
+    );
 
     let session = SessionContext::new(
         "user-owner".into(),
@@ -167,8 +171,9 @@ async fn session_permission_checks_global_identity_db_not_store_db() {
     ));
 
     drop(store_db);
+    // Dropped explicitly (before the guard) so the store connection closes
+    // before ScratchDir deletes the files under it.
     drop(state);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// TDD red (scoped sessions follow-up): the session gate must be

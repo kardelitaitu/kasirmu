@@ -75,7 +75,7 @@ fn resolve_session_rejects_and_removes_expired_token() {
 
 #[test]
 fn resolve_scope_isolates_store_databases() {
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = kasirmu_test_support::tempdir();
     let manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
     let state = AppState::for_test_with_db_manager(manager);
@@ -232,7 +232,7 @@ required_permissions = ["cart:read", "cart:write"]
 /// becomes live and this test fails on both the hash and the discount.
 #[tokio::test]
 async fn plugin_change_is_refused_and_live_set_survives() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = kasirmu_test_support::tempdir();
     write_plugin_dir(tmp.path(), "oz.apply_discount(\"cart\", 10)\n");
 
     // The live runtime, built exactly as AppState builds it at startup.
@@ -348,7 +348,7 @@ fn plugin_manager_is_only_built_at_startup() {
 /// not when SQLite changes how it spells a mode.
 #[test]
 fn sqlite_header_uses_wal_matches_sqlites_own_answer() {
-    let dir = tempfile::tempdir().expect("tempdir");
+    let dir = kasirmu_test_support::tempdir();
 
     // (1) A database explicitly switched to WAL.
     let wal_path = dir.path().join("wal.db");

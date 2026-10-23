@@ -1478,12 +1478,16 @@ fn diff_rows_reports_every_drift_in_one_call() {
 //      winning -- `topology.rs` beside `topology/` is that shape in this tree
 //   5. keys are sorted and deduplicated across the merge
 //
-// These need a real directory, so they build one with `tempfile` (already a
-// dev-dependency) rather than mocking the filesystem.
+// These need a real directory, so they build one through
+// `kasirmu_test_support` (a `tempfile::TempDir` rooted under the gitignored
+// `target/` tree) rather than mocking the filesystem. A bare
+// `tempfile::tempdir()` would resolve TEMP, which on this project's Windows
+// machines is the MACHINE-level `C:\WINDOWS\TEMP` -- a directory an ordinary
+// user can create inside but cannot delete from.
 
 /// Write `files` (relative path -> contents) under a fresh temp dir.
 fn fixture(files: &[(&str, &str)]) -> tempfile::TempDir {
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = kasirmu_test_support::tempdir();
     for (rel, body) in files {
         let path = dir.path().join(rel);
         if let Some(parent) = path.parent() {
