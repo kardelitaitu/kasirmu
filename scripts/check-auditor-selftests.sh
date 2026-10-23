@@ -17,6 +17,6 @@
 # cases need no filesystem and survive the crate renames that silenced it once.
 set -e
 cd "$(git rev-parse --show-toplevel)"
-for t in check-env-docs check-ci-claims check-nav-paths check-dead-refs check-adr-status check-site-links check-api-surface; do
+for t in check-env-docs check-ci-claims check-nav-paths check-dead-refs check-adr-status check-site-links check-api-surface check-cite-lines; do
   python3 ".agents/skills/docs-auditor/scripts/$t.py" --self-test
 done
