@@ -42,3 +42,5 @@ name the **function or expression** rather than the line, because nothing on the
 ever notice the line moving.
 
 > status: OPEN — the citation was fixed; the gate gap is recorded, not closed
+
+> last audited 19-10-26 by docs-auditor

@@ -110,3 +110,5 @@ CSV column order and BOM. That shell is 113 lines and re-exports only; `audit_cs
 Guard 4/4, census `21 total, 21 in range, 0 to review`. `tsc --noEmit` clean in every touched file,
 `eslint` 0 errors, and the affected suites ran green: AuditLog 43, Topology+Shift 90, Settings+KDS 48,
 LicenseActivation+SalesHistory+useMultiCurrency+guard 74.
+
+> last audited 19-10-26 by docs-auditor

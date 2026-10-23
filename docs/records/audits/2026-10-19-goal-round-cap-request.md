@@ -39,3 +39,5 @@ is otherwise only in a chat transcript, and a later reader comparing the objecti
 cap would reasonably conclude the cap change had been applied when it had not.
 
 > status: OPEN — blocked on a direct human turn, not on the code
+
+> last audited 19-10-26 by docs-auditor

@@ -927,3 +927,4 @@ record's attribution of a red gate taken at face value, a guard's text read as l
 cheap to disprove and none had been disproved, because reading is faster than checking and the
 documents looked authoritative.
 
+> last audited 19-10-26 by docs-auditor
