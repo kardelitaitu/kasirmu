@@ -15,12 +15,12 @@ open work in every downstream reading this journal supplies.**
 | Tier | Defined | Marked closed (heading or in-entry) | Still open |
 |---|---|---|---|
 | **High** | 26 | **26** | **0** |
-| Medium | 76 | 75 | **1** |
+| Medium | 76 | **76** | **0** |
 | Low | 24 | 24 | **0** |
 | Test (O-T) | 17 | 17 | **0** |
-| **Total** | **143** | **142** | **1** |
+| **Total** | **143** | **143** | **0** |
 
-**Updated 2026-10-23 (round 33). 143 defined, 142 closed, 1 open.** O-M76 closed: read gate passed topology replication pull route through unchecked; mapped to `topology:write` with `pii: false` (§11CQ). O-M77 opened: cross-store workspace picker has no read-repair, left open deliberately as data-ownership decision (§11CR).
+**Updated 2026-10-23 (round 34). 143 defined, 143 closed, 0 open.** O-M77 closed by `1924c7851`: the scoped workspace picker DOES repair from the global rows now, so the ledger was the last place still calling it open — the code and its test were already closed, and this entry lagged behind them (§11CS). The round-33 note follows, unchanged. **Earlier: 143 defined, 142 closed, 1 open.** O-M76 closed: read gate passed topology replication pull route through unchecked; mapped to `topology:write` with `pii: false` (§11CQ). O-M77 opened: cross-store workspace picker has no read-repair, left open deliberately as data-ownership decision (§11CR).
 
 **Updated 2026-10-23 (round 31). 141 defined, 141 closed, 0 open.** O-M75 closed: an `#[ignore]` reason that
 said "needs python3 + cryptography" was FALSE — both are installed, and the test passes in 1.57 s. Un-ignoring
@@ -6719,6 +6719,46 @@ being folded into a gate fix.
    and rename it; it names the absence, so it cannot survive the fix unedited.
 
 **Ledger: 143 defined, 142 closed, 1 open.**
+
+## §11CT — O-M77 CLOSED by someone else: the ledger lagged the code (2026-10-23)
+
+**The code was right and this ledger was wrong.** §11CR opened O-M77 as "the scoped
+workspace picker has no read-repair", deliberately, as a data-ownership call. That call was
+made: `1924c7851` ("give the scoped workspace picker the read-repair its sibling has") added
+it, and the pinning test was renamed and its assertion flipped exactly as §11CR's own
+"what closing it would take" item 3 required:
+
+```
+list_workspaces_for_store_scoped_has_no_read_repair     <- the name that vanished
+list_workspaces_for_store_scoped_repairs_from_global_when_the_store_db_is_empty   <- the name now
+```
+
+The renamed test's doc comment opens with "The asymmetry is CLOSED", and its assertion is
+now `rows.len() == 1` where it previously asserted `rows.is_empty()`. `workspaces.rs` reads
+the global rows under a comment naming "the read-repair's source rows".
+
+### Why this is recorded rather than silently ticked
+
+A ledger that keeps an entry open after the fix has landed is not a harmless bookkeeping
+lag. It is the exact failure mode this journal exists to prevent, inverted: the journal's
+own history lists five entries caught ranked as open work *after they were already fixed*
+(O-H23, O-H24, O-H26, O-H03, O-H04, O-H08). Those were found by hand. This one was found
+by reading the entry's own cited test and discovering the test no longer had that name.
+
+**The check that would have caught it** is the one §11CR already wrote: it named the
+test that pins the absence. A closure is legible if the entry says WHICH test would have
+to change, because then the test's disappearance is detectable. §11CR did that, which is
+why this took one grep instead of an audit.
+
+### What was NOT verified
+
+The repair's own correctness: that the persisted seed is right for every entitlement tier,
+and that the FK-target case behaves (a sibling test at `workspaces_tests.rs:429` covers
+one such shape). Verifying that is a PostgreSQL-shaped exercise and this host has no
+server. What IS verified here is the narrower claim this ledger makes: the asymmetry
+the entry describes no longer exists in the code or in its test.
+
+**Ledger: 143 defined, 143 closed, 0 open.**
 
 ## §11CS — O-M78 resolved: 706 leaked scratch directories, from a guard six modules dropped (2026-10-23)
 
