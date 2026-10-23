@@ -220,6 +220,38 @@ that pipe and exit 0 when read directly. The fix is to capture `$LASTEXITCODE` i
 same statement, not through a pipeline -- the same class of trap documented above for
 `--self-test` output, one level down.
 
+### Two ways a documentation census measures the WRONG THING
+
+Both measured 2026-10-23 while trying to establish how many Rust modules lack the
+`//!` header AGENTS.md §6.1 asks for. The first answer said 350 of 1430 files. The
+correct answer is **7, and every one of those 7 is a legitimate exception.**
+
+**1. Build output is not source.** A `rglob('*.rs')` over the working directory picked up
+`target-review/debug/build/.../out/*.rs` and `scratch/` — 15 of the first 16 "findings"
+were generated code. Census TRACKED files (`git ls-files '*.rs'`), which is what a doc
+rule is about.
+
+**2. This repo documents modules TWO ways, and only one of them is `//!`.** 31 files open
+with a block comment carrying the house audit shape:
+
+```
+/*
+last audited DD-MM-YY by <agent>
+crate: kasirmu-core | status: SAFE | lint: CLEAN
+findings: ...
+next: ... | perf: ...
+*/
+```
+
+A detector matching only `//!` reports all 31 as undocumented. Match the block form too
+(`/*` followed by a `crate:` field), or the census will keep finding a gap that is not
+there.
+
+**And the 7 survivors are not gaps either**: one is a `pub mod` list, two are `//`-commented
+harnesses, two are `tests.rs` files inside `src/`, and two open with prose `//` blocks.
+Before "fixing" a doc census, read three of its hits — if they are all exceptions, the
+detector is wrong, not the tree.
+
 ### The 29 steps that never left a log, measured one by one
 
 `target/check-logs/` holds a log per step per run, and 29 of the current 194 steps have
