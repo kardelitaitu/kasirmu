@@ -92,8 +92,22 @@ def run(path: Path) -> tuple[int, str]:
     # changes what the reader should do -- but it can no longer change the verdict or
     # the count.
     usage = ("usage:" in text) or ("unrecognized arguments" in text)
-    return r.returncode, (("FLAG REJECTED: " if usage else "")
-                          + (tail[-1] if tail else (r.stderr or "").strip()[-120:]))
+    # A FAILING checker's diagnosis is carried by its OWN red lines, and returning only
+    # the last line threw them away. Measured 2026-10-23: step 108 reported
+    # "39 green = 31 CAUGHT + 8 CLEAN; 1 red" for verify-agents-mirrors.py, and the one
+    # MISSED line that said WHICH case rotted was the line just above the count -- dropped
+    # by `tail[-1]`. The same checker then ran clean 5/5 in isolation, so the sweep's own
+    # output was the only evidence of what had failed, and the sweep had discarded it.
+    # A pass still reports only its last line (short, and there is nothing to diagnose);
+    # a failure reports the red lines too, because those are the point.
+    if tail and r.returncode == 0:
+        detail = tail[-1]
+    else:
+        red = [ln.strip() for ln in tail
+               if ln.startswith("  MISSED") or ln.startswith("  WRONG")]
+        detail = " | ".join(red[-3:] + tail[-1:]) if red else (
+            tail[-1] if tail else (r.stderr or "").strip()[-120:])
+    return r.returncode, (("FLAG REJECTED: " if usage else "") + detail)
 
 
 def verdict(rc: int) -> str:
