@@ -165,9 +165,11 @@ findings, so CI prints `clean for desktop.` and exits 0 — while every finding 
 section. The bare run does print an info line naming the ungraded shell's count, but its own
 docstring (`:1252-1255`) states that no exit code branches on it.
 
-Re-measured 2026-10-24: **101 findings when this was first filed (2026-09-14), 34 now.** The
-backlog is two-thirds cleared by work that no CI log recorded, because the lane clearing it
-cannot make the gate red.
+Re-measured 2026-10-24: **101 findings when this was first filed (2026-09-14), 29 now** —
+and of the 29, 20 are unreachable on tablet, so the real backlog is **9 sites, of which 7 show a
+user-visible error and 1 silently does nothing**. The rest is checker noise that has since been
+fixed. Two-thirds of the original 101 was cleared by work that no CI log recorded, because the
+lane clearing it cannot make the gate red.
 
 ## What an owner must decide
 
