@@ -271,12 +271,112 @@ def self_test() -> int:
     split = sections(SECTION_CASES[0][0] + "\nbody text here\n")
     if len(split) != 1:
         bad.append("  sections(): expected 1 split for a single heading, got %d" % len(split))
+    # The SUMMARY TABLE, which nothing verified until 2026-10-23 (it drifted 22 entries
+    # with every gate green). A miniature journal with a known correct table, then the
+    # two shapes that rot: a wrong total, and a row carried forward from an older file.
+    fixture = "\n".join([
+        "| Tier | Defined | Marked closed | Still open |",
+        "|---|---|---|---|",
+        "| **High** | 1 | **1** | **0** |",
+        "| Medium | 1 | **1** | **0** |",
+        "| Low | 0 | 0 | **0** |",
+        "| Test (O-T) | 0 | 0 | **0** |",
+        "| **Total** | **2** | **2** | **0** |",
+        "",
+        "**O-H01 thing**",
+        "PAID.",
+        "",
+        "**O-M01 other**",
+        "DONE.",
+    ])
+    if table_findings(fixture):
+        bad.append("a correct summary table must produce no finding, got %r"
+                   % (table_findings(fixture),))
+    if not any("Total" in f for f in table_findings(fixture.replace("**2** | **2**", "**9** | **9**"))):
+        bad.append("a wrong Total must be a finding")
+    if not any("Medium" in f for f in table_findings(fixture.replace(
+            "| Medium | 1 | **1** |", "| Medium | 7 | **7** |"))):
+        bad.append("a row that disagrees with the entries must be a finding")
+    if not any("missing" in f for f in table_findings(fixture.replace(
+            "| **High** | 1 | **1** | **0** |\n", ""))):
+        bad.append("a missing tier row must be a finding")
+
     if bad:
         sys.stderr.write("SELF-TEST WRONG:\n" + "\n".join(bad) + "\n")
         return 2
+    # +1 for the sections() split case, +4 for the summary-table cases above. Counted
+    # explicitly because a case that runs but is not counted reads as coverage it is not
+    # -- the same shape as a gate that cannot fail.
     print("SELF-TEST OK (%d cases, no file read)"
-          % (len(SUBJECT_CASES) + len(INLINE_CASES) + len(SECTION_CASES) + 1))
+          % (len(SUBJECT_CASES) + len(INLINE_CASES) + len(SECTION_CASES) + 1 + 4))
     return 0
+
+
+#: The summary table's tier rows, and the tier letter each one counts.
+TABLE_ROWS = (
+    ("High", "H"),
+    ("Medium", "M"),
+    ("Low", "L"),
+    ("Test", "T"),
+)
+
+
+def table_findings(text: str) -> list[str]:
+    """The summary table must agree with the entries the file actually contains.
+
+    It did not, for 22 entries. The table read 143/76/24 while the file held 165, and
+    nothing noticed because NO checker read the table at all -- this gate verified
+    closing commits against sections, and sections against entry headers, but the one
+    piece of the journal a reader sees FIRST was unverified prose. Measured 2026-10-23
+    by rewriting the total to "999 defined, 999 closed, 7 open": every gate stayed green.
+
+    The numbers are recomputed from the SAME functions the checks above use
+    (`defined_entries` and `entries_marked_inline` plus the section headings), so the
+    table cannot agree with the gate by coincidence -- it agrees by construction or not
+    at all.
+    """
+    defined = defined_entries(text)
+    closed = entries_marked_inline(text)
+    for heading, _body in sections(text):
+        closed |= set(ID_RE.findall(heading))
+
+    counts: dict[str, list[int]] = {tier: [0, 0] for _label, tier in TABLE_ROWS}
+    for entry in defined:
+        tier = entry.split("-")[1][0]
+        if tier not in counts:
+            continue
+        counts[tier][0] += 1
+        if entry in closed:
+            counts[tier][1] += 1
+
+    out: list[str] = []
+    for label, tier in TABLE_ROWS:
+        want_d, want_c = counts[tier]
+        row = re.search(
+            r"^\|\s*\*{0,2}" + re.escape(label) + r"[^|]*\|\s*\*{0,2}(\d+)\*{0,2}\s*\|"
+            r"\s*\*{0,2}(\d+)\*{0,2}\s*\|",
+            text, re.M)
+        if not row:
+            out.append("the %s row is missing from the summary table" % label)
+            continue
+        got_d, got_c = int(row.group(1)), int(row.group(2))
+        if (got_d, got_c) != (want_d, want_c):
+            out.append("%s row says %d defined / %d closed; the file holds %d / %d"
+                       % (label, got_d, got_c, want_d, want_c))
+
+    want_total_d = sum(c[0] for c in counts.values())
+    want_total_c = sum(c[1] for c in counts.values())
+    total = re.search(
+        r"^\|\s*\*{0,2}Total\*{0,2}\s*\|\s*\*{0,2}(\d+)\*{0,2}\s*\|"
+        r"\s*\*{0,2}(\d+)\*{0,2}\s*\|", text, re.M)
+    if not total:
+        out.append("the Total row is missing from the summary table")
+    else:
+        got_d, got_c = int(total.group(1)), int(total.group(2))
+        if (got_d, got_c) != (want_total_d, want_total_c):
+            out.append("Total row says %d defined / %d closed; the file holds %d / %d"
+                       % (got_d, got_c, want_total_d, want_total_c))
+    return out
 
 
 def main() -> int:
@@ -333,7 +433,18 @@ def main() -> int:
     # Check 4: an open entry whose graded citations all point at deleted files.
     dead_refs = entries_with_dead_file_refs(text)
 
+    # Check 5: the summary table agrees with the file. Nothing read it before, so it
+    # drifted 22 entries behind while every gate stayed green.
+    table_bad = table_findings(text)
+
     ok = True
+
+    if table_bad:
+        ok = False
+        print("FAIL: " + str(len(table_bad)) + " summary-table row(s) disagree with the file:")
+        for line in table_bad:
+            print("  " + line)
+        print("  -> recompute the table from the entries; do not carry the numbers forward.")
 
     if dead_refs:
         ok = False
