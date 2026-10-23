@@ -101,7 +101,13 @@ pub(crate) fn build_snapshot_conn() -> rusqlite::Connection {
         &SQL
     }
 
+    // INVARIANT: an in-memory database allocates a private pager and touches no file,
+    // so it cannot fail for an environmental reason. See the twin note in
+    // `migrations.rs::fresh_db`.
     let conn = rusqlite::Connection::open_in_memory().unwrap();
+    // INVARIANT: `cached_sql()` is the embedded migration set compiled into the binary,
+    // and `frozen_migration_sql_replays_cleanly` executes the same text on every run. If
+    // this batch ever failed, that test would fail first and name the migration.
     conn.execute_batch(cached_sql()).unwrap();
     conn
 }
@@ -117,6 +123,10 @@ pub(crate) fn write_snapshot_file(target: &std::path::Path) {
     let staging = target.with_extension("staging");
     {
         let src = build_snapshot_conn();
+        // INVARIANT: `staging` sits beside `target` inside the gitignored
+        // `target/test-scratch`, which `scratch_root()` creates before returning. Both
+        // the directory and its writability are established by that call, so a failure
+        // here means the checkout's build directory was removed mid-run.
         let mut file = rusqlite::Connection::open(&staging)
             .expect("staging snapshot file must be creatable in the scratch root");
         let backup = rusqlite::backup::Backup::new(&src, &mut file)

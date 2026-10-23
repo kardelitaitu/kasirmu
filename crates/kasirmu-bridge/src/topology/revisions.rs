@@ -363,6 +363,10 @@ pub fn canonical_topology_revision_payload(
 pub fn sign_topology_revision_payload(key: &[u8], canonical_payload: &str) -> String {
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
+    // INVARIANT: HMAC accepts a key of ANY length -- RFC 2104 defines no minimum or
+    // maximum for the key, and the hmac crate's `new_from_slice` returns Err only for
+    // algorithms with a fixed-size key (e.g. SipHash). The error message is the
+    // invariant stated in the one place a maintainer would look.
     let mut mac =
         <Hmac<Sha256> as Mac>::new_from_slice(key).expect("HMAC-SHA256 accepts any key length");
     mac.update(canonical_payload.as_bytes());

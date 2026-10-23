@@ -805,6 +805,10 @@ pub fn fresh_db() -> rusqlite::Connection {
     static SNAPSHOT: LazyLock<Mutex<rusqlite::Connection>> =
         LazyLock::new(|| Mutex::new(test_db_snapshot::build_snapshot_conn()));
 
+    // INVARIANT: opening an in-memory SQLite database allocates a private pager and
+    // touches no file, so the only failure modes (I/O, path, permissions) cannot occur
+    // here. A panic would mean the SQLite library itself is unusable, in which case no
+    // test in this crate could run anyway.
     let mut fresh = rusqlite::Connection::open_in_memory().unwrap();
 
     if snapshot_file.is_file() {
@@ -825,6 +829,11 @@ pub fn fresh_db() -> rusqlite::Connection {
         }
     } else {
         // Cold cache: build the snapshot, then persist it for other processes.
+        // INVARIANT: this Mutex is never held across code that can panic while holding
+        // it -- the guarded body only runs a rusqlite backup, whose failures are handled
+        // by the `expect`s below rather than by unwinding. A poisoned lock here therefore
+        // means an earlier test panicked mid-backup, and taking the poison is the correct
+        // signal rather than something to silently work around.
         let snapshot = SNAPSHOT.lock().unwrap();
         {
             let backup = rusqlite::backup::Backup::new(&snapshot, &mut fresh)
