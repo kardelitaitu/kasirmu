@@ -8532,3 +8532,95 @@ check-query-plans.py --check        -> rc 0, 27 queries, falsification green
 ```
 
 ### Ledger: 156 defined, 156 closed, 0 open.
+
+## §11RA — O-M91: — two of my own verdicts were wrong, and a gate that rewrote the tree while claiming to verify it (2026-10-23)
+
+Landed in `b0e7d28a6`, `5c9af7c43`, `574d5cf91`, `c573150cd`.
+
+**O-M91 · gates — `check.sh` ran the FTL dedupe validator in APPLY mode, so a "verify" step rewrote .ftl files and could never fail, and three checkers held proofs no shell runner executed** — resolved in §11RA.
+
+### 1. A validation step that mutated the tree and always passed
+
+check.sh:784 ran `python3 scripts/dedupe-ftl.py` with no flag. The script sets
+`write = not args.dry_run` (dedupe-ftl.py:159) and returns `1 if args.dry_run else 0` (:181).
+So the step:
+
+- **rewrote the .ftl files in place** during a matrix run called "validation", and
+- **exited 0 no matter how many files it changed**, so it could not gate anything.
+
+The script's own docstring documents `--dry-run` as the form callers should use, and both
+the pre-commit hook (.githooks/pre-commit:149) and CI (dev-ci.yml:799) do pass it. Only
+check.sh -- the one local matrix -- did not.
+
+Fixed to `--dry-run` (`b0e7d28a6`). This is the sharper cousin of the vacuous-gate
+pattern this journal keeps recording: not a gate that checks nothing, but a gate that
+CHANGES THE THING IT CHECKS and then reports success.
+
+### 2. Two of my own verdicts, corrected
+
+**(a) check-query-plans.py.** Last round's agenda called it "the last executing gate with
+no self-test ... never been shown to catch anything". Wrong, and wrong about its own
+header. `forcing_a_scan_fails_the_probe` (`query_plan_probe.rs:1064`) strips every WHERE
+clause, asserts the strips landed (`removed >= 2`), asserts the unmutated baseline is
+clean, and requires the SAME detector the gate uses to name the scanned table. `--check`
+runs it FIRST and exits 2 if it fails.
+
+Proven by making the detector deaf (`scanned_large_tables` stubbed to an empty Vec):
+the falsification test FAILED at :1104 immediately. Reverted with `git checkout --`.
+
+The mechanism of my error is worth keeping: **I classified a file by grepping for
+`--self-test` and finding nothing, rather than by running it.** This project's flag
+convention is not the same thing as its proof convention.
+
+**(b) The architecture-boundary self-test covered the rule but not its call.** Last
+round I added `population_floor_violation()` and seven cases pinning it. A planted
+`if False` in `main` -- the guard computed and then ignored -- left the self-test
+**7/7 green**. The cases exercised a pure function nobody had proven was called, which
+is precisely the "guard written, never called" shape the floor was added to prevent,
+reproduced inside its own test.
+
+Fixed by extracting `should_enforce_floor()` and asserting the CALL (`c573150cd`):
+the same planted break now reddens a case.
+
+### 3. Three proofs that existed and nothing ran
+
+A delegated audit of every enforcing gate in `check.sh` surfaced three checkers whose
+self-tests were real and unexecuted. Verified individually rather than taken on report:
+
+| Checker | Proof | Ran before? | Now |
+|---|---|---|---|
+| `scan-unwrap-panic.py` | 18 cases incl. a real temp fixture | No shell/CI runner | check.sh:452 |
+| `generate-pg-migration.py` | 3 fail-closed gate self-tests | No | check.sh:1153 |
+| docs-auditor `check-cite-lines.py` | 8 cases | No | auditor loop (5c9af7c43) |
+
+**The audit's own method had a hole, and that is the more useful finding.** It reported
+all three as "UNPROVEN: no self-test". For `scan-unwrap-panic.py` that is too strong:
+`verify-selftests-wired.py` already counted it as wired, because that checker greps for
+"<name>.py --self-test" anywhere in its runner text. Stashing the edits and re-running
+confirmed `52 of 73 ... every one is invoked` BEFORE the change -- no gap reported.
+
+And the wired checker has a scope hole of its own: its `SCRIPT_DIR` is `scripts/`, so
+every checker under `.agents/skills/docs-auditor/scripts/` is outside it. Its "52 of 73"
+never covered the eight docs checkers the auditor loop runs.
+
+A commit-message discrepancy was also created and then recorded rather than hidden:
+`b0e7d28a6` swept two unrelated steps in from a parallel worker's edit to the same
+file. Amending is forbidden on this branch, so the recovery was a new record
+(`574d5cf91`) naming the mismatch -- which is the sanctioned form, not a workaround.
+
+### Verification
+
+```
+bash -n scripts/check.sh                      -> rc 0
+check-gate-runners.py                         -> every declared runner resolves, rc 0
+sh scripts/check-auditor-selftests.sh         -> 8 checkers green, rc 0 (was 7)
+  scan-unwrap-panic.py --self-test            -> 18 cases, rc 0
+  generate-pg-migration.py --self-test        -> 3 gate self-tests, rc 0
+  check-cite-lines.py --self-test             -> 8 cases, rc 0
+  dedupe-ftl.py --dry-run                     -> no duplicates, rc 0
+verify-architecture-boundaries.py --self-test -> 7 cases, rc 0; planted uncalled guard reddens
+  detector made deaf                          -> forcing_a_scan_fails_the_probe FAILED, then reverted
+verify-selftests-wired.py                     -> 52 of 73, every one invoked, rc 0
+```
+
+### Ledger: 157 defined, 157 closed, 0 open.
