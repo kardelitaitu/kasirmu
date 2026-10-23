@@ -1389,7 +1389,9 @@
       "status": "required",
       "runners": {
         "check.sh": [
-          "docs dead refs"
+          "docs dead refs",
+          "rust doc paths",
+          "rust doc paths self-test"
         ]
       },
       "ci": {
@@ -1402,7 +1404,7 @@
       "_note": "FLIPPED TO REQUIRED 2026-09-25 (C62), because the flip condition this entry wrote for itself was MET and the point of writing it down was to act on it rather than let the advisory state calcify. Original advisory reason, kept because it is still the right call at the time it was made: findings sat in manager-codebase-review-checklist.md while a concurrent session was actively writing that file (the count grew 2 -> 7 over that session), and check.sh's step() exits 1 on first failure, so a leg red for reasons outside the runner's control would have broken every local pre-push. HOW THE CONDITION WAS MET: the audit register's 82 pre-rebrand paths were repointed to the real files (c6ebcc165), and the four remaining hits were quoted-or-illustrative paths -- a mistyped root cited as command evidence, a brief that named a directory which no longer exists, a path used as an ILLUSTRATIVE EXAMPLE of a non-test file, and my own C62/C70 prose quoting the dead names as the FINDING. Those four are not citations to fix; they are deliberate absences, and they now carry the NEGATIVE_MARKERS wording this checker documents for exactly that case ('does not exist', 'no longer exists', 'never existed'). Measured immediately before the flip: 9 unresolved references -> 0. The gate now has a check.sh runner ('docs dead refs') as the condition required, and the CI step drops continue-on-error so a future dead path fails the job rather than annotating it."
     },
     {
-      "id": "shell-syntax",
+      "id": "shell-syntax RUST DOC PATHS ADDED 2026-10-23: two more runners, 'rust doc paths' and 'rust doc paths self-test', for scripts/check-rust-doc-paths.py. This checker scans markdown and NOTHING else, so a Rust doc comment naming a file path was unchecked; measured 72 such references pointed at nothing. 43 were test modules claiming a relocation from apps/desktop-tauri/src/commands/, a path that never existed -- the files left apps/desktop-client/, and that directory was renamed to desktop-tauri LATER. The new checker's rule 2 is what makes that class findable: a move cannot be recorded FROM a path that never existed, so a history marker is not an exemption when the path has no git history.",
       "label": "shell syntax",
       "status": "required",
       "_note": "Added 2026-09-29. A shell file that does not parse does not RUN, so every step inside it is skipped and nothing reports that; the pre-commit hook case is sharper, because a hook that cannot parse stops gating everything it was written to gate. sh -n parses without executing, so this is safe to run first, on a bare checkout, and cannot have side effects. Paid for itself on its first run: scripts/profile.sh line 151 read \"fi# -- Build and run command\", and since bash treats # as a comment only when it STARTS a word, \"fi#\" lexes as one token, the enclosing if never closed, and bash reported it at END OF FILE 65 lines away with every keyword, quote, brace and $( in the file balancing. Covers all first-party .sh repo-wide and excludes vendored trees.",

@@ -571,7 +571,7 @@ fn kasirpkg_users_arm_never_carries_national_id_or_monthly_pay() {
 /// `#[serde(default)]`, and all three import arms swallow the resulting
 /// deserialization failure with `if let Ok(..)` — omitting the key would make
 /// an older install silently skip every user while reporting success. See
-/// `modules/staff/src/models_tests.rs::user_deserialization_requires_pin_hash`
+/// `platform/core/src/staff_tests.rs::user_deserialization_requires_pin_hash`
 /// for the coupling this test depends on.
 ///
 /// The sibling test above does NOT cover this — its `USER_PII_KEYS` list names

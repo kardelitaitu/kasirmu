@@ -1030,6 +1030,14 @@ step "ci docs drift self-test" "python3 scripts/verify-ci-docs-drift.py --self-t
 # Measured before flipping: 9 unresolved -> 0.
 # Gate: scripts/gates.json -> "dead-refs".
 step "docs dead refs" "python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py" python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py
+# The same class of claim, in RUST. check-dead-refs.py scans markdown and nothing else,
+# so a doc comment naming a file path was unchecked: measured 2026-10-23, 72 such
+# references in this tree pointed at nothing. 43 test modules claimed they were relocated
+# from `apps/desktop-tauri/...`, a path that never existed -- the files left
+# apps/desktop-client/ and the directory was renamed LATER. The rest named documents that
+# had moved in earlier restructures.
+step "rust doc paths" "python3 scripts/check-rust-doc-paths.py" python3 scripts/check-rust-doc-paths.py
+step "rust doc paths self-test" "python3 scripts/check-rust-doc-paths.py --self-test" python3 scripts/check-rust-doc-paths.py --self-test
 
 # The API reference page is the IPC contract read first by every agent and integrator, and
 # nothing enforced it: it had drifted 169 ways from the registries (101 names that exist
