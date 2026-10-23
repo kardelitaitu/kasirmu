@@ -1403,7 +1403,13 @@ step "agents mirrors self-test" "python3 scripts/verify-agents-mirrors.py --self
 # Commits older than the hook's introduction are skipped, derived from
 # `git log --diff-filter=A` on the hook rather than a hardcoded sha.
 # Gate: scripts/gates.json -> "commit-subjects".
-step "commit subjects" "python3 scripts/verify-commit-subjects.py --range main..HEAD" python3 scripts/verify-commit-subjects.py --range main..HEAD
+# `origin/main`, NOT `main`. This remote has no local `main` branch -- the working branch
+# is named for the release (0.0.41) and `main` exists only as a remote-tracking ref, so
+# `main..HEAD` was an unknown revision and the step could never pass on any machine.
+# Measured 2026-10-23: the bare form refused with "cannot read the commit corpus" (which
+# is the checker behaving correctly -- an unknown corpus is not an empty one), while
+# origin/main..HEAD graded 1307 commits with 0 non-conforming subjects.
+step "commit subjects" "python3 scripts/verify-commit-subjects.py --range origin/main..HEAD" python3 scripts/verify-commit-subjects.py --range origin/main..HEAD
 step "commit subjects self-test" "python3 scripts/verify-commit-subjects.py --self-test" python3 scripts/verify-commit-subjects.py --self-test
 
 # ── Release workflow validation (R36-11) ──────────────────────────────────
