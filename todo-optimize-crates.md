@@ -7428,3 +7428,73 @@ inside `reset_audit_rate_limit_for_test(` (substring), producing 14 calls with a
 wrecked.
 
 ### Ledger: 149 defined, 149 closed, 0 open.
+## §11EA — the audit limiter verified in all three directions; bridge checked for the same defect (2026-10-23)
+
+**No commit in this round.** This section records verification of `8dc23c42a` / `5cd65971f`
+and one negative result, so the next round does not repeat the searches.
+
+### The limiter still bites, and isolation is real
+
+`O-M83`'s fix moved the audit rate limiter from process-global statics into the `settings`
+table. A change that makes a guard stop firing looks exactly like one that makes it work, so
+the three directions were probed with a temporary test (removed afterwards):
+
+| probe | result |
+|---|---|
+| one below the budget (`AUDIT_RATE_LIMIT - 1`) | allowed |
+| the next write past the budget | **refused** |
+| a SECOND database after the first was exhausted | **allowed** |
+
+The third row is the one the fix was for: the counters are per-database, so a saturated budget
+no longer leaks into an unrelated test's database. The second row is the one a careless fix
+would have broken — moving the state into the database must not have made the limiter inert.
+
+### The `settings` reuse does not disturb anything that reads it
+
+The limiter's two keys live in `settings` alongside business configuration, so the blast
+radius was checked:
+
+- No code enumerates `settings` keys — `SELECT key FROM settings` and `key NOT LIKE` both
+  return nothing repo-wide, so nothing treats the table as a whole.
+- `export` and `sync_client` read specific keys by name (`cloud_export_config`,
+  `sync.enabled`, ...), so the `audit.rate_limit.*` rows are invisible to them.
+- `settings.key` is the PRIMARY KEY (`20260813_init.sql:633`), so the upsert has a real
+  constraint to conflict on, and the `audit.` namespace already existed
+  (`audit.retention_sweep_active`).
+
+### A negative result worth keeping: `kasirmu-bridge` does NOT have this defect
+
+Round 38's agenda asked whether other crates share the same process-global pattern. The scan
+found one other suspect — `set_revalidation_window_for_test` in `kasirmu-bridge/src/ctx.rs` —
+and it is **correctly built**:
+
+```rust
+#[cfg(test)]
+thread_local! {
+    /// Test-only override ... per test thread so a test that shortens it cannot
+    /// leak the shorter window into a parallel test that relies on the production one.
+    static TEST_REVALIDATION_WINDOW: std::cell::Cell<Option<Duration>> = ...
+}
+```
+
+It is a `thread_local`, not a `static`, and the comment states the reason. So the defect was
+confined to `kasirmu-core`'s audit module, and there is nothing to fix in the bridge.
+
+Measured for confirmation rather than assumed — four bridge modules at `--test-threads=16`:
+
+```
+auth::  72 passed, 0 failed   (81.78 s)
+auth::  72 passed, 0 failed   (81.37 s)   <- a second run, for the flake rate
+kds::   38 passed, 0 failed   (82.10 s)
+pos::   63 passed, 0 failed   (76.24 s)
+```
+
+### Why nothing was committed
+
+Every change this round was either a probe (deleted) or a verification read. The only file
+edits made to the tree were the temporary probe wiring, and `audit.rs` is byte-identical to
+`HEAD` again (verified with `git hash-object` against `git rev-parse HEAD:`), so there is
+nothing to commit. Recording a round with no commit is more useful than manufacturing a
+change to justify one.
+
+### Ledger: 149 defined, 149 closed, 0 open.
