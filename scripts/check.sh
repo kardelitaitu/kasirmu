@@ -450,6 +450,35 @@ fi
 # branch: a missing node is a broken checkout, not an optional dependency.
 step "font-claims" "node scripts/check-font-claims.mjs" node scripts/check-font-claims.mjs
 
+# ── Font-bundle detector self-test ───────────────────────────────────────
+# check-font-bundle.mjs has no step of its own -- check-font-claims.mjs runs it
+# and grades its output -- so its DETECTOR had no liveness proof either. What it
+# does is a set comparison: the font files a sheet NAMES vs the files the build
+# SHIPS. That is exactly the shape that goes silent. An empty assets directory, a
+# stylesheet that stops declaring faces, or a disk set narrowed to the woff2
+# subset all make the comparison agree over NOTHING, and the report prints
+# "0 absent, 0 orphans" -- which no reader can tell from a healthy bundle.
+# --self-test runs 33 cases, one per rule and in both directions, including the
+# empty-input class that must exit 2 rather than print zeros. It reads no dist/,
+# so it passes on a machine that has never built the UI and cannot pass by
+# accident on a real build.
+# Gate: scripts/gates.json -> "font-claims".
+step "font bundle self-test" "node scripts/check-font-bundle.mjs --self-test" node scripts/check-font-bundle.mjs --self-test
+
+# ── Bundle-budget self-test ──────────────────────────────────────────────
+# check-bundle.mjs answers a COMPARISON: measured gzip bytes vs a ceiling. A
+# comparison that silently stops happening -- a predicate stuck on true, a
+# measurement that degrades to 0 because a chunk vanished, a report loop that
+# iterates nothing -- prints the same "All bundle budgets satisfied" a real
+# pass prints. Nothing outside can tell the two apart, and no bare run of the
+# gate can tell them apart from the inside. --self-test pins the three rules
+# the verdict is made of: over-budget fails and exactly-at-budget passes
+# (<=), an empty measurement set is REFUSED rather than read as 0 KB under
+# budget, and an expected chunk that is gone is refused rather than priced at
+# zero. It builds nothing, reads no dist/, and touches no files.
+# Gate: scripts/gates.json -> "bundle-budget" (same record as bundle:check).
+step "bundle budget self-test" "node scripts/check-bundle.mjs --self-test" node scripts/check-bundle.mjs --self-test
+
 # ── Panic-inventory gate (RUST-07 / ADR #33) — fail-closed ────────────────
 # Audits production unwrap()/expect() calls (excludes tests, benches, and
 # cfg(test)-gated helpers). Panics are only acceptable for documented
@@ -956,6 +985,13 @@ step "runner claims self-test" "python3 scripts/verify-runner-claims.py --self-t
 # since before it had a runner. Green as of that commit (0 bounded families with gaps),
 # so it can be a step rather than a note.
 step "fluent dynamic families" "python3 scripts/verify-fluent-dynamic-families.py" python3 scripts/verify-fluent-dynamic-families.py
+# The filter above is a comparison, so its quiet failure is a CLEAN one: a bundle reader
+# that stopped seeing keys, or a family list that emptied, still prints a verdict and
+# still prints OK over nothing. Writing the cases found exactly that -- zero .ftl files
+# used to exit 0 -- and a key regex that filed phantom "-term" attribute ids. The cases
+# pin both directions (missing from EN, missing from ID), the UNBOUNDED exemption, and
+# the found-nothing refusal.
+step "fluent dynamic families self-test" "python3 scripts/verify-fluent-dynamic-families.py --self-test" python3 scripts/verify-fluent-dynamic-families.py --self-test
 
 # Two UI-side sweeps that had NO check.sh step and NO self-test, so a regression in
 # either detector was invisible: the sweep kept printing "0 candidate(s)" over a scan
