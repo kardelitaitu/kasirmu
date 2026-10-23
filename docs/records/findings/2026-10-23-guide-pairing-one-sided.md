@@ -1,6 +1,6 @@
 # The guide hreflang rule accepts a one-sided pair
 
-**Date:** 2026-10-23 · **Severity:** low (latent; not reachable on today's tree) · **Status:** open
+**Date:** 2026-10-23 · **Severity:** low (latent; not reachable on today's tree) · **Status:** CLOSED 2026-10-23 by `297a9a429` (the resolution is recorded at the end)
 
 ## The rule
 
@@ -80,6 +80,18 @@ Those are opposite behaviours and only one of them is wanted.
 
 Recorded rather than guessed at, in the same spirit as the surrounding gates: a finding
 an owner can rule on beats a silent change to what the gate reports.
+
+## Resolution (2026-10-23)
+
+Fixed in `297a9a429`: the first half was deleted, so only THIS page's own
+`pair ?? slug` can satisfy the check. That is one line, and it was safe to apply
+because the strict form was measured against the live tree FIRST — the site still
+reported `SEO/HEAD OK` and the gate's own 23 cases still passed before the change was
+committed, so no existing page changed verdict.
+
+A 24th case (`guide-counterpart-one-sided`) now pins both directions. Verified by
+mutation: restoring the deleted half makes exactly that case fail with
+`["/id/panduan/x/","/id/panduan/x/"]` — the one-sided input accepted twice.
 
 ## Provenance
 
