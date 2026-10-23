@@ -6722,6 +6722,8 @@ being folded into a gate fix.
 
 ## §11CS — O-M78 resolved: 706 leaked scratch directories, from a guard six modules dropped (2026-10-23)
 
+**O-M78 · test harness — 706 leaked scratch directories, from a guard six modules dropped** — resolved in §11CS.
+
 Landed in `fc64e499b`.
 
 ### The measurement that started it
@@ -6797,6 +6799,8 @@ rustfmt --edition 2021 --check                   -> clean on my hunks;
 **Ledger: 144 defined, 143 closed, 1 open.**
 
 ## §11CT — O-M79 resolved: the unguarded scratch helper, 1,455 leaked directories, and a gate that graded nothing (2026-10-23)
+
+**O-M79 · test harness — the unguarded scratch helper leaked 1,455 directories and the first gate written for it graded nothing** — resolved in §11CT.
 
 Landed in `52ac568ae` plus the fixture migration commits that follow it.
 
@@ -6882,6 +6886,8 @@ cases including the exact one that fooled mistake 1.
 
 ### Ledger: 145 defined, 144 closed, 1 open.
 ## §11CU — O-M80 resolved: the 12 'environmental' recovery failures were a guard dropped one scope too early (2026-10-23)
+
+**O-M80 · kasirmu-core — 12 recovery tests failed with SQLite CannotOpen and were misread as a broken filesystem** — resolved in §11CU.
 
 Landed in `229177a6e`.
 
@@ -7040,7 +7046,9 @@ rustfmt --edition 2024 --check (both files)      ->  clean
 ```
 
 ### Ledger: 146 defined, 146 closed, 0 open.
-## §11CW — the 31 leftover store dirs were killed processes, not a leak (2026-10-23)
+## §11CW — O-M78: the 31 leftover store dirs were killed processes, not a leak (2026-10-23)
+
+**O-M78 · test harness — the 31 leftover store dirs were killed processes, not a leak** — recorded in §11CW as a measurement correction to §11CS.
 
 **A measurement correction, recorded because the previous section's method invited it.**
 
@@ -7078,6 +7086,8 @@ Consequence for future rounds: when the bridge suite is interrupted by a kill, t
 leftovers are expected, and `python scripts/check-scratch-leaks.py` is the static check
 that does not depend on how a process died.
 ## §11CX — O-M81 closed: the bridge suite was 3.9x slower than it needed to be, and more threads caused it (2026-10-23)
+
+**O-M81 · test harness — the bridge suite ran at libtest default 32 threads, the slowest point on its own curve** — resolved in §11CX.
 
 Landed in `843cac981e`.
 
@@ -7157,6 +7167,8 @@ twenty minutes to measure once.
 
 ### Ledger: 147 defined, 147 closed, 0 open.
 ## §11CY — O-M82 OPENED: nextest runs kasirmu-core 4.6x slower than cargo test, and the snapshot explains it (2026-10-23)
+
+**O-M82 · kasirmu-core — nextest rebuilds the migrated test-db snapshot per test, 4.6x slower than cargo test** — opened in §11CY, resolved in §11CZ.
 
 **Recorded, not fixed. The fix is a design change to the test database, not a flag.**
 
@@ -7428,7 +7440,9 @@ inside `reset_audit_rate_limit_for_test(` (substring), producing 14 calls with a
 wrecked.
 
 ### Ledger: 149 defined, 149 closed, 0 open.
-## §11EA — the audit limiter verified in all three directions; bridge checked for the same defect (2026-10-23)
+## §11EA — O-M83: the audit limiter verified in all three directions; bridge checked for the same defect (2026-10-23)
+
+**O-M83 · kasirmu-core — the audit limiter verified in all three directions** — recorded in §11EA as verification of §11DB.
 
 **No commit in this round.** This section records verification of `8dc23c42a` / `5cd65971f`
 and one negative result, so the next round does not repeat the searches.
@@ -7498,7 +7512,9 @@ nothing to commit. Recording a round with no commit is more useful than manufact
 change to justify one.
 
 ### Ledger: 149 defined, 149 closed, 0 open.
-## §11EB — the Windows TEMP trap cleared from 51 sites to 5, all of them benches (2026-10-23)
+## §11EB — O-M79: the Windows TEMP trap cleared from 51 sites to 5, all of them benches (2026-10-23)
+
+**O-M79 · test harness — the Windows TEMP trap cleared from 51 sites to 5, all of them benches** — recorded in §11EB as the sweep §11CT opened.
 
 Landed in `20b440fb6`, `b93974dd8`, `1acb4e88f`, `a6cdecaac`, `12d4b2b28`.
 
@@ -7575,7 +7591,9 @@ in EITHER direction.
 That pin is the item awaiting an owner ruling, and it is now red in a second crate.
 
 ### Ledger: 149 defined, 149 closed, 0 open.
-## §11FA — the desktop shell compiles again, and both registration floors are current (2026-10-23)
+## §11FA — O-M80: the desktop shell compiles again, and both registration floors are current (2026-10-23)
+
+**O-M80 · kasirmu-bridge — the desktop shell compiles again and both registration floors are current** — recorded in §11FA; the compile repair reverses the regression §11CU found.
 
 Landed in `6cc47c8fa`, `92323f222`, `697162a60`.
 
@@ -7642,7 +7660,9 @@ cargo test  -p kasirmu-mobile --lib registration_gate -> 12 passed, 0 failed
 ```
 
 ### Ledger: 149 defined, 149 closed, 0 open.
-## §11GA — the platform-startup access violation could not be reproduced, and what was ruled out (2026-10-23)
+## §11GA — O-M82: the platform-startup access violation could not be reproduced, and what was ruled out (2026-10-23)
+
+**O-M82 · platform-startup — the access violation could not be reproduced, and what was ruled out** — recorded in §11GA; unexplained, not attributed.
 
 **No code change.** This section records a negative result with the evidence that produced it,
 so the next person does not repeat the investigation.
@@ -7699,7 +7719,9 @@ the ruled-out list above plus the reproduction command, so the next occurrence s
 evidence instead of from zero.
 
 ### Ledger: 149 defined, 149 closed, 0 open.
-## §11HA — the last `oz_` scratch prefixes are gone, and the startup crash is recorded as unreproducible (2026-10-23)
+## §11HA — O-M79: the last `oz_` scratch prefixes are gone, and the startup crash is recorded as unreproducible (2026-10-23)
+
+**O-M79 · test harness — the last oz_ scratch prefixes are gone** — recorded in §11HA, closing the naming half of §11CT.
 
 Landed in `869a259cc`, `36a774dab`.
 
@@ -7769,7 +7791,9 @@ python scripts/check-scratch-leaks.py       -> 0 unguarded sites
 ```
 
 ### Ledger: 149 defined, 149 closed, 0 open.
-## §11IA — the platform-startup suspicion is closed as unfounded, and api/bridge verified (2026-10-23)
+## §11IA — O-M83: the platform-startup suspicion is closed as unfounded, and api/bridge verified (2026-10-23)
+
+**O-M83 · platform-startup — the platform-startup suspicion is closed as unfounded** — recorded in §11IA, closing the open question §11GA left.
 
 Landed in the verification below; no code change.
 
@@ -7823,7 +7847,9 @@ is still not running. Every query in that crate is PostgreSQL-specific (`$1` pla
 item stays blocked on an environment decision, not on work.
 
 ### Ledger: 149 defined, 149 closed, 0 open.
-## §11JA — UI verified green, and the snapshot cache survives a cold start (2026-10-23)
+## §11JA — O-M82: UI verified green, and the snapshot cache survives a cold start (2026-10-23)
+
+**O-M82 · kasirmu-core / ui — UI verified green and the snapshot cache survives a cold start** — recorded in §11JA, verifying §11CZ and the ui surface.
 
 Landed in the verification below; no code change.
 

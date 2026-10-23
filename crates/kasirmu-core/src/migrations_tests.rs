@@ -4359,7 +4359,7 @@ fn fresh_db_cache_holds_no_business_rows() {
         .unwrap();
     drop(conn);
 
-    let path = snapshot_cache_path();
+    let path = crate::migrations::test_db_snapshot::snapshot_cache_path();
     assert!(
         path.is_file(),
         "fresh_db must publish its snapshot cache file at {}",
