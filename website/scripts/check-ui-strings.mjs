@@ -17,15 +17,15 @@
  *
  *   1. a walk that returns no files (the scanner moved, `SRC` broke) — the rule
  *      never runs, and "no offenders" is returned having read nothing;
- *   2. no .astro file scanned — the markup text-node rule never executes, and a
- *      per-line rule then reports "skip to content" only when it is inline;
+ *   2. no .astro file scanned — the markup text-node rule never executes, so a
+ *      sentence on its own line between two tags goes ungraded;
  *   3. the rule itself stopped firing on a literal it must catch.
  *
  * All three print the same clean sentence, so `--self-test` grades the verdict
  * through the injectable `scan` parameter (default: the shipped
- * `findUiStringOffenders`) and grades the rule through `findUiStringOffendersIn`
- * — the SAME function the walk calls. The normal run refuses to report OK
- * unless that self-test passes.
+ * `scanUiStringSources`, which returns the offenders AND the files it read) and
+ * grades the rule through `findUiStringOffendersIn` — the SAME function the walk
+ * calls. The normal run refuses to report OK unless that self-test passes.
  *
  * Run: node --experimental-strip-types scripts/check-ui-strings.mjs [--self-test]
  */
