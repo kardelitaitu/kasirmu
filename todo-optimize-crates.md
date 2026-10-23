@@ -7699,3 +7699,73 @@ the ruled-out list above plus the reproduction command, so the next occurrence s
 evidence instead of from zero.
 
 ### Ledger: 149 defined, 149 closed, 0 open.
+## §11HA — the last `oz_` scratch prefixes are gone, and the startup crash is recorded as unreproducible (2026-10-23)
+
+Landed in `869a259cc`, `36a774dab`.
+
+### 1. `oz_` scratch prefixes: 13 sites, 11 files, 0 remaining
+
+The prefix was a dead project name with no meaning to a reader — a directory called
+`oz_sale_race-<uuid>` says nothing about what it holds. All 13 were renamed to the domain plus
+the property being pinned, in the lowercase-hyphenated style the other migrations already
+established (`kasirmu-bridge-store`, `startup-hardware-profile`):
+
+| old | new |
+|---|---|
+| `oz_payout_race` | `cash-payout-race` |
+| `oz_fiscal_race` | `fiscal-race` |
+| `oz_gc_freeze_race` / `oz_gc_unfreeze_race` | `gift-card-freeze-race` / `gift-card-unfreeze-race` |
+| `oz_kds_race` | `kds-race` |
+| `oz_backup` | `db-backup` |
+| `oz_po_race` | `purchase-order-race` |
+| `oz_void_race` | `sale-void-race` |
+| `oz_concurrent` | `sale-concurrent` |
+| `oz_sale_race` / `oz_sale_cas` | `sale-race` / `sale-cas` |
+| `oz_shift_race` | `shift-race` |
+| `oz_scoping_conc` | `store-scoping-concurrency` |
+
+Each name was derived by reading the test it serves, not by applying a mapping table — the
+names now describe the race the fixture exists to pin.
+
+**A scan worth recording, because the first one was wrong.** A narrow scan for
+`ScratchDir::new("oz_` reported 0 remaining, which was true but incomplete: the dynamic form
+`ScratchDir::new(&format!("oz_restore_{label}"))` in the three recovery test files does not match
+that pattern. A broad scan for any `oz_` then reported 28 files — also wrong for the opposite
+reason, because most of those are PostgreSQL database and table names (`oz_pos_test`), a
+completely unrelated use of the same two letters. The scan that answers the question is the
+one that keys on the API (`ScratchDir::new` AND `oz_`), and it reports **0**.
+
+### 2. The platform-startup access violation: measured, not fixed
+
+Reported at about 2 runs in 6 by a subagent, and not seen since. Ten full-module runs here —
+four at `--test-threads=16`, six at `--test-threads=32` — all **104 passed**. Ruled out with
+evidence rather than asserted away:
+
+- The crate's only process-global state is a `tokio` runtime (thread-safe by design) and a
+  `DaemonRegistry` backed by `Arc<Mutex<HashMap>>`. The registry tests each build their own
+  instance, so they share nothing but the runtime.
+- The crashing path (`DriverRegistry::default()` + `register_hardware` -> `kasirmu_hal::apply_config`)
+  touches no directory at all, and the one branch that probes real hardware already returns an
+  empty `Vec` on error.
+- The migration's diff in that file is five `let dir = ...` lines; the async test bodies are
+  byte-identical to HEAD.
+
+The one shape left standing, and the first thing to check if it ever reproduces:
+`startup_tests.rs` has tasks that `panic!` inside a tokio task to prove the watchdog records
+`Panicked`, paired with `Box::leak`. That is the only construct in the crate that could
+abort rather than unwind.
+
+A defect that cannot be reproduced cannot be fixed, only guessed at — and a guess at an
+access violation is how a real defect gets papered over. The ledger entry carries the
+reproduction command and the ruled-out list so the next occurrence starts from evidence.
+
+### Verification
+
+```
+cargo test -p kasirmu-core --lib            -> 3675 passed, 0 failed
+ScratchDir sites with an oz_ prefix         -> 0
+rustfmt --edition 2024 --check (11 files)   -> clean
+python scripts/check-scratch-leaks.py       -> 0 unguarded sites
+```
+
+### Ledger: 149 defined, 149 closed, 0 open.
