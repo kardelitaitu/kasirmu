@@ -1271,10 +1271,30 @@ def self_test() -> int:
     want("a metadata fixture is exempt", should_enforce_floor(True, False), False)
     want("report-only is exempt", should_enforce_floor(False, True), False)
 
+    # normalize_path's own contract. Found by MUTATION, not by reading: replacing its
+    # body with the OLD ".lstrip('./')" left this self-test 7/7 green, because no case
+    # ever called it -- the docstring at :151 describes the bug it fixed and nothing
+    # checked the fix. Measured 2026-10-23 with scripts/sabotage-selftests.py, which
+    # reported this file SURVIVED. The three cases below are the three spellings the
+    # docstring names: "./x" (trimmed), "../x" (kept) and "/abs/x" (kept).
+    want("./ prefix is trimmed", normalize_path("./crates/a/src/lib.rs"), "crates/a/src/lib.rs")
+    want("a run of ./ is trimmed", normalize_path("./././x.rs"), "x.rs")
+    want("../../ is preserved", normalize_path("../../other-checkout/Cargo.toml"), "../../other-checkout/Cargo.toml")
+    want("a leading slash is preserved", normalize_path("/abs/x.rs"), "/abs/x.rs")
+    want("backslashes become slashes", normalize_path(Path("./a").joinpath("b.rs")), "a/b.rs")
+
+    # And the CALL: relative_path is the only canonical form for a baseline key, so a
+    # normalize_path that lies is caught there too. Below the root must be repo-relative,
+    # above it must keep its "../" so foreign-worktree debt stays distinguishable.
+    want("under the root is repo-relative",
+         relative_path(Path("crates/a/src/lib.rs"), Path(".")), "crates/a/src/lib.rs")
+    want("above the root keeps its ../",
+         relative_path(Path("../sibling/x.rs"), Path(".")), "../sibling/x.rs")
+
     if cases:
         print("SELF-TEST WRONG: " + "; ".join(cases), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (7 cases, no files touched)")
+    print("SELF-TEST OK (14 cases, no files touched)")
     return 0
 
 

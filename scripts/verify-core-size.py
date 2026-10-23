@@ -377,6 +377,21 @@ def self_test() -> int:
         check("temp tree counts only production", total, 2)
         check("temp tree file count", files, 1)
 
+    # THE EXIT CODE ITSELF, and the reporter behind it. Every case above grades a RULE;
+    # none of them ran fail(), so blanking fail() to "return None" left this self-test
+    # green (found by scripts/sabotage-selftests.py, 2026-10-23). It is not cosmetic:
+    # main() ends "return fail(...)" for a violation and an uncaught "raise SystemExit(None)"
+    # exits 0, so a finding would have printed FAIL and exited success. Capture the
+    # function's answer and its stream.
+    import io
+    from contextlib import redirect_stderr
+
+    sink = io.StringIO()
+    with redirect_stderr(sink):
+        answer = fail("planted violation")
+    check("fail() reports to stderr", "planted violation" in sink.getvalue(), True)
+    check("fail() answers exit 1", answer, 1)
+
     if failures:
         print(f"verify-core-size --self-test: {failures}/{cases} FAILED", file=sys.stderr)
         return 1

@@ -176,10 +176,88 @@ def self_test() -> int:
     want("rule 2 overrides rule 1 for an invented path",
          ever_existed_stub(True, False), True)  # historical=True, existed=False -> finding
 
+    # THE DETECTOR ITSELF. Every case above grades a REGEX or a stubbed predicate, and the
+    # predicate tested (ever_existed_stub) is a COPY of a branch that lives inline in
+    # scan() -- so blanking scan() to "return []" left this 5/5 green (measured 2026-10-23
+    # with scripts/sabotage-selftests.py). A stub proves the rule; only the real function
+    # proves the rule is used. scan() takes files, a tracked set and a history cache, so
+    # it runs here against a temp file with no git at all.
+    import tempfile
+
+    class _F:
+        """The one attribute scan() uses: read_text()."""
+        def __init__(self, text: str) -> None:
+            self._text = text
+
+        def read_text(self, *a, **k) -> str:
+            return self._text
+
+        def relative_to(self, _root):
+            return Path("doc.rs")
+
+    tracked_present = {"crates/real/src/lib.rs"}
+    never = {}  # empty cache: ever_existed() would fall through to git, so avoid it
+
+    cases = [("plain", "/// mirrors crates/real/src/lib.rs", 0),
+             ("missing", "/// mirrors crates/ghost/src/lib.rs", 1),
+             ("bare name", "/// see lib.rs for details", 0),
+             ("absolute example", "/// e.g. C:/dev/x/crates/ghost/src/lib.rs", 0),
+             ("tail of a path", "/// e.g. other/crates/ghost/src/lib.rs", 0)]
+    for label, text, expected in cases:
+        f = _F(text + "\n")
+        found = scan([f], tracked_present, never)
+        # assert on the FINDINGS, not len(): a gutted scan() answers None, and len(None)
+        # makes the run die of TypeError instead of naming the broken case. A self-test
+        # has to say what is wrong, since that message is the only repair instruction.
+        want("scan() %s" % label, [x["path"] for x in (found or [])],
+             [] if expected == 0 else ["crates/ghost/src/lib.rs"])
+
+    # THE HISTORY BRANCH. scan() only consults ever_existed() when a line carries a
+    # history marker AND its path is untracked -- so no case above reaches that call,
+    # which is why blanking ever_existed() also left this self-test green. Answer for it
+    # here instead of shelling to git: the claim under test is that scan() ASKS.
+    asked: list[str] = []
+    real_ever_existed = globals()["ever_existed"]
+
+    def recording_ever_existed(path: str, cache: dict) -> bool:
+        asked.append(path)
+        return False  # "this path is in no commit" -- the invented-path verdict
+
+    globals()["ever_existed"] = recording_ever_existed
+    try:
+        hist = scan([_F("//! relocated from crates/ghost2/src/lib.rs\n")], tracked_present, {})
+    finally:
+        globals()["ever_existed"] = real_ever_existed
+    want("scan() asks history about a marked path", asked, ["crates/ghost2/src/lib.rs"])
+    want("an invented historical path is a finding", [x["path"] for x in (hist or [])],
+         ["crates/ghost2/src/lib.rs"])
+    want("and it says which rule fired",
+         any("NEVER existed" in x["why"] for x in (hist or [])), True)
+
+    # A marked path that IS in history is exempt: the branch has both answers, and only
+    # the False one above was pinned. A detector that reported every historical line
+    # would redden the repository on its own doc comments.
+    globals()["ever_existed"] = lambda path, cache: True
+    try:
+        exempt = scan([_F("//! relocated from crates/moved/src/lib.rs\n")], tracked_present, {})
+    finally:
+        globals()["ever_existed"] = real_ever_existed
+    want("a path that really moved is exempt", [x["path"] for x in (exempt or [])], [])
+
+    # AND THE REAL ever_existed(), which both stubs above replace -- so blanking that
+    # function survived every case in this file (measured 2026-10-23). It cannot shell to
+    # git in a self-test, but it consults its CACHE before it ever looks at history, so a
+    # pre-filled cache exercises the real body with no subprocess at all: a cached True
+    # must exempt, a cached False must not.
+    hit = real_ever_existed("crates/anything.rs", {"crates/anything.rs": True})
+    miss = real_ever_existed("crates/anything.rs", {"crates/anything.rs": False})
+    want("ever_existed() trusts a cached hit", hit, True)
+    want("ever_existed() trusts a cached miss and does not re-ask git", miss, False)
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (5 cases, no file read)")
+    print("SELF-TEST OK (15 cases, no file or git read)")
     return 0
 
 
