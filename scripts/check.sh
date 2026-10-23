@@ -203,6 +203,11 @@ step "exhaustive-deps ratchet self-test" "python3 scripts/verify-exhaustive-deps
 # Existing transitional debt is reported but only new, expired, or stale
 # baseline entries fail. This is static-only and has no runtime impact.
 step "architecture boundaries" "python3 scripts/verify-architecture-boundaries.py --strict" python3 scripts/verify-architecture-boundaries.py --strict
+# The census floor's own cases, beside the gate they prove -- the same pairing the
+# exhaustive-deps ratchet uses above. Added with the floor (1d6a952e5): a checker that
+# can walk nothing and report clean is the failure this step exists to prevent, and
+# nothing was pinning the floor itself until verify-selftests-wired.py named it uncalled.
+step "architecture boundaries self-test" "python3 scripts/verify-architecture-boundaries.py --self-test" python3 scripts/verify-architecture-boundaries.py --self-test
 step "server origins" "node scripts/check-server-origins.mjs" node scripts/check-server-origins.mjs
 step "env docs" "python .agents/skills/docs-auditor/scripts/check-env-docs.py" python .agents/skills/docs-auditor/scripts/check-env-docs.py
 step "auditor self-tests" "sh scripts/check-auditor-selftests.sh" sh scripts/check-auditor-selftests.sh

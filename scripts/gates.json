@@ -227,10 +227,11 @@
       "status": "required",
       "runners": {
         "check.sh": [
-          "architecture boundaries"
+          "architecture boundaries",
+          "architecture boundaries self-test"
         ]
       },
-      "_note": "Was ci.yml#architecture-boundaries. Runs in dev-ci.yml#static-gates with --strict, verified green locally.",
+      "_note": "Was ci.yml#architecture-boundaries. Runs in dev-ci.yml#static-gates with --strict, verified green locally. The self-test runner was added 1d6a952e5 with the census floor: verify-selftests-wired.py flagged the floor's cases as UNCALLED, which is the same class of defect the floor itself guards against -- a check that exists and nobody runs.",
       "ci": {
         "workflow": "dev-ci.yml",
         "job": "static-gates"
