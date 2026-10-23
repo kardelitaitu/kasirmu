@@ -679,6 +679,28 @@ through-line across all eight is the same, and it is now the single most repeate
 session: *the measurement is the most likely thing to be wrong.* Re-verifying a fix is worth doing
 — but a re-plant must satisfy the rule's own scope before its silence means anything.
 
+#### A redundancy census of the matrix itself (round 96)
+
+199 `step()` invocations, parsed mechanically. **64% (128 steps) share a checker with another
+step** — but 104 of those are the deliberate *bare gate + its `--self-test`* pairing, which is not
+redundancy. The genuine findings are narrow:
+
+| group | steps | verdict |
+|---|---|---|
+| `migration smoke test` / `migration idempotency` | 2 | **byte-identical commands.** `run_migrate` (`db.rs:17`) calls `migrations::run` once with no flag, so the second pass could not have tested idempotency. |
+| `check-release-version.mjs --self-test`, `verify-updater-signature.mjs --self-test` | 4 | identical command under two different labels, from two separate wiring rounds |
+| `verify-scoped-reads.py`, `verify-unsafe-safety.py` | 4 | `--self-test` and bare labels inverted versus the other 52 pairs — a relabel risk, not a merge |
+| two same-basename `check-gate-runners.py` files | 2 | different files (8.6 kB vs 15.2 kB) auditing the same manifest 600 lines apart |
+| `verify-namespace-governance.py` | 4 | the only 4x group; each flag is a documented distinct rule set — **not** a merge |
+
+**The first group was fixed, not filed.** The "idempotency" step is now two real runs with an
+assertion on the second (`grep -q "migrations up to date"`), and it was proven to **fail** when
+that assertion does not hold. A step that cannot fail is worse than no step: it reads as coverage.
+
+**The census also produced two useful negatives:** no step invokes a script that does not exist,
+and no step sits inside a never-true conditional. Both were measured rather than assumed, because
+a census that only reports the things it expected to find is not a census.
+
 **The useful output of this round is the *list*, not the fixes.** 51 wired checkers is a roster
 anyone can re-run, and now one more of them is green. A gate nobody runs is not a gate — the same
 sentence this project has written three times about gates, now applied to the gates themselves.
