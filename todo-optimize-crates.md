@@ -9175,3 +9175,68 @@ sccache after clippy, incremental=0  -> hits unchanged at 51
 ```
 
 ### Ledger: 164 defined, 164 closed, 0 open.
+
+## §11ZA — O-M99: — the money doc named two files that no longer held the risk, and the real answer was three (2026-10-23)
+
+Landed in `2e167e28b`, `0cd2247a0`.
+
+**O-M99 · foundation — `Money::default`'s doc listed call sites that had moved, so the one place a reader would look was empty** — resolved in §11ZA.
+
+### 1. The claim, and what is actually true
+
+`foundation/src/money.rs` documents a USD stand-in that no business money should ever be built
+from, and names where the fallback is live:
+
+> `#[serde(default)]` fields of type `Money` (e.g. `modules/sales` `SaleLine::tax_amount`,
+> `Sale::subtotal`)
+
+Measured with `git grep -n 'serde(default)'` over every non-test `.rs`, then reading the next
+three lines for a `Money` type:
+
+- those fields are in **`foundation/src/sales.rs`**, not `modules/sales` -- that module holds a
+  different `SaleLine` and no `tax_amount` at all;
+- there are **THREE**, not two: `SaleLine::tax_amount`, `Sale::subtotal`, `Sale::tax_total`.
+
+A stale claim about a STAND-IN CURRENCY is worse than no claim: it sends a reader to a file that
+does not hold the risk. Corrected, with the derivation command stated so the next reader can
+re-measure rather than trust.
+
+### 2. A line number I wrote wrong in the same edit
+
+The first draft of the correction cited `:45`, `:122` and `:126` for those three fields. Two were
+wrong -- the real lines were 45, 123 and 127. Rather than fix the digits, the line numbers were
+REMOVED: a field name survives a refactor and a line number does not, and the numbers had
+already drifted inside a single edit. That sentence is now in the comment, so the next writer
+does not re-add them.
+
+### 3. The risk is smaller than the comment implied, and the reason is worth having
+
+`minor_units` is ZERO, so the stand-in is zero money, and `Money`'s arithmetic refuses to mix
+currencies: `checked_add` returns `None` on a mismatch, which is how the refund path rejects a
+mixed-currency line (`crates/kasirmu-bridge/src/refunds.rs:146`). A defaulted `tax_amount`
+cannot silently corrupt a total -- it can only be compared, and the comparison fails closed.
+
+That was verified rather than assumed: `tax_amount.currency` has **zero** references in the
+tree, while `line_total.currency` (the required field) is the one the refund guard reads.
+
+### 4. Pinned, because the doc had drifted once already
+
+`exactly_three_money_fields_use_the_usd_serde_fallback` parses `sales.rs` at COMPILE TIME
+(`include_str!`) and asserts the set of fallback fields is exactly those three, plus that the
+fallback stays zero money in USD. A move or rename fails the build, not the test.
+
+Verified by breaking it: adding `#[serde(default)]` to `line_total` -- a Money field that must
+NOT have it -- reddens the test immediately (at money_tests.rs:1003).
+
+### Verification
+
+```
+git grep 'serde(default)' + 3-line read   -> exactly 3 Money fields, all in foundation/src/sales.rs
+Money::default() call sites in production -> zero (only its own test at money_tests.rs:778)
+tax_amount.currency references            -> zero; line_total.currency is what refunds guard on
+cargo doc -p foundation                   -> rc 0, no warnings
+cargo test -p foundation                  -> 605 + 23 passed
+  fourth field given the attribute        -> pinning test FAILS
+```
+
+### Ledger: 165 defined, 165 closed, 0 open.
