@@ -93,7 +93,7 @@
       "status": "required",
       "runners": {
         "check.sh": [
-          "ftl dedupe"
+          "ftl dedupe (dry run)"
         ],
         "check:all": [
           "ftl dedupe"
@@ -1536,7 +1536,11 @@
           "runner commands",
           "runner claims",
           "selftest sweep",
-          "fluent dynamic families"
+          "fluent dynamic families",
+          "dead controls",
+          "dead controls self-test",
+          "orphan prototype files",
+          "orphan prototype files self-test"
         ]
       },
       "ci": {

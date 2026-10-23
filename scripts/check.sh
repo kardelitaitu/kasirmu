@@ -944,6 +944,21 @@ step "runner claims self-test" "python3 scripts/verify-runner-claims.py --self-t
 # so it can be a step rather than a note.
 step "fluent dynamic families" "python3 scripts/verify-fluent-dynamic-families.py" python3 scripts/verify-fluent-dynamic-families.py
 
+# Two UI-side sweeps that had NO check.sh step and NO self-test, so a regression in
+# either detector was invisible: the sweep kept printing "0 candidate(s)" over a scan
+# that had stopped seeing anything. Both now carry a --self-test that pins the shapes
+# their OWN history got wrong -- for dead-controls, the three recorded defects are the
+# line-window tag read, the bare "submit" substring and the tag inside a multi-line
+# comment; for orphan-prototype-files, the `hits <= 1` baseline that reported a loaded
+# stylesheet as an orphan. Both self-tests were mutated: reverting each historical bug
+# reddens the case that pins it, and the restore is green.
+# The SWEEPS themselves stay local-matrix only. Neither is on the merge path, and
+# making one a blocking gate is a policy decision this commit does not take.
+step "dead controls" "python3 scripts/check-dead-controls.py" python3 scripts/check-dead-controls.py
+step "dead controls self-test" "python3 scripts/check-dead-controls.py --self-test" python3 scripts/check-dead-controls.py --self-test
+step "orphan prototype files" "python3 scripts/check-orphan-prototype-files.py" python3 scripts/check-orphan-prototype-files.py
+step "orphan prototype files self-test" "python3 scripts/check-orphan-prototype-files.py --self-test" python3 scripts/check-orphan-prototype-files.py --self-test
+
 # The settled-read verdict union had FOUR hand-copied declarations before this
 # gate existed, and none of them was visible to any other check: each was
 # type-correct, each passed the whole suite, and two of them documented the

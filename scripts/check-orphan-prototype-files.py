@@ -38,7 +38,18 @@ rule with that reasoning). "Dev-only" is not the same as "not published", though
 tree IS deployed, so an orphan here is dead weight on a public origin rather than a
 private convenience.
 
-Exit codes: 0 always (report only) unless --strict, then 1 when any orphan is found.
+Exit codes: 0 always (report only) unless --strict, then 1 when any orphan is found,
+and 2 when the detector fails its own self-test (`--self-test` runs those cases alone).
+
+WHY THERE IS A SELF-TEST
+
+`orphans()` is two lines long and its whole answer is a set difference over a corpus.
+That shape has failed silently on this project before: a regex that stops matching, or a
+corpus that silently becomes the empty string, both make every file look REFERENCED, and
+the gate prints "0 orphan(s)" with the same confidence as a real clean pass. The cases
+below pin both directions -- a file nobody names IS reported, and a file named once IS
+not -- plus the `+ 1` baseline direction that produced a false positive the first time
+this was written.
 """
 
 from __future__ import annotations
@@ -109,10 +120,68 @@ def orphans(files: list[str], corpus: str) -> list[str]:
             found.append(rel)
     return found
 
+#: Synthetic cases: (name, tracked files, corpus, expected orphan list).
+#: Each is a SHAPE the detector must still classify correctly. If any stops matching,
+#: the gate has gone deaf and must not be trusted for a clean report.
+SELF_TEST_CASES = (
+    # Direction 1: named nowhere -> an orphan. The whole reason the gate exists.
+    ("unreferenced is an orphan", ["prototypes/a.js"], "nothing here", ["prototypes/a.js"]),
+    # Direction 2: one mention anywhere in the tracked tree is enough.
+    (
+        "a single mention clears it",
+        ["prototypes/a.js"],
+        '<script src="a.js">',
+        [],
+    ),
+    # Direction 3: the bug that the first draft shipped. Treating the git ls-files
+    # PATH output as part of the corpus made every file hit at least once, so this
+    # case pins that the corpus is CONTENTS ONLY by asserting the empty corpus is
+    # correctly read as "nothing references anything".
+    ("empty corpus reports every file", ["prototypes/a.js"], "", ["prototypes/a.js"]),
+    # Direction 4: two files, only one named -- the difference, not a whole-set answer.
+    (
+        "reports the one file of two that is unnamed",
+        ["prototypes/a.js", "prototypes/b.js"],
+        "loads b.js only",
+        ["prototypes/a.js"],
+    ),
+    # Direction 5: an empty file list is not a clean tree, it is a tree that was not
+    # read. main() short-circuits on it; here the detector itself must not invent one.
+    ("no files at all finds nothing", [], "anything", []),
+)
+
+
+def self_test() -> int:
+    """Run :data:`SELF_TEST_CASES` and report every failure, not just the first."""
+    bad = []
+    for name, files, corpus, expected in SELF_TEST_CASES:
+        got = orphans(list(files), corpus)
+        if got != expected:
+            bad.append(f"  {name}: expected {expected!r}, detector returned {got!r}")
+    if bad:
+        print("SELF-TEST WRONG:", file=sys.stderr)
+        print("\n".join(bad), file=sys.stderr)
+        return 2
+    print(f"SELF-TEST OK ({len(SELF_TEST_CASES)} cases, no file read)")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--strict", action="store_true", help="exit 1 when any orphan is found")
+    ap.add_argument("--self-test", action="store_true", help="run this checker's cases and exit")
     args = ap.parse_args()
+
+    if args.self_test:
+        return self_test()
+
+    # Grade the detector before grading the tree: a corpus read that silently returned
+    # "" would make every file look referenced, and this gate would print 0 orphans
+    # with full confidence. The cases above are what that reads as.
+    rc = self_test()
+    if rc:
+        print("DETECTOR WENT DEAF: not trusting the tree scan below.", file=sys.stderr)
+        return rc
 
     files = tracked_files()
     if not files:

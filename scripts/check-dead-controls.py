@@ -21,8 +21,18 @@ handler-less on purpose -- they demonstrate the component, they are not operated
 48 that sweep found were that. The remaining 4 were comment lines inside explanatory
 comments, which is why a tag whose line starts with // or * is skipped.
 
+WHY THERE IS A SELF-TEST
+
+Every defect this script has had was the same shape: a rule that was right for the
+case in front of it and wrong for a neighbour, and the report stayed at "0
+candidate(s)" while being deaf. Three are recorded above -- the line-window tag read,
+the bare submit substring, and the tag inside a multi-line comment. The cases below
+pin all three plus the two real defects it found, so a later edit to full_tag,
+in_comment or the handler rule reddens here instead of quietly reporting a clean tree.
+
 USAGE
-  python3 scripts/check-dead-controls.py
+  python3 scripts/check-dead-controls.py             # report
+  python3 scripts/check-dead-controls.py --self-test # prove the detector still sees
 """
 
 import os
@@ -33,6 +43,9 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SCAN_ROOT = os.path.join(ROOT, "ui", "src", "features")
 BTN_RE = re.compile(r"<(?:Button|button)\b")
 QUOTES = ('"', '`')
+#: Only the type="submit" ATTRIBUTE drives a form. A bare "submit" substring
+#: matched aria-label="submit" and produced five false positives on the first run.
+SUBMIT_TYPE_RE = re.compile(r'type\s*=\s*(?:"submit"|\'submit\')')
 
 
 def full_tag(src, start):
@@ -84,7 +97,73 @@ def iter_sources(root):
                 yield os.path.join(dirpath, name)
 
 
+#: Synthetic sources: (name, tsx text, expected number of reported candidates).
+#: Each is a SHAPE this detector has had to learn; the comment says which.
+SELF_TEST_CASES = (
+    # The defect that motivated the script (round 155, TransactionLogScreen "Details").
+    ("inert button is reported", "<Button>Details</Button>", 1),
+    # The rescued shape: no handler on the tag, one on an ancestor. Still reported --
+    # bubbling works, but the nesting is an aria violation, so silence here is wrong.
+    ("rescued by an ancestor is still reported", "<div onClick={f}><Button>x</Button></div>", 1),
+    # A multi-line onClick. A line-window read missed this and produced six false
+    # positives in round 155; the bracket-aware tag read is what fixed it.
+    ("multi-line handler is not reported", '<Button\n  onClick={() => go()}\n  label="x"\n/>', 0),
+    # Bare "submit" substring produced five false positives on the first run. Only the
+    # type="submit" ATTRIBUTE is a handler.
+    ("type=submit is a handler", '<button type="submit">Save</button>', 0),
+    ("the word submit is not a handler", '<button aria-label="submit">Save</button>', 1),
+    # A tag inside a multi-line block comment re-reported the two FIXED defects.
+    ("tag inside a block comment is skipped", "/*\n <button>old</button>\n*/", 0),
+    ("tag inside a JSX comment is skipped", "{/* <Button>x</Button> */}", 0),
+    # href / disabled: a link has its own navigation, and a disabled control cannot fire.
+    ("link is not a dead control", '<a href="/x">x</a>', 0),
+    ("a plain <button> is matched the same as <Button>", "<button>x</button>", 1),
+)
+
+
+def scan_text(src):
+    """Reported candidate line numbers for one source text. Shared by main and the cases."""
+    found = []
+    for m in BTN_RE.finditer(src):
+        if in_comment(src, m.start()):
+            continue
+        tag = full_tag(src, m.start())
+        if not tag:
+            continue
+        if "href=" in tag or "disabled" in tag:
+            continue
+        if "onSubmit=" in tag or "onClick=" in tag:
+            continue
+        if SUBMIT_TYPE_RE.search(tag):
+            continue
+        found.append(line_of(src, m.start()))
+    return found
+
+
+def self_test():
+    """Run SELF_TEST_CASES over scan_text; report every failure, not just the first."""
+    bad = []
+    for name, src, expected in SELF_TEST_CASES:
+        got = len(scan_text(src))
+        if got != expected:
+            bad.append("  %s: expected %d candidate(s), detector found %d" % (name, expected, got))
+    if bad:
+        sys.stderr.write("SELF-TEST WRONG:\n" + "\n".join(bad) + "\n")
+        return 2
+    print("SELF-TEST OK (%d cases, no file read)" % len(SELF_TEST_CASES))
+    return 0
+
+
 def main():
+    if "--self-test" in sys.argv[1:]:
+        return self_test()
+    # Grade the detector before the tree: a BTN_RE or full_tag regression would make
+    # every file report zero and this script would print a clean sweep over a deaf scan.
+    rc = self_test()
+    if rc:
+        sys.stderr.write("DETECTOR WENT DEAF: not trusting the tree scan below.\n")
+        return rc
+
     inert = []
     for path in iter_sources(SCAN_ROOT):
         rel = os.path.relpath(path, ROOT).replace(os.sep, "/")
@@ -92,27 +171,8 @@ def main():
             continue
         with open(path, encoding="utf-8", errors="replace") as handle:
             src = handle.read()
-        for m in BTN_RE.finditer(src):
-            # A tag inside a JSX comment block must not be reported. Checking only the
-            # tag own line is not enough: the comments explaining the two FIXED defects
-            # (rounds 155-156) span a dozen lines and contain the literal text "<button>",
-            # which is exactly how the first version of this script re-reported its own
-            # fixes as open defects.
-            if in_comment(src, m.start()):
-                continue
-            tag = full_tag(src, m.start())
-            if not tag:
-                continue
-            # type="submit" IS a handler: it drives the enclosing form. Checking for a bare
-            # "submit" substring produced five false positives on the first run (every
-            # modal Save button in retail/ plus SettingsPage hidden submit).
-            if "href=" in tag or "disabled" in tag:
-                continue
-            if "onSubmit=" in tag or "onClick=" in tag:
-                continue
-            if re.search(r'type\s*=\s*(?:"submit"|\'submit\')', tag):
-                continue
-            inert.append("%s:%d" % (rel, line_of(src, m.start())))
+        for line_no in scan_text(src):
+            inert.append("%s:%d" % (rel, line_no))
     print("dead-controls: %d candidate(s) with no handler, ancestor check not automated"
           % len(inert))
     for row in inert:
