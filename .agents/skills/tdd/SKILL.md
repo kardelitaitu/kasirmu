@@ -273,4 +273,4 @@ npm run check:all            # lint → typecheck → test → i18n → E2E (Doc
 
 ---
 
-> last audited 22-09-26 by Budak-Korporat
+> last audited 23-10-26 by Budak-Korporat
