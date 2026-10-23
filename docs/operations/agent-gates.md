@@ -283,6 +283,11 @@ population is 54, not 55; the surviving rows are the same set minus one false ro
 | `verify-flaky-quarantine.py` | 5 | 1 | covered |
 | `verify-settled-read-copies.py` | 3 | 1 | covered |
 
+**Final sweep after the fixes: `55 checker(s), 15 SURVIVED, 40 killed`** — the same 15
+names as the table above, all I/O shells, and four checkers moved from SURVIVED to covered
+as their branches were pinned. Re-run the sweep after changing any self-test; a fix is a
+hypothesis until the mutant dies.
+
 **No checker has zero killed functions.** The always-surviving names are the I/O shells —
 `git`, `repo_root`, `tracked`, `tracked_files`, `repo_root`, `live_runner_files`,
 `ui_sources`, `bundle_files`, `load_floors`, `select_column_list` — because a self-test that
