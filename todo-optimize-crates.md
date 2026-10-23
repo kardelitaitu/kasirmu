@@ -7498,3 +7498,80 @@ nothing to commit. Recording a round with no commit is more useful than manufact
 change to justify one.
 
 ### Ledger: 149 defined, 149 closed, 0 open.
+## §11EB — the Windows TEMP trap cleared from 51 sites to 5, all of them benches (2026-10-23)
+
+Landed in `20b440fb6`, `b93974dd8`, `1acb4e88f`, `a6cdecaac`, `12d4b2b28`.
+
+### Where it came from
+
+Round 40 started from a question the previous round had left: does any other crate carry the
+same process-global pattern that `O-M83` fixed? The scan for that found nothing new, but a
+different measurement fell out of it — `kasirmu-local-api` had a test failing with
+`PermissionDenied (os error 5)`, the signature of the `C:\WINDOWS\TEMP` trap that
+`kasirmu-test-support` was built for. The crate had simply never been migrated.
+
+Repo-wide, that scan counted **51 bare `std::env::temp_dir()` / `tempfile::tempdir()` call
+sites** across 26 files and 8 crates. Two failure modes, both real: the create fails once
+anything stale exists (reads as a broken test), and a fixture created there is never cleaned
+up.
+
+### What was done
+
+Five commits, one per area, each verified by running that area's suite before committing:
+
+| commit | scope | verification |
+|---|---|---|
+| `20b440fb6` | kasirmu-local-api (4 sites) | 26 passed, 0 failed |
+| `b93974dd8` | kasirmu-core integration, kasirmu-security (8 sites) | 556 passed / 116 passed |
+| `1acb4e88f` | platform-core/kernel/startup, kasirmu-cli (24 sites) | 466 / 159+9 / 104+7+1 / 155+2 |
+| `a6cdecaac` | cloud-server migration bin (3 sites) | `cargo check --all-targets` clean |
+| `12d4b2b28` | desktop-tauri (8 sites) | 177 passed; 1 pre-existing red (below) |
+
+**Remaining: 5 sites, all in `crates/kasirmu-core/benches/` and `examples/`.** Those are
+deliberately out of scope — the examples are manual diagnostic tools that must LEAVE their WAL
+artifacts for a human to inspect, so a self-deleting guard would destroy their output, and the
+benchmarks measure I/O on a real directory rather than a fixture.
+
+### The recurring hazard, and it fired again
+
+The one way to get this migration wrong is to build a `ScratchDir` as a local inside a helper and
+return only the path — the guard drops at the closing brace, deletes the directory, and every
+later open fails with SQLite `CannotOpen`. That mistake has now been made **three** times in
+this repo (O-M80's `Scratch::new`, then `local_api`'s `audit_store` and `lifecycle_state`).
+
+It is not a knowledge problem; the rule is documented in the brief every one of these received.
+What actually caught it was the test, each time. The `check-scratch-leaks.py` gate added in
+round 35 grades exactly this shape (`find_dropped_guards`) and reported **0 findings** throughout
+— because the three cases were all written and caught within the same editing pass, before the
+gate ever ran. The gate is still worth having, but this round is evidence that it does not
+substitute for running the suite.
+
+### A subagent damaged the tree, and the recovery is the part worth keeping
+
+Mid-round a subagent's "restore pristine HEAD" loop wrote four tracked `.rs` files and
+`Cargo.toml` with newlines stripped, and deleted `apps/desktop-tauri/src/state/db_open.rs`. The
+cause was PowerShell's `Set-Content` / `Out-File` re-encoding, not a wrong path. It was caught
+because `cargo metadata` failed to load the workspace — a whole-tree failure, impossible to
+miss — and repaired from `git cat-file blob` piped as raw bytes, then verified byte-exact with
+`git hash-object`. Nothing was staged, stashed or reset at any point.
+
+The lesson generalizes past this incident: **a restore that reports success is not a restored
+file**, and on this machine PowerShell text redirection is specifically the tool that lies about
+it. `git hash-object` against `git rev-parse HEAD:` is the only check that settles it.
+
+### A pre-existing red, recorded so it is not rediscovered as new
+
+`apps/desktop-tauri` does not compile at HEAD: three `E0277` errors at
+`commands/workspaces.rs:260`, where `kasirmu_bridge::workspaces::
+list_workspaces_for_store_scoped` holds a non-`Sync` `Store` across an `.await` inside a
+`#[tauri::command]` that must be `Send`. Proven pre-existing two ways: `workspaces.rs` is
+byte-identical to HEAD, and swapping pristine copies of the migrated files back in produced the
+same three errors at the same location. The migration's own verification therefore ran with
+that one command temporarily worked around (throwaway, reverted byte-exact): **177 passed, 1
+failed**, where the failure is the unrelated `drift_pin_registration_floor_is_met`
+(`REGISTERED_FLOOR = 500` against 510 measured) — a pin that is red whenever the count moves
+in EITHER direction.
+
+That pin is the item awaiting an owner ruling, and it is now red in a second crate.
+
+### Ledger: 149 defined, 149 closed, 0 open.
