@@ -31,3 +31,4 @@ tokio = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+kasirmu-test-support = { path = "../kasirmu-test-support" }

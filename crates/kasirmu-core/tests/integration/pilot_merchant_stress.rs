@@ -177,7 +177,9 @@ fn test_pilot_merchant_50_sales_stress_and_reconciliation() {
 
 #[test]
 fn test_dirty_shutdown_and_wal_durability() {
-    let temp_dir = tempfile::tempdir().unwrap();
+    // The shared scratch root rather than the machine TEMP, which cannot be
+    // deleted from by an ordinary user on this project's Windows machines.
+    let temp_dir = kasirmu_test_support::tempdir();
     let db_path = temp_dir.path().join("pilot_wal_recovery.sqlite3");
 
     // Phase 1: Open file-backed DB, run migrations, and write committed transactions under WAL
