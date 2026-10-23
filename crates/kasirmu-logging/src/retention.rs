@@ -107,7 +107,7 @@ pub const RETENTION_HEARTBEAT: Duration = Duration::from_secs(30 * 60);
 /// and keep the "whole buffer equals the sentinel" test below the same.
 const HEARTBEAT: &[u8] = b"\x00";
 
-/// One retention sweep's outcome, returned by [`Retainer::run_due`].
+/// One retention sweep's outcome, returned by `Retainer::run_due`.
 ///
 /// Public so tests can assert on what a sweep did rather than only on its
 /// side effects.

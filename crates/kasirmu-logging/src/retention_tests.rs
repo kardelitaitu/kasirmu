@@ -442,21 +442,13 @@ fn an_unrepresentable_cutoff_declines_the_sweep() {
 // ── The writer layer ───────────────────────────────────────────────
 
 /// The sentinel is ONE byte, not the four characters of its own escape.
-
 ///
-
 /// A byte-string literal does not interpret escapes the way a string literal
-
 /// is often assumed to: the source spelling of a NUL byte is the escape
-
 /// `\x00` -- ONE backslash -- and `b"\\x00"` would be a literal backslash
-
 /// followed by `x00`, four bytes that the appender would write into the log
-
 /// file verbatim. Pinning the length here catches that the moment the literal
-
 /// is mistyped.
-
 #[test]
 fn the_heartbeat_sentinel_is_exactly_one_nul_byte() {
     assert_eq!(HEARTBEAT.len(), 1, "the sentinel must be a single byte");
@@ -471,17 +463,11 @@ fn the_heartbeat_sentinel_is_exactly_one_nul_byte() {
 }
 
 /// A heartbeat write must leave the inner writer untouched: the sentinel is
-
 /// consumed by [`RetainerWriter`] and never forwarded to the appender.
-
 ///
-
 /// This is the assertion that makes Defect 1 visible. With a four-byte sentinel
-
 /// the `Vec` would contain `\x00x00` and this test would fail; the corrected
-
 /// single-byte literal leaves it empty.
-
 #[test]
 fn a_heartbeat_write_reaches_the_inner_writer_zero_times() {
     let (_scratch, dir) = temp_dir("sentinel-swallow");
@@ -511,11 +497,8 @@ fn a_heartbeat_write_reaches_the_inner_writer_zero_times() {
 }
 
 /// An absurd interval must not panic. `Duration::add` overflows and panics, so
-
 /// the deadline arithmetic has to be checked; a caller (or a test) can reach
-
 /// `with_interval` with any value at all.
-
 #[test]
 fn an_absurd_interval_does_not_panic_and_disables_the_periodic_sweep() {
     let (_scratch, dir) = temp_dir("absurd-interval");
@@ -543,11 +526,8 @@ fn an_absurd_interval_does_not_panic_and_disables_the_periodic_sweep() {
 }
 
 /// The same clamp must hold when the interval is merely very large rather than
-
 /// `Duration::MAX`, because the clamp is on the *sum* of the offset and the
-
 /// interval, not on the interval alone.
-
 #[test]
 fn a_very_large_interval_is_clamped_not_wrapped() {
     let (_scratch, dir) = temp_dir("large-interval");
