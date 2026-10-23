@@ -967,3 +967,52 @@ fn min_picks_lower_at_i64_extremes() {
     assert_eq!(min.min(max).unwrap(), min);
     assert_eq!(max.min(min).unwrap(), min);
 }
+
+#[test]
+fn exactly_three_money_fields_use_the_usd_serde_fallback() {
+    // PINS THE CLAIM IN `Money::default`'s doc comment, which lists the fields that
+    // fall back to a USD stand-in. That list has been wrong before: it named
+    // `modules/sales` paths that had moved to `foundation/src/sales.rs` and omitted
+    // `tax_total` entirely (corrected 2e167e28b). A doc comment naming call sites is
+    // a claim, and nothing was checking it.
+    //
+    // Source TEXT rather than a type-level assertion, deliberately: the property is
+    // "which fields carry the attribute", and an attribute leaves no trace a
+    // type-level test can see. include_str! keeps this honest -- it is compile-time,
+    // so a rename or a move fails the BUILD rather than the test.
+    let src = include_str!("sales.rs");
+    let mut found: Vec<String> = Vec::new();
+    let mut pending_default = false;
+    for line in src.lines() {
+        let t = line.trim();
+        if t == "#[serde(default)]" {
+            pending_default = true;
+            continue;
+        }
+        if pending_default {
+            // The attribute applies to the NEXT field declaration.
+            if let Some(rest) = t.strip_prefix("pub ") {
+                if rest.contains(": Money") {
+                    found.push(rest.split(':').next().unwrap_or("?").to_string());
+                }
+                pending_default = false;
+            }
+        }
+    }
+    found.sort();
+    assert_eq!(
+        found,
+        vec!["subtotal", "tax_amount", "tax_total"],
+        "the set of Money fields relying on Money::default() changed: {found:?}. Every one gets a"
+    );
+    assert_eq!(
+        Money::default().currency,
+        usd(),
+        "the fallback currency is USD; if that ever changes, the doc comment and this test move together"
+    );
+    assert_eq!(
+        Money::default().minor_units,
+        0,
+        "the fallback must stay ZERO money -- a non-zero stand-in could corrupt a total"
+    );
+}
