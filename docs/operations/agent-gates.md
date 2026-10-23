@@ -467,9 +467,16 @@ Both scripts define those patterns ONCE and pass the same value to the self-test
 scan (`awk -v PERM="$PERM"`), which is why a mutation reaches the cases at all — a self-test
 grading its own private copy of a regex proves nothing about the scan.
 
-**Final sweep: `72 checker(s), 17 SURVIVED, 55 killed`.** The survivors are the same I/O shells
+**Final sweep: `72 checker(s), 16 SURVIVED, 56 killed`.** The survivors are the same I/O shells
 (`git`, `repo_root`, `tracked`, `load_floors`, `cleanup`) plus three `NO MUTATABLE FUNCTION`
 rows; every checker that has a distinct detector kills at least one mutant.
+
+The last one pinned (round 89) was `check-debt-ledger.py`'s `entries_with_dead_file_refs` — the
+rule that catches a ledger entry citing a file deleted weeks earlier. Its fixture wrote the paths
+**bare**, and `FILE_REF_RE` requires backticks, so the first draft would have passed vacuously:
+a regex matching nothing finds no refs, and "no refs" skips the entry. Caught by the mutation, not
+by reading. That is the fourth vacuous case this session, and every one of them was a fixture that
+could not reach the rule it was testing.
 
 #### Extending the sweep to EVERY function found three more unpinned detectors
 
