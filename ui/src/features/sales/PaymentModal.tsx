@@ -2049,8 +2049,8 @@ retryCurrencyLoad,
           {...paymentSwipe}
         >
       <QrisQrDisplay
-        amount={total.minor_units}
-        currency={total.currency}
+        amount={effectiveTotalMoney.minor_units}
+        currency={effectiveTotalMoney.currency}
         reference={qrReference}
         isOpen={showQr}
         onClose={() => setShowQr(false)}
@@ -2060,8 +2060,8 @@ retryCurrencyLoad,
 
       {autoQr && (
         <QrisQrDisplay
-          amount={total.minor_units}
-          currency={total.currency}
+          amount={effectiveTotalMoney.minor_units}
+          currency={effectiveTotalMoney.currency}
           reference={autoQr.orderId}
           isOpen={true}
           onClose={handleAutoCancel}
