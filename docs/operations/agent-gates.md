@@ -478,6 +478,23 @@ a regex matching nothing finds no refs, and "no refs" skips the entry. Caught by
 by reading. That is the fourth vacuous case this session, and every one of them was a fixture that
 could not reach the rule it was testing.
 
+#### Defect-planting, and the one time it lied (rounds 90-91)
+
+Mutation proves a SELF-TEST can fail. It says nothing about whether the LIVE gate can, so the
+stronger experiment is to plant a real defect in the tree the gate reads and check it reddens.
+Three results:
+
+| gate | planted | outcome |
+|---|---|---|
+| `website/scripts/check-seo.mjs` | a second `<title>` on a built page | **silent pass** — `html.match(...)` without `/g` sees only the first title, while the header claims titles are "unique site-wide". Fixed: exit 1 now. |
+| `website/scripts/check-ui-strings.mjs` | `<p>Planted hardcoded sentence here</p>` | reported clean — **but the fixture was mine, not the gate's**: the rule requires an English STOPWORD, and that sentence has none. Re-planted `Please confirm the deletion of this record` → exit 1. |
+| `website/scripts/check-password-policy.mjs` | flipped a fixture case; removed `password_confirm` from `AuthForm.tsx` | exit 1 in both, naming the case and the flow. |
+
+**The second row is the lesson.** A planted defect that is not the shape the rule targets proves
+nothing, and it *reads* like a gate failure — the most misleading possible result. Before concluding
+"the gate missed it", check that the plant satisfies the rule's own predicate. Here that meant
+reading `hasStopword()` and discovering the rule grades PROSE, not arbitrary text.
+
 #### Extending the sweep to EVERY function found three more unpinned detectors
 
 The sweep mutates only the FIRST candidate per checker. Triaging every survivor by mutating *all*
