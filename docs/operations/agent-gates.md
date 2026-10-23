@@ -538,7 +538,10 @@ The 14 are `root-policy`, `docker-dry-run`, `migration`, `script-tests`,
 `gate-completeness`, `e2e`, `debt-ledger`, `core-size`, `updater-signature`,
 `server-origins`, `unified-routes`, `checker-selftest-companions`,
 `local-matrix-unlisted-gates` and `pipeline-verdicts` — all `check.sh`-only except `e2e`
-(`check:all`).
+(`check:all`). **And every one of the 14 resolves**: 13 declare a `check.sh` label that
+exists, and `e2e` declares `check:all`, whose runner is `check-ui.mjs:287`
+(`npm run e2e` via `run-e2e.mjs`, skipped when Docker is absent). So the "required but
+unwired in CI" shape has 14 members and 14 runners — it is a posture, not a backlog.
 
 **This corrects an overstatement in the round-82 notes**: `e2e` is not an anomaly in an
 otherwise CI-covered roster. It is one of fourteen required gates whose enforcement is the
