@@ -38,11 +38,23 @@ expensive and why they cannot share a pass without changing what they check.
 
 Measured, not proposed-and-abandoned:
 
-| Lever | Estimated saving | Evidence |
+The 36 steps split by what they invoke:
+
+```
+HEAVY (cargo / npm / npx / go / docker)   8 steps   344 s   <- cannot be parallelised
+STATIC (pure python / node checks)       28 steps   194 s   <- independent subprocesses
+```
+
+| Lever | Ceiling | Evidence |
 |---|---|---|
 | A warm cargo cache | most of the 286 s | the machine is already warm; this is the residue of an incremental rebuild |
-| Parallelising independent static gates | up to ~150 s | steps 5-36 are mostly independent subprocesses, the way `verify-selftest-sweep.py` already runs its 50 checkers 8-wide (362 s -> 232 s in round 46) |
+| Parallelising the STATIC half | **~155 s** | 194 s of independent subprocesses; at 5x that is 39 s, so 155 s saved. The ceiling is the static half, not the matrix: the 344 s of cargo/npm work does not parallelise against itself |
 | Merging "X" and "X self-test" pairs | **~0 s** | 18 of 36 steps are already at 0 s |
+
+**So the honest ranking is: parallelise the static half, not the step list.** `verify-selftest-sweep.py`
+already proved the pattern on this corpus — 50 checkers, 8-wide, 362 s -> 232 s in round 46.
+The ceiling is 155 s, which is 29% of the 538 s measured, not the "half the matrix" the
+step count suggests.
 
 So the honest ranking is: parallelise the static middle, not the step list. The sweep
 already proved the pattern works on this corpus.
