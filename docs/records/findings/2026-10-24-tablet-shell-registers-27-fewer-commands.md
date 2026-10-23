@@ -84,6 +84,13 @@ BR-S10 — *which shell's gate set is authoritative*). The fork:
 - **Or allowlist the 34 sites as documented tablet gaps** — honest about the state but leaves
   real runtime failures in place.
 
+**And the convention for saying so already exists.** `ui/src/api/workspaces.ts:299` and
+`ui/src/api/data.ts` carry four "Desktop-only: not registered on tablet (recorded product choice)"
+comments, naming memo authoring and payables as the precedent. So the project HAS a way to record
+a deliberate desktop-only command — applied **4 times** against **34** call sites. That half needs
+no ruling: whichever option is chosen above, annotating the sites with the same line is the
+cheapest, most honest part, and it is what the four existing comments were doing.
+
 Applying the one-flag fix (`--shell desktop,tablet` in both runners) turns CI red against this
 backlog, and the checker has no `--baseline` and no report-only mode, so it cannot be turned on
 "yellow" first. **Sequencing is the owner's call, not a lane's.**
