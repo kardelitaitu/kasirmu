@@ -369,6 +369,58 @@ disk — they cannot be exercised without a build, and the self-test says so in 
 already proven; only reading which one had *nothing* found the gap. Require the quoted flag
 for the census (prose mentions are not capabilities), then read each exception.
 
+#### The checker the census could not see, because it lives in another directory
+
+Widening the census to the parser's own scope (92 checkers across `scripts/`,
+`website/scripts/` and `.agents/skills/*/scripts/`, `.py`/`.mjs`/`.sh`) surfaced a fourth:
+
+| Checker | Declares `--self-test`? | Proof that exists | Runner |
+|---|---|---|---|
+| `check-auditor-selftests.sh` | No | **It IS a runner** — invokes 11 docs checkers' self-tests | `check.sh:253`, `required` |
+| `check-replay-fork.py` | No | Companion test, `scripts/test-replay-fork.py` | wired |
+| `verify-website-assets.py` | No | In-file mutation probe, documented at :20-27 | wired |
+| `verify-docker-persistence.sh` | **No** | **Nothing at all** | **Nowhere** |
+
+`verify-docker-persistence.sh` is the sharp one. It had no `--self-test`, no companion test,
+no measured mutation, no note explaining an absence, **and no runner**: zero hits in
+`check.sh` and in every live workflow. The only path that reaches it is
+`verify-docker-all.sh:102` (STAGE 1), which `--self-test` exits before at `:83-86`. So the
+"A ✔ Persistence verified" line it prints had never been produced by CI at all — while
+`docs/records/audits/2026-08-31-glm-5.3f-crates-audit.md:2203` asserted it "runs the volume
+contract in CI".
+
+**Fixed:** a `--self-test` (7 cases, no daemon) grading the three verdicts every run
+depends on — the `survived()` substring test (a persistence gate that reported a LOST
+record as present is the worst possible direction), the collection-completeness verdict, and
+`fail()` actually *exiting* rather than returning — plus a structural case that the block
+sits above the first `docker` call. Wired as `check.sh` step `docker persistence self-test`.
+
+**Two drafts of that self-test were worthless, and both were caught by running them:**
+
+1. Case 4 called a function that does not exist and fell back to `|| echo absent`. It
+   asserted nothing and would have passed even if `--self-test` had gone on to build images.
+2. The replacement re-ran `sh "$0" --self-test`, which is **recursion** — it hung until
+   killed. Replaced with a structural read of the file itself.
+
+#### The scope bug this exposed in `verify-runner-claims.py`
+
+That audit's false claim sat in the checker built to catch exactly it, because
+`docs/records/` was in `SKIP_DIRS`. The blanket skip existed for a good reason — rewriting
+a dated record destroys evidence — but it conflated two kinds of document. The rule is now
+**positive**: a record is skipped only when it says of *itself* that it is superseded
+(`SUPERSEDED` / `HISTORICAL RECORD` / `DO NOT TRUST THIS FOR CURRENT`). A date in a
+filename says when it was written, not that its claims have been retired.
+
+Scope went from 6 to 8 claims checked, and the audit's sentence is now corrected **in
+place** — "was believed to run … it does not" — rather than annotated below the line it
+contradicts. Proven by restoring the false wording: exit 1, naming the file and the script.
+
+**One more trap, in my own fix:** the first attempt filtered collected paths by
+`records not in p.parents`, but `SKIP_DIRS` had already pruned the walk, so the filter ran
+over a list that could not contain those files — 0 scanned, gate green. The collector now
+*enters* `docs/records/` instead of pruning it. A filter downstream of an exclusion is dead
+code that reads as a fix.
+
 ### Two ways a documentation census measures the WRONG THING
 
 Both measured 2026-10-23 while trying to establish how many Rust modules lack the
