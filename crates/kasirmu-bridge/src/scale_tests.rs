@@ -1,5 +1,5 @@
 //! Scale command unit tests (Wave-D test relocation: moved out of
-//! `apps/desktop-tauri/src/commands/scale_tests.rs`).
+//! `apps/desktop-client/src/commands/scale_tests.rs`, since renamed to desktop-tauri).
 //!
 //! Mounted at the foot of `scale.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the DTOs directly. The tests are pure DTO

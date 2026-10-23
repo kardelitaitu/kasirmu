@@ -1,5 +1,5 @@
 //! Relocated browser-command tests (Wave-F test relocation: moved out of
-//! `apps/desktop-tauri/src/commands/browser_tests.rs`).
+//! `apps/desktop-client/src/commands/browser_tests.rs`, since renamed to desktop-tauri).
 //!
 //! Mounted at the foot of `browser.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the percent-encoder `urlencoding` (defined in

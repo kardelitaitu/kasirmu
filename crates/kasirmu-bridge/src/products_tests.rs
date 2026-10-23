@@ -1,6 +1,6 @@
 //! Integration-style unit tests for the product command bodies (Wave-A test
 //! relocation: moved out of
-//! `apps/desktop-tauri/src/commands/products_tests.rs`).
+//! `apps/desktop-client/src/commands/products_tests.rs`, since renamed to desktop-tauri).
 //!
 //! Mounted at the foot of `products.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the DTOs and the `run_*` `&Connection` helpers the

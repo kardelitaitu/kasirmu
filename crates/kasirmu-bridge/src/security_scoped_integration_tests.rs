@@ -4,7 +4,7 @@
 //! authentication uniformly across categories, settings, sync,
 //! products, and the refresh_picker_ticket flow.
 //!
-//! Relocated from `apps/desktop-tauri/src/commands/security_scoped_integration_tests.rs`
+//! Relocated from `apps/desktop-client/src/commands/security_scoped_integration_tests.rs`, since renamed to desktop-tauri
 //! and mounted inside `kasirmu_bridge::auth`; every assertion is preserved verbatim,
 //! with the mechanical desktop-to-bridge mapping applied:
 //! `app.state()` -> `&ctx()`, `State`-last args -> `ctx`-first,

@@ -1,6 +1,6 @@
 //! Unit tests for the regional-configuration command bodies (Wave-A test
 //! relocation: moved out of
-//! `apps/desktop-tauri/src/commands/regional_tests.rs`).
+//! `apps/desktop-client/src/commands/regional_tests.rs`, since renamed to desktop-tauri).
 //!
 //! Mounted at the foot of `regional.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves `get_scoped`, `set_scoped`, `SetRegionalConfig`

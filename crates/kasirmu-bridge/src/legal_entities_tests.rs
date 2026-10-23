@@ -1,5 +1,5 @@
 //! Relocated legal-entity command tests (Wave-F test relocation: moved out
-//! of `apps/desktop-tauri/src/commands/legal_entities_tests.rs`).
+//! of `apps/desktop-client/src/commands/legal_entities_tests.rs`, since renamed to desktop-tauri).
 //!
 //! Mounted at the foot of `legal_entities.rs` with `#[cfg(test)] #[path]`,
 //! so `use super::*` resolves `LegalEntityDto` and `CreateLegalEntityArgs`
