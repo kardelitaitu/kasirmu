@@ -272,6 +272,13 @@ settings-announce-search-count =
     }
 settings-announce-search-cleared = Search cleared
 
+settings-key-rotation-overdue = Encryption key rotation is overdue. Please rotate keys from Security settings to maintain PCI-DSS compliance.
+settings-key-rotation-due =
+    { $count ->
+        [one] Encryption key rotation due in { $count } day. Please rotate from Security settings.
+       *[other] Encryption key rotation due in { $count } days. Please rotate from Security settings.
+    }
+
 # ── Keyboard shortcut descriptions (popover) ──
 settings-shortcuts-desc-navigate = Navigate items
 settings-shortcuts-desc-firstlast = First / last item

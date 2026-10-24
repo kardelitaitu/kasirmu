@@ -111,6 +111,9 @@ settings-announce-search-count =
     }
 settings-announce-search-cleared = Pencarian dihapus
 
+settings-key-rotation-overdue = Rotasi kunci enkripsi sudah terlambat. Rotasi kunci dari Pengaturan Keamanan untuk menjaga kepatuhan PCI-DSS.
+settings-key-rotation-due = Rotasi kunci enkripsi jatuh tempo dalam { $count } hari. Silakan rotasi dari Pengaturan Keamanan.
+
 # ── Keyboard shortcut descriptions (popover) ──
 settings-shortcuts-desc-navigate = Navigasi item
 settings-shortcuts-desc-firstlast = Item pertama / terakhir

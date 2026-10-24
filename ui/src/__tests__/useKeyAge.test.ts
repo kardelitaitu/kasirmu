@@ -8,6 +8,23 @@ vi.mock('@/api/security', () => ({
   getKeyRotationInfo: (...args: unknown[]) => mockGetKeyRotationInfo(...args),
 }));
 
+// The reminder's messages go through Fluent (they were hardcoded English until
+// 2026-10-25), so the hook needs a bundle. The mock resolves ids to readable text and
+// honours the { $count } argument, which is what lets the plural case below assert on
+// the rendered sentence rather than on the message id.
+const mockL10n = vi.hoisted(() => ({
+  getString: (id: string, args?: Record<string, unknown>) => {
+    const n = args?.['count'];
+    if (id === 'settings-key-rotation-overdue') return 'rotation overdue';
+    if (id === 'settings-key-rotation-due') {
+      return `rotation due in ${String(n)} ${n === 1 ? 'day' : 'days'}`;
+    }
+    return id;
+  },
+}));
+vi.mock('@fluent/react', () => ({
+  useLocalization: () => ({ l10n: mockL10n }),
+}));
 const mockAddToast = vi.fn();
 vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: mockAddToast }),
@@ -166,6 +183,12 @@ describe('useKeyRotationReminder', () => {
       expect.objectContaining({
         type: 'warning',
         duration: 0,
+        // THE MESSAGE IS ASSERTED, not just the shape. Every case here checked
+        // type and duration and none checked the text, which is exactly how two
+        // hardcoded English strings survived in a project whose rule is that all
+        // user-visible text comes from Fluent. A toast whose body is never read is
+        // a toast whose body is never translated.
+        message: 'rotation overdue',
       }),
     );
   });

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useLocalization } from '@fluent/react';
 import { useToast } from '@/components/Toast';
 import { getKeyRotationInfo } from '@/api/security';
 
@@ -55,6 +56,7 @@ export async function getDaysUntilRotation(): Promise<number | null> {
  * Uses the Tauri backend if available, falls back to localStorage.
  */
 export function useKeyRotationReminder() {
+  const { l10n } = useLocalization();
   const { addToast } = useToast();
   const [dismissed, setDismissed] = useState(false);
 
@@ -64,21 +66,27 @@ export function useKeyRotationReminder() {
     const daysLeft = await getDaysUntilRotation();
     if (daysLeft === null) return;
 
+    // Both strings go through Fluent, which this hook did NOT do until it was
+    // measured: the messages were hardcoded English and the day count was a
+    // hand-rolled `${n} day${n === 1 ? '' : 's'}`, which is an ENGLISH plural rule
+    // baked into TypeScript. Indonesian has no plural inflection at all, so that
+    // ternary was never right for the app's second locale; a Fluent `[one]`/`*[other]`
+    // selector lets each bundle answer in its own grammar.
     if (daysLeft <= 0) {
       addToast({
         type: 'warning',
-        message: 'Encryption key rotation is overdue. Please rotate keys from Security settings to maintain PCI-DSS compliance.',
+        message: l10n.getString('settings-key-rotation-overdue'),
         duration: 0, // Persistent until dismissed
       });
     } else if (daysLeft <= 5) {
       addToast({
         type: 'info',
-        message: `Encryption key rotation due in ${daysLeft} day${daysLeft === 1 ? '' : 's'}. Please rotate from Security settings.`,
+        message: l10n.getString('settings-key-rotation-due', { count: daysLeft }),
         duration: 10000,
       });
       setDismissed(true);
     }
-  }, [addToast, dismissed]);
+  }, [addToast, dismissed, l10n]);
 
   useEffect(() => {
     // Check on mount
