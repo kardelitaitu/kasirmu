@@ -5084,13 +5084,24 @@ def main() -> int:
             f"question between the two shells, not a dead door): {listed}"
         )
 
-        # THE LINK NOBODY HAD MADE. These five names are the SAME POPULATION the
+        # THE LINK NOBODY HAD MADE. Most of these names are the SAME POPULATION the
         # `scoped_orphans` section already carries a dated MEASURED reason for, and until
         # 2026-10-25 (round 176) the two lines never referred to each other -- so a lane
         # reading only this one re-derived four findings that were already written down and
         # then wrote a plan file claiming nobody had acted. Print the overlap, and the
         # residue that no reason covers, because that residue is the only part of the list
         # that is a question rather than a record.
+        #
+        # AN UNCOVERED NAME IS NOT AN INVITATION TO ADD ONE HERE. `scoped_orphans` is the
+        # section for `_scoped` commands, and self-test case 10 enforces exactly that: every
+        # committed entry must end in `_scoped`. Round 176 read this residue as a gap and
+        # appended the AMBIENT `get_over_quota_report` to it, which turned the self-test red
+        # and matched no measured orphan (the section then read "21 entries allowlisted, 20
+        # orphans measured in the tree"). The correct reading of a non-`_scoped` residue is
+        # that its reason belongs in a shell section's prose; the entry was removed in round
+        # 178. That is why this line counts them and stops -- the answer for the name it
+        # reports lives in `_desktop_comment` or `_tablet_comment`, and the schema will not
+        # let it live here.
         reasoned = {name: (why or "")
                     for name, why in allowlist_section(allowlist, "scoped_orphans")}
         covered = sorted(n for n in everywhere if reasoned.get(n))
@@ -5099,7 +5110,9 @@ def main() -> int:
             f"info[cross-shell-reasons]: {len(covered)} of {len(everywhere)} cross-shell "
             f"name(s) already carry a dated reason in scoped_orphans -- read those first, they "
             f"are the record and this line is only the census"
-            + (f": {len(uncovered)} NOT covered = " + ", ".join(uncovered)
+            + (f": {len(uncovered)} NOT covered by scoped_orphans = " + ", ".join(uncovered)
+               + " (a non-_scoped name cannot go there -- check _desktop_comment /"
+               " _tablet_comment before concluding it is unrecorded)"
                if uncovered else "; all covered")
         )
 
