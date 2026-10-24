@@ -192,6 +192,14 @@ export default function CategoryManagementScreen() {
     return null;
   }, [newName, newColour, categories, l10n]);
 
+  // Re-entry guard. `saving` is React state and commits on the NEXT render, so the second
+  // dispatch of a real double tap still enters this handler. The replay is refused by TWO
+  // constraints -- `categories.name` is UNIQUE (20260813_init.sql) and `id` is a PRIMARY KEY
+  // derived from the name by `colourToId`, so the same form produces the same id -- and the
+  // catch then reports `categories-error-create`. The operator reads "could not create" while
+  // the category from the first tap is already in the list.
+  const createPendingRef = useRef(false);
+
   const handleCreate = useCallback(async () => {
     const trimmed = newName.trim();
     const fieldError = validateCreate();
@@ -199,6 +207,8 @@ export default function CategoryManagementScreen() {
       setCreateError(fieldError);
       return;
     }
+    if (createPendingRef.current) return;
+    createPendingRef.current = true;
 
     setSaving(true);
     setCreateError(null);
@@ -214,6 +224,7 @@ export default function CategoryManagementScreen() {
       setCreateError(requiredLocalized(l10n, 'categories-error-create'));
       void err;
     } finally {
+      createPendingRef.current = false;
       setSaving(false);
     }
   }, [newName, newColour, newIcon, load, sessionToken, l10n, validateCreate]);

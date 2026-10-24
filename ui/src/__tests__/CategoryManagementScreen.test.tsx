@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { ReactLocalization, LocalizationProvider } from '@fluent/react';
@@ -372,6 +372,43 @@ describe('CategoryManagementScreen', () => {
       expect(screen.getByText('Category name is required')).toBeDefined(),
     );
     expect(mockCreateCategory).not.toHaveBeenCalled();
+  });
+
+  it('creates a category once for a double click while the first is in flight', async () => {
+    // The id is derived from the name (`colourToId`), so both taps send the SAME id and the
+    // SAME name -- refused both by the PRIMARY KEY and by the UNIQUE on `categories.name`.
+    // The catch reports `categories-error-create`, so the operator is told the category could
+    // not be created while the first tap's category is already behind the modal.
+    mockListCategories.mockResolvedValue([]);
+    let releaseCreate: ((v: unknown) => void) | undefined;
+    mockCreateCategory.mockImplementation(
+      () => new Promise((resolve) => { releaseCreate = resolve; }),
+    );
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Add Category')).toBeDefined());
+
+    await userEvent.click(screen.getByText('Add Category').closest('button')!);
+    await userEvent.type(screen.getByPlaceholderText(/e\.g\. bakery/i), 'Snacks');
+
+    const createBtn = screen.getByRole('button', { name: 'Create' });
+    // fireEvent, not userEvent.click: userEvent awaits its own act(), which flushes the
+    // pending promise chain so the first create would have settled and the clicks would
+    // never overlap. The disabled flag React set is dropped for the second click so the
+    // guard is what is measured, not the DOM.
+    await act(async () => {
+      fireEvent.click(createBtn);
+      createBtn.removeAttribute('disabled');
+      fireEvent.click(createBtn);
+    });
+
+    expect(
+      mockCreateCategory.mock.calls.length,
+      'a double click on Create sent the category create twice; the id and name both ' +
+        'collide, and the failure is reported as "could not create"',
+    ).toBe(1);
+
+    releaseCreate?.(undefined);
+    await waitFor(() => expect(mockCreateCategory).toHaveBeenCalledTimes(1));
   });
 
   it('rejects a duplicate category ID with a localized conflict error (CAT-09)', async () => {
