@@ -71,8 +71,6 @@ SKIP_DIRS = {'node_modules', 'dist', '__tests__', '__mocks__'}
 SETTER_ARRAY_RE = re.compile(r'\bset([A-Z]\w*)\(\s*([a-z]\w*)\.(map|filter|concat)\(')
 SETTER_ANY_RE = re.compile(r'\bset([A-Z]\w*)\(\s*([a-z]\w*)\s*\)')
 ARRAY_METHOD_RE = re.compile(r'\b([a-z]\w*)\.(map|filter|concat)\(')
-# `const [foo, bar] = useState(` / `const foo = useState(`
-USE_STATE_RE = re.compile(r'\bconst\s+(?:\[\s*)?(\w+)|\bconst\s+(\w+)\s*=\s*useState')
 
 
 def _state_bound_names(text):

@@ -119,7 +119,6 @@ UI_INVOKE_RE = re.compile(
     r"(?:loggedInvoke|invoke)(?:<[^()]*>)?\(\s*['\"]([a-z0-9_]+)['\"]"
 )
 
-HANDLER_BLOCK_RE = re.compile(r"generate_handler!\[", re.S)
 ENTRY_RE = re.compile(r"^(?:[a-z0-9_]+(?:::[a-z0-9_]+)+|[a-z0-9_]+)$")
 COMMAND_FN_RE = re.compile(
     # Both spellings of the attribute. `#[command]` is the short form of the same token, used
