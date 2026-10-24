@@ -725,6 +725,23 @@ underlying reason: **editing `check.sh` is a two-file change, and the second fil
 running `verify-gate-completeness.py` + `verify-ci-docs-drift.py` *before* committing is what makes
 that automatic rather than remembered.
 
+#### The two same-named gate-runner checkers are NOT redundant (round 98)
+
+The census flagged `scripts/check-gate-runners.py` and
+`.agents/skills/docs-auditor/scripts/check-gate-runners.py` as a basename collision 600 lines
+apart. Reading both headers settles it — they answer different questions:
+
+| file | question it answers |
+|---|---|
+| `scripts/check-gate-runners.py` | does every declared step name RESOLVE? (prefix-matched, because steps carry decorators like `step "clippy workspace"`) |
+| `.agents/.../check-gate-runners.py` | can a `required` gate be RUN at all? (a step that literally appears, a runner whose script exists, or a `ci` block naming a real workflow and job) |
+
+Neither subsumes the other: the first tolerates a decorated prefix, the second requires a literal
+appearance — so a gate could satisfy one and fail the other. **Recorded rather than merged**, and
+both still pass. Merging them is a real design decision (which of the two matching rules wins?), and
+this repo already has five checkers over `gates.json`; a sixth angle is cheaper than a merge that
+changes one of the five's behaviour.
+
 **The useful output of this round is the *list*, not the fixes.** 51 wired checkers is a roster
 anyone can re-run, and now one more of them is green. A gate nobody runs is not a gate — the same
 sentence this project has written three times about gates, now applied to the gates themselves.
