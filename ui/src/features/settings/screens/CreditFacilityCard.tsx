@@ -48,7 +48,7 @@
  *
  * Fluent-only copy: `settings-credit-*` keys in settings.ftl + settings.id.ftl.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { Card } from '@/components/Card';
 import { SettingsScopeTag } from '@/features/settings/SettingsScopeTag';
@@ -66,6 +66,8 @@ export function CreditFacilityCard() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  /** Synchronous mirror of `saving` — see the re-entry guard in `handleSave`. */
+  const savingRef = useRef(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -133,6 +135,12 @@ export function CreditFacilityCard() {
       setSaveError(l10n.getString('settings-credit-error-reminder') || 'Enter a valid reminder interval.');
       return;
     }
+    // Re-entry guard. set_credit_settings writes the same keys with the same values, so a
+    // replay cannot corrupt anything -- but two in-flight saves share one `saveError` /
+    // `saved` pair, so the operator can be shown the FAILURE of the tap that raced. The
+    // button's disabled state is the next render; both taps run before it.
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     setSaveError(null);
     setSaved(false);
@@ -148,6 +156,7 @@ export function CreditFacilityCard() {
     } catch (err) {
       setSaveError(l10nErrorMessage(err, l10n, 'settings-credit-error-save'));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }, [sessionToken, enabled, reminderHours, limitInput, currency, l10n]);

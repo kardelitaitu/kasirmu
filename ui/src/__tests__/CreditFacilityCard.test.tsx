@@ -24,7 +24,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 import { CreditFacilityCard } from '@/features/settings/screens/CreditFacilityCard';
 import settingsFtl from '@/locales/settings.ftl?raw';
@@ -158,6 +158,23 @@ describe('CreditFacilityCard', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('Could not save credit settings.');
     });
+  });
+
+  it('writes once when the save button is double-tapped', async () => {
+    // setCreditSettingsScoped is idempotent (same keys, same values), so a replay cannot
+    // corrupt the row. What it can do is share one \`saveError\` / \`saved\` pair between two
+    // in-flight saves, so the operator is shown the failure of the tap that raced. The
+    // button's disabled state arrives on the NEXT render; both taps fire before it.
+    render();
+    await waitFor(() => expect(mocks.getCredit).toHaveBeenCalled());
+
+    const saveBtn = screen.getByRole('button', { name: /save credit settings/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => expect(mocks.setCredit).toHaveBeenCalledTimes(1));
   });
 
   it('tells the operator the ceiling is advisory', async () => {
