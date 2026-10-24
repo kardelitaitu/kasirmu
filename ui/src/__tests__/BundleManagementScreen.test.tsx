@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { ReactLocalization, LocalizationProvider } from '@fluent/react';
@@ -326,4 +326,51 @@ describe('BundleManagementScreen', () => {
 
     await waitFor(() => expect(mockCreateBundle).toHaveBeenCalled());
   });
+
+  it('creates a bundle once for a double click while the first is in flight', async () => {
+    // `bundle_items.bundle_sku` is UNIQUE, so the replay is refused -- and `handleSave` maps
+    // every non-validation failure to `bundles-error-save`, which tells the operator the save
+    // FAILED while the first tap's bundle is already listed behind the modal. The second click
+    // must never be sent.
+    let releaseCreate: ((v: unknown) => void) | undefined;
+    mockCreateBundle.mockImplementation(
+      () => new Promise((resolve) => { releaseCreate = resolve; }),
+    );
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Add Bundle')).toBeDefined());
+
+    await userEvent.click(screen.getAllByText('Add Bundle')[0]!.closest('button')!);
+    await waitFor(() => expect(screen.getByText('Cancel')).toBeDefined());
+
+    await userEvent.type(document.getElementById('bundle-field-sku') as HTMLInputElement, 'DUP-SKU');
+    await userEvent.type(document.getElementById('bundle-field-name') as HTMLInputElement, 'Dup Bundle');
+    await waitFor(() => {
+      expect(document.querySelectorAll('.bundle-mgmt-item-sku').length).toBe(1);
+    }, { timeout: 5000 });
+    await userEvent.type(
+      document.querySelector('.bundle-mgmt-item-sku') as HTMLInputElement, 'SKU-ONE',
+    );
+
+    const createBtn = screen.getByText('Create').closest('button')!;
+    // fireEvent, NOT userEvent.click: userEvent awaits its own act(), which flushes the
+    // pending promise chain so the first create would already have settled and the two
+    // clicks would never overlap. The same false green that cost rounds 136 and 137.
+    // The disabled flag React set is dropped for the second click so the guard is what is
+    // measured, not the DOM.
+    await act(async () => {
+      fireEvent.click(createBtn);
+      createBtn.removeAttribute('disabled');
+      fireEvent.click(createBtn);
+    });
+
+    expect(
+      mockCreateBundle.mock.calls.length,
+      'a double click on Create sent the bundle create twice; the UNIQUE bundle_sku refuses ' +
+        'the replay and the generic save error says the save failed',
+    ).toBe(1);
+
+    releaseCreate?.(makeBundleWithItems());
+    await waitFor(() => expect(mockCreateBundle).toHaveBeenCalledTimes(1));
+  });
 });
+

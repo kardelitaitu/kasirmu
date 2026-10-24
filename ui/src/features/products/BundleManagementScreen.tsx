@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import {
   listBundles,
@@ -123,7 +123,17 @@ export default function BundleManagementScreen() {
     });
   }, []);
 
+  // Re-entry guard. `saving` is React state, committed on the NEXT render, so the second
+  // dispatch of a real double tap still enters this handler. The create path cannot absorb
+  // the replay: `bundle_items.bundle_sku` is UNIQUE (20260813_init.sql:389, kept by the
+  // 20260831 rebuild :230), so the second INSERT is refused -- and the catch below turns
+  // EVERY non-validation failure into `bundles-error-save`, which reads as "your bundle did
+  // not save" while the first tap's bundle is already listed behind the modal.
+  const savePendingRef = useRef(false);
+
   const handleSave = useCallback(async () => {
+    if (savePendingRef.current) return;
+    savePendingRef.current = true;
     setSaving(true);
     setSaveError(null);
     try {
@@ -156,6 +166,8 @@ export default function BundleManagementScreen() {
 
       if (editingId) {
         const existing = bundles.find((b) => b.bundle.id === editingId);
+        // A miss here leaves `finally` to clear the guard, so the ref can never strand the
+        // modal in a permanently unsaveable state.
         if (!existing) return;
         await updateBundle(sessionToken, {
           bundle: {
@@ -191,6 +203,7 @@ export default function BundleManagementScreen() {
         setSaveError(l10n.getString('bundles-error-save'));
       }
     } finally {
+      savePendingRef.current = false;
       setSaving(false);
     }
   }, [form, editingId, bundles, load, l10n, sessionToken]);
