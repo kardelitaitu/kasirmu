@@ -42,19 +42,26 @@ When building UI components for kasir.mu, adhere to these guidelines to ensure t
 - **Flexbox and Grid over Absolute Positioning:** Absolute positioning (e.g., pinning something `1.5rem` from the right edge) can cause overlapping on extremely wide or scaled screens. Always prefer robust flexbox or CSS grid layouts for positioning.
 - **Support Manual Overrides:** The zoom override exists in code and must keep working: `ZoomLevel` accepts `100`/`125`/`150`/`200` and the hook honours it (`ui/src/contexts/ZoomContext.tsx:44`), and the picker that offers those four values is `ui/src/features/settings/AppearanceSettings.tsx:361-365`. Never assume `window.innerWidth` is the sole source of truth for the active font size. <!-- dead-ref: ok: verified 2026-10-19; cites the zoom arithmetic at :44 exactly; `ZoomLevel`'s union is declared earlier in the file -->
 
-> ⚠️ **Corrected 2026-10-07 — the panel this bullet used to name no longer mounts the control.**
-> It read "Users can disable auto-scaling via the General Settings panel". They cannot today.
-> `AppearanceSettings` (which owns the zoom select) is imported by exactly one production file,
-> `ui/src/features/settings/sections/AppearanceSection.tsx:11`, and that section is **DEAD**: there is
-> no `appearance` key among the 14 entries in `SETTINGS_SCREENS`
-> (`ui/src/features/settings/screens/registry.ts:59-74`) and no appearance entry among the 14 `NAV_ITEMS` <!-- dead-ref: ok: verified 2026-10-19; cites SETTINGS_SCREENS (:59-74); NAV_ITEMS is named on the same line but lives in SettingsNavTree.tsx -->
-> (`ui/src/features/settings/SettingsNavTree.tsx`), so `renderSection` can never mount it. The live
-> General screen does not carry it either — the registry's own device-verified control list for General
-> is "Store name / Address / Tax-VAT ID / Branch", and `GeneralSection.tsx` has zero `zoom` references.
-> **So the override is currently unreachable from the UI**: the context, the clamp and the FTL keys
-> (`appearance-zoom-100/125/150/200`) are all present and tested, but nothing renders the picker.
-> Treat this bullet as the intended contract, not a description of what a user can do — and if the
-> appearance screen is re-registered, this note is what says the behaviour was never removed.
+✅ **RESOLVED 2026-10-25 (round 158) — the control is reachable again.**
+
+The 2026-10-07 note below was accurate when written and is kept for the record. It ended by
+saying: "if the appearance screen is re-registered, this note is what says the behaviour was
+never removed." That is what happened. `SETTINGS_SCREENS` now carries an `appearance` key
+(`ui/src/features/settings/screens/registry.ts`), `KEPT_SECTIONS` accepts the deep link, and
+`NAV_ITEMS` lists it, so Settings -> Appearance renders `AppearanceSettings` and the zoom
+select is a real control. Re-forgetting the registration would reopen the same gap: the
+context, the clamp and the FTL keys have never been the fragile part -- the mount is.
+
+**The 2026-10-07 record, unchanged:** the panel this bullet used to name did not mount the
+control. It read "Users can disable auto-scaling via the General Settings panel".
+`AppearanceSettings` (which owns the zoom select) was imported by exactly one production file,
+`sections/AppearanceSection.tsx`, and that section was DEAD: no `appearance` key existed in
+`SETTINGS_SCREENS` and no appearance entry in `NAV_ITEMS`, so `renderSection` could never mount
+it. `GeneralSection.tsx` has zero `zoom` references. So the override was unreachable from the
+UI -- the context, the clamp and the FTL keys (`appearance-zoom-100/125/150/200`) were all
+present and tested, but nothing rendered the picker. That section was deleted in round 157 as
+dead (labelled DEAD on 2026-09-15 by `13348f9aec`); round 158 mounted the surviving
+`AppearanceSettings` through a new `screens/AppearanceScreen.tsx` composition shell.
 
 ## 3. Focus Indicator Pattern
 
