@@ -124,7 +124,7 @@
     },
     {
       "name": "get_key_rotation_info_scoped",
-      "reason": "MEASURED 2026-10-25: the scoped twin IS gated (SECURITY_MANAGE). The unscoped twin IS used -- ui/src/hooks/useKeyAge.ts:3 imports it and :24 calls it -- but tracing one hop further, that hook's only consumer (useKeyRotationReminder) is mounted NOWHERE: it appears in useKeyAge.ts and useKeyAge.test.ts and no other file. So 'the UI uses the unscoped twin' is true of the wrapper and false of the app. Two owed decisions, in order: (1) is the reminder supposed to run? (2) if yes, it should call the gated door and needs a session token, which it does not take today."
+      "reason": "MEASURED 2026-10-25, CORRECTED in round 155. The scoped twin IS gated (SECURITY_MANAGE). The unscoped twin is used by ui/src/hooks/useKeyAge.ts, and question (1) below has since been ANSWERED: the reminder DOES run. Round 147 mounted it -- components/KeyRotationReminder.tsx calls useKeyRotationReminder() and contexts/AppProviders.tsx:110 renders <KeyRotationReminder /> inside ToastProvider, so it is app-wide on both shells. That makes question (2) live and UNPAID: the mounted hook still calls the UNGATED unscoped door, because it takes no session token. The remedy is now a concrete edit rather than a decision -- give useKeyRotationReminder a session token and route it through getKeyRotationInfoScoped under the ADR #7 conditional. Until then a shell without SECURITY_MANAGE can read key age through the ungated door, which is exactly the narrowing this orphan entry records. NOTE: the earlier text said the hook was mounted nowhere; that was true when written and is not true now."
     },
     {
       "name": "get_license_status_scoped",

@@ -71,4 +71,5 @@ export const SETTINGS_SCREENS: Record<string, ComponentType> = {
   'tax-configuration': lazy(() => import('./TaxConfigurationScreen').then((m) => ({ default: m.TaxConfigurationScreen }))),
   'exchange-rates': lazy(() => import('./ExchangeRatesScreen').then((m) => ({ default: m.ExchangeRatesScreen }))),
   'system-diagnostics': lazy(() => import('./SystemDiagnosticsScreen').then((m) => ({ default: m.SystemDiagnosticsScreen }))),
+  'email-reports': lazy(() => import('./EmailReportsScreen').then((m) => ({ default: m.EmailReportsScreen }))),
 };

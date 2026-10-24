@@ -402,17 +402,29 @@ describe('SettingsPage role gate', () => {
   });
 });
 
-describe('SettingsPage admin shell — flat 14-page IA', () => {
-  it('lists all 14 flat pages in the sidebar, defaulting to General', async () => {
+describe('SettingsPage admin shell — flat IA', () => {
+  it('lists every flat page in the sidebar, defaulting to General', async () => {
     await openShell();
 
     const sidebar = screen.getByTestId('settings-sidebar');
     const navButtons = Array.from(sidebar.querySelectorAll<HTMLButtonElement>('button.settings-nav-item'));
-    expect(navButtons).toHaveLength(14);
+    // Derived from NAV_ITEMS rather than a literal: a hardcoded count turns every
+    // legitimately added page into a test failure, and this suite's job is to assert
+    // that the sidebar matches the nav list -- not that the list has a particular length.
+    // (Round 155 added 'email-reports', which is what surfaced the literal.)
+    expect(navButtons).toHaveLength(NAV_ITEMS.length);
     expect(navButtons.map((b) => b.getAttribute('aria-label'))).toEqual(NAV_ITEMS.map((n) => navLabel(n.key)));
 
     // Default section renders the General placeholder and its breadcrumb.
-    expect(within(sectionRoot()).getByRole('heading', { level: 1, name: navLabel('general') })).toBeInTheDocument();
+    // AWAITED, not asserted synchronously: the section body is a React.lazy chunk,
+    // and the assertion used to win its race only because the chunk resolved inside
+    // the microtask the synchronous query ran on. Adding a fifteenth lazy screen
+    // changed that timing and the section was still showing `Loading...` here --
+    // a flaky assertion that happened to pass, not a passing one. waitFor states
+    // the real contract: the body arrives after the chunk resolves.
+    await waitFor(() => {
+      expect(within(sectionRoot()).getByRole('heading', { level: 1, name: navLabel('general') })).toBeInTheDocument();
+    });
     const topbar = document.querySelector('.settings-topbar') as HTMLElement;
     expect(within(topbar).getByRole('heading', { name: navLabel('general') })).toBeInTheDocument();
   });
@@ -500,6 +512,13 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
       // Migrated 2026-10-06: composes the real offline-queue screen with
       // `embedded`. .offline-queue-screen is its root and always renders.
       'offline-queue': ['offline-queue-screen'],
+
+      // Migrated 2026-10-25 (round 155): the screen registers as 'email-reports' and
+      // composes the existing EmailReportSettings component directly. Under the mocked
+      // IPC the schedule read rejects and the screen falls back to its defaults, which is
+      // the state that proves the body mounted: .settings-form is its root wrapper and
+      // the SMTP host field is always rendered once loading clears.
+      'email-reports': ['settings-form'],
       // Migrated 2026-10-06: composes the real GeneralSection, driven by
       // hooks/useStoreDraft. The form is the body; there is no wrapper class of
       // its own, so the marker is the store-name field the rebuild dropped.

@@ -230,6 +230,10 @@ settings-nav-offline-queue = Offline Queue
 settings-nav-tax-configuration = Tax Configuration
 settings-nav-exchange-rates = Exchange Rates
 settings-nav-system-diagnostics = System Diagnostics
+# Settings hub nav label for the report-scheduling screen. Desktop-only surface:
+# the four email commands are registered by apps/desktop-tauri alone.
+settings-nav-email-reports = Email Reports
+settings-email-desktop-only = Sending and scheduling reports needs the desktop app.
 settings-screen-placeholder = This page is being rebuilt.
 settings-screen-migrating = Existing settings content will move here selectively.
 # The settings page floor gate: roleAtLeast (utils/role.ts) shows this copy to any

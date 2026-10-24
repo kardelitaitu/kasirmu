@@ -16,6 +16,7 @@ import Tooltip from '@/app/Tooltip';
 import { getReportSchedule, getReportScheduleScoped, saveReportSchedule, type ReportScheduleConfig } from '@/api/email';
 import { getSettingScoped, setSettingScoped } from '@/api/settings';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { isTabletShell } from '@/utils/shellKind';
 
 interface SmtpConfigDto {
   host: string;
@@ -135,6 +136,17 @@ export default function EmailReportSettings() {
       // ADR #7 conditional scoping. get_report_schedule_scoped enforces REPORTS_SCHEDULE; the
       // unscoped command checks nothing, while the save path in this same screen already
       // requires a token (api/email.ts:29).
+      // SHELL FIRST, then ADR #7 scoping. Both commands are registered by
+      // apps/desktop-tauri alone (lib.rs:1421-1423) and apps/mobile-tauri has no
+      // email module at all, so on the tablet BOTH arms would throw. The catch
+      // below would hide that, but hiding it is not the same as not asking: the
+      // screen would still fire an invoke the shell cannot answer on every mount,
+      // and the ADR #7 ternary made the file look shell-blind to
+      // verify-ipc-parity.py -- which is exactly the shape that leg exists to
+      // report. The tablet therefore skips the read and keeps its defaults.
+      if (isTabletShell()) {
+        return;
+      } else {
       const sched = sessionToken
         ? await getReportScheduleScoped(sessionToken)
         : await getReportSchedule();
@@ -142,6 +154,7 @@ export default function EmailReportSettings() {
       // (Tauri IPC resolves with null for unset data). Guard against
       // overwriting the initial default values with null.
       if (sched && !stale()) setSchedule(sched);
+      }
     } catch {
       // Use defaults
     } finally {
@@ -208,6 +221,20 @@ export default function EmailReportSettings() {
 
   const saveSchedule = useCallback(async () => {
     setScheduleSaving(true);
+    // save_report_schedule is registered by apps/desktop-tauri alone (lib.rs:1424);
+    // the tablet has no email module at all. This screen is mounted on BOTH shells
+    // (settings/screens/registry.ts 'email-reports'), so the write has to be guarded
+    // or an owner who opens it on the tablet gets 'command not found'. The READ above
+    // is already shell-safe: it falls back to defaults on any failure.
+    // Positive/else form so verify-scoped-reads.py reads the call as guarded.
+    if (isTabletShell()) {
+      setScheduleSaving(false);
+      addToast({
+        message: l10n.getString('settings-email-desktop-only'),
+        type: 'warning',
+      });
+      return;
+    } else {
     try {
       // Strip empty recipient entries before persisting.
       const cleaned = { ...schedule, recipients: schedule.recipients.filter((r) => r.trim() !== '') };
@@ -225,6 +252,7 @@ export default function EmailReportSettings() {
     } finally {
       setScheduleSaving(false);
     }
+    }
   }, [schedule, l10n, addToast, sessionToken]);
 
   const updateSchedField = useCallback(
@@ -236,6 +264,15 @@ export default function EmailReportSettings() {
 
   const handleSendTest = useCallback(async () => {
     setSending(true);
+    // send_test_report is desktop-only for the same reason as the save above.
+    if (isTabletShell()) {
+      setSending(false);
+      addToast({
+        message: l10n.getString('settings-email-desktop-only'),
+        type: 'warning',
+      });
+      return;
+    } else {
     try {
       // Dynamically import the email API to avoid circular deps
       const { sendTestReport } = await import('@/api/email');
@@ -246,6 +283,7 @@ export default function EmailReportSettings() {
       addToast({ message: errorMessage, type: 'error' });
     } finally {
       setSending(false);
+    }
     }
   }, [addToast, l10n, sessionToken]);
 

@@ -69,6 +69,8 @@ settings-nav-offline-queue = Antrean Offline
 settings-nav-tax-configuration = Konfigurasi Pajak
 settings-nav-exchange-rates = Kurs Valuta Asing
 settings-nav-system-diagnostics = Diagnostik Sistem
+settings-nav-email-reports = Laporan Email
+settings-email-desktop-only = Mengirim dan menjadwalkan laporan memerlukan aplikasi desktop.
 settings-screen-placeholder = Halaman ini sedang dibangun ulang.
 settings-screen-migrating = Konten setelan yang ada akan dipindahkan ke sini secara selektif.
 # Gerbang lantai halaman Setelan: roleAtLeast (utils/role.ts) menampilkan teks ini

@@ -39,6 +39,7 @@ export const KEPT_SECTIONS = new Set([
   'general', 'license-subscription', 'devices-connectivity', 'business-defaults',
   'features-modules', 'security-account', 'data-sync', 'data-management',
   'sync-status', 'sync-conflicts', 'offline-queue', 'tax-configuration', 'exchange-rates', 'system-diagnostics',
+  'email-reports',
 ]);
 
 export interface UseSettingsHashSectionParams {
