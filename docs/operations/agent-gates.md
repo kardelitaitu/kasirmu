@@ -2204,4 +2204,57 @@ the detector could not actually see. Run the mutation: reintroduce the bug, conf
 then restore. `check-mapper-alignment.py` carries two cases for its two directions, and rebuilding the
 original line-walk makes both fail, which is the only reason to trust them.
 
+## Two gates, one brace, opposite verdicts: the tablet memo guard
+
+Measured 2026-10-24, round 126. `ui/src/features/memo/MemosScreen.tsx` gained
+`isTabletShell()` guards on `create_memo_scoped` and `revise_memo_scoped`. That single
+edit moved one gate toward green and another gate to red, and the second one is red
+BECAUSE of the guard.
+
+**What the two gates want:**
+
+- `scripts/verify-scoped-reads.py --shell tablet` grades *unregistered invokes*. It
+  walks brace depth (`_platform_guard_excludes_shell`) and treats a call inside
+  `if (!isTabletShell()) { ... }` as not-taken by this shell. Adding a guard removes a
+  finding. Findings went 27 → 24 when the two call sites were wrapped.
+- `scripts/verify-ipc-parity.py` grades the C40 shape: shared UI that *branches on the
+  shell* and calls a command this shell does not register. Its rule reads the branch
+  itself as the evidence — "a file that branches on the shell (so this shell runs it)".
+  Adding a guard to a call in such a file does not hide the call; it CREATES the
+  finding, because the branch is what the leg keys on.
+
+So the obvious fix for one gate is the defect report for the other. The round that
+learned this also learned the measurement trap that hid it: the two gates were last run
+in different rounds, and each was green-by-improvement in its own round.
+
+**What the code actually did, and why the guard was reverted.** Round 126 wrapped
+`list_authored_memos_scoped` inside `load()`, watched the tablet test fail (the seeded
+row a guarded load can never deliver), and reverted it. The tablet registers no memo
+authoring surface at all — it has `list_active_memos_scoped` and
+`acknowledge_memo_scoped`, a different screen. A guarded empty list on this screen is
+not a degraded truth; it is a lie about a screen the tablet should never open. The
+honest remedies are to register the command on the tablet or to route the tablet to its
+own screen. Both are product decisions; neither is a brace. The gap is recorded in
+`scripts/ipc-parity-allowlist.json` under `shell_blind` with that reasoning attached,
+so the next reader inherits the trap instead of re-discovering it.
+
+**The three terminal-binding commands in the same round went the other way**, and the
+contrast is the lesson: `get_device_binding_scoped` and `clear_device_binding_scoped`
+were registered on the tablet (`apps/mobile-tauri/src/lib.rs`, two `#[command]` wrappers
+in `commands/terminals.rs`) and their two allowlist entries were DELETED. That makes
+both gates agree rather than trading one for the other.
+
+**Rule.** When a shell-consistency change touches shared UI, run BOTH gates in the same
+breath and read the two verdicts together:
+
+```
+python scripts/verify-scoped-reads.py --shell tablet
+python scripts/verify-ipc-parity.py
+```
+
+A guard is a fix only when the shell has a correct thing to do instead. When it does not,
+the guard trades a runtime error for a silent wrong answer AND reddens the parity gate —
+so register the command, or rule the screen shell-specific, and write down which gate you
+chose to satisfy and why.
+
 > last audited 11-10-26 by docs-auditor
