@@ -332,6 +332,8 @@ nav-purchase-orders = Purchase Orders
 nav-vendor-bills = Vendor Bills
 nav-stock-transfers = Stock Transfers
 nav-stock-counts = Stock Counts
+# Sidebar label for the inventory transaction log (round 161).
+nav-inventory-log = Transaction Log
 nav-custom-report = Custom Report
 nav-pos = POS
 app-sidebar-subtitle = Point of Sale

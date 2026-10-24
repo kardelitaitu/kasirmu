@@ -4,6 +4,9 @@ import { registerNavItem } from '@/registries/menu-registry';
 import { icon } from '@/registries/icon';
 const InventoryAdjustmentScreen = lazy(() => import('./InventoryAdjustmentScreen'));
 const StockCountsFlow = lazy(() => import('./StockCountsFlow'));
+const InventoryLogScreen = lazy(() =>
+  import('./InventoryLogScreen').then((m) => ({ default: m.InventoryLogScreen })),
+);
 
 export function registerInventoryFeature() {
   registerPage({ route: 'inventory-adjustment', component: InventoryAdjustmentScreen, label: 'Stock Adjust', requiredRole: 'manager', requiredPermission: 'inventory:view' });
@@ -25,5 +28,19 @@ export function registerInventoryFeature() {
     i18nKey: 'nav-stock-counts',
     section: 'inventory',
     icon: icon('M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2', <path d="M9 14l2 2 4-4" />),
+  });
+
+  // Round 161: the per-location stock audit trail. Every command it uses is registered
+  // on BOTH shells (desktop lib.rs:1541-1544, tablet lib.rs:1487-1490), so no shell
+  // split is needed -- this was a missing route, not a shell asymmetry.
+  registerPage({ route: 'inventory-log', component: InventoryLogScreen, label: 'Transaction Log', requiredRole: 'manager', requiredPermission: 'inventory:view' });
+  registerNavItem({
+    route: 'inventory-log',
+    label: 'Transaction Log',
+    requiredRole: 'manager',
+    requiredPermission: 'inventory:view',
+    i18nKey: 'nav-inventory-log',
+    section: 'inventory',
+    icon: icon('M4 6h16M4 12h16M4 18h10', <circle cx="18" cy="18" r="2" />),
   });
 }

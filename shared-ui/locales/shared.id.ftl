@@ -307,6 +307,7 @@ nav-purchase-orders = Pesanan Pembelian
 nav-vendor-bills = Tagihan Pemasok
 nav-stock-transfers = Transfer Stok
 nav-stock-counts = Stok Opname
+nav-inventory-log = Log Transaksi
 nav-stock = Stok
 nav-sidebar-collapse = Tutup sidebar
 nav-sidebar-expand = Buka sidebar
