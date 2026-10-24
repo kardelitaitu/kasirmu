@@ -138,7 +138,17 @@ re-derive these: each is protected, and the protection is named so the search en
                         `retail-toast-failed-open-shift`, so core's accurate "you already have
                         an open shift" never reaches the cashier either. Left on the report:
                         the message-not-the-guard is the defect there, and fixing it means
-                        routing through l10nErrorMessage, not adding a ref.  * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
+                        routing through l10nErrorMessage, not adding a ref.
+  * staff soft-delete -- REFUSED, and the catch threw the reason away. `soft_delete_user`
+                        compare-and-sets on `deleted_at IS NULL` (db/staff.rs:830-840) and
+                        refuses with "this member is already in the trash";
+                        StaffManagementScreen.confirmDelete was a bare `catch {}` toasting
+                        `staff-delete-failed`, so a replay said the delete failed on a member
+                        already gone from every list. Round 181 FIXED it with a ref. Note the
+                        sibling `restore_user` / `restore_role` were fixed in round 153 with a
+                        per-key ref Set -- the same backend fact showing up on both sides of
+                        the same lifecycle, which is why this list names commands and not
+                        screens.  * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
                         idempotent by construction: the same key is overwritten
 The point of the list is that it is SHORT: filtering to handlers that (a) await something
 other than a list/get read and (b) have a write-shaped name narrows ~143 raw busy-flag
