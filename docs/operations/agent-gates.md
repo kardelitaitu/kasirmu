@@ -999,6 +999,42 @@ docstrings record a past bug and which no case ever called:
 docstring would make the suite red on a tree that is green, and "fixing" the code is a behaviour
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
+#### The contract tests I set out to write already existed (round 124)
+
+The plan was to convert "four acquirer behaviours unproven by anything in this repo" into contract
+tests. **They are already there** — 21 passing integration tests plus 22 unit tests — and the
+`payment-methods` plan's §1.4 described all three of its Phase-2 bullets as future work when all
+three have shipped. Re-derived and corrected (`3c40d667e`).
+
+| §1.4 bullet | stated | measured 2026-10-24 |
+|---|---|---|
+| "Implement the stubbed `payment_gateways` CRUD" | future | live CRUD + encrypted at rest, wired to both shells and a 52-test screen (already corrected round 120) |
+| "Midtrans SNAP client in Rust" | future | `authorize`/`capture`/`refund`/`void`/`receipt` with polling, 21 integration tests |
+| "`idempotency_key` … (field already in schema, waiting)" | future | honoured in `order_id_for()`; five properties pinned |
+
+**And the four "unproven" behaviours each have a named test:** generic-QR interop
+(`authorize_happy_path`, `authorize_blank_acquirer_falls_back_to_generic`), targeted-QR restriction
+(`authorize_sends_configured_acquirer_verbatim` — acquirer forwarded verbatim, nothing else about the
+charge changes), refund behaviour (four tests including partial amounts and non-IDR rejection), and
+per-merchant activation (the same two acquirer tests). `qris_order_id_uses_idempotency_key` pins
+determinism, the 50-char Midtrans cap, charset sanitisation, the sanitises-to-empty fallback and
+fresh-id uniqueness — which is the whole double-charge mechanism, not a proxy for it.
+
+**The owner-question file was right and I was wrong to suspect it.** Its Q2 paragraph says the four
+behaviours are "accepted as unproven by this repository" and then explains precisely why: `qris_tests`
+asserts in **both** directions (`Ok(_) => assert!(result.is_ok())` vs `Err(_) => … contains "not set"`),
+so it is green with and without the credential, and the 21 integration cases run against a **local
+`wiremock`**. Both claims verified at source. *"Nothing here may be cited as proof of acquirer
+behaviour"* is the correct statement, and it is a different sentence from "there are no tests" — the
+one I had been carrying. **What is unproven is the acquirer's RESPONSE; what is proven is our
+side of the contract.**
+
+**The lesson is about plan rot, not about testing.** A plan section written as a to-do list keeps
+reading as pending long after each line ships, because nothing rewrites a bullet when the work
+lands — the same failure as the `payment_gateways` RLS reason corrected in round 120, in the
+document that spawned it. Two rounds running, the stale artefact was a *description of work*, not
+the work.
+
 #### Both agenda items came back clean, and one of my own records did not (round 123)
 
 Two questions were left open last round. **Neither was a defect**, and the more useful outcome is
