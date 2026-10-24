@@ -4,7 +4,7 @@
 // store cards with primary badge, and data rendering.
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import MultiStoreDashboardScreen from '@/features/locations/MultiStoreDashboardScreen';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -418,6 +418,36 @@ describe('MultiStoreDashboardScreen', () => {
       // The confirmation renders the normalized prefix — what future
       // tickets will actually carry (echo MAIN123, not typed 'main ').
       expect(within(dialog).getByRole('status').textContent).toMatch(/MAIN123/);
+    });
+
+    it('sends one prefix write when the save button is double-tapped', async () => {
+      // Why a replay matters even though the backend write is an idempotent
+      // UPDATE ... WHERE id = ?: two in-flight writes ECHO into the same
+      // `prefixSaved`, so the operator can be shown the value from the tap
+      // that lost, and two failures report "the save failed" for a save that
+      // landed. The `prefixBusy` state flag cannot refuse the second tap --
+      // both clicks run before React re-renders with the button disabled.
+      mockGetPrefix.mockResolvedValue(null);
+      mockSetPrefix.mockResolvedValue('MAIN');
+      render(<MultiStoreDashboardScreen />);
+      await waitFor(() => {
+        expect(screen.getByText('Main Street')).toBeInTheDocument();
+      }, { timeout: 3000 });
+
+      await userEvent.click(screen.getAllByRole('button', { name: 'multi-store-btn-details-label' })[0]!);
+      const dialog = screen.getByRole('dialog');
+      const input = await within(dialog).findByLabelText('Prefix');
+      await userEvent.type(input, 'main');
+
+      const saveBtn = within(dialog).getByRole('button', { name: 'multi-store-prefix-save-aria' });
+      await act(async () => {
+        fireEvent.click(saveBtn);
+        fireEvent.click(saveBtn);
+      });
+
+      await waitFor(() => {
+        expect(mockSetPrefix).toHaveBeenCalledTimes(1);
+      });
     });
   });
 });

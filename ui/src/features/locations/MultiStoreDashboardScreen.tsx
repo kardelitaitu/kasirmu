@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { listLocationsScoped, setPrimaryLocationScoped, deleteLocationProfileScoped, getLocationTicketPrefixScoped, setLocationTicketPrefixScoped, type LocationProfile } from '@/api/locations';
 import { listTerminalsScoped, type TerminalDto } from '@/api/terminals';
@@ -57,6 +57,8 @@ export default function MultiStoreDashboardScreen() {
   const [prefixDraft, setPrefixDraft] = useState('');
   const [prefixSaved, setPrefixSaved] = useState<string | null>(null);
   const [prefixBusy, setPrefixBusy] = useState(false);
+  /** Synchronous mirror of `prefixBusy` — see the re-entry guard in `handleSavePrefix`. */
+  const prefixBusyRef = useRef(false);
   const [prefixError, setPrefixError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -135,6 +137,14 @@ export default function MultiStoreDashboardScreen() {
 
   const handleSavePrefix = useCallback(async () => {
     if (!detailsStore || !sessionToken) return;
+    // Re-entry guard: this write is an idempotent UPDATE ... WHERE id = ?, so a
+    // replay cannot corrupt the row — but a second in-flight write can ECHO a
+    // stale value over the first one's result, and both taps failing report
+    // "the save failed" for a save that landed. The state flag alone cannot
+    // refuse the second tap: two clicks inside one tick both read
+    // `prefixBusy === false`.
+    if (prefixBusyRef.current) return;
+    prefixBusyRef.current = true;
     setPrefixBusy(true);
     setPrefixError(null);
     try {
@@ -149,6 +159,7 @@ export default function MultiStoreDashboardScreen() {
     } catch {
       setPrefixError('multi-store-prefix-error-save');
     } finally {
+      prefixBusyRef.current = false;
       setPrefixBusy(false);
     }
   }, [detailsStore, sessionToken, prefixDraft]);
