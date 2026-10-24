@@ -747,6 +747,7 @@ compiled cold-boot market profile.
 - **`get_daily_revenue_scoped`** [D+T] — Get daily revenue for the session's store.
 - **`get_discounts_summary_scoped`** [D+T] — Get discount usage summary for the session's store.
 - **`get_hourly_heatmap_scoped`** [D+T] — Get hourly heatmap for the session's store.
+- **`get_piutang_collections_scoped`** [D+T] — Get the piutang (receivable) collections report for the session's store. ADR #7.
 - **`get_hourly_occupancy_scoped`** [D+T] — Completed table-bound orders per hour of day for the session's store.
 - **`get_inventory_trend_scoped`** [D+T] — Get daily units sold (the inventory trend line) for the session's store.
 - **`get_inventory_turnover_scoped`** [D+T] — Get a stock-turnover snapshot for the session's store at one location.
@@ -940,11 +941,11 @@ compiled cold-boot market profile.
 
 ### `commands::terminals` (16)
 
-- **`clear_device_binding_scoped`** [D] — Clear a device binding in the store resolved from a session token. ADR #7.
+- **`clear_device_binding_scoped`** [D+T] — Clear a device binding in the store resolved from a session token. ADR #7.
 - **`delete_terminal_override_scoped`** [D+T] — Delete a terminal override in the store resolved from a session token. ADR #7.
 - **`delete_terminal_profile_scoped`** [D] — Delete a terminal profile in the store resolved from a session token. ADR #7.
 - **`delete_terminal_scoped`** [D+T] — Delete a terminal in the store resolved from a session token. ADR #7.
-- **`get_device_binding_scoped`** [D] — Get device binding from the store resolved from a session token. ADR #7.
+- **`get_device_binding_scoped`** [D+T] — Get device binding from the store resolved from a session token. ADR #7.
 - **`get_terminal_profile_scoped`** [D] — Get a terminal profile from the store resolved from a session token. ADR #7.
 - **`get_terminal_scoped`** [D+T] — Get a terminal from the store resolved from a session token. ADR #7.
 - **`list_terminal_overrides_scoped`** [D+T] — List terminal overrides from the store resolved from a session token. ADR #7.
