@@ -528,6 +528,61 @@ describe('EmailReportSettings — EN', () => {
       expect(emailInputs.length).toBe(1);
     });
   });
+
+  describe('Re-entry guards', () => {
+    // Each of the three handlers writes (or SENDS) once per tap. The buttons are not
+    // disabled while busy -- `loading` only swaps their label -- so two clicks inside one
+    // tick both pass the state flag, which React commits on the NEXT render.
+    beforeEach(() => {
+      mockSetSetting.mockResolvedValue(undefined);
+      mockSaveReportSchedule.mockResolvedValue(undefined);
+      mockSendTestReport.mockResolvedValue('Sent');
+    });
+
+    async function doubleTap(name: RegExp) {
+      const btn = screen.getByRole('button', { name });
+      await act(async () => {
+        fireEvent.click(btn);
+        fireEvent.click(btn);
+      });
+    }
+
+    it('writes the SMTP settings once when Save is double-tapped', async () => {
+      await renderWithFluent(<EmailReportSettings />);
+      await waitFor(() => expect(screen.getByLabelText(/smtp host/i)).toBeTruthy());
+      fireEvent.change(screen.getByLabelText(/smtp host/i), { target: { value: 'smtp.test' } });
+      fireEvent.change(screen.getByLabelText(/from address/i), { target: { value: 'a@b.c' } });
+
+      await doubleTap(/save smtp settings/i);
+
+      await waitFor(() => expect(mockSetSetting).toHaveBeenCalledTimes(1));
+    });
+
+    it('sends ONE test report when Send Test Report is double-tapped', async () => {
+      // The only handler here whose cost is outside the database: a replay delivers two
+      // emails to the configured recipients.
+      await renderWithFluent(<EmailReportSettings />);
+      await waitFor(() => expect(screen.getByRole('button', { name: /send test report/i })).toBeTruthy());
+      // The button is DISABLED without a host, and a disabled button fires no handler at
+      // all -- the case would pass green against no guard whatsoever.
+      fireEvent.change(screen.getByPlaceholderText('smtp.example.com'), {
+        target: { value: 'smtp.example.com' },
+      });
+
+      await doubleTap(/send test report/i);
+
+      await waitFor(() => expect(mockSendTestReport).toHaveBeenCalledTimes(1));
+    });
+
+    it('saves the schedule once when Save Schedule is double-tapped', async () => {
+      await renderWithFluent(<EmailReportSettings />);
+      await waitFor(() => expect(screen.getByRole('button', { name: /save schedule/i })).toBeTruthy());
+
+      await doubleTap(/save schedule/i);
+
+      await waitFor(() => expect(mockSaveReportSchedule).toHaveBeenCalledTimes(1));
+    });
+  });
 });
 
 describe('EmailReportSettings — ID', () => {

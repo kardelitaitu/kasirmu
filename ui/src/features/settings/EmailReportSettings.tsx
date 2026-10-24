@@ -62,6 +62,9 @@ export default function EmailReportSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
+  /** Synchronous mirrors of the busy flags — see the re-entry guards in the handlers. */
+  const savingRef = useRef(false);
+  const sendingRef = useRef(false);
   const [saved, setSaved] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   // The password field is write-only by design: smtp_config is on the backend
@@ -85,6 +88,8 @@ export default function EmailReportSettings() {
   });
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const [scheduleSaving, setScheduleSaving] = useState(false);
+  /** Synchronous mirror of `scheduleSaving` — see the re-entry guard in `saveSchedule`. */
+  const scheduleSavingRef = useRef(false);
 
   // Guarded. The note above records that the deps were changed to [sessionToken] so a
   // store switch re-fetches instead of showing the previous SMTP config -- correct, and
@@ -165,6 +170,13 @@ export default function EmailReportSettings() {
   useEffect(() => { loadSchedule(); }, [loadSchedule]);
 
   const saveConfig = useCallback(async () => {
+    // Re-entry guard. The SMTP blob is a same-key set_setting write, so a replay cannot
+    // corrupt it -- but two in-flight saves each toast their OWN outcome, so a save that
+    // lands can be followed by \`settings-email-save-error\` from the tap that raced it.
+    // Taken BEFORE the busy flag; the two validation returns below clear the flag they
+    // set, so the guard is released by the \`finally\` on every exit that sets it.
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     setSaved(false);
     try {
@@ -206,6 +218,7 @@ export default function EmailReportSettings() {
     } catch {
       addToast({ message: l10n.getString('settings-email-save-error'), type: 'error' });
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
     // sessionToken is read by the `setSettingScoped` call in this body. `userId` used to be
@@ -220,6 +233,12 @@ export default function EmailReportSettings() {
   // ── Schedule event handlers ────────────────────────────────────────
 
   const saveSchedule = useCallback(async () => {
+    // Re-entry guard, taken BEFORE the busy flag and before the tablet refusal (which has
+    // to keep clearing whatever it set). An upsert of the same schedule, so a replay
+    // cannot corrupt the row; what it can do is toast success and failure for the same
+    // schedule, because both in-flight saves report their own outcome.
+    if (scheduleSavingRef.current) return;
+    scheduleSavingRef.current = true;
     setScheduleSaving(true);
     // save_report_schedule is registered by apps/desktop-tauri alone (lib.rs:1424);
     // the tablet has no email module at all. This screen is mounted on BOTH shells
@@ -228,6 +247,7 @@ export default function EmailReportSettings() {
     // is already shell-safe: it falls back to defaults on any failure.
     // Positive/else form so verify-scoped-reads.py reads the call as guarded.
     if (isTabletShell()) {
+      scheduleSavingRef.current = false;
       setScheduleSaving(false);
       addToast({
         message: l10n.getString('settings-email-desktop-only'),
@@ -250,6 +270,7 @@ export default function EmailReportSettings() {
         type: 'error',
       });
     } finally {
+      scheduleSavingRef.current = false;
       setScheduleSaving(false);
     }
     }
@@ -263,9 +284,15 @@ export default function EmailReportSettings() {
   ) as <K extends keyof ReportScheduleConfig>(key: K, value: ReportScheduleConfig[K]) => void;
 
   const handleSendTest = useCallback(async () => {
+    // Re-entry guard. send_test_report actually SENDS a message, so a replay delivers two
+    // test emails to the configured recipients -- the only handler here whose cost is
+    // outside the database.
+    if (sendingRef.current) return;
+    sendingRef.current = true;
     setSending(true);
     // send_test_report is desktop-only for the same reason as the save above.
     if (isTabletShell()) {
+      sendingRef.current = false;
       setSending(false);
       addToast({
         message: l10n.getString('settings-email-desktop-only'),
@@ -282,6 +309,7 @@ export default function EmailReportSettings() {
       const errorMessage = typeof err === 'string' ? err : l10n.getString('settings-email-test-send-failed');
       addToast({ message: errorMessage, type: 'error' });
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
     }
