@@ -3044,4 +3044,30 @@ reader how to tell a blind spot from a bug.
 "not defects" on the strength of a comment. The comment holds, and this round read the two guard
 sites at `:173-175` and `:847-849` verbatim rather than trusting it. The claim was
 right; it had not been verified.
+
+
+**Round 175 tried to teach this reader the early-return shape. It could not be done safely, and
+the attempt was reverted.** The plan was a fourth guard shape: a component that returns a shell
+notice BEFORE its JSX, which is what `TopologyScreenContent` does at :847. Four
+implementation attempts each failed on a measured fact rather than on reasoning:
+
+1. **a brace walk from the call** — found the callback body, not the component, because the
+   nearest opening brace above a call inside `useCallback(async () => {...})` is the callback;
+2. **walking to the outermost balance point** — overshot, because the body between
+   `TopologyScreenContent`'s opening brace and a call 12KB in has a net depth of **+3**: JSX
+   and object literals are not the balanced code a brace walk assumes;
+3. **anchoring on the function head** (`function name(` then the first brace after the
+   parameter list closes) — correct, and it finds the innermost function reliably;
+4. **collecting the returns by indentation** — also correct in isolation, and then the decisive
+   fact: **the guard is not in the same function as the call.** `TopologyScreenContent` starts
+   at offset 8556; the `if (isTabletShell()) { return … }` that protects it is at offset 8029, inside
+   `TopologyScreen`, the PARENT. Entering the child is what the parent refuses, so no
+   single-function reader can see it.
+
+Widening to the whole file would be unsound: a sibling function's early return does not guard
+this one, and a reader that believed it did would clear genuine findings. The tool for that is a
+JS/TS parser, not a text pass. **The correct state is the one round 174 left**: the finding stands,
+and the failure message explains how to tell a blind spot from a bug. Filed here so the next lane
+does not spend a round rediscovering it — attempt 4 is where a reasonable person stops, and the
+answer is above.
 > last audited 11-10-26 by docs-auditor
