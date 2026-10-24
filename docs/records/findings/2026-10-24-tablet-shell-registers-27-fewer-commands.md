@@ -218,6 +218,32 @@ Applying the one-flag fix (`--shell desktop,tablet` in both runners) turns CI re
 backlog, and the checker has no `--baseline` and no report-only mode, so it cannot be turned on
 "yellow" first. **Sequencing is the owner's call, not a lane's.**
 
+## One of the nine is now FIXED — the silent one (2026-10-24)
+
+The final grade above says 7 sites show a user-visible error, 1 silently does nothing, and 1
+degrades to a working fallback. **The silent one was the only one worth fixing without a product
+ruling, and it is fixed** — `a74153ac8`.
+
+`DebtRemindersCard.tsx`'s two aging-report export handlers caught the rejection into
+`console.error` and nothing else, so on a tablet — where `get_ap_aging_report_scoped` and
+`get_ar_aging_report_scoped` are not registered — a merchant clicking Export saw no error, no
+file, and no feedback: a button that does nothing is indistinguishable from a broken one. The fix
+follows the component's OWN established pattern (`recsFailed`/`paysFailed` already surface a
+failed read as a `role="alert"` badge rather than as "Up to date"), so a failed export now sets
+`exportFailed` and renders the same warning badge with a new localized string
+(`dashboard-export-aging-failed`, en + id). It clears on the next successful export.
+
+**Three tests pin it, and they were proven non-vacuous by reverting the fix**: with the AP
+handler's `setExportFailed('ap')` removed, 2 of the 3 new tests redden with
+`Unable to find an element by: [data-testid="ap-aging-export-failed"]`. Suite 11/11 green with the
+fix, ESLint clean, `tsc --noEmit` clean, `dedupe-ftl` clean, and the pre-commit bundle-parity
+gate confirmed the new key exists in both locales.
+
+**The other eight still wait on the owner ruling** about which surfaces the tablet should carry.
+That is unchanged: this fix removed a silent failure, not the feature gap. The remaining 7 sites
+that show an error state are honest — the user is told the action failed — and 1 already degrades
+to a working fallback.
+
 ## Provenance
 
 - Gate: `scripts/verify-scoped-reads.py` (`--shell tablet`).
