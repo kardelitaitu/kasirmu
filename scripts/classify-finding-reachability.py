@@ -61,6 +61,12 @@ import subprocess
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# The two shells and the file whose generate_handler![...] list is their registration.
+SHELL_HANDLERS = {
+    'desktop': os.path.join('apps', 'desktop-tauri', 'src', 'lib.rs'),
+    'tablet': os.path.join('apps', 'mobile-tauri', 'src', 'lib.rs'),
+}
 UI_SRC = os.path.join(REPO, 'ui', 'src')
 
 # Directories whose contents never ship.
@@ -128,6 +134,38 @@ def references(symbol, files, defining_path):
             hits.append(path)
     return hits
 
+
+def shell_registrations():
+    """{shell: set of command fn names} from each shell's generate_handler! list.
+
+    Read so a DEAD verdict can say the thing that decides the next action: a component
+    nothing renders whose commands the desktop DOES register is a missing MOUNT; one whose
+    commands no shell registers is a missing BACKEND. Those need opposite fixes, and the
+    reachability verdict alone cannot tell them apart.
+    """
+    out = {}
+    for shell, rel in SHELL_HANDLERS.items():
+        path = os.path.join(REPO, rel)
+        names = set()
+        if os.path.exists(path):
+            with open(path, encoding='utf-8', errors='replace') as handle:
+                text = handle.read()
+            match = re.search(r'generate_handler!\s*\[', text)
+            if match:
+                start = match.end() - 1
+                depth = 0
+                for index in range(start, len(text)):
+                    if text[index] == '[':
+                        depth += 1
+                    elif text[index] == ']':
+                        depth -= 1
+                        if depth == 0:
+                            body = text[start:index]
+                            for entry in re.finditer(r'commands::\w+::([A-Za-z_]\w*)', body):
+                                names.add(entry.group(1))
+                            break
+        out[shell] = names
+    return out
 
 def enclosing_export(module_path, line_no):
     """The exported symbol whose body contains `line_no`, or None.
@@ -206,20 +244,26 @@ def report(findings, files, strict):
     """Print the classification; return the number of DEAD findings."""
     dead = 0
     rows = []
+    shells = shell_registrations()
     for command, rel, line in findings:
         module_path = os.path.join(REPO, rel.replace('/', os.sep))
         hint = enclosing_export(module_path, line)
         verdict, evidence = classify(module_path, files, hint)
+        # Which shells register the COMMAND (not the module). Carried into the report
+        # because it decides the fix: DEAD + registered-nowhere is a missing backend,
+        # DEAD + registered-somewhere is a missing mount.
+        where = [shell for shell, names in shells.items() if command in names]
+        registered = ','.join(where) if where else 'none'
         if verdict == 'DEAD':
             dead += 1
-        rows.append((verdict, command, rel, line, evidence))
+        rows.append((verdict, command, rel, line, evidence, registered))
     order = {'DEAD': 0, 'UNRESOLVED': 1, 'REACHABLE': 2}
     rows.sort(key=lambda r: (order[r[0]], r[2], r[3]))
     print(f'classify-finding-reachability: {len(rows)} finding(s) from verify-scoped-reads')
     counts = {}
-    for verdict, command, rel, line, evidence in rows:
+    for verdict, command, rel, line, evidence, registered in rows:
         counts[verdict] = counts.get(verdict, 0) + 1
-        print(f'  {verdict:10s} {command:42s} {rel}:{line}')
+        print(f'  {verdict:10s} {command:38s} {registered:16s} {rel}:{line}')
         print(f'             {evidence}')
     print()
     print('  ' + ', '.join(f'{k}={v}' for k, v in sorted(counts.items())))
@@ -275,6 +319,22 @@ def _self_test():
     noexport = write('NoExport.tsx', 'const internal = 1;')
     case('no exported symbol is UNRESOLVED', classify(noexport, [])[0], 'UNRESOLVED')
 
+    # The shell-registration read must find both lib.rs files and read only the
+    # generate_handler! list -- a whole-file grep would also match a bare re-export.
+    shells = shell_registrations()
+    case('both handler lists are read', sorted(shells), ['desktop', 'tablet'])
+    case('the desktop list is non-empty', bool(shells.get('desktop')), True)
+    case('the desktop registers the email commands',
+         'save_report_schedule' in shells.get('desktop', set()), True)
+    case('the tablet does NOT register them',
+         'save_report_schedule' in shells.get('tablet', set()), False)
+    # THE DISCRIMINATOR for 'only the list is read'. `start_and_store` is called directly in
+    # apps/desktop-tauri/src/lib.rs but is NOT in its generate_handler! list, so a parser
+    # that scans the whole file reports it registered -- a false 'the desktop answers this'
+    # that would hide a real missing registration. Measured 2026-10-25: the four cases above
+    # all passed under exactly that mutation, which is why this one exists.
+    case('a fn called outside the handler list is NOT counted',
+         'start_and_store' in shells.get('desktop', set()), False)
     print(f'  self-test: {"PASS" if failures == 0 else f"FAIL ({failures})"}')
     return failures
 

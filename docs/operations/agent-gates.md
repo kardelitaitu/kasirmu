@@ -2660,6 +2660,21 @@ orphaned, and a plain grep reads that as a consumer.
 (`get_machine_id`, `save_report_schedule`, `send_test_report`) match, one for one, the
 findings a human verified by hand in round 151.
 
+**A test that passes under the mutation is not a test.** Round 153 added four cases
+for the new shell-registration read, then broke the parser to read the WHOLE lib.rs instead
+of only the `generate_handler![...]` list. All four still passed: `save_report_schedule`
+appears inside the list either way, so nothing distinguished the two reads. The case that
+discriminates uses a name that is CALLED in lib.rs but is NOT in the list --
+`start_and_store` -- because a whole-file parse reports it registered and a list-scoped parse
+does not. That one goes red under the mutation. Four cases that all agree with both
+implementations are measuring nothing.
+
+The report also names, per finding, which SHELLS register the command. That is what turns a
+DEAD verdict into an instruction: DEAD with `desktop` means a missing MOUNT, DEAD with
+`none` means a missing BACKEND. Measured on the tree: all three DEAD findings are
+desktop-registered, so the email-report and machine-id components are unreachable through a
+missing mount rather than missing commands.
+
 **Exit codes**: the report always exits 0 (it is an inventory, not a verdict); `--self-test`
 exits 0/1; `--strict` exits 1 when anything is DEAD. The ratchet is off until the three are
 deleted or mounted, which is a product call, so the gate reports rather than blocks.

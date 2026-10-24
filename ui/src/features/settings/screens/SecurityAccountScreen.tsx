@@ -42,8 +42,19 @@
 //! `email.rs` (it has `reports.rs`, whose 24 commands are the on-screen
 //! analytics the tablet already renders). So the SMTP form is desktop-only
 //! functionality whose shell does not ship it — wiring the component into a
-//! tablet nav entry would render a page where EVERY control errors. Do not add
-//! one without the mobile commands landing first.
+//! tablet nav entry would render a page where EVERY control errors.
+//!
+//! CORRECTION 2026-10-25 (round 153): the paragraph above ends by implying the
+//! mobile commands are the only obstacle ("Do not add one without the mobile
+//! commands landing first"). Measured, that is off by one shell. The desktop
+//! registers all four (lib.rs:1421-1424), and the component is rendered by NO
+//! FILE ON EITHER SHELL — `grep -rn '<EmailReportSettings' ui/src` matches only
+//! its own test. So mobile work would not unblock it; a desktop mount would.
+//! The same is true of MachineIdStatus and `get_machine_id` (lib.rs:1739), which
+//! was replaced by StatusBar in 20bb94c5c8 and never deleted. Both were orphaned
+//! by a deliberate replacement (this nav rebuild, and the StatusBar change) that
+//! did not retire what it replaced. The decision — mount or delete — is a
+//! product call, recorded in docs/plans/_active/todo-orphaned-settings-premise.md.
 
 import { Localized } from '@fluent/react';
 import { Card } from '@/components/Card';
