@@ -2508,5 +2508,66 @@ to be a comparison between two rendered things, and it has to name which is whic
 otherwise the swap is invisible, which is precisely the failure mode that motivated the
 test.
 
+## A hook with no mount passes every test it has
+
+Measured 2026-10-25, round 147. `useKeyRotationReminder` was written, localized (round
+146), and covered by three unit cases. It was rendered by NOBODY:
+
+```
+$ grep -rn 'useKeyRotationReminder' ui/src
+ui/src/hooks/useKeyAge.ts:58:  export function useKeyRotationReminder() {   <- the definition
+ui/src/__tests__/useKeyAge.test.ts:176:  renderHook(() => useKeyRotationReminder()); <- the test
+```
+
+Three of three cases pass. The feature has never run in the app. This is the third
+instance of the same lesson on this file (see "The UI calls it" above), and it is the
+one that shows why the lesson generalizes beyond grep hygiene:
+
+**`renderHook` is not a mount.** It proves a hook BEHAVES when rendered. It cannot
+prove the hook is ever rendered by the app, because it IS the rendering. A suite of
+hook tests is evidence about the hook and no evidence at all about its reachability.
+
+The fix is a mount in `AppProviders` (the app's single provider composite, so anything
+there is app-wide on both shells) and a test that asserts the EFFECT, not the presence:
+
+```tsx
+render(<AppProviders>{null}</AppProviders>);
+await waitFor(() => expect(mockAddToast).toHaveBeenCalledWith(
+  expect.objectContaining({ type: 'warning', duration: 0 }),
+));
+```
+
+Deleting `<KeyRotationReminder />` from the tree fails this and leaves all three
+`renderHook` cases green — which is precisely the state the repo shipped in.
+
+**Where an app-wide hook belongs.** Follow the existing pattern rather than inventing a
+mount: `GlobalErrorReporter`, `IpcErrorReporter`, `CurrencyWorkspaceSync` and
+`OrgLocaleSync` are all null-rendering components in `AppProviders` that need toast or
+locale context and no DOM. Mounting in a SHELL instead would need one copy per shell,
+and that is how one of them gets forgotten — the same failure this section is about.
+
+## A hand-kept baseline only rots where someone looks
+
+Same round. `mockFactorySurface.test.ts` asserts that each `create*ApiMock` factory
+defines every export its module has, or names the gap in `KNOWN_GAPS` — and asserts
+`KNOWN_GAPS` by EQUALITY, so both directions force an edit. The full UI suite still went
+red with two failures on `getPiutangCollections` and `setLineCourseScoped`.
+
+Neither name was in `KNOWN_GAPS`. Both were exports the FACTORY did not mock, added by
+features (an analytics card, the coursing wire) whose authors did not run this file. The
+file's own header warns about exactly this — "baseline generated from the runtime rather
+than transcribed" — and the baseline had been transcribed.
+
+The correct repair was to MOCK them, not to list them. Listing a gap is the honest
+outcome for an export the factory cannot sensibly fake; these two have obvious shapes,
+and `setLineCourseScoped` was a live throw at a call site inside a DOM event handler,
+which lands the screen in its error boundary instead of failing readably.
+
+**The rule.** When an equality-asserted allowlist is red, ask which direction the
+pressure points. `KNOWN_GAPS` exists so a gap is a recorded debt; adding a name it never
+had converts a live throw into an accepted one. A baseline that is compared by equality
+must be GENERATED from the runtime, because a hand-kept list is only as complete as the
+last person who thought to look.
+
 > last audited 11-10-26 by docs-auditor
 
