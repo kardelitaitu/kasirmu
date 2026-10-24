@@ -70,10 +70,25 @@ this round verified at source, each documented in `todo-gift-card-redemption-ord
 None of that is UI glue. It is a migration, an RBAC change and a settlement-contract decision --
 each an owner call under AGENTS.md.
 
+## Where the evidence is unambiguous, and why that is still not a deletion'
+
+Three rows carry no open question: `useMediaQuery.ts` has no consumer and no IPC; `CartScreen.tsx`
+has zero `@/api` imports and its promised `useCart.ts` was never written; `ProductManagementScreen.tsx`
+has a named, registered successor. Together: **936 lines and 31 tests** (`wc -l`).
+
+`useMediaQuery.ts` deserves one more note because it is small enough to look trivial and is not.
+It is a correct, idiomatic 16-line hook -- `useOrientation.ts:89` solves the same concern through
+`matchMedia` and IS live. Two solutions to one problem, one of them unreachable. Deleting the
+unreachable one is a tidiness win, not a fix.
+
+None of that changes the disposition: a lane that deletes 936 lines of a merchant's point-of-sale
+product on the strength of a reachability walk is making a product decision with a code tool. The
+walk says nothing can reach these modules. It does not say nobody wants them.
+
 ## What this round did NOT do
 
 Nothing was deleted. Every row above is a measurement, and the three "delete" rows are the ones
-where the evidence is unambiguous -- but deleting 1,069 lines and reclaiming 68 tests is still a
+where the evidence is unambiguous -- but deleting 936 lines and reclaiming 31 tests is still a
 decision about what the product is, and it belongs to whoever owns the roadmap.
 
 ## Filed by
