@@ -1,5 +1,11 @@
 # Warehouse console on the tablet: a live route calling a desktop-only command
 
+> **RESOLVED 2026-10-25 (round 154) by `a004429bc`, under RULING 2 below.** The Count mode and
+> the per-location stock read are now withheld on the tablet rather than degraded, and the
+> console shows a distinct `warehouse-stock-desktop-only` notice instead of a load error.
+> Ruling 1 (register the command on the tablet) remains available if per-location stock is
+> ever wanted on the device; nothing here forecloses it. Kept as the record of the measurement.
+
 **Measured 2026-10-25 (round 150) at HEAD `ef7f80ed9`.** Not a hypothesis: the route is
 registered for both shells, and the command it loads on mount exists in one.
 
@@ -28,6 +34,27 @@ cashier sees a load-failure state rather than a crash -- which is worse, because
 as "the data is broken" rather than "this screen is not for this device".
 
 There is a second call site: `WarehouseCountFlow.tsx:125`.
+
+## CORRECTION 2026-10-25 (round 154): there were TWO call sites, and the count one was live
+
+The measurement above named `WarehouseConsole.tsx:112` and `WarehouseCountFlow.tsx:125` but
+described the console as failing on mount. Both sites are real and they are different sizes:
+
+- `WarehouseConsole.tsx` loads products for EVERY mode on mount, so opening Warehouse on a
+  tablet failed immediately -- that was the visible symptom.
+- `WarehouseCountFlow.tsx:125` fires only when the user opens the Count tab
+  (`WarehouseConsole.tsx:588` `onCount` -> `mode === "count"` -> :466), which is a second,
+  independent way in that no amount of fixing the first site would have closed.
+
+A round-154 subagent audit of the topology/warehouse cluster reached the same verdict
+independently (LIVE_DEFECT, "WarehouseConsole.tsx:466 renders <WarehouseCountFlow> when
+mode===count... with no isTabletShell guard anywhere in WarehouseConsole.tsx").
+
+Six sibling topology findings in the same audit are NOT defects: `TopologyScreen.tsx:173-175`
+returns a notice and `:847-849` repeats the gate before `NodeTopologyEditor` (:860) and
+`TopologyRevisionBrowser` (:1016) mount, so every one of those call sites is unreachable on
+the tablet. The gate reports them only because the calls sit in `useCallback` bodies outside
+the brace block it walks.
 
 ## Why this is not a mechanical fix
 
