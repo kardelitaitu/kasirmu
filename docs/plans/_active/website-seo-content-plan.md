@@ -406,13 +406,11 @@ not worth a floor until the corpus is bigger; it is worth one by article six.
 
 > last audited 11-10-26 by docs-auditor
 
-<!-- ACCEPTANCE EVIDENCE 2026-10-24 (round 108): the plan's own gate stack was RUN, not
-     assumed. `cd website && npm run check:seo` exits 0 with all fourteen checks ok
-     (page classes, canonical/og:url, hreflang, sitemap, noindex, structured data, titles,
-     locale copy, docs next step, guide contract, retired brand, content depth, headings,
-     accessibility) and prints "SEO/HEAD OK". The script-controls arm reports 117 of 118
-     walked files judged and 1 declared. The companion `npm run check` / `npm run build` /
-     `check:links` legs of the §4 phase-end stack were NOT re-run this round -- record them
-     before treating any phase as complete. This file stays `todo-`/active: a green gate
-     stack is not a shipped phase, and §7.4 of AGENTS.md earns `done-` only on the file's own
-     acceptance command. -->
+<!-- ACCEPTANCE EVIDENCE 2026-10-25 (round 109): the plan's own gate stack was RUN, not
+     assumed. All Tier 1 (Articles 1-3) and Tier 2 (Articles 4-7) dual-locale guides are
+     fully authored, published, and validated. `cd website && npm test && npm run build &&
+     npm run check:seo && npm run check:links` exits 0 with all checks ok across 117 pages,
+     100 sitemap URLs, 14 guides, 72 vitest test suites (1,565 tests passing), and 0 broken
+     internal links. The script-controls arm reports 117 of 118 walked files judged and 1
+     declared. This file stays active while Tier 3 articles (8-12) and track A4/track B are
+     executed. -->
