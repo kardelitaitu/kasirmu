@@ -837,6 +837,26 @@ probe with too few candidate paths. The count is the point: at some frequency th
 "the code is wrong", it is *"re-read the measurement"*, and the cheapest first move on any failure
 is to re-derive it a second way.
 
+#### Auditing my own doc, and a subagent that was also wrong (round 100)
+
+A delegated audit of `docs/operations/agent-gates.md` + `ci-pipeline.md` reported **8 FALSE/STALE
+claims**. Six were real and are now fixed; two were the auditor's own errors, which is the more
+useful half:
+
+| its claim | what I measured |
+|---|---|
+| "16 `check-*.py` files, 13 declare `--self-test`" → should be 17/14 | **17 files, 16 declare.** It missed that `check-ftl-attrs.py` and `check-state-closure-after-await.py` use **single-quoted** `'--self-test'` — the very trap it had just identified. |
+| "the `:695` pointers are stale" | They are stale, but they sit **above** the file's own 2026-09-24 disclaimer block that already declares them stale and says why. No action needed. |
+
+**Fixed for real:** 161→197 steps (×2 files), 193/42→197/32 step and indented counts, the 16/13
+census, `check.sh:253`→`:260`, a live table row's `dev-ci.yml:695` pointer, and the
+`release.yml.bak` row (it is in `attic/`, not a sibling, and at 516 lines the live file is now the
+longer of the two — so the "stale twin" is the *shorter*).
+
+**The rule this adds:** a delegated audit needs its findings re-derived too. It was right about
+every *number* it could count and wrong about two things that needed *context* — a quote style and
+a disclaimer block. Reading beats measuring for context; measuring beats reading for numbers.
+
 **The useful output of this round is the *list*, not the fixes.** 51 wired checkers is a roster
 anyone can re-run, and now one more of them is green. A gate nobody runs is not a gate — the same
 sentence this project has written three times about gates, now applied to the gates themselves.
