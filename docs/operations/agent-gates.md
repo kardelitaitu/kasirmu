@@ -2257,4 +2257,48 @@ the guard trades a runtime error for a silent wrong answer AND reddens the parit
 so register the command, or rule the screen shell-specific, and write down which gate you
 chose to satisfy and why.
 
+## A gate that cannot see the shape the repo writes: the else arm
+
+Measured 2026-10-24, round 127, one round after the brace trap two sections above. The memo
+authoring surface in the dev overlay (`ui/src/features/design/DevToolbar.tsx`) sent
+`create_memo_scoped` and `publish_memo_scoped` on every shell. `DEV_TOOLBAR_ENABLED` gates on
+`import.meta.env.DEV` and not on the shell, so a `tauri dev` build on the Android tablet renders
+the overlay, sends both invokes, and renders `command not found` in its own status line — a dev
+tool reporting a missing command as if the app were broken.
+
+The first fix was the brace-guard shape:
+
+    if (isTabletShell()) { ...status...; return; }
+    const memo = await createMemoScoped(...);
+
+It made the behaviour right and BOTH gates still failed. `verify-scoped-reads.py` grades a call
+"guarded" when the enclosing `if` is still in force, and its walk breaks on the closing brace of the
+block the guard opened. A braceless guard whose arm RETURNS puts the real body after that closing
+brace, so the walk cannot see the guard at all for the very shape people reach for when the guarded
+arm is the short one.
+
+**The fix that both gates accept is the if/else form**, because the else arm is inside the same
+if-statement:
+
+    if (isTabletShell()) { ...status...; } else { await createMemoScoped(...); }
+
+`verify-ipc-parity.py` already treats an else block as inheriting its guard (`shell_guarded_spans`
+says so in its docstring and implements it). `verify-scoped-reads.py` did not — so the two gates
+disagreed about the same four lines, and the disagreement was a defect in the second one.
+
+**What was actually wrong, once the classifier was suspected.** `_in_force(..., strict_block=True)`
+broke the moment the guard's block closed, without asking what followed it. `} else {` continues the
+same if-statement; the else block runs exactly when the condition does. The walk now looks past the
+brace for `else` and stays in force, resetting `opened` for the else block's own braces. Two
+self-test cases pin it, in the file's usual pair: the else arm under a real shell guard is graded
+guarded, and an else arm under a guard that names no shell is not. The control is the load-bearing
+one — without it, any predicate answering True after `} else {` would pass.
+
+**The transferable part, and it recurs.** When a gate disagrees with the code, the first question is
+not "what does the gate want" but "can this gate see the shape I wrote". Three measurements paid for
+this one: the guarded span list printed from the real file (`inSpan: True` — parity was fine), the
+depth walk replayed by hand (`gd 3, break at line 324`), and a four-case fixture comparing the old
+and new predicate (else arm flipped, control stayed put). Each is one line of instrumentation and
+each answered a question that reading the diff twice would not have.
+
 > last audited 11-10-26 by docs-auditor
