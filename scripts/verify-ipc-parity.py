@@ -5005,6 +5005,26 @@ def main() -> int:
     # json, and it sent a reader off to re-verify a blob hash that had not moved. The
     # figures now name their own source: "entries allowlisted" is a count of file members,
     # "orphans measured in the tree" is a count of registrations with no caller.
+    # Reason state for THIS section, mirroring info[dev-mock-reasons] above. The same
+    # asymmetry that line was added to fix exists here and was measured on 2026-10-25:
+    # 19 of 20 scoped_orphans entries were BARE NAMES, so the ledger recorded a debt
+    # without recording what was owed. `pending_sync_count_scoped` is the case that
+    # matters -- it is a permission-gated DUPLICATE of `pending_offline_count_scoped`
+    # (both call `Store::pending_offline_count()`), not a missing surface, and nothing
+    # in the file said so until it was written down by hand.
+    #
+    # INFORMATIONAL, appending nothing to `failures`, for the reason the dev_mock twin
+    # gives: a run that was green stays green and a run that was red fails for the
+    # reason it already failed for. The count is the number an owner has to act on;
+    # it is invisible in a list of bare names, which is exactly how it stayed at 19.
+    orphan_entries = allowlist_section(allowlist, "scoped_orphans")
+    orphan_reasonless = sorted(name for name, reason in orphan_entries if not reason)
+    print(
+        f"info[scoped-orphans-reasons]: {len(orphan_reasonless)} of "
+        f"{len(orphan_entries)} allowlisted scoped orphans carry no reason (an entry "
+        f"is either a bare name or an object {{\"name\": ..., \"reason\": ...}}; the "
+        f"reason is the only record of why the debt was accepted rather than paid)"
+    )
     gated = [c for c in all_orphans if orphan_permission(c)]
     if all_orphans:
         detail = ", ".join(
