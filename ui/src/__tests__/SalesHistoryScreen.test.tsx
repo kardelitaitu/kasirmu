@@ -80,6 +80,7 @@ import {
   createFakturPenggantiScoped,
   issueTaxInvoiceScoped,
   getSaleStatutoryNumberScoped,
+  voidSaleScoped,
 } from '@/api/sales';
 import { listStaffScoped } from '@/api/staff';
 import { getSaleLineMarginsScoped } from '@/api/reports';
@@ -95,6 +96,7 @@ const mockListSalesScoped = listSalesScoped as ReturnType<typeof vi.fn>;
 const mockGetSaleScoped = getSaleScoped as ReturnType<typeof vi.fn>;
 const mockListRefunds = listRefundsScoped as ReturnType<typeof vi.fn>;
 const mockStampFakturPajakScoped = stampFakturPajakScoped as ReturnType<typeof vi.fn>;
+const mockVoidSale = voidSaleScoped as ReturnType<typeof vi.fn>;
 const mockCreateFakturPenggantiScoped = createFakturPenggantiScoped as ReturnType<typeof vi.fn>;
 const mockIssueTaxInvoiceScoped = issueTaxInvoiceScoped as ReturnType<typeof vi.fn>;
 const mockGetSaleStatutoryNumberScoped = getSaleStatutoryNumberScoped as ReturnType<typeof vi.fn>;
@@ -383,6 +385,49 @@ describe('SalesHistoryScreen', () => {
       'Escape must dismiss the overlay, not navigate away from the screen',
     ).toBeGreaterThan(0);
   });
+  it('voids once for a double click on Confirm while the first is in flight', async () => {
+    // `void_sale` compare-and-sets on `status = 'active'` (sales_lifecycle.rs:903-914), so the
+    // replay is REFUSED and the catch reports `sales-history-void-error`: "failed to void" over
+    // a sale that was voided. The overlay closes on success, so the cashier sees the row gone
+    // AND an error telling them it did not work.
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    mockListRefunds.mockResolvedValue([]);
+    let releaseVoid: ((v: unknown) => void) | undefined;
+    mockVoidSale.mockImplementation(
+      () => new Promise((resolve) => { releaseVoid = resolve; }),
+    );
+    const { container } = renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('.sales-history-row-wrap').length).toBeGreaterThan(0);
+    });
+
+    const row = container.querySelector('.sales-history-row-wrap') as HTMLElement;
+    fireEvent.touchStart(row, { touches: [{ clientX: 200, clientY: 10 }] });
+    fireEvent.touchEnd(row, { changedTouches: [{ clientX: 40, clientY: 10 }] });
+    await user.click(await screen.findByText('Void'));
+
+    const confirmBtn = await screen.findByRole('button', { name: /confirm/i });
+    // fireEvent inside one act(): userEvent awaits its own act(), which flushes the pending
+    // chain so the first void would have settled and the clicks would never overlap. The
+    // disabled flag React set is dropped for the second click so the ref is measured.
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+      confirmBtn.removeAttribute('disabled');
+      fireEvent.click(confirmBtn);
+    });
+
+    expect(
+      mockVoidSale.mock.calls.length,
+      'a double click on Confirm sent the void twice; the CAS refuses the replay and the ' +
+        'operator is told the void failed over a sale that was voided',
+    ).toBe(1);
+
+    releaseVoid?.({});
+  });
+
   // ── The VOID overlay is a SEPARATE overlay from the detail panel ──────
   //
   // It is reached by SWIPING a row left (`SwipeableOrderRow` -> `useSwipe` ->

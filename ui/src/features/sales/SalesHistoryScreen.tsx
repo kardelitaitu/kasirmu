@@ -448,8 +448,17 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
 
   const voidExit = useExitAnimation(!!voidTarget, handleCloseVoid);
 
+  // Re-entry guard, the same one VoidOrdersScreen carries. `voiding` is React state and
+  // commits on the NEXT render, so the second dispatch of a real double tap still enters
+  // this handler. `void_sale` compare-and-sets on `status = 'active'`
+  // (sales_lifecycle.rs:903-914), so the replay is REFUSED and the catch reports
+  // `sales-history-void-error`: "failed to void" over a sale that was voided.
+  const voidPendingRef = useRef(false);
+
   const handleConfirmVoid = useCallback(async () => {
     if (!voidTarget) return;
+    if (voidPendingRef.current) return;
+    voidPendingRef.current = true;
     setVoiding(true);
     setVoidError(null);
     try {
@@ -461,6 +470,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
     } catch (err) {
       setVoidError(l10nErrorMessage(err, l10n, 'sales-history-void-error'));
     } finally {
+      voidPendingRef.current = false;
       setVoiding(false);
     }
   // sessionToken is read in this body and was missing from the deps. `session` was in
