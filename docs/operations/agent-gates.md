@@ -999,6 +999,48 @@ docstrings record a past bug and which no case ever called:
 docstring would make the suite red on a tree that is green, and "fixing" the code is a behaviour
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
+#### Defect-planting the flake receipt, and finding it mostly right (round 117)
+
+The question this round was whether a red step actually fails `scripts/check.sh`. Reading the
+mechanism first: `step()` runs `"$@" >"$log" 2>&1` and on failure prints the last 25 lines and
+`exit 1`, under `set -euo pipefail`, with no `trap` and no swallowing `exit 0`. So the simple case
+was already sound.
+
+**The subtle case is the one worth planting, and `check.sh` already handles it deliberately.**
+`cargo nextest` turns a genuine failure into `passed (1 flaky)` with **exit 0**, and the JUnit
+report's own `failures=` attribute counts a rescued flake as a pass — `<flakyFailure>` is the only
+place it survives. So the matrix grades the receipt rather than the exit code (`check.sh:368-383`).
+Measured on the real report this round:
+
+| planted | result |
+|---|---|
+| a `<flakyFailure>` injected into a copy of the live `junit.xml` | **FAIL, exit 1** — names the test (`kasirmu-app::commands::authz::tests::owner_role_grants_loyalty_management`) despite the report saying `failures=0` |
+| the unmodified live report | PASS, exit 0 |
+
+**The checker is unusually honest about its own limits**, which is worth recording as a positive
+example rather than a fix: it prints the run identity (`timestamp` + `uuid`) because a stale report
+at the same path would otherwise read as fresh; it warns that `fail-profile.fail-fast = max-fail 1`
+means a small `tests=` count is not evidence the suite is small; and it states that a PASS says
+nothing about any case that never ran.
+
+**One real gap, in the failure mode.** `--nextest-junit <missing path>` raised an uncaught
+`FileNotFoundError`. That exits 1 — the right DIRECTION, but by accident of Python's exception
+handling rather than by decision, and the reader gets a stdlib traceback instead of a sentence. The
+file's own comment already states the rule (*"a missing report must not be able to read as a clean
+one"*), so the refusal belongs in words. Now: `FAIL JUNIT: no report at … / Nothing was graded`, the
+two usual causes named (nextest has not run, or `path` resolved somewhere else because it is
+relative to the PROFILE's artifact dir), and three self-test cases.
+
+**And the cases were proved load-bearing, not merely added.** Removing the refusal makes the
+self-test crash with the very `FileNotFoundError` traceback that one of the cases asserts is absent
+— so the guard cannot be deleted silently.
+
+**A measurement note that cost a call.** Reading `$LASTEXITCODE` after piping the output through
+`Select-Object` reported **0** for a run that actually exits 1. That is the pipe-eats-the-status trap
+this file has recorded since round 90, hit again in a new place. The fix is the one `check.sh`
+itself uses: capture to `$null` and read the status, or grep a captured log — never test a pipeline's
+status.
+
 #### Chasing one blind spot class, and the two probes that over-reported it (round 116)
 
 Last round's ADR-index defect was structural: a checker whose corpus is built *from the list it
