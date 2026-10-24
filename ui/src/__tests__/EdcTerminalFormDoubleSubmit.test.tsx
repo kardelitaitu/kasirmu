@@ -1,9 +1,11 @@
 // ── A double submit on the EDC terminal form must create ONE terminal ────
 //
-// `handleSubmit` (EdcTerminalsCard.tsx:149) is the form's `onSubmit` (:397) and has no
-// `submitting` re-entry check — it only calls `setSubmitting(true)` (:170). The Save
-// BUTTON is guarded (`disabled={submitting}`, :536), but pressing Enter in the Terminal
-// Name field submits the form natively and never consults the button.
+// `handleSubmit` (EdcTerminalsCard.tsx:150) is the form's `onSubmit` and pressing Enter in
+// the Terminal Name field submits the form natively, never consulting the Save BUTTON
+// (which is guarded by `disabled={submitting}`). The handler's own `if (submitting) return`
+// could not refuse the second submit either: the flag is STATE, so both submits inside
+// one tick read the value from the render that built the closure. Round 186 replaced it
+// with `submittingRef`, which is synchronous.
 //
 // Same mechanism as `TableManagementScreen.handleSaveTableModal` (round 60) and
 // `.handleConfirmReservation` (round 61): a form's own submit path is a second door.

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
@@ -53,10 +53,13 @@ export function EdcTerminalsCard({
   const [isActive, setIsActive] = useState(true);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  /** Synchronous mirrors of the busy flags — see the re-entry guards in this file. */
+  const submittingRef = useRef(false);
 
   // Delete confirmation
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const deletingRef = useRef(false);
 
   const fetchTerminals = useCallback(async () => {
     if (!sessionToken) return;
@@ -153,7 +156,13 @@ export function EdcTerminalsCard({
     // field submits it directly and never consults the button. Without this, two submits
     // ran `createEdcTerminalScoped` twice and configured TWO terminals for one register.
     // Same shape as the table screens' Save and Reserve forms (rounds 60-61).
-    if (submitting) return;
+    // The flag alone does NOT refuse the second submit: React commits `submitting` on the
+    // next render, so two Enters inside one tick both read false. The ref is synchronous,
+    // and this write has no unique index behind it -- create_edc_terminal is a plain
+    // INSERT with a freshly minted UUID (db/edc_terminals.rs:189-206) -- so a replay
+    // configures TWO card terminals on one register.
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     if (!sessionToken) {
       // Reported through the form's own error slot, which is where every other
       // refusal in this handler goes. Silently returning from a Submit left the
@@ -212,12 +221,18 @@ export function EdcTerminalsCard({
     } catch (err) {
       setFormError(plainErrorMessage(err));
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
 
   const handleDelete = async () => {
     if (!sessionToken || !deleteConfirmId) return;
+    // Same re-entry shape as the submit: a delete is a same-row DELETE, so a replay cannot
+    // remove anything twice, but the second one reports its NotFound over a delete that
+    // landed, and `deleteConfirmId` is cleared by the first.
+    if (deletingRef.current) return;
+    deletingRef.current = true;
     setDeleting(true);
     try {
       await deleteEdcTerminalScoped(sessionToken, deleteConfirmId);
@@ -233,6 +248,7 @@ export function EdcTerminalsCard({
         type: 'error',
       });
     } finally {
+      deletingRef.current = false;
       setDeleting(false);
     }
   };
