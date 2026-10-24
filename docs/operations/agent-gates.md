@@ -817,6 +817,19 @@ own docstring opens by describing.
 **A scope change needs two proofs, not one:** that the new scope passes on the tree as it stands,
 and that it FAILS when the thing it grades breaks. One without the other is a green tick.
 
+#### And a tenth false alarm, from my own probe (round 100)
+
+Auditing my own citations in this file, a scan reported **3 of 4 `file:LINE` citations broken** —
+`check.sh:253`, `verify-docker-all.sh:102`, `check-ui.mjs:287` all "FILE MISSING". They are not:
+the citations are written relative and the files live under `scripts/`, which my probe did not try
+resolving against. All four resolve, and each lands on the line it claims.
+
+**This is the tenth time a measurement was wrong and the code was right**, and it is the third time
+the measurement was mine rather than a tool's — a pipe, a chained `echo`, a stale buffer, and now a
+probe with too few candidate paths. The count is the point: at some frequency the prior is not
+"the code is wrong", it is *"re-read the measurement"*, and the cheapest first move on any failure
+is to re-derive it a second way.
+
 **The useful output of this round is the *list*, not the fixes.** 51 wired checkers is a roster
 anyone can re-run, and now one more of them is green. A gate nobody runs is not a gate — the same
 sentence this project has written three times about gates, now applied to the gates themselves.
