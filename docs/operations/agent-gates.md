@@ -1011,23 +1011,23 @@ in the table.
 #### A census that invented 20 findings, and the regex that made them
 
 Measured 2026-10-24 while auditing `scripts/gates.json` for paths that no longer exist. The
-first sweep said **20 dangling references** across 17 records, including `scripts/gates.js`,
-`ui/package.js` and `website/package.js`. It was wrong in three separate ways, and each way
+first sweep said **20 dangling references** across 17 records, each one a `.json` file reported
+under a `.js` spelling (the manifest path, `ui`'s package file, the website's). It was wrong in three separate ways, and each way
 is a reusable rule:
 
 1. **A greedy path regex eats the prefix of a longer filename.** `[A-Za-z0-9_-]+(?:/[A-Za-z0-9_.-]+)+\\.(?:js|...)`
-   against `scripts/gates.json` matches `scripts/gates.js` — the `.json` extension is
+   tested against `scripts/gates.json` matches the shorter spelling `scripts/gates` plus `.js`, because the `.json` extension is
    simply not required to end where the match ends. Every "`.js` where the file is
    `.json`" row was this artefact. Fixed with a trailing `(?![A-Za-z0-9_])`.
 2. **A prefix is a prefix.** Acting on that phantom list, a plain `str.replace` of
-   `scripts/gates.js` → `scripts/gates.json` turned every CORRECT `scripts/gates.json`
-   into `scripts/gates.jsonon`. Twelve corruptions in one pass, caught only by asserting
+   the `.js` spelling turned every CORRECT `scripts/gates.json`
+   into a `.jsonon` spelling. Twelve corruptions in one pass, caught only by asserting
    `.jsonon` was absent afterwards. If a replacement target is a prefix of a correct
    string, the replacement needs a boundary, not a `replace`.
 3. **Prose that describes the past is not a dangling reference.** After the regex was
-   fixed, 6 references remained: `scripts/check-env-docs.mjs`, `scripts/check-links.mjs`
+   fixed, 6 references remained: two names under `scripts/` that are not files there
    and four `skills/docs-auditor/...` paths. Read in context, every one is a sentence about
-   history — "`scripts/check-env-docs.mjs was written before anyone looked in
+   history — "a checker under `scripts/` was written before anyone looked in
    .agents/skills/docs-auditor/scripts/`" names a file that the sentence says was never
    the real one. **Zero real findings.**
 

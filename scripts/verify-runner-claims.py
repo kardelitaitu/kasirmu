@@ -88,6 +88,12 @@ HISTORICAL = re.compile(
 # route bucket -- all stayed green while being wrong.
 SKIP_DIRS = ("archived", "records", "attic", "node_modules", "target", "dist",
              ".git", "__tests__", "var")
+# Scratch dumps left at the repo root by a working session. Measured 2026-10-24: an
+# untracked `.tmp_windows.txt` (10,866 lines of captured output) was being read as a live
+# document, and it quoted this file's own docstring -- so the gate reported "verify-x.py is
+# claimed to run in CI but no live workflow invokes it" against ITSELF, twice. A claim in a
+# scratch file is not a claim, and a gate that reddens on one teaches its reader to ignore it.
+SKIP_NAME_PREFIXES = (".tmp_", ".tmp-", "tmp_")
 SCAN_SUFFIX = (".md", ".yml", ".yaml", ".sh", ".rs", ".toml", ".json", ".ps1",
               ".txt", ".py", ".mjs", ".ts", ".tsx")
 # .py/.mjs were MISSING at first, so a claim in a Python docstring or a Node comment was
@@ -135,6 +141,8 @@ def scanned_files() -> list[Path]:
                        or d.lower() == "records"
                        or d.lower() not in SKIP_DIRS]
         for fn in filenames:
+            if fn.startswith(SKIP_NAME_PREFIXES):
+                continue   # scratch dump, not a document
             p = Path(dirpath) / fn
             if fn.endswith(SCAN_SUFFIX) or fn in SCAN_NAMES:
                 if p.resolve() == Path(__file__).resolve():
