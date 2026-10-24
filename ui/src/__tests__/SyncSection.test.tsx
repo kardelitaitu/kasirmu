@@ -626,6 +626,22 @@ describe('SyncSection', () => {
     });
   });
 
+  it('pulls once when the confirm button is double-tapped', async () => {
+    // A destructive pull rewrites local data from the server snapshot. The dialog's
+    // confirm button shows a spinner while `pulling` is true but is not disabled, so two
+    // taps inside one tick both reach runPull.
+    const syncPull = vi.fn().mockResolvedValue(PULL_OK);
+    renderSection({ sync: SYNCED, syncPull });
+
+    fireEvent.click(screen.getByText('Pull from Server'));
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    const confirmBtn = within(screen.getByRole('dialog')).getByRole('button', { name: 'Pull from Server' });
+    fireEvent.click(confirmBtn);
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => expect(syncPull).toHaveBeenCalledTimes(1));
+  });
+
   it('does not pull when the dialog is cancelled', async () => {
     const syncPull = vi.fn().mockResolvedValue(PULL_OK);
     renderSection({ sync: SYNCED, syncPull });
