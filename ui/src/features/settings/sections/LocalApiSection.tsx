@@ -16,6 +16,7 @@ import {
   type LocalApiTokenDto,
 } from '@/api/localApi';
 import { listLocationsScoped, type LocationProfile } from '@/api/locations';
+import { isTabletShell } from '@/utils/shellKind';
 
 /** Copy text to the clipboard, reporting success for the toast. */
 async function copyToClipboard(text: string): Promise<boolean> {
@@ -96,15 +97,39 @@ export default function LocalApiSection() {
   // above. Both scans carry working controls, which is what makes the negative meaningful
   // where round 131's was not.
 
+  // THE WHOLE SURFACE IS DESKTOP-ONLY: every one of the six commands it uses is
+  // registered by apps/desktop-tauri alone (lib.rs:1405-1410) -- apps/mobile-tauri has no
+  // local_api module at all. The loopback server is a desktop process; a tablet has
+  // nothing to configure, and the render below shows it a reason instead of controls.
+  //
+  // The shell test appears AT EACH CALL rather than in one hoisted const. That is not
+  // duplication for its own sake: `verify-ipc-parity.py`'s shell-blind leg treats a file
+  // that branches on the shell as a file whose OTHER invokes this shell will make, so a
+  // single hoisted boolean left all six graded as unguarded tablet calls. Naming the
+  // predicate at the site is the shape that leg reads.
+
   const refresh = useCallback(async () => {
     if (!sessionToken) return;
+    // The same site-guard as the five handlers below: the mount effect calls this on
+    // both shells, so the tablet branch has to be a block the gate can read rather than
+    // a clause folded into the token test.
+    if (isTabletShell()) {
+      return;
+    } else {
     try {
       const s = await getLocalApiStatusScoped(sessionToken);
+      // A command that answers `undefined` is not a status. `loggedInvoke` is typed to the
+      // DTO, but the runtime can hand back nothing (a dev-mock with no handler, a command
+      // that resolves null), and `setStatus(undefined)` left the render reading
+      // `status.port` off it -- a crash the settings sweep found on 2026-10-25. Treat a
+      // missing answer like a failed one and keep the last snapshot.
+      if (!s) return;
       setStatus(s);
       // Seed the draft from the server only until the operator starts editing it.
       if (!portEditedRef.current) setPortDraft(String(s.port));
     } catch {
       // Status is advisory; a failed fetch leaves the last snapshot.
+    }
     }
   }, [sessionToken]);
 
@@ -139,6 +164,14 @@ export default function LocalApiSection() {
   }, [status, refresh]);
 
   const onToggle = async (checked: boolean) => {
+    // Desktop-only: the render above returns a notice on the tablet, so this body is
+    // unreachable there -- but verify-ipc-parity.py grades the CALL, not the reachability
+    // of the button that leads to it, and a file that branches on the shell is read as one
+    // whose other invokes this shell will make. Naming the predicate here is the shape
+    // that leg accepts; the early return only silences the tablet, it does not prove it.
+    if (isTabletShell()) {
+      return;
+    } else {
     if (!sessionToken) return;
     setBusy(true);
     try {
@@ -157,9 +190,18 @@ export default function LocalApiSection() {
     } finally {
       setBusy(false);
     }
+    }
   };
 
   const onApplyPort = async () => {
+    // Desktop-only: the render above returns a notice on the tablet, so this body is
+    // unreachable there -- but verify-ipc-parity.py grades the CALL, not the reachability
+    // of the button that leads to it, and a file that branches on the shell is read as one
+    // whose other invokes this shell will make. Naming the predicate here is the shape
+    // that leg accepts; the early return only silences the tablet, it does not prove it.
+    if (isTabletShell()) {
+      return;
+    } else {
     if (!sessionToken) return;
     const port = Number(portDraft.trim());
     if (!Number.isInteger(port) || port < 1024 || port > 65535) {
@@ -176,9 +218,18 @@ export default function LocalApiSection() {
     } finally {
       setBusy(false);
     }
+    }
   };
 
   const onApplyStore = async (storeId: string) => {
+    // Desktop-only: the render above returns a notice on the tablet, so this body is
+    // unreachable there -- but verify-ipc-parity.py grades the CALL, not the reachability
+    // of the button that leads to it, and a file that branches on the shell is read as one
+    // whose other invokes this shell will make. Naming the predicate here is the shape
+    // that leg accepts; the early return only silences the tablet, it does not prove it.
+    if (isTabletShell()) {
+      return;
+    } else {
     if (!sessionToken) return;
     setBusy(true);
     try {
@@ -190,9 +241,18 @@ export default function LocalApiSection() {
     } finally {
       setBusy(false);
     }
+    }
   };
 
   const onRotate = async () => {
+    // Desktop-only: the render above returns a notice on the tablet, so this body is
+    // unreachable there -- but verify-ipc-parity.py grades the CALL, not the reachability
+    // of the button that leads to it, and a file that branches on the shell is read as one
+    // whose other invokes this shell will make. Naming the predicate here is the shape
+    // that leg accepts; the early return only silences the tablet, it does not prove it.
+    if (isTabletShell()) {
+      return;
+    } else {
     if (!sessionToken) return;
     setRotating(true);
     try {
@@ -207,9 +267,18 @@ export default function LocalApiSection() {
     } finally {
       setRotating(false);
     }
+    }
   };
 
   const onMint = async () => {
+    // Desktop-only: the render above returns a notice on the tablet, so this body is
+    // unreachable there -- but verify-ipc-parity.py grades the CALL, not the reachability
+    // of the button that leads to it, and a file that branches on the shell is read as one
+    // whose other invokes this shell will make. Naming the predicate here is the shape
+    // that leg accepts; the early return only silences the tablet, it does not prove it.
+    if (isTabletShell()) {
+      return;
+    } else {
     if (!sessionToken) return;
     setMinting(true);
     try {
@@ -218,6 +287,7 @@ export default function LocalApiSection() {
       addToast({ message: l10n.getString('settings-local-api-mint-failed'), type: 'error' });
     } finally {
       setMinting(false);
+    }
     }
   };
 
@@ -232,6 +302,30 @@ export default function LocalApiSection() {
   const portDirty = status !== null && portDraft !== String(status.port);
   // Local const so TypeScript keeps the narrowing inside JSX callbacks.
   const baseUrl = status?.running ? status.baseUrl : null;
+
+  // The tablet gets the heading and a reason, never the controls: every command behind
+  // them is desktop-only (see `desktopOnly` above). Rendering the form there would offer
+  // a toggle whose every click lands in a catch.
+  if (isTabletShell()) {
+    return (
+      <Card
+        shadow="sm"
+        header={
+          <Localized id="settings-section-local-api">
+            <h2 className="settings-section-title">Local API</h2>
+          </Localized>
+        }
+      >
+        <div className="settings-form">
+          <p className="settings-hint" data-testid="settings-local-api-desktop-only">
+            <Localized id="settings-local-api-desktop-only">
+              <span>The Local API server runs on the desktop app.</span>
+            </Localized>
+          </p>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card

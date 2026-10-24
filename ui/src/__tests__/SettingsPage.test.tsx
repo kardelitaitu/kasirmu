@@ -525,6 +525,11 @@ describe('SettingsPage admin shell — flat IA', () => {
       // controls inside read contexts AppProviders mounts, so the body renders with the
       // mocked IPC.
       'appearance': ['appearance-colour-row'],
+
+      // Round 159: the Local API screen composes sections/LocalApiSection, whose header
+      // Card renders on either shell (the tablet gets a notice in place of the controls),
+      // so .settings-section-title is what proves the body mounted.
+      'local-api': ['settings-section-title'],
       // Migrated 2026-10-06: composes the real GeneralSection, driven by
       // hooks/useStoreDraft. The form is the body; there is no wrapper class of
       // its own, so the marker is the store-name field the rebuild dropped.

@@ -219,6 +219,16 @@ const NAV_ITEMS: SettingsNavItem[] = [
       </svg>
     ),
   },
+  {
+    key: 'local-api',
+    label: 'Local API',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <polyline points="16 18 22 12 16 6" />
+        <polyline points="8 6 2 12 8 18" />
+      </svg>
+    ),
+  },
 ];
 
 // Fluent keys for the localized nav labels. 'settings-nav-general' is
@@ -241,6 +251,7 @@ const NAV_L10N_KEYS: Record<string, string> = {
   'system-diagnostics': 'settings-nav-system-diagnostics',
   'email-reports': 'settings-nav-email-reports',
   'appearance': 'settings-nav-appearance',
+  'local-api': 'settings-nav-local-api',
 };
 
 // ── Exported for SettingsPage topbar/breadcrumb ─────────────────

@@ -961,6 +961,8 @@ addon-hal-desc = Muat dan gunakan driver abstraction layer hardware kustom untuk
 
 // ── API Lokal (Pengaturan → API Lokal) ────────────────────────────
 settings-section-local-api = API Lokal
+settings-local-api-desktop-only = Server API Lokal berjalan di aplikasi desktop.
+settings-nav-local-api = API Lokal
 settings-local-api-intro = Jalankan skrip Anda sendiri ke mesin kasir ini melalui HTTP. Server hanya mendengarkan di komputer ini (127.0.0.1) dan mati secara default.
 settings-local-api-enabled = Aktifkan API Lokal
 settings-local-api-port = Port

@@ -257,6 +257,8 @@ describe('SettingsNavTree (flat IA)', () => {
       // Round 158: the appearance section the flat-IA rebuild dropped, restored
       // with its screen. Appended at the end like email-reports, for the same reason.
       'appearance',
+      // Round 159: the Local API section, dropped by the same rebuild and now restored.
+      'local-api',
     ]);
     expect(visibleNavKeys()).toEqual(NAV_ITEMS.map((n) => n.key));
 
@@ -490,11 +492,12 @@ describe('SettingsNavTree (flat IA)', () => {
   });
 
   it('drops stale pinned keys that no longer exist in the flat IA', async () => {
-    // 'local-api' was a section in the old IA and has NOT been restored, so its pin
-    // must render nothing. (This case used 'appearance' until round 158 mounted that
-    // section again -- at which point the example would have stopped being stale and
-    // the test would have proved the opposite of what it claims.)
-    localStorage.setItem('settings-pinned-sections', JSON.stringify(['local-api']));
+    // A key in NO list. This fixture has now been overtaken TWICE -- by 'appearance'
+    // (restored round 158) and by 'local-api' (restored round 159) -- which is exactly
+    // what the case is about, and why the replacement has to be a name no future round
+    // would plausibly reintroduce. Reusing a real section name is the trap here: the
+    // moment it comes back, this test silently starts proving the opposite of its claim.
+    localStorage.setItem('settings-pinned-sections', JSON.stringify(['retired-settings-hub']));
     render(<SettingsNavTree {...defaultProps} />);
     const group = document.querySelector('[data-testid="settings-sidebar"] .settings-sidebar-pinned');
     expect(group).not.toBeNull();

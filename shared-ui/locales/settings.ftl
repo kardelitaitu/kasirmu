@@ -993,6 +993,9 @@ addon-hal-desc = Load and use custom hardware abstraction layer drivers for spec
 
 // ── Local API (Settings → Local API) ──────────────────────────────
 settings-section-local-api = Local API
+# Shown instead of the controls on a shell that has no local API server.
+settings-local-api-desktop-only = The Local API server runs on the desktop app.
+settings-nav-local-api = Local API
 settings-local-api-intro = Run your own scripts against this register over HTTP. The server listens only on this machine (127.0.0.1) and is off by default.
 settings-local-api-enabled = Enable Local API
 settings-local-api-port = Port

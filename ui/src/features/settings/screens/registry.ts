@@ -73,4 +73,5 @@ export const SETTINGS_SCREENS: Record<string, ComponentType> = {
   'system-diagnostics': lazy(() => import('./SystemDiagnosticsScreen').then((m) => ({ default: m.SystemDiagnosticsScreen }))),
   'email-reports': lazy(() => import('./EmailReportsScreen').then((m) => ({ default: m.EmailReportsScreen }))),
   'appearance': lazy(() => import('./AppearanceScreen').then((m) => ({ default: m.AppearanceScreen }))),
+  'local-api': lazy(() => import('./LocalApiScreen').then((m) => ({ default: m.LocalApiScreen }))),
 };
