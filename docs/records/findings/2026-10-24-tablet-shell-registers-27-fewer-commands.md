@@ -244,7 +244,36 @@ That is unchanged: this fix removed a silent failure, not the feature gap. The r
 that show an error state are honest — the user is told the action failed — and 1 already degrades
 to a working fallback.
 
-## The memo sites are now GUARDED — the second of the nine fixed (2026-10-24, round 125),,`MemosScreen.tsx`'s create and revise handlers called `createMemoScoped` / `reviseMemoScoped`,unconditionally. Those two commands are registered on the **desktop shell only**; the mobile shell,registers the consumer pair instead (`list_active_memos_scoped`, `acknowledge_memo_scoped`), and,`apps/mobile-tauri/src/commands/memo.rs` says why in its own module doc — *"Authoring,(`create`/`publish`) is a manager/admin surface and is not wired to the tablet shell yet"*. So on a,tablet the form rendered, accepted a full memo, and only then met `command not found`.,,**Fixed in `9b0c19248` by guarding the calls, not by hiding the form.** Each handler now wraps its,call in `if (!isTabletShell()) { … }` — the idiom this repo already uses (`TopologyScreen:167`,,`LicenseActivationScreen:293`) and the brace shape `verify-scoped-reads.py`'s depth walk reads, so,lifting a call back out reddens the gate rather than the screen.,,**A JSX `{!isTabletShell() && (<Card…>)}` guard was tried first and is invisible to the gate**:,`_platform_guard_excludes_shell` walks BRACE depth, and `&&` opens none. The user-visible effect was,correct either way, but only the brace form keeps the defect from returning.,,| measurement | before | after |,|---|---|---|,| `verify-scoped-reads.py --shell tablet` findings | 29 | **27** |,| `MemosScreen.tsx` sites listed | 2 | **0** |,| `MemosScreen` tests | 14 | **15** |,,**The new test pins the CALL, not the markup** — `expect(mocks.createMemoScoped).not,.toHaveBeenCalled()` after a real submit with the shell mocked to tablet. Proved load-bearing by,disabling both guards (`if (true)`): it fails with *"expected `vi.fn()` to not be called at all, but,actually been called 1 times"*, which is the original defect in one line. A test that merely,rendered the screen passed throughout.,## Provenance
+## The memo sites are now GUARDED — the second of the nine fixed (2026-10-24, round 125)
+
+`MemosScreen.tsx`'s create and revise handlers called `createMemoScoped` / `reviseMemoScoped`
+unconditionally. Those two commands are registered on the **desktop shell only**; the mobile shell
+registers the consumer pair instead (`list_active_memos_scoped`, `acknowledge_memo_scoped`), and
+`apps/mobile-tauri/src/commands/memo.rs` says why in its own module doc — *"Authoring
+(`create`/`publish`) is a manager/admin surface and is not wired to the tablet shell yet"*. So on a
+tablet the form rendered, accepted a full memo, and only then met `command not found`.
+
+**Fixed in `9b0c19248` by guarding the calls, not by hiding the form.** Each handler now wraps its
+call in `if (!isTabletShell()) { … }` — the idiom this repo already uses (`TopologyScreen:167`,
+`LicenseActivationScreen:293`) and the brace shape `verify-scoped-reads.py`'s depth walk reads, so
+lifting a call back out reddens the gate rather than the screen.
+
+**A JSX `{!isTabletShell() && (<Card…>)}` guard was tried first and is invisible to the gate:**
+`_platform_guard_excludes_shell` walks BRACE depth, and `&&` opens none. The user-visible effect was
+correct either way, but only the brace form keeps the defect from returning.
+
+| measurement | before | after |
+|---|---|---|
+| `verify-scoped-reads.py --shell tablet` findings | 29 | **27** |
+| `MemosScreen.tsx` sites listed | 2 | **0** |
+| `MemosScreen` tests | 14 | **15** |
+
+**The new test pins the CALL, not the markup** — `expect(mocks.createMemoScoped).not
+.toHaveBeenCalled()` after a real submit with the shell mocked to tablet. Proved load-bearing by
+disabling both guards (`if (true)`): it fails with *"expected `vi.fn()` to not be called at all, but
+actually been called 1 times"*, which is the original defect in one line. A test that merely
+rendered the screen passed throughout.
+
 
 - Gate: `scripts/verify-scoped-reads.py` (`--shell tablet`).
 - Found by re-measuring the tablet half of the gate while auditing open findings; the original
