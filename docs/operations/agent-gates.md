@@ -742,6 +742,29 @@ both still pass. Merging them is a real design decision (which of the two matchi
 this repo already has five checkers over `gates.json`; a sixth angle is cheaper than a merge that
 changes one of the five's behaviour.
 
+#### `verify-selftest-sweep.py` was sweeping a third of the population
+
+Its docstring opens *"run EVERY checker's self-test, in one roster"*. Measured 2026-10-24, the
+roster was `scripts/*.{py,mjs}` only — **65 checkers, while 24 more declared the same flag and
+were never run by it**:
+
+| excluded | count |
+|---|---|
+| `.sh` checkers beside the `.py` ones in `scripts/` | 7 |
+| `website/scripts/` | 6 |
+| `.agents/skills/docs-auditor/scripts/` | 11 |
+
+Widened to three directories and three extensions. **The order mattered:** all 24 were run by hand
+first and all 24 passed, so the widening closed a hole without reddening anything. A scope change
+that immediately goes red is indistinguishable from a scope change that is wrong — and this repo
+has already made that mistake twice (the module-doc census that went 350 → 59 → 7, and the
+`--self-test` census in round 81).
+
+**After: `89 self-test(s) across 92 checker(s); 3 declare none and were skipped`.**
+`GIT_BASH` by full path is used for `.sh` for the reason this file records elsewhere: a bare
+`bash` resolves to WSL here and exits 127, which would read as a failing case rather than a
+checker that never ran.
+
 **The useful output of this round is the *list*, not the fixes.** 51 wired checkers is a roster
 anyone can re-run, and now one more of them is green. A gate nobody runs is not a gate — the same
 sentence this project has written three times about gates, now applied to the gates themselves.
