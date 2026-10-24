@@ -92,7 +92,16 @@ Three things, none of them a command:
    the cross-shell names already carry a dated reason in `scoped_orphans`, and names the residue.
    It is the link this file had to be written to discover. It now reads **5 of 5 covered**.
 2. **`get_over_quota_report`** gained the reason it was the only one missing -- the ambient arm of
-   an ADR #7 pair whose scoped twin `OverQuotaCard` uses.
+   an ADR #7 pair whose scoped twin `OverQuotaCard` uses. **CORRECTION (round 178): the reason went into the
+   WRONG SECTION.** It was appended to `scoped_orphans`, which holds only `_scoped` commands and is
+   policed by self-test case 10 ("every committed scoped_orphans entry is visible to the
+   collector", asserting the suffix). The parity self-test went red and the section read
+   "21 entries allowlisted, 20 orphans measured". A name no UI invokes is not a shell GAP, so
+   it belongs in no shell section either; that is why the round-176 change was reverted and the
+   reason now lives in `_desktop_comment`, where `info[cross-shell-reasons]` points for a
+   non-`_scoped` name. The lesson is the one this file keeps teaching in new places: the
+   section that ACCEPTS a reason and the section whose reason you just derived are not always
+   the same one.
 3. **The allowlist stub for `pending_sync_count_scoped`** cited `crates/kasirmu-bridge/src/pos.rs`,
    which contains no such function; it lives at `sync.rs:400`. Corrected.
 
