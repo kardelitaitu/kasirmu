@@ -1863,11 +1863,17 @@ describe('TableManagementScreen', () => {
 
   // ── A double submit on Add Table must not create two tables ───────────
   //
-  // `handleSaveTableModal` (:367) has no `tableModalSaving` re-entry check. The Save
-  // button IS guarded — `state={tableModalSaving ? 'processing' : 'ready'}` (:1609) and
-  // Button's `isDisabled = disabled || isProcessing` (Button.tsx:72) — but the FORM is
-  // `onSubmit={handleSaveTableModal}` (:1525), so pressing Enter in a text field submits
-  // it directly and never consults the button.
+  // `handleSaveTableModal` now takes an atomic `savePendingRef` before its first await
+  // (round 173). It previously carried `if (tableModalSaving) return`, which reads React
+  // STATE — the value from the render that built this closure — so on the second dispatch
+  // of one double submit it was still `false` and both writes went out. MEASURED: with the
+  // ref disabled and the state check left in place, this case fails with
+  // `expected 2 to be 1`, which is why the state flag was not a guard.
+  //
+  // The button is no defence either: `state={tableModalSaving ? 'processing' : 'ready'}`
+  // and Button's `isDisabled = disabled || isProcessing` (Button.tsx:72) gate the BUTTON,
+  // and the FORM is `onSubmit={handleSaveTableModal}`, so pressing Enter in a text field
+  // submits directly and never consults it.
   //
   // The backend cannot catch it either: `create_table` (kasirmu-core/src/db/tables.rs:130)
   // is a plain INSERT that mints a fresh UUID per call, with no uniqueness on `name`. Two

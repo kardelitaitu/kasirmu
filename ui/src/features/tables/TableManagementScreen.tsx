@@ -492,21 +492,31 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     setTableModalError(null);
   }, []);
 
+  // Re-entry guard that actually works. The handler below already carried
+  // `if (tableModalSaving) return`, but `tableModalSaving` is React STATE: it holds the
+  // value from the render that created this closure, so on the second dispatch of one
+  // double tap it is still `false` and the guard passes. MEASURED in round 173 — the old
+  // check let both submits through in a single act() batch.
+  //
+  // The cost is a real duplicate: `create_table` (kasirmu-core/src/db/tables.rs:130) is a
+  // plain INSERT minting a fresh UUID, and `tables.name` carries no UNIQUE
+  // (`20260813_init.sql:863`), so two tables with the same name both survive and both get
+  // a floor-plan slot. The button being disabled does not cover it either: this handler is
+  // the form's `onSubmit`, so Enter in the name field submits without consulting the button.
+  const savePendingRef = useRef(false);
+
   const handleSaveTableModal = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    // RE-ENTRY GUARD. The Save button is disabled while saving (`state='processing'`),
-    // but this handler is also the table form's `onSubmit` — so pressing Enter in the
-    // name field submits it directly and never consults the button. Without this, a
-    // double submit created TWO tables with the same name: `create_table`
-    // (kasirmu-core/src/db/tables.rs:130) is a plain INSERT minting a fresh UUID, with no
-    // uniqueness on `name`, so nothing downstream could collapse them.
-    if (tableModalSaving) return;
+    if (savePendingRef.current) return;
     if (!sessionToken) {
       // Reported, not dropped: the operator presses Save and nothing happens.
       addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
       return;
     }
     if (!tableModal || !tableModal.name.trim()) return;
+    // Taken AFTER the validation returns above, which never reach the `finally` that
+    // clears it — the ordering trap recorded in docs/operations/agent-gates.md.
+    savePendingRef.current = true;
     setTableModalSaving(true);
     setTableModalError(null);
     try {
@@ -569,9 +579,10 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     } catch (err) {
       setTableModalError(l10nErrorMessage(err, l10n, 'tables-action-error'));
     } finally {
+      savePendingRef.current = false;
       setTableModalSaving(false);
     }
-  }, [tableModal, tableModalSaving, sessionToken, tables, sections, l10n, addToast]);
+  }, [tableModal, sessionToken, tables, sections, l10n, addToast]);
 
   const handleDeleteTable = useCallback(async (tableId: string) => {
     if (!sessionToken) {
