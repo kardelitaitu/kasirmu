@@ -111,7 +111,10 @@
     "list_pending_offline_scoped",
     "list_scale_devices_scoped",
     "list_warehouse_products_scoped",
-    "pending_sync_count_scoped",
+    {
+      "name": "pending_sync_count_scoped",
+      "reason": "MEASURED 2026-10-25: this is a PERMISSION-GATED DUPLICATE, not a missing surface. pending_sync_count_scoped (crates/kasirmu-bridge/src/pos.rs) and pending_offline_count_scoped both return the SAME value -- Store::pending_offline_count() -- and differ only in that this one requires SYNC_MANAGE while the other is ungated (its own 'ungated-ok: documented split' comment). The ungated twin has two production callers (OfflineQueueScreen, UpdateSettingsCard); this one has none and should not get one, because a UI that needs the count already has a door for it. Recorded rather than deleted: it is registered in BOTH shells and is an F-006 retirement candidate, not a gap to fill. The bare-name entry this replaces said nothing, which is how it survived three sweeps."
+    },
     "ping_scoped",
     "renew_license_scoped",
     "rotate_encryption_key_scoped",
