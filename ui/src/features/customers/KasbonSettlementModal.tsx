@@ -176,8 +176,17 @@ export default function KasbonSettlementModal({
 
   // Confirmed through ConfirmDialog (state below) rather than window.confirm,
   // which renders OS chrome the design system cannot style or localise fully.
+  // Same re-entry defect as the payment path, with a different cost: `write_off_receivable`
+  // CASes `WHERE status IN ('open','partial')` and flips to 'written_off'
+  // (receivables.rs:381-394), so the replay is REFUSED — and the catch below reports
+  // 'Failed to write off receivable' over a write-off that landed. No money is lost; the
+  // operator is simply told the wrong thing about a receivable they must now reason about.
+  const writeOffPendingRef = useRef(false);
+
   const handleWriteOffConfirmed = async () => {
     if (!confirmTarget) return;
+    if (writeOffPendingRef.current) return;
+    writeOffPendingRef.current = true;
     setWritingOffId(confirmTarget.id);
     try {
       await writeOffReceivableScoped(sessionToken, confirmTarget.id);
@@ -193,6 +202,7 @@ export default function KasbonSettlementModal({
         type: 'error',
       });
     } finally {
+      writeOffPendingRef.current = false;
       setWritingOffId(null);
       setConfirmTarget(null);
     }
