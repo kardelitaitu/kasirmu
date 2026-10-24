@@ -110,6 +110,45 @@ The point of the list is that it is SHORT: filtering to handlers that (a) await 
 other than a list/get read and (b) have a write-shaped name narrows ~143 raw busy-flag
 sites to a handful. Two of the three in the first run were settings upserts -- idempotent
 by construction -- which is exactly why the backend question cannot be skipped.
+  * create_table     -- round 173 FIXED. NOT refused: a plain INSERT minting a fresh UUID
+                        (tables.rs:146-153) against a DDL whose only key is `id TEXT
+                        PRIMARY KEY` (20260813_init.sql:863) and no uniqueness on `name`, so
+                        a replay writes a SECOND table. The handler already carried
+                        `if (tableModalSaving) return` -- STATE, so it read the value from the
+                        render that built the closure and let both submits through. Replaced
+                        with a ref; the existing double-submit case fails `expected 2 to be 1`
+                        with the ref disabled.
+  * kasbon payment  -- round 173 FIXED, and the WORST arm: it double-counts MONEY rather than
+                        misreporting. record_receivable_payment reads the receivable at
+                        :242-247, computes new_paid at :272-279, and only THEN opens its
+                        transaction at :300; its CAS matches status IN ('open','partial'),
+                        which a PARTIAL payment leaves unchanged. So with a partial amount
+                        BOTH calls pass the overpayment check and both INSERT a
+                        receivable_payments row -- no error at all, the customer reads as
+                        having paid twice. With the defaulted full balance the second is
+                        refused by the CAS and then reported as 'Failed to record repayment'.
+                        The core function cannot tell an instalment from a replay; the guard
+                        lives in KasbonSettlementModal and
+                        receivables_tests.rs::a_second_partial_payment_is_accepted_not_refused
+                        pins the backend behaviour so a second caller knows it needs its own.
+  * kasbon write-off -- round 173 FIXED. CAS `WHERE status IN ('open','partial')` ->
+                        'written_off' (receivables.rs:381-394), so a replay is REFUSED and the
+                        catch says 'Failed to write off receivable' over a write-off that landed.
+  * record_receivable_payment / write_off / retry_offline_sync / requeue_remote_failure --
+                        audited round 173. retry_offline_sync is SAFE: an empty queue returns
+                        Ok(0,0,0,false) (bridge offline.rs:351-358) and a duplicate-id server
+                        rejection is deliberately folded into success (sync_client.rs:120-133).
+                        requeue_remote_failure's refusal is INTENTIONAL and documented
+                        (remote.rs:181-195) but its catch shows a RAW error string and
+                        handleRequeueAll aborts the remaining items -- a message-and-flow
+                        defect, not corruption; left on the report.
+  * setStockThreshold / deleteStockThreshold / setCategoryTaxRatesScoped /
+    setLocationTicketPrefixScoped / updateTable / updateTerminal /
+    setTerminalOverrideScoped -- audited round 173, all SAFE: same-row UPDATE, no-op DELETE,
+                        DELETE+INSERT OR IGNORE, or ON CONFLICT DO UPDATE. registerTerminal
+                        reuses the supplied UUID against `device_id UNIQUE` (init.sql:929) so
+                        it IS refused, but `saving` is set before the first await and stops an
+                        ordinary tap; latent, left on the report.
 
 WHAT IT DOES NOT DO
 It is a heuristic over text, not a type-aware analysis. It misses a guard written as
