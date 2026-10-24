@@ -1035,10 +1035,18 @@ worktree of the red commit and passes on HEAD.
 
 **And it is deliberately folded into the existing PG-drift section rather than added as a ninth
 `# ──` section.** AGENTS.md §2 and `verify-agents-mirrors.py` both grade the section COUNT, so a new
-section costs three coordinated edits — and the first attempt at a `# ──` header inside the block
-was counted as 9 by the checker, which then still reported "every mirror agrees". **The count moved
-and the verdict did not**, which is its own small blind spot; renaming the header to a plain comment
-restored 8 and kept the guard.
+section costs three coordinated edits; my first attempt did add a `# ──` header, which took the hook
+to 9 sections against AGENTS.md's 8. Renaming it to a plain comment restored 8 and kept the guard.
+
+> **CORRECTED 2026-10-24 (round 123).** The paragraph above originally ended by claiming that with 9
+> sections the checker "still reported every mirror agrees" — *"the count moved and the verdict did
+> not"* — and called that a blind spot. **That was false, and the measurement was mine, not the
+> tool's.** I compared the checker's exit code from a run made *before* the header existed. Re-derived
+> properly this round by feeding `scan()` a hook text with the 9-section header: it returns **4
+> problems**, naming `AGENTS.md` and two skill mirrors (*"claims 8 pre-commit steps, which matches the
+> working tree but NOT the committed hook"*), and a clean tree still returns **0**. The count/verdict
+> machinery is correct and the blind spot I recorded does not exist. Left here rather than deleted
+> because a false claim about a gate is exactly the kind of thing that gets re-derived a year later.
 
 #### Grading the REASON, not just the membership (round 121)
 
