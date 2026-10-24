@@ -868,9 +868,34 @@ count**, and a probe that reports a whole family of the same finding in one pass
 reporting its own arithmetic — the same lesson as the round-84 "twenty dangling paths", in a new
 place.
 
-**The delegation on the same question had not returned when this round closed**, so the question
-"is there another check-seo-style divergence?" is still OPEN. It is the last untested axis in the
-checker population, and it should be closed by measurement rather than by another probe.
+**The delegation on the same question had not returned when round 103 closed**, so it was closed
+by measurement instead (round 104), and the probe needed **three** corrections before its answer
+was worth anything:
+
+| version | classifier | answer |
+|---|---|---|
+| v1 | referenced anywhere, definition counted as a use | 15 "dead" — all false |
+| v2 | "after `def self_test` starts" | same 15 — `main()` is defined AFTER `self_test`, so live code was read as test code |
+| v3 | by **enclosing function** | 6 candidates |
+
+v2's failure is the interesting one: the obvious line-order heuristic is wrong because these files
+put `self_test` near the TOP (:105 in one file, :634 in another) and `main` at the BOTTOM. A
+classifier built on "test code comes last" reads the entire live path as a test.
+
+**What v3 found, after hand-checking every hit:**
+
+- **2 genuinely dead constants**, now removed: `USE_STATE_RE`
+  (`check-state-closure-after-await.py:75`) and `HANDLER_BLOCK_RE` (`verify-ipc-parity.py:122`) —
+  one occurrence each, the definition itself. Both files' self-tests and live runs unaffected.
+- **4 false positives**, all one shape: constants referenced from a `PATTERNS` list literal
+  (`verify-no-hardcoded-money-format.py:148-153`) that the live path iterates at :324. **A lexical
+  probe cannot follow indirection through a collection**, and that is a limit worth stating rather
+  than patching: the next person running this census will hit it.
+
+**The question this closes:** no other check-seo-style divergence was found. The one real defect of
+that shape (round 90) was in `.mjs`, where the live code and the tested code were different
+expressions; in Python the checkers route rules through named constants, and the two that did not
+are now deleted.
 
 #### And a tenth false alarm, from my own probe (round 100)
 
