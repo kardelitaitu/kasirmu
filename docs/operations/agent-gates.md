@@ -3244,4 +3244,39 @@ file, a shell script, a testid — should run the step that reads citations in t
 steps that grade citations are 160-162 (`rust doc paths`, `docs dead refs`) and 172
 (`cite lines`), and they are all far past the red. Running `scripts/check.sh` alone does not
 discharge that obligation on this host, because it stops at 52.
+
+
+## "NOT graded: 72" counted two different things, and one of them was a decision
+
+Measured 2026-10-25, round 183. `check-cite-lines.py` reported:
+
+```
+  graded      : 227
+    DRIFTED   : 0   <- right file, wrong line
+  NOT graded  : 72  (no symbol on the doc line; not a pass)
+```
+
+The 72 was `counts["NO-ANCHOR"] + counts["SUPPRESSED"]`. Those are not the same kind of thing:
+
+  * **NO-ANCHOR** is a GAP — the doc line names no backticked symbol, so the tool cannot grade
+    it. A reader should treat the number as a floor. **3** citations were in this class.
+  * **SUPPRESSED** is a DECISION — the author wrote `dead-ref: ok:` on the line or the one
+    above, so the citation is deliberately historical. **69** were in this class.
+
+Adding them printed 72 as though all of it needed work, and `--list-no-anchor` could never
+list the suppressed half — the loop appends only NO-ANCHOR rows — so the flag returned **3**
+against a headline **72**. A reader trying to work through the gap was handed a number it could
+not enumerate. The two lines are now printed separately, and the totals reconcile: 229 graded +
+70 suppressed = 299 citations, the same 299 as before.
+
+**The three real gaps were all in this file and all closed by anchoring them**: a module-doc
+citation that names a prose block rather than a symbol (marked `dead-ref: ok:` with the
+reason, and the path KEPT — the first attempt deleted it, which is a loss of information rather
+than a fix), and two archive-banner citations that now name `WarehouseConsole` so the tool can
+pair them with the path.
+
+**What this changes for a reader of the summary.** The coverage line is now a complete statement:
+every citation in every live doc is either graded, or explicitly marked historical. Zero is a real
+zero here, not a floor over an unexamined 72. That is the difference between a gate that reports
+a number and one that reports a state.
 > last audited 11-10-26 by docs-auditor
