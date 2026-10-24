@@ -83,6 +83,30 @@ Goal: per-workspace-type enable/disable of payment methods in the payment modal 
 
 One settings key per workspace type, JSON value (TOML-able later — same shape):
 
+> **⚠️ READ THE TOML BELOW AS THE ORIGINAL SKETCH, NOT AS CURRENT STATE (corrected 2026-10-24).**
+> This block describes a `settings`-table design with a boolean per method. What actually shipped
+> is a `local_payment_methods` table (`20260924_local_payment_methods.sql`) keyed by
+> `(scope_type, rail_code, is_enabled, parameters)` — rows, not a settings blob — so a method is
+> offered because a ROW says `is_enabled`, not because a key is `true`. The rail set is read at
+> runtime by `ui/src/features/sales/useLocalPaymentRails.ts`, which distinguishes `railOffered`
+> (is there a row?) from `coreRailWithheld` (a CORE rail is explicitly off) precisely because
+> those are different questions. **In particular `qris = false` / `ewallet = false` above are NOT
+> the current state**: neither rail is hardcoded off anywhere; both are opt-in via a row, which is
+> why the comment calls them "Phase 2" — the rail exists, the merchant-facing gateway
+> configuration that makes it usable was the Phase-2 work.
+
+> **And that Phase-2 work has since shipped too (measured 2026-10-24).**
+> `crates/kasirmu-core/src/db/payment_gateways.rs` carries full encrypted-at-rest CRUD
+> (`upsert_payment_gateway`, `get_payment_gateway`, `list_payment_gateways`,
+> `delete_payment_gateway`), reached through `kasirmu-bridge/src/local_payment.rs`, exposed as four
+> `*_gateway*_scoped` commands registered in **both** the desktop and tablet shells, consumed by
+> `ui/src/api/payment-gateways.ts`, and surfaced in
+> `ui/src/features/restaurant/screens/RestaurantPaymentsScreen.tsx` (52 passing unit tests). The
+> `payment_gateways` RLS exemption in the PG generator was corrected in `fa87aad3e`, having called
+> this file "a fail-fast stub" long after it stopped being one. So §1.4's "Midtrans (Phase 2)"
+> describes a phase that is now largely built; what remains is the acquirer-side credential and
+> the four unproven behaviours recorded in `owner-question-2026-09-28-r4-r6-r7.md` (generic-QR
+> interop, targeted-QR restriction, real refunds, per-merchant acquirer activation).
 ```toml
 # Conceptual shape — stored under settings key "payment_methods.<type_key>"
 [payment_methods.store-pos]        # retail
