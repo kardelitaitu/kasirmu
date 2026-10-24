@@ -325,7 +325,7 @@ impl crate::db::Store<'_> {
 }
 
 /// Why a tender was refused at checkout, when the site's rail surface says it is
-/// not offered. Returned by [`Store::refuse_unoffered_tender`] and mapped to
+/// not offered. Returned by [`crate::db::Store::refuse_unoffered_tender`] and mapped to
 /// `CoreError::Validation { field: "payment_method" }` by the caller.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TenderRefusal {
