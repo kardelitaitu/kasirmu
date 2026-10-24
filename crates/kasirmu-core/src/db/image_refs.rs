@@ -296,7 +296,7 @@ impl Store<'_> {
 
     /// Record a push attempt for a hash. On success the row is deleted; on
     /// failure the attempt counter is bumped and `next_attempt_at` is set
-    /// with AWS full-jitter backoff: delay = uniform(0, min(30 min, 60 s *
+    /// with AWS full-jitter backoff: delay = uniform(1, min(30 min, 60 s *
     /// 2^attempts)). After 8 attempts the entry is dead-lettered (deleted).
     pub fn mark_push_attempt(&self, hash: &str, success: bool) -> Result<(), CoreError> {
         use rand::Rng;
@@ -326,7 +326,11 @@ impl Store<'_> {
             )?;
             return Ok(());
         }
-        // AWS full-jitter: delay = uniform(0, min(30 min, 60 s * 2^attempts))
+        // AWS full-jitter: delay = uniform(1, min(30 min, 60 s * 2^attempts))
+        //
+        // Lower-bounded at 1 second so a failed attempt is guaranteed to move
+        // out of the immediate due window; a 0-second draw would leave `next_attempt_at`
+        // at <= 'now', spinning the retry loop immediately.
         //
         // `u32::try_from` rather than `as u32`, and this one is NOT theoretical:
         // `attempts` is an `i32` column. Under `as u32` a NEGATIVE count (a
@@ -345,7 +349,7 @@ impl Store<'_> {
         let attempts = u32::try_from(attempts).unwrap_or(0);
         let max_base = 60_i64 * 2_i64.pow(attempts.min(57));
         let limit = max_base.min(1800); // 30 minutes in seconds
-        let delay_secs: i64 = rand::thread_rng().gen_range(0..=limit);
+        let delay_secs: i64 = rand::thread_rng().gen_range(1..=limit.max(1));
         let next_at = format!("+{delay_secs} seconds");
         self.conn.execute(
             "UPDATE image_push_queue
