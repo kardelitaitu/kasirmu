@@ -254,6 +254,9 @@ describe('SettingsNavTree (flat IA)', () => {
       // its settings siblings, because every existing deep link and every test
       // that names a position refers to this order.
       'email-reports',
+      // Round 158: the appearance section the flat-IA rebuild dropped, restored
+      // with its screen. Appended at the end like email-reports, for the same reason.
+      'appearance',
     ]);
     expect(visibleNavKeys()).toEqual(NAV_ITEMS.map((n) => n.key));
 
@@ -487,8 +490,11 @@ describe('SettingsNavTree (flat IA)', () => {
   });
 
   it('drops stale pinned keys that no longer exist in the flat IA', async () => {
-    // 'appearance' was a page in the old IA; its pin must render nothing.
-    localStorage.setItem('settings-pinned-sections', JSON.stringify(['appearance']));
+    // 'local-api' was a section in the old IA and has NOT been restored, so its pin
+    // must render nothing. (This case used 'appearance' until round 158 mounted that
+    // section again -- at which point the example would have stopped being stale and
+    // the test would have proved the opposite of what it claims.)
+    localStorage.setItem('settings-pinned-sections', JSON.stringify(['local-api']));
     render(<SettingsNavTree {...defaultProps} />);
     const group = document.querySelector('[data-testid="settings-sidebar"] .settings-sidebar-pinned');
     expect(group).not.toBeNull();

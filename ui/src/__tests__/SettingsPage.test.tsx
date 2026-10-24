@@ -519,6 +519,12 @@ describe('SettingsPage admin shell — flat IA', () => {
       // the state that proves the body mounted: .settings-form is its root wrapper and
       // the SMTP host field is always rendered once loading clears.
       'email-reports': ['settings-form'],
+
+      // Round 158: the appearance screen composes the surviving AppearanceSettings
+      // component. .appearance-settings is its root wrapper; the zoom and acceleration
+      // controls inside read contexts AppProviders mounts, so the body renders with the
+      // mocked IPC.
+      'appearance': ['appearance-colour-row'],
       // Migrated 2026-10-06: composes the real GeneralSection, driven by
       // hooks/useStoreDraft. The form is the body; there is no wrapper class of
       // its own, so the marker is the store-name field the rebuild dropped.

@@ -233,6 +233,9 @@ settings-nav-system-diagnostics = System Diagnostics
 # Settings hub nav label for the report-scheduling screen. Desktop-only surface:
 # the four email commands are registered by apps/desktop-tauri alone.
 settings-nav-email-reports = Email Reports
+# Restored in round 158 with the screen: the 15-key rebuild removed this key when it
+# dropped the appearance section, and the section is back.
+settings-nav-appearance = Appearance
 settings-email-desktop-only = Sending and scheduling reports needs the desktop app.
 settings-screen-placeholder = This page is being rebuilt.
 settings-screen-migrating = Existing settings content will move here selectively.
@@ -553,6 +556,9 @@ appearance-reset-all-failed = Failed to reset appearance settings
 appearance-save-aria =
     .aria-label = Save appearance
 appearance-save-success = Appearance settings saved
+# The logo picker opens a native file dialog, which only the desktop shell has.
+# The colour and store-name controls beside it work on both shells.
+settings-appearance-logo-desktop-only = Choosing a logo needs the desktop app. Colours and the store name can still be changed here.
 appearance-save-failed = Failed to save appearance settings
 
 # Settings option labels

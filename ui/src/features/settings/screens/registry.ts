@@ -72,4 +72,5 @@ export const SETTINGS_SCREENS: Record<string, ComponentType> = {
   'exchange-rates': lazy(() => import('./ExchangeRatesScreen').then((m) => ({ default: m.ExchangeRatesScreen }))),
   'system-diagnostics': lazy(() => import('./SystemDiagnosticsScreen').then((m) => ({ default: m.SystemDiagnosticsScreen }))),
   'email-reports': lazy(() => import('./EmailReportsScreen').then((m) => ({ default: m.EmailReportsScreen }))),
+  'appearance': lazy(() => import('./AppearanceScreen').then((m) => ({ default: m.AppearanceScreen }))),
 };

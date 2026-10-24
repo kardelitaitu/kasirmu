@@ -16,6 +16,7 @@ import { useAppZoom } from '@/contexts/ZoomContext';
 import type { ZoomLevel } from '@/contexts/ZoomContext';
 import { useHardwareAccel } from '@/contexts/HardwareAccelContext';
 import { useToast, useContextMenu, ContextMenu, ConfirmDialog, requiredLocalized } from '@/components';
+import { isTabletShell } from '@/utils/shellKind';
 import SettingsSelect from './SettingsSelect';
 import './AppearanceSettings.css';
 
@@ -153,6 +154,22 @@ export function AppearanceSettings({
   }, [embedded, onStoreNameChange]);
 
   const handlePickLogo = useCallback(async () => {
+    // SHELL FIRST, then ADR #7 scoping. Both pickers are registered by
+    // apps/desktop-tauri alone (lib.rs:1389-1390); apps/mobile-tauri registers the three
+    // set_brand_*_scoped writes and the reads but NO picker, because choosing a file needs
+    // a dialog plugin the tablet shell does not carry. Unguarded, the tablet's catch below
+    // swallowed the rejection and the button did nothing at all -- an affordance that
+    // silently fails is worse than one that explains itself.
+    //
+    // Positive/else so verify-scoped-reads.py reads the invoke as guarded; the colour and
+    // store-name controls beside it still work on the tablet, so only this one is gated.
+    if (isTabletShell()) {
+      addToast({
+        message: l10n.getString('settings-appearance-logo-desktop-only'),
+        type: 'info',
+      });
+      return;
+    } else {
     try {
       // ADR #7 conditional scoping, matching setBrandLogoPath on the very next line, which
       // already passes this same sessionToken. pick_logo_file_scoped enforces SETTINGS_EDIT;
@@ -168,7 +185,8 @@ export function AppearanceSettings({
     } catch {
       // File picker dialog was dismissed or failed — no action needed.
     }
-  }, [refreshBrandSettings, sessionToken]);
+    }
+  }, [refreshBrandSettings, sessionToken, l10n, addToast]);
 
   const colourRef = useRef(activeColour);
   colourRef.current = activeColour;
