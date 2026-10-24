@@ -2433,7 +2433,7 @@ door". That presumes the scoped twin HAS a gate.
 | none (`ctx.resolve_session` then delegate) | 7 | nothing but a session check |
 | `SETTINGS_EDIT` / `SECURITY_MANAGE` | 4 | a real authorisation step |
 
-`crates/kasirmu-bridge/src/license/scoped.rs:3-5` states the rule the split follows:
+`resolve_session` is the gate every one of these twins runs first, and the module doc above it states the rule the split follows (dead-ref: ok: this cites a MODULE DOC block, not a symbol, so the checker cannot anchor it):
 the permission is applied "where the operation mutates a credential or a subscription". A
 read does not mutate, so its scoped twin validates the session and delegates — by design,
 not by omission. Seven of the eleven are reads.
@@ -2718,8 +2718,8 @@ module, or a module reached only through a chain of itself-unreachable modules -
 
 ## A note that names a file that does not exist is worse than no note
 
-Round 162. Two archive banners (`ui/src/features/products/register.tsx:20`,
-`ui/src/features/products/ProductManagementScreen.tsx:2`) said the
+Round 162. Two archive banners naming `WarehouseConsole` (`ui/src/features/products/register.tsx:20`,
+`WarehouseConsole` again at `ui/src/features/products/ProductManagementScreen.tsx:2`) said the
 screen was "replaced by WarehouseScreen (features/warehouse/)". `git ls-files
 'ui/src/features/**/WarehouseScreen*'` returns nothing. The successor is `WarehouseConsole.tsx`,
 registered at route `warehouse`.

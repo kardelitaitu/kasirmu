@@ -351,8 +351,18 @@ def main() -> int:
     print("    OK        : %d" % counts["OK"])
     print("    DRIFTED   : %d   <- right file, wrong line" % counts["DRIFTED"])
     print("    SYMBOL-GONE: %d" % counts["SYMBOL-GONE"])
+    # TWO DIFFERENT THINGS, and summing them was a reporting error measured 2026-10-25
+    # (round 183). NO-ANCHOR is a GAP: the doc line names no backticked symbol, so this
+    # tool cannot grade it and a reader should treat the number as a floor. SUPPRESSED is
+    # a DECISION: the author wrote `dead-ref: ok:` on the line (or the one above), so the
+    # citation is deliberately historical and needs no grading. Adding them printed 72 as
+    # though all of it were ungraded, and --list-no-anchor could then never list the
+    # suppressed half, because the loop only appends NO-ANCHOR rows. A reader trying to
+    # work through the gap was handed a number it could not enumerate.
     print("  NOT graded  : %d  (no symbol on the doc line; not a pass)"
-          % (counts["NO-ANCHOR"] + counts["SUPPRESSED"]))
+          % counts["NO-ANCHOR"])
+    print("  suppressed  : %d  (explicit `dead-ref: ok:` -- a decision, not a gap)"
+          % counts["SUPPRESSED"])
 
     if findings:
         print("")
@@ -375,7 +385,7 @@ def main() -> int:
     print("")
     print("OK: no graded citation is on the wrong line.")
     print("    UNGRADED: %d citation(s) name no backticked symbol and cannot be"
-          % (counts["NO-ANCHOR"] + counts["SUPPRESSED"]))
+          % counts["NO-ANCHOR"])
     print("    checked by this tool. Read this as a floor, not a certificate.")
     return 0
 
