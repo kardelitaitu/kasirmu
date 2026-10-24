@@ -2746,9 +2746,45 @@ here is not evidence that every component in `ui/src` is mounted.
 opposite directions.** `MachineIdStatus` had a shipped successor (`StatusBar`) and a hardcoded
 English string, so deleting it removed a surface nothing could reach. `EmailReportSettings` had
 a fully built backend (four commands registered at `desktop-tauri/src/lib.rs:1421-1424`), an API
-layer carrying an ADR #7 security fix, and 39 passing tests -- deleting it would have retired a
-shipped feature whose regression suite the project had been maintaining. The distinguishing
-question is not "is it mounted" but "was it replaced, or merely forgotten".
+
+## A leaked mock is real; a grep for one is not a diagnosis
+
+Measured 2026-10-25, round 163. A full-suite run failed
+``does not leave an unsaved product on screen when the add is refused`` once, then passed on two
+re-runs while passing in isolation every time. The cause was a mock leak, and the fix was real.
+
+**The mechanism.** `RetailPosScreenInteractions.test.tsx` mutates shared module mocks about
+thirty times (`createProduct.mockRejectedValue`, `updateProduct.mockRejectedValue`,
+`holdCartScoped.mockImplementation`, ...) and undid each one on the LAST LINE of its own test.
+That works only while every assertion passes: the first throw skips its cleanup, and the
+permanent rejection leaks into every later case in the file. The victim then looks unrelated to
+the cause, and a re-run passes because the order that tripped it does not recur.
+
+**The fix, and the proof it works.** An `afterEach(() => vi.restoreAllMocks())` at file scope —
+`restoreAllMocks` rather than `resetAllMocks`, because the file also installs `vi.spyOn` pairs
+for `requestAnimationFrame`. Proven by planting a deliberate failure BEFORE the inline reset:
+exactly one test failed and the other 54 passed. Without the `afterEach` that failure would have
+cascaded.
+
+**What the grep could NOT do.** The obvious next step is to find every file with the same shape.
+Three predicates were tried against the tree:
+
+| Predicate | Files flagged | Actually flaky |
+|---|---|---|
+| mutates shared mocks >= 3x, no `afterEach` | 49 | not tested |
+| + persistent `mockRejectedValue` >= 2 | 40 | not tested |
+| + no RE-SEEDING `beforeEach` either | 8 | **0 of 8, over 3 runs each** |
+
+The last predicate is the tightest available and it still flagged eight clean files. The reason
+is that `DashboardScreen.test.tsx` — which sets ten PERSISTENT rejections and has no `afterEach` —
+is perfectly safe, because its `beforeEach` re-seeds every mock with `mockResolvedValue` (:175-181),
+overwriting any leak. A static reader cannot distinguish "this mock is re-seeded before each test"
+from "this mock is not", without simulating the file's control flow.
+
+**The rule.** A leaked mock explains a flake; it does not predict one. Fix the file that failed,
+prove containment, and do not sweep the suite on a grep — 49 candidate files at the loosest
+predicate would have meant 49 speculative diffs chasing a number that never corresponded to a
+failure.
 
 > last audited 11-10-26 by docs-auditor
 
