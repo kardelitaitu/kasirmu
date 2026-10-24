@@ -2611,7 +2611,7 @@ brace-balanced `} else {`. With it: 24 findings -> 22, cleared 35 -> 37, desktop
 clean, self-test PASS.
 
 **The class the walk cannot see: a desktop-only SUBTREE.** `create_backup` is called from
-`ui/src/app/UpdateBanner.tsx:157`, graded an unguarded tablet call. It is not. The mount
+`createBackup()` at `ui/src/app/UpdateBanner.tsx:157`, graded an unguarded tablet call. It is not. The mount
 chain is:
 
 ```
@@ -2904,7 +2904,8 @@ does, and `OfflineQueueScreen` imports its wrapper. A name in `ui/src/api/` is n
 is not on screen.
 
 **The measurement that settles it.** `pendingOfflineCountScoped` (`ui/src/api/offline.ts:78`)
-invokes `pending_offline_count_scoped` and is imported by `ui/src/features/offline/OfflineQueueScreen.tsx:7`.
+invokes `pending_offline_count_scoped`, and `OfflineQueueScreen` imports it --
+`import { pendingOfflineCountScoped }` at `ui/src/features/offline/OfflineQueueScreen.tsx:7`.
 The other four are named by no shipped file at all: `enqueue_offline_scoped`, `list_pending_offline_scoped`
 (`commands/offline.rs:47,60`), `list_scale_devices_scoped` (`commands/scale.rs:31`), and
 `get_over_quota_report` (`commands/subscription.rs:90`), whose wrapper is `getOverQuotaReport`
