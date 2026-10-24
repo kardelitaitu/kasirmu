@@ -1279,6 +1279,15 @@ def main():
               % (len(hist), sum(len(h) for _, h in hist)))
         for t, h in hist[:14]:
             print("  %s  (%d)" % (t, len(h)))
+        # A CAPPED LIST MUST SAY IT IS CAPPED. Measured 2026-10-25 (round 184): this
+        # printed a headline of 135 file(s) above a 14-row list with nothing between them,
+        # so a reader could not tell whether 121 files had been examined or silently
+        # dropped. Same defect class as check-cite-lines.py's NO-ANCHOR/SUPPRESSED sum in
+        # round 183: a number the detail cannot enumerate. The flag exists so a reader CAN
+        # work through the population, so the remainder is named rather than implied.
+        if len(hist) > 14:
+            print("  ... and %d more file(s), not listed (the count above is the full total;"
+                  " these 14 are the first 14 by path)" % (len(hist) - 14))
     else:
         print("dated records skipped: %d file(s). Use --include-historical to list."
               % len(hist))
@@ -1317,6 +1326,8 @@ def main():
               "%d (the claims stay reported):" % len(stale_stamps))
         for line in stale_stamps[:10]:
             print("      " + line)
+        if len(stale_stamps) > 10:
+            print("      ... and %d more claim(s), not listed" % (len(stale_stamps) - 10))
 
     print("")
     if args.include_historical:
@@ -1325,6 +1336,8 @@ def main():
               % (len(pkg_hist), sum(len(h) for _, h in pkg_hist)))
         for t, h in pkg_hist[:10]:
             print("  %s  (%d)" % (t, len(h)))
+        if len(pkg_hist) > 10:
+            print("  ... and %d more file(s), not listed" % (len(pkg_hist) - 10))
     else:
         print("dated records with stale package names skipped: %d file(s). "
               "Use --include-historical to list." % len(pkg_hist))
