@@ -441,6 +441,41 @@ describe('StockTransfersScreen', () => {
     expect(receiveMock).not.toHaveBeenCalled();
   });
 
+  it('sends one receipt when Confirm receipt is double-tapped', async () => {
+    // Why this is not merely a redundant call: the replay is REFUSED by the
+    // backend (a transfer may only be received from in_transit/received_partial),
+    // and that refusal lands in handleReceive's catch, which reports
+    // stock-transfers-error-receive — an error banner over a receipt that
+    // succeeded. The button is not disabled while saving, so the state flag
+    // cannot refuse the second tap.
+    const user = userEvent.setup();
+    mockListTransfers.mockResolvedValue([sampleTransfers[1]!]);
+    mockGetTransfer.mockResolvedValue(sampleDetailInTransit);
+    renderWithFluentSync(<StockTransfersScreen />, stockTransfersFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('ST-002')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText('ST-002'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /receive transfer/i })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole('button', { name: /receive transfer/i }));
+
+    const receiveMock = vi.mocked(await import('@/api/stockTransfers')).receiveStockTransfer as ReturnType<typeof vi.fn>;
+    const confirmBtn = screen.getByRole('button', { name: /confirm receipt/i });
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+      fireEvent.click(confirmBtn);
+    });
+
+    await waitFor(() => {
+      expect(receiveMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('closes detail modal when X close button is clicked', async () => {
     const user = userEvent.setup();
     mockListTransfers.mockResolvedValue(sampleTransfers);

@@ -111,6 +111,8 @@ export default function StockTransfersScreen() {
   const [receiveTransferId, setReceiveTransferId] = useState<string | null>(null);
   const [receiveLines, setReceiveLines] = useState<Record<string, string>>({});
   const [receiveSaving, setReceiveSaving] = useState(false);
+  /** Synchronous mirror of `receiveSaving` — see the re-entry guard in `handleReceive`. */
+  const receiveSavingRef = useRef(false);
   const [receiveError, setReceiveError] = useState<string | null>(null);
   const receivePanelRef = useRef<HTMLDivElement>(null);
 
@@ -271,6 +273,14 @@ export default function StockTransfersScreen() {
 
   const handleReceive = useCallback(async () => {
     if (!receiveTransferId || !sessionToken) return;
+    // Re-entry guard. The "Confirm receipt" button is NOT disabled while the save is
+    // in flight (it shows a loading spinner but stays clickable), so two taps inside one
+    // tick both pass `receiveSaving === false`. The backend DOES refuse the replay
+    // (receive_transfer only claims a transfer whose status is in_transit or
+    // received_partial), but the refusal lands in the catch below and reports
+    // "stock-transfers-error-receive" for a receipt that actually succeeded.
+    if (receiveSavingRef.current) return;
+    receiveSavingRef.current = true;
     // ST-03: received quantities are whole units — reject fractional input
     // instead of silently truncating it via parseInt.
     for (const qtyStr of Object.values(receiveLines)) {
@@ -295,6 +305,7 @@ export default function StockTransfersScreen() {
     } catch {
       setError(l10n.getString('stock-transfers-error-receive'));
     } finally {
+      receiveSavingRef.current = false;
       setReceiveSaving(false);
     }
   }, [receiveTransferId, receiveLines, sessionToken, detailId, load, openDetail, l10n]);
