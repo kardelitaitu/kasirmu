@@ -2924,7 +2924,7 @@ Measured 2026-10-25, round 170. `check-reentry-guards.py` prints **76** handlers
 guard is a React state flag, and says of each that it is "a CANDIDATE, not a defect: the cost of
 the replay depends on the backend. Ask first whether a unique index REFUSES it, then whether the
 UI still reports success." That sentence is the whole method, and this round ran it on the four
-storage-backed create paths, three of them in round 170 and three more in round 171. Only two were already covered.
+storage-backed create or save paths, three in round 170, three in round 171 and two in round 172. Only two were already covered.
 
 | Handler | Refused by the backend? | What the operator sees | Verdict |
 |---|---|---|---|
@@ -2935,6 +2935,8 @@ storage-backed create paths, three of them in round 170 and three more in round 
 | `ExchangeRateScreen.handleSave` | yes -- UNIQUE (from_currency, to_currency, effective_date), and the modal defaults the date so both taps send the same triple | `currency-save-error` | **defect**, fixed (round 171) |
 | `IssueGiftCardModal.handleSubmit` | yes -- `gift_cards.card_number` UNIQUE | `gift-cards-error-issue`, i.e. a minted card the till says was not issued | **defect**, fixed (round 171) |
 | `LoyaltyManagementScreen.handleSaveTier` | n/a -- an idempotent `UPDATE ... WHERE id = ?`; a replay rewrites the same row | nothing | **not a defect**; left on the report deliberately |
+| `StaffDetailDrawer.handleSave` | yes -- `users.username` UNIQUE (`20260813_init.sql:974`) | `staff-error-save-failed` over an account that was created | **defect**, fixed (round 172) |
+| `RoleAuthoringPanel.save` | yes -- `roles.name` UNIQUE (`:573`) | the backend message, which now reads "that name already exists" about the role just created | **defect**, fixed (round 172) |
 
 
 **Round 171 added three rows and one negative result, and the negative matters as much.**
@@ -3011,6 +3013,6 @@ anything.
 
 **What the report counts after this round: 74.** Not because 76 was wrong -- each of the three
 thrown off it now has an atomic ref plus a case that fails with `expected 2 to be 1` when the ref
-is hollowed out. The other 70 are untouched, and the questions above have not been asked of them.
+is hollowed out. The other 69 are untouched, and the questions above have not been asked of them.
 
 > last audited 11-10-26 by docs-auditor
