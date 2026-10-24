@@ -676,8 +676,19 @@ export default function RestaurantMenuEditorScreen({
     [],
   );
 
+  // Re-entry guard. `saving` is React state and commits on the NEXT render, so the second
+  // dispatch of a real double tap still enters this handler. The CREATE arm mints a fresh SKU
+  // on every call -- `generateMenuSku` mixes a monotonic counter with `Math.random()`
+  // (menuEditorLogic.ts:39-48) -- and `products.sku` is UNIQUE, so the replay is REFUSED and
+  // the catch reports `restaurant-menu-editor-error-save`: "could not save" over a dish that
+  // WAS created. The draft then stays on screen with the error, so the operator's reasonable
+  // next move is to press Save again, producing a third refusal.
+  const savePendingRef = useRef(false);
+
   const handleSaveDraft = useCallback(async () => {
     if (!draft || !sessionToken || !draft.name.trim()) return;
+    if (savePendingRef.current) return;
+    savePendingRef.current = true;
     setSaving(true);
     const resolvedPriceMinor =
       draft.priceInput !== undefined
@@ -735,6 +746,7 @@ export default function RestaurantMenuEditorScreen({
         type: 'error',
       });
     } finally {
+      savePendingRef.current = false;
       setSaving(false);
     }
   }, [draft, sessionToken, categoryIdFor, addToast, l10n, currency, reloadData]);

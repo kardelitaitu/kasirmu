@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import userEvent from '@testing-library/user-event';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
 import RestaurantMenuEditorScreen from '@/features/restaurant/screens/RestaurantMenuEditorScreen';
 import * as productsApi from '@/api/products';
@@ -223,6 +223,31 @@ describe('RestaurantMenuEditorScreen', () => {
           isActive: true,
         }),
       );
+    });
+  });
+
+  it('saves only once when the save button is double-tapped', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-new-item')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('restaurant-menu-editor-new-item'));
+
+    const form = screen.getByTestId('restaurant-menu-editor-form');
+    await user.type(screen.getByTestId('restaurant-menu-editor-name'), 'Sate Ayam');
+    await user.type(screen.getByTestId('restaurant-menu-editor-price'), '25000');
+
+    const saveBtn = within(form).getByRole('button', { name: /save/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => {
+      expect(productsApi.createProductScoped).toHaveBeenCalledTimes(1);
     });
   });
 
