@@ -799,6 +799,24 @@ came from a **stale file** (`target/mstmp/tz.txt`, a round-92 artifact) that my
 ran. Earlier instances were a pipe swallowing a status, a chained `echo` consuming it, a wrong
 interpreter, and a fixture that could not reach its rule; this one is a stale buffer.
 
+#### Proving the round-98 widening from the other direction (round 100)
+
+Widening a scope is a claim that the new coverage WORKS. The round-98 evidence was that all 24
+previously-unswept self-tests passed when run — which proves the tree is clean, not that the sweep
+would notice if it were not. The complementary test is to break one and watch the sweep redden:
+
+| plant | result |
+|---|---|
+| `self_test() { echo "  PLANTED FAILURE" >&2; return 2 }` in `scripts/verify-scoped-coverage.sh` | **exit 1** — `FAILED verify-scoped-coverage.sh: rc=2 PLANTED FAILURE` |
+| `console.error('  PLANTED FAILURE'); process.exit(1)` in `website/scripts/check-password-policy.mjs` | **exit 1** — `FAILED check-password-policy.mjs: rc=1 PLANTED FAILURE` |
+
+Both are in the coverage the widening added. Before round 98 neither failure would have appeared in
+the sweep at all, so the sweep would have stayed green over a broken self-test — the exact shape its
+own docstring opens by describing.
+
+**A scope change needs two proofs, not one:** that the new scope passes on the tree as it stands,
+and that it FAILS when the thing it grades breaks. One without the other is a green tick.
+
 **The useful output of this round is the *list*, not the fixes.** 51 wired checkers is a roster
 anyone can re-run, and now one more of them is green. A gate nobody runs is not a gate — the same
 sentence this project has written three times about gates, now applied to the gates themselves.
