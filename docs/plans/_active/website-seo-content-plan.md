@@ -405,3 +405,14 @@ not worth a floor until the corpus is bigger; it is worth one by article six.
   documented in `astro.config.mjs` (it kills a real FOUC regression), not a bug.
 
 > last audited 11-10-26 by docs-auditor
+
+<!-- ACCEPTANCE EVIDENCE 2026-10-24 (round 108): the plan's own gate stack was RUN, not
+     assumed. `cd website && npm run check:seo` exits 0 with all fourteen checks ok
+     (page classes, canonical/og:url, hreflang, sitemap, noindex, structured data, titles,
+     locale copy, docs next step, guide contract, retired brand, content depth, headings,
+     accessibility) and prints "SEO/HEAD OK". The script-controls arm reports 117 of 118
+     walked files judged and 1 declared. The companion `npm run check` / `npm run build` /
+     `check:links` legs of the §4 phase-end stack were NOT re-run this round -- record them
+     before treating any phase as complete. This file stays `todo-`/active: a green gate
+     stack is not a shipped phase, and §7.4 of AGENTS.md earns `done-` only on the file's own
+     acceptance command. -->
