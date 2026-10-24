@@ -1,5 +1,18 @@
 # The two orphaned settings components: the note's premise is off by one shell
 
+> **RESOLVED 2026-10-25.** The premise correction in this file stands, and both components
+> it describes now have a disposition:
+>
+> - `MachineIdStatus` / `get_machine_id` -- deleted in round 154 (`562eeac91`).
+> - `EmailReportSettings` / the four email commands -- mounted in round 155 (`b4b13682e`),
+>   with its two WRITES guarded for the tablet (which registers none of them) and its read
+>   skipping the invoke there entirely.
+>
+> What this file argued still matters: the obstacle was never mobile work. A lane that
+> trusted the old SecurityAccountScreen note would have built tablet commands nobody
+> needed. The note itself was corrected at source in round 153.
+
+
 **Measured 2026-10-25 (round 153) at HEAD `c3a1b295f`.** Supersedes the reasoning in
 `docs/plans/_active/todo-dead-settings-surface.md` (round 151) on one point, and adds a
 correction the source file's own note needs.
@@ -73,3 +86,15 @@ nobody needs.
 
 The round-153 lane. No production file edited for this item; the round's fix went to the
 reachability gate's evidence instead.
+
+---
+
+**ARCHIVED, NOT EARNED.** Moved to `_done/` because its subject is resolved -- verified by the same two commits plus the premise correction --
+not because an acceptance command in this file ran and passed. This file never declared one:
+it is a MEASUREMENT record, not a task with a testable end state. The `done-` prefix here
+means "nothing further is owed by this file", which is the fact worth carrying.
+
+Evidence: 562eeac91; b4b13682e; note corrected at source in SecurityAccountScreen.tsx.
+
+See AGENTS.md 7.4 -- archival and acceptance are different facts and the filename carries
+only one of them.

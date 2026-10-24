@@ -1,5 +1,21 @@
 # Dead surface: two settings components with 50 test cases and no mount
 
+> **RESOLVED 2026-10-25.** Both components named here have a disposition, and they got
+> OPPOSITE ones for a reason worth keeping:
+>
+> - `MachineIdStatus` -- **DELETED** in round 154 (`562eeac91`). It had a shipped successor
+>   (`StatusBar`, mounted at `AppLayout.tsx:396` and four auth screens) and a hardcoded
+>   English string, so nothing could reach it and nothing lost it.
+> - `EmailReportSettings` -- **MOUNTED** in round 155 (`b4b13682e`), at Settings ->
+>   Email Reports. It was not replaced: it had a complete backend (four commands at
+>   `desktop-tauri/src/lib.rs:1421-1424`), an API layer carrying an ADR #7 security fix, and
+>   39 passing tests. The 15-key settings rebuild dropped its nav entry and never
+>   enumerated the component, only the strings.
+>
+> The distinguishing question was never "is it mounted" but "was it replaced, or merely
+> forgotten". A green test suite proves neither -- both of these had one.
+
+
 **Measured 2026-10-25 (round 151) at HEAD `16812dfdb`.** Found while auditing the
 `verify-scoped-reads.py --shell tablet` findings by whether they can execute.
 
@@ -68,3 +84,15 @@ lane reading the tablet findings as three live defects.**
 ## Filed by
 
 The round-151 lane. No production file edited for this item.
+
+---
+
+**ARCHIVED, NOT EARNED.** Moved to `_done/` because its subject is resolved -- verified by two commits, not by a command this file declares --
+not because an acceptance command in this file ran and passed. This file never declared one:
+it is a MEASUREMENT record, not a task with a testable end state. The `done-` prefix here
+means "nothing further is owed by this file", which is the fact worth carrying.
+
+Evidence: 562eeac91 (MachineIdStatus deleted); b4b13682e (EmailReportSettings mounted).
+
+See AGENTS.md 7.4 -- archival and acceptance are different facts and the filename carries
+only one of them.
