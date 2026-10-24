@@ -3214,4 +3214,34 @@ the cited line, 8 of 8 matching. `cargo test -p kasirmu-payment` green (18 + 13 
 **The rule for the next archival.** A plan file that Rust comments cite by `path:line` is a
 published interface. Moving it needs `python3 scripts/check-rust-doc-paths.py` before the commit,
 and the line-number shifts need reading the quoted text back, because no checker does that part.
+
+
+## The frontier reached step 197, and every step from 86 to 197 now passes
+
+Measured 2026-10-25, round 182, by walking the matrix with `CHECK_FROM` past each documented-red
+step. Rounds 180-181 moved the frontier from 34 to 144; this round carried it to the end:
+
+| Range | Result |
+|---|---|
+| 35-51 | PASS |
+| 52, 54 | expected red — no PostgreSQL on this host |
+| 53, 55, 57-91 | PASS |
+| 92 | PASS after the ceiling raise (round 181) |
+| 93-141 | PASS |
+| 142-144 | PASS after the mirrors fix (round 181) |
+| 160-162 | PASS after repointing the archived plan (round 182) |
+| 163-171 | PASS after the api-reference markers (round 182) |
+| 172-197 | PASS after six citation repairs (round 182) — **no failures** |
+
+**Four defects were sitting behind the red**, all found on these walks and none of them visible
+before: a registration pin 510-vs-511, a mirrors self-test reading the real HEAD through a fixture,
+eleven design-doc citations pointing at a file an archive had moved, and six `path:line` citations
+whose symbols had moved under them. Every one had been committed by a lane that ran a scoped check
+and never the matrix step that grades the thing it touched.
+
+**The pattern worth carrying.** A helper that commits a change to a path OTHER work cites — a plan
+file, a shell script, a testid — should run the step that reads citations in that direction. The
+steps that grade citations are 160-162 (`rust doc paths`, `docs dead refs`) and 172
+(`cite lines`), and they are all far past the red. Running `scripts/check.sh` alone does not
+discharge that obligation on this host, because it stops at 52.
 > last audited 11-10-26 by docs-auditor
