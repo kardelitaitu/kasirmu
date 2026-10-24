@@ -1,4 +1,4 @@
-# Dead surface: two settings components with 63 test cases and no mount
+# Dead surface: two settings components with 50 test cases and no mount
 
 **Measured 2026-10-25 (round 151) at HEAD `16812dfdb`.** Found while auditing the
 `verify-scoped-reads.py --shell tablet` findings by whether they can execute.
@@ -8,8 +8,18 @@ $ grep -rn '<EmailReportSettings\|<MachineIdStatus' ui/src | grep -v __tests__
 (nothing)
 
 $ grep -rn '<EmailReportSettings\|<MachineIdStatus' ui/src/__tests__ | wc -l
-63
+51   # MATCHING LINES, not cases -- see the correction below
+$ grep -c "it(" ui/src/__tests__/EmailReportSettings.test.tsx
+39
+$ grep -c "it(" ui/src/__tests__/MachineIdStatus.test.tsx
+11
 ```
+
+A CORRECTION, recorded because the first version of this file got it wrong and the
+error is instructive: the opening count said 63, which was the number of LINES matching
+<EmailReportSettings|<MachineIdStatus across the two test files, not the number of cases.
+A count of matching lines is not a count of tests. Re-measured with
+`Select-String -Pattern '\bit\('`: 39 + 11 = 50 cases.
 
 Both components are rendered by **no file outside their own tests**. Their test suites
 pass, and they have for as long as the suites have existed, because a test renders the
@@ -38,10 +48,10 @@ are not tablet defects and they are not desktop defects: the invokes are unreach
 **both** shells because nothing renders the components. Reporting them as shell-parity
 gaps is true and useless, and it buries the three that are real.
 
-The tests are the trap. 63 passing cases assert behaviour of two screens a user cannot
+The tests are the trap. 50 passing cases (39 for EmailReportSettings, 11 for MachineIdStatus) assert behaviour of two screens a user cannot
 open, and a green suite is the strongest possible evidence that the code is fine. This is
 the `useKeyRotationReminder` lesson (round 147) in its second form: that hook had no
-mount and no test could see it; these have a mount and 63 tests, and still no consumer.
+mount and no test could see it; these have a mount and 50 tests, and still no consumer.
 
 ## The options
 
