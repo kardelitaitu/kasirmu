@@ -999,6 +999,40 @@ docstring would make the suite red on a tree that is green, and "fixing" the cod
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
 
+#### The whole checker tree re-run in one round, and the two exceptions both hold (round 109)
+
+A delegated sweep of every wired checker was started and then **interrupted for overrunning** — it
+was attempting 57 Python checkers in one pass against a 2-minute tool cap. The scope was then run
+directly in batches, which was both faster and gave a readable result. Final state, per extension:
+
+| family | count | result |
+|---|---|---|
+| `scripts/*.py` (`check-*` + `verify-*`) | **57** | 55 ok, 2 RC2 — both documented exceptions |
+| `scripts/*.mjs` checkers | **10** | 10 ok |
+| `scripts/*.sh` with a self-test | **7** | 7 ok (incl. `verify-docker-all.sh`, 4 cases, no daemon) |
+| `.agents/skills/docs-auditor/scripts/*` | **12** | 12 ok |
+| **total via `verify-selftest-sweep.py`** | **89 across 92** | **OK, exit 0** |
+
+**The two RC2s are the two exceptions this project has already ruled on**, and each was confirmed
+by running its actual proof form rather than by assuming:
+
+- `check-replay-fork.py` → `python scripts/test-replay-fork.py` → **12 cases OK**. Its proof is a
+  companion test by design, and the file's own docstring says why.
+- `verify-website-assets.py` → no `--self-test` flag at all (argparse rejects it); its proof is an
+  in-file mutation probe at :20-27, and its **live run passes** (`8 file(s), budget 102,400 B`,
+  OK).
+
+**What this round adds to the census: nothing.** That is the result worth recording. The tree was
+last swept to this state and has been kept there by the mutation harness; a re-run that finds no
+new defect is evidence the harness is load-bearing, not evidence the sweep was unnecessary.
+
+**And a note on the delegation itself.** The interrupted agent was attempting the right thing the
+wrong way — 57 checkers in a single unbounded pass. The correct shape was batches of 6-12, each
+under the tool cap, with the authoritative `verify-selftest-sweep.py` run once at the end as the
+tie-breaker. Interrupting it cost one round of budget and saved nothing except the time, which is
+the right trade only when the sub-agent's output is genuinely replaceable by a direct measurement —
+here it was.
+
 #### Provenance comments that were provably false (round 109)
 
 Three Dockerfiles carried `refreshed <date>` comments whose dates **predate the artifact they
