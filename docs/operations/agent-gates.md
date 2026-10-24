@@ -999,6 +999,53 @@ docstring would make the suite red on a tree that is green, and "fixing" the cod
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
 
+#### Provenance comments that were provably false (round 109)
+
+Three Dockerfiles carried `refreshed <date>` comments whose dates **predate the artifact they
+pin**. Re-measured 2026-10-24 from the registry, by fetching each pinned index and reading the
+`created` field of its amd64 image config (the daemon is down, so this is the only path that
+works — and it is better evidence than a build, because it dates the artifact itself):
+
+| comment | claims | artifact actually created | verdict |
+|---|---|---|---|
+| `Dockerfile.server:185` | debian refreshed 2026-09-17 | **2026-08-24** | false |
+| `Dockerfile.unified:193` | debian refreshed 2026-08-17 | **2026-08-24** | *impossible* — a refresh on 08-17 cannot pin an 08-24 artifact |
+| `Dockerfile.unified:189` | caddy refreshed 2026-08-14 | **2026-06-22** | false by ~2 months |
+
+**The two debian lines pin the IDENTICAL digest under two different dates**, so at most one could
+ever have been true — and neither was. All three now state the measured artifact date and say
+plainly that the old claim was wrong.
+
+**Why this matters more than a stale pin.** A digest pin's whole value is that it is immutable and
+that its refresh history is knowable. A refresh date that predates the pinned artifact does not
+merely age badly; it tells the next reader the pin is fresher than it is, which is the direction
+that stops them checking. That is the same failure as a footer that under-reports an audit, in a
+file whose job is supply-chain integrity.
+
+**The refresh itself is deliberately NOT applied.** Every current digest was re-derived and is
+recorded in the finding, so the swap is mechanical — but a pin change can only be made safe by
+building on the new bases, and with no daemon that is exactly the step that cannot run. Trading a
+known-stale pin for an unverified one is worse than leaving the table of verified digests behind
+for whoever has a daemon.
+
+#### A "required" gate that is red on one flag and green on another (round 109)
+
+`verify-scoped-reads.py` prints 29 tablet findings under `--shell tablet` and **exit 0** under its
+default invocation. That looks like a gate hiding its own findings, and it is worth stating why it
+is not:
+
+- `--shell` defaults to `desktop` **by design** (`verify-scoped-reads.py:97,375`), and that is what
+  `check.sh:189` and CI run. Desktop is clean, so the `required` gate is honestly green.
+- The tablet half needs a **product ruling** on which surfaces the tablet should carry — it is the
+  documented open finding, not an undiscovered failure.
+- The checker is built so the ungraded section is still **printed**: it states the tablet numbers
+  and says the verdict covers desktop alone. A gate that hides a section is the failure mode; this
+  one announces it.
+
+**The lesson for anyone re-measuring this:** run BOTH invocations before concluding anything. A
+single default run says "clean" and a single `--shell tablet` run says "29 failures"; both are true
+and neither is the whole answer.
+
 #### A delegated audit that re-derived everything, and the one gap it found (round 108)
 
 The open drifted-pin finding was delegated to a subagent with instructions to re-measure rather
