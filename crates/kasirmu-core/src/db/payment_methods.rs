@@ -294,6 +294,34 @@ impl crate::db::Store<'_> {
             rail_code: rail_code.trim().to_owned(),
         }))
     }
+
+    /// Whether the TIER withholds this tender, and which rail did it.
+    ///
+    /// Plan `payment-methods-plan.md` safety rule 4: "dynamic methods additionally
+    /// require their signed entitlement (`caps.supportsQris` etc.)". Until this
+    /// existed the rule was enforced only by `PaymentModal.tsx` deciding whether to
+    /// render a button -- the same shape rule 2 had before `refuse_unoffered_tender`,
+    /// and the same reason it is not enough: a hidden button is not an enforcement
+    /// point.
+    ///
+    /// Only `qris` (DYNAMIC, Midtrans) is tier-gated. `qris_manual` is the static
+    /// printed code a cashier eyeballs, it costs the tier nothing, and refusing it
+    /// on Free would break the counter workflow the plan calls Phase 1 value.
+    #[must_use]
+    pub fn tier_withholds_tender(
+        rail_code: &str,
+        tier: &crate::subscription::SubscriptionTier,
+    ) -> Option<TenderRefusal> {
+        let wanted = rail_code.trim().to_ascii_lowercase();
+        for (code, grants) in TIER_GATED_RAILS {
+            if wanted == *code && !grants(tier) {
+                return Some(TenderRefusal::TierWithheld {
+                    rail_code: (*code).to_owned(),
+                });
+            }
+        }
+        None
+    }
 }
 
 /// Why a tender was refused at checkout, when the site's rail surface says it is
@@ -304,6 +332,11 @@ pub enum TenderRefusal {
     /// The site HAS a rail surface and this code is not an enabled rail in it.
     NotOffered {
         /// The rail code the caller asked for, trimmed.
+        rail_code: String,
+    },
+    /// The subscription tier does not include this rail, whatever the site configured.
+    TierWithheld {
+        /// The rail code the tier refuses.
         rail_code: String,
     },
     /// The site has a rail surface and this CORE rail is explicitly disabled on it.
@@ -325,9 +358,23 @@ impl TenderRefusal {
             Self::Withheld { rail_code } => {
                 format!("payment rail {rail_code:?} is disabled at this location")
             }
+            Self::TierWithheld { rail_code } => {
+                format!("payment rail {rail_code:?} requires a subscription tier that includes it")
+            }
         }
     }
 }
+
+/// Rail codes that only exist when the TIER grants them. `qris` is DYNAMIC Midtrans
+/// processing (`supports_qris`, Plus+); `qris_manual` is the static printed code and
+/// needs no entitlement at all -- that is the whole distinction the plan's §1.3 draws,
+/// and conflating them is how a Free-tier store would lose its counter QRIS.
+/// A tier predicate for one rail: "does this tier include it?". Aliased because the
+/// inline fn-pointer type is unreadable in a slice of tuples.
+type TierGrantsRail = fn(&crate::subscription::SubscriptionTier) -> bool;
+
+const TIER_GATED_RAILS: &[(&str, TierGrantsRail)] =
+    &[("qris", crate::subscription::SubscriptionTier::supports_qris)];
 
 /// One rail in a replace-set submission.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -5615,3 +5615,115 @@ fn an_unconfigured_site_still_completes_a_cash_sale() {
         .expect("an unconfigured store must still be able to sell");
     assert_eq!(result.status, SaleStatus::Pending);
 }
+
+// ── tier gating at checkout (plan safety rule 4) ─────────────────────
+
+#[test]
+fn checkout_refuses_dynamic_qris_on_a_free_tier() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product_with_stock(&conn, "COFFEE", 10);
+    // A site that DOES offer qris: only the tier can be the reason for refusal.
+    s.conn
+        .execute(
+            "INSERT INTO legal_entities (id, tenant_id, name, legal_name, registration_number, \
+             tax_id, status, country_code, locale, timezone, currency, created_at, updated_at) \
+             VALUES ('ent-1', 'default', 'ent-1', '', '', '', 'active', 'ID', '', '', '', \
+             '2026-09-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+    s.conn
+        .execute(
+            "INSERT INTO locations (id, name, tenant_id, legal_entity_id) \
+             VALUES (?1, 'Site', 'default', 'ent-1')",
+            rusqlite::params![crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+        )
+        .unwrap();
+    s.replace_local_payment_methods(
+        "legal_entity",
+        "ent-1",
+        &[crate::db::payment_methods::NewPaymentRail {
+            rail_code: "qris".into(),
+            label: "QRIS".into(),
+            is_enabled: true,
+            parameters: "{}".into(),
+        }],
+        "2026-09-01T00:00:00.000Z",
+    )
+    .unwrap();
+
+    let sale = make_single_line_sale("COFFEE", 1, 350);
+    let free = crate::subscription::SubscriptionTier::Free;
+    // Tender QRIS itself, which the site DOES offer: the only remaining reason to
+    // refuse is the tier, so this grades rule 4 rather than rule 2.
+    let qris_tender = vec![crate::PaymentSplitArg {
+        method: "qris".into(),
+        amount_minor: 350,
+        gateway_reference: None,
+        gateway_status: None,
+        gateway_response: None,
+        idempotency_key: None,
+    }];
+    let err = s
+        .complete_sale_deduction_with_locations_and_tier(
+            &sale,
+            None,
+            &[],
+            &qris_tender,
+            "u",
+            None,
+            &[],
+            Some(&free),
+        )
+        .expect_err("a Free tier does not include dynamic QRIS");
+    match err {
+        crate::error::CoreError::Validation { field, message } => {
+            assert_eq!(field, "payment_method");
+            assert!(
+                message.contains("tier"),
+                "the refusal must name the TIER, not the site surface: {message}"
+            );
+        }
+        other => panic!("expected a validation refusal, got {other:?}"),
+    }
+    // The control: the same sale on a tier that DOES include QRIS completes, so the
+    // refusal above is the tier and not something else in the checkout.
+    let plus = crate::subscription::SubscriptionTier::Plus;
+    let sale2 = make_single_line_sale("COFFEE", 1, 350);
+    s.complete_sale_deduction_with_locations_and_tier(
+        &sale2,
+        None,
+        &[],
+        &qris_tender,
+        "u",
+        None,
+        &[],
+        Some(&plus),
+    )
+    .expect("Plus includes dynamic QRIS");
+}
+
+#[test]
+fn a_free_tier_store_with_no_rail_surface_still_sells_cash() {
+    // Rule 4 must not combine with rule 2's "unconfigured" case into a store that
+    // cannot trade at all: no surface + Free tier + cash must complete.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product_with_stock(&conn, "COFFEE", 10);
+    let sale = make_single_line_sale("COFFEE", 1, 350);
+    let free = crate::subscription::SubscriptionTier::Free;
+    let result = s
+        .complete_sale_deduction_with_locations_and_tier(
+            &sale,
+            None,
+            &[],
+            &tender(350),
+            "u",
+            None,
+            &[],
+            Some(&free),
+        )
+        .expect("a Free store with no rails configured must still take cash");
+    assert_eq!(result.status, SaleStatus::Pending);
+}

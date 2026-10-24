@@ -201,8 +201,83 @@ impl Store<'_> {
     /// ever writes the number). D61 ruling 4: never silent-zero — the sale
     /// is flagged so history can flag it for recompute. `false` (or the
     /// legacy wrapper) stamps nothing: NULL = unstamped = no claim.
+    /// The same checkout, with the caller's effective subscription tier supplied so
+    /// safety rule 4 can be enforced: a dynamic rail the tier never included is refused
+    /// here rather than merely hidden in the UI.
+    ///
+    /// `effective_tier: None` means the CALLER could not resolve one (no signed
+    /// subscription row); that skips the tier check instead of denying. An unknown tier
+    /// is not a Free tier, and refusing every sale on a signature the desktop could not
+    /// read would be the worst direction to fail.
+    ///
+    /// The tier-less door below forwards `None`, which is why every existing caller and
+    /// test keeps its behaviour byte for byte; a caller that HAS the tier should use this
+    /// one so the gate is live.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CoreError::Validation`] naming the tender when the tier withholds it, or
+    /// forwarding any error the tier-less door raises.
+    #[allow(clippy::too_many_arguments)]
+    pub fn complete_sale_deduction_with_locations_and_tier(
+        &self,
+        sale: &Sale,
+        workspace_instance_id: Option<&str>,
+        stock_locations: &[crate::inventory::LocationId],
+        payment_splits: &[crate::PaymentSplitArg],
+        staff_user_id: &str,
+        terminal_id: Option<&str>,
+        checkout_applications: &[crate::PromotionApplication],
+        effective_tier: Option<&crate::subscription::SubscriptionTier>,
+    ) -> Result<crate::sale_deduction::CompleteSaleResult, CoreError> {
+        self.complete_sale_deduction_core(
+            sale,
+            workspace_instance_id,
+            stock_locations,
+            payment_splits,
+            staff_user_id,
+            terminal_id,
+            checkout_applications,
+            false,
+            effective_tier,
+        )
+    }
+
+    /// The tier-less door. Behaviour is unchanged from before rule 4 existed: it
+    /// forwards `None`, so no tier is consulted and no sale that completed yesterday
+    /// can start failing today. Callers that hold a subscription should prefer
+    /// [`Self::complete_sale_deduction_with_locations_and_tier`].
     #[allow(clippy::too_many_arguments)]
     pub fn complete_sale_deduction_with_locations_and_estimate(
+        &self,
+        sale: &Sale,
+        workspace_instance_id: Option<&str>,
+        stock_locations: &[crate::inventory::LocationId],
+        payment_splits: &[crate::PaymentSplitArg],
+        staff_user_id: &str,
+        terminal_id: Option<&str>,
+        checkout_applications: &[crate::PromotionApplication],
+        tax_estimated: bool,
+    ) -> Result<crate::sale_deduction::CompleteSaleResult, CoreError> {
+        // No tier in hand here: forward None, which skips rule 4 rather than denying.
+        self.complete_sale_deduction_core(
+            sale,
+            workspace_instance_id,
+            stock_locations,
+            payment_splits,
+            staff_user_id,
+            terminal_id,
+            checkout_applications,
+            tax_estimated,
+            None,
+        )
+    }
+
+    /// The one checkout body. Private because the two public doors differ ONLY in
+    /// whether they carry a subscription tier -- a second copy of this 600-line
+    /// transaction is how the two would drift apart.
+    #[allow(clippy::too_many_arguments)]
+    fn complete_sale_deduction_core(
         &self,
         sale: &Sale,
         workspace_instance_id: Option<&str>,
@@ -212,6 +287,7 @@ impl Store<'_> {
         _terminal_id: Option<&str>,
         checkout_applications: &[crate::PromotionApplication],
         tax_estimated: bool,
+        effective_tier: Option<&crate::subscription::SubscriptionTier>,
     ) -> Result<crate::sale_deduction::CompleteSaleResult, CoreError> {
         use crate::inventory_transaction::InventoryTransactionId;
         use crate::sale_deduction::{Shortfall, StockDeduction};
@@ -338,6 +414,18 @@ impl Store<'_> {
         for tender in tenders {
             if tender.eq_ignore_ascii_case("credit") {
                 continue;
+            }
+            // Safety rule 4 first: a tier that never included dynamic QRIS refuses it
+            // regardless of what the site configured. `None` (no tier supplied) skips the
+            // check rather than denying -- the desktop does not always have a signed
+            // subscription row, and "unknown tier" must not read as "Free".
+            if let Some(refusal) =
+                effective_tier.and_then(|tier| Self::tier_withholds_tender(tender, tier))
+            {
+                return Err(CoreError::Validation {
+                    field: "payment_method",
+                    message: refusal.message(),
+                });
             }
             if let Some(refusal) = self.refuse_unoffered_tender(&primary_location, tender)? {
                 return Err(CoreError::Validation {

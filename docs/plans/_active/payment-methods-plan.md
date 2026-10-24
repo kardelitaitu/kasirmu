@@ -142,9 +142,22 @@ card          = true
    `local_payment_methods` row; and the code match is case-insensitive, matching the `credit`
    comparison already in that file. Six cases in `payment_methods_tests.rs` plus two in
    `sales_tests.rs` (`checkout_refuses_a_tender_the_site_does_not_offer`,
-   `an_unconfigured_site_still_completes_a_cash_sale`).3. Malformed/unparseable config JSON → **fail closed to current defaults** (cash/card always available as floor).
-4. Dynamic methods additionally require their signed entitlement (`caps.supportsQris` etc.).
-
+   `an_unconfigured_site_still_completes_a_cash_sale`).
+3. Malformed/unparseable config JSON → **fail closed to current defaults** (cash/card always available as floor).
+4. Dynamic methods additionally require their signed entitlement (`caps.supportsQris` etc.). ~~Owed~~ —
+   **DONE, measured 2026-10-25.** `Store::tier_withholds_tender` answers `TierWithheld` for `qris`
+   (dynamic Midtrans) on a tier whose `supports_qris()` is false, and
+   `complete_sale_deduction_with_locations_and_tier` consults it before rule 2's surface check.
+   `qris_manual` is deliberately **not** in the gate: it is the static printed code, it costs the
+   tier nothing, and refusing it on Free would strip a counter workflow this plan calls Phase 1
+   value — that conflation is the exact mistake §1.3 exists to prevent. `effective_tier: None`
+   skips the check rather than denying, because an unreadable subscription is not a Free one and
+   refusing every sale on a signature the desktop could not read is the worst direction to fail.
+   Five cases in `payment_methods_tests.rs`, and in `sales_tests.rs`
+   `checkout_refuses_dynamic_qris_on_a_free_tier` (which tenders QRIS against a site that DOES offer
+   it, so only the tier can be the reason) plus its Plus-tier control, and
+   `a_free_tier_store_with_no_rail_surface_still_sells_cash` — the pair proving rule 4 and rule 2
+   cannot combine into a store that cannot trade at all.
 Settings UI: "Payment Methods" section inside the existing `store-pos` / `restaurant-pos` pages of the Tauri Settings page (master–detail + Save — the existing pattern).
 
 ### 1.3 Manual vs dynamic QRIS (the key distinction)

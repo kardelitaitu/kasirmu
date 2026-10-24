@@ -512,3 +512,67 @@ fn the_rail_code_match_ignores_case_and_surrounding_space() {
         None
     );
 }
+
+// ── tier gating (plan safety rule 4) ────────────────────────────────
+//
+// Rule 4: "dynamic methods additionally require their signed entitlement".
+// The pair that matters is `qris` (dynamic, Midtrans) vs `qris_manual` (the
+// static printed code): conflating them would strip a Free-tier store of its
+// counter QRIS, which is Phase 1 value the plan says ships with zero gateway work.
+
+fn tier(name: &str) -> crate::subscription::SubscriptionTier {
+    match name {
+        "free" => crate::subscription::SubscriptionTier::Free,
+        "plus" => crate::subscription::SubscriptionTier::Plus,
+        "premium" => crate::subscription::SubscriptionTier::Premium,
+        other => panic!("unknown tier in test: {other}"),
+    }
+}
+
+#[test]
+fn dynamic_qris_is_withheld_from_a_free_tier() {
+    assert_eq!(
+        Store::tier_withholds_tender("qris", &tier("free")),
+        Some(TenderRefusal::TierWithheld {
+            rail_code: "qris".into()
+        })
+    );
+}
+
+#[test]
+fn manual_qris_is_never_tier_gated() {
+    // The static printed code costs the tier nothing -- refusing it on Free would
+    // break the counter workflow the plan calls Phase 1 value.
+    assert_eq!(
+        Store::tier_withholds_tender("qris_manual", &tier("free")),
+        None
+    );
+}
+
+#[test]
+fn a_paid_tier_gets_dynamic_qris() {
+    assert_eq!(Store::tier_withholds_tender("qris", &tier("plus")), None);
+    assert_eq!(Store::tier_withholds_tender("qris", &tier("premium")), None);
+}
+
+#[test]
+fn core_rails_are_not_tier_gated() {
+    // Cash, card and bank transfer are not "dynamic methods"; rule 4 does not reach them.
+    for code in ["cash", "card", "bank_transfer", "ewallet"] {
+        assert_eq!(
+            Store::tier_withholds_tender(code, &tier("free")),
+            None,
+            "{code}"
+        );
+    }
+}
+
+#[test]
+fn the_tier_match_ignores_case() {
+    assert_eq!(
+        Store::tier_withholds_tender("  QRIS ", &tier("free")),
+        Some(TenderRefusal::TierWithheld {
+            rail_code: "qris".into()
+        })
+    );
+}
