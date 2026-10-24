@@ -999,6 +999,26 @@ docstring would make the suite red on a tree that is green, and "fixing" the cod
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
 
+#### The two reds left by the round-107 sweep were both drift, and both one line each
+
+62 wired checkers run in both invocation modes. Seven reported FAIL; four were invocation errors on
+my side (`.mjs` needs `--self-test`, `verify-commit-subjects.py` needs `--range`, `verify-scoped-coverage.sh`
+is a `.sh` needing bash by full path, and the two coverage/probe checkers need build artifacts). The
+two real ones were both in the docs-auditor family, which the heavy doc edits of rounds 100-107
+were always the likeliest thing to have disturbed:
+
+- `check-audit-stamps.py` — the footer of a `done-` plan read `11-10-26` while its newest stamp said
+  `2026-10-23`. Under-reports, the dangerous class: the field people read to decide whether a doc
+  needs work said the doc was audited three weeks AFTER the stamp it under-reports.
+- `check-cite-lines.py` — `module-boot-sequence.md:8` cited `scripts/check.sh:708` for the namespace
+  `--strict` step and `:731` for capability parity. Both are now `:745` and `:768`; check.sh grew by
+  29 and 37 lines. The citation names no symbol, so it graded DRIFTED on the file alone.
+
+Two one-line edits, both gates green, both committed (`c6e99ade1`). The lesson is the same one this
+file has recorded since round 84: a coordinate is a claim about the tree at a moment, and the tree
+keeps moving. What makes these cheap is that the checker prints the real line — `-> actually :737`
+means the repair is a substitution, not a search.
+
 **The general rule this gives:** a self-test that grades a *documented* contract is testing
 someone's memory, not the code. Run the function, see what it answers, and pin that. Where it
 disagrees with its own docstring, the disagreement is the finding — do not resolve it silently in
