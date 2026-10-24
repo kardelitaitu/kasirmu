@@ -51,6 +51,32 @@ export async function openExternalUrl(url: string): Promise<void> {
 }
 
 /**
+ * Open a Google Images search for a product on the TABLET shell.
+ *
+ * The tablet registers `open_product_images` and NOT the scoped twin --
+ * apps/mobile-tauri/src/commands/browser.rs is a global-db read (the tablet
+ * AppState cannot build a BridgeCtx yet), and its own module doc names the
+ * desktop command as the other half. Measured 2026-10-25:
+ * `open_product_images_scoped` has ZERO registrations under apps/mobile-tauri,
+ * so calling it there threw and the wrapper below fell back to a search on the
+ * raw SKU instead of the name+brand query the backend builds.
+ *
+ * Same response contract as the scoped twin: `true` when the backend accepted
+ * it, `false` when the opener was unavailable.
+ */
+export const openProductImages = async (sku: string): Promise<boolean> => {
+  try {
+    await loggedInvoke<void>('open_product_images', { sku });
+    return true;
+  } catch (err) {
+    console.warn('open_product_images unavailable, using window.open fallback', err);
+    const url = `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(sku)}`;
+    void openExternalUrl(url);
+    return false;
+  }
+};
+
+/**
  * Open the default browser at a Google Images search for a product
  * (ADR #38 D2/D3: query = name + brand, built server-side).
  *
