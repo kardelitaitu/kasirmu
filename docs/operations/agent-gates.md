@@ -999,6 +999,38 @@ docstring would make the suite red on a tree that is green, and "fixing" the cod
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
 
+#### Resolving the size-ceiling finding, and correcting what it said (round 108)
+
+The finding filed in round 95 said "extract or raise" and named `db/popularity.rs` as the extraction
+candidate at **1151 lines**. Both halves were wrong, and the measurement that proved it is worth
+recording.
+
+**The gate measures the CRATE TOTAL, so splitting a file cannot fix it.** `verify-core-size.py`
+counts non-blank production lines across all of `crates/kasirmu-core/src`. Moving code between files
+inside the crate leaves the number untouched. The only lever that lowers it is moving code OUT of
+the crate — so "extract `popularity.rs`" was never an option, and the earlier note that proposed it
+was reasoning about the wrong quantity.
+
+**And 1151 was a RAW count, not the gate's measure.** The gate masks comments, strings and blank
+lines first. Under its own masker `popularity.rs` is **834**, and **no file in the crate is over
+1000 masked lines**. The house 1000-line rule — the reason the finding nominated that file — was
+never in play. The nomination was an artefact of counting lines with the wrong tool.
+
+**Attribution by re-measuring, not by reading diffs.** Running the checker's own `count_lines()`
+over `git show <rev>:<path>` blobs established that the tree at `7be89ae53` measures **exactly
+40597** — the ceiling — so the baseline was not stale and all +19 is post-baseline work. Per file:
+`payment.rs` +19, `location_resolver.rs` +3, four files +1, against `db/roles.rs` −5 and two −1s.
+The +19 is entirely `PaymentSplitArg::effective_gateway_status` (ADR-64), a cohesive 24-line method
+with its own doc comment and 58 lines of companion tests.
+
+**Resolved by raising the ceiling to 40616**, with the attribution written into the baseline's own
+description, and the finding rewritten to carry the two corrections. Gate green (delta 0),
+`--self-test` 18/18.
+
+**The transferable rule:** a finding built on the wrong measure points the next reader at work
+nobody needs. `Measure-Object -Line` and a masking line-counter disagree by 38% on this file, and
+that disagreement produced a confident nomination of a refactor that could not have helped.
+
 #### Probing the 94 ungraded citations for a checkable property (round 108)
 
 `check-cite-lines.py` prints its own ceiling every run: `NOT graded : 94 (no symbol on the doc line;
