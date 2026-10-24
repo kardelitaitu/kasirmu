@@ -14,7 +14,7 @@
  * settings.id.ftl. Error copy comes from the shared app-error map with
  * `settings-regional-error-*` fallbacks.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { Card } from '@/components/Card';
 import SettingsSelect, { type SettingsSelectOption } from '@/features/settings/SettingsSelect';
@@ -73,6 +73,8 @@ export function RegionalSettingsCard() {
 
   const [currencies, setCurrencies] = useState<CurrencyDto[]>([]);
   const [saving, setSaving] = useState(false);
+  /** Synchronous mirror of `saving` — see the re-entry guard in `handleSave`. */
+  const savingRef = useRef(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -119,6 +121,11 @@ export function RegionalSettingsCard() {
 
   const handleSave = useCallback(async () => {
     if (!sessionToken || !config) return;
+    // Re-entry guard: set_regional_config writes the same keys with the same values, so a
+    // replay cannot corrupt them -- what it can do is share one \`saveError\` / \`saved\` pair
+    // between two in-flight writes, showing the operator the failure of the tap that raced.
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     setSaveError(null);
     setSaved(false);
@@ -139,6 +146,7 @@ export function RegionalSettingsCard() {
     } catch (err) {
       setSaveError(l10nErrorMessage(err, l10n, 'settings-regional-error-save'));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }, [sessionToken, config, locale, timezone, currency, countryCode, l10n]);

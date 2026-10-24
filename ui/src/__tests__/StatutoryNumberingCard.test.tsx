@@ -9,7 +9,7 @@
  * like it can reset a statutory series.
  */
 import { describe, expect, it, beforeEach, vi } from 'vitest';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 import { StatutoryNumberingCard } from '@/features/settings/screens/StatutoryNumberingCard';
 import settingsFtl from '@/locales/settings.ftl?raw';
@@ -144,6 +144,24 @@ describe('StatutoryNumberingCard', () => {
       expect(mocks.getSeq).toHaveBeenLastCalledWith('tok-1', 'ent-1', 'receipt');
     });
     expect(screen.getByText('Series saved')).toBeInTheDocument();
+  });
+
+  it('writes once when Save series is double-tapped', async () => {
+    // The upsert is a same-key ON CONFLICT write, so a replay cannot corrupt the series.
+    // What it can do: share one \`saveError\` / \`saved\` pair AND race the counter re-read
+    // that follows each write, so the operator is shown the value from the tap that lost.
+    renderCard();
+    await waitFor(() => {
+      expect(screen.getByLabelText('Prefix')).toHaveValue('NO.');
+    });
+
+    const saveBtn = screen.getByRole('button', { name: 'Save series' });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => expect(mocks.upsert).toHaveBeenCalledTimes(1));
   });
 
   it('reports a failed save without pretending it worked', async () => {
