@@ -71,6 +71,18 @@ export default function KasbonSettlementModal({
 
   const currency = receivables[0]?.amount.currency ?? 'IDR';
 
+  // Re-entry guard. `submitting` is React state and commits on the NEXT render, so the
+  // second dispatch of a real double tap still enters `handlePaymentSubmit`. This is the
+  // WORST instance of the class in the tree, and it is not a misreported error — it is
+  // money. `record_receivable_payment` reads the balance BEFORE opening its transaction
+  // (receivables.rs:242-289) and its compare-and-set is on STATUS, which stays
+  // 'open'/'partial' after a partial payment. So with a partial amount BOTH calls pass the
+  // overpayment check, both INSERT a receivable_payments row, and the second overwrites
+  // paid_minor with a stale sum: the customer is recorded as having paid twice, with no
+  // error at all. With the defaulted FULL balance the second call is refused by the CAS —
+  // and then reports 'Failed to record repayment' over a payment that landed.
+  const paymentPendingRef = useRef(false);
+
   const startPayment = (r: Receivable) => {
     setPayingTarget(r);
     const exp = minorUnitExponent(r.amount.currency);
@@ -91,6 +103,9 @@ export default function KasbonSettlementModal({
 
     const minorUnits = Math.round(amountVal * Math.pow(10, exp));
     if (minorUnits > payingTarget.balance.minor_units) return;
+    // Taken AFTER the refusals above, which return before the `finally` that clears it.
+    if (paymentPendingRef.current) return;
+    paymentPendingRef.current = true;
 
     setSubmitting(true);
     try {
@@ -154,6 +169,7 @@ export default function KasbonSettlementModal({
         type: 'error',
       });
     } finally {
+      paymentPendingRef.current = false;
       setSubmitting(false);
     }
   };

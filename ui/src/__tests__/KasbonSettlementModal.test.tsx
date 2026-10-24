@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import { withFluent } from '@/i18n/test-utils';
 import { ToastProvider } from '@/components/Toast';
@@ -117,6 +117,57 @@ describe('KasbonSettlementModal', () => {
         }),
       );
     });
+  });
+
+  it('records a repayment once for a double click while the first is in flight', async () => {
+    // THE MONEY CASE. `record_receivable_payment` reads the balance before opening its
+    // transaction (receivables.rs:242-289) and CASes on STATUS, which stays 'partial' after
+    // a partial payment. So a second call with a PARTIAL amount passes the overpayment
+    // check, inserts a SECOND receivable_payments row, and overwrites paid_minor with a
+    // stale sum: the customer reads as having paid twice, with no error shown. The default
+    // amount is the full balance, where the CAS refuses the replay and reports "Failed to
+    // record repayment" over a payment that landed. Either way the second call must not be
+    // sent. This case sets a PARTIAL amount, the silent arm.
+    let releasePayment: ((v: unknown) => void) | undefined;
+    vi.spyOn(receivablesApi, 'recordReceivablePaymentScoped').mockImplementation(
+      () => new Promise((resolve) => { releasePayment = resolve; }) as never,
+    );
+
+    const wrapped = withFluent(
+      <ToastProvider>
+        <KasbonSettlementModal
+          customer={dummyCustomer}
+          sessionToken="mock-token"
+          onClose={vi.fn()}
+        />
+      </ToastProvider>,
+      customersFtl,
+    );
+    await renderInAct(wrapped);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /Pay/i })[0]!);
+    const amountInput = document.querySelector('input[type="number"]') as HTMLInputElement | null;
+    if (!amountInput) throw new Error('amount field not found');
+    fireEvent.change(amountInput, { target: { value: '10000' } });
+
+    const submitBtn = screen.getByRole('button', { name: /Confirm Payment/i });
+    // fireEvent, not userEvent: userEvent awaits its own act(), which flushes the pending
+    // chain so the first payment would have settled and the clicks would never overlap.
+    // The disabled flag React set is dropped for the second click so the atomic guard is
+    // what is measured, not the DOM.
+    await act(async () => {
+      fireEvent.click(submitBtn);
+      submitBtn.removeAttribute('disabled');
+      fireEvent.click(submitBtn);
+    });
+
+    expect(
+      (receivablesApi.recordReceivablePaymentScoped as unknown as { mock: { calls: unknown[] } }).mock.calls.length,
+      'a double click on Confirm Payment sent the repayment twice; a partial amount is ' +
+        'ACCEPTED by the backend both times, so the customer is recorded as paying twice',
+    ).toBe(1);
+
+    releasePayment?.(dummy1);
   });
 
   it('calls writeOffReceivableScoped when Write Off is clicked and confirmed', async () => {

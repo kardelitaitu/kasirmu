@@ -263,3 +263,49 @@ fn ar_aging_report_buckets() {
     assert_eq!(report.summary.total_outstanding_minor, 1_000_000);
     assert_eq!(report.customers.len(), 2);
 }
+
+/// Two PARTIAL payments of the same amount are both ACCEPTED, and the second overwrites
+/// the paid total with a sum derived from a STALE read.
+///
+/// Not a bug report: recording two partial instalments is legitimate, and this function
+/// cannot tell an instalment from a replay. It is recorded because
+/// `record_receivable_payment` has no replay guard of its own and is reached from a UI
+/// button. It reads the receivable at :242-247, computes `new_paid` at :272-279 and only
+/// THEN opens the transaction at :300, so two calls dispatched from one double tap both
+/// pass the overpayment check — the status CAS matches 'open'/'partial', which a partial
+/// payment leaves unchanged. The protection therefore lives entirely in the caller:
+/// `KasbonSettlementModal` holds an atomic ref taken before `setSubmitting(true)`. If a
+/// second caller ever appears, this test is the reason it must carry its own guard.
+#[test]
+fn a_second_partial_payment_is_accepted_not_refused() {
+    let conn = fresh();
+    seed_customer(&conn, "cust-1");
+    let s = store(&conn);
+    let r = s.create_receivable(&nr("cust-1", 1000, None)).unwrap();
+
+    let (first, _) = s
+        .record_receivable_payment("default", &r.id, money("IDR", 300), "cash", None, "")
+        .unwrap();
+    assert_eq!(first.paid.minor_units, 300);
+
+    // The replay the UI's ref guard now prevents: same arguments, a fresh call.
+    let (second, _) = s
+        .record_receivable_payment("default", &r.id, money("IDR", 300), "cash", None, "")
+        .unwrap();
+    assert_eq!(
+        second.paid.minor_units, 600,
+        "a second partial payment is absorbed, not refused"
+    );
+    assert_eq!(
+        second.status,
+        ReceivableStatus::Partial,
+        "status stays 'partial', which is why the CAS cannot refuse a partial replay"
+    );
+
+    let history = s.list_receivable_payments("default", &r.id).unwrap();
+    assert_eq!(
+        history.len(),
+        2,
+        "both payments were recorded; nothing collapsed them"
+    );
+}
