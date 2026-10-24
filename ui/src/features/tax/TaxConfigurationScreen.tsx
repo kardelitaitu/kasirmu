@@ -278,21 +278,40 @@ export default function TaxConfigurationScreen({ embedded = false }: TaxConfigur
     // select from it, so a stale empty map must not be captured.
   }, [roundingModes]);
 
+  // Re-entry guard. `saving` is React state and commits on the NEXT render, so the second
+  // dispatch of a real double click still enters `handleSave`. The CREATE path writes a row
+  // with no natural key to refuse it: `tax_rates` has only `id TEXT PRIMARY KEY` (the id is
+  // minted per call, 20260813_init.sql) and NO unique on `name`, and `create_tax_rate` is a
+  // plain INSERT inside a transaction (db/tax/rates.rs:165-172). So a double click stores TWO
+  // tax rates with the same name and rate, both selectable in the picker and both applied to
+  // categories -- a tax configuration the merchant never intended and cannot tell apart.
+  //
+  // The ref sits in `commitSave`, not in `handleSave`, on purpose: it is the single write
+  // tail for BOTH the direct save and the tier-move ConfirmDialog continuation, so one guard
+  // covers both paths.
+  const savePendingRef = useRef(false);
+
   // Shared write tail of a save: called directly by handleSave, and by the
   // tier-move ConfirmDialog continuation — the action on confirm is exactly
   // the write the removed native gate used to gate.
   const commitSave = useCallback(async (args: CreateTaxRateArgs) => {
-    if (editingId) {
-      await updateTaxRateScoped(sessionToken, { id: editingId, ...args });
-    } else {
-      await createTaxRateScoped(sessionToken, args);
+    if (savePendingRef.current) return;
+    savePendingRef.current = true;
+    try {
+      if (editingId) {
+        await updateTaxRateScoped(sessionToken, { id: editingId, ...args });
+      } else {
+        await createTaxRateScoped(sessionToken, args);
+      }
+      // F2-8: the write succeeded — any cached cart-tax answer computed
+      // under the old configuration is now potentially stale. Drop it so
+      // an open POS session can never serve it as fresh.
+      invalidateCartTaxCache();
+      setShowModal(false);
+      await loadAll();
+    } finally {
+      savePendingRef.current = false;
     }
-    // F2-8: the write succeeded — any cached cart-tax answer computed
-    // under the old configuration is now potentially stale. Drop it so
-    // an open POS session can never serve it as fresh.
-    invalidateCartTaxCache();
-    setShowModal(false);
-    await loadAll();
   }, [editingId, sessionToken, loadAll]);
 
   const handleSave = useCallback(async () => {

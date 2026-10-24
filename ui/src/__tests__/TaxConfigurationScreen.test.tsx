@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, renderHook, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { useCartTax } from '@/hooks/useCartTax';
 import { invalidateCartTaxCache } from '@/hooks/useCartTax';
 import userEvent from '@testing-library/user-event';
@@ -196,6 +196,53 @@ describe('TaxConfigurationScreen', () => {
         }),
       }));
     });
+  });
+
+  it('creates a tax rate once for a double click while the first is in flight', async () => {
+    // `tax_rates` has only `id TEXT PRIMARY KEY` -- minted per call -- and NO unique on
+    // `name`, and `create_tax_rate` is a plain INSERT (db/tax/rates.rs:165-172). So the
+    // replay is NOT refused: a double click stores TWO rates with the same name and rate,
+    // both selectable and both applicable to categories, and nothing on screen distinguishes
+    // them. That is the silent-duplication arm of the re-entry class, not the misreported
+    // one, which is why the guard has to exist in the UI.
+    let release: (() => void) | undefined;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'create_tax_rate_scoped') {
+        return new Promise((resolve) => { release = () => resolve({ ...SAMPLE_TAX_RATES[0], name: 'Room Tax' }); });
+      }
+      if (cmd === 'list_tax_rates_scoped') return Promise.resolve(SAMPLE_TAX_RATES);
+      if (cmd === 'list_categories' || cmd === 'list_categories_scoped') return Promise.resolve(SAMPLE_CATEGORIES);
+      if (cmd === 'list_category_tax_rates_scoped') return Promise.resolve(SAMPLE_CAT_TAX_RATES);
+      if (cmd === 'list_tax_rate_rounding_modes_scoped') return Promise.resolve(getRoundingModesMock());
+      recordUnmatchedInvoke(cmd);
+      return Promise.reject(new Error('Unknown command: ' + cmd));
+    });
+
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    await userEvent.click(screen.getByRole('button', { name: /add tax rate/i }));
+
+    await userEvent.type(screen.getByLabelText('Tax Name'), 'Room Tax');
+    await userEvent.type(screen.getByLabelText('Rate (%)'), '500');
+
+    const saveBtn = screen.getByRole('button', { name: /save/i }) as HTMLButtonElement;
+    // fireEvent inside one act(): userEvent awaits its own act(), which flushes the pending
+    // chain so the first create would have settled and the clicks would never overlap. The
+    // disabled flag React set is dropped for the second click so the ref is measured.
+    await act(async () => {
+      fireEvent.click(saveBtn);
+      saveBtn.removeAttribute('disabled');
+      fireEvent.click(saveBtn);
+    });
+
+    const creates = invokeMock.mock.calls.filter(([c]: unknown[]) => c === 'create_tax_rate_scoped');
+    expect(
+      creates.length,
+      'a double click on Save created the tax rate twice; nothing in the schema refuses the ' +
+        'replay, so the store now holds two indistinguishable rates',
+    ).toBe(1);
+
+    release?.();
   });
 
   it('warns when editing changes the rate tier', async () => {
