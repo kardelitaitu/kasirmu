@@ -516,7 +516,6 @@ describe('popup surfaces have visible backgrounds', () => {
       ["components/FastPINOverlay.css",49],
       ["components/GatewayStatusBadge.css",5],
       ["components/ImpersonationBanner.css",4],
-      ["components/MachineIdStatus.css",5],
       ["components/OrgSelector.css",7],
       ["components/OrgSwitcher.css",15],
       ["components/PermissionDenied.css",10],

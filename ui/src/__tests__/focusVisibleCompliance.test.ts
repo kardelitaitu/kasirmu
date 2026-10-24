@@ -406,7 +406,6 @@ const CSS_FILES = [
   'components/QrisQrDisplay.css',
   'components/StoreSwitcher.css',
   'components/GatewayStatusBadge.css',
-  'components/MachineIdStatus.css',
   'components/ConnectionStatus.css',
   // 'components/UpdateBanner.css' left this list with the dead twin (2026-10-09).
   // `components/UpdateBanner.tsx` was reachable from NOTHING: three greps confirmed
