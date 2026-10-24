@@ -1000,6 +1000,39 @@ docstring would make the suite red on a tree that is green, and "fixing" the cod
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
 
+#### Restoring one workflow reddened FOUR claims, and the sweep caught what a direct run did not (round 110)
+
+Adding `.github/workflows/docker-digest-drift.yml` was a three-file change as far as
+`verify-ci-docs-drift.py` was concerned. It was a **five-file** change once `verify-agents-mirrors.py`
+ran, and that gate found two more stale counts:
+
+| file | stale claim | fixed to |
+|---|---|---|
+| `scripts/check.sh:10` | "There are FOUR live workflows" | FIVE, plus the new file in the list |
+| `docs/operations/agent-gates.md:33` | "Four live workflows" | FIVE, plus a trigger-table row |
+| `docs/operations/ci-pipeline.md:22` | "GitHub executes **FOUR** workflows" | FIVE, with the measured list |
+| `docs/operations/ci-pipeline.md:1` (audit stamp) | "23 live jobs in 4 workflows" | a dated CORRECTION, not a rewrite |
+
+**The fourth is the interesting one, and the sweep is what caught it.** Running
+`verify-agents-mirrors.py` DIRECTLY passed — it polices only `AGENTS.md` and its declared mirrors, and
+both had just been fixed. `verify-selftest-sweep.py` runs the same checker over its own falsification
+corpus and caught that `ci-pipeline.md`'s audit stamp still claimed 23 jobs where the tree holds 24.
+**A direct run and a sweep are not the same test, and the sweep found what the direct run could
+not.** That is the second time this session a second, differently-shaped measurement caught what the
+first missed.
+
+**And the stamp was corrected rather than rewritten.** A dated audit stamp is a record of what was
+true when it was written; overwriting "23" with "24" would destroy the evidence that the count moved.
+The checker agrees — it skips any line carrying a HISTORICAL_MARKER such as `corrected`, on the
+explicit rule that *"a dated record is evidence, not a claim."* The skip was then verified to be
+legitimate rather than lucky: importing the module shows line 1 is skipped because it now contains
+`corrected`, and `job_total_claims()` returns an empty list. A green produced by an exemption has to
+be re-derived, exactly as with the ci-docs-drift history exemption in the round before.
+
+**The rule this adds:** when you add a file the docs count, grep the COUNT words, not the filename.
+`grep -rn 'live workflows' docs scripts` finds every mirror in one pass; trusting the gate you
+happened to run finds them one red at a time.
+
 #### Closing the "nobody is alerted" gap, and why the new workflow is advisory (round 110)
 
 The drifted-pin finding's real defect was never the seven stale digests — it was that **nothing
