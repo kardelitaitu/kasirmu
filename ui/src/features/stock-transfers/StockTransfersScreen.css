@@ -52,6 +52,93 @@
   margin-bottom: var(--space-3);
 }
 
+/* ── In-transit audit panel ─────────────────────────────────────── */
+
+/* The panel reuses this sheet's own table, link and empty-state rules; these
+   declarations only lay out the cards and their meta grid. */
+.stock-transfers-transit {
+  margin-top: var(--space-6);
+}
+
+.stock-transfers-transit-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.stock-transfers-transit-heading {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+}
+
+.stock-transfers-transit-count {
+  font-size: var(--text-xs);
+  color: var(--color-fg-secondary);
+}
+
+.stock-transfers-transit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+  gap: var(--space-3);
+}
+
+.stock-transfers-transit-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-surface);
+  padding: var(--space-3);
+}
+
+.stock-transfers-transit-card--overdue {
+  border-color: var(--color-warning-bg);
+  box-shadow: inset 3px 0 0 var(--color-warning-bg);
+}
+
+.stock-transfers-transit-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.stock-transfers-transit-meta > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0_5);
+  min-width: 0;
+}
+
+.stock-transfers-transit-label {
+  font-size: var(--text-xs);
+  color: var(--color-fg-secondary);
+}
+
+.stock-transfers-transit-overdue {
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding: var(--space-0_5) var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--color-warning-bg);
+  color: var(--color-fg);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+.stock-transfers-transit-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+}
+
+.stock-transfers-empty-hint {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+}
+
 /* ── Filters ─────────────────────────────────────────────────── */
 
 /* The strip itself is the shared segmented control (components/

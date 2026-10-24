@@ -60,3 +60,6 @@ stock-transfers-error-qty-integer = Quantities must be whole numbers
 stock-transfers-receive-line = { $sku } — { $product } (ordered: { $qty })
 stock-transfers-received-qty-aria =
     .aria-label = { $sku } received quantity
+inv-transit-lines-aria = Line items for this in-transit transfer
+inv-transit-overdue = Over 24 h in transit
+stock-transfers-empty-in-transit = { $count } transfer(s) are still in transit — see Transit Stock Audit below.

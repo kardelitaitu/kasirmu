@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import {
   listStockTransfers,
+  listInTransitTransfers,
   getStockTransfer,
   createStockTransfer,
   sendStockTransfer,
@@ -10,6 +11,7 @@ import {
   type StockTransfer,
   type StockTransferLine,
   type ReceivedLineInput,
+  type TransferWithLines,
 } from '@/api/stockTransfers';
 import { listProductsScoped, type ProductDto } from '@/api/products';
 import { listTerminalsScoped, type TerminalDto } from '@/api/terminals';
@@ -20,12 +22,29 @@ import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
 import { SegmentedTabs, requiredLocalized, type RequiredLocalizedL10n } from '@/components';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { useOptionalToast } from '@/components/Toast';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { asArray } from '@/utils/ipc-payload';
 import { settleRead } from '@/utils/settle-read';
 import './StockTransfersScreen.css';
 
 const STATUS_FILTERS = ['all', 'draft', 'pending', 'in_transit', 'received', 'cancelled'] as const;
+
+/** How long a sent transfer may stay in transit before the audit view flags it. */
+const TRANSIT_EXPIRY_HOURS = 24;
+
+/**
+ * True when a transfer was sent longer ago than {@link TRANSIT_EXPIRY_HOURS}.
+ * A missing or unparseable `sent_at` is NOT overdue: this drives a warning badge,
+ * and a warning must not appear on the strength of a value nobody could read.
+ */
+function isOverdue(sentAt: string | null, now: number): boolean {
+  if (!sentAt) return false;
+  const sentTime = new Date(sentAt).getTime();
+  if (!Number.isFinite(sentTime)) return false;
+  return (now - sentTime) / 3_600_000 > TRANSIT_EXPIRY_HOURS;
+}
 
 function statusLabel(status: string): string {
   return status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ');
@@ -61,6 +80,10 @@ export default function StockTransfersScreen() {
   const numLocale = [...l10n.bundles][0]?.locales[0] ?? 'en-US';
   const { sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
+  // Optional: the POST is mounted inside ToastProvider, but this screen is also
+  // rendered by suites that supply no provider. A required hook would make every
+  // one of those a crash rather than a screen without a confirmation toast.
+  const toastCtx = useOptionalToast();
   const [transfers, setTransfers] = useState<StockTransfer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +121,16 @@ export default function StockTransfersScreen() {
 
   // Cancel state
   const [cancelling, setCancelling] = useState<string | null>(null);
+
+  // ── In-transit audit ──────────────────────────────────────────────
+  // The transfer TABLE answers "what has been created". This panel answers the
+  // question an operator asks next — "what is still out there, and how long has it
+  // been out?" — from the enriched in-transit read (transfer + its lines in ONE
+  // round trip). The read has an independent error slot on purpose: a failed audit
+  // read must not blank a list that answered, and vice versa.
+  const [transit, setTransit] = useState<TransferWithLines[]>([]);
+  const [transitError, setTransitError] = useState<string | null>(null);
+  const [reverseConfirmId, setReverseConfirmId] = useState<string | null>(null);
 
   // Products & terminals for dropdowns. `null` = UNKNOWN (the read never
   // answered), `[]` = the read answered and this store really has none.
@@ -147,6 +180,26 @@ export default function StockTransfersScreen() {
   }, [l10n, sessionToken]);
 
   useEffect(() => { load(); }, [load]);
+
+  /**
+   * Read the in-transit audit list. Deliberately NOT folded into `load`: the two
+   * reads fail independently, and the reason a separate slot exists is that a
+   * rejected audit read must not report the transfer list as broken (or the other
+   * way round). An answer is written as-is; a throw leaves the previous rows up
+   * with an error banner, rather than pretending the merchant has nothing in transit.
+   */
+  const loadTransit = useCallback(async () => {
+    if (!sessionToken) return;
+    setTransitError(null);
+    try {
+      const rows = await listInTransitTransfers(sessionToken);
+      setTransit(asArray<TransferWithLines>(rows));
+    } catch {
+      setTransitError(l10n.getString('inv-transit-error-load'));
+    }
+  }, [sessionToken, l10n]);
+
+  useEffect(() => { void loadTransit(); }, [loadTransit]);
 
   // A monotonic token, so a slow earlier detail read cannot overwrite a newer
   // one. Same class as CurrencyContext (51c86e9e8), SettingsContext
@@ -250,14 +303,39 @@ export default function StockTransfersScreen() {
     setCancelling(id);
     try {
       await cancelStockTransfer(sessionToken, id);
-      await load();
+      // Both lists are refreshed from the SAME fact (a transfer left `in_transit`).
+      // Refreshing only the table would leave the audit panel showing stock that the
+      // cancel had already returned to its source location.
+      await Promise.all([load(), loadTransit()]);
       if (detailId === id) closeDetail();
     } catch {
       setError(l10n.getString('stock-transfers-error-cancel'));
     } finally {
       setCancelling(null);
     }
-  }, [load, detailId, closeDetail, l10n, sessionToken]);
+  }, [load, loadTransit, detailId, closeDetail, l10n, sessionToken]);
+
+  /**
+   * Reverse a transfer from the audit panel. Same IPC as the table's Cancel, but
+   * this path is the one the old `TransitAuditScreen` provided and it confirms
+   * first: the operator is looking at goods that already left the building.
+   */
+  const handleReverseConfirm = useCallback(async () => {
+    if (!reverseConfirmId) return;
+    const id = reverseConfirmId;
+    setCancelling(id);
+    try {
+      await cancelStockTransfer(sessionToken, id);
+      setReverseConfirmId(null);
+      await Promise.all([load(), loadTransit()]);
+      toastCtx?.addToast({ message: l10n.getString('inv-transit-reversed-toast'), type: 'success' });
+    } catch {
+      setTransitError(l10n.getString('inv-transit-error-reverse'));
+      setReverseConfirmId(null);
+    } finally {
+      setCancelling(null);
+    }
+  }, [reverseConfirmId, sessionToken, load, loadTransit, l10n, toastCtx]);
 
   const addLineEntry = useCallback(() => {
     setCreateLines([...createLines, { sku: '', productName: '', qty: '1' }]);
@@ -378,6 +456,11 @@ export default function StockTransfersScreen() {
   useFocusTrap(createPanelRef, showCreate && !createExit.exiting && !createSaving, closeCreate);
   useFocusTrap(receivePanelRef, receiveTransferId !== null && !receiveExit.exiting && !receiveSaving, closeReceive);
 
+  // One clock reading per render, so every card in a batch is judged against the
+  // same instant. Calling Date.now() inside isOverdue per card would let two cards
+  // sent the same second disagree about being overdue.
+  const transitNow = Date.now();
+
   const filtered = statusFilter === 'all'
     ? transfers
     : transfers.filter((t) => t.status === statusFilter);
@@ -461,6 +544,13 @@ export default function StockTransfersScreen() {
             <Localized id="stock-transfers-empty">
               <p>No stock transfers found</p>
             </Localized>
+            {transit.length > 0 && (
+              <Localized id="stock-transfers-empty-in-transit" vars={{ count: transit.length }}>
+                <p className="stock-transfers-empty-hint">
+                  {'{ $count }'} transfer(s) are still in transit — see Transit Stock Audit below.
+                </p>
+              </Localized>
+            )}
           </div>
         </Card>
       ) : (
@@ -527,6 +617,133 @@ export default function StockTransfersScreen() {
           </table>
         </div>
       )}
+
+      {/* ── In-transit audit ──────────────────────────────────────────
+          The transfer table answers "what was created". This panel answers "what is
+          still out there, and for how long" — the one question the retired
+          TransitAuditScreen asked and nothing else in the app asked. It reads the
+          enriched in-transit IPC (`list_in_transit_transfers_scoped`), so a card
+          renders the goods, not just a transfer id. */}
+      {!loading && (
+        <section className="stock-transfers-transit" aria-labelledby="stock-transfers-transit-heading">
+          <div className="stock-transfers-transit-header">
+            <Localized id="inv-transit-title">
+              <h2 id="stock-transfers-transit-heading" className="stock-transfers-transit-heading">
+                Transit Stock Audit
+              </h2>
+            </Localized>
+            <span className="stock-transfers-transit-count">
+              {transit.length}
+            </span>
+          </div>
+          {transitError ? (
+            <Card shadow="sm">
+              <div className="stock-transfers-empty">
+                <p className="stock-transfers-error-text" role="alert">{transitError}</p>
+                <Button variant="secondary" onClick={loadTransit}>
+                  <Localized id="retry">Retry</Localized>
+                </Button>
+              </div>
+            </Card>
+          ) : transit.length === 0 ? (
+            <Card shadow="sm">
+              <div className="stock-transfers-empty">
+                <Localized id="inv-transit-no-overdue">
+                  <p>No transfers in transit.</p>
+                </Localized>
+              </div>
+            </Card>
+          ) : (
+            <div className="stock-transfers-transit-grid">
+              {transit.map(({ transfer, lines }) => {
+                const overdue = isOverdue(transfer.sent_at, transitNow);
+                return (
+                  <div
+                    key={transfer.id}
+                    className={`stock-transfers-transit-card${overdue ? ' stock-transfers-transit-card--overdue' : ''}`}
+                    data-testid={`transit-card-${transfer.transfer_number}`}
+                  >
+                    <div className="stock-transfers-transit-meta">
+                      <div>
+                        <Localized id="inv-transit-transfer-label">
+                          <span className="stock-transfers-transit-label">Transfer #</span>
+                        </Localized>
+                        <button type="button" className="stock-transfers-link" onClick={() => openDetail(transfer.id)}>
+                          {transfer.transfer_number}
+                        </button>
+                      </div>
+                      <div>
+                        <Localized id="inv-transit-col-source">
+                          <span className="stock-transfers-transit-label">Source</span>
+                        </Localized>
+                        <span>{transfer.source_location ?? '—'}</span>
+                      </div>
+                      <div>
+                        <Localized id="inv-transit-col-dest">
+                          <span className="stock-transfers-transit-label">Destination</span>
+                        </Localized>
+                        <span>{transfer.destination_location ?? '—'}</span>
+                      </div>
+                      <div>
+                        <Localized id="inv-transit-col-sent">
+                          <span className="stock-transfers-transit-label">Sent At</span>
+                        </Localized>
+                        <span>{formatDate(transfer.sent_at, numLocale)}</span>
+                      </div>
+                      {overdue && (
+                        <span className="stock-transfers-transit-overdue">
+                          <Localized id="inv-transit-overdue">
+                            <span>Over 24 h in transit</span>
+                          </Localized>
+                        </span>
+                      )}
+                    </div>
+                    <table className="stock-transfers-lines-table" aria-label={l10n.getString('inv-transit-lines-aria')}>
+                      <thead>
+                        <tr>
+                          <Localized id="inv-transit-col-sku"><th>SKU</th></Localized>
+                          <Localized id="inv-transit-col-product"><th>Product</th></Localized>
+                          <Localized id="inv-transit-col-qty"><th>Qty</th></Localized>
+                        </tr>
+                      </thead>
+                      <tbody>{lines.map((line) => (
+                          <tr key={line.id}>
+                            <td>{line.sku}</td>
+                            <td>{line.product_name}</td>
+                            <td>{line.qty}</td>
+                          </tr>
+                        ))}
+</tbody>
+                    </table>
+                    <div className="stock-transfers-transit-actions">
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        disabled={cancelling === transfer.id}
+                        onClick={() => setReverseConfirmId(transfer.id)}
+                      >
+                        <Localized id="inv-transit-reverse-btn">
+                          <span>Reverse Transfer</span>
+                        </Localized>
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
+      <ConfirmDialog
+        open={reverseConfirmId !== null}
+        onCancel={() => setReverseConfirmId(null)}
+        onConfirm={handleReverseConfirm}
+        title={requiredLocalized(l10n, 'inv-transit-reverse-title')}
+        message={requiredLocalized(l10n, 'inv-transit-reverse-message')}
+        variant="danger"
+        confirmLabel={requiredLocalized(l10n, 'inv-transit-reverse-confirm')}
+      />
 
       {/* ── Detail Modal ─────────────────────────────────────────── */}
       {detailExit.shouldRender && (

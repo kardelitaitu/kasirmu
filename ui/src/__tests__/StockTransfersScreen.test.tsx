@@ -7,6 +7,7 @@ import sharedFtl from '@/locales/shared.ftl?raw';
 
 vi.mock('@/api/stockTransfers', () => ({
   listStockTransfers: vi.fn(),
+  listInTransitTransfers: vi.fn(),
   getStockTransfer: vi.fn(),
   sendStockTransfer: vi.fn(),
   cancelStockTransfer: vi.fn(),
@@ -36,9 +37,10 @@ vi.mock('@/contexts/AuthContext', () => ({
 }));
 
 import StockTransfersScreen from '@/features/stock-transfers/StockTransfersScreen';
-import { listStockTransfers, getStockTransfer, sendStockTransfer, cancelStockTransfer, createStockTransfer } from '@/api/stockTransfers';
+import { listStockTransfers, listInTransitTransfers, getStockTransfer, sendStockTransfer, cancelStockTransfer, createStockTransfer } from '@/api/stockTransfers';
 
 const mockListTransfers = listStockTransfers as ReturnType<typeof vi.fn>;
+const mockListInTransit = listInTransitTransfers as ReturnType<typeof vi.fn>;
 const mockGetTransfer = getStockTransfer as ReturnType<typeof vi.fn>;
 const mockSendTransfer = sendStockTransfer as ReturnType<typeof vi.fn>;
 const mockCancelTransfer = cancelStockTransfer as ReturnType<typeof vi.fn>;
@@ -100,6 +102,9 @@ describe('StockTransfersScreen', () => {
   beforeEach(() => {
     mockListProducts.mockResolvedValue([]);
     mockListTerminals.mockResolvedValue([]);
+    // Default: nothing in transit. Every existing case then exercises the panel's
+    // empty state, which is what the table-only assertions expect.
+    mockListInTransit.mockResolvedValue([]);
   });
 
   // ── List rendering ───────────────────────────────────────────
@@ -563,6 +568,105 @@ describe('StockTransfersScreen', () => {
     releaseCreate?.({ id: 'st-new', transfer_number: 'TRF-1' });
     await waitFor(() => {
       expect(mockCreateTransfer).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ── In-transit audit panel ───────────────────────────────────
+  // The panel replaced the unreachable TransitAuditScreen. What it must prove:
+  // the goods (not just the id) are on screen, overdue is derived rather than
+  // assumed, the audit read failing does not take the transfer table with it,
+  // and a reversal is CONFIRMED before it cancels anything.
+
+  /** Build an in-transit row whose sent_at is `hoursAgo` before now. */
+  function transitRow(hoursAgo: number, number = 'ST-002') {
+    const sentAt = new Date(Date.now() - hoursAgo * 3_600_000).toISOString();
+    return {
+      transfer: { ...sampleTransfers[1]!, transfer_number: number, sent_at: sentAt },
+      lines: [
+        { id: 'line-3', transfer_id: 'st-2', sku: 'SKU-003', product_name: 'Thing', qty: 8, received_qty: 0 },
+      ],
+    };
+  }
+
+  it('renders in-transit transfers with their lines in the audit panel', async () => {
+    mockListTransfers.mockResolvedValue([]);
+    mockListInTransit.mockResolvedValue([transitRow(2)]);
+
+    renderWithFluentSync(<StockTransfersScreen />, stockTransfersFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /transit stock audit/i })).toBeInTheDocument();
+    });
+    // The line items, not only the transfer number: this is the audit view.
+    expect(await screen.findByText('SKU-003')).toBeInTheDocument();
+    expect(screen.getByText('Thing')).toBeInTheDocument();
+    expect(screen.getByText('8')).toBeInTheDocument();
+  });
+
+  it('flags a transfer that has been in transit longer than the expiry window', async () => {
+    mockListTransfers.mockResolvedValue([]);
+    // 25 h > 24 h, and 1 h < 24 h, so a single render must disagree with itself
+    // about the two cards -- which is what makes this a measurement of the
+    // threshold rather than of the badge.
+    mockListInTransit.mockResolvedValue([transitRow(25, 'ST-OLD'), transitRow(1, 'ST-NEW')]);
+
+    renderWithFluentSync(<StockTransfersScreen />, stockTransfersFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('transit-card-ST-OLD')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('transit-card-ST-OLD').className).toContain('stock-transfers-transit-card--overdue');
+    expect(screen.getByTestId('transit-card-ST-NEW').className).not.toContain('stock-transfers-transit-card--overdue');
+    expect(screen.getByText(/over 24 h in transit/i)).toBeInTheDocument();
+  });
+
+  it('does not report the transfer table as broken when only the audit read fails', async () => {
+    // The two reads fail independently; folding them into one would let a
+    // rejected audit read blank a table that answered.
+    mockListTransfers.mockResolvedValue(sampleTransfers);
+    mockListInTransit.mockRejectedValue(new Error('audit invoke failed'));
+
+    renderWithFluentSync(<StockTransfersScreen />, stockTransfersFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('ST-001')).toBeInTheDocument();
+    });
+    // The audit read's OWN error string, which resolves from the inventory bundle
+    // (`inv-transit-error-load`) -- a bundle this suite does not load, so the text
+    // renders unresolved. It still renders inside a role="alert", which is both the
+    // proof that the failure was reported and the assertion a screen reader relies on.
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(screen.getByText('ST-002')).toBeInTheDocument();
+  });
+
+  it('asks for confirmation and then reverses the transfer from the audit panel', async () => {
+    mockListTransfers.mockResolvedValue([]);
+    mockListInTransit.mockResolvedValue([transitRow(2)]);
+    mockCancelTransfer.mockResolvedValue(undefined);
+
+    renderWithFluentSync(<StockTransfersScreen />, stockTransfersFtl, sharedFtl);
+
+    const reverseBtn = await screen.findByRole('button', { name: /reverse transfer/i });
+    await userEvent.setup().click(reverseBtn);
+
+    // Nothing is cancelled by the click itself.
+    expect(mockCancelTransfer).not.toHaveBeenCalled();
+    // The confirm step renders. Its labels come from the inventory bundle this suite
+    // does not load, so the dialog is found by test id; the assertion that matters is
+    // the one just above -- the first click cancelled nothing.
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-dialog-confirm')).toBeInTheDocument();
+    });
+    expect(mockCancelTransfer).not.toHaveBeenCalled();
+
+    await userEvent.setup().click(screen.getByTestId('confirm-dialog-confirm'));
+
+    await waitFor(() => {
+      expect(mockCancelTransfer).toHaveBeenCalledWith('mock-session-token', 'st-2');
+    });
+    // The audit read is re-issued after the reversal, so the card cannot outlive it.
+    await waitFor(() => {
+      expect(mockListInTransit.mock.calls.length).toBeGreaterThan(1);
     });
   });
 });

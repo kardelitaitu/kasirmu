@@ -1,5 +1,7 @@
 # Six unreachable modules: what each costs, and what each needs
 
+**UPDATED 2026-10-25 (round 169): the transit audit is on screen again, and the file that held it is still counted here.** `TransitAuditScreen`'s one unique view -- in-transit stock, its lines, how long it has been out, and a confirm-then-reverse action -- was rebuilt as a panel inside `StockTransfersScreen` in this round. The orphan itself was NOT deleted: the census below still lists it, because nothing imports it and nothing now needs to. That is a different state from the five beside it -- this one is superseded by a live implementation, not unresolved.
+
 **UPDATED 2026-10-25 (round 168): seven modules have become six.**
 `ShiftBar` was mounted into the warehouse console in round 164 and `ThresholdConfigScreen`
 got a route in round 168, so both are history rather than pending work. The cost fell from
@@ -26,7 +28,7 @@ seven are `UNRESOLVED` (deliberately undecided) and one needs backend work first
 | `gift-cards/GiftCardPayment.tsx` | 171 | 2026-09-05 | 11 | NEEDS BACKEND | migration + RBAC (see below) |
 | `marketplace/AddonsMarketplace.tsx` | 146 | 2026-09-20 | 10 | UNRESOLVED | an IA ruling |
 | ~~`inventory/ThresholdConfigScreen.tsx`~~ | 366 | 2026-09-27 | 8 | **MOUNTED** (round 168) | done -- route `inventory-thresholds` |
-| `inventory/TransitAuditScreen.tsx` | 187 | 2026-09-17 | 8 | PARTLY REPLACED | confirm before deleting |
+| `inventory/TransitAuditScreen.tsx` | 187 | 2026-09-17 | 8 | **SUPERSEDED** (round 169) | delete -- view rebuilt in `StockTransfersScreen` |
 | `hooks/useMediaQuery.ts` | 17 | 2026-07-12 | 4 | DEAD | delete (17 lines, no IPC) |
 | `sales/CartScreen.tsx` | 81 | 2026-08-12 | 3 | SCAFFOLD | delete (never finished) |
 
@@ -57,10 +59,7 @@ is not a code question.
 `lib.rs:1545-1547`, tablet `1491-1493`). It is not dead code; it is a working feature with no
 door. Needs a route, or a section inside `Stock Counts` or the warehouse console.
 
-**`TransitAuditScreen.tsx`** -- 187 lines. Its API *is* consumed elsewhere (`WarehouseConsole`
-took the receive flow, `StockTransfersScreen` took cancel), so the feature is not gone. What was
-lost is the standalone audit/reverse view. Deleting it would discard a view, not duplicate one --
-confirm with the owner before doing it.
+**`TransitAuditScreen.tsx`** -- 187 lines. Resolved in round 169, in the direction that did not require a product ruling: the missing view was rebuilt rather than the file deleted. The one thing it did that nothing else did was answer "what is still in transit, for how long, and with which goods" -- `WarehouseConsole` uses the same in-transit read only to pick a transfer to receive, and the transfer table shows status without lines or age. `StockTransfersScreen` now renders that panel from the same enriched IPC (`list_in_transit_transfers_scoped`), flags a transfer sent more than 24 h ago, and reverses through a confirm dialog. Four cases assert it, and two mutations (wrong threshold, no audit refresh after reversal) each fail exactly one. The original file is now deletable on the same evidence as the other three, and is left for the same owner decision.
 
 ## The one that needs backend work
 
