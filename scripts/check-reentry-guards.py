@@ -112,7 +112,19 @@ re-derive these: each is protected, and the protection is named so the search en
                         serialises; not a double-tap surface.
   * cash payout     -- round 139 FIXED (was: no dedupe at all)
   * refund          -- round 145 FIXED (was: bounded only by the cumulative total)
-  * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
+
+  * resolved-shortfalls retry -- PROTECTED, and the backend says so in its own words.
+                        `shortfall_basket_key` (pos/checkout/replay.rs:84-115) hashes the
+                        basket CONTENTS -- currency, total, discount and sorted lines --
+                        and its docstring states why: "The resolved-shortfalls command
+                        re-builds its cart from the request body under a SYNTHETIC
+                        `resolved-<timestamp>` cart id that is regenerated on every submit,
+                        so the cart id cannot anchor a re-key -- the basket CONTENTS can."
+                        The UI does send `cartId: `resolved-${Date.now()}``
+                        (StockShortfallDialog.tsx:353), which looks like a replay hole and is
+                        not: the key ignores the id by design. Recorded round 179 so the next
+                        sweep does not re-open it -- this entry sat unlisted for seven rounds
+                        while the code already answered it.  * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
                         idempotent by construction: the same key is overwritten
 The point of the list is that it is SHORT: filtering to handlers that (a) await something
 other than a list/get read and (b) have a write-shaped name narrows ~143 raw busy-flag
