@@ -999,6 +999,41 @@ docstrings record a past bug and which no case ever called:
 docstring would make the suite red on a tree that is green, and "fixing" the code is a behaviour
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
+#### Both agenda items came back clean, and one of my own records did not (round 123)
+
+Two questions were left open last round. **Neither was a defect**, and the more useful outcome is
+that one of them exposed a false claim I had written the round before.
+
+**1. Is there a count-versus-verdict blind spot in `verify-agents-mirrors.py`? No.** Round 122
+recorded that a 9-section `pre-commit` "still reported every mirror agrees", and called that a blind
+spot. Re-derived this round by feeding `scan()` a hook text carrying the 9-section header: it
+returns **4 problems**, naming `AGENTS.md` and two skill mirrors with *"claims 8 pre-commit steps,
+which matches the working tree but NOT the committed hook"*, and a clean tree returns **0**. The
+rule at :1647 is a plain `claimed != n_steps`, and it works.
+
+**The error was mine and its shape is worth naming:** I compared the checker's exit code from a run
+made *before* the offending header existed. The verdict was real for the tree I ran it on and
+irrelevant to the tree I was describing — a stale measurement presented as a conclusion. The record
+is corrected in place rather than deleted, because a false claim about a gate is exactly the kind of
+thing someone re-derives a year later and believes.
+
+**2. Does the records-index drift message name the fix? Yes, and it always did.**
+
+> `error: docs/records/README.md has drifted from the generator (3 differing lines; 684 generated vs
+> 687 committed). Generated is authoritative.`
+> `Never hand-edit the index — run: node scripts/generate-records-index.mjs`
+
+Planted by appending a comment, measured, and restored — the file is byte-identical to HEAD
+afterwards (`git hash-object` matches `HEAD:`). So the 82 historical skips round 122 counted were
+not caused by an unhelpful gate; the gate says exactly what to do.
+
+**What this round actually produced is a correction, not a fix.** That is a legitimate outcome and
+worth stating plainly: the honest tally over the last four rounds is one real defect (a stale RLS
+reason), one real red gate (my own stale records index), one guard added, and two false alarms of
+mine — one about a corpus floor that was already fine, one about a count check that was already
+right. **The measurement layer is now more trustworthy than the claims I have been making about it,**
+which is the argument for spending the next round on product code rather than on more gate auditing.
+
 #### The trigger ports were sound; the records index was red, and it was mine (round 122)
 
 The agenda was `TRIGGER_VERIFICATION` — 8 ports, each naming a test and a body digest, with the
