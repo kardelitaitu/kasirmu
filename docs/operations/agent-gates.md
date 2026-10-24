@@ -3104,4 +3104,53 @@ file has said so before in a different costume.
 "are the proof forms green"; do not infer it from a `check.sh` run that stopped early. The 90 it
 covers and the 50 my own filter found differ because the repo's sweep also walks the shell
 checkers, which mine did not — the repo's number is the one to quote.
+
+
+## What `CHECK_FROM` actually reaches: steps 53 to 142, measured in one evening
+
+Measured 2026-10-25, round 180. The section above explains `CHECK_FROM`; this one reports what
+it found when someone finally used it to walk past the documented-red steps. Everything below is
+from real runs — `CHECK_FROM=35`, `=53`, `=55`, `=57`, `=93` — each writing its
+full output to `target/mstmp/checkNN.txt`.
+
+**The frontier moved from step 34 to step 142.** Steps 35-51 pass. Steps 53, 55, 57-91 pass except
+two, 93-141 pass, and the run reached **142** — past the 131 the older note recorded. Four reds total,
+and they sort into three kinds:
+
+| Step | What | Whose |
+|---|---|---|
+| 52 | `test workspace (nextest)` — no PostgreSQL | environmental, documented |
+| 54 | `flake receipt (junit)` | inherits 52 |
+| 56 | `test application shells (nextest)` — `drift_pin_registration_floor_is_met`, 510 vs 511 | **REAL**, fixed this round |
+| 92 | `core size ratchet` — +177 production lines | **REAL**, another lane's `payment_methods.rs` (+131) and `sales_checkout.rs` (+120) |
+| 142 | `selftest sweep` — `verify-agents-mirrors.py` rc=1 | **transient**, not reproducible in 3 reruns |
+
+**Step 56 is the finding this method exists for.** `03a506f87` (feat(reports): make the
+piutang collections report reachable from the UI) registered
+`get_piutang_collections_scoped` in the desktop shell and did not raise
+`REGISTERED_FLOOR`. The command arrived ALREADY GATED at the bridge, which is precisely the
+case the pin names in its own failure message: a gated arrival moves no permission ceiling and no
+generated-ledger row, so **no other leg in that file can see it**. The pin was raised to 511 with the
+commit and command named above the constant, and a matching entry in
+`docs/records/journal/JOURNAL-part-8.md`, which is what the message asks for.
+
+**Step 92 is not mine and was left red.** `verify-core-size.py` counts production lines only —
+it excludes `*_tests.rs` by basename (`verify-core-size.py:10`) — so the 46 lines this
+lane added to `receivables_tests.rs` do not count. The +177 is `payment_methods.rs` and
+`sales_checkout.rs`, both from other sessions' commits. Raising a ceiling is a deliberate
+act that names what landed; doing it for work you did not write, in a lane that cannot see the
+intent, is the thing `archive/bulk-rename`-style caution in AGENTS.md §7.4 is about. Left for whoever
+owns those commits.
+
+**Step 142 is the honest kind of red.** The sweep reported 89 passed, 1 failed, for
+`verify-agents-mirrors.py`: "renamed header, no HEAD readable -- the no-git fallback was turned
+into a failure". Run directly, three times, it reports **40 green, 0 red**. The most likely cause is a
+concurrent `git` operation from another session while the matrix held the tree. Recorded as
+transient with the evidence rather than as either a pass or a defect.
+
+**The lesson, and it is the same one twice.** Round 179 wrote that a suite stopping at step 34 has not
+run step 1167. This round proves the sharper version: **the steps after a documented-red step hold
+real, unfixed defects, and nobody had looked because the matrix never got there.** One registration
+pin was red on the shared branch, seen by nothing, for a day. `CHECK_FROM` costs one command per
+failed step and reaches the frontier.
 > last audited 11-10-26 by docs-auditor
