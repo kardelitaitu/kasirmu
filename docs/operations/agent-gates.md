@@ -1005,7 +1005,7 @@ Two questions were left open last round. **Neither was a defect**, and the more 
 that one of them exposed a false claim I had written the round before.
 
 **1. Is there a count-versus-verdict blind spot in `verify-agents-mirrors.py`? No.** Round 122
-recorded that a 9-section `pre-commit` "still reported every mirror agrees", and called that a blind
+recorded that a 9-section hook "still reported every mirror agrees", and called that a blind
 spot. Re-derived this round by feeding `scan()` a hook text carrying the 9-section header: it
 returns **4 problems**, naming `AGENTS.md` and two skill mirrors with *"claims 8 pre-commit steps,
 which matches the working tree but NOT the committed hook"*, and a clean tree returns **0**. The
