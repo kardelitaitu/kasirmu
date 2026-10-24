@@ -181,9 +181,13 @@ step "shell registration" "python3 scripts/verify-shell-registration.py" python3
 step "shell registration self-test" "python3 scripts/verify-shell-registration.py --self-test" python3 scripts/verify-shell-registration.py --self-test
 
 # Classifies the scoped-reads finding list by whether the flagged module runs at all.
-# Informational by default -- a new DEAD finding is reported, not fatal, until the tree is
-# clean enough for the ratchet to bite (--strict is the switch).
-step "finding reachability" "python3 scripts/classify-finding-reachability.py" python3 scripts/classify-finding-reachability.py
+#
+# --strict since 2026-10-25 (round 156): the tree reached DEAD=0 when round 155 mounted
+# the email-reports screen, so the ratchet is armed. A finding whose module nothing in the
+# shipped bundle reaches now FAILS this step instead of being printed and ignored.
+# Proven before arming: planting an unmounted component that invokes a desktop-only
+# command made --strict exit 1, and deleting it returned 0.
+step "finding reachability" "python3 scripts/classify-finding-reachability.py --strict" python3 scripts/classify-finding-reachability.py --strict
 step "finding reachability self-test" "python3 scripts/classify-finding-reachability.py --self-test" python3 scripts/classify-finding-reachability.py --self-test
 
 # ── IPC session-token payload parity (round AE) ──────────────────────────

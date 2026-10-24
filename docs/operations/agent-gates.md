@@ -2675,9 +2675,27 @@ DEAD verdict into an instruction: DEAD with `desktop` means a missing MOUNT, DEA
 desktop-registered, so the email-report and machine-id components are unreachable through a
 missing mount rather than missing commands.
 
-**Exit codes**: the report always exits 0 (it is an inventory, not a verdict); `--self-test`
-exits 0/1; `--strict` exits 1 when anything is DEAD. The ratchet is off until the three are
-deleted or mounted, which is a product call, so the gate reports rather than blocks.
+**Exit codes**: the bare report exits 0 (it is an inventory, not a verdict); `--self-test`
+exits 0/1; `--strict` exits 1 when anything is DEAD.
+
+**The ratchet is ARMED (round 156).** When this file was written the tree carried three DEAD
+findings and the gate only reported. Round 154 deleted `MachineIdStatus` (dead since
+`20bb94c5c8` replaced it with `StatusBar`) and round 155 mounted `EmailReportSettings` (dead
+since `75eb83d7c5` rebuilt the settings nav), which took the count to zero, so `check.sh` now
+runs `--strict`.
+
+**Proven before arming, not assumed.** A ratchet nobody has seen fail is a green light that
+means nothing. Planting an unmounted component that invokes a desktop-only command made
+`--strict` exit 1 and named the file and line; deleting it returned 0. Both directions were
+measured before the switch was thrown.
+
+**A note on why the two deletions and the mount were the right calls, since they went in
+opposite directions.** `MachineIdStatus` had a shipped successor (`StatusBar`) and a hardcoded
+English string, so deleting it removed a surface nothing could reach. `EmailReportSettings` had
+a fully built backend (four commands registered at `desktop-tauri/src/lib.rs:1421-1424`), an API
+layer carrying an ADR #7 security fix, and 39 passing tests -- deleting it would have retired a
+shipped feature whose regression suite the project had been maintaining. The distinguishing
+question is not "is it mounted" but "was it replaced, or merely forgotten".
 
 > last audited 11-10-26 by docs-auditor
 
