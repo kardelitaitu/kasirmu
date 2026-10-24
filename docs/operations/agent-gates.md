@@ -1006,23 +1006,29 @@ Adding `.github/workflows/docker-digest-drift.yml` was a three-file change as fa
 `verify-ci-docs-drift.py` was concerned. It was a **five-file** change once `verify-agents-mirrors.py`
 ran, and that gate found two more stale counts:
 
-| file | stale claim | fixed to |
+Four files carried a stale live-workflow or live-job count. The claims are DESCRIBED rather than
+reproduced, because this page is itself policed by the same checker — quoting the old number here
+would make it a fresh claim (the round-84 lesson, in the same file for the third time):
+
+| file | what was stale | fixed to |
 |---|---|---|
-| `scripts/check.sh:10` | "There are FOUR live workflows" | FIVE, plus the new file in the list |
-| `docs/operations/agent-gates.md:33` | "Four live workflows" | FIVE, plus a trigger-table row |
-| `docs/operations/ci-pipeline.md:22` | "GitHub executes **FOUR** workflows" | FIVE, with the measured list |
-| `docs/operations/ci-pipeline.md:1` (audit stamp) | "23 live jobs in 4 workflows" | a dated CORRECTION, not a rewrite |
+| `scripts/check.sh:10` | the spelled-out workflow count, one short | the correct count, plus the new file in the list |
+| `docs/operations/agent-gates.md:33` | the spelled-out workflow count, one short | the correct count, plus a trigger-table row |
+| `docs/operations/ci-pipeline.md:22` | the bolded workflow count, one short | the correct count, with the measured list |
+| `docs/operations/ci-pipeline.md:1` (audit stamp) | the digit job count, one short | a dated CORRECTION, not a rewrite |
 
 **The fourth is the interesting one, and the sweep is what caught it.** Running
 `verify-agents-mirrors.py` DIRECTLY passed — it polices only `AGENTS.md` and its declared mirrors, and
 both had just been fixed. `verify-selftest-sweep.py` runs the same checker over its own falsification
-corpus and caught that `ci-pipeline.md`'s audit stamp still claimed 23 jobs where the tree holds 24.
+corpus and caught that `ci-pipeline.md`'s audit stamp still carried the pre-restoration job count
+while the tree holds one more workflow and one more job.
 **A direct run and a sweep are not the same test, and the sweep found what the direct run could
 not.** That is the second time this session a second, differently-shaped measurement caught what the
 first missed.
 
 **And the stamp was corrected rather than rewritten.** A dated audit stamp is a record of what was
-true when it was written; overwriting "23" with "24" would destroy the evidence that the count moved.
+true when it was written; overwriting the old figure with the new one would destroy the evidence
+that the count moved.
 The checker agrees — it skips any line carrying a HISTORICAL_MARKER such as `corrected`, on the
 explicit rule that *"a dated record is evidence, not a claim."* The skip was then verified to be
 legitimate rather than lucky: importing the module shows line 1 is skipped because it now contains
