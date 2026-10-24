@@ -984,6 +984,23 @@ def self_test() -> int:
         rc_jbad = grade_junit("<testsuites><not closed", source="<fixture>")
     expect("a truncated XML report is refused rather than read as clean", rc_jbad == 1)
 
+    # A MISSING REPORT. main() refuses it in words (added 2026-10-24: it used to raise
+    # FileNotFoundError, which exits 1 by accident rather than by decision). Grade the
+    # real entry point here -- in a temp dir this never writes to -- so the refusal
+    # cannot be deleted without reddening this case.
+    import tempfile
+    with tempfile.TemporaryDirectory() as _td:
+        absent = Path(_td) / "no-such-report.xml"
+        _buf = io.StringIO()
+        with redirect_stdout(_buf):
+            rc_jmissing = main(["--nextest-junit", str(absent)])
+        _out = _buf.getvalue()
+    expect("a missing report is REFUSED, not crashed on", rc_jmissing == 1)
+    expect("  ...and says in words that nothing was graded",
+           "no report at" in _out and "Nothing was graded" in _out)
+    expect("  ...and does not leak a python traceback into the verdict",
+           "Traceback" not in _out)
+
     print(f"\nself-test: {'PASS' if fails == 0 else f'FAIL ({fails})'}")
     return 0 if fails == 0 else 1
 
@@ -1018,6 +1035,25 @@ def main(argv: list[str] | None = None) -> int:
     if ns.nextest_junit:
         if ns.log:
             print("note  --nextest-junit takes precedence; --log was ignored")
+        # A MISSING REPORT MUST BE A REFUSAL, NOT A TRACEBACK. `read_text` on an absent
+        # path raises FileNotFoundError, which exits 1 -- the right DIRECTION, but by
+        # accident of Python's exception handling rather than by decision, and the reader
+        # gets a stdlib path instead of the sentence that says what went wrong. Measured
+        # 2026-10-24: `--nextest-junit target/mstmp/nope.xml` printed a FileNotFoundError
+        # traceback. The comment above the `else` branch already states the rule --
+        # "a missing report must not be able to read as a clean one" -- so the refusal
+        # belongs here too, in words, and with the two usual causes named.
+        if not ns.nextest_junit.is_file():
+            print("FAIL  JUNIT: no report at %s" % ns.nextest_junit)
+            print("      Nothing was graded. Either `cargo nextest` has not run since the",
+                  )
+            print("      artifact directory was cleaned, or it wrote its JUnit file",
+                  )
+            print("      somewhere else (the configured `path` resolves relative to the",
+                  )
+            print("      PROFILE's own artifact dir, not the workspace root).",
+                  )
+            return 1
         return grade_junit(ns.nextest_junit.read_text(encoding="utf-8", errors="replace"),
                            source=str(ns.nextest_junit))
 
