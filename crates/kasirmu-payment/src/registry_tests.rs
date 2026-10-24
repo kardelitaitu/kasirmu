@@ -211,7 +211,7 @@ async fn fallback_chain_does_not_reach_the_second_processor_after_a_decline() {
 
 /// A processor whose breaker is `Open` fails fast, and the chain moves on.
 ///
-/// **This is the design doc's §8 row 6** (`payment-resilience-design.md:222`),
+/// **This is the design doc's §8 row 6** (`docs/plans/_done/done-plan-payment-resilience-design.md:268`),
 /// marked *"**yes** — not wired at all"*. The wiring itself is §4's decision, but
 /// the row's *claim* is testable without it: a decorated member of a chain must
 /// not stop the chain when its breaker is open, or one unhealthy gateway takes the
@@ -298,7 +298,7 @@ async fn chain_escalates_past_a_processor_whose_breaker_is_open() {
 /// with no key tying the two together.
 ///
 /// The crate already states this rule for retries
-/// (`resilience.rs:293-298`, `payment-resilience-design.md:99`); this test
+/// (`resilience.rs:293-298`, `docs/plans/_done/done-plan-payment-resilience-design.md:99`); this test
 /// pins the same rule for *fall-through*, which is a different path to the
 /// same hazard.
 ///

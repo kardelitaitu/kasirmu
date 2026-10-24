@@ -140,7 +140,7 @@ impl PaymentProcessorRegistry {
     /// operation, and it decides whether a `Transient` failure may advance
     /// the chain. The reasoning is the one the crate already applies to
     /// retries in [`crate::resilience::ResilientProcessor`]
-    /// (`payment-resilience-design.md:99`):
+    /// (`docs/plans/_done/done-plan-payment-resilience-design.md:99`):
     ///
     /// > `ResilientProcessor` may retry a money-moving operation **only when
     /// > that operation carries a caller-supplied gateway key**.

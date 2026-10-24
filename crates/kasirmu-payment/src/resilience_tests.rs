@@ -160,7 +160,7 @@ impl PaymentProcessor for FlakyMockProcessor {
     }
 }
 
-/// **Amended 2026-09-25 under §2** (`payment-resilience-design.md:99`): this test
+/// **Amended 2026-09-25 under §2** (`docs/plans/_done/done-plan-payment-resilience-design.md:99`): this test
 /// used `idempotency_key: None` and asserted that a transient failure was retried
 /// until it succeeded. Under §2 that is not a retry but a **second charge** — the
 /// driver mints a fresh gateway key per attempt — so the case it described is now
@@ -289,7 +289,7 @@ async fn circuit_breaker_trips_and_fails_fast() {
 /// During `HalfOpen`, exactly one caller is admitted; the rest fail fast.
 ///
 /// **Red-first, per the design doc's §8 row *"concurrent callers during
-/// `HalfOpen`: exactly one probe"*** (`docs/plans/_active/payment-resilience-design.md:223`),
+/// `HalfOpen`: exactly one probe"*** (`docs/plans/_done/done-plan-payment-resilience-design.md:220`),
 /// which the doc marks as **failing today**.
 ///
 /// **The defect this pins.** `CircuitBreaker::allow_request` returns `Ok(())` for
@@ -389,7 +389,7 @@ async fn probe_success_closes_and_probe_failure_reopens() {
 /// A KEYLESS money-moving call is forwarded ONCE and the error surfaced.
 ///
 /// **Red-first, per the design doc's §8 row **"a keyless money-moving call is
-/// not retried"** (`docs/plans/_active/payment-resilience-design.md:217`), which
+/// not retried"** (`docs/plans/_done/done-plan-payment-resilience-design.md:262`), which
 /// the doc marks **failing today**. The rule the doc states at `:99`:
 ///
 /// > `ResilientProcessor` may retry a money-moving operation **only when that
@@ -483,7 +483,7 @@ async fn keyed_call_is_retried_and_the_driver_sees_one_key() {
 /// `capture` reaches the driver exactly ONCE even on a transient failure.
 ///
 /// **Red-first, per the design doc's §8 row *"`capture`/`void` are single-shot"***
-/// (`docs/plans/_active/payment-resilience-design.md:219`), marked **failing
+/// (`docs/plans/_done/done-plan-payment-resilience-design.md:265`), marked **failing
 /// today**.
 ///
 /// `capture` takes a bare `transaction_id` and has **no key parameter**, so a
@@ -553,7 +553,7 @@ async fn void_is_single_shot_even_on_a_transient_failure() {
 /// Two decorators built with one breaker TRIP TOGETHER.
 ///
 /// **Red-first, per the design doc's §8 row *"two decorators over one gateway
-/// share one breaker"*** (`docs/plans/_active/payment-resilience-design.md:221`),
+/// share one breaker"*** (`docs/plans/_done/done-plan-payment-resilience-design.md:266`),
 /// marked **failing today** — `with_config` built its own, so the doc's §4 says the
 /// API "actively prevents the right design" (`:161`). `with_shared_breaker` is that
 /// seam.

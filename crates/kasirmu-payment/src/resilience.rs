@@ -337,7 +337,7 @@ impl ResilientProcessor {
     /// Builds its OWN breaker. Two decorators made this way have two independent
     /// breakers even when they front the same gateway — use
     /// [`Self::with_shared_breaker`] when they must agree about that gateway's
-    /// health (design doc §3, `payment-resilience-design.md:125`).
+    /// health (design doc §3, `docs/plans/_done/done-plan-payment-resilience-design.md:127`).
     #[must_use]
     pub fn with_config(inner: Arc<dyn PaymentProcessor>, config: ResilientProcessorConfig) -> Self {
         let breaker = CircuitBreaker::new(config.failure_threshold, config.cooldown_duration);
@@ -408,7 +408,7 @@ impl ResilientProcessor {
 
     /// Run `operation` under the breaker, retrying **only when it is safe to**.
     ///
-    /// **§2's rule** (`docs/plans/_active/payment-resilience-design.md:99`):
+    /// **§2's rule** (`docs/plans/_done/done-plan-payment-resilience-design.md:99`):
     ///
     /// > `ResilientProcessor` may retry a money-moving operation **only when that
     /// > operation carries a caller-supplied gateway key**. With no key it forwards
@@ -547,7 +547,7 @@ impl PaymentProcessor for ResilientProcessor {
         // Single-shot: `capture` takes a bare `transaction_id` and has no key
         // parameter, so a retry after a timeout could capture twice. This REDUCES
         // the shipped behaviour and the reduction is intentional (§2.2's
-        // consequence, `payment-resilience-design.md:117`).
+        // consequence, `docs/plans/_done/done-plan-payment-resilience-design.md:118`).
         self.execute_with_resilience(RetryPolicy::SingleShot, || {
             self.inner.capture(transaction_id)
         })
