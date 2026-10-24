@@ -6,6 +6,29 @@ Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · F
 > Teeth, not history: the 7 pre-commit steps, their CI backstops, and the CSS blind spot.
 > For the statement of the rules themselves, read root `AGENTS.md`.
 
+## Which section to read when a gate surprises you
+
+Eleven sections below, added 2026-10-25 across rounds 136-167, each records ONE failure mode a
+gate itself had or could not see. They are not variations on a theme -- the mechanisms differ,
+which is why they are separate -- but the entry point should not require reading all eleven.
+
+| If this happened | Read |
+|---|---|
+| A grep says a name is unused, or used | "The UI calls it" needs three filters |
+| Two things that should differ look identical | Sameness is a comparison |
+| Tests pass but the feature never runs | A hook with no mount passes every test it has |
+| An allowlist is red and you want to widen it | A hand-kept baseline only rots where someone looks |
+| A gate reports the same number for many rounds | A guard the walk cannot see is not a gap, and the count is not the score |
+| You need to know whether flagged code can execute | The question the gate cannot ask: can it run? |
+| Two gates disagree about the same call | Two reachability gates, two different questions |
+| A comment cites a file or line that is wrong | A note that names a file that does not exist |
+| A test fails once and passes on re-run | A leaked mock is real; a grep for one is not a diagnosis |
+| A test suite is green about unopenable code | Green tests on code nobody can open |
+| You are about to build a new measurement | The unrequested-command report already exists |
+
+> If your situation is not in this table, the answer is probably "run `scripts/check.sh` and read
+> its output" -- 140 gates are declared and several already report what you are about to derive.
+
 ## The 7 pre-commit steps (source: `.githooks/pre-commit`)
 
 1. **Line-ending normalization** — strips CR from staged text files (working tree + index). Skips `*.bat`/`*.cmd` (working tree stays CRLF for cmd.exe) and real binaries. CI stand-in only: `dev-ci.yml` runs `scripts/test-eol-guard.sh` (a fixture self-test, not a live CRLF check).
@@ -2653,7 +2676,7 @@ was 'proved' reachable via `formatBytes`, a formatter in the same file that has 
 with the restore calls.
 
 Comments are blanked before matching, because every false reference in round 151 was prose:
-`SecurityAccountScreen.tsx:33` names `EmailReportSettings` in a sentence explaining it is
+`ui/src/features/settings/screens/SecurityAccountScreen.tsx:33` names `EmailReportSettings` in a sentence explaining it is
 orphaned, and a plain grep reads that as a consumer.
 
 **Result on the tree**: 20 findings -- 17 REACHABLE, 3 DEAD. The three DEAD ones
@@ -2695,7 +2718,8 @@ module, or a module reached only through a chain of itself-unreachable modules -
 
 ## A note that names a file that does not exist is worse than no note
 
-Round 162. Two archive banners (`products/register.tsx:20`, `ProductManagementScreen.tsx:2`) said the
+Round 162. Two archive banners (`ui/src/features/products/register.tsx:20`,
+`ui/src/features/products/ProductManagementScreen.tsx:2`) said the
 screen was "replaced by WarehouseScreen (features/warehouse/)". `git ls-files
 'ui/src/features/**/WarehouseScreen*'` returns nothing. The successor is `WarehouseConsole.tsx`,
 registered at route `warehouse`.
