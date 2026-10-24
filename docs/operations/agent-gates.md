@@ -999,6 +999,42 @@ docstrings record a past bug and which no case ever called:
 docstring would make the suite red on a tree that is green, and "fixing" the code is a behaviour
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
+#### Chasing one blind spot class, and the two probes that over-reported it (round 116)
+
+Last round's ADR-index defect was structural: a checker whose corpus is built *from the list it
+validates* cannot see a missing member. This round looked for siblings of that shape, and found
+**one real instance** — along with two of my own probes that cried wolf first.
+
+**The real one: `check-rust-doc-paths.py` had no corpus floor.** Its corpus is a `rglob('*.rs')`
+over seven hardcoded top-level directories, and with all seven absent it printed
+`clean - 0 .rs file(s) scanned` and **exited 0**. Proved by construction, not by reading: retarget
+`ROOT` at an empty temp directory and `main()` returned 0 with that line. A renamed `crates/`,
+a broken `ROOT`, or a moved tree would have produced a clean bill of health over zero Rust files.
+
+Fixed with a `MIN_RUST_FILES = 500` floor (a real tree holds ~1430), hoisted to module scope so
+three new self-test cases can grade the guard itself — because the refusal branch is unreachable
+from a normal run, and an ungraded guard is exactly what this file keeps recording. Verified all
+three behaviours: live run green at 1430 files, `--self-test` 18/18, and an empty `ROOT` gives
+**exit 2 with a refusal** where it used to give exit 0.
+
+**Probe 1 over-reported 25 checkers with "no visible zero-guard".** The filter looked for a printed
+count and found 11 of 36 glob-driven checkers printing one. Re-checking the other 25 against a wider
+guard vocabulary (`MIN_*`, `FLOOR`, `refus`, `== 0`, `no … found`, `empty`) moved **all 25** into
+the guarded set. The first number was an artefact of a regex, not a finding.
+
+**Probe 2 was the round-112 failure mode again, in a new place.** A `for … in (rows|entries|records)`
+scan suggested seven checkers build their corpus from a parsed list. Reading two of them showed the
+opposite: `verify-namespace-governance.py` explicitly returns an `unclassified` bucket described as
+*"an impl with no registry row"*, and `verify-test-shadow-copies.py` carries a self-test case
+asserting *"an empty production tree must be loud"*. **Both already had the other half of the
+census** — they were the pattern done right, and a loop-shape grep cannot tell the two apart.
+
+**What actually generalises.** Of the shapes examined, the ones that were already correct share one
+property: they enumerate the corpus from the *filesystem* and join it against the registry, so a
+missing row surfaces as `unclassified`/`retired`. The one that was wrong built its map *from* the
+rows. That is the discriminator worth grepping for in future — **which side of the join is
+enumerated** — and it is not visible in a loop shape, only in what the loop iterates.
+
 #### A census that can only see what it is given (round 115)
 
 `check-adr-status.py` grades the ADR index in `docs/decisions/README.md` against the files those
