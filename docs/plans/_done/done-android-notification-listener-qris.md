@@ -309,4 +309,4 @@ In a busy store, two customers might pay similar amounts within the same minute.
 | **Phase 3** | Tauri IPC & Event Bridge | Rust Tauri commands: `get_listener_status`, `open_notification_settings`, and `qris://payment-received` event emitter. |
 | **Phase 4** | POS UI Integration | `PaymentModal.tsx` automated QRIS listener hook and transaction status updater. |
 
-> last audited 11-10-26 by docs-auditor
+> last audited 23-10-26 by docs-auditor

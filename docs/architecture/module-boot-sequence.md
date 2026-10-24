@@ -5,8 +5,8 @@
 
 
 <!-- Historical scope: written at Phase 2, and the body below still describes that state. Phase 4 has
-     since landed (namespace governance runs `--strict` in `scripts/check.sh:708`; capability parity at
-     `:731`), so read the Phase-2 markers as the snapshot they are. Corrected 2026-10-08: the `raw()`
+     since landed (namespace governance runs `--strict` in `scripts/check.sh:745`; capability parity at
+     `:768`), so read the Phase-2 markers as the snapshot they are. Corrected 2026-10-08: the `raw()`
      bullet is now past tense, matching the removal the next paragraph already recorded. -->
 
 <!-- Re-verified 11-10-26: every line anchor above was re-read at HEAD and ELEVEN had drifted
