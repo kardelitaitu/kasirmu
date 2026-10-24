@@ -7,15 +7,21 @@
 # lint-i18n — and it never calls check.sh. So a red pre-push is not a failure of
 # this matrix, and a green push does not mean these steps ran.
 # Nothing here mirrors .github/workflows/ci.yml either: that workflow was
-# retired to ci.yml.bak in 23c96330. There are FOUR live workflows, not two, and
+# retired to ci.yml.bak in 23c96330. There are FIVE live workflows, not two, and
 # this line said "two" for months after the other two were reinstated:
 #   dev-ci.yml    PRs and pushes to main
 #   release.yml   v* tags
 #   android.yml   restored by a9dca0610
 #   website.yml   marketing site deploy
+#   docker-digest-drift.yml  restored 54d877434, advisory issue-opener
 # Count them rather than trust this comment:
 #   ls .github/workflows/*.yml
-# See docs/operations/ci-pipeline.md, which has said four throughout.
+# See docs/operations/ci-pipeline.md, which now says five throughout.
+# NOTE for whoever adds the next workflow: this comment AND the matching line in
+# docs/operations/agent-gates.md are both policed by verify-agents-mirrors.py,
+# which fails on a live workflow the docs do not count. Restoring the digest-drift
+# workflow (54d877434) turned that gate red in exactly two places until both were
+# updated -- the same two-file rule this repo records for check.sh and gates.json.
 #
 # Usage:  bash scripts/check.sh
 #         (run from the workspace root)

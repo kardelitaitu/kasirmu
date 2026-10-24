@@ -30,7 +30,7 @@ Amended 2026-10-08 (`a9837a2ec`): in pre-push, the workspace-wide `cargo fmt --a
 
 ## What CI actually runs
 
-Four live workflows — re-derive with `ls .github/workflows/*.yml`, never quote this list:
+Five live workflows — re-derive with `ls .github/workflows/*.yml`, never quote this list:
 
 | Workflow | Triggers |
 |---|---|
@@ -38,6 +38,7 @@ Four live workflows — re-derive with `ls .github/workflows/*.yml`, never quote
 | `release.yml` | `push` on `v*` tags (desktop-only) |
 | `android.yml` | `push` on `v*` tags, `workflow_dispatch` — no PR trigger |
 | `website.yml` | `push` to `main` filtered to `website/**`, `prototypes/**`, `scripts/wrangler-deploy.sh` and the workflow file itself, plus `workflow_dispatch` |
+| `docker-digest-drift.yml` | `schedule` (Monday 05:00 UTC), `workflow_dispatch` — advisory: it **opens an issue** on pin drift rather than failing a branch, because the pinned images use moving tags and drift is expected. Restored 2026-10-24 (`54d877434`) after seven pins rotted for two months with nothing alerting |
 
 Everything else lives in `.github/workflows/attic/` as inert `.bak`. A push to `main` runs CI, deploys the backend (`northflank-deploy`) and deploys the site; a push to a non-`main` branch runs nothing.
 `dev-ci.yml` jobs (18): `changes`, `website`, `rust-fmt`, `cargo-check`, `cargo-clippy`, `rust-doc`, `fuzz-typecheck`, `coverage-floors`, `cargo-nextest`, `release-bridge-test` (push-only, desktop bridge tests in release profile), `ui-test`, `i18n`, `ci-docs-drift`, `static-gates`, `go-gate`, `ipc-parity`, `release-readiness`, `northflank-deploy`.
