@@ -41,14 +41,30 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SCRIPT_DIR = ROOT / "scripts"
-CHECKER_RE = re.compile(r"^(?:verify|check)-[A-Za-z0-9_-]+\.(?:py|mjs)$")
+# THREE DIRECTORIES, THREE EXTENSIONS. Measured 2026-10-24: the sweep covered
+# scripts/*.{py,mjs} only -- 65 checkers -- while 24 MORE declared the same flag and
+# were never run by it: 7 .sh checkers beside the .py ones, 6 in website/scripts and
+# 11 in .agents/skills/docs-auditor/scripts. Its own docstring opens with "run EVERY
+# checker's self-test, in one roster", and the roster was a third of the tree. All 24
+# passed when run by hand first, so widening it closed a coverage hole without
+# reddening anything -- which is the only order that makes a widened scope honest.
+CHECKER_DIRS = (
+    ROOT / "scripts",
+    ROOT / "website" / "scripts",
+    ROOT / ".agents" / "skills" / "docs-auditor" / "scripts",
+)
+CHECKER_RE = re.compile(r"^(?:verify|check)-[A-Za-z0-9_-]+\.(?:py|mjs|sh)$")
 DECLARES_RE = re.compile(r"""["']--self-test["']""")
 
 
 def checkers() -> list[Path]:
-    return sorted(p for p in SCRIPT_DIR.iterdir()
-                  if p.is_file() and CHECKER_RE.match(p.name))
+    out: list[Path] = []
+    for base in CHECKER_DIRS:
+        if not base.is_dir():
+            continue
+        out.extend(p for p in base.iterdir()
+                   if p.is_file() and CHECKER_RE.match(p.name))
+    return sorted(out)
 
 
 def declares_selftest(path: Path) -> bool:
@@ -58,8 +74,23 @@ def declares_selftest(path: Path) -> bool:
         return False
 
 
+#: Bare "bash" resolves to WSL on this workstation, which cannot see the Windows tree
+#: and exits 127 -- a self-test that never ran, reported as a case failure. Git's bash
+#: by full path is the documented rule (AGENTS.md section 5).
+GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
+
+
+def _interpreter(path: Path) -> list[str]:
+    """The command prefix for a checker, by extension."""
+    if path.suffix == ".py":
+        return ["python3", str(path)]
+    if path.suffix == ".mjs":
+        return ["node", str(path)]
+    return [GIT_BASH, str(path)]
+
+
 def run(path: Path) -> tuple[int, str]:
-    cmd = (["python3", str(path)] if path.suffix == ".py" else ["node", str(path)])
+    cmd = _interpreter(path)
     cmd.append("--self-test")
     try:
         r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True,
