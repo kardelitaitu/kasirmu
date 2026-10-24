@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useImperativeHandle, useMemo, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type RefObject } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import {
   listRolesScoped,
@@ -353,11 +353,21 @@ function RoleAuthoringPanel({ active, handleRef, onRolesChanged }: RoleAuthoring
     });
   };
 
+  // Re-entry guard. `saving` is React state and commits on the NEXT render, so the second
+  // dispatch of a real double tap still enters this handler. On the New-role path the replay
+  // is refused by `roles.name` UNIQUE (20260813_init.sql:573), and the catch surfaces the
+  // backend's own message -- in the second dispatch the name is now taken, so the operator
+  // reads "a role with that name already exists" about the role the first tap just created.
+  // Taken after the sentinel check, which returns before the `try`.
+  const savePendingRef = useRef(false);
+
   const save = async () => {
     // `editingId === ''` is the create sentinel, so a truthiness test here
     // silently no-ops the New-role path — the editor opens, Save looks
     // pressed, and nothing is sent. Only `null` means "not editing".
     if (!sessionToken || editingId === null) return;
+    if (savePendingRef.current) return;
+    savePendingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -376,6 +386,7 @@ function RoleAuthoringPanel({ active, handleRef, onRolesChanged }: RoleAuthoring
       // name); surfacing its message beats guessing one here.
       setError(l10nErrorMessage(e, l10n));
     } finally {
+      savePendingRef.current = false;
       setSaving(false);
     }
   };
