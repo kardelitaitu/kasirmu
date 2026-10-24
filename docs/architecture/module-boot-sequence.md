@@ -91,7 +91,7 @@ Immediately after the sort, and **before any `on_load` runs**, `load_all` calls
 fail-fast point: a module that declared a required capability it was not granted
 stops the boot with `KernelError::MissingCapability { module, missing }` naming
 both. Because the check runs before the loop
-(`platform/kernel/src/kernel/lifecycle.rs:313`), a half-loaded system never exists.
+(`KernelContext::new` at `platform/kernel/src/kernel/lifecycle.rs:313`), a half-loaded system never exists.
 An empty registry is not an error; a module that declares nothing is simply
 unconstrained (the legacy path, §7).
 

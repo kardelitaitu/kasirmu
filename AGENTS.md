@@ -59,7 +59,7 @@
 <!- - Correction 2026-10-19 (docs-auditor): the 2026-10-11 audit above reported §4
      "ACCURATE" on the strength of twelve spellings "each traced to its reader". That
      trace was not performed for the deploy half, and those six names have NO reader in
-     this repository: `scripts/wrangler-deploy.sh:52-53` reads the bare
+     this repository: `scripts/wrangler-deploy.sh:52-53` (the `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` defaults) reads the bare
      CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID and exits 1 without them (:67-70);
      `git grep -n 'KASIRMU_CLOUDFLARE_API_TOKEN|KASIRMU_NORTHFLANK_API_TOKEN' --
      scripts apps .github website` returns nothing. The R2 triple and

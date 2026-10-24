@@ -115,7 +115,7 @@ cargo run -p kasirmu-cli -- init-db
 > `crates/kasirmu-cli/src/seed_demo.rs:64`) with `--retail` / `--restaurant` / `--all` / <!-- dead-ref: ok: verified 2026-10-19; cites run_seed_demo's definition at :64 exactly; the flag branch is :81 -->
 > `--days <n>` (`cli.rs:99-112`), and `seed` for default settings and feature flags
 > (`cli.rs:39`). **Coordinates re-verified 11-10-26:** the `SeedDemo` variant is at
-> `cli.rs:99` (not `:95`), its dispatch is `crates/kasirmu-cli/src/commands/mod.rs:183`
+> `cli.rs:99` (not `:95`), its dispatch is `run_seed_demo` at `crates/kasirmu-cli/src/commands/mod.rs:183`
 > (not `:90`, which is now the credential-deltas `open_db` guard), and `SeedDemoArgs` spans
 > `cli.rs:112-124` with `--days` defaulting to 90. The binary is `kasir`, not `oz`. The
 > commands above were correct and are unchanged.

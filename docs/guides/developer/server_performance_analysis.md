@@ -413,7 +413,7 @@ Same base memory + larger PG pool (~100 MB for 50 connections) + larger snapshot
 |------|---|-------------|-----------|----------------|--------|
 | [x] | 1 | Remove duplicate gzip | ~0.01 core | +20 | `main.rs:691` — removed `CompressionLayer`, Caddy handles it |
 | [x] | 2 | Extend snapshot cache TTL | ~0.01 core | +40 | `sync_api.rs:519` — 300s → 900s (15 min) |
-| [x] | 3 | JWT token caching | ~0.005 core | +20 | `crates/kasirmu-api/src/auth.rs:35` — `RwLock<HashMap\>` with 60s TTL, skips HMAC + base64 on hot paths |
+| [x] | 3 | JWT token caching | ~0.005 core | +20 | `DEFAULT_EXPIRY_HOURS` at `crates/kasirmu-api/src/auth.rs:35` — `RwLock<HashMap\>` with 60s TTL, skips HMAC + base64 on hot paths |
 | [x] | 4 | Skip UUID validation | ~0.02 core | +80 | `sync_api.rs:193` — `OZ_SKIP_PUSH_VALIDATION=1` env var, saves ~5µs × 20 items × 200 pushes/sec |
 | [x] | 5 | Reduce snapshot payload | ~0.005 core | +20 | `sync_store.rs` — omit null optional fields from JSON, saves ~30% payload |
 | [x] | 6 | Batch snapshot queries | ~0.002 core | +8 | `sync_store.rs:snapshot_all()` — 1 transaction instead of 3, saves 3 round-trips |

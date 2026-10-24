@@ -245,7 +245,7 @@ users with the owner excluded.
 
 \*\* Sales history cap — **enforced in BOTH clients**, and the mechanism is shared rather
 than duplicated per shell. `list_sales_scoped` in both shells
-(`apps/desktop-tauri/src/commands/history.rs:36`, `apps/mobile-tauri/src/commands/history.rs:298`)
+(`list_sales_scoped` at `apps/desktop-tauri/src/commands/history.rs:36`, `apps/mobile-tauri/src/commands/history.rs:298`)
 applies it: the tier window is read from the
 tenant subscription **after signature verification** and applied by
 `list_sales_with_history_cap_bounded(days, limit, offset)`, which returns the rows plus a

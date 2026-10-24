@@ -52,7 +52,7 @@ deployment, by design:
 - it serves **one store's database at a time** — by default the
   **primary store**, the same `store-{id}.sqlite` file the register
   reads (resolved via `locations.is_primary` in the **global** DB — `primary_store_id()`
-  at `crates/kasirmu-local-api/src/lib.rs:126` (the query is at `:129`) runs
+  at `primary_store_id` (`crates/kasirmu-local-api/src/lib.rs:126`; the query is at `:129`) runs
   `SELECT id FROM locations WHERE is_primary = 1 LIMIT 1`); multi-store
   installs can switch the served store in the same Settings panel
   (restarts the server against the new file). Scripts see exactly what
