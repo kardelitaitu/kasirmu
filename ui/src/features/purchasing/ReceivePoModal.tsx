@@ -31,6 +31,8 @@ export default function ReceivePoModal({ po, sessionToken, onClose, onReceived }
   });
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
+  /** Synchronous mirror of `saving` — see the re-entry guard in `handleSubmit`. */
+  const savingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
   useFocusTrap(panelRef, !saving, onClose);
@@ -41,6 +43,15 @@ export default function ReceivePoModal({ po, sessionToken, onClose, onReceived }
   });
 
   const handleSubmit = useCallback(async () => {
+    // Re-entry guard. The Confirm Receipt button shows a loading spinner but is not
+    // disabled, so two taps inside one tick both pass `saving === false`. The replay is
+    // NOT idempotent here, and it fails badly:
+    //   - receivePurchaseOrderScoped refuses it (only an 'approved' PO can be received),
+    //     so the catch reports po-error-receive over a receipt that landed;
+    //   - on the On-Account path the FIRST call already created the payable, so the
+    //     operator is told the receipt failed while a debt against the supplier exists.
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -65,6 +76,7 @@ export default function ReceivePoModal({ po, sessionToken, onClose, onReceived }
     } catch {
       setError(requiredLocalized(l10n, 'po-error-receive'));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }, [sessionToken, po, paymentTerm, invoiceRef, dueDate, note, currency, onReceived, onClose, l10n]);

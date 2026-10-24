@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithFluent } from '@/__tests__/test-utils/render';
 import purchasingFtl from '@/locales/purchasing.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
@@ -136,6 +136,36 @@ describe('ReceivePoModal', () => {
       );
       expect(onReceived).toHaveBeenCalled();
       expect(onClose).toHaveBeenCalled();
+    });
+  });
+
+  it('receives and books the payable once when Confirm Receipt is double-tapped', async () => {
+    // The replay is refused by the backend (only an 'approved' PO is receivable) and
+    // lands in the catch as po-error-receive — an error over a receipt that worked.
+    // Worse on the On-Account path: the first call already created the payable, so the
+    // operator is told the receipt failed while a supplier debt exists.
+    await renderWithFluent(
+      <ReceivePoModal
+        po={samplePo}
+        sessionToken="tok-test"
+        onClose={vi.fn()}
+        onReceived={vi.fn()}
+      />,
+      purchasingFtl,
+      sharedFtl,
+    );
+
+    fireEvent.click(screen.getByRole('radio', { name: /On Account \(Beli Tempo\)/i }));
+
+    const confirmBtn = screen.getByRole('button', { name: /Confirm Receipt/i });
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+      fireEvent.click(confirmBtn);
+    });
+
+    await waitFor(() => {
+      expect(purchasingApi.receivePurchaseOrderScoped).toHaveBeenCalledTimes(1);
+      expect(payablesApi.createPayableScoped).toHaveBeenCalledTimes(1);
     });
   });
 });
