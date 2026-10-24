@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useLocalization } from '@fluent/react';
 import { Localized } from '@/components/Localized';
 import {
@@ -217,6 +217,14 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
 
   // ── Void handler ────────────────────────────────────────────────
 
+  // Re-entry guard. `voiding` is React state and commits on the NEXT render, so the second
+  // dispatch of a real double tap still enters this handler. `void_sale` is a compare-and-set
+  // (`WHERE id = ?2 AND status = 'active'`, rows == 0 -> Conflict, sales_lifecycle.rs:903-914),
+  // so the replay is REFUSED -- and the catch reports `void-orders-error-void`, i.e. "failed to
+  // void" over a sale that was voided. Taken AFTER the reason validation above, which returns
+  // before the `finally` that clears the flag.
+  const voidPendingRef = useRef(false);
+
   const handleVoid = useCallback(async () => {
     if (!activeSaleId || !detail) return;
 
@@ -226,6 +234,8 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
       return;
     }
 
+    if (voidPendingRef.current) return;
+    voidPendingRef.current = true;
     setVoiding(true);
     setVoidError(null);
     setVoidSuccess(null);
@@ -245,6 +255,7 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
     } catch (err) {
       setVoidError(l10nErrorMessage(err, l10n, 'void-orders-error-void'));
     } finally {
+      voidPendingRef.current = false;
       setVoiding(false);
     }
     // sessionToken is read by the voidSaleScoped call above and was missing from these deps;

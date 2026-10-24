@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluent } from '@/__tests__/test-utils/render';
 import salesFtl from '@/locales/sales.ftl?raw';
@@ -193,6 +193,51 @@ describe('VoidOrdersScreen', () => {
       const confirmBtn = screen.getByRole('button', { name: /confirm void/i });
       expect(confirmBtn).toBeDisabled();
     });
+  });
+
+  it('voids a sale once for a double click while the first is in flight', async () => {
+    // `void_sale` is a compare-and-set (`WHERE id = ?2 AND status = 'active'`,
+    // sales_lifecycle.rs:903-914), so the replay is REFUSED -- and the catch reports
+    // `void-orders-error-void`, telling the cashier the void failed over a sale that was
+    // voided. Worse on this screen: the sale is GONE from the active list, so they cannot
+    // tell whether the first tap worked.
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    let releaseVoid: ((v: unknown) => void) | undefined;
+    mockVoidSale.mockImplementation(
+      () => new Promise((resolve) => { releaseVoid = resolve; }),
+    );
+    const user = userEvent.setup();
+
+    await renderWithFluent(<VoidOrdersScreen />, salesFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getByText(/ORD-001/)).toBeInTheDocument();
+    });
+
+    await user.click(screen.getAllByRole('button', { name: /^view/i })[0]!);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^cancel$/i })).toBeInTheDocument();
+    });
+    await user.selectOptions(screen.getByDisplayValue(/Select a reason/i), 'cancelled-by-customer');
+
+    const confirmBtn = screen.getByRole('button', { name: /confirm void/i }) as HTMLButtonElement;
+    // fireEvent inside one act(), not two user.click()s: userEvent awaits its own act(),
+    // which flushes the pending chain so the first void would have settled and the clicks
+    // would never overlap. The disabled flag React set is dropped for the second click so
+    // the atomic guard is what is measured, not the DOM.
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+      confirmBtn.removeAttribute('disabled');
+      fireEvent.click(confirmBtn);
+    });
+
+    expect(
+      mockVoidSale.mock.calls.length,
+      'a double click on Confirm Void sent the void twice; the CAS refuses the replay and ' +
+        'the operator is told the void failed over a sale that was voided',
+    ).toBe(1);
+
+    releaseVoid?.({});
   });
 
   it('calls voidSale when Confirm Void is clicked with a reason', async () => {
