@@ -160,6 +160,13 @@ const mockGetPaymentMethodBreakdown = vi.fn(() => Promise.resolve([
   { payment_method: 'cash', total_minor: 600000, sale_count: 30 },
   { payment_method: 'card', total_minor: 900000, sale_count: 45 },
 ]));
+// The COLLECTION side of the same period. Required since `piutang-collections`
+// joined the retail grid: an unmocked loader returns `undefined`, and the card's
+// data hook calls `.then` on it, which crashes the whole screen for every case in
+// this file rather than just the new card's.
+const mockGetPiutangCollections = vi.fn(() => Promise.resolve([
+  { payment_method: 'cash', currency: 'USD', total_minor: 125000, payment_count: 4 },
+]));
 const mockGetDiscountsSummary = vi.fn(() => Promise.resolve({
   sale_count: 100, discounted_sale_count: 12, share_percent: 12.5,
   codes: [{ label: 'WELCOME10', redeemed_count: 8 }, { label: 'HAPPYHOUR', redeemed_count: 4 }],
@@ -237,6 +244,7 @@ vi.mock('@/api/reports', () => ({
   getBasketSizeTrend: (startDate: string, endDate: string, token: string) => mockGetBasketSizeTrend(startDate, endDate, token),
   getCustomerSplit: () => mockGetCustomerSplit(),
   getPaymentMethodBreakdown: () => mockGetPaymentMethodBreakdown(),
+  getPiutangCollections: () => mockGetPiutangCollections(),
   getDiscountsSummary: () => mockGetDiscountsSummary(),
   getVoidedSalesSummary: () => mockGetVoidedSalesSummary(),
   getVoidedItems: () => mockGetVoidedItems(),
@@ -507,8 +515,9 @@ describe('AnalyticsScreen layout shell', () => {
   it('shows the view status bar with card count and workspace', () => {
     renderWithFluentSync(<AnalyticsScreen />, analyticsFtl, sharedFtl, reportsFtl);
 
-    expect(screen.getByText('13 cards')).toBeTruthy();
-    // Status shows workspace · granularity (scoped to the status bar)
+    // 14, not 13: `piutang-collections` joined the retail grid (decision Q1's
+    // collection-day line). Retail-only, so the restaurant count is unchanged.
+    expect(screen.getByText('14 cards')).toBeTruthy();    // Status shows workspace · granularity (scoped to the status bar)
     const status = document.querySelector('.analytics-status');
     expect(status?.textContent).toContain('Retail');
     expect(status?.textContent).toContain('Weekly');

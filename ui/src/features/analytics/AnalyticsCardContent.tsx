@@ -24,6 +24,7 @@ import { InventoryCard } from './cards/InventoryCard';
 import { LowStockCard } from './cards/LowStockCard';
 import { OccupancyCard } from './cards/OccupancyCard';
 import { PaymentsCard } from './cards/PaymentsCard';
+import { PiutangCollectionsCard } from './cards/PiutangCollectionsCard';
 import { RefundsCard } from './cards/RefundsCard';
 import { RevenueCard } from './cards/RevenueCard';
 import { StaffCard } from './cards/StaffCard';
@@ -75,6 +76,7 @@ export function AnalyticsCardContent({
     case 'staff': return <StaffCard q={q} title={title} expanded={expanded} compare={compare} />;
     case 'customers': return <CustomersCard q={q} title={title} expanded={expanded} compare={compare} />;
     case 'payments': return <PaymentsCard q={q} title={title} expanded={expanded} compare={compare} />;
+    case 'piutang-collections': return <PiutangCollectionsCard q={q} title={title} expanded={expanded} compare={compare} />;
     case 'discounts': return <DiscountsCard q={q} title={title} expanded={expanded} compare={compare} />;
     case 'refunds': return <RefundsCard q={q} compare={compare} />;
     case 'top-items': return <TopItemsCard q={q} title={title} expanded={expanded} compare={compare} />;

@@ -93,6 +93,8 @@ const ANALYTICS_CARDS: AnalyticsCard[] = [
   { key: 'payments',  workspace: null,         titleKey: 'analytics-card-payments',   title: 'Payment Methods', descKey: 'analytics-card-desc-payments' },
   { key: 'discounts', workspace: null,         titleKey: 'analytics-card-discounts',  title: 'Discounts & Promotions', descKey: 'analytics-card-desc-discounts' },
   { key: 'refunds',   workspace: null,         titleKey: 'analytics-card-refunds',    title: 'Refunds & Voids', descKey: 'analytics-card-desc-refunds' },
+  // Retail-only: piutang is a retail ruling (payment-methods-plan §1.5).
+  { key: 'piutang-collections', workspace: 'retail', titleKey: 'analytics-card-piutang', title: 'Piutang Collections', descKey: 'analytics-card-desc-piutang' },
   // Retail-only
   { key: 'top-items', workspace: 'retail',     titleKey: 'analytics-card-top-products', title: 'Top Products', descKey: 'analytics-card-desc-top-products' },
   { key: 'category',  workspace: 'retail',     titleKey: 'analytics-card-category',   title: 'Sales by Category', descKey: 'analytics-card-desc-category' },

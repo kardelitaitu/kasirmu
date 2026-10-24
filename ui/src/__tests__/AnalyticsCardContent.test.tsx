@@ -45,6 +45,11 @@ vi.mock('@fluent/react', () => ({
           'analytics-card-error-load': 'Failed to load',
           'analytics-card-empty': 'No data',
           'analytics-empty-generic': 'No data available',
+          'analytics-card-payments-cash': 'Cash',
+          'analytics-card-payments-card': 'Card',
+          'analytics-card-payments-qris': 'QRIS',
+          'analytics-card-payments-ewallet': 'E-wallet',
+          'analytics-card-piutang-total': 'Collected from customer credit',
         };
         return map[id] || id;
       },
@@ -114,6 +119,29 @@ describe('AnalyticsCardContent', () => {
     expect(screen.getByTestId('echarts')).toBeInTheDocument();
   });
 
+  // DECISION Q1's collection line, as a card. The `payments` card reports what was
+  // SOLD and excludes `pay_later`; a day whose only takings were repayments is
+  // invisible there and must be visible here. This case renders the collection side
+  // and asserts the tender names AND the money, so a card wired to the wrong
+  // endpoint (the breakdown) would fail on content, not just on the command name.
+  it('renders the piutang collections card with tender rows', () => {
+    mockUseAnalyticsQuery.mockReturnValue({
+      data: [
+        { payment_method: 'cash', currency: 'IDR', total_minor: 12500000, payment_count: 23 },
+        { payment_method: 'bank_transfer', currency: 'IDR', total_minor: 8700000, payment_count: 9 },
+      ],
+      isLoading: false,
+      error: null,
+    });
+    render(<AnalyticsCardContent {...baseProps} cardKey="piutang-collections" />);
+    // The tender names resolve through PAYMENT_NAMES; bank_transfer has no entry
+    // and falls back to its raw code, which is the honest label.
+    expect(screen.getByText('Cash')).toBeInTheDocument();
+    expect(screen.getByText('bank_transfer')).toBeInTheDocument();
+    // REP-06: the total is per currency, and 21,200,000 IDR minor units must appear
+    // as money rather than as a bare number.
+    expect(screen.getByText(/21,200,000|21\.200\.000/)).toBeInTheDocument();
+  });
   it('renders customers card with data', () => {
     mockUseAnalyticsQuery.mockReturnValue({
       data: { new_count: 25, returning_count: 125, total_spend_minor: 50000 },
