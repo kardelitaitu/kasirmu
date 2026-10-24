@@ -610,6 +610,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The guide hreflang rule accepts a one-sided pair](findings/2026-10-23-guide-pairing-one-sided.md) | — |
 | general | [Seven pinned base-image digests have drifted, unnoticed](findings/2026-10-23-seven-pins-drifted.md) | — |
 | general | [kasirmu-core exceeded its size ceiling, from another lane's committed work](findings/2026-10-24-kasirmu-core-over-size-ceiling.md) | — |
+| general | [Six shipped plans still sit in docs/plans/_active/, and nothing grades it](findings/2026-10-24-shipped-plans-still-active.md) | — |
 | ui | [The tablet shell registers 27 fewer IPC commands than the shared UI calls](findings/2026-10-24-tablet-shell-registers-27-fewer-commands.md) | — |
 | general | [Audit Closed Findings — Archive](findings/audit-closed-findings.md) | — |
 | general | [Audit Open Findings — Consolidated](findings/audit-open-findings.md) | — |
