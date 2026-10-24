@@ -2611,8 +2611,58 @@ chain once per cluster, as above.
 
 **The general rule.** A stable red number is a claim that has stopped being tested. When a
 gate reports the same count for many rounds, audit the gate before the tree: this one had
-a direction-specific blind spot that its own self-test could not reach, because the test
-covered one spelling of a two-spelling idiom.
+
+## The question the gate cannot ask: can it run?
+
+Measured 2026-10-25, round 152. `verify-scoped-reads.py` answers one question exactly -- does
+this call site sit inside a guard the walk can see -- and it answers it well. It cannot answer
+the question an operator actually has: **is this code reachable at all?**
+
+By round 151 the tablet list held 24 findings, and they were three different things wearing
+the same label:
+
+| Kind | Example | What it is |
+|---|---|---|
+| a live defect | `open_product_images_scoped` in `RetailPosScreen` | threw on every tap |
+| a guard the walk can't see | `useRestore`'s `isAvailable` | correct, just not syntactically a block |
+| unreachable on BOTH shells | `EmailReportSettings`, `MachineIdStatus` | nothing renders them |
+
+A list that mixes these is a list nobody reads, and the third kind actively misleads: three
+findings that look like shell-parity gaps are symptoms of dead surface.
+
+`scripts/classify-finding-reachability.py` takes the finding list as given and asks the
+reachability question per finding. It does not re-grade guards -- that is the other gate's job,
+and duplicating it would give two gates that can disagree.
+
+**Three kinds of module, three rules.** A JSX-only predicate was measured to report
+`TopologyScreen`, `WarehouseConsole`, `useKeyAge`, `useRestore` and `useTerminalProfile` as
+dead. All five are live. They are reached differently:
+
+```
+component  RENDERED    <Name ... />
+hook       CALLED      useName(...)
+screen     REGISTERED  component: Name   (inside a registerPage call)
+```
+
+**The trap that broke the first version.** The first pass searched for the FILE name
+(`useKeyAge`) and reported zero consumers -- alarming and wrong. The consumer imports
+`useKeyRotationReminder`, a different symbol in the same file. So the script resolves each
+file's EXPORTED SYMBOLS and searches for those, and it reports the symbol that encloses the
+flagged LINE rather than the first export it finds. Measured: before that fix, `useRestore`
+was 'proved' reachable via `formatBytes`, a formatter in the same file that has nothing to do
+with the restore calls.
+
+Comments are blanked before matching, because every false reference in round 151 was prose:
+`SecurityAccountScreen.tsx:33` names `EmailReportSettings` in a sentence explaining it is
+orphaned, and a plain grep reads that as a consumer.
+
+**Result on the tree**: 20 findings -- 17 REACHABLE, 3 DEAD. The three DEAD ones
+(`get_machine_id`, `save_report_schedule`, `send_test_report`) match, one for one, the
+findings a human verified by hand in round 151.
+
+**Exit codes**: the report always exits 0 (it is an inventory, not a verdict); `--self-test`
+exits 0/1; `--strict` exits 1 when anything is DEAD. The ratchet is off until the three are
+deleted or mounted, which is a product call, so the gate reports rather than blocks.
 
 > last audited 11-10-26 by docs-auditor
 

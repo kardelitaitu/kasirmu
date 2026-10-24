@@ -180,6 +180,12 @@ step "ipc parity" "python3 scripts/verify-ipc-parity.py" python3 scripts/verify-
 step "shell registration" "python3 scripts/verify-shell-registration.py" python3 scripts/verify-shell-registration.py
 step "shell registration self-test" "python3 scripts/verify-shell-registration.py --self-test" python3 scripts/verify-shell-registration.py --self-test
 
+# Classifies the scoped-reads finding list by whether the flagged module runs at all.
+# Informational by default -- a new DEAD finding is reported, not fatal, until the tree is
+# clean enough for the ratchet to bite (--strict is the switch).
+step "finding reachability" "python3 scripts/classify-finding-reachability.py" python3 scripts/classify-finding-reachability.py
+step "finding reachability self-test" "python3 scripts/classify-finding-reachability.py --self-test" python3 scripts/classify-finding-reachability.py --self-test
+
 # ── IPC session-token payload parity (round AE) ──────────────────────────
 # Fails when the UI invokes a command whose Rust signature requires
 # session_token without carrying a sessionToken payload (the round-AC edc
