@@ -1,3 +1,14 @@
+// ── UNREACHABLE, AND BLOCKED ON THE BACKEND ──────────────────────
+// Nothing imports this file. `census-orphan-modules.py` reports it on every run, and it is the
+// ONLY complete gift-card tender panel in the tree -- so it is not superseded, it is waiting.
+//
+// Mounting it is blocked by three things that are not UI glue, each verified at source in
+// todo-gift-card-redemption-ordering.md: `payments.method` is a closed CHECK with no gift
+// member, the Staff/checkout RBAC preset carries no `giftcards:redeem`, and this component
+// needs a `saleId` that `PaymentModal` does not have before `completeSaleScoped`. Two of the
+// three are an owner decision.
+// ─────────────────────────────────────────────────────────────────
+
 import { useState, useCallback } from 'react';
 import { useLocalization, Localized } from '@fluent/react';
 import { getGiftCardBalance, redeemGiftCard } from '@/api/giftCards';

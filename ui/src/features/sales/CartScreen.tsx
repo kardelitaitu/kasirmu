@@ -1,3 +1,12 @@
+// ── ABANDONED SCAFFOLD ───────────────────────────────────────────
+// Nothing imports this file. It has no `@/api` imports at all, and the `useCart.ts` its own
+// header promises below was never written -- so this is not a superseded screen, it is a
+// screen that was never finished. `census-orphan-modules.py` reports it on every run.
+//
+// Kept because deleting it is an owner decision (todo-orphan-module-dispositions.md), not
+// because anything renders it.
+// ─────────────────────────────────────────────────────────────────
+
 import { useState } from 'react';
 import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';

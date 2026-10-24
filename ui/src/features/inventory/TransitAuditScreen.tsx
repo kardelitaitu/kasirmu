@@ -1,3 +1,18 @@
+// ── UNREACHABLE ──────────────────────────────────────────────────
+// Nothing imports this file. `census-orphan-modules.py` reports it as an orphan on every run,
+// and it has been an orphan since before round 165.
+//
+// ROUND 169 rebuilt the one thing it did that nothing else did -- "what is still in transit,
+// for how long, and with which goods" -- as the panel inside `StockTransfersScreen`
+// (`list_in_transit_transfers_scoped`, the same enriched IPC this file calls), with a
+// 24-hour overdue flag and a confirm-then-reverse action. The implementation below is the
+// superseded one, kept because deleting it is an owner decision (see
+// todo-orphan-module-dispositions.md), NOT because anything runs it.
+//
+// Read the panel in StockTransfersScreen before changing behaviour here: an edit to this
+// file reaches no user.
+// ─────────────────────────────────────────────────────────────────
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/Button';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
