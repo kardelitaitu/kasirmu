@@ -3015,4 +3015,33 @@ anything.
 thrown off it now has an atomic ref plus a case that fails with `expected 2 to be 1` when the ref
 is hollowed out. The other 69 are untouched, and the questions above have not been asked of them.
 
+
+## Fifteen "unguarded" tablet calls, and the mount chain that made every one of them safe
+
+Measured 2026-10-25, round 174. `verify-scoped-reads.py --shell tablet` reports **15 call
+sites of commands the tablet does not register, with no guard pattern matched in the window**,
+across eight files. The first instinct — route them through a scoped twin — would have been wrong
+fifteen times. Three subagents traced the mount chain for every site and this lane re-verified the
+load-bearing claims; **zero were live defects.**
+
+| Shape the reader cannot see | Live example | Why it is a real guard |
+|---|---|---|
+| an early return AFTER the hooks, in the component that owns the call | `TopologyScreen.tsx:847-849`, ahead of `NodeTopologyEditor` (:860) and `TopologyRevisionBrowser` (:1016) | the JSX mounting both children is unreachable on the tablet; Rules of Hooks forbid hoisting the callbacks above the return |
+| a hoisted `const isAvailable = !isTabletShell() && …` plus an effect guard | `settings/hooks/useRestore.ts:143` and `:148` | the effect returns before either read; `RestoreSection` renders no submit control when unavailable |
+| a shell branch INSIDE the handler, routing each shell to its own command | `settings/hooks/useBackupStatus.ts:140` | the tablet takes `create_backup_to` and never reaches `create_backup` |
+
+**The advice the gate printed was wrong for all three.** It said "If the ambient call is genuinely
+unreachable, remove the allowlist entry instead" — but removing the entry makes the finding
+REAPPEAR, because the entry is what records the decision. The message now says so, and names the
+three shapes so the next reader can check a finding before acting on it.
+
+**What this round did not do.** No allowlist entry was added or removed, and no call site was
+rewritten: the guards were already correct. The `--shell tablet` run still exits 1, and should —
+the entries say "known and accepted", not "clean". What changed is that the failure now tells a
+reader how to tell a blind spot from a bug.
+
+**One correction to an earlier record.** Round 154 wrote that six sibling topology findings were
+"not defects" on the strength of a comment. The comment holds, and this round read the two guard
+sites at `:173-175` and `:847-849` verbatim rather than trusting it. The claim was
+right; it had not been verified.
 > last audited 11-10-26 by docs-auditor
