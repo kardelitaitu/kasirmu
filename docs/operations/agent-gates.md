@@ -2431,4 +2431,45 @@ not by omission. Seven of the eleven are reads.
 `grep -c require_session_permission` over a file is not that measurement — it counts
 occurrences, and the question is which function they sit in.
 
+## "The UI calls it" needs three filters, and a grep gives you one
+
+Measured 2026-10-25, rounds 143-145. Recording a REASON on a ledger entry is only worth
+doing if the reason is measured. Three rounds running, the measurement was wrong in the
+same direction: a name found in a file was read as a caller.
+
+**The three false positives, in the order they were caught.**
+
+1. **The definition counted as a reference.** `grep -l 'renew_license' ui/src` returns
+   `ui/src/api/license.ts` — the line `logger.invoke('renew_license', ...)` inside the
+   wrapper. That is where the wrapper is DEFINED. It is not a call, and the wrapper
+   itself had zero callers.
+2. **A doc comment counted as a reference.** `rotate_encryption_key_scoped` "appeared" in
+   `ui/src/api/security.ts` — in prose explaining that no wrapper exists for it on purpose
+   and that one "is a decision for an owner". A file-level grep cannot tell a call from a
+   comment about the absence of a call.
+3. **The wrapper's caller was itself dead.** `get_key_rotation_info` really is imported and
+   called, by the module function in `ui/src/hooks/useKeyAge.ts`. But that hook's only consumer,
+   `useKeyRotationReminder`, is mounted in NO file outside its own module and its test. One
+   hop of reach is not reach.
+
+**The measurement that works**, in one line per name:
+
+```bash
+# references that are neither the definition nor a test/mock
+grep -rn '<wrapperName>' ui/src --include='*.ts' --include='*.tsx' \
+  | grep -v __tests__ | grep -v dev-mock \
+  | grep -vE 'export (const|async function|function) <wrapperName>'
+```
+
+Then take ONE MORE hop: for every reference, ask whether its consumer is itself reachable.
+Rounds 143-145 each stopped one hop early and each wrote a confident sentence that the
+next round had to retract.
+
+**Why this is a gate-documentation problem, not a note-taking one.** The ledger's own
+reason field is what makes an accepted debt reviewable. A reason that says "the UI calls
+the other one" and is false converts a reviewable entry into a misleading one — worse than
+the bare name it replaced, because a bare name at least announces that nothing is known.
+The rule: write the reason only from a call-site measurement, and name the file and line
+you measured.
+
 > last audited 11-10-26 by docs-auditor
