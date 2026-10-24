@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/Button';
 import { Localized, useLocalization } from '@fluent/react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -39,6 +39,9 @@ export default function ThresholdConfigScreen() {
   const [thresholdVal, setThresholdVal] = useState('5');
   const [enabled, setEnabled] = useState(true);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  /** Synchronous re-entry guards for the save and the delete — see the handlers below. */
+  const savingRef = useRef(false);
+  const deletingRef = useRef(false);
 
   const loadData = useCallback(async () => {
     if (!sessionToken) return;
@@ -86,6 +89,12 @@ export default function ThresholdConfigScreen() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sessionToken || !selectedProductId) return;
+    // Re-entry guard, taken after the required-field check. The setter is an upsert keyed
+    // by (product, location), so a replay cannot write a second row -- but the second call
+    // closes the dialog and reloads AGAIN, and a failure in it toasts over the save that
+    // succeeded.
+    if (savingRef.current) return;
+    savingRef.current = true;
 
     try {
       const locId = selectedLocationId === '' ? null : selectedLocationId;
@@ -100,6 +109,8 @@ export default function ThresholdConfigScreen() {
       await loadData();
     } catch (err) {
       addToast({ message: l10nErrorMessage(err, l10n, 'inv-threshold-error-save'), type: 'error' });
+    } finally {
+      savingRef.current = false;
     }
   };
 
@@ -110,12 +121,19 @@ export default function ThresholdConfigScreen() {
 
   const handleDeleteConfirm = async () => {
     if (!sessionToken || !deleteConfirmId) return;
+    // Re-entry guard. The confirm dialog's button is not disabled while the delete is in
+    // flight, and deleteStockThreshold is a same-row DELETE: the replay finds nothing and
+    // its NotFound toast lands UNDER the success of the delete that worked.
+    if (deletingRef.current) return;
+    deletingRef.current = true;
     try {
       await deleteStockThreshold(sessionToken, deleteConfirmId);
       setDeleteConfirmId(null);
       await loadData();
     } catch (err) {
       addToast({ message: l10nErrorMessage(err, l10n, 'inv-threshold-error-delete'), type: 'error' });
+    } finally {
+      deletingRef.current = false;
     }
   };
 

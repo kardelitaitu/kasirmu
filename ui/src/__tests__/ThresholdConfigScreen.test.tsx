@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
 import inventoryFtl from '@/locales/inventory.ftl?raw';
@@ -222,5 +222,24 @@ describe('ThresholdConfigScreen', () => {
     await waitFor(() => {
       expect(mockDeleteThreshold).toHaveBeenCalledWith('mock-session-token', 'th-1');
     });
+  });
+
+  it('deletes a threshold once when the confirm button is double-tapped', async () => {
+    // The replay finds the row already gone, so its NotFound toast lands UNDER the
+    // success of the delete that worked -- the operator is told the delete failed by
+    // the same screen that shows the row gone.
+    const user = userEvent.setup();
+    await renderWithProviders(<ThresholdConfigScreen />, inventoryFtl);
+    await waitFor(() => {
+      expect(screen.getAllByText('SKU-001').length).toBeGreaterThanOrEqual(2);
+    });
+
+    await user.click(screen.getAllByText('Delete')[0]!);
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    const confirmBtn = screen.getAllByText('Delete').at(-1)!;
+    fireEvent.click(confirmBtn);
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => expect(mockDeleteThreshold).toHaveBeenCalledTimes(1));
   });
 });
