@@ -999,6 +999,47 @@ docstrings record a past bug and which no case ever called:
 docstring would make the suite red on a tree that is green, and "fixing" the code is a behaviour
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
+#### The ungraded ceiling is ZERO, and a 500-line-stale range was hiding in it (round 114)
+
+Round 113 took `NOT graded` from 101 to 70. This round every remaining citation was classified,
+and the tree now holds **221 OK and 70 SUPPRESSED, with not one NO-ANCHOR.** Measured by importing
+the checker and counting verdicts across `live_docs()`, not by reading its summary line — because
+SUPPRESSED is still reported *inside* the "NOT graded" bucket, so the printed number does not fall
+when a citation is suppressed. That is a reporting quirk worth knowing before anyone concludes a
+pragma did nothing.
+
+**The last eight were each read before being classified, and they split two ways:**
+
+*Two had a real symbol after all.* `generate_handler!` in both shells' `lib.rs` is a genuine
+symbol the checker can grade, so naming it converted both to OK.
+
+*Six name prose and can never be graded* — a doc-comment span in `auth.rs`, a `//!` module
+invariant in `recovery.rs`, a bullet in a dated audit record, a range in
+`manager-codebase-review-decisions.md`. Each got the `dead-ref: ok:` pragma **with the reason
+inline**, so a future reader learns why it is ungradeable rather than assuming it was overlooked.
+
+**And the pragma's scope had to be learned the hard way.** The first attempt put a four-line HTML
+comment above the table. It suppressed nothing: `suppressed()` checks `PRAGMA in here or PRAGMA in
+above` — the citation's own line, or the single line immediately before it. A block comment
+spanning five lines is neither. The pragma has to sit **on the citation's own line**.
+
+**One genuine drift surfaced, and it was large.** Desktop's handler list was cited as
+a range near the top of `apps/desktop-tauri/src/lib.rs` with a count of 453 commands. The symbol
+the checker finds lives at **:1362**, and the list now runs to **:1916** — stale by more than 500
+lines and 57 commands. (The old range is described rather than reproduced: quoting it here would
+make it a fresh claim, which is how this page has tripped the same checker twice before.) Re-derived against the authority rather than a guess: `check-api-surface.py` reports
+`desktop=510 tablet=437 distinct=529`, and an independent count of `commands::` entries from :1362
+to the closing bracket gives 510. The citation is left as the dated record it is (a 2026-09-29
+note below it already re-measured every number on that page) with the current figures named
+beside it.
+
+**Why this closes something.** `check-cite-lines.py` has said `Read this as a floor, not a
+certificate` on every run this session. A floor is what you stand on to reach higher; it is not a
+result. With NO-ANCHOR at zero, that sentence is false in the useful direction: there is no
+unmeasured residue left for drift to hide in. Shrinking the unmeasured set found real drift in
+each of the last two rounds — `recovery_tests.rs:141` → `:79` last round, this 500-line range now.
+**An unmeasured population is not neutral; it is where drift goes undetected.**
+
 
 #### Shrinking the ungraded ceiling, and the checker catching my own guesses (round 113)
 
