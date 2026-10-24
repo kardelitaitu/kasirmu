@@ -75,9 +75,16 @@ But the move is **five artefacts, not one**:
 
 1. `crates/kasirmu-core/src/topology.rs` → `foundation/src/topology.rs`;
 2. `topologySemantics.json` (the vendored contract, 2,515 bytes) and its `.matrix.json` sibling;
-3. `scripts/verify-topology-parity.py`, which hardcodes the `kasirmu-core` path in six places and
-   instructs the reader to run `TOPOLOGY_MATRIX_UPDATE=1 cargo test -p kasirmu-core --lib
-   topology_matrix`;
+3. `scripts/verify-topology-parity.py`, which names a `kasirmu-core` path in **14 places** — but
+   only **two are executable** (`VENDORED` and `MATRIX`, the two `Path(...)` constants at :91 and
+   :98); the other twelve are prose in the docstring and in two operator-facing message strings.
+   Re-verified 2026-10-24: every one of those paths resolves, and the gate is wired in BOTH
+   `.github/workflows/dev-ci.yml:1429` and `scripts/check.sh:967`. It was also defect-planted this
+   round — adding a single byte to the UI copy produces `DRIFT ... first divergence around line 2`
+   and exit 1, with the `cp` command that fixes it. **So this artefact is the cheapest of the five,
+   not the riskiest: a two-constant edit in a gate that is known to work.** An earlier draft of this
+   ADR called it "six hardcoded paths", which overstated the churn; the conclusion does not change,
+   but the cost column was wrong and is corrected here;
 4. `workspace_type.rs` and its tests;
 5. a `pub use foundation::topology;` re-export in `kasirmu-core`'s `lib.rs`, because all ten
    consumers import `kasirmu_core::topology::…` and the re-export is what keeps every call site
