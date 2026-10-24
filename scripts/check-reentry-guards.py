@@ -125,18 +125,20 @@ re-derive these: each is protected, and the protection is named so the search en
                         not: the key ignores the id by design. Recorded round 179 so the next
                         sweep does not re-open it -- this entry sat unlisted for seven rounds
                         while the code already answered it.
-  * shift open / close -- BOTH REFUTED BY CORE, but only one was a defect, and the
-                        difference is worth stating. `open_shift` counts the caller's
-                        open shifts under an IMMEDIATE transaction and returns Validation
-                        "user already has an open shift" (db/shifts.rs:95-107), so the
-                        replay is REFUSED and the second message is at least TRUE. `close_shift`
-                        refuses a shift that is already closed (:193-198) -- and the catch
-                        reports `pos-close-shift-failed`, which reads as "the close failed"
-                        over a shift that closed. Round 180 FIXED the close at
-                        EodReportScreen.handleConfirmCloseShift with a ref; the open path at
-                        RetailPosScreen.handleOpenShift is left, because refusing a second
-                        open with "you already have an open shift" is the honest answer to a
-                        double tap rather than a lie about the first one.  * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
+  * shift open / close -- BOTH REFUSED BY CORE, and NEITHER reports it well. `open_shift`
+                        counts the caller's open shifts under an IMMEDIATE transaction and
+                        returns Validation "user already has an open shift"
+                        (db/shifts.rs:95-107); `close_shift` refuses an already-closed shift
+                        (:193-198). Both replays are therefore refused. What differs is the
+                        catch: EodReportScreen.handleConfirmCloseShift routes through
+                        l10nErrorMessage, so the second tap reported "failed to close" over a
+                        shift that closed -- round 180 FIXED that with a ref. But
+                        RetailPosScreen.handleOpenShift is a bare `catch {}` that discards the
+                        error entirely (RetailPosScreen.tsx:1192-1193) and toasts only
+                        `retail-toast-failed-open-shift`, so core's accurate "you already have
+                        an open shift" never reaches the cashier either. Left on the report:
+                        the message-not-the-guard is the defect there, and fixing it means
+                        routing through l10nErrorMessage, not adding a ref.  * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
                         idempotent by construction: the same key is overwritten
 The point of the list is that it is SHORT: filtering to handlers that (a) await something
 other than a list/get read and (b) have a write-shaped name narrows ~143 raw busy-flag
