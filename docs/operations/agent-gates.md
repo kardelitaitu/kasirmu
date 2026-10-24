@@ -824,6 +824,30 @@ own docstring opens by describing.
 **A scope change needs two proofs, not one:** that the new scope passes on the tree as it stands,
 and that it FAILS when the thing it grades breaks. One without the other is a green tick.
 
+#### The last untested proof form (round 102)
+
+Three checkers carry no `--self-test`; two of them are documented exceptions with a measured
+reason. The third, `check-replay-fork.py`, keeps its cases in a companion test
+(`scripts/test-replay-fork.py`) — the one proof form the sabotage sweep cannot reach, because it
+mutates only `main`-adjacent functions in the checker itself and the companion lives elsewhere.
+
+It was untested in a more specific way than "no coverage": the companion grades **`has_control()`,
+a helper**, and asserts only that `main` *exists*. Gutting the checker's verdict survived:
+
+| mutation | before | after |
+|---|---|---|
+| the finding branch's `return 1` → `return 0` | companion **green, 10/10** | companion **red**, naming the case |
+
+So a tree with a one-sided COR-7 control — a real regression, per this checker's own docstring —
+would have passed its entire proof form. Fixed by driving `main` against a temp fixture in both
+directions: an unmodified pair approves, a control removed from the fork fails.
+
+**And the fix needed a second correction.** The first version called `mod.main()` in-process, which
+returned 0 for a fixture the subprocess correctly fails on: `main()` parses `sys.argv` itself, so an
+in-process call silently re-reads the test runner's own argv. A case that passes for the wrong
+reason is worse than a missing case — and it was caught only by asserting the FAILING direction,
+which is the half a happy-path test would not have.
+
 #### And a tenth false alarm, from my own probe (round 100)
 
 Auditing my own citations in this file, a scan reported **3 of 4 `file:LINE` citations broken** —
