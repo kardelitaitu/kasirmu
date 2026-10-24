@@ -299,7 +299,7 @@ impl crate::db::Store<'_> {
     ///
     /// Plan `payment-methods-plan.md` safety rule 4: "dynamic methods additionally
     /// require their signed entitlement (`caps.supportsQris` etc.)". Until this
-    /// existed the rule was enforced only by `PaymentModal.tsx` deciding whether to
+    /// existed the rule was enforced only by the payment screen deciding whether to
     /// render a button -- the same shape rule 2 had before `refuse_unoffered_tender`,
     /// and the same reason it is not enough: a hidden button is not an enforcement
     /// point.
