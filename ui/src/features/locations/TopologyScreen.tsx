@@ -832,6 +832,22 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
     [sessionToken, workspaceInstances, stores, addToast, l10n, licenseTier, selectedBranchId],
   );
 
+  // THE TABLET NEVER MOUNTS THIS BODY. The wrapper at :173 already returns the notice
+  // before rendering it, so this states the same decision where the commands live: the
+  // editor's useCallbacks, its effect deps and its JSX all reference commands the tablet
+  // shell does not register. The hooks above have run by now, so this is a RENDER branch
+  // and not a conditional hook.
+  //
+  // This does NOT retire the topology entries in `ipc-parity-allowlist.json`, and the
+  // reason is worth keeping: that leg reads brace-delimited regions and the flagged
+  // sites are inside `useCallback(...)` bodies and hook argument lists, which lie
+  // outside the rendered arm it can see. Making it pass would mean moving every
+  // callback inside the JSX branch, which the Rules of Hooks forbid. The entries stay
+  // for the shape the gate cannot read, not because the gap is real.
+  if (isTabletShell()) {
+    return isWebManaged ? <TopologyTabletWebManagedNotice /> : <TopologyTabletNotice />;
+  }
+
   return (
     <div
       className="settings-topology-container"
