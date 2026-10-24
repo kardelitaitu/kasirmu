@@ -568,6 +568,15 @@ export function StaffDetailDrawer({
 
   // ── Save / Update ──────────────────────────────────────────────
 
+  // Re-entry guard. `saving` is React state and commits on the NEXT render, so the second
+  // dispatch of a real double tap still enters this handler. On the CREATE path the replay is
+  // refused by `users.username` UNIQUE (20260813_init.sql:974), and the catch reports
+  // `staff-error-save-failed` — so the operator is told the staff account was not created while
+  // the first tap created it, and is left looking at a drawer for an account that exists.
+  // Taken AFTER validation: every refusal above returns before the `try`, so a guard placed
+  // there would be set with no `finally` to clear it (the trap recorded in the gate doc).
+  const savePendingRef = useRef(false);
+
   // handleSave reads form state directly on every invocation — no useCallback
   // needed since it's only used as an onClick handler on a single button.
   //
@@ -594,6 +603,9 @@ export function StaffDetailDrawer({
       setError(first ?? null);
       return;
     }
+
+    if (savePendingRef.current) return;
+    savePendingRef.current = true;
 
     setFieldErrors({});
     setSaving(true);
@@ -657,6 +669,7 @@ export function StaffDetailDrawer({
         setError(l10nErrorMessage(err, l10n, 'staff-error-save-failed'));
       }
     } finally {
+      savePendingRef.current = false;
       setSaving(false);
     }
   };
