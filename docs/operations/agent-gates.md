@@ -897,6 +897,28 @@ that shape (round 90) was in `.mjs`, where the live code and the tested code wer
 expressions; in Python the checkers route rules through named constants, and the two that did not
 are now deleted.
 
+#### Running the gates found what auditing them could not (round 105)
+
+Rounds 103-104 audited the checkers by READING them. This round RAN them, and two gates went red
+for reasons no audit would have found:
+
+| gate | failure | cause |
+|---|---|---|
+| `verify-runner-claims.py` | "2 claim(s) assert CI enforcement that does not exist" | an untracked, un-gitignored **`.tmp_windows.txt`** (10,866 lines of another session's captured output) at the repo root, read as a live document. It quoted THIS file's docstring, so the gate reported itself. |
+| `check-dead-refs.py` | "8 unresolved reference(s)" | **my own round-84 paragraph** documenting the `.json`/`.js` path bug — quoting the phantom spellings as examples, which the gate read as real paths. |
+
+**Both fixed.** The gate now skips `.tmp_*`/`tmp_*` filenames (a claim in a scratch file is not a
+claim), and the paragraph describes the phantom spellings instead of writing them. Result:
+`runner-claims` 7 claims all hold, `dead-refs` **0 unresolved references**.
+
+**The lesson is about which method finds what.** Reading a checker tells you its logic; running it
+tells you whether the tree still satisfies it. Rounds 103-104 read, and found dead constants. This
+round ran, and found a stray file and a self-inflicted doc error — neither visible by reading.
+
+**And one of them was mine, caused by the round that produced the record.** The round-84 entry
+documented a bug by quoting its output, and the quoting became the bug twelve rounds later. A record
+of a failure should describe the shape, not reproduce the artefact.
+
 #### And a tenth false alarm, from my own probe (round 100)
 
 Auditing my own citations in this file, a scan reported **3 of 4 `file:LINE` citations broken** —
