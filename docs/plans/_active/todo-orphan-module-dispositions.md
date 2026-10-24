@@ -1,5 +1,7 @@
 # Six unreachable modules: what each costs, and what each needs
 
+**UPDATED 2026-10-25 (round 174): every module on this list now SAYS SO in its own header.** Three of the six -- `TransitAuditScreen`, `CartScreen`, `GiftCardPayment` -- opened with ordinary imports and no indication they were unreachable, so a reader arriving at the file first was told nothing about its status. Each now carries a banner naming the census that reports it, why it is unreachable, and what mounting it would need. The same round corrected `InventoryThresholdsScreen`, whose header still claimed the screen had "no door" in the very file that is the door -- a false statement that had survived since round 168 and was found by round 173's audit. Neither change alters a row below: all six remain orphans, and the cost is unchanged.
+
 **UPDATED 2026-10-25 (round 169): the transit audit is on screen again, and the file that held it is still counted here.** `TransitAuditScreen`'s one unique view -- in-transit stock, its lines, how long it has been out, and a confirm-then-reverse action -- was rebuilt as a panel inside `StockTransfersScreen` in this round. The orphan itself was NOT deleted: the census below still lists it, because nothing imports it and nothing now needs to. That is a different state from the five beside it -- this one is superseded by a live implementation, not unresolved.
 
 **UPDATED 2026-10-25 (round 168): seven modules have become six.**
