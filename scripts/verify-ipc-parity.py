@@ -5047,6 +5047,22 @@ def main() -> int:
             f"{len(gated)} GATED DEAD SURFACE -> {detail}"
         )
 
+        # A shell section holds 78 bare names by NEED, not by preference: verify-scoped-reads
+        # grades it by name and both validators refuse the object form there (measured round 177
+        # by feeding an object into a deep copy; the two gates each name the other as the reason).
+        # So a shell section can never carry a per-entry reason, and until round 177 the tablet
+        # section carried NO reason at all -- 78 names, no "_tablet_comment", nothing to read.
+        # This leg asks the only question that shape permits: is there prose at all?
+        print(
+            "info[shell-section-rationale]: "
+            + ", ".join(
+                f"{sec} {len(allowlist.get(sec) or [])} names / "
+                + ("has a _%s_comment" % sec if allowlist.get("_%s_comment" % sec)
+                   else "NO _%s_comment -- no recorded reason for any entry" % sec)
+                for sec in ("desktop", "tablet")
+            )
+        )
+
     # The cross-shell reading of the two `-unrequested` lines above. Each of those is per
     # shell, and the two shipped UIs share one component tree, so a command the OTHER shell
     # names still lands in this shell's "dead" list: read alone the lines say 18 and 10 when
