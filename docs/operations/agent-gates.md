@@ -3176,4 +3176,41 @@ run step 1167. This round proves the sharper version: **the steps after a docume
 real, unfixed defects, and nobody had looked because the matrix never got there.** One registration
 pin was red on the shared branch, seen by nothing, for a day. `CHECK_FROM` costs one command per
 failed step and reaches the frontier.
+
+
+## Archiving a plan is a rename with 1430 readers, and the reader that notices is step 161
+
+Measured 2026-10-25, round 182. `a040b7fff` (docs(plans): archive completed payment resilience
+design plan to _done) moved the plan out of `docs/plans/_active/` into
+`docs/plans/_done/done-plan-payment-resilience-design.md` and added a two-line acceptance stamp
+above the body. Eleven `///` comments across `crates/kasirmu-payment/src/` still cited the old path,
+and four of them cited BODY LINE NUMBERS that the stamp moved:
+
+| Cited | What the comment says it quotes | Where it actually is |
+|---|---|---|
+| `:217` | §8 row "a keyless money-moving call is not retried" | `:262` |
+| `:219` | §8 row about a blank `idempotency_key` | `:265` |
+| `:221` | §8 row "two decorators share one breaker" | `:266` |
+| `:223` | §5 "HalfOpen admits exactly one probe" | `:220` |
+| `:117` | the split-key table | `:118` |
+| `:125` | §3 health | `:127` |
+
+**Two separate errors, and only one of them is mechanical.** The path was stale in all eleven —
+`check-rust-doc-paths.py` caught exactly that, and it is step 161 of the matrix. The LINE
+NUMBERS were wrong in six of them in a way the gate cannot see: it checks that a cited path
+RESOLVES, not that the line at that path says what the comment claims. Repointing the path alone
+would have left six comments quoting the wrong paragraph while the gate printed clean.
+
+**Why nobody saw it.** The archiver committed a step-161 risk without running step 161, and the
+matrix had never reached 161 in any recorded run until round 181 moved the frontier past 144.
+The red surfaced on the first run that got that far. This is the third round in a row where the
+answer was "the gate exists, nobody has run it".
+
+**What this round did.** Repointed all eleven at the archived file and corrected the six line
+numbers, then verified each by CONTENT — the needle each comment claims to quote is read back from
+the cited line, 8 of 8 matching. `cargo test -p kasirmu-payment` green (18 + 13 + 5 doctests).
+
+**The rule for the next archival.** A plan file that Rust comments cite by `path:line` is a
+published interface. Moving it needs `python3 scripts/check-rust-doc-paths.py` before the commit,
+and the line-number shifts need reading the quoted text back, because no checker does that part.
 > last audited 11-10-26 by docs-auditor
