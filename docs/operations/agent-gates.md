@@ -2689,6 +2689,19 @@ means nothing. Planting an unmounted component that invokes a desktop-only comma
 `--strict` exit 1 and named the file and line; deleting it returned 0. Both directions were
 measured before the switch was thrown.
 
+**Its scope, stated because the first version of this paragraph overclaimed it.** The input is
+the `verify-scoped-reads` finding list, so the ratchet asks "is the module behind this FINDING
+reachable" -- it is not a census of dead code. Measured 2026-10-25 by removing the
+`'email-reports'` registry entry again: `--strict` stayed at 0, because
+`EmailReportsScreen.tsx` still imports `EmailReportSettings` and the classifier counts a
+reference. And once a finding is GUARDED (as the two email writes now are) it leaves the list
+entirely, so it is never classified at all.
+
+So the ratchet protects exactly one thing, and it protects it well: a finding nobody has
+resolved yet must not sit in a module the bundle cannot reach, because that combination is
+what makes a parity report unreadable. It does not replace a dead-code census, and a green run
+here is not evidence that every component in `ui/src` is mounted.
+
 **A note on why the two deletions and the mount were the right calls, since they went in
 opposite directions.** `MachineIdStatus` had a shipped successor (`StatusBar`) and a hardcoded
 English string, so deleting it removed a surface nothing could reach. `EmailReportSettings` had
