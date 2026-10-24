@@ -3070,4 +3070,38 @@ JS/TS parser, not a text pass. **The correct state is the one round 174 left**: 
 and the failure message explains how to tell a blind spot from a bug. Filed here so the next lane
 does not spend a round rediscovering it — attempt 4 is where a reasonable person stops, and the
 answer is above.
+
+
+## The self-test sweep already exists, and it is step 1167 of the thing I was running
+
+Measured 2026-10-25, round 179. Round 178 ended on a self-test that had been red since round 176
+— `verify-ipc-parity.py --self-test` failing case 10 — and the lesson I wrote down was
+"check the gates' own proof". This round I went to build that check, and found it:
+
+```
+$ python3 scripts/verify-selftest-sweep.py
+verify-selftest-sweep: OK — 90 self-test(s) across 93 checker(s); 3 declare none and were skipped.
+```
+
+It is a step of `scripts/check.sh` (`:1167`, with its own self-test at :1168 and the
+sabotage mutator at :1175). So the sweep that would have caught round 176's break was already in
+the command I ran in round 178 — which reported **exit 1 at step 34**, the Postgres test that is
+documented as "expected red" on a host without a server. The self-test sweep is step 1167 of 140.
+**A suite that stops at step 34 has not run step 1167, and I read its failure as "the one known
+environmental red" and stopped.** The instrument existed; the reading of it did not.
+
+**A second, smaller version of the same error happened while verifying this.** My first sweep
+script grepped each file for the STRING `--self-test` and reported 67 checkers. One
+(`verify-website-assets.py`) came back `rc=2 unrecognized arguments` — because its docstring
+contains the sentence "NO --self-test HERE, AND THE REASON IS MEASURED, NOT ASSUMED", explaining why
+it deliberately has none. My second attempt narrowed the filter to files containing
+`add_argument`, which still matched it, because that file parses three OTHER flags. Only
+the third attempt — matching the actual registration, `add_argument("--self-test"` — gave 50
+checkers and 0 failures. A text search for a feature is not a measurement of the feature, and this
+file has said so before in a different costume.
+
+**What that leaves for a reader.** Run `scripts/verify-selftest-sweep.py` alone when the question is
+"are the proof forms green"; do not infer it from a `check.sh` run that stopped early. The 90 it
+covers and the 50 my own filter found differ because the repo's sweep also walks the shell
+checkers, which mine did not — the repo's number is the one to quote.
 > last audited 11-10-26 by docs-auditor
