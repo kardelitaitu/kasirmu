@@ -2348,4 +2348,46 @@ that order. Two rounds here did it backwards and paid for it twice.
 editor genuinely cannot run on the tablet, and the six findings are the checker's, not the
 screen's. A guard the checker cannot see is still a guard.
 
+## When the allowlist entry is wrong, and when the gate cannot be satisfied
+
+Measured 2026-10-25, rounds 132-133. `scripts/ipc-parity-allowlist.json` carries a
+`shell_blind` section: shared-UI calls a shell "will make" but registers no door for. Six
+entries left this section over two rounds, and they left by two different routes — one of
+which is not a fix at all, and knowing which is which is the point.
+
+**Route 1 — the entry was describing a hazard that did not exist (round 132).** Four
+licensing entries (`pause_subscription`, `resume_subscription` and their `_scoped` twins)
+claimed "calls in files that DO run on the tablet". They did not: `actionsAvailable =
+!isTabletShell()` gated both buttons and the survey modal's only `setShowExitSurvey(true)`.
+The entries had been carried as debt for months because the code *looked* the way the entry
+described. Two OverQuotaCard entries were the same shape and left the same way in round 133.
+
+The mechanical fix in both files was identical, and it is worth knowing because the obvious
+version does not work: a bare `if (!actionsAvailable) return;` is correct code and moves the
+gate **not at all**, because `shell_guarded_spans` records brace-delimited regions whose
+header names a shell-derived boolean. Wrapping the invokes in `if (actionsAvailable) { ... }`
+puts them inside a span. Then the gate fails with "stale shell_blind entry — no shell-blind
+call site reproduces it any more", which is the section working as designed: an entry is a
+debt, and paying it must break the ledger.
+
+**Route 2 — the gate cannot be satisfied without breaking the Rules of Hooks (round 133).**
+The five topology entries (`load_topology`, `load_topology_revision`,
+`update_workspace_instance_scoped`, `can_save_topology`, `list_workspaces_scoped`) are
+**not** stale debt. `TopologyScreen.tsx` has guarded the shell since `9df07bb5b`, and the
+flagged sites are real references — they just sit inside `useCallback(...)` bodies, hook
+dependency arrays and effect arguments, all of which execute before any render-time branch.
+The only way to put them inside the arm the gate reads is to move the callbacks below the
+`return`, which is a conditional hook and forbidden.
+
+Round 133 did add a guard to `TopologyScreenContent` anyway (it is honest, and it stops the
+component body from mounting on the tablet even if a future refactor reaches it another
+way), and the gate stayed red with the same five entries. That is the correct outcome and it
+is recorded in the code. **The entries stay.** They describe a shape the leg cannot read, not
+a gap that exists.
+
+**The transferable rule.** A stale-entry failure is a gift — take it, it means the debt was
+payable. A leg that stays red after an honest fix is telling you the *gate* models the wrong
+thing, and the wrong response is to contort the source until the model agrees. Write down
+which one you are looking at before you write another line.
+
 > last audited 11-10-26 by docs-auditor
