@@ -215,8 +215,17 @@ mod debt;
 /// rather than by a permission key -- the same shape as the other print commands, which
 /// take a session and a printer target and read the receipt config for that scope.
 ///
+/// The 510 -> 511 step is ONE command, 2026-10-24:
+///   * `03a506f87` (feat(reports): make the piutang collections report reachable from the
+///     UI) -- `get_piutang_collections_scoped`.
+///
+/// It arrived ALREADY GATED, which is precisely the case this pin exists for: a command that
+/// is gated at the bridge moves no ceiling and no generated-ledger row, so no other leg in
+/// this file can see it. Left unraised it turned `test application shells (nextest)` red on
+/// 2026-10-25 (round 180) with `left: 510, right: 511`.
+///
 /// Raising the floor records what landed; it does not approve it.
-const REGISTERED_FLOOR: usize = 510;
+const REGISTERED_FLOOR: usize = 511;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
 /// the hard pin on the ledger's own rows is

@@ -1519,3 +1519,31 @@ backfill in `migrations_tests.rs`).
 edited suites compiled and ran (their residual reds are the environmental
 READONLY family above). `rustfmt --edition 2024` clean on both edited files,
 purely additive diffs (21 insertions, 0 deletions).
+
+## 2026-10-25 — Desktop registration floor 510 → 511 (`get_piutang_collections_scoped`)
+
+**What was red.** `test application shells (nextest)` step 56, one test:
+
+```
+commands::registration_gate_tests::drift_pin_registration_floor_is_met
+  assertion `left == right` failed: left: 510, right: 511
+```
+
+**Why.** `03a506f87` (feat(reports): make the piutang collections report reachable from the UI)
+registered `commands::reports::get_piutang_collections_scoped` in
+`apps/desktop-tauri/src/lib.rs` and did not raise the floor. The command arrived ALREADY GATED at
+the bridge, which is exactly the case this pin exists for: a gated arrival moves no permission
+ceiling and no generated-ledger row, so no other leg in the file can see it.
+
+**Why it stayed red.** `check.sh` stops at its first red step. On this workstation step 52
+(`test workspace`, no PostgreSQL) is red by design, so step 56 had not executed in any run recorded
+here until `CHECK_FROM=55` reached it — the same blind spot documented under `CHECK_FROM` in
+`docs/operations/agent-gates.md`.
+
+**The change.** `REGISTERED_FLOOR` 510 → 511 in
+`apps/desktop-tauri/src/commands/registration_gate_tests.rs`, with the enumeration above the
+constant extended to name the commit and the command. Raising the floor records what landed; it
+does not approve it.
+
+**Verification.** `drift_pin_registration_floor_is_met` green after the change; the rest of the
+registration gate unaffected.
