@@ -857,6 +857,31 @@ longer of the two — so the "stale twin" is the *shorter*).
 every *number* it could count and wrong about two things that needed *context* — a quote style and
 a disclaimer block. Reading beats measuring for context; measuring beats reading for numbers.
 
+#### Measuring the extraction candidates behind the size overrun (round 101)
+
+The `kasirmu-core` finding says "extract or raise", which is only useful if the extraction target
+is named. Measured 2026-10-24:
+
+- the +24 lines themselves are a **poor candidate**: `payment.rs` is 119 lines (100 production),
+  two structs, no free functions — a cohesive domain type;
+- the production files actually over the house's 1000-line rule are `db/popularity.rs` (**1151**)
+  and `db/audit.rs` (**1118**);
+- `audit.rs` was analysed and rejected on the record (its four concerns share one
+  `insert_audit` body);
+- **`popularity.rs` is the candidate**: 4 free functions plus a single `impl Store<'_>` block
+  spanning :192-1203, which is exactly the shape the 1000-line rule was written for.
+
+Filed into the finding rather than acted on — refactoring another lane's domain is not this
+lane's call, and a half-finished extraction would be worse than the overrun.
+
+#### An empty-corpus census, done two ways
+
+Delegated a sweep for gates that can print a clean verdict over a corpus of zero. While it ran, the
+`.mjs` half was measured directly: **every corpus-collecting `.mjs` checker has a guard**
+(`walkAll`/`readdirSync` paired with a refusal or floor), and the two without one
+(`check-updater-compat.mjs`, `verify-updater-signature.mjs`) collect no corpus at all — they take
+arguments, so the mode does not apply.
+
 **The useful output of this round is the *list*, not the fixes.** 51 wired checkers is a roster
 anyone can re-run, and now one more of them is green. A gate nobody runs is not a gate — the same
 sentence this project has written three times about gates, now applied to the gates themselves.
