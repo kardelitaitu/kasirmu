@@ -3377,7 +3377,13 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1.25rem", "ui/src/features/settings/SettingsNavTree.css", 1],
   ["1.4", "ui/src/features/settings/SettingsNavTree.css", 1],
   ["1", "ui/src/features/settings/SettingsPage.css", 1],
-  ["1.4", "ui/src/features/settings/SettingsPage.css", 3],
+  // Restated 2026-10-25 (round 157): 3 -> 2. Round 157 deleted the partial copy of the
+  // .settings-license-value family from SettingsPage.css, whose `line-height: 1.4` was one
+  // of these three. That copy had no renderer left once AboutSection.tsx (labelled DEAD on
+  // 2026-09-15 by 13348f9aec) was deleted in the same round; LicenseSettings.css:27 owns the
+  // family and still declares its own 1.4, counted under its own entry. The remaining two
+  // sites in this sheet are untouched.
+  ["1.4", "ui/src/features/settings/SettingsPage.css", 2],
   ["1", "ui/src/features/settings/SettingsScopeTag.css", 1],
   ["1", "ui/src/features/setup/components/LiveSetupPreview.css", 2],
   // The two line-height literals in ui/src/features/setup/SetupWizard.css left with
