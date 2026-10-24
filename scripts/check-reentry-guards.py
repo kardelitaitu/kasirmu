@@ -163,7 +163,40 @@ re-derive these: each is protected, and the protection is named so the search en
   * category tax rates -- IDEMPOTENT and left alone. `set_category_tax_rates` is
                         DELETE-then-`INSERT OR IGNORE` over a PRIMARY KEY
                         (category_id, tax_rate_id) (db/tax/assignments.rs:158-168), so a
-                        replay writes the same set twice and the second is a no-op.  * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
+                        replay writes the same set twice and the second is a no-op.
+  * menu item create -- SILENT DUPLICATION, and NOT the products.sku guard. The entry above
+                        refutes "products" on the strength of sku UNIQUE, which is right for a
+                        typed sku and does not apply here: RestaurantMenuEditorScreen mints the
+                        sku itself with generateMenuSku (menuEditorLogic.ts:39-48), a counter
+                        plus Math.random(), so a replay makes a SECOND real product for the
+                        same dish with a different sku -- nothing refuses it. Round 186 FIXED
+                        handleSaveDraft with a ref; the case fails `expected 2 to be 1` with it
+                        disabled. NOTE the existing refuted entry is about a sku the operator
+                        chooses, not one the screen invents.
+  * location ticket prefix -- idempotent write, reported wrong. set_location_ticket_prefix is
+                        `UPDATE locations SET ticket_prefix = ?1 WHERE id = ?2`
+                        (db/locations.rs:107-126), so a replay cannot corrupt the row; what it
+                        CAN do is echo into the same `prefixSaved`, showing the operator the
+                        value from the tap that lost, and report a save failure twice for a save
+                        that landed. Round 186 FIXED handleSavePrefix with a ref.
+  * stock transfer receive -- the entry above ("receive ... idempotent by DIFFERENCE")
+                        answered the wrong question. It is idempotent when the transfer is
+                        received PARTIALLY (received_qty >= previous_received_qty, only the
+                        delta credited); it is REFUSED when the first call completed the
+                        receipt, because receive_transfer only claims a status of
+                        in_transit/received_partial (stock_transfers.rs:622-629, :733-743) --
+                        so the replay lands in the catch as stock-transfers-error-receive, an
+                        error banner over a receipt that succeeded. The "Confirm receipt"
+                        button shows a spinner but is NOT disabled. Round 186 FIXED
+                        handleReceive with a ref. The correction is the useful part: "idempotent
+                        by difference" is a property of ONE status, not of the command.
+  * purchase order receive -- REFUSED, and the worst catch of the class. receive_purchase_order
+                        refuses any status other than 'approved' (db/purchase_orders.rs:383-388),
+                        so the replay errors -- but on the On-Account path the FIRST call already
+                        created the payable, so ReceivePoModal reported po-error-receive over a
+                        receipt that landed AND a supplier debt that now exists. Round 186 FIXED
+                        handleSubmit with a ref.
+  * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
                         idempotent by construction: the same key is overwritten
 The point of the list is that it is SHORT: filtering to handlers that (a) await something
 other than a list/get read and (b) have a write-shaped name narrows ~143 raw busy-flag
