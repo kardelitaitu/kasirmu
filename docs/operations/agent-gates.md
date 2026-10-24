@@ -2958,6 +2958,30 @@ guard moved above validation     -> "does not strand the re-entry guard" fails
 guard after validation            -> 20 passed
 ```
 
+**A case that clicks a DISABLED button reaches no handler, and proves nothing about it.**
+Round 171 recorded the ordering trap — a guard placed above validation strands itself. Round 172
+applied that lesson to `StaffDetailDrawer.handleSave` in the right place and wrote the two cases
+that had caught it before: one for the double click, one for the stranding. **The second one passed
+with the guard deliberately moved to the broken position.** The reason is the button:
+`saveDisabled` already mirrors the required-field checks, so calling the drawer's Save with an
+empty form is a click on a disabled element, which React never routes to`onClick`. The case
+asserted `expect(mockCreateStaff).not.toHaveBeenCalled()` and then filled the form and saved —
+and both halves hold whether the guard is taken before validation or after it, because the
+handler was never entered either way.
+
+Measured, rather than reasoned: a probe rendered the drawer and logged the button through three
+states — `disabled=true` before the first click, `true` after it, `0` calls
+throughout. The refusal that exercises the handler has to be one the BUTTON permits. Here that is
+a malformed email or phone: nothing on the button reads them, and `validateProfileForm` rejects
+them after the click.
+
+**The rule this adds to the two above.** A mutation test proves a case measures something only if
+the mutated code is REACHED. A disabled control, an early return, a guard that short-circuits, or a
+mounted-only-when-open branch all sit between the test and the line under test, and each makes the
+case green for a reason unrelated to the mutation. Assert the precondition that lets the code run —
+the fixed case now asserts `expect(saveBtn.disabled).toBe(false)` before it clicks, so
+re-introducing the same blindness fails loudly instead of silently.
+
 Every one of the seven rows above is the same two questions in the same order. What changed
 between rounds 170 and 171 is not the method; it is that the answers are now written down, so the
 next lane can start from the table instead of re-opening seven handlers.
@@ -2987,6 +3011,6 @@ anything.
 
 **What the report counts after this round: 74.** Not because 76 was wrong -- each of the three
 thrown off it now has an atomic ref plus a case that fails with `expected 2 to be 1` when the ref
-is hollowed out. The other 71 are untouched, and the questions above have not been asked of them.
+is hollowed out. The other 70 are untouched, and the questions above have not been asked of them.
 
 > last audited 11-10-26 by docs-auditor
