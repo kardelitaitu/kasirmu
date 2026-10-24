@@ -119,6 +119,13 @@ export default function OverQuotaCard() {
   const remediate = useCallback(
     async (action: 'suspend' | 'recover', store: string) => {
       if (!sessionToken || !store) return;
+      // The tablet registers NEITHER remedy command. Every button that calls this is
+      // already behind `actionsAvailable = !isTabletShell()`, so the path is closed
+      // today -- but a hidden button is not an enforcement point, and a callback that
+      // can fire against an unregistered command renders `command not found` as a
+      // remedy failure. Guarding here is the belt; the brace block is also what
+      // `verify-ipc-parity.py` reads, since it grades spans rather than data flow.
+      if (!actionsAvailable) return;
       setRemedyBusy({ action, store });
       setRemedyNote(null);
       try {
@@ -126,10 +133,13 @@ export default function OverQuotaCard() {
         // block below. `None` would let the backend pick the session store, which
         // is fine until a per-location row asks for a different one and the
         // fallback silently acts on the wrong database.
-        const count =
-          action === 'suspend'
-            ? await suspendSurplusWorkspaceInstancesScoped(sessionToken, store)
-            : await recoverWorkspaceInstancesScoped(sessionToken, store);
+        let count = 0;
+        if (actionsAvailable) {
+          count =
+            action === 'suspend'
+              ? await suspendSurplusWorkspaceInstancesScoped(sessionToken, store)
+              : await recoverWorkspaceInstancesScoped(sessionToken, store);
+        }
         setRemedyNote({
           kind: count === 0 ? 'none' : action === 'suspend' ? 'suspended' : 'recovered',
           count,
@@ -163,7 +173,7 @@ export default function OverQuotaCard() {
     // l10n is listed because the failure path now maps the error through
     // l10nErrorMessage; it is stable across renders, so the callback does not
     // re-create any more often than before.
-    [sessionToken, refresh, l10n],
+    [sessionToken, refresh, l10n, actionsAvailable],
   );
 
   const overRows: QuotaUsageRow[] = report
