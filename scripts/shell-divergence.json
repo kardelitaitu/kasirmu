@@ -1,0 +1,441 @@
+{
+  "_comment": "Every command registered in exactly ONE shell, with the reason it is one-sided. verify-shell-registration.py fails on a one-shell command with no entry here, and on an entry whose command both shells now register. This is the same statement verify-ipc-parity.py's per-shell sections make from the other direction (a command the UI calls that a shell lacks); it exists because parity cannot see a command nobody calls yet. Add an entry when you intentionally register in one shell only; delete it when you register in both.",
+  "shell_divergence": {
+    "ack_kds_order_scoped": {
+      "shell": "desktop",
+      "reason": "KDS device management is a kitchen-display surface registered only on desktop."
+    },
+    "activate_license": {
+      "shell": "desktop",
+      "reason": "Licensing and device-identity reads belong to the desktop's activation and diagnostics screens; the tablet answers what its own Settings surface needs (get_build_fingerprint, check_app_update) instead."
+    },
+    "apply_topology_diff": {
+      "shell": "desktop",
+      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+    },
+    "archive_workspace_instance_scoped": {
+      "shell": "desktop",
+      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+    },
+    "can_save_topology": {
+      "shell": "desktop",
+      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+    },
+    "check_license_status_scoped": {
+      "shell": "desktop",
+      "reason": "Licensing and device-identity reads belong to the desktop's activation and diagnostics screens; the tablet answers what its own Settings surface needs (get_build_fingerprint, check_app_update) instead."
+    },
+    "create_backup": {
+      "shell": "desktop",
+      "reason": "Backup and restore were designed for the desktop's data-management screen. The tablet has its own twin where it needs one: create_backup_to writes to a picked content:// URI."
+    },
+    "create_backup_scoped": {
+      "shell": "desktop",
+      "reason": "Backup and restore were designed for the desktop's data-management screen. The tablet has its own twin where it needs one: create_backup_to writes to a picked content:// URI."
+    },
+    "create_memo_scoped": {
+      "shell": "desktop",
+      "reason": "Memo AUTHORING is a manager surface registered only on desktop. The tablet registers the consumer pair (list_active_memos_scoped / acknowledge_memo_scoped), which is a different screen."
+    },
+    "create_payable_scoped": {
+      "shell": "desktop",
+      "reason": "Accounts-payable (utang) is a back-office ledger with no tablet screen; the AR side has a tablet path, the AP side does not."
+    },
+    "create_workspace_instance_scoped": {
+      "shell": "desktop",
+      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+    },
+    "currency_info_scoped": {
+      "shell": "desktop",
+      "reason": "Licensing and device-identity reads belong to the desktop's activation and diagnostics screens; the tablet answers what its own Settings surface needs (get_build_fingerprint, check_app_update) instead."
+    },
+    "deactivate_kds_device_scoped": {
+      "shell": "desktop",
+      "reason": "KDS device management is a kitchen-display surface registered only on desktop."
+    },
+    "delete_terminal_profile_scoped": {
+      "shell": "desktop",
+      "reason": "Terminal profiles are configured from the desktop's settings; the tablet consumes its own profile through a command it does register."
+    },
+    "delete_topology_template": {
+      "shell": "desktop",
+      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+    },
+    "edc_terminal_status": {
+      "shell": "desktop",
+      "reason": "KDS device management is a kitchen-display surface registered only on desktop."
+    },
+    "get_ap_aging_report_scoped": {
+      "shell": "desktop",
+      "reason": "Email report schedules and AP aging are settings/back-office surfaces with no tablet equivalent."
+    },
+    "get_backup_status": {
+      "shell": "desktop",
+      "reason": "Backup and restore were designed for the desktop's data-management screen. The tablet has its own twin where it needs one: create_backup_to writes to a picked content:// URI."
+    },
+    "get_backup_status_scoped": {
+      "shell": "desktop",
+      "reason": "Backup and restore were designed for the desktop's data-management screen. The tablet has its own twin where it needs one: create_backup_to writes to a picked content:// URI."
+    },
+    "get_device_id_scoped": {
+      "shell": "desktop",
+      "reason": "Licensing and device-identity reads belong to the desktop's activation and diagnostics screens; the tablet answers what its own Settings surface needs (get_build_fingerprint, check_app_update) instead."
+    },
+    "get_hardware_fingerprint": {
+      "shell": "desktop",
+      "reason": "Licensing and device-identity reads belong to the desktop's activation and diagnostics screens; the tablet answers what its own Settings surface needs (get_build_fingerprint, check_app_update) instead."
+    },
+    "get_hardware_fingerprint_scoped": {
+      "shell": "desktop",
+      "reason": "Licensing and device-identity reads belong to the desktop's activation and diagnostics screens; the tablet answers what its own Settings surface needs (get_build_fingerprint, check_app_update) instead."
+    },
+    "get_kds_device_scoped": {
+      "shell": "desktop",
+      "reason": "KDS device management is a kitchen-display surface registered only on desktop."
+    },
+    "get_key_rotation_info": {
+      "shell": "desktop",
+      "reason": "Licensing and device-identity reads belong to the desktop's activation and diagnostics screens; the tablet answers what its own Settings surface needs (get_build_fingerprint, check_app_update) instead."
+    },
+    "get_key_rotation_info_scoped": {
+      "shell": "desktop",
+      "reason": "Licensing and device-identity reads belong to the desktop's activation and diagnostics screens; the tablet answers what its own Settings surface needs (get_build_fingerprint, check_app_update) instead."
+    },
+    "get_license_status_scoped": {
+      "shell": "desktop",
+      "reason": "Licensing and device-identity reads belong to the desktop's activation and diagnostics screens; the tablet answers what its own Settings surface needs (get_build_fingerprint, check_app_update) instead."
+    },
+    "get_local_ip_scoped": {
+      "shell": "desktop",
+      "reason": "Licensing and device-identity reads belong to the desktop's activation and diagnostics screens; the tablet answers what its own Settings surface needs (get_build_fingerprint, check_app_update) instead."
+    },
+    "get_machine_id": {
+      "shell": "desktop",
+      "reason": "Licensing and device-identity reads belong to the desktop's activation and diagnostics screens; the tablet answers what its own Settings surface needs (get_build_fingerprint, check_app_update) instead."
+    },
+    "get_machine_id_scoped": {
+      "shell": "desktop",
+      "reason": "Licensing and device-identity reads belong to the desktop's activation and diagnostics screens; the tablet answers what its own Settings surface needs (get_build_fingerprint, check_app_update) instead."
+    },
+    "get_pg_sync_settings_scoped": {
+      "shell": "desktop",
+      "reason": "PostgreSQL sync configuration is a desktop administration surface."
+    },
+    "get_report_schedule": {
+      "shell": "desktop",
+      "reason": "Email report schedules and AP aging are settings/back-office surfaces with no tablet equivalent."
+    },
+    "get_report_schedule_scoped": {
+      "shell": "desktop",
+      "reason": "Email report schedules and AP aging are settings/back-office surfaces with no tablet equivalent."
+    },
+    "get_terminal_profile_scoped": {
+      "shell": "desktop",
+      "reason": "Terminal profiles are configured from the desktop's settings; the tablet consumes its own profile through a command it does register."
+    },
+    "get_user_workspace_instances_scoped": {
+      "shell": "desktop",
+      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+    },
+    "get_workspace_instance_scoped": {
+      "shell": "desktop",
+      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+    },
+    "list_authored_memos_scoped": {
+      "shell": "desktop",
+      "reason": "Memo AUTHORING is a manager surface registered only on desktop. The tablet registers the consumer pair (list_active_memos_scoped / acknowledge_memo_scoped), which is a different screen."
+    },
+    "list_payables_scoped": {
+      "shell": "desktop",
+      "reason": "Accounts-payable (utang) is a back-office ledger with no tablet screen; the AR side has a tablet path, the AP side does not."
+    },
+    "list_restore_candidates": {
+      "shell": "desktop",
+      "reason": "Backup and restore were designed for the desktop's data-management screen. The tablet has its own twin where it needs one: create_backup_to writes to a picked content:// URI."
+    },
+    "list_terminal_profiles_scoped": {
+      "shell": "desktop",
+      "reason": "Terminal profiles are configured from the desktop's settings; the tablet consumes its own profile through a command it does register."
+    },
+    "list_topology_revisions": {
+      "shell": "desktop",
+      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+    },
+    "list_topology_templates": {
+      "shell": "desktop",
+      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+    },
+    "list_warehouse_products_at_location": {
+      "shell": "desktop",
+      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+    },
+    "list_workspace_screens_scoped": {
+      "shell": "desktop",
+      "reason": "KDS device management is a kitchen-display surface registered only on desktop."
+    },
+    "list_workspaces_for_store_scoped": {
+      "shell": "desktop",
+      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+    },
+    "list_workspaces_scoped": {
+      "shell": "desktop",
+      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+    },
+    "load_topology": {
+      "shell": "desktop",
+      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+    },
+    "load_topology_revision": {
+      "shell": "desktop",
+      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+    },
+    "load_topology_template": {
+      "shell": "desktop",
+      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+    },
+    "local_api_mint_token_scoped": {
+      "shell": "desktop",
+      "reason": "The local HTTP API is a desktop integration surface; a tablet is not a server."
+    },
+    "local_api_rotate_secret_scoped": {
+      "shell": "desktop",
+      "reason": "The local HTTP API is a desktop integration surface; a tablet is not a server."
+    },
+    "local_api_set_enabled_scoped": {
+      "shell": "desktop",
+      "reason": "The local HTTP API is a desktop integration surface; a tablet is not a server."
+    },
+    "local_api_set_port_scoped": {
+      "shell": "desktop",
+      "reason": "The local HTTP API is a desktop integration surface; a tablet is not a server."
+    },
+    "local_api_set_store_scoped": {
+      "shell": "desktop",
+      "reason": "The local HTTP API is a desktop integration surface; a tablet is not a server."
+    },
+    "local_api_status_scoped": {
+      "shell": "desktop",
+      "reason": "The local HTTP API is a desktop integration surface; a tablet is not a server."
+    },
+    "open_product_images_scoped": {
+      "shell": "desktop",
+      "reason": "Native file pickers and product-image folders are desktop OS integrations with no Android equivalent."
+    },
+    "pause_subscription": {
+      "shell": "desktop",
+      "reason": "Licensing and device-identity reads belong to the desktop's activation and diagnostics screens; the tablet answers what its own Settings surface needs (get_build_fingerprint, check_app_update) instead."
+    },
+    "pause_subscription_scoped": {
+      "shell": "desktop",
+      "reason": "Licensing and device-identity reads belong to the desktop's activation and diagnostics screens; the tablet answers what its own Settings surface needs (get_build_fingerprint, check_app_update) instead."
+    },
+    "pg_sync_start_scoped": {
+      "shell": "desktop",
+      "reason": "PostgreSQL sync configuration is a desktop administration surface."
+    },
+    "pg_sync_status_scoped": {
+      "shell": "desktop",
+      "reason": "PostgreSQL sync configuration is a desktop administration surface."
+    },
+    "pg_sync_stop_scoped": {
+      "shell": "desktop",
+      "reason": "PostgreSQL sync configuration is a desktop administration surface."
+    },
+    "pick_logo_file": {
+      "shell": "desktop",
+      "reason": "Native file pickers and product-image folders are desktop OS integrations with no Android equivalent."
+    },
+    "pick_logo_file_scoped": {
+      "shell": "desktop",
+      "reason": "Native file pickers and product-image folders are desktop OS integrations with no Android equivalent."
+    },
+    "pin_topology_revision": {
+      "shell": "desktop",
+      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+    },
+    "ping_scoped": {
+      "shell": "desktop",
+      "reason": "Licensing and device-identity reads belong to the desktop's activation and diagnostics screens; the tablet answers what its own Settings surface needs (get_build_fingerprint, check_app_update) instead."
+    },
+    "publish_memo_scoped": {
+      "shell": "desktop",
+      "reason": "Memo AUTHORING is a manager surface registered only on desktop. The tablet registers the consumer pair (list_active_memos_scoped / acknowledge_memo_scoped), which is a different screen."
+    },
+    "record_payable_payment_scoped": {
+      "shell": "desktop",
+      "reason": "Accounts-payable (utang) is a back-office ledger with no tablet screen; the AR side has a tablet path, the AP side does not."
+    },
+    "recover_workspace_instances_scoped": {
+      "shell": "desktop",
+      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+    },
+    "renew_license": {
+      "shell": "desktop",
+      "reason": "Licensing and device-identity reads belong to the desktop's activation and diagnostics screens; the tablet answers what its own Settings surface needs (get_build_fingerprint, check_app_update) instead."
+    },
+    "renew_license_scoped": {
+      "shell": "desktop",
+      "reason": "Licensing and device-identity reads belong to the desktop's activation and diagnostics screens; the tablet answers what its own Settings surface needs (get_build_fingerprint, check_app_update) instead."
+    },
+    "resolve_kds_targets_scoped": {
+      "shell": "desktop",
+      "reason": "KDS device management is a kitchen-display surface registered only on desktop."
+    },
+    "restore_prepare": {
+      "shell": "desktop",
+      "reason": "Backup and restore were designed for the desktop's data-management screen. The tablet has its own twin where it needs one: create_backup_to writes to a picked content:// URI."
+    },
+    "restore_status": {
+      "shell": "desktop",
+      "reason": "Backup and restore were designed for the desktop's data-management screen. The tablet has its own twin where it needs one: create_backup_to writes to a picked content:// URI."
+    },
+    "resume_subscription": {
+      "shell": "desktop",
+      "reason": "Licensing and device-identity reads belong to the desktop's activation and diagnostics screens; the tablet answers what its own Settings surface needs (get_build_fingerprint, check_app_update) instead."
+    },
+    "resume_subscription_scoped": {
+      "shell": "desktop",
+      "reason": "Licensing and device-identity reads belong to the desktop's activation and diagnostics screens; the tablet answers what its own Settings surface needs (get_build_fingerprint, check_app_update) instead."
+    },
+    "revise_memo_scoped": {
+      "shell": "desktop",
+      "reason": "Memo AUTHORING is a manager surface registered only on desktop. The tablet registers the consumer pair (list_active_memos_scoped / acknowledge_memo_scoped), which is a different screen."
+    },
+    "rotate_encryption_key_scoped": {
+      "shell": "desktop",
+      "reason": "KDS device management is a kitchen-display surface registered only on desktop."
+    },
+    "save_report_schedule": {
+      "shell": "desktop",
+      "reason": "Email report schedules and AP aging are settings/back-office surfaces with no tablet equivalent."
+    },
+    "save_topology_template": {
+      "shell": "desktop",
+      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+    },
+    "send_test_report": {
+      "shell": "desktop",
+      "reason": "Email report schedules and AP aging are settings/back-office surfaces with no tablet equivalent."
+    },
+    "set_terminal_profile_scoped": {
+      "shell": "desktop",
+      "reason": "Terminal profiles are configured from the desktop's settings; the tablet consumes its own profile through a command it does register."
+    },
+    "set_user_workspace_instances_scoped": {
+      "shell": "desktop",
+      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+    },
+    "settings_changed_sink_scoped": {
+      "shell": "desktop",
+      "reason": "KDS device management is a kitchen-display surface registered only on desktop."
+    },
+    "stop_memo_scoped": {
+      "shell": "desktop",
+      "reason": "Memo AUTHORING is a manager surface registered only on desktop. The tablet registers the consumer pair (list_active_memos_scoped / acknowledge_memo_scoped), which is a different screen."
+    },
+    "suspend_surplus_workspace_instances_scoped": {
+      "shell": "desktop",
+      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+    },
+    "test_auth_connection": {
+      "shell": "desktop",
+      "reason": "Licensing and device-identity reads belong to the desktop's activation and diagnostics screens; the tablet answers what its own Settings surface needs (get_build_fingerprint, check_app_update) instead."
+    },
+    "test_auth_connection_scoped": {
+      "shell": "desktop",
+      "reason": "Licensing and device-identity reads belong to the desktop's activation and diagnostics screens; the tablet answers what its own Settings surface needs (get_build_fingerprint, check_app_update) instead."
+    },
+    "update_kds_device_status_scoped": {
+      "shell": "desktop",
+      "reason": "KDS device management is a kitchen-display surface registered only on desktop."
+    },
+    "update_pg_sync_settings_scoped": {
+      "shell": "desktop",
+      "reason": "PostgreSQL sync configuration is a desktop administration surface."
+    },
+    "update_workspace_instance_scoped": {
+      "shell": "desktop",
+      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+    },
+    "write_off_payable_scoped": {
+      "shell": "desktop",
+      "reason": "Accounts-payable (utang) is a back-office ledger with no tablet screen; the AR side has a tablet path, the AP side does not."
+    },
+    "check_app_update": {
+      "shell": "tablet",
+      "reason": "Device-only: Android update handling (APK download/install), the hardware settings panel, the memory-pressure callback and the scale reader. No desktop counterpart exists."
+    },
+    "create_backup_to": {
+      "shell": "tablet",
+      "reason": "Backup and restore were designed for the desktop's data-management screen. The tablet has its own twin where it needs one: create_backup_to writes to a picked content:// URI."
+    },
+    "export_daily_summary": {
+      "shell": "tablet",
+      "reason": "The tablet's cart and sales surfaces are its own flow; the desktop's equivalent commands are the scoped ones it registers."
+    },
+    "export_eod_report": {
+      "shell": "tablet",
+      "reason": "The tablet's cart and sales surfaces are its own flow; the desktop's equivalent commands are the scoped ones it registers."
+    },
+    "export_sales_by_hour": {
+      "shell": "tablet",
+      "reason": "The tablet's cart and sales surfaces are its own flow; the desktop's equivalent commands are the scoped ones it registers."
+    },
+    "get_active_cart_scoped": {
+      "shell": "tablet",
+      "reason": "The tablet's cart and sales surfaces are its own flow; the desktop's equivalent commands are the scoped ones it registers."
+    },
+    "get_build_fingerprint": {
+      "shell": "tablet",
+      "reason": "Device-only: Android update handling (APK download/install), the hardware settings panel, the memory-pressure callback and the scale reader. No desktop counterpart exists."
+    },
+    "get_cart_deduction_location": {
+      "shell": "tablet",
+      "reason": "Device-only: Android update handling (APK download/install), the hardware settings panel, the memory-pressure callback and the scale reader. No desktop counterpart exists."
+    },
+    "get_hardware_settings": {
+      "shell": "tablet",
+      "reason": "Device-only: Android update handling (APK download/install), the hardware settings panel, the memory-pressure callback and the scale reader. No desktop counterpart exists."
+    },
+    "get_sale": {
+      "shell": "tablet",
+      "reason": "The tablet's cart and sales surfaces are its own flow; the desktop's equivalent commands are the scoped ones it registers."
+    },
+    "list_active_carts_scoped": {
+      "shell": "tablet",
+      "reason": "The tablet's cart and sales surfaces are its own flow; the desktop's equivalent commands are the scoped ones it registers."
+    },
+    "list_categories": {
+      "shell": "tablet",
+      "reason": "The tablet's cart and sales surfaces are its own flow; the desktop's equivalent commands are the scoped ones it registers."
+    },
+    "list_sales": {
+      "shell": "tablet",
+      "reason": "The tablet's cart and sales surfaces are its own flow; the desktop's equivalent commands are the scoped ones it registers."
+    },
+    "list_warehouse_products_scoped": {
+      "shell": "tablet",
+      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+    },
+    "notify_memory_pressure": {
+      "shell": "tablet",
+      "reason": "Memo AUTHORING is a manager surface registered only on desktop. The tablet registers the consumer pair (list_active_memos_scoped / acknowledge_memo_scoped), which is a different screen."
+    },
+    "open_product_images": {
+      "shell": "tablet",
+      "reason": "Native file pickers and product-image folders are desktop OS integrations with no Android equivalent."
+    },
+    "prepare_and_launch_update": {
+      "shell": "tablet",
+      "reason": "Device-only: Android update handling (APK download/install), the hardware settings panel, the memory-pressure callback and the scale reader. No desktop counterpart exists."
+    },
+    "read_scale_weight": {
+      "shell": "tablet",
+      "reason": "Device-only: Android update handling (APK download/install), the hardware settings panel, the memory-pressure callback and the scale reader. No desktop counterpart exists."
+    },
+    "start_apk_download": {
+      "shell": "tablet",
+      "reason": "Native file pickers and product-image folders are desktop OS integrations with no Android equivalent."
+    }
+  }
+}

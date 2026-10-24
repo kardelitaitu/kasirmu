@@ -171,6 +171,15 @@ step "scoped authorization self-test" "bash scripts/verify-scoped-authorization.
 # so the list shrinks to zero as F-006 removes the dead surface.
 step "ipc parity" "python3 scripts/verify-ipc-parity.py" python3 scripts/verify-ipc-parity.py
 
+# ── Shell registration divergence ────────────────────────────────────────
+# The direction parity structurally cannot see: a command registered in ONE
+# shell and forgotten in the other. Parity grades gaps that reach the UI, so a
+# brand-new command nothing calls yet is invisible to it. Every one-sided name
+# must be listed in scripts/shell-divergence.json with a reason; an entry whose
+# command both shells now register fails as stale.
+step "shell registration" "python3 scripts/verify-shell-registration.py" python3 scripts/verify-shell-registration.py
+step "shell registration self-test" "python3 scripts/verify-shell-registration.py --self-test" python3 scripts/verify-shell-registration.py --self-test
+
 # ── IPC session-token payload parity (round AE) ──────────────────────────
 # Fails when the UI invokes a command whose Rust signature requires
 # session_token without carrying a sessionToken payload (the round-AC edc
