@@ -999,6 +999,45 @@ docstring would make the suite red on a tree that is green, and "fixing" the cod
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
 
+#### A delegated audit that re-derived everything, and the one gap it found (round 108)
+
+The open drifted-pin finding was delegated to a subagent with instructions to re-measure rather
+than read the finding. It came back having done exactly that: every pin re-resolved two ways that
+need no daemon (Docker Hub's `docker-content-digest` header, and SHA-256 of the raw manifest
+bytes for public ECR, which returns no header), reproducing all 7 drifted digests exactly. Its
+numbers also matched an independent live run of the gate in this session, so the finding is
+corroborated rather than merely restated.
+
+**Three things it found that the finding did not record, each verified here before acting:**
+
+| claim | how it was verified here | verdict |
+|---|---|---|
+| the pins are STALE, not frozen | `git grep -inE "frozen\|freeze"` over Dockerfiles, gate, `.trivyignore`, `agent-gates.md` → zero hits | confirmed |
+| the "refreshed" comments are partly false | `Dockerfile.unified:193` claims debian refreshed 08-17 but pins an artifact created 08-24 | confirmed |
+| a 12th pin the gate cannot see | `run-e2e.mjs:126` carries the same redis digest with "Keep in sync"; file absent from `FILES` | confirmed |
+
+The third was the only one with a safe, mechanical fix, and it is the one that mattered: refreshing
+the compose pin alone would have left `prePullRedis()` pulling the OLD digest while compose started
+the NEW one — two different images in one e2e run. `run-e2e.mjs` is now in `FILES`, taking the gate
+from **11 pins across 6 files to 12 across 7**. The pattern already matched the line (verified
+before the edit), so the only change needed was the path.
+
+**And the proof that the edit worked is not the self-test.** `--self-test` still passes 8/8, but it
+grades `PIN_RE`, not `FILES` — it would have passed identically before the change. The pin count
+was re-measured directly instead: 2+4+2+1+1+1+1 = **12**. A gate whose self-test does not cover its
+own scope list is exactly the shape that let this blind spot exist.
+
+**Also corrected in the finding:** an arithmetic slip *inside a paragraph already correcting
+arithmetic* — the two current images were said to hold "3 references" when they hold **4**
+(rust x2, golang x2), and 7 drifted + 4 current = 11, which is what `gates.json`'s own "11 pins"
+row says all along. The gate was right; the prose was off by one.
+
+**What was deliberately NOT done:** refreshing the 7 pins themselves. That is the owner's call
+(debian is the only security-relevant one, a ~2-month-overdue point release), and the audit's
+recommendation to wire the retired Monday cron as an *advisory*, issue-opening job rather than a
+blocking one is sound — caddy alone moves roughly 4x a month, so a blocking job would be
+permanently red. Recorded in the finding for whoever makes that call.
+
 #### Resolving the size-ceiling finding, and correcting what it said (round 108)
 
 The finding filed in round 95 said "extract or raise" and named `db/popularity.rs` as the extraction
