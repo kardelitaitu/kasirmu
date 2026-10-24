@@ -34,6 +34,16 @@ vi.mock('@/api/license', () => ({
   resumeSubscriptionScoped: (token: string) => mockResumeSubscriptionScoped(token),
 }));
 
+// The tablet shell registers NEITHER pause_subscription command (nor the resume pair),
+// so `LicenseSettings` guards both handlers and keeps its buttons behind
+// `actionsAvailable = !isTabletShell()`. Pin the guard, not the markup: with the shell
+// mocked to tablet the scoped command must never be invoked, because on a real device
+// it would be rejected as an unknown command and rendered as a pause FAILURE.
+const shell = { tablet: false };
+vi.mock('@/utils/shellKind', () => ({
+  isTabletShell: () => shell.tablet,
+  isDesktopShell: () => !shell.tablet,
+}));
 vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: mockAddToast }),
 }));
@@ -166,6 +176,7 @@ describe('LicenseSettings — EN', () => {
 
   describe('License payload display', () => {
     beforeEach(() => {
+      shell.tablet = false;
       mockGetLicenseStatus.mockResolvedValue({
         payload: JSON.stringify(makePayload()),
         tier: 'pro',
@@ -184,6 +195,19 @@ describe('LicenseSettings — EN', () => {
       const activeValue = document.querySelector('.settings-license-value--active');
       expect(activeValue).toBeInTheDocument();
       expect(activeValue?.textContent?.toLowerCase()).toContain('active');
+    });
+
+    // THE TABLET REGISTERS NEITHER PAUSE COMMAND. With the shell mocked to tablet the
+    // pause/resume buttons are not rendered at all (`actionsAvailable`), so the path is
+    // already closed; the handler guards are the belt. What this case pins is that the
+    // unregistered command is never invoked, which is the property that survives someone
+    // later rendering the buttons unconditionally.
+    it('does not invoke pauseSubscriptionScoped on the tablet shell', async () => {
+      shell.tablet = true;
+      await renderWithFluent(<LicenseSettings />);
+      expect(screen.queryByRole('button', { name: /pause/i })).toBeNull();
+      expect(mockPauseSubscriptionScoped).not.toHaveBeenCalled();
+      expect(mockPauseSubscription).not.toHaveBeenCalled();
     });
 
     it('renders expiry date', async () => {

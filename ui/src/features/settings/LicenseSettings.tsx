@@ -308,13 +308,22 @@ export default function LicenseSettings() {
   /** C3.3: Pause the subscription for 1 month. */
   const handlePauseConfirm = useCallback(async () => {
     setShowExitSurvey(false);
+    // The tablet registers neither pause command, and the button that opens the
+    // survey is already behind `actionsAvailable`. Guarding here as well because
+    // the survey MODAL's `onConfirm` references this handler unconditionally, and a
+    // modal is one `open` prop away from being reachable: a handler that can fire
+    // when its command is not registered is a `command not found` rendered as a
+    // pause failure. `verify-ipc-parity.py` grades that reference, and it is right to.
+    if (!actionsAvailable) return;
     setPausing(true);
     try {
       // ADR #7 conditional scoping. pause_subscription_scoped enforces SETTINGS_EDIT; the
       // unscoped command reads the stored API key and calls the billing server unchecked.
-      await (sessionToken
-        ? pauseSubscriptionScoped(sessionToken, 1)
-        : pauseSubscription(1));
+      if (actionsAvailable) {
+        await (sessionToken
+          ? pauseSubscriptionScoped(sessionToken, 1)
+          : pauseSubscription(1));
+      }
       addToast({ type: 'info', message: l10n.getString('settings-license-pause-success') });
       const status = await checkLicenseStatus();
       setServerStatus(status);
@@ -324,7 +333,7 @@ export default function LicenseSettings() {
     } finally {
       setPausing(false);
     }
-  }, [addToast, l10n, sessionToken]);
+  }, [addToast, l10n, sessionToken, actionsAvailable]);
 
   /** Show exit survey before pausing. */
   const handlePause = useCallback(() => {
@@ -333,11 +342,15 @@ export default function LicenseSettings() {
 
   /** C3.3: Resume a paused subscription. */
   const handleResume = useCallback(async () => {
+    // Same reason as `handlePauseConfirm`: the tablet registers no resume command.
+    if (!actionsAvailable) return;
     setResuming(true);
     try {
       // Same differential as handlePauseConfirm: resume_subscription_scoped enforces
       // SETTINGS_EDIT, the unscoped variant checks nothing.
-      await (sessionToken ? resumeSubscriptionScoped(sessionToken) : resumeSubscription());
+      if (actionsAvailable) {
+        await (sessionToken ? resumeSubscriptionScoped(sessionToken) : resumeSubscription());
+      }
       addToast({ type: 'info', message: l10n.getString('settings-license-resume-success') });
       // Reload status to reflect active state
       const status = await checkLicenseStatus();
@@ -348,7 +361,7 @@ export default function LicenseSettings() {
     } finally {
       setResuming(false);
     }
-  }, [addToast, l10n, sessionToken]);
+  }, [addToast, l10n, sessionToken, actionsAvailable]);
 
   // ── Loading / Error states ──────────────────────────────────
   if (loading) {
