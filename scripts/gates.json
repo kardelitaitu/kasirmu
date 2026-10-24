@@ -450,8 +450,11 @@
       "id": "shell-registration",
       "label": "Shell registration divergence",
       "status": "required",
-      "_note": "Added 2026-10-25. scripts/verify-shell-registration.py grades the direction verify-ipc-parity.py structurally cannot: a command registered in ONE shell and forgotten in the other. Parity grades gaps that REACH THE UI, so a brand-new command nothing calls yet is invisible to it, and the first symptom is a runtime 'command not found' on a device nobody tested. Measured when this landed: desktop 511 handler entries, tablet 440, 90 desktop-only and 19 tablet-only. Every one is listed in scripts/shell-divergence.json with a reason, and the gate fails on a one-shell command with no entry, on an entry whose reason is blank, and on an entry whose command both shells now register (stale). Parsing reads ONLY the argument list of generate_handler![...]: a whole-file grep for commands::<mod>::<fn> was measured to match a bare pub const re-export and a direct function CALL (TOPOLOGY_REVISION_RESTORABLE_KEEP, start_and_store), which would have produced two false findings on the first run. Mutation-tested: planting an unexplained desktop-only command fails the run and names it. Wired into scripts/check.sh; a CI leg is the follow-up.",
-      "ci": null,
+      "_note": "Added 2026-10-25. scripts/verify-shell-registration.py grades the direction verify-ipc-parity.py structurally cannot: a command registered in ONE shell and forgotten in the other. Parity grades gaps that REACH THE UI, so a brand-new command nothing calls yet is invisible to it, and the first symptom is a runtime 'command not found' on a device nobody tested. Measured when this landed: desktop 511 handler entries, tablet 440, 90 desktop-only and 19 tablet-only. Every one is listed in scripts/shell-divergence.json with a reason, and the gate fails on a one-shell command with no entry, on an entry whose reason is blank, and on an entry whose command both shells now register (stale). Parsing reads ONLY the argument list of generate_handler![...]: a whole-file grep for commands::<mod>::<fn> was measured to match a bare pub const re-export and a direct function CALL (TOPOLOGY_REVISION_RESTORABLE_KEEP, start_and_store), which would have produced two false findings on the first run. Mutation-tested: planting an unexplained desktop-only command fails the run and names it. Runs in CI inside dev-ci.yml#ipc-parity (same path gate as its sibling) and in scripts/check.sh.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "ipc-parity"
+      },
       "runners": {
         "check.sh": [
           "shell registration",

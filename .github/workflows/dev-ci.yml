@@ -1618,6 +1618,22 @@ jobs:
       # of the checker can see this class; only the self-test can. Gate: C55.
       - name: IPC command parity self-test
         run: python3 scripts/verify-ipc-parity.py --self-test
+      # The OTHER direction, which the step above structurally cannot see: a
+      # command registered in one shell and forgotten in the other. Parity grades
+      # gaps that REACH THE UI, so a brand-new command nothing calls yet is
+      # invisible to it and the first symptom is a runtime `command not found` on a
+      # device nobody tested. Every one-sided name must be listed in
+      # scripts/shell-divergence.json with a reason; a blank reason fails, and an
+      # entry whose command both shells now register fails as stale. Same path gate
+      # as its sibling: it reads apps/*/src/lib.rs and nothing else.
+      # Gate: scripts/gates.json -> "shell-registration".
+      - name: Shell registration divergence
+        run: python3 scripts/verify-shell-registration.py
+      # Its own liveness cases, for the same reason the sibling carries them: the
+      # bare run cannot see a parser that stopped matching the handler list, and a
+      # parser reading zero names would report zero divergences and pass.
+      - name: Shell registration self-test
+        run: python3 scripts/verify-shell-registration.py --self-test
 
   # ── 8. Release readiness ──────────────────────────────────────────────
   # R36-11's root cause was not only that release.yml was renamed to .bak with an
