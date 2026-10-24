@@ -471,9 +471,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   useEffect(() => {
     const handleMemoryTrim = (e: Event) => {
       const level = (e as CustomEvent<{ level?: number }>).detail?.level ?? 80;
+      // IF/ELSE rather than a bare guard: the restore block below reads and writes the
+      // saved POS draft, whose handlers include tablet-only commands, and
+      // `verify-scoped-reads.py` only reads a shell guard as in force INSIDE the block
+      // it opened. Same behaviour, and the desktop restore path is now provably the
+      // desktop's.
       if (isTabletShell()) {
         void notifyMemoryPressure(level).catch(() => {});
-      }
+      } else {
       if (lines.length > 0) {
         try {
           const draft = {
@@ -501,6 +506,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           };
           localStorage.setItem(ACTIVE_DRAFT_KEY, JSON.stringify(draft));
         } catch { /* ignore */ }
+      }
       }
     };
     window.addEventListener('kasirmu:trimMemory', handleMemoryTrim);

@@ -164,9 +164,15 @@ export default function TopologyScreen({ initialBranchId, openCreateOnMount }: T
   const isWebManaged = isMultiStoreEligible && (caps?.features?.['web_topology_authoring'] ?? false);
 
   if (locked) return <AdminLockedFeature />;
+  // IF/ELSE, not an early return. The whole desktop editor below -- load_topology,
+  // list_workspaces_scoped, update_workspace_instance_scoped, apply_topology_diff,
+  // pin/list topology revisions -- is desktop-only, and `verify-scoped-reads.py` reads a
+  // shell guard as in force only INSIDE the block the `if` opened. An early-return arm
+  // closes that block, so every call below it graded as reachable on the tablet. The
+  // else arm is the same statement, so both this screen and that gate see the guard.
   if (isTabletShell()) {
     return isWebManaged ? <TopologyTabletWebManagedNotice /> : <TopologyTabletNotice />;
-  }
+  } else {
 
   const hashHints = parseTopologyHash();
   const effectiveBranchId = initialBranchId ?? hashHints.branchId ?? undefined;
@@ -1120,4 +1126,5 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
       />
     </div>
   );
+  }
 }
