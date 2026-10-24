@@ -2880,5 +2880,42 @@ reports every run -- the census kept finding UI orphans that `verify-scoped-read
 `*-unrequested`. The gates are numerous (140 declared) and the reading of them is the scarce
 skill, not the writing.
 
-> last audited 11-10-26 by docs-auditor
+## The `-unrequested` line is per shell, and the number nobody could cite was the intersection
 
+Measured 2026-10-25, round 169. The section above ends by saying to read the two `-unrequested`
+lines together. This round did that, and the two lines do not add: `desktop 18 + tablet 10` is
+28, and the population named by no shipped UI file **on either shell** is not 28. It is smaller,
+and the gap between them is not slack -- it is commands one shell's UI names and the other's
+tooling registers anyway.
+
+`verify-ipc-parity.py` now prints the intersection itself, after both shells have spoken:
+
+```
+info[cross-shell-unrequested]: 28 per-shell unrequested registration(s) are 5 command(s)
+  named by no shipped UI file on ANY shell (desktop=13, tablet=5) = 5 named by neither side
+  + 18 named by the other shell's UI only
+```
+
+**Why 18 of the 23 were not dead.** They are strings that A GATE quotes, not strings any UI
+invokes. The first gate doc I wrote on this called them "23" and filtered them by hand to five --
+the right number by luck, not by method. Round 167 named the next class down. `enqueue_offline_scoped`
+and `list_pending_offline_scoped` appear in `ui/src/api/offline.ts` nowhere; `pending_offline_count_scoped`
+does, and `OfflineQueueScreen` imports its wrapper. A name in `ui/src/api/` is not a call, and a call
+is not on screen.
+
+**The measurement that settles it.** `pendingOfflineCountScoped` (`ui/src/api/offline.ts:78`)
+invokes `pending_offline_count_scoped` and is imported by `ui/src/features/offline/OfflineQueueScreen.tsx:7`.
+The other four are named by no shipped file at all: `enqueue_offline_scoped`, `list_pending_offline_scoped`
+(`commands/offline.rs:47,60`), `list_scale_devices_scoped` (`commands/scale.rs:31`), and
+`get_over_quota_report` (`commands/subscription.rs:90`), whose wrapper is `getOverQuotaReport`
+(`api/subscription.ts:287`) mounted at `features/settings/OverQuotaCard.tsx:94` -- but `OverQuotaCard`
+imports it and nothing mounts `OverQuotaCard` except `LicenseSettings.tsx:689`, which no `ui/src`
+production file imports. So the CLIFF: the command is named, the wrapper exists, the component imports
+it, and the chain stops two links short of a screen. `get_over_quota_report_scoped` (the `_scoped`
+twin, `subscription.rs:111`) is the one the gate does see, and that is the one `OverQuotaCard` uses.
+
+The general rule, this file's usual one in a new place: **a per-shell report read alone is arithmetic,
+not a measurement.** Two numbers that describe overlapping populations do not add, and the summarised
+figure -- 28, which the project quoted from memory for several rounds -- was the sum.
+
+> last audited 11-10-26 by docs-auditor

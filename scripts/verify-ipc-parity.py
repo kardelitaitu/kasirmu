@@ -4613,6 +4613,10 @@ def main() -> int:
                 ALLOWLIST_PATH.name,
             ))
 
+    # Populated by the unrequested leg below so a cross-shell intersection can be printed
+    # after both shells have spoken; see the comment at the assignment.
+    per_shell_dead: dict[str, set[str]] = {}
+
     for shell in SHELLS:
         # Belt and braces: allowlist_shape_problems refuses an object in a shell section
         # before this line can be reached, and section_names would read it anyway.
@@ -4845,6 +4849,13 @@ def main() -> int:
             f"from; read the other shell's UI before believing one is dead everywhere)"
             + (": " + tail if dead else "")
         )
+        # The line above is PER SHELL, and read alone it says something stronger than it means:
+        # the two shipped UIs share one component tree, so a command the OTHER shell's UI names
+        # still appears in this shell's "dead" list. Until 2026-10-25 that was the only figure
+        # printed and the cross-shell number was carried forward by hand each time someone cited
+        # it -- and the two differ by an order of magnitude (measured: 18/10 per shell against
+        # 2 named by neither). Recorded here, printed once after both shells have spoken.
+        per_shell_dead[shell] = set(dead)
         # T9's mechanical form, five domains and three real defects after the fact. Informational
         # like every leg here, and for the same reason: making it fail the build is an owner call
         # (T9 says so explicitly), and the exclusions are a policy that wants review before it can
@@ -5034,6 +5045,27 @@ def main() -> int:
             f"{len(all_orphans)} orphans measured in the tree, "
             f"{len(all_orphans) - len(gated)} redundant twins (no check), "
             f"{len(gated)} GATED DEAD SURFACE -> {detail}"
+        )
+
+    # The cross-shell reading of the two `-unrequested` lines above. Each of those is per
+    # shell, and the two shipped UIs share one component tree, so a command the OTHER shell
+    # names still lands in this shell's "dead" list: read alone the lines say 18 and 10 when
+    # the population no UI file on either shell names is 2. That difference is the whole
+    # reason this leg exists -- 28 is the figure that kept being quoted from memory, and it
+    # is the sum of two per-shell lists, not the set that needs an owner.
+    if len(per_shell_dead) == len(SHELLS):
+        everywhere = set.intersection(*per_shell_dead.values())
+        one_shell = {shell: sorted(per_shell_dead[shell] - everywhere) for shell in SHELLS}
+        per_shell_n = sum(len(v) for v in per_shell_dead.values())
+        other_only = sum(len(v) for v in one_shell.values())
+        spread = ", ".join(f"{s}={len(one_shell[s])}" for s in SHELLS)
+        listed = ", ".join(sorted(everywhere)) if everywhere else "-- none"
+        print(
+            f"info[cross-shell-unrequested]: {per_shell_n} per-shell unrequested "
+            f"registration(s) are {len(everywhere)} command(s) named by no shipped UI file on "
+            f"ANY shell ({spread}) = {len(everywhere)} named by neither side + "
+            f"{other_only} named by the other shell's UI only (the second group is a parity "
+            f"question between the two shells, not a dead door): {listed}"
         )
 
     if failures:
