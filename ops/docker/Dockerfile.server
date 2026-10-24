@@ -182,7 +182,10 @@ COPY apps/ apps/
 RUN cargo build --package kasirmu-cloud --release
 
 # ── Stage 2: Runtime ────────────────────────────────────────────────
-# debian:bookworm-slim tag — multi-arch index digest (refreshed 2026-09-17).
+# debian:bookworm-slim tag — multi-arch index digest. The "refreshed 2026-09-17"
+# date was false: the pinned digest was created 2026-08-24 (re-measured 2026-10-24),
+# and Dockerfile.unified:194 pins the SAME digest claiming 2026-08-17 -- an earlier
+# date than the artifact it pins. Both dates were wrong; the pin is ~2 months stale.
 FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 AS runtime
 
 # Install CA certificates for outbound HTTPS and gosu for dropping privileges.
