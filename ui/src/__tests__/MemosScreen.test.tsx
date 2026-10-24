@@ -270,14 +270,20 @@ describe('MemosScreen', () => {
   it('does not invoke createMemoScoped on the tablet shell', async () => {
     mocks.tablet = true;
     render(<MemosScreen />, { wrapper: FluentWrapper });
+
+    // The LIST read stays UNGUARDED on purpose (see the rationale in
+    // `load()`): a guarded load both misleads the user and reddens
+    // `verify-ipc-parity.py`. So the tablet still renders the seeded row —
+    // what must never happen is the CREATE reaching the shell.
     await screen.findByText('End-of-day checklist');
+    expect(mocks.listAuthoredMemosScoped).toHaveBeenCalled();
 
     await userEvent.type(screen.getByLabelText('Title'), 'Tablet briefing');
     await userEvent.type(screen.getByLabelText('Message'), 'This must not reach the shell.');
     await userEvent.click(screen.getByRole('button', { name: 'Create draft' }));
 
     // Give the handler a turn to settle, then assert it never called the command.
-    await waitFor(() => expect(mocks.listAuthoredMemosScoped).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByText('Tablet briefing')).toBeNull());
     expect(mocks.createMemoScoped).not.toHaveBeenCalled();
   });
 

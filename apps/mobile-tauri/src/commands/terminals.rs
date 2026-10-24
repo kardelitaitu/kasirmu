@@ -178,6 +178,48 @@ pub struct SetDeviceBindingArgs {
 
 /// Set a device binding with the caller resolved from a session token.
 ///
+/// Get the device binding for one terminal. ADR #7 scoped.
+///
+/// THE TABLET NEEDED THIS AND DID NOT HAVE IT (2026-10-25). The mobile shell
+/// registered `set_device_binding_scoped` and neither the read nor the clear, so
+/// `TerminalManagementScreen` called two commands this shell never exposed.
+/// `getDeviceBindingScoped` at :289 loads the binding panel, and at :383 it
+/// refreshes AFTER a successful `setDeviceBindingScoped` — so on a tablet the
+/// binding was written and the screen still reported failure, which is the worst
+/// of the shapes: a silent success behind a visible error.
+///
+/// The bridge already carries the rule (`kasirmu_bridge::terminals`,
+/// `TERMINALS_READ`, F-017) and the desktop command is a five-line delegate to it,
+/// so this is the same delegate rather than a second implementation.
+#[command]
+pub async fn get_device_binding_scoped(
+    session_token: String,
+    terminal_id: String,
+    state: State<'_, AppState>,
+) -> Result<kasirmu_bridge::terminals::DeviceBindingDto, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::terminals::get_device_binding_scoped(&ctx, &session_token, terminal_id)
+        .await
+        .map_err(Into::into)
+}
+
+/// Clear (unbind) a terminal's device binding. ADR #7 scoped.
+///
+/// Same gap and same reasoning as the read above: the UI's
+/// `clearDeviceBindingScoped` at :397 had no tablet command behind it, so unbinding
+/// a device from the tablet failed with `command not found` after the operator had
+/// already confirmed the destructive action.
+#[command]
+pub async fn clear_device_binding_scoped(
+    session_token: String,
+    terminal_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::terminals::clear_device_binding_scoped(&ctx, &session_token, terminal_id)
+        .await
+        .map_err(Into::into)
+}
 /// ADR #7 variant: the session token binds the caller instead of a
 /// client-supplied `user_id`. The binding row still lives in the GLOBAL
 /// identity DB where the tablet's `resolve_boot_store` reads it.

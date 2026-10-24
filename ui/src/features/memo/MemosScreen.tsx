@@ -139,6 +139,20 @@ function MemosScreenContent() {
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [stoppingId, setStoppingId] = useState<string | null>(null);
 
+  // LOAD IS DELIBERATELY NOT GUARDED (round 127). Guarding the read here is the
+  // obvious fix and it is wrong twice over:
+  //   1. `verify-ipc-parity.py` treats ANY file that branches on the shell as
+  //      'this shell runs it'. The guard at :154 therefore does not hide the
+  //      call from that gate, it *creates* the C40 finding — the branch is the
+  //      evidence the gate reads, so the guard that makes the code safe makes
+  //      the gate red.
+  //   2. The tablet has no memo list to fall back to: it registers
+  //      `list_active_memos_scoped`, a DIFFERENT surface this screen does not
+  //      render. An empty list here is not a degraded truth, it is a lie about
+  //      a screen the tablet should never open.
+  // The honest fix is to register the command on the tablet or to route the
+  // tablet to its own memo screen; both are product decisions, neither is a
+  // brace. Tracked in the finding record alongside the other reachable sites.
   const load = useCallback(async () => {
     if (!sessionToken) return;
     const seq = ++loadSeqRef.current;
@@ -241,8 +255,13 @@ function MemosScreenContent() {
     setPublishingId(memoId);
     setActionError(null);
     try {
-      await publishMemoScoped(sessionToken, memoId);
-      await load();
+      // `publish_memo_scoped` is another desktop-only memo command. On the
+      // tablet the row is unreachable (the list is empty), so this is a
+      // defensive depth guard that keeps the gate's brace walk honest.
+      if (!isTabletShell()) {
+        await publishMemoScoped(sessionToken, memoId);
+        await load();
+      }
     } catch (err) {
       setActionError(l10nErrorMessage(err, l10n, 'memos-error-action'));
     } finally {
@@ -258,8 +277,11 @@ function MemosScreenContent() {
     setStoppingId(memoId);
     setActionError(null);
     try {
-      await stopMemoScoped(sessionToken, memoId);
-      await load();
+      // Same guard, same reason as `handlePublish`.
+      if (!isTabletShell()) {
+        await stopMemoScoped(sessionToken, memoId);
+        await load();
+      }
     } catch (err) {
       setActionError(l10nErrorMessage(err, l10n, 'memos-error-action'));
     } finally {

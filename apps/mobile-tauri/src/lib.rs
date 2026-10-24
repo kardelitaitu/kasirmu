@@ -1216,6 +1216,13 @@ pub fn run() {
                 // and the sorted block below). Only set_device_binding_scoped remains
                 // here, and it is scoped; the L-1 finding in
                 // docs/archived/tauri-security-audit.md:162 is satisfied.
+                // The read and clear were MISSING here until 2026-10-25: the shell
+                // registered only the writer, so `TerminalManagementScreen` called two
+                // commands it never exposed. `getDeviceBindingScoped` loads the binding
+                // panel and also refreshes AFTER a successful set, so a tablet wrote the
+                // binding and still showed an error.
+                commands::terminals::get_device_binding_scoped,
+                commands::terminals::clear_device_binding_scoped,
                 commands::terminals::set_device_binding_scoped,
                 commands::workspaces::list_workspaces,
                 commands::workspaces::list_workspace_screens,

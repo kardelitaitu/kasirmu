@@ -23,7 +23,6 @@
     "apply_topology_diff",
     "archive_workspace_instance_scoped",
     "can_save_topology",
-    "clear_device_binding_scoped",
     "create_backup",
     "create_backup_scoped",
     "create_memo_scoped",
@@ -36,7 +35,6 @@
     "get_ap_aging_report_scoped",
     "get_backup_status",
     "get_backup_status_scoped",
-    "get_device_binding_scoped",
     "get_hardware_fingerprint",
     "get_kds_device_scoped",
     "get_key_rotation_info",
@@ -261,6 +259,10 @@
     {
       "name": "recover_workspace_instances_scoped",
       "reason": "C41/C47. Shared UI that branches on the shell calls these, and this shell registers no door. Unlike the 'tablet' section -- which records a command this shell lacks and no shared screen calls -- each of these is a call this shell WILL make. The three licensing entries this section opened with (activate_license, get_machine_id, get_hardware_fingerprint) were FIXED by C47: LicenseActivationScreen now hides the License Key tab on the tablet and guards the three calls behind isTabletShell(), so the leg stopped reproducing them and they left this section. What remains are calls in files that DO run on the tablet but whose handlers sit behind actionsAvailable = !isTabletShell(): LicenseSettings (pause/resume subscription) and OverQuotaCard (suspend/recover workspace instances). Each is owed a decision -- guard the handler the way C47 guarded the activation path, register the command, or rule the screen shell-specific. Do not add an entry here to silence a hit you did not fix."
+    },
+    {
+      "name": "list_authored_memos_scoped",
+      "reason": "C40, found in round 126 when MemosScreen gained isTabletShell() for create/revise. Unlike the C41 entries above, the guard here was TRIED AND REVERTED, and the reason is the whole point of this entry: guarding the call is what makes it a C40. The tablet registers no memo authoring surface at all -- it has list_active_memos_scoped/acknowledge_memo_scoped, a different screen this one does not render -- so the only honest fixes are to register the command on the tablet or to route the tablet to its own memo screen, both product decisions. Note the trap for whoever fixes it: wrapping this invoke in `if (!isTabletShell())` flips this leg GREEN and verify-scoped-reads.py --shell tablet RED-to-fewer for the wrong reason, because this leg reads the branch itself as evidence that the shell runs the call. Fix the surface, not the brace."
     }
   ],
   "_shell_blind_comment": "Shared-UI calls this shell will make that this shell registers no door for: an allowlisted gap in the 'tablet'/'desktop' section, invoked from a file that BRANCHES on the shell discriminator (isTabletShell/getShellKind, or a local derived from one) at a call site NOT inside a shell-guarded region, in a file that also calls a command this shell DOES register. That is the C40 shape. The leg is deliberately narrow: see the block comment above shell_blind_findings in scripts/verify-ipc-parity.py for the four stated false negatives. An entry here fails as stale the moment the call is guarded or the command is registered -- which is how C47's three licensing entries left: fixing the call is the way out of this list."
