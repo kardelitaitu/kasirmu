@@ -22,6 +22,11 @@ export function DebtRemindersCard({ sessionToken, currency }: DebtRemindersCardP
   // Per side: the two reads fail independently (see `loadDebts`).
   const [recsFailed, setRecsFailed] = useState(false);
   const [paysFailed, setPaysFailed] = useState(false);
+  // An export that fails is not the same as an export that did nothing. The handlers
+  // below used to swallow the rejection into `console.error`, so a merchant who
+  // clicked Export on a tablet -- where the aging report command is not registered --
+  // got NO feedback and no file, which reads as a broken button. Surface it per side.
+  const [exportFailed, setExportFailed] = useState<'ar' | 'ap' | null>(null);
 
   const loadDebts = useCallback(async () => {
     if (!sessionToken) return;
@@ -117,8 +122,10 @@ export function DebtRemindersCard({ sessionToken, currency }: DebtRemindersCardP
       ]);
       const csv = buildCsv(headers, rows);
       downloadCsv(csv, `ar-aging-report-${report.asOfDate}.csv`);
+      setExportFailed(null);
     } catch (err) {
       console.error('Failed to export AR aging report', err);
+      setExportFailed('ar');
     }
   };
 
@@ -154,8 +161,10 @@ export function DebtRemindersCard({ sessionToken, currency }: DebtRemindersCardP
       ]);
       const csv = buildCsv(headers, rows);
       downloadCsv(csv, `ap-aging-report-${report.asOfDate}.csv`);
+      setExportFailed(null);
     } catch (err) {
       console.error('Failed to export AP aging report', err);
+      setExportFailed('ap');
     }
   };
 
@@ -236,6 +245,17 @@ export function DebtRemindersCard({ sessionToken, currency }: DebtRemindersCardP
                 <span>Export AR Aging</span>
               </Localized>
             </button>
+            {exportFailed === 'ar' && (
+              <span
+                className="dashboard-debt-badge dashboard-debt-badge--warning"
+                role="alert"
+                data-testid="ar-aging-export-failed"
+              >
+                <Localized id="dashboard-export-aging-failed">
+                  <span>Export failed</span>
+                </Localized>
+              </span>
+            )}
           </div>
         </div>
 
@@ -300,6 +320,17 @@ export function DebtRemindersCard({ sessionToken, currency }: DebtRemindersCardP
                 <span>Export AP Aging</span>
               </Localized>
             </button>
+            {exportFailed === 'ap' && (
+              <span
+                className="dashboard-debt-badge dashboard-debt-badge--warning"
+                role="alert"
+                data-testid="ap-aging-export-failed"
+              >
+                <Localized id="dashboard-export-aging-failed">
+                  <span>Export failed</span>
+                </Localized>
+              </span>
+            )}
           </div>
         </div>
       </div>

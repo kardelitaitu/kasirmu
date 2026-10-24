@@ -236,6 +236,84 @@ describe('DebtRemindersCard', () => {
     });
   });
 
+  it('shows a visible failure when the AR aging export is rejected', async () => {
+    mockListReceivablesScoped.mockResolvedValue([]);
+    mockListPayablesScoped.mockResolvedValue([]);
+    mockGetArAgingReportScoped.mockRejectedValue(new Error('command not registered'));
+
+    renderCard();
+
+    const btn = await screen.findByText('Export AR Aging');
+    fireEvent.click(btn);
+
+    // The whole point of the fix: a rejected export must NOT be silent. Before this,
+    // both handlers caught the error into console.error only, so a merchant on a shell
+    // that does not register the command saw a dead button and no explanation.
+    await waitFor(() => {
+      expect(screen.getByTestId('ar-aging-export-failed')).toBeTruthy();
+    });
+  });
+
+  it('shows a visible failure when the AP aging export is rejected', async () => {
+    mockListReceivablesScoped.mockResolvedValue([]);
+    mockListPayablesScoped.mockResolvedValue([]);
+    mockGetApAgingReportScoped.mockRejectedValue(new Error('command not registered'));
+
+    renderCard();
+
+    const btn = await screen.findByText('Export AP Aging');
+    fireEvent.click(btn);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('ap-aging-export-failed')).toBeTruthy();
+    });
+  });
+
+  it('clears the export failure once a later export succeeds', async () => {
+    mockListReceivablesScoped.mockResolvedValue([]);
+    mockListPayablesScoped.mockResolvedValue([]);
+    mockGetApAgingReportScoped
+      .mockRejectedValueOnce(new Error('transient'))
+      .mockResolvedValueOnce({
+        asOfDate: '2026-10-21',
+        summary: {
+          currentMinor: 200000,
+          days3160Minor: 0,
+          days6190Minor: 0,
+          daysOver90Minor: 0,
+          totalOutstandingMinor: 200000,
+        },
+        vendors: [
+          {
+            vendorName: 'CV Sumber Makmur',
+            currentMinor: 200000,
+            days3160Minor: 0,
+            days6190Minor: 0,
+            daysOver90Minor: 0,
+            totalMinor: 200000,
+            openCount: 1,
+          },
+        ],
+      });
+
+    renderCard();
+
+    const btn = await screen.findByText('Export AP Aging');
+    fireEvent.click(btn);
+    await waitFor(() => {
+      expect(screen.getByTestId('ap-aging-export-failed')).toBeTruthy();
+    });
+
+    fireEvent.click(btn);
+    await waitFor(() => {
+      expect(screen.queryByTestId('ap-aging-export-failed')).toBeNull();
+      expect(mockDownloadCsv).toHaveBeenCalledWith(
+        expect.any(String),
+        'ap-aging-report-2026-10-21.csv',
+      );
+    });
+  });
+
   it('exports AP aging report when Export AP Aging clicked', async () => {
     mockListReceivablesScoped.mockResolvedValue([]);
     mockListPayablesScoped.mockResolvedValue([]);

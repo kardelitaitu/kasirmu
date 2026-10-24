@@ -183,6 +183,7 @@ dashboard-export-csv = CSV
 dashboard-export-csv-aria = Ekspor data dasbor sebagai CSV
 dashboard-export-ar-aging = Ekspor Umur Piutang
 dashboard-export-ap-aging = Ekspor Umur Hutang
+dashboard-export-aging-failed = Ekspor gagal
 dashboard-category-clear-aria = Hapus pilihan kategori
 dashboard-back = Kembali
 dashboard-back-aria = Kembali ke beranda
