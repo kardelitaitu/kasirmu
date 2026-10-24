@@ -1693,7 +1693,7 @@ it('sends one delete when the confirm is clicked twice while the first is in fli
     fireEvent.click(confirm);
   });
 
-  const calls = invokeMock.mock.calls.filter(([c]) => c === 'delete_staff_scoped');
+  const calls = invokeMock.mock.calls.filter(([c]: unknown[]) => c === 'delete_staff_scoped');
   expect(
     calls.length,
     'a double click on Confirm Delete sent the delete twice; the CAS refuses the replay ' +
