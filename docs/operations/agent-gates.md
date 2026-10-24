@@ -999,6 +999,47 @@ docstrings record a past bug and which no case ever called:
 docstring would make the suite red on a tree that is green, and "fixing" the code is a behaviour
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
+#### The trigger ports were sound; the records index was red, and it was mine (round 122)
+
+The agenda was `TRIGGER_VERIFICATION` — 8 ports, each naming a test and a body digest, with the
+generator's own docstring conceding *"verified_by is only as strong as the named test"*. It held up
+under every check available:
+
+| check | result |
+|---|---|
+| all 6 `pg_trigger_ports` ports named in their test file | 3-6 hits each |
+| do the tests assert BEHAVIOUR, not just absence of error | yes — `assert_refused` pins the plpgsql `RAISE` and rejects naive `is_err()` |
+| is there a negative case | yes — "the sweep marker must NOT open an UPDATE path" |
+| do they run in CI | yes — `dev-ci.yml#cargo-nextest` sets `OZ_TEST_PG_URL` (:502, :599) |
+| 8 body digests vs `TRIGGER_MAP` | **0 mismatches**, and the digest covers the full PL/pgSQL function |
+
+So the answer to the agenda's question was **no gap**, which is worth recording as plainly as a
+finding. The one real defect the round produced was in a different place, and it was mine.
+
+**`records-index` was RED at HEAD, from `20c0332f2`.** Adding ADR-67, I updated the hand-maintained
+table in `docs/decisions/README.md` and not the generated `docs/records/README.md`. That second file
+is named the AUTHORITATIVE index in the same file, 8 lines above the table I edited — and
+`records-index` is a **required** gate (`dev-ci.yml#ci-docs-drift`). Verified against a worktree of
+that commit: `--check rc = 1`. CI would have blocked it. Fixed in `09d6611e0`; HEAD is green.
+
+**Two measurement traps on the way, both repeats.** The drift report said *"611 differing lines"*
+for what turned out to be **one substantive row** — count and content disagree because the generator
+emits LF while the committed file round-tripped differently, the same CRLF noise recorded in round
+119. And of **87 ADR additions in history, 82 skipped** the records-index regeneration, so this is
+not an unusual slip; it is the normal path, absorbed later by the freshness gate.
+
+**The fix is a commit-time guard**, not another doc note. `.githooks/pre-commit` gains a
+path-triggered check on `docs/decisions/*.md`, `docs/records/**`, the generator and the index itself,
+and it aborts the commit naming the command to run. Proved in both directions: it fires on a
+worktree of the red commit and passes on HEAD.
+
+**And it is deliberately folded into the existing PG-drift section rather than added as a ninth
+`# ──` section.** AGENTS.md §2 and `verify-agents-mirrors.py` both grade the section COUNT, so a new
+section costs three coordinated edits — and the first attempt at a `# ──` header inside the block
+was counted as 9 by the checker, which then still reported "every mirror agrees". **The count moved
+and the verdict did not**, which is its own small blind spot; renaming the header to a plain comment
+restored 8 and kept the guard.
+
 #### Grading the REASON, not just the membership (round 121)
 
 Last round found `payment_gateways`'s RLS exemption calling live CRUD a "fail-fast stub".
