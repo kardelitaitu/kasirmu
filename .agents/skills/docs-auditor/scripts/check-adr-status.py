@@ -240,14 +240,49 @@ def main(argv):
             files[key] = None
 
     findings = compare(readme, files)
+
+    # THE OTHER HALF OF THE CENSUS. `compare()` grades the rows that EXIST against the
+    # files they name, so a decision record with NO row is invisible to it -- every
+    # rule it applies starts from a row. Measured 2026-10-24: the table was green while
+    # THREE records were absent from it (ADR-66, ratified eight days earlier, the OPEN
+    # BRIDGE-7 gap record, and a new ADR-67), because 81 of 84 files were linked and
+    # nothing counted the 3. A green over a census that cannot see the missing members
+    # is the same anti-pattern as a self-test that grades a corpus of zero.
+    # WHAT COUNTS AS AN ADR, taken from the records themselves rather than from the
+#     # filename: a file is an ADR when its front matter declares a numeric `num:`.
+#     # Measured 2026-10-24: globbing `20*.md` reports 25 "unlisted" files and every one
+#     # is a NON-ADR -- six `.status.md` companions, four `research` notes listed under
+#     # this README's separate Research-notes heading, and fifteen `phaseN` topology /
+#     # sync implementation records. None carries a `num:`, so none belongs in the
+#     # numbered table. A census that demands a row for a research note manufactures
+#     # work; the rule has to be the records' own contract.
+    named = {path[2:] if path.startswith("./") else path for _, _, path, _ in rows}
+    num_re = re.compile(r"^num:\s*(\d+)\s*$", re.MULTILINE)
+    unlisted = []
+    for p in sorted(base.glob("20*.md")):
+        if p.name in named:
+            continue
+        try:
+            head = p.read_text(encoding="utf-8", errors="replace")[:600]
+        except OSError:
+            continue
+        if num_re.search(head):
+            unlisted.append(p.name)
+
     for line_no, num, path, detail in findings:
         print("  L%-5d #%-3d %s" % (line_no, num, path))
         print("        %s" % detail)
-    if findings:
+    for name in unlisted:
+        print("  UNLISTED  %s" % name)
+        print("        this decision record exists and the table names no row for it;"
+              )
+        print("        add a row, or the index is not an index")
+    if findings or unlisted:
         print("")
-    print("check-adr-status: %d status drift finding(s) across %d hand-table row(s)."
-          % (len(findings), len(rows)))
-    return 1 if findings else 0
+    print("check-adr-status: %d status drift finding(s) and %d unlisted record(s)"
+          " across %d hand-table row(s)."
+          % (len(findings), len(unlisted), len(rows)))
+    return 1 if (findings or unlisted) else 0
 
 
 if __name__ == "__main__":
