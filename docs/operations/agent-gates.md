@@ -999,6 +999,41 @@ docstrings record a past bug and which no case ever called:
 docstring would make the suite red on a tree that is green, and "fixing" the code is a behaviour
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
+#### The 13 captures the pipeline gate cannot see, and why that is correct (round 118)
+
+`check-pipeline-verdicts.py` grades only a substitution inside an `if`/`elif` condition
+(`ASSIGN_HEAD_RE`), so a **standalone** `name=$(… | tail -1)` followed by a separate `[ -n … ]` test
+is outside its scope. That looks like a coverage gap, so it was measured rather than assumed:
+
+| measurement | result |
+|---|---|
+| shell files scanned under `TARGET_DIRS` | 50 |
+| standalone captures ending in a swallower | **13** |
+| of those, guarded by `|| true` | **0** |
+| of those whose captured variable then feeds a condition | **5** |
+| of those that read the swallowed **status** rather than the **content** | **0** |
+
+**The last row is the one that decides it.** Every conditioned capture uses the variable's *content*
+— `[ -n "$test_name" ]`, `[ -n "$latest" ]`, `rotation_ok "$cfg" "$total"`, `for f in $files` — never
+`if <capture>; then`. A swallowed exit status is only dangerous when the status is the verdict; when
+the *output* is the value, `tail`'s status is irrelevant. So extending the checker to standalone
+assignments would flag 13 safe sites to catch nothing, which is the "census that manufactures work"
+failure this file recorded one round ago.
+
+**Two of my own probes were wrong on the way to that answer, both in the familiar way.**
+
+1. A single-line `grep -E '^\s*[a-z_]+=\$\(.*\|\s*(tail|head|…)'` reported **0 instances** — because
+   the largest one (`deny_summary` in `check.sh`) spans a **backslash continuation** and is invisible
+   to a line-anchored regex. Joining continuations the way the checker does turned 0 into 13.
+2. Before that I planted the cargo-deny bug by deleting `|| true` from that standalone assignment and
+   expected a red. The checker stayed green *and was right to* — see the entry above. **A plant that
+   does not fire proves the plant is wrong, not that the gate is**, unless the plant has first been
+   checked against the rule's own predicate. That is the fourth arrival of this lesson this session.
+
+**What the round establishes:** the advisory layer is consistent (12 advisory gates, all `ci: null`;
+zero job-level `continue-on-error`), the pipeline gate covers the dangerous shape and correctly
+ignores the safe one, and the cargo-deny fix is verified by construction rather than by its comment.
+
 #### The advisory layer, verified consistent — and a plant that was the wrong shape (round 118)
 
 The open question was whether the matrix's *advisory* legs can silently downgrade a real problem.
