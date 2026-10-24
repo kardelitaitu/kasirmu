@@ -682,6 +682,9 @@ warehouse-no-location-desc = This workspace is not bound to a warehouse location
 warehouse-empty-title = No products
 warehouse-empty-desc = No inventory-tracked products found at this location.
 warehouse-load-error = Failed to load warehouse inventory.
+# Shown instead of the grid on a shell with no per-location stock read. Not an
+# error -- there is nothing to retry.
+warehouse-stock-desktop-only = Per-location stock levels need the desktop app.
 warehouse-adjust-error = Failed to adjust stock.
 warehouse-col-sku = SKU
 warehouse-col-name = Name

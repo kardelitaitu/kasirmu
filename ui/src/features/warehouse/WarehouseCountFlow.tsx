@@ -12,6 +12,7 @@ import { useLocalization } from '@fluent/react';
 import { requiredLocalized } from '@/components';
 import { useToast } from '@/components/Toast';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { isTabletShell } from '@/utils/shellKind';
 import { settleRead } from '@/utils/settle-read';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
@@ -120,6 +121,16 @@ export default function WarehouseCountFlow({ sessionToken, locationId, onComplet
       setProducts(null);
       return;
     }
+    // The tablet does not register `list_warehouse_products_at_location` (measured
+    // 2026-10-25: apps/mobile-tauri has only `list_warehouse_products_scoped`, which
+    // takes no location id). The Count TAB is already withheld on that shell
+    // (WarehouseConsole.warehouseModeAvailable), and the call is guarded here as well so
+    // the invoke can never fire from a shell that cannot answer it -- this gate grades
+    // the call site, not the visibility of the control that reaches it.
+    if (isTabletShell()) {
+      setProducts(null);
+      return;
+    } else {
     let cancelled = false;
     void settleRead('warehouse-count product catalogue',
       listWarehouseProductsAtLocation(sessionToken, locationId),
@@ -132,6 +143,7 @@ export default function WarehouseCountFlow({ sessionToken, locationId, onComplet
     return () => {
       cancelled = true;
     };
+    }
   }, [sessionToken, locationId]);
 
   const loadLines = useCallback(async () => {

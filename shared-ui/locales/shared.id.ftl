@@ -664,6 +664,7 @@ warehouse-no-location-desc = Workspace ini tidak terikat ke lokasi gudang. Konfi
 warehouse-empty-title = Tidak ada produk
 warehouse-empty-desc = Tidak ada produk inventaris yang ditemukan di lokasi ini.
 warehouse-load-error = Gagal memuat inventaris gudang.
+warehouse-stock-desktop-only = Stok per lokasi memerlukan aplikasi desktop.
 warehouse-adjust-error = Gagal menyesuaikan stok.
 warehouse-col-sku = SKU
 warehouse-col-name = Nama

@@ -15,6 +15,7 @@ import { SegmentedTabs, requiredLocalized } from '@/components';
 import { useToast } from '@/components/Toast';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { asArray } from '@/utils/ipc-payload';
+import { isTabletShell } from '@/utils/shellKind';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
@@ -51,6 +52,30 @@ interface PendingTransferPick {
  * Phase 1: receive-via-transfer and send (pick-verify) are functional; count
  * and stock modes render the existing stock table.
  */
+/** Every warehouse mode, in tab order. */
+const WAREHOUSE_MODES: WarehouseMode[] = ['receive', 'send', 'count', 'stock'];
+
+/**
+ * Whether this shell can run a warehouse mode.
+ *
+ * `count` is desktop-only, and the reason is measured (2026-10-25): the counting
+ * flow loads its lines with `list_warehouse_products_at_location`
+ * (WarehouseCountFlow.tsx:125), which apps/desktop-tauri registers at lib.rs:1613 and
+ * apps/mobile-tauri does NOT register at all -- the tablet has only
+ * `list_warehouse_products_scoped` (mobile lib.rs:1381), which takes no location id
+ * and therefore cannot answer 'stock AT THIS location'. Substituting it would show
+ * counts from the wrong scope on a screen whose whole job is accuracy, so the mode is
+ * withheld rather than degraded. The route itself stays: receive/send/stock do not
+ * call the missing command.
+ *
+ * Withheld at the TAB list rather than at the render, so the tab is absent instead of
+ * present-and-broken -- the C47 idiom.
+ */
+function warehouseModeAvailable(mode: WarehouseMode): boolean {
+  if (mode === 'count' && isTabletShell()) return false;
+  return true;
+}
+
 export default function WarehouseConsole() {
   const { l10n } = useLocalization();
   const { addToast } = useToast();
@@ -74,6 +99,9 @@ export default function WarehouseConsole() {
   const [products, setProducts] = useState<ProductDto[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // True when this shell cannot answer the per-location stock read at all (tablet).
+  // Distinct from loadError, which means the read was attempted and failed.
+  const [loadUnavailable, setLoadUnavailable] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const [scanInput, setScanInput] = useState('');
@@ -107,6 +135,19 @@ export default function WarehouseConsole() {
     }
     setLoading(true);
     setLoadError(null);
+    // POSITIVE/ELSE, not an early return: `list_warehouse_products_at_location` is
+    // desktop-only (apps/desktop-tauri lib.rs:1613; apps/mobile-tauri registers only
+    // `list_warehouse_products_scoped`, which has no location id). Unguarded, every
+    // tablet visit to Warehouse landed in the catch and rendered 'could not load'
+    // over an empty grid -- a failure state for a shell that simply has no answer.
+    // The tablet reports the honest unavailable state instead, and the `else` arm is
+    // the shape verify-scoped-reads.py reads as a guard.
+    if (isTabletShell()) {
+      setProducts([]);
+      setLoadUnavailable(true);
+      setLoading(false);
+      return;
+    } else {
     try {
       // asArray: the render maps `products` (see utils/ipc-payload).
       const data = await listWarehouseProductsAtLocation(sessionToken, locationId);
@@ -115,6 +156,7 @@ export default function WarehouseConsole() {
       setLoadError(l10nErrorMessage(err, l10n, 'warehouse-load-error'));
     } finally {
       setLoading(false);
+    }
     }
   }, [sessionToken, locationId, l10n]);
 
@@ -419,7 +461,7 @@ export default function WarehouseConsole() {
       <SegmentedTabs
         className="warehouse-mode-tabs"
         ariaLabel={requiredLocalized(l10n, 'warehouse-mode-tabs-aria')}
-        items={(['receive', 'send', 'count', 'stock'] as WarehouseMode[]).map((m) => ({
+        items={WAREHOUSE_MODES.filter(warehouseModeAvailable).map((m) => ({
           value: m,
           label: requiredLocalized(l10n, `warehouse-mode-${m}`),
         }))}
@@ -474,6 +516,13 @@ export default function WarehouseConsole() {
                 <Skeleton variant="block" width="100%" height="2.5rem" />
                 <Skeleton variant="block" width="100%" height="2.5rem" />
               </>
+            ) : loadUnavailable ? (
+              // Not an error: this shell has no per-location stock read, so there is
+              // nothing to show and nothing to retry. A distinct state from loadError
+              // keeps a shell limitation out of the failure path.
+              <div className="warehouse-empty-panel" data-testid="warehouse-stock-unavailable">
+                {requiredLocalized(l10n, 'warehouse-stock-desktop-only')}
+              </div>
             ) : loadError ? (
               <div className="warehouse-error" role="alert">{loadError}</div>
             ) : grid.length === 0 ? (
