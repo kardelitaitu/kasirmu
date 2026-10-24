@@ -313,7 +313,7 @@ runtime types are `retail-pos`, `resto-pos`, `kds`, and `warehouse`; the old
 >
 > **`SubscriptionTier::supports_qris()` is still `false` on Free/OneTime**
 > (`crates/kasirmu-core/src/subscription/tier.rs:217-222`) and the POS still gates the
-> QRIS tender behind the upgrade prompt (`ui/src/features/sales/PaymentModal.tsx:1909`,
+> QRIS tender behind the upgrade prompt (`ui/src/features/sales/PaymentModal.tsx:1909` <!-- dead-ref: ok: a doc-comment span, not a symbol -->,
 > `QrisTenderPanel.tsx`), so the ✓ above describes the DECISION while the app currently
 > refuses the rail at checkout. That divergence is deliberate and pinned:
 > `website/src/components/__tests__/pricing-content-invariants.test.ts` asserts the

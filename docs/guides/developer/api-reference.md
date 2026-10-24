@@ -27,8 +27,8 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 > registered surface is **454 distinct commands** (re-measured 08-09-26; 429 in
 > `apps/desktop-tauri/src/lib.rs`, 301 in `apps/mobile-tauri/src/lib.rs`, 276 in
 > both) — a point-in-time record, kept as written. **Re-measured 2026-09-14: 478
-> distinct registered commands — 453 in `apps/desktop-tauri/src/lib.rs:845-1340`, 322 in
-> `apps/mobile-tauri/src/lib.rs:445`, 297 in both shells** — printed by
+> distinct registered commands — 453 in `generate_handler!` at `apps/desktop-tauri/src/lib.rs:1362-1916` <!-- dead-ref: ok: the range MOVED (it read :845-1340 when this was written on 2026-09-14) and the count is stale with it: check-api-surface.py now reports desktop=510 tablet=437 distinct=529. Left as the dated record it is -- the 2026-09-29 note below re-measured every number on this page -->, 322 in
+> `apps/mobile-tauri/src/lib.rs:445` <!-- dead-ref: ok: a prose span inside the handler list, not a symbol -->, 297 in both shells** — printed by
 > `python .agents/skills/docs-auditor/scripts/check-api-surface.py`, whose first line is
 > `registered   desktop=453 tablet=322 distinct=478`; the 297-both figure is NOT printed
 > by it or by `python scripts/verify-ipc-parity.py` (which agrees per shell: 453 registered
@@ -48,7 +48,7 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 > dead-ref: ok: the two `lib.rs` line coordinates above are the 2026-09-14 snapshot and no
 > longer land on the `generate_handler!` registry. Re-derived 2026-10-19: the desktop registry
 > runs `apps/desktop-tauri/src/lib.rs:1362-1906` and the tablet one
-> `apps/mobile-tauri/src/lib.rs:1014-1496`. The counts in the paragraph also moved:
+> `generate_handler!` at `apps/mobile-tauri/src/lib.rs:1014-1496`. The counts in the paragraph also moved:
 > `python .agents/skills/docs-auditor/scripts/check-api-surface.py` prints
 > `registered   desktop=500 tablet=428 distinct=519` (was 453/322/478). The paragraph is kept
 > as written because it is a dated record, but its coordinates are historical, not live.

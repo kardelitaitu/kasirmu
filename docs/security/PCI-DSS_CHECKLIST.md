@@ -59,7 +59,7 @@ kasir.mu processes, transmits, and stores cardholder data when processing credit
 >
 > **One correction to the paragraph above, measured 2026-09-26 (review C69 pass).** It says
 > nothing checks the PIN, which is TRUE, but it does not say what the code already does with
-> it — and it is more than nothing. MSL-10 (`modules/loyalty/src/models.rs:88-125`, `:127`)
+> it — and it is more than nothing. MSL-10 (`modules/loyalty/src/models.rs:88-125` <!-- dead-ref: ok: the file is now a 13-line re-export stub; the range cannot resolve and must not be re-pointed -->, `:127`)
 > makes it a secret at the SERIALIZATION boundary: the field is `skip_serializing` with
 > `default` (so older clients still deserialize), and a manual `Debug` impl renders it as
 > `<redacted>`. The struct's own doc calls it "PIN for balance checks", i.e. a control that

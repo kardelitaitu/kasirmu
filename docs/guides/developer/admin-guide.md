@@ -46,7 +46,7 @@ Navigate to **Admin → Workspaces** to manage workspace types:
    error — `digitsOnly()` at `CreatePinScreen.tsx:65` does `.slice(0, 8)`, so a longer
    paste is silently truncated rather than rejected. "4-6" was wrong at the top end and
    described a bound nothing enforces. (Coordinates corrected 2026-10-11: the file had
-   cited `:44` and `:36` for the client and `apps/desktop-tauri/src/commands/auth.rs:192`
+   cited `:44` and `:36` for the client and `apps/desktop-tauri/src/commands/auth.rs:192` <!-- dead-ref: ok: a prose span in a doc comment, not a symbol -->
    for the server — `auth.rs` is 303 lines and its `:192` is a doc sentence, so the
    server-side check was pointing at nothing. The real owner-PIN floor lives in the core
    provisioning validator, where the error message names the field.)

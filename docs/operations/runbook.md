@@ -1645,7 +1645,7 @@ placeholder shell). Re-derive with
 **Why the in-app path is nonetheless the intended one.** On Android the default backup lands in
 app-private storage an operator cannot reach with a file manager, so a shell is not an available
 tool on that shell; that is the whole reason D5 chose a safe-mode boot consumer over an
-in-process restore (`manager-codebase-review-decisions.md:105-118`).
+in-process restore (`manager-codebase-review-decisions.md:105-118` <!-- dead-ref: ok: a prose range in a dated record, not a symbol -->).
 
 **B. The CLI restore** — reachable on both shells today, and it does **not** use the request
 file. See §11.8.
@@ -1740,7 +1740,7 @@ cases, and they are not the same:
 ### 11.7 When a restore is refused
 
 A refusal changes **not one byte** of the live database or its sidecars — the module's stated
-invariant (the `//!` module header at `crates/kasirmu-core/src/db/recovery.rs:20-21`), pinned on both shells
+invariant (the `//!` module header at `crates/kasirmu-core/src/db/recovery.rs:20-21` <!-- dead-ref: ok: the invariant is prose in a module doc; no symbol lives there -->), pinned on both shells
 (`consumes_a_request_and_restores_the_candidate` at `apps/desktop-tauri/src/recovery_tests.rs:116-135`,
 `apps/mobile-tauri/src/recovery_tests.rs:79`).
 

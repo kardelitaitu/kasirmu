@@ -394,7 +394,7 @@ no measured mutation, no note explaining an absence, **and no runner**: zero hit
 `check.sh` and in every live workflow. The only path that reaches it is
 `verify-docker-all.sh:102` (STAGE 1), which `--self-test` exits before at `:83-86`. So the
 "A ✔ Persistence verified" line it prints had never been produced by CI at all — while
-`docs/records/audits/2026-08-31-glm-5.3f-crates-audit.md:2203` asserted it "runs the volume
+`docs/records/audits/2026-08-31-glm-5.3f-crates-audit.md:2203` <!-- dead-ref: ok: names a prose bullet in a dated record, not a symbol --> asserted it "runs the volume
 contract in CI".
 
 **Fixed:** a `--self-test` (7 cases, no daemon) grading the three verdicts every run
@@ -1151,12 +1151,13 @@ Four files carried a stale live-workflow or live-job count. The claims are DESCR
 reproduced, because this page is itself policed by the same checker — quoting the old number here
 would make it a fresh claim (the round-84 lesson, in the same file for the third time):
 
+
 | file | what was stale | fixed to |
 |---|---|---|
-| `scripts/check.sh:10` | the spelled-out workflow count, one short | the correct count, plus the new file in the list |
-| `docs/operations/agent-gates.md:33` | the spelled-out workflow count, one short | the correct count, plus a trigger-table row |
-| `docs/operations/ci-pipeline.md:22` | the bolded workflow count, one short | the correct count, with the measured list |
-| `docs/operations/ci-pipeline.md:1` (audit stamp) | the digit job count, one short | a dated CORRECTION, not a rewrite |
+| `scripts/check.sh:10` <!-- dead-ref: ok: names a prose comment, not a symbol --> | the spelled-out workflow count, one short | the correct count, plus the new file in the list |
+| `docs/operations/agent-gates.md:33` <!-- dead-ref: ok: names a prose heading, not a symbol --> | the spelled-out workflow count, one short | the correct count, plus a trigger-table row |
+| `docs/operations/ci-pipeline.md:22` <!-- dead-ref: ok: names a prose callout, not a symbol --> | the bolded workflow count, one short | the correct count, with the measured list |
+| `docs/operations/ci-pipeline.md:1` (audit stamp) <!-- dead-ref: ok: names a prose stamp, not a symbol --> | the digit job count, one short | a dated CORRECTION, not a rewrite |
 
 **The fourth is the interesting one, and the sweep is what caught it.** Running
 `verify-agents-mirrors.py` DIRECTLY passed — it polices only `AGENTS.md` and its declared mirrors, and
