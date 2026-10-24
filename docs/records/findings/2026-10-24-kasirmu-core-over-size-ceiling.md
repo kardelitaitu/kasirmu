@@ -38,6 +38,26 @@ failure mode the baseline file explicitly warns about. Extraction is the other o
 2026-10-23 entry records that extraction was tried and did not help, because the measure counts
 production lines across the whole crate, so moving code between files does not lower the total.
 
+## Extraction candidates, measured 2026-10-24
+
+So the choice is not "extract or raise" but "extract WHAT". The +24 lines themselves are a poor
+candidate: `payment.rs` is 119 lines total (100 production), a cohesive domain type with two
+structs and no free functions. Splitting it would separate one concept across files.
+
+The production files that actually exceed the house's 1000-line rule:
+
+| file | production lines | note |
+|---|---|---|
+| `db/popularity.rs` | 1151 | one `impl Store<'_>` block spanning :192-1203 — the strongest candidate |
+| `db/audit.rs` | 1118 | already analysed and rejected: its four concerns share a single `insert_audit` body |
+| `db/products_crud.rs` | 977 | under the rule |
+| `db/provisioning.rs` | 944 | under the rule |
+
+**`popularity.rs` is the one worth a look and it is not this lane's to refactor.** It holds 4 free
+functions and one >1000-line `impl Store<'_>` block, which is the shape the house rule was written
+for. Whether its methods split along a natural seam (forecast vs trend vs top-products) is a
+question for the lane that owns the domain.
+
 ## Provenance
 
 - Gate: `scripts/verify-core-size.py` against `scripts/core-size-baseline.json` (ceiling 40597,
