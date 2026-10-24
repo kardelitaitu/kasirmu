@@ -163,12 +163,19 @@ Skipped steps print `NN. skipping <name> (CHECK_FROM=90)... SKIPPED` and are **n
 counted as passes, which is what makes a resumed run honest. Measured that way, steps
 86-131 give **41 PASS, 1 FAIL**, and the one failure was a transient.
 
-**Step numbers in the run are NOT the numbers a text scan gives.** The file holds 193
-`step "..."` lines, of which **42 are indented inside `if` blocks** and only run when
+**Step numbers in the run are NOT the numbers a text scan gives.** The file holds 197
+`step "..."` lines, of which **32 are indented inside `if` blocks** and only run when
 their condition holds; the rest is whatever the run reached before it exited. So the
 runtime numbering is LOWER than a line count, by an amount that depends on the
 environment. Measured the same day: `ui test` is runtime step **89** and static position
 **93**, and a partial run's highest number was **131** against 193 lines.
+
+**Both figures above were re-measured 2026-10-24 and had drifted** (193→197, 42→32): the
+matrix grew by 36 steps across this session's rounds, and the paragraph kept quoting the
+count from the day it was written. The historical measurements below the line are kept
+as-written because they are dated observations, not claims about the current tree — only
+the two live counts in this paragraph are meant to be current, and they were not. Re-derive
+with `grep -c '^\s*step "' scripts/check.sh`.
 
 Never derive a `CHECK_FROM` value by counting step lines; read the number off a real run.
 
@@ -376,7 +383,7 @@ Widening the census to the parser's own scope (92 checkers across `scripts/`,
 
 | Checker | Declares `--self-test`? | Proof that exists | Runner |
 |---|---|---|---|
-| `check-auditor-selftests.sh` | No | **It IS a runner** — invokes 11 docs checkers' self-tests | `check.sh:253`, `required` |
+| `check-auditor-selftests.sh` | No | **It IS a runner** — invokes 11 docs checkers' self-tests | `check.sh:260`, `required` |
 | `check-replay-fork.py` | No | Companion test, `scripts/test-replay-fork.py` | wired |
 | `verify-website-assets.py` | No | In-file mutation probe, documented at :20-27 | wired |
 | `verify-docker-persistence.sh` | **No** | **Nothing at all** | **Nowhere** |
@@ -1094,12 +1101,9 @@ nothing and report clean, and it does: breaking BOTH discovery paths yields `rc 
 `could not run sh`.
 ## Writing a checker: two self-test forms, and say which you chose
 
-Of the 16 `scripts/check-*.py` checkers, 13 expose `--self-test`; `check-replay-fork.py` keeps
-its cases in `scripts/test-replay-fork.py` instead; `check-query-plans.py` and `check-scratch-leaks.py`
-run their proof INSIDE `--check` (a detector probe over synthetic sources, first, before the tree is
-graded) rather than behind a flag. (Re-measured 2026-10-23 by walking `scripts/check-*.py`: the count
-was 12 and "check-dead-controls.py has no self-test at all" until that pass, and both numbers had been
-wrong in both directions before — see the note below on why a text search is the wrong instrument.)
+Of the 17 `scripts/check-*.py` checkers, 16 expose `--self-test`; `check-replay-fork.py` keeps
+its cases in `scripts/test-replay-fork.py` instead. (Re-measured 2026-10-24: 17 files, 16 declaring
+the flag, 1 not — and the earlier "16 files / 13 declaring" had drifted in both halves.)
 `python3 scripts/check-replay-fork.py --self-test` still exits 2 with `unrecognized arguments`. Both of the first two are correct — `check-replay-fork.py` explains why at its
 docstring (`:44-49`): it is the gate that would have caught the fork losing the colon rejection, so
 "a checker that cannot fail is worse than none" and it wanted the cases somewhere harder to overlook.
