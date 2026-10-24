@@ -153,11 +153,20 @@ def census(texts):
                 imported_barrels.add(other)
     rows = []
     for path in texts:
-        if not path.endswith('.tsx'):
-            continue
         stem = module_stem(path)
-        if not stem[:1].isupper():
-            continue  # a lower-case .tsx export is a helper, not a component
+        if path.endswith('.tsx'):
+            # A component: reached by JSX, by a lazy import or by a registry entry.
+            if not stem[:1].isupper():
+                continue  # a lower-case .tsx export is a helper, not a component
+        elif stem[:1].isupper() or stem.startswith('use'):
+            # HOOKS AND CAPITALISED .ts MODULES were outside this census until round 162,
+            # which meant the printed ORPHAN count described components only. Measured
+            # when the scope was widened: one such module existed (hooks/useMediaQuery.ts,
+            # named by no other file). Reporting "N orphans" while silently excluding a
+            # whole file class is the same narrow-search error this file exists to catch.
+            pass
+        else:
+            continue  # an ordinary lower-case .ts helper is not addressable by name
         verdict, evidence = classify_module(path, texts, barrels, imported_barrels)
         rows.append((verdict, os.path.relpath(path, UI_SRC).replace(os.sep, '/'), evidence))
     rows.sort(key=lambda r: (0 if r[0] == 'ORPHAN' else 1, r[1]))
@@ -223,6 +232,21 @@ def _self_test():
         'Notes.tsx': '// Gone is mentioned in prose\nexport const N = () => null;',
     })
     case('a comment is not a reference', comment_only.get('Gone.tsx'), 'ORPHAN')
+
+    # SCOPE: hooks and capitalised .ts modules. Until round 162 the census skipped every
+    # non-.tsx file, so its ORPHAN count described components only -- which is how
+    # hooks/useMediaQuery.ts sat unnamed for an unknown number of rounds.
+    hook_orphan = run({'useThing.ts': 'export function useThing() { return 1; }'})
+    case('an orphaned hook is ORPHAN', hook_orphan.get('useThing.ts'), 'ORPHAN')
+
+    hook_used = run({
+        'useThing.ts': 'export function useThing() { return 1; }',
+        'Host.tsx': "import { useThing } from './useThing';\nexport const H = () => useThing();",
+    })
+    case('a consumed hook is LIVE', hook_used.get('useThing.ts'), 'LIVE')
+
+    lower_ts = run({'helpers.ts': 'export const clamp = (n: number) => n;'})
+    case('a lower-case .ts helper is out of scope', lower_ts.get('helpers.ts'), None)
 
     print(f'  self-test: {"PASS" if failures == 0 else f"FAIL ({failures})"}')
     return failures

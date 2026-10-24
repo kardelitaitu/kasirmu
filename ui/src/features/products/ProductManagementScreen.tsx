@@ -1,9 +1,14 @@
 // ── ARCHIVED ─────────────────────────────────────────────────────
-// This screen has been replaced by WarehouseScreen (features/warehouse/)
-// which provides location-scoped stock management via the topology
-// editor's warehouse workspace binding. ProductManagementScreen was
-// the old global inventory page — kept for reference only.
-// The 'inventory' route is no longer registered.
+// This screen has been replaced by WarehouseConsole (features/warehouse/),
+// registered at route 'warehouse' (warehouse/register.tsx:8), which provides
+// location-scoped stock management via the topology editor's warehouse
+// workspace binding. ProductManagementScreen was the old global inventory
+// page — kept for reference only. The 'inventory' route is no longer
+// registered.
+//
+// CORRECTED 2026-10-25 (round 162): this banner used to name `WarehouseScreen`,
+// a file that does not exist anywhere in the tree. See the matching note in
+// products/register.tsx:20-27.
 // ─────────────────────────────────────────────────────────────────
 
 import { useState, useCallback, useEffect, useRef } from 'react';
