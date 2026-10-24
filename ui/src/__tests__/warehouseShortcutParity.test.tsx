@@ -22,6 +22,14 @@ vi.mock('@fluent/react', () => ({
 vi.mock('@/components', () => ({
   requiredLocalized: (_l10n: unknown, id: string) => id,
 }));
+// `ShiftBar` (mounted into WarehouseConsole in round 164) reads `useAuth`, and the shared
+// `renderWithProviders` helper supplies Brand/Theme/Toast/Zoom but NOT AuthProvider. Mocking
+// `useAuth` directly is the established workaround -- 86 other suites do the same -- and it is
+// safer than widening the helper for every component that happens to read a session.
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ session: null, user: null }),
+}));
+
 
 describe('warehouse shortcut parity', () => {
   // 1. Manifest integrity ──────────────────────────────────────

@@ -19,6 +19,7 @@ import { isTabletShell } from '@/utils/shellKind';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
+import ShiftBar from '@/features/inventory/ShiftBar';
 
 import { listWarehouseProductsAtLocation, type ProductDto } from '@/api/products';
 import {
@@ -456,6 +457,19 @@ export default function WarehouseConsole() {
           <LocationPicker value={locationId} onChange={(id) => setLocationId(id)} refreshKey={refreshKey} />
         )}
       </div>
+
+      {/* ── Inventory shift strip ──
+          Round 164 mounted this. `ShiftBar` tracks the INVENTORY shift (start/end,
+          per-location, with an end-of-shift transaction summary) -- not the POS cash
+          shift, which is `usePosShifts` and is live. Its four commands
+          (start/end/get_active/list_inventory_shifts) are registered on BOTH shells
+          (desktop lib.rs:1537-1540, tablet lib.rs:1483-1486), so no shell split is
+          needed. It had never been mounted by any commit -- `git log -S'<ShiftBar'`
+          returns only fixes TO it -- while three separate rounds (88415f10f, b245189b6a,
+          dcdc57f155) repaired races and double-submits in it. Care was invested in a
+          component no user could reach; the warehouse console is the surface whose
+          stock movements it scopes. */}
+      <ShiftBar />
 
       {/* ── Mode tabs ── */}
       <SegmentedTabs

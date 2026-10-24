@@ -46,6 +46,14 @@ vi.mock('@/features/warehouse/useWarehouseScanner', () => ({
 // The real FnBar: its Receive button is the supported way in (the F1 keydown path is
 // guarded on a typing state this harness does not drive).
 vi.mock('@/features/warehouse/WarehouseCountFlow', () => ({ default: () => null }));
+// `ShiftBar` (mounted into WarehouseConsole in round 164) reads `useAuth`, and the shared
+// `renderWithProviders` helper supplies Brand/Theme/Toast/Zoom but NOT AuthProvider. Mocking
+// `useAuth` directly is the established workaround -- 86 other suites do the same -- and it is
+// safer than widening the helper for every component that happens to read a session.
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ session: null, user: null }),
+}));
+
 
 function makeL10n() {
   const bundle = new FluentBundle('en-US');
