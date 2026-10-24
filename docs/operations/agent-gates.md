@@ -3142,11 +3142,34 @@ act that names what landed; doing it for work you did not write, in a lane that 
 intent, is the thing `archive/bulk-rename`-style caution in AGENTS.md §7.4 is about. Left for whoever
 owns those commits.
 
-**Step 142 is the honest kind of red.** The sweep reported 89 passed, 1 failed, for
-`verify-agents-mirrors.py`: "renamed header, no HEAD readable -- the no-git fallback was turned
-into a failure". Run directly, three times, it reports **40 green, 0 red**. The most likely cause is a
-concurrent `git` operation from another session while the matrix held the tree. Recorded as
-transient with the evidence rather than as either a pass or a defect.
+**Step 142 is NOT the honest kind of red, and calling it transient was wrong.** Round 180
+reported it as "transient, not reproducible in 3 reruns", on the strength of three standalone
+runs that passed. Round 181 reproduced it on the very next matrix run, then found the cause in
+one experiment:
+
+```
+$ python scripts/verify-selftest-sweep.py                          # 90/90, OK
+$ python scripts/verify-agents-mirrors.py --self-test               # 40 green, 0 red
+$ TEMP=<repo>/target/.tmp-check  python scripts/verify-agents-mirrors.py --self-test
+  MISSED  AGENTS.md  renamed header, no HEAD readable -- the no-git fallback was turned
+  count line: 39 green = 31 CAUGHT + 8 CLEAN; 1 red; exit 1
+```
+
+`scripts/check.sh:387-388` sets `TMP` and `TEMP` to `$PWD/target/.tmp-check`. The mirrors
+self-test builds its fixtures with `tempfile.TemporaryDirectory()`, so under the matrix those live
+**inside the checkout**, and `committed_hook_text` runs `git show HEAD:.githooks/pre-commit` with
+`cwd=<fixture>`. Git walks UP from its cwd, so instead of failing it answered with the REAL
+repository's HEAD — and the case that asserts "no HEAD readable" then compared the fixture against
+a hook it was never meant to see.
+
+**The fix** is one guard: `git rev-parse --show-toplevel` compared against the fixture root,
+returning None ("cannot compare") when they differ. Verified 40/40 under BOTH TEMP settings, and
+the whole sweep green under the matrix's own environment.
+
+**The lesson, and it is sharper than "run the proof".** Three standalone passes were read as
+"not reproducible" when they were "reproduced under the wrong environment". `check.sh` does not
+just run checkers — it sets the environment they run in, and a checker that passes outside the
+matrix and fails inside it is telling you which of the two is different, not that it is flaky.
 
 **The lesson, and it is the same one twice.** Round 179 wrote that a suite stopping at step 34 has not
 run step 1167. This round proves the sharper version: **the steps after a documented-red step hold
