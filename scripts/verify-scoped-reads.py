@@ -647,6 +647,59 @@ def _in_force(head, pattern, strict_block=False):
     return False
 
 
+def _in_else_arm_of(head, pattern):
+    """True when the END of `head` sits in the ELSE arm of a `pattern` guard.
+
+    The sibling of _in_force, answering a different question. _in_force asks "is the guarded
+    block still open"; this asks "did the guard's if-block CLOSE and hand over to an else".
+    They are not interchangeable: for a call in the else arm of
+    `if (isTabletShell()) { A } else { B }`, _in_force treats the else as a continuation of
+    the same block and answers for the if-arm question, which is not the one being asked.
+
+    Why a brace walk and not a text search: the difference between an UNGUARDED call and one
+    in an else arm is a single word. `if (c) { A } await x()` and
+    `if (c) { A } else { await x() }` differ only by `else`, so a regex looking for the word
+    nearby finds it in both -- the exact false-clear shape this file has fixed three times.
+    So the walk locates the guard, tracks its brace depth, and reports where the LAST match
+    ends: still inside the if-block (False, that is the if arm) or past a brace-balanced
+    `} else {` (True).
+
+    A guard whose block never closes, or which carries no else, answers False -- the
+    conservative direction, where an unguarded call stays a finding.
+    """
+    head = head.rstrip()
+    cut = head.rfind("\n")
+    if cut > 0:
+        head = head[:cut + 1]
+    for m in pattern.finditer(head):
+        depth = 0
+        guard_depth = None
+        opened = False
+        in_else = False
+        for i, ch in enumerate(head):
+            if i == m.start():
+                guard_depth = depth
+            if ch == "{":
+                depth += 1
+                if guard_depth is not None and depth > guard_depth:
+                    opened = True
+            elif ch == "}":
+                depth -= 1
+                if guard_depth is not None and depth < guard_depth:
+                    break
+                if guard_depth is not None and opened and depth <= guard_depth:
+                    # The if-block just closed. `} else {` continues into the arm that runs
+                    # when the condition is FALSE; a bare `}` ends the statement, and a call
+                    # past that point is unguarded.
+                    if re.match(r"\s*else\b", head[i + 1:]):
+                        in_else = True
+                        opened = False
+                        continue
+                    break
+        if in_else and guard_depth is not None and depth > guard_depth:
+            return True
+    return False
+
 def _dominating_bail(window):
     """True when a negated token bail is still in force at the end of the window.
 
@@ -701,8 +754,23 @@ def _platform_guard_excludes_shell(text, pos, shell):
     if _in_force(up_to, re.compile(r"\bif\s*\(\s*" + other + r"\s*\(\s*\)\s*\)"),
                  strict_block=True):
         return True
-    return _in_force(up_to, re.compile(r"\bif\s*\(\s*!\s*" + mine + r"\s*\(\s*\)\s*\)"),
-                     strict_block=True)
+    if _in_force(up_to, re.compile(r"\bif\s*\(\s*!\s*" + mine + r"\s*\(\s*\)\s*\)"),
+                 strict_block=True):
+        return True
+    # (c) THE POSITIVE FORM OF THIS SHELL'S OWN NAME, restricted to its ELSE arm.
+    #
+    # `if (isTabletShell()) { A } else { B }` runs B exactly when the device is NOT a
+    # tablet, so graded tablet the else arm is unreachable -- yet (a) and (b) above both
+    # answer False for it: (a) hunts the OTHER shell's helper (isDesktopShell, which has
+    # zero occurrences outside this file) and (b) hunts a negation the source does not
+    # write. Measured 2026-10-25: six of 24 tablet findings were this shape, each graded
+    # an unguarded tablet call for code that can never execute on tablet.
+    #
+    # The else arm is established from the BRACE POSITION, not from a text search: a guard
+    # whose if-block closed and which has no else leaves the call unguarded, and that is
+    # the whole difference between `} else {` and a bare `}`.
+    return _in_else_arm_of(up_to, re.compile(
+        r"\bif\s*\(\s*" + mine + r"\s*\(\s*\)\s*\)"))
 
 def _window_is_guarded(window):
     # Three independent facts make a window guarded, tested in the order that says the most first:
@@ -3011,6 +3079,21 @@ def _platform_guard_self_test():
         # True for every line after a `} else {`, including one with no shell condition at all.
         ("an else arm under a guard that names no shell is not excluded",
          "const h = async () => {\n  if (ready) {\n    pick();\n  } else {\n    return await createBackupTo(sessionToken, cache);\n  }\n};",
+         "tablet", False),
+        # THE POSITIVE FORM'S ELSE ARM -- the mirror of the case above, and the one nobody
+        # tested. `if (isTabletShell()) { ... } else { ... }` makes the ELSE body
+        # desktop-only, so graded tablet it can never run. The negated case above clears
+        # through `!isTabletShell()`; this one has no negation to catch, and measured
+        # 2026-10-25 on DevToolbar.tsx:325 (`createMemoScoped`) it came back False -- an
+        # unguarded TABLET call that never runs on tablet. The two cases exist together
+        # because a fix for one direction is not a fix for the other.
+        ("the else arm of a POSITIVE shell guard excludes this shell",
+         "const h = async () => {\n  if (isTabletShell()) {\n    pick();\n  } else {\n    return await createBackupTo(sessionToken, cache);\n  }\n};",
+         "tablet", True),
+        # The control that keeps the case above from passing vacuously: the IF arm of the
+        # same statement is the tablet-only body, so graded tablet the call IS reachable.
+        ("the if arm of a POSITIVE shell guard does not exclude this shell",
+         "const h = async () => {\n  if (isTabletShell()) {\n    return await createBackupTo(sessionToken, cache);\n  }\n};",
          "tablet", False),
         ("desktop branch, graded tablet",
          "if (isDesktopShell()) {\n  result = await createBackupTo(sessionToken, cache);\n}",
