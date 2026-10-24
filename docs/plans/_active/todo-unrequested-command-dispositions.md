@@ -84,6 +84,21 @@ lines are not arithmetic; this file records the other half — that the intersec
 of the five are legitimate. The gate reports a measurement, not a defect, and says so in its own
 summary text.
 
+## What this round actually changed
+
+Three things, none of them a command:
+
+1. **`info[cross-shell-reasons]`** -- a new line in `verify-ipc-parity.py` that prints how many of
+   the cross-shell names already carry a dated reason in `scoped_orphans`, and names the residue.
+   It is the link this file had to be written to discover. It now reads **5 of 5 covered**.
+2. **`get_over_quota_report`** gained the reason it was the only one missing -- the ambient arm of
+   an ADR #7 pair whose scoped twin `OverQuotaCard` uses.
+3. **The allowlist stub for `pending_sync_count_scoped`** cited `crates/kasirmu-bridge/src/pos.rs`,
+   which contains no such function; it lives at `sync.rs:400`. Corrected.
+
+The gate prints the census; the allowlist holds the reasoning; this file connects them. A reader
+who wants the full reasons should open `scripts/ipc-parity-allowlist.json` and search `scoped_orphans`.
+
 ## Filed by
 
 The round-176 lane. No production file edited; the two shells and the bridge are untouched.
