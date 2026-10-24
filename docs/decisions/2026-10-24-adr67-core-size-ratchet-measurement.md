@@ -2,12 +2,13 @@
 num: 67
 area: architecture
 title: "ADR-67: The core-size ratchet — what it can and cannot measure, and the ruling it needs"
-status: Proposed (2026-10-24) — needs an owner ruling; recommends REPLACING the single crate-wide ceiling with a per-area budget
+status: D2 Implemented (2026-10-24, 4054871f9) — the two-budget split is live and graded on both halves; D1 and D3 await an owner ruling
 ---
 
 # ADR-67: The core-size ratchet
 
-**Status:** Proposed (2026-10-24) — not ratified.
+**Status:** D2 **implemented** 2026-10-24 (`4054871f9`) — see §8. D1 and D3 remain proposals
+awaiting an owner ruling; nothing in the code depends on them.
 **Date:** 2026-10-24
 **Recorded against:** branch `0.0.41` at `3002ac2db`
 **Related:** Phase 3 P3.4 / plan section 11.1 (which introduced the ratchet), ADR-21 (modular scaffolding), ADR-61 / C26 (loyalty + inventory types moved to `foundation`), ADR-66 (centralized topology authoring), `docs/records/findings/2026-10-24-kasirmu-core-over-size-ceiling.md`.
@@ -151,3 +152,39 @@ one-line default. That hazard is already documented in the file; this decision d
 - It does not claim the four raises were mistakes. §D1 says the opposite: they were each correct,
   which is what makes the trend informative.
 - It does not re-open the extraction of the fourteen modules that already left.
+
+## 8. Implementation record — D2 shipped, and what measuring it changed
+
+`4054871f9` implements **D2 only**. The other decisions are unaffected: D1 (stop raising the
+whole-crate ceiling routinely) is a practice, and D3 (extract `topology.rs` when it is next edited)
+is future work. Neither is encoded anywhere, so neither can be silently "implemented".
+
+**What the gate does now.** `measure()` returns the db and non-db buckets alongside the total, so
+the two always partition it. `scripts/core-size-baseline.json` gains `db_ceiling` (27,481) and
+`non_db_ceiling` (13,135); the original `ceiling` (40,616) is **left exactly as it was** so every
+historical raise keeps its meaning rather than being re-expressed in a new unit mid-history. The
+split is printed on every run — including when no db ceiling is recorded — because a reader who
+does not know that 67.7% of the number cannot move will read every raise as drift.
+
+**Three things the implementation taught, none of which the proposal had settled:**
+
+1. **`non_db_ceiling` silently did nothing at first.** The db branch was written and planted
+   successfully; planting `non_db_ceiling` one line low made the gate print `non-db 13135
+   (ceiling 13134, +1)` and **exit 0**. Reporting a breach is not grading it. Both halves needed a
+   failure branch, and only construction caught the omission — the JSON `ok` field had the same
+   hole and was fixed with it.
+2. **The failure message crashed on an out-of-repo baseline.** `Path.relative_to` raises
+   `ValueError` when `--baseline-file` points outside the checkout, and it raises *inside* the
+   failure string — so the gate computed the violation correctly and then lost it to a traceback.
+   Found by pointing the plant at a temp file; fixed with a `_rel()` helper that falls back to the
+   absolute path.
+3. **Rewriting `gates.json` re-encoded 28 `\u` escapes** into literal Unicode, turning a one-line
+   note edit into a 24-line diff across unrelated rows. Caught by reading the diff before
+   committing; redone with `ensure_ascii=True` and the diff fell back to one line.
+
+**Verification, by construction rather than by reading:** `--self-test` 21/21 (three new cases
+grade the partition, and disabling the bucket assignment reddens exactly those two with
+`got 0, want 3` / `got 5, want 2`); each ceiling planted one line below its measured value gives
+the matching message and exit 1; the live run is green at `db 27481 + non-db 13135 = 40616`; and
+a baseline **without** the new keys still grades exactly as before, which is the compatibility
+promise the optional-key design makes.
