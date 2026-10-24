@@ -232,15 +232,55 @@ def production_sources(root: Path) -> list[Path]:
     return sorted(path for path in source_dir.rglob("*.rs") if not is_test_file(path, source_dir))
 
 
+#: The crate's database layer, measured separately from everything else.
+#:
+#: WHY TWO BUDGETS (ADR-67). `db/` is one `impl Store<'_>` surface -- inherent methods on
+#: the crate's own database handle. It cannot move out of the crate without moving the
+#: crate, so it can never be an extraction target. Measured 2026-10-24: 27,481 of the
+#: crate's 40,616 production lines (67.7%) live here.
+#:
+#: Phase 3 P3.4 introduced this ratchet to stop "new logic landing back in core" after the
+#: feature modules moved out to `modules/`. That rule is about the OTHER 32.3% -- logic
+#: that could live in a module. Grading one combined number conflates "the product has a
+#: lot of SQL" with "modularity regressed", and the combined number was raised four times
+#: in five days (+1,548 lines) because every raise was individually correct.
+DB_PREFIX = "crates/kasirmu-core/src/db/"
+
+
 def measure(root: Path):
+    """(total, file_count, per_file, db_total, non_db_total).
+
+    `total` is what the original single-budget gate graded and is still reported, so the
+    transition changes nothing a reader already relies on. `db_total` and `non_db_total`
+    partition it exactly: they always sum to `total`.
+    """
     source_dir = root / SOURCE_DIR
     per_file: list[tuple[str, int]] = []
     total = 0
+    db_total = 0
     for path in production_sources(root):
         count = count_lines(path, source_dir)
-        per_file.append((str(path.relative_to(root)).replace("\\", "/"), count))
+        rel = str(path.relative_to(root)).replace("\\", "/")
+        per_file.append((rel, count))
         total += count
-    return total, len(per_file), per_file
+        if rel.startswith(DB_PREFIX):
+            db_total += count
+    return total, len(per_file), per_file, db_total, total - db_total
+
+
+def _rel(path: Path, root: Path) -> str:
+    """Path relative to the repo when possible, else the absolute path.
+
+    A baseline passed with `--baseline-file` may live outside the checkout (a scratch
+    file, a worktree copy). `Path.relative_to` RAISES in that case, and it raises INSIDE
+    the failure message -- so the gate crashed with a ValueError instead of reporting the
+    violation it had just detected. Measured 2026-10-24 by pointing --baseline-file at a
+    temp file: the db-budget finding was computed, then lost to this.
+    """
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
 
 
 def main() -> int:
@@ -259,7 +299,7 @@ def main() -> int:
 
     root = args.root or Path(__file__).resolve().parent.parent
     baseline_path = args.baseline_file or (root / "scripts" / BASELINE_NAME)
-    total, file_count, per_file = measure(root)
+    total, file_count, per_file, db_total, non_db_total = measure(root)
 
     if args.emit_baseline:
         document = {
@@ -272,10 +312,16 @@ def main() -> int:
             ),
             "measure": "non-blank lines in crates/kasirmu-core/src production .rs files, minus inline #[cfg(test)] mod blocks",
             "ceiling": total,
+            # ADR-67: `db/` is the crate's own Store layer and can never be extracted, so it
+            # gets its own budget. The two ceilings are INDEPENDENT and their sum is NOT
+            # `ceiling`: `ceiling` stays the whole-crate ratchet (so every historical raise
+            # keeps its meaning), while `db_ceiling` + `non_db_ceiling` partition TODAY's tree.
+            "db_ceiling": db_total,
+            "non_db_ceiling": non_db_total,
             "measured_files": file_count,
         }
         baseline_path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
-        print(f"verify-core-size: wrote baseline (ceiling {total}, {file_count} files)")
+        print(f"verify-core-size: wrote baseline (ceiling {total} = db {db_total} + non-db {non_db_total}, {file_count} files)")
         return 0
 
     if args.files:
@@ -291,25 +337,75 @@ def main() -> int:
     ceiling = int(baseline.get("ceiling", 0))
     delta = total - ceiling
 
+    # ADR-67 second budget. `db_ceiling` is OPTIONAL on purpose: a baseline written before
+    # the split has no such key, and the gate must keep grading such a tree exactly as it
+    # did yesterday rather than refusing it. Absent means "not yet split".
+    db_ceiling = baseline.get("db_ceiling")
+    split = isinstance(db_ceiling, int)
+    db_delta = db_total - db_ceiling if split else None
+    non_db_ceiling = int(baseline.get("non_db_ceiling", 0)) if split else None
+    non_db_delta = non_db_total - non_db_ceiling if split else None
+
     if args.json:
-        print(json.dumps({
+        payload = {
             "measured": total,
             "ceiling": ceiling,
             "delta": delta,
             "measured_files": file_count,
             "baseline_files": baseline.get("measured_files"),
-            "ok": delta <= 0,
-        }, indent=2))
-    elif delta > 0:
-        print(f"verify-core-size: measured {total} vs ceiling {ceiling} (+{delta} lines)", file=sys.stderr)
+            # The SPLIT is reported even when no db ceiling is recorded, so a reader
+            # can always see how much of the number is immovable.
+            "db": db_total,
+            "non_db": non_db_total,
+            "db_ceiling": db_ceiling,
+            "db_delta": db_delta,
+            "non_db_delta": non_db_delta,
+            "ok": delta <= 0 and (db_delta is None or db_delta <= 0)
+                  and (non_db_delta is None or non_db_delta <= 0),
+        }
+        print(json.dumps(payload, indent=2))
     else:
-        print(f"verify-core-size: measured {total} vs ceiling {ceiling} ({delta} lines, headroom {-delta})")
+        if delta > 0:
+            print(f"verify-core-size: measured {total} vs ceiling {ceiling} (+{delta} lines)", file=sys.stderr)
+        else:
+            print(f"verify-core-size: measured {total} vs ceiling {ceiling} ({delta} lines, headroom {-delta})")
+        # Always print the split: 67.7% of this number cannot ever move, and a reader
+        # who does not know that will read every raise as drift.
+        line = f"  split: db {db_total}"
+        if split:
+            line += f" (ceiling {db_ceiling}, {db_delta:+d})"
+        line += f" + non-db {non_db_total}"
+        if split:
+            line += f" (ceiling {non_db_ceiling}, {non_db_delta:+d})"
+        print(line)
 
     if delta > 0:
         return fail(
             f"kasirmu-core grew by {delta} production line(s) above the {ceiling}-line ceiling. "
             "Extract the new logic into its module, or lower the ceiling deliberately by editing "
-            f"{baseline_path.relative_to(root)} in a commit that says why."
+            f"{_rel(baseline_path, root)} in a commit that says why."
+        )
+    # ADR-67: the db budget is graded separately, with its own message. "Extract it into
+    # its module" is advice that cannot apply to one `impl Store` surface, so a rise here
+    # is SQL debt rather than a modularity regression and the gate should say so.
+    if db_delta is not None and db_delta > 0:
+        return fail(
+            f"kasirmu-core db/ grew by {db_delta} production line(s) above its {db_ceiling}-line "
+            "budget. That layer is one `impl Store` surface and cannot be extracted into a "
+            "module (ADR-67), so a rise here is SQL debt: raise db_ceiling in "
+            f"{_rel(baseline_path, root)} in a commit that says why."
+        )
+    # The MODULARITY budget, and this is the one Phase 3 P3.4 actually describes: everything
+    # outside db/ is logic that COULD live in a module, so a rise here is the failure the
+    # ratchet was built to catch. Perturbing non_db_ceiling by 1 was measured to pass this
+    # gate before this branch existed -- the split reported the breach and then graded only
+    # the db half, which would have made the whole split decorative.
+    if non_db_delta is not None and non_db_delta > 0:
+        return fail(
+            f"kasirmu-core (outside db/) grew by {non_db_delta} production line(s) above its "
+            f"{non_db_ceiling}-line budget. This is the population Phase 3 P3.4 polices: logic "
+            "that could live in a module landing back in core. Extract it into its module, or "
+            f"raise non_db_ceiling in {_rel(baseline_path, root)} in a commit that says why."
         )
     return 0
 
@@ -373,9 +469,22 @@ def self_test() -> int:
         base.mkdir(parents=True)
         (base / "prod.rs").write_text("pub fn a() {}\npub fn b() {}\n", encoding="utf-8")
         (base / "prod_tests.rs").write_text("fn t() {\n    panic!();\n}\n", encoding="utf-8")
-        total, files, _ = measure(root)
+        total, files, _, db_total, non_db = measure(root)
         check("temp tree counts only production", total, 2)
         check("temp tree file count", files, 1)
+        # ADR-67 SPLIT: a file under db/ lands in the db bucket, everything else does not,
+        # and the two always partition the total. The partition is the property that keeps
+        # the split honest -- if the buckets ever failed to sum to `total`, one of them
+        # would be graded against a number it does not describe.
+        dbdir = base / "db"
+        dbdir.mkdir()
+        (dbdir / "thing.rs").write_text(
+            "pub fn c() {}\npub fn d() {}\npub fn e() {}\n", encoding="utf-8"
+        )
+        total2, _, _, db2, non2 = measure(root)
+        check("a db/ file counts in the db bucket", db2, 3)
+        check("and not in the non-db bucket", non2, 2)
+        check("the two buckets partition the total", db2 + non2, total2)
 
     # THE EXIT CODE ITSELF, and the reporter behind it. Every case above grades a RULE;
     # none of them ran fail(), so blanking fail() to "return None" left this self-test
