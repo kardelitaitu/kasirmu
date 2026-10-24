@@ -2433,7 +2433,7 @@ door". That presumes the scoped twin HAS a gate.
 | none (`ctx.resolve_session` then delegate) | 7 | nothing but a session check |
 | `SETTINGS_EDIT` / `SECURITY_MANAGE` | 4 | a real authorisation step |
 
-`resolve_session` is the gate every one of these twins runs first, and the module doc above it states the rule the split follows (dead-ref: ok: this cites a MODULE DOC block, not a symbol, so the checker cannot anchor it):
+`resolve_session` is the gate every one of these twins runs first; the module doc at `crates/kasirmu-bridge/src/license/scoped.rs:3-5` states the rule the split follows (dead-ref: ok: a MODULE DOC block, not a symbol, so the checker cannot anchor it):
 the permission is applied "where the operation mutates a credential or a subscription". A
 read does not mutate, so its scoped twin validates the session and delegates — by design,
 not by omission. Seven of the eleven are reads.
