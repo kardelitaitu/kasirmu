@@ -243,7 +243,7 @@ binds.
 **D5 — Reconciliation owns the `confirmed` → `settled` edge; its scheduler is not decided here.**
 `payment_settlements` exists with four guarded states and `expected_minor` / `actual_minor`
 (`20260825_payment_infra.sql:24-37`); a daily sweep against it is the natural promoter. **Who
-schedules it** is owned by `docs/plans/_active/payment-resilience-design.md` §6, which already
+schedules it** is owned by `docs/plans/_done/done-plan-payment-resilience-design.md` §6, which already
 lists the scheduler among the six things it does not decide (§9 item 2).
 
 **D6 — Model A: software-only.** kasir.mu never holds a merchant's funds. Money goes customer →
@@ -331,7 +331,7 @@ so the acceptance cannot be met as written.)* the D1 and D4 migrations run
 - `crates/kasirmu-core/src/db/reports/sales_summary.rs` — the `payment_method` reader D1 defers
 - `docs/plans/_active/payment-methods-plan.md` §1.1 (fact #1), §1.3, §3 — the decided vocabulary
   and the line D4 contradicts
-- `docs/plans/_active/payment-resilience-design.md` §1.3 (two different `idempotency_key`), §2,
+- `docs/plans/_done/done-plan-payment-resilience-design.md` §1.3 (two different `idempotency_key`), §2,
   §6, §9 — the sibling owning reconciliation, keying and the scheduler
 - ADR-59 §1.6, §2.3, §2.4, §4 — market profiles as data; ADR-39 — our own subscription billing;
   ADR-65 — whether a fiscal chain ships

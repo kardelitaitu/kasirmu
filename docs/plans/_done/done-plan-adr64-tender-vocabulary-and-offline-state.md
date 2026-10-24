@@ -5,7 +5,7 @@
 **Date:** 2026-10-02  
 **Recorded against:** branch `0.0.41`  
 **Governing ADR:** [ADR-64 (The Tender Vocabulary and the Offline Tender State)](../../decisions/2026-10-02-adr64-tender-vocabulary-and-offline-tender-state.md)  
-**Related Plans:** [`docs/plans/_active/payment-methods-plan.md`](./payment-methods-plan.md), [`docs/plans/_active/payment-resilience-design.md`](./payment-resilience-design.md)  
+**Related Plans:** [`docs/plans/_active/payment-methods-plan.md`](../_active/payment-methods-plan.md), [`docs/plans/_done/done-plan-payment-resilience-design.md`](./done-plan-payment-resilience-design.md)  
 **Technical Spec:** [`docs/specs/_active/account-locked-residency-and-market-profile.md`](../../specs/_active/account-locked-residency-and-market-profile.md)  
 
 ---
