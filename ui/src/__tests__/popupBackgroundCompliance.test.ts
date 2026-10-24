@@ -510,7 +510,6 @@ describe('popup surfaces have visible backgrounds', () => {
     // so 'features/sales/CartPanel.css' cannot credit 'features/sales/CartPanelLineItem.css'
     // and a moved directory cannot pass as the sheet it replaced.
     const SHEETS_BASELINE: [string, number][] = [
-      ["components/ConnectionStatus.css",9],
       ["components/ErrorBoundary.css",7],
       ["components/ExitSurveyModal.css",11],
       ["components/FastPINOverlay.css",49],

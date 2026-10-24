@@ -478,16 +478,21 @@ const SCREENS: ScreenEntry[] = [
     // a sheet both entry points import (main.tsx:7, main.mobile.tsx:20). The mute
     // claimed a runtime-composed name; the cite says what is true.
     parentCss: ['../theme/components.css'],
-    // These classes are defined in StaffLoginScreen.css but are used by the
-    // StatusBar component (imported and rendered inside StaffLoginScreen).
+    // These classes are defined in theme/components.css (already parentCss above) and used
+    // by the StatusBar component rendered inside StaffLoginScreen.
+    //
+    // Round 158: the four `connection-*` members left this list with
+    // components/ConnectionStatus.css. That component was replaced by StatusBar, which
+    // renders .statusbar-* pills instead, and StaffLoginScreen names none of the
+    // connection-* classes any more (grep: zero hits in that file) -- the entry had
+    // outlived its own justification. `status-indicator` stays because
+    // theme/components.css:500-502 and ShiftBar.css:41 still style it.
+    // `checking` left too: it was the `.status-indicator.checking` rule in the deleted
+    // ConnectionStatus.css, and nothing defines it now.
     externalClasses: [
-      'connection-status',
       'status-indicator',
-      'checking',
       'online',
       'offline',
-      'connection-label',
-      'connection-latency',
     ],
   },
   {

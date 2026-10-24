@@ -39,10 +39,6 @@ const COLOR_ONLY_INDICATORS: Requirement[] = [
   { file: 'components/GatewayStatusBadge.css', selector: '.gateway-badge__dot.online', reason: 'gateway status dot (colour only)' },
   { file: 'components/GatewayStatusBadge.css', selector: '.gateway-badge__dot.offline', reason: 'gateway status dot (colour only)' },
   // Connection status indicators
-  { file: 'components/ConnectionStatus.css', selector: '.status-indicator.checking', reason: 'connection status indicator (colour only)' },
-  { file: 'components/ConnectionStatus.css', selector: '.status-indicator.online', reason: 'connection status indicator (colour only)' },
-  { file: 'components/ConnectionStatus.css', selector: '.status-indicator.warning', reason: 'connection status indicator (colour only)' },
-  { file: 'components/ConnectionStatus.css', selector: '.status-indicator.offline', reason: 'connection status indicator (colour only)' },
   // Stock alert severity dots
   { file: 'features/inventory/StockAlertPanel.css', selector: '.stock-alert-severity-dot', reason: 'severity dot (colour only)' },
   { file: 'features/inventory/StockAlertPanel.css', selector: '.stock-alert-severity-dot--warning', reason: 'severity dot (colour only)' },

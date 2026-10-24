@@ -2981,7 +2981,9 @@ const DISAGREEING_TAIL_BASELINE: Array<[string, string, number]> = [
   ["--color-accent-subtle", "ui/src/features/design/DevToolbar.css", 4],
   ["--color-accent-subtle-fg", "ui/src/features/locations/MultiStoreDashboardScreen.css", 1],
   ["--color-bg", "ui/src/theme/reset.css", 1],
-  ["--color-bg-hover", "ui/src/components/ConnectionStatus.css", 1],
+  // Round 158: the ConnectionStatus.css entry left with the sheet. The component was
+  // replaced by StatusBar (mounted at AppLayout.tsx:396 and four auth screens) and had
+  // no importer; its only remaining references were CSS-inventory rows like this one.
   ["--color-bg-hover", "ui/src/features/auth/StaffLoginScreen.css", 1],
   ["--color-bg-hover", "ui/src/features/sales/EodReportScreen.css", 2],
   ["--color-bg-hover", "ui/src/features/sales/widgets/widgets.css", 1],
