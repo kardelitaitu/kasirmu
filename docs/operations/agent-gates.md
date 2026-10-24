@@ -2567,7 +2567,52 @@ which lands the screen in its error boundary instead of failing readably.
 pressure points. `KNOWN_GAPS` exists so a gap is a recorded debt; adding a name it never
 had converts a live throw into an accepted one. A baseline that is compared by equality
 must be GENERATED from the runtime, because a hand-kept list is only as complete as the
-last person who thought to look.
+
+## A guard the walk cannot see is not a gap, and the count is not the score
+
+Measured 2026-10-25, round 149. `verify-scoped-reads.py --shell tablet` had reported 24
+findings for many rounds. The number was stable, so it read as a fixed backlog. It was
+neither: two were a gate BUG and several more are guards the walk structurally cannot
+see.
+
+**The bug: the else arm of a POSITIVE shell guard.** For `--shell tablet` the guard
+classifier tested two forms -- `isDesktopShell()` and `!isTabletShell()` -- and neither
+matches `if (isTabletShell()) { A } else { B }`, which is the shape the repo most often
+writes. Graded tablet, `B` can never run, so it is unreachable code. The self-test carried
+an else-arm case, but only for the NEGATED form, so the positive form had no coverage and
+the asymmetry was invisible. Two `DevToolbar.tsx` sites (memo authoring) were reported as
+unguarded tablet calls for a branch that only executes on desktop.
+
+The fix is `_in_else_arm_of`, a brace walk that reports whether a position sits past a
+brace-balanced `} else {`. With it: 24 findings -> 22, cleared 35 -> 37, desktop still
+clean, self-test PASS.
+
+**The class the walk cannot see: a desktop-only SUBTREE.** `create_backup` is called from
+`ui/src/app/UpdateBanner.tsx:157`, graded an unguarded tablet call. It is not. The mount
+chain is:
+
+```
+main.mobile.tsx -> TabletAppShell -> TabletAppLayout      (no UpdateBanner anywhere)
+main.tsx       -> App -> AppShell -> AppLayout -> UpdateBanner -> createBackup()
+```
+
+`grep -rn 'UpdateBanner|createBackup' ui/src/app/tablet` returns ZERO. The file is
+reachable only from the desktop shell, and no per-call-site pattern can express that --
+the guard is the ABSENCE of an import three files up, which is a module-graph fact, not a
+text fact. The same holds for the `TopologyScreen` cluster (topology editing is
+desktop-only).
+
+**What to do about it, and what not to.** Do not widen the allowlist reasons to cover
+these, and do not add a runtime `isTabletShell()` guard to code that already cannot run on
+the device -- that is a lie in the source to satisfy a checker. The honest reading is that
+the gate's number is an upper bound on real defects, and the useful question is never "how
+many findings" but "which of these can actually execute". Answer it by walking the mount
+chain once per cluster, as above.
+
+**The general rule.** A stable red number is a claim that has stopped being tested. When a
+gate reports the same count for many rounds, audit the gate before the tree: this one had
+a direction-specific blind spot that its own self-test could not reach, because the test
+covered one spelling of a two-spelling idiom.
 
 > last audited 11-10-26 by docs-auditor
 
