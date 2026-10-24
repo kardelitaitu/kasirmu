@@ -84,6 +84,48 @@ That makes "extract or raise" a false choice here. The honest reading of +19 fro
 domain method plus eight files of incidental churn is **raise**, which is the same judgement the two
 previous raises in the baseline's own history reached on larger deltas.
 
+## Extraction candidates, measured properly (2026-10-24, round 111)
+
+The ceiling is now 40616 with **zero headroom**, so the next production commit to the crate turns
+`core-size-ratchet` red. That makes "is there anything to extract?" a live question rather than a
+tidiness one. Measured with the checker's own masker, and the answer is **no, not without an owner
+decision**:
+
+| file | masked lines | `impl Store` blocks | free `pub fn` | verdict |
+|---|---|---|---|---|
+| `db/popularity.rs` | 834 | 1 | 1 | SQL on `Store` — cannot leave the crate |
+| `db/audit.rs` | 743 | 1 | 2 | same |
+| `db/products_crud.rs` | 721 | 1 | 0 | same |
+| `topology.rs` | 669 | **0** | **11** | **the one real candidate** |
+| `db/inventory.rs` | 637 | 1 | 0 | SQL on `Store` |
+| `db/loyalty.rs` | 633 | 2 | 1 | SQL on `Store` |
+| `db/stock_transfers.rs` | 629 | 1 | 0 | SQL on `Store` |
+| `export/mod.rs` | 620 | 2 | 1 | built on `crate::db::Store` + `db::reports` |
+
+**The `db/` files are structurally unmovable.** Each is essentially one `impl Store<'_>` block —
+inherent methods on the crate's own database handle. Moving them means moving `Store` itself, which
+is the crate. This is the same conclusion the baseline's own history reached twice before, now
+measured per file rather than asserted.
+
+**`topology.rs` is the genuine candidate, and it is real but blocked.** Its own module doc says it
+is *"Tauri-free and value-level, so any client (desktop Apply, tablet preview, tooling) can run the
+same gates"* — 11 free `pub fn`s, zero `impl Store`, and exactly three crate dependencies
+(`workspace_type`, `CoreError`, and `include_str!` of a vendored JSON contract). All ten consumers
+import it as `kasirmu_core::topology::…`, so a move plus a `pub use` re-export would leave every
+call site unchanged.
+
+**What blocks it is structural, not technical:** there is no existing crate it belongs in
+(`kasirmu-core`, `-api`, `-bridge`, `-cli`, `-crypto`, `-hal`, `-lan`, `-local-api`, `-logging`,
+`-lua`, `-media`, `-notification`, `-payment`, `-plugin`, `-reporting`, `-security`, `-test-support`,
+`qris-core` — none is a topology-contract home), so extracting it means **creating a new workspace
+crate**: a new `Cargo.toml`, new workspace membership, new dependency edges in `kasirmu-api` and
+`kasirmu-bridge`, and a doc's worth of justification. That is an architecture decision, and a
+half-finished version would be worse than the overrun.
+
+**So the recommendation stands and is now evidence-backed:** re-emit the ceiling as part of whatever
+change grows core (which is what the baseline's description asks for, and what has been done
+correctly on each of the last three raises) — and if the crate is to shrink for real, the move is
+`topology.rs` into a new crate, which needs an owner's ruling first.
 ## Provenance
 
 - Gate: `scripts/verify-core-size.py` against `scripts/core-size-baseline.json` (ceiling now
