@@ -2924,14 +2924,14 @@ Measured 2026-10-25, round 170. `check-reentry-guards.py` prints **76** handlers
 guard is a React state flag, and says of each that it is "a CANDIDATE, not a defect: the cost of
 the replay depends on the backend. Ask first whether a unique index REFUSES it, then whether the
 UI still reports success." That sentence is the whole method, and this round ran it on the four
-storage-backed create paths in the products feature. Only one of the four was already covered.
+storage-backed create paths across three features. Only one of the five was already covered.
 
 | Handler | Refused by the backend? | What the operator sees | Verdict |
 |---|---|---|---|
 | `VariantManagementScreen.handleSave` | yes -- `product_variants.sku` UNIQUE (`20260813_init.sql:429`, kept at `20260831:164`) | "product not found", because `create_product_variant_on` maps EVERY constraint violation to `NotFound` (`products.rs:369-377`) | **defect**, fixed |
 | `BundleManagementScreen.handleSave` | yes -- `bundle_items.bundle_sku` UNIQUE (`:389`) | the generic `bundles-error-save`, i.e. "the save FAILED" while the first tap succeeded | **defect**, fixed |
 | `PromotionManagementScreen.handleSave` | **no** -- `promotions` has only an `id` PK, and the bridge mints a UUID per call | nothing; TWO live promotions, both applied at the till | already guarded by `loading={saving}`, and already tested |
-| `CategoryManagementScreen.handleCreate` | (not reached this round) | | left on the report |
+| `CategoryManagementScreen.handleCreate` | yes, twice over: `id` is a PK derived from the name by `colourToId`, and `categories.name` is UNIQUE | `categories-error-create`, i.e. "could not create" over a category that was created | **defect**, fixed |
 
 **The two classes the report cannot tell apart, and why both belong in a table like this.** The
 variant and bundle rows are the SAME shape: a unique index refuses the replay (`question 1`
@@ -2958,6 +2958,6 @@ anything.
 
 **What the report counts after this round: 74.** Not because 76 was wrong -- each of the three
 thrown off it now has an atomic ref plus a case that fails with `expected 2 to be 1` when the ref
-is hollowed out. The other 74 are untouched, and the questions above have not been asked of them.
+is hollowed out. The other 73 are untouched, and the questions above have not been asked of them.
 
 > last audited 11-10-26 by docs-auditor
