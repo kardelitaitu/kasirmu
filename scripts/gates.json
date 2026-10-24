@@ -2034,6 +2034,22 @@
           "finding reachability self-test"
         ]
       }
+    },
+    {
+      "id": "orphan-census",
+      "label": "Orphan component census",
+      "status": "required",
+      "_note": "Added 2026-10-25 (round 157). scripts/census-orphan-modules.py counts UI component modules that NO production code imports, renders, registers or re-exports through an imported barrel. It exists because round 156 MEASURED a blind spot in classify-finding-reachability.py: removing a registry entry left --strict green, because that gate only classifies modules behind an unresolved verify-scoped-reads finding, and fixing a finding removes it from that list. A module can therefore be dead and never classified. This census is the missing check. The predicate needed four rules the first run did not have: contexts are consumed via hooks rather than rendered; screens are registered through lazy(() => import(...)) rather than component: Name; a BARREL that re-exports a module is a forwarding address, not a consumer (StoreInfoCard is exported from workspace-cards/index.ts and rendered by nobody); and a CSS class named after a component is not an import. Measured on the tree: 335 component modules, 11 orphans, and the list independently reproduces the UNRESOLVED ruling that features/index.ts:68 already records for AddonsMarketplace. REPORT ONLY for now -- --strict is the switch once the 11 are dispositioned. Self-test covers all seven shapes including the unimplemented-barrel trap, which failed on the first run.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "ipc-parity"
+      },
+      "runners": {
+        "check.sh": [
+          "orphan module census",
+          "orphan module census self-test"
+        ]
+      }
     }
   ]
 }

@@ -122,7 +122,17 @@ RUNNERS = (
 # rather than a checker, and it is the only such script -- admitting the prefix would add
 # one entry and require judging every future generate-*. See the scope note in the
 # docstring; this line and that paragraph must move together.
-SCRIPT_RE = re.compile(r"^(?:verify|check)-[A-Za-z0-9_-]+\.(?:py|mjs|sh)$")
+# verify-*, check-*, classify-* and census-*. The two latter prefixes were added
+# 2026-10-25 (round 157) after both new checkers landed with a --self-test that this
+# gate could not see: `classify-finding-reachability.py` and `census-orphan-modules.py`
+# each declare one and each are invoked by scripts/check.sh, but neither name starts
+# with verify- or check-, so the gate that exists to prove self-tests are wired
+# reported them as absent from its corpus rather than as wired. This is the SAME
+# defect the docstring at :144-150 records for the verify-only era, and it was found
+# the same way: by adding a checker and noticing the total did not move.
+#
+# `generate-*` remains deliberately absent for the reason at :120-124.
+SCRIPT_RE = re.compile(r"^(?:verify|check|classify|census)-[A-Za-z0-9_-]+\.(?:py|mjs|sh)$")
 # "<name>.py --self-test" anywhere on the line. Deliberately not anchored to a
 # command position: a step that pipes or redirects still calls the flag, and a
 # grep that misses those would report a false finding, which is the failure mode
@@ -291,7 +301,7 @@ def main() -> int:
                   f"Add a step beside its gate in .github/workflows/dev-ci.yml and "
                   f"scripts/check.sh, or delete the flag if it was never meant to run.")
         return 1
-    print(f"verify-selftests-wired: OK — {declared} of {total} verify-*/check-* checkers "
+    print(f"verify-selftests-wired: OK — {declared} of {total} checker(s) in scope "
           f"declare a --self-test and every one is invoked by a runner.")
     return 0
 

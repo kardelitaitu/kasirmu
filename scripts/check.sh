@@ -190,6 +190,13 @@ step "shell registration self-test" "python3 scripts/verify-shell-registration.p
 step "finding reachability" "python3 scripts/classify-finding-reachability.py --strict" python3 scripts/classify-finding-reachability.py --strict
 step "finding reachability self-test" "python3 scripts/classify-finding-reachability.py --self-test" python3 scripts/classify-finding-reachability.py --self-test
 
+# Counts component modules no production code reaches. Its sibling above only classifies
+# modules behind an UNRESOLVED finding, so a module whose finding was guarded (or which
+# never produced one) is invisible to it -- measured in round 156. Report only for now:
+# --strict is the switch once the current list is dispositioned.
+step "orphan module census" "python3 scripts/census-orphan-modules.py" python3 scripts/census-orphan-modules.py
+step "orphan module census self-test" "python3 scripts/census-orphan-modules.py --self-test" python3 scripts/census-orphan-modules.py --self-test
+
 # ── IPC session-token payload parity (round AE) ──────────────────────────
 # Fails when the UI invokes a command whose Rust signature requires
 # session_token without carrying a sessionToken payload (the round-AC edc
