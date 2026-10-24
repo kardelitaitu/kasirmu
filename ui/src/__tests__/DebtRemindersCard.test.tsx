@@ -27,6 +27,17 @@ vi.mock('@/features/reports/csv', () => ({
   downloadCsv: (...args: unknown[]) => mockDownloadCsv(...args),
 }));
 
+// Defaults to desktop. The AP-aging export is desktop-only: its command is
+// registered by apps/desktop-tauri alone, so the card withholds the control on
+// the tablet rather than offering one that cannot work.
+const shell = vi.hoisted(() => ({ tablet: false }));
+vi.mock('@/utils/shellKind', () => ({
+  isTabletShell: () => shell.tablet,
+  isDesktopShell: () => !shell.tablet,
+  getShellKind: () => (shell.tablet ? 'tablet' : 'desktop'),
+  setShellKind: () => {},
+}));
+
 vi.mock('@/components/Card', () => ({
   Card: ({ children, className }: Record<string, unknown>) => (
     <div className={className as string} data-testid="card-mock">
@@ -70,6 +81,7 @@ describe('DebtRemindersCard', () => {
     mockGetArAgingReportScoped.mockReset();
     mockGetApAgingReportScoped.mockReset();
     mockDownloadCsv.mockReset();
+    shell.tablet = false;
   });
 
   it('renders all healthy state when receivables and payables have no overdue or due soon', async () => {
@@ -355,5 +367,27 @@ describe('DebtRemindersCard', () => {
         'ap-aging-report-2026-10-21.csv',
       );
     });
+  });
+
+
+  it('withholds the AP-aging export on the tablet, where its command is unregistered', async () => {
+    // Measured 2026-10-25: get_ap_aging_report_scoped is registered by
+    // apps/desktop-tauri/src/lib.rs:1832 and there is no tablet twin, while the
+    // dashboard IS reachable on the tablet (reports:view). The button used to render
+    // unconditionally and fail on click, surfacing only an 'export failed' badge.
+    // The AR half still works there, so only this control is withheld.
+    shell.tablet = true;
+    mockListReceivablesScoped.mockResolvedValue([]);
+    mockListPayablesScoped.mockResolvedValue([]);
+
+    renderCard();
+
+    await waitFor(() => {
+      expect(screen.getByText('Debt & Credit Reminders')).toBeTruthy();
+    });
+    expect(screen.queryByText('Export AP Aging')).toBeNull();
+    // The control that DOES work on the tablet stays, so this case cannot pass by
+    // the card having failed to render at all.
+    expect(screen.getByText('Export AR Aging')).toBeTruthy();
   });
 });

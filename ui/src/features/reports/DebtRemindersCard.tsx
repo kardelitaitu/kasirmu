@@ -5,6 +5,7 @@ import { listReceivablesScoped, getArAgingReportScoped, type Receivable } from '
 import { listPayablesScoped, getApAgingReportScoped, type PayableDto } from '@/api/payables';
 import { formatMoney } from '@/types/domain';
 import { buildCsv, downloadCsv } from './csv';
+import { isTabletShell } from '@/utils/shellKind';
 
 interface DebtRemindersCardProps {
   sessionToken: string;
@@ -19,6 +20,12 @@ export function DebtRemindersCard({ sessionToken, currency }: DebtRemindersCardP
   const [receivables, setReceivables] = useState<Receivable[]>([]);
   const [payables, setPayables] = useState<PayableDto[]>([]);
   const [loading, setLoading] = useState(true);
+  // AP aging is a desktop-only command (`get_ap_aging_report_scoped` is registered
+  // by apps/desktop-tauri alone). Derived into a named const rather than tested
+  // inline at the JSX, because a shell-derived BOOLEAN is the form the gates
+  // recognise -- verify-scoped-reads.py needs the guard to name the shell, and
+  // verify-ipc-parity.py needs the handler's references to sit near it.
+  const canExportApAging = !isTabletShell();
   // Per side: the two reads fail independently (see `loadDebts`).
   const [recsFailed, setRecsFailed] = useState(false);
   const [paysFailed, setPaysFailed] = useState(false);
@@ -130,7 +137,21 @@ export function DebtRemindersCard({ sessionToken, currency }: DebtRemindersCardP
   };
 
   const handleExportApAging = async () => {
-    try {
+    // TWO guards, at two levels, for two different reasons (measured 2026-10-25).
+    //
+    // 1. The BUTTON is withheld on the tablet, because get_ap_aging_report_scoped
+    //    is registered by the desktop shell alone -- an affordance that cannot
+    //    work should not be shown.
+    // 2. The CALL is guarded too, in the positive/else form the gates read. An
+    //    early `return` inside the try does NOT register as a guard: the walk
+    //    needs the call inside the block an `if` opened, and `} else {` keeps the
+    //    condition armed for the other arm. Without this, a withheld button still
+    //    leaves the invoke looking unconditional to verify-scoped-reads.py -- and
+    //    the invoke is what would throw if a refactor ever re-showed the control.
+    if (isTabletShell()) {
+      return;
+    } else {
+      try {
       const report = await getApAgingReportScoped(sessionToken);
       const headers = [
         'Vendor / Supplier Name',
@@ -165,6 +186,7 @@ export function DebtRemindersCard({ sessionToken, currency }: DebtRemindersCardP
     } catch (err) {
       console.error('Failed to export AP aging report', err);
       setExportFailed('ap');
+    }
     }
   };
 
@@ -311,15 +333,25 @@ export function DebtRemindersCard({ sessionToken, currency }: DebtRemindersCardP
                 <span>View Vendor Bills</span>
               </Localized>
             </button>
-            <button
-              type="button"
-              className="dashboard-debt-btn dashboard-debt-btn--secondary"
-              onClick={handleExportApAging}
-            >
-              <Localized id="dashboard-export-ap-aging">
-                <span>Export AP Aging</span>
-              </Localized>
-            </button>
+            {/* The dashboard is a tablet-reachable route (requiredPermission
+                reports:view, and TabletAppShell resolves it through the same page
+                registry), but get_ap_aging_report_scoped is registered by the
+                DESKTOP shell alone (apps/desktop-tauri/src/lib.rs:1832; there is no
+                tablet twin). Unconditional, this button fired a command that does
+                not exist on the tablet and surfaced only as an "export failed"
+                badge -- a broken affordance rather than an absent one. The AR half
+                above still works there, so only this control is withheld. C47 idiom. */}
+            {canExportApAging && (
+              <button
+                type="button"
+                className="dashboard-debt-btn dashboard-debt-btn--secondary"
+                onClick={handleExportApAging}
+              >
+                <Localized id="dashboard-export-ap-aging">
+                  <span>Export AP Aging</span>
+                </Localized>
+              </button>
+            )}
             {exportFailed === 'ap' && (
               <span
                 className="dashboard-debt-badge dashboard-debt-badge--warning"
