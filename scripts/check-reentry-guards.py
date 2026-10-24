@@ -124,7 +124,19 @@ re-derive these: each is protected, and the protection is named so the search en
                         (StockShortfallDialog.tsx:353), which looks like a replay hole and is
                         not: the key ignores the id by design. Recorded round 179 so the next
                         sweep does not re-open it -- this entry sat unlisted for seven rounds
-                        while the code already answered it.  * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
+                        while the code already answered it.
+  * shift open / close -- BOTH REFUTED BY CORE, but only one was a defect, and the
+                        difference is worth stating. `open_shift` counts the caller's
+                        open shifts under an IMMEDIATE transaction and returns Validation
+                        "user already has an open shift" (db/shifts.rs:95-107), so the
+                        replay is REFUSED and the second message is at least TRUE. `close_shift`
+                        refuses a shift that is already closed (:193-198) -- and the catch
+                        reports `pos-close-shift-failed`, which reads as "the close failed"
+                        over a shift that closed. Round 180 FIXED the close at
+                        EodReportScreen.handleConfirmCloseShift with a ref; the open path at
+                        RetailPosScreen.handleOpenShift is left, because refusing a second
+                        open with "you already have an open shift" is the honest answer to a
+                        double tap rather than a lie about the first one.  * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
                         idempotent by construction: the same key is overwritten
 The point of the list is that it is SHORT: filtering to handlers that (a) await something
 other than a list/get read and (b) have a write-shaped name narrows ~143 raw busy-flag
