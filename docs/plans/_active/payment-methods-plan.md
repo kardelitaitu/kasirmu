@@ -130,8 +130,19 @@ card          = true
 **Safety rules (non-negotiable):**
 
 1. Effective method list = **`config ∩ subscription entitlements ∩ workspace type`**.
-2. UI hides disabled methods, but the **backend checkout command re-validates** against the effective config — never trust the UI.
-3. Malformed/unparseable config JSON → **fail closed to current defaults** (cash/card always available as floor).
+2. UI hides disabled methods, but the **backend checkout command re-validates** against the effective config — never trust the UI. ~~Owed~~ — **DONE, measured 2026-10-25.** `Store::refuse_unoffered_tender`
+   (`crates/kasirmu-core/src/db/payment_methods.rs`) answers `NotOffered`/`Withheld`, and
+   `complete_sale_deduction_with_locations` calls it for the header `payment_method` **and every split
+   row** before a single row is written. Until this landed, `local_payment_methods_for_location` had
+   **no writer-side caller at all** — the read existed, the UI used it, nothing enforced it, so a
+   client posting `payment_method: "qris"` against a site that never enabled QRIS was stored verbatim.
+   Three narrowings keep real sales working, each pinned by a test: a site with no rail surface
+   refuses **nothing** ("unconfigured" is not "disabled", and a new store must be able to trade);
+   `credit` is skipped because it is a CORE rail gated by its own settings (F23/F24), not a
+   `local_payment_methods` row; and the code match is case-insensitive, matching the `credit`
+   comparison already in that file. Six cases in `payment_methods_tests.rs` plus two in
+   `sales_tests.rs` (`checkout_refuses_a_tender_the_site_does_not_offer`,
+   `an_unconfigured_site_still_completes_a_cash_sale`).3. Malformed/unparseable config JSON → **fail closed to current defaults** (cash/card always available as floor).
 4. Dynamic methods additionally require their signed entitlement (`caps.supportsQris` etc.).
 
 Settings UI: "Payment Methods" section inside the existing `store-pos` / `restaurant-pos` pages of the Tauri Settings page (master–detail + Save — the existing pattern).

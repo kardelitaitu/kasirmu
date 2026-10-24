@@ -5538,3 +5538,80 @@ fn complete_sale_with_resolved_shortfalls_propagates_db_error_when_checking_stoc
         "expected CoreError::Db, got {err:?}"
     );
 }
+
+// ── Payment-rail re-validation at checkout (plan safety rule 2) ─────
+//
+// `payment-methods-plan.md` safety rule 2: "the backend checkout command
+// re-validates against the effective config -- never trust the UI". These two
+// cases are the pair that matters: a configured site REFUSES a tender it does
+// not offer, and an unconfigured site still completes the sale, because
+// "unconfigured" is not "disabled" and a new store must be able to trade.
+
+#[test]
+fn checkout_refuses_a_tender_the_site_does_not_offer() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product_with_stock(&conn, "COFFEE", 10);
+
+    // A market with one rail, and a site that does not list `cash`.
+    s.conn
+        .execute(
+            "INSERT INTO legal_entities (id, tenant_id, name, legal_name, registration_number, \
+             tax_id, status, country_code, locale, timezone, currency, created_at, updated_at) \
+             VALUES ('ent-1', 'default', 'ent-1', '', '', '', 'active', 'ID', '', '', '', \
+             '2026-09-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+    // The checkout resolves its site from `get_default_location_id()`, which is the
+    // FROZEN canonical UUID -- not "whichever locations row exists". Seeding that
+    // exact row is what makes this test grade the enforcement rather than a
+    // location the checkout never asks about.
+    s.conn
+        .execute(
+            "INSERT INTO locations (id, name, tenant_id, legal_entity_id) \
+             VALUES (?1, 'Site', 'default', 'ent-1')",
+            rusqlite::params![crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+        )
+        .unwrap();
+    s.replace_local_payment_methods(
+        "legal_entity",
+        "ent-1",
+        &[crate::db::payment_methods::NewPaymentRail {
+            rail_code: "qris".into(),
+            label: "QRIS".into(),
+            is_enabled: true,
+            parameters: "{}".into(),
+        }],
+        "2026-09-01T00:00:00.000Z",
+    )
+    .unwrap();
+
+    let sale = make_single_line_sale("COFFEE", 1, 350);
+    let err = s
+        .complete_sale_deduction_with_locations(&sale, None, &[], &tender(350), "u", None, &[])
+        .expect_err("cash is not on this site's rail surface");
+    match err {
+        crate::error::CoreError::Validation { field, message } => {
+            assert_eq!(field, "payment_method");
+            assert!(
+                message.contains("cash"),
+                "names the refused rail: {message}"
+            );
+        }
+        other => panic!("expected a validation refusal, got {other:?}"),
+    }
+}
+
+#[test]
+fn an_unconfigured_site_still_completes_a_cash_sale() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product_with_stock(&conn, "COFFEE", 10);
+    // No legal entity link, no rail rows anywhere: the floor case.
+    let sale = make_single_line_sale("COFFEE", 1, 350);
+    let result = s
+        .complete_sale_deduction_with_locations(&sale, None, &[], &tender(350), "u", None, &[])
+        .expect("an unconfigured store must still be able to sell");
+    assert_eq!(result.status, SaleStatus::Pending);
+}

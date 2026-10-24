@@ -407,3 +407,108 @@ fn tier_capability_is_not_inferable_from_payment_settings() {
         "rail writes must never touch (or create) any entitlement store"
     );
 }
+
+// ── checkout re-validation (plan safety rule 2) ─────────────────────
+//
+// The UI hides disabled rails, but the plan's non-negotiable rule 2 says the
+// backend checkout must re-validate: "never trust the UI". These cases pin the
+// three narrowings in `refuse_unoffered_tender` -- no surface is no opinion, a
+// disabled rail is `Withheld`, an unlisted rail is `NotOffered` -- plus the
+// case-insensitive match, so a client sending "QRIS" is not a different rail.
+
+#[test]
+fn a_site_with_no_rail_surface_refuses_nothing() {
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
+    seed_entity(&store, "ent-1");
+    // Location exists and links the entity, but no rail rows anywhere.
+    seed_location(&store, "loc-1", Some("ent-1"));
+    assert_eq!(
+        store.refuse_unoffered_tender("loc-1", "qris").unwrap(),
+        None,
+        "an unconfigured market is not a disabled one; refusing here breaks every new store"
+    );
+}
+
+#[test]
+fn an_unlinked_location_refuses_nothing() {
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
+    seed_location(&store, "loc-solo", None);
+    assert_eq!(
+        store.refuse_unoffered_tender("loc-solo", "qris").unwrap(),
+        None
+    );
+}
+
+#[test]
+fn an_enabled_rail_is_admitted() {
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
+    seed_entity(&store, "ent-1");
+    seed_location(&store, "loc-1", Some("ent-1"));
+    store
+        .replace_local_payment_methods("legal_entity", "ent-1", &[rail("qris", "QRIS", true)], NOW)
+        .unwrap();
+    assert_eq!(
+        store.refuse_unoffered_tender("loc-1", "qris").unwrap(),
+        None
+    );
+}
+
+#[test]
+fn a_rail_the_surface_does_not_list_is_refused() {
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
+    seed_entity(&store, "ent-1");
+    seed_location(&store, "loc-1", Some("ent-1"));
+    store
+        .replace_local_payment_methods("legal_entity", "ent-1", &[rail("qris", "QRIS", true)], NOW)
+        .unwrap();
+    let refusal = store.refuse_unoffered_tender("loc-1", "ewallet").unwrap();
+    assert_eq!(
+        refusal,
+        Some(TenderRefusal::NotOffered {
+            rail_code: "ewallet".into()
+        })
+    );
+    assert!(refusal.unwrap().message().contains("not offered"));
+}
+
+#[test]
+fn a_rail_disabled_at_the_location_is_refused_as_withheld() {
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
+    seed_entity(&store, "ent-1");
+    seed_location(&store, "loc-1", Some("ent-1"));
+    store
+        .replace_local_payment_methods("legal_entity", "ent-1", &[rail("qris", "QRIS", true)], NOW)
+        .unwrap();
+    // The site turns QRIS off; the entity row still says on.
+    store
+        .replace_local_payment_methods("location", "loc-1", &[rail("qris", "QRIS", false)], NOW)
+        .unwrap();
+    assert_eq!(
+        store.refuse_unoffered_tender("loc-1", "qris").unwrap(),
+        Some(TenderRefusal::Withheld {
+            rail_code: "qris".into()
+        })
+    );
+}
+
+#[test]
+fn the_rail_code_match_ignores_case_and_surrounding_space() {
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
+    seed_entity(&store, "ent-1");
+    seed_location(&store, "loc-1", Some("ent-1"));
+    store
+        .replace_local_payment_methods("legal_entity", "ent-1", &[rail("qris", "QRIS", true)], NOW)
+        .unwrap();
+    // sales_checkout.rs already compares `credit` case-insensitively; a UI that
+    // upper-cases a code must not look like a different rail from the row.
+    assert_eq!(
+        store.refuse_unoffered_tender("loc-1", "  QRIS ").unwrap(),
+        None
+    );
+}

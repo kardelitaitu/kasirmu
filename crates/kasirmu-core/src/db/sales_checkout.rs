@@ -315,6 +315,38 @@ impl Store<'_> {
         };
         let primary_location = stock_locations[0].clone();
 
+        // ── Payment-rail re-validation (plan safety rule 2) ────────
+        //
+        // The settings UI hides rails the site has disabled, but a hidden button is
+        // not an enforcement point: never trust the UI. Every tender a sale claims --
+        // the header's `payment_method` and every split row -- is checked against the
+        // site's EFFECTIVE rail surface before a single row is written. A market with
+        // no surface configured refuses nothing (see the predicate's doc comment), so
+        // this cannot break a store that has not set rails up yet.
+        //
+        // `credit` is deliberately absent from the surface: it is a CORE rail gated
+        // by its own settings (F23/F24, enforced above), not a `local_payment_methods`
+        // row. Checking it here would refuse every credit sale on every configured
+        // site, which is the opposite of the intent.
+        let mut tenders: Vec<&str> = Vec::new();
+        if let Some(header_method) = sale.payment_method.as_deref() {
+            tenders.push(header_method);
+        }
+        for split in payment_splits {
+            tenders.push(split.method.as_str());
+        }
+        for tender in tenders {
+            if tender.eq_ignore_ascii_case("credit") {
+                continue;
+            }
+            if let Some(refusal) = self.refuse_unoffered_tender(&primary_location, tender)? {
+                return Err(CoreError::Validation {
+                    field: "payment_method",
+                    message: refusal.message(),
+                });
+            }
+        }
+
         // ── Phase 1: stock check + shortfall collection ────────────
         let mut deductions: Vec<StockDeduction> = Vec::with_capacity(sale.lines.len());
         let mut line_deductions: HashMap<String, Vec<crate::sale_deduction::LocationAllocation>> =
