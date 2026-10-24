@@ -3314,4 +3314,15 @@ assumed, and worth re-running when a live plan with such a name starts citing fu
 NUMBER and a LIST that did not correspond, and the number was the one people quote. Rounds 183
 and 184 have now fixed four such sites (NO-ANCHOR/SUPPRESSED, `hist`, `stale_stamps`, `pkg_hist`).
 The rule: **if a summary prints a count above a list, the list must say when it stops.**
+
+**The rule was then swept, not just stated.** A scan for the same shape — a capped
+`for-loop over a collection` whose `len()` is printed within a few lines, with no
+remainder notice — found **7 sites**. One was the `hist[:14]` fixed below. The other six are
+SELF-TEST diagnostics (`verify-agents-mirrors.py` prints `probs[:3]`, `verify-scoped-reads.py`
+prints `lines[:2]`), where the count is printed beside the sample and two or three items is
+the whole point — those are correct as written and were left alone. An earlier, looser scan
+found 122 hits and was useless because it counted STRING truncation (`line[:60]`) as list
+capping; the narrower predicate — same identifier in a `len()` and a slice — is what made the
+answer readable. Same lesson as the round-183 probe that reported 67 checkers by grepping for
+a flag name: a text search for a shape is not a measurement of it.
 > last audited 11-10-26 by docs-auditor
