@@ -63,7 +63,7 @@
     },
     "edc_terminal_status": {
       "shell": "desktop",
-      "reason": "KDS device management is a kitchen-display surface registered only on desktop."
+      "reason": "EDC payment-terminal status read on the desktop shell (commands/edc.rs, registered desktop lib.rs:1425). Its SCOPED twin edc_terminal_status_scoped IS registered on the tablet (mobile lib.rs:1500), which is the door the shared UI uses; the unscoped form is the desktop-only ambient path. Corrected 2026-10-25: this entry carried the KDS sentence, which has nothing to do with EDC."
     },
     "get_ap_aging_report_scoped": {
       "shell": "desktop",
@@ -171,7 +171,7 @@
     },
     "list_workspace_screens_scoped": {
       "shell": "desktop",
-      "reason": "KDS device management is a kitchen-display surface registered only on desktop."
+      "reason": "Lists the screens of a workspace type from the store-scoped database (commands/workspaces.rs, desktop lib.rs:1729). Desktop-only: workspace layout is authored in the topology editor, which the tablet replaces with a notice. Corrected 2026-10-25: this entry carried the KDS sentence."
     },
     "list_workspaces_for_store_scoped": {
       "shell": "desktop",
@@ -303,7 +303,7 @@
     },
     "rotate_encryption_key_scoped": {
       "shell": "desktop",
-      "reason": "KDS device management is a kitchen-display surface registered only on desktop."
+      "reason": "At-rest encryption key rotation (commands/security.rs, desktop lib.rs:1701). Desktop-only by the deliberate no-front-door ruling: ui/src/api/security.ts records that a tablet wrapper for this command is an owner decision, because a shell that could regenerate the key could deny service against the local database. Corrected 2026-10-25: this entry carried the KDS sentence."
     },
     "save_report_schedule": {
       "shell": "desktop",
@@ -327,7 +327,7 @@
     },
     "settings_changed_sink_scoped": {
       "shell": "desktop",
-      "reason": "KDS device management is a kitchen-display surface registered only on desktop."
+      "reason": "Settings-change sync sink (commands/sync.rs, desktop lib.rs:1900) -- the desktop publishes local setting changes to the sync peer; the tablet has no such publisher. Corrected 2026-10-25: this entry carried the KDS sentence."
     },
     "stop_memo_scoped": {
       "shell": "desktop",
@@ -415,15 +415,15 @@
     },
     "list_warehouse_products_scoped": {
       "shell": "tablet",
-      "reason": "Topology authoring is a desktop-only management surface; the tablet renders a notice instead of the editor (TopologyScreen.tsx returns before mounting it)."
+      "reason": "TABLET-only entry: the tablet registers this (mobile lib.rs:1381) and the desktop does not, because the desktop uses the location-aware list_warehouse_products_at_location instead (desktop lib.rs:1613). The tablet form takes no location id -- it reads the bound warehouse -- so it is not a twin but a different query. Corrected 2026-10-25: this entry carried the topology-authoring rationale, which describes the opposite direction."
     },
     "notify_memory_pressure": {
       "shell": "tablet",
-      "reason": "Memo AUTHORING is a manager surface registered only on desktop. The tablet registers the consumer pair (list_active_memos_scoped / acknowledge_memo_scoped), which is a different screen."
+      "reason": "OS memory-pressure callback registered on the tablet (mobile lib.rs:1141, commands/health.rs): Android signals trim-memory and the shell releases caches. No desktop equivalent. Corrected 2026-10-25: this entry carried the memo-authoring rationale."
     },
     "open_product_images": {
       "shell": "tablet",
-      "reason": "Native file pickers and product-image folders are desktop OS integrations with no Android equivalent."
+      "reason": "TABLET-only: opens the OS default browser at a Google Images search for a product (mobile lib.rs:1204, commands/browser.rs). The desktop uses the store-scoped open_product_images_scoped instead, so this exists BECAUSE Android has an equivalent, not because it lacks one -- commands/browser.rs:6 calls it the \"Tablet variant\". Corrected 2026-10-25: this entry claimed \"no Android equivalent\"."
     },
     "prepare_and_launch_update": {
       "shell": "tablet",
