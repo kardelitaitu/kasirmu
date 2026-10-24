@@ -39,6 +39,12 @@ FILES=(
     "ops/docker/docker-compose.yml"
     "ops/docker/docker-compose.pg.yml"
     "ops/docker/docker-compose.e2e.yml"
+    # The E2E pre-pull pins the SAME redis digest as docker-compose.e2e.yml (its
+    # own comment says "Keep in sync"). It was NOT in this list, so refreshing the
+    # compose pin alone left prePullRedis() pulling the OLD digest while compose
+    # started the NEW one -- two different images in one e2e run. Measured
+    # 2026-10-24 while auditing the drifted-pin finding.
+    "scripts/run-e2e.mjs"
 )
 
 # The pin pattern, named once so the self-test grades the SAME regex the live scan

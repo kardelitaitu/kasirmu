@@ -22,13 +22,50 @@ distinct images" while its table listed five drifted images plus a "still curren
 "7 drifted pins" is right only if you count REFERENCES rather than images — `debian` and
 `redis` are each pinned twice. Measured from a live run of the gate: 7 drifted references,
 5 distinct images, and the two "still current" images (`rust:1.88-slim`, `golang:1.25-alpine`,
-3 references) are not drifted at all. The number that matters for a refresh is 5 images; the
-number that matters for a diff is 7 lines.
+**4** references — `Dockerfile.server:22` + `Dockerfile.unified:43` for rust,
+`license-server/Dockerfile:16` + `Dockerfile.unified:27` for golang) are not drifted at all. The
+number that matters for a refresh is 5 images; the number that matters for a diff is 7 lines.
+
+**Second correction, same shape (2026-10-24): that "3" was itself an arithmetic slip, in a
+paragraph already correcting arithmetic.** Counted per pin site, the two current images hold
+**4** references, and 7 drifted + 4 current = **11**, which is exactly what `scripts/gates.json`'s
+own "11 pins" row says. The gate's `FILES` array now holds 7 files and 12 pins after the
+blind-spot fix below.
 
 Three of the six were re-queried independently (`docker buildx imagetools inspect`) and
 returned exactly the digests the gate reported, so the finding is not an artefact of the
 gate's own parsing.
 
+## The blind spot is now FIXED, and one gap it hid (2026-10-24)
+
+A delegated audit re-measured all 11 pins two ways that need no daemon (Docker Hub
+`docker-content-digest` header; SHA-256 of the raw manifest bytes for public ECR, which returns
+no header) and reproduced every digest in this finding exactly. It found three things this file
+did not record:
+
+1. **The pins are STALE, not frozen.** `git grep -inE "frozen|freeze"` over the Dockerfiles, the
+   gate, `.trivyignore` and `agent-gates.md` returns **zero hits** — no freeze marker exists, so
+   the drift is genuine rot rather than a deliberate hold.
+2. **The "refreshed <date>" comments are partly FALSE.** `Dockerfile.unified:193` claims debian
+   "refreshed 2026-08-17" while pinning an artifact created **2026-08-24** — a refresh on 8/17
+   cannot have pinned an 8/24 artifact. And `Dockerfile.server:185` and `Dockerfile.unified:194`
+   pin the *identical* debian digest under two different refresh dates. Treat those dates as
+   provenance you must verify, not as evidence a pin is fresh.
+3. **A 12th pin the gate could not see.** `scripts/run-e2e.mjs:126` hardcodes the same redis
+   digest as `docker-compose.e2e.yml` — its own comment says "Keep in sync" — but the file was
+   not in the gate's `FILES` array. Refreshing the compose pin alone would leave `prePullRedis()`
+   pulling the OLD digest while compose started the NEW one: two different images in one e2e run.
+
+**Fixed:** `scripts/run-e2e.mjs` is now in `FILES`, taking the gate from 11 pins across 6 files to
+**12 pins across 7 files**. The pattern already matched the line (verified before the edit), so
+the only change needed was the path. The `--self-test` still passes 8/8 — and note it does NOT
+cover `FILES`, which is why the pin count was re-measured directly to prove the edit worked.
+
+**Still open, and still an owner decision:** refreshing the 7 drifted references themselves
+(debian first — it is the only security-relevant one, a ~2-month-overdue point release), plus
+correcting the false comment dates in the same commit. The audit also recommends wiring the
+retired Monday cron as an **advisory**, issue-opening job rather than a blocking one: caddy alone
+moves roughly 4x a month, so a blocking job would be permanently red.
 ## Why nobody saw it
 
 The gate had **no live runner of any kind**. Its only caller was
