@@ -614,9 +614,9 @@ Supplier debts raised outside a purchase order. Desktop-only for now.
 > **The `[T]` marker alone understates this one, so the warning is stated here.** A command marked
 > tablet-only looks like a command with a smaller audience; `get_cart_deduction_location` is a
 > command whose ambient name is *unreachable* on desktop while its scoped twin is available on both.
-> `ui/src/features/sales/PosScreen.tsx:891-893` chooses between them with a truthiness test on
+> `ui/src/features/sales/PosScreen.tsx:910-911` chooses between them with a truthiness test on
 > `sessionToken`, which `:157` defines as `rawToken || ''` — so an empty string takes the tablet
-> branch, the desktop invoke is rejected, and the bare `catch` at `:896` quietly renders the raw
+> branch, the desktop invoke is rejected, and the bare `catch` at `:914` quietly renders the raw
 > location id. Found by `scripts/verify-ipc-parity.py` on 2026-10-19 and recorded in
 > `docs/records/audits/2026-10-19-ipc-door-missing-and-root-debris.md`; the UI fix is still open.
 > The general rule the markers cannot express: **a `[T]` command and its `[D+T]` scoped twin are not

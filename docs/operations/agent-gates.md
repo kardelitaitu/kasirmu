@@ -2301,4 +2301,51 @@ depth walk replayed by hand (`gd 3, break at line 324`), and a four-case fixture
 and new predicate (else arm flipped, control stayed put). Each is one line of instrumentation and
 each answered a question that reading the diff twice would not have.
 
+## What the topology walk taught, and what not to do about it
+
+Measured 2026-10-24, rounds 127-128. The tablet shell still grades six topology calls
+reachable, and every attempt to fix them by editing the guard walk has failed the same way:
+one fixture goes green as another goes red.
+
+**The shape.** `TopologyScreen.tsx:173` is
+
+    if (isTabletShell()) { return <Notice />; } else { /* the whole desktop editor */ }
+
+The walk in `_in_force` in `verify-scoped-reads.py` measures "is the arm still open at the
+call" with a brace-depth counter that starts at 0 at the head of the text and knows nothing
+about what precedes the guard. On this file it reads the guard's own depth as 1 and the
+else arm's closing brace as landing back on 1, so `depth > guard_depth` is false at the call
+and the guard reads as spent. The call sites are then reported unreachable-on-desktop.
+
+**The trap, stated so the next attempt does not repeat it.** `_in_force` serves TWO callers
+that want opposite things. `_dominating_bail` (the `if (!sessionToken) return;` idiom) calls it
+with `strict_block=False` and needs "still open" to be TRUE for a bare bail whose callback's
+closing brace is already inside the window. `_platform_guard_excludes_shell` calls it with
+`strict_block=True` and needs the else arm's end to be recognised. Every threshold that fixes
+one breaks a fixture pinning the other:
+
+| Change tried | Tablet findings | Self-test |
+|---|---|---|
+| none (HEAD) | 24 | PASS |
+| stop truncating `head` at its last line | 24 | PASS |
+| also feed the whole prefix (`text[:pos]`) | 24 (the two gates disagreed mid-run) | PASS |
+| `}` at `depth >= guard_depth` closes the arm | 24 | PASS |
+| ...plus re-arming `opened` on `else` | 24 | PASS |
+| any variant that moves the loose walk's threshold by one level | 24 | FAIL |
+
+Ten variants were tried across two rounds. **None moved the tablet count**, and five
+combinations that looked right turned one of the two bail fixtures red. The walk is not one
+predicate; it is two, sharing a counter.
+
+**What to do instead.** Do not tune the thresholds. Give the strict path its own function --
+it is the only caller that wants arm semantics -- and leave `_dominating_bail` on the walk it
+has always had, unchanged, with its fixtures as the contract. That is a refactor, not a
+one-line change, and it needs the strict path's own fixtures before the tree measurement, in
+that order. Two rounds here did it backwards and paid for it twice.
+
+**Meanwhile the code is correct and the gate is wrong.** `TopologyScreen.tsx` and
+`PosScreen.tsx` were rewritten to the if/else shape in round 127 (`9df07bb5b`); the desktop
+editor genuinely cannot run on the tablet, and the six findings are the checker's, not the
+screen's. A guard the checker cannot see is still a guard.
+
 > last audited 11-10-26 by docs-auditor
