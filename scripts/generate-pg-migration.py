@@ -980,11 +980,20 @@ RLS_EXEMPT = {
         "(pg.rs never touches it) — nothing for a policy to gate"
     ),
     "payment_gateways": (
-        "no writer anywhere in the repo — no INSERT/UPDATE exists outside "
-        "the CREATE TABLE in 20260825_payment_infra.sql; db/payment_gateways.rs "
-        "is a fail-fast stub (upsert_gateway returns PLANNED) and the copier's "
-        "DEFAULT_TABLES excludes it. Nothing to gate until gateway config CRUD "
-        "lands"
+        "local SQLite write path EXISTS and is wired end to end — "
+        "Store::upsert_payment_gateway / get_payment_gateway / "
+        "list_payment_gateways / delete_payment_gateway in "
+        "db/payment_gateways.rs, reached through the scoped commands in "
+        "kasirmu-bridge/src/local_payment.rs and registered on the desktop "
+        "shell. It is still exempt from RLS for the original reason plus one "
+        "correction: the earlier note here called this file a fail-fast stub "
+        "(upsert_gateway returns PLANNED), and that stopped being true when the "
+        "CRUD landed — upsert_gateway is now a deprecated shim returning "
+        "CoreError::Internal and has ZERO callers. What remains true is that no "
+        "PG write path exists: every writer is device-local, tenant_id is the "
+        "schema DEFAULT 'default' as it is for the other local-only tables, and "
+        "the copier never selects this table, so there is no PG insert for a "
+        "policy to gate. Cover when gateway config gains a cloud-sync path."
     ),
     "payment_settlements": (
         "no writer anywhere in the repo — no INSERT/UPDATE exists outside "
