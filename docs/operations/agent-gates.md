@@ -2662,9 +2662,49 @@ findings a human verified by hand in round 151.
 
 **A test that passes under the mutation is not a test.** Round 153 added four cases
 for the new shell-registration read, then broke the parser to read the WHOLE lib.rs instead
-of only the `generate_handler![...]` list. All four still passed: `save_report_schedule`
-appears inside the list either way, so nothing distinguished the two reads. The case that
-discriminates uses a name that is CALLED in lib.rs but is NOT in the list --
+
+## Two reachability gates, two different questions
+
+Measured 2026-10-25, rounds 152-162. `classify-finding-reachability.py` and
+`census-orphan-modules.py` look similar and answer different questions. Using one where the other
+belongs is how a green run gets read as coverage it never had.
+
+| Gate | Input | Question |
+|---|---|---|
+| `classify-finding-reachability` | the `verify-scoped-reads` finding list | Is the module behind THIS FINDING reachable? |
+| `census-orphan-modules` | every shipping module under `ui/src` | Does ANY production code name this module? |
+
+The first one's scope is a consequence of its input: fixing a finding removes it from the list, so
+it stops being classified. Measured in round 156 -- removing a registry entry left `--strict`
+green while the screen it registered went dark.
+
+**The census's own scope was too narrow, and for a whole file class.** Until round 162 it skipped
+every non-`.tsx` file, so its printed `ORPHAN` count described components only. `hooks/useMediaQuery.ts`
+was named by no other file in the tree and the census could not see it -- because it was not a
+`.tsx`. Widening to hooks and capitalised `.ts` modules raised the count 7 -> 8 and the corpus
+330 -> 416 modules.
+
+That is the same defect the sibling gate's docstring records for the verify-only era, in a third
+place: **a gate whose scope is narrower than the convention it enforces cannot see half the rot it
+exists to catch.** The tell was the same both times -- a number that did not move when a new case
+was added to the tree.
+
+Neither gate is a census of dead code in general. Together they cover: findings nobody has
+resolved, and named modules nothing imports. They do NOT cover an unused export inside a live
+module, or a module reached only through a chain of itself-unreachable modules -- both are open.
+
+## A note that names a file that does not exist is worse than no note
+
+Round 162. Two archive banners (`products/register.tsx:20`, `ProductManagementScreen.tsx:2`) said the
+screen was "replaced by WarehouseScreen (features/warehouse/)". `git ls-files
+'ui/src/features/**/WarehouseScreen*'` returns nothing. The successor is `WarehouseConsole.tsx`,
+registered at route `warehouse`.
+
+This is small but it is the exact shape of the failure this file keeps recording: a claim written
+from intent ("the warehouse thing replaced it") rather than from a lookup. A reader who trusts the
+banner concludes the question is settled and stops looking. A reader who checks finds a phantom
+and no longer trusts the other three lines either.
+
 `start_and_store` -- because a whole-file parse reports it registered and a list-scoped parse
 does not. That one goes red under the mutation. Four cases that all agree with both
 implementations are measuring nothing.
