@@ -41,6 +41,7 @@ import { setShellKind } from '@/utils/shellKind';
 // the only binding guaranteed to exist when the factory runs.
 const deductionApiMocks = vi.hoisted(() => ({
   startSaleScoped: vi.fn(),
+  setLineCourseScoped: vi.fn(),
   ambientLookup: vi.fn(),
   scopedLookup: vi.fn(),
 }));
@@ -59,6 +60,7 @@ vi.mock('@/api/sales', () => ({
   ['get' + 'CartDeductionLocationScoped']: (...args: unknown[]) => deductionApiMocks.scopedLookup(...args),
   overrideCartDeductionLocation: vi.fn(async () => ({})),
   overrideLinePriceScoped: vi.fn(async () => ({})),
+  setLineCourseScoped: (...args: unknown[]) => deductionApiMocks.setLineCourseScoped(...args),
 }));
 
 /** Structural stand-in for the hook's parameter bag; every field it reads is set. */
@@ -146,5 +148,80 @@ describe('usePosCartActions — the deduction-location door each shell actually 
     expect(cartId).toBe('cart-1');
     expect(result.current.deductionLocationName).toBe('loc-1');
     expect(p.addToast).not.toHaveBeenCalled();
+  });
+});
+
+// ── Coursing persistence ──────────────────────────────────────────────
+//
+// `set_line_course_scoped` shipped to the backend with six tests and NO UI
+// caller: coursing lived only in device state, so a restart lost every table's
+// course assignments mid-service. These pin the two properties that matter --
+// the call reaches the backend with the right shape, and a failure does not
+// block the cashier.
+describe('usePosCartActions — coursing is persisted, not just rendered', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    startSaleScoped.mockResolvedValue({ cartId: 'cart-1', deductionLocationId: 'loc-1' });
+  });
+
+  it('sends the course to the backend cart after the cart exists', async () => {
+    const p = params('tok');
+    const { result } = await renderHookInAct(() => usePosCartActions(p));
+    await act(async () => {
+      await result.current.ensureCart('IDR');
+    });
+    await act(async () => {
+      await result.current.syncLineCourse('line-1', 'main');
+    });
+    expect(deductionApiMocks.setLineCourseScoped).toHaveBeenCalledWith('tok', {
+      cartId: 'cart-1',
+      lineId: 'line-1',
+      course: 'main',
+    });
+  });
+
+  it("translates the device's empty-string 'clear' into the backend's null", async () => {
+    // The two vocabularies are different on purpose: the course chip's None option
+    // is '', while the Rust arg is Option<String>. Sending '' would store an empty
+    // course id rather than clearing it.
+    const p = params('tok');
+    const { result } = await renderHookInAct(() => usePosCartActions(p));
+    await act(async () => {
+      await result.current.ensureCart('IDR');
+    });
+    await act(async () => {
+      await result.current.syncLineCourse('line-1', '');
+    });
+    expect(deductionApiMocks.setLineCourseScoped).toHaveBeenCalledWith('tok', {
+      cartId: 'cart-1',
+      lineId: 'line-1',
+      course: null,
+    });
+  });
+
+  it('does not call the backend when no cart exists yet', async () => {
+    // Saving a course before the sale has started would be rejected as an unknown
+    // cart; the local assignment is already correct for this shift.
+    const p = params('tok');
+    const { result } = await renderHookInAct(() => usePosCartActions(p));
+    await act(async () => {
+      await result.current.syncLineCourse('line-1', 'main');
+    });
+    expect(deductionApiMocks.setLineCourseScoped).not.toHaveBeenCalled();
+  });
+
+  it('swallows a backend refusal so the cashier is never blocked', async () => {
+    deductionApiMocks.setLineCourseScoped.mockRejectedValueOnce(new Error('cart not found'));
+    const p = params('tok');
+    const { result } = await renderHookInAct(() => usePosCartActions(p));
+    await act(async () => {
+      await result.current.ensureCart('IDR');
+    });
+    // Must resolve, not reject: a mid-service sync failure cannot take the screen down.
+    await expect(
+      act(async () => {
+        await result.current.syncLineCourse('line-1', 'main');
+      }),
+    ).resolves.not.toThrow();
   });
 });

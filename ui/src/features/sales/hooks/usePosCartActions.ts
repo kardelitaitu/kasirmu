@@ -5,6 +5,7 @@ import type { usePosState } from '../usePosState';
 import { requiredLocalized } from '@/components';
 import { plainErrorMessage } from '@/utils/app-error';
 import { triggerInteraction } from '@/utils/interaction';
+import { devLog } from '@/utils/devLog';
 import { isTabletShell } from '@/utils/shellKind';
 import { useAnimatedUndoStack } from '@/hooks/useAnimatedUndoStack';
 import type { Promotion } from '@/api/promotions';
@@ -14,6 +15,7 @@ import {
   getCartDeductionLocationScoped,
   overrideCartDeductionLocation,
   overrideLinePriceScoped,
+  setLineCourseScoped,
 } from '@/api/sales';
 import type { ShiftDto } from '@/api/shifts';
 import type { CartId, CartLine, CourseId, ModifierSelection, Product } from '@/types/domain';
@@ -357,9 +359,41 @@ export function usePosCartActions({
   const handleDismissUndo = useCallback(() => {
     animatedUndoStack.dismiss();
   }, [animatedUndoStack]);
+  /**
+   * Persist a line's course to the backend cart, so coursing survives an app
+   * restart. The device-local `assignCourse` in `usePosState` runs first and is
+   * what the UI renders; this mirrors it onto the server cart.
+   *
+   * BEST-EFFORT BY DESIGN. `set_line_course_scoped` needs a cart that exists and
+   * `SALES_PROCESS`, and a cashier mid-service must never be blocked from putting
+   * a course on a line because a sync failed -- the local assignment has already
+   * happened and is correct for this shift. A failure is swallowed for the same
+   * reason the deduction-name lookup is: the screen keeps working, and the next
+   * successful assign re-syncs. It is NOT silent to a developer -- `devLog` records
+   * it, the same convention the rest of this file uses.
+   */
+  const syncLineCourse = useCallback(
+    async (lineId: string, courseId: string) => {
+      if (!cartId) return;
+      try {
+        await setLineCourseScoped(sessionToken, {
+          cartId,
+          lineId,
+          // The device-side convention is that '' means "clear" (the course
+          // chip's None option); the backend's is `None`. Translate here rather
+          // than at the call site so the two vocabularies meet in one place.
+          course: courseId === '' ? null : courseId,
+        });
+      } catch (err) {
+        devLog.warn('pos-course', `course sync failed for line ${lineId}: ${String(err)}`);
+      }
+    },
+    [cartId, sessionToken],
+  );
+
   return {
     overrideTarget,
-    setOverrideTarget,
+    syncLineCourse,    setOverrideTarget,
     showFastPINOverlay,
     setShowFastPINOverlay,
     setCartId,

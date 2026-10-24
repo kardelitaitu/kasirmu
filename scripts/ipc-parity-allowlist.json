@@ -115,7 +115,6 @@
     "ping_scoped",
     "renew_license_scoped",
     "rotate_encryption_key_scoped",
-    "set_line_course_scoped",
     "settings_changed_sink_scoped",
     "test_auth_connection_scoped"
   ],

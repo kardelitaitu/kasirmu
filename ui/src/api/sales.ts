@@ -196,6 +196,18 @@ export const getCartDeductionLocationScoped = (
 ): Promise<DeductionLocationInfo | null> =>
   loggedInvoke<DeductionLocationInfo | null>('get_cart_deduction_location_scoped', { sessionToken, cartId });
 
+/**
+ * Assign (or clear) the restaurant course on an active cart line.
+ *
+ * `course: null` clears it. The backend normalizes legacy course names and
+ * enforces `SALES_PROCESS` — the same gate as adding a line, because this is a
+ * cart mutation of the same kind.
+ */
+export const setLineCourseScoped = (
+  sessionToken: string,
+  args: { cartId: string; lineId: string; course: string | null },
+): Promise<void> =>
+  loggedInvoke<void>('set_line_course_scoped', { sessionToken, args });
 /** ADR #7: Add a line to a cart in the store resolved from a session token. */
 export const addLineScoped = (sessionToken: string, args: AddLineArgs): Promise<AddLineResult> =>
   loggedInvoke<AddLineResult>('add_line_scoped', { sessionToken, args });

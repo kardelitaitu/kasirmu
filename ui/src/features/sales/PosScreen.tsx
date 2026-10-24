@@ -691,6 +691,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     deductionLocationName,
     setDeductionLocationName,
     ensureCart,
+    syncLineCourse,
     handleAddProduct,
     handleDeductionBadgeClick,
     deductionOverridden,
@@ -2328,8 +2329,21 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setOrderType,
     orderTypePromptEnabled,
   };
+  // Assign the course locally AND persist it, in that order: the device-local
+  // assignment is what the UI renders and must not wait on a round trip, and the
+  // server copy is what survives a restart. `syncLineCourse` is best-effort (it
+  // swallows its own failure and logs), so a sync problem can never block the
+  // cashier from putting a course on a line mid-service.
+  // A PLAIN function, not useCallback: this sits below the screen's early returns,
+  // and a hook cannot be called conditionally. Nothing here needs memoization -- the
+  // object below is rebuilt every render anyway, so a stable identity would buy
+  // nothing and would be the only hook in this region.
+  const assignCourseAndSync = (lineId: LineId, courseId: CourseId) => {
+    assignCourse(lineId, courseId);
+    void syncLineCourse(lineId, courseId);
+  };
   const cartLineRows = {
-    lines, fireCourse, fireAllCourses, assignCourse, setCartLineRef,
+    lines, fireCourse, fireAllCourses, assignCourse: assignCourseAndSync, setCartLineRef,
     handleRemoveLine, handleDecreaseQty, handleIncreaseQty,
     updateLineNote,
     onEditModifiers: handleEditModifiers,

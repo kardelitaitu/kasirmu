@@ -495,6 +495,19 @@ export function createSalesHandlers(deps: SalesDeps): Record<string, MockHandler
     return { lineId: `mock-line-${Date.now()}`, lineTotal };
   },
 
+  // Coursing persistence. The device-local assignment is what the UI renders; this
+  // mirrors it onto the mock cart so a browser-mode reload keeps the course, which
+  // is the property the real backend provides and the reason this command exists.
+  'set_line_course_scoped': (args) => {
+    const raw = (args as { args?: { lineId?: string; course?: string | null } })?.args
+      ?? (args as { lineId?: string; course?: string | null });
+    const line = cartState.lines.find((l) => (l as { lineId?: string }).lineId === raw?.lineId);
+    if (line) {
+      (line as { course?: string | null }).course = raw?.course ?? null;
+      saveMockCart();
+    }
+    return null;
+  },
   'complete_sale': () => {
     const minorTotal = cartState.lines.reduce((sum, l) => sum + l.price.minor_units * l.qty, 0);
     const lineCount = cartState.lines.length;
