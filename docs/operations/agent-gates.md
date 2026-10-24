@@ -1000,6 +1000,55 @@ docstring would make the suite red on a tree that is green, and "fixing" the cod
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
 
+#### Hunting real code defects, and finding none — with the triage recorded (round 112)
+
+Rounds 95-111 were almost all doc-drift and gate-wiring work. This round went looking for code a
+user would feel, in the three highest-risk places: money arithmetic, transaction safety, and
+swallowed errors. **The result is a verified negative, and the triage is worth more than a green
+tick because it says what was checked.**
+
+**Money: no float anywhere near it.** Every `f64`/`f32` in `kasirmu-core` and `kasirmu-bridge` is
+legitimately non-monetary — popularity scores, percentiles, image quality constants, canvas
+coordinates. The one place floats once lived is fixed and the fix is pinned:
+`compute_points` (`db/loyalty.rs:59`) does `round_half_up(base × multiplier / (100 × 1e6))` in
+**i128** with saturating narrowing, and its docstring names the exact bug it replaced (a $22.50 sale
+at 1.4× earned 31 where decimal gives 32).
+
+**Transactions: 16 writes on `tx.`, 9 single-statement DELETEs on `self.conn`, zero violations.**
+The nine are each one `DELETE … WHERE id = ?1` plus a row-count check that turns 0 into `NotFound` —
+a single SQL statement is atomic in SQLite, so no transaction is needed. The sibling that DOES need
+one has one: `delete_category_with_unlink` wraps its two statements in
+`unchecked_transaction()` and commits. So the house rule holds in substance: **transactions guard
+multi-statement operations; single statements do not need guarding.**
+
+**Swallowed errors: 398 raw matches, 356 in code, and after triage — all legitimate.** The
+breakdown is the useful part:
+
+| shape | count | why it is fine |
+|---|---|---|
+| `args.<field>.as_deref().unwrap_or_default()` | 32 in `purchasing.rs` alone | `Option<String>` → `String` for optional DTO fields |
+| `.unwrap_or(0)` on a map lookup | 20 in `db/popularity.rs` | a default for absent data, not a discarded failure |
+| `.ok()` on a date parse | several | documented: a bad date is absent data |
+| `let _ =` on I/O or a channel | ~10 | flush/send/remove_file — nothing to recover |
+| `let _ =` on `#[cfg(test)]` helpers | 3 | test-only setup |
+
+**The one that looks like a defect and is not:** `check_audit_rate_limit`'s `write_u64` closure
+(`db/audit.rs:358`) discards the result of writing the rate-limit counter, so a failed write fails
+OPEN — the next audit write is allowed. That is deliberate and documented four lines above the
+function: *"the limiter is a guard rail, and failing closed on a settings read would drop audit rows
+for a reason that has nothing to do with rate."* An audit row is worth more than rate accuracy, and
+the docstring says so before the code does.
+
+**So the honest finding of a code hunt is that the code is well-defended** — which is a weaker
+result than a fix, and worth stating plainly rather than dressing up as one. The residual risk
+that IS real was already filed: `base_total_minor` is client-supplied and re-derived by no server
+read, and bounding it needs a sale ceiling that is defined nowhere. That one needs an owner.
+
+**And the method note that mattered more than the result:** this round's first probe reported
+*zero* swallowed errors, which was a regex that never compiled (see the entry above). The negative
+was worthless until the probe was made capable of failing. A clean result from a tool that cannot
+fail is not evidence.
+
 #### A false NEGATIVE, and the probe that produced it by never running (round 112)
 
 Hunting real code defects rather than doc drift, I wrote a probe for swallowed errors in the money
