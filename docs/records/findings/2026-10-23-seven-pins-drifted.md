@@ -66,6 +66,33 @@ cover `FILES`, which is why the pin count was re-measured directly to prove the 
 correcting the false comment dates in the same commit. The audit also recommends wiring the
 retired Monday cron as an **advisory**, issue-opening job rather than a blocking one: caddy alone
 moves roughly 4x a month, so a blocking job would be permanently red.
+## Every current digest is now independently re-derived, so the refresh is mechanical (2026-10-24)
+
+The Docker daemon is down on this host, so `verify-docker-digests.sh` cannot run its live scan.
+Every digest was instead re-derived straight from the registries — Docker Hub via the
+`docker-content-digest` response header with a SHA-256 fallback over the raw manifest bytes, and
+public ECR (which returns no header) by SHA-256 of the returned bytes. Each value below was
+measured twice and matches the gate's own report from 2026-10-23 exactly:
+
+| image | current digest (verified 2026-10-24) |
+|---|---|
+| `debian:bookworm-slim` | `sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8` |
+| `caddy:2-alpine` | `sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f` |
+| `alpine:3.22` | `sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f` |
+| `postgres:16-alpine` | `sha256:f4610795587492cd4fb887c2dc3de301b813278bb6f616992061141b5f15ac36` |
+| `…/redis:7-alpine` | `sha256:57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541` |
+
+**The refresh is deliberately NOT applied here.** The pins are mechanical to swap, but a pin
+change cannot be verified without building the images, and the daemon is unavailable — so the
+one thing that would make this a safe change (a green build on the new bases) is exactly the
+thing that cannot be run. Committing an unbuildable pin set would trade a known-stale pin for
+an unverified one, which is worse. The table above makes the refresh a copy-paste once a daemon
+is available.
+
+**The false comment dates ARE fixed** (`ad38bac63`): three "refreshed <date>" claims were
+replaced with the measured artifact dates, because a refresh date that predates the artifact it
+pins is not provenance — it is noise that makes the next reader think a pin is fresher than it
+is. Pin count is unchanged at 12 and the gate's self-test still passes 8/8.
 ## Why nobody saw it
 
 The gate had **no live runner of any kind**. Its only caller was
