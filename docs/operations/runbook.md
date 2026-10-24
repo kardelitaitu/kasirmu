@@ -46,7 +46,7 @@ succeeds, `"degraded"` otherwise:
 polling `/health` (see §5). The field that tells you which backend the server is on
 (`sqlite` during the cutover window, `postgres` after) is **`db`** — *not* `db_kind`,
 which this page named until 2026-10-11 and which no response carries. The struct
-field is `db` (`apps/cloud-server/src/main.rs:630`); the two are easy to conflate
+field is `db` (`apps/cloud-server/src/main.rs:630`, the `uptime_seconds` sibling); the two are easy to conflate
 because the *local variable* that feeds it is called `db_kind` (`:693`), and the
 variable name is not the wire name. `rls_posture` and `db_connected` ride in the
 same response and are the fields to read for isolation and reachability.
@@ -518,7 +518,7 @@ Sessions are in-memory (`web_otp.go:13-19`), so a restart drops admin sessions: 
 
 **Run one command first.** `python scripts/verify-deployment.py` probes this surface and exits
 non-zero while any ADR #54 route is missing, printing the expected status for each. Its default
-base is `https://license.kasir.mu` (`scripts/verify-deployment.py:116`), the canonical name.
+base is `https://license.kasir.mu` (`scripts/verify-deployment.py:116`, where `bases = a.base or [...]` defaults), the canonical name.
 
 **Status measured 2026-09-21: the deployment is COMPLETE.** Every route the verifier checks
 answers — `GET /api/v1/web/me` and `GET /api/v1/web/identities` → 401, `POST
@@ -530,7 +530,7 @@ current, not the 2026-09-20 `predated ADR #54` reading this section used to carr
 **Two probe paths that produce 404 by design — do not read them as a stale deploy.**
 `/api/v1/desktop/link/` and `/api/v1/desktop/link/start` **do not exist in the source**; the
 registered paths are `google/start`, `google/callback`, `consume`, `email/request` and
-`email/consume` (`apps/license-server/main.go:338-343`). A 404 there is correct behaviour. On a
+`email/consume` (`apps/license-server/main.go:338-343`, beside the `handleStatus` registration at `:343`). A 404 there is correct behaviour. On a
 tablet the sign-in path is the emailed code and the link response is what carries the sync
 credential, so a genuine gap in *that* surface presents as "the app cannot reach auth or sync",
 and the client gets blamed — which is why the check to trust is the script's route list, not a
@@ -1131,7 +1131,7 @@ rate sync, LAN server), type the credential in again and save. The save goes
 through the typed setter, which encrypts on the way in, so this is a single-key
 targeted conversion with no migration, no batch mutation and no downtime. The five
 setters that do it are `set_sync_api_key`
-(`platform/core/src/settings/typed.rs:338`, encrypting at `:339`),
+(`platform/core/src/settings/typed.rs:338`, the `decrypt_or_fail_closed` call, encrypting at `:339`),
 `set_sync_terminal_secret` (`:366`, `:367`), `set_pg_sync_password` (`:441`, `:442`),
 `set_rate_sync_api_key` (`:557`, `:558`) and `set_lan_server_psk` (`:643`, `:645`) —
 and they are the only production call sites of their `encrypt_*` functions, which is
@@ -1146,8 +1146,8 @@ not before.
 
 **Which of those saves is wired today, measured at HEAD, because three are and two
 are not.** `set_sync_api_key` is called from command lanes both shells reach
-(`crates/kasirmu-bridge/src/sync.rs:79`, `apps/mobile-tauri/src/commands/sync.rs:98`), from
-the sync daemon (`platform/sync/src/daemon.rs:403`), from terminal auth
+(`crates/kasirmu-bridge/src/sync.rs:79` and `apps/mobile-tauri/src/commands/sync.rs:98`, both `Settings::set_sync_api_key`), from
+the sync daemon (`platform/sync/src/daemon.rs:403`, the `unwrap_or(false)` fallback), from terminal auth
 (`crates/kasirmu-core/src/sync_auth.rs:472`) and from desktop auto-provisioning <!-- dead-ref: ok: verified 2026-10-19; :472 IS Settings::set_sync_api_key -->
 (`apps/desktop-tauri/src/sync_bootstrap.rs:93`); `set_sync_terminal_secret` from the <!-- dead-ref: ok: verified 2026-10-19; cites Settings::set_sync_api_key at :93 exactly; set_sync_terminal_secret is the NEXT item of the sentence -->
 pairing path at `apps/desktop-tauri/src/sync_bootstrap.rs:377`; `set_pg_sync_password` from <!-- dead-ref: ok: verified 2026-10-19; cites the set_sync_terminal_secret call at :377; the anchor word on that line belongs to the previous clause -->
@@ -1377,7 +1377,7 @@ ground truth for what actually shipped.
 The desktop and tablet stores are one SQLite file each, and **every app start runs the
 migration runner before anything else** — `migrations::run` is called from `AppState::new`
 before a UI exists (desktop `apps/desktop-tauri/src/state.rs:246`, tablet
-`apps/mobile-tauri/src/state.rs:177`). "Upgrading" this product therefore means "opening the
+`apps/mobile-tauri/src/state.rs:177`, the `Tickets` doc comment). "Upgrading" this product therefore means "opening the
 database with a newer build", and the runner is the only component that touches live data
 before the app can refuse anything.
 
@@ -1429,7 +1429,7 @@ a fresh-install-only path:
 
 That is survivable for most of the registry and **not** survivable for four entries, which are
 nailed by the dropped/renamed source each one reads — verified in the migration SQL itself, and
-incident-documented for the first of them at `crates/kasirmu-core/src/migrations_tests.rs:493-503`:
+incident-documented for the first of them at `init_script_re_applies_after_a_later_migration_replaces_its_seed_column` (`crates/kasirmu-core/src/migrations_tests.rs:512`, with the incident narrative at `:493-511`):
 
 | Migration | Why re-running it is impossible by construction |
 |---|---|
@@ -1499,11 +1499,11 @@ kasir --db "$DB" restore --input "$DB.pre-migration.bak"
 ```
 
 `kasir` is the CLI binary name (`crates/kasirmu-cli/Cargo.toml:10-12`), `--db` is the global
-database flag defaulting to `./var/kasir.db` (`crates/kasirmu-cli/src/cli.rs:31-33`), and
+database flag defaulting to `./var/kasir.db` (`crates/kasirmu-cli/src/cli.rs:31-33`, the `pub db: String` arg), and
 `restore --input` takes the backup path (`:68-73`). It checkpoints the WAL, closes the
 connection, then hands the swap to `restore_from` — validate, snapshot, drop the
 `-wal`/`-shm` sidecars, stage and verify, atomic rename, re-verify, roll back on failure
-(`crates/kasirmu-cli/src/commands/backup.rs:58-96`). It prints the candidate's verdict reason
+(`run_restore` at `crates/kasirmu-cli/src/commands/backup.rs:69`, with the CLI-4 rationale at `:58-68`). It prints the candidate's verdict reason
 and the pre-restore snapshot path. §11 covers the boot-time request path and the rest of the
 recovery surface.
 
@@ -1521,7 +1521,7 @@ The swap therefore happens at boot, before anything opens the database.
 The request is a file beside the live database:
 
 - **`<db>.restore-request.json`** — writer `crates/kasirmu-bridge/src/data/restore.rs:184-262`
-  (constant `:41`); consumers `apps/desktop-tauri/src/recovery.rs:31` and
+  (constant `:41`); consumers `RESTORE_REQUEST_SUFFIX` at `apps/desktop-tauri/src/recovery.rs:31` and
   `apps/mobile-tauri/src/recovery.rs:36`. The suffix exists as two copies on purpose (the
   bridge's is private) and is pinned against the **consumer's own literal** by a bridge test
   (`crates/kasirmu-bridge/src/data_tests.rs:995-1002`). <!-- dead-ref: ok: verified 2026-10-19; :995-1002 is the assertion block naming Kopi Senja -->
@@ -1529,7 +1529,7 @@ The request is a file beside the live database:
   `requested_at`, `verdict`, `candidate_schema`, `confirmed_store_name`. The boot path
   deserializes **only** `candidate_path` and re-validates everything itself, so a verdict
   written by an earlier process is never trusted
-  (`apps/desktop-tauri/src/recovery.rs:58-67`).
+  (`RestoreRequest` at `apps/desktop-tauri/src/recovery.rs:58-67`).
 
 ### 11.2 How a restore is requested
 
@@ -1582,7 +1582,7 @@ at `apps/desktop-tauri/tests/gate_audit.rs:117-121`.
 
 > ⚠️ **What the bridge functions themselves take is NOT uniform — do not generalise from the two
 > reads.** `list_restore_candidates(db_path)` and `restore_status(db_path)` take **no session
-> token by design** — they are pure reads (`crates/kasirmu-bridge/src/data/restore.rs:124`, `:265`).
+> token by design** — they are pure reads (`list_restore_candidates` at `crates/kasirmu-bridge/src/data/restore.rs:124`, `:265`).
 > `restore_prepare` **does** take one: its signature is
 > `(ctx, session_token, db_path, args)` and it enforces `SETTINGS_EDIT` itself at `:190-192`.
 > So the wrapper gate on `restore_prepare` is not an independent second check — removing it still
@@ -1607,7 +1607,7 @@ designed. A custom role needs `settings:edit` added explicitly.
 
 **What an operator sees when they do not hold it.** The gate denies fail-closed and the renderer
 receives `{ kind: "permissionDenied", message: … }`
-(`apps/desktop-tauri/src/error.rs:124-126` and `:147`; the underlying denial text is produced
+(`PermissionDenied` at `apps/desktop-tauri/src/error.rs:124-126` and `:147`; the underlying denial text is produced
 in `crates/kasirmu-core/src/db/staff.rs:480-490`, e.g. `"user is inactive"`,
 `"role <id> not found"`). The UI maps that kind to the localized string
 **"You don't have permission to do this."** (`ui/src/utils/app-error.ts:248-249` →
@@ -1703,7 +1703,7 @@ compose: the file §10 protects is a legal restore candidate under §11.
   restore, not a rotation.
 - **`<db>.restore-boot.lock`** — the single-consumer claim:
   `apps/desktop-tauri/src/recovery.rs:34` and the tablet twin
-  `apps/mobile-tauri/src/recovery.rs:39`.
+  `RESTORE_BOOT_LOCK_SUFFIX` at `apps/mobile-tauri/src/recovery.rs:39`.
 
 > ⚠️ **The lock is `<db>.restore-boot.lock`, not `<db>.restore.lock`.** The design note in
 > `manager-codebase-review-checklist.md:112` names `<db>.restore.lock`; the constant that
@@ -1730,7 +1730,7 @@ cases, and they are not the same:
 - **Another process holds the database itself** (the app is still running, a `sqlite3` shell has
   it open, a backup tool is mid-copy). `restore_from` deletes the `-wal`/`-shm` sidecars,
   stages a copy beside the live file and renames over it
-  (`crates/kasirmu-core/src/db/recovery.rs:306-359`). Those are plain filesystem operations with
+  (`restore_from` at `crates/kasirmu-core/src/db/recovery.rs:306-359`). Those are plain filesystem operations with
   **no retry and no wait**: any failure — an open handle, a read-only directory, a permissions
   problem — rolls the swap back from `<db>.pre-restore.db` and returns an error (`:361-375`),
   which the boot path reports as `Outcome::Refused`. **The restore does not wait for the other
@@ -1740,9 +1740,9 @@ cases, and they are not the same:
 ### 11.7 When a restore is refused
 
 A refusal changes **not one byte** of the live database or its sidecars — the module's stated
-invariant (`crates/kasirmu-core/src/db/recovery.rs:20-21`), pinned on both shells
-(`apps/desktop-tauri/src/recovery_tests.rs:116-135`,
-`apps/mobile-tauri/src/recovery_tests.rs:141`).
+invariant (the `//!` module header at `crates/kasirmu-core/src/db/recovery.rs:20-21`), pinned on both shells
+(`consumes_a_request_and_restores_the_candidate` at `apps/desktop-tauri/src/recovery_tests.rs:116-135`,
+`apps/mobile-tauri/src/recovery_tests.rs:79`).
 
 1. **Read the request** — plain JSON beside the database, naming what was asked for and under
    which verdict:
@@ -1761,7 +1761,7 @@ invariant (`crates/kasirmu-core/src/db/recovery.rs:20-21`), pinned on both shell
      newer build, or restore an older generation.
    - "the restore request names the relative path …" or "… a path containing '..'" — the request
      file was hand-edited or written by something else; the boot path treats it as untrusted
-     input (`apps/desktop-tauri/src/recovery.rs:152-189`).
+     input (`read_candidate_path` at `apps/desktop-tauri/src/recovery.rs:152-189`).
    - "cannot claim the restore lock …" — the lock file could not be created at all (permissions,
      read-only volume). The request was not attempted.
 4. **Abandon the request** if you are not going to retry — delete it. Nothing has happened yet,
@@ -1832,7 +1832,7 @@ the swap directly, which is why the app must be closed.
 > **Three line-number citations in this section were stale and were corrected 2026-10-11.**
 > The registrations move when commands are added, which is exactly what happened. The
 > CITATIONS below were wrong while every CLAIM they supported was right — re-verified at
-> HEAD: the desktop shell registers all three (`apps/desktop-tauri/src/lib.rs:1416-1418`,
+> HEAD: the desktop shell registers all three (`list_restore_candidates` at `apps/desktop-tauri/src/lib.rs:1416-1418`,
 > previously cited as `:971-973`), the tablet registers none of them
 > (`apps/mobile-tauri/src/lib.rs:1101-1103` holds the `commands::data::` block and contains no
 > restore command, previously cited as `:644-656`), and the three per-permission line numbers
