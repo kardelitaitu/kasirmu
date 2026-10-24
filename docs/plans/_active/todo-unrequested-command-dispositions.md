@@ -8,8 +8,14 @@ info[cross-shell-unrequested]: 28 per-shell unrequested registration(s) are 5 co
   + 18 named by the other shell's UI only
 ```
 
-This file exists because those five have been printed on every run since round 169 and acted on
-by nobody, and because "five commands with no client" reads as a cleanup list when it is not.
+**CORRECTION ADDED THE SAME ROUND, before this file was a day old.** The paragraph that stood
+here said these five had been "acted on by nobody". That was false, and reading
+`scripts/ipc-parity-allowlist.json` would have shown it: all four are in `scoped_orphans` with a
+dated MEASURED reason, two of them naming the exact finding this file re-derives. The reasons were
+written on 2026-10-25 and are the record; this file adds only the comparison nobody had made --
+that these five are the SAME set as the cross-shell intersection the gate now prints. Its value is
+that one read, not the discovery of five commands. Round 167’s lesson again: read the instrument
+before writing the survey.
 Four of the five are BACKEND-ONLY surfaces with bridge implementations, client-facing tests and a
 documented contract; deleting them touches roughly forty files across two shells and a bridge. The
 fifth is different in kind and is the one worth a decision.
