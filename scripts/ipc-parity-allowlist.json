@@ -139,6 +139,10 @@
       "reason": "MEASURED 2026-10-25: session-validating twin with NO per-domain permission -- it calls ctx.resolve_session and delegates. That matches license/scoped.rs's own contract at :3-5 (\"applies the per-domain permission (F-017) WHERE THE OPERATION MUTATES a credential or a subscription\"); a read does not, so the absence is by design and not a hole. The UI calls the UNSCOPED 'get_machine_id' (one production reference); this variant has none. Consequence for a reader: routing this caller through the scoped door would add NO authorisation, only a session check most callers already hold -- so the fix is retirement (F-006) or leaving it, not \"use the gated one\"."
     },
     {
+      "name": "get_over_quota_report",
+      "reason": "MEASURED 2026-10-25 (round 176): the AMBIENT arm of an ADR #7 pair whose SCOPED twin is the one in use -- api/subscription.ts:287 getOverQuotaReport invokes get_over_quota_report_scoped, called from OverQuotaCard.tsx:94, and this ambient arm has no caller. Both shells register both arms (desktop lib.rs:1757-1758, tablet lib.rs:1083-1084) and both carry the same settings:read gate; commands/subscription.rs:100-109 documents why the report scopes the session without opening a store (its dimensions are TENANT ceilings, not per-store ones). Not a retirement candidate and not a gap: it is the session-less arm of a pair the product does not use, and removing it is a decision about pre-session operation rather than cleanup. Recorded so info[cross-shell-reasons] stops reporting it as the one uncovered name."
+    },
+    {
       "name": "list_active_carts_scoped",
       "reason": "MEASURED 2026-10-25: NO production reference to 'list_active_carts_scoped' or its unscoped twin anywhere under ui/src outside dev-mock and __tests__ -- the whole pair is uncalled. That is an F-006 deletion candidate (registered in both shells, invoked by nothing), not a missing door. Recorded so the next sweep does not re-derive it."
     },
