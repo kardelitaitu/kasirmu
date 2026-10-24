@@ -628,6 +628,18 @@ def _in_force(head, pattern, strict_block=False):
                 if guard_depth is not None and depth < guard_depth:
                     break
                 if strict_block and guard_depth is not None and opened and depth <= guard_depth:
+                    # `} else {` continues the SAME if-statement: both arms run under the
+                    # condition, so the guard is still in force and the condition stays
+                    # armed for the else block. Breaking here dropped every else arm --
+                    # measured 2026-10-24 on DevToolbar.tsx, where
+                    # `if (isTabletShell()) { <status> } else { await createMemoScoped(..) }`
+                    # left the desktop-only call graded as an unguarded TABLET call. That is
+                    # also the shape the repo writes when the if-arm returns early: the early
+                    # return closes the block, so only the else carries the real body.
+                    rest = head[i + 1:]
+                    if re.match(r'\s*else\b', rest):
+                        opened = False
+                        continue
                     break
         if guard_depth is not None and (
                 depth > guard_depth if strict_block else depth >= guard_depth):
@@ -2985,6 +2997,21 @@ def _platform_guard_self_test():
         ("the guard closed before the call",
          "const h = async () => {\n  if (isTabletShell()) {\n    pick();\n  }\n  return createBackupTo(sessionToken, cache);\n};",
          "desktop", False),
+        # THE ELSE ARM. `} else {` continues the same if-statement, so the else block runs
+        # exactly when the condition does -- the guard is still in force and the condition
+        # stays armed. This walk used to break on the closing brace, which dropped every
+        # else arm: DevToolbar.tsx writes `if (isTabletShell()) { status } else { await
+        # createMemoScoped(...) }`, and the desktop-only call was graded an unguarded
+        # TABLET call. Measured 2026-10-24; both gates had to be argued about before the
+        # classifier was suspected.
+        ("the else arm of a shell guard is guarded too",
+         "const h = async () => {\n  if (!isTabletShell()) {\n    pick();\n  } else {\n    return await createBackupTo(sessionToken, cache);\n  }\n};",
+         "tablet", True),
+        # ...and the control: without it the case above passes on any predicate that answers
+        # True for every line after a `} else {`, including one with no shell condition at all.
+        ("an else arm under a guard that names no shell is not excluded",
+         "const h = async () => {\n  if (ready) {\n    pick();\n  } else {\n    return await createBackupTo(sessionToken, cache);\n  }\n};",
+         "tablet", False),
         ("desktop branch, graded tablet",
          "if (isDesktopShell()) {\n  result = await createBackupTo(sessionToken, cache);\n}",
          "tablet", True),
