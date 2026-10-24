@@ -765,6 +765,40 @@ has already made that mistake twice (the module-doc census that went 350 → 59 
 `bash` resolves to WSL here and exits 127, which would read as a failing case rather than a
 checker that never ran.
 
+#### A comment that claimed a discipline it did not keep (round 99)
+
+`verify-debt-markers.py` opened its scope with:
+
+> *"Directories that hold first-party source. Deriving this from the workspace rather than typing a
+> list is the same discipline the other gates use: a list of package names is a list that rots."*
+
+followed by a typed list. **It was never derived.** Measured 2026-10-24: all 11 listed roots exist,
+and three tracked top-level directories are not covered — `assets` (6 source-ish files), `tools`
+(7), `website` (200). None of the three carries a single `TODO O-<id>` pointer today, so the hole
+is **prospective**, recorded rather than widened.
+
+**Why the honest fix was the comment, not the list.** Deriving from the Cargo workspace covers
+`crates`/`apps`/`platform`/`modules`/`foundation` but *not* `docs`, `ui/src`, `shared-ui`,
+`.agents`, `ops` or `scripts` — first-party source with no Cargo member — so a derivation would
+still need a list, and the comment would be half-true in a new way. The gate's real defence is
+`is_scannable()`'s self-test, which asserts the corpus boundary directly; its own docstring records
+that a previous version let "every .ftl in shared-ui" go unread for the life of the first release.
+
+**A comment that describes an aspiration as an implementation is worse than no comment**: the next
+reader trusts it and stops looking.
+
+#### The ninth false alarm, with a new mechanism
+
+While checking this, a run of `verify-debt-markers.py --self-test` appeared to print
+`SELF-TEST OK` **and then** `REFUSED — no source file was scanned`, which would have been a real
+dispatch bug. It was not: `--self-test` exits 0 with **zero** stderr lines, and the REFUSED text
+came from a **stale file** (`target/mstmp/tz.txt`, a round-92 artifact) that my
+`Select-Object -Last 3` had read because it merged two different commands' outputs.
+
+**New mechanism, same rule:** check that the text you are reading came from the command you just
+ran. Earlier instances were a pipe swallowing a status, a chained `echo` consuming it, a wrong
+interpreter, and a fixture that could not reach its rule; this one is a stale buffer.
+
 **The useful output of this round is the *list*, not the fixes.** 51 wired checkers is a roster
 anyone can re-run, and now one more of them is green. A gate nobody runs is not a gate — the same
 sentence this project has written three times about gates, now applied to the gates themselves.
