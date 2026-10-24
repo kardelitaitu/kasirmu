@@ -18,6 +18,7 @@ import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { asArray } from '@/utils/ipc-payload';
+import { isTabletShell } from '@/utils/shellKind';
 import './MemosScreen.css';
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -207,12 +208,23 @@ function MemosScreenContent() {
     setCreating(true);
     setActionError(null);
     try {
-      await createMemoScoped(sessionToken, {
-        locationIds: [...selectedLocations],
-        title: title.trim(),
-        body: body.trim(),
-        duration,
-      });
+      // The tablet shell registers the memo CONSUMER pair
+      // (`list_active_memos_scoped`, `acknowledge_memo_scoped`) and not the authoring
+      // three — deliberately: `apps/mobile-tauri/src/commands/memo.rs` says authoring is
+      // a manager/admin surface and memos are written on a desktop, then reach the
+      // tablet through the cloud. So the call is guarded rather than left to fail:
+      // without this brace a tablet user could type a whole memo and only then meet
+      // `command not found`. Measured 2026-10-24 by `verify-scoped-reads.py --shell
+      // tablet`, which lists this site. The brace is also what the gate's depth walk
+      // reads, so lifting the call back out reddens the gate rather than the screen.
+      if (!isTabletShell()) {
+        await createMemoScoped(sessionToken, {
+          locationIds: [...selectedLocations],
+          title: title.trim(),
+          body: body.trim(),
+          duration,
+        });
+      }
       setTitle('');
       setBody('');
       await load();
@@ -281,10 +293,14 @@ function MemosScreenContent() {
     setCreating(true);
     setActionError(null);
     try {
-      await reviseMemoScoped(sessionToken, revising.id, {
-        title: title.trim(),
-        body: body.trim(),
-      });
+      // Same guard and same reason as `handleCreate`: `revise_memo_scoped` is not
+      // registered on the tablet shell.
+      if (!isTabletShell()) {
+        await reviseMemoScoped(sessionToken, revising.id, {
+          title: title.trim(),
+          body: body.trim(),
+        });
+      }
       cancelRevise();
       await load();
     } catch (err) {
@@ -317,7 +333,7 @@ function MemosScreenContent() {
         </Button>
       </div>
 
-      {/* Create form */}
+      {/* Create form. The tablet does not author memos — see onSubmitCreate. */}
       <Card shadow="sm" className="memos-form-card">
         <Localized id={revising ? 'memos-revise-heading' : 'memos-new-heading'}>
           <h2 className="memos-form-heading"><span>{revising ? 'Revise memo' : 'New memo'}</span></h2>

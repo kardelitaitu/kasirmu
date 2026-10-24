@@ -27,6 +27,9 @@ import sharedFtl from '@/locales/shared.ftl?raw';
 // ── Hoisted mocks ─────────────────────────────────────────────────
 
 const mocks = vi.hoisted(() => ({
+  // The shell the component believes it is running in. Desktop by default so every
+  // existing case keeps its meaning; the tablet cases flip it.
+  tablet: false,
   createMemoScoped: vi.fn(),
   listAuthoredMemosScoped: vi.fn(),
   publishMemoScoped: vi.fn(),
@@ -41,6 +44,14 @@ vi.mock('@/api/memos', () => ({
   publishMemoScoped: mocks.publishMemoScoped,
   stopMemoScoped: mocks.stopMemoScoped,
   reviseMemoScoped: mocks.reviseMemoScoped,
+}));
+
+// The tablet shell registers the memo CONSUMER pair and not the authoring three, so
+// `MemosScreen` guards its create/revise calls. Pin that guard: with the shell mocked
+// to tablet the command must NOT be invoked, because on a real device it would reject.
+vi.mock('@/utils/shellKind', () => ({
+  isTabletShell: () => mocks.tablet,
+  isDesktopShell: () => !mocks.tablet,
 }));
 
 vi.mock('@/api/locations', () => ({
@@ -153,6 +164,7 @@ describe('MemosScreen §B administrative gate', () => {
 describe('MemosScreen', () => {
   beforeEach(() => {
     mocks.listAuthoredMemosScoped.mockReset();
+    mocks.tablet = false;
     mocks.createMemoScoped.mockReset();
     mocks.publishMemoScoped.mockReset();
     mocks.stopMemoScoped.mockReset();
@@ -243,6 +255,30 @@ describe('MemosScreen', () => {
 
     // The list reloads after a successful create.
     await waitFor(() => expect(mocks.listAuthoredMemosScoped).toHaveBeenCalledTimes(2));
+  });
+
+  // THE TABLET DOES NOT AUTHOR MEMOS. The mobile shell registers
+  // `list_active_memos_scoped` and `acknowledge_memo_scoped` and NOT
+  // `create_memo_scoped`, so submitting the form there meets `command not found`
+  // and `setActionError`. The component guards on `!isTabletShell()`.
+  //
+  // This case pins the CALL, not the markup: the form is still rendered on tablet
+  // (hiding it is a separate product decision), so what must hold is that the
+  // unregistered command is never invoked. Asserting `toHaveBeenCalledTimes(0)`
+  // after a real submit is the only shape that would have caught the original
+  // defect -- a test that merely rendered the screen passed all the time.
+  it('does not invoke createMemoScoped on the tablet shell', async () => {
+    mocks.tablet = true;
+    render(<MemosScreen />, { wrapper: FluentWrapper });
+    await screen.findByText('End-of-day checklist');
+
+    await userEvent.type(screen.getByLabelText('Title'), 'Tablet briefing');
+    await userEvent.type(screen.getByLabelText('Message'), 'This must not reach the shell.');
+    await userEvent.click(screen.getByRole('button', { name: 'Create draft' }));
+
+    // Give the handler a turn to settle, then assert it never called the command.
+    await waitFor(() => expect(mocks.listAuthoredMemosScoped).toHaveBeenCalled());
+    expect(mocks.createMemoScoped).not.toHaveBeenCalled();
   });
 
   // A double submit on Create draft must not store the draft TWICE.
