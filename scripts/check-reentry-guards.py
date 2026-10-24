@@ -32,6 +32,14 @@ re-derive these: each is protected, and the protection is named so the search en
   * gift-card issue  -- gift_cards.card_number TEXT UNIQUE
   * void sale        -- compare-and-set `WHERE id = ?2 AND status = 'active'`, rows == 0
                         -> Conflict (sales_lifecycle.rs:903-914)
+                        BUT the CAS is the defence and the REFUSAL is the defect: the catch
+                        reports `void-orders-error-void` / `sales-history-void-error`, so a
+                        double tap says "failed to void" over a sale that was voided. Round 175
+                        FIXED both call sites -- VoidOrdersScreen.handleVoid and
+                        SalesHistoryScreen.handleConfirmVoid -- each with a ref taken after its
+                        validation returns, and a case that fails `expected 2 to be 1` with the
+                        ref disabled. Two handlers, ONE backend fact: the second call site was
+                        found only because this list names the COMMAND rather than a screen.
   * stock transfer
     - create         -- mints a DISTINCT transfer_number (`TRF-{ts}-{random tail}`, the
                         tail exists so two calls cannot collide) -- round 142 FIXED
