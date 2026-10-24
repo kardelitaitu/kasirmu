@@ -245,6 +245,13 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // from SalesHistoryScreen.tsx (:567, :591), so the gap was a live throw rather
   // than a cosmetic omission: a suite routing through the factory hit the
   // proxy-less undefined the moment the stamp modal or the pengganti button ran.
+  //
+  // 2026-10-25 (round 147): 'setLineCourseScoped' never APPEARED here. It was
+  // added to @/api/sales by the coursing feature and the factory was left alone,
+  // so the gap was live rather than recorded — and this file stayed green because
+  // its baseline was transcribed when the map was written, not regenerated. The
+  // factory now defines it. The lesson is the one already at :228: the baseline
+  // has to be GENERATED, because a hand-kept list only rots where someone looks.
   '@/api/sales    <- createSalesApiMock': [
     'completeSaleWithResolvedShortfalls', 'lookupSaleByReceiptBarcodeScoped',
     'overrideCartDeductionLocation', 'overrideLinePriceScoped',

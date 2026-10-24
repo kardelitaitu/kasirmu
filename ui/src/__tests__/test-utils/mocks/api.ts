@@ -31,6 +31,7 @@ export interface SalesApiOverrides {
   completeSaleScoped?: ReturnType<typeof vi.fn>;
   listSalesScoped?: ReturnType<typeof vi.fn>;
   getCartDeductionLocationScoped?: ReturnType<typeof vi.fn>;
+  setLineCourseScoped?: ReturnType<typeof vi.fn>;
   getSaleScoped?: ReturnType<typeof vi.fn>;
   finalizeSaleScoped?: ReturnType<typeof vi.fn>;
   voidPendingSaleScoped?: ReturnType<typeof vi.fn>;
@@ -90,6 +91,14 @@ export function createSalesApiMock(overrides: SalesApiOverrides = {}) {
     // through this once it holds a session token; without an entry here the call resolves the
     // factory's proxy-less undefined and the screen's fallback masks the omission.
     getCartDeductionLocationScoped: vi.fn((_token: string, _cartId: string) => Promise.resolve(null)),
+    // Restaurant coursing (set_line_course_scoped). PosScreen's course picker calls this
+    // on every assignment; without an entry the factory's proxy-less undefined threw at
+    // the call site inside a DOM event handler, which puts the screen into its error
+    // boundary rather than failing readably.
+    setLineCourseScoped: vi.fn(
+      (_token: string, _args: { cartId: string; lineId: string; course: string | null }) =>
+        Promise.resolve(),
+    ),
     getSaleScoped: vi.fn((_token: string, _id: string) => Promise.resolve(null)),
     finalizeSaleScoped: vi.fn((_token: string, _saleId: string) => Promise.resolve()),
     voidPendingSaleScoped: vi.fn((_token: string, _saleId: string) => Promise.resolve()),
@@ -508,6 +517,7 @@ export interface ReportsApiOverrides {
   getCategoryBreakdown?: ReturnType<typeof vi.fn>;
   getMenuEngineering?: ReturnType<typeof vi.fn>;
   buildCustomReport?: ReturnType<typeof vi.fn>;
+  getPiutangCollections?: ReturnType<typeof vi.fn>;
 }
 
 const dailyRevenueRow = { date: '2026-07-27', total_minor: 1250000, currency: 'IDR', sale_count: 12 };
@@ -530,6 +540,12 @@ export function createReportsApiMock(overrides: ReportsApiOverrides = {}) {
       median_margin: 5000,
     })),
     buildCustomReport: vi.fn((_request: Record<string, unknown>) => Promise.resolve({ columns: ['SKU', 'Name'], rows: [['SKU-001', 'Test']] })),
+    // Added with PiutangCollectionsCard. Without it, any suite routing through
+    // this factory threw the moment the card's loader ran -- the same live-throw
+    // shape the KNOWN_GAPS header describes for getSettingScoped.
+    getPiutangCollections: vi.fn((_start: string, _end: string, _token: string) =>
+      Promise.resolve([{ currency: 'IDR', payment_method: 'cash', total_minor: 250000, payment_count: 2 }]),
+    ),
     ...overrides,
   };
 }
