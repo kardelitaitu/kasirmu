@@ -315,8 +315,16 @@ Fact for the AP side: purchasing permissions (`purchasing:view` / `purchasing:ma
 
 ## 4. Next steps
 
-1. **Phase 1 is unblocked by today's decisions** — draft the spec package `docs/specs/_active/<next-id>-workspace-payment-methods/` (spec.yaml + plan.md + validation.md per house format; see `0043-architecture-boundary-checker` as the example).
-2. Phase 1 implementation order: settings key + load/validate module → backend checkout validation → PaymentModal reads config (delete hardcoded array; add `qris_manual`, `bank_transfer`, split card buttons) → Settings UI section → tests (unit + `PaymentModal*.test.tsx` + contract tests).
+1. ~~**Phase 1 is unblocked by today's decisions** — draft the spec package
+   `docs/specs/_active/<next-id>-workspace-payment-methods/`~~ — **DONE, measured 2026-10-25.**
+   Shipped as [`docs/specs/_active/0050-workspace-payment-methods/`](../specs/_active/0050-workspace-payment-methods/)
+   with all three artefacts (`spec.yaml`, `plan.md`, `validation.md`). Written AFTER the
+   code rather than before, on purpose: the sketch below was not what shipped, and a spec
+   restating the sketch would describe a design nobody built. Its §2 records what is
+   measurably true (3697 core tests, per-area counts measured rather than recalled) and
+   its §3 records why each enforcement narrowing is load-bearing. The numbering took
+   `0050` because `0046`–`0049` are taken in `_active/` and `_done/` — see the collision
+   table in `docs/specs/README.md`.2. Phase 1 implementation order: settings key + load/validate module → backend checkout validation → PaymentModal reads config (delete hardcoded array; add `qris_manual`, `bank_transfer`, split card buttons) → Settings UI section → tests (unit + `PaymentModal*.test.tsx` + contract tests).
 3. Continue the Q5 discussion (pay-later permission) together with the Phase 3/4 deferred-payment design (AR + AP, shared settlement pattern).
 4. Update the tier-gating table (`subscription.rs` capabilities) if per-instance payment config becomes a marketed Premium feature — check whether a `supports_*` method or just UI gating is wanted.
 
