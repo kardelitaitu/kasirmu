@@ -1039,6 +1039,41 @@ be re-derived, exactly as with the ci-docs-drift history exemption in the round 
 `grep -rn 'live workflows' docs scripts` finds every mirror in one pass; trusting the gate you
 happened to run finds them one red at a time.
 
+#### A prose ceiling has no gate — the fourth recurrence, found by measuring (round 111)
+
+`docs/architecture/module-namespace-firewall.md` §6 quoted the `core-size-ratchet` ceiling as
+**39069 lines across 178 files**. The tree measures **40616 across 181**. Three raises had happened
+since the page's own 2026-10-19 pass — 39069 → 40417 → 40597 → 40616, **+1547 lines** — and the page
+never followed.
+
+**The page itself predicted this.** Its own callout says 2026-10-19 was "the third recurrence of the
+same pattern — committed growth merged without the ceiling edit." A fourth is now on the record, and
+the shape is byte-for-byte identical: the ceiling was re-emitted correctly each time, and the
+*narrative page* was not updated. So the recurrence is not carelessness about the gate; it is that
+the gate and the prose are two artefacts and only one of them is policed.
+
+**The rule worth extracting:** `verify-core-size.py` polices `core-size-baseline.json`. Nothing
+reads the paragraph in `module-namespace-firewall.md`, so that number rots silently between doc
+passes — and it rots in the *safe* direction (it under-states the ceiling), which is why nobody
+noticed: a stale-low ceiling does not fail anything, it just misinforms. **A number quoted in prose
+is a claim with no checker, and the fix is to re-derive rather than to remember.**
+
+**Also settled this round, so the next reader does not re-litigate it:** "headroom 0" is the
+*designed* state of this gate, not a symptom. The 2026-10-19 stamp on that same page records
+`39069 vs 39069, headroom 0`, and the phase-5 tickets say "exits 0 at 0 lines of headroom." The gate
+is a ratchet that fails on +1 and reports headroom when the count falls; it was never meant to sit
+below its ceiling. So the correct response to zero headroom is NOT a pre-emptive raise — it is to
+re-emit as part of whatever change grows core, which is exactly what the baseline's own description
+demands.
+
+**And extraction was measured rather than assumed.** The gate counts the whole crate, so splitting a
+file inside it cannot help; only moving code out of `crates/kasirmu-core/src` lowers the number.
+The top candidates are all `impl Store` blocks in `db/` (popularity 834, audit 743, products_crud
+721) plus `export/mod.rs` 620 — and `export/mod.rs` is ruled out on inspection: it is built entirely
+on `crate::db::Store`, `crate::db::popularity` and `crate::db::reports`, so moving it out means
+moving the store interface too. That is a refactor with no natural seam, which is the same
+conclusion the baseline's own history reached twice before.
+
 #### Closing the "nobody is alerted" gap, and why the new workflow is advisory (round 110)
 
 The drifted-pin finding's real defect was never the seven stale digests — it was that **nothing
