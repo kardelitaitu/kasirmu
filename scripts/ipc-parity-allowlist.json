@@ -103,7 +103,7 @@
     },
     {
       "name": "currency_info_scoped",
-      "reason": "MEASURED 2026-10-25: session-validating twin with NO per-domain permission -- it calls ctx.resolve_session and delegates. That matches license/scoped.rs's own contract at :3-5 (\"applies the per-domain permission (F-017) WHERE THE OPERATION MUTATES a credential or a subscription\"); a read does not, so the absence is by design and not a hole. The UI calls the UNSCOPED 'currency_info' (one production reference); this variant has none. Consequence for a reader: routing this caller through the scoped door would add NO authorisation, only a session check most callers already hold -- so the fix is retirement (F-006) or leaving it, not \"use the gated one\"."
+      "reason": "MEASURED 2026-10-25: neither name has ANY reference outside dev-mock and __tests__ -- 'currency_info' does not appear in ui/src/prod at all (grep count 0). The scoped twin is session-validating with no per-domain permission. Both the scoped and unscoped commands are registered in both shells and nothing calls either: a clean F-006 retirement pair, not a door to route."
     },
     {
       "name": "enqueue_offline_scoped",
@@ -123,7 +123,7 @@
     },
     {
       "name": "get_key_rotation_info_scoped",
-      "reason": "MEASURED 2026-10-25: the scoped twin IS permission-gated (SECURITY_MANAGE), so it is the stronger door. The UI calls the UNSCOPED 'get_key_rotation_info' (one production reference); this variant has none. That makes routing the caller through 'get_key_rotation_info_scoped' a real improvement rather than a rename -- an owed decision, and the one entry in this group where \"use the scoped one\" is the right advice."
+      "reason": "MEASURED 2026-10-25: the scoped twin IS gated (SECURITY_MANAGE). The unscoped twin IS used -- ui/src/hooks/useKeyAge.ts:3 imports it and :24 calls it -- but tracing one hop further, that hook's only consumer (useKeyRotationReminder) is mounted NOWHERE: it appears in useKeyAge.ts and useKeyAge.test.ts and no other file. So 'the UI uses the unscoped twin' is true of the wrapper and false of the app. Two owed decisions, in order: (1) is the reminder supposed to run? (2) if yes, it should call the gated door and needs a session token, which it does not take today."
     },
     {
       "name": "get_license_status_scoped",
@@ -163,7 +163,7 @@
     },
     {
       "name": "renew_license_scoped",
-      "reason": "MEASURED 2026-10-25: the scoped twin IS permission-gated (SETTINGS_EDIT), so it is the stronger door. The UI calls the UNSCOPED 'renew_license' (one production reference); this variant has none. That makes routing the caller through 'renew_license_scoped' a real improvement rather than a rename -- an owed decision, and the one entry in this group where \"use the scoped one\" is the right advice."
+      "reason": "MEASURED 2026-10-25 (corrected twice -- read the third version): the scoped twin IS permission-gated (SETTINGS_EDIT), so it is the stronger door. But the UI calls NEITHER name: 'renew_license' appears exactly once outside dev-mock and __tests__, at ui/src/api/license.ts:240, which is the WRAPPER DEFINITION, and that wrapper (renewLicense) has ZERO callers under ui/src/features. So there is nothing to route and nothing to retire beyond the wrapper itself. The two earlier versions of this entry said 'the UI calls the unscoped twin (one production reference)' -- that reference was the definition, which is the trap a file-level grep sets: a name in a file is not a call."
     },
     {
       "name": "rotate_encryption_key_scoped",
