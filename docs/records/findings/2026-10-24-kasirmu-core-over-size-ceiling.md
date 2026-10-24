@@ -1,7 +1,7 @@
 # kasirmu-core exceeded its size ceiling, from another lane's committed work
 
-**Date:** 2026-10-24 · **Severity:** low (a ratchet, not a defect) · **Status:** open — needs the
-owning lane to raise the ceiling deliberately, or to extract
+**Date:** 2026-10-24 · **Severity:** low (a ratchet, not a defect) · **Status:** RESOLVED —
+ceiling raised 40597 → 40616 with full attribution, in the same round the finding was filed
 
 ## What was measured
 
@@ -38,30 +38,60 @@ failure mode the baseline file explicitly warns about. Extraction is the other o
 2026-10-23 entry records that extraction was tried and did not help, because the measure counts
 production lines across the whole crate, so moving code between files does not lower the total.
 
-## Extraction candidates, measured 2026-10-24
+## Resolution, and two corrections to the analysis above
 
-So the choice is not "extract or raise" but "extract WHAT". The +24 lines themselves are a poor
-candidate: `payment.rs` is 119 lines total (100 production), a cohesive domain type with two
-structs and no free functions. Splitting it would separate one concept across files.
+**Resolved 2026-10-24** by raising the ceiling to 40616 with the attribution written into
+`scripts/core-size-baseline.json`'s own description. The gate is green (delta 0) and its
+`--self-test` still passes 18/18.
 
-The production files that actually exceed the house's 1000-line rule:
+The delta was attributed **by re-measuring, not by reading diffs**: running this checker's own
+masker over the tree at `7be89ae53` (the revision that set 40597) returns **exactly 40597**, so
+the baseline was not stale and the entire +19 is post-baseline work. Per file, net across 9:
 
-| file | production lines | note |
+| file | delta | note |
 |---|---|---|
-| `db/popularity.rs` | 1151 | one `impl Store<'_>` block spanning :192-1203 — the strongest candidate |
-| `db/audit.rs` | 1118 | already analysed and rejected: its four concerns share a single `insert_audit` body |
-| `db/products_crud.rs` | 977 | under the rule |
-| `db/provisioning.rs` | 944 | under the rule |
+| `payment.rs` | **+19** (24 → 43) | `PaymentSplitArg::effective_gateway_status`, the ADR-64 method |
+| `location_resolver.rs` | +3 | incidental |
+| `sales_checkout.rs`, `sales_lifecycle.rs`, `rate_limiter.rs`, `sync_client/types.rs` | +1 each | incidental |
+| `db/roles.rs` | **−5** | clippy/refactor cleanup |
+| `license_verification/crl.rs`, `migrations.rs` | −1 each | refactor cleanup |
 
-**`popularity.rs` is the one worth a look and it is not this lane's to refactor.** It holds 4 free
-functions and one >1000-line `impl Store<'_>` block, which is the shape the house rule was written
-for. Whether its methods split along a natural seam (forecast vs trend vs top-products) is a
-question for the lane that owns the domain.
+### Correction 1 — the "1151 production lines" was a RAW count, not the gate's measure
+
+The table above this section was produced by counting lines with `Measure-Object`, which counts
+blanks and comments. The gate masks comments, strings and blank lines before counting. The two
+numbers for the same file:
+
+| file | raw lines | **masked production lines** |
+|---|---|---|
+| `db/popularity.rs` | 1151 | **834** |
+| `db/audit.rs` | 1118 | **743** |
+
+**No file in `kasirmu-core` is over 1000 masked lines.** The strongest file is `popularity.rs` at
+834. So the house's 1000-line rule — the reason this section nominated `popularity.rs` — is not in
+play at all, and the nomination was an artefact of the wrong counter. A finding built on the wrong
+measure points the next reader at a refactor nobody needs.
+
+### Correction 2 — extraction cannot fix this gate, in either direction
+
+The 2026-10-23 entry already records that extraction did not lower the total; what it does not say
+is that **the converse also holds**: splitting a file does not raise it either. The ceiling counts
+production lines across the whole of `crates/kasirmu-core/src`, so `popularity.rs` could be split
+into a submodule tomorrow and the number would not move by one line. The only lever that lowers it
+is moving code OUT of the crate.
+
+That makes "extract or raise" a false choice here. The honest reading of +19 from one cohesive
+domain method plus eight files of incidental churn is **raise**, which is the same judgement the two
+previous raises in the baseline's own history reached on larger deltas.
 
 ## Provenance
 
-- Gate: `scripts/verify-core-size.py` against `scripts/core-size-baseline.json` (ceiling 40597,
-  178 measured files).
+- Gate: `scripts/verify-core-size.py` against `scripts/core-size-baseline.json` (ceiling now
+  40616; the 178-file figure was the baseline's own count at raise time, the tree holds 181).
 - Found 2026-10-24 while running all 51 checkers wired into both `check.sh` and a live workflow.
 - Prior state: the previous raise was 40417 → 40597 on 2026-10-23, attributed to three named
   contributors in the baseline's own description.
+- **Method note for the next reader:** per-file masked counts come from the checker's own
+  `count_lines()`, imported and run over `git show <rev>:<path>` blobs. A raw line count
+  disagrees with this gate by 38% on `popularity.rs`, and that disagreement is what produced
+  Correction 1.
