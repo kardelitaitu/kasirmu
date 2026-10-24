@@ -6,6 +6,7 @@ import { createMemoScoped, publishMemoScoped, type MemoDuration } from '@/api/me
 import { listLocationsScoped } from '@/api/locations';
 import { parseAppError } from '@/utils/app-error';
 import { devLog } from '@/utils/devLog';
+import { isTabletShell } from '@/utils/shellKind';
 import {
   MOCK_TIER_KEYS,
   MOCK_TIER_NAMES,
@@ -309,18 +310,31 @@ export function DevToolbar() {
       spawnDurationIndex += 1;
       const fixture = MEMO_FIXTURES[spawnFixtureIndex % MEMO_FIXTURES.length]!;
       spawnFixtureIndex += 1;
-      const memo = await createMemoScoped(sessionToken, {
-        locationIds,
-        title: `Dev ${label} memo · ${fixture.lines}L ${fixture.tail}`,
-        body: fixture.body,
-        duration,
-      });
-      await publishMemoScoped(sessionToken, memo.id);
-      window.dispatchEvent(new CustomEvent('memos:refresh'));
-      setSpawnStatus({
-        tone: 'ok',
-        text: `${label} memo ${fixture.lines}L ${fixture.tail} published${locationIds.length ? ` to ${locationIds[0]}` : ''} · ${duration}`,
-      });
+      // THE TABLET REGISTERS NEITHER COMMAND, so this arm is the whole body of
+      // the tablet answer: say why, in the toolbar's own status line, and stop.
+      // DEV_TOOLBAR_ENABLED gates on `import.meta.env.DEV` and not on the shell,
+      // so a `tauri dev` build on the tablet does render this overlay, send both
+      // invokes, and land in the catch below with `command not found` rendered as
+      // if the app were broken. Guarding is the honest fix: a dev tool has no
+      // degraded behaviour to preserve.
+      if (isTabletShell()) {
+        const text = 'memo authoring is not registered on the tablet shell';
+        devLog.warn('dev-toolbar', text);
+        setSpawnStatus({ tone: 'error', text: `${label} memo: ${text}` });
+      } else {
+        const memo = await createMemoScoped(sessionToken, {
+          locationIds,
+          title: `Dev ${label} memo · ${fixture.lines}L ${fixture.tail}`,
+          body: fixture.body,
+          duration,
+        });
+        await publishMemoScoped(sessionToken, memo.id);
+        window.dispatchEvent(new CustomEvent('memos:refresh'));
+        setSpawnStatus({
+          tone: 'ok',
+          text: `${label} memo ${fixture.lines}L ${fixture.tail} published${locationIds.length ? ` to ${locationIds[0]}` : ''} · ${duration}`,
+        });
+      }
     } catch (e) {
       const text = describeSpawnError(e);
       devLog.error('dev-toolbar', `memo spawn failed: ${text}`);
