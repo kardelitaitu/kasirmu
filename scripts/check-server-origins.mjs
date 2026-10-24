@@ -98,8 +98,9 @@ for (const file of ['apps/desktop-tauri/tauri.conf.json', 'apps/mobile-tauri/tau
     check(admits(directive, host(MAIN)), file + ' (' + key + '): connect-src does not admit ' + MAIN);
     check(admits(directive, host(FALLBACK)), file + ' (' + key + '): connect-src does not admit ' + FALLBACK);
     if (key === 'csp') {
+      const nonIpc = directive.replace(/https:\/\/ipc\.localhost/g, '');
       check(
-        !/localhost|127\.0\.0\.1/.test(directive),
+        !/localhost|127\.0\.0\.1/.test(nonIpc),
         file + ' (csp): release connect-src names a loopback origin: ' + directive.trim(),
       );
     }
