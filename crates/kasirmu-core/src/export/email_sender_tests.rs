@@ -171,3 +171,69 @@ fn record_and_read_timestamp() {
     assert!(val.is_some());
     assert!(val.unwrap().starts_with("20")); // ISO-8601 year
 }
+// ── COR-34: credentialed plaintext SMTP is refused (fail-closed) ──────────
+//
+// `build_smtp_transport` is the ONE implementation used by the cloud server, the
+// desktop commands and the desktop scheduler (README at email_sender.rs:17-19). Its
+// plaintext branch used to hand lettre `builder_dangerous` whatever credentials it had,
+// which puts the SMTP username and password on the wire in clear. COR-34 made that an
+// error; the module header records the fix and, until this test, nothing else did --
+// `grep build_smtp_transport *_tests.rs` returned zero refs, so a regression here would
+// silently downgrade every deployment to cleartext credentials and no gate would notice.
+//
+// The three cases below are the whole truth table of the guard:
+//   1. plaintext + credentials            -> Err   (the leak COR-34 closes)
+//   2. plaintext + NO credentials         -> Ok    (a local unauthenticated relay)
+//   3. TLS + credentials                  -> Ok    (the intended authenticated path)
+// Case 2 is the control. Without it, a guard that refused EVERY plaintext config would
+// pass case 1 and quietly break every local relay deployment.
+
+fn smtp(port: u16, use_tls: bool, creds: Option<(&str, &str)>) -> SmtpConfig {
+    SmtpConfig {
+        host: "localhost".to_string(),
+        port,
+        username: creds.map(|(u, _)| u.to_string()),
+        password: creds.map(|(_, p)| p.to_string()),
+        from: "reports@example.com".to_string(),
+        use_tls,
+    }
+}
+
+#[test]
+fn plaintext_smtp_with_credentials_is_refused() {
+    let err = build_smtp_transport(&smtp(587, false, Some(("user", "secret"))))
+        .expect_err("credentialed plaintext SMTP must be refused, not built");
+    assert!(
+        err.contains("plaintext") && err.contains("credentials"),
+        "the refusal must name the reason so an operator can act on it; got: {err}"
+    );
+}
+
+#[test]
+fn plaintext_smtp_without_credentials_is_allowed() {
+    // The control case. A local relay that takes no credentials is legitimate, and
+    // refusing it would be a regression dressed as a security fix.
+    assert!(
+        build_smtp_transport(&smtp(25, false, None)).is_ok(),
+        "unauthenticated plaintext SMTP must still build"
+    );
+}
+
+#[test]
+fn tls_smtp_with_credentials_is_allowed() {
+    assert!(
+        build_smtp_transport(&smtp(587, true, Some(("user", "secret")))).is_ok(),
+        "credentialed SMTP over STARTTLS is the intended path and must build"
+    );
+}
+
+#[test]
+fn implicit_tls_port_465_needs_no_use_tls_flag() {
+    // email_sender.rs:66 treats port 465 as implicit TLS even when use_tls is false,
+    // so credentials on 465 must NOT hit the refusal. This is the case a naive fix
+    // ("refuse whenever use_tls is false") would break.
+    assert!(
+        build_smtp_transport(&smtp(465, false, Some(("user", "secret")))).is_ok(),
+        "port 465 is implicit TLS; credentials there must build"
+    );
+}
