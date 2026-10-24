@@ -200,8 +200,24 @@ Phase 1 ships `qris_manual` + `bank_transfer` with **zero gateway work** — imm
 
 ### 1.5 Pay later / piutang (Phase 3 — retail only)
 
-- New method value `pay_later` + new `receivables` table:
-  `sale_id, customer_id, amount, due_date, status(open|partial|paid), settled_at` — real migration (SQLite registry + PG drift-guard rules apply).
+> **MEASURED 2026-10-25: this phase is built, and its §2a decision-1 second half was not.**
+> The schema shipped as `20261021_receivables.sql` (`receivables` + `receivable_payments`,
+> the latter carrying the `method` column that records the ACTUAL tender), with
+> `crates/kasirmu-core/src/db/receivables.rs` exposing create / record-payment / write-off /
+> AR-aging / overdue / outstanding totals, wired through `kasirmu-bridge/src/receivables.rs`
+> to `*_receivable*` commands in **both** shells and to `KasbonSettlementModal.tsx` +
+> `DebtRemindersCard.tsx` in the UI. What was missing is decision 1's *reporting* half:
+> "Collection day: settlement record with the actual tender → daily report gets a
+> **'Piutang Collections'** line feeding that day's cash-equivalent total." Nothing read
+> `receivable_payments` — so a day whose only takings were repayments reported **nothing**,
+> which is exactly the drawer mismatch Q1 was written to prevent. Closed in
+> `Store::piutang_collections` (`db/reports/sales_summary.rs`), deliberately a SEPARATE
+> query from `payment_method_breakdown` rather than a UNION into it: one answers "what was
+> sold today" and the other "what was collected today", and a union destroys the ability to
+> read either. Six cases in `reports_tests.rs`, including
+> `the_tender_breakdown_does_not_see_receivable_repayments`, which pins the gap itself.
+
+- New method value `pay_later` + new `receivables` table:  `sale_id, customer_id, amount, due_date, status(open|partial|paid), settled_at` — real migration (SQLite registry + PG drift-guard rules apply).
 - Reminder surfaces (pick): due-soon widget on Daily Dashboard; line in reports; optional toast on POS open.
 - ⚠️ **Recommendation against "mark it as cash" in the DB:** piutang recorded as `method='cash'` silently corrupts cash-drawer reconciliation and "cash in drawer" reports, and loses "how much do customers owe me". Instead: `method='pay_later'` + optional **reporting toggle** "count pay-later as cash-equivalent" if grouping is wanted. Same completion semantics, no corrupted drawer math.
 

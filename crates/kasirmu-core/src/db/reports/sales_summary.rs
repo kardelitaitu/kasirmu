@@ -91,6 +91,40 @@ pub const PAYMENT_METHOD_BREAKDOWN_SQL: &str = "SELECT COALESCE(payment_method, 
              GROUP BY payment_method, currency
              ORDER BY currency, total_minor DESC";
 
+/// `Store::piutang_collections`: receivable repayments collected in a date range,
+/// split by the tender the money actually arrived in.
+///
+/// THE MISSING HALF OF DECISION Q1. The plan's ruling is that a piutang sale records
+/// `method='pay_later'` on the sale day and a settlement record with the ACTUAL tender
+/// on the collection day, so money appears as cash on the day it is received and the
+/// drawer reconciles on both days. `receivable_payments` carries that tender (its own
+/// column comment says so), but until this query existed NOTHING read it: the sale day
+/// was correct and the collection day was invisible, so a day whose only takings were
+/// repayments reported nothing.
+///
+/// `#[rustfmt::skip]` for the same reason as [`HOURLY_HEATMAP_SQL`].
+#[rustfmt::skip]
+pub const PIUTANG_COLLECTIONS_SQL: &str = "SELECT rp.method AS payment_method,
+                    rp.currency AS currency,
+                    SUM(rp.amount_minor) AS total_minor,
+                    COUNT(*) AS payment_count
+             FROM receivable_payments rp
+             WHERE DATE(rp.paid_at, ?3) BETWEEN ?1 AND ?2
+             GROUP BY rp.method, rp.currency
+             ORDER BY rp.currency, total_minor DESC";
+
+/// One tender's takings from receivable repayments in a date range.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PiutangCollectionRow {
+    /// ISO-4217 currency code (REP-06: one row per tender AND currency).
+    pub currency: String,
+    /// The tender the money arrived in (`cash`, `bank_transfer`, `qris`, ...).
+    pub payment_method: String,
+    /// Total collected in minor units.
+    pub total_minor: i64,
+    /// Number of repayments recorded this way.
+    pub payment_count: i64,
+}
 /// `Store::voided_items`: the most-voided product lines in a date range.
 ///
 /// `#[rustfmt::skip]` for the same reason as [`HOURLY_HEATMAP_SQL`].
@@ -274,6 +308,40 @@ impl Store<'_> {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
+    /// Receivable repayments collected in a date range, split by the tender the money
+    /// actually arrived in (decision Q1's collection-day settlement line).
+    ///
+    /// Deliberately a SEPARATE query from [`Self::payment_method_breakdown`] rather than a
+    /// UNION into it: the two answer different questions. The breakdown reports what was
+    /// SOLD that day (and therefore excludes `pay_later`, which is a promise, not money);
+    /// this reports what was COLLECTED that day. Folding them into one list is how a
+    /// reader would double-count today's cash sale plus a same-day repayment of last
+    /// week's debt and conclude the drawer should hold both -- which it should, but the
+    /// two numbers are also each readable on their own, and a UNION destroys that.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CoreError::Validation`] for a malformed date bound.
+    pub fn piutang_collections(
+        &self,
+        start_date: &str,
+        end_date: &str,
+    ) -> Result<Vec<PiutangCollectionRow>, CoreError> {
+        // REP-03: range filter in store-local dates, same contract as every other report.
+        check_date_bound("start_date", start_date)?;
+        check_date_bound("end_date", end_date)?;
+        let tz = self.tz_modifier();
+        let mut stmt = self.conn.prepare(PIUTANG_COLLECTIONS_SQL)?;
+        let rows = stmt.query_map(params![start_date, end_date, tz], |row| {
+            Ok(PiutangCollectionRow {
+                currency: row.get("currency")?,
+                payment_method: row.get("payment_method")?,
+                total_minor: row.get("total_minor")?,
+                payment_count: row.get("payment_count")?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
     /// Voided-sale totals for a date range, one row per currency (REP-06).
     pub fn voided_sales_summary(
         &self,
