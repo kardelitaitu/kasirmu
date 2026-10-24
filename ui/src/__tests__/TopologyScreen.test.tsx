@@ -654,6 +654,35 @@ describe('TopologyScreen', () => {
     );
   });
 
+  it('deletes a branch once when the confirm button is double-tapped', async () => {
+    // Pins WHY no sync ref is needed here: the confirm button is rendered
+    // `disabled={deleteBranchSaving}`, and React flushes a discrete click's state update to
+    // the DOM before the next click, so the second tap lands on a really disabled button.
+    // If anyone removes that `disabled`, this case goes red and the ref becomes necessary.
+    mockListStores.mockResolvedValue([
+      { id: 'store-1', name: 'Main Street', is_primary: true, address: '', tax_id: '', currency: 'USD', timezone: 'UTC', created_at: '', updated_at: '' },
+      { id: 'store-2', name: 'Second Street', is_primary: false, address: '', tax_id: '', currency: 'USD', timezone: 'UTC', created_at: '', updated_at: '' },
+    ]);
+    await renderReady(1);
+    await waitFor(() =>
+      expect(capturedBranchOptions.map((o) => o.value)).toEqual(['store-1', 'store-2']),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'topology-branch-delete' }));
+    const confirmBtn = screen.getByRole('button', { name: 'topology-branch-delete-confirm-btn' });
+    expect((confirmBtn as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(confirmBtn);
+    // Re-query: the first click re-renders the rail, so the node above is detached.
+    const confirmAgain = screen.getByRole('button', { name: 'topology-branch-delete-confirm-btn' });
+    expect(
+      (confirmAgain as HTMLButtonElement).disabled,
+      'the confirm button stayed enabled while the delete was in flight',
+    ).toBe(true);
+    fireEvent.click(confirmAgain);
+
+    await waitFor(() => expect(mockDeleteStore).toHaveBeenCalledTimes(1));
+  });
+
   // ── Branch-to-branch comparison ───────────────────────────────
 
   it('compare panel loads both diagrams and shows the summary', async () => {
