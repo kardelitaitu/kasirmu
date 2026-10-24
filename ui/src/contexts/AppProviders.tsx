@@ -4,6 +4,7 @@ import { getActiveRoute, subscribeActiveRoute } from '@/utils/activeRoute';
 import { LocalizedErrorBoundary } from '@/components/LocalizedErrorBoundary';
 import { GlobalErrorReporter } from '@/components/GlobalErrorReporter';
 import { IpcErrorReporter } from '@/components/IpcErrorReporter';
+import { KeyRotationReminder } from '@/components/KeyRotationReminder';
 import { LocaleProvider } from '@/i18n/LocaleContext';
 import { OrgLocaleSync } from '@/i18n/OrgLocaleSync';
 import { BrandProvider } from '@/contexts/BrandContext';
@@ -103,6 +104,10 @@ export function AppProviders({ children }: AppProvidersProps) {
               {/* ERR-06 field diagnostics: bounded, redacted log of every
                   rejected invoke, for support sessions and device walks. */}
               <IpcErrorReporter />
+              {/* 90-day encryption-key rotation reminder. The hook was written
+                  and tested but rendered NOWHERE, so its notices could never
+                  reach a user (measured 2026-10-25). */}
+              <KeyRotationReminder />
               <WorkspaceProvider>
                 {/* CurrencyContext reload bridge: pushes each new session
                     token into refresh() so per-store defaults (CUR-03)
