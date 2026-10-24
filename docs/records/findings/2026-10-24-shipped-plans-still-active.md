@@ -41,6 +41,18 @@ finishes and is never moved is invisible: the directory is a one-way door.
 2. **For the four without**: each needs its acceptance named and run by the lane that shipped it,
    then the same move. `android-notification-listener-qris.md` is the easiest — its 2026-10-23
    stamp already names the test counts (22/22 QrisQrDisplay, 72/72 PaymentModalSaleFlow).
+**PROGRESS 2026-10-24 — one of the six moved, EARNED not asserted.**
+`docs/plans/_active/receipt-hierarchy-code.md` ->
+`docs/plans/_done/done-receipt-hierarchy-code.md`, with the acceptance evidence written INTO the
+file rather than claimed in a commit subject. All seven Phase-5 commands were re-run; six pass
+outright and the seventh (" + BT + "cargo test -p kasirmu-core receipt_code" + BT + ") no longer matches
+anything because the tests were renamed since Phase 5 — re-run as " + BT + "cargo test -p kasirmu-core
+--lib receipt" + BT + " it is **40 passed, 0 failed**. All six phase SHAs resolve.
+
+The five remaining are still open, and the reason is unchanged: four record no acceptance command
+at all, so there is nothing to run, and the fifth (" + BT + "website-plan.md" + BT + ") records CI steps rather
+than an acceptance command.
+
 3. **Optionally**: a gate that flags a `docs/plans/_active/` file whose text claims SHIPPED or
    COMPLETE. It cannot verify the acceptance, but it can stop the directory being a one-way door —
    the same shape as the other "verification that reads as coverage" findings.
