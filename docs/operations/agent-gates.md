@@ -999,6 +999,41 @@ docstrings record a past bug and which no case ever called:
 docstring would make the suite red on a tree that is green, and "fixing" the code is a behaviour
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
+#### The advisory layer, verified consistent — and a plant that was the wrong shape (round 118)
+
+The open question was whether the matrix's *advisory* legs can silently downgrade a real problem.
+Answered mechanically rather than by reading:
+
+| check | result |
+|---|---|
+| `gates.json` records with `status: advisory` | **12**, and **all 12 carry `ci: null`** — none claims CI enforcement |
+| workflows with **job-level** `continue-on-error` | **0** |
+| workflows with **step-level** `continue-on-error` | **3**, each with a stated reason and none inside a job the roster marks `required` |
+
+So the advisory posture is internally consistent: a gate that cannot block does not claim it does, and
+no job is quietly excused as a whole. The inline `check.sh` legs that bypass `step()` (cargo-deny,
+the a11y re-run) are the only place an advisory verdict can exist without a roster row — and both
+print `WARN`/`SKIP` in yellow with wording that cannot be read as a pass.
+
+**The cargo-deny block's own bug account was verified by construction, not trusted.** Its comment
+(check.sh:823-829) says the old shape `s=$(… | grep … | tail -1)` made the `else` unreachable. Built
+both shapes and ran them under `set -euo pipefail`: the old one's assignment **fails** (so the
+`else` is unreachable), the new one with `|| true` reaches `else` and prints the unrecognised-summary
+branch. The fix is real and the comment describing it is accurate.
+
+**And then my plant of that bug did not fire — because the plant was the wrong shape.** I removed
+`|| true` from the standalone assignment and expected `check-pipeline-verdicts.py` to redden. It
+reported 0 findings, and it was right to: `ASSIGN_HEAD_RE` only grades a substitution that sits
+*inside* an `if`/`elif` condition, and the shipped code is a standalone `deny_summary=$(…)` followed
+by a separate `[ -n … ]` test. Re-planting the shape the checker actually targets —
+`if deny=$(cargo deny check 2>&1 | tail -1); then` — reddens immediately with *"conditions on the
+status of `tail`, which succeeds on empty input"*. The checker is correct and my expectation was not.
+
+**And the shipped form is independently safe,** proved by running it: with no matching summary it
+reaches the `else` branch and says so. So this is a case where the code is right, the gate is right,
+and the only defect was in my test of them — the round-90 lesson ("a plant that does not fire proves
+the plant is wrong, not that the gate is") arriving for the fourth time.
+
 #### Defect-planting the flake receipt, and finding it mostly right (round 117)
 
 The question this round was whether a red step actually fails `scripts/check.sh`. Reading the
