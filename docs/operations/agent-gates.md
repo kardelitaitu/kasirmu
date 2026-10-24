@@ -999,6 +999,41 @@ docstrings record a past bug and which no case ever called:
 docstring would make the suite red on a tree that is green, and "fixing" the code is a behaviour
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
+#### Implementing ADR-67's split, and the half that silently did nothing (round 119)
+
+ADR-67 was written last round and this round implemented **D2 only** (`4054871f9`): the core-size
+ratchet now grades a `db/` budget and a modularity budget alongside the whole-crate ceiling, which
+is left at its historical value so every earlier raise keeps its meaning.
+
+**The implementation caught something the proposal had not settled: half the split did nothing.**
+Writing the db failure branch was straightforward and the plant fired immediately. Planting
+`non_db_ceiling` one line below its measured value produced `non-db 13135 (ceiling 13134, +1)` and
+**exit 0**. Reporting a breach is not grading it — the second ceiling was decorative until it got
+its own branch. The JSON `ok` field had the identical hole.
+
+**A second defect surfaced from the same plant.** `Path.relative_to` raises `ValueError` when
+`--baseline-file` points outside the checkout, and it raises *inside the failure string* — so the
+gate detected the violation correctly, then lost it to a traceback. Only a plant at a temp path
+finds that; the live run never does.
+
+**And a lesson about JSON edits that cost nothing to avoid.** Rewriting `gates.json` through
+`json.dump` re-encoded its 28 `\u` escapes as literal Unicode, turning a one-line note edit into a
+**24-line diff across unrelated rows**. Caught by reading the diff before committing, redone with
+`ensure_ascii=True`, and the diff fell back to one line. A tooling change that reformats a file it
+was not asked to touch is churn that hides the real edit.
+
+**Verification, all by construction:** `--self-test` 21/21 with three new cases grading the
+partition (disabling the bucket assignment reddens exactly those two, `got 0, want 3` and
+`got 5, want 2`); each ceiling planted one line low gives its own message and exit 1; the live
+run is green at `db 27481 + non-db 13135 = 40616`; and a baseline **without** the new keys still
+grades exactly as before — the compatibility promise the optional-key design makes, tested rather
+than asserted.
+
+**Why this was worth doing now.** The crate sat at exactly its ceiling, so the next production line
+anywhere in it would have reddened the gate and required a raise. The rise now lands in a bucket
+that says which question is being asked: **SQL debt in `db/`** (unmovable, 67.7%) versus
+**logic landing back in core** (the thing Phase 3 P3.4 was actually written about).
+
 #### The 13 captures the pipeline gate cannot see, and why that is correct (round 118)
 
 `check-pipeline-verdicts.py` grades only a substitution inside an `if`/`elif` condition
