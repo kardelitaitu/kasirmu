@@ -672,6 +672,13 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
       });
       return;
     }
+    // No sync ref here, on purpose: `deleteBranchSaving` is rendered as the confirm
+    // button's `disabled` (:971), and React flushes a discrete click's state update to the
+    // DOM before the next click, so the second tap of a double press is on a really
+    // disabled button and never reaches this handler. Measured (round 186): the handler
+    // logs one invocation for two fireEvent.click()s, and a ref added above it changed
+    // nothing -- a mutation that disabled the ref left the case green, which is how the
+    // redundancy showed itself.
     const remaining = stores.filter((s) => s.id !== id);
     setDeleteBranchSaving(true);
     try {
