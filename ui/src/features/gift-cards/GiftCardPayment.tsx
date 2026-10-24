@@ -79,7 +79,7 @@ export default function GiftCardPayment({
     } finally {
       setLoading(false);
     }
-    // sessionToken arrives as a prop (:11) and is read at :54, so it is a closure variable like
+    // sessionToken arrives as a prop (:22) and is read at :65, so it is a closure variable like
     // any other -- being a prop rather than a hook value does not make it stable.
   }, [cardInput, l10n, sessionToken]);
 
