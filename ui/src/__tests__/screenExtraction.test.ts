@@ -965,9 +965,11 @@ const SCREENS: ScreenEntry[] = [
       // outside SettingsPage.tsx.
       'settings/workspace-cards/StoreInfoCard.tsx',
       'settings/sections/GeneralSection.tsx',
-      'settings/sections/AppearanceSection.tsx',
+      // AppearanceSection.tsx and AboutSection.tsx left this list (round 157) with the
+      // components themselves: both were labelled DEAD in their module headers on
+      // 2026-09-15 (commit 13348f9aec) because the flat-IA rebuild removed their nav
+      // entries, and this list is about markup a LIVE screen renders.
       'settings/sections/SyncSection.tsx',
-      'settings/sections/AboutSection.tsx',
       // SettingsFooter.tsx carries the settings-footer-* markup (theme switch,
       // version, Ctrl+S hint, date/clock), moved out of SettingsPage.tsx by the
       // settings lane footer slice; unregistered, the guard reads those six
