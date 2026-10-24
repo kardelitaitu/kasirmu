@@ -98,7 +98,19 @@ export default function VariantManagementScreen({ productSku, productName, onClo
     setShowModal(true);
   }, []);
 
+  // Re-entry guard. `saving` is React state, so it commits on the NEXT render -- after the
+  // second dispatch of a real double tap. MEASURED: two clicks in one act() batch both reach
+  // this handler. The create path cannot absorb the replay: `product_variants.sku` is
+  // UNIQUE (20260813_init.sql:429, kept by the 20260831 rebuild :164), so the second INSERT
+  // hits a constraint. `create_product_variant_on` maps EVERY constraint violation to
+  // `NotFound { entity: "product", id: parent_sku }` (products.rs:369-377) -- the success toast
+  // and the reopened list make the first tap look like it worked, and the operator reads the
+  // second's "variant not found" as the save having failed.
+  const savePendingRef = useRef(false);
+
   const handleSave = useCallback(async () => {
+    if (savePendingRef.current) return;
+    savePendingRef.current = true;
     setSaving(true);
     setSaveError(null);
     try {
@@ -146,6 +158,7 @@ export default function VariantManagementScreen({ productSku, productName, onClo
     } catch {
       setSaveError(l10n.getString('variant-mgmt-error-save'));
     } finally {
+      savePendingRef.current = false;
       setSaving(false);
     }
   }, [form, editingSku, productSku, load, l10n, sessionToken]);

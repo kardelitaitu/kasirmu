@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import VariantManagementScreen from '@/features/products/VariantManagementScreen';
 import type { ProductVariantDto } from '@/api/products';
@@ -289,6 +289,52 @@ describe('VariantManagementScreen', () => {
 
     // Modal form fields should be gone
     expect(screen.queryByPlaceholderText('e.g. Large')).not.toBeInTheDocument();
+  });
+
+  it('creates a variant once for a double tap while the first is in flight', async () => {
+    // The second click of a real double tap lands BEFORE React commits `saving`, so the
+    // handler is entered twice. MEASURED below: without an atomic guard the create is sent
+    // twice, and `product_variants.sku` is UNIQUE -- the replay fails with a constraint,
+    // which `create_product_variant_on` maps to "product not found" (products.rs:369-377).
+    // The operator sees the variant appear (first tap) beside a "could not save" error
+    // (second tap) and cannot tell which is true.
+    let releaseCreate: ((v: unknown) => void) | undefined;
+    mockCreateVariant.mockImplementation(
+      () => new Promise((resolve) => { releaseCreate = resolve; }),
+    );
+
+    const user = userEvent.setup();
+    render(<VariantManagementScreen {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Add Variant')).toBeInTheDocument();
+    });
+    await user.click(screen.getByText('Add Variant'));
+
+    await user.type(screen.getByPlaceholderText('e.g. Large'), 'Large');
+    await user.type(screen.getByPlaceholderText('e.g. TEA-LARGE'), 'PROD-001-XL');
+
+    const createBtn = screen.getByText('Create').closest('button')!;
+    // Two clicks with no await between them: the same batching a real double tap produces.
+    // The disabled flag React sets on the first is not yet authoritative, so it is dropped
+    // for the second -- otherwise this would test the browser, not the guard.
+    await act(async () => {
+      fireEvent.click(createBtn);
+      createBtn.removeAttribute('disabled');
+      fireEvent.click(createBtn);
+    });
+
+    expect(
+      mockCreateVariant.mock.calls.length,
+      'a double tap on Create sent the variant create twice; the second is refused by the ' +
+        'UNIQUE sku index and reported as "product not found", so the operator cannot tell ' +
+        'whether the save worked',
+    ).toBe(1);
+
+    releaseCreate?.({ sku: 'PROD-001-XL' });
+    await waitFor(() => {
+      expect(mockCreateVariant).toHaveBeenCalledTimes(1);
+    });
   });
 
   // ── Edit modal ────────────────────────────────────────────────

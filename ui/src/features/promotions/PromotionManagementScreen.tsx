@@ -132,8 +132,19 @@ function PromotionManagementScreenContent() {
   useFocusTrap(deleteModalRef, deleteExit.shouldRender && !deleteExit.exiting, deleteExit.requestClose);
   useFocusTrap(promoModalRef, modalExit.shouldRender && !modalExit.exiting, modalExit.requestClose);
 
+  // Re-entry guard. `saving` is React state and commits on the NEXT render, so the second
+  // dispatch of a real double tap still enters this handler. The create path cannot absorb
+  // the replay: `promotions` has only an `id` primary key and NO natural unique (the
+  // description, dates, category and value are all free or nullable -- 20260813_init.sql
+  // :"CREATE TABLE promotions"), and `create_promotion` mints a fresh id, so nothing on the
+  // server refuses the second INSERT. A double tap therefore creates TWO live promotions that
+  // both apply at checkout -- a discount given twice, with no error to notice.
+  const savePendingRef = useRef(false);
+
   const handleSave = useCallback(async () => {
     if (!form.name.trim()) return;
+    if (savePendingRef.current) return;
+    savePendingRef.current = true;
     setSaving(true);
     try {
       if (modalMode === 'add') {
@@ -160,6 +171,7 @@ function PromotionManagementScreenContent() {
     } catch (err) {
       addToast({ message: l10nErrorMessage(err, l10n, 'promotions-error-save'), type: 'error' });
     } finally {
+      savePendingRef.current = false;
       setSaving(false);
     }
   }, [form, modalMode, load, closeModal, addToast, l10n, sessionToken]);
