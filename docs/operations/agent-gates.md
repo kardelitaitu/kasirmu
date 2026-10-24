@@ -848,6 +848,30 @@ in-process call silently re-reads the test runner's own argv. A case that passes
 reason is worse than a missing case — and it was caught only by asserting the FAILING direction,
 which is the half a happy-path test would not have.
 
+#### A probe with the wrong threshold, twice in one round (round 103)
+
+Extending the round-90 method ("does the LIVE path use the code the self-test grades?") produced a
+clean-looking report — 15 regex constants "DEAD IN PRODUCTION" across 6 checkers. All 15 were
+false. The probe counted a constant's DEFINITION as its only live use and flagged anything at
+`uses_live <= 1`:
+
+| constant | probe said | actually used at |
+|---|---|---|
+| `OZ_SET` (`verify-plugin-guide-parity.py:84`) | dead | :178 |
+| `LEGACY_HEAD` (:90) | dead | :183 |
+| `CLI_DOC` (:92) | dead | :211 |
+| `KUBE_TOKEN` (`verify-ci-docs-drift.py:134`) | dead | :971, :974 |
+| `JOB_MATRIX_ROW` (:136) | dead | :940 |
+
+The threshold, not the tree, was wrong. **A count that includes the declaration is not a use
+count**, and a probe that reports a whole family of the same finding in one pass is usually
+reporting its own arithmetic — the same lesson as the round-84 "twenty dangling paths", in a new
+place.
+
+**The delegation on the same question had not returned when this round closed**, so the question
+"is there another check-seo-style divergence?" is still OPEN. It is the last untested axis in the
+checker population, and it should be closed by measurement rather than by another probe.
+
 #### And a tenth false alarm, from my own probe (round 100)
 
 Auditing my own citations in this file, a scan reported **3 of 4 `file:LINE` citations broken** —
