@@ -4,6 +4,9 @@ import { registerNavItem } from '@/registries/menu-registry';
 import { icon } from '@/registries/icon';
 const InventoryAdjustmentScreen = lazy(() => import('./InventoryAdjustmentScreen'));
 const StockCountsFlow = lazy(() => import('./StockCountsFlow'));
+const InventoryThresholdsScreen = lazy(() =>
+  import('./InventoryThresholdsScreen').then((m) => ({ default: m.InventoryThresholdsScreen })),
+);
 const InventoryLogScreen = lazy(() =>
   import('./InventoryLogScreen').then((m) => ({ default: m.InventoryLogScreen })),
 );
@@ -42,5 +45,19 @@ export function registerInventoryFeature() {
     i18nKey: 'nav-inventory-log',
     section: 'inventory',
     icon: icon('M4 6h16M4 12h16M4 18h10', <circle cx="18" cy="18" r="2" />),
+  });
+
+  // Round 168: per-product, per-location reorder points. All three commands are registered
+  // on BOTH shells (desktop lib.rs:1545-1547, tablet lib.rs:1491-1493), so no shell split
+  // is needed -- this was a missing route for a working feature.
+  registerPage({ route: 'inventory-thresholds', component: InventoryThresholdsScreen, label: 'Low-Stock Thresholds', requiredRole: 'manager', requiredPermission: 'inventory:view' });
+  registerNavItem({
+    route: 'inventory-thresholds',
+    label: 'Low-Stock Thresholds',
+    requiredRole: 'manager',
+    requiredPermission: 'inventory:view',
+    i18nKey: 'nav-inventory-thresholds',
+    section: 'inventory',
+    icon: icon('M2 12h4l3-9 4 18 3-9h4', <path d="M2 12h4l3-9 4 18 3-9h4" />),
   });
 }

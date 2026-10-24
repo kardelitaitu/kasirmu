@@ -334,6 +334,8 @@ nav-stock-transfers = Stock Transfers
 nav-stock-counts = Stock Counts
 # Sidebar label for the inventory transaction log (round 161).
 nav-inventory-log = Transaction Log
+# Sidebar label for the low-stock threshold screen (round 168).
+nav-inventory-thresholds = Low-Stock Thresholds
 nav-custom-report = Custom Report
 nav-pos = POS
 app-sidebar-subtitle = Point of Sale
