@@ -599,6 +599,15 @@ export default function EodReportScreen() {
     setShowCloseModal(true);
   }, []);
 
+  // Re-entry guard. `closingShift` is React state and commits on the NEXT render, so the
+  // second dispatch of a real double tap still enters this handler. `close_shift` refuses a
+  // shift that is already closed under an IMMEDIATE transaction (db/shifts.rs:193-198,
+  // "shift is already closed"), so the replay is REFUSED -- and the catch reports
+  // `pos-close-shift-failed`, telling the cashier the close FAILED over a shift that closed.
+  // Taken after the balance validation above, which returns before the `finally` that clears
+  // it.
+  const closeShiftPendingRef = useRef(false);
+
   const handleConfirmCloseShift = useCallback(async () => {
     if (!closeShiftTarget) return;
     const cur = report?.currency ?? 'USD';
@@ -607,6 +616,8 @@ export default function EodReportScreen() {
       setCloseShiftError(requiredLocalized(l10n, 'shift-invalid-balance'));
       return;
     }
+    if (closeShiftPendingRef.current) return;
+    closeShiftPendingRef.current = true;
     setClosingShift(true);
     setCloseShiftError(null);
     try {
@@ -626,6 +637,7 @@ export default function EodReportScreen() {
     } catch (err) {
       setCloseShiftError(l10nErrorMessage(err, l10n, 'pos-close-shift-failed'));
     } finally {
+      closeShiftPendingRef.current = false;
       setClosingShift(false);
     }
   }, [closeShiftTarget, report?.currency, closingBalance, sessionToken, shiftNotes, l10n, addToast, load]);
