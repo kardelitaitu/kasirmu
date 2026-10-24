@@ -1,4 +1,10 @@
-# Seven unreachable modules: what each costs, and what each needs
+# Six unreachable modules: what each costs, and what each needs
+
+**UPDATED 2026-10-25 (round 168): seven modules have become six.**
+`ShiftBar` was mounted into the warehouse console in round 164 and `ThresholdConfigScreen`
+got a route in round 168, so both are history rather than pending work. The cost fell from
+68 dedicated test cases to 60. Everything still listed needs the decision it needed before --
+the table is trimmed, not re-scoped.
 
 **Measured 2026-10-25 (round 166) at HEAD `9b66b5521`.** `python scripts/census-orphan-modules.py`
 reports these seven as reached by no production code. This file exists so the decision is one
@@ -7,7 +13,7 @@ seven are `UNRESOLVED` (deliberately undecided) and one needs backend work first
 
 ## The cost, in one line
 
-**68 dedicated `it()` cases across seven suites**, plus appearances in ten CSS-inventory files
+**60 dedicated `it()` cases across six suites** (was 68 / seven), plus appearances in ten CSS-inventory files
 (`screenExtraction`, `themeTokenCompliance`, `popupBackgroundCompliance`, `focusVisibleCompliance`,
 `popoverSurfaceCompliance`, `narrowShellOrientation`, `userActionTokenGuardReports`,
 `PosToastLocalization`). All of it passes. None of it can be reached by a user.
@@ -19,7 +25,7 @@ seven are `UNRESOLVED` (deliberately undecided) and one needs backend work first
 | `products/ProductManagementScreen.tsx` | 841 | 2026-10-24 | 24 | REPLACED | delete (successor: `WarehouseConsole`) |
 | `gift-cards/GiftCardPayment.tsx` | 171 | 2026-09-05 | 11 | NEEDS BACKEND | migration + RBAC (see below) |
 | `marketplace/AddonsMarketplace.tsx` | 146 | 2026-09-20 | 10 | UNRESOLVED | an IA ruling |
-| `inventory/ThresholdConfigScreen.tsx` | 366 | 2026-09-27 | 8 | FORGOTTEN | a route or a section to live in |
+| ~~`inventory/ThresholdConfigScreen.tsx`~~ | 366 | 2026-09-27 | 8 | **MOUNTED** (round 168) | done -- route `inventory-thresholds` |
 | `inventory/TransitAuditScreen.tsx` | 187 | 2026-09-17 | 8 | PARTLY REPLACED | confirm before deleting |
 | `hooks/useMediaQuery.ts` | 17 | 2026-07-12 | 4 | DEAD | delete (17 lines, no IPC) |
 | `sales/CartScreen.tsx` | 81 | 2026-08-12 | 3 | SCAFFOLD | delete (never finished) |
