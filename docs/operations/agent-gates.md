@@ -3279,4 +3279,39 @@ pair them with the path.
 every citation in every live doc is either graded, or explicitly marked historical. Zero is a real
 zero here, not a floor over an unexamined 72. That is the difference between a gate that reports
 a number and one that reports a state.
+
+
+## A capped list that does not say so, and the over-exemption nobody had measured
+
+Measured 2026-10-25, round 184. Two findings in `check-dead-refs.py`, both the same shape as
+round 183's and both found by reading the SUMMARY against its own detail.
+
+**1. Three capped lists, none saying they were capped.** `--include-historical` prints
+"dated records (reported, NOT counted as drift): **135 file(s)**, 792 ref(s)" and then fourteen
+rows, because the loop is `for t, h in hist[:14]`. Nothing said 121 files were unlisted.
+The flag exists so a reader CAN work through the population, and it handed back a number that
+could not be enumerated — the identical defect to `check-cite-lines.py`'s NO-ANCHOR + SUPPRESSED
+sum. Three sites were capped (`hist[:14]`, `stale_stamps[:10]`, `pkg_hist[:10]`); each now
+prints "and N more, not listed", so 14 + 121 = 135 reconciles on screen.
+
+**2. The name-substring exemption has a cost the file admits but never measured.**
+`is_historical_doc` exempts a file when its NAME contains `todo-`, `plan-` or `prd-`,
+on purpose and for a good reason (a finished plan is renamed in place, and an exempt-checker
+that cried wolf would be ignored). Its own comment names the price: "notes-todo-x.md is exempt
+too, and so is a genuinely live plan whose name happens to contain one of these words". **That
+cost is 24 files.** Four of them are in `docs/plans/_active/` — live plans this checker does not
+read at all.
+
+**The measurement that closes the worry.** A crude first probe flagged 46 "unresolved" refs across
+those four plans, then a second pass showed why that number was junk: most were BARE filenames
+(`CartScreen.tsx`), which are prose and which the real checker skips too, and the rest were
+RELATIVE fragments (`products/ProductManagementScreen.tsx` under an implied `ui/src/features/`)
+that resolve against the tree. With only directory-qualified, root-relative paths tested, the
+count is zero. So the exemption currently hides no drift — a fact now measured rather than
+assumed, and worth re-running when a live plan with such a name starts citing full paths.
+
+**What both findings have in common, and it is the third round in a row.** A gate printed a
+NUMBER and a LIST that did not correspond, and the number was the one people quote. Rounds 183
+and 184 have now fixed four such sites (NO-ANCHOR/SUPPRESSED, `hist`, `stale_stamps`, `pkg_hist`).
+The rule: **if a summary prints a count above a list, the list must say when it stops.**
 > last audited 11-10-26 by docs-auditor
