@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import loyaltyFtl from '@/locales/loyalty.ftl?raw';
@@ -356,6 +356,27 @@ describe('LoyaltyManagementScreen', () => {
     await waitFor(() => {
       expect(mockUpdateTier).toHaveBeenCalled();
     });
+  });
+
+  it('saves the tier once when Save is double-tapped', async () => {
+    // The update is a same-row UPDATE ... WHERE id = ?, so a replay cannot corrupt the
+    // tier -- but two in-flight saves share one \`error\` slot and one \`editingTier\` close,
+    // so the operator is shown the failure of the tap that raced, or the form closes twice.
+    const user = userEvent.setup();
+    renderWithFluentSync(<LoyaltyManagementScreen />, loyaltyFtl, sharedFtl);
+    await waitFor(() => expect(screen.getByText('Tiers')).toBeInTheDocument());
+    await user.click(screen.getByText('Tiers'));
+    await waitFor(() => expect(screen.getAllByText('Edit').length).toBeGreaterThan(0));
+    await user.click(screen.getAllByText('Edit')[0]!);
+    await waitFor(() => expect(screen.getByText('Save')).toBeInTheDocument());
+
+    const saveBtn = screen.getByText('Save').closest('button') as HTMLButtonElement;
+    await act(async () => {
+      fireEvent.click(saveBtn);
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => expect(mockUpdateTier).toHaveBeenCalledTimes(1));
   });
 
   // ── LOYALTY-01: fixed-point multiplier ─────────────────────────────
