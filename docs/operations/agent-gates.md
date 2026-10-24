@@ -2472,4 +2472,41 @@ the bare name it replaced, because a bare name at least announces that nothing i
 The rule: write the reason only from a call-site measurement, and name the file and line
 you measured.
 
+## Sameness is a comparison, and no text-level gate can see it
+
+Measured 2026-10-25, round 146. Every stylesheet gate in this repo reads CSS TEXT:
+`themeTokenCompliance` walks consumers, `shadowTokenLiveness` parses definitions,
+`stylesheetImportEdgeCompliance` checks the import graph, the walker suites check that
+declarations exist and tokens resolve. All of them passed while
+`.pos-cart-discount-pct` and `.pos-cart-discount-name` — a number input and a free-text
+input, side by side in one row — declared the SAME border, radius, padding and colour
+tokens, differing only in width.
+
+A file's text cannot express "this rule equals that one". Sameness is a comparison, so a
+text-level gate has no place to put the assertion. The two fields were visually identical
+and every gate was green.
+
+**What actually discriminates.** Not `querySelector('.pos-cart-discount-pct')` — a swapped
+`className` on the JSX leaves both nodes mounted and that assertion green. The assertion
+that fails on the swap pins EACH class to its own `input.type`:
+
+```tsx
+expect(container.querySelector<HTMLInputElement>('.pos-cart-discount-pct')?.type).toBe('number');
+expect(container.querySelector<HTMLInputElement>('.pos-cart-discount-name')?.type).toBe('text');
+```
+
+Verified by mutation, twice: restoring the original hardcoded toast string in
+`useKeyAge.ts` failed the new `message` assertion (10 passed, 1 failed), and swapping the
+two `className` props in `CartFooterTotals.tsx` failed the binding case (3 passed, 1
+failed). Both files were restored and `git hash-object` was checked against
+`git rev-parse HEAD:<path>` afterwards — a mutation test that leaves the tree changed is a
+worse outcome than not running it.
+
+**The general rule.** A gate that grades reachability, presence or resolution cannot grade
+IDENTITY. When the risk is "two things that should differ are the same", the assertion has
+to be a comparison between two rendered things, and it has to name which is which —
+otherwise the swap is invisible, which is precisely the failure mode that motivated the
+test.
+
 > last audited 11-10-26 by docs-auditor
+
