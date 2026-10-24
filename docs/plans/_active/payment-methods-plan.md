@@ -149,9 +149,30 @@ Phase 1 ships `qris_manual` + `bank_transfer` with **zero gateway work** — imm
 
 ### 1.4 Midtrans (Phase 2)
 
-- Implement the stubbed `payment_gateways` CRUD: upsert/list/get; `config_json` **encrypted at rest**; per-tenant row with `is_active`.
-- Midtrans SNAP client in Rust (desktop client is the backend): create transaction → show QR → poll status → write `gateway_reference`/`gateway_status` on the payment.
-- `idempotency_key` prevents double-charge on retry (field already in schema, waiting).
+- ~~Implement the stubbed `payment_gateways` CRUD~~ — **DONE, measured 2026-10-24.** The CRUD is no
+  longer a stub: `upsert_payment_gateway` / `get_payment_gateway` / `list_payment_gateways` /
+  `delete_payment_gateway` in `crates/kasirmu-core/src/db/payment_gateways.rs`, with `config_json`
+  **encrypted at rest** via `kasirmu_crypto::encrypt_payment_gateway_config`, and a per-tenant row
+  carrying `is_active` (`UNIQUE (tenant_id, name)`). It is wired end to end: `kasirmu-bridge/src/
+  local_payment.rs` → four `*_gateway*_scoped` commands registered in **both** shells →
+  `ui/src/api/payment-gateways.ts` → `RestaurantPaymentsScreen.tsx` (**52 passing tests**). The
+  legacy `upsert_gateway`/`get_gateway` shims still exist but return `CoreError::Internal` and have
+  **zero callers**, which is how the PG generator's RLS exemption went on calling this a "fail-fast
+  stub" for weeks after it stopped being one (corrected `fa87aad3e`).
+- ~~Midtrans SNAP client in Rust~~ — **DONE, measured 2026-10-24.** `crates/kasirmu-payment/src/
+  drivers/qris.rs` implements `authorize` (create transaction → QR), `capture` (polls every
+  `POLL_INTERVAL_MS = 2000` up to `MAX_POLL_ATTEMPTS = 30` for `settlement`), `refund`, `void` and
+  `receipt`, against the Midtrans REST base with a `sandbox` toggle. Covered by **21 passing
+  integration tests** (`crates/kasirmu-payment/tests/qris_integration.rs`) over a local wiremock —
+  including `authorize_sends_configured_acquirer_verbatim` and
+  `authorize_blank_acquirer_falls_back_to_generic`. **What that does NOT prove is the acquirer's
+  response**, which is the distinction `owner-question-2026-09-28-r4-r6-r7.md` already draws
+  correctly: the suite grades our side of the contract only.
+- ~~`idempotency_key` prevents double-charge on retry (field already in schema, waiting)~~ —
+  **DONE, measured 2026-10-24.** `order_id_for()` reuses `PaymentRequest.idempotency_key`
+  (charset-filtered to Midtrans's 50-char cap) with a fresh fallback when absent, so a retry reuses
+  the same `order_id` and Midtrans rejects the second charge. Pinned by
+  `authorize_sends_correct_json_body`.
 
 ### 1.5 Pay later / piutang (Phase 3 — retail only)
 
