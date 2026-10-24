@@ -319,7 +319,28 @@ def committed_hook_text(root: Path) -> str | None:
     Every caller treats None as today's behaviour, so a fixture or an exotic checkout
     loses the extra check rather than inventing a verdict.
     """
+    # THE FIXTURE MUST BE ITS OWN REPO ROOT, not merely a directory inside one.
+    # `git show` walks UP from its cwd, so a fixture created under the checkout -- which is
+    # exactly what happens when TEMP points into the tree -- answered with the REAL
+    # repository's HEAD instead of failing. Measured 2026-10-25 (round 181): with
+    # TEMP=<repo>/target/.tmp-check, the self-test's "renamed header, no HEAD readable" case
+    # reported MISSED and the whole sweep went red, while the same test passed with the
+    # default TEMP. `scripts/check.sh` sets TEMP exactly that way (:387-388), so the matrix
+    # failed at step 142 on every run and the failure was twice read as transient.
+    #
+    # The guard is `git rev-parse --show-toplevel` compared against `root`: when they differ,
+    # this directory is nested inside some other repository and its HEAD is not ours.
     try:
+        top = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=str(root), capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=20,
+        )
+        if top.returncode != 0:
+            return None
+        if Path(top.stdout.strip()).resolve() != Path(root).resolve():
+            # A fixture inside a checkout: no HEAD of its own, so "cannot compare".
+            return None
         proc = subprocess.run(
             ["git", "show", f"HEAD:{HOOK_REL}"],
             cwd=str(root), capture_output=True, text=True, encoding="utf-8",
