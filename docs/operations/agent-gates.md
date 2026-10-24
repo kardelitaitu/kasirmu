@@ -2390,4 +2390,45 @@ payable. A leg that stays red after an honest fix is telling you the *gate* mode
 thing, and the wrong response is to contort the source until the model agrees. Write down
 which one you are looking at before you write another line.
 
+## A "scoped twin" is two different things, and the ledger said neither
+
+Measured 2026-10-25, round 144. `scoped_orphans` in `scripts/ipc-parity-allowlist.json`
+is a DEBT LEDGER: commands that are registered in both shells, carry a
+`*_scoped` suffix, and have no caller. Round 143 gave every entry a written reason;
+round 144 measured whether those reasons were true and found one group of eleven
+carrying the same false claim.
+
+**The claim.** All eleven said the unscoped twin is what the UI calls, so the scoped
+one was "a scoped duplicate waiting for someone to route the caller through the gated
+door". That presumes the scoped twin HAS a gate.
+
+**The measurement.** Scan each `pub async fn <name>_scoped` body for
+`permissions::*`:
+
+| Gate in the scoped twin | Count | What "use the scoped one" would buy |
+|---|---|---|
+| none (`ctx.resolve_session` then delegate) | 7 | nothing but a session check |
+| `SETTINGS_EDIT` / `SECURITY_MANAGE` | 4 | a real authorisation step |
+
+`crates/kasirmu-bridge/src/license/scoped.rs:3-5` states the rule the split follows:
+the permission is applied "where the operation mutates a credential or a subscription". A
+read does not mutate, so its scoped twin validates the session and delegates — by design,
+not by omission. Seven of the eleven are reads.
+
+**Why the first pass got it wrong, in two separate ways.**
+
+1. A one-line regex for `require_session_permission\(&\w+, (\w+)\)` found nothing in
+   `renew_license_scoped` because its permission argument sits on the NEXT line. That
+   single miss made a gated twin look ungated, which would have turned a correct entry
+   into a wrong one. The fix was a body-window scan (~700 chars past the signature), not
+   a better-anchored regex.
+2. `rotate_encryption_key_scoped` was recorded as having a "production reference".
+   `ui/src/api/security.ts:34` mentions it — **in a doc comment**, which says the front
+   door is deliberately absent and that a wrapper "is a decision for an owner". A
+   file-level grep cannot tell prose from a call. The entry now cites that ruling.
+
+**The rule.** When a ledger entry claims another door is stronger, measure the door.
+`grep -c require_session_permission` over a file is not that measurement — it counts
+occurrences, and the question is which function they sit in.
+
 > last audited 11-10-26 by docs-auditor
