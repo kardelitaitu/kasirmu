@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import { ToastProvider } from '@/components/Toast';
@@ -364,6 +364,55 @@ describe('ExchangeRateScreen — scoped session', () => {
         effective_date: expect.any(String),
       });
     });
+  });
+
+  it('creates a rate once for a double click while the first is in flight', async () => {
+    // The natural key -- UNIQUE (from_currency, to_currency, effective_date) -- refuses the
+    // replay, and the modal defaults the effective date, so both taps send the SAME triple.
+    // The catch toasts `currency-save-error`, so the operator is told the rate did not save
+    // while the first tap's rate is already in the table behind the modal.
+    mockListExchangeRatesScoped.mockResolvedValue([]);
+    mockListCurrenciesScoped.mockResolvedValue([
+      makeCurrency('USD', 'US Dollar'),
+      makeCurrency('IDR', 'Indonesian Rupiah'),
+    ]);
+    let releaseCreate: ((v: unknown) => void) | undefined;
+    mockCreateExchangeRateScoped.mockImplementation(
+      () => new Promise((resolve) => { releaseCreate = resolve; }),
+    );
+
+    renderScreen();
+    await waitFor(() => {
+      expect(screen.getByText('No exchange rates configured')).toBeTruthy();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getAllByText('Add')[0]!);
+    await waitFor(() => {
+      expect(screen.getByText('Add Exchange Rate')).toBeTruthy();
+    });
+    await user.type(document.querySelector('#er-field-rate') as HTMLInputElement, '16000');
+    await user.selectOptions(document.querySelector('#er-field-from') as HTMLSelectElement, 'USD');
+    await user.selectOptions(document.querySelector('#er-field-to') as HTMLSelectElement, 'IDR');
+
+    const saveBtn = screen.getByText('Save').closest('button')!;
+    // fireEvent, not user.click: userEvent awaits its own act(), which flushes the pending
+    // chain so the first create would have settled and the clicks would never overlap. The
+    // disabled flag React set is dropped for the second click so the guard is measured.
+    await act(async () => {
+      fireEvent.click(saveBtn);
+      saveBtn.removeAttribute('disabled');
+      fireEvent.click(saveBtn);
+    });
+
+    expect(
+      mockCreateExchangeRateScoped.mock.calls.length,
+      'a double click on Save sent the rate create twice; UNIQUE (from, to, date) refuses ' +
+        'the replay and the operator is told the save failed',
+    ).toBe(1);
+
+    releaseCreate?.(makeRate());
+    await waitFor(() => expect(mockCreateExchangeRateScoped).toHaveBeenCalledTimes(1));
   });
 
   it('deletes through deleteExchangeRateScoped with the session token', async () => {
