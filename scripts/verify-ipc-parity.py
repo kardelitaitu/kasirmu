@@ -5068,6 +5068,25 @@ def main() -> int:
             f"question between the two shells, not a dead door): {listed}"
         )
 
+        # THE LINK NOBODY HAD MADE. These five names are the SAME POPULATION the
+        # `scoped_orphans` section already carries a dated MEASURED reason for, and until
+        # 2026-10-25 (round 176) the two lines never referred to each other -- so a lane
+        # reading only this one re-derived four findings that were already written down and
+        # then wrote a plan file claiming nobody had acted. Print the overlap, and the
+        # residue that no reason covers, because that residue is the only part of the list
+        # that is a question rather than a record.
+        reasoned = {name: (why or "")
+                    for name, why in allowlist_section(allowlist, "scoped_orphans")}
+        covered = sorted(n for n in everywhere if reasoned.get(n))
+        uncovered = sorted(n for n in everywhere if not reasoned.get(n))
+        print(
+            f"info[cross-shell-reasons]: {len(covered)} of {len(everywhere)} cross-shell "
+            f"name(s) already carry a dated reason in scoped_orphans -- read those first, they "
+            f"are the record and this line is only the census"
+            + (f": {len(uncovered)} NOT covered = " + ", ".join(uncovered)
+               if uncovered else "; all covered")
+        )
+
     if failures:
         print(f"\nFAIL: {len(failures)} IPC parity violation(s):", file=sys.stderr)
         for line in failures:
