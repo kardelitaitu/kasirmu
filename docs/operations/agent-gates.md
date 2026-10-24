@@ -999,6 +999,51 @@ docstrings record a past bug and which no case ever called:
 docstring would make the suite red on a tree that is green, and "fixing" the code is a behaviour
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
+#### Grading the REASON, not just the membership (round 121)
+
+Last round found `payment_gateways`'s RLS exemption calling live CRUD a "fail-fast stub".
+`check_rls_coverage` proves an exempt table still NEEDS its exemption — membership, both
+directions — and never re-reads the sentence giving the reason. This round grades the sentences
+whose truth is mechanically checkable, and **verifies the other twenty are still true too**.
+
+**First, the audit: all 22 exemptions, checked against the tree.** Five claimed either "no writer
+anywhere in the repo" or "fail-fast stub (NAME returns PLANNED)". Four were `media_assets`,
+`media_thumbnails`, `payment_settlements` and `user_location_access` — and all four hold under both
+probes (no `INSERT`/`UPDATE` naming the table in any of 800 production `.rs` files **or** 85 `.sql`
+files), with the two named stub functions genuinely returning `Err(...PLANNED...)`. The fifth was
+`payment_gateways`, already corrected last round. **So the audit changed no code and that is the
+result** — the same shape as round 109's checker sweep: re-running a known-good population to prove
+it is still known-good is cheaper than discovering it is not.
+
+**Then the gate, `check_rls_exempt_reasons`** (`531e3cd18`). It grades exactly two claim shapes —
+"no writer" and "fail-fast stub (NAME returns PLANNED)" — and deliberately ignores the other
+twenty, which are prose about intent ("cover when cloud sync lands") that no checker could
+adjudicate without guessing. A census that manufactures work is worse than one that admits its floor.
+
+**Every direction was verified by construction, not by reading:**
+
+| check | result |
+|---|---|
+| plant the round-120 falsehood back | **caught** — `payment_gateways claims no writer, but crates/kasirmu-core/src/db/payment_gateways.rs:150 writes it` |
+| plant a "stub" claim naming a function with a real body | **caught** — `media_assets says delete_category is a stub, but its body is 12 lines` |
+| the real 22-entry map | **passes** — no false positive |
+| plant through the real `--check` path (what CI runs) | **caught**, exit 1 |
+| delete the call from `check_rls_coverage` | **caught** by a wiring pin that inspects the caller's source |
+
+That last row is the one worth keeping. The two gates are exercised independently, so deleting the
+call left every case passing and a falsified reason sailing through the coverage gate. The self-test
+now asserts `check_rls_exempt_reasons` appears in `check_rls_coverage`'s own source — **a gate
+nobody calls grades nothing**, and that is invisible to any test of the gate alone.
+
+**CI coverage came free.** `dev-ci.yml:1382` runs `generate-pg-migration.py --check`, which reaches
+`dump_rls` → `check_rls_coverage` → the new gate; `check.sh:1385` already ran `--self-test`. Both
+paths verified with a real plant rather than assumed from the call graph.
+
+**A process note, because it cost a rebuild.** Restoring a plant with `git checkout -- <file>` also
+reverted the uncommitted work being tested — a `git stash` in spirit, which AGENTS.md forbids on
+this shared branch for exactly this reason. The gate was rewritten from the text already in hand and
+committed **first**, then re-verified. Commit before planting is now the rule.
+
 #### A "fail-fast stub" that had been replaced, and the exemption that still said so (round 120)
 
 `scripts/generate-pg-migration.py`'s `RLS_EXEMPT` map carries a documented reason for every
