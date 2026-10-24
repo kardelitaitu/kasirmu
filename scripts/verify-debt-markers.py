@@ -42,9 +42,22 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Directories that hold first-party source. Deriving this from the workspace
-# rather than typing a list is the same discipline the other gates use: a list
-# of package names is a list that rots.
+# Directories that hold first-party source. The list below IS typed, contrary to what
+# this comment used to say -- it claimed the roots were "derived from the workspace",
+# which was never true and is exactly the rot it warned about. Measured 2026-10-24: the
+# eleven listed roots all exist, and three tracked top-level dirs are NOT covered --
+# `assets` (6 source-ish files), `tools` (7) and `website` (200). None of the three
+# carries a single `TODO O-<id>` pointer today, so the hole is prospective rather than
+# live; it is recorded here rather than widened, because a new first-party directory is
+# the event that would make it real, and `root_present()` silently skips a missing
+# entry while saying nothing about a directory that was never listed.
+#
+# Deriving the list from the Cargo workspace would be the honest fix (the workspace
+# members are already canonical for crates/apps/platform/modules/foundation), but it
+# would NOT cover docs/, ui/src, shared-ui, .agents, ops or scripts, which are
+# first-party source with no Cargo member -- so a derivation would still need a list.
+# The real defence is is_scannable()'s self-test, which asserts the corpus boundary
+# directly; that is what keeps this list honest rather than the comment above it.
 ROOTS = ["crates", "apps", "platform", "modules", "foundation", "scripts", "ui/src",
          "shared-ui", "docs", ".agents", "ops"]
 
