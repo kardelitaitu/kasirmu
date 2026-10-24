@@ -2818,10 +2818,43 @@ that needs no permission and changes the next round's priorities.
 dedicated suite with `os.path.splitext(name)[0] == stem`. A test file is `CartScreen.test.tsx`,
 which has TWO extensions: splitext strips only the last, yielding `'CartScreen.test'`, so the
 comparison never matched and every orphan reported `0 dedicated test case(s)`. The output looked
-like a clean bill of health -- "no tests are wasted on dead code" -- and it was wrong for all
-seven. Caught by measuring the same quantity independently (68) before trusting the tool.
 
-The self-test now pins it, and reverting to `splitext` fails it.
+## The unrequested-command report already exists; re-deriving it is the waste
+
+Measured 2026-10-25, round 167. I set out to find "registered commands no UI reaches" on the Rust
+side, as a counterpart to the UI orphan census. I found 23. Then I checked whether the project
+already knew, and it did, in more detail than I had:
+
+```
+info[desktop-unrequested]: 18 of 511 registered commands are named by no shipped UI file
+  = 0 called by this shell's own Rust (load-bearing, not dead)
+  + 18 named by neither side (the only population a retirement can start from;
+    read the other shell's UI before believing one is dead everywhere)
+info[tablet-unrequested]: 10 of 440 ... (same shape)
+```
+
+`verify-ipc-parity.py` prints both lines on **every run**. It is not a gap in coverage; it is an
+inventory nobody has acted on. Worse, `docs/records/findings/audit-open-findings.md:402-408`
+already discusses two of the names in detail -- including two CORRECTIONS to its own earlier
+claims about them. The territory is charted.
+
+**My own second pass was wrong in the instructive way.** I filtered the 23 down to five with
+"no Rust caller either", searching `crates/` and `platform/`. All five have real implementations
+and tests under `apps/*/src/commands/`, which my walk never looked at. A search of two
+directories, reported as a fact about the tree -- the same error as the `shared.ftl` key hunt in
+round 161 and the `.tsx`-only census in round 162.
+
+**What is worth keeping.** The report's own wording contains the rule this lane needed and did
+not apply: *"read the other shell's UI before believing one is dead everywhere."* The gate
+already knew that a name absent from one shell's UI is not absent from both, which is exactly
+what my five "retirable" commands turned out to be.
+
+**The general rule for this file.** Before building a measurement, check whether an existing gate
+already prints it. Six rounds of this session were spent rediscovering facts a `check.sh` step
+reports every run -- the census kept finding UI orphans that `verify-scoped-reads` and
+`classify-finding-reachability` already adjudicated, and this round re-derived
+`*-unrequested`. The gates are numerous (140 declared) and the reading of them is the scarce
+skill, not the writing.
 
 > last audited 11-10-26 by docs-auditor
 
