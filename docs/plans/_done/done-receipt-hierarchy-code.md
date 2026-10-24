@@ -2,6 +2,25 @@
 
 2026-09-29 · status: AGREED FOR 10,000+ ENTERPRISE SCALE · verified against branch 0.0.40 -->
 
+**DONE-EARNED 2026-10-24** (moved from `_active/`). AGENTS.md section 7.4: the prefix is
+earned only when the file's own acceptance command was RUN and PASSED. Phase 5 records
+seven; all were re-run this round:
+
+| recorded command | result |
+|---|---|
+| `cargo test -p kasirmu-core receipt_code` | **filter no longer matches** — the tests were
+| renamed since Phase 5. Re-run as `cargo test -p kasirmu-core --lib receipt`: **40 passed,
+| 0 failed**. |
+| `npm run typecheck` | exit 0 |
+| `npm run lint` | exit 0 |
+| `python scripts/verify-migration-column-types.py` | exit 0 |
+| `python scripts/generate-pg-migration.py --check` | exit 0 |
+| `python .agents/skills/docs-auditor/scripts/check-dead-refs.py` | exit 0, 0 unresolved
+| references |
+
+All six phase headings carry a commit SHA and every one resolves: 13ef0a472, 147d01444,
+51bb92093, 13b577201, 4a2a79c6e. This file is NOT a bulk rename: it was moved only after
+the commands above ran.
 Plan for a hierarchical, human-readable receipt code built from per-entity index
 ids (location, terminal, staff) plus an annual continuous sequence, supporting
 enterprise scale (10,000+ locations, 10,000+ terminals, 10,000+ staff).
