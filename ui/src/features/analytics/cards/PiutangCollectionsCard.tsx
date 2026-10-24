@@ -11,8 +11,10 @@
 import { useMemo } from 'react';
 import { useLocalization } from '@fluent/react';
 import { type AnalyticsQuery, type PiutangCollectionRow } from '../analytics-data';
+import { exportPiutangCollectionsCsv } from '../utils/analyticsCardCsv';
 import { PAYMENT_NAMES } from './shared/constants';
 import { CardEmpty, CardError, CardLoading } from './shared/CardStates';
+import { ExportCsvButton } from './shared/ExportCsvButton';
 import { Kpi } from './shared/Kpi';
 import { Visual } from './shared/Visual';
 import { useCardDataCompare } from './shared/useCardData';
@@ -68,6 +70,14 @@ export function PiutangCollectionsCard({ q, title, compare }: {
     <Visual>
       <div className="analytics-kpi-row">
         <Kpi value={fmtIn(total, currency)} label={l10n.getString('analytics-card-piutang-total')} />
+        <div className="analytics-kpi-actions">
+          <ExportCsvButton
+            ariaLabel={l10n.getString('analytics-export-piutang-aria')}
+            onClick={() =>
+              exportPiutangCollectionsCsv(rows, q.from, q.to, fmtIn, (id) => l10n.getString(id))
+            }
+          />
+        </div>
       </div>
       <div className="analytics-card-chart" role="img" aria-label={title}>
         <ul className="analytics-piutang-tenders">

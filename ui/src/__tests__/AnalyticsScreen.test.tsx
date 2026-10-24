@@ -1101,6 +1101,27 @@ describe('AnalyticsScreen layout shell', () => {
     });
   });
 
+  // The piutang CSV must carry the CURRENCY column. Rows are per tender AND
+  // currency (REP-06), so a file without it invites summing minor units across
+  // currencies into a number that is not money -- the same trap the card's
+  // dominant-currency read exists to avoid on screen.
+  it('exports the piutang collections CSV with a currency column', async () => {
+    vi.useFakeTimers();
+    renderWithFluentSync(<AnalyticsScreen />, analyticsFtl, sharedFtl, reportsFtl);
+    await flushRecalc();
+
+    vi.mocked(downloadCsv).mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Export piutang collections CSV' }));
+
+    expect(downloadCsv).toHaveBeenCalledTimes(1);
+    const [filename, columns, rows] = vi.mocked(downloadCsv).mock.calls[0]!;
+    expect(filename).toContain('piutang-collections-');
+    expect(columns.map((c) => c.key)).toEqual(['method', 'currency', 'collected', 'payments']);
+    expect(columns.map((c) => c.label)).toEqual([
+      'Payment method', 'Currency', 'Collected', 'Repayments',
+    ]);
+    expect(rows[0]).toMatchObject({ method: 'Cash', currency: 'USD', payments: '4' });
+  });
   it('exports the top products CSV from the top-items card', async () => {
     vi.useFakeTimers();
     renderWithFluentSync(<AnalyticsScreen />, analyticsFtl, sharedFtl, reportsFtl);
