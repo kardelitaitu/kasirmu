@@ -1000,6 +1000,58 @@ docstring would make the suite red on a tree that is green, and "fixing" the cod
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
 
+#### A false NEGATIVE, and the probe that produced it by never running (round 112)
+
+Hunting real code defects rather than doc drift, I wrote a probe for swallowed errors in the money
+paths — `let _ =`, `.ok()`, `unwrap_or_default()` — across 274 non-test files in `kasirmu-core`
+and `kasirmu-bridge`. It printed **nothing**. Clean result, exactly what I wanted to report.
+
+It was wrong. The probe was written to disk from a JS template literal, and every backslash in
+the regex was consumed by the template — so the file on disk contained `lets+_s*=|.ok()|...`
+with no escapes. `re.compile` raised, Python printed the traceback to **stderr**, and the tool
+wrapper surfaced only stdout. **A regex that never compiled looks exactly like a corpus with no
+matches.**
+
+Re-run with `String.raw`, the same probe finds **398 matches across 274 files** — two orders of
+magnitude more, and enough to actually triage.
+
+**The same defect invalidated the round-111 result it was built on.** Round 111 reported
+"zero bare SQLite writes" from a probe using the identical write path. That claim is
+re-derived here the honest way — grep for `INSERT|UPDATE|DELETE|REPLACE` near `.execute(`, then
+read every hit — and the corrected finding is:
+
+| shape | count | verdict |
+|---|---|---|
+| writes on `tx.` inside a transaction | 16 | correct |
+| writes on `self.conn` with **no** transaction | **9** | single-statement DELETEs — see below |
+
+**The nine are not rule violations.** Each is one `DELETE … WHERE id = ?1` followed by a row-count
+check that turns 0 into `NotFound`. A single SQL statement is atomic in SQLite by itself, so no
+transaction is needed — and the sibling that DOES need one has one: `delete_category_with_unlink`
+wraps its two statements (`UPDATE products …` then `DELETE`) in
+`unchecked_transaction()` and commits. So the rule is honoured in substance: **transactions guard
+multi-statement operations, and single statements do not need guarding.**
+
+**The lesson, and it is the twelfth this session:** the earlier eleven false alarms were cases of a
+measurement being *read* wrong — a pipe eating an exit code, a wrong interpreter, a stale buffer.
+This one is different and worse: the measurement **never executed at all** and still produced a
+plausible empty result. The tell is that stdout was empty while stderr was not, which is exactly
+what a wrapper that surfaces only stdout hides.
+
+**Two rules that would have caught it, both cheap:**
+
+1. **A zero-result probe is a hypothesis, not a finding.** Before reporting "no matches", run the
+   same probe against a corpus known to contain the pattern, or print the match count. A probe
+   that cannot fail cannot report clean.
+2. **Capture stderr.** `2>&1` in the same call, not a separate one. The traceback was there the
+   whole time; it was filtered out by how the result was read, which is the round-107 lesson in a
+   new place.
+
+**And the corrected result is more useful than the false one.** "Zero bare writes" invited the
+reader to stop looking. "Nine single-statement DELETEs, all correct, and here is why the
+multi-statement sibling differs" is a real statement about the code that a future change can be
+checked against.
+
 #### Restoring one workflow reddened FOUR claims, and the sweep caught what a direct run did not (round 110)
 
 Adding `.github/workflows/docker-digest-drift.yml` was a three-file change as far as
