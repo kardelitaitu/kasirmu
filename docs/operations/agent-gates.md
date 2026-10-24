@@ -999,6 +999,39 @@ docstring would make the suite red on a tree that is green, and "fixing" the cod
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
 
+#### Probing the 94 ungraded citations for a checkable property (round 108)
+
+`check-cite-lines.py` prints its own ceiling every run: `NOT graded : 94 (no symbol on the doc line;
+not a pass)`. Most are range citations (`:493-503`, `:31-33`) — a shape with no symbol to anchor
+on, so the checker refuses to grade them rather than guessing. That is the right refusal, but it
+leaves 280 in-range citations unverified, so the question is whether any of them carry a property
+that IS checkable without a symbol.
+
+**A range has one: if the range's end exceeds the file's current line count, it is provably stale.**
+No symbol needed. Measured over all 48 live docs — **280 in range, 4 out of range** — and all four
+were already handled:
+
+| citation | state |
+|---|
+| `CRITICAL_PATH_INVARIANTS.md:29,173` → `modules/inventory/src/models.rs:368` | `dead-ref: ok:` — a "Repaired:" note quoting the coordinate it records as stale |
+| `PCI-DSS_CHECKLIST.md:62` → `modules/loyalty/src/models.rs:88-125` | `dead-ref: ok:` at :71, with the reason spelled out |
+| `EXTENDING.md:1` → `apps/desktop-tauri/src/local_api.rs:95` | `dead-ref: ok:` inside the audit-stamp narrative |
+
+**The interesting one is PCI-DSS, because it is not merely drifted — the control it describes no
+longer exists.** `modules/loyalty/src/models.rs` is now a 13-line re-export stub (types moved to
+`foundation/src/loyalty.rs` by ADR-61 / C26), and the `pin` field itself was DELETED on 2026-09-29
+(`ffac0fa423`, then `20261015_gift_cards_drop_pin.sql`). The paragraph above the citation says so
+in three stages — "nothing checks the PIN", then "it is protected in transit but never verified",
+then "RESOLVED: the PIN was REMOVED, not hashed". So the citation is load-bearing evidence in a
+record of a removal, and re-pointing it to the current file would have described code that the
+same paragraph records as deliberately deleted. The `dead-ref: ok:` at :71 is the correct call and
+says exactly that.
+
+**Zero new findings, and that is the result.** The 94 ungraded citations are not hiding stale
+coordinates. What the probe added is a property the checker could adopt — an out-of-range range is
+graded without a symbol — and the discipline of reading each hit rather than fixing the list: three
+of four were already suppressed, and the fourth needed reading its own paragraph to understand why.
+
 #### The two reds left by the round-107 sweep were both drift, and both one line each
 
 62 wired checkers run in both invocation modes. Seven reported FAIL; four were invocation errors on
