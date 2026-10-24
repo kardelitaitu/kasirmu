@@ -999,6 +999,41 @@ docstring would make the suite red on a tree that is green, and "fixing" the cod
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
 
+#### Closing the "nobody is alerted" gap, and why the new workflow is advisory (round 110)
+
+The drifted-pin finding's real defect was never the seven stale digests — it was that **nothing
+ran the gate**. Its only caller was this workflow in a retired `.bak` form, which GitHub never
+executes. Restored as `.github/workflows/docker-digest-drift.yml` (`54d877434`), weekly Monday
+05:00 UTC plus manual dispatch.
+
+**It opens an ISSUE on drift instead of failing a branch, and that is the load-bearing decision.**
+The images use moving tags — `bookworm-slim`, `2-alpine`, `16-alpine`, `7-alpine` — so their index
+digest is *expected* to move; caddy alone moves roughly four times a month. A blocking job would be
+permanently red, and a permanently red job is one nobody reads, which is the exact failure this
+workflow exists to prevent. A human decides whether each drift is security-relevant, and the case
+where that judgement matters is real: debian was pinned to a 2026-08-24 artifact while current is
+the bookworm-20261020 point release, and Debian point releases bundle security fixes.
+
+**Adding a workflow is a THREE-file change here, and the third file is what the gate enforces.**
+The workflow alone left `verify-ci-docs-drift.py` red with `UNDOCUMENTED LIVE JOBS — check`,
+because that checker parses `ci-pipeline.md`'s Job Matrix and Workflow inventory against what is
+on disk. The workflow row (`docker-digest-drift.yml` retired → LIVE) and a new `check` job row both
+had to be written. It is the same rule this file already records for `check.sh`/`gates.json`, in a
+third place: **a file the docs do not describe is a finding, not a footnote.**
+
+**And it was verified green by proving the rows are parsed as LIVE, not waved through.**
+`verify-ci-docs-drift.py` has a history exemption — any row naming a `.bak`-only workflow counts as
+documentation-of-history and is not drift. That exemption is exactly what let ten `ci.yml` rows
+misfile themselves for months (see the ⚠️ block at `ci-pipeline.md:96-108`). So the check was run
+by importing the module and using its own regexes: `check` appears among **31** matrix rows,
+`docker-digest-drift.yml` among **12** inventory rows, and `looks_like_actions_workflow()` returns
+True for the on-disk file. A green that could be produced by the exemption is not a green.
+
+**A fourth file, corrected in the same commit:** `gates.json`'s `docker-digests` note still said
+"the six Dockerfiles and Compose files" and "11 pins" after round 108 added `run-e2e.mjs` to the
+gate's `FILES` array. Now seven files, 12 pins. A note that describes a gate's scope is a claim
+like any other, and it rots the same way.
+
 #### The whole checker tree re-run in one round, and the two exceptions both hold (round 109)
 
 A delegated sweep of every wired checker was started and then **interrupted for overrunning** — it
