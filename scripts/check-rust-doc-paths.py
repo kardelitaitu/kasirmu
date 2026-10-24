@@ -46,6 +46,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+#: Refuse a corpus below this. A real tree here holds ~1430 `.rs` files, so the floor is
+#: set far below it and exists only to catch a ZERO — a renamed top-level directory, a
+#: wrong cwd, or a bad ROOT would otherwise make this gate print "clean" over a scan
+#: that read no Rust at all (measured 2026-10-24: 0 files, 0 findings, exit 0).
+#: Module scope rather than a local so `self_test()` can grade the guard itself.
+MIN_RUST_FILES = 500
+
 TOP_LEVEL = ("crates", "apps", "modules", "platform", "foundation",
              "scripts", "docs", "shared-ui", "ui", "ops")
 PATH_RE = re.compile(
@@ -139,6 +146,20 @@ def main() -> int:
         if base.is_dir():
             files.extend(sorted(base.rglob("*.rs")))
     files = [f for f in files if "target" not in f.parts]
+    # THE FLOOR. A corpus of zero prints "clean" and exits 0, and the seven directory
+    # names above are the only thing standing between this gate and a silent nothing.
+    # Rename `crates/`, run from the wrong cwd, or break ROOT, and every `is_dir()`
+    # misses: the line below would report "clean - 0 .rs file(s) scanned" over a scan
+    # that read no Rust at all. Measured 2026-10-24 by pointing ROOT at an empty temp
+    # directory: 0 files, 0 findings, exit 0 -- indistinguishable from a healthy tree.
+    # A real tree here holds ~1430, so the floor is set far below it and exists only to
+    # catch a ZERO. Same rule, same reason, as check-audit-stamps.py's census floor.
+    if len(files) < MIN_RUST_FILES:
+        print("check-rust-doc-paths: REFUSED - only %d .rs file(s) found under %s. "
+              "A real tree holds roughly 1430, so this is a broken corpus (a moved "
+              "directory, a wrong cwd, or a bad ROOT), not a clean tree."
+              % (len(files), ROOT), file=sys.stderr)
+        return 2
     tset = tracked()
     findings = scan(files, tset, {})
     if findings:
@@ -254,10 +275,18 @@ def self_test() -> int:
     want("ever_existed() trusts a cached hit", hit, True)
     want("ever_existed() trusts a cached miss and does not re-ask git", miss, False)
 
+    # THE FLOOR ITSELF. main() refuses a corpus below MIN_RUST_FILES, and that branch is
+    # unreachable from a normal run -- so without this case the guard could be deleted and
+    # every other case here would still pass. Exercise the arithmetic directly against the
+    # constant rather than by running main(), which would need a fabricated tree.
+    want("the floor is far below a real tree (~1430 files)", MIN_RUST_FILES < 1430, True)
+    want("the floor still catches a ZERO corpus", 0 < MIN_RUST_FILES, True)
+    want("the floor is not so high a legitimate shrink trips it", MIN_RUST_FILES >= 500, True)
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (15 cases, no file or git read)")
+    print("SELF-TEST OK (18 cases, no file or git read)")
     return 0
 
 
