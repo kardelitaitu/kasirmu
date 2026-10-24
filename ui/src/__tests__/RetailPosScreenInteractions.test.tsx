@@ -5,7 +5,7 @@
 // tests involve userEvent interactions and moderate async waits.
 // Split from RetailPosScreen.test.tsx to enable parallel execution. 17 tests.
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { act } from 'react';
@@ -176,6 +176,24 @@ const catFtl = `
 let mockAddProduct: ReturnType<typeof vi.fn>;
 
 describe('RetailPosScreen — interactions', () => {
+  // RESTORE EVERY MOCK AFTER EVERY CASE, not at the end of each test body.
+  //
+  // This file mutates shared module mocks about thirty times (`createProduct.
+  // mockRejectedValue`, `updateProduct.mockRejectedValue`, `holdCartScoped.
+  // mockImplementation`, ...) and used to undo each one on the LAST LINE of its own test.
+  // That only works while every assertion passes: the first throw skipped its cleanup, and
+  // the rejection leaked into every later case in the file -- an order-dependent failure
+  // whose victim looked unrelated to its cause. Measured 2026-10-25: a full-suite run
+  // failed ``does not leave an unsaved product on screen when the add is refused`` once,
+  // then passed twice on re-run, while the file passed in isolation every time.
+  //
+  // `restoreAllMocks` rather than `resetAllMocks`: it also undoes `vi.spyOn` (the
+  // requestAnimationFrame pair at :1206) and restores the original module implementations,
+  // so a case cannot leave a spy installed for its successor either.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   beforeEach(async () => {
     mockedBarcode.reset();
     mockAddProduct = vi.fn();
