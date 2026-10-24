@@ -2924,14 +2924,43 @@ Measured 2026-10-25, round 170. `check-reentry-guards.py` prints **76** handlers
 guard is a React state flag, and says of each that it is "a CANDIDATE, not a defect: the cost of
 the replay depends on the backend. Ask first whether a unique index REFUSES it, then whether the
 UI still reports success." That sentence is the whole method, and this round ran it on the four
-storage-backed create paths across three features. Only one of the five was already covered.
+storage-backed create paths, three of them in round 170 and three more in round 171. Only two were already covered.
 
 | Handler | Refused by the backend? | What the operator sees | Verdict |
 |---|---|---|---|
 | `VariantManagementScreen.handleSave` | yes -- `product_variants.sku` UNIQUE (`20260813_init.sql:429`, kept at `20260831:164`) | "product not found", because `create_product_variant_on` maps EVERY constraint violation to `NotFound` (`products.rs:369-377`) | **defect**, fixed |
 | `BundleManagementScreen.handleSave` | yes -- `bundle_items.bundle_sku` UNIQUE (`:389`) | the generic `bundles-error-save`, i.e. "the save FAILED" while the first tap succeeded | **defect**, fixed |
 | `PromotionManagementScreen.handleSave` | **no** -- `promotions` has only an `id` PK, and the bridge mints a UUID per call | nothing; TWO live promotions, both applied at the till | already guarded by `loading={saving}`, and already tested |
-| `CategoryManagementScreen.handleCreate` | yes, twice over: `id` is a PK derived from the name by `colourToId`, and `categories.name` is UNIQUE | `categories-error-create`, i.e. "could not create" over a category that was created | **defect**, fixed |
+| `CategoryManagementScreen.handleCreate` | yes, twice over: `id` is a PK derived from the name by `colourToId`, and `categories.name` is UNIQUE | `categories-error-create`, i.e. "could not create" over a category that was created | **defect**, fixed || `CategoryManagementScreen.handleCreate` | yes, twice over: `id` is a PK derived from the name by `colourToId`, and `categories.name` is UNIQUE | `categories-error-create`, i.e. "could not create" over a category that was created | **defect**, fixed |
+| `ExchangeRateScreen.handleSave` | yes -- UNIQUE (from_currency, to_currency, effective_date), and the modal defaults the date so both taps send the same triple | `currency-save-error` | **defect**, fixed (round 171) |
+| `IssueGiftCardModal.handleSubmit` | yes -- `gift_cards.card_number` UNIQUE | `gift-cards-error-issue`, i.e. a minted card the till says was not issued | **defect**, fixed (round 171) |
+| `LoyaltyManagementScreen.handleSaveTier` | n/a -- an idempotent `UPDATE ... WHERE id = ?`; a replay rewrites the same row | nothing | **not a defect**; left on the report deliberately |
+
+
+**Round 171 added three rows and one negative result, and the negative matters as much.**
+`LoyaltyManagementScreen.handleSaveTier` sits on the report and is NOT a defect: core runs
+`UPDATE loyalty_tiers SET ... WHERE id = ?6` (`db/loyalty/tier.rs`), which a replay
+rewrites to the same values. Nothing is minted, nothing is duplicated, and no message lies — so it
+is left on the report rather than "fixed". A candidate cleared by reading the write is worth as
+much as one confirmed: the report's own words are that each entry is a candidate whose cost
+"depends on the backend", and the only way to discharge that is to open the INSERT.
+
+**The one new failure mode found this round: a guard placed above validation strands itself.**
+In `IssueGiftCardModal` the handler returns early on an invalid amount and on an empty card
+number, and those returns happen BEFORE the `try`. The obvious edit — put the re-entry guard at
+the top of the handler — takes the flag on the first invalid submit, never reaches the `finally`
+and leaves the form permanently unable to issue a card. The guard has to sit after validation and
+before the `try`. Two cases pin it, and they fail on different mutations:
+
+```
+guard removed                    -> "issues a card once for a double click" fails (expected 2 to be 1)
+guard moved above validation     -> "does not strand the re-entry guard" fails
+guard after validation            -> 20 passed
+```
+
+Every one of the seven rows above is the same two questions in the same order. What changed
+between rounds 170 and 171 is not the method; it is that the answers are now written down, so the
+next lane can start from the table instead of re-opening seven handlers.
 
 **The two classes the report cannot tell apart, and why both belong in a table like this.** The
 variant and bundle rows are the SAME shape: a unique index refuses the replay (`question 1`
@@ -2958,6 +2987,6 @@ anything.
 
 **What the report counts after this round: 74.** Not because 76 was wrong -- each of the three
 thrown off it now has an atomic ref plus a case that fails with `expected 2 to be 1` when the ref
-is hollowed out. The other 73 are untouched, and the questions above have not been asked of them.
+is hollowed out. The other 71 are untouched, and the questions above have not been asked of them.
 
 > last audited 11-10-26 by docs-auditor
