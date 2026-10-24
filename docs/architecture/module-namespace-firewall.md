@@ -97,12 +97,27 @@ dependency), and `the_real_loyalty_grant_names_a_declared_dependency` pins the i
 `scripts/verify-core-size.py` enforces a ceiling on `crates/kasirmu-core` production lines
 (`scripts/core-size-baseline.json`). The required gate `core-size-ratchet`
 (`scripts/gates.json`) fails when core grows above the recorded ceiling without a
-deliberate `--emit-baseline` commit. Current ceiling: **39069 lines across 178 files**
-(raised 2026-10-19 — 39068 → 39069, one declaration line forced by
-`clippy::type_complexity` in `db/provisioning.rs`; see the baseline `description`.
-38703 before that from `341ba7227` on 2026-10-14; 37176 before that.) Re-measured
-2026-10-19: `python3 scripts/verify-core-size.py` reports 39069 vs 39069, headroom 0,
-exit 0.
+deliberate `--emit-baseline` commit. Current ceiling: **40616 lines across 181 files**
+(raised 2026-10-24 — 40597 → 40616, +19 attributable to
+`PaymentSplitArg::effective_gateway_status` in `payment.rs`, the ADR-64 tender
+lifecycle state machine, with eight other files of incidental churn offset by −7 of
+cleanup; see the baseline `description`. 40597 before that on 2026-10-23, 40417 on
+2026-10-22, 39069 on 2026-10-19, 39068 before that, 38703 from `341ba7227` on
+2026-10-14, 37176 before that.) Re-measured 2026-10-24:
+`python3 scripts/verify-core-size.py` reports 40616 vs 40616, headroom 0, exit 0.
+
+> **CORRECTED 2026-10-24 — and this is the FOURTH recurrence of the pattern this
+> section already records.** This page said "39069 lines across 178 files" while the
+> tree measured **40616 across 181**; three raises (39069 → 40417 → 40597 → 40616,
+> +1547 lines) had happened since the 2026-10-19 pass and the page never followed. The
+> paragraph below calls 2026-10-19 "the third recurrence of the same pattern"; a
+> fourth is now on the record, and the shape is identical — committed growth merged, the
+> ceiling was re-emitted correctly each time, and the *narrative page* was not updated.
+> **The lesson is that a prose ceiling has no gate.** `verify-core-size.py` polices
+> `core-size-baseline.json` and nothing reads this paragraph, so the number rots
+> silently between doc passes. Re-derive with
+> `python3 scripts/verify-core-size.py --json` rather than quoting either figure,
+> including the ones above.
 
 > **Measured 2026-10-19: the gate is GREEN, and how it got there is the part worth reading.**
 > It was RED at HEAD at 39068 vs a 38703 ceiling (+365), the third recurrence of the same
