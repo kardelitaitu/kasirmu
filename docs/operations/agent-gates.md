@@ -1000,6 +1000,46 @@ docstring would make the suite red on a tree that is green, and "fixing" the cod
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
 
+#### Shrinking the ungraded ceiling, and the checker catching my own guesses (round 113)
+
+`check-cite-lines.py` prints its own ceiling every run — `NOT graded : N (no symbol on the doc line;
+not a pass)`. It had sat at 101 for several rounds, recorded and never reduced. This round it went
+to **70**, by naming a backticked symbol on the doc line for each citation.
+
+| doc | citations fixed |
+|---|---|
+| `docs/operations/runbook.md` | 24 → 6 |
+| 6 other live docs | 7 |
+| **total** | **31 citations now graded, 0 drifted** |
+
+**What the rule turned out to be, learned by getting it wrong twice.** `anchors_on()` accepts only a
+**backticked** token, ≥4 characters, not a path and not a keyword — a bare prose identifier is
+deliberately not trusted, because the tool shipped once with a false OK from prose that happened to
+appear near the cited line. And it grades against `group(2)` of the citation, i.e. a range's
+**start**, within ±8 lines — so a symbol 19 lines past the start is DRIFTED even when it sits
+inside the range. Both facts came from failures, not from reading.
+
+**The checker caught two of my own wrong guesses, which is the entire point of grading them:**
+
+| my guess | the checker's answer | the truth |
+|---|---|---|
+| `CoreError::Validation` for `recovery.rs:20-21` | DRIFTED → actually `:41` | lines 20-21 are the `//!` invariant prose; no symbol lives there |
+| `recovery_tests.rs:141` for the mobile test | DRIFTED → actually `:79` | `consumes_a_request_and_restores_the_candidate` is at **:79**; the citation had been wrong and hiding in the ungraded set |
+
+**And one guess of mine was wrong in the other direction, which is the more instructive failure.**
+For `subscription-tiers.md:248` I read the checker's own `-> actually :278` as an instruction and
+"fixed" the citation to :278. It reddened again: `-> actually :298`. Reading the file showed
+`pub async fn list_sales_scoped(` at **:298**, so the ORIGINAL citation had been correct and my
+"fix" introduced the error. The checker reports where the symbol is; it does not say the citation
+was wrong. **A drift report is evidence about the symbol's location, not a verdict on the doc —
+and acting on it without reading the target is how a correct citation gets broken.**
+
+**Why this was worth a round.** These 101 citations were invisible to every gate this repo runs: a
+citation that names no symbol is refused rather than graded, which is the right refusal but leaves
+the number rotting. Two of the ones promoted this round were genuinely wrong, so the ungraded set
+was not merely unmeasured — it was **harbouring drift**. That is the argument for shrinking it
+rather than recording it: an ungraded citation is a claim no tool will ever contradict.
+
 #### Hunting real code defects, and finding none — with the triage recorded (round 112)
 
 Rounds 95-111 were almost all doc-drift and gate-wiring work. This round went looking for code a
