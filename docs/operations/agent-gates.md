@@ -2782,9 +2782,46 @@ overwriting any leak. A static reader cannot distinguish "this mock is re-seeded
 from "this mock is not", without simulating the file's control flow.
 
 **The rule.** A leaked mock explains a flake; it does not predict one. Fix the file that failed,
-prove containment, and do not sweep the suite on a grep — 49 candidate files at the loosest
-predicate would have meant 49 speculative diffs chasing a number that never corresponded to a
-failure.
+
+## Green tests on code nobody can open
+
+Measured 2026-10-25, rounds 164-165. Two facts that are individually unsurprising and jointly
+expensive:
+
+- `git log -S'<ShiftBar' -- ui/src` returns only commits that MODIFIED `ShiftBar.tsx`. No commit
+  ever removed a mount, because there never was one. Three separate rounds repaired races and
+  double-submits in it (`88415f10f`, `b245189b6a`, `dcdc57f155`), plus a token cleanup where
+  every declaration "rendered NOTHING".
+- Seven module(s) that no production code reaches currently carry **68 dedicated `it()` cases**,
+  and are named in ten more test files as CSS-inventory rows.
+
+Every one of those rounds passed its gates. That is not a gate failure: the gates test BEHAVIOUR
+of a module, and reachability is not a behaviour. A suite can be green, well-written, and
+entirely about code no user can execute.
+
+**The remedy is visibility, not deletion.** `census-orphan-modules.py` now prints, per orphan,
+how many dedicated test cases it carries and how many test files name it, then totals them:
+
+```
+  ORPHAN  features/products/ProductManagementScreen.tsx
+          no import, render, registration or imported barrel names it
+          24 dedicated test case(s); named in 5 test file(s)
+  ...
+  68 test case(s) exercise modules nothing in the app reaches.
+```
+
+Deleting remains an owner call -- several of these are `UNRESOLVED` rather than dead, and one
+(`GiftCardPayment`) needs a migration before it could be mounted. Reporting the cost is the part
+that needs no permission and changes the next round's priorities.
+
+**The bug that produced seven silent zeros.** The first version of this helper matched a
+dedicated suite with `os.path.splitext(name)[0] == stem`. A test file is `CartScreen.test.tsx`,
+which has TWO extensions: splitext strips only the last, yielding `'CartScreen.test'`, so the
+comparison never matched and every orphan reported `0 dedicated test case(s)`. The output looked
+like a clean bill of health -- "no tests are wasted on dead code" -- and it was wrong for all
+seven. Caught by measuring the same quantity independently (68) before trusting the tool.
+
+The self-test now pins it, and reverting to `splitext` fails it.
 
 > last audited 11-10-26 by docs-auditor
 

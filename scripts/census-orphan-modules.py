@@ -248,8 +248,69 @@ def _self_test():
     lower_ts = run({'helpers.ts': 'export const clamp = (n: number) => n;'})
     case('a lower-case .ts helper is out of scope', lower_ts.get('helpers.ts'), None)
 
+    # THE DOUBLE-EXTENSION TRAP. `os.path.splitext('CartScreen.test.tsx')[0]` is
+    # 'CartScreen.test', not 'CartScreen', so a dedicated-suite match that uses splitext
+    # reports 0 for every orphan -- which is what happened on this helper's first run and
+    # would have been read as "no tests are wasted on dead code".
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        # A dedicated suite imports the module, so its body names it.
+        with open(os.path.join(td, 'Widget.test.tsx'), 'w', encoding='utf-8') as fh:
+            fh.write("import Widget from '../Widget';\n"
+                     "it('a', () => { render(<Widget />); });\n"
+                     "it('b', () => {});\n")
+        # A COMMENT mention is not a naming file: strip_comments blanks it first. That is the
+        # same rule the reachability predicate uses, and the first version of this fixture got
+        # it backwards by putting the mention in prose.
+        with open(os.path.join(td, 'Other.test.ts'), 'w', encoding='utf-8') as fh:
+            fh.write('// Widget is mentioned in prose' + chr(10) + "it('c', () => {});" + chr(10))
+        cost = test_cost([('ORPHAN', 'features/Widget.tsx', '')], td)
+        case('a dedicated suite is counted by its two-extension name', cost['features/Widget.tsx'][0], 2)
+        case('only the file whose CODE names it counts', cost['features/Widget.tsx'][1], 1)
+
     print(f'  self-test: {"PASS" if failures == 0 else f"FAIL ({failures})"}')
     return failures
+
+
+def test_cost(orphans, tests_dir):
+    """{module_relpath: (test_cases, test_files)} for each orphan, from the test corpus.
+
+    Reported, never graded: the point is to make visible what a lane is maintaining when it
+    keeps an unreachable module alive. Measured 2026-10-25 -- 7 orphan modules carried 68
+    `it()` cases in dedicated suites, and appeared in 10 more files as CSS-inventory names.
+    That cost is invisible from either side alone: the test suite is green, and the census
+    does not look at tests.
+    """
+    if not os.path.isdir(tests_dir):
+        return {}
+    corpus = {}
+    for name in sorted(os.listdir(tests_dir)):
+        if not name.endswith(('.test.ts', '.test.tsx')):
+            continue
+        path = os.path.join(tests_dir, name)
+        try:
+            with open(path, encoding='utf-8', errors='replace') as handle:
+                text = strip_comments(handle.read())
+        except OSError:
+            continue
+        corpus[name] = (text, len(re.findall(r'^\s*it\(', text, re.M)))
+    out = {}
+    for verdict, rel, _evidence in orphans:
+        stem = os.path.splitext(os.path.basename(rel))[0]
+        dedicated = 0
+        named_in = 0
+        for name, (text, cases) in corpus.items():
+            if not re.search(r'\b' + re.escape(stem) + r'\b', text):
+                continue
+            named_in += 1
+            # `.test.tsx` has TWO extensions: splitext strips only the last, so
+            # `os.path.splitext('CartScreen.test.tsx')[0]` is `'CartScreen.test'` and a
+            # comparison against the module stem never matched -- every dedicated count
+            # read 0 until this was measured against the 68 the tree actually has.
+            if name.split('.test.')[0] == stem:
+                dedicated = cases
+        out[rel] = (dedicated, named_in)
+    return out
 
 
 def main(argv=None):
@@ -261,12 +322,21 @@ def main(argv=None):
         return 1 if _self_test() else 0
     rows = census(production_files())
     orphans = [r for r in rows if r[0] == 'ORPHAN']
+    cost = test_cost(orphans, os.path.join(UI_SRC, '__tests__'))
     print(f'census-orphan-modules: {len(rows)} component module(s) under ui/src')
+    total_cases = 0
     for verdict, rel, evidence in orphans:
         print(f'  ORPHAN  {rel}')
         print(f'          {evidence}')
+        cases, named_in = cost.get(rel, (0, 0))
+        total_cases += cases
+        if cases or named_in:
+            # The cost of keeping it: tests a lane maintains for a module no user reaches.
+            print(f'          {cases} dedicated test case(s); named in {named_in} test file(s)')
     print()
     print(f'  ORPHAN={len(orphans)}, LIVE={len(rows) - len(orphans)}')
+    if total_cases:
+        print(f'  {total_cases} test case(s) exercise modules nothing in the app reaches.')
     if args.strict and orphans:
         print(f'FAIL: {len(orphans)} component module(s) no production code reaches.')
         return 1
