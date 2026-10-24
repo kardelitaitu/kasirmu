@@ -394,6 +394,13 @@ export const analyticsHandlers: Record<string, MockHandler> = {
     { payment_method: 'card', total_minor: 61000000, sale_count: 89 },
     { payment_method: 'ewallet', total_minor: 39000000, sale_count: 57 },
   ],
+  // The COLLECTION side of the same day, not the same numbers: a receivable
+  // repayment is money arriving against goods sold earlier, so it carries a
+  // tender of its own and must not be summed with the sale rows above.
+  'get_piutang_collections_scoped': () => [
+    { payment_method: 'cash', currency: 'IDR', total_minor: 12500000, payment_count: 23 },
+    { payment_method: 'bank_transfer', currency: 'IDR', total_minor: 8700000, payment_count: 9 },
+  ],
   'get_discounts_summary_scoped': () => ({
     sale_count: 406,
     discounted_sale_count: 96,

@@ -42,7 +42,8 @@ pub use revenue::{DailyRevenueRow, MonthlyRevenueRow, WeeklyRevenueRow};
 pub use sales_summary::{
     BasketSizeRow, BasketTrendRow, CustomerSplitRow, DiscountCodeRow, DiscountsSummaryRow,
     HOURLY_HEATMAP_SQL, HourlyHeatmapRow, HourlyOccupancyRow, PAYMENT_METHOD_BREAKDOWN_SQL,
-    PaymentMethodRow, TableTurnoverRow, VOIDED_ITEMS_SQL, VoidedItemRow, VoidedSummaryRow,
+    PIUTANG_COLLECTIONS_SQL, PaymentMethodRow, PiutangCollectionRow, TableTurnoverRow,
+    VOIDED_ITEMS_SQL, VoidedItemRow, VoidedSummaryRow,
 };
 
 #[cfg(test)]

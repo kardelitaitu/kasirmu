@@ -28,8 +28,8 @@ use kasirmu_core::db::popularity::{
 use kasirmu_core::db::reports::{
     BasketSizeRow, BasketTrendRow, CategoryBreakdownRow, CustomerSplitRow, DailyRevenueRow,
     DiscountsSummaryRow, HourlyHeatmapRow, HourlyOccupancyRow, InventoryTrendRow,
-    InventoryTurnoverRow, LowStockAlert, MonthlyRevenueRow, PaymentMethodRow, TableTurnoverRow,
-    TopProductRow, VoidedItemRow, VoidedSummaryRow, WeeklyRevenueRow,
+    InventoryTurnoverRow, LowStockAlert, MonthlyRevenueRow, PaymentMethodRow, PiutangCollectionRow,
+    TableTurnoverRow, TopProductRow, VoidedItemRow, VoidedSummaryRow, WeeklyRevenueRow,
 };
 use kasirmu_core::export::{CustomReportRequest, CustomReportResponse};
 use kasirmu_core::permissions;
@@ -465,6 +465,25 @@ pub async fn get_payment_method_breakdown_scoped(
     Ok(Store::new(&db).payment_method_breakdown(start_date, end_date)?)
 }
 
+/// Get receivable repayments collected in a date range, split by the tender the
+/// money actually arrived in (decision Q1's collection-day settlement line).
+///
+/// Separate from [`get_payment_method_breakdown_scoped`] on purpose — see
+/// `Store::piutang_collections`. The breakdown reports what was SOLD that day and
+/// therefore excludes `pay_later`; this reports what was COLLECTED. A day whose only
+/// takings were repayments is invisible to the former and fully visible here.
+pub async fn get_piutang_collections_scoped(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    start_date: &str,
+    end_date: &str,
+) -> Result<Vec<PiutangCollectionRow>, BridgeError> {
+    let conn = resolve_report_scope(ctx, session_token, permissions::REPORTS_VIEW).await?;
+    let db = conn
+        .lock()
+        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+    Ok(Store::new(&db).piutang_collections(start_date, end_date)?)
+}
 /// Get voided-sale totals for the session's store.
 pub async fn get_voided_sales_summary_scoped(
     ctx: &BridgeCtx<'_>,

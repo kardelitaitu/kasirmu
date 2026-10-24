@@ -20,8 +20,8 @@ use kasirmu_core::db::popularity::{
 use kasirmu_core::db::reports::{
     BasketSizeRow, BasketTrendRow, CategoryBreakdownRow, CustomerSplitRow, DailyRevenueRow,
     DiscountsSummaryRow, HourlyHeatmapRow, HourlyOccupancyRow, InventoryTrendRow,
-    InventoryTurnoverRow, LowStockAlert, MonthlyRevenueRow, PaymentMethodRow, TableTurnoverRow,
-    TopProductRow, VoidedItemRow, VoidedSummaryRow, WeeklyRevenueRow,
+    InventoryTurnoverRow, LowStockAlert, MonthlyRevenueRow, PaymentMethodRow, PiutangCollectionRow,
+    TableTurnoverRow, TopProductRow, VoidedItemRow, VoidedSummaryRow, WeeklyRevenueRow,
 };
 use kasirmu_core::export::{CustomReportRequest, CustomReportResponse};
 
@@ -244,6 +244,26 @@ pub async fn get_category_breakdown_scoped(
     .map_err(Into::into)
 }
 
+#[command]
+/// Get receivable repayments collected in a date range, split by the tender the
+/// money actually arrived in. Separate from the payment-method breakdown on
+/// purpose: that reports what was SOLD, this reports what was COLLECTED.
+pub async fn get_piutang_collections_scoped(
+    session_token: String,
+    start_date: String,
+    end_date: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<PiutangCollectionRow>, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::reports::get_piutang_collections_scoped(
+        &ctx,
+        &session_token,
+        &start_date,
+        &end_date,
+    )
+    .await
+    .map_err(Into::into)
+}
 #[command]
 /// Get revenue split by payment method for the session's store.
 pub async fn get_payment_method_breakdown_scoped(

@@ -1245,6 +1245,7 @@ pub fn run() {
                 commands::reports::get_low_stock_alerts_scoped,
                 commands::reports::get_category_breakdown_scoped,
                 commands::reports::get_payment_method_breakdown_scoped,
+        commands::reports::get_piutang_collections_scoped,
                 commands::reports::get_voided_sales_summary_scoped,
                 commands::reports::get_voided_items_scoped,
                 commands::reports::get_basket_size_scoped,

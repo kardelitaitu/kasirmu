@@ -315,6 +315,36 @@ export const getPaymentMethodBreakdown = (
     endDate,
   });
 
+/**
+ * Receivable repayments collected in a date range, split by the tender the money
+ * actually arrived in (decision Q1's collection-day line).
+ *
+ * Deliberately SEPARATE from `getPaymentMethodBreakdown`, which reports what was
+ * SOLD and therefore excludes `pay_later`. This reports what was COLLECTED. A day
+ * whose only takings were repayments is invisible to the former and fully visible
+ * here -- which is the whole reason both exist.
+ */
+export interface PiutangCollectionRow {
+  /** ISO-4217 code — one row per tender AND currency (REP-06). */
+  currency: string;
+  /** The tender the money arrived in (cash, bank_transfer, qris, …). */
+  payment_method: string;
+  /** Total collected in minor units. */
+  total_minor: number;
+  /** Number of repayments recorded this way. */
+  payment_count: number;
+}
+
+export const getPiutangCollections = (
+  startDate: string,
+  endDate: string,
+  sessionToken: string,
+): Promise<PiutangCollectionRow[]> =>
+  loggedInvoke<PiutangCollectionRow[]>('get_piutang_collections_scoped', {
+    sessionToken: sessionToken ?? '',
+    startDate,
+    endDate,
+  });
 /** Voided-sale totals for a date range in the active store. */
 export interface VoidedSummaryRow {
   /** ISO-4217 code — one row per currency (REP-06). */

@@ -302,6 +302,19 @@ async fn staff_denied_payment_method_breakdown() {
     assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
+// The piutang collections door exists so the report is REACHABLE, not just
+// queryable in core. `Store::piutang_collections` had no caller above the crate
+// before this: the query passed its unit tests and no screen could ask for it.
+#[tokio::test]
+async fn staff_denied_piutang_collections() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    seed_staff(&conn);
+    let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
+    let result =
+        get_piutang_collections_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
+}
 #[tokio::test]
 async fn staff_denied_voided_sales_summary() {
     let conn = crate::testing::temp_conn();
@@ -450,6 +463,16 @@ async fn owner_payment_method_breakdown_empty() {
     );
 }
 
+#[tokio::test]
+async fn owner_piutang_collections_empty() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
+    let result =
+        get_piutang_collections_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
+    let rows = result.expect("owner should access piutang collections");
+    assert!(rows.is_empty(), "a fresh store has collected nothing");
+}
 #[tokio::test]
 async fn owner_voided_sales_summary_empty() {
     let conn = crate::testing::temp_conn();
