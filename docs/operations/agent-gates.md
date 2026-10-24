@@ -999,6 +999,47 @@ docstrings record a past bug and which no case ever called:
 docstring would make the suite red on a tree that is green, and "fixing" the code is a behaviour
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
+#### A "fail-fast stub" that had been replaced, and the exemption that still said so (round 120)
+
+`scripts/generate-pg-migration.py`'s `RLS_EXEMPT` map carries a documented reason for every
+`tenant_id` table that is not under row-level security. Its own header states the discipline:
+*"every uncovered table must carry a documented reason in RLS_EXEMPT or generation fails (coverage
+debt can neither appear nor vanish silently)"*.
+
+The reason recorded for `payment_gateways` was **false, and had been for a while**:
+
+> *"db/payment_gateways.rs is a fail-fast stub (upsert_gateway returns PLANNED)"*
+
+Measured 2026-10-24: the file holds **full encrypted-at-rest CRUD** — `upsert_payment_gateway`,
+`get_payment_gateway`, `list_payment_gateways`, `delete_payment_gateway` — with an `INSERT INTO
+payment_gateways` at :150, reached through `kasirmu-bridge/src/local_payment.rs`, exposed as four
+`*_gateway*_scoped` commands registered in **both** shells, consumed by
+`ui/src/api/payment-gateways.ts`, and surfaced in `RestaurantPaymentsScreen.tsx` with **52 passing
+tests**. The named function `upsert_gateway` still exists, but as a deprecated shim returning
+`CoreError::Internal` with **zero callers** — a reader who grepped the name would find it and stop.
+
+**The generator could not see this.** `--check` verifies that an exempt table is still absent from
+`RLS_TABLES` — a structural fact — and never re-reads the English reason beside it. So `--check`
+was green, correctly, while the sentence it prints into a 3,900-line generated schema was stale.
+**A reason field is documentation with a validator's address on it, and nothing validates the
+reason.**
+
+Corrected at the source (never hand-edited — the file says `DO NOT EDIT BY HAND`), regenerated, and
+the drift guard re-run: `1 differing lines` before, `ok` after, with the table count unchanged at
+129 so only the comment moved.
+
+**And the same staleness had spread to the plan that spawned it.**
+`docs/plans/_active/payment-methods-plan.md` §1.3 still sketches `qris = false` / `ewallet = false`
+against a `settings` blob that was superseded by a `local_payment_methods` table keyed by
+`(scope_type, rail_code, is_enabled, parameters)`. Its §1.4 "Midtrans (Phase 2)" now describes
+work that has largely shipped. Both got a dated note at the point of confusion rather than a
+rewrite: the sketch is the record of what was designed, and the note says what replaced it.
+
+**What is genuinely still open** (and is an owner item, not a lane one): the acquirer-side
+credential and the four behaviours `owner-question-2026-09-28-r4-r6-r7.md` records as unproven —
+generic-QR interop, targeted-QR restriction, real refund behaviour, per-merchant acquirer
+activation. The code is built; the acquirer evidence is not.
+
 #### Implementing ADR-67's split, and the half that silently did nothing (round 119)
 
 ADR-67 was written last round and this round implemented **D2 only** (`4054871f9`): the core-size
