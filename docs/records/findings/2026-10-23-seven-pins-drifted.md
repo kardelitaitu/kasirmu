@@ -93,6 +93,35 @@ is available.
 replaced with the measured artifact dates, because a refresh date that predates the artifact it
 pins is not provenance — it is noise that makes the next reader think a pin is fresher than it
 is. Pin count is unchanged at 12 and the gate's self-test still passes 8/8.
+## The alerting gap is now CLOSED (2026-10-24)
+
+The section below says the gate had no live runner, which is what let seven pins rot for two
+months. That is fixed: **`.github/workflows/docker-digest-drift.yml` is restored and LIVE**
+(`54d877434`), running weekly on Monday 05:00 UTC plus `workflow_dispatch`.
+
+**It is advisory, and deliberately so.** On drift it OPENS A GITHUB ISSUE rather than failing a
+branch. The images use moving tags — `bookworm-slim`, `2-alpine`, `16-alpine`, `7-alpine` — so their
+index digest is expected to move; caddy alone moves roughly four times a month. A blocking job
+would be permanently red, and a permanently red job is one nobody reads, which is precisely the
+failure this workflow exists to prevent. A human decides whether each drift is security-relevant.
+
+**Restoring it was a THREE-file change, and the third file is what the gate enforces.** Adding the
+workflow alone left `verify-ci-docs-drift.py` red with `UNDOCUMENTED LIVE JOBS — check`, because the
+checker parses `ci-pipeline.md`'s Job Matrix and Workflow inventory and compares them to what is
+on disk. The workflow row and the `check` job row both had to be updated — the same
+"editing check.sh is a two-file change" rule, applied to workflows. It was verified green by
+proving the rows are parsed as LIVE rather than waved through the history exemption: the module's
+own regexes find `check` among 31 matrix rows and `docker-digest-drift.yml` among 12 inventory
+rows, and `looks_like_actions_workflow()` returns True for the on-disk file.
+
+**Also corrected in the same commit:** `gates.json`'s `docker-digests` note still said "the six
+Dockerfiles and Compose files" and "11 pins" after round 108 added `scripts/run-e2e.mjs` to the
+gate's `FILES` array. Now seven files and 12 pins.
+
+**What remains:** refreshing the 7 drifted references themselves. Every current digest is
+re-derived and tabulated above, so it is a copy-paste — but it still needs a Docker daemon to
+build on the new bases, and this host has none. The workflow will now raise an issue weekly until
+someone does it, which is the alerting behaviour that was missing.
 ## Why nobody saw it
 
 The gate had **no live runner of any kind**. Its only caller was
