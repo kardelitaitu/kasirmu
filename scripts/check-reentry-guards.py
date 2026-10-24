@@ -148,7 +148,22 @@ re-derive these: each is protected, and the protection is named so the search en
                         sibling `restore_user` / `restore_role` were fixed in round 153 with a
                         per-key ref Set -- the same backend fact showing up on both sides of
                         the same lifecycle, which is why this list names commands and not
-                        screens.  * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
+                        screens.
+  * tax rate create -- SILENT DUPLICATION, the other arm of this class. `tax_rates` carries
+                        only `id TEXT PRIMARY KEY` (minted per call) and NO unique on `name`
+                        (20260813_init.sql), and `create_tax_rate` is a plain INSERT inside a
+                        transaction (db/tax/rates.rs:165-172) -- so the replay is NOT refused
+                        and the store ends up with two rates the merchant cannot tell apart,
+                        both selectable and both applicable to categories. Round 185 FIXED it
+                        with a ref in `commitSave`, the single write tail shared by the
+                        direct save and the tier-move continuation. Note the gate still lists
+                        `confirmTierMove`, because the ref lives in the function it CALLS and
+                        REF_GUARD_RE only reads the handler's own body -- a known limit of
+                        this reader, not an unguarded path.
+  * category tax rates -- IDEMPOTENT and left alone. `set_category_tax_rates` is
+                        DELETE-then-`INSERT OR IGNORE` over a PRIMARY KEY
+                        (category_id, tax_rate_id) (db/tax/assignments.rs:158-168), so a
+                        replay writes the same set twice and the second is a no-op.  * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
                         idempotent by construction: the same key is overwritten
 The point of the list is that it is SHORT: filtering to handlers that (a) await something
 other than a list/get read and (b) have a write-shaped name narrows ~143 raw busy-flag
