@@ -60,6 +60,15 @@ export default function IssueGiftCardModal({ sessionToken, onClose, onIssued }: 
   // ── Focus trap (Escape + Tab cycling) ─────────────────────
   useFocusTrap(panelRef, !exiting && !processing, handleClose);
 
+  // Re-entry guard. `processing` is React state and commits on the NEXT render, so the
+  // second dispatch of a real double tap still enters this handler. The replay is refused by
+  // `gift_cards.card_number` UNIQUE (20260813_init.sql), and `issueGiftCard` being the
+  // money-minting call this modal exists for, the catch then reports
+  // `gift-cards-error-issue`: the operator is told the card was NOT issued while the first
+  // tap already created it. Handing a customer a card the till says does not exist is the
+  // failure mode here, which is why this guard is required rather than defensive.
+  const submitPendingRef = useRef(false);
+
   const handleSubmit = async () => {
     // Currency-aware: "50" is $50.00 (5000 minor) on a 2-exponent currency and
     // Rp 50 (50 minor) on IDR. The old `/^\d+$/` + `parseInt` read the typed value as
@@ -75,6 +84,11 @@ export default function IssueGiftCardModal({ sessionToken, onClose, onIssued }: 
       setError(l10n.getString('gift-cards-issue-invalid-number'));
       return;
     }
+    // Taken AFTER validation on purpose: a refusal above returns without ever reaching the
+    // `finally` that clears the flag, so a guard placed earlier would be set and never
+    // released, leaving the form permanently unsaveable after one invalid attempt.
+    if (submitPendingRef.current) return;
+    submitPendingRef.current = true;
 
     setProcessing(true);
     setError('');
@@ -92,6 +106,7 @@ export default function IssueGiftCardModal({ sessionToken, onClose, onIssued }: 
     } catch (err) {
       setError(l10nErrorMessage(err, l10n, 'gift-cards-error-issue'));
     } finally {
+      submitPendingRef.current = false;
       setProcessing(false);
     }
   };

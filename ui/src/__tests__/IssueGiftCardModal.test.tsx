@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
@@ -119,6 +119,61 @@ describe('IssueGiftCardModal', () => {
     await vi.waitFor(() => {
       expect(onIssued).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('issues a card once for a double click while the first is in flight', async () => {
+    // Card numbers are UNIQUE, so the replay is refused -- and the refusal is reported as
+    // `gift-cards-error-issue`. On a money-minting call that reads as "the card was not
+    // issued" while the first tap already created it.
+    const mockIssue = issueGiftCard as ReturnType<typeof vi.fn>;
+    let releaseIssue: ((v: unknown) => void) | undefined;
+    mockIssue.mockImplementation(
+      () => new Promise((resolve) => { releaseIssue = resolve; }),
+    );
+    const onIssued = vi.fn();
+
+    renderWithFluentSync(<IssueGiftCardModal sessionToken="tok-1" onClose={vi.fn()} onIssued={onIssued} />, giftCardsFtl);
+    await userEvent.type(screen.getByLabelText('Initial amount'), '50000');
+
+    const issueBtn = screen.getByRole('button', { name: /issue card/i });
+    // fireEvent, not userEvent.click: userEvent awaits its own act(), which flushes the
+    // pending chain so the first issue would have settled and the clicks would never
+    // overlap. The disabled flag React set is dropped for the second click so the atomic
+    // guard is what is measured, not the DOM.
+    await act(async () => {
+      fireEvent.click(issueBtn);
+      issueBtn.removeAttribute('disabled');
+      fireEvent.click(issueBtn);
+    });
+
+    expect(
+      mockIssue.mock.calls.length,
+      'a double click on Issue Card called issueGiftCard twice; card_number is UNIQUE so ' +
+        'the second is refused and reported as an issue failure',
+    ).toBe(1);
+
+    releaseIssue?.(undefined);
+    await vi.waitFor(() => expect(onIssued).toHaveBeenCalledTimes(1));
+  });
+
+  it('does not strand the re-entry guard when validation refuses the submit', async () => {
+    // The guard is taken AFTER validation, so a rejected attempt must leave it clear.
+    // If the ordering is ever flipped, the first invalid submit would set the flag with no
+    // `finally` to clear it and the form could never be saved again.
+    const mockIssue = issueGiftCard as ReturnType<typeof vi.fn>;
+    mockIssue.mockResolvedValue(undefined);
+
+    renderWithFluentSync(<IssueGiftCardModal sessionToken="tok-1" onClose={vi.fn()} onIssued={vi.fn()} />, giftCardsFtl);
+
+    // Submit with no amount: refused before the guard, so nothing is sent.
+    await userEvent.click(screen.getByRole('button', { name: /issue card/i }));
+    expect(mockIssue).not.toHaveBeenCalled();
+
+    // Now a valid amount must still be able to issue.
+    await userEvent.type(screen.getByLabelText('Initial amount'), '50000');
+    await userEvent.click(screen.getByRole('button', { name: /issue card/i }));
+
+    await vi.waitFor(() => expect(mockIssue).toHaveBeenCalledTimes(1));
   });
 
   // ── the amount is in the STORE's currency ─────────────────────────────
