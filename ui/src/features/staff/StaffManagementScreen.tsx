@@ -441,12 +441,23 @@ export default function StaffManagementScreen() {
   // explicit: the member leaves every list the moment this returns, and the
   // only way back is the Trash tab.
 
+  // Re-entry guard. `deleting` is React state and commits on the NEXT render, so the second
+  // dispatch of a real double tap still enters this handler. `soft_delete_user` is a
+  // compare-and-set on `deleted_at IS NULL` (db/staff.rs:830-840), so the replay is REFUSED
+  // with "this member is already in the trash" -- and the bare catch below throws that away
+  // and toasts `staff-delete-failed`, telling the operator the delete failed on a member who
+  // is gone from every list. Taken after the two returns above, which never reach the
+  // `finally` that clears it.
+  const deletePendingRef = useRef(false);
+
   const confirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
     if (!sessionToken) {
       addToast({ message: l10n.getString('staff-delete-failed'), type: 'error' });
       return;
     }
+    if (deletePendingRef.current) return;
+    deletePendingRef.current = true;
     setDeleting(true);
     try {
       await deleteStaffScoped(sessionToken, deleteTarget.id);
@@ -459,6 +470,7 @@ export default function StaffManagementScreen() {
     } catch {
       addToast({ message: l10n.getString('staff-delete-failed'), type: 'error' });
     } finally {
+      deletePendingRef.current = false;
       setDeleting(false);
     }
   }, [deleteTarget, sessionToken, addToast, l10n, load]);

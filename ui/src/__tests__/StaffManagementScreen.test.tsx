@@ -1658,6 +1658,52 @@ describe('StaffManagementScreen trash', () => {
   });
 });
 
+
+// ── A double click on Confirm Delete must not send the delete twice ────
+//
+// `deleteStaffScoped` reaches `soft_delete_user`, a compare-and-set on `deleted_at IS
+// NULL` (db/staff.rs:830-840). The replay is therefore REFUSED with "this member is
+// already in the trash", and `confirmDelete`'s bare `catch {}` throws that away and toasts
+// `staff-delete-failed` — so the operator is told the delete failed on a member who is
+// already gone from every list and recoverable only from the Trash tab.
+it('sends one delete when the confirm is clicked twice while the first is in flight', async () => {
+  sessionPermissions.push('staff:delete');
+  let releaseDelete: (() => void) | undefined;
+  invokeMock.mockImplementation(((cmd: string) => {
+    if (cmd === 'delete_staff_scoped') {
+      return new Promise((resolve) => { releaseDelete = () => resolve(null); });
+    }
+    return defaultInvokeTable(cmd);
+  }) as never);
+
+  renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+  await waitForTable();
+
+  fireEvent.click(screen.getByTestId('staff-edit-staff-2'));
+  await screen.findByRole('dialog');
+  fireEvent.click(await screen.findByTestId('staff-delete-staff-2'));
+  const confirm = within(await screen.findByRole('dialog')).getByTestId('confirm-dialog-confirm');
+
+  // fireEvent twice inside one act(): `userEvent.click` awaits its own act(), which flushes
+  // the pending chain, so the first delete would have settled and the clicks would never
+  // overlap. The disabled attribute is dropped so the ref is what is measured, not the DOM.
+  await act(async () => {
+    fireEvent.click(confirm);
+    confirm.removeAttribute('disabled');
+    fireEvent.click(confirm);
+  });
+
+  const calls = invokeMock.mock.calls.filter(([c]) => c === 'delete_staff_scoped');
+  expect(
+    calls.length,
+    'a double click on Confirm Delete sent the delete twice; the CAS refuses the replay ' +
+      'and the operator is told it failed after the member was trashed',
+  ).toBe(1);
+
+  releaseDelete?.();
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument(), FAST_WAIT);
+});
+
 // ── Feedback paths and route entry (unpinned until these cases) ───────
 //
 // The suite above pins every IPC payload, every gate and every rendered
