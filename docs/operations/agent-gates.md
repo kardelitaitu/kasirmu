@@ -999,6 +999,49 @@ docstrings record a past bug and which no case ever called:
 docstring would make the suite red on a tree that is green, and "fixing" the code is a behaviour
 change nobody asked for. Pinning reality and naming the divergence is the only option that leaves
 the gate useful — the next reader learns the comment is optimistic rather than the gate broken.
+#### A census that can only see what it is given (round 115)
+
+`check-adr-status.py` grades the ADR index in `docs/decisions/README.md` against the files those
+rows name. It reported **0 findings across 59 rows** — and it was green while **three decision
+records had no row at all**: ADR-66 (ratified eight days earlier), the OPEN BRIDGE-7 gap record, and
+a new ADR-67. The index was 81 of 84 complete and nothing counted the missing three.
+
+**The defect is structural, not a bug.** The checker built its file map *from the rows*:
+`for _, _, path, _ in rows: files[path] = read(path)`. Every rule it applies starts from a row, so a
+record with no row is invisible by construction. It is the same anti-pattern as a self-test that
+grades a corpus of zero — a green whose subject was never gathered. The fix is the other half of the
+census: enumerate the files on disk and subtract the ones the table names.
+
+**And the fix's own first version was wrong in the way this file keeps recording.** Globbing
+`20*.md` reported **25 unlisted** files, and every one was a NON-ADR: six `.status.md` companions,
+four `research` notes that this README lists under a separate heading, and fifteen `phaseN` topology
+and sync implementation records. The scope had to come from the records' own contract — a file is an
+ADR when its front matter declares a numeric `num:` — which lands on exactly **0 unlisted**, and
+fires on exactly the right file when planted (remove the ADR-67 row and it names that one file).
+**A census that demands a row for a research note manufactures work rather than finding it.**
+
+**Also settled this round, and it changes a recommendation I made two rounds ago.** The `topology.rs`
+extraction is technically cleaner than I described and buys far less:
+
+| fact | measured | consequence |
+|---|---|---|
+| `foundation` already exists as the right home | no `kasirmu-core` dep, has `serde_json` | **no new crate needed** — my earlier framing was wrong |
+| the move touches | 5 artefacts incl. a parity gate's 6 hardcoded paths | more churn than "one file" |
+| it would shed | 684 lines = **1.7%** of 40,616 | a rounding error on the ratchet |
+| it would decouple | **nothing** — `kasirmu-api` uses 41 `kasirmu_core::` symbols across 39 files | the dependency survives untouched |
+| `db/` is | **27,481 lines = 67.7%** of the measured total | most of what the ratchet counts cannot move |
+
+That last row is the argument, and it is now **ADR-67** (`docs/decisions/2026-10-24-adr67-core-size-ratchet-measurement.md`,
+Proposed, needs a ruling): the single crate-wide ceiling adds an immovable database layer to a movable
+remainder, and only the remainder is what Phase 3 P3.4 was written about. The four raises on record
+moved it **+1,548 lines in five days** — each correctly attributed, which is precisely the problem:
+a ratchet raised correctly every time it fires is a changelog with a build step.
+
+**The lesson worth keeping:** I set out this round to write the ADR that ARGUES FOR the extraction,
+and measuring first turned it into the ADR that argues against it. The proposal survived; the
+conclusion inverted. That is the value of writing the measurement into the decision record rather
+than after it.
+
 #### The ungraded ceiling is ZERO, and a 500-line-stale range was hiding in it (round 114)
 
 Round 113 took `NOT graded` from 101 to 70. This round every remaining citation was classified,
