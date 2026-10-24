@@ -514,6 +514,12 @@ const catalogHandlers: Record<string, MockHandler> = {
   // ADR #38 D3: browser opening — dev-mock keeps window.open fallback
   // client-side; the real backend performs the open in production.
   'open_product_images_scoped': () => null,
+  // The tablet door (apps/mobile-tauri registers this, not the scoped twin).
+  // Both are answered here because the browser dev preview has no shell to
+  // switch on -- applyScopedAliases() only mirrors UNSCOPED -> _scoped, so this
+  // direction needs an explicit key (the same reason the scanner trio keeps its
+  // unscoped entries: see the T21 note in scripts/ipc-parity-allowlist.json).
+  'open_product_images': () => null,
 
   'lookup_product_by_sku': (args) => {
     const { sku } = args as { sku: string };

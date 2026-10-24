@@ -241,6 +241,10 @@ describe('RetailPosScreen — ADR #36/#37/#38', () => {
 
   it('right-click opens the row context menu; images action fires the opener (ADR #38)', async () => {
     const browserApi = await import('@/api/browser');
+    // The screen guards the site on isTabletShell() and calls one of two wrappers
+    // (see productImagesDoorPerShell.test.ts). This suite runs as the desktop, so
+    // the scoped door is the one that fires; spying on the tablet door would pass
+    // while the desktop path broke.
     const openSpy = vi.spyOn(browserApi, 'openProductImagesScoped').mockResolvedValue(true);
 
     await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);

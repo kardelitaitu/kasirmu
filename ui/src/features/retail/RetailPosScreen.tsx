@@ -22,7 +22,7 @@ import { useFeatures, FEATURES } from '@/hooks/useFeatures';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { lookupProductBySkuScoped, lookupByBarcodeScoped, createProductScoped, createCategoryScoped, updateProductScoped, adjustStockScoped, recordProductSearchScoped, type ProductDto, type CategoryDto } from '@/api/products';
 import { hasGrantedPermission } from '@/registries/page-registry';
-import { openProductImages, openProductImagesScoped } from '@/api/browser';
+import { openProductImagesOnTablet, openProductImagesScoped } from '@/api/browser';
 import { isTabletShell } from '@/utils/shellKind';
 import { loadCatalog, invalidateCatalog } from '@/utils/catalog-cache';
 import { usePagedList } from '@/hooks/usePagedList';
@@ -880,16 +880,19 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     // ADR #38 D3: opens the OS default browser in a new tab at a Google
     // Images search for the product name (+ brand). Best-effort.
     //
-    // TWO DOORS, because each shell registers only one (measured 2026-10-25):
-    // the desktop registers the store-scoped twin, and the tablet registers
-    // `open_product_images`, a global-db read whose own module doc names the
-    // desktop command as the other half. Calling the scoped twin on tablet
-    // threw, and the wrapper's catch turned that into a search on the raw SKU
-    // -- a worse query than the name+brand the backend builds, and silent.
-    // Guarded at the call site with the C47 idiom (if/else on the shell), the
-    // same shape UpdateSettingsCard uses for the Android-only updater legs.
+    // TWO DOORS, one per shell (measured 2026-10-25): the desktop registers the
+    // store-scoped twin; the tablet registers `open_product_images`, a global-db
+    // read whose own module doc names the desktop command as the other half.
+    // Neither shell registers both. Calling the scoped twin on tablet threw, and
+    // the catch turned that into a search on the raw SKU -- a worse query than
+    // the name+brand the backend builds, and silent.
+    //
+    // The guard is at the SITE, not inside a shared wrapper, because
+    // `verify-scoped-reads.py` follows a wrapper to its call sites and grades the
+    // site: a branch one module down is invisible to it, and a tablet-only
+    // command reached unguarded from a shared screen is the C40 shape.
     if (isTabletShell()) {
-      openProductImages(p.sku).catch(() => {});
+      openProductImagesOnTablet(p.sku).catch(() => {});
     } else {
       openProductImagesScoped(sessionToken, p.sku).catch(() => {});
     }

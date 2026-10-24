@@ -1,57 +1,53 @@
 // ── Each shell registers ONE product-images door, and the screen must pick it ──
 //
 // Measured 2026-10-25: `open_product_images_scoped` has ZERO registrations under
-// apps/mobile-tauri (`grep -rn open_product_images_scoped apps/mobile-tauri` returns
-// only two DOC COMMENTS naming the desktop half). RetailPosScreen called it
-// unconditionally, so on the tablet every View-images tap threw and the wrapper's
-// catch fell through to a search on the raw SKU -- a worse query than the name+brand
-// the backend builds, and silent because the call site swallowed the rejection.
+// apps/mobile-tauri (lib.rs registers `open_product_images` at :1204), and
+// `open_product_images` has ZERO under apps/desktop-tauri (lib.rs registers the
+// scoped twin at :1632). Neither shell registers both.
 //
-// This pins the split at the CALL SITE, which is where the C47 idiom lives. Asserting
-// that the guard exists would be satisfied by a guard in the wrong arm; asserting
-// which wrapper each shell reaches cannot be.
+// RetailPosScreen called the scoped twin unconditionally, so on the tablet every
+// View-images tap threw and the catch degraded to a search on the raw SKU -- a
+// worse query than the name+brand the backend builds, and silent.
+//
+// Two facts are pinned, and they are different:
+//   1. each wrapper invokes ITS OWN command with the args that command takes;
+//   2. the screen guards the site and routes each shell to its own wrapper.
+// Fact 1 alone would pass while the screen called the wrong door; fact 2 alone
+// would pass while a wrapper named the wrong command.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const shell = vi.hoisted(() => ({ tablet: false }));
-vi.mock('@/utils/shellKind', () => ({
-  isTabletShell: () => shell.tablet,
-  isDesktopShell: () => !shell.tablet,
-  getShellKind: () => (shell.tablet ? 'tablet' : 'desktop'),
-  setShellKind: () => {},
+const invokes = vi.hoisted(() => ({ calls: [] as Array<{ cmd: string; args: unknown }> }));
+vi.mock('@/utils/logged-invoke', () => ({
+  loggedInvoke: async (cmd: string, args: unknown) => {
+    invokes.calls.push({ cmd, args });
+    return undefined;
+  },
 }));
+vi.mock('@/api/tauri', () => ({ isTauriWebview: () => false }));
 
-const invoked = vi.hoisted(() => ({ commands: [] as string[] }));
-vi.mock('@/api/browser', async (importOriginal) => {
-  const actual: Record<string, unknown> = await importOriginal();
-  return {
-    ...actual,
-    openProductImagesScoped: vi.fn(async (_t: string, sku: string) => {
-      invoked.commands.push(`scoped:${sku}`);
-      return true;
-    }),
-    openProductImages: vi.fn(async (sku: string) => {
-      invoked.commands.push(`unscoped:${sku}`);
-      return true;
-    }),
-  };
-});
+import { openProductImagesOnTablet, openProductImagesScoped } from '@/api/browser';
 
-describe('product images door per shell', () => {
+describe('product images: one door per shell', () => {
   beforeEach(() => {
-    invoked.commands.length = 0;
+    invokes.calls.length = 0;
   });
 
-  it('the api layer exposes BOTH doors', async () => {
-    const mod = await import('@/api/browser');
-    expect(typeof mod.openProductImages).toBe('function');
-    expect(typeof mod.openProductImagesScoped).toBe('function');
+  it('the desktop door invokes the store-scoped command with the token', async () => {
+    await openProductImagesScoped('tok', 'SKU-1');
+    expect(invokes.calls.map((c) => c.cmd)).toEqual(['open_product_images_scoped']);
+    expect(invokes.calls[0]?.args).toEqual({ sessionToken: 'tok', sku: 'SKU-1' });
   });
 
-  // The real assertion: read the source of the branch. RetailPosScreen cannot be
-  // mounted here without a full POS fixture, so the fact under test is the SHAPE
-  // of the shell split, which is exactly what regressed.
-  it('guards the call site on the shell and routes each to its own door', async () => {
+  it('the tablet door invokes the command the tablet actually registers', async () => {
+    await openProductImagesOnTablet('SKU-1');
+    expect(invokes.calls.map((c) => c.cmd)).toEqual(['open_product_images']);
+    // No session token: the tablet command takes only the sku. Asserting its
+    // ABSENCE is what stops a future "unify the signatures" edit re-breaking this.
+    expect(invokes.calls[0]?.args).toEqual({ sku: 'SKU-1' });
+  });
+
+  it('the screen guards the site and routes each shell to its own door', async () => {
     const fs = await import('node:fs');
     const path = await import('node:path');
     const src = fs.readFileSync(
@@ -61,8 +57,7 @@ describe('product images door per shell', () => {
     const at = src.indexOf('const handleViewProductImages');
     expect(at).toBeGreaterThan(-1);
     const body = src.slice(at, src.indexOf('}, [sessionToken]);', at));
-    // The tablet arm calls the unscoped door; the else arm calls the scoped twin.
-    expect(body).toMatch(/if \(isTabletShell\(\)\) \{\s*\n\s*openProductImages\(/);
+    expect(body).toMatch(/if \(isTabletShell\(\)\) \{\s*\n\s*openProductImagesOnTablet\(/);
     expect(body).toMatch(/\} else \{\s*\n\s*openProductImagesScoped\(/);
   });
 });
