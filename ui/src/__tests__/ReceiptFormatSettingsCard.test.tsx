@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 import { ReceiptFormatSettingsCard } from '@/features/settings/screens/ReceiptFormatSettingsCard';
 import settingsFtl from '@/locales/settings.ftl?raw';
@@ -99,6 +99,29 @@ describe('ReceiptFormatSettingsCard statutory-content editor', () => {
     expect(args.requiredFields).toContain('items');
     expect(args.requiredFields).toContain('store_name');
     expect(args.requiredFields).toContain('tax_id');
+  });
+
+  it('writes once per document when each save button is double-tapped', async () => {
+    // Both saves are last-write-wins over their own keys, so a replay cannot corrupt the
+    // stored format. What it CAN do is share one \`saveError\` / \`saved\` pair between two
+    // in-flight writes and show the operator the failure of the tap that raced. Each save
+    // carries its own ref, so neither can block the other.
+    renderCard();
+    await screen.findByLabelText('Footer text');
+
+    const contentBtn = screen.getByRole('button', { name: 'Save statutory content' });
+    await act(async () => {
+      fireEvent.click(contentBtn);
+      fireEvent.click(contentBtn);
+    });
+    await waitFor(() => expect(mocks.setContent).toHaveBeenCalledTimes(1));
+
+    const layoutBtn = screen.getByRole('button', { name: 'Save receipt format' });
+    await act(async () => {
+      fireEvent.click(layoutBtn);
+      fireEvent.click(layoutBtn);
+    });
+    await waitFor(() => expect(mocks.setLayout).toHaveBeenCalledTimes(1));
   });
 
   it('renders both save actions distinctly', async () => {
