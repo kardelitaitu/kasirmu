@@ -238,11 +238,24 @@ def bundle_keys() -> set[str]:
 
 
 def _fallback_shape(text: str) -> str:
-    """How a miss resolves: back onto the raw id, or not at all."""
-    for m in re.finditer(r"\[id\]\s*(?:\?\?|\|\|)\s*([^;\n,)]+)", text):
-        if m.group(1).strip() in ("id", "key", "k"):
+    """How a miss resolves: back onto the raw key, or not at all.
+
+    The lookup is indexed by WHATEVER the stub names its parameter. This branch
+    used to match a literal `[id]`, so a stub written `lookup[key] ?? key` --
+    the same fallback, one renaming away -- fell through to the `return` arm,
+    whose guards reject any `[` and therefore returned ''. Four files were
+    therefore never judged: TerminalStatusPanel.test.tsx and its neighbours
+    were invisible to the gate for a variable name.
+    """
+    for m in re.finditer(r"\[(\w+)\]\s*(?:\?\?|\|\|)\s*([^;\n,)]+)", text):
+        if m.group(2).strip() == m.group(1):
             return m.group(0)
-        return ""
+        # NOT a short-circuit. Returning '' on the first non-matching hit let a
+        # FORMATTING expression veto a real fallback further down: SessionLockScreen
+        # substitutes placeholders with `vars[key] ?? `{$${key}}``, that match is not
+        # a raw-key fallback, and the early return hid the `return result || id`
+        # eight lines below it. The scan must keep looking.
+        continue
     for m in re.finditer(r"return\s+([^;\n]+)", text):
         rhs = m.group(1).strip()
         # The identifier must be a BRACKET-LESS bare `id`. `formattedKey(id)` and

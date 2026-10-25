@@ -1,6 +1,6 @@
 {
   "description": "see --write-baseline",
-  "total": 581,
+  "total": 594,
   "entries": [
     {
       "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
@@ -1581,6 +1581,71 @@
       "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
       "key": "tp-trigger-wrapping",
       "used_by": "used-by TooltipPreview.tsx:227"
+    },
+    {
+      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:33",
+      "key": "topology-rev-browser-close",
+      "used_by": "used-by TopologyRevisionBrowser.tsx:252"
+    },
+    {
+      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:33",
+      "key": "topology-rev-browser-counts",
+      "used_by": "used-by TopologyRevisionBrowser.tsx:301"
+    },
+    {
+      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:33",
+      "key": "topology-rev-browser-deflated-body",
+      "used_by": "used-by TopologyRevisionBrowser.tsx:391"
+    },
+    {
+      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:33",
+      "key": "topology-rev-browser-deflated-remedy",
+      "used_by": "used-by TopologyRevisionBrowser.tsx:401"
+    },
+    {
+      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:33",
+      "key": "topology-rev-browser-detail-title",
+      "used_by": "used-by TopologyRevisionBrowser.tsx:388"
+    },
+    {
+      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:33",
+      "key": "topology-rev-browser-diff-summary",
+      "used_by": "used-by TopologyRevisionBrowser.tsx:441"
+    },
+    {
+      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:33",
+      "key": "topology-rev-browser-geometry",
+      "used_by": "used-by TopologyRevisionBrowser.tsx:430"
+    },
+    {
+      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:33",
+      "key": "topology-rev-browser-loading",
+      "used_by": "used-by TopologyRevisionBrowser.tsx:260"
+    },
+    {
+      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:33",
+      "key": "topology-rev-browser-loading-one",
+      "used_by": "used-by TopologyRevisionBrowser.tsx:377"
+    },
+    {
+      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:33",
+      "key": "topology-rev-browser-not-found",
+      "used_by": "used-by TopologyRevisionBrowser.tsx:410"
+    },
+    {
+      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:33",
+      "key": "topology-rev-browser-old-contract",
+      "used_by": "used-by TopologyRevisionBrowser.tsx:471"
+    },
+    {
+      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:33",
+      "key": "topology-rev-browser-restore-aria",
+      "used_by": "used-by TopologyRevisionBrowser.tsx:493"
+    },
+    {
+      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:33",
+      "key": "topology-rev-browser-title",
+      "used_by": "used-by TopologyRevisionBrowser.tsx:246"
     },
     {
       "at": "ui/src/__tests__/WorkspaceInventorySettings.test.tsx:74",
