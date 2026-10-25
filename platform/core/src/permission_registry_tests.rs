@@ -666,7 +666,66 @@ fn registry_error_is_send_and_sync() {
     assert_send_sync::<RegistryError>();
 }
 
-// // ── Tier boundary: the gift-card family is owner-only ────────────
+//
+/// Only the Owner preset may carry the global wildcard `"*"`.
+///
+/// This is the single highest-leverage grant in the system: `grant_matches`
+/// returns true when `grant == "*"` for ANY required key, so a preset holding it
+/// is a full-access role regardless of which individual keys it also lists. The
+/// Owner preset is exactly that -- `permissions: &["*"]` at rbac_presets.rs:75,
+/// with no other key -- and `validate_grant("*", allow_global)` exists to make
+/// the OTHER direction refusable (rbac.rs:682 returns GlobalWildcardDenied).
+///
+/// Nothing checked the direction that matters at seed time. `seed_default_roles`
+/// (crates/kasirmu-core/src/db/staff.rs:72-95) writes every preset's permission
+/// JSON straight to the roles table, and the only preset-wide test
+/// (`every_preset_permission_is_registered_and_enforced`) SKIPS `"*"` as
+/// "special token, not a registered key" -- so a wildcard added to the Staff
+/// preset would have passed every check in this file while giving every cashier
+/// the whole permission space.
+///
+/// Both halves are asserted. The positive half keeps the Owner preset honest:
+/// if a refactor dropped its wildcard, Owner would silently become a role with
+/// whatever individual keys happened to remain, and nobody would notice until a
+/// real owner could not edit settings.
+#[test]
+fn only_the_owner_preset_carries_the_global_wildcard() {
+    for preset in crate::rbac::ROLE_PRESETS {
+        let holds_wildcard = preset.permissions.contains(&"*");
+        if preset.id == crate::rbac::builtin_roles::OWNER {
+            assert!(
+                holds_wildcard,
+                "the Owner preset must carry \"*\" -- without it the role is not full access"
+            );
+        } else {
+            assert!(
+                !holds_wildcard,
+                "preset '{}' carries the global wildcard, which makes it a full-access role",
+                preset.id
+            );
+        }
+    }
+}
+
+/// The Owner preset's wildcard is the ONLY thing it grants: it lists no
+/// individual keys. Stated as a test because a mixed preset (`["*", "x"]`) hides
+/// an intent -- a reader cannot tell whether `x` is deliberate or left over, and
+/// deleting `*` would leave `x` behind looking like a considered grant.
+#[test]
+fn the_owner_preset_grants_the_wildcard_and_nothing_else() {
+    for preset in crate::rbac::ROLE_PRESETS {
+        if preset.id == crate::rbac::builtin_roles::OWNER {
+            assert_eq!(
+                preset.permissions.len(),
+                1,
+                "Owner must grant exactly the wildcard, found {:?}",
+                preset.permissions
+            );
+            assert_eq!(preset.permissions[0], "*");
+        }
+    }
+}
+// ── Tier boundary: the gift-card family is owner-only ────────────
 
 /// No built-in preset may grant a `giftcards:*` key.
 ///
