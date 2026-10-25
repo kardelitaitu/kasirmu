@@ -150,6 +150,26 @@ this round verified at source, each documented in `todo-gift-card-redemption-ord
 None of that is UI glue. It is a migration, an RBAC change and a settlement-contract decision --
 each an owner call under AGENTS.md.
 
+**NARROWED 2026-10-25 (round 202): the settlement-contract decision is made, by precedent.**
+`PaymentModal` already redeems loyalty points AFTER `completeSaleScoped` in the same
+post-checkout block, from two call sites (`PaymentModal.tsx:1190` direct and `:1834` gateway),
+both reading the `saleId` that only exists after the sale commits — so the "there is no saleId
+yet" objection in the sibling plan is answered by code that ships today. The failure discipline
+is answered too: the redemption is non-blocking for the sale and raises a WARNING toast naming
+the leak, and `PaymentModalSaleFlow.test.tsx` drives BOTH paths with the redemption rejected and
+asserts the toast appears plus `redeemAttempted` so the case cannot pass on a redemption that
+never ran.
+
+The RBAC half also has a ruling, and it is the interesting one: `LOYALTY_REDEEM` is in the STAFF
+preset (`rbac_presets.rs:184`) while `GIFTCARDS_REDEEM` is granted only to MANAGER/ADMIN/OWNER
+(`:419`). A cashier may take money in against a customer's debt or points and may not touch a
+gift card. **That is a deliberate asymmetry and it means the RBAC row is not "add it to Staff" —
+it is "confirm the asymmetry", which is a yes/no an owner can answer.**
+
+So what remains is what the sibling plan now says: one migration (`payments.method` has no gift
+member) plus one settlement decision, and the shape to copy is `PaymentModal.tsx:1190` with its
+toast.
+
 ## Where the evidence is unambiguous, and why that is still not a deletion'
 
 Three rows carry no open question: `useMediaQuery.ts` has no consumer and no IPC; `CartScreen.tsx`
