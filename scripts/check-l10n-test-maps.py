@@ -320,6 +320,12 @@ def addresses_by_key(body: str, keys_absent_from_maps: set[str]) -> int:
     return len(set(found))
 
 
+def _closes_literal(line: str) -> bool:
+    """True when this line ends the object literal a key run belongs to."""
+    t = line.strip()
+    return t in ("};", "}", "},", "});", "));") or t.startswith("}; ")
+
+
 def find_maps(text: str) -> list[dict]:
     """Every hand-maintained key->string map in a test file."""
     lines = text.split("\n")
@@ -330,9 +336,26 @@ def find_maps(text: str) -> list[dict]:
         run_start = i
         run_end = i
         while run_end + 1 < len(hits):
-            if hits[run_end + 1][0] - hits[run_end][0] > KEY_BLOCK_GAP + 1:
-                break
+            gap = hits[run_end + 1][0] - hits[run_end][0]
+            if gap > KEY_BLOCK_GAP + 1:
+                # A comment block does not end a literal. Inserting five lines of
+                # explanation inside a map split a 26-key object into 10 + 16 and
+                # made keys documented in one half look MISSING from the other.
+                between = lines[hits[run_end][0] + 1 : hits[run_end + 1][0]]
+                if any(_closes_literal(b) for b in between):
+                    break
+                if not any(b.strip() for b in between):
+                    break
             run_end += 1
+        # A run is bounded by OTHER CODE, not by line count alone. Inserting an
+        # ordinary explanatory comment inside a map split it into two maps -- a
+        # 26-key object became 10 + 16 -- so keys documented in one half looked
+        # MISSING from the other, and the gate reported holes that were present.
+        while run_end > run_start and any(
+            _closes_literal(lines[i])
+            for i in range(hits[run_end - 1][0] + 1, hits[run_end][0])
+        ):
+            run_end -= 1
         if run_end - run_start + 1 < MIN_RUN_LINES:
             i = run_end + 1
             continue

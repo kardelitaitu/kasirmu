@@ -970,7 +970,11 @@ describe('NodeTopologyEditor — connected wire label', () => {
     const wires = document.querySelectorAll('.wire-group');
     const last = wires[wires.length - 1]!;
     const title = last.querySelector('.wire-hitbox title');
-    expect(title?.textContent).toContain('topology-wire-label-connected');
+    // Assert the COPY, not the key. This line read
+    //   toContain('topology-wire-label-connected')
+    // and passed only because the harness map did not carry the key, so the
+    // component rendered its own id: it was asserting the defect.
+    expect(title?.textContent).toContain('Connected');
   });
 });
 

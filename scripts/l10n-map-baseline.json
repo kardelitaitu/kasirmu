@@ -1,6 +1,6 @@
 {
   "description": "see --write-baseline",
-  "total": 608,
+  "total": 594,
   "entries": [
     {
       "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
@@ -2526,76 +2526,6 @@
       "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
       "key": "workspace-type-selector-label",
       "used_by": "used-by topologyInspectorDrawer.tsx:162"
-    },
-    {
-      "at": "ui/src/__tests__/nodeTopologyEditorCore.test.tsx:29",
-      "key": "topology-canvas-aria-label",
-      "used_by": "used-by NodeTopologyEditor.tsx:2199"
-    },
-    {
-      "at": "ui/src/__tests__/nodeTopologyEditorCore.test.tsx:29",
-      "key": "topology-hud-nodes",
-      "used_by": "used-by NodeTopologyEditor.tsx:2418"
-    },
-    {
-      "at": "ui/src/__tests__/nodeTopologyEditorCore.test.tsx:29",
-      "key": "topology-hud-wires",
-      "used_by": "used-by NodeTopologyEditor.tsx:2420"
-    },
-    {
-      "at": "ui/src/__tests__/nodeTopologyEditorCore.test.tsx:29",
-      "key": "topology-layout-announce",
-      "used_by": "used-by NodeTopologyEditor.tsx:1263"
-    },
-    {
-      "at": "ui/src/__tests__/nodeTopologyEditorCore.test.tsx:29",
-      "key": "topology-relationship-generic",
-      "used_by": "used-by NodeTopologyEditor.tsx:882"
-    },
-    {
-      "at": "ui/src/__tests__/nodeTopologyEditorCore.test.tsx:29",
-      "key": "topology-status-selection",
-      "used_by": "used-by NodeTopologyEditor.tsx:2424"
-    },
-    {
-      "at": "ui/src/__tests__/nodeTopologyEditorCore.test.tsx:29",
-      "key": "topology-wire-label-connected",
-      "used_by": "used-by NodeTopologyEditor.tsx:892"
-    },
-    {
-      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:29",
-      "key": "topology-canvas-aria-label",
-      "used_by": "used-by NodeTopologyEditor.tsx:2199"
-    },
-    {
-      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:29",
-      "key": "topology-hud-nodes",
-      "used_by": "used-by NodeTopologyEditor.tsx:2418"
-    },
-    {
-      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:29",
-      "key": "topology-hud-wires",
-      "used_by": "used-by NodeTopologyEditor.tsx:2420"
-    },
-    {
-      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:29",
-      "key": "topology-layout-announce",
-      "used_by": "used-by NodeTopologyEditor.tsx:1263"
-    },
-    {
-      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:29",
-      "key": "topology-relationship-generic",
-      "used_by": "used-by NodeTopologyEditor.tsx:882"
-    },
-    {
-      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:29",
-      "key": "topology-status-selection",
-      "used_by": "used-by NodeTopologyEditor.tsx:2424"
-    },
-    {
-      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:29",
-      "key": "topology-wire-label-connected",
-      "used_by": "used-by NodeTopologyEditor.tsx:892"
     },
     {
       "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",

@@ -1275,7 +1275,11 @@ describe('NodeTopologyEditor — wire click keeps an in-flight connection', () =
     const wires = document.querySelectorAll('.wire-group');
     const created = wires[wires.length - 1]!;
     const title = created.querySelector('.wire-hitbox title');
-    expect(title?.textContent).toContain('topology-wire-label-connected');
+    // Assert the COPY, not the key. This line read
+    //   toContain('topology-wire-label-connected')
+    // and passed only because the harness map did not carry the key, so the
+    // component rendered its own id: it was asserting the defect.
+    expect(title?.textContent).toContain('Connected');
   });
 
   it('keeps the connection in flight when the cycle is undone (history push is orthogonal)', () => {

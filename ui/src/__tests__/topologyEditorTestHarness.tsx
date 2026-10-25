@@ -36,6 +36,18 @@ export const TOPOLOGY_EN: Record<string, string> = {
   'topology-new-hardware-subtitle': 'Peripheral',
   'topology-new-ready': 'Ready',
   'topology-workspace-types-title': 'Workspace Types',
+  // Copy the canvas renders through l10n.getString that this map never carried.
+  // No case in the suites that use this harness asserts them, so they were silent:
+  // the canvas aria-label and the HUD counters rendered as raw ids.
+  // The two plural messages are written FLAT because this stub substitutes
+  // {count} and does not evaluate select expressions.
+  'topology-canvas-aria-label': 'Topology editor canvas. Use arrow keys to nudge selected nodes, Ctrl+Z to undo.',
+  'topology-hud-nodes': '{count} nodes',
+  'topology-hud-wires': '{count} wires',
+  'topology-layout-announce': 'Topology arranged automatically',
+  'topology-relationship-generic': 'Generic',
+  'topology-status-selection': '{count} selected',
+  'topology-wire-label-connected': 'Connected',
   'topology-other-nodes-title': 'Other Nodes',
   'topology-tool-restaurant-pos': '+ Restaurant POS',
   'topology-tool-restaurant-pos-desc': 'Restaurant checkout workspace',
