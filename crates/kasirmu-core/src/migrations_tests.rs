@@ -4087,6 +4087,36 @@ fn payments_method_check_and_gateway_status_constraints_enforced() {
             "invalid method {invalid} must be rejected by CHECK constraint"
         );
     }
+    // The gift-card tender is deliberately ABSENT from the CHECK, and saying so
+    // here is the mechanical half of a three-part blocker. `GiftCardPayment.tsx`
+    // is a complete tender panel that nothing mounts because a gift payment
+    // cannot be recorded: this constraint refuses every spelling an author is
+    // likely to try. Round 217 added these to the invalid arm -- before that the
+    // list held only `bitcoin`, `cheque`, `stripe_direct`, `CASH` and the empty
+    // string, so a migration that SMUGGLED a gift member in would have kept the
+    // suite green and quietly unblocked one third of the record.
+    //
+    // WHICH FILE OWNS THE CONSTRAINT is not obvious and was measured: the method
+    // list appears in BOTH 20261017_payments_method_check.sql and
+    // 20261018_gateway_status_adr64_vocabulary.sql, and the later one REBUILDS the
+    // table, so 20261018 is the live definition. The first mutation probe added
+    // 'gift' to 20261017 and this test stayed GREEN -- a mutation that proves
+    // nothing if you read its colour instead of its target. Adding it to 20261018
+    // reddens exactly this assert. Any future change to the method set has to
+    // touch the latest rebuild, not the earliest statement of it.
+    for gift_spelling in ["gift", "gift_card", "giftcard", "gift_cards"] {
+        let res = conn.execute(
+            "INSERT INTO payments (id, sale_id, method, amount_minor, currency, created_at)
+             VALUES (?1, 'sale-pm-test', ?2, 1000, 'IDR', '2026-10-02T00:00:00.000Z')",
+            rusqlite::params![format!("pay-gift-{gift_spelling}"), gift_spelling],
+        );
+        assert!(
+            res.is_err(),
+            "{gift_spelling} must be REFUSED by the method CHECK: gift-card redemption is \
+             constrained to stay impossible until the migration, the RBAC grant and the \
+             settlement contract are decided together"
+        );
+    }
 
     // ADR-64 D4's decided set, not the set 20261017 happened to ship. The two
     // diverged (20261018 repaired it): the migration omitted 'voided',
