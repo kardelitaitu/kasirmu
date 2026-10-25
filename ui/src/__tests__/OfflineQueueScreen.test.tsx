@@ -578,6 +578,29 @@ describe('OfflineQueueScreen', () => {
     expect(screen.queryByText(/Synced undefined/)).toBeNull();
   });
 
+  it('drains the queue once when Sync All is double-tapped', async () => {
+    // retry_offline_sync is safe to replay, but two in-flight runs share one `syncResult`
+    // and one `error`: the operator can be shown the loser's outcome, or an error over a
+    // sync that succeeded, while the first run is still draining.
+    mockListAllOffline.mockResolvedValue([makeQueueItem()]);
+    mockPendingOfflineCount.mockResolvedValue(1);
+    let release: (() => void) | undefined;
+    mockRetryOfflineSync.mockReturnValue(new Promise((res) => {
+      release = () => res({ syncedCount: 1, failedCount: 0, totalCount: 1 });
+    }));
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Sync All')).not.toBeDisabled());
+
+    const btn = screen.getByText('Sync All').closest('button') as HTMLButtonElement;
+    await act(async () => {
+      btn.click();
+      btn.click();
+    });
+
+    release?.();
+    await waitFor(() => expect(mockRetryOfflineSync).toHaveBeenCalledTimes(1));
+  });
+
   it('shows the localized plan-required prompt instead of a fake success on Sync All (ADR sync-plan-gating)', async () => {
     // A free tenant's retry_offline_sync resolves with planRequired:true.
     // The screen must surface the upgrade prompt — never a misleading

@@ -145,6 +145,10 @@ export default function OfflineQueueScreen({ embedded = false }: OfflineQueueScr
   const [error, setError] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState<number>(0);
   const [syncing, setSyncing] = useState(false);
+  /** Synchronous mirror of `syncing` — see the re-entry guard in `handleSyncAll`. */
+  const syncingRef = useRef(false);
+  /** Item ids whose requeue is in flight — see the per-row guard in `handleRequeue`. */
+  const requeuePendingRef = useRef(new Set<string>());
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [conflictCount, setConflictCount] = useState<number>(0);
@@ -292,6 +296,12 @@ export default function OfflineQueueScreen({ embedded = false }: OfflineQueueScr
   // ── Sync all ──────────────────────────────────────────────────
 
   const handleSyncAll = useCallback(async () => {
+    // Re-entry guard. retry_offline_sync is safe to replay (an empty queue returns Ok and
+    // a duplicate-id rejection is folded into success), but two in-flight runs share one
+    // `syncResult` and one `error`, so the operator is shown the loser's outcome -- or an
+    // error over a sync that succeeded -- while the first run is still draining the queue.
+    if (syncingRef.current) return;
+    syncingRef.current = true;
     setSyncing(true);
     setSyncResult(null);
     try {
@@ -301,6 +311,7 @@ export default function OfflineQueueScreen({ embedded = false }: OfflineQueueScr
     } catch {
       setError(l10n.getString('offline-queue-sync-error'));
     } finally {
+      syncingRef.current = false;
       setSyncing(false);
     }
   }, [load, l10n, sessionToken]);
@@ -308,12 +319,18 @@ export default function OfflineQueueScreen({ embedded = false }: OfflineQueueScr
   // ── Requeue dead-lettered remote item ─────────────────────────
 
   const handleRequeue = useCallback(async (itemId: string) => {
+    // Per-ROW guard, not a global flag: two DIFFERENT items must requeue concurrently. The
+    // requeue is a status change on one dead-lettered row, so a replay only re-reports.
+    if (requeuePendingRef.current.has(itemId)) return;
+    requeuePendingRef.current.add(itemId);
     setRequeueError(null);
     try {
       await requeueRemoteFailureScoped(sessionToken, itemId);
       await load();
     } catch {
       setRequeueError(l10n.getString('offline-queue-quarantine-requeue-error'));
+    } finally {
+      requeuePendingRef.current.delete(itemId);
     }
   }, [load, l10n, sessionToken]);
 
