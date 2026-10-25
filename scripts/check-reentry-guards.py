@@ -211,7 +211,16 @@ re-derive these: each is protected, and the protection is named so the search en
                         the next click, so the second tap is on a really disabled button. Measured
                         round 186: the handler ran ONCE for two fireEvent.click()s, and a ref added
                         above it changed nothing -- a mutation that disabled the ref left the case
-                        green, which is how the redundancy showed itself. The general rule this
+                        green, which is how the redundancy showed itself.
+                        RE-VERIFIED round 203 with the mutation that matters: setting the button's
+                        `disabled={false}` makes `test/locations` fail on the SECOND tap
+                        (`the confirm button stayed enabled while the delete was in flight`), so the
+                        characterization is load-bearing rather than decorative. The same round
+                        repaired the case itself: it used to click the SAME captured node twice,
+                        which cannot fail because the first click re-renders the rail and detaches
+                        that node -- a `fireEvent` on a detached button reaches no handler. It now
+                        RE-QUERIES between taps, which is the only arrangement that reaches the real
+                        control a second time. The general rule this
                         sharpens: a handler whose BUSY FLAG is rendered as the trigger's `disabled`
                         is already gated by React's discrete-event flush; one whose trigger is only
                         `loading`/`state` styled needs a ref, because the second click lands before
