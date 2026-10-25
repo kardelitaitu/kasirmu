@@ -441,6 +441,29 @@ describe('StaffManagementScreen', () => {
     }, FAST_WAIT);
   });
 
+  it('restores an inactive member ONCE when Restore is double-tapped', async () => {
+    // The reactivate path has no confirmation dialog: nothing but the guard stands between
+    // a double tap and two `update_staff_scoped` calls, each computing
+    // `is_active: !member.is_active` from the same stale row.
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+    fireEvent.click(screen.getByTestId('staff-edit-staff-2'));
+
+    const restoreBtn = await screen.findByTestId('staff-toggle-active-staff-2');
+    act(() => {
+      fireEvent.click(restoreBtn);
+      fireEvent.click(restoreBtn);
+    });
+
+    await waitFor(() => {
+      const calls = invokeMock.mock.calls.filter(
+        (c: unknown[]) => c[0] === 'update_staff_scoped'
+          && (c[1] as { args?: { id?: string } })?.args?.id === 'staff-2',
+      );
+      expect(calls, 'a double tap restored the member twice').toHaveLength(1);
+    }, FAST_WAIT);
+  });
+
   it('closes the add modal when Escape is pressed', async () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();

@@ -161,6 +161,8 @@ export default function StaffManagementScreen() {
   const [confirmTarget, setConfirmTarget] = useState<StaffMemberDto | null>(null);
   /** STAFF-10: true while the confirmed deactivation request is in flight. */
   const [deactivating, setDeactivating] = useState(false);
+  /** Synchronous mirror of `deactivating`, shared by the confirm and the reactivate path. */
+  const deactivatingRef = useRef(false);
   /** The inactive member awaiting deletion confirmation. */
   const [deleteTarget, setDeleteTarget] = useState<StaffMemberDto | null>(null);
   /** True while the confirmed delete request is in flight. */
@@ -397,7 +399,11 @@ export default function StaffManagementScreen() {
     if (member.is_active) {
       setConfirmTarget(member);
     } else {
-      void performActivate(member);
+      // The reactivate path has NO confirmation dialog, so nothing else stands between a
+      // double tap and two flips. Shares the confirm's ref: both reach the same write.
+      if (deactivatingRef.current) return;
+      deactivatingRef.current = true;
+      void performActivate(member).finally(() => { deactivatingRef.current = false; });
     }
   }, [performActivate]);
 
@@ -421,11 +427,18 @@ export default function StaffManagementScreen() {
 
   const confirmDeactivate = useCallback(async () => {
     if (!confirmTarget) return;
+    // Re-entry guard. performActivate sends `is_active: !member.is_active` computed from
+    // the ROW, so a replay sends the same flips twice -- Reactivate (the unconfirmed path
+    // below) then runs off one toast that says the member was restored, and a second run
+    // against a row the first already refreshed reports save-failed over it.
+    if (deactivatingRef.current) return;
+    deactivatingRef.current = true;
     setDeactivating(true);
     try {
       await performActivate(confirmTarget);
       setConfirmTarget(null);
     } finally {
+      deactivatingRef.current = false;
       setDeactivating(false);
     }
   }, [confirmTarget, performActivate]);
