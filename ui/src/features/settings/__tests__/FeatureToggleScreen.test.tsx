@@ -50,6 +50,12 @@ const STABLE_L10N = {
       'feature-toggle-requires': 'Requires: {deps}',
       'feature-toggle-auto-enabled': 'Also enabled: {list}',
       'feature-toggle-search-placeholder': 'Search features\u2026',
+      // aria-labels on the two preview groups, copied verbatim from
+      // shared-ui/locales/settings.ftl:190-191. No case in this file asserts them,
+      // so their absence was silent: getString fell through to the raw id and the
+      // groups were labelled 'lsp-nav-aria' to any role+name query.
+      'lsp-workspaces-aria': 'Workspace preview',
+      'lsp-nav-aria': 'Navigation preview',
     };
     let result = map[id] ?? id;
     if (vars) {
