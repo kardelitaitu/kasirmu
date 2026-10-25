@@ -74,6 +74,8 @@ export function UpdateSettingsCard() {
   const [pendingCount, setPendingCount] = useState(0);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [syncingOffline, setSyncingOffline] = useState(false);
+  /** Synchronous mirror of `syncingOffline` — see the re-entry guard in `handleSyncOffline`. */
+  const syncingOfflineRef = useRef(false);
 
   // Unlisten ref for download events
   const unlistenRef = useRef<UnlistenFn | null>(null);
@@ -262,6 +264,12 @@ export function UpdateSettingsCard() {
 
   const handleSyncOffline = useCallback(async () => {
     if (!sessionToken) return;
+    // Re-entry guard. retry_offline_sync is safe to replay, but this handler reads the
+    // remaining count AFTER it and closes the modal / fires the deferred action on zero --
+    // so a replay can run the operator's queued action twice, or re-open work the first
+    // run had already settled. The state flag is stale inside one tick.
+    if (syncingOfflineRef.current) return;
+    syncingOfflineRef.current = true;
     setSyncingOffline(true);
     try {
       await retryOfflineSyncScoped(sessionToken);
@@ -277,6 +285,7 @@ export function UpdateSettingsCard() {
     } catch {
       // keep modal open so user can choose to proceed anyway
     } finally {
+      syncingOfflineRef.current = false;
       setSyncingOffline(false);
     }
   }, [sessionToken, pendingAction]);
