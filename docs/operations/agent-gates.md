@@ -302,7 +302,7 @@ population is 54, not 55; the surviving rows are the same set minus one false ro
 | `check-debt-ledger.py` | 7 | 5 | covered |
 | `verify-shell-syntax.py` | 6 | 5 | covered |
 | `verify-coverage-floors.py` | 4 | 3 | covered |
-| `check-chokepoints.py` | 8 | 3 | covered |
+| `check-chokepoints.py` | 8 | 3 | covered — and its RANGE mode was dead on this host until round 198 (see below) |
 | `check-mapper-alignment.py` | 8 | 3 | covered |
 | `check-rust-doc-paths.py` | 4 | 3 | covered (was 0/4 — fixed this round) |
 | `verify-runner-commands.py` | 4 | 2 | covered |
@@ -313,6 +313,20 @@ population is 54, not 55; the surviving rows are the same set minus one false ro
 | `verify-exhaustive-deps.py` | 2 | 1 | covered (`run_eslint` is I/O; `measure` is graded) |
 | `verify-flaky-quarantine.py` | 5 | 1 | covered |
 | `verify-settled-read-copies.py` | 3 | 1 | covered |
+
+**A mode can be green-by-absence for longer than any test notices.** `check-chokepoints.py` grades
+the working tree against HEAD by default and takes `--range A..B` for a commit range. On Windows,
+`subprocess.run(..., capture_output=True, text=True)` decodes with the LOCALE codec (cp1252 here),
+and a diff containing one byte it cannot map makes the reader thread die: the call returns
+`stdout=None` with `returncode 0` and an EMPTY `stderr`, so the caller raises
+`AttributeError: 'NoneType' object has no attribute 'splitlines'` — a message that names neither
+the encoding nor the commit. Measured 2026-10-25 (round 198): `--range 1abbdae32..HEAD` (16
+commits, 5,240 diff lines) died this way while the default mode was fine, because the working tree
+is small and the box-drawing characters in this repo's comments only reach it in bulk. The fix is
+`encoding="utf-8", errors="replace"` on every `git` subprocess in the file. Two lessons, both
+already in this document in other words: **\`text=True\` without an encoding is not portable**, and
+**the range mode had never been exercised against a range large enough to break it** — the
+self-test covers rule SHAPES, not the diff reader.
 
 **Final sweep after the fixes: `55 checker(s), 15 SURVIVED, 40 killed`** — the same 15
 names as the table above, all I/O shells, and four checkers moved from SURVIVED to covered
