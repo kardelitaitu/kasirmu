@@ -329,6 +329,38 @@ by construction -- which is exactly why the backend question cannot be skipped.
                         it IS refused, but `saving` is set before the first await and stops an
                         ordinary tap; latent, left on the report.
 
+SWEEP STATUS (round 190)
+This list has been carried to ZERO actionable candidates, and the shape of the ending is
+worth more than the count. The last one, `branch delete`, is refuted by measurement rather
+than by code: the confirm button renders `disabled={deleteBranchSaving}`, and for a DISCRETE
+click React flushes that update to the DOM before the next click, so the second tap lands on
+a really disabled button and the handler never sees it. `test/locations` pins that
+(round 186) so the refutation fails loudly if the `disabled` is ever removed, instead of
+going quiet. It stays on the report because suppressing it would need a heuristic that
+cannot tell "busy flag also rendered as disabled" from "busy flag only styles a spinner" --
+and the second of those was a real defect three times in this sweep.
+
+WHAT THE SWEEP TAUGHT, in the order it was learned
+  1. A replay's cost is a property of the BACKEND, not of the handler. The same handler
+     shape produced a duplicate row, a double-billed partition, a double-held table tab, a
+     second statutory number, two native save dialogs, and (seven times) nothing worse than
+     a failure message over a successful write.
+  2. "Idempotent" is not "safe to replay". Gift-card redeem and stock-transfer receive were
+     both refuted on idempotency, and both still reported the wrong thing to the operator.
+     The second call is a no-op in the DATABASE and a lie on the SCREEN.
+  3. A redundant guard must be dropped, not kept for comfort. Adding a ref to branch delete
+     changed nothing, and a mutation that disabled the ref left its case green -- which is
+     how the redundancy was found. A guard whose removal no test notices is a comment.
+  4. A mutation must REACH the guard. Two halves can be independently sufficient (Button's
+     spread order and the popup's own `saving || saveDisabled`), so reverting one at a time
+     proves nothing; and a test whose clicks are flushed between taps proves nothing either.
+     Every case on this list asserts either `expected 2 to be 1` with its guard disabled or
+     says why the mutation needs two steps.
+  5. A green mutation is evidence about the MUTATION. Three times in this sweep an edit that
+     "removed" a guard had not reached the file (a comment-preserving edit, a duplicate JSX
+     attribute, a restore that silently re-applied the original). Check the file on disk
+     before believing the colour.
+
 WHAT IT DOES NOT DO
 It is a heuristic over text, not a type-aware analysis. It misses a guard written as
 anything other than <name>Ref.current, and it does not read the backend at all. Treat the
