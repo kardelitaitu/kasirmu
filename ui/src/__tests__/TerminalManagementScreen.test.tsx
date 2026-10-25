@@ -286,6 +286,28 @@ describe('TerminalManagementScreen', () => {
     await waitFor(() => expect(mockDeleteTerminal).toHaveBeenCalledWith('tok-1', 't-1'));
   });
 
+  it('deletes the terminal once when the confirm is double-tapped', async () => {
+    // The second delete reports the NotFound of a row the first already removed, as
+    // terminal-error-save over a delete that worked.
+    mockListTerminals.mockResolvedValue([makeTerminal()]);
+    let release: (() => void) | undefined;
+    mockDeleteTerminal.mockReturnValue(new Promise<void>((res) => { release = res; }));
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Front Counter')).toBeDefined());
+    await userEvent.click(screen.getAllByText('Delete')[0]!.closest('button')!);
+    await waitFor(() => expect(screen.getByText('Delete Terminal')).toBeDefined());
+
+    const confirmBtn = screen.getAllByText('Delete').slice(-1)[0]!.closest('button')!;
+    act(() => {
+      fireEvent.click(confirmBtn);
+      fireEvent.click(confirmBtn);
+    });
+
+    release?.();
+    await waitFor(() => expect(mockDeleteTerminal).toHaveBeenCalledTimes(1));
+  });
+
   it('opens register modal when Register Terminal is clicked', async () => {
     renderScreen();
     await waitFor(() => expect(screen.getByText('Register Terminal')).toBeDefined());

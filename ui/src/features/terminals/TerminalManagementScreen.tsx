@@ -179,8 +179,11 @@ export default function TerminalManagementScreen() {
   // Delete confirmation
   const [deleteTarget, setDeleteTarget] = useState<TerminalDto | null>(null);
   const [deleting, setDeleting] = useState(false);
+  /** Synchronous mirrors of the busy flags — see the re-entry guards in their handlers. */
+  const deletingRef = useRef(false);
 
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   // Feature overrides
   const [overrides, setOverrides] = useState<TerminalFeatureOverride[]>([]);
@@ -195,6 +198,7 @@ export default function TerminalManagementScreen() {
    *  second click is either a no-op or the deliberate reverse AFTER this
    *  round-trip, never a duplicate of it. */
   const [overrideSaving, setOverrideSaving] = useState(false);
+  const overrideSavingRef = useRef(false);
 
   // Device binding (ADR #4 Phase 3)
   const [binding, setBinding] = useState<DeviceBindingDto | null>(null);
@@ -438,7 +442,13 @@ export default function TerminalManagementScreen() {
 
   const handleToggleOverride = async (featureKey: string, currentEnabled: boolean) => {
     if (!editingId) return;
+    // The state flags are checked above, but they are stale inside one tick; the ref is the
+    // one that actually refuses the replayed tap. Two flips would write `nextEnabled`
+    // twice, and the second's refetch can land BEFORE the first's, pinning the row to the
+    // value the operator had already toggled away from.
+    if (overrideSavingRef.current) return;
     if (overrideSaving || overridesLoading) return;
+    overrideSavingRef.current = true;
     // Two windows must be frozen, not one: the write round-trip AND the
     // initial load. Clicking a toggle before the list arrives would snapshot
     // an EMPTY `previous` and roll the switch back to nothing, and it would
@@ -468,6 +478,7 @@ export default function TerminalManagementScreen() {
       setOverrides(previous);
       setOverridesError(l10n.getString('terminal-error-override-update'));
     } finally {
+      overrideSavingRef.current = false;
       setOverrideSaving(false);
     }
   };
@@ -501,6 +512,11 @@ export default function TerminalManagementScreen() {
       return;
     }
 
+    // Re-entry guard, after the two validations. REGISTER mints a new terminal row bound to
+    // `deviceId`, refused only by device_id UNIQUE -- and that refusal lands in the catch as
+    // terminal-error-save, an error over a terminal that was registered. `saving` is STATE.
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -526,6 +542,7 @@ export default function TerminalManagementScreen() {
     } catch (err) {
       setError(l10nErrorMessage(err, l10n, 'terminal-error-save'));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -534,6 +551,9 @@ export default function TerminalManagementScreen() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
+    // Re-entry guard: the second delete reports the NotFound of a row the first removed.
+    if (deletingRef.current) return;
+    deletingRef.current = true;
     setDeleting(true);
     try {
       await deleteTerminalScoped(sessionToken, deleteTarget.id);
@@ -542,6 +562,7 @@ export default function TerminalManagementScreen() {
     } catch {
       addToast({ message: l10n.getString('terminal-error-save'), type: 'error' });
     } finally {
+      deletingRef.current = false;
       setDeleting(false);
     }
   };
