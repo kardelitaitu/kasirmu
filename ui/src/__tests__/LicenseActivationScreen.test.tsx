@@ -393,6 +393,25 @@ describe('LicenseActivationScreen — email login', () => {
     expect(screen.queryByTestId('email-login-address-input')).not.toBeInTheDocument();
   });
 
+  it('sends ONE sign-in code when Send code is double-tapped', async () => {
+    // A second send delivers a SECOND code, so the one the operator is reading stops
+    // matching -- and both steps then call onActivated against a linked device.
+    let release: (() => void) | undefined;
+    mockRequestEmailLoginCode.mockReturnValue(new Promise<void>((res) => { release = res; }));
+
+    renderEmailFlow();
+    await userEvent.setup().type(screen.getByTestId('email-login-address-input'), 'owner@kasir.mu');
+
+    const sendBtn = screen.getByTestId('email-login-send-code');
+    await act(async () => {
+      fireEvent.click(sendBtn);
+      fireEvent.click(sendBtn);
+    });
+
+    release?.();
+    await waitFor(() => expect(mockRequestEmailLoginCode).toHaveBeenCalledTimes(1));
+  });
+
   it('spends the code and reports the device linked', async () => {
     const user = userEvent.setup();
     renderEmailFlow();

@@ -61,6 +61,8 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
   const [emailCode, setEmailCode] = useState('');
   const [emailPassword, setEmailPassword] = useState('');
   const [emailBusy, setEmailBusy] = useState(false);
+  /** Synchronous mirror of `emailBusy`, SHARED by the three email steps above. */
+  const emailBusyRef = useRef(false);
   /** Per-flow failure, rendered beside the control that caused it. */
   const [emailError, setEmailError] = useState<string | null>(null);
   const [pairingSession, setPairingSession] = useState<PairingSessionStart | null>(null);
@@ -141,6 +143,11 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
    * there is no separate signup step to fall into.
    */
   const sendEmailCode = useCallback(async () => {
+    // Re-entry guard, shared by all three email steps: a second send delivers a SECOND
+    // sign-in code (the one the operator is reading stops matching), and the two submits
+    // both call onActivated against a device the first already linked.
+    if (emailBusyRef.current) return;
+    emailBusyRef.current = true;
     setEmailBusy(true);
     setEmailError(null);
     try {
@@ -150,12 +157,15 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
     } catch (err) {
       setEmailError(l10nErrorMessage(err, l10n, 'auth-email-failed'));
     } finally {
+      emailBusyRef.current = false;
       setEmailBusy(false);
     }
   }, [emailAddress, l10n]);
 
   /** Spend the code; a proved address links the device and finishes the step. */
   const submitEmailCode = useCallback(async () => {
+    if (emailBusyRef.current) return;
+    emailBusyRef.current = true;
     setEmailBusy(true);
     setEmailError(null);
     try {
@@ -165,11 +175,14 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
     } catch (err) {
       setEmailError(l10nErrorMessage(err, l10n, 'auth-email-failed'));
     } finally {
+      emailBusyRef.current = false;
       setEmailBusy(false);
     }
   }, [emailAddress, emailCode, l10n, onActivated, refreshSubscription]);
 
   const submitEmailPassword = useCallback(async () => {
+    if (emailBusyRef.current) return;
+    emailBusyRef.current = true;
     setEmailBusy(true);
     setEmailError(null);
     try {
@@ -179,6 +192,7 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
     } catch (err) {
       setEmailError(l10nErrorMessage(err, l10n, 'auth-email-failed'));
     } finally {
+      emailBusyRef.current = false;
       setEmailBusy(false);
     }
   }, [emailAddress, emailPassword, l10n, onActivated, refreshSubscription]);
