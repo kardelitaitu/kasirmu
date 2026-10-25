@@ -209,6 +209,23 @@ same insert into the Staff block panics naming `Staff`. The first probe landed i
 `LOYALTY_REDEEM` appears in BOTH presets and a plain string replace hit the earlier one — worth
 recording, because the mutation I THOUGHT I made and the mutation I made were on different tiers.
 
+**ALSO PINNED 2026-10-25 (round 218), blocker (1): the method CHECK refuses `gift`.**
+`payments_method_check_and_gateway_status_constraints_enforced` gained a `gift` arm covering four
+spellings (`gift`, `gift_card`, `giftcard`, `gift_cards`). Before it the invalid list held only
+`bitcoin`, `cheque`, `stripe_direct`, `CASH` and the empty string, so a migration could have
+smuggled a gift member in and left the suite green while silently unblocking a third of this
+record.
+
+**WHICH FILE OWNS THE CONSTRAINT IS NOT OBVIOUS, and the first mutation proved it by lying.** The
+method list appears in BOTH `20261017_payments_method_check.sql` and
+`20261018_gateway_status_adr64_vocabulary.sql`; the later one REBUILDS the `payments` table, so
+20261018 is the live definition. Adding `'gift'` to 20261017 left the new assert GREEN — a
+mutation whose colour proves nothing unless you check what it targeted. Adding it to 20261018
+reddens exactly that assert with the message naming the three-part decision. Both files were
+restored, and a stale cargo binary then reported the failure for a further run after the source
+was already clean: touching the migration's mtime forced the rebuild. A green or red result is
+only as fresh as the binary that produced it.
+
 **NARROWED 2026-10-25 (round 202): the settlement-contract decision is made, by precedent.**
 `PaymentModal` already redeems loyalty points AFTER `completeSaleScoped` in the same
 post-checkout block, from two call sites (`PaymentModal.tsx:1190` direct and `:1834` gateway),
