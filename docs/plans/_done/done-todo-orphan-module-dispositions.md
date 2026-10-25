@@ -1,4 +1,7 @@
+<!-- Acceptance verified 2026-10-26: python scripts/census-orphan-modules.py (exit 0, ORPHAN=2, LIVE=417; all actionable modules deleted/mounted, preserving only the 2 documented intentional orphans: GiftCardPayment.tsx awaiting backend work per todo-gift-card-redemption-ordering.md and AddonsMarketplace.tsx unresolved pending catalog per todo.md C4.3). Earned done- prefix per AGENTS.md §7.4. -->
 # Six unreachable modules: what each costs, and what each needs
+> Status: RESOLVED & ARCHIVED (2026-10-26). All actionable unreachable modules deleted (CartScreen.tsx, useMediaQuery.ts, ProductManagementScreen.tsx, TransitAuditScreen.tsx, VariantManagementScreen.tsx, StockAlertPanel.tsx) or mounted (ThresholdConfigScreen.tsx). Only the 2 documented intentional modules remain (GiftCardPayment, AddonsMarketplace). Earned done- prefix per AGENTS.md §7.4.
+
 
 **UPDATED 2026-10-25 (round 194): `VariantManagementScreen.tsx` is deleted, and it was NOT on the
 round-166 census.** 499 lines, an 18-case suite, and **120 bundle lines across both locales** --
