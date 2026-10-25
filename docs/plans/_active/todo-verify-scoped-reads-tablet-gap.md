@@ -72,6 +72,31 @@ Pick one, in preference order:
 Until then the tablet numbers are **stated but ungraded**, and any claim that
 the scoped-reads gate covers both shells is false.
 
+## Re-verified 2026-10-26 (round 255): all 15 findings are still unreachable on tablet
+
+Re-running `python scripts/verify-scoped-reads.py --shell tablet` at HEAD gives the same
+numbers this file records: exit 1, **15 call sites across 8 files**. The three shapes named
+above explain 12 of them. This round checked the remaining three, which the file did not
+name, and the answer generalises:
+
+**The tablet entry does not render the desktop shell at all.** `ui/src/main.mobile.tsx:25`
+calls `setShellKind('tablet')` and renders `TabletAppShell` **directly** — it never touches
+`App.tsx`, which is the desktop entry's component and which renders `AppShell` → `AppLayout`.
+`TabletAppShell.tsx` (703 lines) references none of `UpdateBanner`, `KeyRotationReminder`,
+`useKeyAge` or `useTerminalProfile`; it renders `TabletAppLayout`, a different component.
+So the three unnamed findings are unreachable for the same structural reason as the three
+named shapes: the code that holds them is not in the tablet's render tree.
+
+The verification path is worth keeping, because the first attempt got it wrong: grepping
+`TabletAppLayout` for the component names is the check, while grepping `AppShell` for
+`Tablet` is a trap — `AppShell.tsx` mentions "Tablet" in comments and in a memory-pressure
+branch (`:169`), and reading that as "AppShell is the tablet shell" inverts the fact. The
+seam is the **entry point**, exactly as `utils/shellKind.ts` says in its own docstring.
+
+What this does NOT change: no gate grades the tablet shell, which is the gap this file
+exists to record. The findings being false positives is why the flag is not wired in; it is
+not a reason to leave the shell ungraded.
+
 ## Acceptance
 
 `python scripts/verify-scoped-reads.py --shell tablet` exits 0, and the same
