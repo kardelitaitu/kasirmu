@@ -747,8 +747,8 @@ fn the_owner_preset_grants_the_wildcard_and_nothing_else() {
 /// Measured 2026-10-25: ROLE_PRESETS contains ZERO occurrences of the gift-card
 /// family across all six presets (Owner/Manager/Staff/Admin/Auditor/Custom), so
 /// redemption is reachable only through a Custom role an owner builds by hand.
-/// `GiftCardPayment.tsx` records the same fact and calls the cashier gap its own
-/// blocker; this test is the mechanical half of that record.
+/// The gift-card payment panel (renderer layer) records the same fact and calls the
+/// cashier gap its own blocker; this test is the mechanical half of that record.
 #[test]
 fn no_builtin_preset_grants_a_giftcard_key() {
     let giftcard_keys: &[&str] = &[

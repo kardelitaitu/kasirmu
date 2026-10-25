@@ -4088,8 +4088,8 @@ fn payments_method_check_and_gateway_status_constraints_enforced() {
         );
     }
     // The gift-card tender is deliberately ABSENT from the CHECK, and saying so
-    // here is the mechanical half of a three-part blocker. `GiftCardPayment.tsx`
-    // is a complete tender panel that nothing mounts because a gift payment
+    // here is the mechanical half of a three-part blocker. The gift-card payment
+    // panel (renderer layer) is complete and nothing mounts it because a gift payment
     // cannot be recorded: this constraint refuses every spelling an author is
     // likely to try. Round 217 added these to the invalid arm -- before that the
     // list held only `bitcoin`, `cheque`, `stripe_direct`, `CASH` and the empty
