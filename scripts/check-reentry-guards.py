@@ -274,6 +274,15 @@ re-derive these: each is protected, and the protection is named so the search en
                         is currently mounted by its own test only (git grep GiftCardPayment --
                         ui/src finds no production caller); the guard is in place for the day
                         the checkout reaches for it.
+  * tax tier move (confirmTierMove) -- the LAST handler on this list, and the only one whose
+                        guard was already correct. `commitSave` (its write tail) carries
+                        `savePendingRef` from round 185, and this reader cannot see it because it
+                        only reads a handler's OWN body. What round 189 added is an EARLY
+                        refusal: without it the replay was refused in commitSave only AFTER
+                        `setPendingTierMove(null)` had closed the consent dialog, so the second
+                        tap dismissed the dialog and did nothing. The case that proves the path
+                        drives the edit modal -> scope change -> Save -> ConfirmDialog and fails
+                        `expected 2 to be 1` when commitSave's guard is mutated.
   * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
                         idempotent by construction: the same key is overwritten
 The point of the list is that it is SHORT: filtering to handlers that (a) await something
