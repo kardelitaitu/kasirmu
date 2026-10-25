@@ -65,6 +65,8 @@ export function AppearanceSettings({
   const [storeName, setStoreName] = useState('');
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
+  /** Synchronous mirror of `resetting` — see the re-entry guard in `handleConfirmReset`. */
+  const resettingRef = useRef(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const { zoomLevel, setZoomLevel } = useAppZoom();
   const { enabled: hwAccelEnabled, setEnabled: setHwAccelEnabled } = useHardwareAccel();
@@ -212,6 +214,12 @@ export function AppearanceSettings({
   }, []);
 
   const handleConfirmReset = useCallback(async () => {
+    // Re-entry guard: the reset issues THREE sequential brand writes and then a toast per
+    // outcome. A replay interleaves them, so the operator can be told the reset failed
+    // after it had fully succeeded -- and the second run re-clears state the parent has
+    // already re-rendered from the first.
+    if (resettingRef.current) return;
+    resettingRef.current = true;
     setShowResetConfirm(false);
     setResetting(true);
     try {
@@ -240,6 +248,7 @@ export function AppearanceSettings({
     } catch {
       addToast({ message: l10n.getString('appearance-reset-all-failed'), type: 'error' });
     } finally {
+      resettingRef.current = false;
       setResetting(false);
     }
   }, [embedded, onColourChange, onStoreNameChange, refreshBrandSettings, addToast, l10n, sessionToken]);

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AppearanceSettings } from '@/features/settings/AppearanceSettings';
 
@@ -541,6 +541,35 @@ describe('AppearanceSettings', () => {
     expect(mockClearAccentPalette).toHaveBeenCalled();
     // Instant local state → null (hex shows theme primary via mock).
     expect(screen.getByLabelText('Following theme colour — pick a colour to override')).toBeInTheDocument();
+  });
+
+  it('resets every brand field once when the confirm is double-tapped', async () => {
+    // The three setters are configured here rather than in beforeEach, because the
+    // reset's SECOND write happens only after the first has resolved.
+    mockSetBrandPrimaryColour.mockResolvedValue(undefined);
+    mockSetBrandStoreName.mockResolvedValue(undefined);
+    mockSetBrandLogoPath.mockResolvedValue(undefined);
+    mockGetBrandSettings.mockResolvedValue(defaultBrandResponse);
+    // The reset issues THREE sequential brand writes and then a toast per outcome. A
+    // replay interleaves them, so the operator can be told the reset failed after it had
+    // fully succeeded. \`resetting\` is STATE and both taps read it as false.
+    render(<AppearanceSettings />);
+    await waitFor(() => expect(screen.getByLabelText('Reset all appearance settings')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText('Reset all appearance settings'));
+    // The dialog here is the card's own Modal (its confirm action is rendered by the
+    // card), not the shared ConfirmDialog the other suites use.
+    const dialog = await screen.findByRole('dialog');
+    const confirmBtn = dialog.querySelectorAll('button')[dialog.querySelectorAll('button').length - 1] as HTMLButtonElement;
+    expect(confirmBtn, 'no confirm button inside the reset dialog').toBeTruthy();
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+      fireEvent.click(confirmBtn);
+    });
+
+    await waitFor(() => expect(mockSetBrandPrimaryColour).toHaveBeenCalledTimes(1));
+    expect(mockSetBrandStoreName).toHaveBeenCalledTimes(1);
+    expect(mockSetBrandLogoPath).toHaveBeenCalledTimes(1);
   });
 
   it('save with follow-theme persists the empty sentinel', async () => {
