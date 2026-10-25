@@ -4,19 +4,51 @@
 // purchase CTAs, empty state, and tier-based filtering.
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 import settingsFtl from '@/locales/settings.ftl?raw';
 import AddonsMarketplace from '@/features/marketplace/AddonsMarketplace';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { makeSubscriptionCaps } from '@/__tests__/test-utils/mocks/subscriptionCaps';
+import { WEBSITE_ORIGIN } from '@/api/browser';
+import { getAddonsForTier } from '@/api/addons';
+import type * as AddonsModule from '@/api/addons';
+import type * as BrowserModule from '@/api/browser';
 
 vi.mock('@/contexts/SubscriptionContext', () => ({
   useSubscription: vi.fn(),
 }));
 
+// The browser door is mocked so a tap can be OBSERVED. Without it the only
+// thing a click test could assert is that nothing threw, which is also true of
+// a handler that does nothing at all — the state this file was in until round
+// 204, whose "refuse a placeholder price" branch was unreachable from the
+// catalog it guards.
+//
+// It wraps the real module rather than replacing it, so WEBSITE_ORIGIN stays
+// the one the app actually uses.
+const opened = vi.hoisted(() => ({ urls: [] as string[] }));
+vi.mock('@/api/browser', async (importOriginal) => ({
+  ...(await importOriginal<typeof BrowserModule>()),
+  openExternalUrl: async (url: string) => {
+    opened.urls.push(url);
+  },
+}));
+
+// `getAddonsForTier` is wrapped so ONE test can feed a value the shipped
+// catalog cannot produce (a placeholder price). Every other test reads the real
+// catalog through this same wrapper, so a wrapper that drifted would fail them.
+vi.mock('@/api/addons', async (importOriginal) => {
+  const actual = await importOriginal<typeof AddonsModule>();
+  return {
+    ...actual,
+    getAddonsForTier: vi.fn(actual.getAddonsForTier),
+  };
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
+  opened.urls.length = 0;
   vi.mocked(useSubscription).mockReturnValue({
     caps: makeSubscriptionCaps({ tier: 'plus', addons: [] }),
     state: 'active',
@@ -147,6 +179,46 @@ describe('AddonsMarketplace', () => {
 
     // Free tier still sees priority_support (all-tier addon)
     expect(screen.getByText('Priority Support')).toBeInTheDocument();
+  });
+
+  // ── The purchase door ─────────────────────────────────────
+
+  it('opens the website add-on anchor for a catalogued price', () => {
+    renderWithProvidersSync(<AddonsMarketplace />, settingsFtl);
+    // Two "Add" buttons render at Plus (advanced_analytics, extra_storage);
+    // the first is advanced_analytics, whose catalogued price is
+    // pri_addon_analytics_monthly — NOT a placeholder.
+    fireEvent.click(screen.getAllByText('Add')[0]!);
+    expect(opened.urls).toEqual([
+      `${WEBSITE_ORIGIN}/pricing/#addon-advanced_analytics`,
+    ]);
+  });
+
+  it('refuses a placeholder price without opening anything', () => {
+    // Every catalogued id is a real-looking `pri_addon_*`, so this branch is
+    // UNREACHABLE from the shipped catalog and cannot be driven any other way.
+    // That is exactly why the case has to pin it: the guard named
+    // `pri_placeholder_` while the catalog carried none, and a test that only
+    // clicks the real catalog could not tell a working guard from no guard.
+    vi.mocked(getAddonsForTier).mockReturnValueOnce([
+      {
+        id: 'placeholder_probe',
+        nameKey: 'addon-analytics-name',
+        descriptionKey: 'addon-analytics-desc',
+        priceUsd: 1,
+        targetTiers: [],
+        paddlePriceId: 'pri_placeholder_probe',
+        icon: '?',
+      },
+    ]);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    renderWithProvidersSync(<AddonsMarketplace />, settingsFtl);
+    fireEvent.click(screen.getAllByText('Add')[0]!);
+    expect(opened.urls).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(
+      'Addon placeholder_probe Paddle price not configured yet',
+    );
+    warn.mockRestore();
   });
 
   // ── Accessibility ─────────────────────────────────────────

@@ -660,6 +660,18 @@ For each trigger:
 > base tier quotas — future add-ons will extend capabilities without changing
 > the tier's core quotas. The Go side will wire the field when actual add-ons
 > are catalogued.
+>
+> **MEASURED 2026-10-25 (round 204) — "catalogued" is now answered, and the answer is no.**
+> The four add-ons ARE catalogued on the client (`ui/src/api/addons.ts`: `advanced_analytics`,
+> `priority_support`, `extra_storage`, `custom_hal`, each with a `pri_addon_*_monthly` id), and
+> the sentence above still holds because the ids are placeholders in the only place it counts:
+> `SubscriptionPayload` (`apps/license-server/main.go:1440-1488`) has NO `addons` field, so no
+> payload the license server signs can carry one. The `addons` column on `license_keys` is
+> written by `/api/v1/admin/license-addons` and read back by nothing; nothing calls those
+> routes; and a Paddle `subscription.created` for a `pri_addon_*` price is REFUSED
+> (`paddle_webhook.go:1002-1005` — not in `PADDLE_PRICE_TIERS`). So the blocker is not
+> "waiting for a catalog" — it is that a purchase has no server path to an entitlement. The
+> client-side precondition is done; the server-side one is the open half.
 
 ---
 

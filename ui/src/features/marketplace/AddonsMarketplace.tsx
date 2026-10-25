@@ -69,6 +69,26 @@ function AddonCard({ addon, owned, onPurchase }: AddonCardProps) {
 }
 
 /**
+ * True when the catalog entry's Paddle price is still a placeholder rather
+ * than a live Paddle price id.
+ *
+ * The prefix is the WEBSITE's convention, not this file's: pricing content
+ * carries `pri_placeholder_plus_bundle_monthly` until the real Paddle catalog
+ * lands, and website/src/components/paddle.ts:101 refuses to open a checkout
+ * for exactly that prefix. Copying the test rather than the ids is the point —
+ * the check used to name `pri_placeholder_` while the catalog this file reads
+ * carried four `pri_addon_*_monthly` ids, so it never matched and
+ * `handlePurchase` handed the operator to a URL instead of refusing.
+ *
+ * NOT the same test as "not a real price id": a non-placeholder id that Paddle
+ * does not know still reaches the browser, which is the best available
+ * behaviour for a value only the operator sets.
+ */
+function isPlaceholderPriceId(priceId: string): boolean {
+  return priceId.startsWith('pri_placeholder_');
+}
+
+/**
  * Add-on Marketplace — renders a grid of available add-ons for the
  * tenant's current tier. Owned add-ons are shown as "Active" badges.
  * Purchase opens Paddle checkout via the existing `openPaddleCheckout` helper.
@@ -87,7 +107,7 @@ export default function AddonsMarketplace() {
       // Open Paddle checkout for the addon price ID.
       // In production, the email should come from the session/account.
       // For now, open the Paddle checkout URL directly.
-      if (addon.paddlePriceId.startsWith('pri_placeholder_')) {
+      if (isPlaceholderPriceId(addon.paddlePriceId)) {
         // Placeholder — not yet configured in Paddle
         console.warn(`Addon ${addon.id} Paddle price not configured yet`);
         return;
@@ -99,6 +119,15 @@ export default function AddonsMarketplace() {
       // Absolute, and through `openExternalUrl`: a relative `/pricing/`
       // resolves against the app's own `https://tauri.localhost` origin
       // (a 404), and `window.open` is discarded by the Android WebView.
+      //
+      // MEASURED 2026-10-25 (round 204): the `#addon-<id>` fragment has NO
+      // target. website/src/pages/[locale]/pricing.astro renders
+      // `PricingGrid`, whose only ids are the tier keys (en.ts:19/38/66 —
+      // `free`/`plus`/`pro`), and "addon" has zero hits under website/src.
+      // So the operator lands on the pricing table, not on the add-on; the
+      // hand-off still beats no hand-off, because it is where a purchase
+      // would start once add-ons are sold. Whether they ever are is the same
+      // product ruling the file's UNRESOLVED status waits on.
       void openExternalUrl(`${WEBSITE_ORIGIN}/pricing/#addon-${addon.id}`);
     },
     [],

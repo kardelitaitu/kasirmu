@@ -118,10 +118,46 @@ make "needs an IA ruling" more precise than it was: (a) the component's ONLY act
 — `handlePurchase` opens the WEBSITE pricing page with an anchor
 (`AddonsMarketplace.tsx:102`, `/pricing/#addon-<id>`) — so mounting it adds a screen whose whole
 function is a browser hand-off; (b) its data is a static client-side catalog
-(`api/addons.ts:31` `ADDON_CATALOG`), not a read; (c) every Paddle price in that catalog is a
-placeholder (`pri_placeholder_*`, :90-93) that logs a warning and returns WITHOUT opening
-anything, so the flow cannot complete today even with a route; and (d) the entitlement it reads
-(`SignedSubscriptionPayload.addons`) is real and shipped, which is why the file stays.
+(`api/addons.ts:31` `ADDON_CATALOG`), not a read; (c) the flow cannot complete today even
+with a route; and (d) the entitlement it reads (`SignedSubscriptionPayload.addons`) is real and
+shipped, which is why the file stays.
+
+**CORRECTED 2026-10-25 (round 204) — (c) above stated the mechanism backwards, and the
+backwards reading was hiding a live defect.** Three measurements, in the order they mattered:
+
+1. `ui/src/api/addons.ts` is 85 lines and carries four `pri_addon_*_monthly` ids (:38, :47,
+   :56, :65). `pri_placeholder_` appears in that file **zero** times, and `:90-93` is past its
+   end — the coordinate was never real. So the sentence "every Paddle price is a placeholder"
+   described a catalog that does not exist.
+2. What it was standing in for is worse. `AddonsMarketplace.tsx` refused a price by testing
+   `startsWith('pri_placeholder_')`, and since nothing in the catalog begins with that prefix
+   the branch was UNREACHABLE: `handlePurchase` opened the browser for **every** entry. The
+   documented "warns and returns without opening anything" described a path no catalog value
+   could take.
+3. The refusal that was meant to happen now happens, and it is one named function
+   (`isPlaceholderPriceId`, the website's own test — `website/src/components/paddle.ts:101`).
+   Both arms are pinned: one case feeds the catalog's real id and expects the hand-off, the
+   other feeds a placeholder id and expects no hand-off plus the warning. The second case
+   cannot be driven from the shipped catalog at all, which is exactly why it has to exist —
+   a test that only clicks the real catalog cannot tell a working guard from no guard.
+
+**And the destination is not what the sentence implies.** `website/src/pages/[locale]/pricing.astro`
+renders `PricingGrid`, whose only ids are the tier keys (`free`/`plus`/`pro`, en.ts:19/38/66);
+"addon" has zero hits under `website/src`, so the built `#addon-<id>` fragment has NO target and
+the tap lands on the pricing table. That is the right place for a purchase to start — it is just
+not a page about the add-on it was tapped from, and with the guard fixed it is now the first
+thing an operator sees rather than the second.
+
+None of this changes the disposition: **(a) and (d) stand, and the server still does not consume
+the catalog.** `SubscriptionPayload` (`apps/license-server/main.go:1440`) has no `addons` field,
+so no payload the license server signs carries one; the admin routes
+(`/api/v1/admin/license-addons`) write `license_keys.addons` but nothing reads it back into a
+signed subscription; and nothing calls those routes — a `transaction.completed` webhook only
+records revenue (`paddle_webhook.go:657-663`), while `subscription.created` REFUSES any price not
+in `PADDLE_PRICE_TIERS` (`:1002-1005`), which contains none of the four `pri_addon_*` ids. So the
+condition an owner is asked about is unchanged, and now correctly stated: the component is
+wired to a UI-side placeholder catalog on both ends, and the purchase it offers has no server
+path to an entitlement.
 
 So the question is no longer "does the product sell add-ons" in the abstract — it is "has the
 catalog been wired", and `todo.md` C4.3 already answers that in the same words: *"The Go side
