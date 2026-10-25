@@ -46,6 +46,16 @@ crates/kasirmu-core/migrations/20261017_payments_method_check.sql:41-45
     )),
 ```
 
+**WHICH FILE OWNS THIS LIST, added round 222.** The snippet above is from `20261017`, but that
+migration is not the live definition: `20261018_gateway_status_adr64_vocabulary.sql:56-60`
+REBUILDS the `payments` table with an identical method list, so 20261018 is the one a new
+migration must follow. A round-217 probe added `'gift'` to `20261017` and the guarding test
+stayed GREEN — the mutation had touched a superseded file. The current guard is the `gift` arm
+of `payments_method_check_and_gateway_status_constraints_enforced`
+(`crates/kasirmu-core/src/migrations_tests.rs`), which covers four spellings and reddens when
+20261018 is widened. The latest migration in the tree is `20261029_...`, so a new one would be
+`20261030_*`, and `scripts/generate-pg-migration.py` must be re-run after it.
+
 Twelve methods, no gift. `ui/src/api/types/payment.ts:8-20` mirrors it as a `PaymentMethod` union,
 and `PaymentModal.tsx:76` is a `Record<PaymentMethod, string>` of message ids -- so widening the
 union is a compile error until the id is mapped, which is the good half: tsc will not let a gift
@@ -58,10 +68,18 @@ A migration is an owner decision under AGENTS.md, so this file stops there.
 ### 2. The checkout role cannot redeem
 
 `redeem_gift_card_scoped` enforces `giftcards:redeem`
-(crates/kasirmu-bridge/src/gift_cards.rs:135, constant at platform/core/src/rbac.rs:608). It is
-granted to OWNER/MANAGER/ADMIN (rbac_presets.rs:419) and NOT to the staff/checkout preset
-(:167-200). A cashier tapping a gift tender would get PermissionDenied even after every other
-piece landed.
+(crates/kasirmu-bridge/src/gift_cards.rs:135, constant at platform/core/src/rbac.rs:608).
+
+**CORRECTED 2026-10-25 (round 222).** The sentence here said the key is "granted to
+OWNER/MANAGER/ADMIN (rbac_presets.rs:419)". It is not, and `:419` is not a preset: it is a line
+in `ALL_ENFORCED`, the constant inventory, and it sits between `:327` (Custom, `permissions:
+&[]`) and `:340`. Measured: `ROLE_PRESETS` contains ZERO occurrences of the gift-card family
+across all six presets, so the key is granted to NOBODY by default — redemption is reachable
+only through a Custom role an owner builds by hand. The difference matters for this plan's
+cost estimate: "add a key to one preset" and "this whole feature ships dark until someone
+hand-builds a role" are not the same decision. `no_builtin_preset_grants_a_giftcard_key`
+(`permission_registry_tests.rs`) now pins the measured state and reddens if any preset gains it.
+A cashier tapping a gift tender would get PermissionDenied even after every other piece landed.
 
 ### 3. The checkout path has no gift concept at all
 
