@@ -66,4 +66,47 @@ describe('SyncConflictsPanel — bulk requeue', () => {
       'a double tap requeued rows twice',
     ).toEqual(['remote-1', 'remote-2']);
   });
+
+  it('keeps walking when ONE row is refused, and reports the partial count', async () => {
+    // Requeueing a row that is no longer dead-lettered returns CoreError::NotFound
+    // (remote.rs:192-195) — a NORMAL outcome, because the operator may have used the
+    // row button a moment earlier. The old loop let that single refusal throw out of
+    // the walk, so row 2 was never attempted. Both facts are asserted: row 2 MUST be
+    // called, and the operator must be told the batch was partial rather than shown a
+    // silent success.
+    mocks.requeueRemoteFailure.mockImplementation((_t: string, id: string) =>
+      id === 'remote-1' ? Promise.reject(new Error('not found')) : Promise.resolve(undefined),
+    );
+
+    renderWithProvidersSync(<SyncConflictsPanel />, settingsFtl, sharedFtl);
+    const btn = await screen.findByRole('button', { name: /requeue all quarantined sync conflicts/i });
+    await act(async () => { fireEvent.click(btn); });
+
+    await screen.findByText(/some conflicts could not be requeued/i);
+    expect(
+      mocks.requeueRemoteFailure.mock.calls.map((c) => c[1]),
+      'a refused row aborted the remaining rows',
+    ).toEqual(['remote-1', 'remote-2']);
+    expect(screen.getByText(/\(1\/2\)/)).toBeInTheDocument();
+  });
+
+  it('never renders the raw rejection text from a PER-ROW retry', async () => {
+    // The per-row button is the path that owned `setError(String(e))`; the bulk walk
+    // reports through the PARTIAL branch, so a bulk-driven case would never reach the
+    // line this test exists for -- measured, because a first version of this case drove
+    // Requeue All and stayed green under a mutation that restored String(e).
+    //
+    // A distinctive raw message makes the assertion able to fail: if the rejection
+    // leaks, that exact sentence appears on screen.
+    mocks.requeueRemoteFailure.mockRejectedValue(new Error('IPC invoke failed: sql row 42'));
+
+    renderWithProvidersSync(<SyncConflictsPanel />, settingsFtl, sharedFtl);
+    // The row buttons are labelled 'Retry {id}' via sync-conflicts-retry-aria.
+    const rowBtn = await screen.findByRole('button', { name: /retry sync for item remote-1/i });
+    await act(async () => { fireEvent.click(rowBtn); });
+
+    await screen.findByText(/could not requeue this conflict/i);
+    expect(screen.queryByText(/IPC invoke failed/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/sql row 42/i)).not.toBeInTheDocument();
+  });
 });

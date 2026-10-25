@@ -1298,6 +1298,13 @@ sync-conflicts-retry-aria = Retry sync for item { $id }
 sync-conflicts-requeue-all = Requeue All
 sync-conflicts-requeueing-all = Requeueing ({ $current }/{ $total })…
 sync-conflicts-requeue-all-aria = Requeue all quarantined sync conflicts
+# Round 220. The panel used to render `String(e)` into a role="alert", so a raw IPC
+# rejection reached the operator. The bulk case additionally ABORTED on the first
+# refusal — and a refusal is normal here: requeue_remote_failure returns
+# CoreError::NotFound for an item that is no longer dead-lettered (remote.rs:192-195),
+# which is exactly what happens when the same item was requeued from its row button.
+sync-conflicts-requeue-failed = Could not requeue this conflict
+sync-conflicts-requeue-partial = Some conflicts could not be requeued
 sync-conflicts-payload-inspect = Inspect
 sync-conflicts-payload-hide = Hide
 sync-conflicts-payload-inspect-aria = Inspect payload for item { $id }

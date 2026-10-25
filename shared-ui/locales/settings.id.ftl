@@ -1255,6 +1255,13 @@ sync-conflicts-retry-aria = Coba sinkronisasi ulang item { $id }
 sync-conflicts-requeue-all = Coba Lagi Semua
 sync-conflicts-requeueing-all = Mencoba lagi ({ $current }/{ $total })…
 sync-conflicts-requeue-all-aria = Coba lagi semua konflik sinkronisasi terkarantina
+# Round 220. Panel ini dulu menampilkan String(e) ke role="alert", sehingga penolakan
+# IPC mentah sampai ke operator. Kasus massal bahkan BERHENTI pada penolakan
+# pertama — padahal penolakan itu normal: requeue_remote_failure mengembalikan
+# CoreError::NotFound untuk item yang sudah tidak dead-lettered (remote.rs:192-195),
+# yang persis terjadi bila item itu baru saja diantrekan dari tombol barisnya.
+sync-conflicts-requeue-failed = Konflik ini gagal diantrekan ulang
+sync-conflicts-requeue-partial = Sebagian konflik gagal diantrekan ulang
 sync-conflicts-payload-inspect = Periksa
 sync-conflicts-payload-hide = Sembunyikan
 sync-conflicts-payload-inspect-aria = Periksa payload untuk item { $id }
