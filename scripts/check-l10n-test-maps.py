@@ -96,15 +96,24 @@ see which keys a given case exercises. Hand-audited buckets:
 Also inherited from the stub: <Localized id="KEY"> counts as a use even when
 the suite replaces Localized with a passthrough, which inflates the count.
 
-A KNOWN ACCIDENT worth naming: TopologyScreen.test.tsx is absent from the
-census NOT by rule but because its 5 seeded values happen to be real copy.
-Its 31 `name: topology-...` queries address the UI by RAW KEY, so its map
-MUST stay empty. If those 5 values are ever rewritten to raw keys, 67
-findings appear at once with nothing explaining them. A by-key suite rule
-(absent > 0 and addressed/absent < 0.5) measured out to exactly five files --
-TopologyScreen 0/67, a11y 1/135, InspectorIntegration 1/35, TooltipPreview
-0/65, NodeTopologyEditorDevMock 1/2 -- and was NOT adopted; recorded here so
-the next person does not have to re-derive it.
+RESOLVED 2026-11-06: TopologyScreen.test.tsx is no longer an accident. Its
+map was 5 keys while its 31 `name: topology-...` queries addressed the UI by
+RAW KEY, so it passed only because getString fell through to the id. That map
+is now seeded from the FTL (62 keys) and the queries match English copy, which
+means the suite is judged like any other and a future hole in it fails the gate.
+
+The "by-key suite" rule that paragraph used to propose (absent > 0 and
+addressed/absent < 0.5) was never adopted and is no longer needed: a suite that
+queries by key is a suite whose assertions are WRONG, not a suite to exempt.
+scripts/check-raw-key-assertions.py now grades that directly, so the exemption
+would have preserved the defect it was meant to tolerate.
+
+Five assertions in that file still compare a KEY, and are correct to: the
+topologyApply validation errors are constructed as
+`new TopologyApplyValidationError(l10n.getString(messageId))` where messageId
+is already a key, so the thrown message genuinely IS the id. Converting them
+was measured and reverted (6 red). The fix, if wanted, belongs in topologyApply.
+
 THE LIMIT OF THIS DETECTOR, stated plainly
 ------------------------------------------
 It grades a map against STATIC literal uses in the modules a test imports. It
