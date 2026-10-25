@@ -167,24 +167,6 @@ inv-threshold-error-load = Failed to load threshold data
 inv-threshold-error-save = Failed to save threshold
 inv-threshold-error-delete = Failed to delete threshold
 
-# Stock Alert Panel
-inv-alert-title = Stock Alert Panel
-inv-alert-badge-count = { $count } Stock Alerts
-inv-alert-loading-aria = Loading stock alerts
-inv-alert-loading = Loading alerts...
-inv-alert-aria = Stock alerts
-inv-alert-panel-aria = Stock alerts panel
-inv-alert-empty = No active alerts
-inv-alert-time-now = Just now
-inv-alert-time-min = { $min }m ago
-inv-alert-time-hr = { $hr }h ago
-inv-alert-ack-aria = Acknowledge alert for { $name }
-inv-alert-ack = Ack
-inv-alert-acking = ...
-inv-alert-stock-label = Stock
-inv-alert-threshold-label = Threshold
-inv-alert-error-load = Failed to load alerts
-inv-alert-error-ack = Failed to acknowledge
 
 # ── Location Picker ──
 loc-picker-label = Location

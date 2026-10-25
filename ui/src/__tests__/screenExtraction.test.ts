@@ -2611,16 +2611,6 @@ const SCREENS: ScreenEntry[] = [
     css: ['inventory/LocationPicker.css'],
   },
   {
-    // 213-line panel over a 251-line sheet, own import at :9. Its ONLY mount was
-    // products/ProductManagementScreen.tsx:30 (JSX :766), which round 192 deleted as
-    // unreachable -- so this panel is now unreachable too, and the census reports it.
-    // The entry stays because the sheet still has to be cited for its rules to be
-    // graded; what it does NOT do is claim the panel is rendered anywhere.
-    name: 'StockAlertPanel',
-    tsx: 'inventory/StockAlertPanel.tsx',
-    css: ['inventory/StockAlertPanel.css'],
-  },
-  {
     // 491-line modal over its own 334-line sheet (import at :12), mounted by
     // kds/KdsScreen.tsx:29 and rendered at :586. This is the entry that was blocked
     // all evening by two names: kds-enrollment-station-input-wrap, which a rules lane

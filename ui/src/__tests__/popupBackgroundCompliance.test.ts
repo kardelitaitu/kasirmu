@@ -545,7 +545,6 @@ describe('popup surfaces have visible backgrounds', () => {
       ["features/inventory/InventoryAdjustmentScreen.css",52],
       ["features/inventory/LocationPicker.css",31],
       ["features/inventory/ShiftBar.css",22],
-      ["features/inventory/StockAlertPanel.css",28],
       ["features/inventory/StockCountBadge.css",5],
       ["features/inventory/StockCountDetail.css",38],
       ["features/inventory/StockCountForm.css",13],

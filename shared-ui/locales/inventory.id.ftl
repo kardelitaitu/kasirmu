@@ -182,24 +182,6 @@ inv-threshold-error-load = Gagal memuat data batas
 inv-threshold-error-save = Gagal menyimpan batas
 inv-threshold-error-delete = Gagal menghapus batas
 
-# Stock Alert Panel
-inv-alert-title = Panel Peringatan Stok
-inv-alert-badge-count = { $count } Peringatan Stok
-inv-alert-loading-aria = Memuat peringatan stok
-inv-alert-loading = Memuat peringatan...
-inv-alert-aria = Peringatan stok
-inv-alert-panel-aria = Panel peringatan stok
-inv-alert-empty = Tidak ada peringatan aktif
-inv-alert-time-now = Baru saja
-inv-alert-time-min = { $min }m lalu
-inv-alert-time-hr = { $hr }j lalu
-inv-alert-ack-aria = Tanggapi peringatan untuk { $name }
-inv-alert-ack = Tanggapi
-inv-alert-acking = ...
-inv-alert-stock-label = Stok
-inv-alert-threshold-label = Batas
-inv-alert-error-load = Gagal memuat peringatan
-inv-alert-error-ack = Gagal menanggapi
 
 # ── Location Picker ──
 loc-picker-label = Lokasi

@@ -3259,7 +3259,6 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1.3", "ui/src/features/design/DesignSystem.css", 1],
   ["1.6", "ui/src/features/design/TooltipPreview.css", 1],
   ["1.4", "ui/src/features/inventory/LocationPicker.css", 1],
-  ["1", "ui/src/features/inventory/StockAlertPanel.css", 1],
   ["1", "ui/src/features/kds/components/KdsProductPickerModal.css", 1],
   ["1.35", "ui/src/features/kds/components/ModifierBadge.css", 1],
   // 1.35 in this sheet (RestaurantSettingsScreens.css:1312/1380/1433, the compact

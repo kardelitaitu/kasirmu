@@ -39,12 +39,9 @@ const COLOR_ONLY_INDICATORS: Requirement[] = [
   { file: 'components/GatewayStatusBadge.css', selector: '.gateway-badge__dot.online', reason: 'gateway status dot (colour only)' },
   { file: 'components/GatewayStatusBadge.css', selector: '.gateway-badge__dot.offline', reason: 'gateway status dot (colour only)' },
   // Connection status indicators
-  // Stock alert severity dots
-  { file: 'features/inventory/StockAlertPanel.css', selector: '.stock-alert-severity-dot', reason: 'severity dot (colour only)' },
-  { file: 'features/inventory/StockAlertPanel.css', selector: '.stock-alert-severity-dot--warning', reason: 'severity dot (colour only)' },
-  // Stock alert card left-border severity
-  { file: 'features/inventory/StockAlertPanel.css', selector: '.stock-alert-card--critical', reason: 'card severity border (colour only)' },
-  { file: 'features/inventory/StockAlertPanel.css', selector: '.stock-alert-card--warning', reason: 'card severity border (colour only)' },
+  // (The four StockAlertPanel severity entries that stood here were removed in round 196
+  // with the sheet itself: the panel's only mount was ProductManagementScreen, deleted in
+  // round 194. The bell above is a different component and stays.)
 ];
 
 /**
@@ -55,7 +52,7 @@ const COLOR_ONLY_INDICATORS: Requirement[] = [
 const FOCUS_RING_REQUIREMENTS: Requirement[] = [
   { file: 'app/StatusBar.css', selector: '.statusbar-btn:focus-visible', reason: 'status bar button focus ring' },
   { file: 'components/StockAlertBell.css', selector: '.stock-alert-bell:focus-visible', reason: 'stock alert bell focus ring' },
-  { file: 'features/inventory/StockAlertPanel.css', selector: '.stock-alert-ack-btn:focus-visible', reason: 'stock alert acknowledge focus ring' },
+  // The panel's acknowledge-button ring left with its sheet in round 196 (see above).
 ];
 
 /**
