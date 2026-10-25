@@ -30,9 +30,60 @@ Where the coverage really is:
 | Rule | Graded by | Note |
 |---|---|---|
 | `color-contrast` | `ui/src/__tests__/colorContrastCompliance.test.ts` | Token pairs read from `tokens.css` for the three `THEMES` (Default/Dark, Light, Dark Solid), measured against WCAG AA floors (4.5:1 normal, 3.0:1 large). jsdom cannot compute colours, so axe's own rule cannot run — this suite grades the declared values instead. |
-| `landmark-one-main` | `ui/src/__tests__/a11y/ShellLayout.a11y.test.tsx` | Re-enables the rule via `SHELL_GLOBAL_RULES` and mounts the real `AppLayout` / `TabletAppLayout`. |
+| `landmark-one-main` | `ui/src/__tests__/a11y/ShellLayout.a11y.test.tsx` | Via `checkA11yDocument` — the rule only matches the page root, so a container-scoped call cannot fail on it. See below. |
 | `page-has-heading-one` | `ui/src/__tests__/a11y/ShellLayout.a11y.test.tsx` | Same suite, same override. |
 | `region` | `ui/src/__tests__/a11y/ShellLayout.a11y.test.tsx` | Same suite; the three shell cases include a modal-open state. |
+
+## The trap: page-level rules silently ignore a container
+
+The three global rules are **not** graded by passing a container element, however the
+options are configured. axe declares them with a selector that can only match the page
+root:
+
+| Rule | axe selector |
+|---|---|
+| `landmark-one-main` | `html:not(html *)` |
+| `page-has-heading-one` | `html:not(html *)` |
+| `region` | `body *` |
+
+`checkA11y(container, SHELL_GLOBAL_RULES)` merges the caller's rules correctly — the
+merge was never the problem — but the rule has nothing to match inside a `<div>`. axe
+does not warn; the rule simply does not appear in `results.violations` or even in
+`results.passes`.
+
+### How it was caught (mutation, not inspection)
+
+1. Convert the only `<main>` element in `ui/src/app/AppLayout.tsx` to a `<div>`.
+2. Run `ShellLayout.a11y.test.tsx` — the suite named *"has exactly one main landmark"*.
+3. **Result: 3/3 passed.** axe reported a `main` count of 0 and zero violations.
+
+That is a check that cannot fail. The first attempt at the mutation was useless, and
+worth recording as its own trap: converting only the opening tag made esbuild fail with
+`Unexpected closing "main" tag`, so the suite went red for a **syntax error** and looked
+like a successful mutation test. A red must be read, not just counted — the failure
+message has to be the one you were trying to provoke.
+
+### The fix
+
+`checkA11yDocument(options)` runs axe against `document.body` instead. Re-running the
+same mutation then produced **2 failed** with the genuine message:
+
+```
+[a11y:document] moderate: region — All page content should be contained by landmarks
+```
+
+The shell suite now uses it for all three cases. A document-scoped run lists the rules
+that actually executed among its `passes` — that list is the honest answer to "did this
+rule run", and a container-scoped run will not show `region` there.
+
+### Two consequences worth carrying
+
+- **jsdom's `<html>` has no `lang`**, so `html-has-lang` fires on every document-scoped
+  run. Declare `document.documentElement.lang = 'en'` in a `beforeAll` rather than
+  muting the rule — muting it would also hide a real regression.
+- **A rule in `passes` is evidence; a rule in neither list is not.** When adding any new
+  global rule to a suite, assert that it appears in `passes` on a clean tree, or you are
+  adding a comment.
 
 ## Caveats
 
@@ -62,4 +113,4 @@ and every reader who trusted it inherited a false picture of what is tested.
 Both sites are now corrected to name `colorContrastCompliance.test.ts` and
 `ShellLayout.a11y.test.tsx` directly, and each names what it grades.
 
-> last audited 25-10-26 by docs-auditor
+> last audited 26-10-26 by docs-auditor
