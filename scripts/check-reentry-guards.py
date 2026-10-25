@@ -331,9 +331,16 @@ by construction -- which is exactly why the backend question cannot be skipped.
                         Ok(0,0,0,false) (bridge offline.rs:351-358) and a duplicate-id server
                         rejection is deliberately folded into success (sync_client.rs:120-133).
                         requeue_remote_failure's refusal is INTENTIONAL and documented
-                        (remote.rs:181-195) but its catch shows a RAW error string and
-                        handleRequeueAll aborts the remaining items -- a message-and-flow
-                        defect, not corruption; left on the report.
+                        (remote.rs:181-195). Its catch showed a RAW error string and
+                        handleRequeueAll aborted the remaining items -- a message-and-flow
+                        defect, not corruption. Round 220 FIXED both halves: the per-item
+                        call is now wrapped so a refusal counts and the walk continues, the
+                        batch reports a PARTIAL count rather than a silent success, and both
+                        catches route through l10nErrorMessage instead of String(e). The
+                        refusal itself is NORMAL here -- requeueing an item that is no longer
+                        dead-lettered returns CoreError::NotFound, which is exactly what the
+                        row button leaves behind -- so a single stale row used to hide N-1
+                        unattempted items behind a raw error.
   * setStockThreshold / deleteStockThreshold / setCategoryTaxRatesScoped /
     setLocationTicketPrefixScoped / updateTable / updateTerminal /
     setTerminalOverrideScoped -- audited round 173, all SAFE: same-row UPDATE, no-op DELETE,
