@@ -1,6 +1,6 @@
 {
   "description": "see --write-baseline",
-  "total": 594,
+  "total": 593,
   "entries": [
     {
       "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
@@ -851,11 +851,6 @@
       "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
       "key": "data-mgmt-toast-backup-success",
       "used_by": "used-by useBackupStatus.ts:169"
-    },
-    {
-      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
-      "key": "data-mgmt-toast-export-fail",
-      "used_by": "used-by useExportWizard.ts:126"
     },
     {
       "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",

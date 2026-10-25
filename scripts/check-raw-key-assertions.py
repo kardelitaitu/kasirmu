@@ -63,12 +63,24 @@ def scan() -> tuple[list[str], int, int]:
         eligible += 1
         rel = test.relative_to(REPO).as_posix() if test.is_relative_to(REPO) else test.name
         for lineno, line in enumerate(text.split(chr(10)), 1):
-            if not MATCHER_RE.search(line):
-                continue
+            # Which matcher owns THIS literal? Take the last one that opens before
+            # the key, not merely any matcher on the line. `getByTestId('kds-tab-open')
+            # .textContent).toContain('1')` puts a toContain on the same line as a
+            # TEST-ID lookup, and reading the toContain as the owner turned a
+            # legitimate data-testid into a reported raw-key assertion.
             for m in KEY_LITERAL_RE.finditer(line):
                 key = m.group(1)
-                if key in keys:
-                    findings.append("%s:%d  %s" % (rel, lineno, key))
+                if key not in keys:
+                    continue
+                owner = None
+                for mm in MATCHER_RE.finditer(line):
+                    if mm.start() < m.start():
+                        owner = mm.group(0)
+                    else:
+                        break
+                if owner is None:
+                    continue
+                findings.append("%s:%d  %s" % (rel, lineno, key))
     return findings, read, eligible
 
 

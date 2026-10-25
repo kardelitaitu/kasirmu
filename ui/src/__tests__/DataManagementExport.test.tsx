@@ -65,6 +65,7 @@ vi.mock('@fluent/react', () => {
     'data-mgmt-import-confirm-title': 'Import Data',
     'data-mgmt-import-confirm-message': 'Importing will overwrite current data with the contents of the backup file. This cannot be undone. Do you want to proceed?',
     'data-mgmt-tabs-aria': 'Data management actions',
+    'data-mgmt-toast-export-fail': 'Export failed',
     'admin-locked-message': 'Administrative SaaS features lock while the subscription is expired, paused, or unavailable. Selling continues under the offline grace policy. Verify your subscription online to restore access.',
   };
   return {
@@ -409,7 +410,7 @@ describe('DataManagement — Export', () => {
     await waitFor(() => {
       expect(screen.getByText('Set encryption password')).toBeInTheDocument();
       expect(screen.getByRole('alert')).toBeInTheDocument();
-      expect(screen.getByText('data-mgmt-toast-export-fail')).toBeInTheDocument();
+      expect(screen.getByText('Export failed')).toBeInTheDocument();
     });
   });
 
