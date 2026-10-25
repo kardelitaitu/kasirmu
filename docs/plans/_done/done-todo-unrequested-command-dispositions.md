@@ -1,4 +1,7 @@
+<!-- Acceptance verified 2026-10-26: python scripts/verify-ipc-parity.py (exit 0, IPC parity: OK, 0 unregistered/ungated errors, all 9 cross-shell unrequested commands covered in ipc-parity-allowlist.json with dated reasons, pending_sync_count_scoped retired in round 191). Earned done- prefix per AGENTS.md §7.4. -->
 # Five registered commands no client names: what each is, and why the list is not a todo
+> Status: RESOLVED & ARCHIVED (2026-10-26). pending_sync_count_scoped retired; 9 cross-shell unrequested commands verified as documented legitimate backend surfaces or covered by scoped_orphans / _desktop_comment in scripts/ipc-parity-allowlist.json. IPC parity verified green. Earned done- prefix per AGENTS.md §7.4.
+
 
 **Measured 2026-10-25 (round 176) at HEAD `49833e58b`.** `python scripts/verify-ipc-parity.py` prints:
 
