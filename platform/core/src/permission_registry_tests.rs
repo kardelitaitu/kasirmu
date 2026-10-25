@@ -666,6 +666,65 @@ fn registry_error_is_send_and_sync() {
     assert_send_sync::<RegistryError>();
 }
 
+// // ── Tier boundary: the gift-card family is owner-only ────────────
+
+/// No built-in preset may grant a `giftcards:*` key.
+///
+/// The cashier tier is the one that matters. A frontline member takes payment,
+/// and a gift card is payment — so if `giftcards:redeem` ever joins the Staff
+/// preset, every cashier silently gains the ability to drain a card balance back
+/// out of the till. That is a security boundary, not a feature flag.
+///
+/// Until this test existed the boundary was held by TWO weaker things, and neither
+/// would have failed if it were crossed:
+///
+///   * `every_enforced_key_is_granted_by_at_least_one_preset` lists all three
+///     gift-card keys in its `unpreseted_exceptions`, so it SKIPS them. The
+///     exception is what makes them owner-only, and it is also what silences the
+///     only test that reads the presets.
+///   * `sensitive_family_wildcard_rejected` stops `giftcards:*`, but an explicit
+///     single-key grant is not a wildcard and passes it.
+///
+/// Measured 2026-10-25: ROLE_PRESETS contains ZERO occurrences of the gift-card
+/// family across all six presets (Owner/Manager/Staff/Admin/Auditor/Custom), so
+/// redemption is reachable only through a Custom role an owner builds by hand.
+/// `GiftCardPayment.tsx` records the same fact and calls the cashier gap its own
+/// blocker; this test is the mechanical half of that record.
+#[test]
+fn no_builtin_preset_grants_a_giftcard_key() {
+    let giftcard_keys: &[&str] = &[
+        permissions::GIFTCARDS_ISSUE,
+        permissions::GIFTCARDS_REDEEM,
+        permissions::GIFTCARDS_MANAGE,
+    ];
+    for preset in crate::rbac::ROLE_PRESETS {
+        for &perm in preset.permissions {
+            assert!(
+                !giftcard_keys.contains(&perm),
+                "preset {} grants {} — the gift-card family is owner-only, so a \
+                 preset grant hands every member of that tier a balance-moving key",
+                preset.name,
+                perm
+            );
+        }
+    }
+}
+
+/// And the keys must stay declared, so the test above cannot pass by naming
+/// constants that no longer exist.
+#[test]
+fn giftcard_keys_are_declared_in_the_inventory() {
+    for key in [
+        permissions::GIFTCARDS_ISSUE,
+        permissions::GIFTCARDS_REDEEM,
+        permissions::GIFTCARDS_MANAGE,
+    ] {
+        assert!(
+            ALL_ENFORCED.contains(&key),
+            "{key} is not in ALL_ENFORCED — the inventory drifted from the constants"
+        );
+    }
+}
 // ── Drift-prevention hardening tests ─────────────────────────────
 
 /// Every permission granted by every built-in preset must be registered
