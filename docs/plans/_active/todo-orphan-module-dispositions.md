@@ -113,6 +113,22 @@ banner says it was replaced, and the replacement is real: `WarehouseConsole`, re
 not overturn it. It calls `@/api/addons` and `@/api/browser`; whether the product sells add-ons
 is not a code question.
 
+**NARROWED 2026-10-25 (round 201), without overturning the ruling.** Four measurements that
+make "needs an IA ruling" more precise than it was: (a) the component's ONLY action is one tap
+— `handlePurchase` opens the WEBSITE pricing page with an anchor
+(`AddonsMarketplace.tsx:102`, `/pricing/#addon-<id>`) — so mounting it adds a screen whose whole
+function is a browser hand-off; (b) its data is a static client-side catalog
+(`api/addons.ts:31` `ADDON_CATALOG`), not a read; (c) every Paddle price in that catalog is a
+placeholder (`pri_placeholder_*`, :90-93) that logs a warning and returns WITHOUT opening
+anything, so the flow cannot complete today even with a route; and (d) the entitlement it reads
+(`SignedSubscriptionPayload.addons`) is real and shipped, which is why the file stays.
+
+So the question is no longer "does the product sell add-ons" in the abstract — it is "has the
+catalog been wired", and `todo.md` C4.3 already answers that in the same words: *"The Go side
+will wire the field when actual add-ons are catalogued."* **The component is ahead of nothing and
+behind nothing; it waits on the catalog.** That is a smaller and more checkable condition than
+an IA ruling, and it is what an owner should be asked.
+
 **`ThresholdConfigScreen.tsx`** -- 366 lines, the sole consumer of `getStockThresholds`,
 `setStockThreshold` and `deleteStockThreshold`, all three registered on BOTH shells (desktop
 `lib.rs:1545-1547`, tablet `1491-1493`). It is not dead code; it is a working feature with no
