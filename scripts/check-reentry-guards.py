@@ -238,6 +238,17 @@ re-derive these: each is protected, and the protection is named so the search en
                         handlers on ONE decision, so the survey needed its own ref even after
                         the card had one: onConfirm is a parent callback, and the survey's
                         feedback write was being sent twice as well (round 187).
+  * license activation + the three email sign-in steps -- one screen, four commands. The
+                        activation records a licence against the device fingerprint (refused
+                        on replay, reported as a failure); a second Send code delivers a SECOND
+                        one-time code, so the one the operator is reading stops matching
+                        (round 187, each with its own ref).
+  * installer (app/UpdateBanner.handleInstall) -- downloadAndInstall() downloads, installs
+                        and RESTARTS, and it is preceded by a full database backup, so a
+                        replay takes TWO backups and races two installers over one download
+                        directory. Round 187 FIXED. Its two flags (installing/backingUp) are
+                        two names for one handler: guarding either one alone measures
+                        nothing.
   * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
                         idempotent by construction: the same key is overwritten
 The point of the list is that it is SHORT: filtering to handlers that (a) await something
