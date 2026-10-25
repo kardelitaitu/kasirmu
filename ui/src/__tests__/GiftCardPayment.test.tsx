@@ -239,4 +239,29 @@ describe('GiftCardPayment', () => {
       expect(onError).toHaveBeenCalledWith('Redemption failed');
     });
   });
+  it('REFUSES a card denominated in another currency (no cross-currency tender)', async () => {
+    // The amount applied is min(totalMinor, balance_minor) in MINOR UNITS. A KWD card
+    // (3 decimal places) tendered against an IDR sale (0 decimals) is debited 1:1 by
+    // those numbers, so 10000 fils would settle an Rp 100.000 sale -- ~1000x overpaid,
+    // and the sale records a gift tender the store never received. redeem_gift_card
+    // takes no currency argument, so this is the only place the mismatch can be caught.
+    const mockBalance = getGiftCardBalance as ReturnType<typeof vi.fn>;
+    mockBalance.mockResolvedValueOnce({
+      balance_minor: 10000,
+      currency: 'KWD',
+      status: 'active',
+    });
+
+    renderWithFluentSync(<GiftCardPayment {...defaultProps} />, giftCardsFtl);
+    await userEvent.type(screen.getByLabelText('Gift card number'), 'GC-KWD-1');
+    await userEvent.click(screen.getByRole('button', { name: /check/i }));
+
+    // The mismatch is stated in both currencies, so the cashier can tell the customer why.
+    expect(
+      await screen.findByText(/This card is in KWD and cannot be applied to a IDR sale/i),
+    ).toBeInTheDocument();
+    // And the balance is NOT accepted, so no amount can be applied.
+    expect(screen.queryByText(/Available balance/i)).not.toBeInTheDocument();
+    expect(redeemGiftCard).not.toHaveBeenCalled();
+  });
 });

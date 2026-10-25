@@ -75,6 +75,23 @@ export default function GiftCardPayment({
         setCardBalance(null);
         return;
       }
+      // CURRENCY GUARD. A gift card carries its OWN currency, and the amount applied is
+      // min(totalMinor, balance_minor) in MINOR UNITS -- a denomination, not a value. Without
+      // this check a 10 KWD card (10000 fils) tendered against an Rp 5.000 sale is debited
+      // 5000 fils and settles the sale, overpaying by roughly 1000x and recording a tender the
+      // store never received. redeem_gift_card (crates/kasirmu-core/src/db/gift_cards.rs:333)
+      // takes no currency argument at all, so nothing downstream can catch it either.
+      // Refusing at LOOKUP, not at apply, so the cashier sees why before any money moves.
+      if (result.currency !== currency) {
+        setError(
+          l10n.getString('gift-cards-payment-currency-mismatch', {
+            cardCurrency: result.currency,
+            saleCurrency: currency,
+          }),
+        );
+        setCardBalance(null);
+        return;
+      }
       setCardBalance({ minor: result.balance_minor, currency: result.currency, status: result.status });
     } catch (err) {
       setError(l10nErrorMessage(err, l10n, 'gift-cards-payment-lookup-failed'));
@@ -83,7 +100,7 @@ export default function GiftCardPayment({
     }
     // sessionToken arrives as a prop (:22) and is read at :65, so it is a closure variable like
     // any other -- being a prop rather than a hook value does not make it stable.
-  }, [cardInput, l10n, sessionToken]);
+  }, [cardInput, currency, l10n, sessionToken]);
 
   const handleApply = useCallback(async () => {
     const code = cardInput.trim();
