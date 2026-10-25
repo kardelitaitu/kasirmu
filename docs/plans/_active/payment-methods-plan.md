@@ -27,8 +27,20 @@
 > **superseded in the good direction** — Phase 1 shipped without the spec package §4.1
 > called for, and the rail model that landed is broader than the per-workspace-type
 > settings key §1.2 specified. The permission family (Q5 round 2, §2c) was **not**
-> re-measured — whether `receivables:*`/`payables:*` shipped is a separate question this
-> pass did not answer.
+> re-measured in that pass — whether `receivables:*`/`payables:*` shipped is a separate
+> question it did not answer.
+>
+> **ANSWERED 2026-10-25 (round 193): the permission family shipped, complete, in both
+> directions.** All eight constants exist in `platform/core/src/rbac.rs` —
+> `payables:view` (:656), `create` (:660), `settle` (:664), `writeoff` (:668);
+> `receivables:view` (:673), `create` (:676), `collect` (:679), `writeoff` (:682) — and
+> they are granted per preset in `rbac_presets.rs`: the manager preset at :161-164 and
+> :197-198, the admin preset at :296-299 and :320-322, the owner preset at :429-436. The
+> two families are NOT symmetric and the asymmetry is the ruling this plan asked for:
+> STAFF holds `receivables:view` + `receivables:collect` (:197-198) and NO `payables:*`
+> at all — a cashier may take money in against a customer's debt and may not commit the
+> store to a supplier's. That is §2c's Q5 answered in the code, so this file no longer
+> holds an open permission question.
 >
 > Two path renames applied below: `apps/desktop-client` → `apps/desktop-tauri`,
 > `crates/oz-core/` → `crates/kasirmu-core/`, and the numbered migrations `022_*`/`027_*`
