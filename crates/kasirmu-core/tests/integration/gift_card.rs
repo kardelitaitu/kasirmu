@@ -95,14 +95,14 @@ fn full_lifecycle_issue_redeem_topup() {
 
     // Redeem.
     let redeemed = store(&conn)
-        .redeem_gift_card("GC-LIFECYCLE", 30000, "sale-1")
+        .redeem_gift_card("GC-LIFECYCLE", 30000, "sale-1", None)
         .unwrap();
     assert_eq!(redeemed.card.current_balance_minor, 70000);
     assert_eq!(redeemed.transaction.amount_minor, -30000);
 
     // Top-up.
     let topped = store(&conn)
-        .top_up_gift_card("GC-LIFECYCLE", 50000)
+        .top_up_gift_card("GC-LIFECYCLE", 50000, None)
         .unwrap();
     assert_eq!(topped.card.current_balance_minor, 120000);
 
@@ -123,7 +123,7 @@ fn auto_redeemed_when_balance_hits_zero() {
     issue_card(&conn, "GC-ZERO", 50000, None);
 
     let redeemed = store(&conn)
-        .redeem_gift_card("GC-ZERO", 50000, "sale-zero")
+        .redeem_gift_card("GC-ZERO", 50000, "sale-zero", None)
         .unwrap();
     assert_eq!(redeemed.card.current_balance_minor, 0);
     assert_eq!(redeemed.card.status, "redeemed");
@@ -140,10 +140,10 @@ fn redeem_is_idempotent_same_card_and_sale() {
     issue_card(&conn, "GC-IDEM", 50000, None);
 
     let r1 = store(&conn)
-        .redeem_gift_card("GC-IDEM", 10000, "sale-idem")
+        .redeem_gift_card("GC-IDEM", 10000, "sale-idem", None)
         .unwrap();
     let r2 = store(&conn)
-        .redeem_gift_card("GC-IDEM", 10000, "sale-idem")
+        .redeem_gift_card("GC-IDEM", 10000, "sale-idem", None)
         .unwrap();
 
     assert_eq!(r1.card.current_balance_minor, r2.card.current_balance_minor);
@@ -162,10 +162,10 @@ fn redeem_idempotent_with_different_sale_is_not_duplicate() {
     issue_card(&conn, "GC-MULTI", 50000, None);
 
     let r1 = store(&conn)
-        .redeem_gift_card("GC-MULTI", 10000, "sale-a")
+        .redeem_gift_card("GC-MULTI", 10000, "sale-a", None)
         .unwrap();
     let r2 = store(&conn)
-        .redeem_gift_card("GC-MULTI", 15000, "sale-b")
+        .redeem_gift_card("GC-MULTI", 15000, "sale-b", None)
         .unwrap();
 
     assert_ne!(r1.transaction.id, r2.transaction.id);
@@ -187,7 +187,7 @@ fn freeze_rejects_redemption() {
     assert_eq!(frozen.status, "frozen");
 
     let err = store(&conn)
-        .redeem_gift_card("GC-FROZEN", 10000, "sale-frozen")
+        .redeem_gift_card("GC-FROZEN", 10000, "sale-frozen", None)
         .unwrap_err();
     assert!(
         matches!(
@@ -215,7 +215,7 @@ fn unfreeze_restores_redemption() {
 
     // Should now succeed.
     let result = store(&conn)
-        .redeem_gift_card("GC-UNFREEZE", 10000, "sale-unfreeze")
+        .redeem_gift_card("GC-UNFREEZE", 10000, "sale-unfreeze", None)
         .unwrap();
     assert_eq!(result.card.current_balance_minor, 40000);
 }
@@ -229,7 +229,7 @@ fn top_up_on_frozen_card_reactivates() {
     store(&conn).freeze_gift_card("GC-TOPUP-FROZEN").unwrap();
 
     let result = store(&conn)
-        .top_up_gift_card("GC-TOPUP-FROZEN", 20000)
+        .top_up_gift_card("GC-TOPUP-FROZEN", 20000, None)
         .unwrap();
     assert_eq!(result.card.status, "active");
     assert_eq!(result.card.current_balance_minor, 70000);
@@ -243,7 +243,7 @@ fn redeem_nonexistent_card_fails() {
     seed_sale(&conn, "sale-nope", 10000);
 
     let err = store(&conn)
-        .redeem_gift_card("GC-NOPE", 10000, "sale-nope")
+        .redeem_gift_card("GC-NOPE", 10000, "sale-nope", None)
         .unwrap_err();
     assert!(
         matches!(
@@ -266,7 +266,7 @@ fn redeem_insufficient_balance_fails() {
     issue_card(&conn, "GC-INSF", 5000, None);
 
     let err = store(&conn)
-        .redeem_gift_card("GC-INSF", 10000, "sale-insuf")
+        .redeem_gift_card("GC-INSF", 10000, "sale-insuf", None)
         .unwrap_err();
     assert!(
         matches!(
@@ -329,7 +329,7 @@ fn get_gift_card_detail_includes_transactions() {
     std::thread::sleep(std::time::Duration::from_millis(5));
 
     store(&conn)
-        .redeem_gift_card("GC-DETAIL", 10000, "sale-detail")
+        .redeem_gift_card("GC-DETAIL", 10000, "sale-detail", None)
         .unwrap();
 
     let detail = store(&conn)

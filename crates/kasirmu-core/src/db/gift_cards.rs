@@ -339,11 +339,19 @@ impl Store<'_> {
     /// Redeem a gift card for a sale. Idempotent for retry — if the same
     /// `(card_id, sale_id)` pair already has a redeem transaction, returns
     /// the existing result instead of double-deducting.
+    ///
+    /// `currency` is the currency `amount_minor` was entered in. When supplied and it
+    /// differs from the CARD's own currency the redemption is REFUSED — `amount_minor`
+    /// is a denomination, not a value, so 5000 on a KWD card is 5.000 KWD and 5000 on
+    /// an IDR card is Rp 5.000. Pass `None` only from a caller that cannot know it
+    /// (tests); every money-writing sibling compares: `receivables.rs:263`,
+    /// `payables.rs:225`, `refunds.rs:111`.
     pub fn redeem_gift_card(
         &self,
         card_number_or_id: &str,
         amount_minor: i64,
         sale_id: &str,
+        currency: Option<&str>,
     ) -> Result<RedeemGiftCardResult, CoreError> {
         if amount_minor <= 0 {
             return Err(CoreError::Validation {
@@ -376,6 +384,19 @@ impl Store<'_> {
                 field: "expiry_date",
                 message: "gift card has expired".into(),
             });
+        }
+
+        // Currency guard: see the doc comment. Placed BEFORE the single-channel
+        // balance and idempotency checks so a mismatch is reported as a currency
+        // error rather than as "insufficient balance" on a card that is in fact
+        // well funded in its own denomination.
+        if let Some(caller_currency) = currency
+            && caller_currency != card.currency
+        {
+            return Err(CoreError::CurrencyMismatch(
+                card.currency.clone(),
+                caller_currency.to_owned(),
+            ));
         }
 
         if card.current_balance_minor < amount_minor {
@@ -520,10 +541,15 @@ impl Store<'_> {
     }
 
     /// Top up a gift card with additional funds.
+    /// `currency` is the currency `amount_minor` was entered in; when supplied and it
+    /// differs from the CARD's currency the top-up is REFUSED, for the same reason given
+    /// on `redeem_gift_card` — a bare minor-unit integer means different money on a
+    /// 0-exponent currency than on a 3-exponent one.
     pub fn top_up_gift_card(
         &self,
         card_number_or_id: &str,
         amount_minor: i64,
+        currency: Option<&str>,
     ) -> Result<GiftCardWithTransactions, CoreError> {
         if amount_minor <= 0 {
             return Err(CoreError::Validation {
@@ -544,6 +570,18 @@ impl Store<'_> {
                 field: "status",
                 message: format!("cannot top-up card with status: {}", card.status),
             });
+        }
+
+        // Currency guard: a bare minor-unit integer means different money on a
+        // 0-exponent currency than on a 3-exponent one. Placed after the status
+        // check so a frozen card in the wrong currency still reports its status.
+        if let Some(caller_currency) = currency
+            && caller_currency != card.currency
+        {
+            return Err(CoreError::CurrencyMismatch(
+                card.currency.clone(),
+                caller_currency.to_owned(),
+            ));
         }
 
         let txn_id = uuid::Uuid::now_v7().to_string();

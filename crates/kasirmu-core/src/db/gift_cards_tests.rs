@@ -150,7 +150,7 @@ fn redeem_gift_card_deducts_balance() {
     ).unwrap();
 
     let result = store(&conn)
-        .redeem_gift_card("GC-4001", 25000, "sale-1")
+        .redeem_gift_card("GC-4001", 25000, "sale-1", None)
         .unwrap();
     assert_eq!(result.card.current_balance_minor, 25000);
     assert_eq!(result.transaction.amount_minor, -25000);
@@ -179,10 +179,10 @@ fn redeem_gift_card_is_idempotent() {
     ).unwrap();
 
     let r1 = store(&conn)
-        .redeem_gift_card("GC-4002", 10000, "sale-2")
+        .redeem_gift_card("GC-4002", 10000, "sale-2", None)
         .unwrap();
     let r2 = store(&conn)
-        .redeem_gift_card("GC-4002", 10000, "sale-2")
+        .redeem_gift_card("GC-4002", 10000, "sale-2", None)
         .unwrap();
     assert_eq!(r1.card.current_balance_minor, r2.card.current_balance_minor);
     assert_eq!(r1.transaction.id, r2.transaction.id);
@@ -210,7 +210,7 @@ fn redeem_insufficient_balance_fails() {
     ).unwrap();
 
     let err = store(&conn)
-        .redeem_gift_card("GC-5001", 10000, "sale-3")
+        .redeem_gift_card("GC-5001", 10000, "sale-3", None)
         .unwrap_err();
     assert!(matches!(
         err,
@@ -250,7 +250,7 @@ fn redeem_atomic_decrement_keeps_ledger_in_sync() {
         )
         .unwrap();
         let r = store(&conn)
-            .redeem_gift_card("GC-5002", amount, sale_id)
+            .redeem_gift_card("GC-5002", amount, sale_id, None)
             .unwrap();
         assert_eq!(
             r.card.current_balance_minor, expected_after,
@@ -298,7 +298,9 @@ fn top_up_increases_balance() {
     // in `crate::tests::shift_integration`.
     std::thread::sleep(std::time::Duration::from_millis(5));
 
-    let result = store(&conn).top_up_gift_card("GC-6001", 20000).unwrap();
+    let result = store(&conn)
+        .top_up_gift_card("GC-6001", 20000, None)
+        .unwrap();
     assert_eq!(result.card.current_balance_minor, 30000);
     assert_eq!(result.transactions[0].txn_type, "topup");
 }
@@ -388,7 +390,7 @@ fn redeem_on_frozen_card_fails() {
     ).unwrap();
 
     let err = store(&conn)
-        .redeem_gift_card("GC-8001", 10000, "sale-8")
+        .redeem_gift_card("GC-8001", 10000, "sale-8", None)
         .unwrap_err();
     assert!(matches!(
         err,
@@ -446,7 +448,7 @@ fn redeem_gift_card_zero_amount_fails() {
     ).unwrap();
 
     let err = store(&conn)
-        .redeem_gift_card("GC-9001", 0, "sale-9")
+        .redeem_gift_card("GC-9001", 0, "sale-9", None)
         .unwrap_err();
     assert!(matches!(
         err,
@@ -461,7 +463,7 @@ fn redeem_gift_card_zero_amount_fails() {
 fn top_up_nonexistent_card_fails() {
     let conn = fresh();
     let err = store(&conn)
-        .top_up_gift_card("NONEXISTENT", 10000)
+        .top_up_gift_card("NONEXISTENT", 10000, None)
         .unwrap_err();
     assert!(matches!(
         err,
@@ -531,7 +533,7 @@ fn redeem_exhausts_balance_auto_redeemed() {
     ).unwrap();
 
     let result = store(&conn)
-        .redeem_gift_card("GC-11001", 5000, "sale-11")
+        .redeem_gift_card("GC-11001", 5000, "sale-11", None)
         .unwrap();
     assert_eq!(result.card.current_balance_minor, 0);
     assert_eq!(result.card.status, "redeemed");
@@ -560,7 +562,7 @@ fn notes_format_major_units_via_card_currency() {
     ).unwrap();
 
     let result = store(&conn)
-        .redeem_gift_card("GC-12001", 25000, "sale-12")
+        .redeem_gift_card("GC-12001", 25000, "sale-12", None)
         .unwrap();
     assert_eq!(result.transaction.notes, "Redeemed 250.00 on sale sale-12");
 
@@ -576,7 +578,9 @@ fn notes_format_major_units_via_card_currency() {
         .unwrap();
     assert_eq!(redeem.notes, "Redeemed 250.00 on sale sale-12");
 
-    let topped = store(&conn).top_up_gift_card("GC-12001", 10000).unwrap();
+    let topped = store(&conn)
+        .top_up_gift_card("GC-12001", 10000, None)
+        .unwrap();
     let topup = topped
         .transactions
         .iter()
@@ -608,7 +612,7 @@ fn notes_keep_raw_minor_for_idr() {
     ).unwrap();
 
     let result = store(&conn)
-        .redeem_gift_card("GC-12002", 25000, "sale-13")
+        .redeem_gift_card("GC-12002", 25000, "sale-13", None)
         .unwrap();
     assert_eq!(result.transaction.notes, "Redeemed 25000 on sale sale-13");
 }
@@ -636,7 +640,7 @@ fn notes_render_kwd_three_decimals() {
     ).unwrap();
 
     let result = store(&conn)
-        .redeem_gift_card("GC-12003", 12, "sale-14")
+        .redeem_gift_card("GC-12003", 12, "sale-14", None)
         .unwrap();
     assert_eq!(result.transaction.notes, "Redeemed 0.012 on sale sale-14");
 }
@@ -1019,7 +1023,7 @@ fn redeem_refuses_when_the_idempotency_read_errors_instead_of_double_redeeming()
     // RED: the failed read was taken for "no prior redemption", so the redemption ran a second
     // time. GREEN: the read failure propagates — the `if let` leaves the block untouched on
     // `Err`, which is the whole assertion.
-    if let Ok(r) = store(&conn).redeem_gift_card("GC-ERR-1", 10000, "sale-err-1") {
+    if let Ok(r) = store(&conn).redeem_gift_card("GC-ERR-1", 10000, "sale-err-1", None) {
         panic!(
             "unreadable idempotency row was read as absence and re-redeemed: {}",
             r.transaction.id
@@ -1075,7 +1079,7 @@ fn redeem_still_proceeds_when_no_prior_redemption_exists() {
     .unwrap();
 
     let result = store(&conn)
-        .redeem_gift_card("GC-OK-1", 10000, "sale-ok-1")
+        .redeem_gift_card("GC-OK-1", 10000, "sale-ok-1", None)
         .expect("a genuinely absent prior redemption must not be an error");
     assert_eq!(result.card.current_balance_minor, 40000);
     assert_eq!(result.transaction.txn_type, "redeem");
@@ -1157,7 +1161,7 @@ fn redeem_gift_card_race_cannot_double_spend_the_same_balance() {
     conn_a.pragma_update(None, "busy_timeout", "5000").unwrap();
     A_WAITING_TX.lock().unwrap().replace(a_waiting_tx);
     conn_a.busy_handler(Some(note_a_is_waiting)).unwrap();
-    let outcome = store(&conn_a).redeem_gift_card("GC-RD-R1", 30000, "sale-rd-a");
+    let outcome = store(&conn_a).redeem_gift_card("GC-RD-R1", 30000, "sale-rd-a", None);
     rival.join().unwrap();
 
     assert!(
@@ -1201,4 +1205,66 @@ fn redeem_gift_card_race_cannot_double_spend_the_same_balance() {
     assert_eq!(rows, 0, "a refused redemption must not write a ledger row");
 
     drop(conn_a);
+}
+
+/// The CORE currency guard, which the UI guard cannot substitute for.
+///
+/// Both redeem and top-up used to take a bare amount_minor: i64 with no currency
+/// argument and no comparison against the card's stored currency -- the only money
+/// writer in the crate that did not check. receivables.rs:263, payables.rs:225 and
+/// refunds.rs:111 all refuse a mismatch server-side; this pins the same rule here.
+///
+/// Both directions are asserted, because a guard that refuses EVERYTHING would also
+/// pass a refusal-only test.
+#[test]
+fn redeem_and_top_up_refuse_a_mismatched_currency() {
+    let conn = fresh();
+    seed_card(&conn, "GC-CUR-1");
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at, subtotal_minor, tax_total_minor)
+         VALUES ('sale-cur-1', 30000, 'IDR', 0, 'completed', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', 30000, 0)",
+        [],
+    )
+    .unwrap();
+
+    // seed_card issues in IDR; re-denominate the row in KWD, a 3-decimal currency, so a
+    // 0-decimal caller's integer would be debited as-is (10000 IDR -> 10000 KWD minor).
+    conn.execute(
+        "UPDATE gift_cards SET currency = 'KWD' WHERE card_number = 'GC-CUR-1'",
+        [],
+    )
+    .unwrap();
+
+    let err = store(&conn)
+        .redeem_gift_card("GC-CUR-1", 10000, "sale-cur-1", Some("IDR"))
+        .expect_err("a redeem in a different currency than the card must be refused");
+    assert!(
+        matches!(err, CoreError::CurrencyMismatch(..)),
+        "expected CurrencyMismatch, got: {err}"
+    );
+
+    let err = store(&conn)
+        .top_up_gift_card("GC-CUR-1", 10000, Some("IDR"))
+        .expect_err("a top-up in a different currency than the card must be refused");
+    assert!(
+        matches!(err, CoreError::CurrencyMismatch(..)),
+        "expected CurrencyMismatch, got: {err}"
+    );
+
+    // Neither refusal may have moved the balance.
+    let balance = store(&conn)
+        .get_gift_card_balance("GC-CUR-1")
+        .unwrap()
+        .unwrap()
+        .0;
+    assert_eq!(
+        balance, 50000,
+        "a refused operation must not touch the balance"
+    );
+
+    // The SAME currency is accepted -- proving the guard compares rather than refuses all.
+    let ok = store(&conn)
+        .top_up_gift_card("GC-CUR-1", 10000, Some("KWD"))
+        .expect("a matching currency must be accepted");
+    assert_eq!(ok.card.current_balance_minor, 60000);
 }
