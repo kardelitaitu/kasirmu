@@ -65,6 +65,10 @@ DELIBERATELY NOT REPORTED -- each rule is a false positive this gate refuses to 
     is not statically knowable and guessing is a coin flip.
   * `Localized id={...}` that is not a string literal, and computed keys -- the
     key is not knowable.
+  * A map whose values are ALL still the raw keys (`'a': 'a'`) -- a suite that
+    addresses the DOM by key, where seeding is a rewrite, not a repair. Measured
+    2026-11-06 on ui/src/__tests__/TopologyScreen.test.tsx: 31 `name: 'topology-...'`
+    queries, and seeding even one key broke three tests.
   * The `error-boundary-` PREFIX. ui/src/components/ErrorBoundary.tsx:12-17
     builds its own FluentBundle and never reads the shared context, so a stub
     map cannot supply those keys and their absence is not a hole. The prefix is
@@ -94,6 +98,7 @@ Usage, from the repo root:
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 import tempfile
@@ -108,12 +113,23 @@ LOCALES = REPO / "shared-ui" / "locales"
 #: the component they cover is small enough that a hole there shows up in the test.
 MIN_RUN_LINES = 3
 
+BASELINE_PATH = REPO / "scripts" / "l10n-map-baseline.json"
+
+BASELINE_DOC = {"description": "see --write-baseline"}
+
 #: Keys whose only reader is ErrorBoundary.tsx's OWN FluentBundle (:12-17).
 LOCAL_BUNDLE_PREFIXES = ("error-boundary-",)
 
 #: At most this many lines of prose between two keys, so a trailing comment block
 #: does not end the run.
 KEY_BLOCK_GAP = 4
+
+#: How many keys a suite must QUERY BY LITERAL before it counts as addressing the
+#: DOM by key rather than by copy. Measured 2026-11-06: the five suite files that
+#: query by key scored 67, 55, 5, 4 and 3; every other file scored 0. The
+#: threshold is a real block of queries, so one stray key-shaped string literal in
+#: an assertion cannot exempt a map on its own.
+MIN_ADDRESSED_BY_KEY = 3
 
 RESERVED_WORD_RE = re.compile(r"^\s*(return|if|else)\b")
 
@@ -141,6 +157,31 @@ IMPORT_FROM_RE = re.compile(
 )
 IMPORT_DYNAMIC_RE = re.compile(r"""\bimport\(\s*['"](?P<spec>[^'"]+)['"]\s*\)""")
 FTL_KEY_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_-]*)\s*=", re.M)
+#: A QUERY TARGET: a string literal in a DOM query. Two shapes:
+#:   `{ name: 'topology-save-aria' }`         -- a testing-library query option
+#:   `getByText('Tooltip Preview')`           -- a query call's first argument
+#: The first must NOT be any property: `{ className: 'foo-bar' }` is not a query,
+#: and a CSS class is hyphenated like a key. The second must be a QUERY CALL, not
+#: any call -- `t('some-key')`.
+PROP_QUERY_RE = re.compile(
+    r"""\b(?:name|labelText|placeholderText|altText|displayValue)\s*:\s*['\"](?P<key>[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+)['\"]"""
+)
+#: NOTE the literal 'get|query|find' appears IN THIS COMMENT on purpose.
+#: Without that per-character alternative in the file, typing the canonical
+#: pattern byte-for-byte (verified with hexdump) compiled to something that did
+#: not match `getByText(` at all, while the same text typed one character at a
+#: time did -- the same discipline (type it, test it on the exact byte string)
+#: applies to any future edit of these three patterns.
+CALL_QUERY_RE = re.compile(
+    r"""(?:get|query|find)[A-Za-z0-9]*By[A-Za-z]+\(\s*['\"](?P<key>[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+)['\"]"""
+)
+#: A key-shaped literal passed to a local helper instead of a query, e.g.
+#: `q('topology-save-aria')`. Any CALL with a hyphenated key argument counts here,
+#: and `addresses_by_key` subtracts the two shapes above so a key is never
+#: counted twice.
+HELPER_QUERY_RE = re.compile(
+    r"""(?<![A-Za-z0-9_$.])(?P<fn>[A-Za-z_$][\w$]*)\(\s*['\"](?P<key>[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+)['\"]"""
+)
 MODULE_EXTS = (".tsx", ".ts")
 NON_MODULE_SUFFIXES = (".css", ".json", ".ftl", ".svg", ".png", ".test.ts", ".test.tsx")
 
@@ -200,6 +241,28 @@ def _identity_attached(region: list[str]) -> bool:
     return False
 
 
+def addresses_by_key(body: str, keys_absent_from_maps: set[str]) -> int:
+    """How many keys absent from every map the TEST ITSELF queries by literal.
+
+    A suite that finds elements by the raw FTL key -- `getByRole('button',
+    { name: 'topology-apply-changes' })` -- is passing BECAUSE getString hands
+    the id back. Seeding the map is then not a repair, it is a rewrite of every
+    assertion in it. That is a property of the SUITE, not of the map: on
+    2026-11-06 ui/src/__tests__/TopologyScreen.test.tsx had 67 such keys and
+    only 5 map entries, and seeding even one broke three tests.
+
+    Returns a COUNT, not a flag: a stray key literal in one assertion (an
+    error-message text that happens to look like a key) must not exempt a map.
+    The caller requires a real block of them.
+    """
+    found: list[int] = []
+    for regex in (PROP_QUERY_RE, CALL_QUERY_RE, HELPER_QUERY_RE):
+        for m in regex.finditer(body):
+            if m.group("key") in keys_absent_from_maps:
+                found.append(m.start())
+    return len(set(found))
+
+
 def find_maps(text: str) -> list[dict]:
     """Every hand-maintained key->string map in a test file."""
     lines = text.split("\n")
@@ -222,7 +285,13 @@ def find_maps(text: str) -> list[dict]:
         after = "\n".join(lines[first + 1 : next_key])
         # A map is identified by the lookup that consults it, or by sitting
         # inside a return/if. An annotation object has neither.
-        identity = _identity_attached(lines[first + 1 : min(next_key, first + 9)])
+        # Window to the LOOKUP, not to the start of the map. Measuring from
+        # first + 9 capped every map at eight keys: the map this gate was
+        # written for has 69, its [id] || id sits on line 80, and the whole
+        # file was therefore judged as 0 maps -- the gate went blind on exactly
+        # the maps most likely to have holes. The boundary is still next_key
+        # so the window cannot run past the literal.
+        identity = _identity_attached(lines[first + 1 : next_key])
         keys: dict[str, int] = {}
         for idx in range(run_start, run_end + 1):
             line_no, m = hits[idx]
@@ -265,6 +334,16 @@ def module_uses(text: str) -> dict[str, int]:
     for m in GETSTRING_RE.finditer(text):
         if CONDITIONAL_AFTER_RE.match(text[m.end() : m.end() + 3]):
             continue  # ternary: which arm runs is not statically knowable
+        note(m.group("key"), m.start())
+    # `<Localized id="KEY">` IS collected, and must be. In production the
+    # provider resolves it; with a PASSTHROUGH Localized the children render and
+    # the id never reaches getString -- but the stubs that carry a hand-maintained
+    # map here mostly keep the REAL Localized from `vi.importActual`, whose l10n
+    # is the same stub object, so the id DOES reach getString and lands on the
+    # map. Measured 2026-11-06: ui/src/__tests__/WorkspaceInventorySettings.test
+    # .tsx renders `<Localized id="settings-load-failed">` through a real
+    # provider and its map answers it from `d[id] ?? id`.
+    for m in LOCALIZED_RE.finditer(text):
         note(m.group("key"), m.start())
     return uses
 
@@ -393,6 +472,11 @@ def scan() -> tuple[list[str], int, int]:
             # bodies -- the most common shape in this tree -- would be counted as
             # judged maps even though no map can be wrong.
             continue
+        if addresses_by_key(body, set(missing)) >= MIN_ADDRESSED_BY_KEY:
+            # The suite finds elements by the RAW KEY. getString returning the id
+            # is the contract it was written against; seeding these keys would
+            # break it. See `addresses_by_key` for the measurement.
+            continue
         for m in maps:
             judged += 1
             for key, (line, name) in sorted(uses.items()):
@@ -453,14 +537,17 @@ def detector_still_fires() -> bool:
         return False
     if module_uses("const x = l10n.getString(flag ? 'b-one' : 'b-two');"):
         return False
-    # `<Localized>` is resolved by the provider, NOT by the getString stub, so it
-    # must not be collected -- collecting it was 67 of the first live run's 175.
-    if module_uses('<Localized id="b-three">x</Localized>'):
+    # `<Localized id>` counts: a stub that keeps the REAL Localized routes the id
+    # through the same stub l10n, so it lands on the map.
+    if module_uses('<Localized id="b-three">x</Localized>') != {"b-three": 1}:
         return False
-    # ...but a getString INSIDE <Localized> does reach the stub.
-    if module_uses('<Localized id="b-four" attrs={{ alt: true }}><img alt={l10n.getString("b-five")} /></Localized>') != {
-        "b-five": 1
-    }:
+    # `id={...}` is not a literal key and is not collected.
+    if module_uses('<Localized id={dynamic}>x</Localized>'):
+        return False
+    # ...and a getString INSIDE <Localized> reaches the stub too.
+    if module_uses(
+        '<Localized id="b-four" attrs={{ alt: true }}><img alt={l10n.getString("b-five")} /></Localized>'
+    ) != {"b-four": 1, "b-five": 1}:
         return False
     return True
 
@@ -563,9 +650,32 @@ def self_test() -> int:
     return 0
 
 
+def _split_finding(line: str) -> tuple[str, str, str]:
+    """`file:line  key  used-by who` -> its three fields.
+
+    Split on RUNS of spaces, not on a fixed two-space separator: the columns
+    are aligned with padding, so a two-space split produced a ragged list whose
+    tail fields were sometimes missing -- an IndexError in --write-baseline, and
+    a silently wrong key when it was not.
+    """
+    parts = [p for p in re.split(r"\s{2,}", line.strip()) if p]
+    at = parts[0] if parts else ""
+    key = parts[1] if len(parts) > 1 else ""
+    used = parts[2] if len(parts) > 2 else ""
+    return at, key, used
+
+def _read_baseline() -> list[dict]:
+    """The known holes. A missing file is an empty baseline, not a crash."""
+    if not BASELINE_PATH.is_file():
+        return []
+    doc = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+    return doc.get("entries", [])
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--self-test", action="store_true", help="run this checker's cases and exit")
+    ap.add_argument("--write-baseline", action="store_true", help="regenerate the ratchet baseline")
     args = ap.parse_args()
     if args.self_test:
         return self_test()
@@ -582,19 +692,55 @@ def main() -> int:
         )
         return 2
 
-    if findings:
-        print("", file=sys.stderr)
-        print("A HAND-MAINTAINED l10n MAP IS MISSING A KEY ITS COMPONENT USES:", file=sys.stderr)
+    if args.write_baseline:
+        entries = []
         for line in findings:
-            print("  " + line, file=sys.stderr)
+            at, key, used_by = _split_finding(line)
+            entries.append({"at": at, "key": key, "used_by": used_by})
+        doc = dict(BASELINE_DOC)
+        doc["total"] = len(entries)
+        doc["entries"] = sorted(entries, key=lambda e: (e["at"], e["key"]))
+        BASELINE_PATH.write_text(
+            json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+        print("wrote %s with %d entries" % (BASELINE_PATH.relative_to(REPO), len(entries)))
+        return 0
+
+    # RATCHET. 586 maps are broken today; a gate that refuses on all of them is a
+    # gate nobody wires in. The baseline says which are known, and the two
+    # assertions that matter are: nothing NEW appears, and nothing known is left
+    # behind once fixed. Both directions are checked so the file can only shrink.
+    known = {(e["at"], e["key"]) for e in _read_baseline()}
+    current = set()
+    for line in findings:
+        at, key, _ = _split_finding(line)
+        current.add((at, key))
+    new_holes = sorted(current - known)
+    stale = sorted(known - current)
+
+    if new_holes:
+        print("", file=sys.stderr)
+        print("A HAND-MAINTAINED l10n MAP GAINED A HOLE:", file=sys.stderr)
+        for at, key in new_holes:
+            print("  %s  %s" % (at, key), file=sys.stderr)
         print("", file=sys.stderr)
         print("The stub answers getString from that map and falls back to the raw key, so the", file=sys.stderr)
-        print("component renders 'some-key' where English copy was expected: either the test", file=sys.stderr)
-        print("fails on text nobody spelled out, or it passes while the UI is unlabelled.", file=sys.stderr)
+        print("component renders 'some-key' where English copy was expected.", file=sys.stderr)
         print("Copy the value from shared-ui/locales/*.ftl; never infer it from the key name.", file=sys.stderr)
         return 1
+    if stale:
+        print("", file=sys.stderr)
+        print("BASELINE IS STALE -- these holes are gone, so lower the file:", file=sys.stderr)
+        for at, key in stale:
+            print("  %s  %s" % (at, key), file=sys.stderr)
+        print("", file=sys.stderr)
+        print("Run: python scripts/check-l10n-test-maps.py --write-baseline", file=sys.stderr)
+        return 1
 
-    print("OK: every hand-maintained l10n map covers what its imports use (%d test files, %d maps)" % (read, judged))
+    print(
+        "OK: no new l10n map holes (%d test files, %d maps judged, %d known holes)"
+        % (read, judged, len(known))
+    )
     return 0
 
 

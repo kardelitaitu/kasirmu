@@ -1,0 +1,2936 @@
+{
+  "description": "see --write-baseline",
+  "total": 586,
+  "entries": [
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-aov",
+      "used_by": "used-by AovCard.tsx:42"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-basket-items",
+      "used_by": "used-by BasketCard.tsx:41"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-basket-orders",
+      "used_by": "used-by BasketCard.tsx:42"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-category-top",
+      "used_by": "used-by CategoryCard.tsx:83"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-customers-new",
+      "used_by": "used-by CustomersCard.tsx:47"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-customers-new-share",
+      "used_by": "used-by CustomersCard.tsx:51"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-customers-returning",
+      "used_by": "used-by CustomersCard.tsx:48"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-customers-total",
+      "used_by": "used-by CustomersCard.tsx:37"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-discounts-redeemed",
+      "used_by": "used-by DiscountsCard.tsx:24"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-discounts-share",
+      "used_by": "used-by DiscountsCard.tsx:33"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-inventory-days",
+      "used_by": "used-by InventoryCard.tsx:36"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-inventory-skus",
+      "used_by": "used-by InventoryCard.tsx:37"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-inventory-turnover",
+      "used_by": "used-by InventoryCard.tsx:35"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-low",
+      "used_by": "used-by AovCard.tsx:52"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-low-stock-critical",
+      "used_by": "used-by LowStockCard.tsx:43"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-low-stock-items",
+      "used_by": "used-by LowStockCard.tsx:42"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-low-stock-left",
+      "used_by": "used-by LowStockCard.tsx:55"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-low-stock-order",
+      "used_by": "used-by LowStockCard.tsx:56"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-low-stock-restock",
+      "used_by": "used-by LowStockCard.tsx:41"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-occupancy-hourly",
+      "used_by": "used-by OccupancyCard.tsx:59"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-occupancy-occupied",
+      "used_by": "used-by OccupancyCard.tsx:42"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-occupancy-orders",
+      "used_by": "used-by OccupancyCard.tsx:51"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-occupancy-peak",
+      "used_by": "used-by OccupancyCard.tsx:50"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-payments-top",
+      "used_by": "used-by PaymentsCard.tsx:53"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-peak",
+      "used_by": "used-by AovCard.tsx:51"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-piutang-count",
+      "used_by": "used-by PiutangCollectionsCard.tsx:89"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-refunds-amount",
+      "used_by": "used-by RefundsCard.tsx:38"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-refunds-avg",
+      "used_by": "used-by RefundsCard.tsx:39"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-refunds-count",
+      "used_by": "used-by RefundsCard.tsx:37"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-staff-sales",
+      "used_by": "used-by StaffCard.tsx:35"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-tables-turn",
+      "used_by": "used-by TablesCard.tsx:42"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-top-product",
+      "used_by": "used-by TopItemsCard.tsx:40"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-total-revenue",
+      "used_by": "used-by RevenueCard.tsx:39"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-voids-count",
+      "used_by": "used-by VoidsCard.tsx:31"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-waitstaff-covers",
+      "used_by": "used-by WaitstaffCard.tsx:30"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-card-waitstaff-total",
+      "used_by": "used-by WaitstaffCard.tsx:40"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-category-currency-aria",
+      "used_by": "used-by CategoryCard.tsx:68"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-empty-low-stock",
+      "used_by": "used-by LowStockCard.tsx:27"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-export-aov-aria",
+      "used_by": "used-by AovCard.tsx:45"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-export-basket-aria",
+      "used_by": "used-by BasketCard.tsx:46"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-export-category-aria",
+      "used_by": "used-by CategoryCard.tsx:86"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-export-col-aov",
+      "used_by": "used-by AovCard.tsx:45"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-export-col-basket",
+      "used_by": "used-by BasketCard.tsx:46"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-export-col-revenue",
+      "used_by": "used-by RevenueCard.tsx:42"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-export-col-turn",
+      "used_by": "used-by TablesCard.tsx:45"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-export-col-units",
+      "used_by": "used-by InventoryCard.tsx:41"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-export-csv-aria",
+      "used_by": "used-by StaffCard.tsx:38"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-export-customers-aria",
+      "used_by": "used-by CustomersCard.tsx:40"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-export-discounts-aria",
+      "used_by": "used-by DiscountsCard.tsx:36"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-export-inventory-aria",
+      "used_by": "used-by InventoryCard.tsx:41"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-export-low-stock-aria",
+      "used_by": "used-by LowStockCard.tsx:46"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-export-occupancy-aria",
+      "used_by": "used-by OccupancyCard.tsx:57"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-export-payments-aria",
+      "used_by": "used-by PaymentsCard.tsx:56"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-export-piutang-aria",
+      "used_by": "used-by PiutangCollectionsCard.tsx:75"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-export-refunds-aria",
+      "used_by": "used-by RefundsCard.tsx:43"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-export-revenue-aria",
+      "used_by": "used-by RevenueCard.tsx:42"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-export-tables-aria",
+      "used_by": "used-by TablesCard.tsx:45"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-export-top-items-aria",
+      "used_by": "used-by TopItemsCard.tsx:43"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-export-voids-aria",
+      "used_by": "used-by VoidsCard.tsx:35"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-export-waitstaff-aria",
+      "used_by": "used-by WaitstaffCard.tsx:43"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-unit-days",
+      "used_by": "used-by InventoryCard.tsx:36"
+    },
+    {
+      "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
+      "key": "analytics-unit-minutes",
+      "used_by": "used-by TablesCard.tsx:42"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-branding",
+      "used_by": "used-by AppearanceSettings.tsx:503"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-choose-logo",
+      "used_by": "used-by AppearanceSettings.tsx:350"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-choose-logo-aria",
+      "used_by": "used-by AppearanceSettings.tsx:348"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-colour-hex-aria",
+      "used_by": "used-by AppearanceSettings.tsx:277"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-hw-accel",
+      "used_by": "used-by AppearanceSettings.tsx:400"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-hw-accel-aria",
+      "used_by": "used-by AppearanceSettings.tsx:406"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-hw-accel-hint",
+      "used_by": "used-by AppearanceSettings.tsx:420"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-interface",
+      "used_by": "used-by AppearanceSettings.tsx:492"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-interface-zoom",
+      "used_by": "used-by AppearanceSettings.tsx:380"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-logo",
+      "used_by": "used-by AppearanceSettings.tsx:335"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-logo-alt",
+      "used_by": "used-by AppearanceSettings.tsx:340"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-preview-badge-label",
+      "used_by": "used-by AppearanceSettings.tsx:462"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-preview-btn-label",
+      "used_by": "used-by AppearanceSettings.tsx:452"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-preview-btn-outline-label",
+      "used_by": "used-by AppearanceSettings.tsx:459"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-preview-heading",
+      "used_by": "used-by AppearanceSettings.tsx:514"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-primary-colour",
+      "used_by": "used-by AppearanceSettings.tsx:263"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-primary-colour-picker-aria",
+      "used_by": "used-by AppearanceSettings.tsx:267"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-reset-all",
+      "used_by": "used-by AppearanceSettings.tsx:534"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-reset-all-aria",
+      "used_by": "used-by AppearanceSettings.tsx:520"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-reset-colour-aria",
+      "used_by": "used-by AppearanceSettings.tsx:293"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-save-aria",
+      "used_by": "used-by AppearanceSettings.tsx:542"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-store-name",
+      "used_by": "used-by AppearanceSettings.tsx:360"
+    },
+    {
+      "at": "ui/src/__tests__/AppearanceSettings.test.tsx:60",
+      "key": "appearance-store-name-fallback",
+      "used_by": "used-by AppearanceSettings.tsx:443"
+    },
+    {
+      "at": "ui/src/__tests__/CustomReportScreen.test.tsx:42",
+      "key": "custom-report-next-page",
+      "used_by": "used-by CustomReportScreen.tsx:442"
+    },
+    {
+      "at": "ui/src/__tests__/CustomReportScreen.test.tsx:42",
+      "key": "custom-report-prev-page",
+      "used_by": "used-by CustomReportScreen.tsx:431"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-analyse-file",
+      "used_by": "used-by ImportSection.tsx:128"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-backup-backing-up",
+      "used_by": "used-by BackupSection.tsx:97"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-backup-create",
+      "used_by": "used-by BackupSection.tsx:99"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-backup-desc",
+      "used_by": "used-by BackupSection.tsx:55"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-backup-label-last",
+      "used_by": "used-by BackupSection.tsx:64"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-backup-label-size",
+      "used_by": "used-by BackupSection.tsx:82"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-backup-never",
+      "used_by": "used-by BackupSection.tsx:77"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-backup-status-aria",
+      "used_by": "used-by BackupSection.tsx:49"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-backup-title",
+      "used_by": "used-by BackupSection.tsx:52"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-encrypt-back",
+      "used_by": "used-by ExportSection.tsx:225"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-encrypt-confirm",
+      "used_by": "used-by ExportSection.tsx:206"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-encrypt-confirm-placeholder",
+      "used_by": "used-by ExportSection.tsx:215"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-encrypt-desc",
+      "used_by": "used-by ExportSection.tsx:173"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-encrypt-export",
+      "used_by": "used-by ExportSection.tsx:228"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-encrypt-password",
+      "used_by": "used-by ExportSection.tsx:182"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-encrypt-password-placeholder",
+      "used_by": "used-by ExportSection.tsx:191"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-encrypt-title",
+      "used_by": "used-by ExportSection.tsx:170"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-export-complete",
+      "used_by": "used-by ExportSection.tsx:247"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-export-complete-aria",
+      "used_by": "used-by ExportSection.tsx:256"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-export-date-from",
+      "used_by": "used-by ExportSection.tsx:133"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-export-date-to",
+      "used_by": "used-by ExportSection.tsx:145"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-export-done-text",
+      "used_by": "used-by ExportSection.tsx:263"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-export-exporting",
+      "used_by": "used-by ExportSection.tsx:243"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-export-new-export",
+      "used_by": "used-by ExportSection.tsx:271"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-export-next",
+      "used_by": "used-by ExportSection.tsx:160"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-export-selected-types",
+      "used_by": "used-by ExportSection.tsx:266"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-export-title",
+      "used_by": "used-by ExportSection.tsx:85"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-export-types-aria",
+      "used_by": "used-by ExportSection.tsx:89"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-export-wizard-aria",
+      "used_by": "used-by ExportSection.tsx:81"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-analysing",
+      "used_by": "used-by ImportSection.tsx:195"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-browse",
+      "used_by": "used-by ImportSection.tsx:70"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-cancel",
+      "used_by": "used-by ImportSection.tsx:125"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-complete",
+      "used_by": "used-by ImportSection.tsx:242"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-complete-aria",
+      "used_by": "used-by ImportSection.tsx:204"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-desc",
+      "used_by": "used-by ImportSection.tsx:59"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-done-summary",
+      "used_by": "used-by ImportSection.tsx:252"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-done-text",
+      "used_by": "used-by ImportSection.tsx:245"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-dry-run-added",
+      "used_by": "used-by ImportSection.tsx:216"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-dry-run-complete",
+      "used_by": "used-by ImportSection.tsx:191"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-dry-run-skipped",
+      "used_by": "used-by ImportSection.tsx:228"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-dry-run-title",
+      "used_by": "used-by ImportSection.tsx:210"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-dry-run-updated",
+      "used_by": "used-by ImportSection.tsx:222"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-meta-contains",
+      "used_by": "used-by ImportSection.tsx:168"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-meta-created",
+      "used_by": "used-by ImportSection.tsx:162"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-meta-file",
+      "used_by": "used-by ImportSection.tsx:87"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-meta-store",
+      "used_by": "used-by ImportSection.tsx:150"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-meta-version",
+      "used_by": "used-by ImportSection.tsx:156"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-new-import",
+      "used_by": "used-by ImportSection.tsx:261"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-password",
+      "used_by": "used-by ImportSection.tsx:95"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-password-placeholder",
+      "used_by": "used-by ImportSection.tsx:104"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-preview-title",
+      "used_by": "used-by ImportSection.tsx:81"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-start",
+      "used_by": "used-by ImportSection.tsx:180"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-title",
+      "used_by": "used-by ImportSection.tsx:56"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-import-wizard-aria",
+      "used_by": "used-by ImportSection.tsx:52"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-cancel",
+      "used_by": "used-by RestoreSection.tsx:273"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-cli-hint",
+      "used_by": "used-by RestoreSection.tsx:61"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-confirm-desc",
+      "used_by": "used-by RestoreSection.tsx:234"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-confirm-title",
+      "used_by": "used-by RestoreSection.tsx:230"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-desc",
+      "used_by": "used-by RestoreSection.tsx:86"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-empty",
+      "used_by": "used-by RestoreSection.tsx:147"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-generation",
+      "used_by": "used-by RestoreSection.tsx:157"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-label-modified",
+      "used_by": "used-by RestoreSection.tsx:177"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-label-schema",
+      "used_by": "used-by RestoreSection.tsx:189"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-label-size",
+      "used_by": "used-by RestoreSection.tsx:170"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-loading",
+      "used_by": "used-by RestoreSection.tsx:134"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-next-boot",
+      "used_by": "used-by RestoreSection.tsx:264"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-pending-aria",
+      "used_by": "used-by RestoreSection.tsx:99"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-pending-desc",
+      "used_by": "used-by RestoreSection.tsx:104"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-pending-requested",
+      "used_by": "used-by RestoreSection.tsx:123"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-pending-title",
+      "used_by": "used-by RestoreSection.tsx:101"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-pending-unreadable",
+      "used_by": "used-by RestoreSection.tsx:114"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-request",
+      "used_by": "used-by RestoreSection.tsx:210"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-schema-unknown",
+      "used_by": "used-by RestoreSection.tsx:194"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-status-aria",
+      "used_by": "used-by RestoreSection.tsx:55"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-store-name-label",
+      "used_by": "used-by RestoreSection.tsx:248"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-store-name-placeholder",
+      "used_by": "used-by RestoreSection.tsx:261"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-submit",
+      "used_by": "used-by RestoreSection.tsx:281"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-title",
+      "used_by": "used-by RestoreSection.tsx:58"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-restore-unreadable",
+      "used_by": "used-by RestoreSection.tsx:141"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-title",
+      "used_by": "used-by DataManagementScreen.tsx:130"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-toast-backup-fail",
+      "used_by": "used-by useBackupStatus.ts:172"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-toast-backup-status-fail",
+      "used_by": "used-by useBackupStatus.ts:124"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-toast-backup-success",
+      "used_by": "used-by useBackupStatus.ts:169"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-toast-export-fail",
+      "used_by": "used-by useExportWizard.ts:126"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-toast-export-password-length",
+      "used_by": "used-by useExportWizard.ts:82"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-toast-export-password-match",
+      "used_by": "used-by useExportWizard.ts:86"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-toast-export-select-type",
+      "used_by": "used-by useExportWizard.ts:73"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-toast-export-success",
+      "used_by": "used-by useExportWizard.ts:119"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-toast-file-picker-fail",
+      "used_by": "used-by useImportWizard.ts:59"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-toast-import-enter-password",
+      "used_by": "used-by useImportWizard.ts:66"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-toast-import-no-file",
+      "used_by": "used-by useImportWizard.ts:70"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-toast-import-success",
+      "used_by": "used-by useImportWizard.ts:152"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-toast-restore-fail",
+      "used_by": "used-by useRestore.ts:170"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-toast-restore-store-mismatch",
+      "used_by": "used-by useRestore.ts:236"
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:53",
+      "key": "data-mgmt-toast-restore-success",
+      "used_by": "used-by useRestore.ts:225"
+    },
+    {
+      "at": "ui/src/__tests__/LicenseActivationScreen.test.tsx:69",
+      "key": "auth-clipboard-error",
+      "used_by": "used-by LicenseActivationScreen.tsx:388"
+    },
+    {
+      "at": "ui/src/__tests__/LicenseActivationScreen.test.tsx:69",
+      "key": "auth-pair-code-label",
+      "used_by": "used-by LicenseActivationScreen.tsx:876"
+    },
+    {
+      "at": "ui/src/__tests__/LicenseActivationScreen.test.tsx:69",
+      "key": "auth-pair-expired",
+      "used_by": "used-by LicenseActivationScreen.tsx:852"
+    },
+    {
+      "at": "ui/src/__tests__/LicenseActivationScreen.test.tsx:69",
+      "key": "auth-pair-refresh",
+      "used_by": "used-by LicenseActivationScreen.tsx:854"
+    },
+    {
+      "at": "ui/src/__tests__/LicenseActivationScreen.test.tsx:69",
+      "key": "auth-pair-scan-qr",
+      "used_by": "used-by LicenseActivationScreen.tsx:860"
+    },
+    {
+      "at": "ui/src/__tests__/LicenseActivationScreen.test.tsx:69",
+      "key": "auth-pair-success",
+      "used_by": "used-by LicenseActivationScreen.tsx:244"
+    },
+    {
+      "at": "ui/src/__tests__/LicenseActivationScreen.test.tsx:69",
+      "key": "auth-pair-waiting",
+      "used_by": "used-by LicenseActivationScreen.tsx:884"
+    },
+    {
+      "at": "ui/src/__tests__/LicenseActivationScreen.test.tsx:69",
+      "key": "auth-setup-recommended-tablet",
+      "used_by": "used-by LicenseActivationScreen.tsx:463"
+    },
+    {
+      "at": "ui/src/__tests__/LicenseActivationScreen.test.tsx:69",
+      "key": "auth-tab-license-key",
+      "used_by": "used-by LicenseActivationScreen.tsx:604"
+    },
+    {
+      "at": "ui/src/__tests__/LicenseActivationScreen.test.tsx:69",
+      "key": "auth-tab-pair-device",
+      "used_by": "used-by LicenseActivationScreen.tsx:662"
+    },
+    {
+      "at": "ui/src/__tests__/LicenseActivationScreen.test.tsx:69",
+      "key": "auth-trial-hint-enterprise",
+      "used_by": "used-by LicenseActivationScreen.tsx:429"
+    },
+    {
+      "at": "ui/src/__tests__/LicenseActivationScreen.test.tsx:69",
+      "key": "auth-trial-hint-pro",
+      "used_by": "used-by LicenseActivationScreen.tsx:428"
+    },
+    {
+      "at": "ui/src/__tests__/LicenseActivationScreen.test.tsx:69",
+      "key": "license-activation-logo-alt",
+      "used_by": "used-by LicenseActivationScreen.tsx:407"
+    },
+    {
+      "at": "ui/src/__tests__/LocalApiSection.test.tsx:72",
+      "key": "settings-local-api-desktop-only",
+      "used_by": "used-by LocalApiSection.tsx:321"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "auth-pair-scan-qr",
+      "used_by": "used-by ProvisioningFlow.tsx:923"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "auth-setup-google-desc",
+      "used_by": "used-by ProvisioningFlow.tsx:949"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "auth-setup-google-failed",
+      "used_by": "used-by ProvisioningFlow.tsx:969"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "setup-account-google",
+      "used_by": "used-by ProvisioningFlow.tsx:960"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "setup-account-linked",
+      "used_by": "used-by ProvisioningFlow.tsx:844"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "setup-account-send",
+      "used_by": "used-by ProvisioningFlow.tsx:1012"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "setup-account-sending",
+      "used_by": "used-by ProvisioningFlow.tsx:1049"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "setup-account-tablet",
+      "used_by": "used-by ProvisioningFlow.tsx:978"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "setup-account-verify",
+      "used_by": "used-by ProvisioningFlow.tsx:1042"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "setup-account-verifying",
+      "used_by": "used-by ProvisioningFlow.tsx:1054"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "setup-account-waiting",
+      "used_by": "used-by ProvisioningFlow.tsx:964"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "setup-provision-account-hint",
+      "used_by": "used-by ProvisioningFlow.tsx:787"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "setup-provision-location-label",
+      "used_by": "used-by ProvisioningFlow.tsx:1203"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "setup-provision-owner-name-label",
+      "used_by": "used-by ProvisioningFlow.tsx:1218"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "setup-provision-owner-username-label",
+      "used_by": "used-by ProvisioningFlow.tsx:1233"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "setup-provision-pin-confirm-label",
+      "used_by": "used-by ProvisioningFlow.tsx:1265"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "setup-provision-pin-label",
+      "used_by": "used-by ProvisioningFlow.tsx:1248"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "setup-provision-seed-catalog",
+      "used_by": "used-by ProvisioningFlow.tsx:1190"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "setup-provision-step-back",
+      "used_by": "used-by ProvisioningFlow.tsx:1344"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "setup-provision-step-next",
+      "used_by": "used-by ProvisioningFlow.tsx:1355"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "setup-provision-step-progress",
+      "used_by": "used-by ProvisioningFlow.tsx:668"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "setup-provision-store-type",
+      "used_by": "used-by ProvisioningFlow.tsx:1125"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "setup-provision-submit",
+      "used_by": "used-by ProvisioningFlow.tsx:1361"
+    },
+    {
+      "at": "ui/src/__tests__/ProvisioningFlow.test.tsx:69",
+      "key": "setup-provision-tax-preset",
+      "used_by": "used-by ProvisioningFlow.tsx:1154"
+    },
+    {
+      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
+      "key": "settings-sync-resolved-origin",
+      "used_by": "used-by SyncSection.tsx:234"
+    },
+    {
+      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
+      "key": "sync-conflicts-col-action",
+      "used_by": "used-by SyncConflictsPanel.tsx:213"
+    },
+    {
+      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
+      "key": "sync-conflicts-col-actions",
+      "used_by": "used-by SyncConflictsPanel.tsx:216"
+    },
+    {
+      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
+      "key": "sync-conflicts-col-attempts",
+      "used_by": "used-by SyncConflictsPanel.tsx:214"
+    },
+    {
+      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
+      "key": "sync-conflicts-col-error",
+      "used_by": "used-by SyncConflictsPanel.tsx:215"
+    },
+    {
+      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
+      "key": "sync-conflicts-loading",
+      "used_by": "used-by SyncConflictsPanel.tsx:192"
+    },
+    {
+      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
+      "key": "sync-conflicts-panel-empty",
+      "used_by": "used-by SyncConflictsPanel.tsx:202"
+    },
+    {
+      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
+      "key": "sync-conflicts-panel-table-aria",
+      "used_by": "used-by SyncConflictsPanel.tsx:209"
+    },
+    {
+      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
+      "key": "sync-conflicts-panel-title",
+      "used_by": "used-by SyncConflictsPanel.tsx:166"
+    },
+    {
+      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
+      "key": "sync-conflicts-payload-copied",
+      "used_by": "used-by SyncConflictsPanel.tsx:290"
+    },
+    {
+      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
+      "key": "sync-conflicts-payload-copy",
+      "used_by": "used-by SyncConflictsPanel.tsx:291"
+    },
+    {
+      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
+      "key": "sync-conflicts-payload-hide",
+      "used_by": "used-by SyncConflictsPanel.tsx:258"
+    },
+    {
+      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
+      "key": "sync-conflicts-payload-hide-aria",
+      "used_by": "used-by SyncConflictsPanel.tsx:250"
+    },
+    {
+      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
+      "key": "sync-conflicts-payload-inspect",
+      "used_by": "used-by SyncConflictsPanel.tsx:259"
+    },
+    {
+      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
+      "key": "sync-conflicts-payload-inspect-aria",
+      "used_by": "used-by SyncConflictsPanel.tsx:251"
+    },
+    {
+      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
+      "key": "sync-conflicts-payload-title",
+      "used_by": "used-by SyncConflictsPanel.tsx:283"
+    },
+    {
+      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
+      "key": "sync-conflicts-requeue-all",
+      "used_by": "used-by SyncConflictsPanel.tsx:185"
+    },
+    {
+      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
+      "key": "sync-conflicts-requeue-all-aria",
+      "used_by": "used-by SyncConflictsPanel.tsx:178"
+    },
+    {
+      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
+      "key": "sync-conflicts-requeueing-all",
+      "used_by": "used-by SyncConflictsPanel.tsx:181"
+    },
+    {
+      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
+      "key": "sync-conflicts-retry",
+      "used_by": "used-by SyncConflictsPanel.tsx:270"
+    },
+    {
+      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
+      "key": "sync-conflicts-retry-aria",
+      "used_by": "used-by SyncConflictsPanel.tsx:264"
+    },
+    {
+      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
+      "key": "sync-conflicts-retrying",
+      "used_by": "used-by SyncConflictsPanel.tsx:269"
+    },
+    {
+      "at": "ui/src/__tests__/TerminalPreferencesCard.test.tsx:27",
+      "key": "settings-load-failed",
+      "used_by": "used-by TerminalPreferencesCard.tsx:283"
+    },
+    {
+      "at": "ui/src/__tests__/TerminalPreferencesCard.test.tsx:27",
+      "key": "settings-save-error",
+      "used_by": "used-by TerminalPreferencesCard.tsx:157"
+    },
+    {
+      "at": "ui/src/__tests__/TerminalPreferencesCard.test.tsx:27",
+      "key": "toast-copied",
+      "used_by": "used-by Toast.tsx:277"
+    },
+    {
+      "at": "ui/src/__tests__/TerminalPreferencesCard.test.tsx:27",
+      "key": "toast-copy",
+      "used_by": "used-by Toast.tsx:278"
+    },
+    {
+      "at": "ui/src/__tests__/TerminalPreferencesCard.test.tsx:27",
+      "key": "toast-copy-aria",
+      "used_by": "used-by Toast.tsx:274"
+    },
+    {
+      "at": "ui/src/__tests__/TerminalPreferencesCard.test.tsx:27",
+      "key": "toast-dismiss-aria",
+      "used_by": "used-by Toast.tsx:286"
+    },
+    {
+      "at": "ui/src/__tests__/TerminalPreferencesCard.test.tsx:27",
+      "key": "toast-hide-detail",
+      "used_by": "used-by Toast.tsx:252"
+    },
+    {
+      "at": "ui/src/__tests__/TerminalPreferencesCard.test.tsx:27",
+      "key": "toast-notifications-aria",
+      "used_by": "used-by Toast.tsx:321"
+    },
+    {
+      "at": "ui/src/__tests__/TerminalPreferencesCard.test.tsx:27",
+      "key": "toast-show-detail",
+      "used_by": "used-by Toast.tsx:253"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-label-auto-wrapping",
+      "used_by": "used-by TooltipPreview.tsx:230"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-label-collapsed",
+      "used_by": "used-by TooltipPreview.tsx:459"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-label-expanded",
+      "used_by": "used-by TooltipPreview.tsx:487"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-label-single-line",
+      "used_by": "used-by TooltipPreview.tsx:219"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-label-status-bar",
+      "used_by": "used-by TooltipPreview.tsx:513"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-label-with-breaks",
+      "used_by": "used-by TooltipPreview.tsx:249"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-label-workspace",
+      "used_by": "used-by TooltipPreview.tsx:532"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-page-title",
+      "used_by": "used-by TooltipPreview.tsx:28"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-position-bottom",
+      "used_by": "used-by TooltipPreview.tsx:74"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-position-left",
+      "used_by": "used-by TooltipPreview.tsx:85"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-position-right",
+      "used_by": "used-by TooltipPreview.tsx:52"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-position-top",
+      "used_by": "used-by TooltipPreview.tsx:63"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-section-content-types",
+      "used_by": "used-by TooltipPreview.tsx:265"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-section-content-types-desc",
+      "used_by": "used-by TooltipPreview.tsx:269"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-section-delay",
+      "used_by": "used-by TooltipPreview.tsx:103"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-section-delay-desc",
+      "used_by": "used-by TooltipPreview.tsx:107"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-section-edge",
+      "used_by": "used-by TooltipPreview.tsx:344"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-section-edge-desc",
+      "used_by": "used-by TooltipPreview.tsx:348"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-section-maxwidth",
+      "used_by": "used-by TooltipPreview.tsx:158"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-section-maxwidth-desc",
+      "used_by": "used-by TooltipPreview.tsx:162"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-section-multiline",
+      "used_by": "used-by TooltipPreview.tsx:203"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-section-multiline-desc",
+      "used_by": "used-by TooltipPreview.tsx:207"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-section-positions",
+      "used_by": "used-by TooltipPreview.tsx:39"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-section-positions-desc",
+      "used_by": "used-by TooltipPreview.tsx:43"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-section-production",
+      "used_by": "used-by TooltipPreview.tsx:446"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-section-production-desc",
+      "used_by": "used-by TooltipPreview.tsx:450"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-160",
+      "used_by": "used-by TooltipPreview.tsx:168"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-280",
+      "used_by": "used-by TooltipPreview.tsx:172"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-400",
+      "used_by": "used-by TooltipPreview.tsx:178"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-badge",
+      "used_by": "used-by TooltipPreview.tsx:380"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-bottom",
+      "used_by": "used-by TooltipPreview.tsx:72"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-connected",
+      "used_by": "used-by TooltipPreview.tsx:516"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-default-ms",
+      "used_by": "used-by TooltipPreview.tsx:123"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-fast",
+      "used_by": "used-by TooltipPreview.tsx:119"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-icon-bell",
+      "used_by": "used-by TooltipPreview.tsx:362"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-icon-collapse",
+      "used_by": "used-by TooltipPreview.tsx:354"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-icon-settings",
+      "used_by": "used-by TooltipPreview.tsx:371"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-inline",
+      "used_by": "used-by TooltipPreview.tsx:417"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-instant",
+      "used_by": "used-by TooltipPreview.tsx:113"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-jsx",
+      "used_by": "used-by TooltipPreview.tsx:289"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-left",
+      "used_by": "used-by TooltipPreview.tsx:83"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-plain",
+      "used_by": "used-by TooltipPreview.tsx:275"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-rich-body",
+      "used_by": "used-by TooltipPreview.tsx:305"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-rich-title",
+      "used_by": "used-by TooltipPreview.tsx:302"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-right",
+      "used_by": "used-by TooltipPreview.tsx:50"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-short",
+      "used_by": "used-by TooltipPreview.tsx:214"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-slow",
+      "used_by": "used-by TooltipPreview.tsx:129"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-structured-line1",
+      "used_by": "used-by TooltipPreview.tsx:238"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-structured-line2",
+      "used_by": "used-by TooltipPreview.tsx:239"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-structured-line3",
+      "used_by": "used-by TooltipPreview.tsx:240"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-switch-workspace",
+      "used_by": "used-by TooltipPreview.tsx:525"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-top",
+      "used_by": "used-by TooltipPreview.tsx:61"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-very-slow",
+      "used_by": "used-by TooltipPreview.tsx:133"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-tooltip-wrapping",
+      "used_by": "used-by TooltipPreview.tsx:225"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-trigger-280",
+      "used_by": "used-by TooltipPreview.tsx:174"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-trigger-beta",
+      "used_by": "used-by TooltipPreview.tsx:405"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-trigger-default-ms",
+      "used_by": "used-by TooltipPreview.tsx:125"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-trigger-inline",
+      "used_by": "used-by TooltipPreview.tsx:419"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-trigger-instant",
+      "used_by": "used-by TooltipPreview.tsx:115"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-trigger-jsx",
+      "used_by": "used-by TooltipPreview.tsx:294"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-trigger-rich",
+      "used_by": "used-by TooltipPreview.tsx:312"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-trigger-short",
+      "used_by": "used-by TooltipPreview.tsx:216"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-trigger-structured",
+      "used_by": "used-by TooltipPreview.tsx:246"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-trigger-text",
+      "used_by": "used-by TooltipPreview.tsx:277"
+    },
+    {
+      "at": "ui/src/__tests__/TooltipPreview.test.tsx:11",
+      "key": "tp-trigger-wrapping",
+      "used_by": "used-by TooltipPreview.tsx:227"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceInventorySettings.test.tsx:74",
+      "key": "settings-load-failed",
+      "used_by": "used-by WorkspaceInventorySettings.tsx:248"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceInventorySettings.test.tsx:74",
+      "key": "toast-copied",
+      "used_by": "used-by Toast.tsx:277"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceInventorySettings.test.tsx:74",
+      "key": "toast-copy",
+      "used_by": "used-by Toast.tsx:278"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceInventorySettings.test.tsx:74",
+      "key": "toast-copy-aria",
+      "used_by": "used-by Toast.tsx:274"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceInventorySettings.test.tsx:74",
+      "key": "toast-dismiss-aria",
+      "used_by": "used-by Toast.tsx:286"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceInventorySettings.test.tsx:74",
+      "key": "toast-hide-detail",
+      "used_by": "used-by Toast.tsx:252"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceInventorySettings.test.tsx:74",
+      "key": "toast-notifications-aria",
+      "used_by": "used-by Toast.tsx:321"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceInventorySettings.test.tsx:74",
+      "key": "toast-show-detail",
+      "used_by": "used-by Toast.tsx:253"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceInventorySettings.test.tsx:74",
+      "key": "workspace-inv-deduction-hint",
+      "used_by": "used-by WorkspaceInventorySettings.tsx:234"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceInventorySettings.test.tsx:74",
+      "key": "workspace-inv-threshold-hint",
+      "used_by": "used-by WorkspaceInventorySettings.tsx:191"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceInventorySettings.test.tsx:74",
+      "key": "workspace-inv-units",
+      "used_by": "used-by WorkspaceInventorySettings.tsx:183"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceKdsSettings.test.tsx:24",
+      "key": "settings-load-failed",
+      "used_by": "used-by WorkspaceKdsSettings.tsx:359"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceKdsSettings.test.tsx:24",
+      "key": "toast-copied",
+      "used_by": "used-by Toast.tsx:277"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceKdsSettings.test.tsx:24",
+      "key": "toast-copy",
+      "used_by": "used-by Toast.tsx:278"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceKdsSettings.test.tsx:24",
+      "key": "toast-copy-aria",
+      "used_by": "used-by Toast.tsx:274"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceKdsSettings.test.tsx:24",
+      "key": "toast-dismiss-aria",
+      "used_by": "used-by Toast.tsx:286"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceKdsSettings.test.tsx:24",
+      "key": "toast-hide-detail",
+      "used_by": "used-by Toast.tsx:252"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceKdsSettings.test.tsx:24",
+      "key": "toast-notifications-aria",
+      "used_by": "used-by Toast.tsx:321"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceKdsSettings.test.tsx:24",
+      "key": "toast-show-detail",
+      "used_by": "used-by Toast.tsx:253"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
+      "key": "restaurant-settings-error-load",
+      "used_by": "used-by WorkspaceRestaurantPosSettings.tsx:459"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
+      "key": "toast-copied",
+      "used_by": "used-by Toast.tsx:277"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
+      "key": "toast-copy",
+      "used_by": "used-by Toast.tsx:278"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
+      "key": "toast-copy-aria",
+      "used_by": "used-by Toast.tsx:274"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
+      "key": "toast-dismiss-aria",
+      "used_by": "used-by Toast.tsx:286"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
+      "key": "toast-hide-detail",
+      "used_by": "used-by Toast.tsx:252"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
+      "key": "toast-notifications-aria",
+      "used_by": "used-by Toast.tsx:321"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
+      "key": "toast-show-detail",
+      "used_by": "used-by Toast.tsx:253"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
+      "key": "workspace-pos-printer-bluetooth",
+      "used_by": "used-by WorkspaceRestaurantPosSettings.tsx:378"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
+      "key": "workspace-pos-printer-connection",
+      "used_by": "used-by WorkspaceRestaurantPosSettings.tsx:345"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
+      "key": "workspace-pos-printer-heading",
+      "used_by": "used-by WorkspaceRestaurantPosSettings.tsx:338"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
+      "key": "workspace-pos-printer-ip",
+      "used_by": "used-by WorkspaceRestaurantPosSettings.tsx:363"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
+      "key": "workspace-pos-printer-paper-size",
+      "used_by": "used-by WorkspaceRestaurantPosSettings.tsx:392"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
+      "key": "workspace-resto-courses-hint",
+      "used_by": "used-by WorkspaceRestaurantPosSettings.tsx:324"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceStorePosSettings.test.tsx:26",
+      "key": "settings-load-failed",
+      "used_by": "used-by WorkspaceStorePosSettings.tsx:479"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceStorePosSettings.test.tsx:26",
+      "key": "toast-copied",
+      "used_by": "used-by Toast.tsx:277"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceStorePosSettings.test.tsx:26",
+      "key": "toast-copy",
+      "used_by": "used-by Toast.tsx:278"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceStorePosSettings.test.tsx:26",
+      "key": "toast-copy-aria",
+      "used_by": "used-by Toast.tsx:274"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceStorePosSettings.test.tsx:26",
+      "key": "toast-dismiss-aria",
+      "used_by": "used-by Toast.tsx:286"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceStorePosSettings.test.tsx:26",
+      "key": "toast-hide-detail",
+      "used_by": "used-by Toast.tsx:252"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceStorePosSettings.test.tsx:26",
+      "key": "toast-notifications-aria",
+      "used_by": "used-by Toast.tsx:321"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceStorePosSettings.test.tsx:26",
+      "key": "toast-show-detail",
+      "used_by": "used-by Toast.tsx:253"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceTerminalPreferencesCard.test.tsx:25",
+      "key": "settings-edc-default-auto",
+      "used_by": "used-by TerminalPreferencesCard.tsx:255"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceTerminalPreferencesCard.test.tsx:25",
+      "key": "settings-edc-default-select",
+      "used_by": "used-by TerminalPreferencesCard.tsx:252"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceTerminalPreferencesCard.test.tsx:25",
+      "key": "settings-edc-test",
+      "used_by": "used-by TerminalPreferencesCard.tsx:132"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceTerminalPreferencesCard.test.tsx:25",
+      "key": "settings-edc-testing",
+      "used_by": "used-by TerminalPreferencesCard.tsx:270"
+    },
+    {
+      "at": "ui/src/__tests__/WorkspaceTerminalPreferencesCard.test.tsx:25",
+      "key": "settings-load-failed",
+      "used_by": "used-by TerminalPreferencesCard.tsx:283"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-align-aria",
+      "used_by": "used-by topologyAlignBar.tsx:47"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-blocked",
+      "used_by": "used-by nodeTopologyEditorApplyPanel.ts:306"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-changes",
+      "used_by": "used-by topologyHeader.tsx:79"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-confirm-apply",
+      "used_by": "used-by TopologyApplyConfirm.tsx:360"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-confirm-archived",
+      "used_by": "used-by TopologyApplyConfirm.tsx:215"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-confirm-cancel",
+      "used_by": "used-by TopologyApplyConfirm.tsx:350"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-confirm-created",
+      "used_by": "used-by TopologyApplyConfirm.tsx:177"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-confirm-no-changes",
+      "used_by": "used-by TopologyApplyConfirm.tsx:251"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-confirm-note-count",
+      "used_by": "used-by TopologyApplyConfirm.tsx:301"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-confirm-note-label",
+      "used_by": "used-by TopologyApplyConfirm.tsx:284"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-confirm-note-optional",
+      "used_by": "used-by TopologyApplyConfirm.tsx:286"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-confirm-note-placeholder",
+      "used_by": "used-by TopologyApplyConfirm.tsx:292"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-confirm-pin-error",
+      "used_by": "used-by TopologyApplyConfirm.tsx:333"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-confirm-pin-label",
+      "used_by": "used-by TopologyApplyConfirm.tsx:310"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-confirm-pin-placeholder",
+      "used_by": "used-by TopologyApplyConfirm.tsx:317"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-confirm-pin-remember",
+      "used_by": "used-by TopologyApplyConfirm.tsx:343"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-confirm-scope-mismatch",
+      "used_by": "used-by TopologyApplyConfirm.tsx:275"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-confirm-scope-session",
+      "used_by": "used-by TopologyApplyConfirm.tsx:260"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-confirm-scope-target",
+      "used_by": "used-by TopologyApplyConfirm.tsx:266"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-confirm-title",
+      "used_by": "used-by TopologyApplyConfirm.tsx:168"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-confirm-type-changed",
+      "used_by": "used-by TopologyApplyConfirm.tsx:234"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-confirm-updated",
+      "used_by": "used-by TopologyApplyConfirm.tsx:196"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-confirm-verifying",
+      "used_by": "used-by TopologyApplyConfirm.tsx:359"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-permission-tooltip",
+      "used_by": "used-by topologyHeader.tsx:75"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-status-saving",
+      "used_by": "used-by nodeTopologyEditorApplyPanel.ts:208"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-apply-workspace-diff",
+      "used_by": "used-by topologyStatusStrip.tsx:93"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-bends-override-note",
+      "used_by": "used-by topologyToolRack.tsx:150"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-branch-excess-badge",
+      "used_by": "used-by nodeTopologyEditorValidation.ts:282"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-builder-title",
+      "used_by": "used-by topologyHeader.tsx:47"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-confirm-delete-label",
+      "used_by": "used-by topologyDeleteDialogs.tsx:53"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-confirm-delete-many-msg",
+      "used_by": "used-by topologyDeleteDialogs.tsx:64"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-confirm-delete-many-title",
+      "used_by": "used-by topologyDeleteDialogs.tsx:63"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-confirm-delete-node-msg",
+      "used_by": "used-by topologyDeleteDialogs.tsx:49"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-confirm-delete-node-title",
+      "used_by": "used-by topologyDeleteDialogs.tsx:45"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-confirm-delete-wire-msg",
+      "used_by": "used-by topologyDeleteDialogs.tsx:50"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-confirm-delete-wire-title",
+      "used_by": "used-by topologyDeleteDialogs.tsx:46"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-context-add-title",
+      "used_by": "used-by topologyContextMenu.tsx:80"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-context-clear-selection",
+      "used_by": "used-by topologyContextMenu.tsx:196"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-context-delete-wire",
+      "used_by": "used-by topologyContextMenu.tsx:127"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-context-duplicate",
+      "used_by": "used-by topologyContextMenu.tsx:156"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-context-rename",
+      "used_by": "used-by topologyContextMenu.tsx:146"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-context-rename-wire",
+      "used_by": "used-by topologyContextMenu.tsx:118"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-context-select-all",
+      "used_by": "used-by topologyContextMenu.tsx:234"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-context-selection-title",
+      "used_by": "used-by topologyContextMenu.tsx:188"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-context-zoom-selection",
+      "used_by": "used-by topologyContextMenu.tsx:176"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-delete-selected",
+      "used_by": "used-by topologyToolRack.tsx:141"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-duplicate-announce",
+      "used_by": "used-by nodeTopologyEditorPointer.ts:354"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-duplicate-cancel-announce",
+      "used_by": "used-by nodeTopologyEditorPointer.ts:387"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-export-desc",
+      "used_by": "used-by topologyToolRack.tsx:158"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-finder-no-matches",
+      "used_by": "used-by topologyNodeFinder.tsx:134"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-fit-all",
+      "used_by": "used-by topologyContextMenu.tsx:242"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-hud-nodes",
+      "used_by": "used-by NodeTopologyEditor.tsx:2418"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-hud-wires",
+      "used_by": "used-by NodeTopologyEditor.tsx:2420"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-import-desc",
+      "used_by": "used-by topologyToolRack.tsx:159"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-inspector-anchor-label",
+      "used_by": "used-by topologyInspectorDrawer.tsx:314"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-inspector-delete",
+      "used_by": "used-by topologyInspectorDrawer.tsx:309"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-inspector-device-address",
+      "used_by": "used-by topologyInspectorDrawer.tsx:279"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-inspector-device-address-placeholder",
+      "used_by": "used-by topologyInspectorDrawer.tsx:282"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-inspector-device-type",
+      "used_by": "used-by topologyInspectorDrawer.tsx:258"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-inspector-duplicate",
+      "used_by": "used-by topologyInspectorDrawer.tsx:303"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-inspector-hardware-title",
+      "used_by": "used-by topologyInspectorDrawer.tsx:250"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-inspector-section-actions",
+      "used_by": "used-by topologyInspectorDrawer.tsx:298"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-inspector-section-identity",
+      "used_by": "used-by topologyInspectorDrawer.tsx:117"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-inspector-section-warehouse",
+      "used_by": "used-by topologyInspectorDrawer.tsx:242"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-layout-announce",
+      "used_by": "used-by NodeTopologyEditor.tsx:1263"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-migration-announce",
+      "used_by": "used-by nodeTopologyEditorMigration.ts:189"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-migration-delete",
+      "used_by": "used-by topologyMigrationDialog.tsx:103"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-migration-description",
+      "used_by": "used-by topologyMigrationDialog.tsx:72"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-migration-later",
+      "used_by": "used-by topologyMigrationDialog.tsx:114"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-migration-resolve",
+      "used_by": "used-by topologyMigrationDialog.tsx:121"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-migration-select-aria",
+      "used_by": "used-by topologyMigrationDialog.tsx:85"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-migration-title",
+      "used_by": "used-by topologyMigrationDialog.tsx:69"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-no-templates",
+      "used_by": "used-by topologyToolRack.tsx:168"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-pan-tool-toggle",
+      "used_by": "used-by topologyToolRack.tsx:152"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-port-input-only",
+      "used_by": "used-by nodeTopologyEditorWireCommit.ts:227"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-purpose-checkout",
+      "used_by": "used-by topologyInspectorDrawer.tsx:188"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-purpose-dining-room",
+      "used_by": "used-by topologyInspectorDrawer.tsx:190"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-purpose-general",
+      "used_by": "used-by topologyInspectorDrawer.tsx:187"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-purpose-kitchen-hot-line",
+      "used_by": "used-by topologyInspectorDrawer.tsx:191"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-purpose-receiving",
+      "used_by": "used-by topologyInspectorDrawer.tsx:193"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-purpose-returns",
+      "used_by": "used-by topologyInspectorDrawer.tsx:189"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-purpose-stock-control",
+      "used_by": "used-by topologyInspectorDrawer.tsx:192"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-rack-add-title",
+      "used_by": "used-by topologyToolRack.tsx:111"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-rack-delete-empty",
+      "used_by": "used-by topologyToolRack.tsx:142"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-rack-edit-title",
+      "used_by": "used-by topologyToolRack.tsx:113"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-rack-view-title",
+      "used_by": "used-by topologyToolRack.tsx:115"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-readonly-note",
+      "used_by": "used-by topologyHeader.tsx:59"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-relationship-generic",
+      "used_by": "used-by NodeTopologyEditor.tsx:882"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-relationship-picker-cancel",
+      "used_by": "used-by topologyRelationshipPicker.tsx:107"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-relationship-picker-title",
+      "used_by": "used-by topologyRelationshipPicker.tsx:86"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-reset-view",
+      "used_by": "used-by topologyContextMenu.tsx:260"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-selection-announce",
+      "used_by": "used-by nodeTopologyEditorAnnouncements.ts:84"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-selection-clear-announce",
+      "used_by": "used-by nodeTopologyEditorAnnouncements.ts:81"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-selection-wire-announce",
+      "used_by": "used-by nodeTopologyEditorAnnouncements.ts:80"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-snap-announce",
+      "used_by": "used-by nodeTopologyEditorAnnouncements.ts:62"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-status-selection",
+      "used_by": "used-by NodeTopologyEditor.tsx:2424"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-template-delete",
+      "used_by": "used-by topologyToolRack.tsx:169"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-template-load",
+      "used_by": "used-by topologyToolRack.tsx:169"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-template-name-placeholder",
+      "used_by": "used-by topologyToolRack.tsx:163"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-template-save",
+      "used_by": "used-by topologyToolRack.tsx:163"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-tier-capacity-notice",
+      "used_by": "used-by topologyStatusStrip.tsx:78"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-tier-suffix",
+      "used_by": "used-by topologyHeader.tsx:65"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-toast-clipboard-unavailable",
+      "used_by": "used-by nodeTopologyEditorIo.ts:83"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-toast-export-copied",
+      "used_by": "used-by nodeTopologyEditorIo.ts:88"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-toast-import-invalid",
+      "used_by": "used-by nodeTopologyEditorIo.ts:106"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-toast-import-ok",
+      "used_by": "used-by nodeTopologyEditorIo.ts:117"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-toast-load-error",
+      "used_by": "used-by nodeTopologyEditorLoadLifecycle.ts:307"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-toast-multi-warehouse",
+      "used_by": "used-by nodeTopologyEditorAddNode.ts:113"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-toast-revision-conflict",
+      "used_by": "used-by nodeTopologyEditorApplyPanel.ts:249"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-toast-save-error",
+      "used_by": "used-by nodeTopologyEditorApplyPanel.ts:270"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-toast-template-deleted",
+      "used_by": "used-by nodeTopologyEditorIo.ts:145"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-toast-template-saved",
+      "used_by": "used-by nodeTopologyEditorIo.ts:126"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-tool-locked-premium",
+      "used_by": "used-by topologyToolRack.tsx:133"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-tool-store",
+      "used_by": "used-by topologyToolRack.tsx:127"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-tool-store-desc",
+      "used_by": "used-by topologyToolRack.tsx:127"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-validation-add-stock-wire",
+      "used_by": "used-by topologyValidationWidget.tsx:135"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-warehouse-excess-badge",
+      "used_by": "used-by nodeTopologyEditorValidation.ts:280"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-web-managed-notice",
+      "used_by": "used-by topologyHeader.tsx:53"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-wire-incompatible",
+      "used_by": "used-by nodeTopologyEditorWireCommit.ts:241"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-wire-label-connected",
+      "used_by": "used-by NodeTopologyEditor.tsx:892"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-wire-label-fallback",
+      "used_by": "used-by nodeTopologyEditorWireCommit.ts:186"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-wire-label-stock-deduct",
+      "used_by": "used-by nodeTopologyEditorMigration.ts:181"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-wire-label-ticket",
+      "used_by": "used-by nodeTopologyEditorMigration.ts:177"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-wire-label-transfer",
+      "used_by": "used-by nodeTopologyEditorMigration.ts:179"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-wire-labels-toggle",
+      "used_by": "used-by topologyToolRack.tsx:153"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-wire-rename-placeholder",
+      "used_by": "used-by topologyWireRenameOverlay.tsx:76"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-wire-routing-toggle",
+      "used_by": "used-by topologyToolRack.tsx:150"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-workspace-peer-group-label",
+      "used_by": "used-by topologyInspectorDrawer.tsx:221"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-workspace-peer-group-placeholder",
+      "used_by": "used-by topologyInspectorDrawer.tsx:224"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-workspace-purpose-label",
+      "used_by": "used-by topologyInspectorDrawer.tsx:165"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-workspace-purpose-selector-aria",
+      "used_by": "used-by topologyInspectorDrawer.tsx:185"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-workspace-purpose-selector-label",
+      "used_by": "used-by topologyInspectorDrawer.tsx:174"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-workspace-technical-type-label",
+      "used_by": "used-by topologyInspectorDrawer.tsx:169"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "topology-ws-type-select-aria",
+      "used_by": "used-by topologyInspectorDrawer.tsx:210"
+    },
+    {
+      "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
+      "key": "workspace-type-selector-label",
+      "used_by": "used-by topologyInspectorDrawer.tsx:162"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-clear-email",
+      "used_by": "used-by LicenseActivationScreen.tsx:928"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-clear-key",
+      "used_by": "used-by LicenseActivationScreen.tsx:994"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-clear-phone",
+      "used_by": "used-by LicenseActivationScreen.tsx:963"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-email-back",
+      "used_by": "used-by LicenseActivationScreen.tsx:786"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-email-code-label",
+      "used_by": "used-by LicenseActivationScreen.tsx:741"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-email-code-placeholder",
+      "used_by": "used-by LicenseActivationScreen.tsx:753"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-email-code-title",
+      "used_by": "used-by LicenseActivationScreen.tsx:737"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-email-password-label",
+      "used_by": "used-by LicenseActivationScreen.tsx:796"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-email-password-submit",
+      "used_by": "used-by LicenseActivationScreen.tsx:825"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-email-password-title",
+      "used_by": "used-by LicenseActivationScreen.tsx:792"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-email-send-code",
+      "used_by": "used-by LicenseActivationScreen.tsx:715"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-email-step-title",
+      "used_by": "used-by LicenseActivationScreen.tsx:680"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-email-use-password",
+      "used_by": "used-by LicenseActivationScreen.tsx:731"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-email-verify",
+      "used_by": "used-by LicenseActivationScreen.tsx:773"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-pair-scan-qr",
+      "used_by": "used-by LicenseActivationScreen.tsx:860"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-setup-back",
+      "used_by": "used-by LicenseActivationScreen.tsx:623"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-setup-email",
+      "used_by": "used-by LicenseActivationScreen.tsx:518"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-setup-email-desc",
+      "used_by": "used-by LicenseActivationScreen.tsx:521"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-setup-google",
+      "used_by": "used-by LicenseActivationScreen.tsx:485"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-setup-google-desc",
+      "used_by": "used-by LicenseActivationScreen.tsx:488"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-setup-google-failed",
+      "used_by": "used-by LicenseActivationScreen.tsx:505"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-setup-pair",
+      "used_by": "used-by LicenseActivationScreen.tsx:468"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-setup-pair-desc",
+      "used_by": "used-by LicenseActivationScreen.tsx:471"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-setup-recommended-tablet",
+      "used_by": "used-by LicenseActivationScreen.tsx:463"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-setup-title",
+      "used_by": "used-by LicenseActivationScreen.tsx:446"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-setup-waiting-browser",
+      "used_by": "used-by LicenseActivationScreen.tsx:497"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-tab-license-key",
+      "used_by": "used-by LicenseActivationScreen.tsx:604"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:63",
+      "key": "auth-tab-pair-device",
+      "used_by": "used-by LicenseActivationScreen.tsx:662"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/SessionLockScreen.i18n.test.tsx:48",
+      "key": "auth-copyright",
+      "used_by": "used-by SessionLockScreen.tsx:375"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/SessionLockScreen.i18n.test.tsx:48",
+      "key": "auth-version",
+      "used_by": "used-by SessionLockScreen.tsx:366"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/SessionLockScreen.i18n.test.tsx:48",
+      "key": "backspace-aria",
+      "used_by": "used-by SessionLockScreen.tsx:327"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/SessionLockScreen.i18n.test.tsx:48",
+      "key": "staff-login-error-connection",
+      "used_by": "used-by SessionLockScreen.tsx:152"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/SessionLockScreen.test.tsx:49",
+      "key": "auth-copyright",
+      "used_by": "used-by SessionLockScreen.tsx:375"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/SessionLockScreen.test.tsx:49",
+      "key": "auth-version",
+      "used_by": "used-by SessionLockScreen.tsx:366"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/SessionLockScreen.test.tsx:49",
+      "key": "backspace-aria",
+      "used_by": "used-by SessionLockScreen.tsx:327"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/SessionLockScreen.test.tsx:49",
+      "key": "staff-login-error-connection",
+      "used_by": "used-by SessionLockScreen.tsx:152"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/StaffLoginScreen.rateLimit.test.tsx:69",
+      "key": "staff-login-backspace-aria",
+      "used_by": "used-by StaffLoginScreen.tsx:573"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/StaffLoginScreen.rateLimit.test.tsx:69",
+      "key": "staff-login-clear",
+      "used_by": "used-by StaffLoginScreen.tsx:559"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/StaffLoginScreen.rateLimit.test.tsx:69",
+      "key": "staff-login-clear-aria",
+      "used_by": "used-by StaffLoginScreen.tsx:551"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/StaffLoginScreen.rateLimit.test.tsx:69",
+      "key": "staff-login-close-aria",
+      "used_by": "used-by StaffLoginScreen.tsx:630"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/StaffLoginScreen.rateLimit.test.tsx:69",
+      "key": "staff-login-copyright",
+      "used_by": "used-by StaffLoginScreen.tsx:783"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/StaffLoginScreen.rateLimit.test.tsx:69",
+      "key": "staff-login-digit-aria",
+      "used_by": "used-by StaffLoginScreen.tsx:536"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/StaffLoginScreen.rateLimit.test.tsx:69",
+      "key": "staff-login-keypad-aria",
+      "used_by": "used-by StaffLoginScreen.tsx:532"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/StaffLoginScreen.rateLimit.test.tsx:69",
+      "key": "staff-login-next-aria",
+      "used_by": "used-by StaffLoginScreen.tsx:684"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/StaffLoginScreen.rateLimit.test.tsx:69",
+      "key": "staff-login-pin-aria",
+      "used_by": "used-by StaffLoginScreen.tsx:504"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/StaffLoginScreen.rateLimit.test.tsx:69",
+      "key": "staff-login-pin-section-aria",
+      "used_by": "used-by StaffLoginScreen.tsx:752"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/StaffLoginScreen.rateLimit.test.tsx:69",
+      "key": "staff-login-progress-aria",
+      "used_by": "used-by StaffLoginScreen.tsx:765"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/StaffLoginScreen.rateLimit.test.tsx:69",
+      "key": "staff-login-recent-label",
+      "used_by": "used-by StaffLoginScreen.tsx:709"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/StaffLoginScreen.rateLimit.test.tsx:69",
+      "key": "staff-login-username-aria",
+      "used_by": "used-by StaffLoginScreen.tsx:659"
+    },
+    {
+      "at": "ui/src/features/auth/__tests__/StaffLoginScreen.rateLimit.test.tsx:69",
+      "key": "staff-login-username-placeholder",
+      "used_by": "used-by StaffLoginScreen.tsx:658"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/FeatureToggleScreen.test.tsx:42",
+      "key": "feature-toggle-bulk-disable",
+      "used_by": "used-by FeatureToggleScreen.tsx:468"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/FeatureToggleScreen.test.tsx:42",
+      "key": "feature-toggle-bulk-enable",
+      "used_by": "used-by FeatureToggleScreen.tsx:457"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/FeatureToggleScreen.test.tsx:42",
+      "key": "feature-toggle-empty",
+      "used_by": "used-by FeatureToggleScreen.tsx:420"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/FeatureToggleScreen.test.tsx:42",
+      "key": "feature-toggle-empty-search",
+      "used_by": "used-by FeatureToggleScreen.tsx:422"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/FeatureToggleScreen.test.tsx:42",
+      "key": "feature-toggle-retry",
+      "used_by": "used-by FeatureToggleScreen.tsx:374"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/FeatureToggleScreen.test.tsx:42",
+      "key": "feature-toggle-subtitle",
+      "used_by": "used-by FeatureToggleScreen.tsx:315"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/FeatureToggleScreen.test.tsx:42",
+      "key": "feature-toggle-title",
+      "used_by": "used-by FeatureToggleScreen.tsx:312"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-pause-aria",
+      "used_by": "used-by LicenseSettings.tsx:660"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-pause-subscription",
+      "used_by": "used-by LicenseSettings.tsx:662"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-pause-success",
+      "used_by": "used-by LicenseSettings.tsx:335"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-paused-until",
+      "used_by": "used-by LicenseSettings.tsx:672"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-quota-guidance",
+      "used_by": "used-by OverQuotaCard.tsx:255"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-quota-intro",
+      "used_by": "used-by OverQuotaCard.tsx:196"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-quota-load-failed",
+      "used_by": "used-by OverQuotaCard.tsx:204"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-quota-loc-aria",
+      "used_by": "used-by OverQuotaCard.tsx:365"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-quota-loc-title",
+      "used_by": "used-by OverQuotaCard.tsx:369"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-quota-ok",
+      "used_by": "used-by OverQuotaCard.tsx:218"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-quota-over-aria",
+      "used_by": "used-by OverQuotaCard.tsx:225"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-quota-over-heading",
+      "used_by": "used-by OverQuotaCard.tsx:227"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-quota-over-line",
+      "used_by": "used-by OverQuotaCard.tsx:240"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-quota-refresh",
+      "used_by": "used-by OverQuotaCard.tsx:209"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-quota-remedy-aria",
+      "used_by": "used-by OverQuotaCard.tsx:272"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-quota-remedy-failed-detail",
+      "used_by": "used-by OverQuotaCard.tsx:336"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-quota-remedy-hint",
+      "used_by": "used-by OverQuotaCard.tsx:281"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-quota-remedy-none",
+      "used_by": "used-by OverQuotaCard.tsx:331"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-quota-remedy-recover",
+      "used_by": "used-by OverQuotaCard.tsx:305"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-quota-remedy-recovered",
+      "used_by": "used-by OverQuotaCard.tsx:326"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-quota-remedy-suspend",
+      "used_by": "used-by OverQuotaCard.tsx:294"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-quota-remedy-suspended",
+      "used_by": "used-by OverQuotaCard.tsx:321"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-quota-remedy-title",
+      "used_by": "used-by OverQuotaCard.tsx:276"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-quota-title",
+      "used_by": "used-by OverQuotaCard.tsx:189"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-reauth-action",
+      "used_by": "used-by LicenseSettings.tsx:483"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-reauth-banner-desc",
+      "used_by": "used-by LicenseSettings.tsx:468"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-reauth-banner-title",
+      "used_by": "used-by LicenseSettings.tsx:463"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-resume-aria",
+      "used_by": "used-by LicenseSettings.tsx:690"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-resume-subscription",
+      "used_by": "used-by LicenseSettings.tsx:692"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-resume-success",
+      "used_by": "used-by LicenseSettings.tsx:366"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/LicenseSettings.test.tsx:24",
+      "key": "settings-license-subscription-actions",
+      "used_by": "used-by LicenseSettings.tsx:652"
+    },
+    {
+      "at": "ui/src/features/settings/__tests__/SyncConflictsPanel.test.tsx:24",
+      "key": "sync-conflicts-payload-title",
+      "used_by": "used-by SyncConflictsPanel.tsx:283"
+    }
+  ]
+}
