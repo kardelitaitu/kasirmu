@@ -58,6 +58,15 @@ vi.mock('@fluent/react', () => {
     'data-mgmt-type-customers': 'Customers',
     'data-mgmt-type-users': 'Users',
     'data-mgmt-type-settings': 'Settings',
+    // Keys the component renders that this hand-maintained map never carried.
+    // No case here asserts them, so getString returned the raw id silently.
+    // Values copied verbatim from shared-ui/locales (curly holes rewritten to the
+    // stub's brace form).
+    'data-mgmt-import-confirm-title': 'Import Data',
+    'data-mgmt-import-confirm-message': 'Importing will overwrite current data with the contents of the backup file. This cannot be undone. Do you want to proceed?',
+    'data-mgmt-tabs-aria': 'Data management actions',
+    'admin-locked-title': 'Administrative features locked',
+    'admin-locked-message': 'Administrative SaaS features lock while the subscription is expired, paused, or unavailable. Selling continues under the offline grace policy. Verify your subscription online to restore access.',
   };
   return {
     useLocalization: () => ({

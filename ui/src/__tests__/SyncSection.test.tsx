@@ -63,6 +63,12 @@ const testL10n = {
       'settings-sync-plan-required-hint': 'Your local sales keep working — upgrade to sync them to the cloud.',
       'settings-sync-confirm-overwrite': 'Overwrite local data with the server snapshot?',
       'settings-sync-confirm-pull-title': 'Pull from server?',
+      // Keys the component renders that this hand-maintained map never carried.
+      // No case here asserts them, so getString returned the raw id silently.
+      // Values copied verbatim from shared-ui/locales (curly holes rewritten to the
+      // stub's brace form).
+      'settings-sync-pull-empty': 'Server returned empty snapshot - nothing to pull',
+      'settings-sync-pull-toast-success': 'Pulled {products} products, {tax_rates} tax rates, {users} users from server',
       'cancel': 'Cancel',
       'settings-sync-request-token': 'Request Token',
       'settings-sync-requesting': 'Requesting…',

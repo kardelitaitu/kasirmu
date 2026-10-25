@@ -51,6 +51,14 @@ vi.mock('@fluent/react', () => ({
           'error-occurred': 'An error occurred',
           'no-results': 'No results found',
           'custom-report-no-columns-match': 'No columns match your search',
+          // Keys the component renders that this hand-maintained map never carried.
+          // No case here asserts them, so getString returned the raw id silently.
+          // Values copied verbatim from shared-ui/locales (curly holes rewritten to the
+          // stub's brace form).
+          'custom-report-page-of': 'Page {page}',
+          'custom-report-truncated': 'Results limited to {limit} rows. Use pagination to view more.',
+          'admin-locked-title': 'Administrative features locked',
+          'admin-locked-message': 'Administrative SaaS features lock while the subscription is expired, paused, or unavailable. Selling continues under the offline grace policy. Verify your subscription online to restore access.',
           // a11y labels
           'custom-report-dataset-aria': 'Dataset',
           'custom-report-start-aria': 'Start date',
