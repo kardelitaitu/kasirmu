@@ -191,6 +191,16 @@ ASSERTS_COPY_RE = re.compile(
 RESERVED_WORD_RE = re.compile(r"^\s*(return|if|else)\b")
 
 #: A key line inside a literal: `'topology-new-store': 'New Store',`
+
+#: A map VALUE containing a bare $name -- the shape you get by flattening an FTL
+#: message without converting its placeable to the stub's {name} form.
+#:
+#: Seeding maps from the FTL is now routine, and a naive flattener turns
+#: "4 items { $amount }" into "4 items $amount", which the stub cannot substitute:
+#: the assertion silently matches a string the UI never renders. Found nine such
+#: values across three files on 2026-11-07, all passing their own tests.
+LITERAL_VAR_RE = re.compile(r"[^$]*\$(?![{])[A-Za-z_][A-Za-z0-9_]*")
+
 KEY_LINE_RE = re.compile(
     r"""^\s*['"](?P<key>[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+)['"]\s*:"""
 )
@@ -415,13 +425,18 @@ def find_maps(text: str) -> list[dict]:
         # so the window cannot run past the literal.
         identity = _identity_attached(lines[first + 1 : next_key])
         keys: dict[str, int] = {}
+        values: dict[str, str] = {}
         for idx in range(run_start, run_end + 1):
             line_no, m = hits[idx]
             keys.setdefault(m.group("key"), line_no + 1)
+            # The literal text after the colon, so a bare $name can be spotted.
+            raw = lines[line_no]
+            values.setdefault(m.group("key"), raw.split(":", 1)[1] if ":" in raw else "")
         maps.append(
             {
                 "start_line": first + 1,
                 "end_line": last + 1,
+                "values": values,
                 "keys": keys,
                 "fallback": _fallback_shape(after) if identity else "",
             }
@@ -667,6 +682,11 @@ def scan() -> tuple[list[str], int, int]:
                 if key in m["keys"]:
                     continue
                 findings.append("%s:%d  %s  used-by %s:%d" % (rel, m["start_line"], key, name, line))
+            # A seeded value that still contains a bare $name cannot be substituted by
+            # the stub, so it can never match what the UI renders.
+            for key, raw in sorted(m.get("values", {}).items()):
+                if LITERAL_VAR_RE.search(raw):
+                    findings.append("%s:%d  %s  unsubstituted-$ placeable" % (rel, m["start_line"], key))
     return findings, read, judged
 
 
