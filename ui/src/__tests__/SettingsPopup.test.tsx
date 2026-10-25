@@ -271,6 +271,12 @@ describe('SettingsPopup', () => {
     // Name is 'Save' at rest and the sr-only label is the same text, so query by testid.
     const saveBtn = screen.getByTestId('settings-popup-save');
     expect(saveBtn, 'Save stayed clickable while the write was in flight').toBeDisabled();
+    // Pins BOTH halves of the fix, and it took a two-step mutation to find out that it had
+    // to: with the popup's OR reverted alone the case stayed green, because Button's own
+    // `loading` derivation still disabled the button -- and with Button's spread order
+    // reverted alone it stayed green too, because the OR still passed `disabled`. Only
+    // removing BOTH makes it red (`Received element is not disabled`).
+    expect(saveBtn.className).toContain('btn--primary');
   });
 
   it('does not have aria-busy on Save when saving is false', () => {

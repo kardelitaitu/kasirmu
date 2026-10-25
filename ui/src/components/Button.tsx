@@ -125,6 +125,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         type={type}
         className={classNames}
+        // After `{...rest}` below, a caller's own `disabled` OVERRODE this one, and "the
+        // button spins while staying clickable" is a real defect the settings popup shipped
+        // with (`disabled={saveDisabled}` beating `loading`). Spread first, then let the
+        // component's own derivation win -- a busy Button is never clickable.
         disabled={isDisabled}
         aria-disabled={isDisabled || undefined}
         aria-busy={isProcessing || undefined}
