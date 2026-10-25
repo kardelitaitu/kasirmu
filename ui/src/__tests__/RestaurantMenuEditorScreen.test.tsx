@@ -338,6 +338,28 @@ describe('RestaurantMenuEditorScreen', () => {
     });
   });
 
+  it('creates the category once when the save button is double-tapped', async () => {
+    // The create path mints an id per call, so a replay is refused only by
+    // categories.name UNIQUE -- and that refusal lands in the catch as
+    // restaurant-menu-editor-error-save, an error over a category that WAS created. The
+    // client-side duplicate check cannot see it: the first category is still in flight.
+    const user = userEvent.setup();
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-btn-add-cat')).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId('restaurant-menu-editor-btn-add-cat'));
+    await user.type(screen.getByTestId('restaurant-menu-editor-cat-input-name'), 'Desserts');
+
+    const saveBtn = screen.getByTestId('restaurant-menu-editor-cat-save');
+    await act(async () => {
+      fireEvent.click(saveBtn);
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => expect(productsApi.createCategoryScoped).toHaveBeenCalledTimes(1));
+  });
+
   it('prevents creating a category with duplicate name client-side', async () => {
     const user = userEvent.setup();
     await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);

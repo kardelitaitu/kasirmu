@@ -281,6 +281,8 @@ export default function RestaurantMenuEditorScreen({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [categorySaving, setCategorySaving] = useState(false);
+  /** Synchronous mirror of `categorySaving` — see the re-entry guard in `handleSaveCategory`. */
+  const categorySavingRef = useRef(false);
   const [dirty, setDirty] = useState(false);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
 
@@ -820,6 +822,14 @@ export default function RestaurantMenuEditorScreen({
       return;
     }
 
+    // Re-entry guard, after the duplicate-name check. Edit is a same-row UPDATE, but
+    // CREATE mints a fresh id and inserts -- and the only thing standing between a replay
+    // and a second category row is `categories.name UNIQUE`, which REFUSES the second
+    // insert and lands in the catch as restaurant-menu-editor-error-save, an error over a
+    // category that was created. This screen's already-saved categories are in
+    // `categories`, so the duplicate check above cannot see the one still in flight.
+    if (categorySavingRef.current) return;
+    categorySavingRef.current = true;
     setCategorySaving(true);
     try {
       if (categoryModal.id) {
@@ -868,6 +878,7 @@ export default function RestaurantMenuEditorScreen({
         type: 'error',
       });
     } finally {
+      categorySavingRef.current = false;
       setCategorySaving(false);
     }
   }, [categoryModal, categories, selectedCategoryName, sessionToken, addToast, l10n, reloadData]);
