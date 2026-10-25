@@ -64,6 +64,23 @@ vi.mock('@fluent/react', () => ({
           'pick-logo-aria': 'Pick logo file',
           'reset-appearance-aria': 'Reset all appearance settings',
           'save-appearance-aria': 'Save appearance',
+          // Visible copy this map used to answer with its raw key. It carried only the
+          // aria-labels, so every label, toast and confirm message rendered as an id.
+          // Values copied from shared-ui/locales/*.ftl (scripts/check-l10n-test-maps.py).
+          'appearance-follow-theme': 'Following theme colour',
+          'appearance-reset-all-confirm': 'Reset all appearance settings to their defaults? This cannot be undone.',
+          'appearance-reset-all-confirm-title': 'Reset Appearance',
+          'appearance-reset-all-failed': 'Failed to reset appearance settings',
+          'appearance-reset-all-success': 'Appearance settings reset to defaults',
+          'appearance-reset-colour': 'Reset to default',
+          'appearance-save-failed': 'Failed to save appearance settings',
+          'appearance-save-success': 'Appearance settings saved',
+          'appearance-zoom-100': '100% (Default)',
+          'appearance-zoom-125': '125%',
+          'appearance-zoom-150': '150%',
+          'appearance-zoom-200': '200%',
+          'appearance-zoom-auto': 'Automatic (Scale with screen)',
+          'settings-appearance-logo-desktop-only': 'Choosing a logo needs the desktop app. Colours and the store name can still be changed here.',
         };
         return map[id] || id;
       },
