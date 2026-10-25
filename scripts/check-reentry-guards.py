@@ -346,8 +346,40 @@ by construction -- which is exactly why the backend question cannot be skipped.
     setTerminalOverrideScoped -- audited round 173, all SAFE: same-row UPDATE, no-op DELETE,
                         DELETE+INSERT OR IGNORE, or ON CONFLICT DO UPDATE. registerTerminal
                         reuses the supplied UUID against `device_id UNIQUE` (init.sql:929) so
-                        it IS refused, but `saving` is set before the first await and stops an
-                        ordinary tap; latent, left on the report.
+                        it IS refused, and a replay lands in the catch -- which reports
+                        `terminal-error-save` over a terminal that WAS registered.
+                        ROUND 221: the record here said this was "latent, left on the
+                        report" on the strength of `saving` being set before the first
+                        await. That reason was WRONG EVEN WHEN WRITTEN -- `saving` is
+                        STATE, so it reads from the render that built the closure and lets
+                        both submits through, which is the whole premise of this file.
+                        It was fixed later in `530552e2e` ("guard the register, override
+                        and delete writes against replayed taps") with `savingRef`, taken
+                        after the two field validations, and the catch now routes through
+                        l10nErrorMessage. This entry was never updated, so for several
+                        rounds the sweep advertised a defect that no longer existed -- the
+                        opposite error from the `shift open`/`receive` entries, which under-
+                        reported. Neither direction survives a re-read: an audit list is
+                        only accurate as of the commit it was written against.
+                        ROUND 221 ALSO MEASURED THE REF: removing `if (savingRef.current)
+                        return` leaves all 22 TerminalManagementScreen cases GREEN, so on
+                        this handler the ref is REDUNDANT rather than load-bearing. The
+                        reason is the round-188 SettingsPopup fix -- the popup renders
+                        `disabled={saving || saveDisabled}` (SettingsPopup.tsx:183), and for
+                        a DISCRETE click React flushes that to the DOM before the next tap,
+                        which is exactly the `branch delete` argument in the SWEEP STATUS
+                        below. That makes this a THIRD category, distinct from both the
+                        live defect and the over-recorded one: a guard that is correct,
+                        cheap, and protecting nothing. It is KEPT (the delete and override
+                        writes share this file and their triggers are styled, not disabled)
+                        but nobody should read its presence as evidence of a live defect.
+                        NOT GENERALISED, and this was measured too: of the 12 feature
+                        screens that carry a ref guard AND pass `saving=` to a popup, the
+                        next one sampled -- `createPendingRef` in
+                        CategoryManagementScreen.tsx:210 -- IS load-bearing, and removing it
+                        fails a CategoryManagementScreen case. `registerTerminal` is the
+                        exception rather than the pattern, because its trigger happens to be
+                        the one SettingsPopup disables.
 
 SWEEP STATUS (round 190)
 This list has been carried to ZERO actionable candidates, and the shape of the ending is
