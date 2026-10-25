@@ -1,6 +1,6 @@
 {
   "description": "see --write-baseline",
-  "total": 93,
+  "total": 71,
   "entries": [
     {
       "at": "ui/src/__tests__/CustomReportScreen.test.tsx:42",
@@ -16,116 +16,6 @@
       "at": "ui/src/__tests__/LocalApiSection.test.tsx:72",
       "key": "settings-local-api-desktop-only",
       "used_by": "used-by LocalApiSection.tsx:321"
-    },
-    {
-      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
-      "key": "settings-sync-resolved-origin",
-      "used_by": "used-by SyncSection.tsx:234"
-    },
-    {
-      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
-      "key": "sync-conflicts-col-action",
-      "used_by": "used-by SyncConflictsPanel.tsx:213"
-    },
-    {
-      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
-      "key": "sync-conflicts-col-actions",
-      "used_by": "used-by SyncConflictsPanel.tsx:216"
-    },
-    {
-      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
-      "key": "sync-conflicts-col-attempts",
-      "used_by": "used-by SyncConflictsPanel.tsx:214"
-    },
-    {
-      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
-      "key": "sync-conflicts-col-error",
-      "used_by": "used-by SyncConflictsPanel.tsx:215"
-    },
-    {
-      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
-      "key": "sync-conflicts-loading",
-      "used_by": "used-by SyncConflictsPanel.tsx:192"
-    },
-    {
-      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
-      "key": "sync-conflicts-panel-empty",
-      "used_by": "used-by SyncConflictsPanel.tsx:202"
-    },
-    {
-      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
-      "key": "sync-conflicts-panel-table-aria",
-      "used_by": "used-by SyncConflictsPanel.tsx:209"
-    },
-    {
-      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
-      "key": "sync-conflicts-panel-title",
-      "used_by": "used-by SyncConflictsPanel.tsx:166"
-    },
-    {
-      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
-      "key": "sync-conflicts-payload-copied",
-      "used_by": "used-by SyncConflictsPanel.tsx:290"
-    },
-    {
-      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
-      "key": "sync-conflicts-payload-copy",
-      "used_by": "used-by SyncConflictsPanel.tsx:291"
-    },
-    {
-      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
-      "key": "sync-conflicts-payload-hide",
-      "used_by": "used-by SyncConflictsPanel.tsx:258"
-    },
-    {
-      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
-      "key": "sync-conflicts-payload-hide-aria",
-      "used_by": "used-by SyncConflictsPanel.tsx:250"
-    },
-    {
-      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
-      "key": "sync-conflicts-payload-inspect",
-      "used_by": "used-by SyncConflictsPanel.tsx:259"
-    },
-    {
-      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
-      "key": "sync-conflicts-payload-inspect-aria",
-      "used_by": "used-by SyncConflictsPanel.tsx:251"
-    },
-    {
-      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
-      "key": "sync-conflicts-payload-title",
-      "used_by": "used-by SyncConflictsPanel.tsx:283"
-    },
-    {
-      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
-      "key": "sync-conflicts-requeue-all",
-      "used_by": "used-by SyncConflictsPanel.tsx:185"
-    },
-    {
-      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
-      "key": "sync-conflicts-requeue-all-aria",
-      "used_by": "used-by SyncConflictsPanel.tsx:178"
-    },
-    {
-      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
-      "key": "sync-conflicts-requeueing-all",
-      "used_by": "used-by SyncConflictsPanel.tsx:181"
-    },
-    {
-      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
-      "key": "sync-conflicts-retry",
-      "used_by": "used-by SyncConflictsPanel.tsx:270"
-    },
-    {
-      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
-      "key": "sync-conflicts-retry-aria",
-      "used_by": "used-by SyncConflictsPanel.tsx:264"
-    },
-    {
-      "at": "ui/src/__tests__/SyncSection.test.tsx:26",
-      "key": "sync-conflicts-retrying",
-      "used_by": "used-by SyncConflictsPanel.tsx:269"
     },
     {
       "at": "ui/src/__tests__/TerminalPreferencesCard.test.tsx:27",
