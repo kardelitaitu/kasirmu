@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type ChangeEvent } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
+import { requiredLocalized } from '@/components/requiredLocalized';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
@@ -1406,7 +1407,7 @@ export default function RestaurantReceiptsScreen({
               type="button"
               className="restaurant-settings-back-btn"
               onClick={handleRequestBack}
-              aria-label={l10n.getString('back') || 'Back'}
+              aria-label={requiredLocalized(l10n, 'back')}
               data-testid="restaurant-receipts-back-btn"
             >
               <svg
@@ -1531,11 +1532,11 @@ export default function RestaurantReceiptsScreen({
         {/* ── Left Column: Live Accurate Thermal Receipt Preview ── */}
         <aside
           className="restaurant-preview-column"
-          aria-label={l10n.getString('restaurant-preview-title') || 'Print Preview'}
+          aria-label={requiredLocalized(l10n, 'restaurant-preview-title')}
         >
           <div className="restaurant-preview-card noise-dither">
             <div className="restaurant-preview-header-bar">
-              <div className="restaurant-preview-tabs" role="tablist" aria-label={l10n.getString('restaurant-preview-title') || 'Receipt preview tabs'}>
+              <div className="restaurant-preview-tabs" role="tablist" aria-label={requiredLocalized(l10n, 'restaurant-preview-tabs-aria')}>
                 <button
                   type="button"
                   role="tab"
@@ -1588,24 +1589,34 @@ export default function RestaurantReceiptsScreen({
                           <span>·</span>
                           <span>{staffDisplayName}</span>
                           <span>·</span>
-                          <span>Pax: 3</span>
+                          <Localized id="restaurant-preview-kot-pax" vars={{ count: 3 }}>
+                            <span>Pax: 3</span>
+                          </Localized>
                         </div>
                         <div className="resto-receipt-divider" />
                       </div>
 
                       <div className="resto-receipt-kot-course">
-                        <div className="resto-receipt-kot-course-title">-- APPETIZER --</div>
+                        <Localized id="restaurant-preview-course-appetizer">
+                          <div className="resto-receipt-kot-course-title">-- APPETIZER --</div>
+                        </Localized>
                         <div className="resto-receipt-kot-item">
                           <span className="resto-receipt-kot-qty">1x</span>
-                          <span className="resto-receipt-kot-name">Lumpia Goreng</span>
+                          <Localized id="restaurant-preview-item-lumpia">
+                            <span className="resto-receipt-kot-name">Lumpia Goreng</span>
+                          </Localized>
                         </div>
                       </div>
 
                       <div className="resto-receipt-kot-course">
-                        <div className="resto-receipt-kot-course-title">-- MAIN COURSE --</div>
+                        <Localized id="restaurant-preview-course-main">
+                          <div className="resto-receipt-kot-course-title">-- MAIN COURSE --</div>
+                        </Localized>
                         <div className="resto-receipt-kot-item">
                           <span className="resto-receipt-kot-qty">2x</span>
-                          <span className="resto-receipt-kot-name">Nasi Goreng Spesial</span>
+                          <Localized id="restaurant-preview-item-nasgor">
+                            <span className="resto-receipt-kot-name">Nasi Goreng Spesial</span>
+                          </Localized>
                         </div>
                         {showItemNotes && (
                           <div className="resto-receipt-kot-note">* Pedas level 3, tanpa timun</div>
@@ -1613,10 +1624,14 @@ export default function RestaurantReceiptsScreen({
                       </div>
 
                       <div className="resto-receipt-kot-course">
-                        <div className="resto-receipt-kot-course-title">-- BEVERAGE --</div>
+                        <Localized id="restaurant-preview-course-beverage">
+                          <div className="resto-receipt-kot-course-title">-- BEVERAGE --</div>
+                        </Localized>
                         <div className="resto-receipt-kot-item">
                           <span className="resto-receipt-kot-qty">2x</span>
-                          <span className="resto-receipt-kot-name">Es Teh Manis</span>
+                          <Localized id="restaurant-preview-item-esteh">
+                            <span className="resto-receipt-kot-name">Es Teh Manis</span>
+                          </Localized>
                         </div>
                       </div>
 
@@ -1691,7 +1706,11 @@ export default function RestaurantReceiptsScreen({
                   {/* Metadata (Date/Time, Staff, Code, Table) */}
                   {(() => {
                     const hasTablePill = tablesEnabled && showTableNumber;
-                    const tablePill = hasTablePill ? <span className="resto-receipt-table-pill">TABLE 4</span> : null;
+                    const tablePill = hasTablePill ? (
+                      <Localized id="restaurant-preview-table-pill">
+                        <span className="resto-receipt-table-pill">TABLE 4</span>
+                      </Localized>
+                    ) : null;
                     const staffSpan = showStaffName ? <span>{staffDisplayName}</span> : null;
                     const codeSpan = showReceiptCode ? <span>01-01-260929-01-000042</span> : null;
                     const dateSpan = showDateTime ? <span>29/09/2026 21:15</span> : null;
@@ -1764,26 +1783,36 @@ export default function RestaurantReceiptsScreen({
                   {/* Totals */}
                   <div className="resto-receipt-totals-block">
                     <div className="resto-receipt-total-row">
-                      <span>Subtotal</span>
+                      <Localized id="subtotal">
+                        <span>Subtotal</span>
+                      </Localized>
                       <span>{formatPrice(sampleSubtotal)}</span>
                     </div>
                     {showTax && (
                       <div className="resto-receipt-total-row">
-                        <span>PB1/TAX ({taxRatePercent}%)</span>
+                        <Localized id="restaurant-preview-tax-line" vars={{ rate: taxRatePercent }}>
+                          <span>PB1/TAX ({taxRatePercent}%)</span>
+                        </Localized>
                         <span>{formatPrice(sampleTax)}</span>
                       </div>
                     )}
                     <div className="resto-receipt-divider" />
                     <div className="resto-receipt-total-row resto-receipt-grand-total">
-                      <span>TOTAL</span>
+                      <Localized id="total">
+                        <span>TOTAL</span>
+                      </Localized>
                       <span>{formatPrice(sampleTotal)}</span>
                     </div>
                     <div className="resto-receipt-total-row resto-receipt-tender-row">
-                      <span>Cash</span>
+                      <Localized id="restaurant-tender-cash">
+                        <span>Cash</span>
+                      </Localized>
                       <span>{formatPrice(sampleCash)}</span>
                     </div>
                     <div className="resto-receipt-total-row resto-receipt-tender-row">
-                      <span>Change</span>
+                      <Localized id="restaurant-tender-change">
+                        <span>Change</span>
+                      </Localized>
                       <span>{formatPrice(sampleChange)}</span>
                     </div>
                   </div>
@@ -1795,7 +1824,7 @@ export default function RestaurantReceiptsScreen({
                       <div className={`resto-receipt-footer-text ${!footer.trim() ? 'resto-receipt-footer-text--placeholder' : ''}`}>
                         {footer.trim()
                           ? footer
-                          : l10n.getString('restaurant-footer-placeholder') || 'Thank you for dining with us!'}
+                          : requiredLocalized(l10n, 'restaurant-footer-placeholder')}
                       </div>
                     </>
                   )}
@@ -1970,7 +1999,7 @@ export default function RestaurantReceiptsScreen({
                   <div className="resto-toggle-title" style={{ marginBottom: '6px' }}>
                     <Localized id="workspace-pos-paper-width">Paper Width</Localized>
                   </div>
-                  <div className="resto-segmented-group" role="group" aria-label={l10n.getString('workspace-pos-paper-width') || 'Paper Width'}>
+                  <div className="resto-segmented-group" role="group" aria-label={requiredLocalized(l10n, 'workspace-pos-paper-width')}>
                     <button
                       type="button"
                       className={`resto-segmented-btn ${paperWidth === 'narrow' ? 'resto-segmented-btn--active' : ''}`}
@@ -1996,7 +2025,7 @@ export default function RestaurantReceiptsScreen({
                   <div
                     className="resto-segmented-group resto-segmented-group--4"
                     role="group"
-                    aria-label={l10n.getString('restaurant-rcpt-font-size-heading') || 'Font Size'}
+                    aria-label={requiredLocalized(l10n, 'restaurant-rcpt-font-size-heading')}
                   >
                     <button
                       type="button"
@@ -2158,7 +2187,7 @@ export default function RestaurantReceiptsScreen({
                     type="button"
                     role="switch"
                     aria-checked={showReceiptCode}
-                    aria-label={l10n.getString('restaurant-toggle-receipt-code') || 'Show Receipt Code'}
+                    aria-label={requiredLocalized(l10n, 'restaurant-toggle-receipt-code')}
                     className="resto-switch-btn"
                     onClick={() => setShowReceiptCode(!showReceiptCode)}
                   >
@@ -2182,7 +2211,7 @@ export default function RestaurantReceiptsScreen({
                     type="button"
                     role="switch"
                     aria-checked={showDateTime}
-                    aria-label={l10n.getString('restaurant-toggle-datetime') || 'Show Date and Time'}
+                    aria-label={requiredLocalized(l10n, 'restaurant-toggle-datetime')}
                     className="resto-switch-btn"
                     onClick={() => setShowDateTime(!showDateTime)}
                   >
@@ -2206,7 +2235,7 @@ export default function RestaurantReceiptsScreen({
                     type="button"
                     role="switch"
                     aria-checked={showStaffName}
-                    aria-label={l10n.getString('restaurant-toggle-staff') || 'Show Staff Name'}
+                    aria-label={requiredLocalized(l10n, 'restaurant-toggle-staff')}
                     className="resto-switch-btn"
                     onClick={() => setShowStaffName(!showStaffName)}
                   >
@@ -2231,7 +2260,7 @@ export default function RestaurantReceiptsScreen({
                       type="button"
                       role="switch"
                       aria-checked={showTableNumber}
-                      aria-label={l10n.getString('workspace-pos-show-table') || 'Show Table Number'}
+                      aria-label={requiredLocalized(l10n, 'workspace-pos-show-table')}
                       className="resto-switch-btn"
                       onClick={() => setShowTableNumber(!showTableNumber)}
                     >
@@ -2256,7 +2285,7 @@ export default function RestaurantReceiptsScreen({
                     type="button"
                     role="switch"
                     aria-checked={showItemNotes}
-                    aria-label={l10n.getString('restaurant-toggle-item-notes') || 'Show Menu Order Notes'}
+                    aria-label={requiredLocalized(l10n, 'restaurant-toggle-item-notes')}
                     className="resto-switch-btn"
                     onClick={() => setShowItemNotes(!showItemNotes)}
                   >
@@ -2280,7 +2309,7 @@ export default function RestaurantReceiptsScreen({
                     type="button"
                     role="switch"
                     aria-checked={showCurrency}
-                    aria-label={l10n.getString('workspace-pos-show-currency') || 'Show Currency'}
+                    aria-label={requiredLocalized(l10n, 'workspace-pos-show-currency')}
                     className="resto-switch-btn"
                     onClick={() => setShowCurrency(!showCurrency)}
                   >
@@ -2304,7 +2333,7 @@ export default function RestaurantReceiptsScreen({
                     type="button"
                     role="switch"
                     aria-checked={showThousandsSeparator}
-                    aria-label={l10n.getString('restaurant-toggle-thousands-sep') || 'Show Thousands Separator'}
+                    aria-label={requiredLocalized(l10n, 'restaurant-toggle-thousands-sep')}
                     className="resto-switch-btn"
                     onClick={() => setShowThousandsSeparator(!showThousandsSeparator)}
                   >
@@ -2328,7 +2357,7 @@ export default function RestaurantReceiptsScreen({
                     type="button"
                     role="switch"
                     aria-checked={showDecimals}
-                    aria-label={l10n.getString('restaurant-toggle-decimals') || 'Show Decimals'}
+                    aria-label={requiredLocalized(l10n, 'restaurant-toggle-decimals')}
                     className="resto-switch-btn"
                     onClick={() => setShowDecimals(!showDecimals)}
                   >
@@ -2369,7 +2398,7 @@ export default function RestaurantReceiptsScreen({
                     type="button"
                     role="switch"
                     aria-checked={showFooter}
-                    aria-label={l10n.getString('restaurant-toggle-footer') || 'Show Footer Note'}
+                    aria-label={requiredLocalized(l10n, 'restaurant-toggle-footer')}
                     className="resto-switch-btn"
                     onClick={() => setShowFooter(!showFooter)}
                   >
@@ -2392,7 +2421,7 @@ export default function RestaurantReceiptsScreen({
                       className="resto-textarea"
                       rows={3}
                       maxLength={500}
-                      placeholder={l10n.getString('restaurant-footer-placeholder') || 'Thank you for dining with us!'}
+                      placeholder={requiredLocalized(l10n, 'restaurant-footer-placeholder')}
                       value={footer}
                       onChange={(e) => setFooter(e.target.value)}
                     />
@@ -2492,7 +2521,7 @@ export default function RestaurantReceiptsScreen({
                         // announce it at all. The same bundle string serves as
                         // the label.
                         aria-label={l10n.getString('restaurant-logo-url-placeholder')}
-                        placeholder={l10n.getString('restaurant-logo-url-placeholder') || 'Or paste Image URL / SVG code'}
+                        placeholder={requiredLocalized(l10n, 'restaurant-logo-url-placeholder')}
                         value={
                           businessLogo.startsWith('data:') && !businessLogo.startsWith('data:image/svg+xml;utf8,')
                             ? l10n.getString('restaurant-logo-custom-uploaded')
@@ -2573,7 +2602,7 @@ export default function RestaurantReceiptsScreen({
                         type="text"
                         maxLength={MAX_HEADER_TITLE_LENGTH}
                         className="resto-text-input"
-                        placeholder={l10n.getString('restaurant-header-title-placeholder') || 'e.g. KASIR.MU RESTAURANT'}
+                        placeholder={requiredLocalized(l10n, 'restaurant-header-title-placeholder')}
                         value={headerTitle}
                         onChange={(e) => setHeaderTitle(e.target.value.slice(0, MAX_HEADER_TITLE_LENGTH))}
                       />
@@ -2592,7 +2621,7 @@ export default function RestaurantReceiptsScreen({
                         type="text"
                         maxLength={MAX_HEADER_LINE_LENGTH}
                         className="resto-text-input"
-                        placeholder={l10n.getString('restaurant-header-line1-placeholder') || 'e.g. Street Address, City'}
+                        placeholder={requiredLocalized(l10n, 'restaurant-header-line1-placeholder')}
                         value={headerLine1}
                         onChange={(e) => setHeaderLine1(e.target.value.slice(0, MAX_HEADER_LINE_LENGTH))}
                       />
@@ -2611,7 +2640,7 @@ export default function RestaurantReceiptsScreen({
                         type="text"
                         maxLength={MAX_HEADER_LINE_LENGTH}
                         className="resto-text-input"
-                        placeholder={l10n.getString('restaurant-header-line2-placeholder') || 'e.g. Tel: 021-5551234, IG: @resto'}
+                        placeholder={requiredLocalized(l10n, 'restaurant-header-line2-placeholder')}
                         value={headerLine2}
                         onChange={(e) => setHeaderLine2(e.target.value.slice(0, MAX_HEADER_LINE_LENGTH))}
                       />
@@ -2652,7 +2681,7 @@ export default function RestaurantReceiptsScreen({
                     type="button"
                     role="switch"
                     aria-checked={showTax}
-                    aria-label={l10n.getString('workspace-pos-show-tax') || 'Show Tax'}
+                    aria-label={requiredLocalized(l10n, 'workspace-pos-show-tax')}
                     className="resto-switch-btn"
                     onClick={() => setShowTax(!showTax)}
                   >
@@ -2697,7 +2726,7 @@ export default function RestaurantReceiptsScreen({
                       <div
                         className="resto-segmented-group"
                         role="group"
-                        aria-label={l10n.getString('workspace-pos-tax-rounding') || 'Tax Rounding'}
+                        aria-label={requiredLocalized(l10n, 'workspace-pos-tax-rounding')}
                       >
                         <button
                           type="button"
