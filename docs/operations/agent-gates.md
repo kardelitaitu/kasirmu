@@ -328,6 +328,15 @@ already in this document in other words: **\`text=True\` without an encoding is 
 **the range mode had never been exercised against a range large enough to break it** — the
 self-test covers rule SHAPES, not the diff reader.
 
+**The sweep that followed found one more, so the lesson is not local.** Re-deriving the same
+question over every python gate — does any file pass `capture_output=True` without an
+`encoding=`? — found exactly one: `check-tz-invariance.py:410`, which reads a vitest
+`--reporter=json` stream and would have died on `r.stdout.find("{")` the moment a test name or
+failure message carried an unmappable byte. Same defect, different reader, found by sweeping for
+the SHAPE rather than by waiting for the next crash. After the fix the sweep reads **0
+unguarded**. The general rule: a gate that shells out is only as trustworthy as its decode, and
+its failure looks like a bug in the gate rather than a bug in the host's code page.
+
 **Final sweep after the fixes: `55 checker(s), 15 SURVIVED, 40 killed`** — the same 15
 names as the table above, all I/O shells, and four checkers moved from SURVIVED to covered
 as their branches were pinned. Re-run the sweep after changing any self-test; a fix is a
