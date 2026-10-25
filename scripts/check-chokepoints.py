@@ -121,7 +121,21 @@ def repo_root():
 
 
 def _git(root, *args):
-    return subprocess.run(["git", "-C", root] + list(args), capture_output=True, text=True)
+    # ENCODING IS NOT OPTIONAL ON WINDOWS, and its absence is SILENT. With text=True and no
+    # encoding, Python decodes with the locale codec (cp1252 here) and a diff containing a byte
+    # it cannot map — a box-drawing character in a comment, which this tree has many of — makes
+    # the reader thread die. subprocess then returns stdout=None with returncode 0 and an EMPTY
+    # stderr, so the caller crashes on `stdout.splitlines()` with an AttributeError that names
+    # neither the encoding nor the commit. Measured 2026-10-25 (round 198): `--range
+    # 1abbdae32..HEAD` (16 commits, 5,240 diff lines) died this way while the working-tree mode
+    # was fine, because the working tree is small.
+    return subprocess.run(
+        ["git", "-C", root] + list(args),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
 
 
 def collect_diff(root, range_spec):
