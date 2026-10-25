@@ -108,6 +108,40 @@ and they are different products:
 Option 1 is smaller but has a failure mode at the worst moment; option 2 is correct but
 unbuilt. Choosing between them is a money-flow ruling, not a mounting decision.
 
+## RULED 2026-10-25 (round 202): option 1, and the ruling is already shipped — for LOYALTY
+
+**The precedent exists, on this screen, and it settled the identical question.** `PaymentModal`
+redeems loyalty points AFTER `completeSaleScoped`, in the post-checkout block that publishes
+course-fired events and creates the KDS order — the exact slot option 1 names. Two call sites:
+`PaymentModal.tsx:1190` (direct checkout) and `:1834` (the shared QRIS/gateway tail), both
+reading `saleResult.saleId` obtained at :969 after the sale commits. `redeem_loyalty_points_scoped`
+has the same `saleId` requirement this plan called a blocker
+(`crates/kasirmu-bridge/src/loyalty.rs:148-156`), so the modal's lifecycle ALREADY solved it.
+
+What the loyalty path also shows is how option 1's failure mode is handled, and it is not a
+reconciliation problem so much as a visible one: the redemption is inside a try/catch that
+leaves the sale intact and adds a WARNING toast — `payment-toast-loyalty-redeem-failed`,
+"loyalty points were NOT deducted" (:1206-1209 and :1849-1852). The customer keeps the discount
+and the points stay in the account, which the toast tells the cashier to settle by hand. That is
+the honest version of option 1, and round 180's finding that the gateway copy of that catch had an
+EMPTY body ("non-blocking") is the proof that the toast is the part worth getting right:
+`PaymentModalSaleFlow.test.tsx` drives both paths with the redemption REJECTED and asserts the
+toast appears, plus `redeemAttempted` so the case cannot pass on a redemption that never ran.
+
+So a gift-card redemption would be option 1, in the same block, with the same toast discipline —
+and it would also inherit the RBAC question the plan already answered in the other direction:
+`LOYALTY_REDEEM` IS in the STAFF preset (`rbac_presets.rs:184`, with `RECEIVABLES_VIEW`/`COLLECT`
+at :197-198 for the same reason), while `GIFTCARDS_REDEEM` is granted only to MANAGER/ADMIN/OWNER
+(`:419`). A cashier may take money in against a customer's debt or points and may not touch a
+gift card — that asymmetry is a real decision and it is already recorded.
+
+**What is still blocked is unchanged and smaller than it was:** the `payments.method` CHECK
+(no gift member), and the absence of a gift arm in `complete_sale_deduction_core`. Those two are
+what make option 1 unbuilt, and neither is settled by the loyalty precedent — the loyalty
+discount is a DISCOUNT, which the payment vocabulary already carries, while a gift amount
+REDUCES WHAT THE CUSTOMER PAYS. **The plan's remaining ask is now exactly one migration plus one
+settlement decision, and the shape to copy is :1190 with its toast.**
+
 ## What is NOT the blocker
 
 Not the IPC (registered twice over), not the component (170 lines, i18n-clean, with explicit
