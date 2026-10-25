@@ -228,6 +228,16 @@ re-derive these: each is protected, and the protection is named so the search en
                         CALLBACK rather than an IPC command (SplitBillModal's onConfirmSplit) are
                         where the money defect hides: the handler itself looks harmless and the
                         cost is in the parent.
+  * bulk requeue (SyncConflictsPanel.handleRequeueAll) -- a LOOP, not one write: the replay
+                        re-walks the same dead-letter list and restarts the progress bar at
+                        1 of N mid-run. Round 187 FIXED with a ref; its case holds the FIRST
+                        row's call open so the second walk cannot hide behind the first, and
+                        asserts the per-row call SEQUENCE rather than a count -- a count of
+                        two is what a correct single walk produces for two rows.
+  * billing pause / resume (LicenseSettings) and the exit survey that confirms it -- TWO
+                        handlers on ONE decision, so the survey needed its own ref even after
+                        the card had one: onConfirm is a parent callback, and the survey's
+                        feedback write was being sent twice as well (round 187).
   * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
                         idempotent by construction: the same key is overwritten
 The point of the list is that it is SHORT: filtering to handlers that (a) await something
