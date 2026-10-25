@@ -1,0 +1,206 @@
+{
+  "description": "Outstanding test assertions that name a real Fluent message id where real copy could render. Ratcheted by scripts/check-raw-key-assertions.py; the file may only shrink. Each entry asserts that the UI shows its own translation key.",
+  "total": 50,
+  "entries": [
+    {
+      "at": "ui/src/__tests__/DashboardScreen.test.tsx:447  dashboard-filter-from",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/DashboardScreen.test.tsx:473  dashboard-filter-from",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/DashboardScreen.test.tsx:474  dashboard-filter-to",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/DashboardScreen.test.tsx:497  dashboard-filter-from",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/DashboardScreen.test.tsx:502  dashboard-filter-from",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/DashboardScreen.test.tsx:540  dashboard-filter-from",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/DashboardScreen.test.tsx:543  dashboard-btn-apply",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/DataManagementExport.test.tsx:412  data-mgmt-toast-export-fail",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/KdsScreen.test.tsx:1140  kds-tab-open",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/StoreInfoCard.test.tsx:67  workspace-store-info-heading",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:168  topology-rev-browser-deflated-body",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:201  topology-rev-browser-error-detail",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:206  topology-rev-browser-loading-one",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:245  topology-rev-browser-geometry",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:325  topology-rev-browser-deflated-remedy",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorCore.test.tsx:1283  topology-wire-label-connected",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorCore.test.tsx:1367  topology-wire-toggle-hint",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorCore.test.tsx:171  topology-wire-label-stock-deduct",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorCore.test.tsx:2662  topology-branch-rename-label",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorCore.test.tsx:2663  topology-branch-rename-placeholder",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorCore.test.tsx:2674  topology-branch-rename-placeholder",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorCore.test.tsx:2686  topology-branch-rename-label",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorCore.test.tsx:2687  topology-branch-rename-placeholder",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorCore.test.tsx:2692  topology-branch-rename-placeholder",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorCore.test.tsx:2702  topology-branch-rename-placeholder",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorCore.test.tsx:2841  topology-branch-rename-label",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorCore.test.tsx:2842  topology-branch-rename-placeholder",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorCore.test.tsx:2845  topology-branch-rename-placeholder",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:2092  topology-branch-rename-label",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:2093  topology-branch-rename-placeholder",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:2100  topology-branch-rename-placeholder",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:2111  topology-branch-rename-label",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:2112  topology-branch-rename-placeholder",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:2117  topology-branch-rename-placeholder",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:2128  topology-branch-rename-label",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:2129  topology-branch-rename-placeholder",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:2133  topology-branch-rename-placeholder",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:2146  topology-branch-rename-label",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:2147  topology-branch-rename-placeholder",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:2152  topology-branch-rename-placeholder",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:2228  topology-branch-rename-label",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:2229  topology-branch-rename-placeholder",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:2344  topology-workspace-rename-label",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:2345  topology-workspace-rename-placeholder",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:2375  topology-workspace-rename-label",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorSweepsAndExport.test.tsx:2376  topology-workspace-rename-placeholder",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorWarehouseAndCanvas.test.tsx:1551  topology-workspace-rename-label",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorWarehouseAndCanvas.test.tsx:1552  topology-workspace-rename-placeholder",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorWarehouseAndCanvas.test.tsx:245  topology-wire-label-fallback",
+      "key": ""
+    },
+    {
+      "at": "ui/src/__tests__/nodeTopologyEditorWarehouseAndCanvas.test.tsx:977  topology-wire-label-connected",
+      "key": ""
+    }
+  ]
+}
