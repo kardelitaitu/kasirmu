@@ -158,9 +158,35 @@ def blank_localized_bodies(text: str) -> str:
     return "".join(out)
 
 
+COMMENT_BLOCK_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+
+
+def blank_doc_examples(text: str) -> str:
+    """Drop JSX shown inside comments, keeping line structure.
+
+    A shared component documents itself with a fenced TSX example -- Card.tsx
+    line 33 is `<Card shadow="sm">Simple card</Card>` inside a ```` ```tsx ````
+    block -- and Button.tsx shows five. Those are DOCUMENTATION: they render
+    nowhere. The budget's first version counted them, which would have told a
+    future author that "Simple card" was accepted untranslated copy.
+
+    Block comments are removed wholesale; line comments lose their content but
+    keep the newline, so nothing downstream shifts.
+    """
+    text = COMMENT_BLOCK_RE.sub(lambda m: "\n" * m.group(0).count("\n"), text)
+    out: list[str] = []
+    for line in text.split("\n"):
+        stripped = line.lstrip()
+        if stripped.startswith("//") or stripped.startswith("*"):
+            out.append("")
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
 def count_copy_in_text(text: str) -> int:
     """Count hardcoded copy strings in one source file's contents."""
-    body = blank_localized_bodies(text)
+    body = blank_localized_bodies(blank_doc_examples(text))
     hits = 0
     for match in ATTR_RE.finditer(body):
         if _is_copy(match.group(1)):
