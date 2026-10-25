@@ -3324,15 +3324,16 @@ not enumerate. The two lines are now printed separately, and the totals reconcil
 70 suppressed = 299 citations, the same 299 as before.
 
 **RE-MEASURED 2026-10-25 (round 199): 228 + 70 = 298.** The population moved by one and the
-reconciliation above no longer closes. What changed is not a citation being dropped from this file
-— `git grep -o` over `agent-gates.md` finds **58** raw `path:line` tokens at HEAD against **57**
-at `5a75ac3dc`, so this file gained one. The tool scans **48 live docs under a fixed root set**,
-and two of those docs were *renamed* during that window with the `todo-` token preserved on purpose
-(`docs/plans/_active/todo-orphan-module-dispositions.md`, `todo-unrequested-command-dispositions.md`).
-The count is a function of which files the tool walks; a rename changes it without any citation
-being added or removed. **Recorded rather than explained away**, because a reconciling total is
-what makes the number a state instead of a floor, and a total that quietly drifts teaches the next
-reader to stop checking it.
+reconciliation above no longer closes. The cause was found by diffing the citation MULTISET of this
+file rather than its line count: comparing every `path:line` token in `agent-gates.md` at
+`5a75ac3dc` (56) against HEAD (57) gives exactly ONE difference —
+`('check-tz-invariance.py', '410')`, added, and nothing removed. It is the new sentence round 198
+wrote about the unguarded decode: this file cites the line it was describing, and a doc that names
+its evidence moves its own census. Round 198's sweep is therefore responsible for the drift, which
+is why the number is recorded rather than explained away — a reconciling total is what makes the
+count a state instead of a floor, and a total allowed to drift quietly teaches the next reader to
+stop checking it. (An earlier draft of this paragraph blamed a plan-file rename and claimed the
+token count went 57 → 58; both were wrong, and the multiset diff is what settled it.)
 
 **The three real gaps were all in this file and all closed by anchoring them**: a module-doc
 citation that names a prose block rather than a symbol (marked `dead-ref: ok:` with the
