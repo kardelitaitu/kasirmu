@@ -279,7 +279,7 @@ export default function BundleManagementScreen() {
         <Card shadow="sm">
           <div className="bundle-mgmt-empty" role="alert">
             <p>{loadError}</p>
-            <Button variant="secondary" onClick={() => { void load(); }}>Retry</Button>
+            <Button variant="secondary" onClick={() => { void load(); }}>{l10n.getString('retry')}</Button>
           </div>
         </Card>
       ) : bundles.length === 0 ? (

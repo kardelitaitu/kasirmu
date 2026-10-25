@@ -295,7 +295,11 @@ export function TerminalPreferencesCard({
 
       {hw.error && (
         <div className="settings-error-banner" role="alert">
-          {hw.error}
+          {/* hw.error is a Fluent KEY (useTerminalHardware.ts:367), not a
+              sentence: the hook has no Localization in scope, so the id is
+              resolved here and prints as the key itself if the message is
+              gone, rather than as English. */}
+          {requiredLocalized(l10n, hw.error)}
         </div>
       )}
 

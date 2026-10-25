@@ -364,7 +364,11 @@ export function useTerminalHardware(
       // The cards that host this hook are reached from the logged-in settings modal, so this is
       // not a path a user is expected to hit -- but it is reported, not swallowed, because the
       // alternative is a save that looks like it happened.
-      setError('Failed to save hardware profile');
+      // The CODE, not an English sentence: this hook has no Localization in scope,
+      // and TerminalPreferencesCard renders `{hw.error}` straight into a
+      // role="alert". Returning a Fluent id lets the render site localize it and
+      // keeps the hook honest when there is no message.
+      setError('terminal-hardware-error-save-profile');
       savingRef.current = false;
       setIsLoading(false);
       return;

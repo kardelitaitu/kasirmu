@@ -945,3 +945,7 @@ ds-empty-action = Tambah Produk
 ds-error-title = Terjadi kesalahan
 ds-error-message = Terjadi galat tak terduga. Silakan coba lagi.
 ds-error-retry = Coba lagi
+
+# Round 212 — teks alt gambar hero aktivasi lisensi. "kasir.mu" adalah merek
+# dan tetap; keterangan sesudahnya adalah salinan.
+license-activation-logo-alt = Logo kasir.mu

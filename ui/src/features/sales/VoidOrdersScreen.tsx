@@ -624,7 +624,9 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
         <Card shadow="sm">
           <div className="void-orders-error" role="alert">
             <p>{detailError}</p>
-            <Button variant="secondary" onClick={backToList}>Go back</Button>
+            <Localized id="void-orders-go-back">
+              <Button variant="secondary" onClick={backToList}>Go back</Button>
+            </Localized>
           </div>
         </Card>
       ) : !detail ? (

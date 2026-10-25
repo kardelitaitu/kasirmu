@@ -253,7 +253,7 @@ export function SyncConflictsPanel({
                             data-testid={`payload-view-${f.itemId}`}
                           >
                             <div className="sync-conflicts-payload-header">
-                              <span className="sync-conflicts-payload-title">JSON Payload</span>
+                              <span className="sync-conflicts-payload-title">{l10n.getString('sync-conflicts-payload-title')}</span>
                               <button
                                 type="button"
                                 className="sync-conflicts-copy-btn"

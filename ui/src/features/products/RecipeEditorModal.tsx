@@ -388,7 +388,7 @@ export function RecipeEditorModal({
                         <th className="recipe-editor-th-cost">
                           <Localized id="recipe-editor-col-cost">Est. Cost</Localized>
                         </th>
-                        <th className="recipe-editor-th-action" aria-label="Actions" />
+                        <th className="recipe-editor-th-action" aria-label={l10n.getString('actions-aria')} />
                       </tr>
                     </thead>
                     <tbody>
@@ -465,7 +465,7 @@ export function RecipeEditorModal({
                                 type="button"
                                 className="recipe-editor-btn-remove"
                                 onClick={() => handleRemoveRow(row.id)}
-                                aria-label="Remove ingredient"
+                                aria-label={l10n.getString('recipe-editor-remove-ingredient')}
                                 data-testid={`recipe-remove-btn-${idx}`}
                               >
                                 <TrashIcon />

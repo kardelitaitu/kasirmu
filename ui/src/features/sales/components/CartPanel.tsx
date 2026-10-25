@@ -1052,7 +1052,7 @@ export function CartPanel({
             behaviour is pinned by the bar's own suite. */}
         {lines.length > 0 && activeWorkspace === 'restaurant-pos' && courseFiringEnabled !== false
           && !lines.every((l) => l.coursingStatus !== 'hold') && (
-          <section className="pos-cart-course-bar-area" aria-label="Course Firing">
+          <section className="pos-cart-course-bar-area" aria-label={l10n.getString('pos-cart-course-firing')}>
             <CourseSelectorBar
               lines={lines}
               fireCourse={fireCourse}

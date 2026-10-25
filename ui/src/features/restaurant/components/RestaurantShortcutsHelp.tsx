@@ -23,7 +23,8 @@
 // means the help text cannot disagree with what the keys do — the same rule
 // `restaurantShortcutParity.test.ts` enforces for the handler map.
 
-import { Localized } from '@fluent/react';
+import { Localized, useLocalization } from '@fluent/react';
+import { requiredLocalized } from '@/components/requiredLocalized';
 import { RESTAURANT_SHORTCUTS } from '../restaurantShortcuts';
 
 export interface RestaurantShortcutsHelpProps {
@@ -41,11 +42,12 @@ export interface RestaurantShortcutsHelpProps {
  * literal typed into this file.
  */
 export function RestaurantShortcutsHelp({ onClose }: RestaurantShortcutsHelpProps) {
+  const { l10n } = useLocalization();
   return (
     <section
       className="restaurant-shortcuts-help"
       data-testid="restaurant-shortcuts-help"
-      aria-label="Keyboard shortcuts"
+      aria-label={requiredLocalized(l10n, 'restaurant-shortcuts-help-title')}
     >
       <header className="restaurant-shortcuts-help-heading">
         <Localized id="restaurant-shortcuts-help-title">
@@ -55,7 +57,7 @@ export function RestaurantShortcutsHelp({ onClose }: RestaurantShortcutsHelpProp
           type="button"
           className="restaurant-shortcuts-help-close"
           onClick={onClose}
-          aria-label="Close keyboard shortcuts"
+          aria-label={requiredLocalized(l10n, 'restaurant-shortcuts-help-close-aria')}
           data-testid="restaurant-shortcuts-help-close"
         >
           ×

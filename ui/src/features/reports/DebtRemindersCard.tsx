@@ -237,7 +237,9 @@ export function DebtRemindersCard({ sessionToken, currency }: DebtRemindersCardP
               // "Up to date" is an affirmative claim about the merchant's debtors. It was
               // reachable from a receivables read that never answered.
               <span className="dashboard-debt-badge dashboard-debt-badge--warning" role="alert">
-                Could not load receivables
+                <Localized id="dashboard-debt-receivables-failed">
+                  Could not load receivables
+                </Localized>
               </span>
             ) : recOverdue.length === 0 && recDueSoon.length === 0 ? (
               <span className="dashboard-debt-badge dashboard-debt-badge--ok">
@@ -312,7 +314,9 @@ export function DebtRemindersCard({ sessionToken, currency }: DebtRemindersCardP
             )}
             {paysFailed ? (
               <span className="dashboard-debt-badge dashboard-debt-badge--warning" role="alert">
-                Could not load payables
+                <Localized id="dashboard-debt-payables-failed">
+                  Could not load payables
+                </Localized>
               </span>
             ) : payOverdue.length === 0 && payDueSoon.length === 0 ? (
               <span className="dashboard-debt-badge dashboard-debt-badge--ok">

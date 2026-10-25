@@ -404,7 +404,7 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
       </div>
       <div className="license-activation-layout">
         <div className="license-activation-hero">
-          <img src="/256x256.png" alt="kasir.mu Logo" className="license-activation-logo" />
+          <img src="/256x256.png" alt={l10n.getString('license-activation-logo-alt')} className="license-activation-logo" />
         </div>
         
         <div className="license-activation-card">

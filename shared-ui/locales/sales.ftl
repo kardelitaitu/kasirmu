@@ -1266,3 +1266,14 @@ pos-toast-printer-unconfirmed = The printer did not confirm the print — check 
 pos-toast-test-receipt-sent = Test receipt sent
 pos-toast-drawer-kick-sent = Cash drawer signal sent
 pos-toast-drawer-unconfirmed-short = The cash drawer did not confirm it opened — check the device
+
+# Round 212 - round 211's follow-through: the course-firing section label, the
+# two debt-panel failure badges, and the shortcuts-help close button.
+pos-cart-course-firing = Course Firing
+dashboard-debt-receivables-failed = Could not load receivables
+dashboard-debt-payables-failed = Could not load payables
+restaurant-shortcuts-help-close-aria = Close keyboard shortcuts
+# Placeholders for the product modals' two free-text fields (round 212).
+# "pcs / kg / box" is a unit HINT the operator types over, so it is copy.
+retail-edit-unit-placeholder = pcs / kg / box
+retail-edit-rack-placeholder = A-01

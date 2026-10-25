@@ -627,3 +627,9 @@ recipe-editor-validation-empty-sku = Please select an ingredient for all rows
 recipe-editor-validation-invalid-qty = Quantities must be greater than 0
 recipe-editor-manage-recipe = Recipe (BOM)
 recipe-editor-manage-recipe-aria = Manage recipe for { $name }
+
+# Round 212 — the last literals on the topology editor, the recipe editor and
+# the workspace settings cards.
+topology-node-actions = Node actions
+topology-tool-locked-premium = Premium
+recipe-editor-remove-ingredient = Remove ingredient

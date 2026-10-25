@@ -1334,3 +1334,11 @@ settings-updater-cancel = Cancel
 settings-updater-android-only = In-app updates are available for Android only.
 
 
+
+# Round 212 - the last literals across the settings surfaces, plus the staff
+# footer's refresh button.
+staff-refresh-aria = Refresh staff data
+sync-conflicts-payload-title = JSON Payload
+update-notes-title = Changelog
+data-mgmt-restore-unreadable = Could not read the backup generations beside the database.
+terminal-hardware-error-save-profile = Failed to save hardware profile

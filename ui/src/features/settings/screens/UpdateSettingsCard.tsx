@@ -390,7 +390,7 @@ export function UpdateSettingsCard() {
 
             {updateInfo.releaseNotes && (
               <div className="update-release-notes">
-                <div className="update-notes-title">Changelog</div>
+                <div className="update-notes-title">{l10n.getString('update-notes-title')}</div>
                 <div className="update-notes-content">{updateInfo.releaseNotes}</div>
               </div>
             )}

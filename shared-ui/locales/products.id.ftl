@@ -608,3 +608,9 @@ recipe-editor-validation-empty-sku = Silakan pilih bahan baku untuk semua baris
 recipe-editor-validation-invalid-qty = Jumlah bahan harus lebih besar dari 0
 recipe-editor-manage-recipe = Resep (BOM)
 recipe-editor-manage-recipe-aria = Kelola resep untuk { $name }
+
+# Round 212 — sisa literal pada editor topologi, editor resep, dan kartu
+# pengaturan ruang kerja.
+topology-node-actions = Aksi simpul
+topology-tool-locked-premium = Premium
+recipe-editor-remove-ingredient = Hapus bahan

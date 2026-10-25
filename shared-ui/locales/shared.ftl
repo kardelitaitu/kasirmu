@@ -970,3 +970,7 @@ ds-empty-action = Add Product
 ds-error-title = Something went wrong
 ds-error-message = An unexpected error occurred. Please try again.
 ds-error-retry = Retry
+
+# Round 212 — the licence activation hero image's alt text. "kasir.mu" is a
+# brand name and stays; the descriptor after it is copy.
+license-activation-logo-alt = kasir.mu Logo

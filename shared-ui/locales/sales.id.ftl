@@ -1226,3 +1226,14 @@ pos-toast-drawer-kick-sent = Sinyal laci kas terkirim
 pos-toast-drawer-unconfirmed-short = Laci kas tidak mengonfirmasi terbuka — periksa perangkatnya
 
 
+
+# Round 212 - lanjutan round 211: label bagian course firing, dua lencana
+# kegagalan panel utang, dan tombol tutup bantuan pintasan.
+pos-cart-course-firing = Pengiriman Hidangan
+dashboard-debt-receivables-failed = Gagal memuat piutang
+dashboard-debt-payables-failed = Gagal memuat utang
+restaurant-shortcuts-help-close-aria = Tutup pintasan papan tombol
+# Placeholder untuk dua kolom teks bebas pada modal produk (round 212).
+# "pcs / kg / box" adalah petunjuk satuan yang ditimpa operator.
+retail-edit-unit-placeholder = pcs / kg / box
+retail-edit-rack-placeholder = A-01

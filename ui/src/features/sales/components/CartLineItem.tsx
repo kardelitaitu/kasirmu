@@ -360,7 +360,7 @@ export function CartLineItem({
                     aria-label={requiredLocalized(l10n, 'edit-modifiers')}
                     data-testid="cart-line-edit-modifiers-btn"
                   >
-                    Edit
+                    {requiredLocalized(l10n, 'edit-modifiers')}
                   </button>
                 )}
                 {onOverride && (

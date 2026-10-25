@@ -1291,3 +1291,11 @@ settings-updater-cancel = Batal
 settings-updater-android-only = Pembaruan dalam aplikasi hanya tersedia untuk Android.
 
 
+
+# Round 212 - sisa literal di seluruh permukaan pengaturan, ditambah tombol
+# segarkan pada footer staf.
+staff-refresh-aria = Segarkan data staf
+sync-conflicts-payload-title = Muatan JSON
+update-notes-title = Catatan Perubahan
+data-mgmt-restore-unreadable = Gagal membaca generasi cadangan di samping basis data.
+terminal-hardware-error-save-profile = Gagal menyimpan profil perangkat keras
