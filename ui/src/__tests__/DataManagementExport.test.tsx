@@ -65,7 +65,6 @@ vi.mock('@fluent/react', () => {
     'data-mgmt-import-confirm-title': 'Import Data',
     'data-mgmt-import-confirm-message': 'Importing will overwrite current data with the contents of the backup file. This cannot be undone. Do you want to proceed?',
     'data-mgmt-tabs-aria': 'Data management actions',
-    'admin-locked-title': 'Administrative features locked',
     'admin-locked-message': 'Administrative SaaS features lock while the subscription is expired, paused, or unavailable. Selling continues under the offline grace policy. Verify your subscription online to restore access.',
   };
   return {
