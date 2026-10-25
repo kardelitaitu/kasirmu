@@ -168,7 +168,11 @@ describe('NodeTopologyEditor — first warehouse wire stock-deduct label', () =>
     const wires = document.querySelectorAll('.wire-group');
     const last = wires[wires.length - 1]!;
     const title = last.querySelector('.wire-hitbox title');
-    expect(title?.textContent).toContain('topology-wire-label-stock-deduct');
+    // Assert the COPY, not the key. This read toContain('topology-wire-label-stock-deduct')
+// and passed only because the harness map lacked the key, so the tooltip rendered
+// the component's own id -- the assertion was describing the defect. The label
+// carries a runtime priority, so match the stable prefix.
+expect(title?.textContent).toContain('Stock Deduct (P');
   });
 });
 
@@ -1136,7 +1140,7 @@ describe('NodeTopologyEditor — Apply failure resilience', () => {
     // The failure surfaces as an error toast (plainErrorMessage sanitizes the
     // thrown Error to the generic fallback, so pin the save-error key itself).
     await waitFor(() =>
-      expect(screen.getByText(/topology-toast-save-error/)).toBeInTheDocument(),
+      expect(screen.getByText(/Failed to save topology/)).toBeInTheDocument(),
     );
 
     // The in-memory edit survives the failed save.
@@ -1163,7 +1167,7 @@ describe('NodeTopologyEditor — Apply failure resilience', () => {
     await applyWithPin();
 
     await waitFor(() =>
-      expect(screen.getByText(/topology-toast-save-error/)).toBeInTheDocument(),
+      expect(screen.getByText(/Failed to save topology/)).toBeInTheDocument(),
     );
 
     // Selection survives — the failure returns before the idMap branch clears it.

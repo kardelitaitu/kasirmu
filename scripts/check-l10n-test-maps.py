@@ -591,8 +591,15 @@ def scan() -> tuple[list[str], int, int]:
                     continue
                 nested.append(child)
         uses: dict[str, tuple[int, str]] = {}
-        imported_map = any(m.get("scope_direct") for m in maps)
-        scan_paths = modules if imported_map else (modules + nested)
+        # Both paths scan the SAME graph. An earlier round narrowed the
+        # imported-map path to direct imports, justified by a 169-finding
+        # over-report that was really the map-splitting bug. The narrowing
+        # outlived its cause and hid real copy: a component NodeTopologyEditor
+        # genuinely renders pulls 57 nested modules carrying 184 bundle keys,
+        # and 79 of them were absent from the harness map. An asymmetry
+        # between two paths through the same rule is a blind spot, not a
+        # conservatism.
+        scan_paths = modules + nested
         for path in scan_paths:
             for key, line in uses_of(path).items():
                 if key.startswith(LOCAL_BUNDLE_PREFIXES) or key not in keys:

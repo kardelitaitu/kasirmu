@@ -242,7 +242,10 @@ describe('NodeTopologyEditor — Pro-tier warehouse fallback label', () => {
     const wires = document.querySelectorAll('.wire-group');
     const last = wires[wires.length - 1]!;
     const title = last.querySelector('.wire-hitbox title');
-    expect(title?.textContent).toContain('topology-wire-label-fallback');
+    // Was toContain('topology-wire-label-fallback'), which held only while the stub
+// returned the raw id; the comment above it said so ('raw key in the identity-l10n
+// mock') and that was the defect written down as intent.
+expect(title?.textContent).toContain('Fallback (P');
   });
 });
 
