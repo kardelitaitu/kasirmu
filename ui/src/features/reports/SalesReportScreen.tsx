@@ -920,11 +920,11 @@ const { sessionToken: rawToken } = useWorkspace();
                       key={h}
                       className="sales-report-heatmap-cell"
                       role="gridcell"
-                      aria-label={
-                        cells.length > 0
-                          ? `${dayKey.charAt(0).toUpperCase() + dayKey.slice(1, 3)} ${String(h).padStart(2, '0')}:00 - ${amounts || fmtCurrency(0, currency, numLocale)} (${sales} orders)`
-                          : `${dayKey.charAt(0).toUpperCase() + dayKey.slice(1, 3)} ${String(h).padStart(2, '0')}:00 - $0.00 (0 orders)`
-                      }
+                      // Both arms go through fmtCurrency. The empty arm used to
+                      // hardcode a dollar amount, so on an IDR till every empty
+                      // cell announced one while its non-empty sibling formatted
+                      // correctly. No test pinned either arm's text (2026-10-25).
+                      aria-label={`${dayKey.charAt(0).toUpperCase() + dayKey.slice(1, 3)} ${String(h).padStart(2, '0')}:00 - ${amounts || fmtCurrency(0, currency, numLocale)} (${sales} orders)`}
                       style={{
                         backgroundColor: value > 0 ? HEATMAP_COLORS[Math.min(Math.floor((value / 50000) * 7), 7)] : 'transparent',
                       }}

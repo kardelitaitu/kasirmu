@@ -189,8 +189,16 @@ describe('AddonsMarketplace', () => {
     // the first is advanced_analytics, whose catalogued price is
     // pri_addon_analytics_monthly — NOT a placeholder.
     fireEvent.click(screen.getAllByText('Add')[0]!);
+    // The LOCALE PREFIX is asserted, not just the path: every marketing page
+    // lives at /[locale]/pricing/ (astro.config.mjs:72 turns on
+    // prefixDefaultLocale), so a bare /pricing/ has no page to resolve to.
+    // 'id' is the app's real default (LocaleContext.tsx:32) — the test render
+    // helper mounts no LocaleProvider, so the context default is what applies.
+    // The fragment is part of the expectation precisely because it has NO
+    // target on the live page: pinning it keeps the intent visible instead of
+    // letting a later edit "fix" it silently.
     expect(opened.urls).toEqual([
-      `${WEBSITE_ORIGIN}/pricing/#addon-advanced_analytics`,
+      `${WEBSITE_ORIGIN}/id/pricing/#addon-advanced_analytics`,
     ]);
   });
 
