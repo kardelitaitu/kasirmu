@@ -6,6 +6,17 @@ round-166 census.** 499 lines, an 18-case suite, and **120 bundle lines across b
 `.ftl` files, so the entire key block left with it. Deleting it took the census from
 `ORPHAN=4, 46 test case(s)` to `ORPHAN=3, 28`.
 
+**ROUND 197: two leftovers of the same deletion, and neither was reported by a gate.**
+`product-mgmt-stock-alert-open` / `-close` ("Open stock alerts" / "Close stock alerts") were in
+BOTH locales and read by nothing — `lint-i18n.sh` says "no issues", because its orphan rule compares
+the two bundles against each other, not against the code. They were the strings for a drawer that
+the panel's own removal made unreachable. And `sales/PromotionsModal.css:178` still cited
+`inventory/StockAlertPanel.css:147-151` as its provenance for three copied declarations — a live
+citation of a file that no longer exists. **A green gate is a statement about what it grades**, and
+neither of these was in any gate's scope: the FTL lint grades bundle-to-bundle, and a CSS comment
+is prose. Both are fixed rather than noted, because the second one would have sent a reader to a
+missing file for a reason that is still true.
+
 **ROUND 196 DELETED `StockAlertPanel.tsx` — an orphan created BY a deletion, and a new shape the
 census had not reported before.** It was mounted in exactly one place,
 `ProductManagementScreen.tsx:30`, so round 192's deletion did not merely remove a screen: it
