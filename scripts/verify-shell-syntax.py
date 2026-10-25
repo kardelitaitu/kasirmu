@@ -545,8 +545,14 @@ def main() -> int:
         # and makes this file look badly unbalanced. Strip FULL-LINE comments only.
         # What is left is the grammar itself, so re-read the raw bytes around any suspect
         # line rather than the rendered text.
-        print("verify-shell-syntax: ADVISORY (not blocking) — see FLIP CONDITION above.")
-        return 0
+        # BLOCKING since round 240. The FLIP CONDITION above ("scripts/profile.sh
+        # parses") was met long ago — measured 2026-10-26 the whole tree parses, 63/63 —
+        # but the flip was never applied to the RETURN, so this branch printed the
+        # finding and then exited 0. Proven by mutation: append an unbalanced `if true;
+        # then` to scripts/android-preflight.sh and the script announces "PARSE ERROR"
+        # and exits 0. A gate that reports a defect and returns success is the defect.
+        print("verify-shell-syntax: FAILED — see the parse error(s) above.")
+        return 1
     print(f"verify-shell-syntax: OK — {checked} shell entry point(s) parse.")
     return 0
 
