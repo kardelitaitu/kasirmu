@@ -138,6 +138,38 @@ A rule that two paths through the same gate apply differently is a blind spot,
 not a conservatism. The lesson is narrower than "be thorough": the earlier
 narrowing was justified by a measurement that later proved to be an artifact,
 and nothing re-checked that justification when the artifact was fixed.
+## Seeding a map: three ways to get the value wrong
+
+Adding a missing key looks mechanical and is not. Measured 2026-11-07 across
+~200 seeded keys, three distinct traps, each of which produced a GREEN test
+against a string the UI never renders:
+
+1. **The placeable form is per-stub.** Stubs in this tree substitute either
+   `{ $name }`, or `{name}`, or both -- it is whatever the file's own
+   `replace()` call does. A value written in the wrong form never resolves, so
+   the seeded string still contains `$name` literally. Two suites failed on
+   exactly this (`PIN: 0 of 4 digits entered` in SessionLockScreen, `1 / 3
+   selected` in CustomReportScreen) because they use the FTL `{ $x }` form.
+
+2. **Flattening strips the braces.** A naive "join the continuation lines and
+   drop the punctuation" turns `4 items { $amount }` into `4 items $amount`.
+   Nine values were seeded that way and all nine passed their own tests.
+   `check-l10n-test-maps.py` now flags a value carrying a `$name` OUTSIDE a
+   brace pair for this reason. The first version of that check flagged every
+   CORRECT `{ $x }` value -- a false positive on the legitimate form -- so the
+   regex is deliberately blind to `$name` inside braces, and a must-not-flag
+   case now pins it.
+
+3. **`.attr` messages live on the continuation line.** For an FTL message that
+   is only an attribute request (`key =` followed by `  .aria-label = ...`),
+   a parse that reads just the `=` line yields an EMPTY string. Eight
+   `appearance-*-aria` values were read correctly only because the call site
+   was checked first.
+
+The general rule: **read the stub before choosing the value.** The stub, not
+the FTL, decides which form is correct -- and a test that passes is not
+evidence that the value is right, because the assertion may be matching the
+unsubstituted literal.
 ## Commands
 
 ```
