@@ -170,3 +170,50 @@ a path.
 ## Filed by
 
 The round-160 lane. No production file edited for this item.
+
+## RE-SCOPED 2026-11-07 (round 235): the cost line was wrong by 2-3x, and two rulings are still open
+
+A read-only investigation at HEAD `2a6e4d2ff` measured the change the "What is still blocked"
+section calls "exactly one migration plus one settlement deduction arm". It is **not** that:
+**~8 backend files, 300-400 lines** (11-13 files / 450-550+ with the UI). The settlement half is
+not a deduction arm at all -- it is a new cross-cutting tender gate, and it must be written in
+BOTH checkout doors (`sales_checkout.rs:854-897` and `sales_lifecycle.rs:558-600`), which the
+code itself warns must move together.
+
+**Two blockers this file did not previously name:**
+
+1. `validate_payment_splits_cover_total` (`db/sales.rs:287-316`) requires the splits to COVER
+   `sale.total` and has **no discount concept** (`:309`). A gift tender "reduces what the customer
+   pays", so whether it counts toward or against that sum is an unwritten rule. Nothing in the
+   codebase expresses it today.
+2. `redeem_gift_card` requires a `sale_id`, and this door writes the sale with `status=` pending `
+   (`sales_checkout.rs:778`) before committing at `:919`. Redeeming inside that transaction is
+   referentially fine but bakes in a lifecycle decision -- an irreversible balance deduction
+   against a not-yet-final sale.
+
+**Mechanical facts that make the migration less safe than it looks.** The live `payments` CHECK is
+in `20261018_gateway_status_adr64_vocabulary.sql:56-60`, NOT `20261017` (a round-217 probe widened
+the earlier file and the guard test stayed green). The rebuild must copy all 12 columns, keep both
+CHECKs including `OR gateway_status IS NULL`, and **re-create both indexes** (`:91-92`) --
+`DROP TABLE` destroys them, and losing `idx_payments_idempotency_key` is a silent money-path
+defect. The PG mirror (`20260813_init.pg.sql:3022-3026`) must be REGENERATED, not hand-edited.
+
+`redeem_gift_card` (`db/gift_cards.rs:333-511`) already exists and is complete, but it opens its
+OWN transaction (`:424`), so an in-tx arm needs a `_in_tx` extraction of `:421-485` (~65 lines)
+rather than a call. `migrations_tests.rs:4107-4119` asserts that all four gift spellings are
+REFUSED; adding `gift` fails it immediately and needs the loop AND its 15-line comment rewritten,
+since that comment states the old rule.
+
+**Recommended split, and the reason this file stays `todo-`:**
+
+- Change #1: the migration alone (SQL + registry + regenerated PG + the test rewrite), verified
+  with `python3 scripts/generate-pg-migration.py --check` and
+  `cargo test -p kasirmu-core payments_method_check`.
+- Change #2: the settlement contract -- but only AFTER two rulings are written down: does a gift
+  split cover or reduce the total, and is the redemption in-tx against a pending sale or a
+  post-commit step with a warning toast (the loyalty precedent at `PaymentModal.tsx:1190`).
+
+Attempting the whole thing as one unit puts a schema rebuild of the payments table, a new in-tx
+money deduction, two checkout doors and three test rewrites into a single review. That is too
+large to do safely at once, and the table rebuild cannot be undone on a device that already ran
+it by reverting the commit.

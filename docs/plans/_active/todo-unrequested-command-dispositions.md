@@ -7,6 +7,32 @@ info[cross-shell-unrequested]: 28 per-shell unrequested registration(s) are 5 co
   named by no shipped UI file on ANY shell (desktop=13, tablet=5) = 5 named by neither side
   + 18 named by the other shell's UI only
 ```
+**RE-MEASURED 2026-11-07 (round 235) at HEAD `2a6e4d2ff`. The count is now 9, not 5.**
+`python scripts/verify-ipc-parity.py` prints:
+
+```
+info[cross-shell-unrequested]: 36 per-shell unrequested registration(s) are 9 command(s)
+  named by no shipped UI file on ANY shell (desktop=13, tablet=5) = 9 named by neither
+  side + 18 named by the other shell's UI only
+```
+
+The live nine are `create_product_variant_scoped`, `delete_product_variant_scoped`,
+`enqueue_offline_scoped`, `get_over_quota_report`, `get_product_variant_scoped`,
+`list_pending_offline_scoped`, `list_product_variants_scoped`,
+`list_scale_devices_scoped`, `update_product_variants_scoped`. Five of them are the
+`*_variant(s)_scoped` family, which grew when the variant IPC wrappers were removed from
+`ui/src/api/products.ts` -- a removal that retired the CALLER, not the command.
+
+**The census line and this file disagree, and the census line is not the whole story.**
+`info[cross-shell-reasons]` reports "8 of 9 ... carry a dated reason ... 1 NOT covered by
+scoped_orphans = get_over_quota_report" and then tells the reader to check
+`_desktop_comment` / `_tablet_comment` before concluding it is unrecorded. Checked: it IS
+recorded, in `scripts/ipc-parity-allowlist.json` `_desktop_comment`, which explains that
+`get_over_quota_report` is the AMBIENT arm of the ADR #7 pair, named by no shipped UI, and
+deliberately in no section because a shell section must stay a list of bare `_scoped` names.
+So the "1 NOT covered" line is a pointer to prose, not a finding. Reading only the census and
+retiring it would delete the ambient half of a live pair.
+
 
 **CORRECTION ADDED THE SAME ROUND, before this file was a day old.** The paragraph that stood
 here said these five had been "acted on by nobody". That was false, and reading
