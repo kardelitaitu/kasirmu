@@ -73,6 +73,8 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
+  /** Synchronous mirror of `loading` — see the re-entry guard in `handleActivate`. */
+  const loadingRef = useRef(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(initialError ?? null);
   // The banner names the rule ("Enter a valid email") but not the control it
   // refers to, so with two fields on screen the user has to guess which one to
@@ -283,6 +285,12 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
       return;
     }
 
+    // Re-entry guard, after every validation. activate_license RECORDS a licence against
+    // the device fingerprint; a replay is refused by the one-licence-per-device rule and
+    // that refusal lands in the catch as auth-activation-error over an activation that
+    // succeeded -- on the screen a merchant sees once, at setup.
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
     try {
       // C47: shell-guarded, and the guard is load-bearing rather than decorative.
@@ -348,6 +356,7 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
         message,
       });
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   };

@@ -245,6 +245,29 @@ describe('LicenseActivationScreen', () => {
     });
   });
 
+  it('activates ONCE when the Activate button is double-tapped', async () => {
+    // activate_license records the licence against the device fingerprint. The replay is
+    // refused by the one-licence-per-device rule and that refusal is reported as an
+    // activation failure over an activation that succeeded.
+    let release: (() => void) | undefined;
+    mockActivateLicense.mockReturnValue(new Promise((res) => { release = () => res(true); }));
+
+    const user = userEvent.setup();
+    renderOnForm();
+    await user.type(screen.getByLabelText('Email Address'), 'test@example.com');
+    await user.type(screen.getByLabelText('Phone Number'), '+6281234567890');
+    await user.type(screen.getByLabelText('License Key'), 'TEST-KEY-1234');
+
+    const submit = screen.getByRole('button', { name: 'Activate License' });
+    await act(async () => {
+      fireEvent.click(submit);
+      fireEvent.click(submit);
+    });
+
+    release?.();
+    await waitFor(() => expect(mockActivateLicense).toHaveBeenCalledTimes(1));
+  });
+
   it('shows error when activation returns false', async () => {
     mockActivateLicense.mockResolvedValue(false);
     const user = userEvent.setup();
