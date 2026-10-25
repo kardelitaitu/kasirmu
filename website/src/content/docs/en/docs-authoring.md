@@ -77,6 +77,8 @@ as plain text, the renderer is not wired into `astro.config.mjs` yet.
 
 ```mermaid
 flowchart LR
+    accTitle: Paddle webhook flow
+    accDescr: Flowchart showing how checkout triggers a Paddle webhook and handles license minting.
     A[Checkout] --> B[Paddle webhook]
     B --> C{License exists?}
     C -- yes --> D[No-op — replayed event]
@@ -87,6 +89,8 @@ flowchart LR
 
 ```mermaid
 sequenceDiagram
+    accTitle: License activation sequence
+    accDescr: Sequence diagram of POS client activating a key against the license server.
     participant POS as POS client
     participant L as License server
     POS->>L: activate(key)

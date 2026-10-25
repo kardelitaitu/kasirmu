@@ -79,6 +79,8 @@ halaman tetap bebas JavaScript dan CSP tidak pernah berubah. Jika blok
 
 ```mermaid
 flowchart LR
+    accTitle: Alur webhook Paddle
+    accDescr: Diagram alir checkout memicu webhook Paddle dan pencetakan lisensi.
     A[Checkout] --> B[Paddle webhook]
     B --> C{Lisensi ada?}
     C -- ya --> D[Tanpa aksi — event terulang]
@@ -89,6 +91,8 @@ flowchart LR
 
 ```mermaid
 sequenceDiagram
+    accTitle: Urutan aktivasi lisensi
+    accDescr: Diagram sekuens klien POS mengaktifkan kunci ke license server.
     participant POS as Klien POS
     participant L as License server
     POS->>L: activate(kunci)
