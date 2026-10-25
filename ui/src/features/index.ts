@@ -72,6 +72,21 @@ import { registerMemoFeature } from './memo/register';
  *     whole point of item (3), and a false "not routed, delete it" reading has
  *     already cost this repo a review pass. Whoever owns it should either
  *     register it or say so here.
+ *
+ *     MEASURED 2026-10-25 (round 201): the four claims above all still hold, and a
+ *     fifth narrows it. The component's entire PURPOSE is one tap — handlePurchase
+ *     opens the WEBSITE pricing page with an anchor (`/pricing/#addon-<id>`,
+ *     AddonsMarketplace.tsx:102) — so mounting it would add a screen whose only
+ *     action is a browser hand-off to a page that is not this app's. Its data comes
+ *     from a static client-side catalog (api/addons.ts:31 ADDON_CATALOG), and every
+ *     Paddle price in it is a placeholder (`pri_placeholder_*`, :90-93) that logs a
+ *     warning and returns without opening anything. So the honest reading of
+ *     UNRESOLVED is now sharper: this is not a screen waiting for a route, it is a
+ *     SCAFFOLD for a purchase flow that cannot complete, kept because the
+ *     entitlement model it reads (SignedSubscriptionPayload.addons) is real and
+ *     shipped. That is the same state C4.3 describes in todo.md — "The Go side will
+ *     wire the field when actual add-ons are catalogued" — so the component is ahead
+ *     of nothing and behind nothing; it waits on the catalog.
  */
 export function registerAllFeatures() {
   registerSalesFeature();
