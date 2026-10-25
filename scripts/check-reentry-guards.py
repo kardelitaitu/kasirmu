@@ -217,6 +217,17 @@ re-derive these: each is protected, and the protection is named so the search en
                         `loading`/`state` styled needs a ref, because the second click lands before
                         the re-render. `<Button state="processing">` and `loading` DO disable, so
                         those are gated for the same reason -- check the component, not the call.
+  * table move / merge -- the WORST replay shape found so far in the class. Move is
+                        create-first/delete-second BY DESIGN (TableManagementScreen's own
+                        comment explains why: a duplicate open bill is recoverable, a deleted
+                        one is not), so a replay holds a SECOND copy of the bill under the
+                        destination name before deleting the original -- the very duplicate the
+                        ordering trades for, produced without any failure at all. Round 186 FIXED
+                        both confirms with refs taken after every refusal.
+  * money writes on a legacy/parallel path -- the four tabs of this list that resolve to a
+                        CALLBACK rather than an IPC command (SplitBillModal's onConfirmSplit) are
+                        where the money defect hides: the handler itself looks harmless and the
+                        cost is in the parent.
   * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
                         idempotent by construction: the same key is overwritten
 The point of the list is that it is SHORT: filtering to handlers that (a) await something
