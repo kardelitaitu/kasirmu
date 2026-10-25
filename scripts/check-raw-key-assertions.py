@@ -223,6 +223,13 @@ def main() -> int:
         return 0
 
     known = {(_split_entry(e)) for e in _read_baseline()}
+    # ZERO is the target state, not a ratchet against a ceiling. The sweep on
+    # 2026-11-07 converted every site, so the baseline is empty; if it ever stops
+    # being empty, this gate should say so loudly rather than quietly allow it.
+    if known:
+        print(
+            "NOTE: %d known raw-key site(s) remain -- the target is zero." % len(known),
+        )
     new = sorted(current - known)
     stale = sorted(known - current)
     if new:
