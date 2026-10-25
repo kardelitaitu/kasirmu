@@ -362,6 +362,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The fourth F4 guard: narrowed to one question, still unreached (round 233)](audits/fourth-f4-guard-narrowed.md) | — |
 | general | [The fourth F4 latch fires now: a one-line ordering fix (round 235)](audits/fourth-f4-latch-fixed.md) | — |
 | general | [The fourth F4 latch is unreachable, and the mechanism is three lines (round 234)](audits/fourth-f4-latch-unreachable.md) | — |
+| accessibility | [Agent Ops Handbook — Accessibility Coverage](audits/frontend/a11y-coverage.md) | — |
 | release | [Agent Ops Handbook — Source Citation Drift](audits/frontend/citation-drift.md) | — |
 | theming | [Agent Ops Handbook — CSS Verification](audits/frontend/css-verification.md) | — |
 | general | [Fluent Page Audit — Full Journal](audits/frontend/fluent-page-audit.md) | — |
