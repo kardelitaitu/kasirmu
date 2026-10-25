@@ -3,7 +3,16 @@
 last audited (date unknown) by DSH-Agent
 crate: kasirmu-core (gift_cards) | status: SAFE | lint: CLEAN
 findings: stored-value paths sound (PA-01 atomic conditional UPDATE both directions with i64::MAX overflow guard on top-up; in-tx balance re-read keeps ledger rows accurate under concurrency; expiry parse-fail treats card as expired — fail-safe; RUST-07 recoverable lookups documented). COR-15 FIXED (date unknown) — partial UNIQUE index uq_gift_card_redeem_sale (migration 20260901) closes the redeem idempotency gap under sync replay. COR-16 FIXED (date unknown) — list_gift_cards search + issued_to now escape LIKE wildcards (ESCAPE '\', same as customers/audit). COR-17 RESOLVED 2026-09-29 — the plaintext PIN was REMOVED, not hashed: it had no verifier anywhere and `skip_serializing` meant it could not even be read back, so the column carried a secret nothing could check (migration 20261015_gift_cards_drop_pin.sql).
-next: none | perf: N+1 txn fetch in list_gift_cards is bounded at 5/card
+OPEN (2026-10-26, round 245) — the `expired` STATUS IS NEVER WRITTEN. The schema allows it
+(`20260813_init.sql:143` CHECK IN ('active','frozen','redeemed','expired')), the UI styles it
+(`GiftCardsScreen.tsx:29`) and offers a filter for it (`:169`), and nothing produces it: expiry
+is evaluated only AT REDEEM (:361-370) and the status column's only writers are 'active',
+'frozen' and 'redeemed'. An expired card therefore lists as Active with its full balance, and
+the Expired filter is guaranteed empty. This is a product decision (persist on expiry via a
+sweep, vs. keep it computed-at-redeem and drop the dead state from the UI), NOT a code fix,
+which is why it is recorded here instead of changed. Cost of the gap: the gift-cards list
+advertises spendable stored value the redeem path will refuse.
+next: the expired-status decision above | perf: N+1 txn fetch in list_gift_cards is bounded at 5/card
 */
 
 use rusqlite::{Transaction, TransactionBehavior, params};
