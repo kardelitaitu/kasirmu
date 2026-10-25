@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor, fireEvent, within } from '@testing-library/react';
+import { act, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { renderWithWorkspace, MOCK_SESSION_TOKEN } from '@/test-utils';
 import userEvent from '@testing-library/user-event';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
@@ -919,6 +919,46 @@ describe('TableManagementScreen', () => {
     expect(mockHoldCart.mock.invocationCallOrder[0]!).toBeLessThan(
       mockDeleteHeldCart.mock.invocationCallOrder[0]!,
     );
+  });
+
+  it('moves the tab ONCE when the confirm is double-tapped', async () => {
+    // The most expensive replay on this screen: the move is create-first, delete-second,
+    // so a second run holds a SECOND copy of the bill under the destination name and
+    // then deletes the original -- leaving duplicate open bills, the exact trade the
+    // create-first order documents as hand-resolvable.
+    const table1 = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    const table2 = makeTable({ id: 't-2', name: 'Table 2', status: 'available' });
+    mockListTables.mockResolvedValue([table1, table2]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1', label: 'Table 1', item_count: 1, total_minor: 25000,
+        currency: 'IDR', created_at: '2026-10-12T00:00:00Z', bill_type: 'open_bill', customer_name: null,
+      },
+    ]);
+    mockGetHeldCart.mockResolvedValue({
+      id: 'bill-1',
+      label: 'Table 1',
+      cart_data: JSON.stringify({
+        lines: [{ sku: 'SKU-1', name: 'Mie Goreng', qty: 1, unit_price: { minor_units: 25000, currency: 'IDR' } }],
+      }),
+      item_count: 1, total_minor: 25000, currency: 'IDR', created_at: '2026-10-12T00:00:00Z',
+      bill_type: 'open_bill', customer_name: null, deduction_location_id: null,
+    });
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-move-table-btn')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-move-table-btn'));
+    await waitFor(() => expect(screen.getByTestId('tables-move-confirm-btn')).toBeDefined());
+
+    const confirmBtn = screen.getByTestId('tables-move-confirm-btn');
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+      fireEvent.click(confirmBtn);
+    });
+
+    await waitFor(() => expect(mockHoldCart).toHaveBeenCalledTimes(1));
   });
 
   it('preserves deduction_location_id when moving an active table tab', async () => {

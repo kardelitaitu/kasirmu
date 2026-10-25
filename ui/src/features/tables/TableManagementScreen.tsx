@@ -128,9 +128,12 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const [moveTableModal, setMoveTableModal] = useState<Table | null>(null);
   const [selectedDestTableId, setSelectedDestTableId] = useState<string>('');
   const [movingTable, setMovingTable] = useState(false);
+  /** Synchronous mirrors of the modal busy flags — see the re-entry guards on move/merge. */
+  const movingTableRef = useRef(false);
   const [mergeTableModal, setMergeTableModal] = useState<Table | null>(null);
   const [selectedMergeDestTableId, setSelectedMergeDestTableId] = useState<string>('');
   const [mergingTable, setMergingTable] = useState(false);
+  const mergingTableRef = useRef(false);
   const [reserveModal, setReserveModal] = useState<TableReservationModalState | null>(null);
   const [reservingTable, setReservingTable] = useState(false);
   const [arrangeMode, setArrangeMode] = useState(false);
@@ -740,6 +743,13 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     const activeBill = getTableBill(moveTableModal.name);
     if (!activeBill) return;
 
+    // Re-entry guard, taken AFTER every refusal above so an ordinary tap still reaches it.
+    // THIS IS THE MOST EXPENSIVE REPLAY ON THE SCREEN: the move is create-first,
+    // delete-second, so a second run holds a SECOND copy of the bill under the
+    // destination name and then deletes the original -- leaving duplicate open bills on
+    // the floor plan, which is exactly the trade the create-first order documents.
+    if (movingTableRef.current) return;
+    movingTableRef.current = true;
     setMovingTable(true);
     try {
       const full = await getHeldCartScoped(sessionToken, activeBill.id);
@@ -822,6 +832,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         type: 'error',
       });
     } finally {
+      movingTableRef.current = false;
       setMovingTable(false);
     }
   }, [moveTableModal, selectedDestTableId, sessionToken, activeTableList, getTableBill, loadTables, addToast, l10n, closeDetail, storeCurrency]);
@@ -847,6 +858,12 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     const destBill = getTableBill(destTable.name);
     if (!srcBill || !destBill) return;
 
+    // Re-entry guard, AFTER every refusal. Two runs read the same source bill, build the
+    // merged cart twice and hold it twice; the delete of the source is then issued against
+    // an id the first run already removed, so the second reports a failure over a merge
+    // that landed.
+    if (mergingTableRef.current) return;
+    mergingTableRef.current = true;
     setMergingTable(true);
     try {
       const [srcFull, destFull] = await Promise.all([
@@ -935,6 +952,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         type: 'error',
       });
     } finally {
+      mergingTableRef.current = false;
       setMergingTable(false);
     }
   }, [mergeTableModal, selectedMergeDestTableId, sessionToken, activeTableList, getTableBill, loadTables, addToast, l10n, closeDetail, storeCurrency]);
