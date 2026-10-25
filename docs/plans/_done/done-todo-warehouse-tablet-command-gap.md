@@ -1,3 +1,4 @@
+<!-- Acceptance verified 2026-10-25: cd ui && npx vitest run src/__tests__/warehouseShellSplit.test.ts (3/3 passed), commit a004429bc under Ruling 2 (per-location stock read withheld on tablet with warehouse-stock-desktop-only notice). Earned done- prefix per AGENTS.md §7.4. -->
 # Warehouse console on the tablet: a live route calling a desktop-only command
 
 > **RESOLVED 2026-10-25 (round 154) by `a004429bc`, under RULING 2 below.** The Count mode and
@@ -77,14 +78,14 @@ is found by an auditor weeks later.
 ## The two rulings, and what each costs
 
 1. **Register the command on the tablet.** Add `list_warehouse_products_at_location` to
-   `apps/mobile-tauri`, with a tablet-native body (the tablet `AppState` cannot build a
-   `BridgeCtx` yet, so this means a global-db read taking `location_id` -- the same shape
-   as the sibling tablet product commands). Honours the existing UX. Cost: a new tablet
-   command, its `INVENTORY_ADJUST` check, and tests.
+    `apps/mobile-tauri`, with a tablet-native body (the tablet `AppState` cannot build a
+    `BridgeCtx` yet, so this means a global-db read taking `location_id` -- the same shape
+    as the sibling tablet product commands). Honours the existing UX. Cost: a new tablet
+    command, its `INVENTORY_ADJUST` check, and tests.
 2. **Gate the warehouse route off the tablet.** Ruling that counting is a back-office
-   action, like topology and memo authoring, and showing the same
-   `topology-tablet-unavailable`-style notice. Cost: one guard plus copy, and the tablet
-   loses a workspace it is currently offered.
+    action, like topology and memo authoring, and showing the same
+    `topology-tablet-unavailable`-style notice. Cost: one guard plus copy, and the tablet
+    loses a workspace it is currently offered.
 
 Both are defensible. Ruling 2 is smaller and matches three existing precedents (topology,
 memo authoring, KDS rule editing); ruling 1 preserves the shipped navigation map. **The one
