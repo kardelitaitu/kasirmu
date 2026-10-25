@@ -96,6 +96,16 @@ tables-toast-section-deleted = Deleted section "{ $section }"
 tables-arrange-selected = Editing: Table { $table }
 tables-arrange-shape = Shape
 tables-arrange-size = Size
+# Round 210: the arrange panel's step buttons. The visible glyphs ("W -", "W +")
+# are size indicators a merchant maps to width/height, so they stay short while
+# the tooltip carries the full phrase — they are NOT duplicates of the title.
+tables-legend = Legend
+tables-arrange-decrease-width = Decrease Width
+tables-arrange-increase-width = Increase Width
+tables-arrange-decrease-height = Decrease Height
+tables-arrange-increase-height = Increase Height
+tables-arrange-width-short = W -
+tables-arrange-height-short = H +
 tables-quick-seat-walkin = Quick Seat:
 tables-mark-cleaned-quick = Mark Cleaned (Available)
 tables-toast-cleaned = Table { $table } is now clean and available

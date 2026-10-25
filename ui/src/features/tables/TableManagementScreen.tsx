@@ -1648,7 +1648,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
             data-testid="tables-legend-toggle-btn"
             onClick={() => setShowLegend((v) => !v)}
           >
-            <span>Legend</span>
+            <span>{l10n.getString('tables-legend')}</span>
           </Button>
           <Button
             variant={arrangeMode ? 'primary' : 'ghost'}
@@ -1981,9 +1981,9 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                   className="tables-arrange-step-btn"
                   data-testid="tables-arrange-width-dec"
                   onClick={() => void handleAdjustArrangeSize(-2, 0)}
-                  title="Decrease Width"
+                  title={l10n.getString('tables-arrange-decrease-width')}
                 >
-                  W -
+                  <Localized id="tables-arrange-width-short"><span>W -</span></Localized>
                 </Button>
                 <span className="tables-arrange-dim">{arrangeTable.width}%</span>
                 <Button
@@ -1992,9 +1992,9 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                   className="tables-arrange-step-btn"
                   data-testid="tables-arrange-width-inc"
                   onClick={() => void handleAdjustArrangeSize(2, 0)}
-                  title="Increase Width"
+                  title={l10n.getString('tables-arrange-increase-width')}
                 >
-                  W +
+                  <Localized id="tables-arrange-width-short"><span>W +</span></Localized>
                 </Button>
                 <Button
                   variant="ghost"
@@ -2002,9 +2002,9 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                   className="tables-arrange-step-btn"
                   data-testid="tables-arrange-height-dec"
                   onClick={() => void handleAdjustArrangeSize(0, -2)}
-                  title="Decrease Height"
+                  title={l10n.getString('tables-arrange-decrease-height')}
                 >
-                  H -
+                  <Localized id="tables-arrange-height-short"><span>H -</span></Localized>
                 </Button>
                 <span className="tables-arrange-dim">{arrangeTable.height}%</span>
                 <Button
@@ -2013,9 +2013,9 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                   className="tables-arrange-step-btn"
                   data-testid="tables-arrange-height-inc"
                   onClick={() => void handleAdjustArrangeSize(0, 2)}
-                  title="Increase Height"
+                  title={l10n.getString('tables-arrange-increase-height')}
                 >
-                  H +
+                  <Localized id="tables-arrange-height-short"><span>H +</span></Localized>
                 </Button>
               </div>
             </div>

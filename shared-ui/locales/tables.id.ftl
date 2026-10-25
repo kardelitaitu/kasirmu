@@ -94,6 +94,17 @@ tables-toast-section-deleted = Menghapus area "{ $section }"
 tables-arrange-selected = Mengatur: Meja { $table }
 tables-arrange-shape = Bentuk
 tables-arrange-size = Ukuran
+# Round 210: tombol langkah pada panel atur tata letak. Glif yang terlihat
+# ("W -", "W +") adalah penanda ukuran yang dipetakan pedagang ke lebar/tinggi,
+# jadi tetap pendek sementara tooltip memuat frasa lengkap — keduanya BUKAN
+# duplikat dari judul.
+tables-legend = Legenda
+tables-arrange-decrease-width = Kurangi Lebar
+tables-arrange-increase-width = Tambah Lebar
+tables-arrange-decrease-height = Kurangi Tinggi
+tables-arrange-increase-height = Tambah Tinggi
+tables-arrange-width-short = W -
+tables-arrange-height-short = H +
 tables-quick-seat-walkin = Dudukkan Cepat:
 tables-mark-cleaned-quick = Tandai Selesai Dibersihkan (Tersedia)
 tables-toast-cleaned = Meja { $table } sekarang bersih dan tersedia

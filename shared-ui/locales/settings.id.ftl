@@ -1220,6 +1220,19 @@ settings-edc-field-active = Aktif untuk Pembayaran
 settings-edc-conn-wired = Kabel (Wired)
 settings-edc-conn-wireless = Nirkabel (Wireless)
 settings-edc-default-select = Terminal EDC Standar Kasir Ini
+# Round 210: sisa literal pada render EdcTerminalsCard. "Register Default"
+# di :323 adalah frasa yang sama dengan kunci ini, dikurangi kata-kata
+# "Terminal EDC" — lencana dan tombolnya tidak pernah dibedakan, jadi lencana
+# kini punya kunci sendiri alih-alih memakai ulang kunci ini dengan teks lain.
+settings-edc-default-badge = Standar Kasir Ini
+settings-edc-set-default = Jadikan Standar
+settings-edc-loading = Memuat…
+settings-edc-save = Simpan Terminal
+settings-edc-saving = Menyimpan…
+settings-edc-toggle = Alih
+settings-edc-detail-address = Alamat:
+settings-edc-detail-vendor = Vendor:
+settings-edc-detail-model = Model:
 settings-edc-default-auto = Otomatis (Pertama Dibuat)
 settings-edc-saved = Terminal EDC berhasil disimpan.
 settings-edc-deleted = Terminal EDC berhasil dihapus.

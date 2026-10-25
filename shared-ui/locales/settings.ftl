@@ -1262,6 +1262,19 @@ settings-edc-field-active = Active for Payment
 settings-edc-conn-wired = Wired
 settings-edc-conn-wireless = Wireless
 settings-edc-default-select = Register Default EDC Terminal
+# Round 210: the literals left in EdcTerminalsCard's render. "Register Default"
+# at :323 was the same phrase this key already carried, minus the words "EDC
+# Terminal" — the badge and the button were never distinguished, so the badge
+# now gets its own key instead of reusing this one with different text.
+settings-edc-default-badge = Register Default
+settings-edc-set-default = Set as Default
+settings-edc-loading = Loading…
+settings-edc-save = Save Terminal
+settings-edc-saving = Saving…
+settings-edc-toggle = Toggle
+settings-edc-detail-address = Address:
+settings-edc-detail-vendor = Vendor:
+settings-edc-detail-model = Model:
 settings-edc-default-auto = Auto (Earliest Created)
 settings-edc-saved = EDC Terminal saved successfully.
 settings-edc-deleted = EDC Terminal deleted.

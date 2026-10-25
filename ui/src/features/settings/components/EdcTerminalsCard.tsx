@@ -287,7 +287,7 @@ export function EdcTerminalsCard({
       </div>
 
       {loading && terminals.length === 0 ? (
-        <div className="edc-terminals-empty">Loading…</div>
+        <div className="edc-terminals-empty">{l10n.getString('settings-edc-loading')}</div>
       ) : terminals.length === 0 ? (
         <div className="edc-terminals-empty">
           <Localized id="settings-edc-empty">
@@ -320,7 +320,7 @@ export function EdcTerminalsCard({
                     </span>
                     {isDefault && (
                       <span className="edc-badge edc-badge--default">
-                        Register Default
+                        {l10n.getString('settings-edc-default-badge')}
                       </span>
                     )}
                   </div>
@@ -363,7 +363,7 @@ export function EdcTerminalsCard({
                         size="sm"
                         onClick={() => onSelectDefaultTerminal(t.id)}
                       >
-                        Set as Default
+                        {l10n.getString('settings-edc-set-default')}
                       </Button>
                     )}
                     <Button
@@ -387,16 +387,16 @@ export function EdcTerminalsCard({
 
                 <div className="edc-terminal-details">
                   <span>
-                    <strong>Address:</strong> {t.address}
+                    <strong>{l10n.getString('settings-edc-detail-address')}</strong> {t.address}
                   </span>
                   {t.vendor && (
                     <span>
-                      <strong>Vendor:</strong> {t.vendor}
+                      <strong>{l10n.getString('settings-edc-detail-vendor')}</strong> {t.vendor}
                     </span>
                   )}
                   {t.model && (
                     <span>
-                      <strong>Model:</strong> {t.model}
+                      <strong>{l10n.getString('settings-edc-detail-model')}</strong> {t.model}
                     </span>
                   )}
                 </div>
@@ -532,7 +532,7 @@ export function EdcTerminalsCard({
               <Localized id="settings-edc-field-active">Active for Payment</Localized>
             </label>
             <span className="settings-toggle">
-              <span className="sr-only">Toggle</span>
+              <span className="sr-only">{l10n.getString('settings-edc-toggle')}</span>
               <span className="settings-toggle-switch">
                 <input
                   id="edc-active"
@@ -553,10 +553,10 @@ export function EdcTerminalsCard({
               variant="secondary"
               onClick={() => setModalOpen(false)}
             >
-              Cancel
+              {l10n.getString('cancel')}
             </Button>
             <Button type="submit" variant="primary" disabled={submitting}>
-              {submitting ? 'Saving…' : 'Save Terminal'}
+              {submitting ? l10n.getString('settings-edc-saving') : l10n.getString('settings-edc-save')}
             </Button>
           </div>
         </form>
