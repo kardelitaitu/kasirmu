@@ -1,6 +1,6 @@
 {
   "description": "see --write-baseline",
-  "total": 115,
+  "total": 93,
   "entries": [
     {
       "at": "ui/src/__tests__/CustomReportScreen.test.tsx:42",
@@ -276,116 +276,6 @@
       "at": "ui/src/__tests__/WorkspaceInventorySettings.test.tsx:74",
       "key": "workspace-inv-units",
       "used_by": "used-by WorkspaceInventorySettings.tsx:183"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceKdsSettings.test.tsx:24",
-      "key": "settings-load-failed",
-      "used_by": "used-by WorkspaceKdsSettings.tsx:359"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceKdsSettings.test.tsx:24",
-      "key": "toast-copied",
-      "used_by": "used-by Toast.tsx:277"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceKdsSettings.test.tsx:24",
-      "key": "toast-copy",
-      "used_by": "used-by Toast.tsx:278"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceKdsSettings.test.tsx:24",
-      "key": "toast-copy-aria",
-      "used_by": "used-by Toast.tsx:274"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceKdsSettings.test.tsx:24",
-      "key": "toast-dismiss-aria",
-      "used_by": "used-by Toast.tsx:286"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceKdsSettings.test.tsx:24",
-      "key": "toast-hide-detail",
-      "used_by": "used-by Toast.tsx:252"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceKdsSettings.test.tsx:24",
-      "key": "toast-notifications-aria",
-      "used_by": "used-by Toast.tsx:321"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceKdsSettings.test.tsx:24",
-      "key": "toast-show-detail",
-      "used_by": "used-by Toast.tsx:253"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
-      "key": "restaurant-settings-error-load",
-      "used_by": "used-by WorkspaceRestaurantPosSettings.tsx:459"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
-      "key": "toast-copied",
-      "used_by": "used-by Toast.tsx:277"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
-      "key": "toast-copy",
-      "used_by": "used-by Toast.tsx:278"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
-      "key": "toast-copy-aria",
-      "used_by": "used-by Toast.tsx:274"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
-      "key": "toast-dismiss-aria",
-      "used_by": "used-by Toast.tsx:286"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
-      "key": "toast-hide-detail",
-      "used_by": "used-by Toast.tsx:252"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
-      "key": "toast-notifications-aria",
-      "used_by": "used-by Toast.tsx:321"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
-      "key": "toast-show-detail",
-      "used_by": "used-by Toast.tsx:253"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
-      "key": "workspace-pos-printer-bluetooth",
-      "used_by": "used-by WorkspaceRestaurantPosSettings.tsx:378"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
-      "key": "workspace-pos-printer-connection",
-      "used_by": "used-by WorkspaceRestaurantPosSettings.tsx:345"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
-      "key": "workspace-pos-printer-heading",
-      "used_by": "used-by WorkspaceRestaurantPosSettings.tsx:338"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
-      "key": "workspace-pos-printer-ip",
-      "used_by": "used-by WorkspaceRestaurantPosSettings.tsx:363"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
-      "key": "workspace-pos-printer-paper-size",
-      "used_by": "used-by WorkspaceRestaurantPosSettings.tsx:392"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceRestaurantPosSettings.test.tsx:25",
-      "key": "workspace-resto-courses-hint",
-      "used_by": "used-by WorkspaceRestaurantPosSettings.tsx:324"
     },
     {
       "at": "ui/src/__tests__/WorkspaceStorePosSettings.test.tsx:26",

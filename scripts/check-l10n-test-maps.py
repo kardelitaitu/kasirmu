@@ -781,6 +781,14 @@ def detector_still_fires() -> bool:
         return False
     if any(ASSERTS_COPY_RE.search(t) for t in must_not_match):
         return False
+    # A flattened FTL placeable ($name) can never be substituted by a stub that
+    # replaces {name}, so the assertion matches text the UI never renders.
+    if not LITERAL_VAR_RE.search("Order " + "$" + "n"):
+        return False
+    if LITERAL_VAR_RE.search("Order {n}"):
+        return False
+    if LITERAL_VAR_RE.search("Auto-wrapping"):
+        return False
     return True
 
 
