@@ -17,11 +17,12 @@ export async function getStaticPaths() {
 
 const locale = Astro.params.locale ?? 'en';
 const allDocs = await getCollection('docs');
+const allGuides = await getCollection('guides');
 const docs = allDocs.filter((d) => d.id.startsWith(`${locale}/`));
 // The docs hub is a docs page too (it renders through `Base`, not
 // `DocsLayout`), so it builds the header's search payload the same way every
 // docs page does — the payload is unchanged, only its owner moved here.
-const searchDocs = toSearchDocs(allDocs, locale);
+const searchDocs = toSearchDocs(allDocs, locale, allGuides);
 // The first Getting Started doc is where the user-facing guide begins.
 const first = docs
   .filter((d) => d.data.category === 'gettingStarted')

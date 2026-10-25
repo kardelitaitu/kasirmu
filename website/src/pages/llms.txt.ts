@@ -10,6 +10,7 @@ import {
   PAGE_LABELS,
   VERTICAL_BY_SLUG,
 } from '../lib/llms-pages';
+import { guidePath, guideHubPath } from '../lib/guides';
 
 export const prerender = true;
 
@@ -85,6 +86,17 @@ export const GET: APIRoute = async () => {
     })
     .join('\n');
 
+  // Guides come from the guides content collection (track A4).
+  const guides = (await getCollection('guides')).filter((g) => g.id.startsWith(`${LLMS_LOCALE}/`));
+  const guidesList = guides
+    .sort((a, b) => (a.data.order ?? 0) - (b.data.order ?? 0))
+    .map((g) => {
+      const slug = g.id.slice(LLMS_LOCALE.length + 1);
+      const desc = g.data.description ? `: ${g.data.description}` : '';
+      return `- [${g.data.title}](${SITE}${guidePath(LLMS_LOCALE, slug)})${desc}`;
+    })
+    .join('\n');
+
   const tiers = pricingFor('id')
     .map((p: PricingTier) => `- ${p.name}: ${p.prices.monthly.price} ${p.prices.monthly.period} — ${p.description}`)
     .join('\n');
@@ -103,8 +115,12 @@ ${tiers}
 ${faqBlock(t.support.faq)}
 
 ## Dokumentasi
-- [Panduan](${SITE}/${LLMS_LOCALE}/docs/)
+- [Dokumentasi Pengguna](${SITE}/${LLMS_LOCALE}/docs/)
 ${docsList}
+
+## Panduan
+- [Pusat Panduan](${SITE}${guideHubPath(LLMS_LOCALE)})
+${guidesList}
 `;
 
   return new Response(body, {

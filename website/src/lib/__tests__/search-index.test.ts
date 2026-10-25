@@ -11,6 +11,7 @@ import {
   toSearchDocs,
   type SearchDoc,
   type SearchDocSource,
+  type SearchGuideSource,
 } from '../search-index';
 
 /**
@@ -230,5 +231,55 @@ describe('search index — doc item shape', () => {
     expect(item.id).toBe('doc-cloud-sync');
     expect(item.keywords).toContain('cloud sync'); // slug words
     expect(item.keywords).toContain('Sinkron lintas toko'); // description
+  });
+
+  it('preserves custom url when specified (e.g. for guides)', () => {
+    const [item] = docItems([
+      {
+        slug: 'guide-aplikasi-kasir-offline',
+        title: 'Aplikasi Kasir Offline',
+        description: 'Panduan kasir tanpa internet',
+        url: '/id/panduan/aplikasi-kasir-offline/',
+      },
+    ], 'id');
+    expect(item.url).toBe('/id/panduan/aplikasi-kasir-offline/');
+    expect(item.id).toBe('doc-guide-aplikasi-kasir-offline');
+    expect(item.keywords).toContain('kasir offline');
+  });
+});
+
+describe('search index — guides coverage in payload', () => {
+  const guideEntries: SearchGuideSource[] = [
+    {
+      id: 'en/offline-pos-app',
+      data: {
+        title: 'Offline POS App: Keep Selling When the Internet Drops',
+        description: 'How to choose and run an offline-first POS.',
+        order: 1,
+      },
+    },
+    {
+      id: 'id/aplikasi-kasir-offline',
+      data: {
+        title: 'Aplikasi kasir offline: tetap jualan saat internet mati',
+        description: 'Cara kerja aplikasi kasir offline-first untuk toko.',
+        order: 1,
+      },
+    },
+  ];
+
+  it('includes guides in toSearchDocs payload when supplied', () => {
+    const payload = toSearchDocs(ENTRIES, 'id', guideEntries);
+    const guideItem = payload.find((d) => d.slug === 'guide-aplikasi-kasir-offline');
+    expect(guideItem).toBeDefined();
+    expect(guideItem?.title).toBe('Aplikasi kasir offline: tetap jualan saat internet mati');
+    expect(guideItem?.url).toBe('/id/panduan/aplikasi-kasir-offline/');
+  });
+
+  it('makes guides findable by title and keyword in the search index', () => {
+    const payload = toSearchDocs(ENTRIES, 'id', guideEntries);
+    const index = buildSearchIndex('id', payload);
+    const hits = filterSearch(index, 'internet mati');
+    expect(hits.some((h) => h.url === '/id/panduan/aplikasi-kasir-offline/')).toBe(true);
   });
 });
