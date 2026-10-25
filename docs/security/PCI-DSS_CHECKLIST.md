@@ -38,9 +38,10 @@ kasir.mu processes, transmits, and stores cardholder data when processing credit
 > below — the `gift_cards.pin` column and the three `SELECT ... pin` statements that read it no
 > longer exist.)* `crates/kasirmu-core/migrations/20260813_init.sql:138`
 > defined `gift_cards.pin TEXT NOT NULL DEFAULT ''`, written verbatim from
-> `input.pin.unwrap_or_default()` at `crates/kasirmu-core/src/db/gift_cards.rs:49` and inserted at
+> `input.pin.unwrap_or_default()` at `crates/kasirmu-core/src/db/gift_cards.rs:49` <!-- dead-ref: ok: HISTORICAL line number -- migration 20261015 dropped the pin column, so :49 no longer holds that call and must not be re-pointed --> and inserted at
 > line 63 — no hashing anywhere on that path, and `SELECT ... pin` returns it to callers
 > (lines 125, 156, 239). That is a *gift-card* PIN, not cardholder data, so it does not
+> dead-ref: ok: the `gift_cards.rs` line numbers above (49, 63, 125, 156, 239) are HISTORICAL — they name the file as it stood before `20261015_gift_cards_drop_pin.sql` removed the column. Current line numbers in that file are unrelated to this paragraph and re-pointing them would make the record false.
 > violate 3.2.1 as PCI defines it; it is still stored recoverable in the
 > same database file as `users.pin_hash`, which is hashed by name and design. Recorded as a
 > `CODE FINDING`, not patched here.

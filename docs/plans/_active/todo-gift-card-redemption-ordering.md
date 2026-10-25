@@ -1,5 +1,17 @@
 # Gift card redemption: the ledger is finished, the TENDER VOCABULARY is not
 
+> **DEFERRED 2026-10-26 — the owner has parked gift-card tender work.** No further gift-card
+> tender, migration, RBAC or settlement work should start from this file without a fresh
+> instruction. The analysis below is kept because it is still correct and was expensive to
+> establish: it records the three open rulings, the two gate traps (`payments.method` lives in
+> `20261018`, not `20261017`; `GIFTCARDS_REDEEM` is in `ALL_ENFORCED`, not `ROLE_PRESETS`), and
+> why the migration must not be done alone. The questions themselves are consolidated in
+> [owner-question-gift-card-tender.md](owner-question-gift-card-tender.md).
+>
+> What is NOT deferred: the currency-mismatch guards shipped in rounds 244-247 are live on the
+> tender and top-up paths, and their tests must keep passing. Deferring the FEATURE does not
+> defer its correctness.
+
 > **CORRECTED 2026-10-25 (round 160), same day it was filed.** The first version of this file
 > said the backend was complete and only the UI wiring was missing. A follow-up audit found
 > that understated it twice: the `payments.method` CHECK is a CLOSED vocabulary with no gift
