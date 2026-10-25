@@ -30,7 +30,7 @@ Where the coverage really is:
 | Rule | Graded by | Note |
 |---|---|---|
 | `color-contrast` | `ui/src/__tests__/colorContrastCompliance.test.ts` | Token pairs read from `tokens.css` for the three `THEMES` (Default/Dark, Light, Dark Solid), measured against WCAG AA floors (4.5:1 normal, 3.0:1 large). jsdom cannot compute colours, so axe's own rule cannot run — this suite grades the declared values instead. |
-| `landmark-one-main` | `ui/src/__tests__/a11y/ShellLayout.a11y.test.tsx` | Via `checkA11yDocument` — the rule only matches the page root, so a container-scoped call cannot fail on it. See below. |
+| `landmark-one-main` | `ui/src/__tests__/a11y/ShellLayout.a11y.test.tsx` | Via `checkA11yDocument`, which targets `document.documentElement` — the rule matches only the `<html>` element, so BOTH a container-scoped and a `document.body`-scoped call are inert. See below. |
 | `page-has-heading-one` | `ui/src/__tests__/a11y/ShellLayout.a11y.test.tsx` | Same suite, same override. |
 | `region` | `ui/src/__tests__/a11y/ShellLayout.a11y.test.tsx` | Same suite; the three shell cases include a modal-open state. |
 
@@ -63,18 +63,44 @@ worth recording as its own trap: converting only the opening tag made esbuild fa
 like a successful mutation test. A red must be read, not just counted — the failure
 message has to be the one you were trying to provoke.
 
-### The fix
+### The fix, and the second half of it
 
-`checkA11yDocument(options)` runs axe against `document.body` instead. Re-running the
-same mutation then produced **2 failed** with the genuine message:
+`checkA11yDocument(options)` runs axe against the PAGE rather than a container. Two
+corrections were needed, and the first one alone was not enough:
+
+| Target | `region` | `landmark-one-main` | `page-has-heading-one` | verdict |
+|---|---|---|---|---|
+| `container` (`<div>`) | silent | silent | silent | inert — round 239 |
+| `document.body` | **runs** | silent | silent | half-fixed — round 251 |
+| `document.documentElement` | runs | **runs** | **runs** | correct |
+
+`document.body` is a CHILD of `<html>`, and the two landmark/heading rules select
+`html:not(html *)` — so they matched nothing and appeared in neither `violations` nor
+`passes`. Only `region` (which selects `body *`) started running. Passing the `<html>`
+element itself is what finally makes all three evaluate.
+
+**The measuring tool then broke its own measurement.** Running the suite with the fixed
+target produced `landmark-no-duplicate-main` failures on two of three cases — a real rule,
+a real violation, and the wrong cause. The landmark count across one file's cases rose
+**1 → 2 → 3**: each test left its `<main>` behind. `jest-axe`'s `axe()` wrapper calls
+`mount()`, which does `document.body.innerHTML = originalHTML` whenever the element it is
+given is not inside `document.body` — and `documentElement` never is. That assignment
+detaches React's root, so the global `afterEach(cleanup())` in `test-setup.ts` finds
+nothing to unmount and the tree stays mounted.
+
+So the helper now calls **axe-core's own `run()`**, which accepts any element and mutates
+no DOM. The suite passes 3/3, the rules genuinely run, and the mutation (converting
+`<main>` to `<div>`) still reddens 2 of 3 with the genuine message:
 
 ```
 [a11y:document] moderate: region — All page content should be contained by landmarks
 ```
 
-The shell suite now uses it for all three cases. A document-scoped run lists the rules
-that actually executed among its `passes` — that list is the honest answer to "did this
-rule run", and a container-scoped run will not show `region` there.
+A scoped run lists the rules that actually executed among its `passes` — that list is the
+honest answer to "did this rule run", and a container-scoped run will not show `region`
+there. The generalisable trap: **a test harness that rewrites the DOM can manufacture the
+very violation it is asked to detect**, so a sudden duplicate-landmark failure after
+changing a target deserves the question "is the tool the cause" before "is the component".
 
 ### Two consequences worth carrying
 
