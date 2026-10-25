@@ -1007,6 +1007,22 @@ def self_test() -> int:
     expect("  ...and does not leak a python traceback into the verdict",
            "Traceback" not in _out)
 
+    # THE SAME REFUSAL FOR --log. It was fixed one day later (2026-10-26) because the
+    # junit branch above had been repaired and this sibling read had not: `--log` with
+    # an absent path still raised FileNotFoundError. Graded through main() for the same
+    # reason as above -- the refusal cannot be deleted without reddening this case.
+    with tempfile.TemporaryDirectory() as _td:
+        absent_log = Path(_td) / "no-such-log.txt"
+        _buf2 = io.StringIO()
+        with redirect_stdout(_buf2):
+            rc_lmissing = main(["--log", str(absent_log)])
+        _out2 = _buf2.getvalue()
+    expect("a missing --log is REFUSED, not crashed on", rc_lmissing == 1)
+    expect("  ...and says in words that nothing was graded",
+           "no captured log at" in _out2 and "Nothing was graded" in _out2)
+    expect("  ...and does not leak a python traceback into the verdict",
+           "Traceback" not in _out2)
+
     print(f"\nself-test: {'PASS' if fails == 0 else f'FAIL ({fails})'}")
     return 0 if fails == 0 else 1
 
