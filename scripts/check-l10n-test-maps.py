@@ -83,8 +83,10 @@ The baseline is a CENSUS, not a defect count. A map is legitimately PARTIAL
 when the suite never reads the strings it omits, and this detector cannot
 see which keys a given case exercises. Hand-audited buckets:
 
-  * 135  a11y/NodeTopologyEditor.a11y.test.tsx. Its own docstring calls the
-         map a "Minimal en fallback surface"; the file asserts checkA11y().
+  * a11y/NodeTopologyEditor.a11y.test.tsx NO LONGER APPEARS HERE. Its map is a
+         "minimal en fallback surface" and the file asserts only checkA11y(),
+         element counts and CSS selectors, so the copy-assertion guard skips
+         it: no test in it could fail because a key was missing.
   * 65   TooltipPreview.test.tsx. A 4-entry map against 69 used keys; every
          assertion reads copy rendered by the <Localized> PASSTHROUGH.
   * ~300 analytics/provisioning/settings suites whose maps are partial by
@@ -168,10 +170,22 @@ KEY_BLOCK_GAP = 4
 #: an assertion cannot exempt a map on its own.
 MIN_ADDRESSED_BY_KEY = 3
 
+#: Any query or assertion that reads rendered copy.
+#:
+#: Deliberately FAMILY-based, not an enumeration. This regex decides whether the
+#: whole map gate applies to a file, so a missing shape opts an entire suite out
+#: silently. Measured 2026-11-07: an enumerated version missed 13 of 17 realistic
+#: shapes -- toHaveAccessibleName, getByDisplayValue, getByTitle, the PLURAL
+#: GetAllByRole/findAllByRole family (the only way to assert a collection of copy),
+#: toHaveAttribute(aria-label), toMatchSnapshot, toMatchInlineSnapshot. One
+#: alternative in that version, "getAllByRole", could never match at all: after
+#: "getAllBy" it required "Role" + optional space + "(", and the real text is
+#: "Role(", so it failed with no backtracking.
+#:
+#: So: every getBy*/queryBy*/findBy* variant (singular, plural, All), every
+#: toHave* matcher that can carry text, and the snapshot matchers.
 ASSERTS_COPY_RE = re.compile(
-    r"\b(?:getByText|queryByText|findByText|getAllByText|getByLabelText|"
-    r"queryByLabelText|getByPlaceholderText|toContain|toHaveTextContent|"
-    r"getByRole|queryByRole|findByRole)\s*\("
+    r"\b(?:(?:get|query|find)(?:All)?By[A-Za-z]*|toHave(?:Text|AccessibleName|AccessibleDescription|Value|DisplayValue|Attribute|ValueNot|TextContent)[A-Za-z]*|toMatch[A-Za-z]*Snapshot)\s*\(",
 )
 
 RESERVED_WORD_RE = re.compile(r"^\s*(return|if|else)\b")
@@ -721,6 +735,31 @@ def detector_still_fires() -> bool:
     if module_uses(
         '<Localized id="b-four" attrs={{ alt: true }}><img alt={l10n.getString("b-five")} /></Localized>'
     ) != {"b-four": 1, "b-five": 1}:
+        return False
+    # The copy-assertion guard decides whether the WHOLE gate applies to a file,
+    # so a shape it fails to recognise silently opts a suite out. Pin the shapes
+    # that were measured missing, so "guard too narrow" cannot pass the self-test.
+    q = chr(39)
+    must_match = [
+        "screen.getByText(" + q + "x" + q + ")",
+        "screen.getByDisplayValue(" + q + "x" + q + ")",
+        "screen.getByTitle(" + q + "x" + q + ")",
+        "screen.getAllByRole(" + q + "button" + q + ")",
+        "screen.queryAllByRole(" + q + "button" + q + ")",
+        "screen.findByLabelText(" + q + "x" + q + ")",
+        "expect(el).toHaveAccessibleName(" + q + "x" + q + ")",
+        "expect(el).toHaveAttribute(" + q + "aria-label" + q + ", " + q + "x" + q + ")",
+        "expect(x).toMatchSnapshot()",
+        "expect(x).toMatchInlineSnapshot()",
+    ]
+    must_not_match = [
+        "await checkA11y(container)",
+        "expect(el).not.toBeNull()",
+        "expect(container.querySelectorAll(" + q + ".n" + q + ")).toHaveLength(2)",
+    ]
+    if not all(ASSERTS_COPY_RE.search(t) for t in must_match):
+        return False
+    if any(ASSERTS_COPY_RE.search(t) for t in must_not_match):
         return False
     return True
 
