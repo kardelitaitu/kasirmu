@@ -216,10 +216,13 @@ export const TOPOLOGY_EN: Record<string, string> = {
   'topology-toast-template-deleted': 'Template deleted',
   'topology-apply-workspace-diff': '{ $created } created · { $updated } updated · { $archived } archived · { $typeChanged } type-changed · rev { $from } → { $to }',
   'topology-apply-blocked': 'Apply blocked — { $count } issue(s) to fix in the panel',
-  // Copy the components NodeTopologyEditor renders pull from 57 nested
-  // modules. The imported-map path used to scan only DIRECT imports, so
-  // none of these were judged. Values from shared-ui/locales/*.ftl, with
-  // select branches flattened and holes rewritten to the stub's {name} form.
+  // Copy the components NodeTopologyEditor renders reach through its nested imports.
+  // Most values are copied from shared-ui/locales/*.ftl with select branches flattened;
+  // a FEW were written to the shape this stub can substitute (it replaces {name} and
+  // { $name }, not select expressions), so they read differently from the bundle. The
+  // four topology-rack-*-title entries above are deliberately IDENTITY-valued:
+  // openRackPanel() queries them as aria-labels, so real copy there would break the
+  // suite. They are addresses, not copy.
   'topology-apply-changes': 'Apply Topology',
   'topology-apply-confirm-apply': 'Apply',
   'topology-apply-confirm-archived': 'Archived',
