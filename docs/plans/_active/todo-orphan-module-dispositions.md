@@ -6,6 +6,28 @@ round-166 census.** 499 lines, an 18-case suite, and **120 bundle lines across b
 `.ftl` files, so the entire key block left with it. Deleting it took the census from
 `ORPHAN=4, 46 test case(s)` to `ORPHAN=3, 28`.
 
+**ROUND 196 DELETED `StockAlertPanel.tsx` — an orphan created BY a deletion, and a new shape the
+census had not reported before.** It was mounted in exactly one place,
+`ProductManagementScreen.tsx:30`, so round 192's deletion did not merely remove a screen: it
+turned a live widget into a dead one. The census then reported it (`ORPHAN`), which is the
+instrument working — but the lesson is that **a deletion's blast radius includes everything that
+hung off the deleted file**, and that set is not zero. What went with the panel: 227 lines of
+component, 271 of CSS, 6 tests, 36 bundle lines (`inv-alert-*` in both locales), and five entries
+in four compliance suites (`forcedColorsCompliance` x5, `popupBackgroundCompliance` x1,
+`themeTokenCompliance` x1, `screenExtraction` x1). Census: `ORPHAN 3 → 2`, unreachable tests
+`28 → 22`.
+
+**The companion that was NOT deleted, and why that is the right call.** `components/StockAlertBell`
+reads the SAME `getActiveStockAlerts` and renders a count in the app top bar
+(`AppLayout.tsx:376`). It still has a mount, so it is live and it stays — verified rather than
+assumed, because the tempting inference ("the panel's data source is dead") is wrong. And its
+`onNavigate('products')` still lands somewhere real: `features/products/register.tsx:9` registers
+`route: 'products'` to `ProductLookupScreen`, a DIFFERENT screen that survived both deletions. So
+the bell keeps working and keeps navigating, and the first draft of this note — which claimed the
+route had been retired with `ProductManagementScreen` — was wrong. The archived-route comment
+directly beneath that registration names `'inventory'`, not `'products'`, and reading the registry
+rather than the comment is what settled it.
+
 **ROUND 195 FINISHED THE JOB THE DELETION STARTED.** Removing the screen left its five API wrappers
 in `ui/src/api/products.ts` with no caller, and `verify-ipc-parity.py` said so in the only way it
 can: five `scoped_orphans` violations naming the PERMISSION each now-guardless command enforces
