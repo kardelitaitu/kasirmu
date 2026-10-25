@@ -235,35 +235,65 @@ def scan() -> dict[str, int]:
     return counts
 
 
-def detector_still_sees_copy() -> bool:
-    """Grade the detector over synthetic source before trusting any real result.
+#: One shape per DETECTOR DEFECT that has actually happened, plus the shapes a
+#: reader would expect. Round 214 fixed four of these and none was covered, so
+#: each fix sat one edit away from silently reverting:
+#:
+#:   #1  <Localized> fallback children counted as copy      -> 2,582 findings
+#:   #2  TypeScript generics: > Promise<                     -> 156
+#:   #3  JSX inside doc comments (Card.tsx:33)               ->  67
+#:   #4  a generic restarting mid-window after =>            ->  54
+#:
+#: must_ignore is graded as EXACTLY ZERO, not "few": an earlier version allowed
+#: fewer than nine, which would have let #3 and #4 both through the check that
+#: exists to catch them.
+REGRESSION_IGNORE = [
+    # #1 -- Fluent REPLACES the child at render, so it never ships as English.
+    '<Localized id="retail-edit-field-brand">Brand</Localized>',
+    # #3 -- a shared component documents itself with a fenced TSX example.
+    '/**\n * ```tsx\n * <Card shadow="sm">Simple card</Card>\n * ```\n */\nexport const A = 1;',
+    "// <Button>Save</Button>",
+    # #2 and #4 -- the same generic shape, before and after the window.
+    "export const CARD_LOADERS: Record<string, (q: Q) => Promise<Result>> = {",
+    "const s: Array<Foo, (q: Q) => Promise<Result>> = x;",
+    # Shapes a reader expects to be ignored anyway.
+    "<kbd>Ctrl</kbd>",
+    "<span>{qr}</span>",
+]
 
-    A gate that grades a detector nobody re-checks is this project's most
-    repeated failure. If these regexes were broken by an edit, every file would
-    report zero and the gate would print OK while grading nothing.
+REGRESSION_CATCH = [
+    '<input placeholder="Search products" />',
+    '<button aria-label="Close dialog">x</button>',
+    '<span>Could not load the list</span>',
+    '<img alt="Store logo" />',
+    '<div title="Increase Width" />',
+]
+
+
+def detector_failures() -> list[str]:
+    """Name every shape the detector classifies wrongly, one line each.
+
+    Returns a LIST rather than a boolean on purpose. The first version returned
+    False, and all three mutation probes printed the same sentence -- "the
+    detector no longer classifies the synthetic shapes" -- whether the broken arm
+    was <Localized> blanking, doc-comment blanking, or the generic window. A
+    failure message that cannot name the arm sends the next reader to read the
+    whole file, which is how a self-test stops being run.
     """
-    must_catch = [
-        '<input placeholder="Search products" />',
-        '<button aria-label="Close dialog">x</button>',
-        '<span>Could not load the list</span>',
-        '<img alt="Store logo" />',
-        '<div title="Increase Width" />',
-    ]
-    must_ignore = [
-        '<Localized id="retail-edit-field-brand">Brand</Localized>',
-        '<input placeholder={l10n.getString(\'key\')} />',
-        '<kbd>Ctrl</kbd>',
-        '<span>{qr}</span>',
-        '<code>{`<button>Trigger</button>`}</code>',
-    ]
-    if any(count_copy_in_text(s) == 0 for s in must_catch):
-        return False
-    # The code-sample arm is exempted by the CALLER (it skips sample files); the
-    # regex alone cannot tell a <code> body from copy, and must not pretend to.
-    if any(count_copy_in_text(s) >= 9 for s in must_ignore[:2]):
-        return False
-    return True
+    out: list[str] = []
+    for shape in REGRESSION_CATCH:
+        if count_copy_in_text(shape) == 0:
+            out.append("MISSED (should count as copy): " + shape[:70])
+    for shape in REGRESSION_IGNORE:
+        n = count_copy_in_text(shape)
+        if n:
+            out.append("COUNTED (should be ignored, got %d): %s" % (n, shape[:70]))
+    return out
 
+
+def detector_still_sees_copy() -> bool:
+    """True when every graded shape is classified correctly."""
+    return not detector_failures()
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
@@ -273,7 +303,10 @@ def main() -> int:
     if args.self_test:
         return self_test()
 
-    if not detector_still_sees_copy():
+    problems = detector_failures()
+    if problems:
+        for line in problems:
+            print(line, file=sys.stderr)
         print("", file=sys.stderr)
         print("DETECTOR WENT DEAF: the copy regex no longer matches known copy.", file=sys.stderr)
         print("Every file would report zero and this gate would pass vacuously.", file=sys.stderr)
@@ -340,9 +373,13 @@ def self_test() -> int:
     bad: list[str] = []
     cases = 0
 
-    cases += 1
-    if not detector_still_sees_copy():
-        bad.append("the detector no longer classifies the synthetic shapes")
+    # Counted per SHAPE, not per call: "3 cases" when twelve shapes are graded
+    # undersells the coverage and makes a later deletion look cheap.
+    for shape in REGRESSION_CATCH + REGRESSION_IGNORE:
+        cases += 1
+    problems = detector_failures()
+    if problems:
+        bad.extend(problems)
 
     global UI, FILES_READ
     saved_ui, saved_reads = UI, FILES_READ
@@ -381,7 +418,11 @@ def self_test() -> int:
     if bad:
         sys.stderr.write("SELF-TEST WRONG:\n" + "\n".join(bad) + "\n")
         return 2
-    print("SELF-TEST OK (%d cases; the last one reads the real tree)" % cases)
+    shapes = len(REGRESSION_CATCH) + len(REGRESSION_IGNORE)
+    print(
+        "SELF-TEST OK (%d cases: %d graded shapes + 1 census floor + 1 live read)"
+        % (cases, shapes)
+    )
     return 0
 
 
