@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import { withFluent, withFluentLocale } from '@/i18n/test-utils';
 import LicenseSettings, { shouldPollLicense } from '@/features/settings/LicenseSettings';
@@ -323,6 +323,48 @@ describe('LicenseSettings — EN', () => {
         expect(mockPauseSubscriptionScoped).toHaveBeenCalledWith(HARNESS_SESSION_TOKEN, 1);
         expect(mockPauseSubscription).not.toHaveBeenCalled();
       });
+    });
+
+    it('pauses ONCE when the survey confirm is double-tapped', async () => {
+      // A billing call plus its status re-read. The replay asks the subscription server to
+      // pause twice and then lets the losing run write serverStatus, so the card can show
+      // the state of the call that lost. \`pausing\` is STATE: both taps read it false.
+      mockPauseSubscription.mockResolvedValue(undefined);
+      mockCheckLicenseStatus.mockResolvedValue({ tier: 'pro', active: true });
+      mockGetLicenseStatus.mockResolvedValue({
+        payload: JSON.stringify(makePayload({ status: 'active' })),
+        tier: 'pro',
+        status: 'active',
+      });
+      await renderWithFluent(<LicenseSettings />);
+      fireEvent.click(screen.getByText(/pause subscription/i));
+
+      const confirm = await screen.findByText(/confirm pause/i);
+      await act(async () => {
+        fireEvent.click(confirm);
+        fireEvent.click(confirm);
+      });
+
+      await waitFor(() => expect(mockPauseSubscriptionScoped).toHaveBeenCalledTimes(1));
+    });
+
+    it('resumes ONCE when Resume is double-tapped', async () => {
+      mockResumeSubscription.mockResolvedValue(undefined);
+      mockCheckLicenseStatus.mockResolvedValue({ tier: 'pro', active: true });
+      mockGetLicenseStatus.mockResolvedValue({
+        payload: JSON.stringify(makePayload({ status: 'paused' })),
+        tier: 'pro',
+        status: 'paused',
+      });
+      await renderWithFluent(<LicenseSettings />);
+
+      const resumeBtn = screen.getByText(/resume subscription/i);
+      await act(async () => {
+        fireEvent.click(resumeBtn);
+        fireEvent.click(resumeBtn);
+      });
+
+      await waitFor(() => expect(mockResumeSubscriptionScoped).toHaveBeenCalledTimes(1));
     });
 
     it('calls resumeSubscription when Resume clicked', async () => {

@@ -164,8 +164,11 @@ export default function LicenseSettings() {
   const [flashRows, setFlashRows] = useState<Map<string, 'updated'>>(new Map());
   // C3.3: Pause/resume subscription state
   const [pausing, setPausing] = useState(false);
+  /** Synchronous mirrors of the billing busy flags — see their re-entry guards above. */
+  const pausingRef = useRef(false);
   const [showExitSurvey, setShowExitSurvey] = useState(false);
   const [resuming, setResuming] = useState(false);
+  const resumingRef = useRef(false);
   const flashTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const triggerFlash = useCallback((key: string) => {
@@ -315,6 +318,11 @@ export default function LicenseSettings() {
     // when its command is not registered is a `command not found` rendered as a
     // pause failure. `verify-ipc-parity.py` grades that reference, and it is right to.
     if (!actionsAvailable) return;
+    // Re-entry guard. pausing is a BILLING call: a replay asks the subscription server to
+    // pause twice and then runs the status read twice, so the card can show the state of
+    // the call that lost. The state flag is committed on the next render, after the tap.
+    if (pausingRef.current) return;
+    pausingRef.current = true;
     setPausing(true);
     try {
       // ADR #7 conditional scoping. pause_subscription_scoped enforces SETTINGS_EDIT; the
@@ -331,6 +339,7 @@ export default function LicenseSettings() {
       const msg = l10nErrorMessage(err, l10n, 'settings-license-pause-failed');
       addToast({ type: 'error', message: msg });
     } finally {
+      pausingRef.current = false;
       setPausing(false);
     }
   }, [addToast, l10n, sessionToken, actionsAvailable]);
@@ -344,6 +353,9 @@ export default function LicenseSettings() {
   const handleResume = useCallback(async () => {
     // Same reason as `handlePauseConfirm`: the tablet registers no resume command.
     if (!actionsAvailable) return;
+    // Same re-entry shape as the pause above: a billing call plus its status re-read.
+    if (resumingRef.current) return;
+    resumingRef.current = true;
     setResuming(true);
     try {
       // Same differential as handlePauseConfirm: resume_subscription_scoped enforces
@@ -359,6 +371,7 @@ export default function LicenseSettings() {
       const msg = l10nErrorMessage(err, l10n, 'settings-license-resume-failed');
       addToast({ type: 'error', message: msg });
     } finally {
+      resumingRef.current = false;
       setResuming(false);
     }
   }, [addToast, l10n, sessionToken, actionsAvailable]);
