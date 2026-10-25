@@ -445,10 +445,10 @@ describe('RetailPosScreen — interactions', () => {
   });
 
   it('opens the shift ONCE when the Open button is double-tapped', async () => {
-    // Core refuses the replay ("user already has an open shift", db/shifts.rs:95-107), but
-    // handleOpenShift's catch is a bare `catch {}` that discards that reason and toasts
-    // retail-toast-failed-open-shift -- the cashier is told the drawer failed to open when
-    // it opened.
+    // Core refuses the replay ("user already has an open shift", db/shifts.rs:95-107).
+    // The REFUSAL was never the defect here -- the redraw was -- and the message side is
+    // covered separately by the case below. This one pins the count: the second tap must
+    // not send a second write.
     const { openShiftScoped } = await import('@/api/shifts');
     await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
     await waitFor(() => expect(screen.getByText(/No shift/)).toBeInTheDocument());
@@ -464,6 +464,40 @@ describe('RetailPosScreen — interactions', () => {
     await waitFor(() => expect(openShiftScoped).toHaveBeenCalledTimes(1));
   });
 
+
+  it('reports a refused open-shift as a CHECK, not as a failure', async () => {
+    // Before round 219 handleOpenShift's catch was bare `catch {}`, so Core's typed
+    // CoreError::Validation ('user already has an open shift', db/shifts.rs:95-107) was
+    // thrown away and the cashier was told the drawer FAILED to open over a shift that
+    // was already open. The catch now routes through l10nErrorMessage, which maps a
+    // typed AppError onto shared app-error-* copy -- so the toast must NOT be the
+    // screen's failure wording, and it must not be the raw backend sentence either.
+    //
+    // Asserting the EXACT copy is what makes this able to fail: reverting to
+    // requiredLocalized(l10n, 'retail-toast-failed-open-shift') makes the received
+    // text the failure wording, and passing err.message through makes it the backend
+    // sentence. Both are different strings.
+    const { openShiftScoped } = await import('@/api/shifts');
+    vi.mocked(openShiftScoped).mockRejectedValueOnce(
+      Object.assign(new Error('user already has an open shift'), {
+        name: 'AppError',
+        kind: 'invalid',
+      }),
+    );
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(screen.getByText(/No shift/)).toBeInTheDocument());
+    await userEvent.keyboard('{F9}');
+    await userEvent.type(screen.getByLabelText(/Opening balance/), '100000');
+    await userEvent.click(screen.getByText('Open'));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Please check the information you entered/i),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/could not open|failed to open/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/user already has an open shift/i)).not.toBeInTheDocument();
+  });
   it('looks the receipt up ONCE when the quick-return button is double-tapped', async () => {
     // A read, so nothing is written -- but the second lookup can answer AFTER the first
     // opened the refund modal and re-open it, or toast "not found" over a receipt that was

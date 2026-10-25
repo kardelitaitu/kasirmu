@@ -6,7 +6,7 @@ import { useToast } from '@/components/Toast';
 import { requiredLocalized } from '@/components';
 import { LocalizedErrorBoundary } from '@/components/LocalizedErrorBoundary';
 import { useLocalization } from '@fluent/react';
-import { plainErrorMessage } from '@/utils/app-error';
+import { l10nErrorMessage, plainErrorMessage } from '@/utils/app-error';
 import { isEditableTarget } from '@/utils/isEditableTarget';
 import { isAnyAriaModalOpen } from '@/utils/modal-guard';
 import { isCommandModifier } from '@/utils/keyboard-modifier';
@@ -1207,8 +1207,17 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       setActiveShift(s);
       setShowOpenShift(false);
       setOpeningBalance('');
-    } catch {
-      addToast({ message: requiredLocalized(l10n, 'retail-toast-failed-open-shift'), type: 'error' });
+    } catch (err) {
+      // The catch used to be bare, so core's accurate refusal ("user already has an
+      // open shift", db/shifts.rs:95-107) was discarded and the cashier was told the
+      // drawer FAILED to open over a shift that was already open. l10nErrorMessage
+      // maps the typed AppError onto the shared app-error-* copy instead, so a
+      // Validation reads as "Please check the information you entered" rather than as
+      // a failure; the screen's own key stays as the fallback for anything untyped.
+      addToast({
+        message: l10nErrorMessage(err, l10n, 'retail-toast-failed-open-shift'),
+        type: 'error',
+      });
     } finally {
       openingShiftRef.current = false;
       setOpeningShift(false);
