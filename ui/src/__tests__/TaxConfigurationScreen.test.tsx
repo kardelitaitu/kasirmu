@@ -245,6 +245,49 @@ describe('TaxConfigurationScreen', () => {
     release?.();
   });
 
+  it('moves the tier once when the ConfirmDialog is double-tapped', async () => {
+    // The guard lives in `commitSave`, which `confirmTierMove` calls -- the checker only
+    // reads a handler's own body, so this case is what proves the path is covered.
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+
+    // 'Sales Tax' is the location-scoped rate (loc-1); clear its location so it moves
+    // to the tenant-global tier -- the exact condition handleSave keys on.
+    const salesTaxCells = screen.getAllByText('Sales Tax');
+    const salesTaxRow = salesTaxCells[0]!.closest('tr')!;
+    await userEvent.click(within(salesTaxRow).getByRole('button', { name: /edit/i }));
+    const modal = await screen.findByRole('dialog');
+    const locInput = within(modal).getByLabelText('Location id');
+    await userEvent.clear(locInput);
+
+    // The popup's Save button is DISABLED while `saving` is true (round 188's fix), so a
+    // plain userEvent.click can be swallowed by a stale disabled state. Dispatch a real
+    // click and let the handler run.
+    // The popup's Save is DISABLED while `saving` is true (round 188's fix); wait for it to
+    // arm, then dispatch a real click so the handler runs once per tap.
+    const saveBtn = within(modal).getByTestId('settings-popup-save');
+    await waitFor(() => expect((saveBtn as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(saveBtn);
+
+    // The tier-move consent is the dialog that appears AFTER this save and that has the
+    // shared confirm control; the edit modal does not.
+    let confirmBtn: HTMLElement | null = null;
+    await waitFor(() => {
+      confirmBtn = document.querySelector('[data-testid="confirm-dialog-confirm"]') as HTMLElement | null;
+      expect(confirmBtn, 'no tier-move consent dialog opened').not.toBeNull();
+    });
+    // The tier-move consent's confirm control, now on screen.
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+      fireEvent.click(confirmBtn);
+    });
+
+    const calls = () => invokeMock.mock.calls.filter((c: unknown[]) =>
+      c[0] === 'update_tax_rate_scoped' || c[0] === 'create_tax_rate_scoped');
+    await waitFor(() => expect(calls().length).toBeGreaterThan(0));
+    expect(calls().length, 'a double tap on the tier-move confirm wrote twice').toBe(1);
+  });
+
   it('warns when editing changes the rate tier', async () => {
     renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
     await waitForTable();

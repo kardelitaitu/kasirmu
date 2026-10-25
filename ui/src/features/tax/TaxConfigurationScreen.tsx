@@ -290,7 +290,10 @@ export default function TaxConfigurationScreen({ embedded = false }: TaxConfigur
   //
   // The ref sits in `commitSave`, not in `handleSave`, on purpose: it is the single write
   // tail for BOTH the direct save and the tier-move ConfirmDialog continuation, so one guard
-  // covers both paths.
+  // covers both paths. That is also why `confirmTierMove` still shows up in
+  // check-reentry-guards.py's list: the reader only reads a handler's OWN body, and this
+  // handler's guard lives in the function it calls. Measured round 189 -- see the note on
+  // `setSaving` in `confirmTierMove` itself, and the double-tap case in the test file.
   const savePendingRef = useRef(false);
 
   // Shared write tail of a save: called directly by handleSave, and by the
@@ -376,6 +379,13 @@ export default function TaxConfigurationScreen({ embedded = false }: TaxConfigur
     if (!pendingTierMove) return;
     const args = pendingTierMove;
     setPendingTierMove(null);
+    // `commitSave` carries the guard (see above), so the second tap of a double press on the
+    // ConfirmDialog's confirm button is refused there -- but it is refused AFTER
+    // `setPendingTierMove(null)` has already run, so the dialog closes on the replay even
+    // though the write did not. Taking the ref HERE as well makes the refusal silent from
+    // the operator's side: the second tap does nothing at all, rather than closing a dialog
+    // whose write was skipped. The ref is RELEASED by commitSave's own `finally`.
+    if (savePendingRef.current) return;
     setSaving(true);
     try {
       await commitSave(args);
