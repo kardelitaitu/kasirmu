@@ -173,6 +173,13 @@ The round-160 lane. No production file edited for this item.
 
 ## RE-SCOPED 2026-11-07 (round 235): the cost line was wrong by 2-3x, and two rulings are still open
 
+> **THE THREE OPEN QUESTIONS NOW HAVE THEIR OWN FILE:**
+> [owner-question-gift-card-tender.md](owner-question-gift-card-tender.md) puts Q1 (does a gift
+> split cover or reduce the total), Q2 (in-tx against a pending sale, or post-commit with a
+> toast) and Q3 (does a preset grant `giftcards:redeem`) in one document so they can be
+> answered in a single pass, with the recommended answer and its evidence for each.
+> Added 2026-10-26 (round 243). The reasoning below is unchanged and still the record.
+
 A read-only investigation at HEAD `2a6e4d2ff` measured the change the "What is still blocked"
 section calls "exactly one migration plus one settlement deduction arm". It is **not** that:
 **~8 backend files, 300-400 lines** (11-13 files / 450-550+ with the UI). The settlement half is
