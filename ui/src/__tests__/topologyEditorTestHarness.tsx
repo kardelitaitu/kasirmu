@@ -43,6 +43,18 @@ export const TOPOLOGY_EN: Record<string, string> = {
   'topology-hud-nodes': '{count} nodes',
   'topology-hud-wires': '{count} wires',
   'topology-wire-label-connected': 'Connected',
+  // The hover tooltip topologyWireGroup.tsx builds as `label — hint`; without an
+  // entry the stub rendered the component's own id, so every tooltip read
+  // "… — topology-wire-toggle-hint" and the tooltip tests pinned that.
+  'topology-wire-toggle-hint': 'Click to cycle direction (one-way → reverse → two-way)',
+  // The node card's rename affordance: the pencil button's aria-label/title, and
+  // the inline input's aria-label. topologyNodeCard.tsx resolves both through
+  // topologyUiString, which returns its own TOPOLOGY_UI_FALLBACKS entry (or the id)
+  // when the bundle has no copy — so the tests were addressing the id, not copy.
+  'topology-branch-rename-label': 'Rename branch',
+  'topology-branch-rename-placeholder': 'Branch name',
+  'topology-workspace-rename-label': 'Rename workspace',
+  'topology-workspace-rename-placeholder': 'Workspace name',
   'topology-workspace-types-title': 'Workspace Types',
   // Copy the canvas renders through l10n.getString that this map never carried.
   // No case in the suites that use this harness asserts them, so they were silent:

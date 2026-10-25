@@ -2089,15 +2089,15 @@ describe('NodeTopologyEditor Component', () => {
     expect(storeCard.className).toContain('node-type-store');
 
     // Pencil → inline input pre-filled with the current name → Enter.
-    fireEvent.click(within(storeCard).getByRole('button', { name: 'topology-branch-rename-label' }));
-    const input = within(storeCard).getByLabelText('topology-branch-rename-placeholder');
+    fireEvent.click(within(storeCard).getByRole('button', { name: 'Rename branch' }));
+    const input = within(storeCard).getByLabelText('Branch name');
     expect((input as HTMLInputElement).value).toBe('Downtown Branch');
     fireEvent.change(input, { target: { value: 'Main Street HQ' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
     await waitFor(() => expect(onRenameBranch).toHaveBeenCalledWith('store-1', 'Main Street HQ'));
     // On success the form closes and the card title reflects the new name.
-    await waitFor(() => expect(within(storeCard).queryByLabelText('topology-branch-rename-placeholder')).toBeNull());
+    await waitFor(() => expect(within(storeCard).queryByLabelText('Branch name')).toBeNull());
     await waitFor(() => expect(within(storeCard).getByText('Main Street HQ')).toBeTruthy());
     // A keyboard commit returns focus to the store card, not the canvas body.
     expect(document.activeElement).toBe(storeCard);
@@ -2108,13 +2108,13 @@ describe('NodeTopologyEditor Component', () => {
     renderEditor({ onRenameBranch });
 
     const storeCard = document.querySelectorAll('.topology-node')[0] as HTMLElement;
-    fireEvent.click(within(storeCard).getByRole('button', { name: 'topology-branch-rename-label' }));
-    const input = within(storeCard).getByLabelText('topology-branch-rename-placeholder');
+    fireEvent.click(within(storeCard).getByRole('button', { name: 'Rename branch' }));
+    const input = within(storeCard).getByLabelText('Branch name');
     // Enter without editing — the pre-filled draft equals the current name.
     fireEvent.keyDown(input, { key: 'Enter' });
 
     expect(onRenameBranch).not.toHaveBeenCalled();
-    expect(within(storeCard).queryByLabelText('topology-branch-rename-placeholder')).toBeNull();
+    expect(within(storeCard).queryByLabelText('Branch name')).toBeNull();
     expect(within(storeCard).getByText('Downtown Branch')).toBeTruthy();
     // An unchanged-name Enter is still a keyboard close — focus returns to the card.
     expect(document.activeElement).toBe(storeCard);
@@ -2125,12 +2125,12 @@ describe('NodeTopologyEditor Component', () => {
     renderEditor({ onRenameBranch });
 
     const storeCard = document.querySelectorAll('.topology-node')[0] as HTMLElement;
-    fireEvent.click(within(storeCard).getByRole('button', { name: 'topology-branch-rename-label' }));
-    const input = within(storeCard).getByLabelText('topology-branch-rename-placeholder');
+    fireEvent.click(within(storeCard).getByRole('button', { name: 'Rename branch' }));
+    const input = within(storeCard).getByLabelText('Branch name');
     fireEvent.keyDown(input, { key: 'Escape' });
 
     expect(onRenameBranch).not.toHaveBeenCalled();
-    expect(within(storeCard).queryByLabelText('topology-branch-rename-placeholder')).toBeNull();
+    expect(within(storeCard).queryByLabelText('Branch name')).toBeNull();
     expect(within(storeCard).getByText('Downtown Branch')).toBeTruthy();
     // Escape is a keyboard close — focus returns to the store card.
     expect(document.activeElement).toBe(storeCard);
@@ -2143,13 +2143,13 @@ describe('NodeTopologyEditor Component', () => {
     renderEditor({ onRenameBranch });
 
     const storeCard = document.querySelectorAll('.topology-node')[0] as HTMLElement;
-    fireEvent.click(within(storeCard).getByRole('button', { name: 'topology-branch-rename-label' }));
-    const input = within(storeCard).getByLabelText('topology-branch-rename-placeholder');
+    fireEvent.click(within(storeCard).getByRole('button', { name: 'Rename branch' }));
+    const input = within(storeCard).getByLabelText('Branch name');
     fireEvent.change(input, { target: { value: 'Blur Renamed' } });
     fireEvent.blur(input);
 
     await waitFor(() => expect(onRenameBranch).toHaveBeenCalledWith('store-1', 'Blur Renamed'));
-    await waitFor(() => expect(within(storeCard).queryByLabelText('topology-branch-rename-placeholder')).toBeNull());
+    await waitFor(() => expect(within(storeCard).queryByLabelText('Branch name')).toBeNull());
     expect(document.activeElement).not.toBe(storeCard);
   });
 
@@ -2225,8 +2225,8 @@ function BranchDeleteHarness() {
     // Rename the branch through its card (name change → parent refreshes
     // branchLocations with a new identity).
     const storeCard = nodeAt(0);
-    fireEvent.click(within(storeCard).getByRole('button', { name: 'topology-branch-rename-label' }));
-    const input = within(storeCard).getByLabelText('topology-branch-rename-placeholder');
+    fireEvent.click(within(storeCard).getByRole('button', { name: 'Rename branch' }));
+    const input = within(storeCard).getByLabelText('Branch name');
     fireEvent.change(input, { target: { value: 'Renamed HQ' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
@@ -2341,8 +2341,8 @@ function BranchDeleteHarness() {
     expect(wsCard.className).toContain('node-type-workspace');
 
     // Pencil → inline input pre-filled with the current name → Enter.
-    fireEvent.click(within(wsCard).getByRole('button', { name: 'topology-workspace-rename-label' }));
-    const input = within(wsCard).getByLabelText('topology-workspace-rename-placeholder');
+    fireEvent.click(within(wsCard).getByRole('button', { name: 'Rename workspace' }));
+    const input = within(wsCard).getByLabelText('Workspace name');
     expect((input as HTMLInputElement).value).toBe('Retail POS #1');
     fireEvent.change(input, { target: { value: 'Front Register' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -2372,8 +2372,8 @@ function BranchDeleteHarness() {
     expect(draggedLeft).not.toBe('336px'); // the drag actually moved it
 
     // Rename the workspace through its card.
-    fireEvent.click(within(wsCard).getByRole('button', { name: 'topology-workspace-rename-label' }));
-    const input = within(wsCard).getByLabelText('topology-workspace-rename-placeholder');
+    fireEvent.click(within(wsCard).getByRole('button', { name: 'Rename workspace' }));
+    const input = within(wsCard).getByLabelText('Workspace name');
     fireEvent.change(input, { target: { value: 'POS #1 (Renamed)' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 

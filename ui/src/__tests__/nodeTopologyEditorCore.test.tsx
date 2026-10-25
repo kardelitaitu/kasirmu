@@ -1360,11 +1360,15 @@ describe('NodeTopologyEditor — wire click keeps an in-flight connection', () =
     renderEditor();
 
     // Every wire's native tooltip carries its label plus the click-to-cycle
-    // hint (raw FTL key in the identity-l10n mock).
+    // hint, as COPY. This loop used to match on the FTL message id itself and
+    // passed only because the harness map never carried that key, so the
+    // tooltip described the component's own id instead of anything a user reads.
     const titles = [...document.querySelectorAll('.wire-hitbox title')];
     expect(titles.length).toBeGreaterThan(0);
     for (const title of titles) {
-      expect(title.textContent).toContain('topology-wire-toggle-hint');
+      expect(title.textContent).toContain(
+        'Click to cycle direction (one-way → reverse → two-way)',
+      );
     }
     // The first retail wire's label appears in its tooltip.
     expect(titles[0]!.textContent).toContain('Binds Store');
@@ -2659,8 +2663,8 @@ describe('NodeTopologyEditor — rename machinery characterization', () => {
     renderEditor({ onRenameBranch });
 
     const storeCard = document.querySelectorAll('.topology-node')[0] as HTMLElement;
-    fireEvent.click(within(storeCard).getByRole('button', { name: 'topology-branch-rename-label' }));
-    const input = within(storeCard).getByLabelText('topology-branch-rename-placeholder') as HTMLInputElement;
+    fireEvent.click(within(storeCard).getByRole('button', { name: 'Rename branch' }));
+    const input = within(storeCard).getByLabelText('Branch name') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'Double Submit' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
@@ -2671,7 +2675,7 @@ describe('NodeTopologyEditor — rename machinery characterization', () => {
     expect(onRenameBranch).toHaveBeenCalledTimes(1);
 
     settle(true);
-    await waitFor(() => expect(within(storeCard).queryByLabelText('topology-branch-rename-placeholder')).toBeNull());
+    await waitFor(() => expect(within(storeCard).queryByLabelText('Branch name')).toBeNull());
     await waitFor(() => expect(within(storeCard).getByText('Double Submit')).toBeTruthy());
     expect(onRenameBranch).toHaveBeenCalledTimes(1);
   });
@@ -2683,13 +2687,13 @@ describe('NodeTopologyEditor — rename machinery characterization', () => {
     renderEditor({ onRenameBranch });
 
     const storeCard = document.querySelectorAll('.topology-node')[0] as HTMLElement;
-    fireEvent.click(within(storeCard).getByRole('button', { name: 'topology-branch-rename-label' }));
-    const input = within(storeCard).getByLabelText('topology-branch-rename-placeholder') as HTMLInputElement;
+    fireEvent.click(within(storeCard).getByRole('button', { name: 'Rename branch' }));
+    const input = within(storeCard).getByLabelText('Branch name') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'Rejected HQ' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
     await waitFor(() => expect(onRenameBranch).toHaveBeenCalledWith('store-1', 'Rejected HQ'));
-    const stillOpen = within(storeCard).getByLabelText('topology-branch-rename-placeholder') as HTMLInputElement;
+    const stillOpen = within(storeCard).getByLabelText('Branch name') as HTMLInputElement;
     expect(stillOpen.value).toBe('Rejected HQ');
     // Still open means still no local write: the card title element is not
     // even rendered while the rename input owns that slot.
@@ -2699,7 +2703,7 @@ describe('NodeTopologyEditor — rename machinery characterization', () => {
     // Enter must reach the parent again instead of being swallowed.
     fireEvent.keyDown(stillOpen, { key: 'Enter' });
     await waitFor(() => expect(onRenameBranch).toHaveBeenCalledTimes(2));
-    expect(within(storeCard).getByLabelText('topology-branch-rename-placeholder')).not.toBeNull();
+    expect(within(storeCard).getByLabelText('Branch name')).not.toBeNull();
 
     // Escape is the honest exit — and the canvas still holds the AUTHORITATIVE
     // name, never the rejected one.
@@ -2838,11 +2842,11 @@ describe('NodeTopologyEditor — rename machinery characterization', () => {
     await waitFor(() => expect(within(storeCard).getByText('Inspector HQ')).toBeTruthy());
 
     // Card-level rename stacked on top of the inspector one.
-    fireEvent.click(within(storeCard).getByRole('button', { name: 'topology-branch-rename-label' }));
-    const cardInput = within(storeCard).getByLabelText('topology-branch-rename-placeholder') as HTMLInputElement;
+    fireEvent.click(within(storeCard).getByRole('button', { name: 'Rename branch' }));
+    const cardInput = within(storeCard).getByLabelText('Branch name') as HTMLInputElement;
     fireEvent.change(cardInput, { target: { value: 'Inspector HQ II' } });
     fireEvent.keyDown(cardInput, { key: 'Enter' });
-    await waitFor(() => expect(within(storeCard).queryByLabelText('topology-branch-rename-placeholder')).toBeNull());
+    await waitFor(() => expect(within(storeCard).queryByLabelText('Branch name')).toBeNull());
     await waitFor(() => expect(within(storeCard).getByText('Inspector HQ II')).toBeTruthy());
 
     // One undo reverts BOTH renames: history holds a single pre-inspector

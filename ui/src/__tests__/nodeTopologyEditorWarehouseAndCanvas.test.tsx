@@ -1548,8 +1548,8 @@ describe('NodeTopologyEditor — node finder', () => {
 
     // Rename the node from its card while the finder stays open.
     const wsCard = nodeAt(1);
-    fireEvent.click(within(wsCard).getByRole('button', { name: 'topology-workspace-rename-label' }));
-    const renameInput = within(wsCard).getByLabelText('topology-workspace-rename-placeholder');
+    fireEvent.click(within(wsCard).getByRole('button', { name: 'Rename workspace' }));
+    const renameInput = within(wsCard).getByLabelText('Workspace name');
     fireEvent.change(renameInput, { target: { value: 'Front Register' } });
     fireEvent.keyDown(renameInput, { key: 'Enter' });
     await waitFor(() => expect(onRenameWorkspace).toHaveBeenCalledWith('ws-a', 'Front Register'));
