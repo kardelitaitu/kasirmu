@@ -406,11 +406,11 @@ not worth a floor until the corpus is bigger; it is worth one by article six.
 
 > last audited 11-10-26 by docs-auditor
 
-<!-- ACCEPTANCE EVIDENCE 2026-10-26 (round 113): the plan's own gate stack was RUN, not
-     assumed. All Tier 1 (Articles 1-3), Tier 2 (Articles 4-7), and Tier 3 Articles 8-11
-     dual-locale guides are fully authored, published, and validated. `cd website &&
+<!-- ACCEPTANCE EVIDENCE 2026-10-26 (round 114): the plan's own gate stack was RUN, not
+     assumed. All 12 dual-locale guides across Tier 1 (Articles 1-3), Tier 2 (Articles 4-7),
+     and Tier 3 (Articles 8-12) are fully authored, published, and validated. `cd website &&
      npm test && npm run build && npm run check:seo && npm run check:links` exits 0 with all
-     checks ok across 125 pages, 108 sitemap URLs, 22 guides, 72 vitest test suites (1,565
-     tests passing), and 0 broken internal links. The script-controls arm reports 117 of 118
-     walked files judged and 1 declared. This file stays active while Article 12 and track
-     A4/track B are executed. -->
+     checks ok across 127 pages, 110 sitemap URLs, 24 guides (12 ID + 12 EN), 72 vitest test
+     suites (1,565 tests passing), and 0 broken internal links. The script-controls arm
+     reports 117 of 118 walked files judged and 1 declared. This file stays active while track
+     A4 (llms.txt and search index coverage) and track B are executed. -->
