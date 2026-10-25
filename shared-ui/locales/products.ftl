@@ -576,6 +576,31 @@ restaurant-payment-midtrans-env = Midtrans Environment
 restaurant-payment-midtrans-keys-valid = Midtrans keys format valid ({ $env })
 restaurant-payment-midtrans-keys-missing = Please enter Client Key and Server Key
 restaurant-payment-stripe-mode = Stripe Mode
+# The segmented-toggle and credential-label literals of the payments screen
+# (round 209). Every label on this screen already went through l10n or
+# <Localized>; these are the ones that were left as JSX text, including the
+# four placeholders that a merchant types INTO (a placeholder is copy).
+restaurant-payment-qr-static = Static
+restaurant-payment-qr-dynamic = Dynamic
+restaurant-payment-qr-payload-placeholder = 00020101021126580014ID.LINKAJA.WWW0118936009110022201389...
+restaurant-payment-midtrans-nmid = Merchant NMID
+restaurant-payment-midtrans-nmid-placeholder = ID1020030040050
+restaurant-payment-midtrans-mdr = MDR Fee (%)
+restaurant-payment-midtrans-sandbox = Sandbox
+restaurant-payment-midtrans-production = Production
+restaurant-payment-midtrans-merchant-id = Merchant ID
+restaurant-payment-midtrans-merchant-id-placeholder = G123456789
+restaurant-payment-midtrans-client-key = Client Key
+restaurant-payment-midtrans-client-key-placeholder = SB-Mid-client-XXXXX
+restaurant-payment-midtrans-server-key = Server Key
+restaurant-payment-midtrans-server-key-placeholder = SB-Mid-server-XXXXX
+restaurant-payment-midtrans-test-keys = Test API Keys
+restaurant-payment-stripe-test = Test
+restaurant-payment-stripe-live = Live
+restaurant-payment-stripe-pub-key = Publishable Key
+restaurant-payment-stripe-sec-key = Secret Key
+restaurant-payment-stripe-reader = Card Reader
+restaurant-payment-custom-rail-hint = Active tender method ready for cashier checkout and receipt attribution.
 restaurant-payment-custom-code = Payment method code is required
 restaurant-payment-custom-code-example = e.g. ovo, shopeepay, voucher
 restaurant-payment-custom-label-example = e.g. OVO Wallet

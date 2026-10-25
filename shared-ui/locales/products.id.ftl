@@ -558,6 +558,30 @@ restaurant-payment-midtrans-env = Lingkungan Midtrans
 restaurant-payment-midtrans-keys-valid = Format kunci Midtrans valid ({ $env })
 restaurant-payment-midtrans-keys-missing = Masukkan Client Key dan Server Key
 restaurant-payment-stripe-mode = Mode Stripe
+# Label tombol segmen dan kolom kredensial pada layar pembayaran (round 209).
+# Semua label di layar ini sudah lewat l10n atau <Localized>; yang ini masih
+# berupa teks JSX, termasuk empat placeholder yang diketik oleh pedagang.
+restaurant-payment-qr-static = Statis
+restaurant-payment-qr-dynamic = Dinamis
+restaurant-payment-qr-payload-placeholder = 00020101021126580014ID.LINKAJA.WWW0118936009110022201389...
+restaurant-payment-midtrans-nmid = NMID Pedagang
+restaurant-payment-midtrans-nmid-placeholder = ID1020030040050
+restaurant-payment-midtrans-mdr = Biaya MDR (%)
+restaurant-payment-midtrans-sandbox = Sandbox
+restaurant-payment-midtrans-production = Produksi
+restaurant-payment-midtrans-merchant-id = ID Pedagang
+restaurant-payment-midtrans-merchant-id-placeholder = G123456789
+restaurant-payment-midtrans-client-key = Client Key
+restaurant-payment-midtrans-client-key-placeholder = SB-Mid-client-XXXXX
+restaurant-payment-midtrans-server-key = Server Key
+restaurant-payment-midtrans-server-key-placeholder = SB-Mid-server-XXXXX
+restaurant-payment-midtrans-test-keys = Uji Kunci API
+restaurant-payment-stripe-test = Uji
+restaurant-payment-stripe-live = Langsung
+restaurant-payment-stripe-pub-key = Publishable Key
+restaurant-payment-stripe-sec-key = Secret Key
+restaurant-payment-stripe-reader = Pembaca Kartu
+restaurant-payment-custom-rail-hint = Metode pembayaran aktif siap untuk checkout kasir dan pencatatan struk.
 restaurant-payment-custom-code = Kode metode pembayaran wajib diisi
 restaurant-payment-custom-code-example = mis. ovo, shopeepay, voucher
 restaurant-payment-custom-label-example = mis. Dompet OVO

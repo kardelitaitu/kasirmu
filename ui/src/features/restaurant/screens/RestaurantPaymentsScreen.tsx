@@ -1165,7 +1165,7 @@ export function RestaurantPaymentsScreen({
                         }}
                         data-testid="qris-mode-static"
                       >
-                        Static
+                        {l10n.getString('restaurant-payment-qr-static')}
                       </button>
                       <button
                         type="button"
@@ -1176,7 +1176,7 @@ export function RestaurantPaymentsScreen({
                         }}
                         data-testid="qris-mode-dynamic"
                       >
-                        Dynamic
+                        {l10n.getString('restaurant-payment-qr-dynamic')}
                       </button>
                     </div>
                   </div>
@@ -1191,7 +1191,7 @@ export function RestaurantPaymentsScreen({
                       id="resto-static-qris"
                       className="settings-input"
                       rows={2}
-                      placeholder="00020101021126580014ID.LINKAJA.WWW0118936009110022201389..."
+                      placeholder={l10n.getString('restaurant-payment-qr-payload-placeholder')}
                       value={staticQrValue}
                       onChange={(e) => handleStaticQrChange(e.target.value)}
                       aria-label={l10n.getString('restaurant-payment-qr-payload')}
@@ -1203,7 +1203,7 @@ export function RestaurantPaymentsScreen({
 
                 <div className="resto-compact-row">
                   <label htmlFor="qris-nmid" className="resto-compact-label">
-                    Merchant NMID
+                    {l10n.getString('restaurant-payment-midtrans-nmid')}
                   </label>
                   <div className="resto-compact-control">
                     <input
@@ -1216,7 +1216,7 @@ export function RestaurantPaymentsScreen({
                         setQrisNmid(val);
                         updateRailParams('qris', { nmid: val });
                       }}
-                      placeholder="ID1020030040050"
+                      placeholder={l10n.getString('restaurant-payment-midtrans-nmid-placeholder')}
                       data-testid="qris-nmid-input"
                     />
                   </div>
@@ -1224,7 +1224,7 @@ export function RestaurantPaymentsScreen({
 
                 <div className="resto-compact-row">
                   <label htmlFor="qris-surcharge" className="resto-compact-label">
-                    MDR Fee (%)
+                    {l10n.getString('restaurant-payment-midtrans-mdr')}
                   </label>
                   <div className="resto-compact-control">
                     <input
@@ -1328,7 +1328,7 @@ export function RestaurantPaymentsScreen({
                         }}
                         data-testid="midtrans-env-sandbox"
                       >
-                        Sandbox
+                        {l10n.getString('restaurant-payment-midtrans-sandbox')}
                       </button>
                       <button
                         type="button"
@@ -1339,7 +1339,7 @@ export function RestaurantPaymentsScreen({
                         }}
                         data-testid="midtrans-env-production"
                       >
-                        Production
+                        {l10n.getString('restaurant-payment-midtrans-production')}
                       </button>
                     </div>
                   </div>
@@ -1347,7 +1347,7 @@ export function RestaurantPaymentsScreen({
 
                 <div className="resto-compact-row">
                   <label htmlFor="midtrans-merchant-id" className="resto-compact-label">
-                    Merchant ID
+                    {l10n.getString('restaurant-payment-midtrans-merchant-id')}
                   </label>
                   <div className="resto-compact-control">
                     <input
@@ -1360,7 +1360,7 @@ export function RestaurantPaymentsScreen({
                         setMidtransMerchantId(val);
                         updateRailParams('midtrans', { merchantId: val });
                       }}
-                      placeholder="G123456789"
+                      placeholder={l10n.getString('restaurant-payment-midtrans-merchant-id-placeholder')}
                       data-testid="midtrans-merchant-id-input"
                     />
                   </div>
@@ -1368,7 +1368,7 @@ export function RestaurantPaymentsScreen({
 
                 <div className="resto-compact-row">
                   <label htmlFor="midtrans-client-key" className="resto-compact-label">
-                    Client Key
+                    {l10n.getString('restaurant-payment-midtrans-client-key')}
                   </label>
                   <div className="resto-compact-control">
                     <input
@@ -1381,7 +1381,7 @@ export function RestaurantPaymentsScreen({
                         setMidtransClientKey(val);
                         updateRailParams('midtrans', { clientKey: val });
                       }}
-                      placeholder="SB-Mid-client-XXXXX"
+                      placeholder={l10n.getString('restaurant-payment-midtrans-client-key-placeholder')}
                       data-testid="midtrans-client-key-input"
                     />
                   </div>
@@ -1389,7 +1389,7 @@ export function RestaurantPaymentsScreen({
 
                 <div className="resto-compact-row">
                   <label htmlFor="midtrans-server-key" className="resto-compact-label">
-                    Server Key
+                    {l10n.getString('restaurant-payment-midtrans-server-key')}
                   </label>
                   <div className="resto-compact-control">
                     <input
@@ -1402,7 +1402,7 @@ export function RestaurantPaymentsScreen({
                         setMidtransServerKey(val);
                         updateRailParams('midtrans', { serverKey: val });
                       }}
-                      placeholder="SB-Mid-server-XXXXX"
+                      placeholder={l10n.getString('restaurant-payment-midtrans-server-key-placeholder')}
                       data-testid="midtrans-server-key-input"
                     />
                   </div>
@@ -1464,7 +1464,7 @@ export function RestaurantPaymentsScreen({
                       }}
                       data-testid="midtrans-test-api-btn"
                     >
-                      Test API Keys
+                      {l10n.getString('restaurant-payment-midtrans-test-keys')}
                     </button>
                   </div>
                 </div>
@@ -1498,7 +1498,7 @@ export function RestaurantPaymentsScreen({
                         }}
                         data-testid="stripe-mode-test"
                       >
-                        Test
+                        {l10n.getString('restaurant-payment-stripe-test')}
                       </button>
                       <button
                         type="button"
@@ -1509,7 +1509,7 @@ export function RestaurantPaymentsScreen({
                         }}
                         data-testid="stripe-mode-live"
                       >
-                        Live
+                        {l10n.getString('restaurant-payment-stripe-live')}
                       </button>
                     </div>
                   </div>
@@ -1517,7 +1517,7 @@ export function RestaurantPaymentsScreen({
 
                 <div className="resto-compact-row">
                   <label htmlFor="stripe-pub-key" className="resto-compact-label">
-                    Publishable Key
+                    {l10n.getString('restaurant-payment-stripe-pub-key')}
                   </label>
                   <div className="resto-compact-control">
                     <input
@@ -1538,7 +1538,7 @@ export function RestaurantPaymentsScreen({
 
                 <div className="resto-compact-row">
                   <label htmlFor="stripe-sec-key" className="resto-compact-label">
-                    Secret Key
+                    {l10n.getString('restaurant-payment-stripe-sec-key')}
                   </label>
                   <div className="resto-compact-control">
                     <input
@@ -1559,7 +1559,7 @@ export function RestaurantPaymentsScreen({
 
                 <div className="resto-compact-row">
                   <label htmlFor="stripe-reader" className="resto-compact-label">
-                    Card Reader
+                    {l10n.getString('restaurant-payment-stripe-reader')}
                   </label>
                   <div className="resto-compact-control">
                     <SettingsSelect
@@ -1647,7 +1647,7 @@ export function RestaurantPaymentsScreen({
                   removeAriaLabel={`Remove ${rail.label}`}
                 >
                   <p className="settings-hint">
-                    Active tender method ready for cashier checkout and receipt attribution.
+                    {l10n.getString('restaurant-payment-custom-rail-hint')}
                   </p>
                 </PaymentMethodCard>
               );
