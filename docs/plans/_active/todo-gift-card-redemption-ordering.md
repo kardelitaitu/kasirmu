@@ -217,3 +217,24 @@ Attempting the whole thing as one unit puts a schema rebuild of the payments tab
 money deduction, two checkout doors and three test rewrites into a single review. That is too
 large to do safely at once, and the table rebuild cannot be undone on a device that already ran
 it by reverting the commit.
+
+**Checked 2026-11-07 (round 235): the RBAC half is STILL blocked, and the obvious
+citation is a trap.** `GIFTCARDS_REDEEM` appears at
+`platform/core/src/rbac_presets.rs:419`, but that line is inside `ALL_ENFORCED` (the
+inventory, which begins at `:340`), NOT inside `ROLE_PRESETS` (which ends at `:331`).
+Grepping the constant and finding one hit reads as "a preset grants it"; it does not.
+`python scripts/check-rbac-citations.py` exists precisely because that reading has
+inverted the fact in four other places. No built-in preset grants the key, so the
+feature would ship dark.
+
+`GiftCardPayment.tsx` is a complete tender panel and is referenced ONLY by its own test -- nothing
+mounts it. That matches the migration test comment at `migrations_tests.rs:4090-4097`: the panel
+"is complete ...", and the migration, the RBAC grant and the settlement contract are the three
+parts, which that comment insists must be "decided together".
+
+**Therefore Change #1 is NOT safe to do alone either.** Widening the CHECK while the RBAC grant and
+the settlement contract stay undecided would unblock one third of a three-part blocker and turn
+`migrations_tests.rs:4107-4119` -- which asserts all four gift spellings are REFUSED -- from a true
+guard into a test that has to be rewritten to state a rule nobody has ruled on. The migration is
+mechanical; the DECISION it encodes is not. This stays `todo-` until an owner answers the three
+questions above, and the answers belong in this file before any SQL is written.
