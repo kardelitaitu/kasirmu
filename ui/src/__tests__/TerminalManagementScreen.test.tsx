@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { ReactLocalization, LocalizationProvider } from '@fluent/react';
@@ -11,7 +11,8 @@ import terminalsFtl from '@/locales/terminals.ftl?raw';
 import type { TerminalDto } from '@/api/terminals';
 
 const { mockListTerminals, mockRegisterTerminal, mockDeleteTerminal,
-  mockListTerminalOverrides, mockSetTerminalOverride, mockGetDeviceBinding } =
+  mockListTerminalOverrides, mockSetTerminalOverride, mockGetDeviceBinding,
+  mockSetDeviceBinding } =
   vi.hoisted(() => ({
     mockListTerminals: vi.fn(),
     mockRegisterTerminal: vi.fn(),
@@ -19,6 +20,7 @@ const { mockListTerminals, mockRegisterTerminal, mockDeleteTerminal,
     mockListTerminalOverrides: vi.fn(),
     mockSetTerminalOverride: vi.fn(),
     mockGetDeviceBinding: vi.fn(),
+    mockSetDeviceBinding: vi.fn(),
   }));
 
 vi.mock('@/api/terminals', () => ({
@@ -30,7 +32,7 @@ vi.mock('@/api/terminals', () => ({
   setTerminalOverrideScoped: (...args: unknown[]) => mockSetTerminalOverride(...args),
   deleteTerminalOverrideScoped: () => Promise.resolve(),
   getDeviceBindingScoped: () => mockGetDeviceBinding(),
-  setDeviceBindingScoped: () => Promise.resolve(),
+  setDeviceBindingScoped: (...args: unknown[]) => mockSetDeviceBinding(...args),
   clearDeviceBindingScoped: () => Promise.resolve(),
 }));
 
@@ -209,6 +211,54 @@ describe('TerminalManagementScreen', () => {
     await waitFor(() => {
       expect(screen.getByText(/Failed to load this store/i)).toBeInTheDocument();
     });
+  });
+
+  it('binds the terminal once when Bind is double-tapped', async () => {
+    // The upsert of one (terminal, store, instance) triple cannot bind twice; what a
+    // replay does is share ONE \`bindingError\` slot between two runs, so the second can
+    // report a failure over a binding that landed.
+    mockListTerminals.mockResolvedValue([makeTerminal()]);
+    mockGetDeviceBinding.mockResolvedValue({
+      bounded: false, boundStoreId: null, boundInstanceId: null, signatureValid: false,
+    });
+    // The picker's option VALUE is `instance_id`; a camelCase fixture renders an option
+    // whose value is undefined, so the select can never carry a usable instance id.
+    mockListWorkspacesForStoreScoped.mockResolvedValue([
+      { instance_id: 'inst-1', name: 'Register 1', type_key: 'retail' },
+    ]);
+    let release: (() => void) | undefined;
+    mockSetDeviceBinding.mockReturnValue(new Promise<void>((res) => { release = res; }));
+
+    renderScreen();
+    await waitFor(() => expect(screen.getAllByText('Edit').length).toBeGreaterThanOrEqual(1));
+    await act(async () => {
+      await userEvent.click(screen.getAllByText('Edit')[0]!);
+    });
+
+    const bindBtn = await screen.findByText(/^Bind Terminal$/i);
+    const button = bindBtn.closest('button') as HTMLButtonElement;
+    // The dialog preselects nothing; both pickers must carry a value before Bind arms.
+    // `listLocationsScoped` is the real IPC read here, so the store option comes from the
+    // harness's own fixture — select whatever it offers rather than assuming an id.
+    const storeSelect = screen.getByLabelText(/^Store$/i) as HTMLSelectElement;
+    const storeOption = Array.from(storeSelect.options).map((o) => o.value).find((v) => v !== '');
+    expect(storeOption, 'no store option to bind to').toBeTruthy();
+    fireEvent.change(storeSelect, { target: { value: storeOption } });
+
+    const instanceSelect = await waitFor(() => {
+      const el = screen.getByLabelText(/Workspace Instance/i) as HTMLSelectElement;
+      expect(Array.from(el.options).map((o) => o.value)).toContain('inst-1');
+      return el;
+    });
+    fireEvent.change(instanceSelect, { target: { value: 'inst-1' } });
+    expect(button.disabled, 'Bind must be armed before this case means anything').toBe(false);
+    act(() => {
+      fireEvent.click(button);
+      fireEvent.click(button);
+    });
+
+    release?.();
+    await waitFor(() => expect(mockSetDeviceBinding).toHaveBeenCalledTimes(1));
   });
 
   it('opens delete confirmation modal on Delete click', async () => {

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { SettingsPopup, useToast, requiredLocalized, EmptyState } from '@/components';
 import { NoTerminalsIcon } from '@/components/EmptyStateIllustrations';
@@ -204,6 +204,8 @@ export default function TerminalManagementScreen() {
   const [selectedStoreId, setSelectedStoreId] = useState('');
   const [selectedInstanceId, setSelectedInstanceId] = useState('');
   const [bindingSaving, setBindingSaving] = useState(false);
+  /** Synchronous mirror of `bindingSaving`, SHARED by bind and clear — see their guards. */
+  const bindingSavingRef = useRef(false);
   const [bindingError, setBindingError] = useState<string | null>(null);
   // The INSTANCE list's own read. `bindingError` covers the binding read; without this
   // the instance read's failure was invisible, so an unanswered list looked exactly like
@@ -376,6 +378,11 @@ export default function TerminalManagementScreen() {
 
   const handleBind = async () => {
     if (!editingId || !selectedStoreId || !selectedInstanceId) return;
+    // Re-entry guard: the write is an upsert of one (terminal, store, instance) triple, so a
+    // replay cannot bind anything twice -- but two runs share one `bindingError`, so the
+    // second can report a failure over a binding that landed.
+    if (bindingSavingRef.current) return;
+    bindingSavingRef.current = true;
     setBindingSaving(true);
     setBindingError(null);
     try {
@@ -385,12 +392,18 @@ export default function TerminalManagementScreen() {
     } catch {
       setBindingError(l10n.getString('terminal-error-binding-save'));
     } finally {
+      bindingSavingRef.current = false;
       setBindingSaving(false);
     }
   };
 
   const handleClearBinding = async () => {
     if (!editingId) return;
+    // Shares handleBind's ref on purpose: both write the SAME binding through the same
+    // slot, so a bind and a clear racing each other is the state this must prevent. An
+    // ordinary tap still passes, because the first handler clears the ref in `finally`.
+    if (bindingSavingRef.current) return;
+    bindingSavingRef.current = true;
     setBindingSaving(true);
     setBindingError(null);
     try {
@@ -401,6 +414,7 @@ export default function TerminalManagementScreen() {
     } catch {
       setBindingError(l10n.getString('terminal-error-binding-clear'));
     } finally {
+      bindingSavingRef.current = false;
       setBindingSaving(false);
     }
   };
