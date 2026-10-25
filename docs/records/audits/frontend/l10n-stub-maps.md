@@ -124,11 +124,20 @@ than they look:
 Both are guarded now, and each is proven BOTH ways: a comment inside a map
 keeps it one map, and a }; between two key lines still splits it.
 
-The remaining known limit is scoping. An imported map is graded against the
-test's DIRECT imports, while an inline map is graded against the one-level
-nested graph too. That asymmetry under-reports: it hides copy in nested
-modules such as topologyToolRack.tsx. It is deliberately conservative, not
-correct, and it is recorded rather than papered over.
+Scoping was the last known limit, and it is now closed. An imported map used
+to be graded against the test's DIRECT imports only, while an inline map was
+graded against the one-level nested graph as well. That asymmetry was added to
+suppress a 169-finding over-report which turned out to be the map-splitting bug
+above -- the narrowing outlived its cause and hid real copy.
+
+Measured on one suite: `NodeTopologyEditor` is genuinely rendered, pulls 57
+nested modules, and 79 of their keys were absent from the harness map. Both
+paths now scan the same graph, and those 79 are in the map.
+
+A rule that two paths through the same gate apply differently is a blind spot,
+not a conservatism. The lesson is narrower than "be thorough": the earlier
+narrowing was justified by a measurement that later proved to be an artifact,
+and nothing re-checked that justification when the artifact was fixed.
 ## Commands
 
 ```
