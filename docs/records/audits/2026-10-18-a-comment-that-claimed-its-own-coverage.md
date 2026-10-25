@@ -95,4 +95,39 @@ looked exactly like a product failure.
 2. The remaining thin file from the same scan is `RestaurantShortcutsHelp.tsx` (3KB, 1
    reference) — likely presentational like `KdsMainContent`, but unverified.
 
-> last audited 18-10-26 by docs-auditor
+## Addendum 2026-10-26 (round 241): an incomplete mutation looks like a passing gate
+
+The same "a comment claiming its own coverage" pattern, one layer up — in a GATE. While
+re-checking `scripts/verify-selftests-wired.py` I removed its runner line for
+`verify-shell-syntax.py --self-test` from `scripts/check.sh` and re-ran it:
+
+```
+verify-selftests-wired: OK — 96 of 100 checker(s) ... every one is invoked by a runner.
+```
+
+Exit 0. Read naively that is a live defect: the gate failed to notice a removed invocation.
+It is not one. `runner_text()` concatenates **every** runner — `dev-ci.yml`,
+`scripts/check.sh`, `check.ps1`, `.githooks/pre-commit` and three `package.json` files —
+so removing the line from one of the two places that named it left the other still calling
+it. Removing it from BOTH produced the correct red:
+
+```
+verify-selftests-wired: 1 self-test(s) invoked by no runner:
+    scripts\verify-shell-syntax.py -- declares --self-test, but no runner passes the flag.
+```
+
+Both files were restored byte-identically (`git hash-object` == `git rev-parse HEAD:`).
+
+**The trap, stated plainly: a mutation that does not change the outcome proves nothing —
+including proving nothing about whether the gate is broken.** The failure mode is accusing a
+correct gate. Mutate the whole input, not one copy of it. This is the sibling of the
+round-239 trap where a mutation that broke the BUILD read as a passing a11y suite: there the
+red was unrelated to the claim, here the green was unrelated to the claim. Both times the
+lesson is to read WHY the colour changed, not just what colour it was.
+
+Worth recording alongside it: the count `96 of 100` is not four skipped checkers. It is four
+checkers in scope that simply do not declare a `--self-test`; the gate's own self-test
+asserts `uncalled_selftests()` is empty against the live tree, so a newly unwired self-test
+fails both the gate and its self-test.
+
+> last audited 26-10-26 by docs-auditor
