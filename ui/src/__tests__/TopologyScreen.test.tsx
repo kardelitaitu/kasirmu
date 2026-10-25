@@ -133,14 +133,99 @@ vi.mock('@fluent/react', () => {
       return id;
     }
   }
-  // English templates for the keys this suite asserts on with variables;
-  // every other key falls back to the key string itself.
+  // English copy for every key this suite asserts on. Values are COPIED from
+  // shared-ui/locales/multi-location.ftl (and shared.ftl for `cancel`) — never
+  // inferred from the key name — so an assertion here states what a user reads,
+  // not which message id the component happened to ask for. Keys that are still
+  // absent fall back to the key string itself.
+  //
+  // A message with placeables keeps its real substitution: the loop below
+  // replaces { $name } and {name } from the vars the component passes, so a
+  // case can expect the fully-formatted copy.
   const EN: Record<string, string> = {
+    // ── Branch selector + toolbar (multi-location.ftl:397-412) ──
+    'topology-branch-selector-label': 'Branch',
+    'topology-branch-selector-empty': 'No branches yet',
+    'topology-branch-selector-unavailable': 'Branches unavailable',
+    'topology-branch-add': 'Add Branch',
+    'topology-branch-add-confirm': 'Create',
+    'topology-branch-add-name-placeholder': 'New branch name',
+    'topology-branch-delete': 'Delete Branch',
+    'topology-branch-delete-confirm-btn': 'Delete',
+    'topology-discard-changes-confirm': 'Discard & switch',
+    // ── Branch comparison panel (multi-location.ftl:133-144) ──
+    'topology-compare-open': 'Compare',
+    'topology-compare-title': 'Compare branches',
+    'topology-compare-close': 'Close',
+    'topology-compare-focus': 'Focus on differences',
     'topology-compare-counts': '{ $onlyInCurrent } workspaces only here · { $onlyInOther } only in { $otherBranch } · { $differ } differ',
     'topology-compare-only-here': 'Only here: { $names }',
     'topology-compare-only-there': 'Only in { $otherBranch }: { $names }',
     'topology-compare-differing': 'Differing: { $names }',
     'topology-compare-none': 'No differences',
+    // ── Deploy history + C2.2 second-location gate (multi-location.ftl:66, 435-436) ──
+    'topology-history-open': 'Deploy history',
+    'location-limit-upgrade-pro': 'Your plan allows { $max } location(s). Upgrade to Pro to add more locations.',
+    'location-limit-upgrade-cta': 'Upgrade to Pro',
+    // ── ConfirmDialog's default cancel label (shared.ftl:55). ConfirmDialog
+    //    reads it off the file's stub l10n, so it renders the seeded copy. ──
+    'cancel': 'Cancel',
+    // ── Copy this suite does not assert on but the untouched modules it mounts
+    //    DO read (a load-error toast, the revision browser, the live editor
+    //    header). Seeded from the same FTL so no getString in the mounted graph
+    //    falls back to its id when a future case starts asserting on it.
+    'topology-builder-title': 'Visual Store & Workspace Topology Builder',
+    'topology-apply-changes': 'Apply Topology',
+    'topology-apply-permission-tooltip': 'Applying topology changes requires the topology:write permission.',
+    'topology-readonly-note': 'View-only — saving topology changes requires the topology:write permission.',
+    'topology-tier-suffix': '{ $tier } TIER',
+    'topology-rename-permission-error': 'Renaming topology items requires the topology:write permission.',
+    'topology-workspace-rename-error': 'Could not rename workspace',
+    'topology-branch-rename-error': 'Could not rename branch',
+    'topology-branch-add-cancel': 'Cancel',
+    'topology-branch-add-error': 'Could not create branch',
+    'topology-branch-delete-error': 'Could not delete branch',
+    'topology-branch-delete-confirm': 'Delete { $name }?',
+    'topology-branch-selector-aria': 'Select topology branch',
+    'topology-branch-session-pending': 'Still connecting to your store. Please try again in a moment.',
+    'topology-discard-changes-title': 'Discard unsaved changes?',
+    'topology-discard-changes-msg': '"{ $name }" has unsaved changes. Switching branches will discard them.',
+    'topology-restore-discard-title': 'Discard unsaved edits?',
+    'topology-restore-discard-body': 'The editor canvas has changes that are not applied. Restoring a revision onto it will discard them.',
+    'topology-restore-discard-confirm': 'Discard and restore',
+    'topology-compare-other-label': 'Compare with',
+    'topology-compare-loading': 'Comparing…',
+    'topology-compare-load-error': 'Could not compare branches',
+    'topology-toast-load-error': 'Failed to load topology',
+    'topology-toast-restore-error': 'Could not restore that revision',
+    'topology-toast-no-session': 'No active session — cannot save workspaces.',
+    'topology-toast-saved': 'Topology saved: { $created } created · { $updated } updated · { $archived } archived · { $typeChanged } type-changed.',
+    'topology-tablet-unavailable-title': 'Topology authoring needs the desktop',
+    'topology-tablet-unavailable-body': 'Store layout editing runs on the desktop app. This tablet keeps read-only Locations and every checkout surface.',
+    'topology-web-managed-notice': 'Managed via Web Dashboard (Read-Only)',
+    'topology-tablet-web-managed-title': 'Centralized Topology Authoring',
+    'topology-tablet-web-managed-body': 'Store layout is managed remotely via the Web Dashboard. This tablet runs on the latest synchronized revision.',
+    // ── Deploy-history browser (ADR #46) ──
+    'topology-rev-browser-title': 'Deploy History',
+    'topology-rev-browser-close': 'Close deploy history',
+    'topology-rev-browser-loading': 'Loading history…',
+    'topology-rev-browser-loading-one': 'Loading 1 revision…',
+    'topology-rev-browser-empty': 'Nothing has been applied to this branch yet.',
+    'topology-rev-browser-no-note': 'No note',
+    'topology-rev-browser-counts': '{ $nodes } nodes · { $wires } wires',
+    'topology-rev-browser-pruned': 'Snapshot pruned — record kept',
+    'topology-rev-browser-detail-title': 'Revision { $revision }',
+    'topology-rev-browser-deflated-body': 'This deploy is recorded but its graph was pruned by retention, so it cannot be previewed or restored. Published by { $by }.',
+    'topology-rev-browser-not-found': 'This revision is no longer present.',
+    'topology-rev-browser-identical': 'Same configuration as now',
+    'topology-rev-browser-geometry': '{ $moved } moved, { $rerouted } rerouted',
+    'topology-rev-browser-diff-summary': '{ $count } changes since this deploy',
+    'topology-rev-browser-preview': 'Show on canvas',
+    'topology-rev-browser-restore-aria': 'Load revision { $revision } onto the editor as an unsaved draft',
+    'topology-rev-browser-restore-notice': 'Loaded as an unsaved draft — review it, then Apply to publish a new revision.',
+    'topology-rev-browser-restore-unavailable': 'This revision can no longer be restored — its snapshot is gone.',
+    'topology-rev-browser-deflated-remedy': 'Pin a deploy (★) to keep its snapshot restorable however busy the branch gets.',
+    'topology-rev-browser-old-contract': "This deploy was recorded under contract version { $version }; today's is { $current }. Restoring loads it as a draft and Apply re-validates it against today's rules.",
   };
   const l10n = {
     getString: (id: string, vars?: Record<string, string | number> | null) => {
@@ -426,7 +511,7 @@ describe('TopologyScreen', () => {
     mockListStores.mockResolvedValue([]);
     render(<TopologyScreen />);
     await waitFor(() =>
-      expect(capturedBranchSelectProps.placeholder).toBe('topology-branch-selector-empty'),
+      expect(capturedBranchSelectProps.placeholder).toBe('No branches yet'),
     );
     expect(capturedBranchSelectProps.disabled).toBe(true);
   });
@@ -437,14 +522,14 @@ describe('TopologyScreen', () => {
     mockListStores.mockRejectedValue(new Error('boom'));
     render(<TopologyScreen />);
     await waitFor(() =>
-      expect(capturedBranchSelectProps.placeholder).toBe('topology-branch-selector-unavailable'),
+      expect(capturedBranchSelectProps.placeholder).toBe('Branches unavailable'),
     );
     expect(capturedBranchSelectProps.disabled).toBe(true);
   });
 
   it('keeps the selector enabled with the branch label while branches exist', async () => {
     await renderReady();
-    expect(capturedBranchSelectProps.placeholder).toBe('topology-branch-selector-label');
+    expect(capturedBranchSelectProps.placeholder).toBe('Branch');
     expect(capturedBranchSelectProps.disabled).toBe(false);
   });
 
@@ -504,7 +589,7 @@ describe('TopologyScreen', () => {
     const dialog = screen.getByRole('dialog');
     expect(dialog).toBeInTheDocument();
 
-    act(() => { fireEvent.click(within(dialog).getByRole('button', { name: 'cancel' })); });
+    act(() => { fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' })); });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(mockListWorkspacesScoped).toHaveBeenCalledTimes(1);
     expect(capturedEditorProps.workspaceInstances).toEqual([
@@ -523,7 +608,7 @@ describe('TopologyScreen', () => {
 
     const dialog = screen.getByRole('dialog');
     act(() => {
-      fireEvent.click(within(dialog).getByRole('button', { name: 'topology-discard-changes-confirm' }));
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Discard & switch' }));
     });
 
     // The branch refetch now proceeds and the new branch's instances load.
@@ -637,8 +722,8 @@ describe('TopologyScreen', () => {
     );
 
     // Delete Branch → confirm.
-    fireEvent.click(screen.getByRole('button', { name: 'topology-branch-delete' }));
-    fireEvent.click(screen.getByRole('button', { name: 'topology-branch-delete-confirm-btn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Branch' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
     // The profile is deleted through the API.
     await waitFor(() => expect(mockDeleteStore).toHaveBeenCalledWith('test-session-token', 'store-1'));
@@ -673,12 +758,12 @@ describe('TopologyScreen', () => {
       expect(capturedBranchOptions.map((o) => o.value)).toEqual(['store-1', 'store-2']),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'topology-branch-delete' }));
-    const confirmBtn = screen.getByRole('button', { name: 'topology-branch-delete-confirm-btn' });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Branch' }));
+    const confirmBtn = screen.getByRole('button', { name: 'Delete' });
     expect((confirmBtn as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(confirmBtn);
     // Re-query: the first click re-renders the rail, so the node above is detached.
-    const confirmAgain = screen.getByRole('button', { name: 'topology-branch-delete-confirm-btn' });
+    const confirmAgain = screen.getByRole('button', { name: 'Delete' });
     expect(
       (confirmAgain as HTMLButtonElement).disabled,
       'the confirm button stayed enabled while the delete was in flight',
@@ -719,7 +804,7 @@ describe('TopologyScreen', () => {
     await renderReady(1);
 
     // The compare affordance is a toolbar button (two branches exist).
-    fireEvent.click(screen.getByRole('button', { name: 'topology-compare-open' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
 
     // Both diagrams are fetched and the summary is rendered.
     await waitFor(() =>
@@ -742,10 +827,10 @@ describe('TopologyScreen', () => {
     mockLoadTopology.mockResolvedValue(sameDiagram);
     await renderReady(1);
 
-    fireEvent.click(screen.getByRole('button', { name: 'topology-compare-open' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
     await waitFor(() => expect(screen.getByText('No differences')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: 'topology-compare-close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(screen.queryByText('No differences')).not.toBeInTheDocument();
   });
 
@@ -784,7 +869,7 @@ describe('TopologyScreen', () => {
     });
     await renderReady(2);
 
-    fireEvent.click(screen.getByRole('button', { name: 'topology-compare-open' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
     await waitFor(() =>
       expect(screen.getByText('1 workspaces only here · 1 only in Second Street · 1 differ')).toBeInTheDocument(),
     );
@@ -805,7 +890,7 @@ describe('TopologyScreen', () => {
     });
 
     // Closing the panel removes the overlay from the editor props.
-    fireEvent.click(screen.getByRole('button', { name: 'topology-compare-close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     await waitFor(() => expect(capturedEditorProps.compareOverlay).toBeNull());
   });
 
@@ -841,16 +926,16 @@ describe('TopologyScreen', () => {
     });
     await renderReady(2);
 
-    fireEvent.click(screen.getByRole('button', { name: 'topology-compare-open' }));
-    await waitFor(() => expect(screen.getByText('topology-compare-focus')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    await waitFor(() => expect(screen.getByText('Focus on differences')).toBeInTheDocument());
 
     // Focus is OFF by default; the toggle flips it and the editor receives it.
     expect(capturedEditorProps.compareFocus).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'topology-compare-focus' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Focus on differences' }));
     await waitFor(() => expect(capturedEditorProps.compareFocus).toBe(true));
 
     // Closing the panel resets focus along with the overlay.
-    fireEvent.click(screen.getByRole('button', { name: 'topology-compare-close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     await waitFor(() => expect(capturedEditorProps.compareOverlay).toBeNull());
     expect(capturedEditorProps.compareFocus).toBe(false);
   });
@@ -873,7 +958,7 @@ describe('TopologyScreen', () => {
     // Open compare: the target defaults to the first OTHER branch (store-2).
     // (The initial pair may repeat — openCompare fetches once and the
     // open-effect fetches again; slice(0,2) reads the first pair.)
-    fireEvent.click(screen.getByRole('button', { name: 'topology-compare-open' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
     await waitFor(() =>
       expect(mockLoadTopology.mock.calls.map((c) => c[1]).slice(0, 2)).toEqual(['store-1', 'store-2']),
     );
@@ -909,17 +994,17 @@ describe('TopologyScreen', () => {
     await renderReady(1);
 
     // Open the comparison against the only other branch.
-    fireEvent.click(screen.getByRole('button', { name: 'topology-compare-open' }));
-    await waitFor(() => expect(screen.getByText('topology-compare-title')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    await waitFor(() => expect(screen.getByText('Compare branches')).toBeInTheDocument());
 
     // Deleting the selected branch moves selection to the remaining one —
     // with a single branch there is nothing left to compare, so the panel
     // must close instead of comparing the branch with itself.
-    fireEvent.click(screen.getByRole('button', { name: 'topology-branch-delete' }));
-    fireEvent.click(screen.getByRole('button', { name: 'topology-branch-delete-confirm-btn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Branch' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => expect(mockDeleteStore).toHaveBeenCalledWith('test-session-token', 'store-1'));
-    await waitFor(() => expect(screen.queryByText('topology-compare-title')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText('Compare branches')).not.toBeInTheDocument());
   });
 
   // ── #4: Atomic diff — single applyTopologyDiff call ────────────
@@ -1611,7 +1696,7 @@ describe('TopologyScreen', () => {
   // on the rendered button rather than a prop.
   const historyButton = async () => {
     await renderReady();
-    const btn = screen.getByRole('button', { name: 'topology-history-open' });
+    const btn = screen.getByRole('button', { name: 'Deploy history' });
     await waitFor(() => expect(btn).toBeInTheDocument());
     return btn;
   };
@@ -1646,8 +1731,8 @@ describe('TopologyScreen', () => {
     mockRenderRealHeader = true;
     mockSessionPermissions = ['staff:update', 'topology:write'];
     await renderReady();
-    expect(screen.getByRole('button', { name: 'topology-branch-add' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'topology-history-open' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add Branch' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Deploy history' })).not.toBeInTheDocument();
   });
 
   it('blocks renames for non-manager roles with a permission toast', async () => {
@@ -1658,7 +1743,7 @@ describe('TopologyScreen', () => {
     expect(branchResult).toBe(false);
     expect(mockUpdateStore).not.toHaveBeenCalled();
     expect(mockAddToast).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'error', message: 'topology-rename-permission-error' }),
+      expect.objectContaining({ type: 'error', message: 'Renaming topology items requires the topology:write permission.' }),
     );
 
     mockAddToast.mockClear();
@@ -1666,7 +1751,7 @@ describe('TopologyScreen', () => {
     expect(wsResult).toBe(false);
     expect(mockUpdateWorkspace).not.toHaveBeenCalled();
     expect(mockAddToast).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'error', message: 'topology-rename-permission-error' }),
+      expect.objectContaining({ type: 'error', message: 'Renaming topology items requires the topology:write permission.' }),
     );
   });
 
@@ -1678,9 +1763,12 @@ describe('TopologyScreen', () => {
     await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
 
     // Opening the branch-add form surfaces the inline upgrade banner.
-    fireEvent.click(screen.getByRole('button', { name: 'topology-branch-add' }));
-    expect(screen.getByText('location-limit-upgrade-pro')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'location-limit-upgrade-cta' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add Branch' }));
+    // `{ $max }` is substituted from the cap the suite pinned above (maxLocations: 1).
+    expect(
+      screen.getByText('Your plan allows 1 location(s). Upgrade to Pro to add more locations.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Upgrade to Pro' })).toBeInTheDocument();
   });
 
   it('hides the store-limit banner when under the cap (C2.2)', async () => {
@@ -1688,8 +1776,10 @@ describe('TopologyScreen', () => {
     render(<TopologyScreen />);
     await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
 
-    fireEvent.click(screen.getByRole('button', { name: 'topology-branch-add' }));
-    expect(screen.queryByText('location-limit-upgrade-pro')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add Branch' }));
+    expect(
+      screen.queryByText('Your plan allows 2 location(s). Upgrade to Pro to add more locations.'),
+    ).not.toBeInTheDocument();
   });
 
   // ── Tier badge must agree with the quota gate ──────────────────
@@ -1787,7 +1877,7 @@ describe('TopologyScreen', () => {
     render(<TopologyScreen openCreateOnMount />);
     await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
 
-    expect(screen.getByRole('button', { name: 'topology-branch-add-confirm' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create' })).toBeInTheDocument();
   });
 
   it('leaves Add Branch closed without the creation hint (default entry)', async () => {
@@ -1796,8 +1886,8 @@ describe('TopologyScreen', () => {
     render(<TopologyScreen />);
     await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
 
-    expect(screen.getByRole('button', { name: 'topology-branch-add' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'topology-branch-add-confirm' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add Branch' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create' })).not.toBeInTheDocument();
   });
 
   // ── Add Branch in-flight guard ─────────────────────────────────────
@@ -1812,7 +1902,7 @@ describe('TopologyScreen', () => {
 
   it('creates only one branch when Enter is pressed again mid-round-trip', async () => {
     await renderReady();
-    act(() => { screen.getByRole('button', { name: 'topology-branch-add' }).click(); });
+    act(() => { screen.getByRole('button', { name: 'Add Branch' }).click(); });
 
     // The create only settles once we let the deferred resolve — that window
     // IS the round-trip. Flipping the deferred (rather than leaving the first
@@ -1820,7 +1910,7 @@ describe('TopologyScreen', () => {
     let release!: (v: unknown) => void;
     mockCreateStore.mockReturnValue(new Promise((res) => { release = res; }));
 
-    const input = screen.getByRole('textbox', { name: 'topology-branch-add-name-placeholder' });
+    const input = screen.getByRole('textbox', { name: 'New branch name' });
     fireEvent.change(input, { target: { value: 'Second Floor' } });
 
     // First Enter starts the create.
@@ -1844,17 +1934,17 @@ describe('TopologyScreen', () => {
     // a tablet must see the second click refused, and `state="processing"`
     // is the design system's way of saying so.
     await renderReady();
-    act(() => { screen.getByRole('button', { name: 'topology-branch-add' }).click(); });
+    act(() => { screen.getByRole('button', { name: 'Add Branch' }).click(); });
 
     let release!: (v: unknown) => void;
     mockCreateStore.mockReturnValue(new Promise((res) => { release = res; }));
 
-    const input = screen.getByRole('textbox', { name: 'topology-branch-add-name-placeholder' });
+    const input = screen.getByRole('textbox', { name: 'New branch name' });
     fireEvent.change(input, { target: { value: 'Third Floor' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
     await waitFor(() => expect(mockCreateStore).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole('button', { name: 'topology-branch-add-confirm' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
 
     await act(async () => {
       release({ id: 'store-3', name: 'Third Floor', is_primary: false, address: '', tax_id: '', currency: 'USD', timezone: 'UTC', created_at: '', updated_at: '' });
