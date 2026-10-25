@@ -97,12 +97,28 @@ export default function GiftCardsScreen() {
     }
   }, [load, addToast, l10n, sessionToken]);
 
-  const handleTopUp = useCallback(async (cardNumber: string) => {
+  const handleTopUp = useCallback(async (cardNumber: string, cardCurrency: string) => {
     // Currency-aware: the typed value is MAJOR units, so "50" is $50.00 (5000 minor)
     // on a 2-exponent currency and Rp 50 (50 minor) on IDR. Reading it as raw minor
     // units under-issued by 100x on a USD till — the same defect the issue form had.
     // `parseMoneyInput` rejects the over-precision and non-numeric cases the old
     // `Number.isInteger` guard caught, so its result is the whole validation.
+    // CURRENCY GUARD, the same one the tender panel got (round 244). `amount_minor` is a
+    // DENOMINATION, not a value: the operator types in the STORE's currency (:47), and
+    // `top_up_gift_card` (crates/kasirmu-core/src/db/gift_cards.rs:514) adds it to the CARD's
+    // balance with no currency check at all -- it only prints `parse_currency(&card.currency)`
+    // in the ledger note (:591). So 50 typed on an IDR till against a KWD card credits 50
+    // fils (0.050 KWD) instead of 50 KWD: a 1000x under-credit written into stored value.
+    // Refusing is the only safe answer; converting would need a rate and an owner ruling.
+    if (cardCurrency !== currency) {
+      setTopUpError(
+        l10n.getString('gift-cards-payment-currency-mismatch', {
+          cardCurrency,
+          saleCurrency: currency,
+        }),
+      );
+      return;
+    }
     const amount = parseMoneyInput(topUpAmount, currency);
     if (amount === null || amount <= 0) {
       setTopUpError(l10n.getString('gift-cards-topup-invalid'));
@@ -280,7 +296,7 @@ export default function GiftCardsScreen() {
                         aria-label={requiredLocalized(l10n, 'gift-cards-topup-aria')}
                       />
                       <Localized id="gift-cards-confirm-topup">
-                        <Button variant="primary" onClick={() => handleTopUp(gc.card.card_number)}>
+                        <Button variant="primary" onClick={() => handleTopUp(gc.card.card_number, gc.card.currency)}>
                           <span>Confirm Top-Up</span>
                         </Button>
                       </Localized>

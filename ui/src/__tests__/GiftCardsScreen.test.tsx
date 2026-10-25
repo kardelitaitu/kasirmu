@@ -367,7 +367,24 @@ describe('GiftCardsScreen', () => {
   // case above measures IDR, where the two readings coincide and the bug is invisible.
   it('interprets the top-up amount in the store currency (USD: 50 -> 5000 minor)', async () => {
     mockDefaultCurrency('USD');
-    mockListGiftCards.mockResolvedValue(sampleCards);
+    // A USD CARD, not the IDR `sampleCards` fixture. This case exists to prove the EXPONENT
+    // (50 -> 5000 minor on a 2-decimal currency), and it used the IDR card only for
+    // convenience -- which made it a cross-currency top-up, now refused by the guard added
+    // in round 245 (the card's currency must match the till's, or amount_minor means two
+    // different things at once). Pinning the card currency keeps the exponent assertion
+    // measuring the exponent and nothing else.
+    mockListGiftCards.mockResolvedValue([
+      {
+        card: {
+          id: 'gc-usd', card_number: 'GC-001', pin: '1234',
+          initial_balance_minor: 100000, current_balance_minor: 75000,
+          currency: 'USD', status: 'active', issued_to: 'Alice',
+          issue_date: '2026-06-01', expiry_date: '2027-06-01',
+          created_by: 'user-1', updated_at: '2026-06-01',
+        },
+        transactions: [],
+      },
+    ]);
     mockTopUpGiftCard.mockResolvedValue({});
 
     renderWithFluentSync(
@@ -454,5 +471,41 @@ describe('GiftCardsScreen', () => {
     await waitFor(() => {
       expect(mockListGiftCards).toHaveBeenCalledTimes(2);
     }, FAST_WAIT);
+  });
+  it('REFUSES a top-up on a card in another currency than the till', async () => {
+    // The operator types in the STORE's currency; top_up_gift_card adds amount_minor to the
+    // CARD's balance with no currency check, and only prints the card currency in the ledger
+    // note. So 50 typed on an IDR till against a KWD card credits 50 fils (0.050 KWD), not
+    // 50 KWD -- a 1000x under-credit written into stored value. Same guard as the tender panel.
+    mockListGiftCards.mockResolvedValue([
+      {
+        card: {
+          id: 'gc-kwd', card_number: 'GC-KWD-1', pin: '0000',
+          initial_balance_minor: 5000, current_balance_minor: 5000,
+          currency: 'KWD', status: 'active', issued_to: 'Bob',
+          issue_date: '2026-06-01', expiry_date: null,
+          created_by: 'user-1', updated_at: '2026-06-01',
+        },
+        transactions: [],
+      },
+    ]);
+    mockTopUpGiftCard.mockResolvedValue({});
+    mockDefaultCurrency('IDR');
+    renderWithFluentSync(<ToastProvider><GiftCardsScreen /></ToastProvider>, giftCardsFtl, sharedFtl);
+
+    await expandCard('GC-KWD-1');
+    await waitAndClickButton(/top up/i);
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/amount/i)).toBeInTheDocument();
+    }, FAST_WAIT);
+
+    fireEvent.change(screen.getByPlaceholderText(/amount/i), { target: { value: '50' } });
+    await waitAndClickButton(/confirm top-up/i);
+
+    // The refusal is stated, and NO top-up was sent -- the ledger is untouched.
+    await waitFor(() => {
+      expect(screen.getByText(/cannot be applied to a IDR sale/i)).toBeInTheDocument();
+    }, FAST_WAIT);
+    expect(mockTopUpGiftCard).not.toHaveBeenCalled();
   });
 });
