@@ -5,7 +5,8 @@ crate: kasirmu-core (gift_cards) | status: SAFE | lint: CLEAN
 findings: stored-value paths sound (PA-01 atomic conditional UPDATE both directions with i64::MAX overflow guard on top-up; in-tx balance re-read keeps ledger rows accurate under concurrency; expiry parse-fail treats card as expired — fail-safe; RUST-07 recoverable lookups documented). COR-15 FIXED (date unknown) — partial UNIQUE index uq_gift_card_redeem_sale (migration 20260901) closes the redeem idempotency gap under sync replay. COR-16 FIXED (date unknown) — list_gift_cards search + issued_to now escape LIKE wildcards (ESCAPE '\', same as customers/audit). COR-17 RESOLVED 2026-09-29 — the plaintext PIN was REMOVED, not hashed: it had no verifier anywhere and `skip_serializing` meant it could not even be read back, so the column carried a secret nothing could check (migration 20261015_gift_cards_drop_pin.sql).
 OPEN (2026-10-26, round 245) — the `expired` STATUS IS NEVER WRITTEN. The schema allows it
 (`20260813_init.sql:143` CHECK IN ('active','frozen','redeemed','expired')), the UI styles it
-(`GiftCardsScreen.tsx:29`) and offers a filter for it (`:169`), and nothing produces it: expiry
+(the gift-cards screen's status map, line 29) and offers a filter for it (`:169`), and
+nothing produces it: expiry
 is evaluated only AT REDEEM (:361-370) and the status column's only writers are 'active',
 'frozen' and 'redeemed'. An expired card therefore lists as Active with its full balance, and
 the Expired filter is guaranteed empty. This is a product decision (persist on expiry via a
@@ -31,6 +32,25 @@ use super::Store;
 /// never fail to render. Mirrors `export::email_report::format_amount`.
 fn parse_currency(code: &str) -> Currency {
     code.parse::<Currency>().unwrap_or(Currency(*b"USD"))
+}
+
+/// Refuse when `currency` is supplied and differs from `card_currency`.
+///
+/// The guard both money-writing helpers share. `amount_minor` is a DENOMINATION, not
+/// a value: 5000 is Rp 5.000 on an IDR card and 5.000 KWD on a KWD one, so an amount
+/// quoted in one currency must never be applied to a balance stored in another.
+/// `None` means the caller could not know its currency (tests), and is allowed.
+///
+/// Extracted 2026-10-26 (round 254) from two identical inline blocks: the duplication
+/// put `kasirmu-core` 18 production lines over its size ceiling, and one helper is one
+/// place for the rule to be right.
+fn refuse_currency_mismatch(currency: Option<&str>, card_currency: &str) -> Result<(), CoreError> {
+    match currency {
+        Some(caller_currency) if caller_currency != card_currency => Err(
+            CoreError::CurrencyMismatch(card_currency.to_owned(), caller_currency.to_owned()),
+        ),
+        _ => Ok(()),
+    }
 }
 
 impl Store<'_> {
@@ -386,18 +406,10 @@ impl Store<'_> {
             });
         }
 
-        // Currency guard: see the doc comment. Placed BEFORE the single-channel
-        // balance and idempotency checks so a mismatch is reported as a currency
-        // error rather than as "insufficient balance" on a card that is in fact
+        // Placed BEFORE the balance and idempotency checks so a mismatch is reported as a
+        // currency error rather than as "insufficient balance" on a card that is in fact
         // well funded in its own denomination.
-        if let Some(caller_currency) = currency
-            && caller_currency != card.currency
-        {
-            return Err(CoreError::CurrencyMismatch(
-                card.currency.clone(),
-                caller_currency.to_owned(),
-            ));
-        }
+        refuse_currency_mismatch(currency, &card.currency)?;
 
         if card.current_balance_minor < amount_minor {
             return Err(CoreError::Validation {
@@ -572,17 +584,9 @@ impl Store<'_> {
             });
         }
 
-        // Currency guard: a bare minor-unit integer means different money on a
-        // 0-exponent currency than on a 3-exponent one. Placed after the status
-        // check so a frozen card in the wrong currency still reports its status.
-        if let Some(caller_currency) = currency
-            && caller_currency != card.currency
-        {
-            return Err(CoreError::CurrencyMismatch(
-                card.currency.clone(),
-                caller_currency.to_owned(),
-            ));
-        }
+        // After the status check, so a frozen card in the wrong currency still reports
+        // its status rather than the currency.
+        refuse_currency_mismatch(currency, &card.currency)?;
 
         let txn_id = uuid::Uuid::now_v7().to_string();
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
