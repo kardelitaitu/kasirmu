@@ -81,6 +81,32 @@ vi.mock('@fluent/react', () => ({
           'appearance-zoom-200': '200%',
           'appearance-zoom-auto': 'Automatic (Scale with screen)',
           'settings-appearance-logo-desktop-only': 'Choosing a logo needs the desktop app. Colours and the store name can still be changed here.',
+          // Section headings, labels and preview copy, copied from settings.ftl.
+          'appearance-interface': 'Interface',
+          'appearance-branding': 'Branding',
+          'appearance-primary-colour': 'Primary Colour',
+          'appearance-logo': 'Store Logo',
+          'appearance-choose-logo': 'Choose Logo',
+          'appearance-store-name': 'Display Store Name',
+          'appearance-interface-zoom': 'Interface Zoom',
+          'appearance-hw-accel': 'Hardware Acceleration',
+          'appearance-hw-accel-hint':
+            'Disable if UI animations feel janky on low-end devices. Restart the app for the change to take full effect.',
+          'appearance-preview-heading': 'Preview',
+          'appearance-preview-btn-label': 'Primary Button',
+          'appearance-preview-btn-outline-label': 'Secondary',
+          'appearance-preview-badge-label': 'Live',
+          'appearance-store-name-fallback': 'kasir.mu',
+          'appearance-reset-all': 'Reset all to defaults',
+          // The .attr values of the aria/alt-only FTL messages (settings.ftl:514-556).
+          'appearance-primary-colour-picker-aria': 'Primary colour picker',
+          'appearance-colour-hex-aria': 'Colour hex value',
+          'appearance-reset-colour-aria': 'Reset colour to default',
+          'appearance-logo-alt': 'Store logo',
+          'appearance-choose-logo-aria': 'Pick logo file',
+          'appearance-hw-accel-aria': 'Toggle hardware acceleration',
+          'appearance-reset-all-aria': 'Reset all to defaults',
+          'appearance-save-aria': 'Save appearance',
         };
         return map[id] || id;
       },

@@ -67,7 +67,49 @@ const { mockL10n, mockUseLocalization } = vi.hoisted(() => {
         'settings-license-ws-restaurant': 'Restaurant',
         'settings-license-ws-cafe': 'Café',
         'settings-license-ws-warehouse': 'Warehouse',
-        'settings-license-ws-kds': 'KDS',
+        // Subscription actions (desktop-only, shell-gated).
+        'settings-license-subscription-actions': 'Subscription',
+        'settings-license-pause-subscription': 'Pause subscription',
+        'settings-license-pause-aria': 'Pause subscription for 1 month',
+        'settings-license-pause-success': 'Subscription paused. Resume anytime.',
+        'settings-license-resume-subscription': 'Resume subscription',
+        'settings-license-resume-aria': 'Resume paused subscription',
+        'settings-license-resume-success': 'Subscription resumed!',
+        'settings-license-paused-until': 'Paused until',
+        // Exit survey modal (rendered by this card when Pause is pressed).
+        'exit-survey-title': 'Before you pause...',
+        // ADR #58 §2.3 pre-expiry re-authentication banner.
+        'settings-license-reauth-banner-title': 'Subscription Renewal Check Required',
+        'settings-license-reauth-banner-desc':
+          'Your subscription expires in { $days } days. Connect to the internet to re-authenticate with the license server.',
+        'settings-license-reauth-action': 'Verify Online Now',
+        // OverQuotaCard (§J) — mounted by this card, drained by @/api/subscription in tests.
+        'settings-license-quota-title': 'Quota status',
+        'settings-license-quota-intro':
+          'Resources measured against the { $tier } tier quotas \u2014 the same numbers the creation gates enforce.',
+        'settings-license-quota-load-failed': 'Could not load the quota assessment.',
+        'settings-license-quota-refresh': 'Refresh',
+        'settings-license-quota-ok': 'Everything is within quota.',
+        'settings-license-quota-over-aria': 'Over-quota resources',
+        'settings-license-quota-over-heading': 'Over quota \u2014 archive or upgrade',
+        'settings-license-quota-over-line': '{ $current } of { $limit } \u2014 { $excess } over',
+        'settings-license-quota-guidance':
+          'Archive unused resources in the relevant screen, or upgrade the tier to raise the limits. Nothing was deleted automatically.',
+        'settings-license-quota-remedy-aria': 'Workspace register remediation',
+        'settings-license-quota-remedy-title': 'Workspace registers',
+        'settings-license-quota-remedy-hint':
+          'Suspend the surplus registers of { $store }, or restore the ones an earlier downgrade suspended. Only this store is affected.',
+        'settings-license-quota-remedy-suspend': 'Suspend surplus',
+        'settings-license-quota-remedy-recover': 'Restore suspended',
+        'settings-license-quota-remedy-suspended':
+          '{ $count } surplus register(s) suspended. They are disabled, not deleted.',
+        'settings-license-quota-remedy-recovered': '{ $count } suspended register(s) restored.',
+        'settings-license-quota-remedy-none':
+          'Nothing to change \u2014 no register of this store is over the limit or suspended.',
+        'settings-license-quota-remedy-failed-detail':
+          'That action failed: { $reason }. The quota numbers above are unchanged.',
+        'settings-license-quota-loc-aria': 'Per-location quota limits',
+        'settings-license-quota-loc-title': 'Per-location limits',
       };
       return map[id] || id;
     },

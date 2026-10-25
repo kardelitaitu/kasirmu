@@ -118,6 +118,22 @@ vi.mock('@fluent/react', () => ({
           'auth-ip-local': 'Local : {ip}',
           'auth-ip-public': 'Public : {ip}',
           'auth-copyright': 'kasir.mu © {year} All rights reserved.',
+          // Keys the live screen renders that this map never spelled out. Values
+          // are the shared.ftl copy verbatim; the assertions below still compare
+          // the file's own wording, so these exist to keep getString off the id.
+          'license-activation-logo-alt': 'kasir.mu Logo',
+          'auth-clipboard-error': 'Clipboard error: { $message }',
+          'auth-pair-code-label': 'Pairing Code',
+          'auth-pair-expired': 'Pairing code expired. Click to refresh.',
+          'auth-pair-refresh': 'Refresh Code',
+          'auth-pair-scan-qr': 'Scan this QR code with your phone or visit { $url }',
+          'auth-pair-success': 'Device paired successfully!',
+          'auth-pair-waiting': 'Waiting for you to claim on your phone…',
+          'auth-setup-recommended-tablet': 'Recommended for Tablets',
+          'auth-tab-license-key': 'License Key',
+          'auth-tab-pair-device': 'Pair with Phone',
+          'auth-trial-hint-pro': 'You came from a restaurant/cafe page — your trial key unlocks a 14-day Pro trial.',
+          'auth-trial-hint-enterprise': 'Your referral trial key unlocks a 30-day Pro trial.',
           'staff-login-connection-auth': 'Auth Server',
           'staff-login-connection-sync': 'Sync Server',
         };
