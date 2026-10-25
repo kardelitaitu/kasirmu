@@ -6,6 +6,16 @@ round-166 census.** 499 lines, an 18-case suite, and **120 bundle lines across b
 `.ftl` files, so the entire key block left with it. Deleting it took the census from
 `ORPHAN=4, 46 test case(s)` to `ORPHAN=3, 28`.
 
+**ROUND 195 FINISHED THE JOB THE DELETION STARTED.** Removing the screen left its five API wrappers
+in `ui/src/api/products.ts` with no caller, and `verify-ipc-parity.py` said so in the only way it
+can: five `scoped_orphans` violations naming the PERMISSION each now-guardless command enforces
+(`PRODUCTS_CREATE`, `PRODUCTS_DELETE`, `CUSTOMERS_VIEW`, `PRODUCTS_READ`, `PRODUCTS_UPDATE`).
+The wrappers are gone and the five commands are recorded in `scoped_orphans` with the reason they
+must not be "fixed": the backend is complete and tested in both shells, and the
+`PRODUCT_VARIANTS` flag still ships and is still granted to both plans. **A deletion is not done
+when the file is gone; it is done when the gates that named it are quiet.** The two rounds are one
+change, split only because the second half was invisible until the first landed.
+
 It was reachable-by-nobody the whole time, and the census never reported it, because a screen
 that nothing imports and that registers nothing is LIVE to this checker — `LIVE=417` is "not
 reported orphan", not "reachable". **Two ways to be unreachable, one instrument.** The census
