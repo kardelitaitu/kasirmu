@@ -188,3 +188,5 @@ python scripts/check-l10n-test-maps.py --write-baseline
 it reads zero maps — the empty-population refusal exists because the detector's
 own bug (an eight-key identity window) silently reported `judged 0 maps` while
 looking like a clean run.
+
+> last audited 07-11-26 by docs-auditor

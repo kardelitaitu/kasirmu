@@ -899,7 +899,6 @@ compiled cold-boot market profile.
 - **`get_pg_sync_settings_scoped`** [D] — Get PG sync settings (scoped).
 - **`get_sync_plan_scoped`** [D+T] — Get sync plan (scoped).
 - **`get_sync_settings_scoped`** [D+T] — Get sync settings resolved from a session token. ADR #7.
-- **`pending_sync_count_scoped`** [D+T] — Pending sync count (scoped).
 - **`pg_sync_start_scoped`** [D] — PG sync start (scoped).
 - **`pg_sync_status_scoped`** [D] — PG sync status (scoped).
 - **`pg_sync_stop_scoped`** [D] — PG sync stop (scoped).
