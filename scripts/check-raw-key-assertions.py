@@ -79,7 +79,7 @@ def _read_baseline() -> list[dict]:
 
 
 def _split(line: str) -> tuple[str, str]:
-    parts = [p for p in re.split(r"s{2,}", line.strip()) if p]
+    parts = [p for p in re.split(r"\s{2,}", line.strip()) if p]
     return (parts[0], parts[1]) if len(parts) > 1 else (parts[0] if parts else "", "")
 
 
