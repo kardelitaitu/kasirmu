@@ -229,6 +229,8 @@ export function useTerminalHardware(
 ): UseTerminalHardwareResult {
   const [profile, setProfile] = useState<TerminalHardwareProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  /** Synchronous mirror of the save's busy flag — see the re-entry guard in `save`. */
+  const savingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const initializedRef = useRef(false);
@@ -345,6 +347,12 @@ export function useTerminalHardware(
   const save = useCallback(async () => {
     if (!profile || !terminalId) return;
 
+    // Re-entry guard: the settings write is a same-key upsert, so a replay cannot corrupt
+    // it -- but two in-flight saves share one `error` slot, so the operator can be shown the
+    // failure of the tap that raced. `isLoading` is STATE and is read from the render that
+    // built this closure.
+    if (savingRef.current) return;
+    savingRef.current = true;
     setIsLoading(true);
     setError(null);
 
@@ -357,6 +365,7 @@ export function useTerminalHardware(
       // not a path a user is expected to hit -- but it is reported, not swallowed, because the
       // alternative is a save that looks like it happened.
       setError('Failed to save hardware profile');
+      savingRef.current = false;
       setIsLoading(false);
       return;
     }
@@ -365,10 +374,12 @@ export function useTerminalHardware(
       // ADR #7's scoped arm is now the only arm: the setter derives the user from the session, so
       // no caller-named identity reaches `require_permission_for_user`.
       await setHardwareSettingsScoped(sessionToken, toHardwareSettingsDto(profile));
-      setIsLoading(false);
     } catch (err) {
       const msg = plainErrorMessage(err, 'Failed to save hardware profile');
       setError(msg);
+    } finally {
+      // ONE release point for all three exits, so a refusal cannot leave the hook latched.
+      savingRef.current = false;
       setIsLoading(false);
     }
   }, [profile, terminalId, sessionToken]);
