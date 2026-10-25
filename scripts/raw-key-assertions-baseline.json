@@ -1,35 +1,7 @@
 {
   "description": "Outstanding test assertions that name a real Fluent message id where real copy could render. Ratcheted by scripts/check-raw-key-assertions.py; the file may only shrink. Each entry asserts that the UI shows its own translation key.",
-  "total": 50,
+  "total": 43,
   "entries": [
-    {
-      "at": "ui/src/__tests__/DashboardScreen.test.tsx:447",
-      "key": "dashboard-filter-from"
-    },
-    {
-      "at": "ui/src/__tests__/DashboardScreen.test.tsx:473",
-      "key": "dashboard-filter-from"
-    },
-    {
-      "at": "ui/src/__tests__/DashboardScreen.test.tsx:474",
-      "key": "dashboard-filter-to"
-    },
-    {
-      "at": "ui/src/__tests__/DashboardScreen.test.tsx:497",
-      "key": "dashboard-filter-from"
-    },
-    {
-      "at": "ui/src/__tests__/DashboardScreen.test.tsx:502",
-      "key": "dashboard-filter-from"
-    },
-    {
-      "at": "ui/src/__tests__/DashboardScreen.test.tsx:540",
-      "key": "dashboard-filter-from"
-    },
-    {
-      "at": "ui/src/__tests__/DashboardScreen.test.tsx:543",
-      "key": "dashboard-btn-apply"
-    },
     {
       "at": "ui/src/__tests__/DataManagementExport.test.tsx:412",
       "key": "data-mgmt-toast-export-fail"

@@ -39,7 +39,10 @@ error-occurred = An error occurred
 spinner-label = Loading dashboard
 `;
 
-// dashboard keys only exist in id locale, so fallback children are used
+// The dashboard filter keys are defined in shared-ui/locales/reports.ftl (EN,
+// :78-80). This block used to omit them and the comment above claimed they
+// "only exist in id locale" -- false -- so getString returned the raw id and
+// the assertions below matched aria-labels like dashboard-filter-from.
 const reportsFtl = `
 dashboard-region-aria = Dashboard
 dashboard-stock-alerts-aria = Low stock alerts
@@ -48,6 +51,9 @@ dashboard-delta-new = New
 dashboard-popularity-trend = Popularity Trend
 dashboard-popularity-trend-aria = Popularity of the top category over the last 7 days
 dashboard-popularity-trend-empty = No popularity data yet
+dashboard-filter-from = From
+dashboard-filter-to = To
+dashboard-btn-apply = Apply
 sales-report-category-popularity-uncategorized = Uncategorized
 `;
 
@@ -444,7 +450,7 @@ describe('DashboardScreen', () => {
     // Hold the next core load in flight to observe the non-blocking state.
     mockGetDailyRevenue.mockImplementation(() => new Promise(() => {}));
 
-    fireEvent.change(screen.getByLabelText('dashboard-filter-from'), { target: { value: '2026-06-01' } });
+    fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-06-01' } });
     fireEvent.click(screen.getByText('Apply'));
 
     // The dashboard must stay rendered with a lightweight status — never
@@ -470,8 +476,8 @@ describe('DashboardScreen', () => {
     renderScreen();
     await waitFor(() => expect(screen.getByText('Revenue Trend')).toBeTruthy());
 
-    const fromInput = screen.getByLabelText('dashboard-filter-from') as HTMLInputElement;
-    const toInput = screen.getByLabelText('dashboard-filter-to') as HTMLInputElement;
+    const fromInput = screen.getByLabelText('From') as HTMLInputElement;
+    const toInput = screen.getByLabelText('To') as HTMLInputElement;
 
     await waitFor(() => {
       expect(toInput.value).toBe(expectedStoreDay(zone, 0));
@@ -494,12 +500,12 @@ describe('DashboardScreen', () => {
     renderScreen();
     await waitFor(() => expect(screen.getByText('Revenue Trend')).toBeTruthy());
 
-    const fromInput = screen.getByLabelText('dashboard-filter-from') as HTMLInputElement;
+    const fromInput = screen.getByLabelText('From') as HTMLInputElement;
     fireEvent.change(fromInput, { target: { value: '2026-01-05' } });
 
     resolveStore({ id: 'store-a', name: 'Store A', timezone: zone.offset });
     await waitFor(() => {
-      const input = screen.getByLabelText('dashboard-filter-from') as HTMLInputElement;
+      const input = screen.getByLabelText('From') as HTMLInputElement;
       expect(input.value).toBe('2026-01-05');
     });
   });
@@ -537,10 +543,10 @@ describe('DashboardScreen', () => {
     mockGetDailyRevenue.mockRejectedValue(new Error('Server offline'));
     mockGetTopProducts.mockRejectedValue(new Error('Server offline'));
     mockGetLowStockAlerts.mockRejectedValue(new Error('Server offline'));
-    fireEvent.change(screen.getByLabelText('dashboard-filter-from'), {
+    fireEvent.change(screen.getByLabelText('From'), {
       target: { value: '2026-01-05' },
     });
-    fireEvent.click(screen.getByLabelText('dashboard-btn-apply'));
+    fireEvent.click(screen.getByLabelText('Apply'));
 
     await waitFor(() =>
       expect(screen.getByText('Something went wrong. Please try again.')).toBeTruthy(),
