@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useToast } from '@/components/Toast';
 import { bootstrapOwner } from '@/api/staff';
 import { useAuth } from '@/contexts/AuthContext';
@@ -20,6 +20,8 @@ export default function CreatePinScreen({ onCreated }: CreatePinScreenProps) {
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [loading, setLoading] = useState(false);
+  /** Synchronous mirror of `loading` — see the re-entry guard in `handleSubmit`. */
+  const loadingRef = useRef(false);
   // The message alone could not mark WHICH input failed, so a rejected submit
   // left every field looking identical — and "All fields are required" named
   // none of them. Tracking the offending field(s) beside the copy lets each
@@ -83,6 +85,12 @@ export default function CreatePinScreen({ onCreated }: CreatePinScreenProps) {
       return;
     }
 
+    // Re-entry guard, after the length and mismatch checks. bootstrap_owner CREATES the
+    // owner account; the second call is refused for a duplicate and the refusal lands in
+    // the catch below as auth-create-pin-error-generic, over a setup that succeeded.
+    // `loading` is STATE and is committed on the next render, after the second tap.
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
     try {
       const result = await bootstrapOwner({
@@ -111,6 +119,7 @@ export default function CreatePinScreen({ onCreated }: CreatePinScreenProps) {
         }
         setErrorMsg(l10nErrorMessage(err, l10n, 'auth-create-pin-error-generic'));
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   };
