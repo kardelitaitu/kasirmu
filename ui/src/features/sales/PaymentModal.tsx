@@ -2961,7 +2961,7 @@ retryCurrencyLoad,
                       className="payment-customer-search-close"
                       onClick={() => setShowCustomerSearch(false)}
                     >
-                      <span>Cancel</span>
+                      <Localized id="cancel"><span>Cancel</span></Localized>
                     </button>
                   </Localized>
                 </div>
