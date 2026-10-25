@@ -64,11 +64,6 @@ vi.mock('@/api/products', () => ({
   updateProduct: vi.fn(),
   deleteProduct: vi.fn(),
   adjustStock: vi.fn(),
-  listProductVariants: vi.fn(() => Promise.resolve([])),
-  getProductVariant: vi.fn(() => Promise.resolve(null)),
-  createProductVariant: vi.fn(),
-  updateProductVariant: vi.fn(),
-  deleteProductVariant: vi.fn(),
   createCategory: vi.fn(),
   deleteCategory: vi.fn(),
 }));

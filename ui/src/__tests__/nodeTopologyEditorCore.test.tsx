@@ -180,7 +180,16 @@ describe('NodeTopologyEditor — warehouse tool-card tier lock', () => {
 
     const locked = document.querySelector('.tool-card.locked');
     expect(locked).not.toBeNull();
-    expect(locked!.textContent).toContain('Premium');
+    // Assert the BADGE, not a substring of the whole card. The card's own copy
+    // ("Inventory storage workspace") and the badge's ("Premium") are separate FTL
+    // strings, so a toContain over the card cannot tell them apart -- and it reads
+    // as a failure the moment the wording around them changes, which is exactly
+    // what 8cffb0935 did when it moved the literal 'Premium' into
+    // topology-tool-locked-premium. Scoped to .lock-badge the assertion fails only
+    // when the lock indicator itself goes missing.
+    const badge = locked!.querySelector('.lock-badge');
+    expect(badge, 'the locked card renders no .lock-badge').not.toBeNull();
+    expect(badge!.textContent?.trim()).toBe('Premium');
 
     const before = getNodeCount();
     fireEvent.click(screen.getByText('+ Warehouse'));

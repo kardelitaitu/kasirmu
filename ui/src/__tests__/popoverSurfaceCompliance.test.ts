@@ -57,7 +57,17 @@ const POPOVER_SURFACES: ReadonlyArray<{ selector: string; file: string }> = [
   { selector: '.menu-eng-tooltip', file: 'features/reports/MenuEngineeringScreen.css' },
   { selector: '.retail-reminder-popup', file: 'features/retail/RetailPosScreen.css' },
   { selector: '.pos-cart-undo-bar', file: 'features/sales/CartPanel.css' },
-  { selector: '.product-mgmt-alert-drawer', file: 'features/products/ProductManagementScreen.css' },
+  // '.product-mgmt-alert-drawer' retired with ProductManagementScreen, the same way
+  // '.retail-menu' and '.kds-layout-popover' were retired above. The screen is no
+  // longer tracked (git ls-tree HEAD ui/src/features/products/ has no
+  // ProductManagementScreen.*), features/products/register.tsx:19-31 records the
+  // 'inventory' route as superseded by WarehouseConsole, and NO .tsx or .ts under
+  // ui/src mentions the selector. Its base rule was deleted with the stylesheet;
+  // only three ::after overlay entries survive in theme/components.css:530, :778
+  // and :978, and those are deliberately out of scope (this test excludes pseudo-
+  // element rules -- they tint over the panel, they are not the surface chrome).
+  // Repointing the entry at components.css looked like the cheap fix and was wrong:
+  // it turned an honest "the file is gone" into a claim that a base rule exists.
   { selector: '.kds-picker-modal', file: 'features/kds/components/KdsProductPickerModal.css' },
   { selector: '.node-inspector-drawer', file: 'features/locations/NodeTopologyEditor.css' },
   { selector: '.canvas-hud', file: 'features/locations/NodeTopologyEditor.css' },

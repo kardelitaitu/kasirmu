@@ -45,6 +45,13 @@ export const TOPOLOGY_EN: Record<string, string> = {
   'topology-tool-kds-desc': 'Kitchen display workspace',
   'topology-tool-warehouse-workspace': '+ Warehouse',
   'topology-tool-warehouse-workspace-desc': 'Inventory storage workspace',
+  // The lock badge on the warehouse card. It was a literal 'Premium' until
+  // 8cffb0935 moved it into FTL as topology-tool-locked-premium; this map is a
+  // hand-maintained mirror of the bundle, so the move left the key unresolved and
+  // l10n.getString returned the raw id. The tier-lock test then failed with
+  // 'topology-tool-locked-premium' where it expected 'Premium' -- a missing map
+  // entry, not a broken gate.
+  'topology-tool-locked-premium': 'Premium',
   'topology-toast-multi-warehouse': 'Warehouse nodes require a Premium Tier license.',
   'topology-warehouse-excess-badge': '{count} Warehouses — 1 allowed',
   'topology-branch-excess-badge': '{count} Branch Locations — 1 allowed',

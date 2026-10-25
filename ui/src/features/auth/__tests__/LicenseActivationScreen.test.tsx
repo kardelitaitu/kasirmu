@@ -73,6 +73,11 @@ vi.mock('@fluent/react', () => ({
         'auth-ip-local': 'Local : ' + (args ? args['ip'] : ''),
         'auth-ip-public': 'Public : ' + (args ? args['ip'] : ''),
         'auth-copyright': 'kasir.mu © ' + (args ? args['year'] : '') + ' All rights reserved.',
+        // The hero logo's alt. This map is a hand-maintained mirror of shared.ftl
+        // (shared-ui/locales/shared.ftl:976) and no test ever pinned the alt, so
+        // when the image moved onto l10n.getString the key simply fell through to
+        // the raw id and case 49 failed on alt text nobody had spelled out here.
+        'license-activation-logo-alt': 'kasir.mu Logo',
         'auth-email-placeholder': 'store@example.com',
         'auth-phone-placeholder': '08123456789',
         'auth-license-placeholder': 'OZ-PRO-XXXX-XXXX-XXXX',
