@@ -237,6 +237,22 @@ def bundle_keys() -> set[str]:
 # 2. Maps in a test file -------------------------------------------------
 
 
+def _imported_map_ref(text: str) -> str | None:
+    """The identifier a stub looks up when the map is IMPORTED, not inline.
+
+    `getString: (id) => TOPOLOGY_EN[id] ?? id` is the same raw-key fallback as an
+    inline literal, but the map lives in another module, so find_maps() cannot
+    see it and every suite built on such a harness was judged as 0 maps. The
+    gate's OWN motivating case (topologyEditorTestHarness.tsx) sat in that hole.
+    Returns the bare identifier, or None.
+    """
+    m = re.search(r"\b([A-Za-z_$][\w$]*)\s*\[(\w+)\]\s*(?:\?\?|\|\|)\s*\2\b", text)
+    if not m:
+        return None
+    name = m.group(1)
+    # `map[id]` / `lookup[key]` are local; a SCREAMING or Pascal name is imported.
+    return name if (name.isupper() or name[:1].isupper()) else None
+
 def _fallback_shape(text: str) -> str:
     """How a miss resolves: back onto the raw key, or not at all.
 
@@ -466,6 +482,50 @@ def scan() -> tuple[list[str], int, int]:
         if "getString" not in body and "<Localized" not in body:
             continue
         maps = [m for m in find_maps(body) if m["fallback"]]
+        # A stub can look its map up from an IMPORTED module instead of an inline
+        # literal -- `TOPOLOGY_EN[id] ?? id` where TOPOLOGY_EN is exported by a
+        # sibling harness. find_maps() sees only literals, so every suite built on
+        # such a harness was skipped as "0 maps". That is the gate's own motivating
+        # case: the harness that lost topology-tool-locked-premium to 8cffb0935 is
+        # invisible to it. Resolve the identifier to the module that DEFINES it and
+        # judge that map, attributed to this test.
+        if not maps:
+            ref = _imported_map_ref(body)
+            if ref:
+                for spec in sorted(set(m.group("spec") for m in IMPORT_FROM_RE.finditer(body))):
+                    mod = resolve_spec(spec, test)
+                    if mod is None or mod == test:
+                        continue
+                    src = _read(mod)
+                    # The DECLARATION, not merely a mention: a module can export
+                    # several key-shaped objects (the topology harness exports a
+                    # 19-key TOPOLOGY_EN and a 148-key RETAIL_SEED fixture), and
+                    # matching on "this name appears somewhere in the file" picked
+                    # the wrong one -- 148 keys against a 7-key component reported
+                    # 263 findings. Locate the object bound to the NAME.
+                    decl = re.search(
+                        r"(?:export\s+)?(?:const|let|var)\s+" + re.escape(ref) + r"\b[^=]*=\s*\{",
+                        src,
+                    )
+                    if not decl:
+                        continue
+                    decl_line = src.count(chr(10), 0, decl.start()) + 1
+                    for m in find_maps(src):
+                        if abs(m["start_line"] - (decl_line + 1)) > 1:
+                            continue
+                        m = dict(m)
+                        m["fallback"] = ref + "[id] ?? id"
+                        # Scope to the modules the TEST imports DIRECTLY (the
+                        # component under test), not the transitive graph. An
+                        # imported map answers that component's copy; grading it
+                        # against everything the component itself imports reported
+                        # 169 findings where the component uses 7 bundle keys.
+                        # One level, because this map is a HARNESS somebody else
+                        # wrote -- its own file calls getString zero times and the
+                        # strings it supplies belong to the consumers.
+                        m["scope_direct"] = True
+                        maps.append(m)
+                    break
         if not maps:
             continue
         mocked = [m.group("spec") for m in VI_MOCK_RE.finditer(body)]
@@ -495,7 +555,9 @@ def scan() -> tuple[list[str], int, int]:
                     continue
                 nested.append(child)
         uses: dict[str, tuple[int, str]] = {}
-        for path in modules + nested:
+        imported_map = any(m.get("scope_direct") for m in maps)
+        scan_paths = modules if imported_map else (modules + nested)
+        for path in scan_paths:
             for key, line in uses_of(path).items():
                 if key.startswith(LOCAL_BUNDLE_PREFIXES) or key not in keys:
                     continue
