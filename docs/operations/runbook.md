@@ -1595,11 +1595,23 @@ role presets (`platform/core/src/rbac_presets.rs`), the roles that carry `SETTIN
 
 | Role | `SETTINGS_EDIT`? | Evidence |
 |---|---|---|
-| **Owner** | yes — via the `["*"]` wildcard grant | `rbac_presets.rs:42-47` |
-| **Manager** | yes, explicitly | `rbac_presets.rs:79-80` |
-| **Admin** | yes, explicitly | `rbac_presets.rs:193-194` |
-| Staff | **no** — the register role grants neither key | `rbac_presets.rs:136-159` |
-| Auditor | **no** — `SETTINGS_READ` only, deliberately | `rbac_presets.rs:260-275` |
+| **Owner** | yes — via the `["*"]` wildcard grant | `rbac_presets.rs:75` |
+| **Manager** | yes, explicitly | `rbac_presets.rs:109` |
+| **Admin** | yes, explicitly | `rbac_presets.rs:234` |
+| Staff | **no** — the preset grants neither key | `rbac_presets.rs:169-202` |
+| Auditor | **no** — `SETTINGS_READ` only, deliberately | `rbac_presets.rs:311` |
+
+**COORDINATES RE-MEASURED 2026-10-25 (round 223).** Every line reference in the table above was
+stale, and the verdicts were all still correct — which is the dangerous combination, because a
+reader who spot-checks one citation finds nothing there and cannot tell whether the FACT or the
+COORDINATE decayed. Measured at `rbac_presets.rs` HEAD: the six presets begin at :73 Owner, :79
+Manager, :169 Staff, :203 Admin, :304 Auditor, :327 Custom, and the settings pair sits at :108-109
+(Manager) and :233-234 (Admin), with Auditor's lone `SETTINGS_READ` at :311. The old table also
+pointed Manager at :79-80, which are its `name` and `description` lines — a plausible-looking
+citation that proves nothing about the permission. `check-cite-lines.py` grades only LIVE docs
+under its own roots and pairs a citation with the nearest backticked symbol in a window, so a
+correct line number on the WRONG fact passes it; the only defence is reading the line, which is
+what this round did. Verdicts left exactly as they were: Owner/Manager/Admin yes, Staff/Auditor no.
 
 So: **an Owner, Manager or Admin can request a restore; Staff and Auditor cannot** — and an
 Auditor *can* still list candidates and see that one is pending, which is the split working as

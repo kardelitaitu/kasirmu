@@ -35,12 +35,22 @@
 > `payables:view` (:656), `create` (:660), `settle` (:664), `writeoff` (:668);
 > `receivables:view` (:673), `create` (:676), `collect` (:679), `writeoff` (:682) — and
 > they are granted per preset in `rbac_presets.rs`: the manager preset at :161-164 and
-> :197-198, the admin preset at :296-299 and :320-322, the owner preset at :429-436. The
+> :197-198, the admin preset at :296-299 and :320-322. The
 > two families are NOT symmetric and the asymmetry is the ruling this plan asked for:
 > STAFF holds `receivables:view` + `receivables:collect` (:197-198) and NO `payables:*`
 > at all — a cashier may take money in against a customer's debt and may not commit the
 > store to a supplier's. That is §2c's Q5 answered in the code, so this file no longer
 > holds an open permission question.
+>
+> **CORRECTED 2026-10-25 (round 223).** The sentence above used to end "the owner preset at
+> :429-436". There is no owner entry at those lines: :429-436 is `ALL_ENFORCED`, the constant
+> INVENTORY, whose last preset (`Custom`) closes at :331. The Owner preset grants the `*`
+> wildcard at :75 and lists no individual key, so it has no AR/AP block to cite — which is
+> exactly why the citation looked plausible and was wrong. Third sighting of this misreading
+> in this tree (rounds 217, 222 and here), all of them reading a constant inventory as a role
+> definition; the two constructs share a file and a formatting style. The remaining
+> coordinates were re-measured and are correct: :161-164 and :197-198 are Manager, :296-299
+> and :320-322 are Admin.
 >
 > Two path renames applied below: `apps/desktop-client` → `apps/desktop-tauri`,
 > `crates/oz-core/` → `crates/kasirmu-core/`, and the numbered migrations `022_*`/`027_*`
