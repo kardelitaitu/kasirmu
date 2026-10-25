@@ -702,7 +702,7 @@ step "rbac citation gate self-test" "python3 scripts/check-rbac-citations.py --s
 # that never asserts the string passes while the UI is unlabelled (an aria-label
 # becomes lsp-nav-aria). THREE files hit it in one session, each found by breaking
 # something else and reading the failure. Ratcheted against
-# scripts/l10n-map-baseline.json, which is a CENSUS (581 keys), not 581 bugs: a
+# scripts/l10n-map-baseline.json, which is a CENSUS, not a defect count: a
 # map is legitimately partial when the suite never reads the strings it omits.
 # The gate refuses a NEW hole and refuses to stay silent when a known one is
 # fixed, so the file can only shrink. Proven both ways by mutation.

@@ -26,7 +26,7 @@ python scripts/check-l10n-test-maps.py
 ```
 
 * 826 test files read
-* 23 hand-maintained maps judged (a run of >= 3 `'key': 'value',` pairs whose
+* hand-maintained maps judged (a run of >= 3 `'key': 'value',` pairs whose
   miss lands back on the id, i.e. `map[id] ?? id`)
 * every key a component renders that the map does not carry. The count lives ONLY
   in `scripts/l10n-map-baseline.json`, never in prose: a total written into a
