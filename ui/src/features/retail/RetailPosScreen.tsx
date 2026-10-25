@@ -214,12 +214,20 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   const [showQuickReturn, setShowQuickReturn] = useState(false);
   const [quickReturnBarcode, setQuickReturnBarcode] = useState('');
   const [quickReturnLoading, setQuickReturnLoading] = useState(false);
+  /** Synchronous mirror of `quickReturnLoading` — see the re-entry guard above. */
+  const quickReturnLoadingRef = useRef(false);
   const [quickReturnSale, setQuickReturnSale] = useState<SaleDetail | null>(null);
   const [showQuickReturnRefund, setShowQuickReturnRefund] = useState(false);
 
   const handleQuickReturnSubmit = useCallback(async () => {
     const barcode = quickReturnBarcode.trim();
     if (!barcode) return;
+    // Re-entry guard: a READ, so nothing is written -- but the second lookup can answer
+    // after the first has opened the refund modal, and it would then re-open it over a
+    // screen the cashier has already moved on from, or toast "not found" over a receipt
+    // that was found.
+    if (quickReturnLoadingRef.current) return;
+    quickReturnLoadingRef.current = true;
     setQuickReturnLoading(true);
     try {
       const sale = await lookupSaleByReceiptBarcodeScoped(sessionToken, barcode);
@@ -236,6 +244,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       addToast({ message: requiredLocalized(l10n, 'retail-quick-return-error'), type: 'error' });
       playError();
     } finally {
+      quickReturnLoadingRef.current = false;
       setQuickReturnLoading(false);
     }
   }, [quickReturnBarcode, addToast, l10n, playError, sessionToken]);

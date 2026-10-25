@@ -119,7 +119,10 @@ vi.mock('@/api/hardware', async () => {
 
 vi.mock('@/api/sales', async () => {
   const { createSalesApiMock } = await import('@/__tests__/test-utils/mocks/api');
-  return createSalesApiMock();
+  // The quick-return receipt lookup is NOT part of the shared factory, and its absence is
+  // silent: the call resolves to undefined and the handler reads it as "no such sale".
+  // Added here so the quick-return cases can run AND count their calls.
+  return { ...createSalesApiMock(), lookupSaleByReceiptBarcodeScoped: vi.fn(async () => null) };
 });
 
 vi.mock('@/api/kds', async (importOriginal) => {
@@ -459,6 +462,34 @@ describe('RetailPosScreen — interactions', () => {
     });
 
     await waitFor(() => expect(openShiftScoped).toHaveBeenCalledTimes(1));
+  });
+
+  it('looks the receipt up ONCE when the quick-return button is double-tapped', async () => {
+    // A read, so nothing is written -- but the second lookup can answer AFTER the first
+    // opened the refund modal and re-open it, or toast "not found" over a receipt that was
+    // found.
+    const salesApi = await import('@/api/sales');
+    const lookup = salesApi.lookupSaleByReceiptBarcodeScoped as unknown as ReturnType<typeof vi.fn>;
+    expect(lookup, 'the sales mock must expose the receipt lookup').toBeDefined();
+
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(screen.getByText(/No shift/)).toBeInTheDocument());
+    await userEvent.keyboard('{F11}');
+
+    const input = await waitFor(() => {
+      const el = document.querySelector('.retail-quick-return-input') as HTMLInputElement | null;
+      expect(el, 'the quick-return input did not open').not.toBeNull();
+      return el!;
+    });
+    fireEvent.change(input, { target: { value: 'RCPT-1' } });
+
+    const submit = document.querySelector('.retail-shift-confirm-btn') as HTMLButtonElement;
+    act(() => {
+      submit.click();
+      submit.click();
+    });
+
+    await waitFor(() => expect(lookup).toHaveBeenCalledTimes(1));
   });
 
   // ── A refund changes the shift totals, so the shift must be RE-READ ──────
