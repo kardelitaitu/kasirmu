@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { useVersionStatus } from '@/hooks/useVersionStatus';
 import { createBackup } from '@/api/data';
@@ -83,6 +83,8 @@ export default function UpdateBanner() {
   // ── State ─────────────────────────────────────────────────────
   const [dismissed, setDismissed] = useState(false);
   const [installing, setInstalling] = useState(false);
+  /** Synchronous mirror of `installing` — see the re-entry guard in `handleInstall`. */
+  const installingRef = useRef(false);
   const [backingUp, setBackingUp] = useState(false);
   const [backupError, setBackupError] = useState<string | null>(null);
   const [versionBlocked, setVersionBlocked] = useState(false);
@@ -148,6 +150,13 @@ export default function UpdateBanner() {
     // 1. Version compatibility gate
     if (versionBlocked) return;
 
+    // 2. Re-entry guard. updateInstance.downloadAndInstall() downloads, installs AND
+    // RESTARTS the app, and it is preceded by a full database backup -- so a replay takes
+    // two backups of the same store, writes LAST_BACKUP_KEY twice (the second path wins,
+    // which is fine) and then races two installers over one download directory. The two
+    // state flags are committed on the next render, after the second tap.
+    if (installingRef.current) return;
+    installingRef.current = true;
     setInstalling(true);
     setBackingUp(true);
     setBackupError(null);
@@ -167,6 +176,7 @@ export default function UpdateBanner() {
       await updateInstance.downloadAndInstall();
     } catch (err) {
       // Installation failed — banner stays visible.
+      installingRef.current = false;
       setInstalling(false);
       setBackingUp(false);
       setBackupError(plainErrorMessage(err, 'Update failed'));
