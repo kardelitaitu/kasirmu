@@ -687,6 +687,15 @@ step "scratch leak gate self-test" "python3 scripts/check-scratch-leaks.py --sel
 # Gate: scripts/gates.json -> "hardcoded-copy-gate".
 step "hardcoded copy gate" "python3 scripts/check-hardcoded-copy.py" python3 scripts/check-hardcoded-copy.py
 step "hardcoded copy gate self-test" "python3 scripts/check-hardcoded-copy.py --self-test" python3 scripts/check-hardcoded-copy.py --self-test
+# Permission-inventory citation gate, added 2026-10-25 after the SAME misreading was
+# found in four places: docs cited a line in ALL_ENFORCED (the constant inventory)
+# as if it were a role preset. Both lists are one-per-line in rbac_presets.rs, so a
+# line number cannot tell them apart, and the error inverts the fact -- inventory
+# says a key EXISTS, a preset says a ROLE GRANTS it. The span is COMPUTED from the
+# file each run; a hardcoded boundary would rot the way the citations did.
+# Gate: scripts/gates.json -> "rbac-citation-gate".
+step "rbac citation gate" "python3 scripts/check-rbac-citations.py" python3 scripts/check-rbac-citations.py
+step "rbac citation gate self-test" "python3 scripts/check-rbac-citations.py --self-test" python3 scripts/check-rbac-citations.py --self-test
 # A pipeline exits with its LAST command's status, so `if s=$(... | tail -1)` is always
 # true and the branch meant for "nothing matched" is unreachable. This repo shipped that
 # shape for weeks in the cargo-deny block below and nobody saw it, because BOTH branches

@@ -260,10 +260,23 @@ asserts the toast appears plus `redeemAttempted` so the case cannot pass on a re
 never ran.
 
 The RBAC half also has a ruling, and it is the interesting one: `LOYALTY_REDEEM` is in the STAFF
-preset (`rbac_presets.rs:184`) while `GIFTCARDS_REDEEM` is granted only to MANAGER/ADMIN/OWNER
-(`:419`). A cashier may take money in against a customer's debt or points and may not touch a
-gift card. **That is a deliberate asymmetry and it means the RBAC row is not "add it to Staff" —
-it is "confirm the asymmetry", which is a yes/no an owner can answer.**
+preset (`rbac_presets.rs:184`) while `GIFTCARDS_REDEEM` is granted to NO preset at all. A cashier
+may take money in against a customer's debt or points and may not touch a gift card. **That is a
+deliberate asymmetry and it means the RBAC row is not "add it to Staff" — it is "confirm the
+asymmetry", which is a yes/no an owner can answer.**
+
+**CORRECTED 2026-10-25 (round 223).** The sentence above used to continue "granted only to
+MANAGER/ADMIN/OWNER (`:419`)". `:419` is not a preset line: it is inside `ALL_ENFORCED`, the
+constant inventory, which opens at `:340` and whose last PRESET (`Custom`) closes at `:331`.
+Measured: `ROLE_PRESETS` holds ZERO gift-card references across all six presets, so the key is
+granted to nobody by default. THIS PARAGRAPH IS THE LIKELY ORIGIN of the same misreading in
+three other places in this tree (the sibling gift-card plan, `payment-methods-plan.md`, and a
+round-217 probe of mine that mutated the wrong migration on the strength of the same habit) —
+all four read a line in the inventory as a line in a role. The narrowed question an owner is
+asked therefore gets SMALLER, not larger: it was "re-confirm three presets already hold it", and
+it is "decide whether any built-in role should hold it, knowing none does today".
+`no_builtin_preset_grants_a_giftcard_key` (`permission_registry_tests.rs`) pins the measured
+state.
 
 So what remains is what the sibling plan now says: one migration (`payments.method` has no gift
 member) plus one settlement decision, and the shape to copy is `PaymentModal.tsx:1190` with its

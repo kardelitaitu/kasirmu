@@ -1255,6 +1255,12 @@ jobs:
       # grades its own detector first. Gates.json: hardcoded-copy-gate.
       - name: Hardcoded-copy scan
         run: python3 scripts/check-hardcoded-copy.py
+      # Four docs cited a line inside ALL_ENFORCED (every enforced KEY) as a role
+      # preset (what a ROLE grants). Both are permissions::X lists in the same
+      # file, so the two are indistinguishable by line number, and the error
+      # inverts the fact. Records are exempt when they say so inline.
+      - name: Permission-inventory citation scan
+        run: python3 scripts/check-rbac-citations.py
       # The COR-7 per-attempt idempotency rules exist TWICE -- the implementation
       # in kasirmu-bridge and a fork in the tablet shell -- and the fork drifted
       # into a security defect: only the bridge refused a colon in the attempt id,

@@ -2027,6 +2027,25 @@
       }
     },
     {
+      "id": "rbac-citation-gate",
+      "label": "Docs reading the permission inventory as a role preset",
+      "status": "required",
+      "_note": "Added 2026-10-25. platform/core/src/rbac_presets.rs holds two constructs in one file and one formatting style: ROLE_PRESETS (the six roles, :70) and ALL_ENFORCED (every enforced key, :340). Both are 'permissions::X,' lists one-per-line, so a line number cannot tell them apart -- and reading the second as the first INVERTS the fact: inventory says a key EXISTS, a preset says a ROLE GRANTS it. THE MISTAKE WAS MADE FOUR TIMES BEFORE IT WAS GUARDED: todo-orphan-module-dispositions.md said GIFTCARDS_REDEEM was 'granted only to MANAGER/ADMIN/OWNER (:419)' where :419 is inventory (that sentence is the likely origin); the sibling gift-card plan repeated it; payment-methods-plan.md cited 'the owner preset at :429-436', also inventory; and a round-217 mutation probe of mine edited a superseded migration on the same habit. Every one was written by someone who had opened the right file -- the two lists are indistinguishable at a glance, which is why a guard beats another hand-fix. THREE FALSE-POSITIVE ROUNDS SHAPED THE DETECTOR, each measured rather than assumed: (1) accepting a bare ':N' anywhere reported 8 findings that were all audit stamps citing OTHER files -- a stamped paragraph carries a dozen coordinates and names rbac_presets nowhere; (2) scoping the bare arm to lines that merely MENTION rbac_presets still mis-attributed the coordinate in an audit stamp that names both rbac_presets and SyncSection.tsx:385-535; (3) the fix is per-citation attribution -- a bare ':N' belongs to the nearest PRECEDING file name on the line, so the stamp's coordinate attaches to SyncSection. The span is COMPUTED from the file on every run, never hardcoded: a stored boundary would rot the same way the citations did. A line that says the citation 'is not a preset' or 'inside ALL_ENFORCED' is exempt, because this doc family records its own corrections inline. PROVEN TO FIRE: planting 'The owner preset grants it at rbac_presets.rs:420' in runbook.md makes it exit 1 naming the file and coordinate, one finding per coordinate (deduped -- the qualified and bare arms both match the same text). PROVEN NOT TO BE DEAF: graded over three must-flag and four must-pass synthetic lines before any real file is read, and a scan that reads 0 markdown files exits 2.",
+      "runners": {
+        "check.sh": [
+          "rbac citation gate",
+          "rbac citation gate self-test"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Permission-inventory citation scan"
+        ]
+      }
+    },
+    {
       "id": "pipeline-verdicts",
       "label": "Pipeline exit-code verdicts",
       "status": "required",
