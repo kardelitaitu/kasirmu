@@ -166,6 +166,12 @@ against a string the UI never renders:
    `appearance-*-aria` values were read correctly only because the call site
    was checked first.
 
+4. **The key may not live in the file you are reading.** Grepping one FTL
+   file for the key returns nothing and looks like a missing message;
+   `sync-conflicts-loading` is in `sync.ftl`, not `settings.ftl`, although every
+   neighbouring `sync-conflicts-*` key is in `settings.ftl`. Always search the
+   whole `shared-ui/locales/` directory, never a guessed file, or a real key
+   reads as absent and gets either skipped or invented.
 The general rule: **read the stub before choosing the value.** The stub, not
 the FTL, decides which form is correct -- and a test that passes is not
 evidence that the value is right, because the assertion may be matching the
