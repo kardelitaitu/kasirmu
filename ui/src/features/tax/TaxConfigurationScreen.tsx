@@ -159,6 +159,8 @@ export default function TaxConfigurationScreen({ embedded = false }: TaxConfigur
   const [editingCatName, setEditingCatName] = useState('');
   const [selectedCatRateIds, setSelectedCatRateIds] = useState<string[]>([]);
   const [savingCat, setSavingCat] = useState(false);
+  /** Synchronous mirror of `savingCat` — see the re-entry guard in `handleSaveCat`. */
+  const savingCatRef = useRef(false);
 
   // ── Data loading ────────────────────────────────────────────────
 
@@ -465,6 +467,15 @@ export default function TaxConfigurationScreen({ embedded = false }: TaxConfigur
 
   const handleSaveCat = useCallback(async () => {
     if (!editingCatId) return;
+    // Re-entry guard, documented rather than redundant. `set_category_tax_rates` is a
+    // DELETE-then-`INSERT OR IGNORE` over a PRIMARY KEY (category_id, tax_rate_id), so a
+    // replay writes the same set twice and nothing in the schema is at risk. What a replay
+    // COSTS is the shared state: two runs share one `savingCat`, the first closes the modal
+    // and reloads, and the second then reports tax-config-cat-save-error over a save that
+    // landed. The settings popup now disables Save while `saving` is true, so this is the
+    // second door -- a keyboard submit or a host that stops passing `saving`.
+    if (savingCatRef.current) return;
+    savingCatRef.current = true;
     setSavingCat(true);
     try {
       await setCategoryTaxRatesScoped(sessionToken, {
@@ -479,6 +490,7 @@ export default function TaxConfigurationScreen({ embedded = false }: TaxConfigur
     } catch {
       addToast({ message: requiredLocalized(l10n, 'tax-config-cat-save-error'), type: 'error' });
     } finally {
+      savingCatRef.current = false;
       setSavingCat(false);
     }
   }, [editingCatId, selectedCatRateIds, sessionToken, loadAll, l10n, addToast]);

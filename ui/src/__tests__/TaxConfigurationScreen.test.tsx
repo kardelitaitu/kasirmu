@@ -332,6 +332,34 @@ describe('TaxConfigurationScreen', () => {
     expect(within(drinksRow).getByText(/no rates assigned/i)).toBeInTheDocument();
   });
 
+  it('assigns the category rates once when Save is double-tapped', async () => {
+    // The write is DELETE-then-INSERT-OR-IGNORE over (category_id, tax_rate_id), so a replay
+    // is harmless to the schema. What it costs is the shared state: two runs share one
+    // savingCat, the first closes the modal and reloads, and the second reports
+    // tax-config-cat-save-error over a save that landed.
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+
+    const foodRow = screen.getByText('Food').closest('tr')!;
+    const editBtn = within(foodRow).getByRole('button', { name: /edit/i });
+    await userEvent.click(editBtn);
+
+    const dialog = await screen.findByRole('dialog');
+    // The popup's Save is disabled until the assignment actually changes, so toggle one.
+    const checks = within(dialog).getAllByRole('checkbox');
+    await userEvent.click(checks[1]!);
+
+    const save = within(dialog).getByTestId('settings-popup-save');
+    await act(async () => {
+      fireEvent.click(save);
+      fireEvent.click(save);
+    });
+
+    const calls = () => invokeMock.mock.calls.filter((c: unknown[]) => c[0] === 'set_category_tax_rates_scoped');
+    await waitFor(() => expect(calls().length).toBeGreaterThan(0));
+    expect(calls().length, 'a double tap assigned the category rates twice').toBe(1);
+  });
+
   it('disables the confirm button while deletion is in progress', async () => {
     // Make delete slow so we can see the pending state
     invokeMock.mockImplementation((cmd: string) => {
