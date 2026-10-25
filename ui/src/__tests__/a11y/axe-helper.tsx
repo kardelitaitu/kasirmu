@@ -180,6 +180,19 @@ export function renderWithProviders(children: ReactElement, ...extraFtl: string[
 ///
 /// Violations are reported via vitest's assertion error with the full
 /// axe-core report (rule ID, impact, description, and failing nodes).
+///
+/// PASS AN ATTACHED ELEMENT. This wrapper is backed by jest-axe's `axe()`, whose
+/// `mount()` REWRITES `document.body.innerHTML` whenever the element it is handed is
+/// not inside `document.body` -- and that assignment detaches React's root, so the
+/// global `afterEach(cleanup())` in test-setup.ts then finds nothing to unmount and the
+/// rendered tree survives into the next test. The exception: the tree's own cases then
+/// reported `landmark-no-duplicate-main` against a component that had one <main>
+/// (measured 2026-10-26: counts rose 1 -> 2 -> 3 across one file). The two safe shapes,
+/// both verified this round: the `container` from a render (70 of 74 call sites) and
+/// `document.body` itself (the 4 portal-era call sites, which `body.contains(body)`
+/// short-circuits). A DETACHED element -- `document.documentElement` is the one that
+/// bit -- takes the rewriting path. `checkA11yDocument` exists for that case and calls
+/// axe-core directly for exactly this reason.
 export async function checkA11y(
   container: HTMLElement,
   options?: Record<string, unknown>,
