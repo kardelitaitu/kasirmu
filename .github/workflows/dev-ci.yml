@@ -1261,6 +1261,14 @@ jobs:
       # inverts the fact. Records are exempt when they say so inline.
       - name: Permission-inventory citation scan
         run: python3 scripts/check-rbac-citations.py
+      # Production copy keeps moving into Fluent, and a vitest file that answers
+      # getString from a hand-maintained map is not updated by that move -- it
+      # returns the RAW KEY. The dangerous half is silent: the case that never
+      # asserts the string passes while the UI is unlabelled. Ratcheted against
+      # scripts/l10n-map-baseline.json, a census that may only shrink.
+      # Gates.json: l10n-test-maps.
+      - name: l10n stub map scan
+        run: python3 scripts/check-l10n-test-maps.py
       # The COR-7 per-attempt idempotency rules exist TWICE -- the implementation
       # in kasirmu-bridge and a fork in the tablet shell -- and the fork drifted
       # into a security defect: only the bridge refused a colon in the attempt id,

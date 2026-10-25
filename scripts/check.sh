@@ -696,6 +696,19 @@ step "hardcoded copy gate self-test" "python3 scripts/check-hardcoded-copy.py --
 # Gate: scripts/gates.json -> "rbac-citation-gate".
 step "rbac citation gate" "python3 scripts/check-rbac-citations.py" python3 scripts/check-rbac-citations.py
 step "rbac citation gate self-test" "python3 scripts/check-rbac-citations.py --self-test" python3 scripts/check-rbac-citations.py --self-test
+# Vitest l10n stub maps, added 2026-11-06. Production copy keeps moving into
+# Fluent, and a test that answers getString from a HAND-MAINTAINED map is not
+# updated by that move -- it returns the RAW KEY. The failure is silent: the case
+# that never asserts the string passes while the UI is unlabelled (an aria-label
+# becomes lsp-nav-aria). THREE files hit it in one session, each found by breaking
+# something else and reading the failure. Ratcheted against
+# scripts/l10n-map-baseline.json, which is a CENSUS (581 keys), not 581 bugs: a
+# map is legitimately partial when the suite never reads the strings it omits.
+# The gate refuses a NEW hole and refuses to stay silent when a known one is
+# fixed, so the file can only shrink. Proven both ways by mutation.
+# Gate: scripts/gates.json -> "l10n-test-maps".
+step "l10n test maps" "python3 scripts/check-l10n-test-maps.py" python3 scripts/check-l10n-test-maps.py
+step "l10n test maps self-test" "python3 scripts/check-l10n-test-maps.py --self-test" python3 scripts/check-l10n-test-maps.py --self-test
 # A pipeline exits with its LAST command's status, so `if s=$(... | tail -1)` is always
 # true and the branch meant for "nothing matched" is unreachable. This repo shipped that
 # shape for weeks in the cargo-deny block below and nobody saw it, because BOTH branches
