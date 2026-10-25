@@ -885,7 +885,7 @@ export default function WorkspaceHome() {
                       className="workspace-card workspace-card--quick ws-color-store-pos"
                       data-testid="workspace-card-quick-retail"
                       onClick={() => setActiveWorkspace('store-pos')}
-                      aria-label="Retail POS"
+                      aria-label={l10n.getString('workspace-home-retail-pos')}
                     >
                       <div className="workspace-card-row">
                         <div className="workspace-card-icon">
@@ -893,10 +893,14 @@ export default function WorkspaceHome() {
                         </div>
                         <div className="workspace-card-body">
                           <div className="workspace-card-title">
-                            <h2 className="workspace-card-name">Retail POS</h2>
+                            <h2 className="workspace-card-name">
+                              {l10n.getString('workspace-home-retail-pos')}
+                            </h2>
                           </div>
                           <div className="workspace-card-text">
-                            <p className="workspace-card-desc">Barcode retail POS terminal</p>
+                            <p className="workspace-card-desc">
+                              {l10n.getString('workspace-home-retail-pos-desc')}
+                            </p>
                           </div>
                         </div>
                       </div>
@@ -907,7 +911,7 @@ export default function WorkspaceHome() {
                       className="workspace-card workspace-card--quick ws-color-restaurant-pos"
                       data-testid="workspace-card-quick-restaurant"
                       onClick={() => setActiveWorkspace('restaurant-pos')}
-                      aria-label="Restaurant POS"
+                      aria-label={l10n.getString('workspace-home-restaurant-pos')}
                     >
                       <div className="workspace-card-row">
                         <div className="workspace-card-icon">
@@ -915,10 +919,14 @@ export default function WorkspaceHome() {
                         </div>
                         <div className="workspace-card-body">
                           <div className="workspace-card-title">
-                            <h2 className="workspace-card-name">Restaurant POS</h2>
+                            <h2 className="workspace-card-name">
+                              {l10n.getString('workspace-home-restaurant-pos')}
+                            </h2>
                           </div>
                           <div className="workspace-card-text">
-                            <p className="workspace-card-desc">Dining and table service POS</p>
+                            <p className="workspace-card-desc">
+                              {l10n.getString('workspace-home-restaurant-pos-desc')}
+                            </p>
                           </div>
                         </div>
                       </div>

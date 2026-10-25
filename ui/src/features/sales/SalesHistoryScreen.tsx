@@ -154,9 +154,9 @@ function SwipeableOrderRow({ sale, canVoid, onView, onVoid, cashierName }: Swipe
           <Tooltip content={`Faktur Pajak: ${sale.fakturPajak}`}>
             <span
               className="sales-history-faktur-badge"
-              aria-label={`Faktur Pajak: ${sale.fakturPajak}`}
+              aria-label={`${l10n.getString('sales-history-efaktur')}: ${sale.fakturPajak}`}
             >
-              <Badge variant="info" size="sm">e-Faktur</Badge>
+              <Badge variant="info" size="sm">{l10n.getString('sales-history-efaktur')}</Badge>
             </span>
           </Tooltip>
         )}
@@ -1655,15 +1655,19 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
 
       {/* ── Stamp e-Faktur Modal (PER-11/PJ/2025) ──────────────────── */}
       {stampExit.shouldRender && (
-        <div className={`sales-history-overlay${stampExit.exiting ? ' sales-history-overlay--exiting' : ''}`} role="dialog" aria-modal="true" aria-label="Stamp e-Faktur NSFP">
+        <div className={`sales-history-overlay${stampExit.exiting ? ' sales-history-overlay--exiting' : ''}`} role="dialog" aria-modal="true" aria-label={l10n.getString('sales-history-stamp-modal-aria')}>
           <div ref={stampPanelRef} className={`sales-history-modal sales-history-stamp-modal${stampExit.exiting ? ' sales-history-modal--exiting' : ''}`}>
             <div className="sales-history-modal-header">
-              <h2><span>Input e-Faktur NSFP (DJP Coretax)</span></h2>
+              <h2>
+                <Localized id="sales-history-stamp-title">
+                  <span>Input e-Faktur NSFP (DJP Coretax)</span>
+                </Localized>
+              </h2>
               <button
                 type="button"
                 className="sales-history-modal-close"
                 onClick={stampExit.requestClose}
-                aria-label="Close"
+                aria-label={l10n.getString('close')}
               >
                 &times;
               </button>
@@ -1704,13 +1708,14 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
                   id="stamp-nsfp"
                   type="text"
                   maxLength={13}
-                  placeholder="e.g. 2600000000123"
+                  placeholder={l10n.getString('sales-history-stamp-nsfp-placeholder')}
                   className="sales-history-stamp-input"
                   value={stampNsfp}
                   onChange={(e) => setStampNsfp(e.target.value.replace(/\D/g, ''))}
                 />
                 <div className="sales-history-stamp-preview">
-                  Format Faktur Pajak: <span className="sales-history-stamp-preview-code">{stampKodeTransaksi}00{stampNsfp.padEnd(13, '·')}</span>
+                  {l10n.getString('sales-history-stamp-preview')}{' '}
+                  <span className="sales-history-stamp-preview-code">{stampKodeTransaksi}00{stampNsfp.padEnd(13, '·')}</span>
                 </div>
               </div>
 
@@ -1722,7 +1727,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
 
               <div className="sales-history-modal-actions">
                 <Button variant="ghost" onClick={stampExit.requestClose} disabled={stamping}>
-                  Cancel
+                  {l10n.getString('cancel')}
                 </Button>
                 <Button
                   variant="primary"
@@ -1730,7 +1735,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
                   loading={stamping}
                   disabled={stampNsfp.length !== 13}
                 >
-                  Stamp e-Faktur
+                  {l10n.getString('sales-history-stamp-confirm')}
                 </Button>
               </div>
             </div>

@@ -390,6 +390,18 @@ sales-history-void-error = Failed to void order
 # Shown inside the e-Faktur stamp modal when the NSFP write fails (ERR-10: the
 # raw backend message used to be rendered here instead).
 sales-history-stamp-error = Failed to stamp the e-Faktur NSFP
+# The stamp dialog's chrome (round 211). Its BODY was already Indonesian —
+# "Masukkan 13-digit Nomor Seri Faktur Pajak ... diterbitkan oleh DJP Coretax",
+# and the ten Kode Transaksi options below it — while the header, close button,
+# placeholder, preview label and both actions were English literals in the same
+# dialog. A merchant reading Indonesian copy with an English "Stamp e-Faktur"
+# button is the asymmetry these keys close.
+sales-history-efaktur = e-Faktur
+sales-history-stamp-modal-aria = Stamp e-Faktur NSFP
+sales-history-stamp-title = Input e-Faktur NSFP (DJP Coretax)
+sales-history-stamp-nsfp-placeholder = e.g. 2600000000123
+sales-history-stamp-preview = Format Faktur Pajak:
+sales-history-stamp-confirm = Stamp e-Faktur
 # Toast shown when creating a Faktur Pengganti fails.
 sales-history-pengganti-error = Failed to create the Faktur Pengganti
 

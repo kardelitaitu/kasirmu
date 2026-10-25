@@ -655,6 +655,13 @@ workspace-home-memo-desc = Tulis pemberitahuan untuk terminal dan lokasi
 workspace-home-add-workspace = Tambah Workspace
 workspace-home-add-workspace-desc = Konfigurasi workspace di editor topologi
 workspace-home-add-workspace-aria = Tambah workspace melalui editor topologi
+# Dua kartu ruang kerja cepat pada pemilih ruang kerja. Judul dan deskripsinya
+# dulu berupa literal JSX di WorkspaceHome.tsx:888-921, padahal semua string
+# lain di layar itu datang dari bundel ini.
+workspace-home-retail-pos = POS Retail
+workspace-home-retail-pos-desc = Terminal POS retail dengan pemindai barcode
+workspace-home-restaurant-pos = POS Restoran
+workspace-home-restaurant-pos-desc = POS untuk layanan makan dan meja
 workspace-home-reports-aria = Buka Laporan
 workspace-home-shortcut-open = Buka
 

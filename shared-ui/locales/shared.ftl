@@ -675,6 +675,13 @@ workspace-home-memo-desc = Write notices for terminals and locations
 workspace-home-add-workspace = Add Workspace
 workspace-home-add-workspace-desc = Configure workspaces in the topology editor
 workspace-home-add-workspace-aria = Add workspace via topology editor
+# The two quick-start workspace cards on the workspace picker. Their titles and
+# descriptions were JSX literals at WorkspaceHome.tsx:888-921 while every other
+# string on that screen came from this bundle.
+workspace-home-retail-pos = Retail POS
+workspace-home-retail-pos-desc = Barcode retail POS terminal
+workspace-home-restaurant-pos = Restaurant POS
+workspace-home-restaurant-pos-desc = Dining and table service POS
 workspace-home-reports-aria = Open Reports
 workspace-home-shortcut-open = Open
 

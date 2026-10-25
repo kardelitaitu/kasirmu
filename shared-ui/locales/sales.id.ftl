@@ -304,6 +304,17 @@ sales-history-void-default-reason = Dibatalkan dari riwayat penjualan
 sales-history-void-error = Gagal membatalkan pesanan
 # Shown inside the e-Faktur stamp modal when the NSFP write fails (ERR-10).
 sales-history-stamp-error = Gagal membubuhkan NSFP e-Faktur
+# Kerangka dialog pembubuhan (round 211). ISINYA sudah berbahasa Indonesia —
+# "Masukkan 13-digit Nomor Seri Faktur Pajak ... diterbitkan oleh DJP Coretax",
+# serta sepuluh opsi Kode Transaksi di bawahnya — sementara judul, tombol tutup,
+# placeholder, label pratinjau, dan kedua aksinya masih literal Inggris di
+# dialog yang sama. Kunci-kunci ini menutup ketidakselarasan tersebut.
+sales-history-efaktur = e-Faktur
+sales-history-stamp-modal-aria = Bubuhkan NSFP e-Faktur
+sales-history-stamp-title = Masukkan NSFP e-Faktur (DJP Coretax)
+sales-history-stamp-nsfp-placeholder = mis. 2600000000123
+sales-history-stamp-preview = Format Faktur Pajak:
+sales-history-stamp-confirm = Bubuhkan e-Faktur
 # Toast shown when creating a Faktur Pengganti fails.
 sales-history-pengganti-error = Gagal membuat Faktur Pengganti
 sales-history-export-id = ID Penjualan
