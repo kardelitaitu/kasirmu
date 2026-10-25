@@ -1,26 +1,5 @@
 {
   "description": "Outstanding test assertions that name a real Fluent message id where real copy could render. Ratcheted by scripts/check-raw-key-assertions.py; the file may only shrink. Each entry asserts that the UI shows its own translation key.",
-  "total": 5,
-  "entries": [
-    {
-      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:168",
-      "key": "topology-rev-browser-deflated-body"
-    },
-    {
-      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:201",
-      "key": "topology-rev-browser-error-detail"
-    },
-    {
-      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:206",
-      "key": "topology-rev-browser-loading-one"
-    },
-    {
-      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:245",
-      "key": "topology-rev-browser-geometry"
-    },
-    {
-      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:325",
-      "key": "topology-rev-browser-deflated-remedy"
-    }
-  ]
+  "total": 0,
+  "entries": []
 }

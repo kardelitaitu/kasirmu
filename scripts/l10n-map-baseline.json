@@ -1,6 +1,6 @@
 {
   "description": "see --write-baseline",
-  "total": 593,
+  "total": 590,
   "entries": [
     {
       "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
@@ -1589,16 +1589,6 @@
     },
     {
       "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:33",
-      "key": "topology-rev-browser-deflated-body",
-      "used_by": "used-by TopologyRevisionBrowser.tsx:391"
-    },
-    {
-      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:33",
-      "key": "topology-rev-browser-deflated-remedy",
-      "used_by": "used-by TopologyRevisionBrowser.tsx:401"
-    },
-    {
-      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:33",
       "key": "topology-rev-browser-detail-title",
       "used_by": "used-by TopologyRevisionBrowser.tsx:388"
     },
@@ -1606,11 +1596,6 @@
       "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:33",
       "key": "topology-rev-browser-diff-summary",
       "used_by": "used-by TopologyRevisionBrowser.tsx:441"
-    },
-    {
-      "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:33",
-      "key": "topology-rev-browser-geometry",
-      "used_by": "used-by TopologyRevisionBrowser.tsx:430"
     },
     {
       "at": "ui/src/__tests__/TopologyRevisionBrowser.test.tsx:33",

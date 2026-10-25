@@ -35,6 +35,12 @@ const EN: Record<string, string> = {
   'topology-rev-browser-identical': 'Same configuration as now',
   'topology-rev-browser-empty': 'Nothing has been applied to this branch yet.',
   'topology-rev-browser-no-note': 'No note',
+  // Copy these assertions matched as raw keys. Values from shared-ui/locales/*.ftl;
+  // geometry keeps its {moved}/{rerouted} holes in the form this stub substitutes.
+  'topology-rev-browser-deflated-body': 'This deploy is recorded but its graph was pruned by retention.',
+  'topology-rev-browser-error-detail': 'Could not load this revision',
+  'topology-rev-browser-geometry': '{moved} moved, {rerouted} rerouted',
+  'topology-rev-browser-deflated-remedy': 'Restore from a retained revision to inspect the graph.',
 };
 
 vi.mock('@fluent/react', async () => {
@@ -165,7 +171,7 @@ describe('TopologyRevisionBrowser', () => {
     // missing deflated branch.)
     await waitFor(() =>
       expect(document.querySelector('.topology-rev-browser-detail')?.textContent)
-        .toContain('topology-rev-browser-deflated-body'));
+        .toContain('pruned by retention'));
     // ...and the preview affordance is withdrawn, not merely disabled.
     expect(prunedRow?.querySelector('.topology-rev-browser-pruned')).not.toBeNull();
   });
@@ -198,12 +204,13 @@ describe('TopologyRevisionBrowser', () => {
       // The failure is REPORTED...
       await waitFor(() => {
         const err = document.querySelector('.topology-rev-browser-detail, .topology-rev-browser-error');
-        expect(document.body.textContent).toContain('topology-rev-browser-error-detail');
+        expect(document.body.textContent).toContain('Could not load this revision');
         expect(err).not.toBeNull();
       });
       // ...and the endless spinner is gone.
       expect(screen.queryByText('Loading revision…')).toBeNull();
-      expect(screen.queryByText('topology-rev-browser-loading-one')).toBeNull();
+    // (The raw-key twin was deleted: queryByText on a key matches nothing once the
+    // stub maps it, so it asserted no fact. The line above is the real check.)
     } finally {
       spy.mockRestore();
     }
@@ -242,7 +249,7 @@ describe('TopologyRevisionBrowser', () => {
     await waitFor(() =>
       expect(screen.getByText('Same configuration as now')).toBeInTheDocument());
     expect(document.querySelector('.topology-rev-browser-geometry')?.textContent)
-      .toContain('topology-rev-browser-geometry');
+      .toContain('moved');
     expect(document.querySelectorAll('.topology-rev-browser-change')).toHaveLength(0);
   });
 
@@ -322,7 +329,7 @@ describe('TopologyRevisionBrowser', () => {
     // §4's remedy, stated where the loss is visible — not a dead end.
     await waitFor(() =>
       expect(document.querySelector('.topology-rev-browser-detail')?.textContent)
-        .toContain('topology-rev-browser-deflated-remedy'));
+        .toContain('Restore from a retained revision'));
     expect(document.querySelector('.topology-rev-browser-restore')).toBeNull();
   });
 
