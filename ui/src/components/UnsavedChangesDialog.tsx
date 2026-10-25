@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import { requiredLocalized } from '@/components/requiredLocalized';
 import { Localized, useLocalization } from '@fluent/react';
 import { Button } from '@/components/Button';
 import { Modal } from '@/components/Modal';
@@ -72,7 +73,7 @@ export function UnsavedChangesDialog({
         size="md"
         onClick={onCancel}
         disabled={saving}
-        aria-label={l10n.getString('cancel') || 'Cancel'}
+        aria-label={requiredLocalized(l10n, 'cancel')}
         data-testid="unsaved-dialog-cancel"
       >
         <Localized id="cancel">
@@ -84,7 +85,7 @@ export function UnsavedChangesDialog({
         size="md"
         onClick={onDiscard}
         disabled={saving}
-        aria-label={l10n.getString('restaurant-unsaved-discard') || l10n.getString('discard') || 'Discard'}
+        aria-label={requiredLocalized(l10n, 'discard')}
         data-testid="unsaved-dialog-discard"
       >
         <Localized id="restaurant-unsaved-discard">
@@ -96,7 +97,7 @@ export function UnsavedChangesDialog({
         size="md"
         loading={saving}
         onClick={onSave}
-        aria-label={l10n.getString('save') || 'Save'}
+        aria-label={requiredLocalized(l10n, 'save')}
         data-testid="unsaved-dialog-save"
       >
         <Localized id="save">
@@ -113,7 +114,7 @@ export function UnsavedChangesDialog({
       showCloseButton={true}
       closeButtonPosition="outside"
       className="unsaved-changes-dialog-panel"
-      ariaLabel={l10n.getString('restaurant-unsaved-dialog-headline') || 'You have unsaved changes.'}
+      ariaLabel={requiredLocalized(l10n, 'restaurant-unsaved-dialog-headline')}
       footer={footer}
     >
       <div className="unsaved-dialog-body">

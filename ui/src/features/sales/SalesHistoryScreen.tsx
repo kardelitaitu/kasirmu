@@ -685,7 +685,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
         isInvoice: Boolean(detail.statutoryNumber),
       });
       addToast({
-        message: l10n.getString('sales-history-reprint-success') || 'Receipt reprinted successfully',
+        message: requiredLocalized(l10n, 'sales-history-reprint-success'),
         type: 'success',
       });
     } catch (printErr) {
@@ -1083,7 +1083,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
               type="button"
               className="sales-history-back-btn"
               onClick={onBack}
-              aria-label={l10n.getString('back') || 'Back'}
+              aria-label={requiredLocalized(l10n, 'back')}
               data-testid="sales-history-back-btn"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
@@ -1246,7 +1246,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
               type="button"
               className="sales-history-clear-filters-btn"
               onClick={handleClearFilters}
-              aria-label={l10n.getString('sales-history-clear-filters') || 'Clear filters'}
+              aria-label={requiredLocalized(l10n, 'sales-history-clear-filters')}
               data-testid="sales-history-clear-filters-btn"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
@@ -1298,7 +1298,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
                   type="button"
                   className="sales-history-search-clear-btn"
                   onClick={() => setSearchQuery('')}
-                  aria-label={l10n.getString('retail-search-clear-aria') || 'Clear search'}
+                  aria-label={requiredLocalized(l10n, 'retail-search-clear-aria')}
                   data-testid="sales-history-search-clear-btn"
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="13" height="13" aria-hidden="true">

@@ -1035,6 +1035,7 @@ settings-regional-scope-built-in = Default bawaan
 settings-localpay-title = Metode pembayaran lokal
 settings-localpay-subtitle = Jalur pembayaran yang tersedia di pasar dan lokasi ini.
 settings-localpay-code-placeholder = kode jalur, mis. qris
+settings-localpay-code-required = Kode metode pembayaran wajib diisi
 settings-localpay-code-label = Kode jalur
 settings-localpay-label-placeholder = label tampilan, mis. QRIS
 settings-localpay-label-label = Label tampilan

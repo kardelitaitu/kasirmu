@@ -291,7 +291,7 @@ export function usePosCartActions({
     setShowPromotions(false);
     const names = selected.map((p) => p.name).join(', ');
     if (selected.length > 0) {
-      addToast({ message: l10nRef.current.getString('pos-promotions-applied', { name: names }) || names, type: 'success' });
+      addToast({ message: requiredLocalized(l10nRef.current, 'pos-promotions-applied', { name: names }), type: 'success' });
     }
   }, [addToast, l10nRef, setAppliedPromotions, setShowPromotions]);
 

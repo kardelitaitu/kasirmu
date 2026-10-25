@@ -703,7 +703,7 @@ export default function StaffLoginScreen() {
                 <div
                   className="staff-login-recent"
                   role="region"
-                  aria-label={l10n.getString('staff-login-recent-aria') || 'Recent staff accounts'}
+                  aria-label={requiredLocalized(l10n, 'staff-login-recent-aria')}
                 >
                   <span className="staff-login-recent-label">
                     <Localized id="staff-login-recent-label">Quick Login</Localized>
@@ -728,7 +728,7 @@ export default function StaffLoginScreen() {
                           type="button"
                           className="staff-login-chip-remove"
                           onClick={(e) => handleRemoveRecentCashier(e, c.username)}
-                          aria-label={l10n.getString('staff-login-recent-remove-aria', { user: c.username }) || `Remove ${c.username}`}
+                          aria-label={requiredLocalized(l10n, 'staff-login-recent-remove-aria', { user: c.username })}
                         >
                           &times;
                         </button>

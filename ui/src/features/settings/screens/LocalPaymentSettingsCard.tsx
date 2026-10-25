@@ -13,6 +13,7 @@
  * settings.id.ftl.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { requiredLocalized } from '@/components/requiredLocalized';
 import { Localized, useLocalization } from '@fluent/react';
 import { Card } from '@/components/Card';
 import { SettingsScopeTag } from '@/features/settings/SettingsScopeTag';
@@ -368,8 +369,8 @@ export function LocalPaymentSettingsCard() {
           type="text"
           value={newCode}
           onChange={(e) => setNewCode(e.target.value)}
-          placeholder={l10n.getString('settings-localpay-code-placeholder') || 'rail code, e.g. qris'}
-          aria-label={l10n.getString('settings-localpay-code-label') || 'Rail code'}
+          placeholder={requiredLocalized(l10n, 'settings-localpay-code-placeholder')}
+          aria-label={requiredLocalized(l10n, 'settings-localpay-code-label')}
           autoComplete="off"
           spellCheck={false}
         />
@@ -377,8 +378,8 @@ export function LocalPaymentSettingsCard() {
           type="text"
           value={newLabel}
           onChange={(e) => setNewLabel(e.target.value)}
-          placeholder={l10n.getString('settings-localpay-label-placeholder') || 'display label, e.g. QRIS'}
-          aria-label={l10n.getString('settings-localpay-label-label') || 'Display label'}
+          placeholder={requiredLocalized(l10n, 'settings-localpay-label-placeholder')}
+          aria-label={requiredLocalized(l10n, 'settings-localpay-label-label')}
           autoComplete="off"
         />
         <button

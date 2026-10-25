@@ -1092,7 +1092,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       });
       await printSalesReceipt(sessionToken, receipt);
       addToast({
-        message: l10n.getString('pos-toast-bill-printed', { table: billTable }) || 'Interim bill check printed',
+        message: requiredLocalized(l10n, 'pos-toast-bill-printed', { table: billTable }),
         type: 'success',
       });
     } catch (err) {
@@ -1539,7 +1539,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       }
 
       addToast({
-        message: l10n.getString('pos-toast-kitchen-dispatched', { table: tableNumber || 'Order' }) || 'Order sent to kitchen',
+        message: requiredLocalized(l10n, 'pos-toast-kitchen-dispatched', { table: tableNumber || 'Order' }),
         type: 'success',
       });
     } catch (err) {
@@ -2733,4 +2733,3 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   </>
   );
 }
-

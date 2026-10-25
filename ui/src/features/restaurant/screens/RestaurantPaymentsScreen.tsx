@@ -540,7 +540,7 @@ export function RestaurantPaymentsScreen({
         // The whole load failed, so the drafts are defaults too — same F4 exposure.
         setLoadFailed(true);
         addToast({
-          message: l10n.getString('settings-localpay-error-load') || 'Failed to load payment methods',
+          message: requiredLocalized(l10n, 'settings-localpay-error-load'),
           type: 'error',
         });
       } finally {
@@ -723,7 +723,7 @@ export function RestaurantPaymentsScreen({
     const sanitized = sanitizeRailCode(newRailCode);
     if (!sanitized) {
       addToast({
-        message: l10n.getString('settings-localpay-code-placeholder') || 'Payment method code is required',
+        message: requiredLocalized(l10n, 'settings-localpay-code-required'),
         type: 'warning',
       });
       return;
@@ -939,7 +939,7 @@ export function RestaurantPaymentsScreen({
               type="button"
               className="restaurant-settings-back-btn"
               onClick={handleRequestBack}
-              aria-label={l10n.getString('back') || 'Back'}
+              aria-label={requiredLocalized(l10n, 'back')}
               data-testid="restaurant-payments-back-btn"
             >
               <svg

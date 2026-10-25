@@ -815,8 +815,7 @@ export default function RestaurantMenuEditorScreen({
     if (isDuplicate) {
       addToast({
         message:
-          l10n.getString('restaurant-menu-editor-category-name-exists') ||
-          'A category with this name already exists.',
+          requiredLocalized(l10n, 'restaurant-menu-editor-category-name-exists'),
         type: 'error',
       });
       return;
@@ -1021,7 +1020,7 @@ export default function RestaurantMenuEditorScreen({
               type="button"
               className="restaurant-settings-back-btn"
               onClick={handleRequestBack}
-              aria-label={l10n.getString('back') || 'Back'}
+              aria-label={requiredLocalized(l10n, 'back')}
               data-testid="restaurant-menu-editor-back-btn"
             >
               <svg
@@ -2011,12 +2010,11 @@ export default function RestaurantMenuEditorScreen({
       {/* ── Delete Item Confirmation Dialog ───────────────────── */}
       <ConfirmDialog
         open={Boolean(deleteItemTarget)}
-        title={l10n.getString('restaurant-menu-editor-delete-item-title') || 'Delete Menu Item'}
-        confirmLabel={l10n.getString('delete') || 'Delete'}
+        title={requiredLocalized(l10n, 'restaurant-menu-editor-delete-item-title')}
+        confirmLabel={requiredLocalized(l10n, 'delete')}
         message={
           deleteItemTarget
-            ? l10n.getString('restaurant-menu-editor-delete-item-confirm', { name: deleteItemTarget.name }) ||
-              `Are you sure you want to delete "${deleteItemTarget.name}"?`
+            ? requiredLocalized(l10n, 'restaurant-menu-editor-delete-item-confirm', { name: deleteItemTarget.name })
             : ''
         }
         variant="danger"
@@ -2033,12 +2031,11 @@ export default function RestaurantMenuEditorScreen({
       {/* ── Delete Category Confirmation Dialog ───────────────── */}
       <ConfirmDialog
         open={Boolean(deleteCategoryTarget)}
-        title={l10n.getString('restaurant-menu-editor-delete-category-title') || 'Delete Category'}
-        confirmLabel={l10n.getString('delete') || 'Delete'}
+        title={requiredLocalized(l10n, 'restaurant-menu-editor-delete-category-title')}
+        confirmLabel={requiredLocalized(l10n, 'delete')}
         message={
           deleteCategoryTarget
-            ? l10n.getString('restaurant-menu-editor-delete-category-confirm', { name: deleteCategoryTarget.name }) ||
-              `Are you sure you want to delete category "${deleteCategoryTarget.name}"?`
+            ? requiredLocalized(l10n, 'restaurant-menu-editor-delete-category-confirm', { name: deleteCategoryTarget.name })
             : ''
         }
         variant="danger"

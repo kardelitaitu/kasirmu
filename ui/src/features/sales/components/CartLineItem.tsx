@@ -1,5 +1,6 @@
 /* eslint-disable jsx-a11y/no-noninteractive-tabindex */
 import { useCallback, useState, useEffect, useRef } from 'react';
+import { requiredLocalized } from '@/components/requiredLocalized';
 import type { CSSProperties } from 'react';
 import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
@@ -314,7 +315,7 @@ export function CartLineItem({
                   e.stopPropagation();
                   openNoteEditor();
                 }}
-                aria-label={line.note ? `${l10n.getString('pos-cart-line-edit-note') || 'Edit Note'}: ${line.note}` : (l10n.getString('pos-cart-line-add-note') || 'Add Note')}
+                aria-label={line.note ? `${requiredLocalized(l10n, 'pos-cart-line-edit-note')}: ${line.note}` : (requiredLocalized(l10n, 'pos-cart-line-add-note'))}
                 data-testid="cart-line-note-btn"
               >
                 <NoteIcon />
@@ -329,7 +330,7 @@ export function CartLineItem({
                   e.stopPropagation();
                   onEditModifiers(line);
                 }}
-                aria-label={l10n.getString('edit-modifiers') || 'Customize item'}
+                aria-label={requiredLocalized(l10n, 'pos-cart-line-customize-aria')}
                 data-testid="cart-line-add-modifier-btn"
               >
                 <SlidersIcon />
@@ -356,7 +357,7 @@ export function CartLineItem({
                       e.stopPropagation();
                       onEditModifiers(line);
                     }}
-                    aria-label={l10n.getString('edit-modifiers') || 'Edit Modifiers'}
+                    aria-label={requiredLocalized(l10n, 'edit-modifiers')}
                     data-testid="cart-line-edit-modifiers-btn"
                   >
                     Edit
@@ -471,7 +472,7 @@ export function CartLineItem({
         <Modal
           open={showNoteModal}
           onClose={() => setShowNoteModal(false)}
-          title={l10n.getString('pos-cart-line-note-title') || 'Special Request'}
+          title={requiredLocalized(l10n, 'pos-cart-line-note-title')}
           className="pos-cart-line-note-modal"
           footer={
             <div className="pos-cart-note-modal-actions">
@@ -525,8 +526,8 @@ export function CartLineItem({
               // The placeholder is not an accessible name: it disappears the
               // moment the cashier types, and axe flags a control named only by
               // one. The modal's own title is the honest label.
-              aria-label={l10n.getString('pos-cart-line-note-title') || 'Special Request'}
-              placeholder={l10n.getString('pos-cart-line-note-placeholder') || 'e.g. No onion, less ice, allergy...'}
+              aria-label={requiredLocalized(l10n, 'pos-cart-line-note-title')}
+              placeholder={requiredLocalized(l10n, 'pos-cart-line-note-placeholder')}
               data-testid="cart-line-note-input"
               maxLength={200}
             />

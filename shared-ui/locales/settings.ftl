@@ -1068,6 +1068,7 @@ settings-regional-scope-built-in = Built-in default
 settings-localpay-title = Local payment methods
 settings-localpay-subtitle = Which payment rails this market and site offer.
 settings-localpay-code-placeholder = rail code, e.g. qris
+settings-localpay-code-required = Payment method code is required
 settings-localpay-code-label = Rail code
 settings-localpay-label-placeholder = display label, e.g. QRIS
 settings-localpay-label-label = Display label

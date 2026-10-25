@@ -1193,6 +1193,7 @@ pos-cart-order-type-takeaway = Takeaway
 pos-cart-order-type-delivery = Delivery
 pos-cart-guest-placeholder = Guests
 edit-modifiers = Edit
+pos-cart-line-customize-aria = Customize item
 pos-cart-print-bill = Print Bill
 pos-cart-print-bill-aria = Print preliminary bill for customer review
 pos-cart-split-bill = Split Bill

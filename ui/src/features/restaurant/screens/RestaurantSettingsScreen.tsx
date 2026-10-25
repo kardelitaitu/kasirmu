@@ -395,7 +395,7 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
       ]);
 
       addToast({
-        message: l10n.getString('restaurant-save-success') || 'Settings saved successfully',
+        message: requiredLocalized(l10n, 'restaurant-save-success'),
         type: 'success',
       });
 
@@ -461,7 +461,7 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
               type="button"
               className="restaurant-settings-back-btn"
               onClick={handleRequestBack}
-              aria-label={l10n.getString('back') || 'Back'}
+              aria-label={requiredLocalized(l10n, 'back')}
               data-testid="restaurant-settings-back-btn"
             >
               <svg
@@ -692,10 +692,9 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
               <div className="resto-compact-form">
                 <SettingRow
                   id="resto-setting-interaction-sound"
-                  label={l10n.getString('restaurant-settings-interaction-sound') || 'Sound Feedback'}
+                  label={requiredLocalized(l10n, 'restaurant-settings-interaction-sound')}
                   description={
-                    l10n.getString('restaurant-settings-interaction-sound-desc') ||
-                    'Play audio feedback on button taps, cart edits, and checkout'
+                    requiredLocalized(l10n, 'restaurant-settings-interaction-sound-desc')
                   }
                   checked={interactionSound}
                   onChange={setInteractionSound}
@@ -703,10 +702,9 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
                 />
                 <SettingRow
                   id="resto-setting-interaction-vibration"
-                  label={l10n.getString('restaurant-settings-interaction-vibration') || 'Haptic Vibration'}
+                  label={requiredLocalized(l10n, 'restaurant-settings-interaction-vibration')}
                   description={
-                    l10n.getString('restaurant-settings-interaction-vibration-desc') ||
-                    'Device vibration on taps (supported on Android/tablet only; not available on Windows, Linux, or macOS)'
+                    requiredLocalized(l10n, 'restaurant-settings-interaction-vibration-desc')
                   }
                   badge={l10n.getString('restaurant-setting-vibration-badge')}
                   checked={interactionVibration}

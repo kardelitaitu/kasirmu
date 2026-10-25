@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { requiredLocalized } from '@/components/requiredLocalized';
 import { useLocalization } from '@fluent/react';
 import { Localized } from '@/components/Localized';
 import { Button } from '@/components/Button';
@@ -184,7 +185,7 @@ export function SplitBillModal({
         ref={modalRef}
         role="dialog"
         aria-modal="true"
-        aria-label={l10n.getString('pos-split-modal-title') || 'Split Bill by Item'}
+        aria-label={requiredLocalized(l10n, 'pos-split-modal-title')}
         data-testid="pos-split-bill-modal"
       >
         <header className="pos-split-modal-header">
@@ -201,7 +202,7 @@ export function SplitBillModal({
             type="button"
             className="pos-split-modal-close-btn"
             onClick={onClose}
-            aria-label={l10n.getString('close') || 'Close'}
+            aria-label={requiredLocalized(l10n, 'close')}
           >
             ✕
           </button>

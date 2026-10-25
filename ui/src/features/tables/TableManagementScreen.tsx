@@ -1629,7 +1629,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
               type="button"
               className="tables-back-btn"
               onClick={onBack}
-              aria-label={l10n.getString('back') || 'Back'}
+              aria-label={requiredLocalized(l10n, 'back')}
               data-testid="tables-back-btn"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
@@ -2366,7 +2366,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                 type="button"
                 className="tables-modal-close-btn"
                 onClick={() => setShowManageSections(false)}
-                aria-label={l10n.getString('close') || 'Close'}
+                aria-label={requiredLocalized(l10n, 'close')}
               >
                 ✕
               </button>
@@ -2506,7 +2506,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                 type="button"
                 className="tables-modal-close-btn"
                 onClick={() => setTableModal(null)}
-                aria-label={l10n.getString('close') || 'Close'}
+                aria-label={requiredLocalized(l10n, 'close')}
               >
                 ✕
               </button>
@@ -2643,7 +2643,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                 type="button"
                 className="tables-modal-close-btn"
                 onClick={() => setMoveTableModal(null)}
-                aria-label={l10n.getString('close') || 'Close'}
+                aria-label={requiredLocalized(l10n, 'close')}
               >
                 ✕
               </button>
@@ -2747,7 +2747,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                 type="button"
                 className="tables-modal-close-btn"
                 onClick={() => setMergeTableModal(null)}
-                aria-label={l10n.getString('close') || 'Close'}
+                aria-label={requiredLocalized(l10n, 'close')}
               >
                 ✕
               </button>
@@ -2854,7 +2854,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                 type="button"
                 className="tables-modal-close-btn"
                 onClick={() => setReserveModal(null)}
-                aria-label={l10n.getString('close') || 'Close'}
+                aria-label={requiredLocalized(l10n, 'close')}
               >
                 ✕
               </button>

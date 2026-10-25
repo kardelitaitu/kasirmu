@@ -49,6 +49,7 @@
  * Fluent-only copy: `settings-credit-*` keys in settings.ftl + settings.id.ftl.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { requiredLocalized } from '@/components/requiredLocalized';
 import { Localized, useLocalization } from '@fluent/react';
 import { Card } from '@/components/Card';
 import { SettingsScopeTag } from '@/features/settings/SettingsScopeTag';
@@ -127,12 +128,12 @@ export function CreditFacilityCard() {
     // the ceiling. Refuse the save instead.
     const parsedLimit = parseMoneyInput(limitInput, currency);
     if (parsedLimit === null || parsedLimit < 0) {
-      setSaveError(l10n.getString('settings-credit-error-limit') || 'Enter a valid limit amount.');
+      setSaveError(requiredLocalized(l10n, 'settings-credit-error-limit'));
       return;
     }
     const parsedReminder = parseMinorUnits(reminderHours, 0);
     if (parsedReminder === null || parsedReminder < 0) {
-      setSaveError(l10n.getString('settings-credit-error-reminder') || 'Enter a valid reminder interval.');
+      setSaveError(requiredLocalized(l10n, 'settings-credit-error-reminder'));
       return;
     }
     // Re-entry guard. set_credit_settings writes the same keys with the same values, so a
@@ -214,7 +215,7 @@ export function CreditFacilityCard() {
              to associate. An explicit aria-label satisfies it honestly rather
              than by suppressing it, and gives the control a stable accessible
              name regardless of locale. */
-          aria-label={l10n.getString('settings-credit-enabled') || 'Offer credit sales'}
+          aria-label={requiredLocalized(l10n, 'settings-credit-enabled')}
         />
         <span className="credit-label">
           <Localized id="settings-credit-enabled">
@@ -236,7 +237,7 @@ export function CreditFacilityCard() {
             className="credit-input"
             value={limitInput}
             onChange={(e) => { setLimitInput(e.target.value); setSaved(false); }}
-            aria-label={l10n.getString('settings-credit-limit-label') || 'Credit ceiling'}
+            aria-label={requiredLocalized(l10n, 'settings-credit-limit-label')}
             autoComplete="off"
           />
         </label>
@@ -253,7 +254,7 @@ export function CreditFacilityCard() {
             className="credit-input"
             value={reminderHours}
             onChange={(e) => { setReminderHours(e.target.value); setSaved(false); }}
-            aria-label={l10n.getString('settings-credit-reminder-label') || 'Reminder interval (hours)'}
+            aria-label={requiredLocalized(l10n, 'settings-credit-reminder-label')}
             autoComplete="off"
           />
         </label>

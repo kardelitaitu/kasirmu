@@ -763,7 +763,7 @@ export function CartPanel({
         </header>
 
         {/* ── Area: Order context (active tab, order type, table/pax) ── */}
-        <section className="pos-cart-order-context" aria-label={l10n.getString('restaurant-setting-order-type') || 'Order Context'}>
+        <section className="pos-cart-order-context" aria-label={requiredLocalized(l10n, 'restaurant-setting-order-type')}>
           {/* ── Active Tab Indicator Banner ── */}
           {activeOpenBillId && (
           <div className="pos-cart-active-tab-banner" data-testid="pos-active-tab-banner">
@@ -826,7 +826,7 @@ export function CartPanel({
               }}
               data-testid="pos-cart-new-tab-btn"
             >
-              + {l10n.getString('pos-cart-new-tab') || 'New Tab'}
+              + {requiredLocalized(l10n, 'pos-cart-new-tab')}
             </button>
           </div>
         )}
@@ -968,7 +968,7 @@ export function CartPanel({
                   value={tableNumber}
                   onChange={(e) => setTableNumber(e.target.value)}
                   aria-label={l10n.getString('pos-cart-table-aria')}
-                  placeholder={l10n.getString('pos-cart-table-placeholder') || 'No.'}
+                  placeholder={requiredLocalized(l10n, 'pos-cart-table-placeholder')}
                 />
               </div>
             )}
@@ -998,7 +998,7 @@ export function CartPanel({
                   value={guestCount ?? ''}
                   onChange={(e) => setGuestCount(e.target.value)}
                   aria-label={l10n.getString('pos-cart-guest-count-label')}
-                  placeholder={l10n.getString('pos-cart-guest-placeholder') || 'Pax'}
+                  placeholder={requiredLocalized(l10n, 'pos-cart-guest-placeholder')}
                   data-testid="pos-cart-guest-input"
                 />
               </div>
@@ -1013,8 +1013,8 @@ export function CartPanel({
                   className="pos-cart-customer-input"
                   value={customerName ?? ''}
                   onChange={(e) => setCustomerName(e.target.value)}
-                  aria-label={l10n.getString('pos-cart-customer-aria') || 'Customer Name (optional)'}
-                  placeholder={l10n.getString('pos-cart-customer-placeholder') || 'Name...'}
+                  aria-label={requiredLocalized(l10n, 'pos-cart-customer-aria')}
+                  placeholder={requiredLocalized(l10n, 'pos-cart-customer-placeholder')}
                   data-testid="pos-cart-customer-input"
                 />
               </div>

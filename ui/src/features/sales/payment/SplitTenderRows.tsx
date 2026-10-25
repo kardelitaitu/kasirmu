@@ -43,6 +43,7 @@
  * opens — verbatim; only the nine call sites named in the props differ.
  */
 import { Localized, useLocalization } from '@fluent/react';
+import { requiredLocalized } from '@/components/requiredLocalized';
 import { formatMoney, type Money } from '@/types/domain';
 import type { PaymentMethod } from '@/api/types/payment';
 
@@ -136,7 +137,7 @@ export default function SplitTenderRows({
                   </Localized>
                   <div className="payment-split-actions">
                     {onSplitWays && (
-                      <div className="payment-split-ways-group" role="group" aria-label={l10n.getString('payment-split-ways-label') || 'Split Ways'}>
+                      <div className="payment-split-ways-group" role="group" aria-label={requiredLocalized(l10n, 'payment-split-ways-label')}>
                         <span className="payment-split-ways-label">
                           <Localized id="payment-split-ways-label">
                             <span>Split:</span>
@@ -147,7 +148,7 @@ export default function SplitTenderRows({
                             key={count}
                             type="button"
                             className={`payment-split-way-btn ${splits.length === count ? 'payment-split-way-btn--active' : ''}`}
-                            aria-label={l10n.getString('payment-split-ways-aria', { count }) || `Split evenly ${count} ways`}
+                            aria-label={requiredLocalized(l10n, 'payment-split-ways-aria', { count })}
                             data-testid={`payment-split-ways-${count}`}
                             onClick={() => onSplitWays(count)}
                           >

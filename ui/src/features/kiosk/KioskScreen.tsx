@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { requiredLocalized } from '@/components/requiredLocalized';
 import { Localized, useLocalization } from '@fluent/react';
 import { useToast } from '@/components/Toast';
 import { listProductsScoped, listCategoriesScoped } from '@/api/products';
@@ -281,7 +282,7 @@ export default function KioskScreen() {
     } catch (err) {
       console.error('Kiosk checkout failed', err);
       addToast({
-        message: l10n.getString('kiosk-checkout-error') || 'Order processing failed',
+        message: requiredLocalized(l10n, 'kiosk-checkout-error'),
         type: 'warning',
       });
     } finally {
@@ -305,7 +306,7 @@ export default function KioskScreen() {
   if (checkout) {
     if (orderSuccess) {
       return (
-        <div className="kiosk-success" role="region" aria-label={l10n.getString('kiosk-order-success-title') || 'Order Success'}>
+        <div className="kiosk-success" role="region" aria-label={requiredLocalized(l10n, 'kiosk-order-success-title')}>
           <div className="kiosk-success-card">
             <div className="kiosk-success-icon" aria-hidden="true">&#10003;</div>
             <h2 className="kiosk-success-title">
@@ -345,7 +346,7 @@ export default function KioskScreen() {
               type="button"
               className="kiosk-success-btn"
               onClick={endSession}
-              aria-label={l10n.getString('kiosk-done') || 'Done'}
+              aria-label={requiredLocalized(l10n, 'kiosk-done')}
             >
               <Localized id="kiosk-done">Done</Localized>
             </button>
@@ -391,7 +392,7 @@ export default function KioskScreen() {
             className="kiosk-checkout-qris"
             disabled={processingOrder}
             onClick={() => setShowQrisModal(true)}
-            aria-label={l10n.getString('kiosk-pay-qris') || 'Pay with QRIS'}
+            aria-label={requiredLocalized(l10n, 'kiosk-pay-qris')}
           >
             <Localized id="kiosk-pay-qris">Pay with QRIS</Localized>
           </button>
@@ -426,8 +427,8 @@ export default function KioskScreen() {
   return (
     <div className="kiosk" role="region" aria-label={l10n.getString('kiosk-section-kiosk')}>
       <div className="kiosk-top-bar">
-        <div className="kiosk-dining-bar" role="region" aria-label={l10n.getString('kiosk-dining-mode') || 'Dining Option'}>
-          <div className="kiosk-dining-toggle" role="radiogroup" aria-label={l10n.getString('kiosk-dining-mode') || 'Dining Option'}>
+        <div className="kiosk-dining-bar" role="region" aria-label={requiredLocalized(l10n, 'kiosk-dining-mode')}>
+          <div className="kiosk-dining-toggle" role="radiogroup" aria-label={requiredLocalized(l10n, 'kiosk-dining-mode')}>
             <button
               type="button"
               className={`kiosk-dining-btn ${orderType === 'dine_in' ? 'active' : ''}`}
@@ -459,8 +460,8 @@ export default function KioskScreen() {
                 className="kiosk-table-input"
                 value={tableNumber}
                 onChange={(e) => { setTableNumber(e.target.value); resetIdle(); }}
-                placeholder={l10n.getString('kiosk-table-placeholder') || 'Table #'}
-                aria-label={l10n.getString('kiosk-table-number') || 'Table Number'}
+                placeholder={requiredLocalized(l10n, 'kiosk-table-placeholder')}
+                aria-label={requiredLocalized(l10n, 'kiosk-table-number')}
               />
             </div>
           )}

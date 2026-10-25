@@ -1155,6 +1155,7 @@ pos-cart-order-type-takeaway = Bawa Pulang
 pos-cart-order-type-delivery = Antar
 pos-cart-guest-placeholder = Tamu
 edit-modifiers = Ubah
+pos-cart-line-customize-aria = Sesuaikan item
 pos-cart-print-bill = Cetak Bill
 pos-cart-print-bill-aria = Cetak bill sementara untuk diperiksa pelanggan
 pos-cart-split-bill = Pisah Bill

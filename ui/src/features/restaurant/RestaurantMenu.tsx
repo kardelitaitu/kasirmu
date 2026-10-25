@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { requiredLocalized } from '@/components/requiredLocalized';
 import { type CourseId, type ModifierSelection, type Product, getProductModifierGroups, isRestaurantMenuItem } from '@/types/domain';
 import { useLocalization } from '@fluent/react';
 import { useProducts } from '@/features/products/useProducts';
@@ -685,7 +686,7 @@ export default function RestaurantMenu({
       ref={setMenuRoot}
       className={`restaurant-menu ${menuOpen ? 'restaurant-menu--sidebar-open' : ''}${hasFloatingCartBar ? ' restaurant-menu--has-floating-bar' : ''}`}
       style={{ '--card-size': cardSize, '--font-size': fontSize } as React.CSSProperties}
-      aria-label={l10n.getString('restaurant-menu-items-aria') || 'Menu items'}
+      aria-label={requiredLocalized(l10n, 'restaurant-menu-items-aria')}
     >
       {/* ── Header row: sidebar + preferences hamburger + search ── */}
       <header className="restaurant-header">
@@ -747,7 +748,7 @@ export default function RestaurantMenu({
       </LocalizedErrorBoundary>
 
       {/* ── Category pills area ─────────────────────── */}
-      <nav className="restaurant-categories-area" aria-label={l10n.getString('restaurant-categories-aria') || 'Menu categories'}>
+      <nav className="restaurant-categories-area" aria-label={requiredLocalized(l10n, 'restaurant-categories-aria')}>
         <MenuCategoryTabBar
           options={categoryOptions}
           active={effectiveCategory}
