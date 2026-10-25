@@ -40,6 +40,16 @@ import { type ReactElement } from 'react';
 import { render, type RenderResult } from '@testing-library/react';
 import { expect, vi } from 'vitest';
 import { axe, toHaveNoViolations } from 'jest-axe';
+import axeCore from 'axe-core';
+
+/** Run axe-core directly against an element, mutating no DOM. */
+async function runAxe(
+  element: Element,
+  options: Record<string, unknown>,
+): Promise<{ violations: axeCore.Result[]; passes: axeCore.Result[] }> {
+  const results = await axeCore.run(element, options);
+  return { violations: results.violations, passes: results.passes };
+}
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { LocalizationProvider, ReactLocalization } from '@fluent/react';
 import { BrandProvider } from '@/contexts/BrandContext';
@@ -215,7 +225,26 @@ export async function checkA11yDocument(
 ): Promise<void> {
   const callerRules = (options?.['rules'] as Record<string, unknown>) || {};
   const mergedOptions = { ...options, rules: { ...DISABLED_RULES, ...callerRules } };
-  const results = await axe(document.body, mergedOptions);
+  // TARGET IS `document.documentElement` (the <html> element), NOT `document.body`. `landmark-one-main` and
+  // `page-has-heading-one` carry the selector `html:not(html *)`, so they only
+  // evaluate when the CONTEXT is the <html> element itself. `document.body` is a
+  // child of it, so those two rules matched nothing and appeared in neither
+  // `violations` nor `passes` -- the round-239 fix was partial for exactly this
+  // reason (measured 2026-10-26, round 251: `region` passed on body, the two
+  // landmark/heading rules did not run at all).
+  //
+  // WHY axe-core DIRECTLY, NOT the jest-axe `axe()` WRAPPER (round 251): the wrapper's
+  // mount() does `document.body.innerHTML = originalHTML` to restore itself whenever the
+  // element it is given is not inside document.body -- and `documentElement` never is.
+  // That assignment DETACHES React's root node, so the global `afterEach(cleanup())` in
+  // test-setup.ts finds nothing to unmount and the rendered tree stays in the DOM. The
+  // observable consequence was a rising landmark count across one file's cases
+  // (1 -> 2 -> 3 mains, measured) which axe then reported as
+  // `landmark-no-duplicate-main` -- a REAL failure, caused by the MEASURING TOOL rather
+  // than by the component. axe-core's own `run()` accepts any element and mutates nothing.
+  //
+  // `document` itself cannot be passed: axe requires an ElementNode.
+  const results = await runAxe(document.documentElement, mergedOptions);
 
   if (results.violations.length > 0) {
     for (const v of results.violations) {
