@@ -133,12 +133,16 @@ re-derive these: each is protected, and the protection is named so the search en
                         catch: EodReportScreen.handleConfirmCloseShift routes through
                         l10nErrorMessage, so the second tap reported "failed to close" over a
                         shift that closed -- round 180 FIXED that with a ref. But
-                        RetailPosScreen.handleOpenShift is a bare `catch {}` that discards the
-                        error entirely (RetailPosScreen.tsx:1192-1193) and toasts only
-                        `retail-toast-failed-open-shift`, so core's accurate "you already have
-                        an open shift" never reaches the cashier either. Left on the report:
-                        the message-not-the-guard is the defect there, and fixing it means
-                        routing through l10nErrorMessage, not adding a ref.
+                        RetailPosScreen.handleOpenShift was a bare `catch {}` that discarded
+                        the error entirely and toasted only `retail-toast-failed-open-shift`,
+                        so core's accurate "you already have an open shift" never reached
+                        the cashier either. Round 219 FIXED it the way this entry said it
+                        had to be fixed -- through l10nErrorMessage, NOT with another ref --
+                        so a Validation now reads as the shared app-error-validation copy
+                        ("Please check the information you entered") instead of as a drawer
+                        failure. Pinned by a case asserting that exact sentence AND the
+                        absence of both the failure wording and the raw backend string;
+                        reverting the catch makes it fail.
   * staff soft-delete -- REFUSED, and the catch threw the reason away. `soft_delete_user`
                         compare-and-sets on `deleted_at IS NULL` (db/staff.rs:830-840) and
                         refuses with "this member is already in the trash";
