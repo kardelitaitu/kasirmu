@@ -179,12 +179,35 @@ this round verified at source, each documented in `todo-gift-card-redemption-ord
 
 1. `payments.method` is a closed CHECK with no gift member
    (`20261017_payments_method_check.sql:41-45`), so a gift payment cannot be recorded.
-2. The Staff/checkout RBAC preset carries no `giftcards:redeem` (`rbac_presets.rs:168-201`), so a
-   cashier could not redeem even after (1).
+2. No built-in RBAC preset carries `giftcards:redeem` — not the Staff/checkout preset
+   (`rbac_presets.rs:168-201`) and not any of the other five either, so a cashier could not redeem
+   even after (1).
 3. The component requires a `saleId`, and `PaymentModal` has none before `completeSaleScoped`.
 
 None of that is UI glue. It is a migration, an RBAC change and a settlement-contract decision --
 each an owner call under AGENTS.md.
+
+**CORRECTED AND PINNED 2026-10-25 (round 216).** Point (2) above said only the Staff preset lacks
+the key, which reads as "the other five have it". Measured: `ROLE_PRESETS` contains ZERO
+occurrences of the gift-card family across all six presets — Owner, Manager, Staff, Admin, Auditor
+and Custom — so redemption is reachable only through a Custom role an owner builds by hand. The
+narrower wording was wrong in the direction that would have made the blocker look smaller.
+
+The boundary was also held by nothing a test could fail on. Two existing tests touch the presets
+and neither would have caught a grant:
+
+  * `every_enforced_key_is_granted_by_at_least_one_preset` lists all three gift-card keys in its
+    `unpreseted_exceptions` — the exception is what makes them owner-only, and it is also what
+    makes that test SKIP them.
+  * `sensitive_family_wildcard_rejected` stops `giftcards:*`, but an explicit single-key grant is
+    not a wildcard and passes it.
+
+`permission_registry_tests.rs` now carries `no_builtin_preset_grants_a_giftcard_key` and
+`giftcard_keys_are_declared_in_the_inventory`. Proven to fire rather than assumed: inserting
+`permissions::GIFTCARDS_REDEEM` into the Manager preset makes it panic naming `Manager`, and the
+same insert into the Staff block panics naming `Staff`. The first probe landed in Manager because
+`LOYALTY_REDEEM` appears in BOTH presets and a plain string replace hit the earlier one — worth
+recording, because the mutation I THOUGHT I made and the mutation I made were on different tiers.
 
 **NARROWED 2026-10-25 (round 202): the settlement-contract decision is made, by precedent.**
 `PaymentModal` already redeems loyalty points AFTER `completeSaleScoped` in the same
