@@ -60,7 +60,7 @@ vi.mock('@fluent/react', () => ({
           'tp-tooltip-short': 'Short description — ideal for nav items and icon labels.',
           'tp-tooltip-slow': 'Slow reveal (800ms delay)',
           'tp-tooltip-structured-line1': 'Line one: Order ID #2847',
-          'tp-tooltip-structured-line2': 'Line two: 4 items • $amount',
+          'tp-tooltip-structured-line2': 'Line two: 4 items · {amount}',
           'tp-tooltip-structured-line3': 'Line three: Priority: High',
           'tp-tooltip-switch-workspace': 'Switch Workspace',
           'tp-tooltip-top': 'Tooltip above the trigger',
