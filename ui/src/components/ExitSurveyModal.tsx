@@ -1,5 +1,5 @@
 /* eslint-disable jsx-a11y/label-has-associated-control -- <label> wraps radio inputs with <Localized> text */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { Button } from '@/components/Button';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
@@ -37,10 +37,18 @@ export default function ExitSurveyModal({ open, onClose, onConfirm }: ExitSurvey
   const [selectedReason, setSelectedReason] = useState<string>('');
   const [otherText, setOtherText] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  /** Synchronous mirror of `submitting` — see the re-entry guard in `handleSubmit`. */
+  const submittingRef = useRef(false);
 
   const handleSubmit = useCallback(async () => {
     if (!selectedReason) return;
 
+    // Re-entry guard. `onConfirm` is the parent's BILLING action (the licence card's
+    // handlePauseConfirm), so a replay submits the feedback twice AND calls the pause
+    // twice. The parent has its own ref; this one keeps the survey from sending the
+    // second write at all.
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       // Best-effort: store the feedback reason via the settings API
@@ -64,6 +72,7 @@ export default function ExitSurveyModal({ open, onClose, onConfirm }: ExitSurvey
       }
       onConfirm();
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }, [selectedReason, otherText, sessionToken, onConfirm]);

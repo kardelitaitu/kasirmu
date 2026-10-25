@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, fireEvent } from '@testing-library/react';
+import { act, screen, fireEvent } from '@testing-library/react';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 import settingsFtl from '@/locales/settings.ftl?raw';
 import ExitSurveyModal from '@/components/ExitSurveyModal';
@@ -118,6 +118,22 @@ describe('ExitSurveyModal', () => {
       );
     });
     expect(defaultProps.onConfirm).toHaveBeenCalled();
+  });
+
+  it('submits ONCE when the pause button is double-tapped', async () => {
+    // onConfirm is the licence card's BILLING action. A replay writes the feedback twice
+    // AND calls the pause twice; \`submitting\` is STATE, so both taps read it as false.
+    renderWithProvidersSync(<ExitSurveyModal {...defaultProps} />, settingsFtl);
+    fireEvent.click(screen.getByText('Too expensive'));
+
+    const submitBtn = screen.getByRole('button', { name: /pause subscription/i });
+    await act(async () => {
+      fireEvent.click(submitBtn);
+      fireEvent.click(submitBtn);
+    });
+
+    await vi.waitFor(() => expect(defaultProps.onConfirm).toHaveBeenCalledTimes(1));
+    expect(mockSetSurvey).toHaveBeenCalledTimes(1);
   });
 
   it('includes detail text when "Other" reason is selected', async () => {
