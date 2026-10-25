@@ -70,7 +70,7 @@ vi.mock('@fluent/react', () => ({
           'custom-report-run-aria': 'Run report',
           'custom-report-region-aria': 'Custom Report Builder',
           'custom-report-export-aria': 'Export CSV',
-          'custom-report-columns-selected': '{selected} / {total} selected',
+          'custom-report-columns-selected': '{ $selected } / { $total } selected',
         };
         let result = strings[id];
         if (result && vars) {

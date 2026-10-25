@@ -49,8 +49,8 @@ vi.mock('@fluent/react', () => ({
           'session-lock-expired': 'Sesi telah berakhir', // "Session expired"
           'session-lock-invalid-pin': 'PIN tidak dikenali', // "PIN not recognized"
           // Rendering keys — needed so the PIN pad and UI render correctly
-          'session-lock-pin-aria': 'PIN: {length} of {max} digits entered',
-          'session-lock-lockout': 'Wait {seconds}s.',
+          'session-lock-pin-aria': 'PIN: { $length } of { $max } digits entered',
+          'session-lock-lockout': 'Wait { $seconds }s.',
           'session-lock-pad-aria': 'PIN pad',
           'staff-login-clear': 'Clear',
           'staff-login-connection-checking': 'Checking…',

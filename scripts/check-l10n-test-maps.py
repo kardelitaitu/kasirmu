@@ -192,14 +192,18 @@ RESERVED_WORD_RE = re.compile(r"^\s*(return|if|else)\b")
 
 #: A key line inside a literal: `'topology-new-store': 'New Store',`
 
-#: A map VALUE containing a bare $name -- the shape you get by flattening an FTL
-#: message without converting its placeable to the stub's {name} form.
+#: A map VALUE containing a bare $name OUTSIDE a brace pair -- the shape you get by
+#: flattening an FTL message without converting its placeable to the stub's form.
 #:
 #: Seeding maps from the FTL is now routine, and a naive flattener turns
-#: "4 items { $amount }" into "4 items $amount", which the stub cannot substitute:
-#: the assertion silently matches a string the UI never renders. Found nine such
-#: values across three files on 2026-11-07, all passing their own tests.
-LITERAL_VAR_RE = re.compile(r"[^$]*\$(?![{])[A-Za-z_][A-Za-z0-9_]*")
+#: "4 items { $amount }" into "4 items $amount", which a stub that replaces only
+#: {name} (or only { $name }) cannot substitute: the assertion silently matches a
+#: string the UI never renders. Found nine such values across three files on
+#: 2026-11-07, all passing their own tests.
+#:
+#: The check is deliberately BLIND to $name INSIDE braces, because that is the
+#: legitimate FTL form -- a first version flagged every correct { $x } value.
+LITERAL_VAR_RE = re.compile(r"\$(?![{][^}]*\})[A-Za-z_]\w*(?![^$]*\})")
 
 KEY_LINE_RE = re.compile(
     r"""^\s*['"](?P<key>[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+)['"]\s*:"""
@@ -785,7 +789,8 @@ def detector_still_fires() -> bool:
     # replaces {name}, so the assertion matches text the UI never renders.
     if not LITERAL_VAR_RE.search("Order " + "$" + "n"):
         return False
-    if LITERAL_VAR_RE.search("Order {n}"):
+    # The braced FTL form is LEGITIMATE; flagging it was a false positive.
+    if LITERAL_VAR_RE.search("Wait { " + "$" + "seconds }s."):
         return False
     if LITERAL_VAR_RE.search("Auto-wrapping"):
         return False
