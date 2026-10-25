@@ -55,6 +55,13 @@ staff-pin-placeholder =
     .placeholder = Masukkan PIN
 staff-field-role-label = Peran *
 staff-role-permissions-label = Izin peran
+# Empat judul kartu pada laci detail (round 211). Semua kolom di dalam kartu
+# sudah memakai kunci; hanya judul yang menamai kartunya yang masih literal di
+# StaffDetailDrawer.tsx:852, :927, :1131, dan :1219.
+staff-drawer-account-credentials = Kredensial Akun
+staff-drawer-role-permissions = Peran & Izin
+staff-drawer-employment = Kepegawaian & Detail
+staff-drawer-emergency-contact = Kontak Darurat
 staff-role-select-default = Pilih peran…
 staff-btn-cancel = Batal
 staff-btn-update = Perbarui

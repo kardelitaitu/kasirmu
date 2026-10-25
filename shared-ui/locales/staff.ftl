@@ -63,6 +63,13 @@ staff-pin-placeholder =
     .placeholder = Enter PIN
 staff-field-role-label = Role *
 staff-role-permissions-label = Role permissions
+# The detail drawer's four card headings (round 211). Every field inside the
+# cards was already keyed; only the headings that name each card were literals
+# at StaffDetailDrawer.tsx:852, :927, :1131 and :1219.
+staff-drawer-account-credentials = Account Credentials
+staff-drawer-role-permissions = Role & Permissions
+staff-drawer-employment = Employment & Details
+staff-drawer-emergency-contact = Emergency Contact
 staff-role-select-default = Select a role…
 staff-btn-cancel = Cancel
 staff-btn-update = Update

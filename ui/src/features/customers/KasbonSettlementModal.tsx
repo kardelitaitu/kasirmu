@@ -414,21 +414,21 @@ export default function KasbonSettlementModal({
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value)}
                   >
-                    <option value="cash">Cash</option>
-                    <option value="qris">QRIS</option>
-                    <option value="bank_transfer">Bank Transfer</option>
+                    <option value="cash">{l10n.getString('payment-method-cash')}</option>
+                    <option value="qris">{l10n.getString('payment-method-qris')}</option>
+                    <option value="bank_transfer">{l10n.getString('payment-method-bank-transfer')}</option>
                   </select>
                 </div>
 
                 <div className="kasbon-form-field">
-                  <label htmlFor="kasbon-pay-note">Note</label>
+                  <label htmlFor="kasbon-pay-note">{l10n.getString('kasbon-pay-note')}</label>
                   <input
                     id="kasbon-pay-note"
                     type="text"
                     className="kasbon-input"
                     value={paymentNote}
                     onChange={(e) => setPaymentNote(e.target.value)}
-                    placeholder="Optional note"
+                    placeholder={l10n.getString('kasbon-pay-note-placeholder')}
                   />
                 </div>
 

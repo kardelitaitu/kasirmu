@@ -637,6 +637,11 @@ payment-method-bank-transfer = Transfer Bank
 payment-method-ewallet = Dompet Digital
 payment-method-pay-later = PayLater
 payment-method-credit = Kredit
+payment-method-card-giro = Kartu / Giro
+payment-method-qris-ewallet = QRIS / E-Wallet
+# Kolom catatan pada pelunasan kasbon (round 211).
+kasbon-pay-note = Catatan
+kasbon-pay-note-placeholder = Catatan opsional
 payment-method-other =
     .aria-label = Metode pembayaran lain
 payment-other-placeholder =

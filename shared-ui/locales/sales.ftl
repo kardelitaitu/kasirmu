@@ -78,6 +78,11 @@ payment-method-bank-transfer = Bank Transfer
 payment-method-ewallet = E-Wallet
 payment-method-pay-later = PayLater
 payment-method-credit = Credit
+payment-method-card-giro = Card / Giro
+payment-method-qris-ewallet = QRIS / E-Wallet
+# Kasbon (receivable) settlement's note field (round 211).
+kasbon-pay-note = Note
+kasbon-pay-note-placeholder = Optional note
 payment-method-other =
     .aria-label = Other payment method
 payment-other-placeholder =

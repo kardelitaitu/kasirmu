@@ -394,10 +394,10 @@ export default function VendorBillsScreen() {
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value)}
                   >
-                    <option value="cash">Cash (Tunai)</option>
-                    <option value="bank_transfer">Bank Transfer</option>
-                    <option value="qris">QRIS / E-Wallet</option>
-                    <option value="card">Card / Giro</option>
+                    <option value="cash">{l10n.getString('payment-method-cash')}</option>
+                    <option value="bank_transfer">{l10n.getString('payment-method-bank-transfer')}</option>
+                    <option value="qris">{l10n.getString('payment-method-qris-ewallet')}</option>
+                    <option value="card">{l10n.getString('payment-method-card-giro')}</option>
                   </select>
                 </label>
               </div>

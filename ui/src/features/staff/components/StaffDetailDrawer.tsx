@@ -849,7 +849,9 @@ export function StaffDetailDrawer({
           <div className="staff-drawer-card">
             <div className="staff-drawer-card-header">
               <UserIcon />
-              <span className="staff-drawer-card-title">Account Credentials</span>
+              <Localized id="staff-drawer-account-credentials">
+                <span className="staff-drawer-card-title">Account Credentials</span>
+              </Localized>
             </div>
             <div className="staff-drawer-card-body">
               {/* Username */}
@@ -924,7 +926,9 @@ export function StaffDetailDrawer({
           <div className="staff-drawer-card">
             <div className="staff-drawer-card-header">
               <ShieldIcon />
-              <span className="staff-drawer-card-title">Role & Permissions</span>
+              <Localized id="staff-drawer-role-permissions">
+                <span className="staff-drawer-card-title">Role &amp; Permissions</span>
+              </Localized>
             </div>
             <div className="staff-drawer-card-body">
               {editingIncomplete && (
@@ -1128,7 +1132,9 @@ export function StaffDetailDrawer({
           <div className="staff-drawer-card">
             <div className="staff-drawer-card-header">
               <BriefcaseIcon />
-              <span className="staff-drawer-card-title">Employment & Details</span>
+              <Localized id="staff-drawer-employment">
+                <span className="staff-drawer-card-title">Employment &amp; Details</span>
+              </Localized>
             </div>
             <div className="staff-drawer-card-body">
               {/* Monthly Take-Home Pay (Create only) */}
@@ -1216,7 +1222,9 @@ export function StaffDetailDrawer({
           <div className="staff-drawer-card">
             <div className="staff-drawer-card-header">
               <HeartIcon />
-              <span className="staff-drawer-card-title">Emergency Contact</span>
+              <Localized id="staff-drawer-emergency-contact">
+                <span className="staff-drawer-card-title">Emergency Contact</span>
+              </Localized>
             </div>
             <div className="staff-drawer-card-body">
               <label className="staff-mgmt-field" htmlFor="staff-field-emergency-name" aria-label={l10n.getString('staff-field-emergency-name-aria')}>
