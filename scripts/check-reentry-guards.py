@@ -263,6 +263,17 @@ re-derive these: each is protected, and the protection is named so the search en
                         the replay is harmless to the schema; the cost is the shared state (one
                         `savingCat`, a modal the first run already closed). Round 188 FIXED with
                         a ref, documented as the SECOND door beside the popup's disabled Save.
+  * gift-card redeem -- the previous entry refuted "products" on `products.sku UNIQUE` and
+                        then said gift-card REDEEM was protected by an explicit idempotency on
+                        (card_id, sale_id). Both are true and neither is the whole answer: the
+                        idempotency makes the SECOND CALL FOR THE SAME PAIR a no-op in the
+                        database, while the component has already told the operator the card
+                        was applied `amountToRedeem` twice through two `onApplied` calls. So the
+                        money is safe and the SCREEN lies. Round 189 FIXED with a ref and a
+                        case that fails `expected 2 to be 1` with it disabled. NOTE the component
+                        is currently mounted by its own test only (git grep GiftCardPayment --
+                        ui/src finds no production caller); the guard is in place for the day
+                        the checkout reaches for it.
   * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
                         idempotent by construction: the same key is overwritten
 The point of the list is that it is SHORT: filtering to handlers that (a) await something
