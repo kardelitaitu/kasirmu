@@ -77,6 +77,34 @@ DELIBERATELY NOT REPORTED -- each rule is a false positive this gate refuses to 
   * A key used ONLY through a template literal or a dynamic import -- it is
     never collected, so it is never reported.
 
+WHAT THE 586 IN THE BASELINE ACTUALLY ARE (measured 2026-11-06)
+----------------------------------------------------------------
+The baseline is a CENSUS, not a defect count. A map is legitimately PARTIAL
+when the suite never reads the strings it omits, and this detector cannot
+see which keys a given case exercises. Hand-audited buckets:
+
+  * 135  a11y/NodeTopologyEditor.a11y.test.tsx. Its own docstring calls the
+         map a "Minimal en fallback surface"; the file asserts checkA11y().
+  * 65   TooltipPreview.test.tsx. A 4-entry map against 69 used keys; every
+         assertion reads copy rendered by the <Localized> PASSTHROUGH.
+  * ~300 analytics/provisioning/settings suites whose maps are partial by
+         their own written contract.
+  * ~5   genuinely actionable, e.g. WorkspaceTerminalPreferencesCard.test.tsx
+         (settings-edc-test and -default-select are plain getString calls
+         that no case asserts).
+
+Also inherited from the stub: <Localized id="KEY"> counts as a use even when
+the suite replaces Localized with a passthrough, which inflates the count.
+
+A KNOWN ACCIDENT worth naming: TopologyScreen.test.tsx is absent from the
+census NOT by rule but because its 5 seeded values happen to be real copy.
+Its 31 `name: topology-...` queries address the UI by RAW KEY, so its map
+MUST stay empty. If those 5 values are ever rewritten to raw keys, 67
+findings appear at once with nothing explaining them. A by-key suite rule
+(absent > 0 and addressed/absent < 0.5) measured out to exactly five files --
+TopologyScreen 0/67, a11y 1/135, InspectorIntegration 1/35, TooltipPreview
+0/65, NodeTopologyEditorDevMock 1/2 -- and was NOT adopted; recorded here so
+the next person does not have to re-derive it.
 THE LIMIT OF THIS DETECTOR, stated plainly
 ------------------------------------------
 It grades a map against STATIC literal uses in the modules a test imports. It
