@@ -29,11 +29,17 @@ export function formatPaymentMethodLabel(
   method: string,
   l10n?: { getString: (id: string) => string | null },
 ): string {
+  // `l10n` is OPTIONAL here, so the helper keeps its own guard: with no
+  // localization object there is nothing to resolve through. When one IS
+  // supplied, requiredLocalized decides — it returns the key rather than
+  // English if the message is missing, so the two shapes cannot disagree.
   if (method === 'piutang_collection') {
-    return l10n?.getString('eod-payment-piutang-collections') ?? 'Piutang Collections';
+    return l10n
+      ? requiredLocalized(l10n, 'eod-payment-piutang-collections')
+      : 'eod-payment-piutang-collections';
   }
   if (method === 'pay_later') {
-    return l10n?.getString('eod-payment-pay-later') ?? 'Pay Later (Piutang)';
+    return l10n ? requiredLocalized(l10n, 'eod-payment-pay-later') : 'eod-payment-pay-later';
   }
   return method.charAt(0).toUpperCase() + method.slice(1).replace(/_/g, ' ');
 }
@@ -431,7 +437,7 @@ export default function EodReportScreen() {
       if ((r.receivable_collections_total ?? 0) > 0) {
         body += sep;
         body += line('  PIUTANG COLLECTIONS');
-        const colLabel = l10n.getString('eod-payment-piutang-collections') ?? 'Piutang Collections';
+        const colLabel = requiredLocalized(l10n, 'eod-payment-piutang-collections');
         body += line(`${colLabel.padEnd(12)} ${String(r.receivable_collections_count ?? 1).padStart(3)} tx  ${money(r.receivable_collections_total ?? 0).padStart(12)}`);
       }
       body += sep;
@@ -1053,7 +1059,7 @@ export default function EodReportScreen() {
             setCloseShiftError(null);
           }
         }}
-        title={l10n.getString('eod-close-modal-title') ?? 'Close Active Shift'}
+        title={requiredLocalized(l10n, 'eod-close-modal-title')}
       >
         {closeShiftTarget && (
           <div>
