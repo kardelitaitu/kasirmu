@@ -507,8 +507,6 @@ product-type-restaurant = Restoran
 product-type-service = Layanan
 
 # Stock Alert Panel
-product-mgmt-stock-alert-open = Buka peringatan stok
-product-mgmt-stock-alert-close = Tutup peringatan stok
 product-mgmt-alert-count =
     { $count ->
         [one] Buka peringatan stok ({ $count } aktif)

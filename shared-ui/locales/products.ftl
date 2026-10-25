@@ -520,8 +520,6 @@ product-type-restaurant = Restaurant
 product-type-service = Service
 
 # Stock Alert Panel
-product-mgmt-stock-alert-open = Open stock alerts
-product-mgmt-stock-alert-close = Close stock alerts
 product-mgmt-alert-count =
     { $count ->
         [one] Open stock alerts ({ $count } active)
