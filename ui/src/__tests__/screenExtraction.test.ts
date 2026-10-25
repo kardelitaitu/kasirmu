@@ -240,32 +240,6 @@ const SCREENS: ScreenEntry[] = [
     externalClasses: ['product-card'],
   },
   {
-    name: 'ProductManagementScreen',
-    tsx: 'products/ProductManagementScreen.tsx',
-    css: ['products/ProductManagementScreen.css'],
-    // Four variants exist, not an open family: the name is composed at
-    // features/products/ProductManagementScreen.tsx:448 as
-    // `product-mgmt-type--${p.productType}`, and productType is the closed union at
-    // src/types/domain.ts:106 -- retail | restaurant | both | service -- which is exactly
-    // the four rules in products/ProductManagementScreen.css:94 / :99 / :103 / :108. Each is
-    // named whole, so this entry now asserts which variants are real: a fifth rule in the
-    // sheet with no fifth union member reads dead instead of being excused by a catch-all.
-    dynamicClassPrefixes: [
-      'product-mgmt-type--retail',
-      'product-mgmt-type--restaurant',
-      'product-mgmt-type--both',
-      'product-mgmt-type--service',
-    ],
-    // Classes used by child StockAlertPanel component rendered inside drawer
-    externalClasses: ['stock-alert-panel'],
-    // R3: cites the shared pager block (.pager-nav/.pager-btn/.pager-info) this
-    // screen's page controls use. The cite is the mechanism this suite offers
-    // for a globally imported sheet — case 1 resolves against css UNION
-    // parentCss, and cases 2 and 3 still walk `css` alone, so the shared sheet
-    // is never graded for duplicate or dead rules through this entry.
-    parentCss: ['../theme/components.css'],
-  },
-  {
     name: 'BundleManagementScreen',
     tsx: 'products/BundleManagementScreen.tsx',
     css: ['products/BundleManagementScreen.css'],
@@ -2637,9 +2611,11 @@ const SCREENS: ScreenEntry[] = [
     css: ['inventory/LocationPicker.css'],
   },
   {
-    // 213-line panel over a 251-line sheet, own import at :9. Mounted by
-    // products/ProductManagementScreen.tsx:30 (JSX :766); zero outside consumers,
-    // so the entry is own-sheet only.
+    // 213-line panel over a 251-line sheet, own import at :9. Its ONLY mount was
+    // products/ProductManagementScreen.tsx:30 (JSX :766), which round 192 deleted as
+    // unreachable -- so this panel is now unreachable too, and the census reports it.
+    // The entry stays because the sheet still has to be cited for its rules to be
+    // graded; what it does NOT do is claim the panel is rendered anywhere.
     name: 'StockAlertPanel',
     tsx: 'inventory/StockAlertPanel.tsx',
     css: ['inventory/StockAlertPanel.css'],
@@ -3365,11 +3341,12 @@ const EXTERNAL_CLASS_LEDGER: { entry: string; value: string; reason: string }[] 
 //     taking the list 23 -> 18. This is the majority case.
 //
 // (b) ONLY BY DELETION, or by deciding a never-rendered component should mount.
-//     Five sheets BELOW have no mount at all: their component is referenced by
-//     nothing but its own file and its own test, and every other "reference" in the
-//     tree is prose inside a CSS comment. They are inventory/ShiftBar.css,
-//     inventory/ThresholdConfigScreen.css, inventory/TransactionLogScreen.css,
-//     inventory/TransitAuditScreen.css and (elsewhere) WeightScaleWidget.
+//     Four sheets BELOW have no mount at all (it was five until round 192 deleted
+//     inventory/TransitAuditScreen.css along with its screen): their component is
+//     referenced by nothing but its own file and its own test, and every other
+//     "reference" in the tree is prose inside a CSS comment. They are
+//     inventory/ShiftBar.css, inventory/ThresholdConfigScreen.css,
+//     inventory/TransactionLogScreen.css and (elsewhere) WeightScaleWidget.
 //     Registering one of these would buy a green over markup no user can reach.
 //
 // This split is not new here — it is recorded in
@@ -3411,7 +3388,6 @@ const BASELINE_UNCITED: string[] = [
   'inventory/ShiftBar.css',
   'inventory/ThresholdConfigScreen.css',
   'inventory/TransactionLogScreen.css',
-  'inventory/TransitAuditScreen.css',
   'marketplace/AddonsMarketplace.css',
   'sales/widgets/widgets.css',
   'settings/WorkspaceSettingsModal.module.css',

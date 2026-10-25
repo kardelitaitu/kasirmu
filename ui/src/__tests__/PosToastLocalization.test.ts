@@ -73,7 +73,6 @@ const EXEMPT = new Map<string, number>([
   ['features/inventory/StockCountDetail.tsx', 1],
   ['features/inventory/StockCountHistory.tsx', 1],
   ['features/inventory/StockCountsScreen.tsx', 1],
-  ['features/inventory/TransitAuditScreen.tsx', 1],
   ['features/settings/EmailReportSettings.tsx', 1],
   // — recorded defects with reasons, not POS bugs —
   // The design-system reference page. Its four toast-demo literals are real English
