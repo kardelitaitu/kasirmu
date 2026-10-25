@@ -28,7 +28,9 @@ python scripts/check-l10n-test-maps.py
 * 826 test files read
 * 23 hand-maintained maps judged (a run of >= 3 `'key': 'value',` pairs whose
   miss lands back on the id, i.e. `map[id] ?? id`)
-* **586 keys** that a component renders and the map does not carry
+* every key a component renders that the map does not carry. The count lives ONLY
+  in `scripts/l10n-map-baseline.json`, never in prose: a total written into a
+  paragraph is a number nothing will tell you is stale.
 
 Recorded in `scripts/l10n-map-baseline.json` as a ratchet. The gate refuses a
 NEW hole, and refuses to stay silent when a known hole is fixed (the baseline
@@ -73,6 +75,37 @@ The rule: **a fix to a stub map is earned by mutating the map and watching a
 test change.** Adding the key and seeing green proves nothing, because the
 pre-fix state was also green.
 
+## The ratchet had to be taught to refuse (round 227)
+
+The first version of --write-baseline was a RESET BUTTON, and an independent
+audit proved it end to end rather than arguing about it:
+
+    # delete a real key from a stub map, then ask the gate
+    gate             -> exit 1   (correctly red)
+    --write-baseline -> exit 0   (wrote 595 entries)
+    gate again       -> exit 0   OK, no new holes
+
+One command converted a real defect into a known one. A stale-entry check that
+the same command clears is not a ratchet. --write-baseline now REFUSES to grow the
+set: it prints the new holes, names the file, and exits 1. Growing needs
+--allow-growth, a separate token that appears in a diff where a reviewer can see
+it. Shrinking stays free, because that is what a repair should do.
+
+Two detector defects were closed the same round, both by widening a matcher that
+had been too literal:
+
+| shape | before | after |
+|---|---|---|
+| lookup[key] ?? key | not a fallback (matched a literal [id]) | recognised |
+| vars[key] ?? ... above a real return result || id | short-circuited to none | keeps looking |
+
+The second mattered because SessionLockScreen formats placeholders with
+vars[key] ?? ..., and that FORMATTING expression was vetoing the real fallback
+eight lines below it; two suites were invisible for it. A third shape is still
+unseen and is recorded as such: maps built from an IMPORTED CONSTANT
+(topologyEditorTestHarness.tsx TOPOLOGY_EN) carry their fallback in the
+consumers, so the detector cannot attribute it to the map. That is the gate
+own motivating case, and it is not judged.
 ## Commands
 
 ```

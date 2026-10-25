@@ -77,7 +77,7 @@ DELIBERATELY NOT REPORTED -- each rule is a false positive this gate refuses to 
   * A key used ONLY through a template literal or a dynamic import -- it is
     never collected, so it is never reported.
 
-WHAT THE 586 IN THE BASELINE ACTUALLY ARE (measured 2026-11-06)
+WHAT THE BASELINE ENTRIES ACTUALLY ARE (measured 2026-11-06)
 ----------------------------------------------------------------
 The baseline is a CENSUS, not a defect count. A map is legitimately PARTIAL
 when the suite never reads the strings it omits, and this detector cannot
@@ -717,6 +717,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--self-test", action="store_true", help="run this checker's cases and exit")
     ap.add_argument("--write-baseline", action="store_true", help="regenerate the ratchet baseline")
+    ap.add_argument(
+        "--allow-growth",
+        action="store_true",
+        help="permit --write-baseline to bless NEW holes (must be justified in the commit)",
+    )
     args = ap.parse_args()
     if args.self_test:
         return self_test()
@@ -734,6 +739,27 @@ def main() -> int:
         return 2
 
     if args.write_baseline:
+        # A ratchet that one command can reset is not a ratchet. Measured
+        # 2026-11-06: deleting a real key turned the gate red (exit 1), then
+        # `--write-baseline` exited 0 and the very next run reported the tree
+        # clean -- the defect was now 'known'. So this path REFUSES to grow the
+        # set. Shrinking is always allowed (a repair should lower the file);
+        # ADDING a hole needs --allow-growth, which is a separate, greppable
+        # token that a reviewer can see in a diff and object to.
+        prior = {(e['at'], e['key']) for e in _read_baseline()}
+        seen = {(a, k) for a, k, _ in (_split_finding(l) for l in findings)}
+        grown = sorted(seen - prior)
+        if grown and not args.allow_growth:
+            print('', file=sys.stderr)
+            print('REFUSING TO GROW THE BASELINE -- %d new hole(s) would be blessed:' % len(grown), file=sys.stderr)
+            for at, key in grown[:20]:
+                print('  %s  %s' % (at, key), file=sys.stderr)
+            if len(grown) > 20:
+                print('  ... and %d more' % (len(grown) - 20), file=sys.stderr)
+            print('', file=sys.stderr)
+            print('These are NEW defects, not a snapshot to be accepted. Fix them, or', file=sys.stderr)
+            print('pass --allow-growth if the growth is genuinely intended.', file=sys.stderr)
+            return 1
         entries = []
         for line in findings:
             at, key, used_by = _split_finding(line)
@@ -747,7 +773,7 @@ def main() -> int:
         print("wrote %s with %d entries" % (BASELINE_PATH.relative_to(REPO), len(entries)))
         return 0
 
-    # RATCHET. 586 maps are broken today; a gate that refuses on all of them is a
+    # RATCHET. Hundreds of maps are incomplete today; a gate that refuses on them all
     # gate nobody wires in. The baseline says which are known, and the two
     # assertions that matter are: nothing NEW appears, and nothing known is left
     # behind once fixed. Both directions are checked so the file can only shrink.
