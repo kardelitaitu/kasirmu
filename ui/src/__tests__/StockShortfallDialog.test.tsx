@@ -6,7 +6,7 @@
 // actions (success and error states). 17 tests.
 
 import { describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import userEvent from '@testing-library/user-event';
 import { withFluent } from '@/i18n/test-utils';
@@ -491,6 +491,31 @@ describe('StockShortfallDialog', () => {
     expect(argsPayload.resolutions).toHaveLength(1);
     expect(argsPayload.resolutions[0]!.sku).toBe('SKU-001');
 
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('completes the sale ONCE when Confirm is double-tapped', async () => {
+    // The money has already been taken at the till by the time this dialog is up. The
+    // backend refuses the replay on the basket-contents key, but that refusal lands in the
+    // catch and replaces the dialog with an error over a sale that COMPLETED.
+    const onComplete = vi.fn();
+    let release: (() => void) | undefined;
+    mockCompleteSaleWithResolvedShortfalls.mockReturnValue(
+      new Promise((res) => { release = () => res({ saleId: 'sale-1', total: null, lineCount: 1 }); }),
+    );
+
+    await renderWithFluent(
+      <StockShortfallDialog {...defaultProps} onComplete={onComplete} />,
+    );
+
+    const confirmBtn = screen.getByText('Confirm & Continue').closest('button') as HTMLButtonElement;
+    await act(async () => {
+      confirmBtn.click();
+      confirmBtn.click();
+    });
+
+    release?.();
+    await waitFor(() => expect(mockCompleteSaleWithResolvedShortfalls).toHaveBeenCalledTimes(1));
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 

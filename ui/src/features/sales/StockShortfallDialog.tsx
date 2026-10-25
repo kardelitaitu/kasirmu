@@ -108,6 +108,8 @@ export default function StockShortfallDialog({
   const { l10n } = useLocalization();
 
   const [loading, setLoading] = useState(false);
+  /** Synchronous mirror of `loading` — see the re-entry guard in `handleConfirm`. */
+  const loadingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -273,6 +275,13 @@ export default function StockShortfallDialog({
       setError(requiredLocalized(l10n, 'pos-toast-auth-required'));
       return;
     }
+    // Re-entry guard. THIS HANDLER COMPLETES A SALE and the money has already been taken
+    // at the till. The backend has its own replay key on the basket CONTENTS
+    // (shortfall_basket_key), so the second call is refused rather than billed twice --
+    // but the refusal lands in the catch below and replaces the dialog with an error over
+    // a sale that completed, at the exact moment the cashier needs to know it did.
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
     setError(null);
 
@@ -385,6 +394,7 @@ export default function StockShortfallDialog({
       setError(msg);
       console.error('[ShortfallDialog] Resolution failed:', err);
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   }, [
