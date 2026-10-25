@@ -38,7 +38,8 @@ must shrink). Both directions were mutation-tested.
 
 ## The anti-pattern this exposed
 
-34 test files address elements **by their raw FTL key**, e.g.
+34 test files contain at least one query whose NAME is a raw FTL key
+(`name: 'topology-...'` or `getByText('some-key')`), e.g.
 
 ```ts
 screen.getByRole('button', { name: 'topology-branch-delete' })
@@ -101,11 +102,33 @@ had been too literal:
 
 The second mattered because SessionLockScreen formats placeholders with
 vars[key] ?? ..., and that FORMATTING expression was vetoing the real fallback
-eight lines below it; two suites were invisible for it. A third shape is still
-unseen and is recorded as such: maps built from an IMPORTED CONSTANT
-(topologyEditorTestHarness.tsx TOPOLOGY_EN) carry their fallback in the
-consumers, so the detector cannot attribute it to the map. That is the gate
-own motivating case, and it is not judged.
+eight lines below it; two suites were invisible for it.
+
+A third shape was CLOSED the next round: maps built from an IMPORTED CONSTANT
+(topologyEditorTestHarness.tsx TOPOLOGY_EN, whose fallback lives in its
+consumers) used to be skipped as "0 maps" -- the gate was blind to its own
+motivating case. It is now judged by resolving the identifier to the module
+that DECLARES it and scanning the test's direct imports.
+
+Two more detector defects surfaced while proving that, and both matter more
+than they look:
+
+- A COMMENT BLOCK SPLIT ONE MAP INTO TWO. Six lines of explanation exceeded
+  KEY_BLOCK_GAP and divided a 170-key object into 46 + 71 + 56. The halves then
+  reported each other's keys as missing. Deleting only the comment changed no
+  behaviour and dropped the count.
+- A MULTI-LINE VALUE DID THE SAME. A value on the line after its key starts
+  with a quote, so it read as a new entry. That is the likeliest shape in any
+  hand-written map and it was invisible.
+
+Both are guarded now, and each is proven BOTH ways: a comment inside a map
+keeps it one map, and a }; between two key lines still splits it.
+
+The remaining known limit is scoping. An imported map is graded against the
+test's DIRECT imports, while an inline map is graded against the one-level
+nested graph too. That asymmetry under-reports: it hides copy in nested
+modules such as topologyToolRack.tsx. It is deliberately conservative, not
+correct, and it is recorded rather than papered over.
 ## Commands
 
 ```
