@@ -1,5 +1,5 @@
 import { useLocalization } from '@fluent/react';
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import Tooltip from '@/app/Tooltip';
 
 import {
@@ -40,6 +40,9 @@ export function SyncConflictsPanel({
   const [error, setError] = useState<string | null>(null);
   const [requeueingId, setRequeueingId] = useState<string | null>(null);
   const [requeueingAll, setRequeueingAll] = useState(false);
+  /** Synchronous mirrors of the requeue flags — see the guards in the handlers below. */
+  const requeueingAllRef = useRef(false);
+  const requeuePendingRef = useRef(new Set<string>());
   const [requeueProgress, setRequeueProgress] = useState<{ current: number; total: number } | null>(null);
   const [expandedPayloadId, setExpandedPayloadId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -70,6 +73,10 @@ export function SyncConflictsPanel({
 
   async function handleRequeue(itemId: string) {
     if (!sessionToken) return;
+    // Per-ROW guard: two DIFFERENT items must requeue concurrently, so this is a set of
+    // ids, not a boolean. A replay of the same row only re-reports its status.
+    if (requeuePendingRef.current.has(itemId)) return;
+    requeuePendingRef.current.add(itemId);
     setRequeueingId(itemId);
     setError(null);
     try {
@@ -79,12 +86,17 @@ export function SyncConflictsPanel({
     } catch (e) {
       setError(String(e));
     } finally {
+      requeuePendingRef.current.delete(itemId);
       setRequeueingId(null);
     }
   }
 
   async function handleRequeueAll(items: RemoteSyncFailureDto[]) {
     if (!sessionToken || items.length === 0) return;
+    // Re-entry guard: the replay walks the SAME list a second time, so every row is
+    // requeued twice and the `requeueProgress` bar restarts at 1 of N mid-run.
+    if (requeueingAllRef.current) return;
+    requeueingAllRef.current = true;
     setRequeueingAll(true);
     setError(null);
     try {
@@ -99,6 +111,7 @@ export function SyncConflictsPanel({
     } catch (e) {
       setError(String(e));
     } finally {
+      requeueingAllRef.current = false;
       setRequeueingAll(false);
       setRequeueProgress(null);
     }
