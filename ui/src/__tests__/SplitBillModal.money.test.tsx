@@ -21,7 +21,7 @@
 // does not have.
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, within } from '@testing-library/react';
 import { withFluent } from '@/i18n/test-utils';
 import type { ReactElement } from 'react';
 import salesFtl from '@/locales/sales.ftl?raw';
@@ -111,6 +111,36 @@ describe('SplitBillModal — the split conserves the bill', () => {
     expect(selected.reduce((s, l) => s + l.unit_price.minor_units * l.qty, 0)).toBe(
       2 * 25000 + 3 * 5000,
     );
+  });
+
+  it('confirms once when the confirm button is double-tapped', async () => {
+    // A replay bills the SAME selected partition twice: the caller turns each half into
+    // its own sale. The button's `state` flips to 'processing' only on the next render,
+    // so both taps inside one tick reach the handler.
+    const lines = [line('l1', 'Nasi Goreng', 2, 25000)];
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((res) => { release = res; });
+    const onConfirmSplit = vi.fn(() => gate.then(() => true)) as unknown as ConfirmSplit;
+    renderModal(lines, onConfirmSplit);
+
+    // A selection that is neither empty (confirm refuses) nor the whole bill: the first
+    // line is auto-selected IN FULL, so the increase control starts at its ceiling and
+    // step DOWN once, then back UP once — 1 of 2 units go to payment.
+    fireEvent.click(screen.getByLabelText('Decrease Nasi Goreng'));
+    fireEvent.click(screen.getByLabelText('Increase Nasi Goreng'));
+    expect(qtyPairOf('Nasi Goreng')).toEqual([1, 2]);
+
+    // Dispatch both clicks BEFORE react-testing-library wraps the first in act() and
+    // flushes a render: a flush in between would re-render the button as 'processing',
+    // which disables it and the second click would prove nothing.
+    const confirmBtn = screen.getByTestId('pos-split-modal-confirm-btn');
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+      fireEvent.click(confirmBtn);
+    });
+
+    release?.();
+    await vi.waitFor(() => expect(onConfirmSplit).toHaveBeenCalledTimes(1));
   });
 
   it('refuses to select more units than the line holds', () => {

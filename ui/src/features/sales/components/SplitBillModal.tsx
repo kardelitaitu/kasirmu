@@ -53,6 +53,8 @@ export function SplitBillModal({
   // Map each line ID to the quantity selected to pay now (0 .. line.qty)
   const [selectedQtys, setSelectedQtys] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState(false);
+  /** Synchronous mirror of `submitting` — see the re-entry guard in `handleConfirm`. */
+  const submittingRef = useRef(false);
 
   // Initialize or reset selections when modal opens or lines change
   useEffect(() => {
@@ -147,7 +149,14 @@ export function SplitBillModal({
   }, [lines, selectedQtys]);
 
   const handleConfirm = useCallback(async () => {
-    if (selectedLines.length === 0 || submitting) return;
+    if (selectedLines.length === 0) return;
+    // Synchronous re-entry guard. The confirm button renders `state={submitting ?
+    // 'processing' : 'ready'}`, and Button derives `disabled` from that state -- but React
+    // commits state on the NEXT render, so two clicks inside one tick both read `ready`
+    // here. Replaying this callback bills the SAME items twice: the caller creates the
+    // selected partition as its own sale.
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       // Only an EXPLICIT `false` keeps the modal open. Every other resolution —
@@ -158,9 +167,10 @@ export function SplitBillModal({
       if (committed === false) return;
       onClose();
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
-  }, [selectedLines, remainingLines, submitting, onConfirmSplit, onClose]);
+  }, [selectedLines, remainingLines, onConfirmSplit, onClose]);
 
   if (!isOpen) return null;
 
