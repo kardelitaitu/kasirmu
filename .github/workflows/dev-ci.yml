@@ -1269,6 +1269,12 @@ jobs:
       # Gates.json: l10n-test-maps.
       - name: l10n stub map scan
         run: python3 scripts/check-l10n-test-maps.py
+      # A test that matches getByText('some-key') passes only because its l10n
+      # stub falls back to the id, so the assertion describes the defect. Grades
+      # matchers naming a real bundle key where real copy could render, ratcheted
+      # against scripts/raw-key-assertions-baseline.json. Gates.json: raw-key-assertions.
+      - name: Raw-key assertion scan
+        run: python3 scripts/check-raw-key-assertions.py
       # The COR-7 per-attempt idempotency rules exist TWICE -- the implementation
       # in kasirmu-bridge and a fork in the tablet shell -- and the fork drifted
       # into a security defect: only the bridge refused a colon in the attempt id,

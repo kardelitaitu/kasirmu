@@ -2107,6 +2107,25 @@
           "l10n stub map scan"
         ]
       }
+    },
+    {
+      "id": "raw-key-assertions",
+      "label": "Tests asserting on a translation key instead of copy",
+      "status": "required",
+      "_note": "Added 2026-11-07. A vitest file that matches a Fluent message id -- getByText('some-key'), getByRole(name: 'topology-branch-delete') -- passes only because its l10n stub falls back to the id, or because nothing supplies copy there. Either way the assertion describes the DEFECT: it says the UI displays its own translation key, and it keeps passing after the copy is wrong. Found by hand three times before this gate existed; TopologyScreen.test.tsx alone matched 37 keys while its stub map held 5 unrelated entries, and nodeTopologyEditorWarehouseAndCanvas.test.tsx matched a raw key under a comment reading \"raw key in the identity-l10n mock\" -- the bug written down as intent. THE POPULATION IS NARROW ON PURPOSE. Measured 2026-11-06: 186 matchers in ui/src name a real bundle key, but only 50 sit in a file where real copy could render (it mounts LocalizationProvider, or its stub falls back onto the id). The rest assert the key legitimately because their l10n is absent or constant, and flagging them would be noise. Five assertions in TopologyScreen.test.tsx still compare a key and are CORRECT to: topologyApply constructs its errors as new TopologyApplyValidationError(l10n.getString(messageId)) where messageId is already a key, so the thrown message genuinely is the id -- converting them was measured red and reverted. Ratcheted against scripts/raw-key-assertions-baseline.json, which may only shrink; --write-baseline REFUSES to grow it without --allow-growth, the same guard the l10n map gate needed after an audit showed one command could bless a real defect. PROVEN TO FIRE: reverting one converted assertion to a raw key exits 1 naming the file, line and key. PROVEN NOT DEAF: the self-test grades a synthetic tree with one must-flag file and three must-not-flag files (correct copy, a constant stub, and a non-bundle hyphenated string) before reading the real tree, and exits 2 when the live scan finds nothing.",
+      "runners": {
+        "check.sh": [
+          "raw key assertions",
+          "raw key assertions self-test"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Raw-key assertion scan"
+        ]
+      }
     }
   ]
 }

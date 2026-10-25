@@ -709,6 +709,16 @@ step "rbac citation gate self-test" "python3 scripts/check-rbac-citations.py --s
 # Gate: scripts/gates.json -> "l10n-test-maps".
 step "l10n test maps" "python3 scripts/check-l10n-test-maps.py" python3 scripts/check-l10n-test-maps.py
 step "l10n test maps self-test" "python3 scripts/check-l10n-test-maps.py --self-test" python3 scripts/check-l10n-test-maps.py --self-test
+
+# Tests asserting on a translation KEY where the user sees copy, added 2026-11-07.
+# A vitest file that matches getByText('some-key') passes only because its l10n
+# stub falls back to the id, so the assertion describes the DEFECT. Found by hand
+# three times: a warehouse test matched a raw key under a comment that said so,
+# up to 37 in TopologyScreen.test.tsx. Ratcheted against
+# scripts/raw-key-assertions-baseline.json; the file may only shrink.
+# Gate: scripts/gates.json -> "raw-key-assertions".
+step "raw key assertions" "python3 scripts/check-raw-key-assertions.py" python3 scripts/check-raw-key-assertions.py
+step "raw key assertions self-test" "python3 scripts/check-raw-key-assertions.py --self-test" python3 scripts/check-raw-key-assertions.py --self-test
 # A pipeline exits with its LAST command's status, so `if s=$(... | tail -1)` is always
 # true and the branch meant for "nothing matched" is unreachable. This repo shipped that
 # shape for weeks in the cargo-deny block below and nobody saw it, because BOTH branches
