@@ -10,8 +10,9 @@
 //! coverage").
 //!
 //! Colour contrast stays disabled here: jsdom has no rendering engine, so
-//! computed colours are not meaningful; contrast is covered by the E2E suite
-//! (documented exception, tracked against the audit's expiry guidance).
+//! computed colours are not meaningful; contrast is graded directly on the
+//! token pairs by colorContrastCompliance.test.ts (documented exception,
+//! tracked against the audit's expiry guidance).
 
 import { describe, it, vi } from 'vitest';
 import { renderWithProviders } from '@/__tests__/test-utils/render';

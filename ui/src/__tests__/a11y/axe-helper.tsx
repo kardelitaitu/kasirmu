@@ -95,8 +95,11 @@ settings-nav-category-expanded = { $category } expanded, { $count } items
 `;
 
 /// Disabled rules for consistent unit-test a11y testing.
-/// Color contrast is tested in E2E; landmark/heading rules are tested
-/// in AppShell integration tests, not isolated component tests.
+/// Color contrast is graded by colorContrastCompliance.test.ts, which measures the
+/// token pairs for all three themes directly (jsdom cannot compute colours).
+/// Landmark/heading rules are graded with the global rules re-enabled in
+/// ShellLayout.a11y.test.tsx against the real desktop and tablet shells,
+/// not in isolated component tests.
 const DISABLED_RULES = {
   'color-contrast': { enabled: false },
   'landmark-one-main': { enabled: false },
