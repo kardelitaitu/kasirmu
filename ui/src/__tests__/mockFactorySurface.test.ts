@@ -196,13 +196,33 @@ const KNOWN_DEAD: Record<string, string[]> = {
     // the factory was cleaned in the same pass.
   ],
   '@/api/products <- createProductsApiMock': [
-    'createCategory', 'deleteCategory', 'updateCategory',
+    // Round 194 deleted the variant wrappers with VariantManagementScreen; round 195
+    // removed the five mock definitions that had been answering them. A mock for an
+    // export the module no longer has is DEAD, and this registry is where that is
+    // declared rather than silently tolerated. Deleting the wrappers and the mocks in
+    // different rounds is why there are seven names here rather than eight: this file
+    // moved twice in two rounds, and each move is a visible edit on purpose.
+    'createCategory',
+    'createProductVariant',
+    'deleteCategory',
+    'deleteProductVariant',
+    'getProductVariant',
+    'listProductVariants',
+    'updateCategory',
+    'updateProductVariant',
   ],
   '@/api/hardware <- createHardwareApiMock': [
     'displayClear', 'displayShow', 'listDisplays',
   ],
   '@/api/products <- createRetailProductsApiMock': [
-    'createCategory', 'deleteCategory', 'updateCategory',
+    'createCategory',
+    'createProductVariant',
+    'deleteCategory',
+    'deleteProductVariant',
+    'getProductVariant',
+    'listProductVariants',
+    'updateCategory',
+    'updateProductVariant',
   ],
   '@/api/currency <- createRetailCurrencyApiMock': [
     'listCurrencies', 'listExchangeRates',
@@ -277,7 +297,7 @@ const KNOWN_GAPS: Record<string, string[]> = {
   ],
   // 10 names.
   '@/api/products <- createProductsApiMock': [
-    'createCategoryScoped', 'deleteCategoryScoped', 'deleteProductVariantScoped',
+    'createCategoryScoped', 'deleteCategoryScoped',
     'getProductTrackSerialScoped', 'listWarehouseProductsAtLocation',
     'productsClearImageScoped', 'productsListImagesScoped', 'productsSetImageScoped',
     'recordProductSearchScoped', 'updateCategoryScoped',
@@ -327,7 +347,7 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // fix (round 52) gave the factory a real mock for it: the gap and the defect were the
   // same omission, which is why nothing ever noticed categories were never written.
   '@/api/products <- createRetailProductsApiMock': [
-    'deleteCategoryScoped', 'deleteProductVariantScoped',
+    'deleteCategoryScoped',
     'listWarehouseProductsAtLocation', 'productsClearImageScoped',
     'productsListImagesScoped', 'productsSetImageScoped', 'updateCategoryScoped',
   ],
