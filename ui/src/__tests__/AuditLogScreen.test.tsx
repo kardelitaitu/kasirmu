@@ -711,6 +711,31 @@ describe('AuditLogScreen', () => {
     clickSpy.mockRestore();
   });
 
+  it('exports the audit log ONCE when Export CSV is double-tapped', async () => {
+    // The CSV is the audit evidence; a replay writes it twice under the same download name
+    // and the second blob's object URL is the one the operator ends up with.
+    let release: (() => void) | undefined;
+    mockExportAuditLogScoped.mockReturnValue(new Promise((res) => {
+      release = () => res({ csv: 'id\n', row_count: 0, generated_at: '', requested_by: 'u' });
+    }));
+    const createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:fake');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    await renderScreen();
+    await waitFor(() => expect(screen.getByText('Export CSV')).toBeDefined());
+
+    const btn = screen.getByRole('button', { name: 'Export CSV' });
+    act(() => {
+      fireEvent.click(btn);
+      fireEvent.click(btn);
+    });
+
+    release?.();
+    await waitFor(() => expect(mockExportAuditLogScoped).toHaveBeenCalledTimes(1));
+    createUrl.mockRestore();
+  });
+
   it('shows a localized export-error notice even when the table has rows (AUD-09)', async () => {
     mockExportAuditLogScoped.mockRejectedValue(new Error('export boom'));
     // Rows present — the table-load error branch (error && entries.length === 0)

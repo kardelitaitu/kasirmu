@@ -137,6 +137,9 @@ function AuditLogScreenContent() {
   const [unreviewedCount, setUnreviewedCount] = useState(0);
   const [markingReviewed, setMarkingReviewed] = useState(false);
   const [exporting, setExporting] = useState(false);
+  /** Synchronous mirrors of the export busy flags — see their re-entry guards above. */
+  const exportingRef = useRef(false);
+  const secExportingRef = useRef(false);
   // Dedicated export-failure notice (AUD-09): the table load error state only
   // renders when the table is empty, so an export failure with rows present
   // would otherwise be silent.
@@ -283,6 +286,10 @@ function AuditLogScreenContent() {
 
   const handleExport = useCallback(async () => {
     if (!sessionToken || exporting) return;
+    // Re-entry guard: `exporting` above is STATE, so two taps in one tick both pass it and
+    // the audit CSV is written twice to the same download name.
+    if (exportingRef.current) return;
+    exportingRef.current = true;
     setExporting(true);
     setExportError(null);
     try {
@@ -304,6 +311,7 @@ function AuditLogScreenContent() {
       // Dedicated inline notice — always visible regardless of table state.
       setExportError(requiredLocalized(l10n, 'audit-log-export-error'));
     } finally {
+      exportingRef.current = false;
       setExporting(false);
     }
   }, [sessionToken, exporting, outcomeFilter, searchQuery, l10n]);
@@ -324,6 +332,10 @@ function AuditLogScreenContent() {
 
   const handleSecurityExport = useCallback(async () => {
     if (!sessionToken || secExporting) return;
+    // Same re-entry shape as the AUD-09 export above, on its OWN ref: the two downloads
+    // are independent and must not block each other.
+    if (secExportingRef.current) return;
+    secExportingRef.current = true;
     setSecExporting(true);
     setSecExportError(null);
     try {
@@ -345,6 +357,7 @@ function AuditLogScreenContent() {
     } catch {
       setSecExportError(requiredLocalized(l10n, 'audit-log-security-export-error'));
     } finally {
+      secExportingRef.current = false;
       setSecExporting(false);
     }
   }, [sessionToken, secExporting, secActor, secFrom, secTo, l10n]);
