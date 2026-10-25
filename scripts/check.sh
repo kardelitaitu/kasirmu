@@ -198,11 +198,14 @@ step "orphan module census" "python3 scripts/census-orphan-modules.py" python3 s
 step "orphan module census self-test" "python3 scripts/census-orphan-modules.py --self-test" python3 scripts/census-orphan-modules.py --self-test
 
 # ── IPC session-token payload parity (round AE) ──────────────────────────
-# Fails when the UI invokes a command whose Rust signature requires
-# session_token without carrying a sessionToken payload (the round-AC edc
-# class). Union semantics across desktop + tablet shells.
-step "ipc invoke token parity" "python3 scripts/verify-invoke-parity.py" python3 scripts/verify-invoke-parity.py
-step "ipc invoke token parity self-test" "python3 scripts/verify-invoke-parity.py --self-test" python3 scripts/verify-invoke-parity.py --self-test
+# Fails when the UI invokes a command whose Rust signature requires a
+# session_token, or declares a currency argument, without the payload carrying
+# it. Two classes: the round-AC edc token class, and (added round 249) the
+# currency class -- a dropped currency deserializes fine and then applies a
+# number quoted in one denomination to a balance stored in another.
+# Union semantics across desktop + tablet shells.
+step "ipc invoke payload parity" "python3 scripts/verify-invoke-parity.py" python3 scripts/verify-invoke-parity.py
+step "ipc invoke payload parity self-test" "python3 scripts/verify-invoke-parity.py --self-test" python3 scripts/verify-invoke-parity.py --self-test
 
 # ipc-parity-allowlist.json records "UI command strings not yet registered in this shell", which
 # covers two very different things: an ambient call sitting in an ADR #7 else-branch (dead surface,

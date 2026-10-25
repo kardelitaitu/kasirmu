@@ -151,7 +151,7 @@ the other direction: the retired `ci.yml` job `rust-clippy` has a live successor
 | Per-crate coverage floors | `coverage-floors` (dev-ci.yml) | Required | `check.sh` (coverage floors) — grades a `cargo llvm-cov` report against `scripts/coverage-floors.json`. Added 2026-09-27 (P1-2). Coverage instrumentation existed (`scripts/coverage.sh`) while enforcement did not: the script prints a percentage and exits 0 whatever it is. Floors are a RATCHET two points below the 2026-09-27 measurement (foundation 99.4 → 97, kasirmu-core 83.8 → 81, modules-inventory 78.4 → 76, platform-sync 68.7 → 66), per-crate because a workspace average hides the risky crate — a single 70% floor would pass with platform-sync falling a point, carried by foundation's 99.4% |
 | IPC parity | `ipc-parity` | Required | `check.sh` (ipc parity) |
 | Shell registration divergence | `ipc-parity` | Required | `check.sh` (shell registration) — added 2026-10-25 |
-| IPC invoke token parity | `static-gates` | Required | `check.sh` (ipc invoke token parity) |
+| IPC invoke payload parity | `static-gates` | Required | `check.sh` (ipc invoke payload parity) — token AND currency payload classes; renamed from `invoke-token-parity` 2026-10-26 |
 | A11y regression | `ui-test` | Advisory | `check.sh` (a11y) |
 | Feature registry parity | — | Required | `check.sh` (feature registry) |
 | Plugin-guide parity | — | Required | `check.sh` (plugin-guide parity) |
@@ -284,7 +284,7 @@ Pre-push gate mirroring CI. **The numbered list below is a SUMMARY of the load-b
 9. Skill drift guard self-tests (bats; warn-skips when bats is absent)
 10. Panic inventory
 11. IPC registration parity
-12. IPC invoke token parity
+12. IPC invoke payload parity
 13. `npm ci` + UI lint/typecheck/test
 14. i18n lint
 15. FTL dedupe

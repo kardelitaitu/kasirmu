@@ -478,17 +478,17 @@
       }
     },
     {
-      "id": "invoke-token-parity",
-      "label": "IPC invoke token parity",
+      "id": "invoke-payload-parity",
+      "label": "IPC invoke payload parity",
       "status": "required",
-      "_note": "Added 0.0.37 (TDD round AE). scripts/verify-invoke-parity.py fails when ui/src/api invokes a command whose Rust signature requires session_token without carrying a sessionToken payload -- the round-AC class (edc.ts card-present wrappers shipped with no token; caught by hand, invisible to tsc/vitest). Union semantics across BOTH shells (desktop + tablet share the ui front-end). The unregistered-command class is intentionally NOT here: verify-ipc-parity.py (F-008/F-050) owns it with its own allowlist.",
+      "_note": "Added 0.0.37 (TDD round AE); SECOND CLASS ADDED 2026-10-26 (round 249), which is why this is now payload parity rather than token parity. scripts/verify-invoke-parity.py fails when ui/src/api invokes a command whose Rust signature requires session_token WITHOUT carrying a sessionToken payload -- the round-AC class (edc.ts card-present wrappers shipped with no token; caught by hand, invisible to tsc/vitest) -- and, since round 249, also when a command declares a currency argument and the payload carries no currency. That second class is the same shape one layer down: a dropped currency DESERIALIZES FINE and then applies a number quoted in the caller's denomination to a balance stored in another one, so nothing fails until the ledger is wrong. Measured before it was graded: replacing the shell's &currency forward with an empty string compiled clean and passed every gate. The parameter must match by NAME at a word boundary (from_currency/to_currency are not currency), and *_tests.rs is skipped because those files embed fake signatures inside string literals. Union semantics across BOTH shells (desktop + tablet share the ui front-end). The unregistered-command class is intentionally NOT here: verify-ipc-parity.py (F-008/F-050) owns it with its own allowlist.",
       "ci": {
         "workflow": "dev-ci.yml",
         "job": "static-gates"
       },
       "runners": {
         "check.sh": [
-          "invoke token parity"
+          "invoke payload parity"
         ]
       }
     },
@@ -1602,7 +1602,7 @@
           "exhaustive-deps ratchet self-test",
           "plugin-guide parity self-test",
           "topology contract parity self-test",
-          "ipc invoke token parity self-test",
+          "ipc invoke payload parity self-test",
           "dockerfile workspace self-test",
           "no-hardcoded-money-format self-test",
           "test shadow copies self-test",
@@ -1634,7 +1634,7 @@
       "_note": "Added 2026-09-29 to close the 7 gate steps that ran in check.sh with no row. These are checkers, not setup: npm ci, website npm ci, test workspace (nextest), test application shells and their siblings are deliberately NOT listed here, and that is the reason no blanket reverse check exists. check.sh mixes gates with INSTALLS and TEST-RUNNER invocations, and deciding which is which is a judgement per step, not a rule -- so a naive 'every step needs a row' check would fire on 13 correct entries and get muted on its first run. Which is the shape of the mistake this campaign has made repeatedly: a check broad enough to be easy is narrow enough to be useless. Each step listed here runs a scripts/*.py checker with a --self-test beside it, and verify-selftests-wired.py is what keeps that pairing true from now on.",
       "runners": {
         "check.sh": [
-          "ipc invoke token parity",
+          "ipc invoke payload parity",
           "windows config drift",
           "feature registry parity",
           "no-hardcoded-money-format",
