@@ -2753,6 +2753,16 @@ from intent ("the warehouse thing replaced it") rather than from a lookup. A rea
 banner concludes the question is settled and stops looking. A reader who checks finds a phantom
 and no longer trusts the other three lines either.
 
+**Round 200: the note about a missing file started citing a deleted one.** When
+`ProductManagementScreen.tsx` was removed in round 192, this paragraph's second example became a
+path that no longer resolves — so the section arguing that "a note naming a file that does not
+exist is worse than no note" was itself a note naming a file that does not exist, and
+`check-dead-refs.py` said so. The first attempt annotated it in the past tense and KEPT the path,
+which left the gate red for the same reason: the checker grades the PATH, not the tense. The fix
+is to drop the path and describe the banner instead. **Deleting a file edits every doc that named
+it, and the doc most likely to name it is the one about naming files — a self-referential corner
+the deleting round does not see, because it is reading code, not prose.**
+
 `start_and_store` -- because a whole-file parse reports it registered and a list-scoped parse
 does not. That one goes red under the mutation. Four cases that all agree with both
 implementations are measuring nothing.
