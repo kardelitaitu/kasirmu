@@ -100,7 +100,7 @@ kasir.mu processes, transmits, and stores cardholder data when processing credit
 | Requirement | Status | Notes |
 |-------------|--------|-------|
 | 7.1.1 Restrict access to cardholder data by business need-to-know | ✅ Implemented | RBAC via `platform_core::rbac` (the permission model) — see 7.2.1. `StaffRoles` is an *entitlement flag*, not the permission model; the earlier text here named it as the RBAC mechanism, which contradicted the row below. |
-| 7.2.1 Role-based access control matrix | ✅ Implemented | `platform_core::rbac` — `has_permission` (rbac.rs:121,259) over role constants `role-owner`/`role-admin` (rbac.rs:273,277), re-exported as `kasirmu_core::rbac`. `StaffRoles` is an *entitlement flag* (kasirmu-core/src/features.rs), not the permission model. Verified 2026-09-25. |
+| 7.2.1 Role-based access control matrix | ✅ Implemented | `platform_core::rbac` — `has_permission` (`rbac.rs:121`) over role constants `role-owner`/`role-admin` (`rbac.rs:273`), re-exported as `kasirmu_core::rbac`. `StaffRoles` is an *entitlement flag* (kasirmu-core/src/features.rs), not the permission model. Verified 2026-09-25. |
 | 8.2.1 Unique user IDs for all personnel | ✅ Implemented | Each cashier has unique login |
 | 8.3.1 Secure authentication (multi-factor where possible) | 📋 Planned | PIN-based auth → MFA in Phase 3 |
 | 8.5.1 Manage user identities and access | ✅ Implemented | User management via Staff Management UI |

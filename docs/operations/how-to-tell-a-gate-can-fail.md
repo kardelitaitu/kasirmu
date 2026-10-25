@@ -13,7 +13,7 @@ mechanisms, and only the first is detectable by grepping for a flag:
 | Shape | Example | How to recognise it |
 |---|---|---|
 | `--self-test` flag | `verify-shell-syntax.py --self-test` | the literal string, wired as a `step` |
-| A companion test | `check-replay-fork.py` + `scripts/test-replay-fork.py` (check.sh:561) | a `test-<name>.py|sh` beside it |
+| A companion test | `check-replay-fork.py` + `scripts/test-replay-fork.py` (`check.sh:561`) | a `test-<name>.py|sh` beside it |
 | A proof the checker RUNS first | `check-query-plans.py --check` runs the Rust test `forcing_a_scan_fails_the_probe` before grading | grep the checker for a subprocess call |
 | An inline liveness guard | `check-scratch-leaks.py::detector_still_sees_a_call()` | grep for `exit 2` / `refus` / `drifted` |
 
@@ -52,7 +52,7 @@ Recorded so the next reader does not re-derive them:
 | `check-debt-ledger.py` | cross-checks the ledger against `git log`; emptying either side is caught by the other |
 | `verify-fluent-dynamic-families.py` | an empty locale corpus makes every family a gap -> rc 1 |
 | `check-unified-routes.mjs` | three census guards, each printing "the parser drifted" and exiting 2 |
-| `check-replay-fork.py` | has a companion test, wired at check.sh:561 |
+| `check-replay-fork.py` | has a companion test, wired at `check.sh:561` |
 | `check-ui.mjs` | an AGGREGATOR (runs lint/tsc/vitest); it has no detector of its own |
 | `check-font-claims.mjs` | 16 rows, each `if (!probe.ran) exit 2` then an exact-value assertion; empty -> false -> fail |
 | `verify-scoped-coverage.sh` / `verify-scoped-authorization.sh` | corpus floors (`< 50` / `< 150`) |

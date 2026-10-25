@@ -32,6 +32,21 @@ COMPUTED from the file each run, never hardcoded — a hardcoded boundary would 
 same way the citations did. Quoted corrections are exempt when the line also says the
 line "is not a preset" (this file family documents its own corrections inline).
 
+RULE 2 — A TABLE CELL CITING WITHOUT BACKTICKS IS INVISIBLE
+----------------------------------------------------------
+`check-cite-lines.py` only recognises a citation wrapped in backticks (its CITE
+regex is `path:N` between two backticks). A markdown TABLE CELL usually writes the
+citation bare, so `| Manager | yes | rbac_presets.rs:79-80 |` is not graded AT ALL —
+and the checker still reports `298 citations / 228 graded`, because the count is of
+what it SAW. Measured 2026-10-25: the runbook's five-row role table carried five
+bare coordinates, every one stale, and all five were outside the graded population.
+That is how a table can be wrong on every row while the audit reports OK.
+
+This rule flags a TABLE ROW whose cell carries a `path:N` outside backticks, in a
+LIVE doc. It does not judge the coordinate — it asks only that the citation be
+reachable by the checker that would judge it. Audit stamps are exempt: they quote
+coordinates from the past on purpose and carry their own `dead-ref: ok:`.
+
 EXIT CODES
     0  no doc reads the inventory as a preset
     1  at least one does
@@ -52,6 +67,20 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 PRESETS_SRC = REPO / "platform" / "core" / "src" / "rbac_presets.rs"
 DOC_ROOTS = ("docs",)
+
+#: Generated or ignored trees under docs/. `/docs/src/operations/` and its five
+#: siblings are mdBook BUILD OUTPUT (`.gitignore:149-155`), so a copy of a live doc
+#: sits there untracked and this gate would report the same citation twice — once
+#: for the source and once for a regenerated copy nobody can fix in a commit.
+DOC_SKIP_PREFIXES = (
+    "docs/src/api/",
+    "docs/src/guides/",
+    "docs/src/decisions/",
+    "docs/src/releases/",
+    "docs/src/operations/",
+    "docs/html/",
+    "docs/book/",
+)
 
 #: A citation of the presets file, with one or more line numbers.
 #: A QUALIFIED citation of the presets file: `rbac_presets.rs:419`.
@@ -141,6 +170,58 @@ def citations_reading_inventory(text: str, start: int, end: int) -> list[str]:
                 )
     return bad
 
+#: A `path:N` citation anywhere on a row. The BACKTICK test is done per row, not by a
+#: lookbehind: `(?<!`)` inspects ONE character before the path, which in
+#: "(`crates/x.rs:249`)" is the backtick that OPENED the span two characters earlier --
+#: so a first version flagged a correctly-backticked table and reported four false
+#: findings in CRITICAL_PATH_INVARIANTS.md. The question is whether the citation sits
+#: INSIDE a backtick span, which is decided by counting backticks before it on the row.
+CITE_ANY_RE = re.compile(
+    r"([A-Za-z0-9_/.-]+\.(?:rs|ts|tsx|sql|py|mjs|sh|go|json|ftl|toml|md)):(\d+)"
+)
+#: Rows whose content is narrative rather than a claim about the live tree.
+STAMP_RE = re.compile(r"Audit stamp|audit stamp|dead-ref: ok:", re.IGNORECASE)
+
+
+def _inside_backticks(line: str, index: int) -> bool:
+    """True when `index` falls inside an odd-numbered run of backticks."""
+    return line.count("`", 0, index) % 2 == 1
+
+
+def ungraded_table_citations(text: str) -> list[str]:
+    """Table rows whose citation the cite-lines checker cannot see."""
+    bad: list[str] = []
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        if not line.lstrip().startswith("|"):
+            continue
+        if STAMP_RE.search(line):
+            continue
+        for m in CITE_ANY_RE.finditer(line):
+            if _inside_backticks(line, m.start()):
+                continue
+            bad.append(
+                f"{lineno}: table cell cites {m.group(0)} without backticks, "
+                "so check-cite-lines.py cannot grade it"
+            )
+    return bad
+
+
+def table_detector_still_fires() -> bool:
+    """Grade rule 2 over synthetic rows before trusting a clean real scan."""
+    must_flag = [
+        "| **Manager** | yes | rbac_presets.rs:79-80 |",
+        "| Staff | no | platform/core/src/rbac.rs:608 |",
+    ]
+    must_pass = [
+        "| **Manager** | yes | `rbac_presets.rs:109` |",
+        "| Rust guard | `crates/kasirmu-core/src/db/x.rs:249` | `.filter(v >= 0)` |",
+        "| note | see the audit stamp, rbac_presets.rs:79-80 |",
+        "Prose mentioning rbac_presets.rs:79-80 is not a table row.",
+    ]
+    if any(not ungraded_table_citations(s) for s in must_flag):
+        return False
+    return all(not ungraded_table_citations(s) for s in must_pass)
+
 def scan() -> tuple[list[str], int]:
     """Find offending doc lines. Returns (findings, files_read)."""
     start, end = inventory_span()
@@ -151,12 +232,20 @@ def scan() -> tuple[list[str], int]:
         if not base.is_dir():
             continue
         for path in sorted(base.rglob("*.md")):
-            read += 1
             rel = path.relative_to(REPO).as_posix()
-            for problem in citations_reading_inventory(
-                path.read_text(encoding="utf-8", errors="replace"), start, end
-            ):
+            if rel.startswith(DOC_SKIP_PREFIXES):
+                continue
+            read += 1
+            body = path.read_text(encoding="utf-8", errors="replace")
+            for problem in citations_reading_inventory(body, start, end):
                 findings.append(f"{rel}:{problem}")
+            # Dated records are evidence of what the tree looked like THEN; rule 2
+            # asks for a backtick so a LIVE claim can be graded, which a record is
+            # not. Rule 1 still runs on them, because reading the inventory as a
+            # preset is a semantic error in a record too.
+            if not rel.startswith("docs/records/"):
+                for problem in ungraded_table_citations(body):
+                    findings.append(f"{rel}:{problem}")
     return findings, read
 
 
@@ -189,7 +278,11 @@ def self_test() -> int:
 
     cases += 1
     if not detector_still_fires():
-        bad.append("the detector no longer classifies the synthetic citations")
+        bad.append("rule 1's detector no longer classifies the synthetic citations")
+
+    cases += 1
+    if not table_detector_still_fires():
+        bad.append("rule 2's detector no longer classifies the synthetic table rows")
 
     # The span must be computed from the file, so a rename of the constant is a
     # SCAN BROKE rather than a silent empty scan.
@@ -218,7 +311,10 @@ def main() -> int:
         return self_test()
 
     if not detector_still_fires():
-        print("DETECTOR WENT DEAF: the citation regex no longer matches a known offender.", file=sys.stderr)
+        print("DETECTOR WENT DEAF: rule 1 no longer matches a known offender.", file=sys.stderr)
+        return 2
+    if not table_detector_still_fires():
+        print("DETECTOR WENT DEAF: rule 2 no longer matches a bare table citation.", file=sys.stderr)
         return 2
 
     findings, read = scan()
