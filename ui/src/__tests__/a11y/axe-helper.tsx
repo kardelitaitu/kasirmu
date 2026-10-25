@@ -13,6 +13,28 @@
 //! Violations are logged to the console with the axe-core report format.
 //! Tests fail on any violation (critical, serious, moderate, or minor)
 //! to ensure maximum coverage.
+//!
+//! PAGE-LEVEL RULES NEED `checkA11yDocument`, NOT `checkA11y`.
+//!
+//! Three axe rules only evaluate when their target IS the page root, and they
+//! are silent — not skipped-with-a-warning, silent — when handed a container
+//! element:
+//!
+//!   * `landmark-one-main`    selector 'html:not(html *)'
+//!   * `page-has-heading-one` selector 'html:not(html *)'
+//!   * `region`               selector 'body *'
+//!
+//! `checkA11y(container, {...})` therefore cannot fail on ANY of them, however
+//! the rules are configured — the options are honoured, the rule simply never
+//! matches the container. Measured 2026-10-26 by converting the only `<main>`
+//! in AppLayout to a `<div>`: `checkA11y(container, SHELL_GLOBAL_RULES)` still
+//! passed 3/3, and axe reported a `main` count of 0 with zero violations. The
+//! same render checked against `document` listed `region` among its PASSES,
+//! which is how a reader can tell the rule actually ran.
+//!
+//! Contrast is NOT one of these: `color-contrast` is element-scoped and works
+//! on a container. It is disabled here only because jsdom cannot compute
+//! colours; see colorContrastCompliance.test.ts.
 
 import { type ReactElement } from 'react';
 import { render, type RenderResult } from '@testing-library/react';
@@ -169,5 +191,41 @@ export async function checkA11y(
 
   // Use type assertion — vitest's expect.extend() adds the matcher
   // at runtime, but TypeScript can't see it without module augmentation.
+  (expect(results) as unknown as { toHaveNoViolations(): void }).toHaveNoViolations();
+}
+
+/// Run axe against the WHOLE DOCUMENT and assert no a11y violations.
+///
+/// Use this for shell/page suites that want the page-level rules —
+/// `landmark-one-main`, `page-has-heading-one`, `region` — to mean anything.
+/// Those three select `html:not(html *)` / `body *` and never match a container
+/// element, so passing one to `checkA11y` disables them silently. See the module
+/// header for the measurement that established this.
+///
+/// `options.rules` still overrides `DISABLED_RULES`, so a shell suite typically
+/// passes `{ rules: { 'landmark-one-main': { enabled: true }, ... } }`.
+///
+/// Caveat: the document target includes whatever the test runner put outside the
+/// component under test. In jsdom the root `<html>` has no `lang` attribute, so
+/// `html-has-lang` fires on every document-scoped run unless it is muted. Set it
+/// once per suite (`document.documentElement.lang = 'en'`) rather than muting the
+/// rule, so a real regression in the component is still reported.
+export async function checkA11yDocument(
+  options?: Record<string, unknown>,
+): Promise<void> {
+  const callerRules = (options?.['rules'] as Record<string, unknown>) || {};
+  const mergedOptions = { ...options, rules: { ...DISABLED_RULES, ...callerRules } };
+  const results = await axe(document.body, mergedOptions);
+
+  if (results.violations.length > 0) {
+    for (const v of results.violations) {
+      console.error(
+        `[a11y:document] ${v.impact}: ${v.id} — ${v.help}\n` +
+        `  ${v.helpUrl}\n` +
+        `  Nodes: ${v.nodes.map((n) => n.html).join(', ')}`,
+      );
+    }
+  }
+
   (expect(results) as unknown as { toHaveNoViolations(): void }).toHaveNoViolations();
 }
