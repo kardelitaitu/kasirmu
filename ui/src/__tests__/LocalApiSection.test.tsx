@@ -104,6 +104,8 @@ const testL10n = {
       'settings-local-api-rotate-done': 'Signing secret rotated.',
       'settings-local-api-rotate-failed': 'Could not rotate the signing secret.',
       'toggle': 'Toggle',
+      // settings.ftl:997. Hole-free, so the FTL text is also this stub's brace form.
+      'settings-local-api-desktop-only': 'The Local API server runs on the desktop app.',
     };
     let result = defaults[id] ?? id;
     if (vars) {

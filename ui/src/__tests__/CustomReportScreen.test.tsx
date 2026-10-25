@@ -71,6 +71,10 @@ vi.mock('@fluent/react', () => ({
           'custom-report-region-aria': 'Custom Report Builder',
           'custom-report-export-aria': 'Export CSV',
           'custom-report-columns-selected': '{ $selected } / { $total } selected',
+          // Pagination labels from shared-ui/locales/reports.ftl. Hole-free, so the
+          // FTL text is also this stub's brace form verbatim.
+          'custom-report-next-page': 'Next',
+          'custom-report-prev-page': 'Previous',
         };
         let result = strings[id];
         if (result && vars) {
