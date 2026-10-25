@@ -209,7 +209,7 @@ same insert into the Staff block panics naming `Staff`. The first probe landed i
 `LOYALTY_REDEEM` appears in BOTH presets and a plain string replace hit the earlier one — worth
 recording, because the mutation I THOUGHT I made and the mutation I made were on different tiers.
 
-**ALSO PINNED 2026-10-25 (round 218), blocker (1): the method CHECK refuses `gift`.**
+**ALSO PINNED 2026-10-25 (round 217), blocker (1): the method CHECK refuses `gift`.**
 `payments_method_check_and_gateway_status_constraints_enforced` gained a `gift` arm covering four
 spellings (`gift`, `gift_card`, `giftcard`, `gift_cards`). Before it the invalid list held only
 `bitcoin`, `cheque`, `stripe_direct`, `CASH` and the empty string, so a migration could have
@@ -226,6 +226,29 @@ restored, and a stale cargo binary then reported the failure for a further run a
 was already clean: touching the migration's mtime forced the rebuild. A green or red result is
 only as fresh as the binary that produced it.
 
+**WIDENED 2026-10-25 (round 218): the same audit found the HIGHEST-leverage grant unpinned.**
+Every tier boundary above is about one key. The global wildcard is the boundary for ALL of them
+at once: `grant_matches` (rbac.rs:259) returns true when the grant is `"*"`, for any required
+key, so a preset holding it IS a full-access role whatever else it lists. The Owner preset is
+exactly that — `permissions: &["*"]` at `rbac_presets.rs:75`, no other key.
+
+Nothing checked it at seed time. `seed_default_roles`
+(`crates/kasirmu-core/src/db/staff.rs:72-95`) writes each preset's permission JSON straight to
+the roles table with no call to `validate_grant`. The only preset-wide test,
+`every_preset_permission_is_registered_and_enforced`, SKIPS `"*"` as "special token, not a
+registered key" — so adding the wildcard to the Staff preset would have passed every check in
+that file while handing every cashier the whole permission space. `validate_grant`'s
+`allow_global` arm guards the other direction (refusing `"*"` when not permitted); nothing
+guarded its misuse from inside.
+
+Two tests now hold both directions:
+`only_the_owner_preset_carries_the_global_wildcard` (the Owner preset must hold it, every other
+preset must not) and `the_owner_preset_grants_the_wildcard_and_nothing_else` (a mixed
+`["*", "x"]` preset hides intent — deleting `*` would leave `x` looking deliberate). Both were
+mutated rather than assumed: adding `"*"` to the Staff preset panics with `preset 'role-staff'
+carries the global wildcard, which makes it a full-access role`, and downgrading Owner to
+`&[]` panics twice — `the Owner preset must carry "*"` and `Owner must grant exactly the
+wildcard, found []`.
 **NARROWED 2026-10-25 (round 202): the settlement-contract decision is made, by precedent.**
 `PaymentModal` already redeems loyalty points AFTER `completeSaleScoped` in the same
 post-checkout block, from two call sites (`PaymentModal.tsx:1190` direct and `:1834` gateway),
