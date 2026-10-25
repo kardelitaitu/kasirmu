@@ -224,8 +224,14 @@ mod debt;
 /// this file can see it. Left unraised it turned `test application shells (nextest)` red on
 /// 2026-10-25 (round 180) with `left: 510, right: 511`.
 ///
+/// Lowering the floor is the same discipline in the other direction: round 191 retired
+/// `pending_sync_count_scoped` from BOTH shells (a permission-gated duplicate of the ungated
+/// `pending_offline_count_scoped`, which every UI caller already uses), so the tree now
+/// registers 510 and the pin had to follow it down. A retirement is the one change that may
+/// lower this number, and it is recorded here for the same reason a raise is.
+///
 /// Raising the floor records what landed; it does not approve it.
-const REGISTERED_FLOOR: usize = 511;
+const REGISTERED_FLOOR: usize = 510;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
 /// the hard pin on the ledger's own rows is

@@ -1434,7 +1434,6 @@ pub fn run() {
                 commands::sync::get_sync_plan_scoped,
                 commands::sync::get_sync_settings_scoped,
                 commands::sync::list_sync_conflicts_scoped,
-                commands::sync::pending_sync_count_scoped,
                 commands::sync::request_sync_token_scoped,
                 commands::sync::resolve_sync_conflict_scoped,
                 commands::sync::sync_pull_scoped,

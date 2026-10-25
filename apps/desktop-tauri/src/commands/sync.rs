@@ -244,18 +244,6 @@ pub async fn pg_sync_stop_scoped(
     Ok(())
 }
 
-/// Pending sync count (scoped).
-#[tauri::command]
-pub async fn pending_sync_count_scoped(
-    session_token: String,
-    state: State<'_, AppState>,
-) -> Result<i64, AppError> {
-    let ctx = state.bridge_ctx();
-    kasirmu_bridge::sync::pending_sync_count_scoped(&ctx, &session_token)
-        .await
-        .map_err(Into::into)
-}
-
 /// Request a sync token (scoped).
 #[tauri::command]
 pub async fn request_sync_token_scoped(

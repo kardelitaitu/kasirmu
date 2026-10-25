@@ -155,10 +155,7 @@
       "name": "list_warehouse_products_scoped",
       "reason": "MEASURED 2026-10-25: NO production reference to 'list_warehouse_products_scoped' or its unscoped twin anywhere under ui/src outside dev-mock and __tests__ -- the whole pair is uncalled. That is an F-006 deletion candidate (registered in both shells, invoked by nothing), not a missing door. Recorded so the next sweep does not re-derive it."
     },
-    {
-      "name": "pending_sync_count_scoped",
-      "reason": "MEASURED 2026-10-25: this is a PERMISSION-GATED DUPLICATE, not a missing surface. pending_sync_count_scoped (crates/kasirmu-bridge/src/sync.rs:400 -- this entry cited pos.rs until 2026-10-25 round 176, and pos.rs contains no such function) and pending_offline_count_scoped both return the SAME value -- Store::pending_offline_count() -- and differ only in that this one requires SYNC_MANAGE while the other is ungated (its own 'ungated-ok: documented split' comment). The ungated twin has two production callers (OfflineQueueScreen, UpdateSettingsCard); this one has none and should not get one, because a UI that needs the count already has a door for it. Recorded rather than deleted: it is registered in BOTH shells and is an F-006 retirement candidate, not a gap to fill. The bare-name entry this replaces said nothing, which is how it survived three sweeps."
-    },
+
     {
       "name": "ping_scoped",
       "reason": "MEASURED 2026-10-25: session-validating twin with NO per-domain permission -- it calls ctx.resolve_session and delegates. That matches license/scoped.rs's own contract at :3-5 (\"applies the per-domain permission (F-017) WHERE THE OPERATION MUTATES a credential or a subscription\"); a read does not, so the absence is by design and not a hole. The UI calls the UNSCOPED 'ping' (one production reference); this variant has none. Consequence for a reader: routing this caller through the scoped door would add NO authorisation, only a session check most callers already hold -- so the fix is retirement (F-006) or leaving it, not \"use the gated one\"."

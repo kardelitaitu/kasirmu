@@ -734,7 +734,7 @@ async fn sync_run_scoped_marks_store_queue_and_leaves_global_untouched() {
         assert_eq!(
             store.pending_offline_count().unwrap(),
             0,
-            "pending_sync_count_scoped must drop to zero after the push"
+            "the store's pending count must drop to zero after the push"
         );
     }
 

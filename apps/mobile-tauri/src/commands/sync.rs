@@ -253,8 +253,8 @@ pub async fn sync_run_scoped(
     // This used to lock `state.db` — the global connection — so the marks
     // landed on a different file's `offline_queue` than the rows Phase 1
     // read: store items stayed `pending` forever while untouched global
-    // rows were flipped, and `pending_sync_count_scoped` kept counting the
-    // stranded store rows. Re-resolve the scope here rather than carrying
+    // rows were flipped, and the pending count kept reporting the stranded
+    // store rows. Re-resolve the scope here rather than carrying
     // the Phase 1 guard across the `send_items_to_server` await — the
     // store manager's std::sync::Mutex guard is not Send, and the global
     // connection is the wrong file anyway.
@@ -276,26 +276,6 @@ pub async fn sync_run_scoped(
         // gated, not broken). See `sync_client::undelivered_batch`.
         Err(e) => Ok(sync_client::undelivered_batch(&e)),
     }
-}
-
-/// Get the pending sync count resolved from a session token. ADR #7.
-#[allow(clippy::needless_borrow, dropping_references)]
-#[command]
-pub async fn pending_sync_count_scoped(
-    session_token: String,
-    state: State<'_, AppState>,
-) -> Result<i64, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
-    let conn_arc = state.resolve_store(&session_token)?;
-    let db_guard = conn_arc
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let db = &*db_guard;
-    let store = Store::new(&db);
-    let count = store.pending_offline_count()?;
-    drop(db);
-    Ok(count)
 }
 
 /// Request a new JWT API token from the cloud server's resolved from a session token. ADR #7.

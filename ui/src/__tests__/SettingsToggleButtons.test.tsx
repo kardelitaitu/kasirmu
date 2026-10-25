@@ -211,8 +211,6 @@ const { invokeMock, defaultImpl } = vi.hoisted(() => {
         return { name: 'kasirmu-app', version: '0.0.9', rustVersion: '1.80', target: 'x86_64' };
       case 'check_license_status':
         return { tier: 'pro', tenantId: 'tenant-1', status: 'active', active: true, expiresAt: null, maxLocations: 5 };
-      case 'pending_sync_count':
-        return 0;
       case 'get_device_id':
         return 'device-1';
       case 'list_terminals':

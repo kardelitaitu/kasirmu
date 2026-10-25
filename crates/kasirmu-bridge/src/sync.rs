@@ -396,26 +396,6 @@ pub async fn update_pg_sync_settings_scoped(
     Ok(())
 }
 
-/// Pending sync count (scoped).
-pub async fn pending_sync_count_scoped(
-    ctx: &BridgeCtx<'_>,
-    session_token: &str,
-) -> Result<i64, BridgeError> {
-    // F-017: enforce per-domain permission on this scoped command.
-    let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, permissions::SYNC_MANAGE)
-        .await?;
-    let conn = ctx
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    Ok(store.pending_offline_count()?)
-}
-
 /// Request a sync token (scoped).
 pub async fn request_sync_token_scoped(
     ctx: &BridgeCtx<'_>,

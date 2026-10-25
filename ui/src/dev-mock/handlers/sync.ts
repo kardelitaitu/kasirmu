@@ -25,7 +25,6 @@ export const syncHandlers: Record<string, MockHandler> = {
   'update_sync_settings': () => null,
   'sync_run': () => ({ synced: 0, failed: 0, error: null }),
 
-  'pending_sync_count': () => 0,
   'sync_pull': (args: unknown) => {
     // SYNC-03: reject without explicit destructive consent, mirroring the
     // backend command contract so dev-mode behaviour matches production.

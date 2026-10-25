@@ -1890,7 +1890,6 @@ pub fn run() {
             commands::sync::resolve_sync_conflict_scoped,
             commands::sync::pg_sync_start_scoped,
             commands::sync::pg_sync_stop_scoped,
-            commands::sync::pending_sync_count_scoped,
             commands::sync::request_sync_token_scoped,
             commands::sync::get_sync_plan_scoped,
             commands::sync::test_sync_connection,
