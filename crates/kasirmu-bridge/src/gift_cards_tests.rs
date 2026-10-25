@@ -141,3 +141,81 @@ async fn redeem_gift_card_scoped_forwards_the_currency_it_was_given() {
         "expected a currency refusal to reach the caller, got: {err}"
     );
 }
+
+/*
+ * THE TOP-UP LEG OF THE SAME GUARD.
+ *
+ * Round 248 gave redeem a bridge-level test after mutating the bridge to drop the
+ * currency left every test green. The top-up leg was changed the same way in round
+ * 247 and is a SEPARATE forward -- its own `Some(currency)` at gift_cards.rs:167 --
+ * so the redeem case does not cover it. Measured 2026-10-26 (round 249): replacing
+ * that forward with `None` left all four bridge tests passing. The gap was real and
+ * the symmetry was an assumption.
+ *
+ * Top-up needs no sale row (the ledger's sale_id is NULL), so the only confound is the
+ * card's own currency. If the currency is dropped, the top-up SUCCEEDS and credits a
+ * KWD card with a number quoted in IDR -- a 1000x under-credit written into stored
+ * value.
+ */
+#[tokio::test]
+async fn top_up_gift_card_scoped_forwards_the_currency_it_was_given() {
+    use crate::testing::TestBridge;
+    use kasirmu_core::db::Store;
+
+    let bridge = TestBridge::new();
+    let token = bridge
+        .token_granting(kasirmu_core::permissions::GIFTCARDS_ISSUE)
+        .await;
+
+    {
+        let store_id = bridge
+            .sessions()
+            .read()
+            .unwrap()
+            .get(&token)
+            .map(|s| s.store_id.clone())
+            .expect("token_granting must have registered the session");
+        let conn = bridge.db_manager().open_store(&store_id).unwrap();
+        let guard = conn.lock().unwrap();
+        guard
+            .execute(
+                "INSERT OR IGNORE INTO roles (id, name, description, permissions, created_at, updated_at)
+                 VALUES ('role-owner', 'Owner', 'Owner role', '[\"*\"]',
+                 '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')",
+                [],
+            )
+            .expect("seed role");
+        guard
+            .execute(
+                "INSERT INTO users (id, username, pin_hash, display_name, role_id, created_at, updated_at)
+                 VALUES ('staff-1', 'staff-1', 'hash', 'staff-1', 'role-owner',
+                 '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')",
+                [],
+            )
+            .expect("seed user");
+        let store = Store::new(&guard);
+        store
+            .issue_gift_card(kasirmu_core::gift_card::IssueGiftCardInput {
+                card_number: "GC-BRIDGE-TOPUP".into(),
+                initial_amount_minor: 5000,
+                currency: "KWD".into(),
+                issued_to: None,
+                created_by: "staff-1".into(),
+                expiry_date: None,
+            })
+            .expect("seed the KWD card the assertion needs");
+    }
+
+    let ctx = bridge.ctx();
+    let result = super::top_up_gift_card_scoped(&ctx, "GC-BRIDGE-TOPUP", 1000, "IDR", &token).await;
+
+    let err = result.expect_err(
+        "a KWD card topped up as IDR must be refused; if the bridge drops the currency \
+         this call succeeds and credits the card with a number quoted in another denomination",
+    );
+    let text = format!("{err}").to_lowercase();
+    assert!(
+        text.contains("currency"),
+        "expected a currency refusal to reach the caller, got: {err}"
+    );
+}
