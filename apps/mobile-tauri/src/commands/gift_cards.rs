@@ -101,6 +101,7 @@ pub async fn redeem_gift_card_scoped(
     session_token: String,
     card_number_or_id: String,
     amount_minor: i64,
+    currency: String,
     sale_id: String,
     state: State<'_, AppState>,
 ) -> Result<RedeemGiftCardResult, AppError> {
@@ -109,6 +110,7 @@ pub async fn redeem_gift_card_scoped(
         &ctx,
         &card_number_or_id,
         amount_minor,
+        &currency,
         &sale_id,
         &session_token,
     )
@@ -124,6 +126,7 @@ pub async fn top_up_gift_card_scoped(
     session_token: String,
     card_number_or_id: String,
     amount_minor: i64,
+    currency: String,
     state: State<'_, AppState>,
 ) -> Result<GiftCardWithTransactions, AppError> {
     let ctx = state.bridge_ctx();
@@ -131,6 +134,7 @@ pub async fn top_up_gift_card_scoped(
         &ctx,
         &card_number_or_id,
         amount_minor,
+        &currency,
         &session_token,
     )
     .await

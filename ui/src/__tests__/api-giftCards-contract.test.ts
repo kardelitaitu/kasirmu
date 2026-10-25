@@ -66,22 +66,24 @@ describe('giftCards.ts API contract', () => {
 
   it('redeemGiftCard calls correct command', async () => {
     mockInvoke.mockResolvedValue({ card: { card_number: 'GC-001', balance: 30000 }, transactions: [] });
-    await redeemGiftCard('tok-1', 'GC-001', 20000, 'sale-1');
+    await redeemGiftCard('tok-1', 'GC-001', 20000, 'IDR', 'sale-1');
     expect(mockInvoke).toHaveBeenCalledWith('redeem_gift_card_scoped', {
       sessionToken: 'tok-1',
       cardNumberOrId: 'GC-001',
       amountMinor: 20000,
+      currency: 'IDR',
       saleId: 'sale-1',
     });
   });
 
   it('topUpGiftCard calls correct command', async () => {
     mockInvoke.mockResolvedValue({ card: { card_number: 'GC-001', balance: 150000 }, transactions: [] });
-    await topUpGiftCard('tok-1', 'GC-001', 50000);
+    await topUpGiftCard('tok-1', 'GC-001', 50000, 'IDR');
     expect(mockInvoke).toHaveBeenCalledWith('top_up_gift_card_scoped', {
       sessionToken: 'tok-1',
       cardNumberOrId: 'GC-001',
       amountMinor: 50000,
+      currency: 'IDR',
     });
   });
 

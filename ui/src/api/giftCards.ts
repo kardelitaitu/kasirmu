@@ -83,12 +83,12 @@ export const getGiftCardBalance = (sessionToken: string, cardNumberOrId: string)
   loggedInvoke<BalanceResult | null>('get_gift_card_balance_scoped', { sessionToken, cardNumberOrId });
 
 /** Redeem a gift card for a given amount against a sale (session-scoped). */
-export const redeemGiftCard = (sessionToken: string, cardNumberOrId: string, amountMinor: number, saleId: string): Promise<RedeemGiftCardResult> =>
-  loggedInvoke<RedeemGiftCardResult>('redeem_gift_card_scoped', { sessionToken, cardNumberOrId, amountMinor, saleId });
+export const redeemGiftCard = (sessionToken: string, cardNumberOrId: string, amountMinor: number, currency: string, saleId: string): Promise<RedeemGiftCardResult> =>
+  loggedInvoke<RedeemGiftCardResult>('redeem_gift_card_scoped', { sessionToken, cardNumberOrId, amountMinor, currency, saleId });
 
 /** Add funds to an existing gift card (session-scoped). */
-export const topUpGiftCard = (sessionToken: string, cardNumberOrId: string, amountMinor: number): Promise<GiftCardWithTransactions> =>
-  loggedInvoke<GiftCardWithTransactions>('top_up_gift_card_scoped', { sessionToken, cardNumberOrId, amountMinor });
+export const topUpGiftCard = (sessionToken: string, cardNumberOrId: string, amountMinor: number, currency: string): Promise<GiftCardWithTransactions> =>
+  loggedInvoke<GiftCardWithTransactions>('top_up_gift_card_scoped', { sessionToken, cardNumberOrId, amountMinor, currency });
 
 /** Freeze a gift card to prevent further use (session-scoped). */
 export const freezeGiftCard = (sessionToken: string, cardNumberOrId: string): Promise<GiftCard> =>

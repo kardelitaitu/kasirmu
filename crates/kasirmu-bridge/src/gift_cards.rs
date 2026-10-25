@@ -127,6 +127,7 @@ pub async fn redeem_gift_card_scoped(
     ctx: &BridgeCtx<'_>,
     card_number_or_id: &str,
     amount_minor: i64,
+    currency: &str,
     sale_id: &str,
     session_token: &str,
 ) -> Result<RedeemGiftCardResult, BridgeError> {
@@ -138,13 +139,11 @@ pub async fn redeem_gift_card_scoped(
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
-    // The currency is NOT threadable yet: this command takes a bare `amount_minor` and the
-    // TS caller supplies no currency, so `None` here means "unchecked at this layer". The
-    // check lives in `Store::redeem_gift_card` and is reachable today from Rust callers;
-    // threading it through IPC needs a signature change in both shells and the UI. The UI
-    // refuses a mismatched card at lookup (GiftCardPayment.tsx), which is why this is
-    // recorded as an open gap rather than silently left unchecked (round 246).
-    let result = store.redeem_gift_card(card_number_or_id, amount_minor, sale_id, None)?;
+    // The caller supplies the currency it entered amount_minor in, and the store
+    // refuses a mismatch (round 247): a bare minor-unit integer means different
+    // money on a 0-exponent currency than on a 3-exponent one.
+    let result =
+        store.redeem_gift_card(card_number_or_id, amount_minor, sale_id, Some(currency))?;
     drop(db);
     Ok(result)
 }
@@ -154,6 +153,7 @@ pub async fn top_up_gift_card_scoped(
     ctx: &BridgeCtx<'_>,
     card_number_or_id: &str,
     amount_minor: i64,
+    currency: &str,
     session_token: &str,
 ) -> Result<GiftCardWithTransactions, BridgeError> {
     let (session, conn) = ctx.resolve_scope(session_token)?;
@@ -164,10 +164,7 @@ pub async fn top_up_gift_card_scoped(
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
-    // See the note on `redeem_gift_card_scoped`: the core guard exists but this layer
-    // has no currency to pass. The UI refuses a mismatched card before submitting
-    // (GiftCardsScreen.tsx handleTopUp).
-    let result = store.top_up_gift_card(card_number_or_id, amount_minor, None)?;
+    let result = store.top_up_gift_card(card_number_or_id, amount_minor, Some(currency))?;
     drop(db);
     Ok(result)
 }

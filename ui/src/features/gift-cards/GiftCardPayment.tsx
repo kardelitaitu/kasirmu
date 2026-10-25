@@ -122,7 +122,7 @@ export default function GiftCardPayment({
     loadingRef.current = true;
     setLoading(true);
     try {
-      await redeemGiftCard(sessionToken, code, amountToRedeem, saleId);
+      await redeemGiftCard(sessionToken, code, amountToRedeem, currency, saleId);
       onApplied(amountToRedeem, code);
       onComplete();
     } catch (err) {

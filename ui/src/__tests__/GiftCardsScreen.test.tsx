@@ -355,7 +355,7 @@ describe('GiftCardsScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: /confirm top-up/i }));
 
     await waitFor(() => {
-      expect(mockTopUpGiftCard).toHaveBeenCalledWith('tok-test', 'GC-001', 50000);
+      expect(mockTopUpGiftCard).toHaveBeenCalledWith('tok-test', 'GC-001', 50000, 'IDR');
     }, FAST_WAIT);
   });
 
@@ -407,7 +407,7 @@ describe('GiftCardsScreen', () => {
 
     await waitFor(() => {
       // $50.00 is 5000 minor units, not 50.
-      expect(mockTopUpGiftCard).toHaveBeenCalledWith('tok-test', 'GC-001', 5000);
+      expect(mockTopUpGiftCard).toHaveBeenCalledWith('tok-test', 'GC-001', 5000, 'USD');
     }, FAST_WAIT);
   });
 

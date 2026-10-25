@@ -91,6 +91,7 @@ pub async fn get_gift_card_balance_scoped(
 pub async fn redeem_gift_card_scoped(
     card_number_or_id: String,
     amount_minor: i64,
+    currency: String,
     sale_id: String,
     session_token: String,
     state: State<'_, AppState>,
@@ -100,6 +101,7 @@ pub async fn redeem_gift_card_scoped(
         &ctx,
         &card_number_or_id,
         amount_minor,
+        &currency,
         &sale_id,
         &session_token,
     )
@@ -112,6 +114,7 @@ pub async fn redeem_gift_card_scoped(
 pub async fn top_up_gift_card_scoped(
     card_number_or_id: String,
     amount_minor: i64,
+    currency: String,
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<GiftCardWithTransactions, AppError> {
@@ -120,6 +123,7 @@ pub async fn top_up_gift_card_scoped(
         &ctx,
         &card_number_or_id,
         amount_minor,
+        &currency,
         &session_token,
     )
     .await

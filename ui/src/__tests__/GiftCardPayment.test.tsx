@@ -155,7 +155,7 @@ describe('GiftCardPayment', () => {
     await userEvent.click(screen.getByRole('button', { name: /apply gift card/i }));
 
     await vi.waitFor(() => {
-      expect(mockRedeem).toHaveBeenCalledWith('tok-1', 'GC-TEST', 30000, 'sale-1');
+      expect(mockRedeem).toHaveBeenCalledWith('tok-1', 'GC-TEST', 30000, 'IDR', 'sale-1');
       expect(onApplied).toHaveBeenCalledWith(30000, 'GC-TEST');
       expect(onComplete).toHaveBeenCalledTimes(1);
     });

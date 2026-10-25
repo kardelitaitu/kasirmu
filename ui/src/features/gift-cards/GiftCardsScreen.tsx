@@ -126,7 +126,7 @@ export default function GiftCardsScreen() {
     }
     setTopUpError('');
     try {
-      await topUpGiftCard(sessionToken, cardNumber, amount);
+      await topUpGiftCard(sessionToken, cardNumber, amount, currency);
       setTopUpCardId(null);
       setTopUpAmount('');
       await load();

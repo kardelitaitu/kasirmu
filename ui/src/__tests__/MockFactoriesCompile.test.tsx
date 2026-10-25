@@ -94,7 +94,7 @@ describe('createGiftCardsApiMock', () => {
   });
 
   it('returns RedeemGiftCardResult from redeemGiftCard', async () => {
-    const result = await gcApi.redeemGiftCard('tok-1', '1111-2222', 25000, 'sale-1');
+    const result = await gcApi.redeemGiftCard('tok-1', '1111-2222', 25000, 'IDR', 'sale-1');
     expect(result.card.id).toBe('gc-1');
     expect(result.transaction.txn_type).toBe('redeem');
   });
