@@ -3402,4 +3402,26 @@ found 122 hits and was useless because it counted STRING truncation (`line[:60]`
 capping; the narrower predicate — same identifier in a `len()` and a slice — is what made the
 answer readable. Same lesson as the round-183 probe that reported 67 checkers by grepping for
 a flag name: a text search for a shape is not a measurement of it.
+#### Re-run 2026-10-26 (round 243): 94 of 97, and the number keeps growing for a good reason
+
+```
+$ python scripts/verify-selftest-sweep.py
+verify-selftest-sweep: OK — 94 self-test(s) across 97 checker(s); 3 declare none and were skipped.
+```
+
+Exit 0 in 86 seconds. The count has risen 89/92 → 90/93 → **94/97** across this campaign, and
+the rise is the interesting part: new checkers keep landing WITH a self-test, and every one is
+invoked by a runner (`verify-selftests-wired.py` grades exactly that, and its own self-test
+asserts the live tree has zero uncalled self-tests). A population that grows while staying
+fully wired is the outcome the two gates were built to produce together.
+
+**Run it alone.** This is the same lesson the round-179 entry above records, and it is worth
+repeating because it is cheap to get wrong: the sweep is a LATE step of `check.sh`, so a
+`check.sh` run that stops early — on the documented Postgres red, for instance — has not
+reached it. Quote this number only from a direct run.
+
+**The three that declare none** are not skipped policy; they are checkers whose proof is a
+different form (see the two RC2 exceptions above). Do not "fix" the 97 by adding a flag to
+them.
+
 > last audited 11-10-26 by docs-auditor
