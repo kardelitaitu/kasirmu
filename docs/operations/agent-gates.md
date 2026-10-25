@@ -3323,6 +3323,17 @@ against a headline **72**. A reader trying to work through the gap was handed a 
 not enumerate. The two lines are now printed separately, and the totals reconcile: 229 graded +
 70 suppressed = 299 citations, the same 299 as before.
 
+**RE-MEASURED 2026-10-25 (round 199): 228 + 70 = 298.** The population moved by one and the
+reconciliation above no longer closes. What changed is not a citation being dropped from this file
+— `git grep -o` over `agent-gates.md` finds **58** raw `path:line` tokens at HEAD against **57**
+at `5a75ac3dc`, so this file gained one. The tool scans **48 live docs under a fixed root set**,
+and two of those docs were *renamed* during that window with the `todo-` token preserved on purpose
+(`docs/plans/_active/todo-orphan-module-dispositions.md`, `todo-unrequested-command-dispositions.md`).
+The count is a function of which files the tool walks; a rename changes it without any citation
+being added or removed. **Recorded rather than explained away**, because a reconciling total is
+what makes the number a state instead of a floor, and a total that quietly drifts teaches the next
+reader to stop checking it.
+
 **The three real gaps were all in this file and all closed by anchoring them**: a module-doc
 citation that names a prose block rather than a symbol (marked `dead-ref: ok:` with the
 reason, and the path KEPT — the first attempt deleted it, which is a loss of information rather
