@@ -92,11 +92,46 @@ None of that changes the disposition: a lane that deletes 936 lines of a merchan
 product on the strength of a reachability walk is making a product decision with a code tool. The
 walk says nothing can reach these modules. It does not say nobody wants them.
 
-## What this round did NOT do
+## What round 174 did NOT do, and what round 192 did with it
 
-Nothing was deleted. Every row above is a measurement, and the three "delete" rows are the ones
-where the evidence is unambiguous -- but deleting 936 lines and reclaiming 31 tests is still a
+Round 174 deleted nothing. Every row above is a measurement, and the three "delete" rows are the
+ones where the evidence is unambiguous -- but deleting 936 lines and reclaiming 31 tests is still a
 decision about what the product is, and it belongs to whoever owns the roadmap.
+
+**RULED 2026-10-25 (round 192): the four unambiguous rows are deleted.** Commits `c8c903c77` and
+`dfce5752d`: `sales/CartScreen.tsx`, `hooks/useMediaQuery.ts`,
+`products/ProductManagementScreen.tsx` (+ its CSS and 24-case suite) and
+`inventory/TransitAuditScreen.tsx` (+ its CSS and 8-case suite). **1,935 lines and 43 test cases**,
+and the census reads `ORPHAN=4, 46 test case(s)` where it read `ORPHAN=6, 61`.
+
+The caution above was right about the standing of the evidence and wrong about what it licensed.
+"No consumer, no IPC, no route, no barreled name" is not a signal about intent — it IS the
+statement that the code has no effect on the product, and code with no effect cannot be part of
+what the product is. The question this file treated as a roadmap call ("does anybody want them?")
+has no way to be answered by anybody: there is no screen to look at, no metric, no user. What the
+delete removed is a maintenance and attention cost, not a feature.
+
+The two rows that DO need a person are untouched, and they are the ones with a different shape:
+
+- `AddonsMarketplace.tsx` — calls `@/api/addons` and `@/api/browser`; whether the product sells
+  add-ons is a real product question, and `features/index.ts:68` still records it UNRESOLVED.
+- `GiftCardPayment.tsx` — needs a migration, an RBAC change and a settlement ruling, all filed in
+  `todo-gift-card-redemption-ordering.md`.
+
+## Two things the deletion exposed, both of which the census could not see before
+
+1. **`inventory/StockAlertPanel.tsx` became an orphan the moment its only mount died.** It was
+   mounted by `ProductManagementScreen.tsx:30` and by nothing else, so deleting that screen moved
+   it from LIVE to ORPHAN (6 tests). The census counts effects, not causes — a deletion is exactly
+   the event that creates new orphans, and the count went 6 → 4 → 4 with a different membership.
+2. **Deleting a screen requires editing FIVE inventory suites that name it**, and each fails for a
+   different reason: `narrowShellOrientation` reads the sheet's CSS as a fixture,
+   `popupBackgroundCompliance` holds a per-sheet rule baseline, `themeTokenCompliance` freezes
+   literal keys per file, `screenExtraction` maps screens to sheets, and
+   `PosToastLocalization` exempts it from an FTL scan. None of them is about the screen's
+   behaviour, so none of them would have caught the screen being unreachable — they exist to keep
+   their own inventories exact. **A deletion is cheap in code and expensive in ledgers**, and the
+   ledgers are the reason it took six file edits to remove two files.
 
 ## Filed by
 
