@@ -77,6 +77,36 @@ Both are defensible. Option 1 adds an authorisation requirement to a screen a ca
 option 2 removes a door that a future sync-status surface might want. **Neither was taken**, because
 choosing which read needs `SYNC_MANAGE` is a policy call, and this lane does not make those.
 
+## RULED 2026-10-25 (round 191): option 2, and the reasoning was already in the tree
+
+**Taken: option 2.** `pending_sync_count_scoped` is retired — the bridge body, both shell
+wrappers, both `generate_handler!` registrations, the dev-mock handler and the allowlist entry.
+`python scripts/verify-ipc-parity.py` now reports **4** commands named by neither shell
+(`desktop=13, tablet=5` registrations), not 5.
+
+The reason it is option 2, stated so the next reader does not have to re-derive it: **a count is
+a read, and the module's own contract says the gate belongs on the writes.** `offline.rs:8` is
+the sentence — "SYNC_MANAGE on the four gated paths" — and the four are enqueue, retry, delete
+and requeue. Option 1 would have ADDED an authorisation requirement to `OfflineQueueScreen` and
+`UpdateSettingsCard`, the two surfaces a cashier uses today, in order to justify a command that
+no client calls and that returns the same number through an already-open door. That is not
+tidying the tree; it is changing what a cashier may do so a dead registration can stay.
+
+Two things this plan got wrong when it was written, both worth keeping:
+
+1. `_active/todo-` in the filename had been read as "parked, awaiting a decision". It was a
+   decision blocker of one kind — a policy call — and the policy answer was written in the
+   module header the whole time. **A plan that says "this needs a product ruling" should name
+   the file that would carry the ruling.**
+2. The allowlist entry's own words already said the answer: "this one has none **and should not
+   get one**, because a UI that needs the count already has a door for it … an F-006 retirement
+   candidate, not a gap to fill." The retirement was recorded as a candidate in the same commit
+   that filed this plan. Reading the instrument and then not acting on what it said is its own
+   failure mode — the round-176 lesson one step further.
+
+`REGISTERED_FLOOR` moved 511 → 510 in the same commit: a retirement is the one change that may
+lower it, and the pin comment now says so.
+
 ## What a reader should not conclude
 
 That `info[cross-shell-unrequested]` is a work list. Round 169 wrote down that the per-shell
