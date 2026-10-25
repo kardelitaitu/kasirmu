@@ -168,6 +168,12 @@ KEY_BLOCK_GAP = 4
 #: an assertion cannot exempt a map on its own.
 MIN_ADDRESSED_BY_KEY = 3
 
+ASSERTS_COPY_RE = re.compile(
+    r"\b(?:getByText|queryByText|findByText|getAllByText|getByLabelText|"
+    r"queryByLabelText|getByPlaceholderText|toContain|toHaveTextContent|"
+    r"getByRole|queryByRole|findByRole)\s*\("
+)
+
 RESERVED_WORD_RE = re.compile(r"^\s*(return|if|else)\b")
 
 #: A key line inside a literal: `'topology-new-store': 'New Store',`
@@ -526,6 +532,15 @@ def scan() -> tuple[list[str], int, int]:
         body = _read(test)
         if "getString" not in body and "<Localized" not in body:
             continue
+        # A file that never ASSERTS on rendered copy cannot fail because a key
+        # is missing -- the string it would have matched is never read. Judging
+        # such a map produces findings that no test can ever act on. Measured
+        # 2026-11-07: a11y/NodeTopologyEditor.a11y.test.tsx contributes 135
+        # baseline entries and asserts only checkA11y(), element counts and CSS
+        # selectors; its map docstring calls itself a "minimal en fallback
+        # surface". Those 135 were 23% of the census and none was actionable.
+        if not ASSERTS_COPY_RE.search(body):
+            continue
         maps = [m for m in find_maps(body) if m["fallback"]]
         # A stub can look its map up from an IMPORTED module instead of an inline
         # literal -- `TOPOLOGY_EN[id] ?? id` where TOPOLOGY_EN is exported by a
@@ -664,6 +679,9 @@ def _stub(
         "    }\n"
         "  } })\n"
         "}));\n"
+    # A real test file asserts on rendered copy; the guard that skips files which
+    # never do would otherwise treat this fixture as vacuous.
+    + "expect(screen.getByText('A')).toBeInTheDocument();\n"
     )
 
 
