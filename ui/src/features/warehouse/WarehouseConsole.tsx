@@ -468,7 +468,18 @@ export default function WarehouseConsole() {
           returns only fixes TO it -- while three separate rounds (88415f10f, b245189b6a,
           dcdc57f155) repaired races and double-submits in it. Care was invested in a
           component no user could reach; the warehouse console is the surface whose
-          stock movements it scopes. */}
+          stock movements it scopes.
+
+          ⚠️ ONE THING THE MOUNT DOES NOT DO: record which location the shift belongs
+          to. ShiftBar keeps its OWN location picker (ShiftBar.tsx:221 reads
+          `locations.find(l => l.id === activeShift?.location_id)`), and this console
+          passes no `onShiftChange`, so the console's `locationId` (:457, the one the
+          stock views use) and the shift's location can differ. The console summarises
+          the picked location's stock; the shift strip may be open on another. Left as a
+          recorded gap rather than a rushed wiring: the obvious fix -- pass
+          `onShiftChange` and drive the console's `locationId` -- would make a shift
+          event silently retarget three stock reads, which is a behaviour change on a
+          money-adjacent screen and belongs in its own commit with its own tests. */}
       <ShiftBar />
 
       {/* ── Mode tabs ── */}
