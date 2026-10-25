@@ -18,7 +18,7 @@
 //! enforcement, never after. §2.5 is already enforced in `create_session`
 //! (`crates/kasirmu-bridge/src/auth.rs`), which refuses a revoked tenant outright.
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useLocalization, Localized } from '@fluent/react';
 import { exportDataWithoutSession, pickExportPath } from '@/api/data';
 import { plainErrorMessage } from '@/utils/app-error';
@@ -41,12 +41,20 @@ export default function RevokedScreen() {
   const { l10n } = useLocalization();
   const { addToast } = useToast();
   const [exporting, setExporting] = useState(false);
+  /** Synchronous mirror of `exporting` — see the re-entry guard in `handleExport`. */
+  const exportingRef = useRef(false);
 
   const handleExport = async () => {
+    // Re-entry guard: two taps open TWO save dialogs and can start two whole-database
+    // exports at once, which is the last thing a suspended merchant needs on the one
+    // screen that exists to get their data out.
+    if (exportingRef.current) return;
+    exportingRef.current = true;
     setExporting(true);
     try {
       const outputPath = await pickExportPath();
       if (!outputPath) {
+        exportingRef.current = false;
         setExporting(false);
         return;
       }
@@ -72,6 +80,7 @@ export default function RevokedScreen() {
         }),
       });
     } finally {
+      exportingRef.current = false;
       setExporting(false);
     }
   };

@@ -11,7 +11,7 @@
 // That promise is what these tests hold up.
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, screen, waitFor, fireEvent } from '@testing-library/react';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 import RevokedScreen from '@/features/auth/RevokedScreen';
 import type * as ToastModule from '@/components/Toast';
@@ -65,6 +65,25 @@ describe('RevokedScreen — the revoked merchant can still get their data out', 
       'aria-label',
       'Export all local store data to an encrypted package',
     );
+  });
+
+  it('opens ONE save dialog when Export is double-tapped', async () => {
+    // Two taps would open two native save dialogs and could start two whole-database
+    // exports at once — on the one screen that exists to get a locked-out merchant's
+    // data out.
+    let release: ((v: string | null) => void) | undefined;
+    mockPickExportPath.mockReturnValue(new Promise((res) => { release = res; }));
+    mockExport.mockResolvedValue({ path: '/tmp/x.kasirpkg', sizeBytes: 1 });
+    renderScreen();
+
+    const btn = screen.getByRole('button', { name: /Export all local store data/i });
+    await act(async () => {
+      fireEvent.click(btn);
+      fireEvent.click(btn);
+    });
+
+    release?.('/tmp/x.kasirpkg');
+    await waitFor(() => expect(mockPickExportPath).toHaveBeenCalledTimes(1));
   });
 
   it('exports every data type the promise covers, with the picked output path', async () => {
