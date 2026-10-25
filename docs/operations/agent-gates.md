@@ -2742,8 +2742,9 @@ module, or a module reached only through a chain of itself-unreachable modules -
 ## A note that names a file that does not exist is worse than no note
 
 Round 162. Two archive banners naming `WarehouseConsole` (`ui/src/features/products/register.tsx:20`,
-`WarehouseConsole` again at `ui/src/features/products/ProductManagementScreen.tsx:2`) said the
-screen was "replaced by WarehouseScreen (features/warehouse/)". `git ls-files
+and again at a second one — the screen file itself, DELETED in round 192 as an unreachable module,
+so this sentence can no longer cite its path) said the screen was "replaced by
+WarehouseScreen (features/warehouse/)". `git ls-files
 'ui/src/features/**/WarehouseScreen*'` returns nothing. The successor is `WarehouseConsole.tsx`,
 registered at route `warehouse`.
 
