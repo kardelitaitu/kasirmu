@@ -659,6 +659,11 @@ describe('TopologyScreen', () => {
     // `disabled={deleteBranchSaving}`, and React flushes a discrete click's state update to
     // the DOM before the next click, so the second tap lands on a really disabled button.
     // If anyone removes that `disabled`, this case goes red and the ref becomes necessary.
+    //
+    // MUTATION NOTE (round 203): the first version of this case clicked the SAME node twice,
+    // which cannot fail — after the first click the rail re-renders and the captured node is
+    // detached, so a `fireEvent` on it reaches no handler at all. It now RE-QUERIES between
+    // taps, which is the arrangement that reaches the real control a second time.
     mockListStores.mockResolvedValue([
       { id: 'store-1', name: 'Main Street', is_primary: true, address: '', tax_id: '', currency: 'USD', timezone: 'UTC', created_at: '', updated_at: '' },
       { id: 'store-2', name: 'Second Street', is_primary: false, address: '', tax_id: '', currency: 'USD', timezone: 'UTC', created_at: '', updated_at: '' },
