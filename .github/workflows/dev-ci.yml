@@ -1247,6 +1247,14 @@ jobs:
       # regex exits 2 instead of reporting a clean tree. Gates.json: scratch-leak-gate.
       - name: Scratch-directory leak scan
         run: python3 scripts/check-scratch-leaks.py
+      # Rounds 206-212 localized every user-visible string in ui/src. Nothing
+      # checked that the next screen did not add English back: the population
+      # was measured by scripts/scan-fluent-hardcoded.py, which was wired into
+      # no gate. Grades a per-file budget over JSX text and the four copy
+      # attributes, excludes <Localized> fallback bodies (they never ship) and
+      # grades its own detector first. Gates.json: hardcoded-copy-gate.
+      - name: Hardcoded-copy scan
+        run: python3 scripts/check-hardcoded-copy.py
       # The COR-7 per-attempt idempotency rules exist TWICE -- the implementation
       # in kasirmu-bridge and a fork in the tablet shell -- and the fork drifted
       # into a security defect: only the bridge refused a colon in the attempt id,

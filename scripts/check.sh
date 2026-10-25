@@ -677,6 +677,16 @@ step "scratch leak gate" "python3 scripts/check-scratch-leaks.py" python3 script
 # last two reading the real tree, and one driving main() itself -- without that last one,
 # deleting main()'s "if FILES_READ == 0" arm left the suite green.
 step "scratch leak gate self-test" "python3 scripts/check-scratch-leaks.py --self-test" python3 scripts/check-scratch-leaks.py --self-test
+# Hardcoded-copy gate, added 2026-10-25 after rounds 206-212 localized every
+# user-visible string in ui/src (143 -> 0 real copy). scripts/scan-fluent-hardcoded.py
+# MEASURED that population but was wired into nothing, so the next screen could add
+# English and stay green. Same shape as the scratch-leak gate above: a per-file
+# budget, a census floor, and a detector graded over synthetic source first.
+# Proven to fire: a synthetic "<p>This is untranslated copy</p>" planted in a clean
+# file exits 1 naming that file at 1 string against budget 0.
+# Gate: scripts/gates.json -> "hardcoded-copy-gate".
+step "hardcoded copy gate" "python3 scripts/check-hardcoded-copy.py" python3 scripts/check-hardcoded-copy.py
+step "hardcoded copy gate self-test" "python3 scripts/check-hardcoded-copy.py --self-test" python3 scripts/check-hardcoded-copy.py --self-test
 # A pipeline exits with its LAST command's status, so `if s=$(... | tail -1)` is always
 # true and the branch meant for "nothing matched" is unreachable. This repo shipped that
 # shape for weeks in the cargo-deny block below and nobody saw it, because BOTH branches
