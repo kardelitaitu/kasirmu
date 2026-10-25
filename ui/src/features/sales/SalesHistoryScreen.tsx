@@ -315,6 +315,8 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
   const [stampNsfp, setStampNsfp] = useState('');
   const [stampKodeTransaksi, setStampKodeTransaksi] = useState('01');
   const [stamping, setStamping] = useState(false);
+  /** Synchronous mirror of `stamping` — see the re-entry guard in `handleConfirmStamp`. */
+  const stampingRef = useRef(false);
   const [stampError, setStampError] = useState<string | null>(null);
   const [penggantiLoading, setPenggantiLoading] = useState(false);
 
@@ -736,6 +738,15 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
       setStampError('NSFP must be exactly 13 digits (PER-11/PJ/2025)');
       return;
     }
+    // Re-entry guard, taken AFTER the 13-digit validation so a refused attempt still runs.
+    // stamp_faktur_pajak writes a legally numbered field: the second call re-reads the sale
+    // and, on a sale already stamped with the same NSFP, the outcome is either a refusal
+    // reported as 'sales-history-stamp-error' over a stamp that landed, or -- for a
+    // DIFFERENT nsfp, which the operator can reach by typing while the first is in flight --
+    // a second statutory number written under the first. The state flag is read from the
+    // render that built this closure, so both taps see `stamping === false`.
+    if (stampingRef.current) return;
+    stampingRef.current = true;
     setStamping(true);
     setStampError(null);
     try {
@@ -760,6 +771,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
       // arm and the pengganti toast below were the two that missed the sweep.
       setStampError(l10nErrorMessage(err, l10n, 'sales-history-stamp-error'));
     } finally {
+      stampingRef.current = false;
       setStamping(false);
     }
   }, [detail, sessionToken, stampNsfp, stampKodeTransaksi, invalidateCache, load, addToast, l10n]);
@@ -927,9 +939,15 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
   }, [staff, staffUnknown]);
 
   const [csvExporting, setCsvExporting] = useState(false);
+  /** Synchronous mirror of `csvExporting` — see the re-entry guard in `handleExportCsv`. */
+  const csvExportExportingRef = useRef(false);
 
   const handleExportCsv = useCallback(async () => {
-    if (csvExporting) return;
+    // `if (csvExporting) return` above is STATE and is stale inside one tick, so two taps
+    // exported two files to the same destination. The read is expensive (one margin call per
+    // sale) and the second write can land on top of the first.
+    if (csvExportExportingRef.current) return;
+    csvExportExportingRef.current = true;
     setCsvExporting(true);
     try {
       const headers = [
@@ -1021,9 +1039,10 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
       URL.revokeObjectURL(url);
       a.remove();
     } finally {
+      csvExportExportingRef.current = false;
       setCsvExporting(false);
     }
-  }, [filteredSales, cashierName, l10n, sessionToken, csvExporting, addToast]);
+  }, [filteredSales, cashierName, l10n, sessionToken, addToast]);
 
   // ── Focus trap refs ───────────────────────────────
   const voidPanelRef = useRef<HTMLDivElement>(null);

@@ -1075,6 +1075,38 @@ describe('ADR #7: reads are session-scoped when a workspace token exists', () =>
         });
       });
     });
+
+    it('stamps ONCE when the Stamp button is double-tapped', async () => {
+      // The NSFP + status code is a legally numbered field. A replay either re-reports a
+      // refusal over a stamp that landed, or -- for a different nsfp typed while the first
+      // is in flight -- writes a second statutory number. `stamping` is STATE, so both
+      // taps in one tick read it as false.
+      const user = userEvent.setup();
+      mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+      mockListStaff.mockResolvedValue([]);
+      mockGetSaleScoped.mockResolvedValue(sampleDetail);
+      mockListRefunds.mockResolvedValue([]);
+      let release: (() => void) | undefined;
+      mockStampFakturPajakScoped.mockReturnValue(new Promise((res) => {
+        release = () => res({ nsfp: '2600000000999', kodeTransaksi: '01', status: '00', formatted: '01002600000000999' });
+      }));
+
+      renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+      await waitFor(() => expect(screen.getAllByText('View').length).toBeGreaterThan(0));
+      await user.click(screen.getAllByText('View')[0]!);
+      await waitFor(() => expect(screen.getByText('Input e-Faktur NSFP')).toBeInTheDocument());
+      await user.click(screen.getByText('Input e-Faktur NSFP'));
+      await user.type(screen.getByLabelText('13-Digit NSFP'), '2600000000999');
+
+      const stampBtn = screen.getByRole('button', { name: 'Stamp e-Faktur' });
+      await act(async () => {
+        fireEvent.click(stampBtn);
+        fireEvent.click(stampBtn);
+      });
+
+      release?.();
+      await waitFor(() => expect(mockStampFakturPajakScoped).toHaveBeenCalledTimes(1));
+    });
   });
 
   // ── The refund read that did not answer ─────────────────────
