@@ -1060,6 +1060,9 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   const [shiftNotes, setShiftNotes] = useState('');
   const [openingShift, setOpeningShift] = useState(false);
   const [closingShift, setClosingShift] = useState(false);
+  /** Synchronous mirrors of the shift busy flags — see their re-entry guards below. */
+  const openingShiftRef = useRef(false);
+  const closingShiftRef = useRef(false);
   const [closeShiftError, setCloseShiftError] = useState<string | null>(null);
   const [closedShiftSummary, setClosedShiftSummary] = useState<ShiftDto | null>(null);
 
@@ -1183,6 +1186,12 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     // old hardcoded ×100 inflated IDR (exponent 0) 100x.
     const val = parseMoneyInput(openingBalance, storeSettings.currency);
     if (val === null || val < 0) return;
+    // Re-entry guard, after the money parse. Core REFUSES the replay ("user already has an
+    // open shift", db/shifts.rs:95-107) but the catch below is a bare `catch {}` that
+    // discards core's accurate reason and toasts retail-toast-failed-open-shift -- so the
+    // cashier is told the drawer failed to open when it opened.
+    if (openingShiftRef.current) return;
+    openingShiftRef.current = true;
     setOpeningShift(true);
     try {
       const s = await openShiftScoped(sessionToken, val);
@@ -1192,6 +1201,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     } catch {
       addToast({ message: requiredLocalized(l10n, 'retail-toast-failed-open-shift'), type: 'error' });
     } finally {
+      openingShiftRef.current = false;
       setOpeningShift(false);
     }
   }, [openingBalance, addToast, l10n, sessionToken, storeSettings.currency]);
@@ -1201,6 +1211,10 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     // MONEY-02 + MONEY-05: exact parse at the store currency exponent.
     const val = parseMoneyInput(closingBalance, storeSettings.currency);
     if (val === null || val < 0) return;
+    // Same re-entry shape as the open: core refuses a second close of the same shift
+    // (:193-198) and this handler renders that refusal as the close failing.
+    if (closingShiftRef.current) return;
+    closingShiftRef.current = true;
     setClosingShift(true);
     setCloseShiftError(null);
     try {
@@ -1210,6 +1224,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     } catch (e) {
       setCloseShiftError((e instanceof Error ? e.message : String(e)) ?? (requiredLocalized(l10n, 'pos-close-shift-failed')));
     } finally {
+      closingShiftRef.current = false;
       setClosingShift(false);
     }
   }, [activeShift, closingBalance, shiftNotes, l10n, sessionToken, storeSettings.currency]);

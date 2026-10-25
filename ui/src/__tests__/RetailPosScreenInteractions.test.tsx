@@ -9,7 +9,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { act } from 'react';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
 import { createUsePosStateMock } from '@/__tests__/test-utils/mocks/usePosState';
@@ -439,6 +439,26 @@ describe('RetailPosScreen — interactions', () => {
     // amount is already in minor units. The old hardcoded ×100 sent
     // 10000000 and broke cash reconciliation 100x.
     await waitFor(() => expect(openShiftScoped).toHaveBeenCalledWith(expect.any(String), 100000));
+  });
+
+  it('opens the shift ONCE when the Open button is double-tapped', async () => {
+    // Core refuses the replay ("user already has an open shift", db/shifts.rs:95-107), but
+    // handleOpenShift's catch is a bare `catch {}` that discards that reason and toasts
+    // retail-toast-failed-open-shift -- the cashier is told the drawer failed to open when
+    // it opened.
+    const { openShiftScoped } = await import('@/api/shifts');
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(screen.getByText(/No shift/)).toBeInTheDocument());
+    await userEvent.keyboard('{F9}');
+    await userEvent.type(screen.getByLabelText(/Opening balance/), '100000');
+
+    const openBtn = screen.getByText('Open').closest('button') as HTMLButtonElement;
+    act(() => {
+      openBtn.click();
+      openBtn.click();
+    });
+
+    await waitFor(() => expect(openShiftScoped).toHaveBeenCalledTimes(1));
   });
 
   // ── A refund changes the shift totals, so the shift must be RE-READ ──────
