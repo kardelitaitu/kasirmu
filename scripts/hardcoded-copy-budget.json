@@ -1,16 +1,13 @@
 {
   "description": "Hardcoded user-visible strings per ui/src file (JSX text and the four copy attributes). A CAP, not a defect count: every recorded string has been classified as a code sample, a dev-only surface, a glyph/brand, or a fixture. Raising a number here is not a fix; it is accepted untranslated copy. Regenerate with 'python scripts/check-hardcoded-copy.py --update' ONLY after localizing the strings.",
-  "total": 54,
+  "total": 48,
   "files": {
-    "ui/src/features/analytics/analytics-data.ts": 1,
     "ui/src/features/design/DesignSystem.tsx": 13,
     "ui/src/features/design/DevToolbar.tsx": 6,
-    "ui/src/features/design/TooltipPreview.tsx": 15,
+    "ui/src/features/design/TooltipPreview.tsx": 14,
     "ui/src/features/restaurant/screens/RestaurantPaymentsScreen.tsx": 2,
-    "ui/src/features/sales/SalesHistoryScreen.tsx": 2,
-    "ui/src/features/sales/widgets/DailyTotalWidget.tsx": 5,
+    "ui/src/features/sales/widgets/DailyTotalWidget.tsx": 4,
     "ui/src/features/settings/SettingsPage.tsx": 1,
-    "ui/src/features/settings/hooks/useSettingsSave.ts": 1,
     "ui/src/features/settings/workspace-cards/WorkspaceRestaurantPosSettings.tsx": 3,
     "ui/src/features/settings/workspace-cards/WorkspaceStorePosSettings.tsx": 1,
     "ui/src/features/staff/components/StaffDetailDrawer.tsx": 4

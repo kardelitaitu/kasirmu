@@ -81,7 +81,21 @@ ATTR_RE = re.compile(
 #: caught TypeScript generics: `Promise<void>` then `> Promise<` matched, and
 #: ui/src/hooks/useKdsOffline.ts contributed 9 of them as "hardcoded copy".
 #: Requiring `<tag ...>` immediately before the text anchors on a JSX element.
-TEXT_RE = re.compile(r"<[a-zA-Z][^<>]*>\s*([A-Z][A-Za-z][^<>{}]{2,})\s*<")
+#: `[^=>]{0,80}` before the tag is the generic guard: a return-type annotation
+#: like `=> Promise<CardLoaderResult>>` or `(payload) => Promise<unknown>>` has a
+#: `>` or `=` inside that window and is not a JSX element. Two files still
+#: contributed exactly one finding each from that shape after the generic fix.
+#: `[^<>]` inside the tag window, NOT `[^<>]{0,80}`: a generic return type is
+#: `<string, (q: AnalyticsQuery) => Promise<`, whose own `>` ends the window, so
+#: forbidding `>` inside it rejects them without a length cap. Two files each
+#: contributed exactly one finding from that shape.
+#: NO `\s*` between the `>` and the text, and that is load-bearing: with it the
+#: engine restarts mid-generic. `<string, (q: AnalyticsQuery) => Promise<` has an
+#: inner `Promise<` that begins right after the window's own `>`, so `\s*`
+#: matched empty and the capture became "Promise" -- two files reported one
+#: finding each from exactly that. JSX text that opens on the `>` itself is what
+#: the format actually produces; a space before copy is written as `{" "}`.
+TEXT_RE = re.compile(r"<[a-zA-Z][^<>]*>([A-Z][A-Za-z][^<>{}]{2,})\s*<")
 
 #: Tokens that are not translatable copy even when they look like a sentence.
 BRAND_AND_KEY = frozenset(
