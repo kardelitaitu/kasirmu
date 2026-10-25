@@ -1,6 +1,6 @@
 {
   "description": "see --write-baseline",
-  "total": 586,
+  "total": 581,
   "entries": [
     {
       "at": "ui/src/__tests__/AnalyticsCardContent.test.tsx:44",
@@ -1786,31 +1786,6 @@
       "at": "ui/src/__tests__/WorkspaceStorePosSettings.test.tsx:26",
       "key": "toast-show-detail",
       "used_by": "used-by Toast.tsx:253"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceTerminalPreferencesCard.test.tsx:25",
-      "key": "settings-edc-default-auto",
-      "used_by": "used-by TerminalPreferencesCard.tsx:255"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceTerminalPreferencesCard.test.tsx:25",
-      "key": "settings-edc-default-select",
-      "used_by": "used-by TerminalPreferencesCard.tsx:252"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceTerminalPreferencesCard.test.tsx:25",
-      "key": "settings-edc-test",
-      "used_by": "used-by TerminalPreferencesCard.tsx:132"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceTerminalPreferencesCard.test.tsx:25",
-      "key": "settings-edc-testing",
-      "used_by": "used-by TerminalPreferencesCard.tsx:270"
-    },
-    {
-      "at": "ui/src/__tests__/WorkspaceTerminalPreferencesCard.test.tsx:25",
-      "key": "settings-load-failed",
-      "used_by": "used-by TerminalPreferencesCard.tsx:283"
     },
     {
       "at": "ui/src/__tests__/a11y/NodeTopologyEditor.a11y.test.tsx:51",
