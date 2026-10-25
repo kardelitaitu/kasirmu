@@ -277,9 +277,10 @@ describe('TaxConfigurationScreen', () => {
       expect(confirmBtn, 'no tier-move consent dialog opened').not.toBeNull();
     });
     // The tier-move consent's confirm control, now on screen.
+    const consentConfirm = confirmBtn as unknown as HTMLElement;
     await act(async () => {
-      fireEvent.click(confirmBtn);
-      fireEvent.click(confirmBtn);
+      fireEvent.click(consentConfirm);
+      fireEvent.click(consentConfirm);
     });
 
     const calls = () => invokeMock.mock.calls.filter((c: unknown[]) =>
