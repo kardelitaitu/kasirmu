@@ -1080,3 +1080,125 @@ fn redeem_still_proceeds_when_no_prior_redemption_exists() {
     assert_eq!(result.card.current_balance_minor, 40000);
     assert_eq!(result.transaction.txn_type, "redeem");
 }
+
+/// The redeem path's PA-01 guard, proven by a FORCED race that can fail.
+///
+/// Why this test exists. `redeem_atomic_decrement_keeps_ledger_in_sync` reads as
+/// proof of the atomic guard, but both of its redeems run sequentially on ONE
+/// connection with no rival writer — so it passes on the pre-PA-01 code too.
+/// Measured 2026-10-26 (round 244) by deleting the `AND current_balance_minor >= ?1`
+/// predicate from `gift_cards.rs` and re-running it: **it still passed**, 1 passed,
+/// 0 failed. A guard with no test that reddens when it is removed is a comment.
+///
+/// The shape is copied from `freeze_gift_card_race_cannot_overwrite_a_competing_transition`:
+/// B stages a competing deduction under its write lock, A reads the pre-deduction
+/// balance while that write is invisible, then writes after B commits. With the
+/// predicate A's UPDATE matches zero rows and the redemption is refused; without
+/// it A double-spends the same balance and reports success.
+#[test]
+fn redeem_gift_card_race_cannot_double_spend_the_same_balance() {
+    let scratch = kasirmu_test_support::ScratchDir::new("gift-card-redeem-race");
+    let dir = scratch.path();
+    let db_path = dir.join("kasir.db");
+    {
+        let conn = fresh_file(dir);
+        seed_card(&conn, "GC-RD-R1");
+        for sale in ["sale-rd-a", "sale-rd-b"] {
+            conn.execute(
+                "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at, subtotal_minor, tax_total_minor)
+                 VALUES (?1, 30000, 'IDR', 0, 'completed', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', 30000, 0)",
+                params![sale],
+            )
+            .unwrap();
+        }
+    }
+
+    // B holds the write lock until A's busy handler reports it is BLOCKED on it
+    // (O-T15, no timer). B deducts 30000 of the card's 50000, leaving 20000.
+    static A_IS_WAITING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    A_IS_WAITING.store(false, std::sync::atomic::Ordering::SeqCst);
+    static A_WAITING_TX: std::sync::Mutex<Option<std::sync::mpsc::Sender<()>>> =
+        std::sync::Mutex::new(None);
+    fn note_a_is_waiting(_attempts: i32) -> bool {
+        if !A_IS_WAITING.swap(true, std::sync::atomic::Ordering::SeqCst)
+            && let Some(tx) = A_WAITING_TX.lock().unwrap().as_ref()
+        {
+            let _ = tx.send(());
+        }
+        true
+    }
+
+    let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+    let (a_waiting_tx, a_waiting_rx) = std::sync::mpsc::channel();
+    let rival = {
+        let db_path = db_path.clone();
+        std::thread::spawn(move || {
+            let conn_b = Connection::open(&db_path).unwrap();
+            conn_b.pragma_update(None, "busy_timeout", "5000").unwrap();
+            let tx = conn_b.unchecked_transaction().unwrap();
+            let rows = tx
+                .execute(
+                    "UPDATE gift_cards SET current_balance_minor = current_balance_minor - 30000
+                     WHERE card_number = ?1",
+                    params!["GC-RD-R1"],
+                )
+                .unwrap();
+            assert_eq!(rows, 1, "the rival deduction must touch the staged card");
+            locked_tx.send(()).unwrap();
+            let _ = a_waiting_rx.recv_timeout(std::time::Duration::from_secs(5));
+            tx.commit().unwrap();
+        })
+    };
+    locked_rx.recv().unwrap();
+
+    // A read 50000 before B committed, and asks for 30000 of it. B leaves 20000,
+    // which is below A's request -- so the predicate must refuse A.
+    let conn_a = Connection::open(&db_path).unwrap();
+    conn_a.pragma_update(None, "busy_timeout", "5000").unwrap();
+    A_WAITING_TX.lock().unwrap().replace(a_waiting_tx);
+    conn_a.busy_handler(Some(note_a_is_waiting)).unwrap();
+    let outcome = store(&conn_a).redeem_gift_card("GC-RD-R1", 30000, "sale-rd-a");
+    rival.join().unwrap();
+
+    assert!(
+        A_IS_WAITING.load(std::sync::atomic::Ordering::SeqCst),
+        "the losing redemption must have BLOCKED on B's write lock first; \
+         it never entered the race window"
+    );
+    let err = outcome.expect_err(
+        "a redemption that lost the race must be refused, not silently overdraw the card",
+    );
+    assert!(
+        matches!(
+            err,
+            CoreError::Validation {
+                field: "current_balance_minor",
+                ..
+            }
+        ),
+        "expected the balance Validation for the losing redemption, got: {err}"
+    );
+
+    // The money fact that matters: B's deduction is the ONLY one that landed.
+    let balance = store(&conn_a)
+        .get_gift_card_balance("GC-RD-R1")
+        .unwrap()
+        .unwrap()
+        .0;
+    assert_eq!(
+        balance, 20000,
+        "only the rival's deduction may be applied; a double-spend leaves the card short"
+    );
+
+    // And no ledger row was written for the refused redemption.
+    let rows: i64 = conn_a
+        .query_row(
+            "SELECT COUNT(*) FROM gift_card_transactions WHERE sale_id = 'sale-rd-a'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(rows, 0, "a refused redemption must not write a ledger row");
+
+    drop(conn_a);
+}
