@@ -21,8 +21,14 @@ in CI these arms connect and those cases really run.  That is also why the obvio
 "cleanup" -- converting the arms to `#[ignore]`, the idiom `platform/sync` already
 uses elsewhere -- would be a regression: nothing in `scripts/` or `.github/` passes
 `--run-ignored`, so `#[ignore]` removes 62 PG cases from the only environment that
-executes them.  This script deliberately changes no test and is not wired into any
-workflow; it grades a local run a human or a lane asked to *verify* something.
+executes them.  This script deliberately changes no test. In its plain mode it grades a local run
+a human or a lane asked to *verify* something.
+
+It IS wired into CI, but only through `--nextest-junit` -- a different mode, added
+2026-09-25 in `15192c315a` to fail CI when nextest retries mask a flaky test. That
+wiring does not run cargo and does not exercise the skip-arm channel below. (This
+paragraph used to say "not wired into any workflow", which was true on 2026-09-16 when
+it was written and stopped being true nine days later; corrected 2026-10-26.)
 
 Two independent checks, because one channel already lied once here:
   1. LOG    -- a `--nocapture` run must print zero skip events.
@@ -1065,6 +1071,22 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if ns.log:
+        # THE SAME REFUSAL THE --nextest-junit BRANCH GOT, one path over. That branch was
+        # fixed 2026-10-24 after `--nextest-junit target/mstmp/nope.xml` printed a
+        # FileNotFoundError traceback; this read was left as it was, so `--log` with an
+        # absent path still exited 1 by accident of Python's exception handling, with a
+        # stdlib path instead of the sentence that says what went wrong. Measured
+        # 2026-10-26: `--log target/nonexistent.log` printed
+        # "FileNotFoundError: [Errno 2] No such file or directory". The direction was
+        # right and the message was not -- a reader who sees a traceback learns that the
+        # tool broke, not that their log was missing.
+        if not ns.log.is_file():
+            print("FAIL  LOG: no captured log at %s" % ns.log)
+            print("      Nothing was graded. --log grades an ALREADY captured run; it")
+            print("      does not run cargo. Point it at the file you captured with")
+            print("      `cargo test ... -- --nocapture > LOG 2>&1`, or drop --log to")
+            print("      have this script run cargo itself.")
+            return 1
         text = ns.log.read_text(encoding="utf-8", errors="replace")
         harness = "unknown (log supplied with --log; the harness that made it is not visible here)"
         # The flag's own text only counts if whoever captured the log echoed the
