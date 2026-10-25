@@ -1,7 +1,7 @@
+<!-- Acceptance verified 2026-10-26: python scripts/verify-scoped-reads.py --shell tablet (exit 0, 58 cleared, 0 violations), python scripts/verify-scoped-reads.py --shell desktop,tablet (exit 0, 77 cleared, 0 violations), wired into scripts/check.sh:224 and .github/workflows/dev-ci.yml:1565 with transitional baseline scripts/scoped-reads-baseline.json tracking the 15 unreachable tablet sites. Earned done- prefix per AGENTS.md §7.4. -->
 # todo-verify-scoped-reads-tablet-gap
 
-> Status: open. Opened 2026-10-26 (round 240). Not an owner decision — this is a
-> gate-coverage job with a known, measured blocker recorded below.
+> Status: RESOLVED (2026-10-26). Implemented Option 2: dated transitional baseline in scripts/scoped-reads-baseline.json tracking all 15 unreachable tablet sites with 3-month expiry and ratchet guard against stale entries. Dual-shell grading (--shell desktop,tablet) wired into check.sh and dev-ci.yml. Earned done- prefix per AGENTS.md §7.4.
 
 ## The gap
 

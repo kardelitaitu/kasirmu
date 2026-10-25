@@ -1562,7 +1562,7 @@ jobs:
       - name: Scoped ambient reads self-test
         run: python3 scripts/verify-scoped-reads.py --self-test
       - name: Unguarded ambient IPC call sites
-        run: python3 scripts/verify-scoped-reads.py
+        run: python3 scripts/verify-scoped-reads.py --shell desktop,tablet
 
   # ── 7b. Go gate: the license-server module ────────────────────────────
   #

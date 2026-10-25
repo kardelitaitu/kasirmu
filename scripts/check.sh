@@ -221,7 +221,7 @@ step "ipc invoke payload parity self-test" "python3 scripts/verify-invoke-parity
 # and wrong about their STEP, which is the shape a future edit drops the wrong half of.
 # The other two self-test-first pairs (state-closure, reentry-guards) are deliberate and
 # say so in their labels; these two did not.
-step "unguarded ambient ipc calls" "python3 scripts/verify-scoped-reads.py" python3 scripts/verify-scoped-reads.py
+step "unguarded ambient ipc calls" "python3 scripts/verify-scoped-reads.py --shell desktop,tablet" python3 scripts/verify-scoped-reads.py --shell desktop,tablet
 step "unguarded ambient ipc calls self-test" "python3 scripts/verify-scoped-reads.py --self-test" python3 scripts/verify-scoped-reads.py --self-test
 # P3-3. P2-6 put `#![deny(unsafe_code)]` at 38 of 43 crate roots, so the crates
 # that carry NO unsafe cannot grow any. The five that legitimately keep it

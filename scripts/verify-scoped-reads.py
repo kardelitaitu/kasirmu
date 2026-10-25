@@ -110,6 +110,7 @@ usage:
                                                        # checkout copy (F-1 seam)
 """
 import argparse
+from datetime import date
 import io
 import json
 import os
@@ -142,6 +143,25 @@ import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ALLOWLIST = os.path.join(REPO, "scripts", "ipc-parity-allowlist.json")
+BASELINE = os.path.join(REPO, "scripts", "scoped-reads-baseline.json")
+
+
+def load_baseline(path=BASELINE):
+    """Load and validate the transitional debt baseline for scoped ambient reads."""
+    if not path or not os.path.isfile(path):
+        return []
+    with io.open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    entries = data.get("entries", [])
+    if not isinstance(entries, list):
+        raise ValueError(f"baseline at {path} must contain an 'entries' list")
+    for e in entries:
+        if not isinstance(e, dict):
+            raise ValueError(f"baseline entries in {path} must be objects")
+        for f in ("shell", "command", "file", "owner", "reason", "introduced", "expires"):
+            if not isinstance(e.get(f), str) or not e[f].strip():
+                raise ValueError(f"baseline entry in {path} missing non-empty field '{f}'")
+    return entries
 
 # WHO DECIDES AN ENTRY SHAPE, written where the rule is read rather than in a commit
 # message from whichever lane noticed the drift last.
@@ -1172,6 +1192,21 @@ def audit(shells, repo=REPO, allowlist=ALLOWLIST):
         with io.open(p, encoding="utf-8", errors="replace") as fh:
             texts[p] = strip_comments(fh.read())
 
+    baseline_path = os.path.join(repo, "scripts", "scoped-reads-baseline.json")
+    try:
+        baseline_entries = load_baseline(baseline_path)
+    except Exception as exc:
+        shape_problems.append(f"baseline unreadable: {exc}")
+        baseline_entries = []
+
+    baseline_by_key = {}
+    for entry in baseline_entries:
+        key = (entry["shell"], entry["command"], entry["file"].replace("\\", "/"))
+        baseline_by_key[key] = entry
+
+    matched_baseline_keys = set()
+    today = date.today()
+
     violations = []
     # Every row appended here is a site the veto at the bottom of this loop SILENTLY
     # continued past. Before this list existed the only way to learn that a call site was
@@ -1192,15 +1227,35 @@ def audit(shells, repo=REPO, allowlist=ALLOWLIST):
                             continue
                         upto = text[:m.start()].count("\n")
                         window = "\n".join(text.split("\n")[max(0, upto - 8):upto + 1])
+                        rel = os.path.relpath(path, repo).replace("\\", "/")
                         if _window_is_guarded(window) or _platform_guard_excludes_shell(
                                 text, m.start(), shell):
-                            cleared.append(
-                                (shell, cmd, os.path.relpath(path, repo).replace(chr(92), "/"),
-                                 upto + 1))
+                            cleared.append((shell, cmd, rel, upto + 1))
+                            continue
+                        b_key = (shell, cmd, rel)
+                        if b_key in baseline_by_key:
+                            b_entry = baseline_by_key[b_key]
+                            matched_baseline_keys.add(b_key)
+                            try:
+                                exp = date.fromisoformat(b_entry["expires"])
+                            except ValueError:
+                                exp = today
+                            if today <= exp:
+                                cleared.append((shell, cmd, rel, upto + 1))
+                                continue
+                            line = text.split("\n")[upto].strip()
+                            violations.append((shell, cmd, rel, upto + 1, f"{line[:70]} [BASELINE EXPIRED {b_entry['expires']}]"))
                             continue
                         line = text.split("\n")[upto].strip()
-                        rel = os.path.relpath(path, repo).replace("\\", "/")
                         violations.append((shell, cmd, rel, upto + 1, line[:88]))
+
+    # Check for stale baseline entries (ratchet: fail if a baseline entry is no longer matched)
+    for key, entry in baseline_by_key.items():
+        if entry["shell"] in shells and key not in matched_baseline_keys:
+            shape_problems.append(
+                f"stale baseline entry in {os.path.basename(baseline_path)}: [{entry['shell']}] {entry['command']} in {entry['file']} (call site not found)"
+            )
+
     # Coverage is counted HERE, from the same names_by_shell the loop above walked and the
     # same map it looked up in, so the printed ratio cannot disagree with the grading that
     # ran. It is returned, not printed: audit() has never written to stdout, and main() owns
