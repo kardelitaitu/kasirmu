@@ -2611,7 +2611,7 @@ brace-balanced `} else {`. With it: 24 findings -> 22, cleared 35 -> 37, desktop
 clean, self-test PASS.
 
 **The class the walk cannot see: a desktop-only SUBTREE.** `create_backup` is called from
-`createBackup()` at `ui/src/app/UpdateBanner.tsx:157`, graded an unguarded tablet call. It is not. The mount
+`createBackup()` at `ui/src/app/UpdateBanner.tsx:166`, graded an unguarded tablet call. It is not. The mount
 chain is:
 
 ```
@@ -3012,9 +3012,40 @@ preventing, and the case that named it would still have been green with the ref 
 guards stand in front of the same write, the mutation has to remove both before it measures
 anything.
 
-**What the report counts after this round: 74.** Not because 76 was wrong -- each of the three
+**What the report counted after this round: 74.** Not because 76 was wrong -- each of the three
 thrown off it now has an atomic ref plus a case that fails with `expected 2 to be 1` when the ref
-is hollowed out. The other 69 are untouched, and the questions above have not been asked of them.
+is hollowed out. The other 69 were untouched, and the questions above had not been asked of them.
+
+**Where the sweep ended: 74 -> 1, rounds 175-190.** Nineteen rounds later the four questions above
+have been asked of every handler on the list. Fifty-nine took a ref and a case that fails without
+it; the rest were refuted by reading the write, and the refutations are in the script's own header
+so they are not re-opened. What the sweep learned that is not in the table above:
+
+1. **The same handler shape produced every cost in the class.** A duplicate row
+   (`create_category`, `create_table`, `create_tax_rate`, the menu editor's self-minted sku), a
+   double-billed partition (`SplitBillModal`), a double-held table tab (`handleConfirmMoveTable`,
+   where create-first/delete-second is deliberate and the replay is the duplicate it trades for), a
+   second statutory number (`handleConfirmStamp`, `claim_statutory_number_for_sale`), two native save
+   dialogs (`RevokedScreen`), and — seven times — nothing worse than a failure message over a write
+   that succeeded.
+2. **"Idempotent" is not "safe to replay".** Gift-card redeem and stock-transfer receive were both
+   refuted on idempotency in earlier rounds and both still misreported: the second call is a no-op in
+   the DATABASE and a lie on the SCREEN. The right question is not "is the row safe" but "what does
+   the operator see".
+3. **A redundant guard must be dropped, not kept for comfort.** The last candidate,
+   `TopologyScreen`'s branch delete, was refuted by measurement: the confirm button renders
+   `disabled={deleteBranchSaving}`, and for a DISCRETE click React flushes that update to the DOM
+   before the next click, so the handler saw ONE invocation for two `fireEvent.click`s and a ref
+   added above it changed nothing. A guard whose removal no test notices is a comment. The refutation
+   is pinned by a case that fails if the `disabled` is ever removed, so it cannot quietly become true.
+4. **A mutation must REACH the guard, and two guards need a two-step mutation.** `Button`'s spread
+   order and `SettingsPopup`'s `saving || saveDisabled` are independently sufficient: reverting
+   either alone left the case green. The same blindness applies to a test whose clicks are flushed
+   between taps, and to an edit that never reached the file -- three "mutations" in this sweep had
+   not been applied at all, and the colour of a run says nothing about a file it did not read.
+5. **A gate that reports a number invites the number to become the goal.** The useful artifact here
+   is the header: 59 rulings that say which backend fact settles a candidate, so the next lane
+   starts from them instead of re-opening the list.
 
 
 ## Fifteen "unguarded" tablet calls, and the mount chain that made every one of them safe
