@@ -190,12 +190,33 @@ re-derive these: each is protected, and the protection is named so the search en
                         button shows a spinner but is NOT disabled. Round 186 FIXED
                         handleReceive with a ref. The correction is the useful part: "idempotent
                         by difference" is a property of ONE status, not of the command.
+  * split-bill confirm -- DOUBLE BILL. SplitBillModal.handleConfirm is a CALLBACK the parent
+                        turns into a sale; a replay bills the same selected partition twice. Its
+                        button's `state` only flips to 'processing' on the next render. Round 186
+                        FIXED with a ref. Note the test needed the two clicks inside ONE `act()`:
+                        outside it, react-testing-library wraps each `fireEvent` in its own act and
+                        the first flush disables the button, so the ref mutation stayed green.
+  * e-Faktur stamp -- a legally numbered field, replayed. Round 186 FIXED handleConfirmStamp
+                        with a ref taken AFTER the 13-digit validation; and, in the same file,
+                        handleExportCsv -- whose `if (csvExporting) return` was state only, so two
+                        taps exported two files over the same download name.
   * purchase order receive -- REFUSED, and the worst catch of the class. receive_purchase_order
                         refuses any status other than 'approved' (db/purchase_orders.rs:383-388),
                         so the replay errors -- but on the On-Account path the FIRST call already
                         created the payable, so ReceivePoModal reported po-error-receive over a
                         receipt that landed AND a supplier debt that now exists. Round 186 FIXED
                         handleSubmit with a ref.
+  * branch delete (TopologyScreen) -- the confirm button is `disabled={deleteBranchSaving}`,
+                        and for a DISCRETE click React flushes the state update to the DOM before
+                        the next click, so the second tap is on a really disabled button. Measured
+                        round 186: the handler ran ONCE for two fireEvent.click()s, and a ref added
+                        above it changed nothing -- a mutation that disabled the ref left the case
+                        green, which is how the redundancy showed itself. The general rule this
+                        sharpens: a handler whose BUSY FLAG is rendered as the trigger's `disabled`
+                        is already gated by React's discrete-event flush; one whose trigger is only
+                        `loading`/`state` styled needs a ref, because the second click lands before
+                        the re-render. `<Button state="processing">` and `loading` DO disable, so
+                        those are gated for the same reason -- check the component, not the call.
   * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
                         idempotent by construction: the same key is overwritten
 The point of the list is that it is SHORT: filtering to handlers that (a) await something
