@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import giftCardsFtl from '@/locales/gift-cards.ftl?raw';
@@ -159,6 +159,45 @@ describe('GiftCardPayment', () => {
       expect(onApplied).toHaveBeenCalledWith(30000, 'GC-TEST');
       expect(onComplete).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('redeems ONCE when Apply gift card is double-tapped', async () => {
+    // This is the one place in the app where a gift card's balance moves money. The replay
+    // is NOT refused by the backend: redeem_gift_card's idempotency is on (card_id, sale_id)
+    // and the second call for the SAME pair is accepted -- so the operator can be told the
+    // card was applied twice, through two onApplied calls.
+    const mockBalance = getGiftCardBalance as ReturnType<typeof vi.fn>;
+    mockBalance.mockResolvedValueOnce({
+      balance_minor: 50000,
+      currency: 'IDR',
+      status: 'active',
+    });
+
+    const mockRedeem = redeemGiftCard as ReturnType<typeof vi.fn>;
+    let release: (() => void) | undefined;
+    mockRedeem.mockReturnValue(new Promise((res) => {
+      release = () => res({ card: { id: 'gc-1', status: 'active' }, transaction: { id: 'txn-1', txn_type: 'redeem' } });
+    }));
+    const onApplied = vi.fn();
+    const onComplete = vi.fn();
+
+    renderWithFluentSync(
+      <GiftCardPayment {...defaultProps} totalMinor={30000} onApplied={onApplied} onComplete={onComplete} />,
+      giftCardsFtl,
+    );
+
+    await userEvent.type(screen.getByLabelText('Gift card number'), 'GC-TEST');
+    await userEvent.click(screen.getByRole('button', { name: /check/i }));
+    const applyBtn = await screen.findByRole('button', { name: /apply gift card/i });
+    await act(async () => {
+      applyBtn.click();
+      applyBtn.click();
+    });
+
+    release?.();
+    await vi.waitFor(() => expect(mockRedeem).toHaveBeenCalledTimes(1));
+    expect(onApplied).toHaveBeenCalledTimes(1);
+    expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
   it('calls onCancel when cancel is clicked', async () => {

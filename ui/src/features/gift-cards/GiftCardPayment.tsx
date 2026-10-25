@@ -9,7 +9,7 @@
 // three are an owner decision.
 // ─────────────────────────────────────────────────────────────────
 
-import { useState, useCallback } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useLocalization, Localized } from '@fluent/react';
 import { getGiftCardBalance, redeemGiftCard } from '@/api/giftCards';
 import { Button } from '@/components/Button';
@@ -50,6 +50,8 @@ export default function GiftCardPayment({
   const { l10n } = useLocalization();
   const [cardInput, setCardInput] = useState('');
   const [loading, setLoading] = useState(false);
+  /** Synchronous mirror of `loading` — see the re-entry guard in `handleApply`. */
+  const loadingRef = useRef(false);
   const [cardBalance, setCardBalance] = useState<{ minor: number; currency: string; status: string } | null>(null);
   const [error, setError] = useState('');
 
@@ -93,6 +95,14 @@ export default function GiftCardPayment({
       return;
     }
 
+    // Re-entry guard. THIS IS THE ONE PLACE IN THE APP WHERE A GIFT CARD'S BALANCE MOVES
+    // MONEY, and the replay is NOT refused: redeem_gift_card is idempotent only on
+    // (card_id, sale_id) -- fail-closed -- so the SECOND call for the same card and sale is
+    // accepted as a no-op by the schema's own accounting, while this component has already
+    // told the operator it applied `amountToRedeem` twice through onApplied. The state flag
+    // is committed on the next render, after the second tap.
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
     try {
       await redeemGiftCard(sessionToken, code, amountToRedeem, saleId);
@@ -101,6 +111,7 @@ export default function GiftCardPayment({
     } catch (err) {
       onError(l10nErrorMessage(err, l10n, 'gift-cards-payment-redemption-failed'));
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   // :85 redeems real money through redeemGiftCard(sessionToken, ...). With the token missing,
