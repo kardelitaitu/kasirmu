@@ -249,6 +249,20 @@ re-derive these: each is protected, and the protection is named so the search en
                         directory. Round 187 FIXED. Its two flags (installing/backingUp) are
                         two names for one handler: guarding either one alone measures
                         nothing.
+  * SettingsPopup save button -- a SHARED DOOR over every settings form that hosts one. It
+                        passed `disabled={saveDisabled}` into a Button that spread its own props
+                        LAST, so the popup's `loading`-derived disabled was overridden: with a
+                        host sending saveDisabled={false} (the tax rate and category dialogs do,
+                        the moment a field is filled) the Save spun and stayed clickable. Round
+                        188 FIXED both halves -- Button now spreads `...rest` before its derived
+                        `disabled`, and the popup asks for `saving || saveDisabled`. NOTE the
+                        mutation lesson: reverting EITHER half alone leaves the case green,
+                        because the other half independently disables the button. A one-step
+                        mutation here would have "proved" a working guard that was not there.
+  * tax category assign -- DELETE-then-INSERT-OR-IGNORE over (category_id, tax_rate_id), so
+                        the replay is harmless to the schema; the cost is the shared state (one
+                        `savingCat`, a modal the first run already closed). Round 188 FIXED with
+                        a ref, documented as the SECOND door beside the popup's disabled Save.
   * settings upserts (setStoreSettingsScoped, setHardwareSettingsScoped, ...) --
                         idempotent by construction: the same key is overwritten
 The point of the list is that it is SHORT: filtering to handlers that (a) await something
