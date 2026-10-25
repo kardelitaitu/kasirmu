@@ -76,7 +76,7 @@ inv-shift-start-btn = Start Shift
 inv-shift-active-info = { $user } — { $location } — Started { $time }
 inv-shift-end-btn = End Shift
 inv-shift-summary-title = Shift Summary
-inv-shift-summary-performed = Transactions performed during this shift:
+inv-shift-summary-performed = Your transactions at this location since this shift started:
 inv-shift-no-transactions = No transactions recorded.
 
 # Inventory Shift — error toasts + a11y

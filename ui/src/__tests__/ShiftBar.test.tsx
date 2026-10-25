@@ -309,7 +309,13 @@ it('shows start form when no active shift exists', async () => {
     // Summary modal should appear
     await waitFor(() => {
       expect(screen.getByText('Shift Summary')).toBeInTheDocument();
-      expect(screen.getByText('Transactions performed during this shift:')).toBeInTheDocument();
+      // The copy names the SCOPE the backend actually filters on: the read is
+      // `staff_id = session user AND location_id AND created_at >= start`
+      // (crates/kasirmu-core/src/db/inventory.rs:789), so it is one cashier's movements,
+      // not the location's. The old string promised a whole-location register.
+      expect(
+        screen.getByText('Your transactions at this location since this shift started:'),
+      ).toBeInTheDocument();
     });
   });
 

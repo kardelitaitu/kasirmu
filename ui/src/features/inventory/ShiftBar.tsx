@@ -201,6 +201,12 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
     try {
       // Fetch transactions server-side for this shift window.
       const since = activeShift.started_at;
+      // `list_inventory_transactions_for_shift` filters on
+      // `staff_id = ?1 AND location_id = ?2 AND created_at >= ?3`
+      // (crates/kasirmu-core/src/db/inventory.rs:789), so the bridge fills staff_id from
+      // the SESSION (inventory.rs:586) -- this read is "MY movements at THIS location
+      // since I clocked in", not "the location's movements". The summary copy below says
+      // so, because a second cashier on the same location is outside it.
       const filtered = await listInventoryTransactionsForShift(
         sessionToken, activeShift.location_id, since,
       );
@@ -303,8 +309,12 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
             <Localized id="inv-shift-summary-title">
               <h3>Shift Summary</h3>
             </Localized>
+            {/* The copy names the SCOPE, not just the window. The read behind this
+                list is filtered by staff_id (the session's user) as well as by
+                location and start time, so "during this shift" would promise a
+                whole-location register the backend does not return. */}
             <Localized id="inv-shift-summary-performed">
-              <p>Transactions performed during this shift:</p>
+              <p>Your transactions at this location since this shift started:</p>
             </Localized>
             
             <ul className="summary-list">

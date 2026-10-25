@@ -90,7 +90,7 @@ inv-shift-start-btn = Mulai Shift
 inv-shift-active-info = { $user } — { $location } — Dimulai { $time }
 inv-shift-end-btn = Akhiri Shift
 inv-shift-summary-title = Ringkasan Shift
-inv-shift-summary-performed = Transaksi yang dilakukan selama shift ini:
+inv-shift-summary-performed = Transaksi Anda di lokasi ini sejak shift ini dimulai:
 inv-shift-no-transactions = Tidak ada transaksi yang tercatat.
 
 # Inventory Shift — error toasts + a11y
