@@ -63,6 +63,13 @@ def scan() -> tuple[list[str], int, int]:
         eligible += 1
         rel = test.relative_to(REPO).as_posix() if test.is_relative_to(REPO) else test.name
         for lineno, line in enumerate(text.split(chr(10)), 1):
+            # A COMMENT is not an assertion. The scanner is line-based, so an
+            # explanatory note that spells out toContain('some-key') -- exactly the
+            # note a repair leaves behind -- was reported as a live site. Four
+            # already-converted assertions were still "known" for this reason.
+            stripped = line.lstrip()
+            if stripped.startswith("//") or stripped.startswith("*") or stripped.startswith("/*"):
+                continue
             # Which matcher owns THIS literal? Take the last one that opens before
             # the key, not merely any matcher on the line. `getByTestId('kds-tab-open')
             # .textContent).toContain('1')` puts a toContain on the same line as a
