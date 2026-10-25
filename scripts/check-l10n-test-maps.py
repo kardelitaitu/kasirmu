@@ -320,6 +320,25 @@ def addresses_by_key(body: str, keys_absent_from_maps: set[str]) -> int:
     return len(set(found))
 
 
+def _is_comment(line: str) -> bool:
+    """True for a line that CONTINUES a map rather than ending it.
+
+    A map entry may put its value on the NEXT line:
+
+        'topology-confirm-delete-node-msg':
+          'This node has connected wires. ...',
+
+    That continuation starts with a quote, so treating every non-comment as
+    code split TOPOLOGY_EN into three maps at exactly its two long values --
+    46 + 71 + 56 keys instead of one 173-key object, and the pieces then
+    reported each other as holes.
+    """
+    t = line.strip()
+    if not t or t.startswith("//") or t.startswith("*") or t.startswith("/*"):
+        return True
+    return t[0] in "'\"`"
+
+
 def _closes_literal(line: str) -> bool:
     """True when this line ends the object literal a key run belongs to."""
     t = line.strip()
@@ -337,25 +356,19 @@ def find_maps(text: str) -> list[dict]:
         run_end = i
         while run_end + 1 < len(hits):
             gap = hits[run_end + 1][0] - hits[run_end][0]
-            if gap > KEY_BLOCK_GAP + 1:
+            # Check EVERY gap for a closing brace, not only a wide one.
+            # `};` typed between two key lines is a literal boundary whether the
+            # gap is 3 lines or 30, and gating the test on gap width merged two
+            # separate objects into one 6-key map.
+            if True:
                 # A comment block does not end a literal. Inserting five lines of
                 # explanation inside a map split a 26-key object into 10 + 16 and
                 # made keys documented in one half look MISSING from the other.
                 between = lines[hits[run_end][0] + 1 : hits[run_end + 1][0]]
-                if any(_closes_literal(b) for b in between):
-                    break
-                if not any(b.strip() for b in between):
+                # An EMPTY between is two adjacent keys -- the normal case.
+                if between and not all(_is_comment(b) for b in between):
                     break
             run_end += 1
-        # A run is bounded by OTHER CODE, not by line count alone. Inserting an
-        # ordinary explanatory comment inside a map split it into two maps -- a
-        # 26-key object became 10 + 16 -- so keys documented in one half looked
-        # MISSING from the other, and the gate reported holes that were present.
-        while run_end > run_start and any(
-            _closes_literal(lines[i])
-            for i in range(hits[run_end - 1][0] + 1, hits[run_end][0])
-        ):
-            run_end -= 1
         if run_end - run_start + 1 < MIN_RUN_LINES:
             i = run_end + 1
             continue
