@@ -39,7 +39,7 @@
 import { type ReactElement } from 'react';
 import { render, type RenderResult } from '@testing-library/react';
 import { expect, vi } from 'vitest';
-import { axe, toHaveNoViolations } from 'jest-axe';
+import { toHaveNoViolations } from 'jest-axe';
 import axeCore from 'axe-core';
 
 /** Run axe-core directly against an element, mutating no DOM. */
@@ -181,7 +181,7 @@ export function renderWithProviders(children: ReactElement, ...extraFtl: string[
 /// Violations are reported via vitest's assertion error with the full
 /// axe-core report (rule ID, impact, description, and failing nodes).
 ///
-/// PASS AN ATTACHED ELEMENT. This wrapper is backed by jest-axe's `axe()`, whose
+/// HISTORICAL HAZARD, NOW CLOSED HERE. This helper USED jest-axe's `axe()` wrapper, whose
 /// `mount()` REWRITES `document.body.innerHTML` whenever the element it is handed is
 /// not inside `document.body` -- and that assignment detaches React's root, so the
 /// global `afterEach(cleanup())` in test-setup.ts then finds nothing to unmount and the
@@ -192,14 +192,21 @@ export function renderWithProviders(children: ReactElement, ...extraFtl: string[
 /// `document.body` itself (the 4 portal-era call sites, which `body.contains(body)`
 /// short-circuits). A DETACHED element -- `document.documentElement` is the one that
 /// bit -- takes the rewriting path. `checkA11yDocument` exists for that case and calls
-/// axe-core directly for exactly this reason.
+/// axe-core directly for exactly this reason. Both helpers now call axe-core's own
+/// `run()`, so NO call site can take the rewriting path; the rule below is kept because
+/// jest-axe's matcher is still in use and a future helper could reintroduce it.
 export async function checkA11y(
   container: HTMLElement,
   options?: Record<string, unknown>,
 ): Promise<void> {
   const callerRules = (options?.['rules'] as Record<string, unknown>) || {};
   const mergedOptions = { ...options, rules: { ...DISABLED_RULES, ...callerRules } };
-  const results = await axe(container, mergedOptions);
+  // axe-core directly, NOT jest-axe's axe() wrapper: mount() rewrites
+  // document.body.innerHTML for any target outside the body, which detaches React's
+  // root and defeats the global afterEach(cleanup()). Container targets are safe today
+  // (see the doc comment above), and this removes the hazard for every future caller
+  // rather than relying on each one passing an attached element.
+  const results = await runAxe(container, mergedOptions);
 
   // Log violations for debugging before the assertion fails.
   if (results.violations.length > 0) {
