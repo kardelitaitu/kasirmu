@@ -130,7 +130,7 @@ export function usePosCartActions({
           // `sessionToken` is an empty string when there is no session, so a bare
           // truthiness test sent the desktop down the ambient branch and the invoke was
           // rejected as an unknown command. Gate on the shell as well. Same defect and
-          // same fix as PosScreen.tsx:891 -- found by scripts/verify-ipc-parity.py.
+          // same fix as PosScreen.tsx:910 -- found by scripts/verify-ipc-parity.py.
           const info =
             sessionToken || !isTabletShell()
               ? await getCartDeductionLocationScoped(sessionToken, newCartId)

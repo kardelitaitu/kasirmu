@@ -41,7 +41,7 @@
 //     that file coerces at the `await` (the detector cannot see upstream).
 //   * OBJECT shape (`asObject`): only FOUR call sites ever read a field off a
 //     raw payload. All four are guarded — TerminalManagementScreen (this
-//     helper), useBackupStatus, SettingsPage.tsx:154 (`if (status && …)`) and
+//     helper), useBackupStatus, SettingsPage.tsx:198 (`if (status && …)`) and
 //     PosScreen.tsx:335 (`if (!cancelled && settings.currency)`). The rest of
 //     the object-shaped reads are already null-checked by their authors:
 //     SettingsContext's five scoped loads each open with `if (!v) return;`.

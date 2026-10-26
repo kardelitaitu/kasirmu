@@ -45,7 +45,7 @@
  * (it also performs the narrowing that lets `points` arrive as a plain number).
  *
  * WHAT THAT DOES AND DOES NOT GUARANTEE, precisely. There is exactly ONE
- * production caller today, the JSX at PaymentModal.tsx:1630, and it passes
+ * production caller today, the JSX at PaymentModal.tsx:2847, and it passes
  * `loyaltyOffered={loyaltyLicensed && !!loyaltyAccount}` - a literal restatement
  * of its own enclosing condition - so on today's paths the `!loyaltyOffered`
  * return below is UNREACHABLE from the modal. It stays because it is the default

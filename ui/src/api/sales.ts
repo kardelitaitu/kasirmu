@@ -508,7 +508,7 @@ export interface SerialTrackRow {
  *
  * PERF-03: many SKUs in a single IPC round trip, replacing the N+1 per-SKU loop in the retail
  * cart. The unscoped twin of this call was deleted on 2026-09-16 (T25); its contract case came
- * here with it, because this is the only form the cart uses (RetailPosScreen.tsx:191).
+ * here with it, because this is the only form the cart uses (RetailPosScreen.tsx:185).
  */
 export const getProductTrackSerialBatchScoped = (sessionToken: string, skus: string[]): Promise<SerialTrackRow[]> =>
   loggedInvoke<SerialTrackRow[]>('get_product_track_serial_batch_scoped', { sessionToken, skus });

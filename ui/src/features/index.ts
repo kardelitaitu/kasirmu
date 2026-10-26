@@ -110,7 +110,7 @@ import { registerMemoFeature } from './memo/register';
  *     that is now the FIRST thing the operator sees, not the second.
  *
  *     Neither correction changes the ruling: the catalog is still not wired on the
- *     server (SignedSubscriptionPayload in apps/license-server/main.go:1440 has no
+ *     server (SubscriptionPayload in apps/license-server/main.go:1440 has no
  *     `addons` field, and the four `pri_addon_*` ids have no reader — the license
  *     server's PADDLE_PRICE_TIERS does not know them), so the file still waits.
  */

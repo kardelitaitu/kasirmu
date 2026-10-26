@@ -374,7 +374,7 @@
  * footer y=458 either way, stack y=500-709 either way.
  *
  * Why: the footer is a flex SIBLING of .settings-body inside .settings-page
- * (SettingsPage.tsx:434; the body closes at :431), and it is `flex: 0 0 auto` at the
+ * (SettingsPage.tsx:516; the body opens at :490 and closes at :510), and it is `flex: 0 0 auto` at the
  * bottom of that column. Padding it cannot move it. The clearance that does lift the
  * footer off the stack is the .settings-body band in SettingsNavTree.css, which
  * shrinks the region above it and lets the column re-lay out.
