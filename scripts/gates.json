@@ -942,6 +942,13 @@
     },
     {
       "id": "debt-ledger",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Debt ledger freshness"
+        ]
+      },
       "label": "Every commit that closes a debt entry has a journal section",
       "status": "required",
       "runners": {
@@ -993,6 +1000,13 @@
     },
     {
       "id": "core-size",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Core size ratchet"
+        ]
+      },
       "label": "kasirmu-core size ratchet",
       "status": "required",
       "_note": "Added 2026-10-05 (round 148). This step has been in check.sh with a full rationale at line 524-533 and NO gates.json record, which is the structural blind spot the bundle-parity note describes: verify-ci-docs-drift.py iterates the gates present in the manifest, so a gate with no row can never be reported as required-but-not-enforced. Found by running every checker and asking why one FAILED rather than assuming; the failure itself was another session in-flight core work, but the missing row was real. The ratchet counts non-blank production lines under crates/kasirmu-core/src, minus whole test files and inline #[cfg(test)] mod blocks, and fails when the count rises above scripts/core-size-baseline.json. Mutation-proven: adding three lines to audit.rs fails with +3. LOWERING the ceiling is a deliberate edit in a commit that says why, the same shape as namespace-governance-baseline.json. NOTE it is environment-INDEPENDENT but tree-DEPENDENT: it fails whenever any session has in-flight core growth, so a red run in a shared checkout is not automatically yours -- check `git status --porcelain -- crates/kasirmu-core` first.",
@@ -1361,6 +1375,13 @@
     },
     {
       "id": "server-origins",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Server origin consistency"
+        ]
+      },
       "label": "Server origin consistency",
       "status": "required",
       "runners": {
@@ -1369,7 +1390,7 @@
           "server origins self-test"
         ]
       },
-      "_note": "Added in 0.0.39. Reads the compiled origin list in crates/kasirmu-core/src/server_origin.rs (ADR #55) and fails when a Tauri CSP, the Worker CSP, the Worker LICENSE_API_URL fallback, the settings draft, or either Rust dev fallback disagrees with it. The drift it guards was live: the compiled auth URL said license.kasir.mu while both Tauri CSPs, the desktop bootstrap, the settings draft and the runbook all said license.ozpos.my.id, so a host change silently needed a release and nothing detected the mismatch. Local-only (no CI runner): needs node and nothing else."
+      "_note": "Added in 0.0.39. Reads the compiled origin list in crates/kasirmu-core/src/server_origin.rs (ADR #55) and fails when a Tauri CSP, the Worker CSP, the Worker LICENSE_API_URL fallback, the settings draft, or either Rust dev fallback disagrees with it. The drift it guards was live: the compiled auth URL said license.kasir.mu while both Tauri CSPs, the desktop bootstrap, the settings draft and the runbook all said license.ozpos.my.id, so a host change silently needed a release and nothing detected the mismatch. WIRED INTO CI 2026-10-26 (static-gates, 'Server origin consistency'). It carried 'Local-only (no CI runner): needs node and nothing else' for its whole life, and that sentence was itself the evidence that leaving it local was wrong: a stdlib/node leaf with no service dependency could have run in CI the day it was written."
     },
     {
       "id": "env-docs",
@@ -1391,6 +1412,13 @@
     },
     {
       "id": "unified-routes",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Licence server route carve-outs"
+        ]
+      },
       "label": "Unified image routes the licence server",
       "status": "required",
       "runners": {
@@ -2050,6 +2078,13 @@
     },
     {
       "id": "pipeline-verdicts",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Pipeline verdicts"
+        ]
+      },
       "label": "Pipeline exit-code verdicts",
       "status": "required",
       "_note": "Added 2026-10-23. A shell pipeline exits with its LAST command's status, so 'if s=$(... | tail -1)' is ALWAYS true and the branch meant for 'nothing matched' is unreachable. scripts/check.sh carried that shape in its cargo-deny block for weeks: both branches printed PASS, so every run looked healthy and the else was dead code. The checker grades conditions in scripts/check.sh and check-auditor-selftests.sh, both directions (a real verdict like 'grep -q' is NOT a finding), including backslash-continued lines -- a line-anchored regex missed precisely the bug it was written for, measured by reintroducing the original line. 9 self-test cases, wired beside it.",

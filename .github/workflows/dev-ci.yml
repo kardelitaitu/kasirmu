@@ -1563,6 +1563,29 @@ jobs:
         run: bash scripts/verify-no-raw-params.sh
       - name: Scoped command coverage
         run: bash scripts/verify-scoped-coverage.sh
+      # FIVE gates that wore `status: required` and ran ONLY in scripts/check.sh, which
+      # is manual and unhooked -- the defect this file records a dozen times above. Each
+      # is stdlib/node-only, reads the working tree, and needs no service. Measured
+      # together on a warm runner: 1.8s, so there was never a build-cost reason.
+      #
+      # `server-origins`' own gates.json note is the sharpest evidence that leaving them
+      # local was wrong: it says "Local-only (no CI runner): needs node and nothing else"
+      # -- the leaf could have been wired the day it was written.
+      - name: Core size ratchet
+        run: python3 scripts/verify-core-size.py
+      - name: Licence server route carve-outs
+        run: node scripts/check-unified-routes.mjs
+      # A shell pipeline exits with its LAST command's status, so `if s=$(... | tail -1)`
+      # is always true and its else branch is dead. check.sh carried that shape in its
+      # cargo-deny block for weeks with both branches printing PASS.
+      - name: Pipeline verdicts
+        run: python3 scripts/check-pipeline-verdicts.py
+      - name: Debt ledger freshness
+        run: python3 scripts/check-debt-ledger.py
+      # ADR #55: the compiled origin list must agree with every CSP, the Worker
+      # fallback and the settings draft. The drift it guards was live once.
+      - name: Server origin consistency
+        run: node scripts/check-server-origins.mjs
       # ORDERING RULE FOR THIS JOB, and the reason these two sit last rather than
       # where they used to. Every step above measured 0-2s; these two are whole-
       # repo scans at 10s and 11s, so they are the most expensive thing left here
