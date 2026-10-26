@@ -27,15 +27,22 @@ nothing but a component it delegates to is graded through that component, and a
 screen whose only `<h1>` sits in a whole-screen fallback branch passes: the
 branch IS the page when it renders.
 
+A heading that cannot render is not a heading. The first version counted one:
+wrapping SecurityTrailScreen's <h1> in `{false && ...}` left the gate green
+(measured round 37). An obviously-dead `{false}`/`{0}`/`{null}`/`{undefined}`
+guard therefore disqualifies the heading inside it.
+
 WHAT IT DOES NOT CLAIM
 ----------------------
 This is a TEXT check, not a render. It cannot see a heading produced by a
-component the screen imports, so the allowlist below names the two wrappers
-whose title lives one level down (and the inner component is itself graded,
-because it is also a registered route target or is covered by a structural
-test). It also cannot prove the heading is REACHED at runtime -- a screen with
-an h1 behind an unreachable branch would pass. Those are the two reasons this
-is a floor, not a proof.
+component the screen imports unless that component is in the same directory
+(one level, see _local_component_imports) or named in DELEGATING_WRAPPERS. It
+also cannot prove a heading behind a RUNTIME condition is reached -- `{loaded &&
+<h1>}` counts, deliberately, because POS's "Login Required" branch is exactly
+that shape and is a legitimate page title. Proving cardinality (exactly one
+rendered h1) is the render tests' job: 12 suite files assert it today. These are
+the reasons this is a floor, not a proof, and the floor is where a REGRESSION
+gets caught, not where correctness is proven.
 
 EXIT CODES
     0  every registered page screen carries a level-one heading
@@ -109,11 +116,42 @@ def _strip_comments(text: str) -> str:
     return text
 
 
+def _inside_dead_guard(text: str, index: int) -> bool:
+    """True when the heading at `index` sits inside a `{false && ...}`-style guard.
+
+    Walks back to the enclosing `{` and checks whether the expression right after
+    it is a literal falsy. Bounded to the current line plus 200 characters so a
+    guard far away in a 2000-line file cannot swallow an unrelated heading.
+    """
+    window_start = max(0, index - 400)
+    window = text[window_start:index]
+    brace = window.rfind("{")
+    if brace < 0:
+        return False
+    return bool(DEAD_GUARD_RE.match(window, brace))
+
+
+DEAD_GUARD_RE = re.compile(r"\{\s*(?:false|0|null|undefined)\s*&&")
+
+
 def _has_level_one_heading(text: str) -> bool:
-    """True when the source contains a level-one heading in JSX."""
+    """True when the source contains a level-one heading in JSX that can render.
+
+    A heading can be PRESENT and unreachable, and the first version of this
+    check counted one: wrapping the security-trail `<h1>` in `{false && ...}`
+    left the gate green. That is the same "a case that cannot fail proves
+    nothing" shape this gate exists to close, one level up -- so a heading
+    inside an obviously-dead `{false && ...}`-style guard does not count.
+
+    Deliberately NOT attempted: a heading behind a runtime condition
+    (`{loaded && ...}`, `if (!session)`). Those are ordinary branches and one of
+    them -- POS's "Login Required" -- is a legitimate page title. Proving
+    reachability is the render tests' job; this is a floor.
+    """
     clean = _strip_comments(text)
-    if _H1_RE.search(clean):
-        return True
+    for match in _H1_RE.finditer(clean):
+        if not _inside_dead_guard(clean, match.start()):
+            return True
     # role="heading" + aria-level={1}, adjacent in either order.
     role = ROLE_HEADING.search(clean)
     level = ARIA_LEVEL_1.search(clean)
@@ -121,7 +159,9 @@ def _has_level_one_heading(text: str) -> bool:
         # Adjacent only: the two attributes must be within 60 characters of
         # each other, so a heading div and an unrelated aria-level elsewhere in
         # a 2000-line screen do not pair up.
-        return abs(role.start() - level.start()) < 60
+        return abs(role.start() - level.start()) < 60 and not _inside_dead_guard(
+            clean, role.start()
+        )
     return False
 
 
@@ -292,6 +332,13 @@ SELF_TEST_CASES = [
     ("h1 inside JSX comment", "{/* was <h1> here */}\n<div />", False),
     ("role heading far from aria-level", '<div role="heading">T</div>' + "x" * 200 + '<div aria-level={1} />', False),
     ("h10 is not h1", "<h10>x</h10>", False),
+    # Present but UNREACHABLE. The first gate version counted these, which is
+    # the same cannot-fail shape the gate exists to close.
+    ("h1 behind {false &&}", "{false && <h1>T</h1>}", False),
+    ("h1 behind {0 &&}", "{0 && <h1>T</h1>}", False),
+    ("h1 behind {null &&}", "{null && <h1>T</h1>}", False),
+    ("h1 behind a real condition", "{loaded && <h1>T</h1>}", True),
+    ("h1 after a dead guard", "{false && <p/>}{<h1>T</h1>}", True),
 ]
 
 

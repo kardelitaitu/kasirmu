@@ -266,6 +266,31 @@ describe('AppShell — T3 declared-layout render branches', () => {
     expect(pageNode().parentElement?.className).toBe(CONTENT_INNER);
   });
 
+  // WHY THIS CASE EXISTS: scripts/check-page-headings.py proves every registered
+  // page SOURCE contains an <h1>. It cannot see the shell, and the shell renders
+  // the page. If a shell ever grows a heading of its own, every page silently
+  // becomes a two-h1 page and the source-level gate stays green -- the same
+  // "checked in one place, broken in another" shape as the four heading defects
+  // that gate was built for. Measured today: app/ has no <h1>, <h2> or
+  // role="heading" at all, and jsdom's axe cannot grade cardinality because
+  // page-has-heading-one aborts with error-occurred.
+  it('adds no heading of its own around the page — the page title is the only h1', async () => {
+    clearPages();
+    registerPage({
+      route: PROBE_ROUTE,
+      component: () => el('div', { 'data-testid': 'heading-probe' }, el('h1', null, 'Probe page')),
+      label: 'Heading Probe',
+    });
+
+    await renderWithProviders(el(AppShell, null));
+    await waitFor(() => expect(screen.getByTestId('heading-probe')).toBeInTheDocument());
+
+    const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6'));
+    const h1s = headings.filter((h) => h.tagName === 'H1');
+    expect(h1s, 'the shell must not contribute a heading of its own').toHaveLength(1);
+    expect(h1s[0]!.textContent).toBe('Probe page');
+  });
+
   it('treats an explicit layout="fluid" exactly like the absent default', async () => {
     clearPages();
     registerProbe('fluid');
