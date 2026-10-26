@@ -104,12 +104,18 @@ export default function GiftCardsScreen() {
     // `parseMoneyInput` rejects the over-precision and non-numeric cases the old
     // `Number.isInteger` guard caught, so its result is the whole validation.
     // CURRENCY GUARD, the same one the tender panel got (round 244). `amount_minor` is a
-    // DENOMINATION, not a value: the operator types in the STORE's currency (:47), and
-    // `top_up_gift_card` (crates/kasirmu-core/src/db/gift_cards.rs:514) adds it to the CARD's
-    // balance with no currency check at all -- it only prints `parse_currency(&card.currency)`
-    // in the ledger note (:591). So 50 typed on an IDR till against a KWD card credits 50
-    // fils (0.050 KWD) instead of 50 KWD: a 1000x under-credit written into stored value.
-    // Refusing is the only safe answer; converting would need a rate and an owner ruling.
+    // DENOMINATION, not a value: the operator types in the STORE's currency (:48), while
+    // `top_up_gift_card` (crates/kasirmu-core/src/db/gift_cards.rs:560) credits the CARD's
+    // balance and stamps the ledger note with `parse_currency(&card.currency)` (:642).
+    // Typed 50 on an IDR till against a KWD card, that is 50 fils (0.050 KWD) instead of
+    // 50 KWD: a 1000x under-credit written into stored value.
+    //
+    // CORE NOW REFUSES THIS TOO (measured 2026-10-26). `refuse_currency_mismatch` is
+    // called at gift_cards.rs:589, after the status check so a frozen card still reports
+    // its status. So this guard is no longer the only line of defence -- it is the one
+    // that produces a message the operator can act on, before the round trip. Keeping
+    // both is deliberate: the core guard is the correctness one, this is the UX one.
+    // Converting instead of refusing would need a rate and an owner ruling.
     if (cardCurrency !== currency) {
       setTopUpError(
         l10n.getString('gift-cards-payment-currency-mismatch', {
