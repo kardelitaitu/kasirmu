@@ -13,10 +13,23 @@
 >
 > When both are settled, follow §6 (encode) and §7 (integrate) in order.
 >
-> Re-audited against the tree on 2026-09-04; re-derived again on 2026-10-11. §1 and §7.0 were
-> corrected; §2–§6 and §8 verified accurate (`DWELL_MS = 10000` at `lib/hero-carousel.ts:28`,
-> `aspect-ratio: 1280 / 720` at `HeroCarousel.astro:45`, `SLIDE_IDS` matching §5 at `:24`, the
-> `/videos/*` immutable rule at `_headers:38`, and `hero-carousel.test.ts` existing).
+> Re-audited against the tree on 2026-09-04, re-derived again on 2026-10-11, and the §7 test
+> path corrected on 2026-10-26 (round 19). §1 and §7.0 were corrected; §2–§6 and §8 verified
+> accurate (`DWELL_MS = 10000` at `lib/hero-carousel.ts:28`, `aspect-ratio: 1280 / 720` at
+> `HeroCarousel.astro:45`, `SLIDE_IDS` matching §5 at `:24`, the `/videos/*` immutable rule at `_headers:38`,
+> and `website/src/lib/__tests__/hero-carousel.test.ts` existing).
+>
+> **Why the wrong test path survived two audits (recorded 2026-10-26).** The plan named
+> `hero-carousel.test.ts` in two places; the file is at `website/src/lib/__tests__/hero-carousel.test.ts`,
+> one directory deeper than both the 2026-09-04 and 2026-10-11 passes assumed. Neither
+> audit caught it because **no checker grades this file**: `check-cite-lines.py` reports
+> `0 graded citation(s)` for it, since `docs/plans/` is in HIST_DIRS (dated records,
+> not live claims). That is the same blind spot `check-dead-refs.py` documents for
+> every `todo-`/`plan-`/`prd-` file -- a plan's paths are graded by
+> nothing, so they drift silently while the prose around them stays correct. The path was
+> fixed here by resolving every backticked path token in the file by hand: 10 citations,
+> 9 resolved, and the single miss (`HeroCarousel.tsx`) is deliberate and
+> documented at sections 0, 5 and 7.
 
 ## 1. Context
 
@@ -188,7 +201,7 @@ the crop band. It leaves §6's encode commands unchanged and costs under 4%.
    `aria-label` from the existing slide label.
 6. **Fallback when `.webm` unsupported** — browser walks `<source>` list
    automatically; no JS needed.
-7. **Tests** — extend `hero-carousel.test.ts` (the `.tsx` suite was renamed with the extraction): only active slide mounts a
+7. **Tests** — extend `website/src/lib/__tests__/hero-carousel.test.ts` (the `.tsx` suite was renamed with the extraction): only active slide mounts a
    `<video>`; `preload="none"` present; poster attribute set; reduced-motion path
    renders no autoplaying video.
 
