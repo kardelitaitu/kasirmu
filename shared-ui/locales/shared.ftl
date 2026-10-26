@@ -681,7 +681,6 @@ workspace-home-shortcut-open = Open
 
 # Warehouse workspace
 warehouse-title = Warehouse Inventory
-warehouse-location = Location
 warehouse-no-location-desc = This workspace is not bound to a warehouse location. Configure it in the topology editor.
 warehouse-empty-title = No products
 warehouse-load-error = Failed to load warehouse inventory.

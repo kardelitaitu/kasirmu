@@ -218,7 +218,6 @@ pos-cart-table-placeholder = No.
 pos-shift-close-btn = Tutup
 pos-shift-open-btn = Buka
 sales-history-title = Riwayat Penjualan
-sales-history-loading = Memuat penjualan…
 sales-history-error-load = Gagal memuat riwayat penjualan
 sales-history-empty = Belum ada penjualan tercatat
 sales-history-empty-filtered = Tidak ada penjualan yang cocok dengan filter Anda
@@ -371,7 +370,6 @@ void-orders-status-active = Aktif
 void-orders-status-completed = Selesai
 void-orders-status-voided = Dibatalkan
 void-orders-status-pending = Tertunda
-void-orders-loading = Memuat pesanan…
 void-orders-retry = Coba Lagi
 void-orders-empty-filtered = Tidak ada pesanan yang cocok dengan filter saat ini.
 void-orders-empty-none = Belum ada pesanan tercatat.
@@ -1019,7 +1017,6 @@ scale-target-set = { $name } dipilih untuk ditimbang
 scale-clear-aria = Hapus target timbangan
 
 # ── Gift Cards ─────────────────────────────────────────────────────
-gift-cards-loading = Memuat...
 gift-cards-status-all = Semua Status
 gift-cards-status-active = Aktif
 gift-cards-status-frozen = Dibekukan

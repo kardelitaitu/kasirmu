@@ -1,7 +1,6 @@
 # shared-ui/locales/multi-store.ftl — Multi-store dashboard
 
 multi-store-dashboard-title = Multi-Store Dashboard
-multi-store-dashboard-loading = Loading dashboard…
 multi-store-stat-total-stores = Total Stores
 multi-store-stat-active-terminals = Active Terminals
 multi-store-stat-online-terminals = Online Terminals

@@ -682,7 +682,6 @@ data-mgmt-toast-backup-status-fail = Failed to load backup status
 # Feature Toggles
 feature-toggle-title = Feature Toggles
 feature-toggle-subtitle = { $enabled } / { $total } enabled
-feature-toggle-loading = Loading features…
 feature-toggle-group-core = Core
 feature-toggle-group-payments = Payments
 feature-toggle-group-products = Products

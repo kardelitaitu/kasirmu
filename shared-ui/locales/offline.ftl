@@ -1,7 +1,6 @@
 # shared-ui/locales/offline.ftl — Offline queue
 
 offline-queue-title = Offline Queue
-offline-queue-loading = Loading queue…
 offline-queue-empty = All transactions synced. No pending items.
 offline-queue-error = Failed to load queue. Please try again.
 offline-queue-retry = Retry

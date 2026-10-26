@@ -1,5 +1,4 @@
 multi-store-dashboard-title = Dasbor Multi-Toko
-multi-store-dashboard-loading = Memuat dasbor…
 multi-store-stat-total-stores = Total Toko
 multi-store-stat-active-terminals = Terminal Aktif
 multi-store-stat-online-terminals = Terminal Daring

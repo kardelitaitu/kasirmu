@@ -657,7 +657,6 @@ workspace-home-shortcut-open = Buka
 
 # Warehouse workspace
 warehouse-title = Inventaris Gudang
-warehouse-location = Lokasi
 warehouse-no-location-desc = Workspace ini tidak terikat ke lokasi gudang. Konfigurasi di editor topologi.
 warehouse-empty-title = Tidak ada produk
 warehouse-load-error = Gagal memuat inventaris gudang.

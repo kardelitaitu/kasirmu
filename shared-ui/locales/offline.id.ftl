@@ -1,5 +1,4 @@
 offline-queue-title = Antrian Offline
-offline-queue-loading = Memuat antrian…
 offline-queue-empty = Semua transaksi tersinkronisasi. Tidak ada item tertunda.
 offline-queue-error = Gagal memuat antrian. Silakan coba lagi.
 offline-queue-retry = Coba Lagi

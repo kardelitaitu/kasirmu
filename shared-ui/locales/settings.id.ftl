@@ -567,7 +567,6 @@ data-mgmt-toast-backup-status-fail = Gagal memuat status cadangan
 # ── Feature Toggles ──
 feature-toggle-title = Alih Fitur
 feature-toggle-subtitle = { $enabled } / { $total } aktif
-feature-toggle-loading = Memuat fitur…
 feature-toggle-group-core = Inti
 feature-toggle-group-payments = Pembayaran
 feature-toggle-group-products = Produk

@@ -262,7 +262,6 @@ payment-shortfall-cancelled = Sale cancelled due to insufficient stock.
 
 # Sales History
 sales-history-title = Sales History
-sales-history-loading = Loading sales…
 sales-history-error-load = Failed to load sales history
 sales-history-empty = No sales recorded yet
 sales-history-empty-filtered = No sales match your filters
@@ -465,7 +464,6 @@ void-orders-status-active = Active
 void-orders-status-completed = Completed
 void-orders-status-voided = Voided
 void-orders-status-pending = Pending
-void-orders-loading = Loading orders…
 void-orders-retry = Retry
 void-orders-empty-filtered = No orders match the current filters.
 void-orders-empty-none = No orders recorded yet.
@@ -1104,7 +1102,6 @@ retail-row-menu-view-images = View product images
 product-lookup-rack-title = Rack position
 
 # ── Gift Cards ─────────────────────────────────────────────────────
-gift-cards-loading = Loading...
 gift-cards-status-all = All Statuses
 gift-cards-status-active = Active
 gift-cards-status-frozen = Frozen
