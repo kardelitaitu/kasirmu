@@ -84,7 +84,11 @@ function statusFluentId(status: string): string {
     case 'pending': return 'sales-history-status-pending';
     case 'voided': return 'sales-history-status-voided';
     case 'active': return 'sales-history-status-active';
-    default: return 'sales-history-status-completed';
+    // An unrecognised status must NOT read as "Completed": this is a financial list, and a
+    // sale the operator cannot identify is exactly the row they need to look at. The floor
+    // falls back to an honest "Unknown status" the way TableManagementScreen does
+    // (tables-status-unknown), rather than to the most reassuring of the four states.
+    default: return 'sales-history-status-unknown';
   }
 }
 

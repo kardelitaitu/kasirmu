@@ -368,6 +368,7 @@ sales-history-status-completed = Completed
 sales-history-status-active = In progress
 sales-history-status-pending = Pending
 sales-history-status-voided = Voided
+sales-history-status-unknown = Unknown status
 sales-history-export-csv = Export CSV
 sales-history-search-label = Search
 sales-history-status-label = Status

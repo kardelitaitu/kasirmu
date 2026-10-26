@@ -285,6 +285,20 @@ describe('SalesHistoryScreen', () => {
     expect(row?.textContent).toContain('In progress');
     expect(row?.textContent).not.toContain('Completed');
   });
+  it('says the status is unknown instead of pretending the sale completed', async () => {
+    // A status the UI has never seen (a newer backend, a half-migrated row) must not be
+    // shown as the most reassuring of the four states. This is the same contract
+    // TableManagementScreen already keeps with `tables-status-unknown`.
+    const oddSale = { ...sampleSales[0], id: 'sale-odd-0000', status: 'refunded' };
+    mockListSalesScoped.mockResolvedValue({ sales: [oddSale], salesHistoryCapped: false });
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+    await waitFor(() => {
+      expect(document.querySelectorAll('tbody tr').length).toBe(1);
+    });
+    const row = document.querySelectorAll('tbody tr')[0];
+    expect(row?.textContent).toContain('Unknown status');
+    expect(row?.textContent).not.toContain('Completed');
+  });
 
   it('shows search input and cashier dropdown', async () => {
     mockListSalesScoped.mockResolvedValue({ sales: [], salesHistoryCapped: false });

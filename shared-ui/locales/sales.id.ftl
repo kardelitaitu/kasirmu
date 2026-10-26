@@ -278,6 +278,7 @@ sales-history-status-completed = Selesai
 sales-history-status-active = Sedang berjalan
 sales-history-status-pending = Tertunda
 sales-history-status-voided = Dibatalkan
+sales-history-status-unknown = Status tidak dikenal
 sales-history-export-csv = Ekspor CSV
 sales-history-search-label = Cari
 sales-history-status-label = Status
