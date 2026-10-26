@@ -104,7 +104,7 @@ vi.mock('@fluent/react', () => ({
           'analytics-export-waitstaff-aria': 'Export waitstaff as CSV',
           'analytics-unit-days': '{n} day',
           'analytics-unit-minutes': '{n} min',
-          'analytics-card-error-load': 'Failed to load',
+          'analytics-card-error-load': "Couldn't load this chart. Check your connection and refresh.",
           'analytics-card-empty': 'No data',
           'analytics-empty-generic': 'No data available',
           'analytics-card-payments-cash': 'Cash',
@@ -118,10 +118,6 @@ vi.mock('@fluent/react', () => ({
       bundles: [{ locales: ['en-US'] }],
     },
   }),
-}));
-
-vi.mock('@/utils/app-error', () => ({
-  l10nErrorMessage: () => 'Failed to load',
 }));
 
 vi.mock('@/utils/export-csv', () => ({
@@ -165,10 +161,13 @@ describe('AnalyticsCardContent', () => {
     vi.clearAllMocks();
   });
 
+  // The asserted copy is analytics.ftl's analytics-card-error-load, VERBATIM. This
+  // case used to mock @/utils/app-error so it returned the string it then asserted
+  // -- a loop. The real l10nErrorMessage now runs against the fixture.
   it('shows error state when query fails', () => {
     mockUseAnalyticsQuery.mockReturnValue({ data: undefined, isLoading: false, error: new Error('network') });
     render(<AnalyticsCardContent {...baseProps} cardKey="revenue" />);
-    expect(screen.getByText('Failed to load')).toBeInTheDocument();
+    expect(screen.getByText("Couldn't load this chart. Check your connection and refresh.")).toBeInTheDocument();
   });
 
   it('renders aov card with data', () => {

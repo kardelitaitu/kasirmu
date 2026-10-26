@@ -43,7 +43,7 @@ vi.mock('@fluent/react', () => {
         'sales-dashboard-heatmap-aria': 'Hourly heatmap',
         'sales-dashboard-heatmap-summary': '{count} active cells',
         'sales-dashboard-no-data': 'No data for this period',
-        'app-error-generic': 'An error occurred',
+        'app-error-generic': 'Something went wrong. Please try again.',
       };
       return map[id] || id;
     },
@@ -53,10 +53,6 @@ vi.mock('@fluent/react', () => {
     useLocalization: () => ({ l10n: stableL10n }),
   };
 });
-
-vi.mock('@/utils/app-error', () => ({
-  l10nErrorMessage: () => 'An error occurred',
-}));
 
 vi.mock('@/components/charts/CanvasHeatmap', () => ({
   default: ({ data, summary }: { data: unknown[]; summary: string }) => (
@@ -93,11 +89,16 @@ describe('HourlyHeatmapWidget', () => {
     expect(screen.getAllByTestId('skeleton').length).toBeGreaterThan(0);
   });
 
-  it('shows error message when API fails', async () => {
+  // The copy below is shared.ftl's app-error-generic, verbatim. This case used to
+  // mock @/utils/app-error to return the string it then asserted -- a loop, not a
+  // test: any real copy change would have stayed green. Round 38 removed the mock
+  // so the REAL l10nErrorMessage runs against the fixture, and pinned the bundle
+  // text. Confirmed by mutation: changing the fixture value alone reddens it.
+  it('shows the localized generic error copy when API fails', async () => {
     mockGetHourlyHeatmap.mockRejectedValue(new Error('network'));
     render(<HourlyHeatmapWidget />);
     await waitFor(() => {
-      expect(screen.getByText('An error occurred')).toBeInTheDocument();
+      expect(screen.getByText('Something went wrong. Please try again.')).toBeInTheDocument();
     });
   });
 
