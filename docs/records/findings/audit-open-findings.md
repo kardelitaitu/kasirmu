@@ -806,6 +806,45 @@ was corrected here". GI-1's note half is therefore 3 defects → 0.
 repair (13:52 +07), because it tests that a `_note` exists rather than that its content matches the
 tree. That is GI-2's point and this correction does not touch it.
 
+### Dated correction (2026-10-27) — GI-7's F-TWO is closed; the empty-corpus green now refuses
+
+**Re-measured by reproducing it, not by reading the code.** A throwaway root was built from
+HEAD blobs — `scripts/verify-scoped-reads.py`, `scripts/ipc-parity-allowlist.json` and the
+`scripts/allowlist-schema.py` module it loads — with **no `ui/src`**, and the gate run from
+inside it:
+
+```
+$ python scripts/verify-scoped-reads.py          # in a root with no ui/src
+exit 2
+error: the corpus this gate grades is not there: <root>\ui\src is not a directory, so the
+walk found 0 production files. That is not a clean tree, it is no tree -- the verdict is
+drawn FROM these files. REPO is derived from __file__ ... Run it from the repository root,
+and if this IS the root then the checkout is incomplete and nothing can tell you from here
+whether the code is clean.
+```
+
+That is the exact hazard this entry describes, answered in the shape the three already-closed
+siblings use: **exit 2 and the sentence that says nothing was graded**, naming the missing
+path and the reason a copy of the script grades the tree beside it. The one-line
+`clean for desktop.` green the original pass could not tell apart from a real run is gone.
+
+**A first attempt at this measurement was inconclusive and is recorded so it is not repeated.**
+Copying only the gate and the allowlist gives **exit 2 as well**, but for a different reason —
+`allowlist-schema.py` is absent, so the gate refuses before it ever looks for a corpus. A red
+that is not the red you were aiming at is no evidence, so the schema module was copied too and
+the run repeated; only the second run tests the empty-corpus path.
+
+**What this does NOT close.** F-ONE stands unchanged: `ALLOWLIST` remains script-relative
+(`:71`) with no `--allowlist` flag, so an operator still cannot demonstrate a bad allowlist
+member without reaching into the module namespace. And the scan's other open member,
+`verify-ftl-orphans`, is untouched — its `nothing staged under ui/src; nothing to verify.` is a
+different class, index-bound by construction. The standing count for the sibling sweep is
+therefore **one open, four closed**, not the two-of-five this entry last recorded.
+
+**Not repaired here:** this register is a dated record, so the entry above is left as written.
+No workflow and no `scripts/check.sh` line was edited by this pass; nothing
+outside this file was edited.
+
 ## GI-4 scope — this register is itself an enumeration mirror, outside MIRRORS (`GI-4-SCOPE`, OPEN, added 2026-09-13 12:12 +07, tip `222839216`)
 
 **Status:** ONE finding, filed from another worker's pass and kept verbatim below. The measured
