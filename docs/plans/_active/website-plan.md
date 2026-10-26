@@ -92,10 +92,10 @@ Website (Cloudflare Pages, static)
 website/
 ├── astro.config.mjs
 ├── package.json
-├── tailwind.config.ts
+├── (no tailwind.config.ts — Tailwind v4 is CSS-first; see correction below)
 ├── tsconfig.json
 ├── public/
-│   ├── favicon.ico
+│   ├── favicon.svg
 │   ├── og-image.png
 │   └── fonts/
 ├── src/
@@ -112,7 +112,7 @@ website/
 │   │   ├── AuthForm.tsx          # Interactive: login (Email code | Password tabs + forgot-password)
 │   │   ├── SignupForm.tsx        # Interactive: register (email + password + strength meter)
 │   │   ├── PasswordStrength.tsx  # Shared 4-class meter (signup, reset, dashboard)
-│   │   └── LocaleSwitcher.tsx
+│   │   └── LocaleSwitcher.astro
 │   ├── content/
 │   │   └── pricing/
 │   │       ├── en.ts
@@ -125,10 +125,11 @@ website/
 │       ├── [locale]/
 │       │   ├── index.astro
 │       │   ├── pricing.astro
-│       │   ├── untuk-kafe.astro
-│       │   ├── untuk-minimarket.astro
-│       │   ├── untuk-warung.astro
-│       │   ├── untuk-restoran.astro
+│       │   ├── cafe.astro
+│       │   ├── minimarket.astro
+│       │   ├── warung.astro
+│       │   ├── restaurant.astro
+│       │   ├── warehouse.astro
 │       │   ├── features.astro
 │       │   ├── download.astro
 │       │   ├── login.astro
@@ -140,6 +141,20 @@ website/
 │       └── 404.astro
 └── wrangler.toml
 ```
+
+**Tree corrected 2026-10-27 against the shipped tree.** Three entries named files that do not
+exist, all for the same reason — the site moved on and the tree did not:
+
+| tree said | tree now says | why |
+|---|---|---|
+| `tailwind.config.ts` | *(no config file — CSS-first)* | `astro.config.mjs:5` imports `@tailwindcss/vite` v4, and v4 is configured by `@import "tailwindcss"` in `src/styles/global.css`, not by a config file. This is an UPGRADE, not a removal — the first read of this finding wrongly concluded Tailwind was gone. |
+| `favicon.ico` | `favicon.svg` | `website/public/favicon.svg` exists; no `.ico` is present. |
+| `LocaleSwitcher.tsx` | `LocaleSwitcher.astro` | `src/components/LocaleSwitcher.astro` exists (121 lines); no `.tsx` twin. |
+| `untuk-{kafe,minimarket,warung,restoran}.astro` | `cafe`, `minimarket`, `warung`, `restaurant` + a fifth, `warehouse` | the rename §8 records — commit `80f7e62010`. |
+
+Every other named file in the tree above resolves. Method: all 37 filenames extracted from the
+tree and looked up under `website/`; these seven were the misses, and each was resolved by checking
+the actual directory rather than by assuming which side was wrong.
 
 ---
 
