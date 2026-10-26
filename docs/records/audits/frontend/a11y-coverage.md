@@ -77,7 +77,27 @@ corrections were needed, and the first one alone was not enough:
 `document.body` is a CHILD of `<html>`, and the two landmark/heading rules select
 `html:not(html *)` — so they matched nothing and appeared in neither `violations` nor
 `passes`. Only `region` (which selects `body *`) started running. Passing the `<html>`
-element itself is what finally makes all three evaluate.
+element does make the two rules *select*, which is what the third row originally claimed
+as a fix. **They still do not grade.** Measured on a clean tree (round 34):
+
+```
+PROBE passes=["region"] violations=[] incomplete=["landmark-one-main","page-has-heading-one"]
+```
+
+The `incomplete` node carries `none: ["error-occurred"]` with
+`TypeError: document.elementFromPoint is not a function`. axe's `isModalOpen` helper
+calls that method, **jsdom does not implement it**, and the throw lands in
+`method: "page-has-main#evaluate"` — the check that carries `landmark-one-main` and its
+heading sibling. So both rules abort on every page, in every suite, regardless of the
+markup. The control confirms it: a document WITH an `<h1>` and one WITHOUT return the
+identical `incomplete` bucket. Nothing in the DOM can move either rule out of
+`incomplete`, so an assertion on them is not weak evidence — it is no evidence.
+
+What this means for the helper: `checkA11yDocument` grades exactly one page-level rule,
+`region`. That is still worth having (it is the only global rule that genuinely fires),
+but the name over-promises. The structural assertions in
+`ShellLayout.a11y.test.tsx` — exactly one non-empty `<h1>` — exist precisely because
+`page-has-heading-one` cannot grade; they are the substitute, not a duplicate.
 
 **The measuring tool then broke its own measurement.** Running the suite with the fixed
 target produced `landmark-no-duplicate-main` failures on two of three cases — a real rule,
