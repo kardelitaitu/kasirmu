@@ -34,12 +34,35 @@ The second arm matters: some suites stub keys whose text production builds
 programmatically, and those are legitimate. The check is for keys that exist
 NOWHERE.
 
+THE SECOND ARM: CIRCULAR ERROR MOCKS
+------------------------------------
+A fixture key that DOES resolve can still make its case unfalsifiable, in a way
+this file's first version missed. Four suites (AnalyticsCardContent and the
+three chart widgets) did:
+
+    vi.mock('@/utils/app-error', () => ({ l10nErrorMessage: () => 'An error occurred' }));
+    expect(screen.getByText('An error occurred')).toBeInTheDocument();
+
+The mock supplies the string the assertion then looks for, so the REAL
+l10nErrorMessage -- and therefore the whole FTL lookup -- never runs. Measured
+proof that the case could not fail: replacing the mock's literal with
+'A totally different message' AND its assertion to match still passed 7/7. All
+four are now mock-free and assert the bundle copy verbatim (confirmed by
+mutating the fixture value alone: 1 case reddens). This check flags the shape
+so it cannot come back.
+
 WHAT IT DOES NOT CLAIM
 ----------------------
 It cannot catch a fixture whose VALUE drifts from the real bundle while the
-key still exists -- that would need the bundle parsed and compared per case.
-It also only looks at quoted-object entries, not FTL-shaped template strings.
-Those limits are why it is a ghost-hunter, not a copy verifier.
+key still exists -- that would need the bundle parsed and compared per case,
+and 116 such drifts were measured while writing this. It only looks at
+quoted-object entries, not FTL-shaped template strings. Those limits are why it
+is a ghost-hunter, not a copy verifier.
+
+Also out of scope: a suite that mocks app-error to pass the FALLBACK through
+(`(e, _l, f) => f`). That shape is legitimate -- it exercises which key the
+caller asked for -- and the regex deliberately does not flag it (pinned by a
+self-test case).
 
 EXIT CODES
     0  no ghost key
@@ -113,6 +136,38 @@ def ghosts() -> tuple[list[tuple[str, str]], int]:
     return sorted(set(found)), scanned
 
 
+CIRCULAR_MOCK_RE = re.compile(
+    r"vi\.mock\('@/utils/app-error',\s*\(\)\s*=>\s*\(\{([^}]*)\}", re.S
+)
+CIRCULAR_LITERAL_RE = re.compile(r"l10nErrorMessage:\s*\([^)]*\)\s*=>\s*'([^']+)'")
+
+
+def circular_error_mocks() -> list[tuple[str, str]]:
+    """Return [(file, literal)] where a suite mocks app-error to return the copy it asserts.
+
+    Round 38 found four of these (AnalyticsCardContent plus the three chart
+    widgets): the mock was `l10nErrorMessage: () => 'An error occurred'` and the
+    case then asserted `getByText('An error occurred')`. Measured proof that the
+    case could not fail: replacing the mock's string with
+    'A totally different message' AND its assertion to match still passed 7/7 --
+    it was testing its own stub. The real `l10nErrorMessage` never ran, so a
+    change to the shipped copy would not have been noticed by any of them.
+    """
+    found: list[tuple[str, str]] = []
+    for path in UI_SRC.rglob("*.test.ts*"):
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        mock = CIRCULAR_MOCK_RE.search(text)
+        if not mock:
+            continue
+        literal = CIRCULAR_LITERAL_RE.search(mock.group(1))
+        if not literal:
+            continue
+        value = literal.group(1)
+        if text.count(value) > 1:
+            found.append((path.relative_to(REPO).as_posix(), value))
+    return found
+
+
 SELF_TEST_CASES = [
     # (label, ftl, production, fixture, expected_ghost)
     ("key in bundle", "a = x", "", "'a': 'x',", False),
@@ -149,7 +204,19 @@ def self_test() -> int:
         failures += 1
     else:
         print("  ok   fixture entry regex matches a real line")
-    total = 3
+    # arm 4: the circular-mock regex matches the shape it claims to, and does
+    # NOT match a mock that merely passes the fallback through.
+    circular_sample = "vi.mock('@/utils/app-error', () => ({\n  l10nErrorMessage: () => 'An error occurred',\n}));"
+    pass_sample = "vi.mock('@/utils/app-error', () => ({\n  l10nErrorMessage: (e: unknown, _l: unknown, f: string) => f,\n}));"
+    if not CIRCULAR_LITERAL_RE.search(CIRCULAR_MOCK_RE.search(circular_sample).group(1)):
+        print("  FAIL circular-mock regex misses the circular shape")
+        failures += 1
+    elif CIRCULAR_LITERAL_RE.search(CIRCULAR_MOCK_RE.search(pass_sample).group(1)):
+        print("  FAIL circular-mock regex flags a pass-through mock")
+        failures += 1
+    else:
+        print("  ok   circular-mock regex separates the two shapes")
+    total = 4
     print(f"self-test: {total - failures}/{total} checks pass")
     return 0 if failures == 0 else 1
 
@@ -170,6 +237,17 @@ def main(argv: list[str]) -> int:
     if scanned == 0:
         print("check-fixture-ftl-keys: BROKEN - no getString-stubbing test found", file=sys.stderr)
         return 2
+
+    circular = circular_error_mocks()
+    if circular:
+        print(f"check-fixture-ftl-keys: {len(circular)} circular app-error mock(s):", file=sys.stderr)
+        for path, literal in circular:
+            print(f"  {path}  asserts {literal!r} that its own mock returns", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("That case cannot fail: the mock supplies the string the assertion then", file=sys.stderr)
+        print("looks for, so the real l10nErrorMessage never runs. Drop the mock and", file=sys.stderr)
+        print("assert the bundle copy (or a structural role=alert) instead.", file=sys.stderr)
+        return 1
 
     if found:
         print(f"check-fixture-ftl-keys: {len(found)} ghost key(s) in {scanned} fixture file(s):", file=sys.stderr)
