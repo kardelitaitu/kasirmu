@@ -68,9 +68,6 @@ vi.mock('@/hooks/useSyncConnection', () => ({
 }));
 
 const STAFF_FTL = `
-staff-login-connection-checking = Checking…
-staff-login-connection-connected = Connected
-staff-login-connection-disconnected = Disconnected
 staff-login-connection-auth = Auth
 staff-login-connection-sync = Sync
 staff-login-clear = Clear

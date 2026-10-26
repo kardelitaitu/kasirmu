@@ -178,9 +178,6 @@ session-lock-pad-aria = PIN pad
 session-lock-lockout = Wait { $seconds }s.
 
 # ── Connection Status (shared between StaffLoginScreen + SessionLockScreen) ──
-staff-login-connection-checking = Checking…
-staff-login-connection-connected = Connected
-staff-login-connection-disconnected = Disconnected
 staff-login-connection-auth = Auth
 staff-login-connection-sync = Sync
 

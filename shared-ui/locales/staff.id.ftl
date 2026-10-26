@@ -160,9 +160,6 @@ session-lock-pad-aria = Papan PIN
 session-lock-lockout = Tunggu { $seconds } dtk.
 
 # ── Connection Status (shared between StaffLoginScreen + SessionLockScreen) ──
-staff-login-connection-checking = Memeriksa…
-staff-login-connection-connected = Terhubung
-staff-login-connection-disconnected = Terputus
 staff-login-connection-auth = Auth
 staff-login-connection-sync = Sinkron
 

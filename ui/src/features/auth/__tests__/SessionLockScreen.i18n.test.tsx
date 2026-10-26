@@ -53,9 +53,6 @@ vi.mock('@fluent/react', () => ({
           'session-lock-lockout': 'Wait { $seconds }s.',
           'session-lock-pad-aria': 'PIN pad',
           'staff-login-clear': 'Clear',
-          'staff-login-connection-checking': 'Checking…',
-          'staff-login-connection-connected': 'Connected',
-          'staff-login-connection-disconnected': 'Disconnected',
           'staff-login-connection-auth': 'Auth',
           'staff-login-connection-sync': 'Sync',
           // Keys the screen renders that this stub map never carried. Values copied
