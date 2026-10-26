@@ -811,9 +811,10 @@ export function CartPanel({
                 //
                 // This handler cleared the lines, the table, the customer and the tab id
                 // — but not the promotions, which are NOT cosmetic: they ride to
-                // checkout as `promotionIds` (PosScreen.tsx:2501, re-measured 2026-10-19;
-                // it was 2210 when this note was written) and pre-select in the
-                // promotions modal (PosScreen.tsx:2536-2543). Starting a new tab after a discounted one
+                // checkout as `promotionIds` (PosScreen.tsx:2574, re-measured 2026-10-27;
+                // it was 2501 on 2026-10-19 and 2210 when the note was first written) and
+                // pre-select in the promotions modal (`initiallySelectedIds`,
+                // PosScreen.tsx:2614). Starting a new tab after a discounted one
                 // therefore applied that tab's discounts to the NEXT sale, with the cart
                 // empty and the banner gone so nothing on screen invited a second look.
                 //

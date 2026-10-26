@@ -41,10 +41,11 @@ interface BackupSectionProps {
 export function BackupSection({ flashRows, backup, onBackup }: BackupSectionProps) {
   const { l10n } = useLocalization();
 
-// The section comment from DataManagementScreen.tsx:852, restated as a line comment: as
-// a JSX {/* */} comment it was only legal inside the screen conditional wrapper, where it
-// sat in an expression container; here it would be the first token of a parenthesised
-// expression, which is not valid TypeScript (TS1005). The markup below is untouched.
+// The section comment that sat above this markup in DataManagementScreen before the
+// extraction, restated as a line comment: as a JSX {/* */} comment it was only legal
+// inside the screen's conditional wrapper, where it sat in an expression container;
+// here it would be the first token of a parenthesised expression, which is not valid
+// TypeScript (TS1005). The markup below is untouched.
   return (
         <div className="data-mgmt-tabpanel" role="tabpanel" aria-label={l10n.getString('data-mgmt-backup-status-aria')}>
           <Card shadow="sm">

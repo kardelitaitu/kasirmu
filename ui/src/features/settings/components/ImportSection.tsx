@@ -15,7 +15,7 @@
  * PRESENTATIONAL, like BackupSection.tsx, and for the same measured reason: state and
  * handlers stay in the screen. This flow is not mount-independent — handleFileSelect feeds
  * importPreview and the 'import-preview' flash, startImport opens the ConfirmDialog that
- * renders OUTSIDE this panel at DataManagementScreen.tsx:397-404, and the flash map is
+ * renders OUTSIDE this panel at DataManagementScreen.tsx:118-125, and the flash map is
  * shared with the backup panel. So this file owns no useState, no useEffect and no
  * invoke(); the api layer stays behind the screen.
  *
