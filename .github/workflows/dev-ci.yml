@@ -981,6 +981,17 @@ jobs:
       - name: API reference surface
         run: python3 .agents/skills/docs-auditor/scripts/check-api-surface.py
 
+      # The surface checker proves the buckets' CONTENTS; this proves the NUMBERS the
+      # page prints for them. They disagreed: the page said 86 unregistered commands
+      # while the measurement was 0, in the present tense, on a page that tells the
+      # reader the front end cannot invoke them. The table's own "re-derive before
+      # repeating any figure" note is right for a human and no protection at all.
+      - name: API drift table
+        run: python3 scripts/check-api-drift-table.py
+
+      - name: API drift table self-test
+        run: python3 scripts/check-api-drift-table.py --self-test
+
       # Same convention and same reason as the step above. This one is the sharper case:
       # the checker's four drift buckets are counted from generate_handler! and from the
       # page, so a parser that stops matching the page's entry format would report an

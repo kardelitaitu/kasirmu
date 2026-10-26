@@ -2236,6 +2236,27 @@
           "Fixture FTL keys self-test"
         ]
       }
+    },
+    {
+      "id": "api-drift-table",
+      "label": "API drift table",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "api drift table",
+          "api drift table self-test"
+        ]
+      },
+      "self_test": "python3 scripts/check-api-drift-table.py --self-test",
+      "_note": "Added 2026-10-27 (round 46). check-api-surface.py measures four drift buckets and fails when any is non-empty; it never read the TABLE that reports them, so the page could say one thing while the checker said another and both stayed green. Found exactly that: docs/guides/developer/api-reference.md printed 86 unregistered commands in the present tense ('so the front-end cannot invoke it') while the same commit's measurement was 0. The table's own 'Measured 08-09-26 ... re-derive before repeating any figure' note is right for a human and no protection against the next edit. This checker owns one question -- is the printed count the measured count -- and reads only the LEADING number of each Count cell, so history stays legal in parentheses. Falsified: writing 86 back reddens it with 'the page prints 86, the measurement is 0'. Ownership is deliberately split: this file does not verify that a bucket is empty or that a row exists (check-api-surface.py owns both), so there is one place per claim that can disagree.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "ci-docs-drift",
+        "steps": [
+          "API drift table",
+          "API drift table self-test"
+        ]
+      }
     }
   ]
 }

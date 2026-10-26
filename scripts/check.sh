@@ -1319,6 +1319,8 @@ step "fixture ftl keys self-test" "python3 scripts/check-fixture-ftl-keys.py --s
 # unwired from 08-09-26 to 09-29. The checker exits 2, not 0, on an unparseable input, so a
 # broken checker cannot read as a clean page. Gate: scripts/gates.json -> "api-surface".
 step "api surface" "python3 .agents/skills/docs-auditor/scripts/check-api-surface.py" python3 .agents/skills/docs-auditor/scripts/check-api-surface.py
+step "api drift table" "python3 scripts/check-api-drift-table.py" python3 scripts/check-api-drift-table.py
+step "api drift table self-test" "python3 scripts/check-api-drift-table.py --self-test" python3 scripts/check-api-drift-table.py --self-test
 # docs/records/README.md calls itself the single entry point, and its freshness
 # gate was "unbuilt by decision" (docs/README.md) — a decision the 2026-09-23
 # documentation audit reversed once the generator defect behind seven dead
