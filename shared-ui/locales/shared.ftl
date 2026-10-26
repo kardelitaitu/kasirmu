@@ -653,6 +653,14 @@ workspace-home-shifts-title = Shifts
 workspace-home-shifts-desc = Manage staff shifts and schedules
 workspace-home-promotions-title = Promotions
 workspace-home-promotions-desc = Create and manage promotions
+# The page's own <h1>. The design has no visible page title -- the header holds
+# the OrgSelector and the sections carry their own headers -- so this is rendered
+# visually hidden (.workspace-sr-only). It is not decoration: axe's
+# `page-has-heading-one` requires a level-one heading, and without this the rule
+# reported "Page should contain a level-one heading" in axe's INCOMPLETE bucket,
+# which jest-axe's toHaveNoViolations() does not read at all (measured
+# 2026-10-26: WorkspaceHome had 0 h1 and 7 h2, and every a11y suite was green).
+workspace-home-page-title = Workspaces
 workspace-home-workspaces-section = Workspaces
 workspace-home-tools-section = Tools
 # Tools group headers — the agreed information architecture

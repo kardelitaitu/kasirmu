@@ -808,6 +808,18 @@ export default function WorkspaceHome() {
             <OrgSelector />
           </header>
 
+          {/* The page's one <h1>. The design has no visible page title -- the header
+              holds the OrgSelector and each section carries its own -- so it renders
+              visually hidden and nothing moves. It is NOT decoration: axe's
+              `page-has-heading-one` fails a page with no level-one heading, and this
+              screen had 0 <h1> against 7 <h2>. The rule never said so because it lands
+              in axe's INCOMPLETE bucket ("Page should contain a level-one heading") and
+              jest-axe's toHaveNoViolations() reads `violations` only -- measured
+              2026-10-26, all 123 a11y cases green over a page with no heading. */}
+          <h1 className="workspace-sr-only">
+            <Localized id="workspace-home-page-title"><span>Workspaces</span></Localized>
+          </h1>
+
           {/* ── Non-blocking licence notice ─────────────────────────────
               The boot gate admits a provisioned install even when its licence
               is not usable (TabletAppShell.tsx:200 — `setupCompleted ||

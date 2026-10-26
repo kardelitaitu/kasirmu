@@ -633,6 +633,10 @@ workspace-home-shifts-title = Shift
 workspace-home-shifts-desc = Kelola shift dan jadwal staf
 workspace-home-promotions-title = Promosi
 workspace-home-promotions-desc = Buat dan kelola promosi
+# Judul halaman. Desain tidak punya judul halaman yang terlihat -- header berisi
+# OrgSelector dan tiap bagian punya judulnya sendiri -- jadi ini dirender
+# tersembunyi secara visual (.workspace-sr-only).
+workspace-home-page-title = Ruang kerja
 workspace-home-workspaces-section = Workspace
 workspace-home-tools-section = Alat
 # Header grup Tools — arsitektur informasi yang disepakati
