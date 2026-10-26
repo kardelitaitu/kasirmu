@@ -271,9 +271,20 @@ on the owned domain is the real inbox-not-spam fix — see
 ## 6. Pricing (mapped to the real tier enum)
 
 > Tier names below are the **actual** `tier_key` values the schema and the
-> client understand (`free`, `trial`, `pro`, `premium`, `enterprise` in
+> client understand (`free`, `plus`, `pro`, `premium`, `enterprise` in
 > `apps/license-server/pb_schema.json` and
-> `crates/kasirmu-core/src/subscription.rs`).
+> `crates/kasirmu-core/src/subscription/tier.rs:20`).
+>
+> **Corrected 2026-10-27 — `trial` was never a tier.** The line above read
+> `free, trial, pro, premium, enterprise`. Measured: `git grep -rn trial`
+> matches 129 files, but `trial` is NOT a tier in any of them — no enum variant, no
+> schema value, no `tier_key`. The word survives as prose and as a legacy input alias.
+> `pb_schema.json` holds `free, plus, pro, premium, enterprise`, and the enum at
+> `subscription/tier.rs:20` is the same five (plus a deprecated `OneTime` kept only for
+> database back-compat). The archived notes explain the confusion: `trial` was a legacy
+> input ALIAS that `from_db` mapped to Free, and it is gone with the split of `subscription.rs`
+> into `subscription/tier.rs`. `OneTime` is also legacy — its own doc says the canonical lineup is
+> "Free / Plus / Pro / Premium / Enterprise".
 >
 > **Sandbox catalog (live, created 2026-08-16 via the sandbox API):**
 >
