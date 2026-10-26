@@ -1069,6 +1069,20 @@ jobs:
         # to avoid.
         with:
           fetch-depth: 0
+      # Gate: scripts/gates.json -> "page-headings". axe cannot grade this under
+      # jsdom: page-has-heading-one aborts with error-occurred on every page in
+      # every suite, so a screen with no <h1> shipped green FOUR times (WorkspaceHome,
+      # KdsScreen, the topology editor, RetailPosScreen). This checker is the only
+      # thing that looks. It reads the page registry AND the shells, because
+      # RetailPosScreen is mounted by a shell branch and never registered.
+      - name: Page headings
+        run: python3 scripts/check-page-headings.py
+
+      # The falsification half: a checker that cannot fail is a comment. Each case
+      # proves one branch of the heading test (h1 vs h2, span, role+aria-level,
+      # comment-blanking, h10-vs-h1).
+      - name: Page headings self-test
+        run: python3 scripts/check-page-headings.py --self-test
       - name: Architecture boundaries
         run: python3 scripts/verify-architecture-boundaries.py --strict
       # The two SQLite maintenance scripts' own self-tests, beside the gate they

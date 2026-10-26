@@ -2194,6 +2194,27 @@
           "Raw-key assertion scan"
         ]
       }
+    },
+    {
+      "id": "page-headings",
+      "label": "Page headings",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "page headings",
+          "page headings self-test"
+        ]
+      },
+      "_note": "Added 2026-10-27 (round 36). The gate exists because axe CANNOT grade this: `page-has-heading-one` and `landmark-one-main` are selected by documentElement but their shared check calls `document.elementFromPoint`, which jsdom does not implement, so both return `incomplete` / `error-occurred` on EVERY page in EVERY suite (probe and control in ui/src/__tests__/a11y/axe-helper.tsx). A document WITH an <h1> and one WITHOUT return the identical bucket. Consequence measured over two rounds: FIVE screens shipped green with no page heading -- WorkspaceHome (7 h2, 0 h1), KdsScreen (none at all), the topology editor (title as h2, outline started at level two), RetailPosScreen (store name as a <span>) and SecurityTrail/threshold/transaction-log titles as h2. scripts/check-page-headings.py is the only thing that looks. It reads BOTH the registerPage registry AND the shells, because RetailPosScreen is mounted by a store-pos BRANCH in AppShell/TabletAppShell and never registered -- a registry-only scan stayed green with its defect reverted. Falsified: reverting all four of the round-35/36 fixes to their broken form reddens it 4/4.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Page headings",
+          "Page headings self-test"
+        ]
+      },
+      "self_test": "python3 scripts/check-page-headings.py --self-test"
     }
   ]
 }

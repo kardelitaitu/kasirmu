@@ -1306,6 +1306,8 @@ step "docs dead refs" "python3 .agents/skills/docs-auditor/scripts/check-dead-re
 # had moved in earlier restructures.
 step "rust doc paths" "python3 scripts/check-rust-doc-paths.py" python3 scripts/check-rust-doc-paths.py
 step "rust doc paths self-test" "python3 scripts/check-rust-doc-paths.py --self-test" python3 scripts/check-rust-doc-paths.py --self-test
+step "page headings" "python3 scripts/check-page-headings.py" python3 scripts/check-page-headings.py
+step "page headings self-test" "python3 scripts/check-page-headings.py --self-test" python3 scripts/check-page-headings.py --self-test
 
 # The API reference page is the IPC contract read first by every agent and integrator, and
 # nothing enforced it: it had drifted 169 ways from the registries (101 names that exist
