@@ -32,6 +32,26 @@
 //! same render checked against `document` listed `region` among its PASSES,
 //! which is how a reader can tell the rule actually ran.
 //!
+//! RETARGETING TO THE PAGE ROOT FIXES ONLY ONE OF THE THREE. The earlier claim
+//! here -- that passing `document.documentElement` makes all three evaluate -- is
+//! false, corrected 2026-10-27 (round 34) with this bare probe on a clean tree:
+//!
+//!     passes=["region"] violations=[] incomplete=["landmark-one-main","page-has-heading-one"]
+//!
+//! Both land in `incomplete` with `none: ["error-occurred"]` and
+//! `TypeError: document.elementFromPoint is not a function` -- jsdom does not
+//! implement it, axe's `isModalOpen` calls it, and the throw lands in
+//! `method: "page-has-main#evaluate"`, the shared check behind both rules. They
+//! abort on every page in every suite, so NOTHING IN THE MARKUP can move them
+//! out of `incomplete`: an assertion about them is not weak evidence, it is no
+//! evidence. A document WITH an `<h1>` and one WITHOUT return the identical
+//! bucket (control run, same round).
+//!
+//! CONSEQUENCE FOR PAGE STRUCTURE: `region` is the only page-level rule this
+//! helper can grade. "One `<h1>` per page" MUST be asserted directly on the DOM --
+//! see the structural cases in `WorkspaceHome.a11y.test.tsx`, and
+//! `ShellLayout.a11y.test.tsx` for the `<main>` equivalent.
+//!
 //! Contrast is NOT one of these: `color-contrast` is element-scoped and works
 //! on a container. It is disabled here only because jsdom cannot compute
 //! colours; see colorContrastCompliance.test.ts.
@@ -226,11 +246,17 @@ export async function checkA11y(
 
 /// Run axe against the WHOLE DOCUMENT and assert no a11y violations.
 ///
-/// Use this for shell/page suites that want the page-level rules —
-/// `landmark-one-main`, `page-has-heading-one`, `region` — to mean anything.
-/// Those three select `html:not(html *)` / `body *` and never match a container
+/// Use this for shell/page suites that want page-level rules to mean anything.
+/// Those rules select `html:not(html *)` / `body *` and never match a container
 /// element, so passing one to `checkA11y` disables them silently. See the module
 /// header for the measurement that established this.
+///
+/// WHAT IT ACTUALLY GRADES: `region` only. `landmark-one-main` and
+/// `page-has-heading-one` are selected by `documentElement`, but their shared
+/// check aborts under jsdom (`document.elementFromPoint is not a function`) and
+/// they return in `incomplete` on every page. Measured 2026-10-27, round 34;
+/// the probe and the control are in the module header. Do not read a green here
+/// as "the page has a heading" -- it is not a statement about the markup.
 ///
 /// `options.rules` still overrides `DISABLED_RULES`, so a shell suite typically
 /// passes `{ rules: { 'landmark-one-main': { enabled: true }, ... } }`.
