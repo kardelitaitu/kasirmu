@@ -6,7 +6,6 @@
  * and writing off unpayable debts.
  */
 
-import { invoke } from '@tauri-apps/api/core';
 import { loggedInvoke } from '@/utils/logged-invoke';
 
 export interface MoneyDto {
@@ -61,7 +60,7 @@ export async function listPayablesScoped(
   sessionToken: string,
   status?: string,
 ): Promise<PayableDto[]> {
-  return invoke<PayableDto[]>('list_payables_scoped', {
+  return loggedInvoke<PayableDto[]>('list_payables_scoped', {
     sessionToken,
     status: status || null,
   });
@@ -75,7 +74,7 @@ export async function createPayableScoped(
   sessionToken: string,
   args: CreatePayableArgs,
 ): Promise<PayableDto> {
-  return invoke<PayableDto>('create_payable_scoped', {
+  return loggedInvoke<PayableDto>('create_payable_scoped', {
     sessionToken,
     args,
   });
@@ -89,7 +88,7 @@ export async function recordPayablePaymentScoped(
   sessionToken: string,
   args: RecordPayablePaymentArgs,
 ): Promise<PayableDto> {
-  return invoke<PayableDto>('record_payable_payment_scoped', {
+  return loggedInvoke<PayableDto>('record_payable_payment_scoped', {
     sessionToken,
     args,
   });
@@ -103,7 +102,7 @@ export async function writeOffPayableScoped(
   sessionToken: string,
   payableId: string,
 ): Promise<PayableDto> {
-  return invoke<PayableDto>('write_off_payable_scoped', {
+  return loggedInvoke<PayableDto>('write_off_payable_scoped', {
     sessionToken,
     payableId,
   });

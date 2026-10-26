@@ -17,6 +17,7 @@ import {
 } from '@/api/payables';
 import { listSuppliers, type SupplierDto } from '@/api/purchasing';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { isTabletShell } from '@/utils/shellKind';
 import './VendorBillsScreen.css';
 
 function formatMinor(minor: number, currency: string): string {
@@ -75,11 +76,16 @@ export default function VendorBillsScreen() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [payablesRes, suppliersRes] = await Promise.all([
-        listPayablesScoped(sessionToken),
-        listSuppliers(sessionToken),
-      ]);
-      setPayables(payablesRes);
+      // `list_payables_scoped` is not registered on the tablet shell -- payables are a
+      // desktop-first authoring surface (see apps/desktop-tauri/src/commands/payables.rs
+      // and the `payables` note in scripts/ipc-parity-allowlist.json). Calling it there
+      // rejected with `command not found`, and the catch below turned that into a load
+      // error for the whole screen. Suppliers load everywhere; payables only where the
+      // command actually exists.
+      const suppliersRes = await listSuppliers(sessionToken);
+      if (!isTabletShell()) {
+        setPayables(await listPayablesScoped(sessionToken));
+      }
       setSuppliers(suppliersRes);
     } catch {
       addToast({ message: requiredLocalized(l10nRef.current, 'vendor-bills-error-load'), type: 'error' });
@@ -143,12 +149,17 @@ export default function VendorBillsScreen() {
         addToast({ message: requiredLocalized(l10nRef.current, 'vendor-bills-error-invalid-amount'), type: 'error' });
         return;
       }
-      await recordPayablePaymentScoped(sessionToken, {
-        payableId: payingPayable.id,
-        amount: { minor_units: minor, currency: payingPayable.balance.currency },
-        method: paymentMethod,
-        ...(paymentNote.trim() ? { note: paymentNote.trim() } : {}),
-      });
+      // `record_payable_payment_scoped` is desktop-only, same as the list above.
+      // Guarded rather than left to reject: without this the operator fills the
+      // repayment dialog and only then meets `command not found`.
+      if (!isTabletShell()) {
+        await recordPayablePaymentScoped(sessionToken, {
+          payableId: payingPayable.id,
+          amount: { minor_units: minor, currency: payingPayable.balance.currency },
+          method: paymentMethod,
+          ...(paymentNote.trim() ? { note: paymentNote.trim() } : {}),
+        });
+      }
       addToast({ message: requiredLocalized(l10nRef.current, 'vendor-bills-payment-success'), type: 'success' });
       setPayingPayable(null);
       await loadData();
@@ -165,7 +176,10 @@ export default function VendorBillsScreen() {
     if (!writeOffTarget) return;
     setWriteOffLoading(true);
     try {
-      await writeOffPayableScoped(sessionToken, writeOffTarget.id);
+      // Write-off is desktop-only too: a terminal, audited money-destruction action.
+      if (!isTabletShell()) {
+        await writeOffPayableScoped(sessionToken, writeOffTarget.id);
+      }
       addToast({ message: requiredLocalized(l10nRef.current, 'vendor-bills-writeoff-success'), type: 'success' });
       setWriteOffTarget(null);
       await loadData();
@@ -190,14 +204,17 @@ export default function VendorBillsScreen() {
 
     setAddLoading(true);
     try {
-      await createPayableScoped(sessionToken, {
-        supplierId: newSupplierId,
-        source: 'manual',
-        amount: { minor_units: minor, currency },
-        ...(newRef.trim() ? { reference: newRef.trim() } : {}),
-        ...(newDueDate ? { dueDate: newDueDate } : {}),
-        ...(newNote.trim() ? { note: newNote.trim() } : {}),
-      });
+      // Same desktop-only surface: raising a vendor debt is back-office work.
+      if (!isTabletShell()) {
+        await createPayableScoped(sessionToken, {
+          supplierId: newSupplierId,
+          source: 'manual',
+          amount: { minor_units: minor, currency },
+          ...(newRef.trim() ? { reference: newRef.trim() } : {}),
+          ...(newDueDate ? { dueDate: newDueDate } : {}),
+          ...(newNote.trim() ? { note: newNote.trim() } : {}),
+        });
+      }
       addToast({ message: requiredLocalized(l10nRef.current, 'vendor-bills-create-success'), type: 'success' });
       setShowAddModal(false);
       setNewSupplierId('');

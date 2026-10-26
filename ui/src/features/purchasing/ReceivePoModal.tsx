@@ -7,6 +7,7 @@ import { useCurrency } from '@/contexts/CurrencyContext';
 import { minorUnitExponent } from '@/types/domain';
 import { receivePurchaseOrderScoped, type PurchaseOrderDto } from '@/api/purchasing';
 import { createPayableScoped } from '@/api/payables';
+import { isTabletShell } from '@/utils/shellKind';
 import './ReceivePoModal.css';
 
 interface Props {
@@ -59,16 +60,21 @@ export default function ReceivePoModal({ po, sessionToken, onClose, onReceived }
       await receivePurchaseOrderScoped(sessionToken, po.id);
 
       // 2. If purchased on account (Beli Tempo), record payable debt
+      // `create_payable_scoped` is desktop-only (see apps/desktop-tauri/src/commands/
+      // payables.rs). On the tablet the receipt must still land -- the guard keeps a
+      // missing back-office command from reporting the whole receipt as failed.
       if (paymentTerm === 'on_account') {
-        await createPayableScoped(sessionToken, {
-          supplierId: po.supplier_id,
-          poId: po.id,
-          source: 'po_receive',
-          amount: { minor_units: po.total_minor, currency },
-          ...(invoiceRef.trim() ? { reference: invoiceRef.trim() } : {}),
-          ...(dueDate ? { dueDate } : {}),
-          ...(note.trim() ? { note: note.trim() } : {}),
-        });
+        if (!isTabletShell()) {
+          await createPayableScoped(sessionToken, {
+            supplierId: po.supplier_id,
+            poId: po.id,
+            source: 'po_receive',
+            amount: { minor_units: po.total_minor, currency },
+            ...(invoiceRef.trim() ? { reference: invoiceRef.trim() } : {}),
+            ...(dueDate ? { dueDate } : {}),
+            ...(note.trim() ? { note: note.trim() } : {}),
+          });
+        }
       }
 
       onReceived();
