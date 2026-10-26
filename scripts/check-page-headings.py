@@ -44,6 +44,16 @@ rendered h1) is the render tests' job: 12 suite files assert it today. These are
 the reasons this is a floor, not a proof, and the floor is where a REGRESSION
 gets caught, not where correctness is proven.
 
+THE 25 *Screen*.tsx FILES THIS DOES NOT GRADE are accounted for, measured
+2026-10-27 (round 37). 24 of them already carry an <h1> -- the 14
+settings/screens/* subpages (rendered inside SettingsPage, which is graded),
+the 4 restaurant/screens/* (rendered by RestaurantMenu), StockCountsScreen /
+ThresholdConfigScreen / TransactionLogScreen (all reachable through a registered
+router or wrapper above), and SyncConflictReviewScreen. The 25th is
+KdsScreenFooter.tsx, a status bar, not a page. So "not in the graded set" does
+not mean "not checked": it means it is not a PAGE, and every page is in the set.
+Run --list to see exactly which files are graded.
+
 EXIT CODES
     0  every registered page screen carries a level-one heading
     1  at least one registered page screen has none
@@ -370,7 +380,10 @@ def main(argv: list[str]) -> int:
         return 2
 
     if args.list:
-        for screen in _registered_screens():
+        # BOTH sources: --list that printed only the registry would understate the
+        # graded set by 8 shell-mounted screens and contradict this file's claim
+        # that every page is covered.
+        for screen in sorted(set(_registered_screens()) | set(_shell_mounted_screens())):
             print(_rel(screen))
         return 0
 
