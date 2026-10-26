@@ -366,7 +366,6 @@ sales-history-tax-estimated-badge = Estimated
 sales-history-status-all = All
 sales-history-status-completed = Completed
 sales-history-status-pending = Pending
-sales-history-status-cancelled = Cancelled
 sales-history-status-voided = Voided
 sales-history-export-csv = Export CSV
 sales-history-search-label = Search

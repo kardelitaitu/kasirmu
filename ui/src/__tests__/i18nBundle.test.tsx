@@ -194,7 +194,6 @@ const nativeSpeakerPins: Pin[] = [
   // Round 97 — extended pass: shared/sales/inventory fixes.
   { key: 'statusbar-license', en: 'Proprietary License', id: 'Lisensi Proprietary' },
   { key: 'scale-read-error', en: 'Scale error', id: 'Kesalahan timbangan' },
-  { key: 'sales-history-status-cancelled', en: 'Cancelled', id: 'Batal' },
   {
     key: 'retail-reminder-low-stock-aria',
     args: { count: 3 },
