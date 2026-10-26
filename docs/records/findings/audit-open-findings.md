@@ -457,13 +457,21 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
 - a pin over unreachable code is a monument, so the honest repair is **deletion**, parked with the tablet crate owner because the delete slice crosses into `apps/mobile-tauri` and into the allowlist, neither of which this lane edits.
 - the recurrence: `docs/plans/_backlog/0.0.36-backlog.md:3127-3135` records this exact error once — a manual triage reported 6 gated, the gate found 8, because permissions were checked only for orphans whose unscoped twin the ui calls and the group where neither was called was skipped. tonight's sweep (`python scripts/verify-ipc-parity.py`, 09:48 +07, exit 1) prints `2 GATED DEAD SURFACE -> get_active_cart_scoped=SALES_PROCESS, list_active_carts_scoped=SALES_PROCESS` against those 8. one mechanism, one sentence: **a manual sweep restricted to orphans with a called unscoped twin systematically undercounts the gated ones.** that backlog file is right and was not touched.
 
-## Git scratch — `git clean -xdf` deletes the ignored `.agents/` set (`GH-CLEAN-01`, OPEN, added 2026-09-13 11:15 +07, tip `867cec26a`)
+## Git scratch — `git clean -xdf` deletes the ignored `.agents/` set and `.env` (`GH-CLEAN-01`, PARTLY MITIGATED 2026-10-27, added 2026-09-13 11:15 +07, tip `867cec26a`)
 
-**Status:** OPEN, and this entry is **a record and a request, not a repair** — nothing here touches
-`.gitignore`, `.githooks/`, `scripts/gates.json`, `.agents/salvage/` or `C:/dev/ozpos/backups/`.
-Every figure carries the minute it was taken; five dry runs of the same command between 11:09 and
-11:19 +07 printed 71, 72, 73 and 75 entries, so a total quoted without its minute is worthless in
-this checkout — sibling sessions are writing into it continuously.
+**Status: the hazard is real; the top-level guard now sits where every agent reads.** A rule was
+added to `AGENTS.md` §3 (commit `ed4382cc0`) — **NEVER run `git clean -x…`** — carrying the
+measured numbers and a pointer back here. That is the REQUEST half of this entry fulfilled at the
+top level; the hook/wrapper half is still the owner's to place, and nothing in `.gitignore`,
+`.githooks/`, `scripts/gates.json`, `.agents/salvage/` or `C:/dev/ozpos/backups/` was touched.
+
+**Re-measured 2026-10-27, and both halves of the claim still hold.** `git clean -xdn` names **82**
+removable entries (`.env` among them, plus live scratch under `.agents/`); `git clean -dn` WITHOUT
+`-x` names **0**. The whole hazard is the one flag, exactly as written below. The `.agents/`
+contribution has fallen from the 23 paths recorded in September to **4** as older scratch was
+collected — the hazard shrank, it did not close. Every figure below keeps the minute it was taken;
+a total quoted without its minute is worthless in this checkout, where sibling sessions write
+continuously.
 
 - **The command.** `git clean -xdf`. `-x` is the load-bearing flag: it means *also remove ignored
   files*, and this repo has been parking in-flight agent work in ignored paths all morning.
