@@ -107,17 +107,17 @@ const mockGetSaleLineMargins = getSaleLineMarginsScoped as ReturnType<typeof vi.
 
 const sampleSales = [
   {
-    id: 'sale-001-aaaa-bbbb-cccc-ddddeeee', status: 'Completed',
+    id: 'sale-001-aaaa-bbbb-cccc-ddddeeee', status: 'completed',
     createdAt: '2026-07-07T10:00:00.000Z', total: { minor_units: 50000, currency: 'IDR' },
     lineCount: 2, paymentMethod: 'cash', userId: 'user-1',
   },
   {
-    id: 'sale-002-aaaa-bbbb-cccc-ddddefff', status: 'Pending',
+    id: 'sale-002-aaaa-bbbb-cccc-ddddefff', status: 'pending',
     createdAt: '2026-07-07T11:00:00.000Z', total: { minor_units: 25000, currency: 'IDR' },
     lineCount: 1, paymentMethod: 'card', userId: 'user-2',
   },
   {
-    id: 'sale-003-aaaa-bbbb-cccc-ddddaaaa', status: 'Voided',
+    id: 'sale-003-aaaa-bbbb-cccc-ddddaaaa', status: 'voided',
     createdAt: '2026-07-06T09:00:00.000Z', total: { minor_units: 10000, currency: 'IDR' },
     lineCount: 1, paymentMethod: null, userId: 'user-1',
   },
@@ -129,7 +129,7 @@ const sampleStaff = [
 ];
 
 const sampleDetail = {
-  id: 'sale-001-aaaa-bbbb-cccc-ddddeeee', status: 'Completed',
+  id: 'sale-001-aaaa-bbbb-cccc-ddddeeee', status: 'completed',
   createdAt: '2026-07-07T10:00:00.000Z', total: { minor_units: 50000, currency: 'IDR' },
   subtotal: { minor_units: 50000, currency: 'IDR' },
   taxTotal: { minor_units: 0, currency: 'IDR' },
@@ -242,6 +242,48 @@ describe('SalesHistoryScreen', () => {
       expect(screen.queryByText(/sale-001/)).not.toBeInTheDocument();
       expect(screen.queryByText(/sale-002/)).not.toBeInTheDocument();
     });
+  });
+  // ── Status label rendering (wire values are lowercase) ──────
+  // The fixtures used to carry capitalised statuses ('Completed'), matching the screen's
+  // switch while the real wire value is lowercase (SaleStatus::as_stored_str,
+  // foundation/src/enums.rs:40). With both sides capitalised the mapper's default branch
+  // was never exercised, so a sale that should read "Pending" rendered "Completed" and
+  // the suite stayed green. These cases drive the real spellings and grade the TABLE cell,
+  // not the filter chips -- getAllByText('Completed') matches a chip too, which is how the
+  // original assertion could not fail.
+  it('labels each row with the status the wire actually carries', async () => {
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getByText(/sale-001/)).toBeInTheDocument();
+    });
+    // Rows are sorted by date, not by fixture order, so address each one by its id.
+    const rowFor = (fragment: string): Element => {
+      const row = Array.from(document.querySelectorAll('tbody tr'))
+        .find((r) => (r.textContent ?? '').includes(fragment));
+      expect(row, `a table row containing ${fragment}`).toBeDefined();
+      return row!;
+    };
+    // The regression this guards: every unrecognised status collapsed to 'Completed', so a
+    // pending and a voided sale both read "Completed" while the chips looked correct.
+    expect(rowFor('sale-001').textContent).toContain('Completed');
+    expect(rowFor('sale-002').textContent).toContain('Pending');
+    expect(rowFor('sale-003').textContent).toContain('Voided');
+    expect(rowFor('sale-002').textContent).not.toContain('Completed');
+    expect(rowFor('sale-003').textContent).not.toContain('Completed');
+  });
+
+  it('gives an active sale its own label instead of the default', async () => {
+    const activeSale = { ...sampleSales[0], id: 'sale-active-0000', status: 'active' };
+    mockListSalesScoped.mockResolvedValue({ sales: [activeSale], salesHistoryCapped: false });
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+    // Exactly one sale is returned, so the single body row IS that sale.
+    await waitFor(() => {
+      expect(document.querySelectorAll('tbody tr').length).toBe(1);
+    });
+    const row = document.querySelectorAll('tbody tr')[0];
+    expect(row?.textContent).toContain('In progress');
+    expect(row?.textContent).not.toContain('Completed');
   });
 
   it('shows search input and cashier dropdown', async () => {
