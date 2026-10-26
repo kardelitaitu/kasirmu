@@ -659,6 +659,23 @@ deployment in front of them.
 | `POST /api/v1/web/logout` | Invalidate session (idempotent) |
 | `POST /api/v1/web/contact` | Support form → Discord (`503` when unset) |
 
+**Endpoint census re-verified 2026-10-27.** All ten endpoints above are registered in
+`apps/license-server/main.go` via `se.Router.POST/GET` — checked by extracting the
+`/api/v1/web/*` route strings from the router rather than by grepping handler names. The
+health claim below is also accurate: `GET /api/health` is served by `bindHealthOverride`
+(`main.go:452`) through a root middleware, because PocketBase's built-in endpoint registers
+first and cannot be re-registered — and `health.go` carries every field this section names
+(`smtp`, `rsa`, `discord`, `paddle`, `secret_configured`, `price_tiers_configured`,
+`price_tiers_mappings`).
+
+**What the table is missing: five shipped endpoints.** The router registers **15** web routes;
+this table lists 10. The five absent are `POST /api/v1/web/exchange-issue`,
+`POST /api/v1/web/exchange-consume`, `GET /api/v1/web/devices`,
+`GET /api/v1/web/identities` and `GET /api/v1/web/usage` — the OAuth-exchange and
+device/identity surfaces, which postdate the plan. Recorded rather than added, because a plan
+that grows a table by five rows on someone else's behalf should say where they came from; the
+routes are documented in their own handlers.
+
 ### Health & monitoring (shipped beyond the original plan)
 
 `GET /api/health` reports every boot-gate status as JSON — `smtp`
