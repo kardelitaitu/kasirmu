@@ -493,7 +493,16 @@ Data comes from `/api/v1/web/me` — the account page is read-only.
 | Version Info | Current version (0.0.25), release date |
 | System Requirements | OS version, RAM, disk |
 
-### Vertical Landing Pages (`/[locale]/untuk-{kafe,minimarket,warung,restoran}`)
+### Vertical Landing Pages (`/[locale]/{cafe,minimarket,warung,restaurant,warehouse}`)
+
+**Corrected 2026-10-27 — the routes were COMPACTED and the plan never absorbed it.** The URLs
+below were planned as `untuk-{kafe,minimarket,warung,restoran}`. Commit `80f7e62010`
+("feat(website): compact english solution urls and add multi-warehouse landing page") DELETED
+`untuk-kafe.astro`, `untuk-minimarket.astro`, `untuk-restoran.astro` and `untuk-warung.astro` and
+added `cafe.astro`, `minimarket.astro`, `restaurant.astro`, `warung.astro` plus a fifth,
+`warehouse.astro`. Nothing in the tree redirects or even names the old URLs — `git grep -rn
+'untuk-'  -- website/src website/public` returns **0 hits** — so this was a rename, not an alias,
+and the plan was describing four pages that no longer exist under those names.
 
 Lead with vertical language + the kasir.mu positioning statement, never tier
 names (subscription-tiers.md §5). Each page deep-links to its natural tier
@@ -501,12 +510,15 @@ on the pricing page via the `#plus` / `#pro` / `#premium` card anchors:
 
 | Page | Entry hook | Tier CTA |
 |------|-----------|----------|
-| `untuk-kafe` | KDS + analytics + multi-terminal | Pro |
-| `untuk-minimarket` | Inventory + multi-terminal + warehouses | Pro |
-| `untuk-warung` | QRIS + Daily Sales Dashboard | Plus |
-| `untuk-restoran` | KDS + loyalty + scheduled reports | Premium |
+| `cafe` | KDS + analytics + multi-terminal | Pro |
+| `minimarket` | Inventory + multi-terminal + warehouses | Pro |
+| `warung` | QRIS + Daily Sales Dashboard | Plus |
+| `restaurant` | KDS + loyalty + scheduled reports | Premium |
+| `warehouse` | Multi-warehouse stock + transfers (shipped beyond this plan) | — |
 
----
+All five files exist at `website/src/pages/[locale]/`, verified this round. The section's entry
+hooks and tier CTAs were left as written — only the page identifiers changed, because only they
+had gone stale.
 
 ## 9. Design System
 
