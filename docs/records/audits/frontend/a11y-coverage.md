@@ -216,6 +216,55 @@ It is wired as a `required` gate: `scripts/check.sh` runner, `static-gates` job,
 and its own self-test step — because a checker nothing invokes is a comment, and
 this document has already made that point twice.
 
+## The same failure one layer down: a fixture that supplies its own evidence
+
+Round 38 went looking for fixtures that invent Fluent keys, after round 35 found
+`staff-login-title` / `session-lock-title` used across five suites and declared in
+no bundle. `scripts/check-fixture-ftl-keys.py` now grades that (3 ghosts found and
+removed). While writing it, a second shape turned up that the first could not see:
+a fixture key that **does** resolve but whose case can never fail.
+
+```tsx
+vi.mock('@/utils/app-error', () => ({ l10nErrorMessage: () => 'An error occurred' }));
+expect(screen.getByText('An error occurred')).toBeInTheDocument();
+```
+
+Four suites did exactly this — `AnalyticsCardContent` and the three chart widgets.
+The mock supplies the string the assertion then looks for, so the real
+`l10nErrorMessage`, and with it the whole FTL lookup, never runs. The measurement
+that makes it a defect rather than a suspicion:
+
+| Variant | Result |
+|---|---|
+| mock returns `'An error occurred'`, case asserts it | **7/7 pass** |
+| mock returns `'A totally different message'`, case asserts **that** | **7/7 pass** |
+
+The second row is the whole argument. A copy change shipped tomorrow would not
+redden a single one of those cases. Worse, the fixture values were also wrong:
+`analytics-card-error-load` was stubbed as `Failed to load` while `analytics.ftl`
+says `Couldn't load this chart. Check your connection and refresh.`, and
+`app-error-generic` was `An error occurred` against the bundle's `Something went
+wrong. Please try again.` So the suites were asserting English that appears
+nowhere in the product.
+
+All four now run the real helper and pin the bundle copy verbatim — each verified
+by mutating the fixture value alone and requiring exactly one red. The checker
+flags the shape, and a self-test case pins that a **legitimate** pass-through mock
+(`(e, _l, f) => f`, which exercises *which* key the caller asked for) is not
+flagged.
+
+The generalisable statement, since this is the fourth form of it in this document:
+**a stub that returns the value under test is not a fixture, it is an echo.** The
+question to ask of any `vi.mock` in an assertion's blast radius is not "does the
+case pass" but "what would have to change for it to fail".
+
+Scope honestly recorded: **116** fixture entries disagree with their real bundle
+value in *text* while the key itself resolves. Most are placeholder formatting
+(`{label}` vs `{ $label }`), which is harmless; the rest are the kind of drift
+fixed above. The checker does not attempt that comparison, and says so in its own
+docstring, because a fixture is allowed to use short stand-in text where a case is
+testing layout rather than copy.
+
 ## Caveats
 
 - **`colorContrastCompliance` grades base tokens, not derived variants.** Its own header
