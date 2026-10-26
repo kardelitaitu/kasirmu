@@ -554,10 +554,21 @@ jobs:
       # is set; without it those tests still PASS (they return early) but
       # the lines they would have covered are missing, which would quietly
       # depress the numbers instead of failing them.
+      #
+      # kasirmu-bridge is excluded for the reason this job's own header gives
+      # (:470-475): llvm-cov ABORTS on any failing test, and the crash it is
+      # guarding against was a bridge test. None of the four floored crates is
+      # bridge, and bridge carries no PG-gated case (0 files under
+      # crates/kasirmu-bridge reference OZ_TEST_PG_URL), so excluding it costs
+      # this job no coverage it grades. This matches the command recorded in
+      # scripts/coverage-floors.json under _measured -- which this step was
+      # NOT matching, while the gate's own error hint printed the two-exclude
+      # form and so taught the next reader the same wrong command.
       - name: Coverage report
         run: |
           cargo llvm-cov nextest --workspace --all-features \
             --exclude kasirmu-app --exclude kasirmu-mobile \
+            --exclude kasirmu-bridge \
             --json --output-path coverage-probe.json
       - name: Grade against the floors
         run: python3 scripts/verify-coverage-floors.py

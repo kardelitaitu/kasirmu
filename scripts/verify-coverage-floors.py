@@ -284,7 +284,13 @@ def main() -> int:
             f"Generate one with:\n"
             f"  cargo llvm-cov --workspace --all-features \\\n"
             f"    --exclude kasirmu-app --exclude kasirmu-mobile \\\n"
-            f"    --json --output-path {ns.json}",
+            f"    --exclude kasirmu-bridge \\\n"
+            f"    --json --output-path {ns.json}\n"
+            f"  kasirmu-bridge is excluded because llvm-cov aborts on any failing\n"
+            f"  test, and one in-flight bridge test would cost the whole report\n"
+            f"  rather than one crate. The floors never name bridge, so the\n"
+            f"  exclusion costs no graded crate -- this matches the command\n"
+            f"  recorded in scripts/coverage-floors.json under _measured.",
             file=sys.stderr,
         )
         return 1
