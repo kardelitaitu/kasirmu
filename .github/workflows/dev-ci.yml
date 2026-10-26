@@ -950,6 +950,23 @@ jobs:
       - name: Docs dead references self-test
         run: python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py --self-test
 
+      # Gate: scripts/gates.json -> "rust-doc-paths". Until 2026-10-26 this ran ONLY in
+      # scripts/check.sh, which is manual and unhooked -- the same defect this file
+      # records a dozen times above. It grades two things: that a repo path named in a
+      # Rust doc comment EXISTS, and (added round 27) that the line number in a
+      # `path.rs:NNN` citation is not blank and not past EOF. The line half found 16
+      # stale citations the day it landed, several past the end of a file that had
+      # been split or shortened, so the blind spot was not theoretical. Pure text, no
+      # Docker and no database, and the scan is ~1s over 1430 files.
+      - name: Rust doc paths and line citations
+        run: python3 scripts/check-rust-doc-paths.py
+      # Its own cases, beside the gate it proves, per the convention at "Docs dead
+      # references self-test". Only the self-test can see a classifier that has gone
+      # blind: a bare run of the checker reports "clean" over exactly the same tree
+      # whether the line half works or returns nothing.
+      - name: Rust doc paths self-test
+        run: python3 scripts/check-rust-doc-paths.py --self-test
+
       # Gate: scripts/gates.json -> "api-surface". Green from day one (2026-09-29), when the
       # page was repaired from 169 drifts to 0 in the same change that added this step. This
       # checker exits 2, not 0, when it cannot parse an input, so a renamed registry or a

@@ -3348,8 +3348,8 @@ and never the matrix step that grades the thing it touched.
 
 **The pattern worth carrying.** A helper that commits a change to a path OTHER work cites — a plan
 file, a shell script, a testid — should run the step that reads citations in that direction. The
-steps that grade citations are 160-162 (`rust doc paths`, `docs dead refs`) and 172
-(`cite lines`), and they are all far past the red. Running `scripts/check.sh` alone does not
+steps that grade citations are 173-175 (`docs dead refs`, `rust doc paths`,
+`rust doc paths self-test`) and 185 (`cite lines`), and they are all far past the red. Running `scripts/check.sh` alone does not
 discharge that obligation on this host, because it stops at 52.
 
 
