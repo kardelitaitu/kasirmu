@@ -1310,6 +1310,8 @@ step "page headings" "python3 scripts/check-page-headings.py" python3 scripts/ch
 step "page headings self-test" "python3 scripts/check-page-headings.py --self-test" python3 scripts/check-page-headings.py --self-test
 step "fixture ftl keys" "python3 scripts/check-fixture-ftl-keys.py" python3 scripts/check-fixture-ftl-keys.py
 step "fixture ftl keys self-test" "python3 scripts/check-fixture-ftl-keys.py --self-test" python3 scripts/check-fixture-ftl-keys.py --self-test
+step "status fallbacks" "python3 scripts/verify-status-fallbacks.py" python3 scripts/verify-status-fallbacks.py
+step "status fallbacks self-test" "python3 scripts/verify-status-fallbacks.py --self-test" python3 scripts/verify-status-fallbacks.py --self-test
 
 # The API reference page is the IPC contract read first by every agent and integrator, and
 # nothing enforced it: it had drifted 169 ways from the registries (101 names that exist

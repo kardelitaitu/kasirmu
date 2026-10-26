@@ -2257,6 +2257,27 @@
           "API drift table self-test"
         ]
       }
+    },
+    {
+      "id": "status-fallbacks",
+      "label": "Status fallbacks",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "status fallbacks",
+          "status fallbacks self-test"
+        ]
+      },
+      "self_test": "python3 scripts/verify-status-fallbacks.py --self-test",
+      "_note": "Added 2026-10-28 (round 60). Four times in five rounds the same defect shipped and no gate saw it:\na mapper switched on a status string and its `default` returned one of the REAL states instead of\nadmitting the value was unrecognised. SalesHistoryScreen fell back to `...-completed`, so a pending\nand a voided sale both read \"Completed\" and the `status === 'completed'` guards that offer the\nrefund action never fired; VoidOrdersScreen fell back to `...-active`, the one state that screen\nexists to make voidable; OfflineQueueScreen fell back to `...-pending`, which in that screen means\n\"this WILL be pushed\" -- and `offline_queue.status` carries no CHECK constraint at all, so there\nthe unknown case is not hypothetical. All three picked the most reassuring member of their set,\nand the fallback is the one path guaranteed to be taken by data nobody anticipated.\n\nTHE ARGUMENT FOR A GATE RATHER THAN A GREP, MEASURED: the first two were found by reading code.\nThe third was found only after this checker existed. The hand-written scans that found the first\ntwo matched the literal shape of a family-suffixed id and SKIPPED `offline-queue-status-pending`,\nbecause its last segment is a real case VALUE, not a family name -- a distinction no hand-rolled\npattern got right. The rule here therefore asks a different question: not \"does the fallback\nrepeat a case\" (all three DID, and that is what made them look deliberate) but \"does the fallback\nname a member at all\", decided against a closed CONCRETE_STATES vocabulary.\n\nTwo self-test arms were wrong on the first attempt and the self-test caught both: the sibling rule\nonly matched a fallback whose tail equalled a case tail, which missed `h-status-completed` because\n`completed` was a case in one file and not the other. A check that cannot fail on the defects it\nwas written for is the failure mode this repo keeps meeting; the three bad fixtures are the exact\npre-fix shapes from the three screens.\n\nFALSIFIED: reintroducing all three defects reddens it 3/3 with exit 1 (measured this round), and\nrestoring them returns exit 0 with no git diff. Ships required, not advisory: 0 findings is the\nbaseline the three fixes left, so a flip is measurable from day one.\n\nWHAT IT DOES NOT CLAIM (stated in the file too): it is a TEXT check on the switch shape only. It\ncannot see a fallback computed in another module, a map keyed by an object literal, or a ?? / ||\ndefault, and it cannot judge reachability -- KDS passes with no fallback at all by returning null\nfor the two states that have no advance action, and MemosScreen passes because\n`Record<Memo['status'], string>` makes the compiler refuse a gap. Those are the preferred shapes.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Status fallbacks",
+          "Status fallbacks self-test"
+        ]
+      }
     }
   ]
 }

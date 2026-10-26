@@ -1106,6 +1106,18 @@ jobs:
 
       - name: Fixture FTL keys self-test
         run: python3 scripts/check-fixture-ftl-keys.py --self-test
+      # A status mapper's `default` branch that returns a REAL state instead of an
+      # unknown one. Four rounds shipped it: sales history fell back to completed
+      # (so pending and voided both read "Completed" and the refund guards never
+      # fired), void orders to active, and the offline queue to pending -- which
+      # there means "this WILL be pushed". The third was found only once this
+      # checker existed; the hand-written greps that found the first two skipped
+      # it because `pending` is a case VALUE, not a family name.
+      - name: Status fallbacks
+        run: python3 scripts/verify-status-fallbacks.py
+
+      - name: Status fallbacks self-test
+        run: python3 scripts/verify-status-fallbacks.py --self-test
       - name: Architecture boundaries
         run: python3 scripts/verify-architecture-boundaries.py --strict
       # The two SQLite maintenance scripts' own self-tests, beside the gate they
