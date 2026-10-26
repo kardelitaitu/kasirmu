@@ -129,6 +129,39 @@ One settings key per workspace type, JSON value (TOML-able later — same shape)
 > describes a phase that is now largely built; what remains is the acquirer-side credential and
 > the four unproven behaviours recorded in `owner-question-2026-09-28-r4-r6-r7.md` (generic-QR
 > interop, targeted-QR restriction, real refunds, per-merchant acquirer activation).
+>
+> **And Phase 3 has shipped as well (measured 2026-10-26, round 18).** The TOML comment
+> above says `pay_later = false # retail-only piutang — Phase 3`, which is now stale in the
+> same direction the other two were: the feature exists end to end, on nine measured
+> surfaces, and every one of them was read out of `HEAD` rather than inferred:
+>
+> | Surface | Location | Evidence |
+> |---|---|---|
+> | Method value | `ui/src/api/types/payment.ts` | `'pay_later'` in the union |
+> | Storage constraint | `crates/kasirmu-core/migrations/20261017_payments_method_check.sql` | `pay_later` in the `CHECK` list; the migration backfills unknown methods to `'other'` before rebuilding the table |
+> | Core query | `Store::piutang_collections` | `crates/kasirmu-core/src/db/reports/sales_summary.rs:325` |
+> | Bridge door | `get_piutang_collections_scoped` | `crates/kasirmu-bridge/src/reports.rs:475` |
+> | Desktop shell | `get_piutang_collections_scoped` | `apps/desktop-tauri/src/commands/reports.rs:281`, registered at `apps/desktop-tauri/src/lib.rs:1685` |
+> | Tablet shell | `get_piutang_collections_scoped` | `apps/mobile-tauri/src/commands/reports.rs:251`, registered at `apps/mobile-tauri/src/lib.rs:1248` |
+> | Analytics UI | `ui/src/features/analytics/AnalyticsScreen.tsx` | `piutang-collections` card, retail-only by design |
+> | AR permissions | `platform/core/src/rbac.rs` | four constants: view, create, collect, writeoff |
+> | AP permissions | `platform/core/src/rbac.rs` | four constants: view, create, settle, writeoff |
+>
+> **The tests were RUN, not just located** — which is the distinction that matters, since a
+> grep proving a symbol exists proves nothing about whether it works:
+> `cargo test -p kasirmu-bridge piutang` → **2 passed** (`staff_denied_piutang_collections`,
+> `owner_piutang_collections_empty`), and `cargo test -p kasirmu-core piutang` → **5 passed**,
+> including `piutang_collections_separates_currencies` and
+> `piutang_collections_split_by_the_tender_money_arrived_in` — the per-currency split that
+> the Q1 ruling requires, because a repayment day whose takings arrived in two currencies
+> must not be reported as one number.
+>
+> **What remains genuinely open on Phase 3 is the SCOPE half, not the reporting half.** The
+> shipped surface answers "what was collected against receivables in this period". It does
+> not answer the plan's other Phase-3 bullet — a per-customer `pay_later` checkout flow
+> that records the receivable and later settles it — and the two owner questions about
+> settlement semantics belong to that flow. So this note closes the *reporting* claim and
+> deliberately does not claim the flow.
 ```toml
 # Conceptual shape — stored under settings key "payment_methods.<type_key>"
 [payment_methods.store-pos]        # retail
