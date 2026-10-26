@@ -135,7 +135,7 @@ export default function GiftCardPayment({
   // a cashier hot-swap left this presenting the destroyed session, so the tender failed with a
   // redemption error on a card that was fine -- the worst kind of failure at a checkout counter,
   // because it looks like a problem with the customer's gift card.
-  }, [cardInput, cardBalance, totalMinor, saleId, onApplied, onComplete, onError, l10n, sessionToken]);
+  }, [cardInput, cardBalance, totalMinor, currency, saleId, onApplied, onComplete, onError, l10n, sessionToken]);
 
   return (
     <div className="gift-card-payment">
