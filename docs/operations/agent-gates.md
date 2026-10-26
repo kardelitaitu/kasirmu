@@ -3402,7 +3402,7 @@ found 122 hits and was useless because it counted STRING truncation (`line[:60]`
 capping; the narrower predicate — same identifier in a `len()` and a slice — is what made the
 answer readable. Same lesson as the round-183 probe that reported 67 checkers by grepping for
 a flag name: a text search for a shape is not a measurement of it.
-#### Re-run 2026-10-26 (round 243): 94 of 97, and the number keeps growing for a good reason
+### Re-run 2026-10-26 (round 243): 94 of 97, and the number keeps growing for a good reason
 
 ```
 $ python scripts/verify-selftest-sweep.py
