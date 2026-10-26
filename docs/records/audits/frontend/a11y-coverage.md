@@ -179,6 +179,43 @@ Two process notes from the same change, both worth carrying:
   string(s), budget 0`) on its first commit. A sr-only heading is still copy; it went
   through `topology-editor-sections` with an `id` bundle entry in the follow-up commit.
 
+## The fix that outlives the round: a gate, because axe cannot be it
+
+Every heading defect above was fixed by hand. Hand fixes are how the same defect
+came back four times, so round 36 added `scripts/check-page-headings.py` — the
+first thing in this repository that looks at page structure at all.
+
+**What it grades.** For every `*Screen.tsx` reachable from a `registerPage({
+component })` call — AND from a `lazy()` in a shell — the file must contain a
+level-one heading, either an `<h1>` in its own JSX or `role="heading"` with
+`aria-level={1}`. A router or wrapper that renders only children is graded
+through them instead of being forced to duplicate a heading.
+
+**The two false starts are the useful part.**
+
+| Scan | RetailPosScreen defect | Why |
+|---|---|---|
+| registry only | **green** | it is mounted by a `store-pos` BRANCH in `AppShell.tsx`, and `features/retail` has no `register.tsx` at all |
+| + shell `lazy()` mounts | **green** | my own dialog filter dropped it: `RetailPosScreen.tsx:1835` mentions `aria-modal` in a *comment* about a hotkey guard, and I tested the substring, not the role |
+| + role-based filter | **red** | the only version that catches it |
+
+The first row is the mistake worth naming: `registerPage` looks like the whole
+definition of "a page", and it is not. The second is the more embarrassing one —
+I added a guard for dialogs and it silently ate the page I was trying to protect,
+because I matched a word instead of a role. Both were caught by the same method:
+revert the fix, run the gate, and require red.
+
+**Falsified, not assumed.** Reverting all four round-35/36 fixes to their broken
+form (retail `h1`→`span`, KDS `h1`→`h2`, security-trail `h1`→`h2`, workspace-home
+`h1`→`h2`) reddens it **4/4**. The 13-case `--self-test` covers the branches that
+matter: `h2` vs `h1`, a `<span>` title, `role`+`aria-level` in both attribute
+orders, a heading inside a `//` and a `/* */` comment (must NOT count), a heading
+inside a JSX `{/* */}` comment (also must not), and `h10` vs `h1`.
+
+It is wired as a `required` gate: `scripts/check.sh` runner, `static-gates` job,
+and its own self-test step — because a checker nothing invokes is a comment, and
+this document has already made that point twice.
+
 ## Caveats
 
 - **`colorContrastCompliance` grades base tokens, not derived variants.** Its own header
