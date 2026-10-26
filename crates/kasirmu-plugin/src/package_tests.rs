@@ -629,9 +629,11 @@ fn alternate_order(
 ///
 /// Two entries can legitimately carry identical payloads, so a byte comparison
 /// alone would not notice a wrong winner — hence the name. Name equality is only
-/// required when both mirror orders pick the same winner
-/// (`old_order_is_stable`); that set of stable cases is what the index must
-/// reproduce exactly.
+/// required when both mirror orders pick the same winner — the `if` at the foot of
+/// this function, where the old lookup is re-run over the alternate order and the
+/// two results are compared. (This note used to name a helper `old_order_is_stable`
+/// that was never written; the condition is inline.) That set of stable cases is
+/// what the index must reproduce exactly.
 fn assert_matches_old(archive: &KasirpkArchive, query: &str) {
     let second_order = alternate_order(&archive.entry_contents);
     let old = old_read_entry(&archive.entry_contents, query);
