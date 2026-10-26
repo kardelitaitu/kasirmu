@@ -216,11 +216,23 @@ const nativeSpeakerPins: Pin[] = [
   { key: 'theme-toggle-label', en: 'Toggle theme', id: 'Aktifkan/nonaktifkan tema' },
   { key: 'workspace-home-fullscreen-aria', en: 'Toggle fullscreen', id: 'Aktifkan/nonaktifkan layar penuh' },
   { key: 'restaurant-toggle-fullscreen', en: 'Toggle Fullscreen', id: 'Aktifkan/nonaktifkan layar penuh' },
-  { key: 'retail-shortcut-fullscreen', en: 'Toggle Fullscreen', id: 'Aktifkan/nonaktifkan layar penuh' },
   { key: 'pos-cart-service-toggle-aria', en: 'Toggle service charge', id: 'Aktifkan/nonaktifkan biaya layanan' },
   // `setup-features-toggle-aria` was removed with the Setup Wizard (ADR #56 §2.3
   // retirement, 2026-09-23). It was the wizard's per-row toggle aria-label.
-  { key: 'settings-sync-enabled-aria', en: 'Toggle cloud sync', id: 'Aktifkan/nonaktifkan sinkronisasi cloud' },
+  //
+  // Two more keys left this table on 2026-10-26, and the REASON is the lesson: a pin is a
+  // promise that a string is RIGHT, never evidence that anybody RENDERS it. Both had been
+  // unreferenced by production code while this table made them look alive, which is why the
+  // orphan census could not see them:
+  //   - `retail-shortcut-fullscreen` -- the retail manifest no longer carries a fullscreen
+  //     entry at all. F11 became 'quick-return' (retailShortcuts.ts:49) and the global
+  //     fullscreen listener is disabled in that workspace on purpose (:34-37), so the copy
+  //     had no surface to land on.
+  //   - `settings-sync-enabled-aria` -- SyncSection.tsx:336 renders aria-label from the
+  //     generic `toggle` key. The -aria reminder of the label it duplicates was already
+  //     dropped there, so pinning it protected a string nobody asks for.
+  // A pin that outlives its screen is worse than no pin: it converts a dead key into a
+  // test-enforced one, and the fix for an orphan then looks like a regression.
   { key: 'appearance-hw-accel-aria', attr: 'aria-label', en: 'Toggle hardware acceleration', id: 'Aktifkan/nonaktifkan akselerasi perangkat keras' },
   {
     key: 'feature-toggle-toggle-aria',

@@ -938,7 +938,6 @@ restaurant-shortcut-open-tables = Open tables
 restaurant-shortcuts-help-title = Keyboard shortcuts
 retail-shortcut-list = This shortcut list
 retail-shortcut-close = Close modal / Options
-retail-shortcut-fullscreen = Toggle Fullscreen
 retail-shortcut-credit = Credit reminders
 retail-shortcut-low-stock = Filter low-stock products
 retail-toast-failed-settings = Failed to load store settings

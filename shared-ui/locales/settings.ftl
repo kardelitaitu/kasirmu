@@ -323,7 +323,6 @@ settings-sync-server-url = Server URL
 settings-sync-resolved-origin = Server in use: { $origin } ({ $source })
 settings-sync-api-key = API Key
 settings-sync-enabled = Enable Cloud Sync
-settings-sync-enabled-aria = Toggle cloud sync
 settings-sync-sync-now = Sync Now
 settings-sync-syncing = Syncing…
 settings-sync-test-connection = Test Connection

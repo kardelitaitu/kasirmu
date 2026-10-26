@@ -308,7 +308,6 @@ settings-sync-server-url = URL Server
 settings-sync-resolved-origin = Server yang dipakai: { $origin } ({ $source })
 settings-sync-api-key = Kunci API
 settings-sync-enabled = Aktifkan Sinkronisasi Cloud
-settings-sync-enabled-aria = Aktifkan/nonaktifkan sinkronisasi cloud
 settings-sync-sync-now = Sinkron Sekarang
 settings-sync-syncing = Menyinkronkan…
 settings-sync-test-connection = Tes Koneksi
