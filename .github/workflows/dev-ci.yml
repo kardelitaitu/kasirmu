@@ -795,6 +795,13 @@ jobs:
         run: cd ui && npm ci --no-audit --no-fund --ignore-scripts
       - name: i18n lint (parity + untranslated siblings + duplicate keys)
         run: bash scripts/lint-i18n.sh
+      # Same convention, and the sharper case of it: two of lint-i18n's three
+      # categories are exact-string greps over vitest output, and vitest exits 0 when it
+      # merely WARNS -- so a reworded warning empties the grep and the gate prints "no
+      # issues detected". The falsification runner extracts the patterns FROM the gate
+      # and plants each one, so a reworded warning reddens here instead of going quiet.
+      - name: i18n lint falsification
+        run: bash scripts/test-lint-i18n.sh
       - name: FTL duplicate-key dry-run
         run: python3 scripts/dedupe-ftl.py --dry-run
       # The orphan gate's own liveness cases. Blocking: if the diff parsers or the
@@ -1300,6 +1307,16 @@ jobs:
       # drifts silently; this pins the control set on both sides.
       - name: Replay fork control set
         run: python3 scripts/check-replay-fork.py
+      # Its own cases, beside the gate it proves, per the convention at "Docs dead
+      # references self-test". `check-replay-fork.py` has NO `--self-test` flag -- its
+      # 12 cases live in `scripts/test-replay-fork.py`, which scripts/check.sh runs and
+      # CI did not. That mattered here more than usual: those cases are what prove the
+      # CONTROLS markers key on the DEFINITION (`fn NAME(`) rather than the bare name,
+      # so a renamed control cannot survive as a substring inside its own new name.
+      # A bare run of the gate cannot see that distinction at all -- it prints the same
+      # clean line either way.
+      - name: Replay fork self-test
+        run: python3 scripts/test-replay-fork.py
       # scripts/gates.json is the single source of truth for gate names and
       # status, and it records which CI step runs each gate. Nothing compared
       # those claims, so the coverage-floors entry sat claiming a step named
@@ -1561,6 +1578,12 @@ jobs:
         run: python3 scripts/verify-workflow-syntax.py --self-test
       - name: No raw query params
         run: bash scripts/verify-no-raw-params.sh
+      # Its FALSIFICATION runner, beside the gate it proves. The gate fails closed on a
+      # list of shapes; this re-plants each one and asserts the gate still reddens -- the
+      # only thing that can see a classifier that has gone blind. scripts/check.sh ran it
+      # and CI did not, so on a fresh clone nothing proved the gate could still fail.
+      - name: No raw query params falsification
+        run: bash scripts/test-no-raw-params.sh
       - name: Scoped command coverage
         run: bash scripts/verify-scoped-coverage.sh
       # FIVE gates that wore `status: required` and ran ONLY in scripts/check.sh, which
