@@ -8,9 +8,9 @@ Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · F
 
 ## Which section to read when a gate surprises you
 
-Eleven sections below, added 2026-10-25 across rounds 136-167, each records ONE failure mode a
+Twelve sections below, added 2026-10-25 across rounds 136-167, each records ONE failure mode a
 gate itself had or could not see. They are not variations on a theme -- the mechanisms differ,
-which is why they are separate -- but the entry point should not require reading all eleven.
+which is why they are separate -- but the entry point should not require reading all twelve.
 
 | If this happened | Read |
 |---|---|
@@ -25,9 +25,32 @@ which is why they are separate -- but the entry point should not require reading
 | A test fails once and passes on re-run | A leaked mock is real; a grep for one is not a diagnosis |
 | A test suite is green about unopenable code | Green tests on code nobody can open |
 | You are about to build a new measurement | The unrequested-command report already exists |
+| `npm run build` is red but `tsc` and `vitest` are green | The bundle build cannot run in this sandbox |
 
 > If your situation is not in this table, the answer is probably "run `scripts/check.sh` and read
 > its output" -- 140 gates are declared and several already report what you are about to derive.
+
+## The bundle build cannot run in this sandbox
+
+`cd ui && npm run build` exits **1** here, reproducibly, with `✓ 2144 modules transformed.`
+followed by `[vite:esbuild-transpile] remove C:\WINDOWS\TEMP\esbuild-<hash>: Access is
+denied.`. `tsc -b` passes and every module transforms, so the TypeScript is fine — the failure
+is esbuild's temp service under `C:\WINDOWS\TEMP`.
+
+Isolation, recorded so it is not re-derived: `npx esbuild --version` works (0.25.12); no stray
+`esbuild.exe` is running; `TEMP` and `TMP` both point at `C:\WINDOWS\TEMP`; Python can create
+and remove a file there. But a minimal transpile of a file that LIVES in `C:\WINDOWS\TEMP`
+fails with `Cannot read directory "../../../WINDOWS/TEMP": Access is denied`, while the
+identical command against a file under `target/` succeeds in 5 ms. The process can write a temp
+file it created but cannot ENUMERATE `C:\WINDOWS` — the documented Windows sandbox boundary.
+
+**Do not read a red build here as a code failure, and do not edit the UI to chase it.** The
+signals that do work in this environment, and that exercise the same sources:
+`npx tsc --noEmit -p tsconfig.json`, `npx eslint`, `npx vitest run`, and the docs gates. A bundle
+build belongs where `C:\WINDOWS` is readable — CI, or a host without the sandbox.
+
+Measured 2026-10-27. `ui/dist` is left stale and has no `index.html` after a failed run, so a
+half-written `dist/` is not evidence that anything shipped.
 
 ## The 7 pre-commit steps (source: `.githooks/pre-commit`)
 
