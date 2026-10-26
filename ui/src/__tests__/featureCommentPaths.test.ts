@@ -446,9 +446,27 @@ function crossFileCitations(source: string): Array<{ at: number; file: string; f
   // there (graded only by being extracted at all). Adding the extensions is what lets the
   // second kind reach the pass below.
   const re = /([A-Za-z0-9_./-]+\.(?:tsx?|css|rs|py|sh|json|sql|md|ftl|toml|html|go|mjs|cjs|ya?ml))\s*:\s*(\d{2,4})(?:-(\d{2,4}))?/g;
+  let blockDepth = 0;
   lines.forEach((line, i) => {
+    const openedHere = (line.match(/\/\*/g) ?? []).length;
+    const closedHere = (line.match(/\*\//g) ?? []).length;
+    const wasInBlock = blockDepth > 0;
+    blockDepth = Math.max(0, blockDepth + openedHere - closedHere);
     const tr = line.trim();
-    if (!tr.startsWith("//") && !tr.startsWith("*")) return;
+    // CSS BLOCK COMMENTS (added 2026-10-27, round 43). A `/* ... */` comment's
+    // CONTINUATION lines begin with bare prose, so the `//`/`*` test skipped them —
+    // and that is exactly where tokens.css keeps its citation list ("and it is used
+    // as a border ... (CartPanel.css:228/:239, ..."). Adding `ui/src/theme` to the
+    // walk therefore changed nothing at first: the file was scanned, its citations
+    // were not extracted. The test is now "inside an open block comment", tracked by
+    // counting /* and */ above the line, so prose lines in a .css file count and code
+    // does not.
+    // BLOCK-COMMENT STATE IS CARRIED, NOT RECOMPUTED. The first version walked
+    // back to line 0 for every line, which made the whole scan quadratic and took
+    // this case past vitest's 10s timeout (measured: 11.4s). `blockDepth` is threaded
+    // forward through forEach instead — one pass, same answer.
+    const isComment = tr.startsWith("//") || tr.startsWith("*") || wasInBlock || openedHere > 0;
+    if (!isComment) return;
     // A HISTORICAL reference is a claim about the past, not a pointer. Same word
     // list as the same-file pass, widened to the comment BLOCK (the marker can sit
     // a line or two above the token), because both measured instances read that way:
@@ -672,8 +690,21 @@ describe('feature-source comments cite OTHER files at a line that holds text', (
     // The one case that started this: SettingsPage.test.tsx cited
     // crates/kasirmu-bridge/src/settings.rs at a line past that file's end, and was
     // re-pointed by hand in the same round.
-    const extra = ['ui/src/api', 'ui/src/hooks', 'ui/src/components', 'ui/src/utils', 'ui/src/app']
-      .flatMap((d) => walk(path.join(ROOT, d)));
+    // `ui/src/theme` JOINED THE WALK 2026-10-27 (round 43). It was the one
+    // first-party directory with no line-citation grading at all, and tokens.css
+    // proved the cost: a six-file citation list for --color-warning-border had
+    // THREE stale members (SettingsPage.css:1123 for a rule now at :1073,
+    // RestaurantSettingsScreens.css:1199 for :1335, CartPanel.css:201/:212 for
+    // :228/:239) and nothing could see it. Measured before widening: 15 resolvable
+    // citations, 0 bad — so the widening cost no baseline and closed a real gap.
+    const extra = [
+      'ui/src/api',
+      'ui/src/hooks',
+      'ui/src/components',
+      'ui/src/utils',
+      'ui/src/app',
+      'ui/src/theme',
+    ].flatMap((d) => walk(path.join(ROOT, d)));
     const files = [...walk(FEATURES), ...extra];
     expect(files.length, "no files scanned — FEATURES is wrong").toBeGreaterThan(100);
 
