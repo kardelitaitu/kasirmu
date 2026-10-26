@@ -727,7 +727,6 @@ const [shiftsUnknown, setShiftsUnknown] = useState(false);
                     step="any"
                     className="shift-mgmt-input"
                     min="0"
-                    placeholder={minorUnitExponent(currency) > 0 ? "e.g. 50.00" : "e.g. 50000"}
                     value={openingBalance}
                     onChange={(e) => setOpeningBalance(e.target.value)}
                     aria-label={l10n.getString('shift-field-opening-balance')}
