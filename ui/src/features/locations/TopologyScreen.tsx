@@ -65,9 +65,11 @@ import { applyTopologyWithDiagram } from './topologyApply';
 function TopologyTabletNotice() {
   return (
     <section className="topology-tablet-unavailable" data-testid="topology-tablet-unavailable">
-      <h2 className="topology-tablet-unavailable__title">
+      {/* This branch is the WHOLE screen on a tablet, so its heading is the page
+          title. It was an <h2> while the screen had no <h1> (round 35). */}
+      <h1 className="topology-tablet-unavailable__title">
         <Localized id="topology-tablet-unavailable-title">Topology authoring needs the desktop</Localized>
-      </h2>
+      </h1>
       <p className="topology-tablet-unavailable__body">
         <Localized id="topology-tablet-unavailable-body">
           Store layout editing runs on the desktop app. This tablet keeps read-only Locations and every checkout surface.
@@ -84,9 +86,9 @@ function TopologyTabletNotice() {
 function TopologyTabletWebManagedNotice() {
   return (
     <section className="topology-tablet-unavailable" data-testid="topology-tablet-web-managed">
-      <h2 className="topology-tablet-unavailable__title">
+      <h1 className="topology-tablet-unavailable__title">
         <Localized id="topology-tablet-web-managed-title">Centralized Topology Authoring</Localized>
-      </h2>
+      </h1>
       <p className="topology-tablet-unavailable__body">
         <Localized id="topology-tablet-web-managed-body">
           Store layout is managed remotely via the Web Dashboard. This tablet runs on the latest synchronized revision.

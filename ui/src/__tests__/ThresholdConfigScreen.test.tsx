@@ -69,6 +69,20 @@ describe('ThresholdConfigScreen', () => {
 
   // ── Rendering ─────────────────────────────────────────────────
 
+  // WHY A DOM ASSERTION AND NOT AN AXE RUN: axe's `page-has-heading-one` cannot
+  // reach a verdict under jsdom (both a document with an <h1> and one without
+  // return `incomplete` / `error-occurred`), measured 2026-10-27. The screen's
+  // title was an <h2> while it had no <h1>; reverting it left this file green.
+  it('exposes the screen title as the page heading', async () => {
+    const { container } = await renderWithProviders(<ThresholdConfigScreen />, inventoryFtl);
+    await waitFor(() => {
+      expect(container.querySelector('.threshold-title')).not.toBeNull();
+    });
+    const h1s = Array.from(container.querySelectorAll('h1'));
+    expect(h1s, 'the threshold screen must carry exactly one level-one heading').toHaveLength(1);
+    expect(h1s[0]!.textContent?.trim()).toBe('Stock Threshold Configuration');
+  });
+
   it('renders the title and add button', async () => {
     await renderWithProviders(<ThresholdConfigScreen />, inventoryFtl);
     await waitFor(() => {

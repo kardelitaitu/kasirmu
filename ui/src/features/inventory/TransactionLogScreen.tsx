@@ -116,7 +116,7 @@ export default function TransactionLogScreen() {
     <div className="log-container">
       <div className="log-header">
         <Localized id="inv-log-title">
-          <h2 className="log-title">Inventory Transaction Log</h2>
+          <h1 className="log-title">Inventory Transaction Log</h1>
         </Localized>
       </div>
 

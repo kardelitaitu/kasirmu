@@ -93,7 +93,7 @@ function mockDefaultSuccess() {
 // ── Render helper ──────────────────────────────────────────────────
 
 async function renderPage() {
-  await renderInAct(<ToastProvider><TransactionLogScreen /></ToastProvider>);
+  return renderInAct(<ToastProvider><TransactionLogScreen /></ToastProvider>);
 }
 
 // ── Tests ──────────────────────────────────────────────────────────
@@ -101,6 +101,25 @@ async function renderPage() {
 describe('TransactionLogScreen', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  // ── Page heading ────────────────────────────────────────────────
+
+  // WHY A DOM ASSERTION AND NOT AN AXE RUN: axe's `page-has-heading-one` cannot
+  // reach a verdict under jsdom (both a document with an <h1> and one without
+  // return `incomplete` / `error-occurred`), measured 2026-10-27. The title was
+  // an <h2> while the screen had no <h1>; reverting it left this file green.
+  it('exposes the screen title as the page heading', async () => {
+    mockListTransactions.mockResolvedValue([]);
+    mockListLocations.mockResolvedValue([]);
+
+    const { container } = await renderPage();
+
+    const h1s = Array.from(container.querySelectorAll('h1'));
+    expect(h1s, 'the transaction log must carry exactly one level-one heading').toHaveLength(1);
+    // @fluent/react is mocked above to a passthrough with getString -> id, so the
+    // Localized child falls through as its own text.
+    expect(h1s[0]!.textContent?.trim()).toBe('Inventory Transaction Log');
   });
 
   // ── Loading state ───────────────────────────────────────────────

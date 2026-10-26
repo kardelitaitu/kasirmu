@@ -155,7 +155,7 @@ export default function ThresholdConfigScreen() {
     <div className="threshold-container">
       <div className="threshold-header">
         <Localized id="inv-threshold-title">
-          <h2 className="threshold-title">Stock Threshold Configuration</h2>
+          <h1 className="threshold-title">Stock Threshold Configuration</h1>
         </Localized>
         <Button variant="primary" size="sm" className="shift-btn shift-btn-primary" onClick={handleOpenAddDialog}>
           <Localized id="inv-threshold-add-btn">
