@@ -3,10 +3,27 @@
 <!-- Merged prior stamp (2026-09-29), kept as plain text — delimiters stripped: Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 186 lines, with a 2026-08-29 drift note already on it that is STILL SUBSTANTIVELY CORRECT even though the tree moved underneath it — which makes it the best evidence yet for the position this campaign has held about currency blocks. · WHAT THE NOTE CLAIMED, AND WHAT IS TRUE NOW. It records that the copy step (`docs/*.md` → `docs/src/guides/`) matches ZERO files since the 40 hand-written root guides were archived to `docs/archived/`, and that `scripts/build-docs.sh|.ps1` step 3 must copy from `docs/archived/` or the guides must be un-archived. The script HAS since changed — line 48 now reads `cp docs/guides/*.md` — so the specific zero-match claim is out of date, and a later auditor trusting the note blindly would be wrong about that detail. BUT THE NOTE'S CONCLUSION IS UNCHANGED AND STILL THE ACTIONABLE PART: the script copies `docs/guides/`, `docs/decisions/`, `docs/decisions/archived/`, `docs/releases/` and `docs/operations/` (lines 46-52), and it does NOT copy `docs/archived/`. The 40 hand-written guides that carry the project's user and developer documentation are therefore still absent from a portal build, which is exactly the gap the note was written to flag. Its remedy — add the `docs/archived/` copy — is still the right one. · THE LESSON, recorded because this file is now a two-for-two on it: a drift note can be WRONG IN DETAIL and RIGHT IN CONCLUSION, which is the most dangerous combination, because a reader checks the detail, finds it stale, and concludes the conclusion is stale too. The correction in this stamp states both explicitly so the next pass does not have to re-derive it. · A SECOND FINDING IN THE SAME NEIGHBOURHOOD, which the plan does not mention and should: this file is itself mis-referenced. `docs/book.toml:6` points readers here as `docs/plans/documentation-portal-plan.md`, and that path does not exist — this file is under `docs/plans/_active/`. The mis-reference was found in round 22 while auditing the portal entry point, was recorded there because `book.toml` is outside a markdown audit, and remains open. A portal whose own configuration cannot find its implementation plan is the kind of small wrongness that costs a newcomer an afternoon. · Left as written: the three-category design, the mdBook choice, the copy-into-src decision, and the placeholder-content acknowledgement, which is honest about the part of the portal that is genuinely a stub. · No docs-auditor stamp existed; this is the first. -->
 # Unified Documentation Portal — Implementation Plan (mdBook)
 
-**Status: PLAN — not yet implemented.** This document captures the agreed design
-for merging the repo's hand-written guides with automated Rust (rustdoc) and
-TypeScript (TypeDoc) API references into a single local static documentation
-portal. It supersedes the ad-hoc `docs/html/` hub approach.
+**Status: IMPLEMENTED AND BUILT — verified 2026-10-27.** The header below said "PLAN — not yet
+implemented" and that is no longer true; the design in this document is what the tree now runs.
+Measured this round: `mdbook build docs` exits **0** and produces **6,177 HTML pages** under
+`docs/book/` (gitignored at `.gitignore:149`), with `docs/src/` carrying all five categories and a
+generated `SUMMARY.md` of **123 entries, 0 of them pointing at a missing file**. The sources the
+build copies from are real: `docs/guides/` holds **21** markdown files across four areas
+(`developer`, `platform`, `product`, `user`), and `docs/archived/` holds only its tombstone README,
+so the 2026-08-29 drift note's copy step is superseded exactly as the 2026-10-11 correction says.
+
+**The build is noisy but not broken.** It emits unclosed-HTML-tag warnings for `<ts>`, `<string>`,
+`<n>`, `<list>` and `<workflow>`. Each was checked in context and every one is an angle-bracket
+PLACEHOLDER inside a backtick code span (`kasir-<ts>.db.gz`, `--tables <list>`, `--batch <n>`),
+which mdBook's HTML parser does not know is literal text. No markup was changed, because changing
+correct prose to silence a parser warning would be the wrong repair. The remaining `Saw   in state
+CommentLessThanSignBangDashDash` warnings come from this repo's `<!- -` pseudo-comment form, which
+exists so stamps cannot nest — also correct as written.
+
+**What this does NOT establish.** That every page renders usefully, that the rustdoc/TypeDoc halves
+were regenerated this round (`mdbook build` rebuilds the book from `docs/src`; it does not re-run
+`cargo doc` or TypeDoc), or that the portal is deployed anywhere. The claim is narrow: the checked-in
+book source builds cleanly with the installed toolchain.
 
 > **⚠️ 2026-08-29 drift note (docs-auditor):** the 40 hand-written guides that
 > lived in `docs/*.md` were archived to `docs/archived/*.md` (commit `d0fe7481`,
