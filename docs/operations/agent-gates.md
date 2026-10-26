@@ -8,9 +8,9 @@ Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · F
 
 ## Which section to read when a gate surprises you
 
-Twelve sections below, added 2026-10-25 across rounds 136-167, each records ONE failure mode a
+Thirteen sections below, added 2026-10-25 across rounds 136-167, each records ONE failure mode a
 gate itself had or could not see. They are not variations on a theme -- the mechanisms differ,
-which is why they are separate -- but the entry point should not require reading all twelve.
+which is why they are separate -- but the entry point should not require reading all thirteen.
 
 | If this happened | Read |
 |---|---|
@@ -26,6 +26,7 @@ which is why they are separate -- but the entry point should not require reading
 | A test suite is green about unopenable code | Green tests on code nobody can open |
 | You are about to build a new measurement | The unrequested-command report already exists |
 | `npm run build` is red but `tsc` and `vitest` are green | The bundle build cannot run in this sandbox |
+| You want to know if a test file is being skipped | `vitest list` vs the files on disk |
 
 > If your situation is not in this table, the answer is probably "run `scripts/check.sh` and read
 > its output" -- 140 gates are declared and several already report what you are about to derive.
@@ -51,6 +52,24 @@ build belongs where `C:\WINDOWS` is readable — CI, or a host without the sandb
 
 Measured 2026-10-27. `ui/dist` is left stale and has no `index.html` after a failed run, so a
 half-written `dist/` is not evidence that anything shipped.
+
+## `vitest list` vs the files on disk — how to compare them correctly
+
+`npx vitest list --filesOnly` prints one path per collected file; `ui/src/**/*.test.ts*` is the
+population. Measured 2026-10-27: **826 collected, 826 on disk, 0 missing, 0 extra** (400
+`.test.ts` + 426 `.test.tsx`). So the UI suite is not silently skipping anything.
+
+**Two ways to get this wrong, both of which produced a wrong answer here:**
+
+1. **Comparing `vitest list` case lines to files by splitting on `' > '`.** Test names contain
+   that string, so the split inflates the file set — it reported **864 collected files** against
+   826 on disk and "38 extra", which is not a real number. Use `--filesOnly`.
+2. **Comparing Windows paths to POSIX paths.** `Path.rglob` yields `src\__tests__\x.test.tsx`
+   and vitest prints `src/__tests__/x.test.tsx`, so a raw set difference reports **every file**
+   as missing. Normalise with `.as_posix()` on both sides before diffing.
+
+A wrong comparison here is worse than no comparison: it either invents a gap nobody has or
+hides a real one. Both failure modes were live in the same ten minutes.
 
 ## The 7 pre-commit steps (source: `.githooks/pre-commit`)
 
