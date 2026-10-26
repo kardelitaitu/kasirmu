@@ -131,6 +131,54 @@ changing a target deserves the question "is the tool the cause" before "is the c
   global rule to a suite, assert that it appears in `passes` on a clean tree, or you are
   adding a comment.
 
+## The other half: a promoted heading can break `heading-order`
+
+`page-has-heading-one` being ungradable is not the whole story, and round 35 shipped a
+fix that was half wrong before the second half caught it. Two screens had no page title:
+`KdsScreen` (no heading at all — its only h3s lived inside the hamburger panel) and the
+topology editor, whose title sat at `topologyHeader.tsx:47` as an **`<h2>`** under a
+comment claiming that kept "h2 → h3 Palette Tools" intact.
+
+That comment was **true**, and that was precisely the defect: the screen had no `<h1>`, so
+the outline *started* at level two and a screen reader had no page name. Promoting the
+`<h2>` to `<h1>` — the obvious fix — turned three previously-green axe cases red:
+
+```
+[a11y] moderate: heading-order — Heading levels should only increase by one
+Expected the HTML found at $('h3') to have no violations
+```
+
+The editor's internal groupings are `<h3>` (tool rack, empty state). With no `<h2>`
+between them and the new `<h1>`, the outline jumps 1 → 3.
+
+**The lesson is not "don't promote headings".** It is that a document tree has an
+invariant — every level must have its parents — and fixing the root without filling the
+gap *moves* the defect rather than removing it. The complete fix is three parts:
+
+| Part | Where | Was | Now |
+|---|---|---|---|
+| Page title | `topologyHeader.tsx` | `<h2>` (sr-only) | `<h1>` (sr-only) |
+| Grouping between them | `NodeTopologyEditor.tsx` | *absent* | `<h2>` (sr-only, localized) |
+| Editor's own groups | `toolRack`, `topologyEmptyState` | `<h3>` | unchanged — correct once 1 and 2 exist |
+
+Two process notes from the same change, both worth carrying:
+
+- **`heading-order` DOES grade under jsdom**, unlike `page-has-heading-one`. So this class
+  of defect is genuinely caught — but only if some suite renders the whole screen. The
+  topology a11y suite renders `NodeTopologyEditor` directly, which is why it saw it; the
+  KDS suite renders only child components, so `KdsScreen`'s new `<h1>` needed its own
+  assertion in `KdsScreen.test.tsx`.
+- **Mutation testing named the fix.** Flipping the new `<h1>`s back to `<h2>` left all 129
+  cases in the two suites green **before** the assertions existed and failed exactly 2
+  **after** — the same test-sees-nothing pattern this document opened with, reproduced in a
+  new place. Removing only the level-two heading then failed 4 cases: the structural
+  assertion (`heading levels may only increase by one: expected 2 to be less than or equal
+  to 1`) plus three axe cases. Redundancy here is deliberate: the structural case names the
+  rule, the axe case proves it.
+- **The new `<h2>` tripped `check-hardcoded-copy`** (`NodeTopologyEditor.tsx: 1 hardcoded
+  string(s), budget 0`) on its first commit. A sr-only heading is still copy; it went
+  through `topology-editor-sections` with an `id` bundle entry in the follow-up commit.
+
 ## Caveats
 
 - **`colorContrastCompliance` grades base tokens, not derived variants.** Its own header
