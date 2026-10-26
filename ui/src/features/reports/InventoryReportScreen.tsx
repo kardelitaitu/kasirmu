@@ -12,6 +12,7 @@ import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
 import { requiredLocalized } from '@/components';
 import { useToast } from '@/components/Toast';
+import { l10nErrorMessage } from '@/utils/app-error';
 import './InventoryReportScreen.css';
 
 /** Inventory report screen — view and export low-stock alerts with configurable threshold, CSV download, and print support. */
@@ -45,13 +46,18 @@ const { sessionToken: rawToken } = useWorkspace();
     getLowStockAlerts(threshold, sessionToken)
       .then(setItems)
       .catch((e) => {
-        setError(e.message ?? String(e));
+        // Was `e.message ?? String(e)`: a raw IPC rejection was rendered inside
+        // the banner, which app-error.ts forbids outright -- typed AppErrors map to
+        // the shared app-error-* copy and anything untyped falls back to this
+        // screen's own message, so backend text never reaches the operator.
+        setError(l10nErrorMessage(e, l10n, 'inventory-report-error-load'));
         // Clear the rows too: they describe the PREVIOUS threshold, so keeping
         // them beside an error attributes old numbers to the new filter.
         setItems([]);
       })
       .finally(() => setLoading(false));
-  }, [threshold, sessionToken]);
+    // `l10n` is a real dependency: the catch resolves the message through it.
+  }, [threshold, sessionToken, l10n]);
 
   const exportCsv = () => {
     const headers = [

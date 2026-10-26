@@ -188,6 +188,10 @@ dashboard-category-clear-aria = Hapus pilihan kategori
 dashboard-back = Kembali
 dashboard-back-aria = Kembali ke beranda
 dashboard-error-load = Gagal memuat data dasbor. Silakan coba lagi.
+sales-report-error-load = Gagal memuat laporan penjualan. Silakan coba lagi.
+inventory-report-error-load = Gagal memuat laporan inventaris. Silakan coba lagi.
+custom-report-error-run = Laporan tidak dapat dijalankan. Silakan coba lagi.
+menu-engineering-error-load = Gagal memuat rekayasa menu. Silakan coba lagi.
 dashboard-refreshing = Menyegarkan…
 dashboard-delta-new = Baru
 

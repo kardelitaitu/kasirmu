@@ -34,6 +34,7 @@ inv-report-csv-header-unit-margin = Unit Margin
 inv-report-csv-header-margin = Margin
 inv-report-csv-header-stock-value = Stock Value
 inv-report-no-results = No results found
+inventory-report-error-load = Failed to load the inventory report. Please try again.
 `;
 
 // ── mock API functions ─────────────────────────────────────────────────
@@ -125,12 +126,15 @@ describe('InventoryReportScreen', () => {
   });
 
   // ── Error state ────────────────────────────────────────────────────
-  it('shows error message on fetch failure', async () => {
+  it('shows the localized error and never the raw rejection', async () => {
     mockGetLowStockAlerts.mockRejectedValue(new Error('Network error'));
     renderScreen();
     await waitFor(() => {
-      expect(screen.getByText('Network error')).toBeTruthy();
+      expect(
+        screen.getByText('Failed to load the inventory report. Please try again.'),
+      ).toBeTruthy();
     });
+    expect(screen.queryByText('Network error')).toBeNull();
   });
 
   // The error banner and the empty state used to render TOGETHER: the catch set
@@ -142,7 +146,9 @@ describe('InventoryReportScreen', () => {
     mockGetLowStockAlerts.mockRejectedValue(new Error('Network error'));
     renderScreen();
     await waitFor(() => {
-      expect(screen.getByText('Network error')).toBeTruthy();
+      expect(
+        screen.getByText('Failed to load the inventory report. Please try again.'),
+      ).toBeTruthy();
     });
     expect(screen.queryByText('No results found')).toBeNull();
   });
@@ -160,7 +166,7 @@ describe('InventoryReportScreen', () => {
     mockGetLowStockAlerts.mockResolvedValue([]);
     renderScreen();
     await waitFor(() => {
-      expect(screen.getByText('Network error')).toBeTruthy();
+      expect(document.querySelector('.inventory-report-error')).not.toBeNull();
     });
 
     fireEvent.change(document.getElementById('threshold-input') as HTMLInputElement, {

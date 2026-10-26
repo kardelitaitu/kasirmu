@@ -28,6 +28,7 @@ import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Spinner } from '@/components/Spinner';
 import { minorUnitExponent } from '@/types/domain';
+import { l10nErrorMessage } from '@/utils/app-error';
 import { buildCsv, downloadCsv } from './csv';
 import './MenuEngineeringScreen.css';
 
@@ -171,12 +172,14 @@ const { sessionToken: rawToken } = useWorkspace();
       })
       .catch((e) => {
         if (seq !== fetchSeqRef.current) return;
-        setError(e.message ?? String(e));
+        // Was `e.message ?? String(e)`: raw backend text rendered verbatim. See
+        // app-error.ts -- a screen must never render err.message directly.
+        setError(l10nErrorMessage(e, l10n, 'menu-engineering-error-load'));
       })
       .finally(() => {
         if (seq === fetchSeqRef.current) setLoading(false);
       });
-  }, [startDate, endDate, sessionToken]);
+  }, [startDate, endDate, sessionToken, l10n]);
 
   useEffect(() => {
     fetchData();

@@ -249,8 +249,9 @@ describe('MenuEngineeringScreen', () => {
     renderWithLocales(<MenuEngineeringScreen />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Network error/)).toBeTruthy();
+      expect(screen.getByText(/Failed to load menu engineering/)).toBeTruthy();
     });
+    expect(screen.queryByText(/Network error/)).toBeNull();
   });
 
   it('shows empty state when no data returned', async () => {

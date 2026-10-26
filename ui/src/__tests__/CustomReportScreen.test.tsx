@@ -51,6 +51,9 @@ vi.mock('@fluent/react', () => ({
           'error-occurred': 'An error occurred',
           'no-results': 'No results found',
           'custom-report-no-columns-match': 'No columns match your search',
+          // The screen resolves a failed run through l10nErrorMessage, so the
+          // fallback key must be here or getString returns the raw id.
+          'custom-report-error-run': 'The report could not be run. Please try again.',
           // Keys the component renders that this hand-maintained map never carried.
           // No case here asserts them, so getString returned the raw id silently.
           // Values copied verbatim from shared-ui/locales (curly holes rewritten to the
@@ -330,8 +333,13 @@ describe('CustomReportScreen', () => {
     render(<CustomReportScreen />);
     fireEvent.click(screen.getByText('Run Report'));
 
+    // The banner must never print the rejection. Typed AppErrors resolve to the
+    // shared app-error-* copy; an untyped Error (what this throws) falls back to
+    // the screen's own key. Asserting the safe copy AND the absence of the raw
+    // text is the only pair that can fail when the leak returns.
     await waitFor(() => {
-      expect(screen.getByText(/Server is down/)).toBeTruthy();
+      expect(screen.getByText(/The report could not be run/)).toBeTruthy();
     });
+    expect(screen.queryByText(/Server is down/)).toBeNull();
   });
 });

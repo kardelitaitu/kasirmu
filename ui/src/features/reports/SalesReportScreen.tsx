@@ -19,6 +19,7 @@ import {
   Cell,
 } from 'recharts';
 import { printSalesReceipt } from '@/api/sales';
+import { l10nErrorMessage } from '@/utils/app-error';
 import {
   getDailyRevenue,
   getWeeklyRevenue,
@@ -214,7 +215,10 @@ const { sessionToken: rawToken } = useWorkspace();
     .catch((e) => {
       // REP-06: Only set error if this is still the current request
       if (currentGeneration === fetchGenerationRef.current) {
-        setError(e.message ?? String(e));
+        // Was `e.message ?? String(e)`, stored raw. The banner shows only the
+        // localized sentence, but the state still carried backend text and a future
+        // render that surfaces it would leak. Resolve it at the boundary instead.
+        setError(l10nErrorMessage(e, l10n, 'sales-report-error-load'));
       }
     })
     .finally(() => {
@@ -223,7 +227,7 @@ const { sessionToken: rawToken } = useWorkspace();
         setLoading(false);
       }
     });
-  }, [view, startDate, endDate, sessionToken, rankByProfit]);
+  }, [view, startDate, endDate, sessionToken, rankByProfit, l10n]);
 
   // P9-3: Fetch previous period data when comparison is enabled
   const calcPrevRange = useCallback(() => {

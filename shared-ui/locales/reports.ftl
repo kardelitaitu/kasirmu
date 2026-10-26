@@ -202,6 +202,10 @@ dashboard-category-clear-aria = Clear category selection
 dashboard-back = Back
 dashboard-back-aria = Back to home
 dashboard-error-load = Failed to load dashboard data. Please try again.
+sales-report-error-load = Failed to load the sales report. Please try again.
+inventory-report-error-load = Failed to load the inventory report. Please try again.
+custom-report-error-run = The report could not be run. Please try again.
+menu-engineering-error-load = Failed to load menu engineering. Please try again.
 dashboard-refreshing = Refreshing…
 dashboard-delta-new = New
 

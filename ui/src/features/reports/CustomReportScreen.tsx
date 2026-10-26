@@ -7,6 +7,7 @@ import { Localized, useLocalization } from '@fluent/react';
 import { buildCustomReport, type CustomReportRequest, type CustomReportResponse } from '@/api/reports';
 import { useStoreTimezone } from '@/hooks/useStoreTimezone';
 import { isoDaysAgo, isoToday } from '@/features/analytics/analytics-data';
+import { l10nErrorMessage } from '@/utils/app-error';
 import { buildCsv, downloadCsv } from './csv';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
@@ -220,11 +221,14 @@ const { sessionToken: rawToken } = useWorkspace();
       const resp = await buildCustomReport(req, sessionToken);
       setResult(resp);
     } catch (e: unknown) {
-      setError((e as Error).message ?? String(e));
+      // Was `(e as Error).message ?? String(e)` -- the raw rejection was printed
+      // straight into the error paragraph. Typed AppErrors map to the shared
+      // app-error-* copy; anything untyped falls back to this screen's own key.
+      setError(l10nErrorMessage(e, l10n, 'custom-report-error-run'));
     } finally {
       setLoading(false);
     }
-  }, [dataset, columnOrder, selectedCols, startDate, endDate, dsDef, sessionToken, page]);
+  }, [dataset, columnOrder, selectedCols, startDate, endDate, dsDef, sessionToken, page, l10n]);
 
   // PAGING RE-RUNS THE REPORT. `page` is in `runReport`'s dependencies and it builds the
   // request's `offset`, but nothing called it when the page changed — Next/Prev only ran
