@@ -16,7 +16,7 @@
 // api/settings.ts keeps setSetting and setSettingScoped as deliberate twins that
 // write DIFFERENT databases for device-global keys — the unscoped command locks
 // the bridge's global identity connection, the scoped one writes the store's own
-// database (see the doc comment at api/settings.ts:299-311). The mock models one
+// database (see the doc comment at api/settings.ts:314-327). The mock models one
 // store, so the two spellings MUST agree; what matters is that whichever one a
 // component calls, the other can read it back.
 //

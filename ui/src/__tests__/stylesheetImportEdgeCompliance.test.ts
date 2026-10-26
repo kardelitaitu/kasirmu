@@ -40,14 +40,17 @@
  *
  * WHAT THIS GUARD DELIBERATELY DOES NOT ASSERT -- a KNOWN UNCOVERED INSTANCE of the
  * same class, named so no later reader mistakes this for a whole-tree proof:
- *   `pos-cart-deduction-override` is painted by
- *   `ui/src/features/restaurant/components/MenuPreferencesMenu.tsx:281` while its only
- *   definition is `ui/src/features/sales/CartPanel.css:202` (the block quoted at
- *   `:200` in the note that recorded it; that sheet is being edited in another session,
- *   so the line is that file's current position, not a stable address), and the
- *   restaurant component has no import edge to it. That use is ANOTHER SESSION'S
- *   UNCOMMITTED EDIT as this guard was written -- asserting on it would take a guard
- *   red over work nobody has landed, which is how a real finding loses all credibility.
+ *   `pos-cart-deduction-override` used to be painted by
+ *   `ui/src/features/restaurant/components/MenuPreferencesMenu.tsx` while its only
+ *   definition was `ui/src/features/sales/CartPanel.css`, and the restaurant component
+ *   had no import edge to it. That use is GONE (measured 2026-10-27, round 40): the
+ *   class is now painted only by `ui/src/features/sales/components/CartPanel.tsx:618`,
+ *   in the same feature whose sheet defines it at `CartPanel.css:247`, and the
+ *   restaurant sidebar carries its own `.restaurant-sidebar-override` in
+ *   `RestaurantMenu.css` instead. So this instance needs no exemption any more -- it
+ *   is kept as the recorded history of why the guard does not assert on it, not as a
+ *   live hole. (The note previously carried line numbers for both files; the CSS one
+ *   was already a moving target when written, and both are gone now.)
  *   So the class has two known instances today: one certified by this file, one
  *   awaiting its author. When it lands, the fix is the same shape as 960d00568 and this
  *   file gains a second family block -- do not "temporarily" assert on it before then.

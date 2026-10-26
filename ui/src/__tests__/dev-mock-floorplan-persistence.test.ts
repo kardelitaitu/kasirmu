@@ -89,7 +89,7 @@ describe('dev-mock floor plan mutations', () => {
 
     const released = await release(occupied!.id);
     expect(released).toBeTruthy();
-    // release_table's contract (api/tables.ts:81) hands back the table; the seed
+    // release_table's contract (api/tables.ts:79-80) hands back the table; the seed
     // documents 'cleaning' as the post-release state a busier then turns over.
     expect(released.status).toBe('cleaning');
 

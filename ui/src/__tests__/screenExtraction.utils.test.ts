@@ -329,7 +329,7 @@ describe('resolveComposedClassNames', () => {
     expect(got.has('product-card--ghost')).toBe(false);
   });
 
-  it('shape 2 credits the branch of a conditional held in a template local (StaffLoginScreen.tsx:345 applied at :352)', () => {
+  it('shape 2 credits the branch of a conditional held in a template local (StaffLoginScreen.tsx:107 applied at :114/:121)', () => {
     const tsx = src([
       'export function Logo({ compact }) {',
       '  const logoClass = ' + B + 'staff-login-logo' + D + '{compact ? " staff-login-logo--small" : ""}' + B + ';',

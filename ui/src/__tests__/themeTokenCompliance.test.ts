@@ -1170,7 +1170,7 @@ function familyRefsInValue(value: string): string[] {
  * declared. Nothing asked the other direction: a family that IS declared and is
  * named by no stack in the app ships its woff2 to every customer and paints
  * nothing. That is not hypothetical weight -- one variable subset family costs
- * roughly 150 KB, `scripts/check-bundle.mjs:102-103` filters to `.js` and `.css`
+ * roughly 150 KB, `scripts/check-bundle.mjs:97-98` filters to `.js` and `.css`
  * and cannot see a font file at all (recorded in this plan's out-of-fence notes),
  * and an @import is one line to add in a commit whose subject is something else.
  *

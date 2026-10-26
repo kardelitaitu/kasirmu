@@ -390,7 +390,7 @@ describe('DataManagement — Backup with NO session token (known hazard, not a g
 // ── TABLET: never ask for a name the tablet does not register ──────────────
 //
 // `get_backup_status` / `get_backup_status_scoped` are DESKTOP-registered only
-// (apps/desktop-tauri/src/commands/data.rs:33/:133, lib.rs:964-965). apps/mobile-tauri
+// (apps/desktop-tauri/src/commands/data.rs:36-37/:133, lib.rs:964-965). apps/mobile-tauri
 // defines and registers neither, so on the tablet shell the invoke rejects with an
 // unknown-command error, the catch fires a spurious failure toast, and the panel claims
 // a failed read on every mount. These cases fail if that call ever comes back.
