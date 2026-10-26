@@ -2278,6 +2278,27 @@
           "Status fallbacks self-test"
         ]
       }
+    },
+    {
+      "id": "ui-coverage-floors",
+      "label": "UI coverage floors",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "ui coverage floors",
+          "ui coverage floors self-test"
+        ]
+      },
+      "self_test": "python3 scripts/verify-ui-coverage-floors.py --self-test",
+      "_note": "Added 2026-10-28 (round 64). ui/vite.config.ts has emitted\ncoverage/ui/coverage-summary.json for months and NOTHING consulted it: a grep for a\nconsumer returned only the two scripts that GENERATE the report. That is the exact shape\nscripts/coverage-floors.json already names as the defect it was created to close --\n\"A report nobody reads cannot fire.\"\n\nThe target numbers that did exist were stale in the safe direction.\ndocs/records/benchmarks/coverage-report-2026-07-20.md set Lines >= 50%, Branches >= 40%,\nFunctions >= 50%. Nothing enforced them, and the code now sits at 85.65 / 75.77 / 79.29 --\na threshold the code clears by 35 points is a comment, not a threshold. This gate replaces\nthem with a ratchet (each floor 2 points below the measured value), the same rule the Rust\nfloors use, so a regression fires and nobody is asked to fund work they have not agreed to.\n\nSTABILITY WAS MEASURED BEFORE THE FLOOR WAS CHOSEN, not assumed: two consecutive full runs\non 2026-10-28 produced identical percentages in all four metrics (delta 0.00), so the report\nis deterministic and a two-point margin cannot fire on run-to-run noise.\n\nA SEPARATE CHECKER, not a mode of verify-coverage-floors.py: that one reads a cargo-llvm-cov\nreport keyed by CRATE and grades line coverage only (rustc does not report statements /\nfunctions / branches this way); this reads vitest v8 coverage-summary.json, keyed by metric\nacross four dimensions. Same reasoning that keeps check-client-type-drift.py separate from\ncheck-api-surface.py.\n\nFALSIFIED: dropping branches to 70.0 in the real summary json reddens it with exit 1 and\nnames exactly that one metric (measured this round); restoring returns exit 0. The four\nself-test cases include an exact-floor pass (the floor is inclusive) and an absent metric,\nwhich must REFUSE rather than grade clean -- an absent number must never read as a passing\none.\n\nWHAT IT DOES NOT CLAIM: it grades the AGGREGATE, not per-file coverage, so one feature could\nfall to zero while the total holds. perFile floors would need a measured per-file baseline\nnobody has agreed to fund. It also cannot see e2e-only flows (login, payments, shifts) that\nPlaywright covers and vitest does not.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "ui-test",
+        "steps": [
+          "UI coverage floors",
+          "UI coverage floors self-test"
+        ]
+      }
     }
   ]
 }

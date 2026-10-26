@@ -741,6 +741,19 @@ jobs:
         run: python3 scripts/verify-exhaustive-deps.py --self-test
       - name: Run Vitest
         run: cd ui && npm test
+      # The suite above produces no coverage, so the floors need their own run.
+      # vite.config.ts has emitted coverage/ui/coverage-summary.json for months and
+      # nothing read it; the target numbers in the 2026-07-20 benchmark doc (Lines
+      # >= 50%, Branches >= 40%) were never enforced and the code now clears them by
+      # 35 points. This replaces them with a ratchet 2 points below the 2026-10-28
+      # measurement, after confirming two consecutive runs agree to 0.00.
+      # Gate: scripts/gates.json -> "ui-coverage-floors".
+      - name: UI coverage report
+        run: cd ui && npm run test:coverage
+      - name: UI coverage floors
+        run: python3 scripts/verify-ui-coverage-floors.py
+      - name: UI coverage floors self-test
+        run: python3 scripts/verify-ui-coverage-floors.py --self-test
       # GitHub runners are always UTC, so the suite above can never catch a
       # host-timezone dependency. This re-runs the analytics anchor test under
       # four zones and fails if results diverge -- the only CI coverage for the

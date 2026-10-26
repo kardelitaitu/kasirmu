@@ -975,6 +975,27 @@ if command -v npm &>/dev/null && [ -f ui/package-lock.json ]; then
     step "ui lint" "cd ui; npm run lint" npm run lint
     step "ui typecheck" "cd ui; npm run typecheck" npm run typecheck
     step "ui test" "cd ui; npm run test" npm run test
+# ── UI coverage floors ───────────────────────────────────────────────────
+#
+# Same two-stage shape as the Rust floors above, for the same reason:
+# `vitest run --coverage` is expensive and needs the whole suite green, so a
+# failed run is reported as "could not measure" rather than "coverage
+# regressed". The GRADING step is cheap, offline and unit-tested.
+#
+# Why this exists at all: vite.config.ts has been writing
+# coverage/ui/coverage-summary.json for months and NOTHING read it -- a grep for
+# a consumer returned only the two scripts that generate it. The target numbers
+# in docs/records/benchmarks/coverage-report-2026-07-20.md (Lines >= 50%,
+# Branches >= 40%) were never enforced and the code now clears them by 35
+# points. Replaced by a ratchet 2 points below the 2026-10-28 measurement.
+#
+# Gate: scripts/gates.json -> "ui-coverage-floors".
+if ( cd ui && npm run test:coverage >/dev/null 2>&1 ); then
+    step "ui coverage floors" "scripts/coverage-floors.json ui_floors (ratchet)" python3 scripts/verify-ui-coverage-floors.py
+    step "ui coverage floors self-test" "python3 scripts/verify-ui-coverage-floors.py --self-test" python3 scripts/verify-ui-coverage-floors.py --self-test
+else
+    echo -e "${YELLOW}⚠ vitest --coverage could not complete (a failing test aborts it) — UI floors NOT checked${NC}"
+fi
     # R36-01: the suite above runs in this machine's zone, so a host-local date
     # anchor can pass here and fail on a UTC CI runner. Re-runs the analytics
     # anchor test under four zones and requires identical results.
