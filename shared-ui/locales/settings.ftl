@@ -264,8 +264,6 @@ settings-sidebar-pinned-group-aria = Pinned sections
 settings-sidebar-resize-aria = Resize sidebar
 settings-nav-pin-aria = Pin { $name }
 settings-nav-unpin-aria = Unpin { $name }
-settings-nav-pin-title = Pin
-settings-nav-unpin-title = Unpin
 settings-sidebar-no-results = No matching sections
 settings-sidebar-clear-results = Clear search
 
@@ -299,8 +297,6 @@ settings-load-partial = Some settings could not be loaded. Try again.
 settings-section-store = Store
 settings-section-currency = Currency
 settings-currency-loading = Loading currencies…
-settings-section-display = Display
-settings-section-receipt = Receipt
 settings-field-store-name = Store name
 # Shown under the store-name input when it is left empty on blur. Mirrors the
 # `required` attribute the input already carries.
@@ -309,25 +305,8 @@ settings-field-address = Address
 settings-field-branch = Branch
 settings-field-tax-id = Tax / VAT ID
 settings-field-default-currency = Default currency
-settings-field-decimal-separator = Decimal separator
-settings-field-paper-width = Paper width
-settings-field-footer = Receipt footer
 
 # ── Display sub-section fields ──
-settings-field-card-size = Menu Card Size
-settings-field-font-size = Font Size
-settings-card-size-decrease-aria =
-    .aria-label = Decrease card size
-settings-card-size-increase-aria =
-    .aria-label = Increase card size
-settings-font-size-decrease-aria =
-    .aria-label = Decrease font size
-settings-font-size-increase-aria =
-    .aria-label = Increase font size
-settings-field-font-smoothing = Font Smoothing
-settings-toggle-show-currency = Show currency symbol on amounts
-settings-toggle-show-tax = Show tax line on receipts
-settings-toggle-show-table-number = Show table number on cart and receipts
 settings-btn-save = Save
 settings-close-unsaved-title = Leave with unsaved changes?
 settings-close-unsaved-msg = Your settings changes have not been saved. Closing now discards them.
@@ -384,8 +363,6 @@ settings-tax-id-placeholder =
     .placeholder = 12-3456789
 settings-branch-placeholder =
     .placeholder = Main Branch
-settings-footer-placeholder =
-    .placeholder = Thank you for shopping!
 settings-server-url-placeholder =
     .placeholder = https://api.example.com
 settings-api-key-placeholder =
@@ -435,15 +412,8 @@ settings-sync-pull = Pull from Server
 settings-sync-pulling = Pulling…
 settings-sync-pull-empty = Server returned empty snapshot — nothing to pull
 settings-sync-pull-result = Last pull: { $products } products, { $tax_rates } tax rates, { $users } users
-settings-font-smoothing-antialiased = Antialiased (crisp)
-settings-font-smoothing-subpixel = Subpixel (smooth)
 
 # ── System & License ──
-settings-system-license-header = System & License Ownership
-settings-software-edition = Software Edition
-settings-license-type = License Type
-settings-copyright-notice = Copyright Notice
-settings-commercial-contact = Commercial Contact
 settings-app-version = kasir.mu Enterprise v{ $version }
 
 # ── License Info Section ──
@@ -462,7 +432,6 @@ settings-license-server-tier = Server Tier
 settings-license-server-active = Server Active
 settings-license-server-expires = Server Expires
 settings-license-server-results = License Check Results
-settings-license-type-value = Proprietary
 settings-license-unlimited = Unlimited
 settings-license-yes = Yes
 settings-license-no = No
@@ -507,7 +476,6 @@ settings-license-resume-failed = Failed to resume subscription
 settings-license-reauth-banner-title = Subscription Renewal Check Required
 settings-license-reauth-banner-desc = Your subscription expires in { $days } days. Connect to the internet to re-authenticate with the license server.
 settings-license-reauth-action = Verify Online Now
-settings-copyright-notice-value = kasir.mu © 2025–2026. All rights reserved.
 
 # Appearance / Brand settings
 appearance-primary-colour = Primary Colour
@@ -562,11 +530,6 @@ settings-appearance-logo-desktop-only = Choosing a logo needs the desktop app. C
 appearance-save-failed = Failed to save appearance settings
 
 # Settings option labels
-settings-decimal-separator-dot = 1.00 (dot)
-settings-decimal-separator-comma = 1,00 (comma)
-settings-decimal-separator-none = 1 (none)
-settings-paper-width-standard = 80 mm (standard)
-settings-paper-width-narrow = 58 mm (narrow)
 
 # Category Management
 category-delete-aria =
@@ -757,11 +720,6 @@ data-mgmt-password-show-aria = Show password
 data-mgmt-password-hide-aria = Hide password
 
 # ── Settings screen ──
-settings-margins-heading = Paper Margins (mm)
-settings-margin-top = Top
-settings-margin-bottom = Bottom
-settings-margin-left = Left
-settings-margin-right = Right
 
 # Settings receipt preview
 
@@ -787,33 +745,15 @@ settings-margin-right = Right
 settings-sync-token-hint = Stored securely in the database — never in localStorage
 settings-sync-last = Last sync
 settings-sync-pending = Pending changes
-settings-sync-toast-success = Sync completed successfully
-settings-sync-toast-fail = Sync failed — check server URL and token
-settings-sync-toast-test-success = Connection test passed
-settings-sync-toast-test-fail = Could not reach server
 settings-sync-confirm-overwrite = Overwrite local data with the server snapshot?
 settings-sync-confirm-pull-title = Pull from server?
 settings-sync-pull-toast-success = Pulled { $products } products, { $tax_rates } tax rates, { $users } users from server
-settings-sync-pull-toast-empty = Server snapshot was empty — nothing to pull
-settings-sync-pull-toast-fail = Pull failed — check server URL and token
 settings-field-language = Language
 
 # ── Field validation ──
 settings-tax-id-pattern-hint = Letters, numbers, dashes, dots, and slashes only, max 20 characters
 
 # ── Updates ──
-settings-updates-heading = Updates
-settings-current-version = Current Version
-settings-check-for-updates = Check for Updates
-settings-checking-for-updates = Checking…
-settings-up-to-date = ✓ You're up to date
-settings-update-available = { $version } is available
-settings-install-update = Install Now
-settings-installing-update = Installing…
-settings-update-status-label = Status
-settings-update-not-checked = Not checked
-settings-update-check-error = Update check failed
-settings-update-retry = Retry
 
 # ── Email Report Settings ──
 settings-section-email = Email Reports

@@ -25,7 +25,6 @@ staff-add-button = Add Staff
 staff-empty = No staff members yet.
 staff-empty-cta = Add your first staff member
 staff-col-name = Name
-staff-col-username = Username
 staff-col-role = Role
 staff-col-workspace = Workspace
 staff-col-phone = Phone

@@ -120,7 +120,6 @@ inv-transit-transfer-label = Transfer #
 inv-transit-reversed-toast = Transfer stok berhasil dibatalkan
 inv-transit-error-load = Gagal memuat stok transit
 inv-transit-error-reverse = Gagal membatalkan transfer
-inv-transit-unknown = Tidak diketahui
 
 # Transaction Log
 inv-log-title = Log Transaksi Stok

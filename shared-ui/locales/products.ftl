@@ -415,73 +415,6 @@ product-lookup-uncategorised = Uncategorised
 product-lookup-error-load = Failed to load products
 
 # Product Management
-product-mgmt-title = Products
-product-mgmt-add = Add Product
-product-mgmt-empty = No products yet.
-product-mgmt-empty-cta = Add your first product
-product-mgmt-col-sku = SKU
-product-mgmt-col-name = Name
-product-mgmt-col-category = Category
-product-mgmt-col-price = Price
-product-mgmt-col-barcode = Barcode
-product-mgmt-col-stock = Stock
-product-mgmt-stock-in = In stock
-product-mgmt-stock-out = Out of stock
-product-mgmt-edit = Edit
-product-mgmt-edit-aria = Edit { $name }
-product-mgmt-delete = Delete
-product-mgmt-delete-aria = Delete { $name }
-product-mgmt-delete-confirm-title = Delete product?
-product-mgmt-delete-confirm-message = Delete { $name } ({ $sku })? This cannot be undone.
-product-mgmt-delete-confirm-btn = Delete
-product-mgmt-error-delete = Failed to delete product
-product-mgmt-error-load = Failed to load products
-product-mgmt-error-retry = Retry
-product-mgmt-alert-error = Could not load stock alerts. Showing last known count.
-product-mgmt-alert-error-retry = Reload alerts
-product-mgmt-error-invalid-stock = Stock must be a whole, non-negative number
-product-mgmt-modal-add-title = Add Product
-product-mgmt-modal-edit-title = Edit Product
-product-mgmt-modal-close = Close
-product-mgmt-field-name-required = Name *
-product-mgmt-field-sku-required = SKU *
-product-mgmt-field-price = Price
-product-mgmt-field-currency = Currency
-product-mgmt-field-category = Category
-product-mgmt-field-barcode = Barcode
-product-mgmt-field-tax-rates = Tax Rates
-product-mgmt-field-stock = Initial stock
-product-mgmt-btn-cancel = Cancel
-product-mgmt-btn-create = Create
-product-mgmt-btn-update = Update
-product-mgmt-error-save = Failed to save product
-product-mgmt-error-invalid-price = Price must be a valid non-negative number
-product-mgmt-table-aria = Product catalog
-product-mgmt-actions-aria =
-    .aria-label = Actions
-product-mgmt-variants = Variants
-product-mgmt-variants-aria = Variants for { $name }
-product-mgmt-modal-aria = { $mode ->
-        [add] Add product
-       *[edit] Edit product
-    }
-product-mgmt-modal-close-aria =
-    .aria-label = Close
-product-mgmt-sku-placeholder =
-    .placeholder = e.g. LATTE
-product-mgmt-name-placeholder =
-    .placeholder = e.g. Caffè Latte
-product-mgmt-price-placeholder =
-    .placeholder = 450
-product-mgmt-barcode-placeholder =
-    .placeholder = 4901234567890
-product-mgmt-stock-placeholder =
-    .placeholder = 0
-product-mgmt-no-category = — No category —
-product-mgmt-col-type = Type
-product-mgmt-field-type = Type
-product-mgmt-alerts-title = Stock Alerts
-product-mgmt-alert-close = Close
 
 # Category Management
 categories-title = Categories
@@ -529,16 +462,8 @@ categories-icon-generic-3 = Generic ···
 category-mgmt-edit-aria = Edit category { $name }
 
 # Product type labels
-product-type-retail = Retail
-product-type-restaurant = Restaurant
-product-type-service = Service
 
 # Stock Alert Panel
-product-mgmt-alert-count =
-    { $count ->
-        [one] Open stock alerts ({ $count } active)
-       *[other] Open stock alerts ({ $count } active)
-    }
 
 # ── Restaurant POS Portrait Cart ──
 restaurant-cart-view-order = View Order

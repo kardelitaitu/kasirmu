@@ -99,8 +99,6 @@ settings-sidebar-pinned-group-aria = Bagian yang disematkan
 settings-sidebar-resize-aria = Ubah ukuran bilah sisi
 settings-nav-pin-aria = Sematkan { $name }
 settings-nav-unpin-aria = Lepas sematan { $name }
-settings-nav-pin-title = Sematkan
-settings-nav-unpin-title = Lepas sematan
 settings-sidebar-no-results = Tidak ada bagian yang cocok
 settings-sidebar-clear-results = Hapus pencarian
 
@@ -285,8 +283,6 @@ settings-load-partial = Sebagian pengaturan gagal dimuat. Coba lagi.
 settings-section-store = Toko
 settings-section-currency = Mata Uang
 settings-currency-loading = Memuat mata uang…
-settings-section-display = Tampilan
-settings-section-receipt = Nota
 settings-field-store-name = Nama toko
 # Shown under the store-name input when it is left empty on blur.
 settings-store-name-required = Nama toko wajib diisi
@@ -294,25 +290,8 @@ settings-field-address = Alamat
 settings-field-branch = Cabang
 settings-field-tax-id = NPWP
 settings-field-default-currency = Mata uang default
-settings-field-decimal-separator = Pemisah desimal
-settings-field-paper-width = Lebar kertas
-settings-field-footer = Kaki nota
 
 # ── Tampilan ──
-settings-field-card-size = Ukuran Kartu Menu
-settings-field-font-size = Ukuran Font
-settings-card-size-decrease-aria =
-    .aria-label = Kurangi ukuran kartu
-settings-card-size-increase-aria =
-    .aria-label = Tambah ukuran kartu
-settings-font-size-decrease-aria =
-    .aria-label = Kurangi ukuran font
-settings-font-size-increase-aria =
-    .aria-label = Tambah ukuran font
-settings-field-font-smoothing = Penghalusan Font
-settings-toggle-show-currency = Tampilkan simbol mata uang
-settings-toggle-show-tax = Tampilkan baris pajak di nota
-settings-toggle-show-table-number = Tampilkan nomor meja di keranjang dan nota
 settings-btn-save = Simpan
 settings-close-unsaved-title = Keluar dengan perubahan yang belum disimpan?
 settings-close-unsaved-msg = Perubahan pengaturan Anda belum disimpan. Menutup sekarang akan membuangnya.
@@ -369,8 +348,6 @@ settings-tax-id-placeholder =
     .placeholder = 12-345-678-9-000
 settings-branch-placeholder =
     .placeholder = Cabang Utama
-settings-footer-placeholder =
-    .placeholder = Terima kasih telah berbelanja!
 settings-server-url-placeholder =
     .placeholder = https://api.example.com
 settings-api-key-placeholder =
@@ -465,11 +442,6 @@ appearance-save-aria =
 appearance-save-success = Pengaturan tampilan berhasil disimpan
 settings-appearance-logo-desktop-only = Memilih logo memerlukan aplikasi desktop. Warna dan nama toko masih dapat diubah di sini.
 appearance-save-failed = Gagal menyimpan pengaturan tampilan
-settings-decimal-separator-dot = 1,00 (titik)
-settings-decimal-separator-comma = 1,00 (koma)
-settings-decimal-separator-none = 1 (tanpa)
-settings-paper-width-narrow = 58 mm (sempit)
-settings-paper-width-standard = 80 mm (standar)
 
 # ── Data Management ──
 data-mgmt-title = Manajemen Data
@@ -647,11 +619,6 @@ category-name-fallback = (tanpa nama)
 
 # ── General Settings ──
 # ── Receipt Settings ──
-settings-margins-heading = Margin Kertas (mm)
-settings-margin-top = Atas
-settings-margin-bottom = Bawah
-settings-margin-left = Kiri
-settings-margin-right = Kanan
 
 # ── Receipt Preview ──
 
@@ -678,27 +645,14 @@ settings-margin-right = Kanan
 # ── Tender Presets ──
 
 # ── Cloud Sync ──
-settings-font-smoothing-antialiased = Antialiased (tajam)
-settings-font-smoothing-subpixel = Subpixel (halus)
 settings-sync-token-hint = Disimpan dengan aman di database — tidak pernah di localStorage
 settings-sync-last = Sinkronisasi terakhir
 settings-sync-pending = Perubahan tertunda
 settings-sync-confirm-overwrite = Timpa data lokal dengan snapshot server?
 settings-sync-confirm-pull-title = Tarik dari server?
-settings-sync-toast-success = Sinkronisasi berhasil
-settings-sync-toast-fail = Sinkronisasi gagal — periksa URL server dan token
-settings-sync-toast-test-success = Uji koneksi berhasil
-settings-sync-toast-test-fail = Tidak dapat menjangkau server
 settings-sync-pull-toast-success = { $products } produk, { $tax_rates } tarif pajak, { $users } pengguna ditarik dari server
-settings-sync-pull-toast-empty = Snapshot server kosong — tidak ada yang ditarik
-settings-sync-pull-toast-fail = Penarikan gagal — periksa URL server dan token
 
 # ── System & License ──
-settings-system-license-header = Sistem & Kepemilikan Lisensi
-settings-software-edition = Edisi Perangkat Lunak
-settings-license-type = Tipe Lisensi
-settings-copyright-notice = Pemberitahuan Hak Cipta
-settings-commercial-contact = Kontak Komersial
 settings-app-version = kasir.mu Enterprise v{ $version }
 
 # ── License Info Section ──
@@ -717,7 +671,6 @@ settings-license-server-tier = Tingkat Server
 settings-license-server-active = Server Aktif
 settings-license-server-expires = Server Kedaluwarsa
 settings-license-server-results = Hasil Pemeriksaan Lisensi
-settings-license-type-value = Proprietary
 settings-license-unlimited = Tidak Terbatas
 settings-license-yes = Ya
 settings-license-no = Tidak
@@ -762,23 +715,10 @@ settings-license-resume-failed = Gagal melanjutkan langganan
 settings-license-reauth-banner-title = Pemeriksaan Perpanjangan Langganan Diperlukan
 settings-license-reauth-banner-desc = Langganan Anda berakhir dalam { $days } hari. Hubungkan ke internet untuk melakukan autentikasi ulang dengan server lisensi.
 settings-license-reauth-action = Verifikasi Online Sekarang
-settings-copyright-notice-value = kasir.mu © 2025–2026. Seluruh hak cipta dilindungi.
 
 # ── Toast messages ──
 
 # ── Updates ──
-settings-updates-heading = Pembaruan
-settings-current-version = Versi Saat Ini
-settings-check-for-updates = Periksa Pembaruan
-settings-checking-for-updates = Memeriksa…
-settings-up-to-date = ✓ Anda telah menggunakan versi terbaru
-settings-update-available = { $version } tersedia
-settings-install-update = Pasang Sekarang
-settings-installing-update = Memasang…
-settings-update-status-label = Status
-settings-update-not-checked = Belum diperiksa
-settings-update-check-error = Pemeriksaan pembaruan gagal
-settings-update-retry = Coba Lagi
 settings-field-language = Bahasa
 
 # ── Field validation ──

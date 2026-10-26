@@ -17,7 +17,6 @@ staff-add-button = Tambah Staf
 staff-empty = Belum ada anggota staf.
 staff-empty-cta = Tambah anggota staf pertama
 staff-col-name = Nama
-staff-col-username = Nama Pengguna
 staff-col-role = Peran
 staff-col-workspace = Ruang Kerja
 staff-col-phone = Telepon

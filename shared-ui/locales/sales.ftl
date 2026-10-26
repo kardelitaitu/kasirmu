@@ -1168,7 +1168,6 @@ pos-promotions-applied = Promotions applied: { $name }
 pos-promotions-toggle-aria = Toggle promotion { $name }
 pos-promotions-selected-count = { $count } selected
 pos-promotions-apply-selected = Apply promotions
-pos-promotions-apply-aria = Apply promotion { $name }
 pos-promotions-unavailable-aria = Promotion { $name } is not applicable
 
 # ── Product image editor (spec 0046b §3.2–3.3) ──
@@ -1203,7 +1202,6 @@ pos-cart-customer-label = Customer
 pos-cart-customer-placeholder = Name (optional)...
 pos-cart-customer-aria = Customer name (optional)
 pos-cart-new-tab = New Tab
-pos-cart-new-tab-title = Clear active cart to start a new tab
 pos-cart-guest-count-label = Guests
 pos-cart-order-type-dine-in = Dine In
 pos-cart-order-type-takeaway = Takeaway

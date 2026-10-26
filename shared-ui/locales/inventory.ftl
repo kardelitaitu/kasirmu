@@ -106,7 +106,6 @@ inv-transit-transfer-label = Transfer #
 inv-transit-reversed-toast = Stock transfer reversed successfully
 inv-transit-error-load = Failed to load transit stock
 inv-transit-error-reverse = Failed to reverse transfer
-inv-transit-unknown = Unknown
 
 # Transaction Log
 inv-log-title = Inventory Transaction Log

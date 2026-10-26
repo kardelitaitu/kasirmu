@@ -404,73 +404,6 @@ product-lookup-uncategorised = Tanpa Kategori
 product-lookup-error-load = Gagal memuat produk
 
 # POS Cart (remaining)
-product-mgmt-title = Produk
-product-mgmt-add = Tambah Produk
-product-mgmt-empty = Belum ada produk.
-product-mgmt-empty-cta = Tambah produk pertama
-product-mgmt-col-sku = SKU
-product-mgmt-col-name = Nama
-product-mgmt-col-category = Kategori
-product-mgmt-col-price = Harga
-product-mgmt-col-barcode = Barcode
-product-mgmt-col-stock = Stok
-product-mgmt-stock-in = Tersedia
-product-mgmt-stock-out = Stok Habis
-product-mgmt-edit = Ubah
-product-mgmt-edit-aria = Ubah { $name }
-product-mgmt-delete = Hapus
-product-mgmt-delete-aria = Hapus { $name }
-product-mgmt-delete-confirm-title = Hapus produk?
-product-mgmt-delete-confirm-message = Hapus { $name } ({ $sku })? Tindakan ini tidak dapat dibatalkan.
-product-mgmt-delete-confirm-btn = Hapus
-product-mgmt-error-delete = Gagal menghapus produk
-product-mgmt-error-load = Gagal memuat produk
-product-mgmt-error-retry = Coba lagi
-product-mgmt-alert-error = Tidak dapat memuat peringatan stok. Menampilkan jumlah terakhir.
-product-mgmt-alert-error-retry = Muat ulang peringatan
-product-mgmt-error-invalid-stock = Stok harus berupa bilangan bulat non-negatif
-product-mgmt-modal-add-title = Tambah Produk
-product-mgmt-modal-edit-title = Ubah Produk
-product-mgmt-modal-close = Tutup
-product-mgmt-field-name-required = Nama *
-product-mgmt-field-sku-required = SKU *
-product-mgmt-field-price = Harga
-product-mgmt-field-currency = Mata Uang
-product-mgmt-field-category = Kategori
-product-mgmt-field-barcode = Barcode
-product-mgmt-field-tax-rates = Tarif Pajak
-product-mgmt-field-stock = Stok awal
-product-mgmt-btn-cancel = Batal
-product-mgmt-btn-create = Buat
-product-mgmt-btn-update = Perbarui
-product-mgmt-error-save = Gagal menyimpan produk
-product-mgmt-error-invalid-price = Harga harus berupa angka non-negatif yang valid
-product-mgmt-table-aria = Katalog produk
-product-mgmt-actions-aria =
-    .aria-label = Tindakan
-product-mgmt-variants = Varian
-product-mgmt-variants-aria = Varian untuk { $name }
-product-mgmt-modal-aria = { $mode ->
-        [add] Tambah produk
-       *[edit] Ubah produk
-    }
-product-mgmt-modal-close-aria =
-    .aria-label = Tutup
-product-mgmt-sku-placeholder =
-    .placeholder = mis. LATTE
-product-mgmt-name-placeholder =
-    .placeholder = mis. Caffè Latte
-product-mgmt-price-placeholder =
-    .placeholder = 450
-product-mgmt-barcode-placeholder =
-    .placeholder = 4901234567890
-product-mgmt-stock-placeholder =
-    .placeholder = 0
-product-mgmt-no-category = — Tanpa Kategori —
-product-mgmt-col-type = Tipe
-product-mgmt-field-type = Tipe
-product-mgmt-alerts-title = Notifikasi Stok
-product-mgmt-alert-close = Tutup
 
 # ── Category Management ──
 categories-title = Kategori
@@ -516,16 +449,8 @@ categories-icon-generic-3 = Generik ···
 category-mgmt-edit-aria = Edit kategori { $name }
 
 # Product type labels
-product-type-retail = Ritel
-product-type-restaurant = Restoran
-product-type-service = Layanan
 
 # Stock Alert Panel
-product-mgmt-alert-count =
-    { $count ->
-        [one] Buka peringatan stok ({ $count } aktif)
-       *[other] Buka peringatan stok ({ $count } aktif)
-    }
 
 # ── Customer Management (remaining) ──
 

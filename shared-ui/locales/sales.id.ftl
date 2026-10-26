@@ -1129,7 +1129,6 @@ pos-promotions-applied = Promosi diterapkan: { $name }
 pos-promotions-toggle-aria = Aktif/nonaktifkan promosi { $name }
 pos-promotions-selected-count = { $count } dipilih
 pos-promotions-apply-selected = Terapkan promosi
-pos-promotions-apply-aria = Terapkan promosi { $name }
 pos-promotions-unavailable-aria = Promosi { $name } tidak dapat diterapkan
 
 # ── Product image editor (spec 0046b §3.2–3.3) ──
@@ -1164,7 +1163,6 @@ pos-cart-customer-label = Pelanggan
 pos-cart-customer-placeholder = Nama (opsional)...
 pos-cart-customer-aria = Nama pelanggan (opsional)
 pos-cart-new-tab = Tagihan Baru
-pos-cart-new-tab-title = Bersihkan keranjang untuk memulai tagihan baru
 pos-cart-guest-count-label = Tamu
 pos-cart-order-type-dine-in = Makan di Tempat
 pos-cart-order-type-takeaway = Bawa Pulang

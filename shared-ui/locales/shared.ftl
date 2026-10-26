@@ -393,19 +393,10 @@ workspace-card-unpin-aria = Unpin { $name }
 # page registering layout="landscape-locked"; keep the child text the id string
 # resolves to in step with the fallback in AppShell/TabletAppShell.
 layout-rotate-to-landscape = Rotate your device to landscape for the full layout.
-layout-rotate-to-landscape-aria =
-    .aria-label = Rotate to landscape
 
 # Status Bar
-status-bar-connected = Backend connected
-status-bar-disconnected = Backend disconnected
 # Sync connection status
-status-bar-sync-connected = Cloud sync connected
-status-bar-sync-disconnected = Cloud sync disconnected
-status-bar-sync-checking = Checking cloud sync connection…
 # License status (login screen)
-staff-login-license-active = License active
-staff-login-license-inactive = License inactive
 # P1-3: Tooltip for conflict count badge in StatusBar
 statusbar-conflict-count = { $count } sync conflict(s) resolved
 # SYNC-12: StatusBar visible labels + ARIA (localized at the render boundary)
@@ -598,7 +589,6 @@ barcode-input-aria = Barcode input
 submit-barcode-aria = Submit barcode
 select-course-aria = Select course
 revert-changes-aria = Revert changes
-add-sample-line-aria = Add a sample line
 previous-page-aria = Previous page
 next-page-aria = Next page
 results-per-page-aria = Results per page
@@ -611,10 +601,6 @@ refund-line-items-aria = Refund line items
 orders-aria = Orders
 back-to-orders-aria = Back to orders list
 order-line-items-aria = Order line items
-decrease-card-size-aria = Decrease card size
-increase-card-size-aria = Increase card size
-decrease-font-size-aria = Decrease font size
-increase-font-size-aria = Increase font size
 primary-colour-picker-aria = Primary colour picker
 colour-hex-aria = Colour hex value
 reset-colour-aria = Reset colour to default
@@ -696,43 +682,13 @@ workspace-home-shortcut-open = Open
 # Warehouse workspace
 warehouse-title = Warehouse Inventory
 warehouse-location = Location
-warehouse-no-location-title = No warehouse location
 warehouse-no-location-desc = This workspace is not bound to a warehouse location. Configure it in the topology editor.
 warehouse-empty-title = No products
-warehouse-empty-desc = No inventory-tracked products found at this location.
 warehouse-load-error = Failed to load warehouse inventory.
 # Shown instead of the grid on a shell with no per-location stock read. Not an
 # error -- there is nothing to retry.
 warehouse-stock-desktop-only = Per-location stock levels need the desktop app.
 warehouse-adjust-error = Failed to adjust stock.
-warehouse-col-sku = SKU
-warehouse-col-name = Name
-warehouse-col-category = Category
-warehouse-col-qty = Qty
-warehouse-col-cost = Cost
-warehouse-col-actions = Actions
-warehouse-products-count = products
-warehouse-low-stock-alerts = low stock alerts
-warehouse-search-placeholder = Search by name or SKU…
-warehouse-search-aria = Search products
-warehouse-filter-category = Filter by category
-warehouse-filter-stock = Filter by stock status
-warehouse-all-categories = All categories
-warehouse-stock-all = All stock
-warehouse-stock-in = In stock
-warehouse-stock-out = Out of stock
-warehouse-stock-low = Low stock
-warehouse-no-results = No products match your search.
-warehouse-stat-total = Total
-warehouse-stat-out-of-stock = Out of stock
-warehouse-stat-low-stock = Low stock
-warehouse-btn-adjust = Adjust
-warehouse-adjust-title = Adjust Stock
-warehouse-adjust-current = Current stock
-warehouse-adjust-delta-label = Quantity change (use + to add, − to remove)
-warehouse-adjust-reason-label = Reason
-warehouse-adjust-reason-placeholder = e.g. stock count, damage, return
-warehouse-adjust-confirm = Confirm
 warehouse-adjust-cancel = Cancel
 warehouse-mode-tabs-aria = Warehouse mode
 
@@ -761,7 +717,6 @@ warehouse-session-line-qty = Qty
 warehouse-session-line-picked = Picked
 warehouse-session-complete-receive = Complete Receive
 warehouse-session-complete-send = Complete Send
-warehouse-session-print = Print
 warehouse-session-clear = Clear
 
 warehouse-fn-receive = Receive
@@ -777,16 +732,11 @@ warehouse-shortcut-close = Close
 
 warehouse-popup-receive-title = Incoming session
 warehouse-popup-send-title = Outgoing session
-warehouse-popup-count-title = Count session
 warehouse-popup-close = Close
 
 warehouse-send-destination = Send to…
 warehouse-send-destination-aria = Choose destination
 warehouse-send-confirmed = Sent! { $number } — { $count } items to { $destination }
-warehouse-send-verify-hint = Scan each item to verify it is picked
-warehouse-send-unpicked = { $count } line{ $count ->
-  [one]  not picked
- *[other] s not picked
 }
 
 warehouse-receive-source-po = Receive from purchase order
@@ -796,9 +746,7 @@ warehouse-receive-no-pos = No approved purchase orders
 warehouse-receive-load-failed = Could not load the list — close and try again
 warehouse-receive-confirmed = Received! { $number } — { $count } items
 warehouse-receive-expected = Expected
-warehouse-receive-received = Received
 warehouse-receive-damaged = Damaged
-warehouse-receive-short = Short
 
 warehouse-count-create = Start Count
 warehouse-count-type = Count type

@@ -52,19 +52,10 @@ error-boundary-retry = Coba Lagi
 # page registering layout="landscape-locked"; keep the value in step with the
 # child text in AppShell/TabletAppShell (the English fallback).
 layout-rotate-to-landscape = Putar perangkat Anda ke lanskap untuk tata letak lengkap.
-layout-rotate-to-landscape-aria =
-    .aria-label = Putar ke lanskap
 
 # Status Bar
-status-bar-connected = Backend terhubung
-status-bar-disconnected = Backend terputus
 # Sync connection status
-status-bar-sync-connected = Sinkronisasi cloud terhubung
-status-bar-sync-disconnected = Sinkronisasi cloud terputus
-status-bar-sync-checking = Memeriksa koneksi sinkronisasi cloud…
 # License status (login screen)
-staff-login-license-active = Lisensi aktif
-staff-login-license-inactive = Lisensi tidak aktif
 # P1-3: Tooltip for conflict count badge in StatusBar
 statusbar-conflict-count = { $count } konflik sinkronisasi terselesaikan
 # SYNC-12: StatusBar visible labels + ARIA (localized at the render boundary)
@@ -578,7 +569,6 @@ barcode-input-aria = Input kode batang
 submit-barcode-aria = Kirim kode batang
 select-course-aria = Pilih kursus
 revert-changes-aria = Kembalikan perubahan
-add-sample-line-aria = Tambah contoh baris
 previous-page-aria = Halaman sebelumnya
 next-page-aria = Halaman berikutnya
 results-per-page-aria = Hasil per halaman
@@ -591,10 +581,6 @@ refund-line-items-aria = Item baris pengembalian
 orders-aria = Pesanan
 back-to-orders-aria = Kembali ke daftar pesanan
 order-line-items-aria = Item baris pesanan
-decrease-card-size-aria = Kurangi ukuran kartu
-increase-card-size-aria = Tambah ukuran kartu
-decrease-font-size-aria = Kurangi ukuran font
-increase-font-size-aria = Tambah ukuran font
 primary-colour-picker-aria = Pemilih warna utama
 colour-hex-aria = Nilai heksadesimal warna
 reset-colour-aria = Kembalikan warna ke awal
@@ -672,41 +658,11 @@ workspace-home-shortcut-open = Buka
 # Warehouse workspace
 warehouse-title = Inventaris Gudang
 warehouse-location = Lokasi
-warehouse-no-location-title = Tidak ada lokasi gudang
 warehouse-no-location-desc = Workspace ini tidak terikat ke lokasi gudang. Konfigurasi di editor topologi.
 warehouse-empty-title = Tidak ada produk
-warehouse-empty-desc = Tidak ada produk inventaris yang ditemukan di lokasi ini.
 warehouse-load-error = Gagal memuat inventaris gudang.
 warehouse-stock-desktop-only = Stok per lokasi memerlukan aplikasi desktop.
 warehouse-adjust-error = Gagal menyesuaikan stok.
-warehouse-col-sku = SKU
-warehouse-col-name = Nama
-warehouse-col-category = Kategori
-warehouse-col-qty = Stok
-warehouse-col-cost = Harga
-warehouse-col-actions = Aksi
-warehouse-products-count = produk
-warehouse-low-stock-alerts = peringatan stok rendah
-warehouse-search-placeholder = Cari berdasarkan nama atau SKU…
-warehouse-search-aria = Cari produk
-warehouse-filter-category = Filter berdasarkan kategori
-warehouse-filter-stock = Filter berdasarkan status stok
-warehouse-all-categories = Semua kategori
-warehouse-stock-all = Semua stok
-warehouse-stock-in = Ada stok
-warehouse-stock-out = Habis
-warehouse-stock-low = Stok rendah
-warehouse-no-results = Tidak ada produk yang cocok dengan pencarian Anda.
-warehouse-stat-total = Total
-warehouse-stat-out-of-stock = Habis stok
-warehouse-stat-low-stock = Stok rendah
-warehouse-btn-adjust = Sesuaikan
-warehouse-adjust-title = Sesuaikan Stok
-warehouse-adjust-current = Stok saat ini
-warehouse-adjust-delta-label = Perubahan jumlah (gunakan + untuk menambah, − untuk mengurangi)
-warehouse-adjust-reason-label = Alasan
-warehouse-adjust-reason-placeholder = contoh: hitung stok, kerusakan, pengembalian
-warehouse-adjust-confirm = Konfirmasi
 warehouse-adjust-cancel = Batal
 warehouse-mode-tabs-aria = Mode gudang
 
@@ -735,7 +691,6 @@ warehouse-session-line-qty = Jumlah
 warehouse-session-line-picked = Dipetik
 warehouse-session-complete-receive = Selesaikan Terima
 warehouse-session-complete-send = Selesaikan Kirim
-warehouse-session-print = Cetak
 warehouse-session-clear = Kosongkan
 
 warehouse-fn-receive = Terima
@@ -751,14 +706,11 @@ warehouse-shortcut-close = Tutup
 
 warehouse-popup-receive-title = Sesi masuk
 warehouse-popup-send-title = Sesi keluar
-warehouse-popup-count-title = Sesi hitung
 warehouse-popup-close = Tutup
 
 warehouse-send-destination = Kirim ke…
 warehouse-send-destination-aria = Pilih tujuan
 warehouse-send-confirmed = Terkirim! { $number } — { $count } item ke { $destination }
-warehouse-send-verify-hint = Pindai setiap item untuk memverifikasi pemetikan
-warehouse-send-unpicked = { $count } baris belum dipetik
 
 warehouse-receive-source-po = Terima dari pesanan pembelian
 warehouse-receive-source-transfer = Terima dari transfer
@@ -767,9 +719,7 @@ warehouse-receive-no-pos = Tidak ada pesanan pembelian yang disetujui
 warehouse-receive-load-failed = Daftar tidak dapat dimuat — tutup dan coba lagi
 warehouse-receive-confirmed = Diterima! { $number } — { $count } item
 warehouse-receive-expected = Diharapkan
-warehouse-receive-received = Diterima
 warehouse-receive-damaged = Rusak
-warehouse-receive-short = Kurang
 
 warehouse-count-create = Mulai Hitung
 warehouse-count-type = Tipe hitung
