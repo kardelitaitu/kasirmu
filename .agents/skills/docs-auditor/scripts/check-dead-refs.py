@@ -621,6 +621,18 @@ def bad_package_claims(path, text, packages, acknowledged=None):
             if superseded.get(name) in packages:
                 acknowledged.append((n, verb, name, superseded[name]))
                 continue
+
+            # A LINE THAT NAMES ITS REPLACEMENT IS EXPLAINED (2026-10-27, round 47).
+            # An _active spec keeps its measured commands verbatim -- rewriting a recorded
+            # "1052 passed" would falsify the record -- and annotates the dead name with
+            # the live one beside it: "cargo test -p oz-core  # pre-rebrand; it is
+            # `kasirmu-core` today". That is the honest form, and it is not what this rule
+            # exists to catch: the reader cannot copy a command that will fail without
+            # being told the replacement in the same breath. The replacement must be a
+            # package THIS workspace has, so the exemption cannot be bought by naming a
+            # second dead package.
+            if any(pkg in line for pkg in packages if pkg != name):
+                continue
             # EVIDENCE is not a claim. A doc that reports what a command PRINTED --
             # "-> exit 101, `6 passed; 1 failed`", or prose that quotes the error
             # "package ID specification did not match any packages" -- is recording an
@@ -1253,7 +1265,16 @@ def main():
     # falsify the record, which is the one thing an audit may not do.
     pkg_acc, pkg_hist = {}, {}
     for f, n, verb, name, historical in pkg_rows:
-        (pkg_hist if historical else pkg_acc).setdefault(f, []).append((n, verb, name))
+        # SYMMETRY WITH THE PATH SIDE (2026-10-27, round 47). `RENAME_RESCUE_PREFIXES`
+        # above already declares docs/specs/_active/ the one directory where a
+        # pre-rebrand token is LIVE DRIFT rather than a record -- "a spec that is still
+        # open has not finished moving the tree". The rescue was only wired into the
+        # PATH branch, so a package name inside the same file still fell to pkg_hist and
+        # was reported-without-counting. Measured that round: six _active specs carried
+        # 25 `cargo -p oz-*` lines that cannot run, and the gate called them records.
+        # The prefix is reused rather than restated, so the two halves cannot drift.
+        rescued = historical and f.startswith(RENAME_RESCUE_PREFIXES)
+        (pkg_hist if historical and not rescued else pkg_acc).setdefault(f, []).append((n, verb, name))
     pkg_live = sorted(pkg_acc.items())
     pkg_hist = sorted(pkg_hist.items())
 
