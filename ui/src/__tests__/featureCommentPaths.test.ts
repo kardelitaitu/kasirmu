@@ -51,6 +51,10 @@ function findRoot(): string {
 const ROOT = findRoot();
 const FEATURES = path.join(ROOT, 'ui/src/features');
 
+/** A citation whose surrounding text carries one of these points at a REVISION, not
+ *  at the working tree. Added 2026-10-27 (round 39); see the use site for why the
+ *  exemption is required rather than convenient. */
+const HISTORICAL_STAMP = /AS OF\s+[0-9a-f]{7,}|fix(?:ed)?\s+[0-9a-f]{7,}/;
 /** Repo-relative prefixes worth resolving. Anything else is prose. */
 const PREFIXES = ['.agents/', 'ui/src/', 'crates/', 'docs/', 'scripts/', 'shared-ui/'];
 
@@ -631,6 +635,24 @@ describe('feature-source comments cite OTHER files at a line that holds text', (
     expect(target[0]!.trim(), "line 1 must hold text or this self-test proves nothing").not.toBe("");
   });
 
+  it("the historical-stamp exemption fires on a revision and not on a live pointer", () => {
+    // WHY THIS CASE EXISTS. The exemption above was added to let `AS OF <sha>` and
+    // `fixed <sha>` notes keep pinpointing a REVISION. It shipped with no case of
+    // its own, and a mutation test proved the gap: disabling the exemption entirely
+    // left all four cases GREEN, because nothing currently in scope needs it. An
+    // exemption nothing exercises is indistinguishable from an exemption that does
+    // not work -- the same cannot-fail shape this file already records twice.
+    //
+    // These two strings are the shapes the exemption has to separate. The first is
+    // a real KDS extraction header; the second is an ordinary live pointer.
+    const historical = "Extracted verbatim from KdsScreen.tsx:718-855 AS OF 7d0dc4d60^ by slice 2.";
+    const alsoHistorical = "RetailPosScreen.css:3631, a prose glob (fixed 12a54b3d4)";
+    const live = "the section renders at DataManagementScreen.tsx:118-125 and the flash map";
+    expect(HISTORICAL_STAMP.test(historical), "AS OF <sha> must exempt").toBe(true);
+    expect(HISTORICAL_STAMP.test(alsoHistorical), "fixed <sha> must exempt").toBe(true);
+    expect(HISTORICAL_STAMP.test(live), "a plain pointer must NOT be exempt").toBe(false);
+  });
+
   it("no cross-file line citation points at a blank or past-EOF line", () => {
     // SCOPE WIDENED 2026-10-26 (round 25). The walk used to be `FEATURES` alone, which
     // left every comment in `ui/src/api`, `hooks`, `components`, `utils` and `app`
@@ -641,6 +663,15 @@ describe('feature-source comments cite OTHER files at a line that holds text', (
     // found two more immediately (SegmentedTabs -> a truncating StoreSwitcher citation,
     // useStoreTimezone -> a test that had moved 213 lines). Resolved citations went
     // 113 -> 192; the floor below was raised with them so a future narrowing fails here.
+    // SCOPE WIDENED AGAIN 2026-10-27 (round 39): ui/src/__tests__ was MEASURED and
+    // deliberately NOT added. The measurement is the point. Widening the walk to it
+    // found 249 citations and 104 of them land on a blank or past-EOF line -- test
+    // comments citing production code to explain WHY a case exists, with the numbers
+    // drifted. Fixing those is a real backlog, not a one-line scope change, so the
+    // scope stays where it is and the backlog is recorded rather than half-done.
+    // The one case that started this: SettingsPage.test.tsx cited
+    // crates/kasirmu-bridge/src/settings.rs at a line past that file's end, and was
+    // re-pointed by hand in the same round.
     const extra = ['ui/src/api', 'ui/src/hooks', 'ui/src/components', 'ui/src/utils', 'ui/src/app']
       .flatMap((d) => walk(path.join(ROOT, d)));
     const files = [...walk(FEATURES), ...extra];
@@ -665,6 +696,20 @@ describe('feature-source comments cite OTHER files at a line that holds text', (
           abs = matches.length === 1 ? matches[0]! : null;
         }
         if (abs === null) continue;   // prose, a vendored path, or an ambiguous name
+        // HISTORICAL NOTES (added 2026-10-27, round 39). A citation whose own line —
+        // or the two lines either side — carries `AS OF <sha>` or `fixed <sha>`
+        // points at a REVISION, not at the working tree. The KDS extraction headers
+        // are the main population ("Extracted verbatim from KdsScreen.tsx:718-855
+        // AS OF 7d0dc4d60^"), and cssCommentBalance.test.ts records four shipped
+        // defects each tagged with its fix commit. Requiring those ranges to still
+        // fit inside a file that has since been cut in half would demand the
+        // opposite of the truth. The stamp is checked on the cite line and its
+        // immediate neighbours so a wrapped note still qualifies.
+        const citeLines = source.split(String.fromCharCode(10));
+        const historyWindow = citeLines
+          .slice(Math.max(0, cite.at - 2), cite.at + 2)
+          .join(String.fromCharCode(10));
+        if (HISTORICAL_STAMP.test(historyWindow)) continue;
         checked += 1;
         const target = fs.readFileSync(abs, "utf-8").split(String.fromCharCode(10));
         // BLANK or PAST EOF — the no-false-positive subset. A line holding only
