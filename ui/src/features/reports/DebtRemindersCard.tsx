@@ -39,10 +39,23 @@ export function DebtRemindersCard({ sessionToken, currency }: DebtRemindersCardP
     if (!sessionToken) return;
     setLoading(true);
     try {
-      const [recsResult, paysResult] = await Promise.allSettled([
-        listReceivablesScoped(sessionToken),
-        listPayablesScoped(sessionToken),
-      ]);
+      // `list_payables_scoped` is not registered on the tablet shell -- payables are a
+      // desktop-only authoring surface (apps/desktop-tauri/src/commands/payables.rs,
+      // and the `payables` note in scripts/ipc-parity-allowlist.json). Invoicing it
+      // there rejects with `command not found`, and `allSettled` below turns that
+      // into `paysFailed` -- so the card reported a failed AP read for a command
+      // the shell was never meant to carry. Read it only where it exists, and
+      // leave `paysFailed` false rather than blaming a door the tablet never had.
+      // Both reads still go out together, but the payables arm is settled here when
+      // the command has no door in this shell: the tablet never registers
+      // `list_payables_scoped`, so calling it would reject and `allSettled` would
+      // report `paysFailed` for a back-office door the tablet was never given.
+      const recsPromise = listReceivablesScoped(sessionToken);
+      let paysResult: PromiseSettledResult<PayableDto[]> = { status: 'fulfilled', value: [] };
+      if (!isTabletShell()) {
+        [paysResult] = await Promise.allSettled([listPayablesScoped(sessionToken)]);
+      }
+      const [recsResult] = await Promise.allSettled([recsPromise]);
       // A REJECTED ARM IS NOT "NOTHING OWED". `allSettled` was chosen so one read could
       // fail without taking the other down — but the failure was then dropped on the
       // floor, leaving the array at its `[]` initial value. The card turns "no overdue
