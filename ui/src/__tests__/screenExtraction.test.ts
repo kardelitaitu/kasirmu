@@ -2053,15 +2053,16 @@ const SCREENS: ScreenEntry[] = [
     // tooltip-content was worse than that: it matched nothing here, nothing in the
     // parent, and nothing in the markup, a grant for a name no sheet defines.
     css: ['settings/AppearanceSettings.css'],
-    parentCss: ['settings/SettingsPage.css'],
-    knownDynamicFragments: [
-      // Card component classes (defined in theme/components.css)
-      // that are used inline in AppearanceSettings.tsx but not present
-      // in the screen's own CSS files.
-      'card--padding-md',
-      'card--shadow-sm',
-      'card-header',
-    ],
+    // theme/components.css joined this list on 2026-10-27 (round 41) for the three
+    // card classes below. They were in knownDynamicFragments, which asserts a name
+    // is COMPOSED AT RUNTIME by a template literal -- false for all three: the
+    // markup at AppearanceSettings.tsx:489, :500 and :511 spells them out literally
+    // ("card card--padding-md card--shadow-sm"), and components.css defines them at
+    // :1030, :1034 and :1038. The file's own field doc calls knownDynamicFragments
+    // "taken on the author's word", and a muted name is never reported dead by case
+    // 3 either, so the wrong field was hiding two checks rather than one. parentCss
+    // states what is true and is checkable.
+    parentCss: ['settings/SettingsPage.css', '../theme/components.css'],
     externalClasses: [
       'card',
       'collapsed',
