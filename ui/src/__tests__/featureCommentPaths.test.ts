@@ -603,7 +603,18 @@ describe('feature-source comments cite OTHER files at a line that holds text', (
   });
 
   it("no cross-file line citation points at a blank or past-EOF line", () => {
-    const files = walk(FEATURES);
+    // SCOPE WIDENED 2026-10-26 (round 25). The walk used to be `FEATURES` alone, which
+    // left every comment in `ui/src/api`, `hooks`, `components`, `utils` and `app`
+    // ungraded — and that blind spot was not theoretical. `components/SwitchToggle.tsx`
+    // cited a `features/restaurant/PaymentScreen.tsx` that DOES NOT EXIST, plus two line
+    // numbers that had moved; `api/sales.ts` cited `hooks/usePosHeldCarts.ts:188`, a file
+    // path that never resolved and a line now holding `}, [loadOpenBills]);`. Widening
+    // found two more immediately (SegmentedTabs -> a truncating StoreSwitcher citation,
+    // useStoreTimezone -> a test that had moved 213 lines). Resolved citations went
+    // 113 -> 192; the floor below was raised with them so a future narrowing fails here.
+    const extra = ['ui/src/api', 'ui/src/hooks', 'ui/src/components', 'ui/src/utils', 'ui/src/app']
+      .flatMap((d) => walk(path.join(ROOT, d)));
+    const files = [...walk(FEATURES), ...extra];
     expect(files.length, "no files scanned — FEATURES is wrong").toBeGreaterThan(100);
 
     const offenders: string[] = [];
@@ -650,8 +661,11 @@ describe('feature-source comments cite OTHER files at a line that holds text', (
     }
 
     // A FLOOR, so a refactor that shrinks the finder to nothing fails here instead of
-    // reporting a clean tree. Measured 2026-10-18 (round 184): 113 resolvable.
-    expect(checked, "no cross-file citations resolved — the extractor is wrong").toBeGreaterThan(50);
+    // reporting a clean tree. Measured 2026-10-18 (round 184): 113 resolvable over
+    // FEATURES alone. Re-measured 2026-10-26 (round 25) after the walk widened to
+    // api/hooks/components/utils/app: 192. The floor moves with the population, not
+    // with the tree, so it stays a guard on the EXTRACTOR rather than on the repo.
+    expect(checked, "no cross-file citations resolved — the extractor is wrong").toBeGreaterThan(150);
     expect(
       offenders.sort(),
       "feature comment(s) cite another file at a line that is blank or past its end. " +
