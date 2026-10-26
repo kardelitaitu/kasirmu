@@ -192,8 +192,8 @@ fn user_deserialization_requires_pin_hash() {
 
 /// The credential verifier must never print. `User` used to derive `Debug`,
 /// which printed `pin_hash` on any `{:?}` line or panic dump — the same leak
-/// `GiftCard` (modules/loyalty/src/models.rs:127) and `TenantSubscription`
-/// (crates/kasirmu-core/src/subscription.rs:401) already fixed with a manual
+/// `GiftCard` (foundation/src/loyalty.rs:122) and `TenantSubscription`
+/// (crates/kasirmu-core/src/subscription.rs:157) already fixed with a manual
 /// redacting impl, which is the shape adopted here.
 ///
 /// The non-secret fields are asserted PRESENT too, so an impl that printed

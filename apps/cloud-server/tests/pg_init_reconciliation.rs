@@ -5,7 +5,7 @@
 //! backfills the SQLite chain performed never reached an EXISTING PostgreSQL
 //! database. C46 measured all six and ported the ONE that unambiguously
 //! matters — 20260910_memo_child_tenant_id.sql — because memo_recipients has a
-//! live PG writer (crates/kasirmu-api/src/pg.rs:2621, the memo fan-out) AND is
+//! live PG writer (crates/kasirmu-api/src/pg/memos.rs:238, the memo fan-out) AND is
 //! in RLS_TABLES, so its tenant_id is a live isolation key: a pre-migration row
 //! carries the DEFAULT 'default' and is invisible to the correct tenant. The
 //! other five are recorded as unmatterable in the RECONCILIATIONS comment,

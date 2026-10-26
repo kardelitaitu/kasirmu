@@ -27,7 +27,7 @@
 //!
 //! **Correction to the note this file used to carry.** It claimed "no
 //! `BridgeCtx` on tablet yet", which is stale: `AppState::bridge_ctx` exists
-//! (`apps/mobile-tauri/src/state.rs:417`) and is what the ported door above
+//! (`apps/mobile-tauri/src/state.rs:558`) and is what the ported door above
 //! uses. That paragraph predates the Slice 1+ shims and had already stopped
 //! describing this shell.
 

@@ -435,7 +435,7 @@ impl Store<'_> {
     /// on the session-creation / org-switch path, written as
     /// `if !covered.unwrap_or(false)` — `crates/kasirmu-bridge/src/auth.rs:616`,
     /// `crates/kasirmu-bridge/src/auth/session.rs:401`,
-    /// `apps/mobile-tauri/src/commands/auth.rs:420` and `:656` — each with a
+    /// `apps/mobile-tauri/src/commands/auth.rs:780` and `:656` — each with a
     /// `// (fail-closed)` comment. For a row-less user the ENFORCEMENT path
     /// behaves differently: `require_permission_for_resource` (`db/staff.rs:382`)
     /// skips the scope check entirely when there is no assignment and still runs

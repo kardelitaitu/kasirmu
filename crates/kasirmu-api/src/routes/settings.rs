@@ -153,7 +153,7 @@ fn scoped_key(base: &str, tenant: &str) -> String {
 /// The stored smtp_config blob this tenant’s report sender would actually use:
 /// the scoped row (smtp_config:{tenant}) first, then the bare smtp_config — the
 /// same resolution order as [`read_settings`] here and as `get_smtp_config_pg`
-/// in `apps/cloud-server/src/email_pg.rs:467`.
+/// in `apps/cloud-server/src/email_pg/settings_store.rs:73`.
 ///
 /// The keep-on-blank merge has to be told WHICH row to preserve, and on this
 /// lane it is not the row [`Store::merged_smtp_password_json`] reads: that one

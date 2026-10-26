@@ -43,10 +43,10 @@ pub async fn set_setting_pg(pool: &Pool, key: &str, value: &str) -> Result<(), S
 /// cloud-server and is FALSE on the desktop loopback. Do not rely on it as a
 /// property of this function; it is a property of the deployment.
 ///
-/// * Cloud — holds. `apps/cloud-server/src/main.rs:351` starts
+/// * Cloud — holds. `apps/cloud-server/src/main.rs:404` starts
 ///   `email_pg::start_report_sender_loop_pg`, whose read is
-///   `get_smtp_config_pg` (`apps/cloud-server/src/email_pg.rs:207`, defined at
-///   `:467-468`): scoped key first, bare fallback. This is the same scoped key
+///   `get_smtp_config_pg` (`apps/cloud-server/src/email_pg/queue_worker.rs:176`, defined at
+///   `settings_store.rs:73`): scoped key first, bare fallback. This is the same scoped key
 ///   `PUT /api/v1/settings` writes, so the two agree.
 /// * Desktop loopback — does not hold. The same handler reaches
 ///   `apply_ops_sqlite`, which writes this scoped key unconditionally, so a

@@ -427,7 +427,7 @@ pub async fn count_tenant_staff_pg(
 ///
 /// What makes this a finding rather than a footnote: products and users DO
 /// reach PostgreSQL — via the copier's `DEFAULT_TABLES` and via
-/// crates/kasirmu-api/src/pg.rs:868,1430 (INSERT INTO users / products). Those
+/// crates/kasirmu-api/src/pg/users.rs:78 and pg/products.rs:664
 /// two axes are live and meaningful. locations is the only counted axis with no
 /// PG writer and no copy entry.
 ///

@@ -533,7 +533,7 @@ fn apply_remote_atomic_transient_failure_burns_the_retry_budget() {
 /// deduction never retried. Silent stock inflation, on the live arm.
 ///
 /// The producer cannot omit the key: the payload is built as
-/// `line_items: event.line_items` (`platform/startup/src/event_handlers.rs:61`)
+/// `line_items: event.line_items` (`platform/startup/src/event_handlers.rs:75`)
 /// from `SaleCompletedLine`, whose `qty` has no `#[serde(default)]`
 /// (`foundation/src/events.rs:35`). So the default only ever masked a WIRE-SHAPE
 /// DRIFT, and rejecting it cannot refuse a payload the producer emits.

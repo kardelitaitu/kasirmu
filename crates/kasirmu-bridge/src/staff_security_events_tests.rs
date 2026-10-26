@@ -195,7 +195,7 @@ async fn create_staff_scoped_records_a_security_event() {
     let bridge = owner_app("premium");
     let ctx = bridge.ctx();
     let settled = create_staff_scoped("owner-token".into(), create_args("jdoe"), &ctx).await;
-    // Release: staff.rs:1080 refuses the create at the seeded row signature before the
+    // Release: staff.rs:663 refuses the create at the seeded row signature before the
     // recorder is ever reached, so there is NO event to read - asserting a row count
     // here would be false evidence. Actor-vs-subject, the action name and the PIN
     // redaction below are all debug-profile claims about the WRITE side.
@@ -289,7 +289,7 @@ async fn a_duplicate_username_create_records_no_security_event() {
     // Split out because this half IS profile-bound, and the fork says so
     // instead of hiding it. The setup create must SUCCEED for a duplicate to
     // exist, and `create_staff_scoped` only reaches the duplicate check past
-    // `sub.verify_signature()` (staff.rs:1080), which the release profile
+    // `sub.verify_signature()` (staff.rs:663), which the release profile
     // refuses — see testing.rs:105-162 on why no fixture can satisfy it. So in
     // release there is no `jdoe` and no reachable duplicate check: the release
     // leg asserts the REFUSAL (with the row's existence pinned by

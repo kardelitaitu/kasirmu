@@ -1016,7 +1016,7 @@ async fn sqlite_concurrent_gift_card_redemption_is_flagged_end_to_end() {
 /// Reachability, verified rather than assumed: `platform/startup/src/
 /// event_handlers.rs:199` enqueues `stock.adjusted` with a `delta`/`new_qty`
 /// payload, and `InventorySyncEnqueuer` is registered at startup
-/// (`platform/startup/src/lib.rs:161` and `:173`). `is_stock_entity` matches it,
+/// (`platform/startup/src/lib.rs:213` and `:229`). `is_stock_entity` matches it,
 /// so `policy_for` returns `MergePolicy::AutoMergeDeltas` and `classify` returns
 /// `Decision::AutoMerge`. `detect_conflict` matched neither arm and fell through
 /// to "keep the stored payload", so the incoming adjustment vanished.

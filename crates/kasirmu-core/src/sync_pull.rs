@@ -265,7 +265,7 @@ pub async fn fetch_snapshot_from_server(config: &SyncConfig) -> Result<Snapshot,
 ///    is the honest variant, and it is the one every sibling already used.
 /// 2. **No caller branches on the variant.** The only match on the pull
 ///    result that names a variant is `matches!(snapshot, Err(AuthExpired))`
-///    (crates/kasirmu-bridge/src/sync.rs:954); the error is otherwise consumed
+///    (crates/kasirmu-bridge/src/sync.rs:778); the error is otherwise consumed
 ///    by a catch-all `Err(e) => Some(e.to_string())` (:1056-1061). So the
 ///    variant carries no behaviour for a caller to lose — but the MESSAGE
 ///    does reach an operator through that `to_string()`, which is why the
