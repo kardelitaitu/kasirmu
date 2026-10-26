@@ -418,7 +418,7 @@ fn mask_token_is_deterministic_so_logs_can_correlate() {
 /// WHY THIS EXISTS. `mask_pan`'s `digits.len() <= 10` branch computes
 /// `masked_len = len - 4`, so for lengths 7, 8 and 9 the raw subtraction gives 3, 4 and
 /// 5. The `.max(4)` floor is what keeps the prefix at four stars. MEASURED: deleting the
-/// floor left all 38 tests in this file GREEN, and for a 7-digit value the function then
+/// floor left all 38 tests in this file GREEN at the time, and for a 7-digit value the function then
 /// returns THE INPUT UNCHANGED -- the mask disappears exactly where it is needed.
 /// `mask_pan` does not validate before masking (its docs promise a masked string "even
 /// for short inputs"), so it must not be assumed to always see a 13-19 digit PAN.

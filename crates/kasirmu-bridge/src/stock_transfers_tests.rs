@@ -303,7 +303,8 @@ fn seed_active_location_and_terminal(bridge: &TestBridge, loc: &str, term: &str)
 /// WHY THESE EXIST. `validate_location` and `validate_terminal`
 /// (`stock_transfers.rs:87` and `:112`) each guard TWO call sites, checking that a
 /// client-supplied location/terminal is ACTIVE IN THIS STORE. Neither had a test:
-/// MEASURED, replacing both bodies with `Ok(())` left all 12 tests in this file GREEN.
+/// MEASURED at the commit that wrote this note, against the population THEN: replacing
+/// both bodies with `Ok(())` left all 12 tests in this file GREEN.
 /// A transfer could then name a location or terminal belonging to another store, or an
 /// inactive one, and the record would carry a reference the store's own inventory
 /// ledger cannot resolve.
