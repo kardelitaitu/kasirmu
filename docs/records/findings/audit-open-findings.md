@@ -1602,6 +1602,54 @@ verdict to stdout *before* its own honest exit-1 refusal — print ordering, and
 change healthy-path output. And an unreadable `.githooks/commit-msg` is still a `FileNotFoundError`
 traceback rather than a refusal: same family, different read.
 
+### Dated correction (2026-10-26, 13:05) — the 34 lingering ` M` entries are STALE INDEX STAT, not CRLF
+
+**The misdiagnosis being corrected, and it lasted sixteen rounds.** `git status --porcelain`
+in this checkout has read "34 modified" for most of a working session. The standing explanation
+was "CRLF/stat noise", and it was half right for the wrong reason: no CRLF exists on any of the
+34 paths. Measured directly — `shared-ui/locales/inventory.ftl` has **0 CRLF** and 187 LF-only
+on disk, and `HEAD`'s blob has **0 CRLF** and 187 LF-only too. `.config/nextest.toml` likewise
+(0 CRLF, 118 LF). The line-ending theory could not have been true of these files.
+
+**What is actually true, in git's own words.** `git diff --stat` (worktree vs index) is **empty**;
+`git diff --cached --stat` (index vs HEAD) is **empty**; `git diff --numstat` is **empty**. So is
+`--ignore-cr-at-eol` and `-w`. For every one of the 34 paths, `git hash-object <path>` equals
+`git rev-parse :<path>` **and** `git rev-parse HEAD:<path>` — 0 of 34 differ from the index,
+0 differ from HEAD. There is nothing to commit on any of them, and nothing was ever lost.
+
+**The mechanism, isolated to one file.** `.config/nextest.toml` on disk is **6546 bytes**; the
+index entry still records `size: 6664` with an `mtime`/ctime that do not match the file. Reading
+the blob with `git cat-file blob :.config/nextest.toml` gives **6546 bytes**, byte-for-byte equal
+to the disk file (`disk == blob` is `True`). The index therefore holds a **stale stat cache** for
+a blob whose content already matches: the entry was rewritten by another writer mid-`add`, so git
+reports "modified" from the stat comparison rather than from content. `git update-index -q
+--refresh` exits 0 and does not clear it, because refresh only rewrites entries it can prove
+current and this checkout is shared.
+
+**Why this matters beyond tidiness.** Two of the 34 paths are locale bundles
+(`shared-ui/locales/inventory.ftl`, `inventory.id.ftl`). A session that trusted the CRLF label
+and then ran a "fix line endings" pass over them would rewrite 187 lines of an FTL bundle to
+repair a defect that does not exist — and the same class of mistake on the `*baseline.json`
+files in that list would silently reset an l10n ratchet. The correct handling is the one
+`AGENTS.md` §7.3 already states: compare `git hash-object` with the index and HEAD, and when
+they agree, there is nothing to commit. **Do not "fix" these files.**
+
+**The classification bug that produced the wrong answer first.** A first attempt at this
+measurement read the porcelain status as `x, y = line[0], line[1]` and then branched on
+`if x == 'M'`, which sent every entry down the `else` arm and printed all 34 as genuine
+"REAL content changes" with a fabricated `(status  M)` annotation. Porcelain v1 is
+`XY<space>path`: a **worktree-only** modification is `' M'` — the space is column 0. Branching
+on column 0 inverted the answer. The reliable test never parses the column at all: hash the
+worktree file and compare it to `:<path>` and `HEAD:<path>`.
+
+**Provenance of this entry.** Commit `ed01e97c0` (`fix(settings)`) closed the last four *real*
+dirty files — the `SyncConflictsPanel` load-path raw-rejection fix plus its two FTL keys and its
+test. After that commit the working tree held exactly these 34 stat-only entries and no
+untracked files, which is what made a clean measurement possible. The fix itself was verified by
+mutation: reverting `l10nErrorMessage(e, l10n, 'sync-conflicts-load-failed')` to `String(e)`
+reddens exactly one test (the load-path case) and the file was restored byte-identically
+(`3e9d5e7e5e` before and after).
+
 ### Dated correction (2026-09-13, 19:28) — the hollow-root census finding is closed by `ef2058f28`
 
 `ef2058f28` (38/1, one file) adds a `hollow_root_reason()` gate on the `LOCALES` surface. Proven by
