@@ -434,7 +434,14 @@ function crossFileCitations(source: string): Array<{ at: number; file: string; f
   const found: Array<{ at: number; file: string; from: number; to: number; line: string }> = [];
   const lines = source.split(String.fromCharCode(10));
   // Extensions worth resolving. A token without one (`:NN`) is the same-file pass.
-  const re = /([A-Za-z0-9_./-]+\.(?:tsx?|css|rs|py|sh|json|sql|md|ftl|toml|html))\s*:\s*(\d{2,4})(?:-(\d{2,4}))?/g;
+  // EXTENSIONS WIDENED 2026-10-26 (round 26). `.go`, `.mjs` and `.yml` were absent, so a
+  // citation into the Go license server or a website config was invisible — and one was
+  // already wrong: `features/index.ts` cited `SignedSubscriptionPayload` in main.go, a
+  // name that exists ONLY inside a comment there. The struct is `SubscriptionPayload`.
+  // A citation can fail in two ways: the LINE moved (graded above) and the SYMBOL is not
+  // there (graded only by being extracted at all). Adding the extensions is what lets the
+  // second kind reach the pass below.
+  const re = /([A-Za-z0-9_./-]+\.(?:tsx?|css|rs|py|sh|json|sql|md|ftl|toml|html|go|mjs|cjs|ya?ml))\s*:\s*(\d{2,4})(?:-(\d{2,4}))?/g;
   lines.forEach((line, i) => {
     const tr = line.trim();
     if (!tr.startsWith("//") && !tr.startsWith("*")) return;
@@ -450,7 +457,29 @@ function crossFileCitations(source: string): Array<{ at: number; file: string; f
       blockStart = i - up;
     }
     const block = lines.slice(blockStart, i + 1).join(" ").toLowerCase();
-    if (/\b(moved|was|were|formerly|previously|used to|at tip|deleted|removed|retired)\b/.test(block)) return;
+    // HISTORY WORDS ARE READ ON THE CITE LINE ONLY (2026-10-26, round 26).
+    //
+    // This used to search the whole 12-line block, and `was`/`were` are far too common
+    // for that: measured over the widened population, 150 of 390 citations were dropped
+    // on the block scan, and **113 of them for a history word in an unrelated sentence**
+    // (one whole paragraph in `features/index.ts` was ungraded because a neighbouring
+    // clause said "was implied to be the add-on"). Six of the rescued set were genuinely
+    // stale -- PosScreen.tsx:891 pointed at `),`, PaymentModal.tsx:1630 at a blank line --
+    // which is the same drift the pass exists to catch.
+    //
+    // The measured cases this exemption was written FOR still work: "Moved verbatim out
+    // of KdsScreen.tsx:913-923" carries its verb on the cite line, as does "Two sites
+    // BUILT this string by hand" (graded by the past-tense arm below). The `AS OF <sha>`
+    // test stays block-wide on purpose -- its anchor is a commit, not a verb, and it can
+    // legitimately sit in the header above the token.
+    // The tense is read from the cite line AND from the one line above it, because a
+    // citation is often a LIST ITEM under a header that carries the verb:
+    //   *   Two sites BUILT this string by hand, identically:
+    //   *     PaymentModal.tsx:1113   (the hold on the payment path)
+    // One line, not the block: the block scan is what dropped 113 unrelated citations,
+    // and every measured historical case spells its verb within one line of the token.
+    const citeLine = ((lines[i - 1] ?? "") + " " + tr).toLowerCase();
+    if (/\b(moved|was|were|formerly|previously|used to|at tip|deleted|removed|retired)\b/.test(citeLine)) return;
     // `AS OF <sha>^` is the SECOND historical spelling, and the word list alone does
     // NOT cover it. Measured 2026-10-18 (round 185): the eight KDS extractee headers
     // read "Extracted verbatim from KdsScreen.tsx:718-855 AS OF 7d0dc4d60^" — three of
@@ -473,7 +502,7 @@ function crossFileCitations(source: string): Array<{ at: number; file: string; f
     // :1113 is correctly un-resolvable.
     //
     // Deliberately narrow: only verbs that cannot be present tense about live code.
-    if (/\b(built|constructed|interpolated|duplicated|hand-built)\b/.test(block)) return;
+    if (/\b(built|constructed|interpolated|duplicated|hand-built)\b/.test(citeLine)) return;
     let m: RegExpExecArray | null;
     re.lastIndex = 0;
     while ((m = re.exec(line)) !== null) {
@@ -663,9 +692,11 @@ describe('feature-source comments cite OTHER files at a line that holds text', (
     // A FLOOR, so a refactor that shrinks the finder to nothing fails here instead of
     // reporting a clean tree. Measured 2026-10-18 (round 184): 113 resolvable over
     // FEATURES alone. Re-measured 2026-10-26 (round 25) after the walk widened to
-    // api/hooks/components/utils/app: 192. The floor moves with the population, not
-    // with the tree, so it stays a guard on the EXTRACTOR rather than on the repo.
-    expect(checked, "no cross-file citations resolved — the extractor is wrong").toBeGreaterThan(150);
+    // api/hooks/components/utils/app: 192. Re-measured again the same day (round 26)
+    // after the history-word scan narrowed to the cite line and the extension list
+    // gained go/mjs/cjs/yml/yaml: 258. The floor moves with the population, not with
+    // the tree, so it stays a guard on the EXTRACTOR rather than on the repo.
+    expect(checked, "no cross-file citations resolved — the extractor is wrong").toBeGreaterThan(200);
     expect(
       offenders.sort(),
       "feature comment(s) cite another file at a line that is blank or past its end. " +
