@@ -327,6 +327,22 @@ describe('VoidOrdersScreen', () => {
       expect(mockListSalesScoped.mock.calls[0]?.[0]).toBe('session-1');
       expect(mockListSales).not.toHaveBeenCalled();
     });
+    // The fallback used to be `active` -- the label of the state this screen exists to make
+    // voidable. A status the UI cannot name would therefore have looked like the one row an
+    // operator is hunting for. The wire carries exactly four spellings
+    // (foundation/src/enums.rs:40), so the floor only fires on drift, and drift is precisely
+    // when a confident-looking label is worst.
+    it('labels an unrecognised status as unknown, never as active', async () => {
+      const odd = [{ ...sampleSales[0], id: 'ORD-ODD', status: 'refunded' }];
+      mockListSalesScoped.mockResolvedValue({ sales: odd, salesHistoryCapped: false });
+      await renderWithFluent(<VoidOrdersScreen />, salesFtl, sharedFtl);
+      await waitFor(() => {
+        expect(document.querySelectorAll('tbody tr').length).toBe(1);
+      });
+      const row = document.querySelectorAll('tbody tr')[0];
+      expect(row?.textContent).toContain('Unknown status');
+      expect(row?.textContent).not.toContain('Active');
+    });
 
     // Unbounded by omission: `list_sales_with_history_cap_bounded` appends LIMIT only when a
     // limit is given (sales_crud.rs:308-314), so calling the scoped command with no limit read

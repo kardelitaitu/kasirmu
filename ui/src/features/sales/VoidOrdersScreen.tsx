@@ -60,7 +60,12 @@ function statusLabelFluentId(status: string): string {
     case 'completed': return 'void-orders-status-completed';
     case 'voided': return 'void-orders-status-voided';
     case 'pending': return 'void-orders-status-pending';
-    default: return 'void-orders-status-active';
+    // An unrecognised status must not read as the screen's busiest label. `active` is the
+    // voidable state this screen exists to surface, so falling back to it would present an
+    // unidentifiable row as the one thing the operator is looking for -- and offer a Void
+    // action for a state whose transition rules nobody checked. Same contract as
+    // SalesHistoryScreen's statusFluentId and TableManagementScreen's tables-status-unknown.
+    default: return 'void-orders-status-unknown';
   }
 }
 

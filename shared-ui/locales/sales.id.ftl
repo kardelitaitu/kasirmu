@@ -371,6 +371,7 @@ void-orders-status-active = Aktif
 void-orders-status-completed = Selesai
 void-orders-status-voided = Dibatalkan
 void-orders-status-pending = Tertunda
+void-orders-status-unknown = Status tidak dikenal
 void-orders-retry = Coba Lagi
 void-orders-empty-filtered = Tidak ada pesanan yang cocok dengan filter saat ini.
 void-orders-empty-none = Belum ada pesanan tercatat.

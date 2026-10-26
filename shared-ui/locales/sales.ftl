@@ -465,6 +465,7 @@ void-orders-status-active = Active
 void-orders-status-completed = Completed
 void-orders-status-voided = Voided
 void-orders-status-pending = Pending
+void-orders-status-unknown = Unknown status
 void-orders-retry = Retry
 void-orders-empty-filtered = No orders match the current filters.
 void-orders-empty-none = No orders recorded yet.
