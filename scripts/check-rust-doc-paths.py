@@ -34,6 +34,21 @@ recorded FROM a path that never existed. If the named path has no entry in
 git log --all --diff-filter=AD, it is wrong whatever the wording. Rule 2 is what makes
 that class findable; rule 1 alone would have waved all 41 through.
 
+BARE FILENAMES, ADDED 2026-10-27 (round 42)
+============================================
+The prefix rule above is right for PATHS. It left LINE citations ungraded when
+the comment omits the directory: `settings.rs:1264` rather than
+`crates/kasirmu-bridge/src/settings.rs:1264`. Measured that round: 220
+citations graded, 354 bare ones invisible — and an audit of exactly those found
+29 pointing past EOF or at a blank line.
+
+The fix resolves the basename instead of dropping the rule. 607 of the tree's
+837 distinct .rs basenames are unique, so grading them is the same arithmetic
+as a full path; the 230 that are not (`main.rs` x7, `build.rs` x6) are
+SKIPPED, because picking one would grade the wrong file. The first run of this
+arm found three more defects that the full-path rule had never been able to
+see.
+
 Exit 0 clean, 1 findings, 2 could not run.
 """
 from __future__ import annotations
@@ -70,6 +85,11 @@ DOC_RE = re.compile(r"^\s*(?://[/!]|\*)")
 # says the thing you want is ON that line, and a stale number sends the reader somewhere
 # plausible and wrong. Only paths the tree TRACKS are graded, so an example path in prose
 # is not a finding.
+# `name.rs:NNN` with no directory prefix -- resolved through basename_index.
+# The lookbehind keeps a path tail (`crates/x/src/y.rs:12`) out of this arm; that
+# form is LINE_CITE_RE's job.
+BARE_CITE_RE = re.compile(r"(?<![A-Za-z0-9_./\\-])([A-Za-z0-9_.\-]+\.rs):(\d{1,5})(?:-(\d{1,5}))?\b")
+
 LINE_CITE_RE = re.compile(
     r"\b((?:" + "|".join(TOP_LEVEL) + r")/[A-Za-z0-9_.\-/]+\.(?:rs|py|sh|mjs|ts|tsx|css|sql|toml|json|md))"
     r":(\d{1,5})(?:-(\d{1,5}))?\b"
@@ -117,8 +137,34 @@ def line_citation_problem(target, first, last):
     return ""
 
 
+def basename_index(tracked_set):
+    """Map a bare `.rs` filename to the ONE tracked path it names, or to None.
+
+    Added 2026-10-27 (round 42). The full-path citation rule is load-bearing by
+    design (see the module docstring), so a comment that writes `settings.rs:1264`
+    instead of `crates/kasirmu-bridge/src/settings.rs:1264` was invisible here --
+    measured that round: 220 citations graded, 354 bare ones never seen, and one
+    audit found 29 of the bare ones pointing past EOF or at a blank line.
+
+    The fix is NOT to drop the prefix rule but to RESOLVE the bare name first. Of
+    837 distinct .rs basenames, 607 are unique in the tree and 230 are not
+    (`main.rs` x7, `build.rs` x6, ...). A unique name has exactly one target, so
+    grading it is the same arithmetic as a full path. An ambiguous one is skipped,
+    because picking a file would grade the wrong one -- the same rule the UI-side
+    featureCommentPaths suite applies to bare basenames.
+    """
+    index = {}
+    for path in tracked_set:
+        if not path.endswith(".rs"):
+            continue
+        name = path.rsplit("/", 1)[-1]
+        index[name] = None if name in index else path
+    return index
+
+
 def scan(files, tracked_set, history_cache):
     findings = []
+    bare_index = basename_index(tracked_set)
     for f in files:
         try:
             lines = f.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -170,6 +216,20 @@ def scan(files, tracked_set, history_cache):
             #
             # Only TRACKED paths are graded. An example path in prose (an absolute
             # `C:/dev/...` root-confusion note, say) is not a reference to this tree.
+            # BARE FILENAMES: resolve the basename, then grade it exactly like a
+            # full path. Skipped when the name is ambiguous (see basename_index).
+            for m in BARE_CITE_RE.finditer(LINE_CITE_RE.sub("", line)):
+                resolved = bare_index.get(m.group(1))
+                if resolved is None:
+                    continue
+                first = int(m.group(2))
+                last = int(m.group(3)) if m.group(3) else first
+                findings.append({
+                    "file": f.relative_to(ROOT).as_posix(),
+                    "line": n,
+                    "path": "%s:%d%s" % (m.group(1), first, ("-%d" % last) if last != first else ""),
+                    "why": line_citation_problem(Path(ROOT) / resolved, first, last),
+                })
             for m in LINE_CITE_RE.finditer(line):
                 cited = m.group(1)
                 start = m.start(1)
