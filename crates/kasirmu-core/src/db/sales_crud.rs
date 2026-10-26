@@ -206,7 +206,7 @@ impl Store<'_> {
     /// Persist a [`Sale`] (header + all line items) inside a single transaction.
     ///
     /// SYNC OUTBOX - lane one, deliberately unwired. Three doors produce a
-    /// `SaleCompleted`; two of them (sales_checkout.rs:527,
+    /// `SaleCompleted`; two of them (sales_checkout.rs:813,
     /// sales_lifecycle.rs:524) now write the `complete_sale` outbox row inside
     /// the settlement transaction. This one cannot: the legacy `complete_sale`
     /// command completes a sale across THREE separate transactions - create_sale
