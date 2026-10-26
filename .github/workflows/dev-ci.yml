@@ -1586,6 +1586,23 @@ jobs:
       # fallback and the settings draft. The drift it guards was live once.
       - name: Server origin consistency
         run: node scripts/check-server-origins.mjs
+      # TWO more gates that were `status: required` with no `ci` block, i.e. enforced
+      # only by whoever remembered to run scripts/check.sh.
+      #
+      # `script-tests` is the sharpest of the set: 5 files, 78 assertions, 3.4s, and
+      # NONE of it ran in CI. Those files are the mutation-grade suites for the
+      # checkers themselves -- verify-architecture-boundaries.test.mjs is what proves
+      # its ui-direct-invoke arm can fail at all. A checker whose own suite never runs
+      # in CI is a green light nobody checks, which is the exact class this file
+      # records a dozen times above.
+      - name: Checker script tests
+        run: node --test scripts/__tests__/*.test.mjs
+      # root-policy: 0.2s, standard library only, reads the working tree.
+      - name: Root allowlist policy
+        run: python3 scripts/verify-root-policy.py
+      - name: Root allowlist policy self-test
+        run: python3 scripts/verify-root-policy.py --self-test
+
       # ORDERING RULE FOR THIS JOB, and the reason these two sit last rather than
       # where they used to. Every step above measured 0-2s; these two are whole-
       # repo scans at 10s and 11s, so they are the most expensive thing left here
