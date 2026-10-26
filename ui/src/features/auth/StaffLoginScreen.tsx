@@ -622,6 +622,18 @@ export default function StaffLoginScreen() {
           (keyboardAvoidRef as React.MutableRefObject<HTMLDivElement | null>).current = (el?.parentElement ?? null) as HTMLDivElement | null;
         }}
       >
+        {/* The page's level-one heading. The login screen had NONE: the store
+            name renders as an <img alt> on the username step and as a badge on
+            the PIN step, so a screen reader arriving at the app's front door got
+            no page name. Visually hidden because the logo and the store badge
+            already carry the identity visually; the heading is for the outline.
+            `staff-login-title` is the id the suites' fixtures have always used
+            for the store name -- it exists in no bundle, so it is declared here
+            with the app name as its value. */}
+        <Localized id="staff-login-title">
+          <h1 className="sr-only">kasir.mu</h1>
+        </Localized>
+
         {step === 'pin' && (
           <button
             type="button"

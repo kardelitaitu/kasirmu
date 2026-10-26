@@ -170,6 +170,8 @@ fastpin-active-user = Active: { $name }
 fastpin-enter-pin = Enter PIN for { $user }
 
 # ── Session Lock Screen (i18n parity fix) ────────────────────────────────
+staff-login-title = kasir.mu
+session-lock-title = Session locked
 session-lock-expired = Session expired. Please log in again.
 session-lock-invalid-pin = Invalid PIN
 session-lock-pin-aria = PIN: { $length } of { $max } digits entered

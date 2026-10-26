@@ -234,6 +234,15 @@ export default function SessionLockScreen({
       {/* Shrink-wraps the card and anchors the notice slot below it. */}
       <div className="session-lock-stage">
         <div className="session-lock-card" ref={cardRef}>
+          {/* The page's level-one heading. The screen had NO heading at all:
+              a lock badge (aria-hidden), a time, a date, and a PIN pad, so a
+              screen reader arriving here got no page name -- only the pad's
+              label. Visually hidden because the card's shape already reads as
+              a lock screen and the badge is decorative. */}
+          <Localized id="session-lock-title">
+            <h1 className="sr-only">Session locked</h1>
+          </Localized>
+
           {/* Lock badge — card-corner counterpart of login's top-right
               close button. Decorative: the lock state is already exposed
               by the PIN pad's accessible label. */}
