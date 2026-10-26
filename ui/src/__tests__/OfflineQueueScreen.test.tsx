@@ -81,6 +81,18 @@ describe('OfflineQueueScreen', () => {
     });
   });
 
+  // offline_queue.status has no CHECK constraint, so a spelling the UI does not know is
+  // reachable rather than hypothetical. The fallback used to be 'pending' -- the state that
+  // literally means "this will be pushed" -- so an unreadable row would have been shown as
+  // work that is definitely on its way. Unknown must read as unknown.
+  it('labels an unrecognised queue status as unknown, never as pending', async () => {
+    mockListAllOffline.mockResolvedValue([makeQueueItem({ status: 'quarantined' })]);
+    renderScreen();
+    await waitFor(() => {
+      expect(screen.getByText('Unknown status')).toBeTruthy();
+    });
+    expect(screen.queryByText('Pending')).toBeNull();
+  });
   it('renders the title', async () => {
     mockListAllOffline.mockResolvedValue([]);
     renderScreen();

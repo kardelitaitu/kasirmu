@@ -40,6 +40,7 @@ offline-queue-release-to-refresh = Release to refresh
 offline-queue-status-pending = Pending
 offline-queue-status-synced = Synced
 offline-queue-status-failed = Failed
+offline-queue-status-unknown = Unknown status
 offline-queue-table-actions = Actions
 offline-queue-sync-all-label = Sync all pending offline items
 offline-queue-delete-error = Failed to delete item

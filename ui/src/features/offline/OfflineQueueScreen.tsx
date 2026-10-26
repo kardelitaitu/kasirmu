@@ -60,8 +60,13 @@ function statusLabel(status: string): string {
       return 'offline-queue-status-synced';
     case 'failed':
       return 'offline-queue-status-failed';
+    // This column carries NO CHECK constraint (offline_queue.status is
+    // `TEXT NOT NULL DEFAULT 'pending'`), so a value the UI does not know is a live
+    // possibility rather than a corrupt-data hypothetical. Labelling it "Pending" is the
+    // worst of the three: pending is the state that means "this will be pushed", so an
+    // unreadable row would be presented as work that is definitely on its way.
     default:
-      return 'offline-queue-status-pending';
+      return 'offline-queue-status-unknown';
   }
 }
 
