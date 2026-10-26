@@ -245,6 +245,16 @@ export default defineConfig(({ command }) => ({
         // Type-only modules (Fluent locale bundles are just strings). Path-agnostic,
         // so it kept matching after P9a moved the corpus to shared-ui/locales/.
         '**/locales/**',
+        // dev-mock is a FAKE BACKEND: handlers that stand in for IPC during local
+        // development. Grading its line coverage asks how much of the mock's own
+        // branching a test exercised, which is not a property anyone wants -- and the
+        // repo already treats it this way everywhere else (check-hardcoded-copy.py
+        // SKIP_DIR_PARTS, check-testid.mjs EXCLUDED_PREFIXES, census-orphan-modules.py
+        // and classify-finding-reachability.py SKIP_DIRS all name it). Measured
+        // 2026-10-28: it was 1,126 of 36,034 counted lines (5.9% of the denominator) at
+        // 52.84% covered, dragging the aggregate from 87.72% to 85.66%. The floors in
+        // scripts/coverage-floors.json ui_floors were re-derived after this exclusion.
+        '**/dev-mock/**',
       ],
     },
   },

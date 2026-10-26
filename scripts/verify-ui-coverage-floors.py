@@ -12,7 +12,7 @@ shape coverage-floors.json already names as the defect it exists to close:
 The target numbers that did exist were not a ratchet and had gone stale in the
 safe direction. docs/records/benchmarks/coverage-report-2026-07-20.md set
 Lines >= 50%, Branches >= 40%, Functions >= 50%. Nothing enforced them, and by
-2026-10-28 the code sits at 85.65 / 75.77 / 79.29. A threshold the code clears
+2026-10-28 the code sits at 87.71 / 78.02 / 82.70. A threshold the code clears
 by 35 points is not a threshold; it is a comment.
 
 WHY A SEPARATE CHECKER RATHER THAN A MODE OF verify-coverage-floors.py
@@ -109,9 +109,9 @@ def _summary(pct: dict[str, float]) -> dict:
 
 def self_test() -> int:
     """Prove the check fires on a shortfall and stays quiet when the floors are met."""
-    floors = {"lines": 83.7, "statements": 81.2, "functions": 77.3, "branches": 73.8}
+    floors = {"lines": 85.7, "statements": 83.1, "functions": 80.7, "branches": 76.0}
     failures = 0
-    above = {"lines": 85.65, "statements": 83.19, "functions": 79.29, "branches": 75.77}
+    above = {"lines": 87.71, "statements": 85.10, "functions": 82.70, "branches": 78.02}
     code, findings = grade(_summary(above), floors)
     if code != 0 or findings:
         print(f"FAIL self-test: the real measurement was rejected: {findings}", file=sys.stderr)

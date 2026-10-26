@@ -24,20 +24,21 @@
     "date": "2026-10-28",
     "command": "cd ui && npm run test:coverage  (vitest v8 -> coverage/ui/coverage-summary.json)",
     "measured_pct": {
-      "lines": 85.65,
-      "statements": 83.19,
-      "functions": 79.29,
-      "branches": 75.77
+      "lines": 87.71,
+      "statements": 85.1,
+      "functions": 82.7,
+      "branches": 78.02
     },
-    "files_measured": 728,
+    "files_measured": 698,
     "stability": "Two consecutive runs on 2026-10-28 produced identical percentages in all four metrics (delta 0.00), so a two-point floor cannot fire on run-to-run noise.",
-    "supersedes": "docs/records/benchmarks/coverage-report-2026-07-20.md set Lines >= 50%, Branches >= 40%, Functions >= 50%. Nothing enforced them and the code has since reached 85.65 / 75.77 / 79.29, so those numbers could never fire. They are replaced by this ratchet, not merely raised."
+    "supersedes": "docs/records/benchmarks/coverage-report-2026-07-20.md set Lines >= 50%, Branches >= 40%, Functions >= 50%. Nothing enforced them and the code has since reached 85.65 / 75.77 / 79.29, so those numbers could never fire. They are replaced by this ratchet, not merely raised.",
+    "excludes": "dev-mock/** (a fake backend, excluded the same way check-hardcoded-copy.py, check-testid.mjs, census-orphan-modules.py and classify-finding-reachability.py already exclude it). Before the exclusion on the same day the aggregate was 85.65 / 83.19 / 79.29 / 75.77 over 728 files; dev-mock was 1,126 of 36,034 counted lines at 52.84% covered."
   },
   "_policy_ui": "Same ratchet rule as the Rust floors: each floor sits 2 percentage points BELOW the measured value, so it freezes the level reached and fires on a regression without demanding work nobody has funded. Raised only by re-measuring; lowering is a deliberate, recorded act.",
   "ui_floors": {
-    "lines": 83.7,
-    "statements": 81.2,
-    "functions": 77.3,
-    "branches": 73.8
+    "lines": 85.7,
+    "statements": 83.1,
+    "functions": 80.7,
+    "branches": 76.0
   }
 }
