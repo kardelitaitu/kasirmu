@@ -2279,8 +2279,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return (
       <div className="pos-screen">
         <div className="pos-login-required">
+          {/* This branch IS the whole screen when there is no session, so its
+              heading is the page title. It was an <h2> on a screen with no <h1>. */}
           <Localized id="pos-login-required">
-            <h2>Login Required</h2>
+            <h1>Login Required</h1>
           </Localized>
           <Localized id="pos-login-desc">
             <p>Please log in to use the POS.</p>
