@@ -50,6 +50,11 @@
   font-weight: var(--font-weight-bold);
   font-size: var(--text-base);
   letter-spacing: 0.5px;
+  /* It is an <h1> (a page needs one); the UA's heading margin would push the
+     branch and address lines down, so the box is reset to the inline metrics the
+     <span> had. Not a new value -- 0, and the two declarations above already
+     override the UA's font. */
+  margin: 0;
 }
 
 /* The branch suffix (RetailHeader.tsx:86) is the quietest of the three header

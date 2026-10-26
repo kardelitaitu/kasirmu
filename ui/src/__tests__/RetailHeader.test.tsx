@@ -54,6 +54,33 @@ async function renderWithFluentId(ui: React.ReactElement) {
 }
 
 describe('RetailHeader', () => {
+  // WHY THESE ARE DOM ASSERTIONS AND NOT AXE RUNS: axe's `page-has-heading-one`
+  // cannot reach a verdict under jsdom -- a document WITH an <h1> and one WITHOUT
+  // both return `incomplete` / `error-occurred` (`document.elementFromPoint is
+  // not a function`). Measured 2026-10-27.
+  //
+  // The retail POS is a full-screen workspace and its store name is what names the
+  // page, but it rendered as a <span>: the screen had no heading root at all. Both
+  // variants are pinned because the sub-views (sales history, table management,
+  // product lookup) use the minimal one and are equally heading-less otherwise.
+  // Confirmed by mutation: reverting both to <span> left all 71 cases in this file
+  // and its two siblings green.
+  describe('Page heading', () => {
+    it('names the full-variant page with a level-one heading', async () => {
+      await renderWithFluent(<RetailHeader storeSettings={defaultStoreSettings} />);
+      const h1s = screen.getAllByRole('heading', { level: 1 });
+      expect(h1s, 'the retail POS must carry exactly one level-one heading').toHaveLength(1);
+      expect(h1s[0]!.textContent?.trim()).toBe('TOKO TEST');
+    });
+
+    it('names a minimal-variant sub-view with a level-one heading', async () => {
+      await renderWithFluent(<RetailHeader variant="minimal" title="Sales History" />);
+      const h1s = screen.getAllByRole('heading', { level: 1 });
+      expect(h1s, 'a retail sub-view must carry exactly one level-one heading').toHaveLength(1);
+      expect(h1s[0]!.textContent?.trim()).toBe('Sales History');
+    });
+  });
+
   describe('Full variant', () => {
     it('renders header element', async () => {
       await renderWithFluent(<RetailHeader storeSettings={defaultStoreSettings} />);
