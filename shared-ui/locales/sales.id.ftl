@@ -275,6 +275,7 @@ sales-history-line-tax = Pajak
 sales-history-tax-estimated-badge = Estimasi
 sales-history-status-all = Semua
 sales-history-status-completed = Selesai
+sales-history-status-active = Sedang berjalan
 sales-history-status-pending = Tertunda
 sales-history-status-voided = Dibatalkan
 sales-history-export-csv = Ekspor CSV

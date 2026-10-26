@@ -60,20 +60,30 @@ const STATUS_OPTIONS = ['All', 'Completed', 'Pending', 'Voided'] as const;
  */
 const SALES_FETCH_LIMIT = 500;
 
+/** The four states `SaleStatus` serialises to -- see foundation/src/enums.rs:39-47.
+ *  This screen compared against capitalised spellings ('Completed', 'Pending') while the
+ *  wire value is lowercase, so nothing matched. Every sale therefore took the `default`
+ *  branch: the badge fell to the neutral tone AND the label read "Completed" for sales that
+ *  were pending or voided. The same mismatch silently disabled the `status === 'Completed'`
+ *  guards that decide whether the refund action is offered at all.
+ *
+ *  `active` is listed too: SaleStatus has four members and this mapper had three, so even
+ *  after fixing the case an in-progress sale had no label of its own. */
 function statusBadgeVariant(status: string): 'success' | 'warning' | 'danger' | 'info' {
   switch (status) {
-    case 'Completed': return 'success';
-    case 'Pending': return 'warning';
-    case 'Voided': return 'danger';
+    case 'completed': return 'success';
+    case 'pending': return 'warning';
+    case 'voided': return 'danger';
     default: return 'info';
   }
 }
 
 function statusFluentId(status: string): string {
   switch (status) {
-    case 'Completed': return 'sales-history-status-completed';
-    case 'Pending': return 'sales-history-status-pending';
-    case 'Voided': return 'sales-history-status-voided';
+    case 'completed': return 'sales-history-status-completed';
+    case 'pending': return 'sales-history-status-pending';
+    case 'voided': return 'sales-history-status-voided';
+    case 'active': return 'sales-history-status-active';
     default: return 'sales-history-status-completed';
   }
 }
@@ -500,7 +510,11 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
       }
 
       // Status filter.
-      if (statusFilter !== 'All' && s.status !== statusFilter) return false;
+      // Status filter. `statusFilter` holds the chip's display value ('Completed') while
+      // `s.status` is the wire value ('completed'), so comparing them directly matched
+      // nothing and selecting any chip emptied the table. Comparing case-insensitively
+      // keeps the chips and their STATUS_OPTIONS -> fluent-id map exactly as they were.
+      if (statusFilter !== 'All' && s.status.toLowerCase() !== statusFilter.toLowerCase()) return false;
 
       // Cashier filter.
       if (cashierFilter && s.userId !== cashierFilter) return false;
@@ -2012,7 +2026,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
                         </div>
                       )}
                     </div>
-                    {session && detail.status === 'Completed' && !detail.statutoryNumber && (
+                    {session && detail.status === 'completed' && !detail.statutoryNumber && (
                       <div className="sales-history-statutory-invoice-actions">
                         <Button
                           variant="secondary"
@@ -2195,7 +2209,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
                       sale being completed: an unanswered read leaves the refunded
                       total unknown, and offering the action is what turns a display
                       gap into a wrong-reason refund rejection. */}
-                  {detail.status === 'Completed' && session && !refundsUnknown && (
+                  {detail.status === 'completed' && session && !refundsUnknown && (
                     <Localized id="refund-action-refund">
                       <Button variant="secondary" onClick={openRefund}>Refund</Button>
                     </Localized>

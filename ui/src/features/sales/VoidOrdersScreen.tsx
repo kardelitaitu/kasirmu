@@ -46,20 +46,20 @@ const VOID_REASONS = [
 
 function statusBadgeVariant(status: string): 'success' | 'warning' | 'danger' | 'info' {
   switch (status) {
-    case 'Completed': return 'success';
-    case 'Active': return 'info';
-    case 'Pending': return 'warning';
-    case 'Voided': return 'danger';
+    case 'completed': return 'success';
+    case 'active': return 'info';
+    case 'pending': return 'warning';
+    case 'voided': return 'danger';
     default: return 'info';
   }
 }
 
 function statusLabelFluentId(status: string): string {
   switch (status) {
-    case 'Active': return 'void-orders-status-active';
-    case 'Completed': return 'void-orders-status-completed';
-    case 'Voided': return 'void-orders-status-voided';
-    case 'Pending': return 'void-orders-status-pending';
+    case 'active': return 'void-orders-status-active';
+    case 'completed': return 'void-orders-status-completed';
+    case 'voided': return 'void-orders-status-voided';
+    case 'pending': return 'void-orders-status-pending';
     default: return 'void-orders-status-active';
   }
 }
@@ -75,7 +75,7 @@ function formatDate(iso: string): string {
 // ── Component ───────────────────────────────────────────────────────
 
 type ViewMode = 'list' | 'detail';
-type FilterStatus = 'all' | 'Active' | 'Completed' | 'Voided' | 'Pending';
+type FilterStatus = 'all' | 'active' | 'completed' | 'voided' | 'pending';
 
 interface VoidOrdersScreenProps {
   /** ID of the sale to open directly (for navigating from POS after completion). */
@@ -332,7 +332,10 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
 
           <Localized id="void-orders-filter-status-aria" attrs={{ 'aria-label': true }}>
           <div className="void-orders-status-filters" role="radiogroup">
-            {(['all', 'Active', 'Completed', 'Voided', 'Pending'] as FilterStatus[]).map((status) => (
+            {/* Filter values are the wire spellings, matching SaleStatus::as_stored_str
+                (foundation/src/enums.rs:40). They were capitalised while `s.status` is not, so
+                :196's equality test filtered every row out the moment a chip was selected. */}
+            {(['all', 'active', 'completed', 'voided', 'pending'] as FilterStatus[]).map((status) => (
               <button
                 key={status}
                 type="button"
@@ -458,7 +461,7 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
                   </tr>
                 </thead>
                 <tbody>{pageItems.map((sale) => (
-                    <tr key={sale.id} className={sale.status === 'Active' ? 'void-orders-row--active' : ''}>
+                    <tr key={sale.id} className={sale.status === 'active' ? 'void-orders-row--active' : ''}>
                       <td className="void-orders-cell-id">{sale.id.slice(0, 8)}&hellip;</td>
                       <td>{formatDate(sale.createdAt)}</td>
                       { }
@@ -485,7 +488,7 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
                             </Localized>
                           </button>
                         </Localized>
-                        {sale.status === 'Active' && (
+                        {sale.status === 'active' && (
                           <Localized id="void-orders-void-aria" attrs={{ 'aria-label': true }} vars={{ id: sale.id }}>
                             <button
                               type="button"
@@ -537,7 +540,7 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
 
   // ── Render: Detail view ────────────────────────────────────────
 
-  const canVoid = detail?.status === 'Active';
+  const canVoid = detail?.status === 'active';
 
   return (
     <div className="void-orders">
@@ -840,7 +843,7 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
           )}
 
           {/* Already voided notice */}
-          {detail.status === 'Voided' && (
+          {detail.status === 'voided' && (
             <Card shadow="sm" className="void-orders-section">
               <div className="void-orders-voided-notice">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20" aria-hidden="true">

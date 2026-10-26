@@ -40,24 +40,24 @@ const mockVoidSale = voidSaleScoped as ReturnType<typeof vi.fn>;
 
 const sampleSales = [
   {
-    id: 'ORD-001', createdAt: '2026-07-05T10:00:00Z', status: 'Active',
+    id: 'ORD-001', createdAt: '2026-07-05T10:00:00Z', status: 'active',
     total: { minor_units: 35000, currency: 'IDR' }, lineCount: 3,
     paymentMethod: 'CASH', userId: 'user-1',
   },
   {
-    id: 'ORD-002', createdAt: '2026-07-05T11:00:00Z', status: 'Completed',
+    id: 'ORD-002', createdAt: '2026-07-05T11:00:00Z', status: 'completed',
     total: { minor_units: 50000, currency: 'IDR' }, lineCount: 2,
     paymentMethod: 'CARD', userId: 'user-1',
   },
   {
-    id: 'ORD-003', createdAt: '2026-07-05T12:00:00Z', status: 'Voided',
+    id: 'ORD-003', createdAt: '2026-07-05T12:00:00Z', status: 'voided',
     total: { minor_units: 12000, currency: 'IDR' }, lineCount: 1,
     paymentMethod: 'CASH', userId: 'user-1',
   },
 ];
 
 const sampleDetail = {
-  id: 'ORD-001', createdAt: '2026-07-05T10:00:00Z', status: 'Active',
+  id: 'ORD-001', createdAt: '2026-07-05T10:00:00Z', status: 'active',
   total: { minor_units: 35000, currency: 'IDR' },
   subtotal: { minor_units: 35000, currency: 'IDR' },
   taxTotal: { minor_units: 0, currency: 'IDR' },
