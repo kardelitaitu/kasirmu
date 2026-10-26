@@ -36,7 +36,6 @@ const testL10n = {
       'settings-tax-id-placeholder': '12-3456789',
       'settings-branch-placeholder': 'Main Branch',
       'settings-store-name-required': 'Store name is required',
-      'settings-tax-id-pattern-error': 'Invalid tax ID format',
       'settings-tax-id-pattern-hint': 'Enter a valid tax ID',
     };
     return defaults[id] ?? id;

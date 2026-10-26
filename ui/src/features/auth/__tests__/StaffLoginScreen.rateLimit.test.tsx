@@ -66,8 +66,6 @@ vi.mock('@fluent/react', () => ({
     l10n: {
       getString: (id: string, args?: Record<string, unknown>) => {
         const map: Record<string, string> = {
-          'staff-login-error-not-found': 'User not found',
-          'staff-login-error-deactivated': 'Deactivated',
           'staff-login-error-connection': 'Connection error',
           'staff-login-attempts-remaining': `Attempts remaining: ${args?.['count']}`,
           'staff-login-lockout': `Locked for ${args?.['seconds']}s`,

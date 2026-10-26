@@ -1083,6 +1083,18 @@ jobs:
       # comment-blanking, h10-vs-h1).
       - name: Page headings self-test
         run: python3 scripts/check-page-headings.py --self-test
+
+      # Gate: scripts/gates.json -> "fixture-ftl-keys". A fixture that stubs
+      # getString with `defaults[id] ?? id` cannot notice its own mistakes, so a
+      # key invented in a test stays green forever. Three were real: a near-miss
+      # for settings-tax-id-pattern-hint, and two error messages for copy the
+      # login screen deliberately does NOT have (STAFF-06 answers every pre-auth
+      # probe uniformly, so per-reason errors would undo it).
+      - name: Fixture FTL keys
+        run: python3 scripts/check-fixture-ftl-keys.py
+
+      - name: Fixture FTL keys self-test
+        run: python3 scripts/check-fixture-ftl-keys.py --self-test
       - name: Architecture boundaries
         run: python3 scripts/verify-architecture-boundaries.py --strict
       # The two SQLite maintenance scripts' own self-tests, beside the gate they

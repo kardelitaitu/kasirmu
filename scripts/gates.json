@@ -2215,6 +2215,27 @@
         ]
       },
       "self_test": "python3 scripts/check-page-headings.py --self-test"
+    },
+    {
+      "id": "fixture-ftl-keys",
+      "label": "Fixture FTL keys",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "fixture ftl keys",
+          "fixture ftl keys self-test"
+        ]
+      },
+      "self_test": "python3 scripts/check-fixture-ftl-keys.py --self-test",
+      "_note": "Added 2026-10-27 (round 38). A test fixture that stubs getString as `defaults[id] ?? id` cannot notice its own mistakes, so a key invented in a suite stays green forever. Three were real: settings-tax-id-pattern-error (a near-miss for settings-tax-id-pattern-hint, which useStoreDraft.ts:138 is the only reader of), and staff-login-error-not-found / staff-login-error-deactivated -- error copy the login screen deliberately does NOT have, because STAFF-06 answers every pre-auth probe uniformly so the screen cannot enumerate usernames. Those two fixtures were carrying copy for a design the product had rejected. Falsified: restoring all three reddens it 3/3. Scope limit stated in the file: it catches keys that exist NOWHERE, not fixtures whose VALUE has drifted while the key still resolves.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Fixture FTL keys",
+          "Fixture FTL keys self-test"
+        ]
+      }
     }
   ]
 }
