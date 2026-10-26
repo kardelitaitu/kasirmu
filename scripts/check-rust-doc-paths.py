@@ -65,6 +65,16 @@ HISTORY_RE = re.compile(
 )
 DOC_RE = re.compile(r"^\s*(?://[/!]|\*)")
 
+# `path.rs:NNN` and `path.rs:NNN-MMM` -- the citation form that names a LINE, not just a
+# file. Kept separate from PATH_RE because a citation is a stronger claim than a path: it
+# says the thing you want is ON that line, and a stale number sends the reader somewhere
+# plausible and wrong. Only paths the tree TRACKS are graded, so an example path in prose
+# is not a finding.
+LINE_CITE_RE = re.compile(
+    r"\b((?:" + "|".join(TOP_LEVEL) + r")/[A-Za-z0-9_.\-/]+\.(?:rs|py|sh|mjs|ts|tsx|css|sql|toml|json|md))"
+    r":(\d{1,5})(?:-(\d{1,5}))?\b"
+)
+
 
 def tracked() -> set:
     out = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True)
@@ -82,6 +92,29 @@ def ever_existed(path: str, cache: dict) -> bool:
         )
         cache[path] = bool(out.stdout.strip())
     return cache[path]
+
+
+def line_citation_problem(target, first, last):
+    """Why a `path:NNN` citation is unusable, or "" when it holds.
+
+    BLANK or PAST EOF is the subset this can judge without guessing. A line holding only
+    punctuation (`}`, `);`, `),`) is equally unable to be what a comment means to
+    cite, so it fails the same test. Anything with real text is ACCEPTED: deciding that a
+    citation names the wrong SYMBOL needs a reader, and a gate that guessed would produce
+    the false-positive noise that teaches people to ignore it.
+    """
+    try:
+        body = target.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""  # unreadable is not a verdict (it is tracked, so this is a race)
+    if first > len(body):
+        return "cites line %d but the file has %d line(s) -- past the end" % (first, len(body))
+    window = body[first - 1:last]
+    if not window or all(re.match(r"^[\s)\]\};,]*$", ln) for ln in window):
+        shown = (body[first - 1] if first - 1 < len(body) else "").strip()
+        return ("cites line %d, which is blank or punctuation-only (%r)"
+                % (first, shown[:40]))
+    return ""
 
 
 def scan(files, tracked_set, history_cache):
@@ -126,7 +159,35 @@ def scan(files, tracked_set, history_cache):
                     "path": path,
                     "why": why,
                 })
-    return findings
+            # ── THE LINE HALF (added 2026-10-26, round 27) ─────────────────────
+            #
+            # Until now this checker graded only whether a cited PATH exists. A
+            # `path.rs:NNN` citation makes a second claim — that the thing you want is
+            # ON line NNN — and nothing checked it anywhere: check-dead-refs.py reads
+            # markdown, check-cite-lines.py reads markdown, and the UI-side
+            # featureCommentPaths suite reads ui/src only. A scan of the Rust, Go and
+            # Python trees found 69 citations pointing at a blank line or past EOF.
+            #
+            # Only TRACKED paths are graded. An example path in prose (an absolute
+            # `C:/dev/...` root-confusion note, say) is not a reference to this tree.
+            for m in LINE_CITE_RE.finditer(line):
+                cited = m.group(1)
+                start = m.start(1)
+                if start > 0 and line[start - 1] in "/\\":
+                    continue
+                if start >= 2 and line[start - 2:start - 1] == ":":
+                    continue
+                if cited not in tracked_set:
+                    continue
+                first = int(m.group(2))
+                last = int(m.group(3)) if m.group(3) else first
+                findings.append({
+                    "file": f.relative_to(ROOT).as_posix(),
+                    "line": n,
+                    "path": "%s:%d%s" % (cited, first, ("-%d" % last) if last != first else ""),
+                    "why": line_citation_problem(Path(ROOT) / cited, first, last),
+                })
+    return [x for x in findings if x["why"]]
 
 
 def main() -> int:
@@ -283,10 +344,42 @@ def self_test() -> int:
     want("the floor still catches a ZERO corpus", 0 < MIN_RUST_FILES, True)
     want("the floor is not so high a legitimate shrink trips it", MIN_RUST_FILES >= 500, True)
 
+
+    # ── THE LINE HALF (added 2026-10-26, round 27) ─────────────────────────
+    #
+    # Every case below drives the REAL line_citation_problem against a temp file,
+    # because the stub-vs-real lesson above applies here too: asserting on
+    # LINE_CITE_RE alone would prove the regex and not the classifier. Each case
+    # pins one verdict word, and there is a negative control for each positive so a
+    # predicate that answered constantly could not pass both.
+    import tempfile as _tempfile
+
+    with _tempfile.TemporaryDirectory() as _d:
+        _probe = Path(_d) / "cited.rs"
+        _probe.write_text("fn a() {}\n\n// a comment\n}\n))\n)\n", encoding="utf-8")
+        # (line 1 real, 2 blank, 3 comment, 4-6 punctuation only)
+        want("a real line is accepted", line_citation_problem(_probe, 1, 1), "")
+        want("a comment line is accepted", line_citation_problem(_probe, 3, 3), "")
+        want("a blank line is a finding",
+             "blank or punctuation-only" in line_citation_problem(_probe, 2, 2), True)
+        want("a punctuation-only line is a finding",
+             "blank or punctuation-only" in line_citation_problem(_probe, 4, 4), True)
+        want("past EOF is a finding",
+             "past the end" in line_citation_problem(_probe, 99, 99), True)
+        want("a range ending past EOF is graded from its first line",
+             "blank or punctuation-only" in line_citation_problem(_probe, 4, 99), True)
+        # The extractor itself: a tracked-looking citation is found, a bare name is not.
+        want("a path:NN line is extracted",
+             bool(LINE_CITE_RE.search("/// see crates/core/src/lib.rs:42 here")), True)
+        want("a path:NN-MM range is extracted",
+             bool(LINE_CITE_RE.search("/// see crates/core/src/lib.rs:42-50 here")), True)
+        want("a bare filename with a line is NOT extracted",
+             bool(LINE_CITE_RE.search("/// see lib.rs:42 here")), False)
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (18 cases, no file or git read)")
+    print("SELF-TEST OK (24 cases, no file or git read)")
     return 0
 
 
