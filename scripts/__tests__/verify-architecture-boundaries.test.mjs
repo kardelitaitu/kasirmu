@@ -125,7 +125,13 @@ describe('verify-architecture-boundaries.py', () => {
     const dir = fixture({
       packages: [{ name: 'foundation' }],
       uiFiles: {
-        'ui/src/api/allowed.ts': "import { invoke } from '@tauri-apps/api/core'; invoke('allowed');",
+        // An api module that goes through the sanctioned wrapper: the CALL is not
+        // graded (this directory is where IPC belongs), and there is no upstream
+        // import to grade either. Until 2026-10-26 this line imported the upstream
+        // `invoke` directly and still passed -- the skip ran before the file was
+        // read, which is exactly how payables.ts stayed invisible. The import shape
+        // now has its own case below.
+        'ui/src/api/allowed.ts': "import { loggedInvoke } from '@/utils/logged-invoke'; loggedInvoke('allowed');",
         'ui/src/comments.ts': "// invoke('comment')\nconst text = 'invoke(\\\"string\\\")';",
         'ui/src/__tests__/screen.test.tsx': "invoke('test');",
         'ui/src/dev-mock/tauri.ts': "invoke('mock');",
@@ -134,6 +140,24 @@ describe('verify-architecture-boundaries.py', () => {
     const result = run(dir);
     assert.equal(result.code, 0, result.output);
     assert.match(result.output, /0 new\/expired blocking/);
+  });
+
+  it('reports an api module that binds the upstream invoke instead of the wrapper', () => {
+    // The regression this pins: ui/src/api/payables.ts imported `invoke` from
+    // '@tauri-apps/api/core' in four call sites, bypassing the @/api/tauri deadline
+    // wrapper (C23), and this checker printed exit 0 over all of them because the
+    // directory skip ran first. A wrapper CALL here is still not graded (see the
+    // case above); the IMPORT is.
+    const dir = fixture({
+      packages: [{ name: 'foundation' }],
+      uiFiles: {
+        'ui/src/api/bypass.ts': "import { invoke } from '@tauri-apps/api/core';\nexport const x = () => invoke('nope');\n",
+      },
+    });
+    const result = run(dir);
+    assert.equal(result.code, 1, result.output);
+    assert.match(result.output, /ui-direct-invoke/);
+    assert.match(result.output, /api\/bypass\.ts:1/);
   });
 
   it('reports a production module-to-module dependency', () => {

@@ -87,6 +87,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -108,7 +109,21 @@ BRIDGE_TOOLKIT_SECTIONS = ("[dependencies]", "[dev-dependencies]", "[build-depen
 BRIDGE_TOOLKIT_PATTERN = re.compile(r"tauri|webkit|gtk", re.IGNORECASE)
 ALLOWED_PLATFORM_COMPOSER = "platform-startup"
 UI_API_PREFIX = "ui/src/api/"
-UI_INFRASTRUCTURE_ADAPTERS = {"ui/src/utils/logged-invoke.ts"}
+# The three shapes that bring the UPSTREAM `invoke` into a file. Hoisted so the
+# api-directory arm and the general arm below cannot drift apart: both must ask
+# the same question, and the answer is what makes a bypass a bypass.
+UPSTREAM_INVOKE_IMPORT = re.compile(
+    r"(?:import\s*\{[^}]*\binvoke\b[^}]*\}\s*from\s*['\"]@tauri-apps/api/core['\"]|"
+    r"import\s*\*\s*as\s+\w+\s*from\s*['\"]@tauri-apps/api/core['\"]|"
+    r"\{[^}]*\binvoke\b[^}]*\}\s*=\s*await\s+import\s*\(\s*['\"]@tauri-apps/api/core['\"]\s*\))",
+    re.DOTALL,
+)
+UI_INFRASTRUCTURE_ADAPTERS = {
+    "ui/src/utils/logged-invoke.ts",
+    # The deadline wrapper ITSELF. It is the one file whose job is to bind the
+    # upstream `invoke`, so an import of it here is the seam rather than a bypass.
+    "ui/src/api/tauri.ts",
+}
 # ADR #53: a Rust char literal, as opposed to a lifetime (`&'a str`). Needed so the
 # comment-preserving mask does not open a fake string at a lifetime's apostrophe.
 CHAR_LITERAL_PATTERN = re.compile(r"'(?:\\.|[^\\'])'")
@@ -655,6 +670,54 @@ def find_invoke_calls(raw: str) -> list[tuple[int, str]]:
     return calls
 
 
+def api_module_imports_upstream_invoke(rel: str, path: Path) -> bool:
+    """True when a file under `ui/src/api/` binds the UPSTREAM `invoke`.
+
+    `ui/src/api/` is the sanctioned home for IPC wrappers, and this rule skips the
+    directory so a wrapper's own `invoke` CALL is not reported. Skipping the whole
+    directory also skipped its IMPORTS, which is the half that matters: `@/api/tauri`
+    (re-exported by `@/utils/logged-invoke`) is what gives every call a deadline
+    (C23), and a module that binds the upstream `invoke` instead has no bound at all.
+
+    That is not a style point. Tauri 2.11.3 compiles an async command onto a spawned
+    task with no `catch_unwind`, so a panicking body never writes a response and the
+    promise never settles -- the caller waits forever behind a spinner. Measured
+    2026-10-26: `ui/src/api/payables.ts` imported the upstream `invoke` in four call
+    sites, and this checker reported exit 0 over them because the directory arm
+    returned before the import was read. All four are now routed through
+    `loggedInvoke`, and this predicate is what keeps the next one from slipping in.
+
+    The seam adapter itself is exempt via UI_INFRASTRUCTURE_ADAPTERS: importing the
+    upstream `invoke` is that file's entire job.
+    """
+    if rel in UI_INFRASTRUCTURE_ADAPTERS:
+        return False
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ValueError(f"cannot read UI source: {path}: {exc}") from exc
+    return bool(invoke_callable_names(raw))
+
+
+def _first_upstream_import_line(path: Path) -> int:
+    """1-based line of the first statement importing the upstream `invoke`.
+
+    Comments are masked first, so a docstring that merely NAMES the import (as
+    api/tauri.ts does at length) does not report itself. Returns 0 when the file
+    cannot be read or no import survives the mask; the caller only invokes this
+    after the predicate has already answered True.
+    """
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        return 0
+    code = strip_comments_preserving_strings(raw)
+    match = UPSTREAM_INVOKE_IMPORT.search(code)
+    if not match:
+        return 0
+    return code.count(chr(10), 0, match.start()) + 1
+
+
 def ui_findings(root: Path, scope: dict[str, int]) -> list[dict[str, Any]]:
     ui_root = root / "ui" / "src"
     if not ui_root.is_dir():
@@ -662,7 +725,21 @@ def ui_findings(root: Path, scope: dict[str, int]) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
     for path in sorted(ui_root.rglob("*.ts")) + sorted(ui_root.rglob("*.tsx")):
         rel = relative_path(path, root)
-        if rel.startswith(UI_API_PREFIX) or rel in UI_INFRASTRUCTURE_ADAPTERS:
+        if rel in UI_INFRASTRUCTURE_ADAPTERS:
+            continue
+        if rel.startswith(UI_API_PREFIX):
+            # `ui/src/api/` is the sanctioned home for IPC wrappers, so a CALL made here
+            # is not a boundary violation and is not graded. An IMPORT of the upstream
+            # `invoke` is graded, because it bypasses the `@/api/tauri` deadline wrapper
+            # (C23): a panicking command then never settles, and the UI spins forever.
+            #
+            # That import arm did not exist until 2026-10-26. This skip ran before the
+            # file was ever read, so `ui/src/api/payables.ts` bound the upstream
+            # `invoke` in four call sites while the checker printed exit 0 over them.
+            # Measured, then fixed, then pinned by four cases in the --self-test.
+            if api_module_imports_upstream_invoke(rel, path):
+                findings.append(make_finding('ui-direct-invoke', rel, '<import>',
+                                             _first_upstream_import_line(path)))
             continue
         if {"__tests__", "__mocks__", "dev-mock"} & set(path.parts) or ".test." in path.name or ".spec." in path.name:
             continue
@@ -1291,10 +1368,58 @@ def self_test() -> int:
     want("above the root keeps its ../",
          relative_path(Path("../sibling/x.rs"), Path(".")), "../sibling/x.rs")
 
+    # The api-directory arm, added 2026-10-26 after ui/src/api/payables.ts was found
+    # importing the upstream `invoke` while this checker printed exit 0 over it. The
+    # predicate is the ONLY part of that fix a case can reach without touching disk:
+    # the directory walk needs a real tree, and this self-test's contract is "no files
+    # touched". So each case drives api_module_imports_upstream_invoke against a
+    # throwaway temp file, and asserts both directions -- a case that only checked the
+    # True direction would stay green if the predicate returned True for everything.
+    with tempfile.TemporaryDirectory() as probe_dir:
+        probe = Path(probe_dir) / "payables.ts"
+        probe.write_text(
+            "import { loggedInvoke } from '@/utils/logged-invoke';\n"
+            "export const x = () => loggedInvoke<number>('a_scoped', {});\n",
+            encoding="utf-8",
+        )
+        want("an api module using the wrapper is not a finding",
+             api_module_imports_upstream_invoke("ui/src/api/payables.ts", probe), False)
+
+        probe.write_text(
+            "import { invoke } from '@tauri-apps/api/core';\n"
+            "export const x = () => invoke<number>('a_scoped', {});\n",
+            encoding="utf-8",
+        )
+        want("an api module binding the upstream invoke IS a finding",
+             api_module_imports_upstream_invoke("ui/src/api/payables.ts", probe), True)
+        want("the reported line is the import",
+             _first_upstream_import_line(probe), 1)
+
+        # A docstring that merely NAMES the import must not report itself; the seam
+        # adapter (api/tauri.ts) is legitimately full of such prose.
+        probe.write_text(
+            "/**\n"
+            " * This wrapper exists because '@tauri-apps/api/core' has no deadline.\n"
+            " * import { invoke } from '@tauri-apps/api/core';  <- mentioned, not done\n"
+            " */\n"
+            "export const y = 1;\n",
+            encoding="utf-8",
+        )
+        want("a comment naming the import is not a finding",
+             api_module_imports_upstream_invoke("ui/src/api/other.ts", probe), False)
+
+        # The seam adapter imports the upstream invoke by design.
+        probe.write_text(
+            "import { invoke as rawInvoke } from '@tauri-apps/api/core';\n",
+            encoding="utf-8",
+        )
+        want("the seam adapter is exempt",
+             api_module_imports_upstream_invoke("ui/src/api/tauri.ts", probe), False)
+
     if cases:
         print("SELF-TEST WRONG: " + "; ".join(cases), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (14 cases, no files touched)")
+    print("SELF-TEST OK (18 cases, no files touched)")
     return 0
 
 
