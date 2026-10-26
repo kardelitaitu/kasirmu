@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback, type ReactNode } from 'react';
-import { useLocalization } from '@fluent/react';
+import { Localized, useLocalization } from '@fluent/react';
 import { useToast } from '@/components/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -2156,7 +2156,9 @@ export default function NodeTopologyEditor({
           Visually hidden: the groups it names are already visually obvious
           (a tool rack on the left, a canvas filling the rest), and the heading
           exists for the outline rather than for the eye. */}
-      <h2 className="sr-only">Editor sections</h2>
+      <Localized id="topology-editor-sections">
+        <h2 className="sr-only">Editor sections</h2>
+      </Localized>
       <div className="node-topology-main">
         {!webAuthoringManaged && (
           <TopologyToolRack

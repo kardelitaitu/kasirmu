@@ -37,6 +37,7 @@ multi-store-details-close-aria = Tutup detail lokasi
 # ── Topology Editor ──
 
 topology-builder-title = Builder Topologi Visual Toko & Workspace
+topology-editor-sections = Bagian editor
 
 topology-apply-changes = Terapkan Topologi
 # Konfirmasi popup

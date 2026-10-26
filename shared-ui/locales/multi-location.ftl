@@ -39,6 +39,7 @@ multi-store-details-close-aria = Close location details
 # ── Topology Editor ──
 
 topology-builder-title = Visual Store & Workspace Topology Builder
+topology-editor-sections = Editor sections
 
 topology-apply-changes = Apply Topology
 # Confirmation popup
