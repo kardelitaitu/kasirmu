@@ -121,9 +121,9 @@ Audit queries for date ranges older than 90 days use `UNION ALL SELECT … FROM 
 | Check | Expected |
 |-------|----------|
 | `cargo build -p platform-sync -p oz-cloud-server --lib --tests` | exit 0 — **NOTE: `oz-cloud-server` is a pre-rebrand package name; it is `kasirmu-cloud` today** |
-| `cargo clippy -p platform-sync -p oz-cloud-server --lib --tests -- -D warnings` | 0 warnings |
+| `cargo clippy -p platform-sync -p kasirmu-cloud --lib --tests -- -D warnings` | 0 warnings |
 | `cargo test -p platform-sync` | all passing |
-| `cargo test -p oz-cloud-server` | all passing |
+| `cargo test -p kasirmu-cloud` | all passing |
 | `cargo test -p oz-core -- products` | all passing (stock_movements tests intact, archive function tested) — **`oz-core` is a pre-rebrand name; use `kasirmu-core`** |
 | Manual: 500 fake pending items, measure RSS before/after | No increase |
 | Manual: `curl -v -H "Accept-Encoding: gzip" …` | Response has `Content-Encoding: gzip` |

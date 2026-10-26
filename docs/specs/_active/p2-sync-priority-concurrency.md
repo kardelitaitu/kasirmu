@@ -67,7 +67,7 @@ Ensure critical sale records propagate before inventory syncs by introducing pri
 | Check | Expected |
 |-------|----------|
 | `cargo build -p oz-cloud-server -p platform-sync -p platform-startup --lib --tests` | exit 0 — **`oz-cloud-server` is a pre-rebrand name; it is `kasirmu-cloud` today** |
-| `cargo clippy -p oz-cloud-server -p platform-sync -p platform-startup --lib --tests -- -D warnings` | 0 warnings — **same name note** |
+| `cargo clippy -p kasirmu-cloud -p platform-sync -p platform-startup --lib --tests -- -D warnings` | 0 warnings — **same name note** |
 | `cargo test -p platform-startup` | all passing (event handler tests) |
 | `cargo test -p oz-core --test offline_integration` | all passing (priority column) — **`oz-core` is a pre-rebrand name; use `kasirmu-core`** |
 | Load test: 60 concurrent sync pushes + 20 concurrent API calls | Sync: 40 in-flight, 20 queued; API: 10 in-flight, 10 rejected (429) |

@@ -27,12 +27,12 @@ Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · F
 
 | Check                                                            | Result         |
 |------------------------------------------------------------------|----------------|
-| `cargo clippy -p oz-pos-app --all-targets`                       | 0 warnings     |
+| `cargo clippy -p kasirmu-app --all-targets`                      | 0 warnings     |
 | `cargo clippy --workspace --all-targets`                         | 0 warnings     |
 | `cargo fmt --all -- --check`                                     | clean          |
-| `cargo build -p oz-pos-app -p oz-pos-tablet` (clean tree)         | exit 0         |
-| `cargo build -p oz-pos-app --tests`                              | exit 0         |
-| TODO/FIXME/XXX/HACK markers in `apps/desktop-client/**/*.rs`     | 0 matches      |
+| `cargo build -p kasirmu-app -p kasirmu-mobile` (clean tree)       | exit 0         |
+| `cargo build -p kasirmu-app --tests`                             | exit 0         |
+| TODO/FIXME/XXX/HACK markers in `apps/desktop-tauri/**/*.rs`      | 0 matches      |
 | `println!` / `eprintln!` / `dbg!` in production paths           | 0 matches      |
 | `unsafe` blocks in production paths                              | 4 matches (3 in `commands/features.rs`, 1 in `state.rs`) |
 | `f32`/`f64` in production paths                                  | 4 matches (2 are float-formatting, 2 are MONEY-domain in `commands/exchange_rates.rs`) |
@@ -475,16 +475,16 @@ Add the result of each grep to the next audit report under a "Closure" column. I
 
 ### Test verification at PR time
 
-- `cargo build -p oz-core -p oz-pos-app -p oz-pos-tablet -p platform-startup` — exit 0
-- `cargo clippy -p oz-core -p platform-startup -p oz-pos-app -p oz-pos-tablet --lib --tests -- -D warnings` — exit 0, 0 warnings
-- `cargo test -p oz-core --lib` — 1052 passed, 0 failed
-- `cargo test -p oz-core --test currency_integration` — 38 passed, 0 failed
+- `cargo build -p kasirmu-core -p kasirmu-app -p kasirmu-mobile -p platform-startup` — exit 0
+- `cargo clippy -p kasirmu-core -p platform-startup -p kasirmu-app -p kasirmu-mobile --lib --tests -- -D warnings` — exit 0, 0 warnings
+- `cargo test -p kasirmu-core --lib` — 1052 passed, 0 failed
+- `cargo test -p kasirmu-core --test currency_integration` — 38 passed, 0 failed
 - `cargo test -p platform-startup` — 27 passed, 0 failed
 - `cargo fmt --all -- --check` — clean
 
 ### What is still open
 
-- The grep in §10 (C-1 line) is now expected to return **empty** for `crates/kasirmu-core` `apps/desktop-client` `apps/tablet-client` `platform/startup` `modules/currency`. The next auditor should confirm the grep yields zero matches across all the directories the epic touched, and snapshot the diff against the pre-epic baseline at `docs/specs/_active/_archive/2026-07-12-baseline.txt` once that archive is created (the previous epic did not snapshot before remediation — backlog item).
+- The grep in §10 (C-1 line) is now expected to return **empty** for `crates/kasirmu-core` `apps/desktop-tauri` `apps/tablet-client` `platform/startup` `modules/currency`. The next auditor should confirm the grep yields zero matches across all the directories the epic touched, and snapshot the diff against the pre-epic baseline at `docs/specs/_active/_archive/2026-07-12-baseline.txt` once that archive is created (the previous epic did not snapshot before remediation — backlog item).
 - **Legacy-data backfill hazard in migration 071**: if a pre-existing row had `rate = +Inf` (e.g. an early-API misconfiguration), SQLite's `CAST(Inf AS INTEGER)` clamps to `i64::MAX`; `rate = NaN` backfills to `0` via `CAST(NaN AS INTEGER)`. The new `<= 0` validation runs only on insert, not on the post-migration SELECT. Operators upgrading from a 0.0.4-or-earlier install with suspect legacy data should validate or wipe the `exchange_rates` table before applying 071. The migration is otherwise safe for well-formed legacy data.
 - **Front-end wire-format break** (`ExchangeRateDto` field rename): the field `rate: f64` is now `rate_millionths: i64` on both the desktop and tablet DTOs. Any TypeScript / React consumer of the Tauri command result that read `dto.rate` must update to `dto.rate_millionths` and divide by `1_000_000` for display. The React/TS `ui/` tree is out of this audit's scope but the `ui/src/api/exchange_rates.ts` (or equivalent) consumer is a follow-up ticket for the front-end team; until updated, the affected UI surfaces will read `undefined` and any pre-C-1 cached JSON in the browser will be stale. Pre-1.0 release makes the breaking change acceptable; documenting here so the next front-end PR picks it up.
 - **C-2 / C-3 / C-4 / C-5** — ALL CLOSED (0.0.22/0.0.23). See §12 for details.
@@ -504,7 +504,7 @@ Add the result of each grep to the next audit report under a "Closure" column. I
 | **File** | `apps/desktop-client/src/lib.rs` (setup closure) |
 | **Commit** | Earlier 0.0.22 session |
 | **What changed** | Replaced single `try_lock()` with bounded retry loop: 10 attempts × 10ms sleep = 100ms total. If the kernel lock is momentarily held during startup, the loop gives it time to release. After 100ms, logs a warning that LAN forwarding is disabled for the session — reliability improvement over silently skipping. |
-| **Verification** | `cargo check -p oz-pos-app` passes; LAN tests in `e2e/adr22-workspace-settings.spec.ts` pass. |
+| **Verification** | `cargo check -p kasirmu-app` passes; LAN tests in `e2e/adr22-workspace-settings.spec.ts` pass. |
 
 ### H-2 — Sync pull destructive guard + backup
 
@@ -516,7 +516,7 @@ Add the result of each grep to the next audit report under a "Closure" column. I
 | - Added `SyncPullArgs` with `confirm_destructive: bool` — command returns `AppError::Invalid("confirm_destructive must be true")` if false, preventing accidental local-data overwrite from UI double-clicks or programmatic calls without user consent. |
 | - Before applying the server snapshot (Phase 4), creates a timestamped pre-pull backup via `Store::backup` at `<db_path>.sync-pull-<YYYYMMDDHHMMSS>.backup.db`. The backup is logged at `info` level so operators can correlate backup files with specific pull events. |
 | - Added 3 unit tests for `SyncPullArgs` deserialization. |
-| **Verification** | `cargo check -p oz-pos-app` passes; `cargo test -p oz-pos-app` all pass. |
+| **Verification** | `cargo check -p kasirmu-app` passes; `cargo test -p kasirmu-app` all pass. |
 
 ### H-3 — Brand logo path validation
 
@@ -528,7 +528,7 @@ Add the result of each grep to the next audit report under a "Closure" column. I
 | - Added `validate_logo_path()` function that: (1) allows empty path (clears the logo with no error), (2) resolves `app_data_dir` via `app_handle.path().app_data_dir()`, (3) canonicalises both paths via `std::fs::canonicalize`, (4) checks canonical path starts with canonical `app_data_dir` (prevents directory-traversal attacks), (5) validates file extension against `ALLOWED_LOGO_EXTENSIONS` (png, jpg, jpeg, gif, svg, webp). |
 | - `set_brand_logo_path` calls validation when `state.app` is `Some`; falls back to unvalidated write when `None` (test/headless contexts). |
 | - Added 6 unit tests including extension allowlist rejection and empty-path acceptance. |
-| **Verification** | `cargo check -p oz-pos-app` passes; `cargo test -p oz-pos-app` all pass. |
+| **Verification** | `cargo check -p kasirmu-app` passes; `cargo test -p kasirmu-app` all pass. |
 
 ---
 

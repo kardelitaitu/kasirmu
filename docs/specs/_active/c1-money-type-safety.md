@@ -114,10 +114,10 @@ helper, which is documented and non-arithmetic.
 
 | Check | Result |
 |-------|--------|
-| `cargo build -p oz-core -p oz-pos-app -p oz-pos-tablet -p platform-startup --lib --tests` | exit 0 |
-| `cargo clippy -p oz-core -p platform-startup -p oz-pos-app -p oz-pos-tablet --lib --tests -- -D warnings` | exit 0, 0 warnings |
-| `cargo test -p oz-core --lib` | 1052 passed, 0 failed |
-| `cargo test -p oz-core --test currency_integration` | 38 passed, 0 failed |
+| `cargo build -p kasirmu-core -p kasirmu-app -p kasirmu-mobile -p platform-startup --lib --tests` | exit 0 |
+| `cargo clippy -p kasirmu-core -p platform-startup -p kasirmu-app -p kasirmu-mobile --lib --tests -- -D warnings` | exit 0, 0 warnings |
+| `cargo test -p kasirmu-core --lib` | 1052 passed, 0 failed |
+| `cargo test -p kasirmu-core --test currency_integration` | 38 passed, 0 failed |
 | `cargo test -p platform-startup` | 27 passed, 0 failed |
 | `cargo fmt --all -- --check` | clean |
 | `grep -rnE ': f64\b\|: Option<f64>\b\|rate: f64\b'` across `crates/kasirmu-core`, `modules/currency`, `apps/*/src/commands/exchange_rates.rs`, `platform/startup/src/rate_sync.rs` | 0 hits in the FX domain |

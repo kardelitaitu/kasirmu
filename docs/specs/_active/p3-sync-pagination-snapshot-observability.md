@@ -103,8 +103,8 @@ Handle large pull responses (terminals offline 90+ days) via cursor-based pagina
 | Check | Expected |
 |-------|----------|
 | `cargo build -p oz-cloud-server -p platform-sync -p platform-startup --lib --tests` | exit 0 — **`oz-cloud-server` is a pre-rebrand name; it is `kasirmu-cloud` today** |
-| `cargo clippy -p oz-cloud-server -p platform-sync --lib --tests -- -D warnings` | 0 warnings — **same name note** |
-| `cargo test -p oz-cloud-server` | all passing (pull pagination tests) |
+| `cargo clippy -p kasirmu-cloud -p platform-sync --lib --tests -- -D warnings` | 0 warnings — **same name note** |
+| `cargo test -p kasirmu-cloud` | all passing (pull pagination tests) |
 | `cargo test -p platform-sync` | all passing (client pull loop + snapshot recovery) |
 | Manual: pull with 1500 items in queue | 3 pages of 500 returned, `next_cursor` non-null on first two |
 | Manual: `curl /api/sync/snapshot` returns valid `.ozpkg` | File header matches zstd magic bytes |

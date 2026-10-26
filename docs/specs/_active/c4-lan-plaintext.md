@@ -135,11 +135,11 @@ grep -A2 'lan_server.bind' apps/desktop-tauri/src/lib.rs   # the settings read m
 # expect: "127.0.0.1" (or via settings table)
 
 # 2. Tests pass
-cargo test -p oz-pos-app --lib --features test   # pre-rebrand package name; unresolvable today
+cargo test -p oz-pos-app --lib --features test   # pre-rebrand package name; it is `kasirmu-app` today
 # expect: 4 new tests in lan_server pass
 
 # 3. Lint + fmt clean
-cargo clippy -p oz-pos-app --lib --tests -- -D warnings
+cargo clippy -p kasirmu-app --lib --tests -- -D warnings
 cargo fmt --all -- --check
 
 # 4. Manual smoke test: external connection rejected
