@@ -1,10 +1,10 @@
-// ── KNOWN-HAZARD PIN (TABLET twin of b89bae413): pageDenied at TabletAppShell.tsx:527 is a ROLE gate only ──
+// ── KNOWN-HAZARD PIN (TABLET twin of b89bae413): pageDenied at TabletAppShell.tsx:533 is a ROLE gate only ──
 //
 // Same deciding functions as the desktop pin (AppShellFeatureGateRoute.test.tsx):
 // isPageAccessible / getEnabledPages / getNavItems. Re-verified on this checkout:
-// :527 computes the IDENTICAL expression to AppShell.tsx:640 — registration +
+// :533 computes the IDENTICAL expression to AppShell.tsx:663 — registration +
 // !isPageAccessible(registration, userRole, userPermissions) — and the sidebar
-// render at :639 consults only that. PageRegistration.feature is never read
+// render at :673 consults only that. PageRegistration.feature is never read
 // on the render path. IT RECORDS, IT DOES NOT ENDORSE; invert, never delete.
 //
 // HOW THE TABLET DIFFERS (measured; it shapes every case below):
@@ -21,7 +21,7 @@
 //   * THREE fullscreen branches (restaurant-pos :587, store-pos :600, kds :613)
 //     render hardcoded screens without ever consulting getPage/pageDenied —
 //     there NEITHER gate can fire (cases 7-9). The tablet has NO isKdsKiosk
-//     branch: desktop AppShell.tsx:620 has it; this shell never imports
+//     branch: desktop AppShell.tsx:621 has it; this shell never imports
 //     useTerminalProfile. That branch is desktop-only, not shared.
 //
 // NOT COVERED, AND WHY: handleNavigate's in-shell call sites — the tabs live

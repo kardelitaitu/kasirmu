@@ -248,9 +248,9 @@ vi.mock('@/hooks/useFeatures', () => ({
  * Answer the one media query orientation is read from, as LANDSCAPE.
  *
  * jsdom answers `matchMedia(...).matches` with `false` for everything, and
- * `PosScreen` derives `isPortraitRestaurant` from it (PosScreen.tsx:538), so
+ * `PosScreen` derives `isPortraitRestaurant` from it (PosScreen.tsx:544), so
  * every case that renders `restaurant-pos` takes the PORTRAIT branch and skips
- * `<CartPanel>` entirely (PosScreen.tsx:2433). The course-bar case below then
+ * `<CartPanel>` entirely (PosScreen.tsx:2535). The course-bar case below then
  * asserts on an element that branch makes unreachable — which is exactly how it
  * passed alone and failed in a full run, where another file's stub leaked in.
  * Measured 2026-10-19; see docs/records/audits/course-bar-render-gates.md gate 1.

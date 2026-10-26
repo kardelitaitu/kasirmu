@@ -38,7 +38,7 @@ vi.mock('@/features/sales/useBarcodeScanner', async () => {
 
 // AddProductModal is a real form; driving it here would drag in the whole retail
 // harness. A one-button stub that calls the screen's real `addProduct.onSave`
-// (RetailPosScreen.tsx:1960) keeps the wiring under test and the form out of it.
+// (RetailPosScreen.tsx:2311/:2326) keeps the wiring under test and the form out of it.
 vi.mock('@/features/retail/AddProductModal', () => ({
   AddProductModal: (props: {
     isOpen?: boolean;
@@ -1744,7 +1744,7 @@ describe('RetailPosScreen — interactions', () => {
 
   // ── Resuming a hold must remove it from the browse list it came from ──────
   //
-  // `handleResumeCart` ENDS by DELETING the record (RetailPosScreen.tsx:1509) —
+  // `handleResumeCart` ENDS by DELETING the record (RetailPosScreen.tsx:1546) —
   // the delete IS the commit, the same fact the neighbouring 'does NOT claim a
   // held cart was resumed' case documents. What it does NOT do is drop the row
   // from `heldCartsList`, while its sibling `handleDeleteHeldCart` does exactly

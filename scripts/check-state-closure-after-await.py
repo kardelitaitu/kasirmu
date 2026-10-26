@@ -130,7 +130,7 @@ def _enclosing_start(lines, index):
     """The first line of the function or arrow body enclosing `index`, best effort."""
     # Walk BACKWARD for the nearest line that dedents past this one AND opens a body.
     # The window form of this (look back N lines for an `await`) was tried first and
-    # produced a FALSE POSITIVE on StockTransfersScreen.tsx:250 -- `removeLineEntry`
+    # produced a FALSE POSITIVE on StockTransfersScreen.tsx:366 -- `removeLineEntry`
     # has no await of its own, but the handler 20 lines above it does, and the window
     # reached it. Scoping to the enclosing body is what makes the report trustworthy.
     indent = len(lines[index]) - len(lines[index].lstrip())

@@ -275,7 +275,7 @@ describe('PaymentModal — sale flow', () => {
     // `methodLabel`, which is a DIFFERENT value with a different consumer: the same
     // variable feeds `paymentMethod` (the stored column, wants 'cash') and
     // `buildCompletedSaleReceipt({ payments: [{ method: methodLabel }] })` (the printed
-    // receipt, rendered verbatim at ReceiptPreview.tsx:183). One transform, two
+    // receipt, rendered verbatim at ReceiptPreview.tsx:186). One transform, two
     // requirements — so the receipt started printing 'cash' where it printed 'CASH'.
     //
     // The existing receipt test could not catch this: it feeds ReceiptPreview a fixture
@@ -896,7 +896,7 @@ describe('PaymentModal — sale flow', () => {
 
   it('does not blame the cashier for an unparseable tender amount', async () => {
     // ⚠️ SCOPE: this is a MESSAGE defect, not a money defect. No wrong sale is possible
-    // — `useTenderMath.ts:108` coerces an unparseable tender to 0n, so `sufficient` is
+    // — `payment/useTenderMath.ts:127` coerces an unparseable tender to 0n, so `sufficient` is
     // false and Complete stays disabled (:1247). The problem is what the cashier is
     // TOLD. `CashTenderPanel.tsx:157` renders `payment-insufficient` = "Insufficient
     // amount", which reads as "you typed too little". For `1,234` in USD the truth is

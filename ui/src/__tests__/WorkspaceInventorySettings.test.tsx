@@ -54,7 +54,7 @@ vi.mock('@/contexts/SettingsContext', () => ({
 // appearance for the next reader.
 //
 // The reason it was inert is a chain, not an absence, and the distinction matters:
-// something in this tree DOES call useWorkspace -- SettingsContext.tsx:199 destructures
+// something in this tree DOES call useWorkspace -- SettingsContext.tsx:280 destructures
 // { sessionToken, terminalId } from it. But this file mocks @/contexts/SettingsContext
 // too, so that call never runs, and the card itself reads its token from a prop. Two
 // mocks cancelling into each other is why the inert mock was harmless-but-blind rather

@@ -177,7 +177,7 @@ describe('CartTaxWatcher', () => {
     mountOne.unmount();
 
     // The retry affordance is a fresh mount with identical props
-    // (PosScreen.tsx:636). Nothing about the props changed, so the only thing
+    // (PosScreen.tsx:2545-2546, `key={taxRetryNonce}`). Nothing about the props changed, so the only thing
     // a remount can be relied on to do is re-run the effect and re-publish.
     useCartTaxMock.mockReturnValue(OK_STATE);
     const second = vi.fn();
@@ -198,8 +198,8 @@ describe('CartTaxWatcher', () => {
 //
 // WHY THIS EXISTS, measured. Until this change both POS stacks seeded their
 // tax state from the ONE module-scope idle object exported by
-// CartTaxWatcher.tsx — sales at PosScreen.tsx:399, retail at
-// RetailPosScreen.tsx:947. One object in module scope means the two live
+// CartTaxWatcher.tsx — sales at PosScreen.tsx:2545, retail at
+// RetailPosScreen.tsx:2016. One object in module scope means the two live
 // screens held the SAME reference as their initial state. No field was being
 // written: every setTaxState call is a wholesale replace through onState
 // (PosScreen.tsx:640, RetailPosScreen.tsx:1449) and no `=== IDLE_TAX_STATE`
@@ -224,7 +224,7 @@ describe('CartTaxWatcher', () => {
 describe('idle tax state per consumer', () => {
   // Mirror of the two consumer sites' hook call, factored so both probes
   // below seed exactly the way the screens do. Keep the seed expression in
-  // step with PosScreen.tsx:399 and RetailPosScreen.tsx:947.
+  // step with PosScreen.tsx:2545 and RetailPosScreen.tsx:2016.
   function useConsumerTaxState(): CartTaxCacheState {
     const [taxState] = useState<CartTaxCacheState>(createIdleTaxState);
     return taxState;

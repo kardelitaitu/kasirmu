@@ -182,7 +182,7 @@ const mockGetInventoryTurnover = vi.fn(() => Promise.resolve({ units_sold: 500, 
 const daysAfter = (iso: string, n: number) =>
   new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 /**
- * ISO Monday of the current week, matching `weekStartKey` in analytics-data.ts:728.
+ * ISO Monday of the current week, matching `weekStartKey` in analytics-data.ts:730.
  *
  * It must use the SAME clock the loader uses. `weekStartKey` reads UTC parts
  * (`getUTCDay`, `getUTCFullYear`, …) because the bucket axis is UTC-keyed, but this
