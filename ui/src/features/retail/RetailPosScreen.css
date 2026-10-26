@@ -1541,11 +1541,11 @@
    fifteen are verbatim copies. Four are the SAME declarations re-pointed from the
    danger family to the warning family, because the banner this button sits in is a
    CAUTION strip (taxSeverity is any non-'ok' value - warn/unknown, never 'error',
-   per RetailCartPanel.tsx:96 and :385) and its own background came from
+   per RetailCartPanel.tsx:113-115 and :402) and its own background came from
    --color-warning-bg; a filled red button on an amber field would read as two
    severities at once. The pairing rule (border + background from one token, text
    from that family's -fg) is itself copied from :1496-1498. --color-warning is
-   tokens.css :121/:430/:569 and --color-warning-fg :124/:433/:572, i.e. both present
+   tokens.css :179/:612/:765 and --color-warning-fg :181/:614/:767, i.e. both present
    in all three theme blocks; --radius-sm, --space-0_5, --space-2, --text-xs,
    --font-weight-bold, --duration-150 and --ease-out are :root-only by design.
    font-size stays var(--text-xs) as in the twin and lands on the button's word

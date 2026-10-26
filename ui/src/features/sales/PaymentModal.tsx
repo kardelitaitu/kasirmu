@@ -2665,7 +2665,7 @@ retryCurrencyLoad,
                           />
                           </Localized>
                           {/* .payment-method-name on the text input below is not decoration:
-                              the checked-tender rule (PaymentModal.css:184) is an ADJACENT-SIBLING
+                              the checked-tender rule (PaymentModal.css:374) is an ADJACENT-SIBLING
                               selector, so that input - the radio's next sibling, and the element
                               the cashier actually reads for this row - is the only one the rule
                               can treat. Without the class, Other was the one selected tender

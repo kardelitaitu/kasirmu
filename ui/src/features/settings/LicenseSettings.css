@@ -186,7 +186,7 @@
    overrides only the border colour, and from the base .settings-license-section
    .settings-license-row at :3, whose four layout declarations this inherits rather than
    repeats. Both tokens are real and triple-defined -- --color-warning-border at
-   tokens.css:126/:435/:574 and --color-warning-bg at :122/:431/:570, i.e. in :root,
+   tokens.css:183/:627/:769 and --color-warning-bg at :179/:612/:765, i.e. in :root,
    [data-theme=light] and [data-theme=dark] -- and no literal colour or size appears
    here. --color-warning-fg is deliberately NOT used: this rule sets a background and no
    color, which is what keeps it out of composedRuleIdenticalPair's graded pairs, and the
