@@ -48,7 +48,23 @@ LOCALES = ROOT / "shared-ui" / "locales"
 ALLOWLIST_PATH = ROOT / "scripts" / "ftl-orphan-allowlist.json"
 
 KEY_DECL = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)\s*=", re.M)
+#: Reference surfaces for the LIVE question ("does production code read this key?").
+#: `__tests__` is deliberately excluded HERE and only here: a key that only a test names
+#: cannot render for a user, so it is not a reference for the blocking check at
+#: `check_staged()`, which exists to stop a commit from shipping an unread message.
 UI_EXCLUDES = ("__tests__", "dev-mock", "/locales/")
+
+#: Reference surfaces for the CENSUS question ("would deleting this key break anything?").
+#: Strictly wider than `UI_EXCLUDES`: tests are re-admitted because a key a test pins is
+#: load-bearing even though no production file reads it. Measured 2026-10-26 -- the census
+#: listed 175 candidates and a deletion driven by that list broke 2 i18n tests, because
+#: `i18nBundle.test.tsx` is the only place `sales-history-status-cancelled` appears anywhere
+#: in the tree. The two questions were sharing one exclusion list, which is what made a
+#: "nobody reads this" answer read like "nothing depends on this".
+#:
+#: `dev-mock` and the bundles stay excluded for both: a mock's copy is a stand-in that must
+#: disappear with the real screen, and a bundle declaring a key is never a reference to it.
+UI_EXCLUDES_CENSUS = ("dev-mock", "/locales/")
 
 
 #: True only for --census, the advisory mode, which names an unreadable file and carries on.
@@ -183,12 +199,20 @@ def declared_keys() -> dict[str, str]:
     return out
 
 
-def ui_blob() -> str:
-    """Production UI source, excluding tests, the dev-mock, and the bundles themselves."""
+def ui_blob(census: bool = False) -> str:
+    """UI source, minus the surfaces that are never a reference to a live key.
+
+    `census=True` re-admits `__tests__`; see `UI_EXCLUDES_CENSUS` for the measurement that
+    forced the split. The blocking check keeps the narrow surface on purpose: a key named
+    only by a test does not render for a user, and `check_staged()` is asked whether this
+    commit ships a message nobody reads. The census is asked a different question -- whether
+    deleting a key would break something -- and a pinned test is something.
+    """
+    excludes = UI_EXCLUDES_CENSUS if census else UI_EXCLUDES
     parts = []
     for path in ROOT.glob("ui/src/**/*.ts*"):
         rel = path.relative_to(ROOT).as_posix()
-        if any(x in rel for x in UI_EXCLUDES):
+        if any(x in rel for x in excludes):
             continue
         parts.append(_read(path))
     return "\n".join(parts)
@@ -228,10 +252,32 @@ def composed_prefixes(source: str) -> set[str]:
     return prefixes
 
 
-def referenced(names: set[str]) -> set[str]:
+#: One character of key context on each side -- the definition of a whole-token key match.
+#: A key is a Fluent message id, `[A-Za-z0-9._-]+`, so a neighbour drawn from the same class
+#: means the hit is part of a LONGER identifier and not a reference.
+KEY_TOKEN = re.compile(r"(?<![A-Za-z0-9._-])([A-Za-z0-9][A-Za-z0-9._-]*)(?![A-Za-z0-9._-])")
+
+
+def source_tokens(source: str) -> set[str]:
+    """Every whole identifier-shaped token in `source`, in ONE pass.
+
+    This replaces a per-name `re.search`, which was the same predicate at O(keys x source):
+    on the real tree that is 5,800 candidates against an 800 KB blob and it did not finish
+    inside two minutes. Tokenising once and intersecting is linear in the source and exact.
+
+    The boundary is the whole point. A bare substring test called `warehouse-location` live
+    because `stock-route-warehouse-location` -- a Rust fixture id in kasirmu-bridge's
+    pos_tests -- contains it. That is not a consumer: no code spells
+    `getString('warehouse-location')`, and deleting the message broke nothing.
+    """
+    return set(KEY_TOKEN.findall(source))
+
+
+def referenced(names: set[str], census: bool = False) -> set[str]:
     """Names that have some plausible reference: literal, intra-bundle, or composed."""
-    source = ui_blob()
-    live = {n for n in names if n in source}
+    source = ui_blob(census=census)
+    tokens = source_tokens(source)
+    live = names & tokens
     live |= intra_bundle_refs(names)
     prefixes = composed_prefixes(source)
     live |= {n for n in names if any(n == p or n.startswith(p + "-") for p in prefixes)}
@@ -403,7 +449,10 @@ def census() -> int:
         return 2
     names = set(declared_keys())
     owner = declared_keys()
-    live = referenced(names)
+    # census=True: a deletion list must not call a test-pinned key an orphan. See
+    # UI_EXCLUDES_CENSUS -- the narrow surface here is how 175 candidates came to include
+    # keys that 2 i18n tests depend on (2026-10-26).
+    live = referenced(names, census=True)
     dead = names - live
     allow = set(load_allowlist().get("census", []))
     unaccounted = sorted(dead - allow)
@@ -622,10 +671,45 @@ def self_test() -> int:
               file=sys.stderr)
         failures += 1
 
+    # Direction 6: a key must not count as referenced because a LONGER identifier in the
+    # source merely contains it. Measured 2026-10-26: `warehouse-location` was called live
+    # by `stock-route-warehouse-location` (a Rust fixture id) and by an English comment in
+    # quota.rs -- neither reads the message. The fixture is built here so the direction
+    # cannot be satisfied by whatever the tree happens to contain.
+    token_probe = source_tokens("getString('stock-route-warehouse-location')")
+    if "warehouse-location" in token_probe:
+        print("FAIL self-test: the substring of a longer identifier was tokenised as a key",
+              file=sys.stderr)
+        failures += 1
+    if "stock-route-warehouse-location" not in token_probe:
+        print("FAIL self-test: the whole identifier was not tokenised", file=sys.stderr)
+        failures += 1
+    # ...while a real whole-token reference must still be found, or the boundary has simply
+    # been made unsatisfiable and every key would report as an orphan.
+    if "sales-history-loading" not in source_tokens("getString('sales-history-loading')"):
+        print("FAIL self-test: a whole-token reference was not detected", file=sys.stderr)
+        failures += 1
+
+    # Direction 7: the census surface must be WIDER than the blocking one. A key pinned only
+    # by a test is load-bearing for a deletion decision and irrelevant to "does this commit
+    # ship unread copy"; if the two surfaces share one exclusion list, a deletion list calls
+    # a test-pinned key an orphan -- which is how `sales-history-status-cancelled` came to
+    # be deleted on 2026-10-26 and broke 2 i18n tests.
+    if "__tests__" not in UI_EXCLUDES:
+        print("FAIL self-test: the blocking surface stopped excluding __tests__", file=sys.stderr)
+        failures += 1
+    if "__tests__" in UI_EXCLUDES_CENSUS:
+        print("FAIL self-test: the census surface excludes __tests__, so a key that only a "
+              "test pins is reported as deletable", file=sys.stderr)
+        failures += 1
+    if not (len(UI_EXCLUDES_CENSUS) < len(UI_EXCLUDES)):
+        print("FAIL self-test: the census surface is not strictly wider than the blocking "
+              "one -- the two questions have collapsed back into one", file=sys.stderr)
+        failures += 1
     if failures:
         print(f"self-test: {failures} FAILURE(S)", file=sys.stderr)
         return 1
-    print(f"self-test: OK (6 directions exercised, {len(one_sided)} one-sided keys detected)")
+    print(f"self-test: OK (7 directions exercised, {len(one_sided)} one-sided keys detected)")
     return 0
 
 
