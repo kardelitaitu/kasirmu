@@ -28,7 +28,7 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
-    session: { username: 'test', role: 'owner', displayName: 'Test' },
+    session: { username: 'test', role_name: 'Owner', displayName: 'Test' },
     loading: false,
     error: null,
     login: vi.fn(),
@@ -101,5 +101,19 @@ describe('SettingsPage a11y', () => {
   it('has no axe violations on initial render', async () => {
     const { container } = renderWithProviders(<SettingsPage />);
     await checkA11y(container);
+  });
+
+  // The heading half of the page identity. `checkA11y` above cannot see it: it
+  // passes the CONTAINER, and `page-has-heading-one` selects `html:not(html *)`,
+  // so the rule never matches whatever the container holds (see axe-helper.tsx).
+  // That blindness is why a loading skeleton could render the page title as a
+  // <span> while SettingsTopbar renders it as an <h1> (SettingsTopbar.tsx:157),
+  // and NOTHING failed: measured 2026-10-26, reverting that <h1> to a <span> left
+  // all 123 a11y+SettingsPage cases green.
+  it('renders the page title as the h1 the heading rule looks for', () => {
+    const { container } = renderWithProviders(<SettingsPage />);
+    const heading = container.querySelector('h1.settings-topbar-name');
+    expect(heading, 'the topbar title must be an <h1>, not a styled <span>').not.toBeNull();
+    expect(heading?.textContent).toContain('Settings');
   });
 });

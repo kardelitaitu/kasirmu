@@ -64,7 +64,14 @@ export function SettingsLoadingChrome() {
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
             </svg>
           </div>
-          <span className="settings-topbar-name"><Localized id="settings-title">Settings</Localized></span>
+          {/* An <h1>, not a <span>, because this skeleton IS the page's topbar while
+              SettingsContext's first load resolves -- SettingsTopbar.tsx:157 renders
+              the same title as an <h1> once it does. A span here meant the page had
+              no heading at all during the initial fetch, so `page-has-heading-one`
+              would fail on a loading screen and pass a moment later, and a screen
+              reader had nothing to announce the page by until the data arrived.
+              Same class as the accessible name, same element as the loaded state. */}
+          <h1 className="settings-topbar-name"><Localized id="settings-title">Settings</Localized></h1>
         </div>
         {/* COL 2 (search) and COL 3 (actions) — empty in skeleton. Three items
             total, matching the real header's `1fr auto 1fr` grid. */}
