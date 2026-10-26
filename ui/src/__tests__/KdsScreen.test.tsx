@@ -216,6 +216,29 @@ describe('KdsScreen', () => {
     });
   });
 
+  // WHY THIS IS A DOM ASSERTION AND NOT AN AXE RUN.
+  //
+  // axe's `page-has-heading-one` cannot reach a verdict under jsdom -- a document
+  // WITH an <h1> and one WITHOUT both return `incomplete` / `error-occurred`
+  // (`document.elementFromPoint is not a function`). Measured 2026-10-27. So the
+  // structure is pinned directly.
+  //
+  // The KDS had NO page heading at all: no visible title, no screen-reader one.
+  // Its only headings were <h3>s inside the hamburger panel, so assistive tech got
+  // neither a page name nor an outline root -- while the sibling ExpoScreen carries
+  // an <h1> at ExpoScreen.tsx:451. Confirmed by mutation: flipping the <h1> back to
+  // <h2> left all 129 cases in this and the topology suite green.
+  it('names the page with a single level-one heading', async () => {
+    const { container } = renderScreen();
+    await waitFor(() => {
+      expect(container.querySelector('.kds-main')).not.toBeNull();
+    });
+    const h1s = Array.from(container.querySelectorAll('h1'));
+    expect(h1s, 'the KDS must carry exactly one level-one heading').toHaveLength(1);
+    expect(h1s[0]!.textContent?.trim(), 'an empty h1 satisfies a rule but not a reader')
+      .toBe('Kitchen Display');
+  });
+
   it('renders the masonry order view (single layout)', async () => {
     renderScreen();
     await waitFor(() => {

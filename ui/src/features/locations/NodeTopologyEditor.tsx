@@ -2149,6 +2149,14 @@ export default function NodeTopologyEditor({
         webAuthoringManaged={webAuthoringManaged}
       />
 
+      {/* A level-two heading so the editor's own h3 groupings (rack panel,
+          empty state) sit no more than one level under the page title in
+          topologyHeader.tsx. Without it the outline jumps h1 → h3 and axe
+          reports `heading-order` on every h3 -- measured, three violations.
+          Visually hidden: the groups it names are already visually obvious
+          (a tool rack on the left, a canvas filling the rest), and the heading
+          exists for the outline rather than for the eye. */}
+      <h2 className="sr-only">Editor sections</h2>
       <div className="node-topology-main">
         {!webAuthoringManaged && (
           <TopologyToolRack

@@ -455,6 +455,17 @@ export default function KdsScreen({ onBack }: KdsScreenProps = {}) {
           </Localized>
         )}
       </div>
+      {/* The page's level-one heading. The KDS had NONE at all -- no visible title
+          and no screen-reader one -- while its sibling ExpoScreen carries an <h1>
+          at ExpoScreen.tsx:451. A board whose only headings are h3s inside the
+          hamburger panel gives assistive tech no page name and no outline root.
+          Visually hidden because the board's header is a toolbar of icon buttons
+          with no room for a title; the accessible name is the whole fix.
+          `kds-screen-title` was an existing, unreferenced key whose value is the
+          same string as the used `kds-title`, so this adds no copy. */}
+      <Localized id="kds-screen-title">
+        <h1 className="sr-only">Kitchen Display</h1>
+      </Localized>
       <div className="kds-header">
       <KdsHeaderLeft
         zones={zones}

@@ -41,11 +41,20 @@ export function TopologyHeader({
 }: TopologyHeaderProps) {
   return (
     <div className="node-topology-header">
-      {/* Visually-hidden heading keeps the topology screen's heading
-          hierarchy (h2 → h3 Palette Tools) intact for assistive tech
-          without occupying header space. */}
+      {/* THE PAGE TITLE, and the root of the editor's heading outline.
+          Visually hidden so the editor keeps its vertical space.
+          This element was an <h2> until round 35, under a comment that claimed
+          that kept "h2 → h3 Palette Tools" intact. The claim was true and the
+          consequence was the bug: the screen had no <h1> at all, so the outline
+          started at level two and a screen reader had no page name.
+          It is an <h1> now because a page needs exactly one. Editor-internal
+          groupings stay <h3> (rack panel, empty state) and remain correct ONLY
+          because the screen supplies a level-two heading between this and them
+          -- see TopologyScreen.tsx's "Editor sections" heading. Measured: with
+          the <h1> and no level-two heading, axe reported three `heading-order`
+          violations on `h3`. Promote this alone and you re-open that defect. */}
       <Localized id="topology-builder-title">
-        <h2 className="sr-only">Visual Store & Workspace Topology Builder</h2>
+        <h1 className="sr-only">Visual Store & Workspace Topology Builder</h1>
       </Localized>
       {branchToolbar}
       {webAuthoringManaged ? (
