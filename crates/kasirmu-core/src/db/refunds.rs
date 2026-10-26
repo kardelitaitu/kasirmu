@@ -296,7 +296,7 @@ impl Store<'_> {
             // Discounts never touch per-line figures, so this ceiling may sit
             // ABOVE what the customer actually paid for the line: cart percent
             // and fixed discounts apply to the summed total only
-            // (foundation/src/cart.rs:284-296), promotions subtract at sale level
+            // (foundation/src/cart.rs:338-350), promotions subtract at sale level
             // and promotion_applications carries no sale_line_id
             // (20260813_init.sql:459-466), loyalty is sale-level
             // (db/loyalty.rs:447-459), and tax-inclusive vs exclusive adds to

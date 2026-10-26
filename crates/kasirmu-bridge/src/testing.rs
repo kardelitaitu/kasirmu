@@ -356,7 +356,7 @@ pub const FAIL_CLOSED_GATES_LOCKED: bool = false;
 /// `free`-stamped row.
 ///
 /// A command that propagates the seeded subscription row (`sub.verify_signature()?` -
-/// `staff.rs:1080`, `auth.rs:617`, `terminals.rs:432`, `workspaces.rs:232`,
+/// `staff.rs:656`, `auth.rs:617`, `terminals.rs:432`, `workspaces.rs:232`,
 /// `inventory` create-location and the profile-scoped location commands) returns an
 /// ERROR when the row it reads does not verify. Since 19-09-26 that is NOT the release
 /// profile: `verify_signature` honours the bootstrap sentinel whenever `tier_key()` is

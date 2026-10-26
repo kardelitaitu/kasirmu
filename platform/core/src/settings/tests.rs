@@ -1636,11 +1636,11 @@ fn brand_primary_colour_roundtrip_and_clear() {
 // Five typed getters in `typed.rs` read a secret as
 // `decrypt(value).unwrap_or(value)`:
 //
-//   typed.rs:334  get_sync_api_key          -> decrypt_sync_api_key
-//   typed.rs:361  get_sync_terminal_secret  -> decrypt_sync_terminal_secret
-//   typed.rs:437  get_pg_sync_password      -> decrypt_pg_sync_password
-//   typed.rs:553  get_rate_sync_api_key     -> decrypt_rate_api_key
-//   typed.rs:639  get_lan_server_psk        -> decrypt_lan_psk
+//   typed.rs:335  get_sync_api_key          -> decrypt_sync_api_key
+//   typed.rs:366  get_sync_terminal_secret  -> decrypt_sync_terminal_secret
+//   typed.rs:453  get_pg_sync_password      -> decrypt_pg_sync_password
+//   typed.rs:579  get_rate_sync_api_key     -> decrypt_rate_api_key
+//   typed.rs:675  get_lan_server_psk        -> decrypt_lan_psk
 //
 // That `unwrap_or` is load-bearing, not sloppiness. An install whose row
 // predates the setters encrypting still holds a PLAINTEXT `sync_api_key`,
@@ -1676,7 +1676,7 @@ const SHAPED_UNDECRYPTABLE: &str =
 #[test]
 fn pinned_probe_values_are_the_two_shapes_this_path_cannot_tell_apart() {
     // The referee is the crate's OWN format gate, reached through the public
-    // smtp reader — the one family (kasirmu-crypto lib.rs:216-223) that separates
+    // smtp reader — the one family (kasirmu-crypto src/lib.rs:576-582) that separates
     // "never encrypted" from "tampered". Used as a shape oracle only; the
     // smtp key has nothing to do with the five columns below.
     assert_eq!(

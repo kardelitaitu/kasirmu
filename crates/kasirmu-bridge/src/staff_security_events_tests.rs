@@ -142,7 +142,7 @@ async fn audit_rows(bridge: &TestBridge) -> Vec<(String, String, String, String,
 ///
 /// The refusal this produces is a PERMISSION one, and the choice is load
 /// bearing: see the comment on `a_rejected_create_records_no_security_event`.
-/// `create_staff_scoped` gates on `staff:create` at `staff.rs:1073` and only
+/// `create_staff_scoped` gates on `staff:create` at `staff.rs:656` and only
 /// reaches `sub.verify_signature()` at `:1080`, so a permission refusal is the
 /// one kind of refusal on that path that is live in BOTH profiles.
 fn lite_app(tier_key: &str) -> TestBridge {
@@ -240,7 +240,7 @@ async fn a_rejected_create_records_no_security_event() {
     // to be a duplicate username; that case is now
     // `a_duplicate_username_create_records_no_security_event`, forked, because
     // it cannot be made honest in the release profile. `create_staff_scoped`
-    // gates on `staff:create` at staff.rs:1073 and only reaches
+    // gates on `staff:create` at staff.rs:656 and only reaches
     // `sub.verify_signature()` at :1080 — a duplicate-username setup needs the
     // FIRST create to succeed, and in release that create dies at :1080 on the
     // BOOTSTRAP_FREE sentinel. No fixture in this crate can mint a verifying

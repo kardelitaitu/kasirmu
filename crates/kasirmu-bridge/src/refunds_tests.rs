@@ -124,7 +124,9 @@ fn refund_nonexistent_sale_fails() {
 ///
 /// WHY IT MATTERS BEYOND "bad input". `total_spent_minor` is an increment on
 /// completion (sales_lifecycle.rs:59) and a CLAMPED subtraction on refund
-/// (refunds.rs:1027), so refunding a sale that never completed reverses spend
+/// (db/refunds.rs:450 -> reverse_customer_spend_on_refund at :735 -> the
+/// `MAX(total_spent_minor - ?1, 0)` floor at db/customers.rs:400), so refunding
+/// a sale that never completed reverses spend
 /// that was never accrued: the floor eats the reversal, and the later
 /// transition to completed then adds the FULL sale on top of a base that
 /// never absorbed the refund — a silent double-count.

@@ -6,7 +6,7 @@
 //!
 //! The gate is this module's domain helper, `require_loyalty_permission`, which
 //! the registration-gate classifier counts as a gate (it is in `GUARD_MARKERS`
-//! at `registration_gate_tests.rs:326`) — so all eight doors were already
+//! at `registration_gate_tests.rs:539`) — so all eight doors were already
 //! `Gated` and this port is ledger-neutral. The helper runs the **unscoped**
 //! `Store::require_permission` against the GLOBAL identity DB, and it runs
 //! *after* `resolve_scope` has already opened the session's store connection:

@@ -58,7 +58,7 @@ pub async fn list_all_features(
 /// Extracted so the two cannot drift, matching this file's peers and `desktop-tauri`, which already
 /// factors the same work into `build_feature_list`. Note the scoped variant below authenticates but
 /// performs no permission check -- deliberately matching `desktop-tauri`'s
-/// `list_all_features_scoped` (commands/features.rs:631), which also only calls `resolve_scope`.
+/// `list_all_features_scoped` (desktop-tauri/src/commands/features.rs:107), which also only calls `resolve_scope`.
 /// Adding `SETTINGS_EDIT` here would make the two shells reject different callers.
 fn run_list_all_features(db: &rusqlite::Connection) -> Result<ListAllFeaturesResult, AppError> {
     let store = Store::new(db);

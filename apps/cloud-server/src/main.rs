@@ -920,7 +920,7 @@ pub fn build_router_with_plan_cache(
         // rather than assumed: `config::validate_production` (`config.rs:442`,
         // called at `config.rs:238` while the config is built) refuses to load a
         // production config whose `OZ_API_SECRET` is unset or empty, and the
-        // loader filters an empty env var to `None` first (`config.rs:215-217`),
+        // loader filters an empty env var to `None` first (`config.rs:231-232`),
         // so it cannot pass as a non-empty secret. `kasirmu-api`'s standalone
         // `serve()` has the mirror-image guard (`kasirmu-api/src/lib.rs:430`,
         // API-1). An empty secret therefore never reaches a production router;

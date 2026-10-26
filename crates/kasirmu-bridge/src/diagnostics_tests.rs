@@ -89,7 +89,7 @@ fn test_write_crash_report_entry_sanitizes_pii_and_appends() {
 // ── The SETTINGS_READ gate ──────────────────────────────────────────────
 //
 // `export_diagnostics` advertises "Validates permissions" in its own doc
-// comment, and `diagnostics.rs:172-174` does `resolve_session` then
+// comment, and `diagnostics.rs:173-175` does `resolve_session` then
 // `require_session_permission(.., SETTINGS_READ)`. Until this block existed,
 // NOTHING called the function: the three tests above cover its helpers
 // (`sanitize_log_text`, `validate_output_path`, `write_crash_report_entry`)

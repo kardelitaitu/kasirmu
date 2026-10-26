@@ -207,7 +207,7 @@ impl Store<'_> {
     ///
     /// SYNC OUTBOX - lane one, deliberately unwired. Three doors produce a
     /// `SaleCompleted`; two of them (sales_checkout.rs:527,
-    /// sales_lifecycle.rs:470) now write the `complete_sale` outbox row inside
+    /// sales_lifecycle.rs:524) now write the `complete_sale` outbox row inside
     /// the settlement transaction. This one cannot: the legacy `complete_sale`
     /// command completes a sale across THREE separate transactions - create_sale
     /// here, then `update_sale_status(Active)`, then

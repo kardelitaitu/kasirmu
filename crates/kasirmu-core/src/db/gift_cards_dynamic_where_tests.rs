@@ -1,5 +1,5 @@
 //! Plan coverage for `Store::list_gift_cards` - the crate's SECOND runtime-assembled
-//! `WHERE` builder (`db/gift_cards.rs:186-232`).
+//! `WHERE` builder (`db/gift_cards.rs:211-301`).
 //!
 //! Same blind spot and same remedy as `db/audit_dynamic_where_tests.rs`: the call
 //! shapes are ENUMERATED from one curated table and graded with
@@ -125,7 +125,7 @@ fn seeded_gift_card_connection() -> Connection {
 
 /// The where/params text `list_gift_cards` assembles for `filter`.
 ///
-/// Kept in lockstep with `db/gift_cards.rs:186-232` by
+/// Kept in lockstep with `db/gift_cards.rs:211-301` by
 /// `list_gift_cards_fragments_are_still_where_expected` below, which reads the
 /// production source and fails if any filter's clause literal changes shape.
 fn assemble_where(filter: &GiftCardFilter) -> (String, Vec<String>, usize) {

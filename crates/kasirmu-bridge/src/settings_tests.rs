@@ -1640,7 +1640,7 @@ fn batch_write_of_two_ordinary_keys_lands_both() {
 // Every test above calls `run_set_settings_batch` with a BARE connection, a
 // shape the product never uses. `set_settings_scoped` opens its own
 // `unchecked_transaction` and runs the loop INSIDE it
-// (crates/kasirmu-bridge/src/settings.rs:1264-1266). A loop that opens a transaction
+// (crates/kasirmu-bridge/src/settings.rs:900-903). A loop that opens a transaction
 // of its own therefore nests, and SQLite rejects the second BEGIN — the same
 // class `crates/kasirmu-bridge/src/setup.rs:100-106` documents for
 // `Settings::set_batch`. These two tests reproduce the command's shape.

@@ -450,7 +450,7 @@ pub async fn register_terminal_scoped(
     // F-017 parity with `kasirmu_bridge::terminals::register_terminal_scoped`, and
     // the settings T4-1 fix in shape: this command used to take
     // `user_id: String` and check `require_permission_for_user(&store, &user_id,
-    // …)`. The shared wrapper (`ui/src/api/terminals.ts:55`) sends only
+    // …)`. The shared wrapper (`ui/src/api/terminals.ts:53-54`) sends only
     // `{ sessionToken, args }`, so Tauri rejected the call before the body ran —
     // "missing required key user_id" — and the actor the caller could name was
     // anyway a forgeable input. The session now supplies both.
@@ -484,7 +484,7 @@ pub async fn update_terminal_scoped(
     let conn_arc = state.resolve_store(&session_token)?;
     // F-017 parity with `kasirmu_bridge::terminals::update_terminal_scoped`, and the
     // T4-1 shape again: `user_id: String` was a required argument the wrapper at
-    // `ui/src/api/terminals.ts:63` never sends, so the call was rejected before
+    // `ui/src/api/terminals.ts:61-62` never sends, so the call was rejected before
     // its body ran. Gating on the session also moves the check ahead of the
     // store lock, which is why a not-found id now reports the permission result
     // first when the caller lacks `terminals:edit`.
@@ -567,7 +567,7 @@ pub async fn delete_terminal_scoped(
     // F-017 parity with `kasirmu_bridge::terminals::delete_terminal_scoped`. This is
     // the most destructive command on the surface, and it carried both halves of
     // the settings T4-1 defect at once: `user_id: String` was required while
-    // `ui/src/api/terminals.ts:79` sends only `{ sessionToken, id }`, so the
+    // `ui/src/api/terminals.ts:77-78` sends only `{ sessionToken, id }`, so the
     // delete never reached its body on a tablet; and the actor whose permission
     // was checked was whichever user id the caller chose to name.
     let db_guard = conn_arc

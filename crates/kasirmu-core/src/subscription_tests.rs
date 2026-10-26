@@ -2112,7 +2112,7 @@ fn debug_redacts_credential_fields_but_keeps_the_row_readable() {
 }
 // -- The two date engines: what they really promise ---------------------
 //
-// `lifecycle_state_at` (subscription.rs:987) and `is_within_grace_period_at`
+// `lifecycle_state_at` (subscription.rs:785) and `is_within_grace_period_at`
 // (:682) are PARALLEL implementations over the same fields, and the module
 // doc at :964 claims the second one mirrors the first exactly so the reported
 // state can never disagree with `effective_tier`.

@@ -783,10 +783,10 @@ pub async fn create_session(
         // clock. Doing so was the exact bypass MSL-32 closed one layer down:
         // `compute_max_ledger_timestamp` propagates its read errors precisely so a
         // failure is not answered with `Utc::now()` (see its doc at
-        // `subscription.rs:305-312`, "the guard would then compare the OS clock
+        // `subscription.rs:340-347`, "the guard would then compare the OS clock
         // against itself and pass"), and every core caller fails CLOSED on that
         // error — `is_within_grace_period_for_connection` -> `false`,
-        // `effective_tier_for_connection` -> `Free` (`subscription.rs:390,671`).
+        // `effective_tier_for_connection` -> `Free` (`subscription.rs:424`, `:715`).
         // The `.unwrap_or_else(|_| Utc::now())` here undid that at the outermost
         // caller, where a tenant with a rolled-back OS clock would never enter the
         // window and the re-auth verdict would never reach the device.

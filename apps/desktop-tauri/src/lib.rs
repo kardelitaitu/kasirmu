@@ -1501,7 +1501,7 @@ pub fn run() {
             // desktop it threw "command not found" -- useVersionStatus caught that and displayed
             // the app version as 0.0.0, while UpdateBanner's throw aborted the same try block that
             // decides whether to show the rollback-recovery banner, so that feature never fired.
-            // mobile-tauri has registered `version` all along (lib.rs:409).
+            // mobile-tauri has registered `version` all along (mobile-tauri/src/lib.rs:1134).
             commands::health::version,
             commands::health::version_scoped,
             commands::health::get_device_id,

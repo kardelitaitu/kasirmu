@@ -671,7 +671,7 @@ async fn daemon_surfaces_plan_required_without_retry_or_quarantine() {
 //
 // The panic path itself still exists and is still handled: every closure that
 // DOES take the lock joins through `spawn_blocking` and surfaces a
-// `JoinError` (daemon.rs:157, :189, :214; the prune path logs it at :507), so
+// `JoinError` (daemon.rs:337, :393, :421, :726; the prune path logs it at :743), so
 // the behaviour is covered where it actually lives. Nothing is owed here.
 
 /// The acceptance case: a LOW-priority item is enqueued FIRST, so the

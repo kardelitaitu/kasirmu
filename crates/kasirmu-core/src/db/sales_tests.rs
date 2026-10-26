@@ -779,8 +779,8 @@ fn void_sale_completed_cannot_be_voided() {
 
 /// A second void on an already-voided sale must be REFUSED, not re-applied.
 ///
-/// The guard is in `void_sale` (sales_lifecycle.rs:884-892 pre-check plus the
-/// `WHERE id = ?2 AND status = 'active'` compare-and-set at :903-914). The two
+/// The guard is in `void_sale` (sales_lifecycle.rs:896-904 pre-check plus the
+/// `WHERE id = ?2 AND status = 'active'` compare-and-set at :915-919). The two
 /// neighbouring cases pin only that a PENDING and a COMPLETED sale are refused; nothing
 /// pinned the re-void, which is the shape a double-clicked Void button produces.
 ///
