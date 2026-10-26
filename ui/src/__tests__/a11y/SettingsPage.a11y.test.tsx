@@ -2,7 +2,7 @@
 //!
 //! Ensures no axe-core violations are introduced during refactoring.
 
-import { describe, it, vi } from 'vitest';
+import { describe, it, vi, expect } from 'vitest';
 import { renderWithProviders, checkA11y } from './axe-helper';
 import SettingsPage from '@/features/settings/SettingsPage';
 
