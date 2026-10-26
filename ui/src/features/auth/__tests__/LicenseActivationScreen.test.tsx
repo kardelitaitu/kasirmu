@@ -77,7 +77,7 @@ vi.mock('@fluent/react', () => ({
         'auth-clear-phone': 'Clear phone number',
         'auth-clear-key': 'Clear license key',
         // The hero logo's alt. This map is a hand-maintained mirror of shared.ftl
-        // (shared-ui/locales/shared.ftl:976) and no test ever pinned the alt, so
+        // (shared-ui/locales/shared.ftl) and no test ever pinned the alt, so
         // when the image moved onto l10n.getString the key simply fell through to
         // the raw id and case 49 failed on alt text nobody had spelled out here.
         'license-activation-logo-alt': 'kasir.mu Logo',

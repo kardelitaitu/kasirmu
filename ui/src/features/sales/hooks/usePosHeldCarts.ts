@@ -33,7 +33,7 @@ export interface UsePosHeldCartsParams {
    * The shift refusal below is a TOAST, and its string used to be a hardcoded
    * English literal while `sales.ftl` already carried
    * `retail-toast-open-shift-first` and the Indonesian translation for it
-   * (`sales.id.ftl:778`) — so an Indonesian operator read English on this path
+   * (`sales.id.ftl:863`) — so an Indonesian operator read English on this path
    * and Indonesian on the retail one. A ref, matching `usePosCartActions`, keeps
    * the callback identity stable while always reading the current bundle.
    */
