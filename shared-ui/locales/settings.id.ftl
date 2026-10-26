@@ -1260,6 +1260,7 @@ sync-conflicts-requeue-all-aria = Coba lagi semua konflik sinkronisasi terkarant
 # pertama — padahal penolakan itu normal: requeue_remote_failure mengembalikan
 # CoreError::NotFound untuk item yang sudah tidak dead-lettered (remote.rs:192-195),
 # yang persis terjadi bila item itu baru saja diantrekan dari tombol barisnya.
+sync-conflicts-load-failed = Gagal memuat konflik terkarantina
 sync-conflicts-requeue-failed = Konflik ini gagal diantrekan ulang
 sync-conflicts-requeue-partial = Sebagian konflik gagal diantrekan ulang
 sync-conflicts-payload-inspect = Periksa

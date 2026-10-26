@@ -1303,6 +1303,7 @@ sync-conflicts-requeue-all-aria = Requeue all quarantined sync conflicts
 # refusal — and a refusal is normal here: requeue_remote_failure returns
 # CoreError::NotFound for an item that is no longer dead-lettered (remote.rs:192-195),
 # which is exactly what happens when the same item was requeued from its row button.
+sync-conflicts-load-failed = Could not load the quarantined conflicts
 sync-conflicts-requeue-failed = Could not requeue this conflict
 sync-conflicts-requeue-partial = Some conflicts could not be requeued
 sync-conflicts-payload-inspect = Inspect

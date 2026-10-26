@@ -62,11 +62,13 @@ export function SyncConflictsPanel({
       const deadCount = list.filter((f) => f.deadLettered).length;
       onCountChange?.(deadCount);
     } catch (e) {
-      setError(String(e));
+      // Was `String(e)` -- the third raw-rejection site in this panel. A list that
+      // failed to load must not print the backend's sentence into a role="alert".
+      setError(l10nErrorMessage(e, l10n, 'sync-conflicts-load-failed'));
     } finally {
       setLoading(false);
     }
-  }, [sessionToken, onCountChange]);
+  }, [sessionToken, onCountChange, l10n]);
 
   useEffect(() => {
     void load();
