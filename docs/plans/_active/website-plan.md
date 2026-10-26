@@ -608,6 +608,30 @@ Live at `https://ozpos.my.id` until the custom domain is bought.
 | `PUBLIC_PADDLE_ENVIRONMENT` | `sandbox` | Paddle SDK env: `sandbox` or `production` (defaults to `production` when unset — set `sandbox` until real price ids ship) |
 | `PUBLIC_CONTACT_ENDPOINT` | `https://license.ozpos.my.id/api/v1/web/contact` | Support contact-form target; empty = mailto fallback |
 
+**Domain note, corrected 2026-10-27 — the Worker's default is `license.kasir.mu`, and this table
+still names the pre-rebrand `license.ozpos.my.id`.** All nine variable names above DO have readers
+(checked in `website/src`, `apps/license-server`, `apps/cloud-server`), so the table's substance is
+right. But `website/worker.ts` resolves the live origin in three places as
+`env.LICENSE_API_URL ?? 'https://license.kasir.mu'` (`worker.ts:389`, `:442`, `:897`, health check at `:669`), and its CSP `connect-src` (`:241`) reads `'self' https://kasir.mu https://*.code.run
+https://*.kasir.mu https://license.ozpos.my.id https://open.er-api.com`.
+
+Two things follow, and they are different:
+
+- **`license.ozpos.my.id` is not dead.** It is still in the CSP allowlist and
+  `apps/license-server/DEPLOY.md:257` says the origins list "already cover[s] both names" — one
+  Worker on two domains. So the URL works, and this is a stale DEFAULT, not a broken endpoint.
+- **The plan cites the old domain six times and the new one zero.** `git grep -c license.kasir.mu
+  -- docs/plans/_active/website-plan.md` returns **0**. The six are at `:378`, `:436`, `:606`,
+  `:609`, `:658` and the CSP example at `:674`, whose `connect-src` is a stale SUBSET of the real
+  one (it lists only the legacy host).
+
+**Deliberately not rewritten.** The deployed value is a property of the Cloudflare environment,
+not of this repo, and which host the site currently resolves to cannot be measured from a
+checkout — only the code default can. Changing six lines to `kasir.mu` on the strength of a default
+would replace a stale-but-working value with a guess. What is recorded here is the measured
+default and the fact that both names remain valid, so the next reader can decide with the
+deployment in front of them.
+
 **Northflank (license server, new):**
 
 | Variable | Value | Purpose |
