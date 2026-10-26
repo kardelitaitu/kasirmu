@@ -557,7 +557,7 @@ describe('CustomerManagementScreen', () => {
           id: 's-1',
           total_minor: 2500,
           currency: 'USD',
-          status: 'Completed',
+          status: 'completed',
           line_count: 2,
           created_at: '2026-07-01T10:00:00.000Z',
         },

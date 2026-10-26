@@ -326,7 +326,7 @@ function seedMockSalesStore(): { sales: MockCompletedSale[]; details: Record<str
     id: 'seed-sale-001',
     total: { minor_units: subtotalMinor, currency },
     lineCount: 2,
-    status: 'Completed',
+    status: 'completed',
     paymentMethod: 'cash',
     userId: 'admin-1',
     createdAt,
@@ -519,12 +519,12 @@ export function createSalesHandlers(deps: SalesDeps): Record<string, MockHandler
     const now = new Date().toISOString();
     completedSales.push({
       id: saleId, total: { minor_units: minorTotal, currency }, lineCount,
-      status: 'Completed', paymentMethod: 'cash', userId: 'admin-1', createdAt: now,
+      status: 'completed', paymentMethod: 'cash', userId: 'admin-1', createdAt: now,
     });
     saleDetails[saleId] = {
       id: saleId, total: { minor_units: minorTotal, currency },
       subtotal: { minor_units: minorTotal, currency },
-      taxTotal: { minor_units: 0, currency }, lineCount, status: 'Completed',
+      taxTotal: { minor_units: 0, currency }, lineCount, status: 'completed',
       paymentMethod: 'cash', tenderedMinor: minorTotal + 500, userId: 'admin-1', createdAt: now,
       lines: cartState.lines.map((l, i) => ({
         id: `mock-line-${i}-${saleId}`, sku: l.sku, name: l.name, qty: l.qty,
@@ -563,12 +563,12 @@ export function createSalesHandlers(deps: SalesDeps): Record<string, MockHandler
     const now = new Date().toISOString();
     completedSales.push({
       id: saleId, total: { minor_units: minorTotal, currency }, lineCount,
-      status: 'Completed', paymentMethod: 'cash', userId: 'admin-1', createdAt: now,
+      status: 'completed', paymentMethod: 'cash', userId: 'admin-1', createdAt: now,
     });
     saleDetails[saleId] = {
       id: saleId, total: { minor_units: minorTotal, currency },
       subtotal: { minor_units: baseTotal, currency },
-      taxTotal: { minor_units: 0, currency }, lineCount, status: 'Completed',
+      taxTotal: { minor_units: 0, currency }, lineCount, status: 'completed',
       paymentMethod: 'cash', tenderedMinor: minorTotal + 500, userId: 'admin-1', createdAt: now,
       lines: cartState.lines.map((l, i) => ({
         id: `mock-line-${i}-${saleId}`, sku: l.sku, name: l.name, qty: l.qty,
@@ -597,12 +597,12 @@ export function createSalesHandlers(deps: SalesDeps): Record<string, MockHandler
     const now = new Date().toISOString();
     completedSales.push({
       id: saleId, total: { minor_units: minorTotal, currency }, lineCount,
-      status: 'Completed', paymentMethod: 'cash', userId: 'admin-1', createdAt: now,
+      status: 'completed', paymentMethod: 'cash', userId: 'admin-1', createdAt: now,
     });
     saleDetails[saleId] = {
       id: saleId, total: { minor_units: minorTotal, currency },
       subtotal: { minor_units: minorTotal, currency },
-      taxTotal: { minor_units: 0, currency }, lineCount, status: 'Completed',
+      taxTotal: { minor_units: 0, currency }, lineCount, status: 'completed',
       paymentMethod: 'cash', tenderedMinor: minorTotal + 500, userId: 'admin-1', createdAt: now,
       lines: cartState.lines.map((l, i) => ({
         id: `mock-line-${i}-${saleId}`, sku: l.sku, name: l.name, qty: l.qty,

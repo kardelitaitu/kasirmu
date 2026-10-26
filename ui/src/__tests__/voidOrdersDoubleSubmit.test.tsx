@@ -47,14 +47,14 @@ const mockVoidSale = voidSaleScoped as ReturnType<typeof vi.fn>;
 
 const sales = [
   {
-    id: 'ORD-001', createdAt: '2026-07-05T10:00:00Z', status: 'Active',
+    id: 'ORD-001', createdAt: '2026-07-05T10:00:00Z', status: 'active',
     total: { minor_units: 35000, currency: 'IDR' }, lineCount: 3,
     paymentMethod: 'CASH', userId: 'user-1',
   },
 ];
 
 const detail = {
-  id: 'ORD-001', createdAt: '2026-07-05T10:00:00Z', status: 'Active',
+  id: 'ORD-001', createdAt: '2026-07-05T10:00:00Z', status: 'active',
   total: { minor_units: 35000, currency: 'IDR' },
   subtotal: { minor_units: 35000, currency: 'IDR' },
   taxTotal: { minor_units: 0, currency: 'IDR' },
