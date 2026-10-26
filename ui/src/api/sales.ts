@@ -757,8 +757,8 @@ export const voidSaleScoped = (sessionToken: string, saleId: string, reason: str
  * constraint (`migrations/20260813_init.sql:166`), and the comparison above is a
  * plain string `==`. A typo therefore compiled clean, stored clean, and quietly
  * stopped matching — the `open_bill` path would fall through to a plain hold with
- * no error anywhere. Two UI sites write it: `PaymentModal.tsx:1028` and
- * `hooks/usePosHeldCarts.ts:188`.
+ * no error anywhere. Two UI sites write it: `ui/src/features/sales/PaymentModal.tsx:1028` and
+ * `ui/src/features/sales/hooks/usePosHeldCarts.ts:318`.
  */
 export type BillType = 'hold' | 'open_bill' | 'credit' | 'pay_later' | 'other';
 

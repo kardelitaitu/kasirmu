@@ -6,14 +6,16 @@
 // --------------------
 // The markup was written out by hand in TWELVE files, and the copies drift:
 //
-//   `features/restaurant/PaymentScreen.tsx:1080` — the cash-drawer-kick switch, carried the
-//   native `checked` but no `aria-checked`. It was found in round 179 only because a probe
-//   read the attribute and got `null` where the sibling rail switches returned `"true"`.
-//   A screen reader announcing a switch with no on/off state is the cost of that drift.
+//   `ui/src/features/restaurant/screens/RestaurantPaymentsScreen.tsx:1096` — the
+//   cash-drawer-kick switch. It was found in round 179 only because a probe read the
+//   attribute and got `null` where the sibling rail switches returned "true". A screen
+//   reader announcing a switch with no on/off state is the cost of that drift. It now
+//   renders this component, which is where the requirement is pinned.
 //
-//   `features/restaurant/RestaurantPaymentsScreen.tsx:197` — the rail switch, DOES set it.
-//   `features/restaurant/SettingRow` (:104) — sets it too, and is the only copy behind a
-//   component of its own.
+//   `ui/src/features/restaurant/screens/RestaurantPaymentsScreen.tsx:204` — the rail
+//   switch, DOES set it (`aria-checked` at :205).
+//   `ui/src/features/restaurant/screens/RestaurantSettingsScreen.tsx:120` — the local
+//   `SettingRow` (:85), sets it too and is the only copy behind a component of its own.
 //
 // Adoption is one line per site, but it is twelve sites across three features — so each
 // screen's owner should move its own copy rather than have a sweep touch all twelve at

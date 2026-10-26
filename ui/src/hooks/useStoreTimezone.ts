@@ -4,7 +4,7 @@
 // (REP-03). The backend enforces it: `Store::daily_revenue` runs
 // `DATE(s1.created_at, ?3)` with `tz_modifier()`, pinned by
 // `daily_revenue_buckets_by_store_timezone` in
-// crates/kasirmu-core/src/db/reports_tests.rs:2473 — a sale at 23:30Z belongs to
+// crates/kasirmu-core/src/db/reports_tests.rs:2686 — a sale at 23:30Z belongs to
 // the NEXT day for a +01:00 store. `hourly_heatmap` shifts its hour column the
 // same way, and `weekly_revenue` shifts its Monday week key.
 //
