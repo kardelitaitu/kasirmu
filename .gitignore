@@ -122,6 +122,13 @@ nul
 /ui/snippet.txt
 /apps/license-server/coverage.html
 /apps/license-server/coverage.out
+# 2026-11-05: the per-file coverage reports the 2026-10-26 coverage-gate work
+# left at the repo root -- cov-inv.json (26 MB) and cov-sync.json (29 MB) of
+# raw instrumentation. Same class as /coverage-probe.json above: a measurement,
+# never a committed artifact; the floors live in scripts/coverage-floors.json.
+# Anchored at the root and scoped to the cov- prefix, so it cannot start hiding
+# a real manifest elsewhere -- the run names these after whatever it measured.
+/cov-*.json
 
 # Test artifacts
 *.profraw
