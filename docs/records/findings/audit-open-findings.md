@@ -1933,3 +1933,32 @@ it, then flip its status in this file.
 > (`ded4686776`, `ded468677`) — both verified again here.
 
 > last audited 29-09-26 by docs-auditor
+
+### Dated correction (2026-11-06) — BR-T1's blind spot is closed, and its example was already stale
+
+`orphan_permission()` read each shell's command bodies through `cmd_dir.glob("*.rs")` at
+:2597 while the registry scan beside it walked the whole tree with `rglob` (:537). Made
+recursive in `061cbae93`. The reach difference, measured by running both globs over both shells:
+**desktop 75 → 84 files, tablet 114 → 116** — eleven files no run of this gate had ever opened.
+One of them matters: `apps/mobile-tauri/src/commands/pos/checkout.rs` defines **4** gated
+scoped commands (`preview_promoted_total_scoped`, `preview_promoted_total_from_lines_scoped`,
+`run_complete_sale_scoped`, `complete_sale_scoped`, all `SALES_PROCESS`).
+
+**No verdict moved, and that is the number to keep.** The gate reports the same 24 allowlisted /
+24 measured orphans, 14 redundant twins and 10 GATED DEAD SURFACE before and after, and
+`--self-test` still passes its 27 cases + 70 extra guards (195 assertions). So the change closes
+a hole nothing is standing in today; what it buys is that a future allowlisted orphan defined
+under `commands/<feature>/` gets a verdict instead of silence.
+
+**BR-T1's own illustration is stale, and repeating it would spread it.** It names "7
+`require_permission` sites" in `apps/desktop-tauri/src/commands/topology/`; measured
+2026-11-06 that directory holds **0** (`grep -c require_permission
+apps/desktop-tauri/src/commands/topology/*.rs` → 0 in all nine files). The gate text moved to
+the bridge, exactly as the neighbouring BR-T4 records — so the file the entry pointed at had
+stopped being the risk while the mis-globbed file that *did* hold gates sat on the tablet side,
+where the entry never looked. A finding's example and a finding's shape age at different rates.
+
+**Still open, same family, NOT fixed here:** `orphan_permission()` returns from the FIRST shell
+whose file defines the command, so a command defined in both shells is judged by one copy only.
+Whether any allowlisted orphan is in that shape is unmeasured; the recursive scan is a
+precondition for asking that question cleanly, not an answer to it.
