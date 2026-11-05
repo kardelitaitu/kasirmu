@@ -2594,7 +2594,13 @@ def orphan_permission(command: str) -> str | None:
         cmd_dir = (REPO_ROOT / lib_rel).parent / "commands"
         if not cmd_dir.is_dir():
             continue
-        for rs in sorted(cmd_dir.glob("*.rs")):
+        # RECURSIVE, and that word is the fix (2026-11-06, BR-T1). The registry scan
+        # above already walks commands/ recursively, so the non-recursive glob here made
+        # this half blind to every extracted command: apps/desktop-tauri/src/commands/
+        # topology/ holds 7 require_permission sites that no run of this gate had ever
+        # read, and a gate that enforces nothing was exactly what the missing verdict
+        # would otherwise have caught. Match the scanner's reach, not its first draft.
+        for rs in sorted(cmd_dir.rglob("*.rs")):
             text = rs.read_text(encoding="utf-8", errors="replace")
             m = re.search(r"\bfn\s+" + re.escape(command) + r"\s*\(", text)
             if not m:
