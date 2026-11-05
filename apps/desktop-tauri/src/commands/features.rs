@@ -6,7 +6,7 @@ findings: unsafe env::set_var removed from async command path; terminal_id writt
 
 //! Feature flag management Tauri commands.
 //!
-//! Exposes `list_all_features` (returns all 32 features with enabled
+//! Exposes `list_all_features` (returns every feature with enabled
 //! status and metadata) and `set_feature` (toggle a single feature on
 //! or off with automatic dependency resolution).
 //!

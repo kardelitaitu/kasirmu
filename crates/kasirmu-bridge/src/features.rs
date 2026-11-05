@@ -42,7 +42,7 @@ pub struct FeatureDto {
 /// Response from `list_all_features`.
 #[derive(Debug, Serialize)]
 pub struct ListAllFeaturesResult {
-    /// All 32 features with metadata and enabled status.
+    /// Every feature with metadata and enabled status.
     pub features: Vec<FeatureDto>,
 }
 
@@ -345,11 +345,6 @@ pub async fn set_feature(
     })
 }
 
-/// Return a stable device identifier for this machine.
-///
-/// Uses `COMPUTERNAME` (Windows) or `HOSTNAME` (Unix) if available,
-/// falling back to `"unknown-device"`. This identifier is used to
-/// auto-register the terminal when multi-terminal mode is enabled.
 /// Map a [`Feature`] to its corresponding kernel module ID, if any.
 ///
 /// Not all features have a dedicated kernel module — many are simple
@@ -372,6 +367,11 @@ pub fn feature_to_module_id(feature: Feature) -> Option<&'static str> {
     }
 }
 
+/// Return a stable device identifier for this machine.
+///
+/// Uses `COMPUTERNAME` (Windows) or `HOSTNAME` (Unix) if available,
+/// falling back to `"unknown-device"`. This identifier is used to
+/// auto-register the terminal when multi-terminal mode is enabled.
 fn device_hostname() -> String {
     std::env::var("COMPUTERNAME")
         .or_else(|_| std::env::var("HOSTNAME"))
@@ -380,8 +380,14 @@ fn device_hostname() -> String {
 
 // ── Feature metadata ────────────────────────────────────────────────
 
-/// Returns all 32 features with their human-readable name, description,
-/// and logical group.
+/// Returns every [`Feature`] with its human-readable name, description, and
+/// logical group.
+///
+/// The count is deliberately NOT stated here: this doc said "all 32 features"
+/// while [`Feature`] carried 39, and the same stale number was copied into all
+/// three shell modules. A doc that restates a count the enum already answers is
+/// drift waiting to happen; the enum is the source of truth and the length of
+/// this table is the mechanical check.
 pub fn all_feature_metadata() -> Vec<(Feature, &'static str, &'static str, &'static str)> {
     vec![
         (

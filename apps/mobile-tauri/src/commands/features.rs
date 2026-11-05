@@ -1,6 +1,6 @@
 //! Feature flag management Tauri commands.
 //!
-//! Exposes `list_all_features` (returns all 32 features with enabled
+//! Exposes `list_all_features` (returns every feature with enabled
 //! status and metadata) and `set_feature` (toggle a single feature on
 //! or off with automatic dependency resolution).
 //!
@@ -37,7 +37,7 @@ pub struct FeatureDto {
 /// Response from `list_all_features`.
 #[derive(Debug, Serialize)]
 pub struct ListAllFeaturesResult {
-    /// All 32 features with metadata and enabled status.
+    /// Every feature with metadata and enabled status.
     pub features: Vec<FeatureDto>,
 }
 
@@ -342,8 +342,8 @@ fn device_hostname() -> String {
 
 // ── Feature metadata ────────────────────────────────────────────────
 
-/// Returns all 32 features with their human-readable name, description,
-/// and logical group.
+/// Returns every feature with its human-readable name, description, and
+/// logical group.
 fn all_feature_metadata() -> Vec<(Feature, &'static str, &'static str, &'static str)> {
     vec![
         (
