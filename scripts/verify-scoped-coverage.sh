@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # scripts/verify-scoped-coverage.sh — H-1/H-2 regression guard.
 #
-# Ensures every registered Tauri command in the desktop client either:
+# Ensures every registered Tauri command in BOTH shells (desktop and tablet) either:
 #  1. Has a corresponding _scoped variant, OR
-#  2. Is in the allowlist of commands that are intentionally unscoped.
+#  2. Is in the allowlist of commands that are intentionally unscoped -- the shared
+#     categories, plus a per-shell list for what only that shell registers.
 #
 # Usage:  bash scripts/verify-scoped-coverage.sh
 #         (run from the workspace root)
@@ -244,64 +245,119 @@ violations=0
 # reads or writes store data.
 ALLOWLIST="staff_login|staff_check_username|has_users|bootstrap_owner|create_session|destroy_session|session_keepalive|verify_pin|refresh_picker_ticket|activate_license|check_license_status|get_license_status|get_machine_id|get_hardware_fingerprint|renew_license|pause_subscription|resume_subscription|test_auth_connection|ping|version|get_device_id|get_local_ip|resolve_boot_store|get_subscription_capabilities|get_over_quota_report|get_deployment_info|get_storage_health|record_crash_report|export_diagnostics|complete_setup|dismiss_setup_wizard|get_setup_status|get_enabled_features|load_topology|can_save_topology|apply_topology_diff|recover_pending_topology_apply_at_startup|save_topology_template|load_topology_template|list_topology_templates|delete_topology_template|list_topology_revisions|load_topology_revision|pin_topology_revision|export_data|import_preview|import_data|create_backup|get_backup_status|gateway_status|edc_terminal_status|edc_sale|edc_refund|edc_void|edc_inquiry|edc_settle|send_test_report|save_report_schedule|get_report_schedule|list_all_features|set_feature|set_features_bulk|get_key_rotation_info|rotate_encryption_key|currency_info|pick_logo_file|settings_changed_sink|create_inventory_location|create_inventory_transaction|deactivate_inventory_location|delete_stock_threshold|end_inventory_shift|finalize_sale|get_active_inventory_shift|get_inventory_transaction|get_stock_thresholds|get_workspace_inventory_locations|list_inventory_locations|list_inventory_shifts|list_inventory_transactions|list_inventory_transactions_for_shift|set_stock_threshold|set_workspace_inventory_locations|start_inventory_shift|update_inventory_location|void_pending_sale|list_warehouse_products_at_location|list_organizations|switch_organization|link_device_google|link_device_email_request|link_device_email_consume|export_data_without_session|start_device_pairing|poll_device_pairing|get_first_run_state|provision_device|get_preset_features|request_email_login_code|verify_email_login_code|login_with_email_password|list_restore_candidates|restore_prepare|restore_status"
 
-# Get all _scoped function names
-# || true is NOT cosmetic: under set -euo pipefail a grep matching nothing exits 1 and
-# the ASSIGNMENT fails, so the whole script dies here before printing anything --
-# measured 2026-10-23 as exit 1 with EMPTY stdout and stderr, which reads to a caller
-# as "the gate had nothing to say" rather than "the gate broke".
-scoped_funcs=$(grep -roh "pub async fn [a-z_]*_scoped" apps/desktop-tauri/src/commands --include="*.rs" 2>/dev/null | sed 's/pub async fn //' | sort -u || true)
+# ── Tablet-only allowlist (added 2026-11-06) ──────────────────────────────────
+#
+# The shared list above is the desktop's; the tablet is graded against ALLOWLIST UNION
+# this one, because a pre-auth command is pre-auth on both shells. These nine are the
+# tablet commands the shared list does not name -- measured 2026-11-06 by running this
+# gate's own rule over apps/mobile-tauri, which had never been graded at all.
+#
+# DEVICE/HOST-LEVEL, NO STORE TO RESOLVE -- same reasoning as create_backup,
+# export_diagnostics and send_test_report above:
+#   check_app_update, prepare_and_launch_update, start_apk_download
+#     the in-app updater. check_app_update resolves a session and requires
+#     SETTINGS_READ before it does anything, so it is already authenticated; the other
+#     two act on the installed APK, not on store data.
+#   create_backup_to
+#     writes a backup to a path the operator picks. The store is the session's and is
+#     resolved inside kasirmu_bridge::data, exactly as create_backup above does it.
+#   get_build_fingerprint, notify_memory_pressure
+#     APK signing fingerprint and a memory-pressure hint. Neither opens a database.
+#
+# PICKER FLOW, GLOBAL DB -- same reasoning as refresh_picker_ticket above:
+#   list_workspaces, list_workspace_screens
+#     both authenticate with a picker TICKET and read the global db while the operator
+#     is still choosing a workspace, before any store can be resolved.
+#
+# KNOWN DEBT, NOT A BLESSING:
+#   open_product_images
+#     reads the ambient db with NO session -- the exact hazard this gate exists to
+#     catch. It is registered as debt in
+#     apps/mobile-tauri/src/commands/registration_gate_debt.generated.rs
+#     ("no_session_resolution"), and it is listed here only so the shell can be graded
+#     at all. This entry is not an argument that the command is safe; closing it is
+#     tracked in that ledger, not here.
+TABLET_ALLOWLIST="check_app_update|prepare_and_launch_update|start_apk_download|create_backup_to|get_build_fingerprint|notify_memory_pressure|list_workspaces|list_workspace_screens|open_product_images"
 
-# Get all registered unscoped commands (not _scoped themselves)
-registered_unscoped=$(grep -oE 'commands::[a-z_]+::[a-z_]+,' apps/desktop-tauri/src/lib.rs | sed 's/,$//' | grep -v '_scoped$' | sort -u || true)
+# ── The scan, parameterised by shell ─────────────────────────────────────────
+#
+# Until 2026-11-06 this gate graded the DESKTOP shell only: its subject came from desktop
+# lib.rs and its twins from apps/desktop-tauri/src/commands. The tablet registers 93
+# unscoped commands and holds 346 _scoped twins, and none of it was graded -- half the IPC
+# surface sat outside the rule written to protect it. Measured with this gate's own rule,
+# the tablet has nine commands with no twin and the desktop has zero, so the extension
+# costs a per-shell allowlist rather than a repair.
+#
+# A shell is graded against the SHARED categories plus its own list, so an entry justified
+# for one shell cannot silence the other; the desktop keeps exactly the list it had.
+run_shell() {
+    local shell="$1" lib_rel="$2" cmd_rel="$3" extra_allow="$4" floor_twins="$5" floor_reg="$6"
+    local allowed scoped_funcs registered_unscoped registered_count twin_count cmd fn_name
 
-# A FLOOR, without which this gate cannot tell "every command is covered" from
-# "the derivation found no commands at all". Both print PASS. The second is not
-# hypothetical: the subject comes from grepping lib.rs for `commands::a::b,`, so
-# a rename, a move to a registration macro, or a change of quoting empties it —
-# and an empty subject makes the loop below run zero times, leaving $violations
-# at 0. `set -e` does not save it: the derivation ends in `grep -v`, which exits
-# 0 on empty input, so nothing aborts. Measured 2026-09-25: the derivation
-# currently yields 101 commands, so 50 is a floor that a real regression trips
-# long before it can silently reach zero.
-registered_count=$(printf "%s\n" "$registered_unscoped" | grep -c . || true)
-# The SECOND floor: the twin half of the subject. With a dead twin scan every command
-# falls to the allowlist and the gate prints PASS with twin coverage 0; the registered
-# floor reads only the OTHER half and cannot see it. Measured: 404 twin fns.
-twin_count=$(printf "%s\n" "$scoped_funcs" | grep -c . || true)
-if [ "$twin_count" -lt 1 ]; then
-    echo -e "${RED}FAIL: derived ZERO _scoped twin(s) from apps/desktop-tauri/src/commands.${NC}"
-    echo "  Every command would fall through to the allowlist and this gate would print" >&2
-    echo "  PASS with twin coverage 0. The twin scan is broken, not the tree." >&2
-    exit 1
-fi
+    allowed="${ALLOWLIST}|${extra_allow}"
 
-if [ "$registered_count" -lt 50 ]; then
-    echo -e "${RED}FAIL: derived only $registered_count registered command(s) from \
-desktop-tauri/src/lib.rs - the derivation is broken, so this gate would pass by \
-checking nothing (expected >= 50; measured 101 on 2026-09-25)${NC}"
-    exit 1
-fi
+    # Get all _scoped function names
+    # || true is NOT cosmetic: under set -euo pipefail a grep matching nothing exits 1 and
+    # the ASSIGNMENT fails, so the whole script dies here before printing anything --
+    # measured 2026-10-23 as exit 1 with EMPTY stdout and stderr, which reads to a caller
+    # as "the gate had nothing to say" rather than "the gate broke".
+    scoped_funcs=$(grep -roh "pub async fn [a-z_]*_scoped" "$cmd_rel" --include="*.rs" 2>/dev/null | sed 's/pub async fn //' | sort -u || true)
+
+    # Get all registered unscoped commands (not _scoped themselves)
+    registered_unscoped=$(grep -oE 'commands::[a-z_]+::[a-z_]+,' "$lib_rel" | sed 's/,$//' | grep -v '_scoped$' | sort -u || true)
+
+    # A FLOOR, without which this gate cannot tell "every command is covered" from
+    # "the derivation found no commands at all". Both print PASS. The second is not
+    # hypothetical: the subject comes from grepping lib.rs for `commands::a::b,`, so
+    # a rename, a move to a registration macro, or a change of quoting empties it --
+    # and an empty subject makes the loop below run zero times, leaving violations
+    # at 0. `set -e` does not save it: the derivation ends in `grep -v`, which exits
+    # 0 on empty input, so nothing aborts.
+    registered_count=$(printf "%s\n" "$registered_unscoped" | grep -c . || true)
+    # The SECOND floor: the twin half of the subject. With a dead twin scan every command
+    # falls to the allowlist and the gate prints PASS with twin coverage 0; the registered
+    # floor reads only the OTHER half and cannot see it.
+    twin_count=$(printf "%s\n" "$scoped_funcs" | grep -c . || true)
+    if [ "$twin_count" -lt "$floor_twins" ]; then
+        echo -e "${RED}FAIL: derived $twin_count _scoped twin(s) from $cmd_rel -- below the floor"
+        echo "  of ${floor_twins}. Every command would fall through to the allowlist and this gate"
+        echo "  would print PASS with twin coverage 0. The twin scan is broken, not the tree." >&2
+        exit 1
+    fi
+
+    if [ "$registered_count" -lt "$floor_reg" ]; then
+        echo -e "${RED}FAIL: derived only $registered_count registered command(s) from $lib_rel - below"
+        echo "  the floor of ${floor_reg}; the derivation is broken, so this gate would pass by"
+        echo "  checking nothing." >&2
+        exit 1
+    fi
+
+    while IFS= read -r cmd; do
+        fn_name=$(echo "$cmd" | awk -F:: '{print $NF}')
+
+        # Check if it has a _scoped counterpart
+        if printf '%s\n' "$scoped_funcs" | grep -qxF "${fn_name}_scoped"; then
+            continue
+        fi
+
+        # Check if it's in the allowlist
+        if printf '%s\n' "$fn_name" | grep -qE "^(${allowed})$"; then
+            continue
+        fi
+
+        echo -e "${RED}VIOLATION${NC}: [$shell] $cmd has no _scoped variant"
+        violations=$((violations + 1))
+    done <<< "$registered_unscoped"
+
+    echo "  ($shell: $registered_count registered unscoped command(s), $twin_count _scoped twin(s))"
+}
 
 echo "=== Scoped Coverage Check ==="
-echo "  (derived $registered_count registered unscoped command(s))"
+echo "  (each shell against the shared categories plus its own list)"
 echo ""
 
-while IFS= read -r cmd; do
-    fn_name=$(echo "$cmd" | awk -F:: '{print $NF}')
-
-    # Check if it has a _scoped counterpart
-    if echo "$scoped_funcs" | grep -q "^${fn_name}_scoped$"; then
-        continue
-    fi
-
-    # Check if it's in the allowlist
-    if echo "$fn_name" | grep -qE "^($ALLOWLIST)$"; then
-        continue
-    fi
-
-    echo -e "${RED}VIOLATION${NC}: $cmd has no _scoped variant"
-    violations=$((violations + 1))
-done <<< "$registered_unscoped"
+run_shell desktop apps/desktop-tauri/src/lib.rs apps/desktop-tauri/src/commands "" 1 50
+run_shell tablet apps/mobile-tauri/src/lib.rs apps/mobile-tauri/src/commands "$TABLET_ALLOWLIST" 100 40
 
 echo ""
 

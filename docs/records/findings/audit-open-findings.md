@@ -2080,3 +2080,34 @@ with a live symptom.
 **Out of scope, still open:** this reads the several bodies of ONE command name across shells. A command
 reached under a different name in the other shell (an alias or a forwarding twin) is not cross-checked at
 all — unmeasured, and not implied by this fix.
+
+### Dated correction (2026-11-06) — the scoped-coverage gate graded one shell, and the tablet had nine commands outside the rule
+
+`scripts/verify-scoped-coverage.sh` opened by naming its subject: *every registered Tauri command in
+the desktop client*. It was accurate. The subject came from `apps/desktop-tauri/src/lib.rs` and the twins
+from `apps/desktop-tauri/src/commands`, with no reference to the tablet anywhere in the file — so half
+the IPC surface sat outside the rule written to protect it, and the gate printed PASS the whole time.
+
+Measured 2026-11-06 with the gate's own rule applied to `apps/mobile-tauri`: **93** registered unscoped
+commands, **346** `_scoped` twins, **9** with no twin. The desktop, same rule: **106 / 404 / 0**.
+
+| shell | registered unscoped | twins | violations under the gate's own rule |
+|---|---|---|---|
+| desktop | 106 | 404 | 0 |
+| tablet | 93 | 346 | 9 |
+
+The script is now parameterised (`run_shell` with its own floors and its own allowlist) and grades both
+shells against the SHARED categories plus a per-shell list, so an entry justified for one shell cannot
+silence the other. The nine tablet entries are categorised in the script itself: the updater triple and
+`create_backup_to` are device-level, `get_build_fingerprint` / `notify_memory_pressure` touch no database,
+and `list_workspaces` / `list_workspace_screens` run on a picker ticket against the global db.
+
+**The ninth is debt, not a blessing, and the script says so.** `browser::open_product_images` reads the
+ambient db with no session — the exact hazard the gate exists to catch. It is already registered as debt in
+`apps/mobile-tauri/src/commands/registration_gate_debt.generated.rs` ("no_session_resolution"), so it is
+allowlisted here only so the shell can be graded at all; the entry names the ledger where closing it is
+tracked, because this file's own NOTE warns that an addition silences the gate forever.
+
+**Proof the new half can fail:** dropping `list_workspace_screens` from the tablet list turns the gate red
+with `[tablet] commands::workspaces::list_workspace_screens has no _scoped variant`; restoring it returns
+PASS. The desktop half is unchanged — its floors, subject and allowlist are exactly what shipped.
