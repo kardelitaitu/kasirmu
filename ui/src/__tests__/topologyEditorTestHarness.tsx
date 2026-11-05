@@ -152,8 +152,14 @@ export const TOPOLOGY_EN: Record<string, string> = {
   'topology-validation-unknown-wire-endpoint': 'This wire references a node that is not in the graph.',
   'topology-validation-invalid-semantic-connection': 'This wire uses an incompatible port and relationship type.',
   'topology-validation-ambiguous-legacy-wire': 'This older wire cannot be identified safely. Delete and reconnect it using the labeled ports.',
-  // NOTE: topology-wire-label-* keys are deliberately ABSENT so the
-  // existing label tests pin the raw-key fallback behavior.
+  // NOTE: most topology-wire-label-* keys are deliberately ABSENT so the
+  // existing label tests pin the raw-key fallback behavior. TWO are not:
+  // -fallback and -stock-deduct are both in this map (they always were -- this
+  // note said 'topology-wire-label-*' without the exception, which read as a
+  // claim about keys that were present). What 2026-11-05 actually fixed in them
+  // was interpolation: their values carried a bare `$priority` placeable, which
+  // this stub does not substitute, so the rendered label showed the raw
+  // placeholder while the map looked complete.
   'topology-migration-title': 'Migrate legacy connections',
   'topology-migration-description': 'These older connections cannot be identified safely. Choose what each one means so the diagram can be applied. Connections with no compatible meaning must be deleted and recreated with the labeled ports.',
   'topology-migration-select-aria': 'Connection from {from} to {to}',
