@@ -429,10 +429,16 @@ async fn export_data_direct(
         .get_store_name()?
         .unwrap_or_else(|| "kasir.mu Store".into());
 
+    // BR-C6: this read used to be `… .unwrap_or_default()`, so a failed feature
+    // read exported as "no features" rather than as an error — a package that
+    // restores with every flag off while the export looked successful. Every
+    // other `load_features` site in this crate propagates (`features.rs:56`,
+    // `:150`, `:286`, `:635`); this one now matches them.
     let features: HashMap<String, String> = store
-        .load_features()
-        .map(|reg| reg.to_settings_rows().into_iter().collect())
-        .unwrap_or_default();
+        .load_features()?
+        .to_settings_rows()
+        .into_iter()
+        .collect();
 
     let data_types_for_result = data_types.clone();
     let kasirpkg_bytes = export_kasirpkg(

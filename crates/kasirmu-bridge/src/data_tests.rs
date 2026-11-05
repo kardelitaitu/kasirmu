@@ -1511,3 +1511,30 @@ async fn export_with_a_valid_window_writes_a_sales_package() {
     assert_eq!(result.types, vec!["sales".to_string()]);
     assert!(out.exists(), "the package must be written");
 }
+
+// ── BR-C6: a failed feature read is an ERROR, not an empty flag set ────────
+
+/*
+ * The export used to read the feature registry with `unwrap_or_default()`, so a
+ * failed read produced a package with every flag off and a success result beside
+ * it — a restored store would silently run with the merchant's features disabled.
+ *
+ * A source scan rather than a driven test, and deliberately: provoking a
+ * `load_features` failure needs a corrupt settings row whose parse behaviour is
+ * a property of `Settings::load_features`, not of this command, so a fixture here
+ * would pin the wrong layer. What must not regress is THIS body's choice to
+ * propagate, and that is exactly what the scan reads — the same shape the two
+ * neighbouring source scans in this file already use.
+ */
+#[test]
+fn export_data_propagates_a_failed_feature_read() {
+    let source = include_str!("data.rs");
+    assert!(
+        !source.contains("load_features()\n        .map(|reg| reg.to_settings_rows()"),
+        "the export must not swallow a feature-read failure again"
+    );
+    assert!(
+        source.contains("load_features()?\n        .to_settings_rows()"),
+        "the export must propagate the feature read with `?`, as every sibling site does"
+    );
+}

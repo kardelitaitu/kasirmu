@@ -344,9 +344,17 @@ data::` -> **50 passed, 0 failed**.
   transaction writes inside one open transaction: tx at `crates/kasirmu-bridge/src/data.rs:518`,
   `store.conn()` probes at `:562`, `:589`, `:614`, `:645`, `tx.execute` writes at `:570`,
   `:575`, `:624`, `:629`, `:653`, `:659`. The two paths can disagree about the same row.
-- **BR-C6** — **[PBD]** `export_data`'s features map silently **empties** on a read error:
-  `crates/kasirmu-bridge/src/data.rs:424-427` (`load_features().map(...).unwrap_or_default()`)
-  — a failed feature read exports as "no features", not as an error.
+- ~~**BR-C6** — `export_data`'s features map silently **empties** on a read error
+  (`load_features().map(...).unwrap_or_default()`) — a failed feature read exported as "no
+  features", not as an error.~~ — **CLOSED 2026-11-05**. The export now propagates with `?`,
+  matching every other `load_features()` site in the crate (`features.rs:56`, `:150`, `:286`,
+  `:635`). The consequence was not cosmetic: the package RESTORES with every flag off while
+  the export reported success, so a merchant's features came back disabled with nothing in
+  the result saying why. Pinned by `export_data_propagates_a_failed_feature_read`, a source
+  scan rather than a driven test — provoking the failure needs a corrupt settings row whose
+  parse behaviour is a property of `Settings::load_features`, not of this command, so only
+  this body's choice to propagate is ours to pin.  `cargo test -p kasirmu-bridge --lib data::`
+  -> **51 passed, 0 failed**.
 - **BR-C7** — **[PBD]** `gather_usage` turns four database faults into logged zeros:
   `crates/kasirmu-bridge/src/subscription.rs:127-145` (`count_locations`, `count_staff_users`,
   `count_terminals`, `count_warehouse_locations`, each `unwrap_or_else(|e| { warn; 0 })`), so
