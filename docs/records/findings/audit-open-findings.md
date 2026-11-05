@@ -311,11 +311,15 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
 
 ### Correctness / robustness
 
-- **BR-C1** — **[PBD]** `register_terminal` is a registered-shaped command that is **not in
-  `invoke_handler!`**: `apps/desktop-tauri/src/commands/terminals.rs:123` carries
-  `#[tauri::command]`, but `apps/desktop-tauri/src/lib.rs:1036-1051` registers 16
-  `commands::terminals::` entries and `register_terminal` is not one of them (16 of 17).
-  Dead on the wire, alive in the test suite.
+- ~~**BR-C1** — `register_terminal` is a registered-shaped command that is **not in
+  `invoke_handler!`** (16 of 17).~~ — **STALE 2026-11-05**: there is no bare `register_terminal`
+  left in the desktop shell to register. The only `register_terminal` in `apps/desktop-tauri`
+  is `sync_client::register_terminal` (`src/sync_bootstrap.rs:351`), a client call, not a
+  command; the command is `register_terminal_scoped` and it IS registered
+  (`apps/desktop-tauri/src/lib.rs:1654`). All sixteen `commands::terminals::` entries at
+  `:1652-1667` are `_scoped`, so the 16-of-17 arithmetic no longer describes any state the
+  shell can be in. Re-checked by grepping every `.rs` under `apps/` and `crates/` for the bare
+  name: four hits, none of them a Tauri command.
 - **BR-C2** — **[PBD]** `build_device_binding_dto` treats a keyring **read failure** as an
   invalid signature: `crates/kasirmu-bridge/src/terminals.rs:343` →
   `verify_binding(...).unwrap_or(false)` at `:357-364`, so `signature_valid:false` cannot be
@@ -363,17 +367,25 @@ data::` -> **50 passed, 0 failed**.
   `crates/kasirmu-bridge/src/subscription.rs:639` probes `manager.store_db_exists(store_id)` and
   `:642` then opens it (`open_store`); the file can appear or vanish between the two. A
   store that fails to answer is skipped, not fatal (`:660-663`).
-- **BR-C9** — **[PBD]** `gate_permission` is computed twice for the same feature in one
-  verdict: `crates/kasirmu-bridge/src/subscription.rs:382` and again at `:386`.
+- ~~**BR-C9** — `gate_permission` is computed twice for the same feature in one verdict.~~ —
+  **CLOSED 2026-11-05** (`refactor(subscription): derive the gated permission once per
+  verdict`). One binding now feeds both the `require_permission` probe and the permission
+  reported beside it, so the enforced and the reported answer cannot diverge. Pinned by the
+  module suite: `cargo test -p kasirmu-bridge --lib subscription` -> **35 passed, 0 failed**.
 - **BR-C10** — **[PBD]** `get_hardware_settings_scoped` carries an inherited **double
   session read**: `crates/kasirmu-bridge/src/settings.rs:672` resolves the session, `:676` calls
   `resolve_scope`, which resolves it **again** (`crates/kasirmu-bridge/src/ctx.rs:170`), and `:677`
   delegates to `get_hardware_settings` (`:557`). Preserved because the unscoped reader is
   shared; the second resolve is what makes an expiry between the two calls observable.
-- **BR-C11** — **[PBD]** `run_list_credit_sales` binds the **payment reference** into the
-  **customer name** column: `crates/kasirmu-bridge/src/settings.rs:380` selects
-  `p.gateway_reference` at index 1 and `:392` reads it as
-  `customer_name: row.get::<_, Option<String>>(1)?` (DTO field declared at `:167`).
+- ~~**BR-C11** — `run_list_credit_sales` binds the **payment reference** into the **customer
+  name** column.~~ — **STALE 2026-11-05**: the function moved to
+  `crates/kasirmu-bridge/src/settings/core.rs:72` and the faulty selection is gone. The query
+  now reads `COALESCE(c.name, '') AS customer_name` at index 1 through
+  `LEFT JOIN customers c ON c.id = s.customer_id` (`core.rs:80-86`), so the column holds the
+  customer's name (empty when the sale is unattached) and `gateway_reference` is never
+  selected. The finding's line references describe a shape the file no longer has; whoever
+  picks this up next should re-grep `gateway_reference` in the bridge before trusting any
+  older note about it.
 
 ### Consistency across modules — **a PATTERN, three independent instances**
 
@@ -409,17 +421,23 @@ data::` -> **50 passed, 0 failed**.
 
 ### Doc / test debt
 
-- **BR-D1** — **[PBD]** `"all 32 features"` is wrong in three places —
-  `apps/desktop-tauri/src/commands/features.rs:9`, `crates/kasirmu-bridge/src/features.rs:45` and
-  `:383` — while the enum carries **39** variants (`crates/kasirmu-core/src/features.rs:31`), the
-  metadata table returns **39** rows (`crates/kasirmu-bridge/src/features.rs:385`), and the desktop
-  test enumeration lists **39** (`apps/desktop-client/src/commands/features_tests.rs:195`).
-  Additional drift found while counting: the two core test enumerations carry **33** and **37**
-  (`crates/kasirmu-core/src/features_tests.rs:181`, `:389`) — neither matches 39 either.
-- **BR-D2** — **[PBD]** `device_hostname` is undocumented at
-  `crates/kasirmu-bridge/src/features.rs:375`: its doc block (`:348-352`) is fused into the comment
-  run that ends on `feature_to_module_id`'s own doc (`:353-358`), so rustdoc attaches both
-  runs to `feature_to_module_id` (`:359`) and `missing_docs` never fires for the helper.
+- ~~**BR-D1** — `"all 32 features"` is wrong while the enum carries **39** variants.~~ —
+  **CLOSED 2026-11-05** (`docs(features): stop restating a feature count the enum already
+  answers`). It was wrong in **five** places, not three: the register missed
+  `apps/mobile-tauri/src/commands/features.rs:3` and `:345` and
+  `crates/kasirmu-core/src/features.rs:9`. The count is now not stated at all rather than
+  corrected to 39 — a prose count is the drift, and the enum is the source of truth. The
+  core module doc is the one every other copy was derived from, which is why the sweep
+  started there.
+  STILL OPEN as a separate question: the two core test enumerations carry **33** and **37**
+  (`crates/kasirmu-core/src/features_tests.rs:181`, `:389`). Neither matches 39, but a test
+  that enumerates a subset may be deliberate — pinning it needs a reading of what each case
+  asserts, and this pass did not do that. Do not "fix" the numbers without it.
+- ~~**BR-D2** — `device_hostname` is undocumented because its doc block is fused into
+  `feature_to_module_id`'s comment run, so rustdoc attaches both to `feature_to_module_id`
+  and `missing_docs` never fires for the helper.~~ — **CLOSED 2026-11-05**, same commit as
+  BR-D1: the block now sits directly above `fn device_hostname()`, which is where the
+  attribute was always meant to land.
 - **BR-D3** — **[PBD]** caller-outside-tests-only desktop adapters. **Correction to the
   hand-off:** the count is **15**, not five, and the two named precedents are already
   harvested — the settings adapter went in `2d233fc5b` and the tax rounding-mode adapter in
