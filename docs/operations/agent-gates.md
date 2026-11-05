@@ -1153,6 +1153,12 @@ thing someone re-derives a year later and believes.
 > 687 committed). Generated is authoritative.`
 > `Never hand-edit the index — run: node scripts/generate-records-index.mjs`
 
+> **Same gate, wider message since 2026-11-06.** `3a1f132d2` replaced the positional
+> diff behind that count with a content diff, because a measured one-row insertion made
+> the report claim **676** differing lines for a one-row change. Today's line carries a
+> third field — `; first difference at line N` — and prints the removed lines before the
+> added ones. The quote above is left as the measurement it was, not rewritten.
+
 Planted by appending a comment, measured, and restored — the file is byte-identical to HEAD
 afterwards (`git hash-object` matches `HEAD:`). So the 82 historical skips round 122 counted were
 not caused by an unhelpful gate; the gate says exactly what to do.
