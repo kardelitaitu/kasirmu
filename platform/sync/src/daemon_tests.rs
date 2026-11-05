@@ -1836,7 +1836,7 @@ async fn daemon_publishes_settings_updated_for_remote_settings_change() {
 ///
 /// * The write is UNTRACKED. `persist_migration_url` (daemon_tick.rs:77-:87) calls
 ///   `Settings::set_sync_server_url`, which is the bare `Self::set`
-///   (platform/core/src/settings/typed.rs:327 -> raw.rs:37), NOT `set_with_policy`
+///   (platform/core/src/settings/typed.rs:374 -> raw.rs:37), NOT `set_with_policy`
 ///   (raw.rs:98). The row therefore changes with no delta-ledger entry and no audit
 ///   row — and no assertion can read a missing record, which is why this is a
 ///   comment and not a fourth test.

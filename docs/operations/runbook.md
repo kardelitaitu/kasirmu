@@ -1131,9 +1131,9 @@ rate sync, LAN server), type the credential in again and save. The save goes
 through the typed setter, which encrypts on the way in, so this is a single-key
 targeted conversion with no migration, no batch mutation and no downtime. The five
 setters that do it are `set_sync_api_key`
-(`platform/core/src/settings/typed.rs:338`, the `decrypt_or_fail_closed` call, encrypting at `:339`),
-`set_sync_terminal_secret` (`:366`, `:367`), `set_pg_sync_password` (`:441`, `:442`),
-`set_rate_sync_api_key` (`:557`, `:558`) and `set_lan_server_psk` (`:643`, `:645`) —
+(`platform/core/src/settings/typed.rs:384`, the `decrypt_or_fail_closed` call, encrypting at `:391`),
+`set_sync_terminal_secret` (`:416`, `:428`), `set_pg_sync_password` (`:502`, `:513`),
+`set_rate_sync_api_key` (`:628`, `:639`) and `set_lan_server_psk` (`:724`, `:731`) —
 and they are the only production call sites of their `encrypt_*` functions, which is
 why following the save is the conversion and no other route is. Re-run
 step 1 afterwards: it is read-only and idempotent, and it is the only evidence that
@@ -1152,8 +1152,8 @@ the sync daemon (`platform/sync/src/daemon.rs:403`, the `unwrap_or(false)` fallb
 (`apps/desktop-tauri/src/sync_bootstrap.rs:93`); `set_sync_terminal_secret` from the <!-- dead-ref: ok: verified 2026-10-19; cites Settings::set_sync_api_key at :93 exactly; set_sync_terminal_secret is the NEXT item of the sentence -->
 pairing path at `apps/desktop-tauri/src/sync_bootstrap.rs:377`; `set_pg_sync_password` from <!-- dead-ref: ok: verified 2026-10-19; cites the set_sync_terminal_secret call at :377; the anchor word on that line belongs to the previous clause -->
 `crates/kasirmu-bridge/src/sync.rs:223`. Those three keys have a walkable ladder.
-`set_rate_sync_api_key` (`platform/core/src/settings/typed.rs:592`) and
-`set_lan_server_psk` (`platform/core/src/settings/typed.rs:684`) have **no production
+`set_rate_sync_api_key` (`platform/core/src/settings/typed.rs:638`) and
+`set_lan_server_psk` (`platform/core/src/settings/typed.rs:730`) have **no production
 caller at all** — the only hits are their own definitions, the never-invoked
 `crates/kasirmu-core/src/settings.rs:570` facade wrapper, tests and comments, and <!-- dead-ref: ok: verified 2026-10-19; :570 IS the set_rate_sync_api_key facade wrapper the sentence calls never-invoked -->
 `crates/kasirmu-core/tests/integration/credential_storage_form.rs:258` already records one of them in <!-- dead-ref: ok: verified 2026-10-19; :258 is inside the test that records the claim; the literal `rate_sync.api_key` is at :270 -->

@@ -510,7 +510,7 @@ fn an_explicit_grouping_setting_is_honoured() {
 }
 
 /// The trap this deliberately avoids: the setting's OWN default is `"comma"`
-/// (`platform/core/src/settings/typed.rs:658`), which is English. Trusting it
+/// (`platform/core/src/settings/typed.rs:704`), which is English. Trusting it
 /// for an unset key would print `Rp15,000` beside a preview reading
 /// `Rp 15.000` — trading one divergence for another.
 #[test]
