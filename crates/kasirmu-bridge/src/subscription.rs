@@ -379,14 +379,18 @@ pub fn load_feature_verdict(
         .unwrap_or_else(|| Entitlements::fail_closed(UsageCounts::default()));
     ent.apply_debug_upgrade();
 
+    // BR-C9: the permission this feature gates on is derived ONCE and used for
+    // both the check below and the diagnosis reported beside it. It used to be
+    // computed twice for one verdict, which is harmless while `gate_permission`
+    // is a pure match but means the two answers are only equal by coincidence —
+    // the verdict would report one permission while having enforced another.
+    let permission = gate_permission(feature);
+
     // Soft role check through the same authorize path the hard gates use —
     // a denial here is DIAGNOSED (reason `role`), not thrown.
-    let role_granted = store
-        .require_permission(user_id, gate_permission(feature))
-        .is_ok();
+    let role_granted = store.require_permission(user_id, permission).is_ok();
 
     let server_grant = server_grant_for(feature, loaded.as_ref());
-    let permission = gate_permission(feature);
 
     // Scope axis, evaluated with the same primitives the hard gates use so
     // a scope denial here is exactly the gate's answer for the caller's own
