@@ -2050,3 +2050,33 @@ defines the command and the desktop body is read first. Today the bridge delegat
 masks the defect rather than fixing it: a command whose two shell bodies differ in gating, and which
 does not itself delegate, would be reported as guarding nothing while the other shell gates it. Still
 open, and unmeasured for commands outside this allowlist.
+
+### Dated correction (2026-11-06, later still) — first-shell-wins is closed, and the fix is invisible to the shipped gate
+
+`orphan_permission()` walked the shells in order and, at the FIRST definition of the command whose body
+carried no gate, did `return None` — abandoning the search with the rest of the tree unread. A command
+whose desktop body guards nothing and whose tablet body gates therefore read as "no check". Two
+allowlisted entries are that shape: `create_product_variant_scoped` and `update_product_variant_scoped`.
+The early return is gone; `None` now means the whole tree was asked, not the first file that answered.
+
+**Why the shipped gate never showed it.** Both entries delegate from the desktop body, so the one-hop
+follow reached the bridge first and returned a gate — the defect was masked, not absent. That makes the
+repair invisible at the default budget, which is why the new assertion pins `delegations=0`, where the
+follow cannot rescue anything:
+
+| run | `create_product_variant_scoped` | `update_product_variant_scoped` |
+|---|---|---|
+| early return restored (mutation) | None | None |
+| shipped code | PRODUCTS_CREATE | PRODUCTS_UPDATE |
+
+The case prints its own measurements in its name, so a red will show those dicts rather than asking the
+next reader to re-derive them. Restoring the early return by hand turns exactly that one case red and
+leaves the other 28 green — the assertion is specific to this defect, not a general alarm.
+
+**Verdicts did not move** (24 allowlisted / 24 measured / 14 redundant twins / 10 GATED DEAD SURFACE,
+identical before and after), which is the expected result of repairing a masked defect rather than one
+with a live symptom.
+
+**Out of scope, still open:** this reads the several bodies of ONE command name across shells. A command
+reached under a different name in the other shell (an alias or a forwarding twin) is not cross-checked at
+all — unmeasured, and not implied by this fix.

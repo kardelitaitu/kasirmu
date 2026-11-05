@@ -2664,7 +2664,13 @@ def orphan_permission(command: str, delegations: int = 1) -> str | None:
             via_bridge = _gate_within(body, delegations)
             if via_bridge is not None:
                 return via_bridge
-            return None
+            # NO early `return None` here, and that is the fix (2026-11-06, first-shell-wins).
+            # This used to abandon the search at the first definition it met, so a command whose
+            # desktop body guards nothing and whose tablet body gates read as "no check". Two
+            # allowlisted entries are exactly that shape -- create_product_variant_scoped and
+            # update_product_variant_scoped -- and only looked correct because their desktop
+            # bodies delegate and the follow rescued them. Keep scanning; `None` means the
+            # whole tree was asked, not the first file that answered.
     return None
 
 
@@ -4535,6 +4541,16 @@ def self_test() -> int:
                    if orphan_permission(n) != orphan_permission(n, delegations=4))
     case(f"real    no allowlisted scoped orphan needs more than one delegation "
          f"[n={len(_allow_names)} deep={_deep}]", len(_allow_names) > 0 and not _deep)
+
+    # First-shell-wins: these two gate in the TABLET body while the desktop body guards nothing
+    # and only delegates. With delegations=0 the follow cannot rescue them, so a gate found here
+    # can only have come from the search continuing past the first definition. Measured red on
+    # the old early-return (2026-11-06): both read None.
+    _second_shell = ["create_product_variant_scoped", "update_product_variant_scoped"]
+    _second_shell_gates = {n: orphan_permission(n, delegations=0) for n in _second_shell}
+    case(f"real    a gate in the second shell's body survives the first shell's silence "
+         f"[{_second_shell_gates}]",
+         all(g is not None for g in _second_shell_gates.values()))
 
     _shell_body = "fn a() { kasirmu_bridge::b::b(); }"
     _hop1 = {"b": "fn b() { require_permission(crate::permissions::PRODUCTS_READ); }"}
