@@ -404,10 +404,41 @@ def self_test() -> int:
           ("other", "x.rs:9 (OTHER_SQL, copied)")])
     want("covered_probes with no entry is empty", covered_probes("// nothing"), [])
 
+    # THE BUILD-FAILURE DIAGNOSIS (2026-11-05). This gate was reported red for three
+    # rounds as "a linker problem"; the linker was fine and LIB was unset. The hint
+    # only earns its place if it fires on that tail and stays quiet on a real
+    # compile error, so both directions are graded here.
+    lld_tail = "\n".join([
+        "error: linking with `rust-lld.exe` failed: exit code: 1",
+        "  = note: rust-lld: error: could not open 'kernel32.lib': no such file or directory",
+        "          rust-lld: error: could not open 'bcrypt.lib': no such file or directory",
+        "          rust-lld: error: could not open 'kernel32.lib': no such file or directory",
+    ])
+    want("missing import libs are read and deduped",
+         missing_import_libs(lld_tail), ["bcrypt.lib", "kernel32.lib"])
+    want("a rust-lld tail gets a hint", msvc_env_hint(lld_tail) is not None, True)
+    want("the hint names the libraries the linker missed",
+         "kernel32.lib" in (msvc_env_hint(lld_tail) or ""), True)
+    # The SECOND shape: no linker line at all, the build script dies first. A
+    # LIB-only diagnosis reported this as unclassified and sent the reader to the
+    # wrong place, which is exactly the round 8 finding.
+    cc_tail = "\n".join([
+        "  cargo:warning=sccache: error: failed to execute compile",
+        "  cargo:warning=sccache: caused by: cannot find binary path",
+        '  error occurred in cc-rs: command did not execute successfully (status code exit code: 2): "sccache" "cl.exe" "-nologo"',
+    ])
+    want("the sccache/cl.exe shape is recognised", c_compiler_missing(cc_tail), True)
+    want("the sccache/cl.exe shape gets a hint", msvc_env_hint(cc_tail) is not None, True)
+    want("that hint does not claim a missing .lib",
+         "rust-lld" in (msvc_env_hint(cc_tail) or ""), False)
+    want("a real compile error gets no environment hint",
+         msvc_env_hint("error[E0425]: cannot find value `x` in this scope"), None)
+    want("missing_import_libs on clean output is empty", missing_import_libs("test result: ok. 4 passed"), [])
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (18 cases, nothing built or run)")
+    print("SELF-TEST OK (26 cases, nothing built or run)")
     return 0
 
 
@@ -452,6 +483,13 @@ def main() -> int:
             print("FAIL: the probe cannot fail. forcing_a_scan_fails_the_probe did not pass,")
             print("so a green result from the plan gate would be worthless. Output:")
             print(indent(output.strip().splitlines()[-25:]))
+            # Same environment failure as the branch below: with --check a broken
+            # shell would otherwise be reported as "the probe cannot fail", which
+            # accuses the detector of the very thing the shell is doing.
+            hint = msvc_env_hint(output)
+            if hint:
+                print("")
+                print(hint)
             return 2
         print("  ok: a forced scan is detected")
         print("")
@@ -491,6 +529,10 @@ def main() -> int:
         print("FAIL: the probe did not run to completion (build error or harness abort).")
         print("This is NOT a plan finding. Tail of the output:")
         print(indent(output.strip().splitlines()[-30:]))
+        hint = msvc_env_hint(output)
+        if hint:
+            print("")
+            print(hint)
         return 2
 
     summary = count_probed(output)
@@ -504,6 +546,69 @@ def main() -> int:
     print("in full: every new row makes it slower. Fix the query or add the index it needs;")
     print("do not widen the LARGE_TABLES rule to make it pass.")
     return 1
+
+
+MISSING_IMPORT_LIB = re.compile(r"rust-lld: error: could not open '([^']+\.lib)'", re.IGNORECASE)
+
+
+def missing_import_libs(output: str) -> list[str]:
+    """The MSVC import libraries the linker could not find, deduped and sorted.
+
+    Measured 2026-11-05: this gate sat red for three rounds reported as "a
+    rust-lld link error", which is true and useless -- the failure is not in the
+    source or the toolchain but in THIS SHELL. rust-lld resolves system libraries
+    (kernel32.lib, MSVCRT.lib, ...) through the LIB environment variable, which a
+    plain PowerShell session does not set; a Visual Studio Developer prompt does.
+    Naming the variable turns a red gate into a one-line fix.
+    """
+    found = {m.group(1) for m in MISSING_IMPORT_LIB.finditer(ascii_only(output))}
+    return sorted(found, key=str.lower)
+
+
+def c_compiler_missing(output: str) -> bool:
+    """True when the C toolchain could not be started at all.
+
+    The second shape of the same environment failure, measured 2026-11-05: with
+    LIB `unset` the cc crate re-runs zstd-sys's build script and sccache answers
+    "cannot find binary path" for cl.exe -- so the gate dies in a BUILD SCRIPT
+    before the linker is ever reached, and a LIB-only diagnosis would miss it.
+    """
+    text = ascii_only(output)
+    return bool(
+        re.search(r"cannot find binary path", text, re.IGNORECASE)
+        or re.search(r'command did not execute successfully[^\n]*"cl\.exe"', text, re.IGNORECASE)
+    )
+
+
+def msvc_env_hint(output: str) -> str | None:
+    """The remedy for a build failure caused by a missing MSVC environment, or None.
+
+    Deliberately narrow: it fires only when the linker names a .lib it could not
+    open, or the C compiler could not be started, so an ordinary compile error
+    never gets a wrong diagnosis. Both shapes are the same cause and the same fix.
+    """
+    libs = missing_import_libs(output)
+    missing_c = c_compiler_missing(output)
+    if not libs and not missing_c:
+        return None
+    lines = ["CAUSE: this shell has no Visual Studio build environment."]
+    if libs:
+        lines.append(
+            "  rust-lld could not open the import librar"
+            + ("y: " if len(libs) == 1 else "ies: ")
+            + ", ".join(libs[:4])
+            + ("..." if len(libs) > 4 else "")
+        )
+    if missing_c:
+        lines.append("  the C compiler could not be started (sccache: cannot find binary path).")
+    lines.extend([
+        "  Nothing here has been graded -- neither a plan finding nor a clean run.",
+        "  FIX: run this gate from an 'x64 Native Tools Command Prompt for VS 2022',",
+        "  which sets PATH, INCLUDE and LIB together. Setting LIB alone fixes only",
+        "  the linker shape: a cc-rs build script invalidates on LIB and then needs",
+        "  cl.exe on PATH, so the build-script shape comes back.",
+    ])
+    return "\n".join(lines)
 
 
 def indent(lines: list[str]) -> str:
