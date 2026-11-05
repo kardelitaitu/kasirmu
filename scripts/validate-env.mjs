@@ -25,14 +25,30 @@
  */
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const DEFAULT_FILES = ['.env'];
-const KEY_RE = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/;
+// Leading whitespace is allowed: compose-go parses dotenv with
+// github.com/joho/godotenv's grammar, whose key pattern is
+// `^\s*(?:export\s+)?([\w.-]+)\s*=\s*(.*)?\s*$`, so an indented `KEY=value`
+// is a file compose reads happily. Before this, such a line fell through to
+// "unparseable line" — a pre-flight that refused a file compose accepts, which
+// is the same defect as a gate that cannot pass on a clean tree. A key with an
+// interior space ("PADDLE PROD IDS = ...") still fails, at the space, because
+// it cannot match this charset even when indented.
+const KEY_RE = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/;
 
-/** Validate one dotenv file; returns an array of {line, reason}. */
-function validateFile(path) {
+/**
+ * Validate dotenv TEXT; returns an array of {line, reason}.
+ *
+ * Split out from validateFile() so the grammar can be exercised without a
+ * file on disk: this is the whole of the parser, and until 2026-11-06 it had
+ * no test at all — the multi-line quote state in particular is the part most
+ * likely to be wrong and the least likely to be noticed, since its failure
+ * mode is a CLEAN report on a file compose then refuses to read.
+ */
+function validateText(text) {
   const problems = [];
-  const text = readFileSync(path, 'utf8');
   const lines = text.split(/\r?\n/);
   let quote = null; // open quote char + the line number it opened on
   for (let i = 0; i < lines.length; i++) {
@@ -84,24 +100,39 @@ function validateFile(path) {
   return problems;
 }
 
-const args = process.argv.slice(2);
-const files = (args.length ? args : DEFAULT_FILES).map((f) => resolve(f));
-let failed = false;
-for (const f of files) {
-  if (!existsSync(f)) {
-    if (args.length) {
-      console.error(`validate-env: no such file: ${f}`);
-      process.exit(2);
-    }
-    continue; // default .env absent is fine
-  }
-  const problems = validateFile(f);
-  if (problems.length) {
-    failed = true;
-    console.error(`validate-env: ${f} has ${problems.length} problem(s):`);
-    for (const p of problems) console.error(`  line ${p.line}: ${p.reason}`);
-  } else {
-    console.log(`validate-env: ${f} parses cleanly.`);
-  }
+/** Validate one dotenv file; returns an array of {line, reason}. */
+function validateFile(path) {
+  return validateText(readFileSync(path, 'utf8'));
 }
-process.exit(failed ? 1 : 0);
+
+/**
+ * CLI entry. Guarded so the module can be imported by its tests: without
+ * this, importing it would resolve argv and call process.exit.
+ */
+function cli() {
+  const args = process.argv.slice(2);
+  const files = (args.length ? args : DEFAULT_FILES).map((f) => resolve(f));
+  let failed = false;
+  for (const f of files) {
+    if (!existsSync(f)) {
+      if (args.length) {
+        console.error(`validate-env: no such file: ${f}`);
+        process.exit(2);
+      }
+      continue; // default .env absent is fine
+    }
+    const problems = validateFile(f);
+    if (problems.length) {
+      failed = true;
+      console.error(`validate-env: ${f} has ${problems.length} problem(s):`);
+      for (const p of problems) console.error(`  line ${p.line}: ${p.reason}`);
+    } else {
+      console.log(`validate-env: ${f} parses cleanly.`);
+    }
+  }
+  process.exit(failed ? 1 : 0);
+}
+
+export { validateText, validateFile };
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) cli();
