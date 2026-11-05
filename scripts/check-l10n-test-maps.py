@@ -124,6 +124,18 @@ a runtime branch still counts, and a map that is complete for the imported graph
 but small is correct to it. It errs toward reporting a hole rather than silently
 skipping one, because the failure it guards is silent.
 
+A GATE MUST BE ABLE TO PASS ON A CLEAN TREE (fixed 2026-11-05)
+-------------------------------------------------------------
+The empty-population guard used to read "maps JUDGED", and a map is judged only
+when it has a hole. So the first time this tree reached zero holes the gate
+printed "SCAN READ NOTHING: 828 test files, 0 maps judged. Refusing to report
+clean" and exited 2 -- success was indistinguishable from blindness, and the
+one direction the ratchet can move (fewer holes) was the direction that broke
+it. `scan()` now returns the map POPULATION as well as the hole count, and the
+guard reads the population; the self-test's live-tree case was changed in the
+same commit for the same reason, since it had been asserting `judged >= 1` and
+would have gone red on the repair it was meant to encourage.
+
 EXIT CODES
     0  every hand-maintained map covers every key its imports use
     1  at least one map has a hole
@@ -535,14 +547,28 @@ def _rel(path: Path) -> str:
     return path.as_posix()
 
 
-def scan() -> tuple[list[str], int, int]:
-    """Findings, test files read, maps judged."""
+def scan() -> tuple[list[str], int, int, int]:
+    """Findings, test files read, map/file pairs with HOLES, maps found.
+
+    The two counters are different questions and were one until 2026-11-05:
+
+      * `judged` counts (test file, map) pairs that produced a finding. It is the
+        baseline's unit, and it is the number that must reach ZERO for a repaired
+        tree -- which is exactly why it cannot also be the liveness signal. The
+        first tree that reached zero holes was refused with "SCAN READ NOTHING:
+        828 test files, 0 maps judged. Refusing to report clean", i.e. the gate's
+        own success state was indistinguishable from its blind state.
+      * `mapped` counts the maps find_maps() actually discovered. That is the
+        blindness signal the empty-population guard wanted: it stays > 0 when
+        every map is complete, and drops to 0 when the map parser breaks.
+    """
     keys = bundle_keys()
     if not UI_SRC.is_dir():
         raise SystemExit(f"SCAN BROKE: {UI_SRC} not found")
     findings: list[str] = []
     read = 0
     judged = 0
+    mapped = 0
     # `*.test.tsx` does not END with `.test.ts`, but it does START with it --
     # a plain `str.endswith(tuple)` silently found nothing above ui/src/__tests__.
     # Seen live: the first end-to-end run read 0 test files under ui/src/features
@@ -621,6 +647,7 @@ def scan() -> tuple[list[str], int, int]:
                     break
         if not maps:
             continue
+        mapped += len(maps)
         mocked = [m.group("spec") for m in VI_MOCK_RE.finditer(body)]
         imports = {m.group("spec") for m in IMPORT_FROM_RE.finditer(body)} | {
             m.group("spec") for m in IMPORT_DYNAMIC_RE.finditer(body)
@@ -691,7 +718,7 @@ def scan() -> tuple[list[str], int, int]:
             for key, raw in sorted(m.get("values", {}).items()):
                 if LITERAL_VAR_RE.search(raw):
                     findings.append("%s:%d  %s  unsubstituted-$ placeable" % (rel, m["start_line"], key))
-    return findings, read, judged
+    return findings, read, judged, mapped
 
 
 # Self-test --------------------------------------------------------------
@@ -842,7 +869,7 @@ def scan_still_judges() -> bool:
             (root / name).write_text(text, encoding="utf-8")
         globals()["UI_SRC"] = root
         globals()["LOCALES"] = root / "locales"
-        findings, _read, judged = scan()
+        findings, _read, judged, _mapped = scan()
     finally:
         globals()["UI_SRC"], globals()["LOCALES"] = saved
         shutil.rmtree(root, ignore_errors=True)
@@ -880,14 +907,19 @@ def self_test() -> int:
         bad.append("the bundle yielded only %d keys" % len(keys))
 
     cases += 1
-    findings, read, judged = scan()
+    findings, read, judged, mapped = scan()
     if read == 0:
         bad.append("the live scan read 0 test files")
-    if judged == 0:
-        bad.append("the live scan judged 0 maps -- the empty-population refusal")
+    # The liveness case reads the REAL tree, so it must grade a property the tree
+    # keeps when it is repaired. It used to require judged >= 1 (holes exist),
+    # which meant fixing the last hole turned the gate red by definition -- the
+    # self-test was pinning the defect it was written to catch.
+    if mapped == 0:
+        bad.append("the live scan found 0 maps -- the empty-population refusal")
     print(
-        "SELF-TEST %s (%d cases; the last reads the real tree: %d test files, %d maps judged, %d findings)"
-        % ("FAILED" if bad else "OK", cases, read, judged, len(findings))
+        "SELF-TEST %s (%d cases; the last reads the real tree: %d test files, "
+        "%d maps found, %d map(s) with holes, %d findings)"
+        % ("FAILED" if bad else "OK", cases, read, mapped, judged, len(findings))
     )
     if bad:
         sys.stderr.write("SELF-TEST WRONG:\n" + "\n".join(bad) + "\n")
@@ -934,10 +966,11 @@ def main() -> int:
         print("DETECTOR WENT DEAF: a known-offending synthetic map was not flagged.", file=sys.stderr)
         return 2
 
-    findings, read, judged = scan()
-    if read == 0 or judged == 0:
+    findings, read, judged, mapped = scan()
+    if read == 0 or mapped == 0:
         print(
-            "SCAN READ NOTHING: %d test files, %d maps judged. Refusing to report clean." % (read, judged),
+            "SCAN READ NOTHING: %d test file(s), %d map(s) found. Refusing to report clean."
+            % (read, mapped),
             file=sys.stderr,
         )
         return 2
@@ -1009,8 +1042,8 @@ def main() -> int:
         return 1
 
     print(
-        "OK: no new l10n map holes (%d test files, %d maps judged, %d known holes)"
-        % (read, judged, len(known))
+        "OK: no new l10n map holes (%d test files, %d map(s) found, %d with holes, %d known holes)"
+        % (read, mapped, judged, len(known))
     )
     return 0
 

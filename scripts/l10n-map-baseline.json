@@ -1,11 +1,5 @@
 {
   "description": "see --write-baseline",
-  "total": 1,
-  "entries": [
-    {
-      "at": "ui/src/features/settings/__tests__/SyncConflictsPanel.test.tsx:24",
-      "key": "sync-conflicts-payload-title",
-      "used_by": "used-by SyncConflictsPanel.tsx:283"
-    }
-  ]
+  "total": 0,
+  "entries": []
 }

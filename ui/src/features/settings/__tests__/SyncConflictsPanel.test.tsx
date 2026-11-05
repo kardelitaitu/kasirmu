@@ -39,6 +39,10 @@ const mockL10n = {
       'sync-conflicts-payload-hide': 'Hide',
       'sync-conflicts-payload-inspect-aria': `Inspect payload for item ${vars?.['id'] ?? ''}`,
       'sync-conflicts-payload-hide-aria': `Hide payload for item ${vars?.['id'] ?? ''}`,
+      // The payload block's own heading (settings.ftl:1287). It was the last hole
+      // this map was BLESSED to have: scripts/l10n-map-baseline.json carried it as
+      // a known miss, so the panel's heading rendered the raw id in every case.
+      'sync-conflicts-payload-title': 'JSON Payload',
       'sync-conflicts-payload-copy': 'Copy JSON',
       'sync-conflicts-payload-copied': 'Copied!',
       'sync-conflicts-badge-aria': `${vars?.['count'] ?? ''} quarantined sync conflicts`,
