@@ -340,10 +340,14 @@ ten cases in `data_tests` (`created_at_in_window_keeps_both_end_days`,
 `export_window_refuses_a_bound_it_cannot_read`,
 `export_refuses_a_window_when_sales_is_not_exported`, …); `cargo test -p kasirmu-bridge --lib
 data::` -> **50 passed, 0 failed**.
-- **BR-C4** — **[PBD]** `create_backup` holds the **global connection guard** from
-  `Store::backup` through a filesystem stat with no explicit drop:
-  `crates/kasirmu-bridge/src/data.rs:299` (`lock_global`) → `:301` (`store.backup`) → `:302`
-  (`std::fs::metadata`).
+- ~~**BR-C4** — `create_backup` holds the **global connection guard** from `Store::backup`
+  through a filesystem stat with no explicit drop.~~ — **CLOSED 2026-11-05** (`fix(bridge):
+  release the global guard before the backup size stat`). The guard now lives in its own
+  scope that ends with `store.backup`; the `metadata` stat runs after it is released. Safe
+  because the snapshot file is complete when `store.backup` returns and nothing else may
+  write it under the same guard. `cargo test -p kasirmu-bridge --lib data::` -> **51 passed,
+  0 failed**; the pin is structural (a lock scope is not observable from a test), so the
+  guard against regression is the scope block itself, not an assertion.
 - **BR-C5** — **[PBD]** `import_data` mixes connection-bound existence probes with
   transaction writes inside one open transaction: tx at `crates/kasirmu-bridge/src/data.rs:518`,
   `store.conn()` probes at `:562`, `:589`, `:614`, `:645`, `tx.execute` writes at `:570`,
