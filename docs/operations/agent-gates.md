@@ -2940,7 +2940,7 @@ info[tablet-unrequested]: 10 of 440 ... (same shape)
 ```
 
 `verify-ipc-parity.py` prints both lines on **every run**. It is not a gap in coverage; it is an
-inventory nobody has acted on. Worse, `docs/records/findings/audit-open-findings.md:402-408`
+inventory nobody has acted on. Worse, `docs/records/findings/audit-open-findings.md:411-417`
 already discusses two of the names in detail -- including two CORRECTIONS to its own earlier
 claims about them. The territory is charted.
 

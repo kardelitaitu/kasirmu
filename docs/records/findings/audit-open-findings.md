@@ -81,7 +81,14 @@ Key residual items:
 
 ---
 
-## Topology — Rust (`30-topology-rust.md` — ⚠️ 8 FINDINGS, OPEN)
+## Topology — Rust (`30-topology-rust.md` — ✅ ALL CLOSED 2026-08-31)
+
+<!-- Heading corrected 2026-11-05. It read "⚠️ 8 FINDINGS, OPEN" from 2026-08-31
+     until this edit, while the Status line directly under it said "ALL CLOSED —
+     verified fixed 2026-08-31". The body is untouched: it was right the whole
+     time and only the label in the register's scan list was wrong, which is the
+     one line a reader looking for open work actually reads. Same failure as a
+     stale index row: the entry is correct and the pointer to it is not. -->
 
 **Status:** **ALL CLOSED — verified fixed 2026-08-31** (TOP-01→TOP-08).
 
@@ -104,7 +111,12 @@ Key residual items:
 
 ---
 
-## Currency — Exchange & Settlement (`34-currency-exchange.md` — MOSTLY REMEDIATED)
+## Currency — Exchange & Settlement (`34-currency-exchange.md` — ✅ ALL CLOSED 2026-09-29)
+
+<!-- Heading corrected 2026-11-05: "MOSTLY REMEDIATED" outlived the closure it was
+     hedging. The Status line below says every CUR entry is closed and names CUR-09
+     (2026-09-29) as "the last open entry in this register". A heading that hedges
+     about work nobody owes reads as work still owed. -->
 
 **Status:** CUR-02/03/04/05/06/08/09/10/11 ALL closed — **CUR-09 CLOSED 2026-09-29** (verified fixed, see below; it was the last open entry in this register). Design-recommendation leftovers also landed 2026-08-31: shortfall-receipt preview parity (`8f79bd43`) and CurrencyContext refresh + workspace bridge (`319f03dd`).
 
