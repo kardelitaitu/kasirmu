@@ -128,6 +128,15 @@ nul
 # never a committed artifact; the floors live in scripts/coverage-floors.json.
 # Anchored at the root and scoped to the cov- prefix, so it cannot start hiding
 # a real manifest elsewhere -- the run names these after whatever it measured.
+#
+# The two files were DELETED the same day (54.9 MB, last written 2026-10-26,
+# untracked in every commit, zero references in the tree), because ignoring them
+# was only half the job: scripts/verify-root-policy.py reads the DIRECTORY, not
+# the index, and failed with "stray root file" for both. That gate is the
+# detector this rule assumes, so do not read the entry as permission to leave
+# them at the root -- it keeps a regenerated report out of `git status`, nothing
+# more. The gap it closes is the window between a coverage run finishing and
+# someone noticing.
 /cov-*.json
 
 # Test artifacts
