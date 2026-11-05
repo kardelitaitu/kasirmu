@@ -2615,6 +2615,11 @@ def orphan_permission(command: str) -> str | None:
             # lives in the bridge fn this line delegates to (ADR #49), so `None` used to mean
             # "redundant twin, wire a caller or allowlist it as host-only" for commands that are
             # gated two crates away. Follow the delegation one level before saying so.
+            # NOT defensive noise: measured 2026-11-06 by deleting this loop and re-running.
+            # GATED DEAD SURFACE fell from 10 to 2 and redundant twins rose from 14 to 22, i.e.
+            # eight of the ten verdicts that matter exist only because this follow runs. Most of
+            # them are extracted commands whose shell body is now a run_scoped(...) one crate away.
+            # ONE level only, and that is the limit: a two-hop delegation reports "no check".
             for target in DELEGATION_RE.findall(body):
                 via_bridge = gate_in_body(_bridge_fn_body(target))
                 if via_bridge is not None:

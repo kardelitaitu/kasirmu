@@ -1974,3 +1974,36 @@ where the entry never looked. A finding's example and a finding's shape age at d
 whose file defines the command, so a command defined in both shells is judged by one copy only.
 Whether any allowlisted orphan is in that shape is unmeasured; the recursive scan is a
 precondition for asking that question cleanly, not an answer to it.
+
+### Dated correction (2026-11-06) — BR-T4's forward warning is wrong: the extracted gate IS visible, and the follow is load-bearing
+
+BR-T4 ends `but the check can no longer see an extracted desktop gate`. Measured tonight by
+deleting the `DELEGATION_RE` follow in `orphan_permission()` — the lines that look up
+`kasirmu_bridge::<mod>::<fn>` and test the bridge body — and re-running the gate:
+
+| mutation | redundant twins | GATED DEAD SURFACE |
+|---|---|---|
+| baseline | 14 | 10 |
+| delegation follow deleted | **22** | **2** |
+| restored | 14 | 10 |
+
+**Eight of the ten GATED verdicts exist only because that follow runs** — `PRODUCTS_CREATE`,
+`PRODUCTS_DELETE`, `CUSTOMERS_VIEW`, `PRODUCTS_READ`, `PRODUCTS_UPDATE`,
+`SECURITY_MANAGE` (both `get_key_rotation_info_scoped` and `rotate_encryption_key_scoped`) and SETTINGS_EDIT.
+Both of BR-T4's premises are stale: the desktop body is no longer the only body consulted, and an
+extracted gate is no longer invisible. And the failure mode runs the dangerous way — with the follow
+removed, 22 of the 24 allowlisted orphans read as 'guards nothing', which would retire real posture
+as dead weight.
+
+**What BR-T4 is still right about, kept as the limit:** the follow is **one level**. A command whose
+gate sits two delegations away (shell → bridge A → bridge B) is still reported as ungated. That case
+is unmeasured tonight; what the measurement does say is that the follow must not be deleted as dead
+code, and the comment beside it now says why.
+
+**Corroboration from outside the function:** four allowlisted orphans also carry a plain gated body in
+the tablet shell (`get_active_cart_scoped`, `list_active_carts_scoped` = SALES_PROCESS;
+`create_product_variant_scoped` = PRODUCTS_CREATE; `update_product_variant_scoped` = PRODUCTS_UPDATE),
+measured by scanning both shells' `commands/` trees recursively and reading each definition's
+balanced body. Those verdicts agree with `orphan_permission()` on all 24 entries, so the
+first-shell-wins return noted in the BR-T1 correction above is a latent hazard today, not a live
+false negative.
