@@ -15,7 +15,15 @@ import { dirname, resolve } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 const sourcePath = resolve(root, "modules/ownership.json");
-const targetPath = resolve(root, "crates/kasirmu-core/src/db/ownership.rs");
+// KASIRMU_OWNERSHIP_TARGET points --check at a throwaway file, the same
+// arrangement KASIRMU_RECORDS_ROOT gives scripts/generate-records-index.mjs.
+// It exists so the DRIFT exit path can be driven end to end by a test: the
+// default target is a real Rust file, and a test that tampered with it to prove
+// the message would be editing the tree it is grading. Unset (the CI and
+// pre-commit case) means the committed map, exactly as before.
+const targetPath = process.env.KASIRMU_OWNERSHIP_TARGET
+  ? resolve(process.env.KASIRMU_OWNERSHIP_TARGET)
+  : resolve(root, "crates/kasirmu-core/src/db/ownership.rs");
 
 /**
  * Read and validate the single source. `path` is injectable so the refusals

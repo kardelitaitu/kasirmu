@@ -191,9 +191,51 @@ describe('compareWithTarget() / writeTarget() — the half a reader actually mee
 });
 
 describe('the live generator', () => {
+  const withTarget = (fn) => {
+    const root = mkdtempSync(join(tmpdir(), 'ownership-cli-'));
+    try {
+      return fn(join(root, 'ownership.rs'));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  };
+  /** Run the CLI with --check pointed at `target` through the env override. */
+  const check = (target) => spawnSync(process.execPath, [SCRIPT, '--check'], {
+    encoding: 'utf8',
+    env: { ...process.env, KASIRMU_OWNERSHIP_TARGET: target },
+  });
+
   it('--check still agrees with the committed map (exit 0)', () => {
     const res = spawnSync(process.execPath, [SCRIPT, '--check'], { encoding: 'utf8' });
     assert.strictEqual(res.status, 0, (res.stdout || '') + (res.stderr || ''));
     assert.match(res.stdout || '', /matches modules\/ownership\.json/);
+  });
+
+  it('exits 1 and says what to run when the target has drifted', () => {
+    withTarget((target) => {
+      writeFileSync(target, 'pub const TABLE_OWNERS: &[(&str, &[&str])] = &[];' + NL);
+      const res = check(target);
+      assert.strictEqual(res.status, 1, res.stdout + res.stderr);
+      assert.match(res.stderr, /ownership map drift:/);
+      assert.match(res.stderr, /run: node scripts\/generate-ownership-map\.mjs/);
+      assert.strictEqual(res.stdout, '', 'drift must not print the ok: line');
+    });
+  });
+
+  it('exits 1 when the target is missing entirely', () => {
+    withTarget((target) => {
+      const res = check(target);
+      assert.strictEqual(res.status, 1, res.stdout + res.stderr);
+      assert.match(res.stderr, /ownership map drift:/);
+    });
+  });
+
+  it('exits 0 when the target equals the generated text', () => {
+    withTarget((target) => {
+      writeTarget(render(parseSource()), target);
+      const res = check(target);
+      assert.strictEqual(res.status, 0, res.stdout + res.stderr);
+      assert.match(res.stdout, /matches modules\/ownership\.json/);
+    });
   });
 });
