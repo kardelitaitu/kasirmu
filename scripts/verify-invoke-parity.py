@@ -177,7 +177,17 @@ def run_check(
             # source text), and the signature scanner reads them as real declarations.
             # Measured 2026-10-26 (round 249): without this filter the currency class
             # flagged get_setting/get_setting_scoped from the tablet test file alone.
-            for rs in sorted(p for p in commands_dir.glob("*.rs")
+            #
+            # RECURSIVE since 2026-11-06. This was .glob("*.rs"), so a command declared in
+            # a SUBDIRECTORY of commands/ was never read and never entered token_cmds or
+            # currency_cmds -- 13 of them: the 10 topology commands under
+            # apps/desktop-tauri/src/commands/topology/ plus complete_sale_scoped,
+            # preview_promoted_total_scoped and preview_promoted_total_from_lines_scoped
+            # under the tablet's subdirectories. A caller that dropped sessionToken for
+            # load_topology could not be flagged, because the scanner did not know the
+            # command takes one. Both classes carry the same union semantics below, so
+            # the fix is the glob, not the classifier.
+            for rs in sorted(p for p in commands_dir.rglob("*.rs")
                              if not p.name.endswith("_tests.rs")):
                 _src = rs.read_text(encoding="utf-8")
                 token_cmds |= token_requiring_commands(_src)
@@ -370,6 +380,33 @@ def self_test() -> int:
     v, _ = run_check(cur_shells, api, td)
     check("missing currency detected",
           any("gamma_topup" in x and "currency" in x for x in v), True)
+    # ── 9. A command declared in a SUBDIRECTORY is scanned ───────────
+    # Measured 2026-11-06: the sweep read commands_dir.glob("*.rs"), so 13 real
+    # commands (10 desktop topology + 3 tablet subdirectory) were invisible to both
+    # classes. Without the rglob this case passes silently, which is exactly the
+    # failure mode: a caller may drop sessionToken for a command the scanner never saw.
+    td = Path(tempfile.mkdtemp())
+    for side in ("desktop-tauri", "mobile-tauri"):
+        nested = td / "apps" / side / "src" / "commands" / "topology"
+        nested.mkdir(parents=True)
+        (td / "apps" / side / "src" / "lib.rs").write_text(
+            "tauri::generate_handler![\n  commands::topology::nested_cmd,\n]",
+            encoding="utf-8")
+        (nested / "deep.rs").write_text(alpha_rs, encoding="utf-8")
+    api = td / "ui" / "api"
+    api.mkdir(parents=True)
+    (api / "n.ts").write_text(
+        "const a = loggedInvoke('alpha_scoped', { amount: 1 });\n", encoding="utf-8")
+    nested_shells = {
+        "desktop": (td / "apps" / "desktop-tauri" / "src" / "lib.rs",
+                    td / "apps" / "desktop-tauri" / "src" / "commands"),
+        "tablet": (td / "apps" / "mobile-tauri" / "src" / "lib.rs",
+                   td / "apps" / "mobile-tauri" / "src" / "commands"),
+    }
+    v, _ = run_check(nested_shells, api, td)
+    check("a command under commands/<subdir>/ is scanned",
+          any("alpha_scoped" in x and "session_token" in x for x in v), True)
+
     print()
     if failed:
         print(f"  {len(failed)} self-test case(s) FAILED:")

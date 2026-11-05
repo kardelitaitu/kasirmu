@@ -2133,3 +2133,37 @@ tracked, because this file's own NOTE warns that an addition silences the gate f
 **Proof the new half can fail:** dropping `list_workspace_screens` from the tablet list turns the gate red
 with `[tablet] commands::workspaces::list_workspace_screens has no _scoped variant`; restoring it returns
 PASS. The desktop half is unchanged — its floors, subject and allowlist are exactly what shipped.
+
+### Dated correction (2026-11-06) — BR-T2: the glob artefact was in a live gate, not only in a hand-off
+
+BR-T2 recorded the non-recursive `pub async fn` count as a *pinning* hazard: 488 top-level against 500
+recursive, so any lane quoting 488 is quoting a glob artefact. Both of those numbers are stale, and one
+place where the artefact mattered was never a quotation at all — it was a gate reading the tree.
+
+Re-measured 2026-11-06:
+
+| shell | `pub async fn` top-level (`commands/*.rs`) | recursive | delta |
+|---|---|---|---|
+| desktop | 513 | 524 | 11 |
+| tablet | 446 | 449 | 3 |
+
+`apps/desktop-tauri/src/commands/topology/` holds **11** `pub async fn` today, not the 12 this entry
+records — so BR-T2's "500 recursive / 12 topology" pair has moved in both halves. The archived plan's G6
+row (`done-todo-refactor-oz-pos-app-agents-2.md:319`, "488 / 499, delta 11") lands on the same *delta* as
+today's measurement by coincidence, not by still describing the tree: its two counts are 25 short of the
+recursive total. A delta surviving while both sides moved is exactly why the rule here is 're-derive, never
+re-quote'.
+
+**The live consequence:** `scripts/verify-invoke-parity.py` read its subjects with
+`commands_dir.glob("*.rs")` — non-recursive — and fed the result to BOTH of its classes (`token_cmds`,
+`currency_cmds`). Measured by replaying the same classifier over `glob` versus `rglob`: **13 commands were
+invisible** — the 10 desktop topology commands (`load_topology`, `can_save_topology`, `apply_topology_diff`,
+the four template commands, the three revision commands) and, tablet-side, `complete_sale_scoped`,
+`preview_promoted_total_scoped`, `preview_promoted_total_from_lines_scoped`. A caller that dropped
+`sessionToken` for `load_topology` could not be flagged, because the scanner did not know the command takes
+one. The sweep is now `rglob`, with a self-test case ("a command under commands/<subdir>/ is scanned") that
+fails on the old glob and passes on the new one.
+
+**What this is not:** a repair of a red gate. The gate measures **534 invokes across 58 api files, 0
+violations** under both globs — the 13 commands happened to be called correctly. The change buys coverage,
+not a fixed defect, and the register says so rather than implying a violation was found and closed.
