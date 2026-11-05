@@ -29,7 +29,13 @@ which is why they are separate -- but the entry point should not require reading
 | You want to know if a test file is being skipped | `vitest list` vs the files on disk |
 
 > If your situation is not in this table, the answer is probably "run `scripts/check.sh` and read
-> its output" -- 140 gates are declared and several already report what you are about to derive.
+> its output" -- the gates it runs are declared in `scripts/gates.json` and several already report
+> what you are about to derive.
+>
+> (This line used to say "140 gates are declared". Measured 2026-11-05, `gates.json` held **149**,
+> and nothing grades that sentence -- `verify-gate-runners.py` grades the runners, not this prose.
+> A total nothing re-derives is a number that is wrong eventually and silently; the file it names
+> is graded, so the pointer stays and the count goes.)
 
 ## The bundle build cannot run in this sandbox
 
