@@ -149,9 +149,18 @@ async fn create_backup_direct(
             )));
         }
     }
-    let conn = ctx.lock_global().await;
-    let store = Store::new(&conn);
-    store.backup(&output)?;
+    // BR-C4: the snapshot is the only thing that needs the global connection
+    // guard, so the guard's scope ends with it. It used to stay held through the
+    // `metadata` stat below — a filesystem call that can block on a slow or
+    // network volume while every other command in the app waits on the
+    // connection. The size is read AFTER the guard is released because the file
+    // is already complete by then; `store.backup` writes it synchronously and
+    // nothing else may write it under the same guard.
+    {
+        let conn = ctx.lock_global().await;
+        let store = Store::new(&conn);
+        store.backup(&output)?;
+    }
     let size_bytes = std::fs::metadata(&output).map(|m| m.len()).unwrap_or(0);
     Ok(BackupResult {
         path: output,
