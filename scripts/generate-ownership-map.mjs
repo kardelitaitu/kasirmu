@@ -9,7 +9,7 @@
 // fourth hand-maintained list from appearing.
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -17,8 +17,15 @@ const root = resolve(here, "..");
 const sourcePath = resolve(root, "modules/ownership.json");
 const targetPath = resolve(root, "crates/kasirmu-core/src/db/ownership.rs");
 
-function parseSource() {
-  const raw = readFileSync(sourcePath, "utf8");
+/**
+ * Read and validate the single source. `path` is injectable so the refusals
+ * below can be exercised against fixtures: until 2026-11-06 nothing did, which
+ * made every one of them a claim rather than a check. They are the only thing
+ * standing between `modules/ownership.json` and two modules silently claiming
+ * one table, so a deleted branch would have stayed green until someone hit it.
+ */
+function parseSource(path = sourcePath) {
+  const raw = readFileSync(path, "utf8");
   const data = JSON.parse(raw);
   if (!data || typeof data !== "object" || typeof data.owners !== "object") {
     throw new Error("modules/ownership.json must have an owners object");
@@ -113,8 +120,8 @@ function render(entries) {
   return header.concat(body, footer).join("\n");
 }
 
-function main() {
-  const check = process.argv.includes("--check");
+function main(argv = process.argv.slice(2)) {
+  const check = argv.includes("--check");
   const rendered = render(parseSource());
   const current = existsSync(targetPath) ? readFileSync(targetPath, "utf8") : "";
   if (check) {
@@ -130,4 +137,8 @@ function main() {
   console.log("wrote " + targetPath);
 }
 
-main();
+export { parseSource, render };
+
+// Guarded so the module can be imported by its tests: an unguarded main()
+// would rewrite the real ownership.rs from a test process.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
