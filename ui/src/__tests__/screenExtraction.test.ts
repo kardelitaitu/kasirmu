@@ -694,6 +694,10 @@ const SCREENS: ScreenEntry[] = [
       //      string literals in one array: `const statusClasses = ['kds-column--pending',
       //      'kds-column--preparing', 'kds-column--ready']` at features/kds/KdsLayoutMasonry.tsx:74,
       //      reaching className by INDEX — `kds-col kds-column ${statusClasses[ci] ?? ''}` at :79.
+      //      (2026-11-05: those three literals now sit in the `COLUMNS` table as its
+      //      `className` fields, still complete and still reached by index; only the
+      //      variable that holds them changed, and the fallback above is gone. The
+      //      dated reading is left as written.)
       //      Nothing composes a modifier from a runtime value, so the field's own contract
       //      ("modifiers constructed at runtime via template literals or returned from helper
       //      functions") is false here. Same category as the struck 'gift-card-status--' in the
@@ -838,8 +842,10 @@ const SCREENS: ScreenEntry[] = [
       // in the module, not a composed family.
       'kds/kdsDensity.ts',
     ],
-    // Three names that exist ONLY to be selected: string literals in the
-    // `statusClasses` array at features/kds/KdsLayoutMasonry.tsx:74, read back as
+    // Three names that exist ONLY to be selected: complete string literals in
+    // the `COLUMNS` table at features/kds/KdsLayoutMasonry.tsx (one `className`
+    // per column; the array was `statusClasses` until 2026-11-05, when the three
+    // parallel arrays collapsed into that one table), read back as
     // `.kds-column--pending` at e2e/e2e-kds-critical-path.spec.ts:75, --preparing at
     // :96 and --ready at :107, and asserted via toHaveClass at
     // KdsLayoutMasonry.test.tsx:116-118. No rule anywhere styles them — the only CSS
