@@ -320,10 +320,22 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
   invalid signature: `crates/kasirmu-bridge/src/terminals.rs:343` →
   `verify_binding(...).unwrap_or(false)` at `:357-364`, so `signature_valid:false` cannot be
   distinguished from "the device secret could not be read" (`verify_binding` is at `:78`).
-- **BR-C3** — **[PBD]** `export_data` accepts `date_from` / `date_to` over IPC
-  (`crates/kasirmu-bridge/src/data.rs:63`, `:65`) and **never reads them** — zero references in
-  the whole body `:310-485`. A user-scoped "export this date range" silently exports
-  everything.
+- ~~**BR-C3** — `export_data` accepts `date_from` / `date_to` over IPC and **never reads
+them** — a user-scoped "export this date range" silently exported everything.~~ — **CLOSED
+2026-11-05** (`fix(bridge): honour the export date window instead of ignoring it`). The window
+is now parsed at the boundary and applied to `sales` — the only dated collection the package
+carries — as an INCLUSIVE day range (`helpers::export_date_window` /
+`helpers::created_at_in_window`). Three refusals replace the silent ignore: a bound that does
+not parse as `YYYY-MM-DD`, an inverted range, and a window presented without `sales` among
+`types` (that last one is the case that used to ship an unfiltered package while the request
+said otherwise). The `date_to` DAY IS KEPT — comparing the whole RFC-3339 `created_at`
+against a bare date string drops every sale on the last day, which is the bug a naive fix
+would have introduced — and a timestamp too short to carry a day is kept rather than
+dropped, because this filter's failure mode is an export that quietly omits rows. Pinned by
+ten cases in `data_tests` (`created_at_in_window_keeps_both_end_days`,
+`export_window_refuses_a_bound_it_cannot_read`,
+`export_refuses_a_window_when_sales_is_not_exported`, …); `cargo test -p kasirmu-bridge --lib
+data::` -> **50 passed, 0 failed**.
 - **BR-C4** — **[PBD]** `create_backup` holds the **global connection guard** from
   `Store::backup` through a filesystem stat with no explicit drop:
   `crates/kasirmu-bridge/src/data.rs:299` (`lock_global`) → `:301` (`store.backup`) → `:302`

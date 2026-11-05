@@ -1343,3 +1343,171 @@ fn import_gate_users_proceeds_under_cap_and_pins_the_boundary() {
         "1 + 1 over the Free staff cap must refuse"
     );
 }
+
+// ── BR-C3: the export's date window is HONOURED, not silently ignored ──────
+
+/*
+ * `ExportDataArgs` carried `date_from` / `date_to` over IPC with zero read
+ * sites: an operator asking for "January only" received the whole database in a
+ * package that looked filtered. These cases pin the two halves of the repair —
+ * the window is applied where it can be honoured, and REFUSED where it cannot —
+ * plus the day-boundary semantics that a naive string compare gets wrong.
+ */
+
+use super::helpers::ExportDateWindow;
+
+fn window(from: Option<&str>, to: Option<&str>) -> ExportDateWindow {
+    export_date_window(from, to)
+        .expect("a well-formed window must parse")
+        .expect("both bounds given, so a window must be returned")
+}
+
+#[test]
+fn export_window_is_absent_when_neither_bound_is_given() {
+    assert!(
+        export_date_window(None, None).unwrap().is_none(),
+        "an ordinary export must take exactly the unbounded path it always did"
+    );
+}
+
+#[test]
+fn export_window_accepts_an_open_ended_bound() {
+    let start_only = window(Some("2026-01-01"), None);
+    assert!(start_only.from.is_some() && start_only.to.is_none());
+    let end_only = window(None, Some("2026-01-31"));
+    assert!(end_only.from.is_none() && end_only.to.is_some());
+}
+
+#[test]
+fn export_window_refuses_a_bound_it_cannot_read() {
+    for bad in [
+        "2026-13-01",
+        "31-01-2026",
+        "January 2026",
+        "2026-01-01T00:00:00Z",
+        "",
+    ] {
+        match export_date_window(Some(bad), None) {
+            Err(BridgeError::Invalid(message)) => assert!(
+                message.contains("date_from"),
+                "the refusal must name the offending field: {message}"
+            ),
+            other => panic!("{bad:?} must be an Invalid refusal, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn export_window_refuses_an_inverted_range() {
+    match export_date_window(Some("2026-02-01"), Some("2026-01-01")) {
+        Err(BridgeError::Invalid(message)) => assert!(
+            message.contains("after date_to"),
+            "an empty window must say why: {message}"
+        ),
+        other => panic!("an inverted window must be refused, got {other:?}"),
+    }
+}
+
+#[test]
+fn created_at_in_window_keeps_both_end_days() {
+    let w = window(Some("2026-01-01"), Some("2026-01-31"));
+    // The last day is the case a lexicographic compare of the WHOLE timestamp
+    // against the bare date gets wrong: "2026-01-31T09:00:00Z" > "2026-01-31".
+    for kept in [
+        "2026-01-01T00:00:00Z",
+        "2026-01-01T23:59:59Z",
+        "2026-01-31T09:00:00Z",
+        "2026-01-15T12:00:00Z",
+    ] {
+        assert!(
+            created_at_in_window(kept, &w),
+            "{kept} is inside 2026-01-01..=2026-01-31 and must be exported"
+        );
+    }
+}
+
+#[test]
+fn created_at_in_window_drops_the_days_outside_it() {
+    let w = window(Some("2026-01-01"), Some("2026-01-31"));
+    for dropped in ["2025-12-31T23:59:59Z", "2026-02-01T00:00:00Z"] {
+        assert!(
+            !created_at_in_window(dropped, &w),
+            "{dropped} is outside the window and must not be exported"
+        );
+    }
+}
+
+#[test]
+fn created_at_in_window_leaves_the_missing_end_unbounded() {
+    let start_only = window(Some("2026-01-01"), None);
+    assert!(created_at_in_window("2030-06-01T00:00:00Z", &start_only));
+    assert!(!created_at_in_window("2025-12-31T00:00:00Z", &start_only));
+    let end_only = window(None, Some("2026-01-31"));
+    assert!(created_at_in_window("2020-01-01T00:00:00Z", &end_only));
+    assert!(!created_at_in_window("2026-02-01T00:00:00Z", &end_only));
+}
+
+#[test]
+fn created_at_in_window_keeps_a_timestamp_it_cannot_read() {
+    // Conservative by design: this filter's failure mode is an export that
+    // quietly omits rows, so an unreadable row stays visible in the package.
+    let w = window(Some("2026-01-01"), Some("2026-01-31"));
+    assert!(created_at_in_window("not-a-timestamp", &w));
+    assert!(created_at_in_window("", &w));
+}
+
+#[tokio::test]
+async fn export_refuses_a_window_when_sales_is_not_exported() {
+    use crate::testing::TestBridge;
+    let bridge = TestBridge::new();
+    let dir = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-export-window-refused");
+    let err = export_data_without_session(
+        &bridge.ctx(),
+        ExportDataArgs {
+            output_path: dir
+                .path()
+                .join("unfiltered.oze")
+                .to_string_lossy()
+                .into_owned(),
+            password: "pw".into(),
+            types: vec!["products".into()],
+            date_from: Some("2026-01-01".into()),
+            date_to: Some("2026-01-31".into()),
+        },
+    )
+    .await
+    .expect_err("a window the package cannot honour must be refused, not ignored");
+    match err {
+        BridgeError::Invalid(message) => assert!(
+            message.contains("sales"),
+            "the refusal must name the type that carries the window: {message}"
+        ),
+        other => panic!("expected an Invalid refusal, got {other:?}"),
+    }
+    assert!(
+        !dir.path().join("unfiltered.oze").exists(),
+        "a refused export must write no package at all"
+    );
+}
+
+#[tokio::test]
+async fn export_with_a_valid_window_writes_a_sales_package() {
+    use crate::testing::TestBridge;
+    let bridge = TestBridge::new();
+    let dir = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-export-window-ok");
+    let out = dir.path().join("windowed.oze");
+    let result = export_data_without_session(
+        &bridge.ctx(),
+        ExportDataArgs {
+            output_path: out.to_string_lossy().into_owned(),
+            password: "pw".into(),
+            types: vec!["sales".into()],
+            date_from: Some("2026-01-01".into()),
+            date_to: Some("2026-01-31".into()),
+        },
+    )
+    .await
+    .expect("a well-formed window over an export that carries sales must succeed");
+    assert_eq!(result.types, vec!["sales".to_string()]);
+    assert!(out.exists(), "the package must be written");
+}

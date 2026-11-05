@@ -10,9 +10,11 @@
 //! move without touching those scans.
 //!
 //! Main items: [`exportable_settings_rows`], [`gate_import_product_batch`],
-//! [`gate_import_user_batch`].
+//! [`gate_import_user_batch`], [`export_date_window`].
 
 use std::path::Path;
+
+use chrono::NaiveDate;
 
 use kasirmu_core::db::Store;
 // `IngestPolicyKind` is the TRAIT that provides `admits()`; importing only the
@@ -76,6 +78,85 @@ pub fn exportable_settings_rows(rows: Vec<(String, String)>) -> Vec<serde_json::
         .filter(|(key, _)| IngestPolicy::PortablePackage.admits(key))
         .map(|(key, value)| serde_json::json!({ "key": key, "value": value }))
         .collect()
+}
+
+/// The inclusive day window an export may be restricted to (BR-C3).
+///
+/// Both ends are `NaiveDate`s, not the caller's strings, so the comparison in
+/// [`created_at_in_window`] can never quietly compare a calendar day against a
+/// full timestamp: the parse happens once, at the boundary, and a bad bound is
+/// REFUSED there rather than discovered per row.
+#[derive(Debug)]
+pub(super) struct ExportDateWindow {
+    /// Earliest day kept, inclusive. `None` leaves the start unbounded.
+    pub(super) from: Option<NaiveDate>,
+    /// Latest day kept, inclusive. `None` leaves the end unbounded.
+    pub(super) to: Option<NaiveDate>,
+}
+
+/// The only accepted bound shape. `Sales.created_at` is stored as RFC-3339
+/// text whose first ten characters are exactly this, which is what makes the
+/// prefix compare in [`created_at_in_window`] a date compare.
+const EXPORT_DATE_FORM: &str = "%Y-%m-%d";
+
+/// Build the optional export window from the two wire arguments.
+///
+/// Returns `Ok(None)` when neither bound is present, so an ordinary export takes
+/// exactly the path it took before this window existed. Any present bound must
+/// parse as `YYYY-MM-DD`; a malformed one is an `Invalid` error rather than a
+/// silently dropped filter, because "ignore the bound I cannot read" is the
+/// defect this window closes. An inverted window is refused too — it can only
+/// produce an empty package while the caller believes it asked for a slice.
+pub(super) fn export_date_window(
+    from: Option<&str>,
+    to: Option<&str>,
+) -> Result<Option<ExportDateWindow>, BridgeError> {
+    if from.is_none() && to.is_none() {
+        return Ok(None);
+    }
+    let parse = |raw: &str, field: &str| -> Result<NaiveDate, BridgeError> {
+        NaiveDate::parse_from_str(raw.trim(), EXPORT_DATE_FORM).map_err(|_| {
+            BridgeError::Invalid(format!(
+                "{field} must be a calendar date in YYYY-MM-DD form, got {raw:?}"
+            ))
+        })
+    };
+    let from = from.map(|raw| parse(raw, "date_from")).transpose()?;
+    let to = to.map(|raw| parse(raw, "date_to")).transpose()?;
+    if let (Some(start), Some(end)) = (from, to) {
+        if start > end {
+            return Err(BridgeError::Invalid(format!(
+                "date_from ({start}) is after date_to ({end}), so the export window is empty"
+            )));
+        }
+    }
+    Ok(Some(ExportDateWindow { from, to }))
+}
+
+/// Does a sale's `created_at` fall inside `window`?
+///
+/// `created_at` is RFC-3339 text (`2026-01-15T10:23:45Z`), so its first ten
+/// characters are the calendar day and comparing that prefix as a day is exact —
+/// no timezone arithmetic, and no assumption that the caller's bound carries a
+/// time of day. Both ends are INCLUSIVE: `date_to` names the last day kept, which
+/// is what a merchant reading "to 31 January" expects; a naive string compare
+/// would instead drop every sale on that day.
+///
+/// A timestamp too short to carry a day is KEPT. That is the conservative
+/// direction on purpose: this filter's failure mode is an export that quietly
+/// omits rows, and a row the operator can see in the package is a bug report, one
+/// that never arrived is not.
+pub(super) fn created_at_in_window(created_at: &str, window: &ExportDateWindow) -> bool {
+    if window.from.is_none() && window.to.is_none() {
+        return true;
+    }
+    let day = created_at
+        .get(..10)
+        .and_then(|prefix| NaiveDate::parse_from_str(prefix, EXPORT_DATE_FORM).ok());
+    let Some(day) = day else {
+        return true;
+    };
+    window.from.map_or(true, |start| day >= start) && window.to.map_or(true, |end| day <= end)
 }
 
 /// The batch quota gate for `import_data` (W4-S2), extracted so tests

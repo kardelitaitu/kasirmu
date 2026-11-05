@@ -55,7 +55,10 @@ pub mod helpers;
 pub use helpers::{exportable_settings_rows, gate_import_product_batch, gate_import_user_batch};
 // The three path/size helpers are private to the data MODULE (not IPC surface),
 // so the command bodies below import them rather than re-exporting.
-use helpers::{default_backup_path, human_size, validate_contained_path};
+use helpers::{
+    created_at_in_window, default_backup_path, export_date_window, human_size,
+    validate_contained_path,
+};
 
 // ── Commands ──────────────────────────────────────────────────────
 
@@ -296,6 +299,19 @@ async fn export_data_direct(
     let all_types = args.types.is_empty() || args.types.iter().any(|t| t == "all");
     let wants = |name: &str| all_types || args.types.iter().any(|t| t == name);
 
+    // BR-C3: `date_from` / `date_to` arrive over IPC and used to be read by
+    // NOTHING, so an operator asking for "January only" got the whole database
+    // in a package that looked filtered. The window is now parsed here and
+    // applied to `sales` — the one dated collection this export carries — and a
+    // window that cannot be honoured is REFUSED instead of ignored.
+    let window = export_date_window(args.date_from.as_deref(), args.date_to.as_deref())?;
+    if window.is_some() && !wants("sales") {
+        return Err(BridgeError::Invalid(
+            "a date window applies to the \"sales\" type, which is not among `types`: the package would be unfiltered while the request asked for a slice"
+                .into(),
+        ));
+    }
+
     let products = if wants("products") {
         let prods = store.list_products()?;
         serde_json::to_value(&prods)
@@ -317,7 +333,10 @@ async fn export_data_direct(
     };
 
     let sales = if wants("sales") {
-        let sales_list = store.list_sales()?;
+        let mut sales_list = store.list_sales()?;
+        if let Some(window) = window.as_ref() {
+            sales_list.retain(|sale| created_at_in_window(&sale.created_at, window));
+        }
         Some(
             serde_json::to_value(&sales_list)
                 .ok()
