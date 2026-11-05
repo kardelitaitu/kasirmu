@@ -1,8 +1,9 @@
 // ── KdsLayoutMasonry tests ───────────────────────────────────────
 //
 // Covers: empty state (default + filtered), round-robin distribution
-// across 3 columns, column header titles, column count badges,
-// column CSS classes, and order-to-column assignment.
+// across 3 columns, column header titles (translated AND their untranslated
+// fallbacks), column count badges, column CSS classes, and order-to-column
+// assignment.
 //
 // Mocks: KdsTicketCard (rendered as a simple data-div) and Fluent
 // i18n (via renderWithFluentSync).
@@ -275,6 +276,30 @@ describe('KdsLayoutMasonry', () => {
         '2 orders',
         '1 order',
         '1 order',
+      ]);
+    });
+  });
+
+  // ── Header fallback ───────────────────────────────────────────────
+
+  // `title` is the English child <Localized> renders when the bundle carries no
+  // message for `titleId` — the string a cold or half-loaded bundle shows. Every
+  // other test here passes kdsFtl, so that child never rendered and the three
+  // strings were ungraded: a fallback naming the wrong state, or the same state
+  // three times (the old kds-pending-for-every-index fallback), would have passed
+  // the whole file. Passing '' leaves sharedFtl in place (it defines no kds-*
+  // message) and drops the KDS bundle.
+  describe('column header fallback', () => {
+    it('renders one English title per column when the bundle has no kds messages', () => {
+      const { container } = renderWithFluentSync(
+        <KdsLayoutMasonry {...defaultProps([makeOrder('o1')])} />,
+        '',
+      );
+      const titles = [...container.querySelectorAll('.kds-column-title')];
+      expect(titles.map((t) => t.textContent)).toEqual([
+        'Pending',
+        'Preparing',
+        'Ready',
       ]);
     });
   });
