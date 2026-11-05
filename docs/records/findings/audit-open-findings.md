@@ -1009,6 +1009,18 @@ mechanism note, not a defect, and is unchanged.
   about the tree, and the only defense is to ask what the real diff is before repeating a
   reported number.
 
+  **Dated correction (2026-11-06) — it WAS a defect, and the size of the miss was 676 to 1.** The
+  "mechanism, not a bug" framing above was too generous, and this was measured rather than argued:
+  inserting ONE row into the real `docs/records/README.md` made the old comparison report **676
+  differing lines** — ten of them printed as consecutive noise — while the true change was one row
+  at line 14. A drift report a reader cannot act on is the defect, not a footnote to one, and the
+  exit code never said which row moved. `3a1f132d2` replaces the positional walk with a
+  common-prefix / common-suffix block, prints the removed lines then the added ones, and names the
+  first differing line; the same insertion now reports **1 differing line**. Pinned by
+  `scripts/__tests__/generate-records-index.test.mjs` (3 cases driven through
+  `KASIRMU_RECORDS_ROOT` against a throwaway tree, mutation-proven: removing the prefix scan fails
+  2 of the 3).
+
 ---
 
 ### Dated correction (2026-09-13, 14:18) — the three-command-line table above is now history, not a standing defect
