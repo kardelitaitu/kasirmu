@@ -31,7 +31,8 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { parseSource, render } from '../generate-ownership-map.mjs';
+import { readFileSync } from 'node:fs';
+import { parseSource, render, compareWithTarget, writeTarget } from '../generate-ownership-map.mjs';
 
 const SCRIPT = join(dirname(dirname(fileURLToPath(import.meta.url))), 'generate-ownership-map.mjs');
 // Newlines are built, never typed: an escape inside a regex literal is exactly
@@ -136,6 +137,56 @@ describe('render() — the two rustfmt thresholds', () => {
     has(text, 'pub fn owner_of(table: &str) -> Option<&' + "'" + 'static str> {');
     has(text, '#[path = "ownership_tests.rs"]');
     has(text, '];' + NL);
+  });
+});
+
+describe('compareWithTarget() / writeTarget() — the half a reader actually meets', () => {
+  const withTemp = (fn) => {
+    const root = mkdtempSync(join(tmpdir(), 'ownership-target-'));
+    try {
+      return fn(join(root, 'ownership.rs'));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  };
+
+  it('reports ok when the committed file already equals the render', () => {
+    withTemp((target) => {
+      const text = 'pub const TABLE_OWNERS: &[(&str, &[&str])] = &[];' + NL;
+      writeTarget(text, target);
+      assert.strictEqual(compareWithTarget(text, target).ok, true);
+    });
+  });
+
+  it('reports drift with the committed text, so the caller can show what moved', () => {
+    withTemp((target) => {
+      writeTarget('stale' + NL, target);
+      const res = compareWithTarget('fresh' + NL, target);
+      assert.strictEqual(res.ok, false);
+      assert.strictEqual(res.current, 'stale' + NL);
+      assert.strictEqual(res.target, target);
+    });
+  });
+
+  it('treats an ABSENT target as drift, never as clean', () => {
+    // The failure this stops: a deleted ownership.rs removes owner_of() from the
+    // build. A comparison that skipped the check when the file was missing, or
+    // read "" and matched an empty render, would pass a tree whose governance
+    // map no longer exists.
+    withTemp((target) => {
+      const res = compareWithTarget(['a', 'b'].join(NL), target);
+      assert.strictEqual(res.ok, false);
+      assert.strictEqual(res.current, '');
+    });
+  });
+
+  it('writeTarget() writes exactly the rendered bytes, newline for newline', () => {
+    withTemp((target) => {
+      const rendered = ['//! x', '', 'pub const A: u8 = 1;', ''].join(NL);
+      assert.strictEqual(writeTarget(rendered, target), target);
+      assert.strictEqual(readFileSync(target, 'utf8'), rendered);
+      assert.strictEqual(compareWithTarget(rendered, target).ok, true);
+    });
   });
 });
 

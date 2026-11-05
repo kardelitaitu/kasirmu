@@ -120,24 +120,43 @@ function render(entries) {
   return header.concat(body, footer).join("\n");
 }
 
+/**
+ * Compare generated text against what is committed. Extracted so the DRIFT
+ * direction can be exercised: until 2026-11-06 only the clean direction ran
+ * anywhere (scripts/check.sh on a matching tree), which left the one branch a
+ * reader actually sees -- the failure -- as an unexecuted claim. An ABSENT
+ * target counts as drift, deliberately: deleting ownership.rs removes
+ * owner_of() from the build, and a --check that regenerated it in memory and
+ * said nothing would pass a tree that no longer compiles the governance map.
+ */
+function compareWithTarget(rendered, target = targetPath) {
+  const current = existsSync(target) ? readFileSync(target, "utf8") : "";
+  return { ok: current === rendered, current, target };
+}
+
+/** Write generated text to its destination; returns the path written. */
+function writeTarget(rendered, target = targetPath) {
+  writeFileSync(target, rendered, "utf8");
+  return target;
+}
+
 function main(argv = process.argv.slice(2)) {
   const check = argv.includes("--check");
   const rendered = render(parseSource());
-  const current = existsSync(targetPath) ? readFileSync(targetPath, "utf8") : "";
   if (check) {
-    if (current !== rendered) {
-      console.error("ownership map drift: " + targetPath + " does not match modules/ownership.json");
+    const { ok, target } = compareWithTarget(rendered);
+    if (!ok) {
+      console.error("ownership map drift: " + target + " does not match modules/ownership.json");
       console.error("run: node scripts/generate-ownership-map.mjs");
       process.exit(1);
     }
     console.log("ok: crates/kasirmu-core/src/db/ownership.rs matches modules/ownership.json");
     return;
   }
-  writeFileSync(targetPath, rendered, "utf8");
-  console.log("wrote " + targetPath);
+  console.log("wrote " + writeTarget(rendered));
 }
 
-export { parseSource, render };
+export { parseSource, render, compareWithTarget, writeTarget };
 
 // Guarded so the module can be imported by its tests: an unguarded main()
 // would rewrite the real ownership.rs from a test process.
