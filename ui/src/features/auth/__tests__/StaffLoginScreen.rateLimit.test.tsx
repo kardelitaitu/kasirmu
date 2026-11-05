@@ -89,6 +89,7 @@ vi.mock('@fluent/react', () => ({
           'staff-login-recent-label': 'Quick Login',
           'staff-login-username-aria': 'Username',
           'staff-login-username-placeholder': 'Username',
+          'staff-login-title': 'kasir.mu',
         };
         return (map as Record<string, string>)[id] || id;
       },

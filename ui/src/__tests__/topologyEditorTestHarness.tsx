@@ -235,13 +235,16 @@ export const TOPOLOGY_EN: Record<string, string> = {
   // four topology-rack-*-title entries above are deliberately IDENTITY-valued:
   // openRackPanel() queries them as aria-labels, so real copy there would break the
   // suite. They are addresses, not copy.
+  // The sections header the editor renders (multi-location.ftl:41); the map
+  // carried every neighbour of this key but not the key itself.
+  'topology-editor-sections': 'Editor sections',
   'topology-apply-changes': 'Apply Topology',
   'topology-apply-confirm-apply': 'Apply',
   'topology-apply-confirm-archived': 'Archived',
   'topology-apply-confirm-cancel': 'Cancel',
   'topology-apply-confirm-created': 'Created',
   'topology-apply-confirm-no-changes': 'No workspace changes detected.',
-  'topology-apply-confirm-note-count': '$count / $max',
+  'topology-apply-confirm-note-count': '{count} / {max}',
   'topology-apply-confirm-note-label': 'What changed?',
   'topology-apply-confirm-note-optional': 'optional',
   'topology-apply-confirm-note-placeholder': 'e.g. Opened the Pos Kota counter; moved Gudang to back-room routing',
@@ -291,7 +294,7 @@ export const TOPOLOGY_EN: Record<string, string> = {
   'topology-reset-view': 'Reset View',
   'topology-snap-toggle': 'Snap to grid',
   'topology-tier-capacity-notice': 'Warehouse capacity numbers are saved but not enforced on your current plan — upgrade to Premium to use capacity limits.',
-  'topology-tier-suffix': '$tier TIER',
+  'topology-tier-suffix': '{tier} TIER',
   'topology-toast-revision-conflict': 'The topology changed elsewhere — loaded the latest version. Re-apply your changes.',
   'topology-toast-save-error': 'Failed to save topology',
   'topology-tool-hardware': '+ Hardware Node',
@@ -303,8 +306,8 @@ export const TOPOLOGY_EN: Record<string, string> = {
   'topology-validation-dismiss': 'Dismiss',
   'topology-validation-panel-aria': 'Diagram issues',
   'topology-web-managed-notice': 'Managed via Web Dashboard (Read-Only)',
-  'topology-wire-label-fallback': 'Fallback (P $priority )',
-  'topology-wire-label-stock-deduct': 'Stock Deduct (P $priority )',
+  'topology-wire-label-fallback': 'Fallback (P{priority})',
+  'topology-wire-label-stock-deduct': 'Stock Deduct (P{priority})',
   'topology-wire-routing-toggle': 'Elbow wires',
   'topology-workspace-peer-group-label': 'Peer group',
   'topology-workspace-peer-group-placeholder': 'e.g. Front Counter',
