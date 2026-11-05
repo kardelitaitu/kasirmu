@@ -2167,3 +2167,31 @@ fails on the old glob and passes on the new one.
 **What this is not:** a repair of a red gate. The gate measures **534 invokes across 58 api files, 0
 violations** under both globs — the 13 commands happened to be called correctly. The change buys coverage,
 not a fixed defect, and the register says so rather than implying a violation was found and closed.
+
+### Dated correction (2026-11-06) — the raw-parameter gate graded one shell, and the tablet had two sites
+
+`scripts/verify-no-raw-params.sh` hard-coded `target_dir="apps/desktop-tauri/src/commands"`, and its header
+said so — *no Tauri command in the desktop client*. Honest, and half the surface: the tablet registers 93
+unscoped commands and ADR #7's rule had never been applied to one of them. This is the second gate in two
+rounds found grading a single shell; the shape is the same and so is the cause — a subject written when the
+desktop was the only shell, never revisited when the tablet began registering commands.
+
+Measured 2026-11-06 with the gate's own classifier (it skips struct fields, so the count is smaller than a
+raw grep of `store_id: String` suggests):
+
+| shell | files | parameters classified | covered by a twin | allowlisted | violations |
+|---|---|---|---|---|---|
+| desktop | 84 | 15 | 15 | 0 | 0 |
+| tablet | 116 | 7 | 5 | 2 | 0 |
+
+The two tablet sites are `workspaces.rs:40` (`list_workspaces`) and `:73` (`list_workspace_screens`) —
+the same pair round 25 allowlisted in `verify-scoped-coverage.sh`. Their `store_id` is the PURPOSE of the
+call rather than a scope shortcut: both authenticate with a picker ticket and read the global db while the
+operator is still choosing a workspace, so there is no session to resolve a store from and the id names
+WHICH workspace to list. They are allowlisted in both gates, and each comment points at the other so the pair
+cannot be removed from one and left in the other.
+
+**Proof the new half can fail:** dropping `list_workspaces` from `RAW_PARAM_ALLOW` turns the gate red with
+`VIOLATION in apps/mobile-tauri/src/commands/workspaces.rs:40: store_id: String,` and `1 violation(s)`;
+restoring it returns PASS. The falsification suite (`scripts/test-no-raw-params.sh`, which plants a probe in
+the real directory) still proves both directions, and the classifier self-test is unchanged at 7 cases.
