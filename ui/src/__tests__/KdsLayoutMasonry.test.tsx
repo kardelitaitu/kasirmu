@@ -133,6 +133,31 @@ describe('KdsLayoutMasonry', () => {
         expect(header.querySelector('.kds-column-count')).not.toBeNull();
       }
     });
+
+    // The test above proves a title ELEMENT exists; it says nothing about which
+    // title. That is the gap a column table can fall through: reorder COLUMNS,
+    // point a titleId at a neighbour's message, or pair a header with the wrong
+    // modifier class, and every assertion above still passes while the kitchen
+    // reads "Ready" over the Pending column. This grades the pair — the state a
+    // column claims in its class and the word it shows — in order.
+    it('each header title names the state its own column carries', () => {
+      const orders = [makeOrder('o1'), makeOrder('o2'), makeOrder('o3')];
+      const { container } = renderWithFluentSync(
+        <KdsLayoutMasonry {...defaultProps(orders)} />,
+        kdsFtl,
+      );
+      const cols = [...container.querySelectorAll('.kds-col.kds-column')];
+      expect(
+        cols.map((col) => [
+          [...col.classList].find((c) => c.startsWith('kds-column--')),
+          col.querySelector('.kds-column-title')?.textContent,
+        ]),
+      ).toEqual([
+        ['kds-column--pending', 'Pending'],
+        ['kds-column--preparing', 'Preparing'],
+        ['kds-column--ready', 'Ready'],
+      ]);
+    });
   });
 
   // ── Round-robin distribution ──────────────────────────────────────
