@@ -25,9 +25,13 @@ Two consequences, and the second is the dangerous one:
 python scripts/check-l10n-test-maps.py
 ```
 
-* 826 test files read
-* hand-maintained maps judged (a run of >= 3 `'key': 'value',` pairs whose
-  miss lands back on the id, i.e. `map[id] ?? id`)
+* the number of test files read — deliberately NOT written here: it grew from 826
+  to 828 between this page's first draft and 2026-11-05, and nothing would have
+  told you. The command prints it.
+* hand-maintained maps FOUND (a run of >= 3 `'key': 'value',` pairs whose miss
+  lands back on the id, i.e. `map[id] ?? id`). Found, not judged: a map is only
+  judged when it has a hole, so the population and the defect count are two
+  numbers and were one counter until 2026-11-05 — see the note at the end.
 * every key a component renders that the map does not carry. The count lives ONLY
   in `scripts/l10n-map-baseline.json`, never in prose: a total written into a
   paragraph is a number nothing will tell you is stale.
@@ -188,5 +192,32 @@ python scripts/check-l10n-test-maps.py --write-baseline
 it reads zero maps — the empty-population refusal exists because the detector's
 own bug (an eight-key identity window) silently reported `judged 0 maps` while
 looking like a clean run.
+
+## Correction 2026-11-05: the ratchet could not reach its own target
+
+The baseline reached **zero entries** in this round, and that state used to be
+unreachable: the gate's empty-population guard read `judged` — (test file, map)
+pairs WITH A HOLE — so the first clean tree printed
+
+```
+SCAN READ NOTHING: 828 test files, 0 maps judged. Refusing to report clean.
+```
+
+and exited 2. Success and blindness were the same number. Worse, the self-test's
+live-tree case asserted `judged >= 1`, so repairing the last hole turned the
+checker red by definition — the test was pinning the defect it existed to catch.
+
+`scan()` now returns the map POPULATION separately (`mapped`), the guard reads
+that, and the live-tree case grades it too. Measured after the change:
+
+```
+$ python scripts/check-l10n-test-maps.py
+OK: no new l10n map holes (828 test files, 37 map(s) found, 0 with holes, 0 known holes)
+```
+
+Two mutation proofs, both reverted byte-identical: forcing `mapped += 0` makes the
+gate print `SCAN READ NOTHING` and exit 2, and makes `--self-test` report "the
+live scan found 0 maps". The blindness guard survived the change that made the
+gate passable; that was the point of keeping two counters instead of one.
 
 > last audited 07-11-26 by docs-auditor
