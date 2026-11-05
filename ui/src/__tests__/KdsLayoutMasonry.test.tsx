@@ -255,6 +255,28 @@ describe('KdsLayoutMasonry', () => {
       expect(counts[1]).toHaveTextContent('2');
       expect(counts[2]).toHaveTextContent('2');
     });
+
+    // The two tests above stop at the DIGIT, so they grade neither the plural
+    // arm nor the claim in KdsLayoutMasonry's own comment: the badge passes
+    // `count` as a NUMBER because a string "bypasses number formatting
+    // entirely" and the Fluent select stops matching [one]. Both tests pass
+    // with "1 orders" on screen. This one grades the sentence.
+    //
+    // One render covers all three categories English needs: 4 orders
+    // round-robin to 2-1-1 across the three columns → other / one / one.
+    it('column count reads as a sentence, with the singular arm honoured', () => {
+      const orders = ['o1', 'o2', 'o3', 'o4'].map((id) => makeOrder(id));
+      const { container } = renderWithFluentSync(
+        <KdsLayoutMasonry {...defaultProps(orders)} />,
+        kdsFtl,
+      );
+      const counts = [...container.querySelectorAll('.kds-column-count')];
+      expect(counts.map((c) => c.textContent)).toEqual([
+        '2 orders',
+        '1 order',
+        '1 order',
+      ]);
+    });
   });
 
   // ── Edge cases ────────────────────────────────────────────────────
