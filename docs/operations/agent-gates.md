@@ -3466,4 +3466,54 @@ reached it. Quote this number only from a direct run.
 different form (see the two RC2 exceptions above). Do not "fix" the 97 by adding a flag to
 them.
 
+## Two environment prerequisites, and the red they produce when missing (2026-11-05)
+
+Three of the gates below can be red for reasons that are not in the tree, and none of
+them used to say so. Both prerequisites are one command and were measured on this
+checkout; every claim here is from a run, not from the tool's documentation.
+
+**1. PyYAML, or three gates grade nothing.**
+
+```
+$ python -m pip install pyyaml        # 6.0.3 at the time of writing
+```
+
+Without it, `verify-workflow-syntax.py` and `verify-release-workflow.py` exit non-zero
+before parsing a single workflow — the first with `PyYAML is unavailable`, the second
+with `PyYAML is required`. `verify-selftest-sweep.py` then fails as a consequence: it
+counts a checker that cannot run its `--self-test` as a failure, which is the correct
+behaviour and is why one missing module reads as three red gates.
+
+With it, the same three report:
+
+```
+verify-workflow-syntax: OK — 5 live workflow(s) parse and declare jobs.
+verify-release-workflow: release.yml validates (pins, paths, inventory, signing guard, ordering, privileges)
+verify-selftest-sweep: OK — 99 self-test(s) across 102 checker(s); 3 declare none and were skipped.
+```
+
+**2. A Visual Studio environment, or `check-query-plans.py` cannot build.**
+
+A plain PowerShell session here sets neither `LIB`, `INCLUDE` nor the MSVC `PATH`
+entries, and that produces **two different failures from the same cause**:
+
+- the linker shape — `rust-lld: error: could not open 'kernel32.lib'`, because the
+  system import libraries are found through `LIB`;
+- the build-script shape — `sccache: error: failed to execute compile` /
+  `caused by: cannot find binary path`, because `cc`-based build scripts (`zstd-sys`)
+  need `cl.exe` on `PATH` and invalidate themselves when `LIB` changes.
+
+Setting `LIB` alone fixes the first and exposes the second, which is the trap worth
+recording. Run the gate from an **x64 Native Tools Command Prompt for VS 2022** (it sets
+all three together), and the same gate reports `27 probed queries, none reads a LARGE
+table in full`.
+
+Since 2026-11-05 `scripts/check-query-plans.py` diagnoses both shapes itself and says
+which one it saw, so the next reader does not have to infer it from a linker command
+line; its self-test grades the diagnosis on synthetic output for both.
+
+**What this means for a red gate count.** The same 79 Python gates read 78/79 in a bare
+shell and 79/79 under `vcvars64.bat`, from identical sources. Quote the number with the
+shell it was measured in.
+
 > last audited 11-10-26 by docs-auditor
