@@ -2535,9 +2535,9 @@ def _bridge_fn_body(fn_name: str, cache={}) -> str:
 
     Walked once per process and cached by name: this is called for every shell command that looks
     ungated, and re-reading the crate each time would make the gate slower than the thing it
-    checks. Only the bridge is followed, one level -- a delegation that itself delegates is rare
-    enough that reporting `None` for it is honest, while the one-level case is the repo's dominant
-    shape since the shells became thin.
+    checks. Only the bridge is followed, and how far is `_gate_within`'s budget, not this
+    function's business: the repo's dominant shape since the shells became thin is one hop, and
+    the budget is what keeps that a measurement rather than an assumption.
     """
     if not cache:
         root = REPO_ROOT / "crates" / "kasirmu-bridge" / "src"
@@ -2556,7 +2556,43 @@ def _bridge_fn_body(fn_name: str, cache={}) -> str:
 DELEGATION_RE = re.compile(r"\bkasirmu_bridge::[a-z_0-9]+::([a-z_0-9]+)\s*\(")
 
 
-def orphan_permission(command: str) -> str | None:
+def _gate_within(body: str, budget: int, lookup=None, seen: tuple = ()) -> str | None:
+    """The gate at most `budget` delegations away from `body`, or None.
+
+    Split out of `orphan_permission` so the depth is a value a test can move. `lookup` is
+    injectable for the same reason: a self-test needs to prove that two hops find a gate one hop
+    misses WITHOUT a fixture inside `crates/kasirmu-bridge`.
+
+    Measured on the allowlist, 2026-11-06: of 24 entries, 4 gate in their own body, 6 one
+    delegation away, and 14 not within four hops. So budget 1 is sufficient TODAY and the
+    self-test asserts exactly that — if an entry ever needs a second hop, the assertion fails
+    and the next reader decides whether to widen the follow or record the deep case, rather
+    than the gate quietly reporting "no check" for a command gated two crates away.
+    """
+    if not body:
+        return None
+    direct = gate_in_body(body)
+    if direct is not None:
+        return direct
+    if budget <= 0:
+        return None
+    if lookup is None:
+        lookup = _bridge_fn_body
+    elif isinstance(lookup, dict):
+        # A dict is the test spelling: the self-test must prove depth without a fixture in
+        # crates/kasirmu-bridge. Missing names are "" so the recursion's empty-body guard fires.
+        table = lookup
+        lookup = lambda name: table.get(name, "")
+    for target in DELEGATION_RE.findall(body):
+        if target in seen:
+            continue
+        found = _gate_within(lookup(target), budget - 1, lookup, seen + (target,))
+        if found is not None:
+            return found
+    return None
+
+
+def orphan_permission(command: str, delegations: int = 1) -> str | None:
     """The permission a scoped command enforces, or None if it enforces no check.
 
     Why the gate bothers to read Rust bodies at all: an orphaned `_scoped` command is not
@@ -2611,6 +2647,8 @@ def orphan_permission(command: str) -> str | None:
             direct = gate_in_body(body)
             if direct is not None:
                 return direct
+            # `delegations` defaults to 1 and the caller decides no more than that; the
+            # self-test proves 1 is enough for every allowlisted entry today.
             # No gate in the shell's own body. In a thin shell that is the normal shape: the gate
             # lives in the bridge fn this line delegates to (ADR #49), so `None` used to mean
             # "redundant twin, wire a caller or allowlist it as host-only" for commands that are
@@ -2619,11 +2657,13 @@ def orphan_permission(command: str) -> str | None:
             # GATED DEAD SURFACE fell from 10 to 2 and redundant twins rose from 14 to 22, i.e.
             # eight of the ten verdicts that matter exist only because this follow runs. Most of
             # them are extracted commands whose shell body is now a run_scoped(...) one crate away.
-            # ONE level only, and that is the limit: a two-hop delegation reports "no check".
-            for target in DELEGATION_RE.findall(body):
-                via_bridge = gate_in_body(_bridge_fn_body(target))
-                if via_bridge is not None:
-                    return via_bridge
+            # ONE level is what the caller asks for, and one is ENOUGH on today's allowlist:
+            # 4 entries gate in their own body, 6 one hop away, 14 nowhere within four hops, so
+            # no entry needs a second hop (measured 2026-11-06, asserted by the self-test so a
+            # future entry that does need one fails loudly instead of reading as "no check").
+            via_bridge = _gate_within(body, delegations)
+            if via_bridge is not None:
+                return via_bridge
             return None
     return None
 
@@ -4484,6 +4524,29 @@ def self_test() -> int:
          real_loop is not None and real_loop.startswith(DEV_MOCK_DIR_REL + "/"))
     case("real    walk covers more than the router",
          len(real_reg) > len(real_per.get(DEV_MOCK_ROUTER_REL, set())) and len(real_alias) > 0)
+
+    # --- the delegation budget: one hop is enough TODAY, and that is measured ----------------
+    # A two-hop gate would read as "no check", which is the wrong direction: it retires real
+    # posture as dead weight. So the budget is a parameter, and this pair of cases is what stops
+    # "one is enough" from decaying into an assumption nobody rechecked.
+    _allow_names = [e if isinstance(e, str) else e.get("name")
+                    for e in load_allowlist().get("scoped_orphans", [])]
+    _deep = sorted(n for n in _allow_names
+                   if orphan_permission(n) != orphan_permission(n, delegations=4))
+    case(f"real    no allowlisted scoped orphan needs more than one delegation "
+         f"[n={len(_allow_names)} deep={_deep}]", len(_allow_names) > 0 and not _deep)
+
+    _shell_body = "fn a() { kasirmu_bridge::b::b(); }"
+    _hop1 = {"b": "fn b() { require_permission(crate::permissions::PRODUCTS_READ); }"}
+    _hop2 = {"b": "fn b() { kasirmu_bridge::c::c(); }",
+             "c": "fn c() { require_permission(crate::permissions::PRODUCTS_WRITE); }"}
+    _self_loop = {"b": "fn b() { kasirmu_bridge::b::b(); }"}
+    case("case 25  the budget is real: two hops find a gate one hop misses",
+         _gate_within(_shell_body, 1, _hop1) == "PRODUCTS_READ"
+         and _gate_within(_shell_body, 1, _hop2) is None
+         and _gate_within(_shell_body, 2, _hop2) == "PRODUCTS_WRITE"
+         and _gate_within(_shell_body, 1, {}) is None
+         and _gate_within(_shell_body, 8, _self_loop) is None)
 
     failed = [name for name, ok in results if not ok]
     for name, ok in results:

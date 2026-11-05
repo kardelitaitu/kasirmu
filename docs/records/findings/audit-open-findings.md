@@ -2015,3 +2015,38 @@ measured by scanning both shells' `commands/` trees recursively and reading each
 balanced body. Those verdicts agree with `orphan_permission()` on all 24 entries, so the
 first-shell-wins return noted in the BR-T1 correction above is a latent hazard today, not a live
 false negative.
+
+### Dated correction (2026-11-06, later the same night) — the one-hop limit is now measured, and it has names
+
+The correction above closed with `a two-hop delegation reports 'no check'. That case is unmeasured`.
+Measured: every allowlisted scoped orphan's gate was resolved with a four-hop budget, recording the
+minimum hop count it needed.
+
+| minimum hops to a gate | entries |
+|---|---|
+| 0 — in the command's own body | 4 |
+| 1 — one `kasirmu_bridge::<mod>::<fn>` hop | 6 |
+| ≥2 | **0** |
+| none within four hops | 14 |
+
+So the one-hop follow is sufficient for every entry TODAY, and the limit is now a guard rather than a
+comment: `_gate_within(body, budget, lookup)` carries the depth, `orphan_permission(command,
+delegations=1)` keeps the shipped behaviour, and the self-test asserts that
+`orphan_permission(n) == orphan_permission(n, delegations=4)` for all 24 entries. A future entry needing
+a second hop fails that case and gets a decision instead of a silent 'no check'.
+
+**Both new cases were proven able to fail.** Setting the default budget to 0 turns the real-tree case
+red and names eight entries; making `_gate_within` ignore its budget turns case 25 red. A pre-existing
+guard — `gate   the real command that was misreported is now read as gated` — also fired under the
+first mutation, so this pair is not the only thing between the tree and a wrong 'ungated' verdict.
+
+**The two extra names are the first-shell-wins hazard from the BR-T1 correction, now with evidence.**
+With the budget at 0 the failing list is `create_product_variant_scoped`,
+`delete_product_variant_scoped`, `get_key_rotation_info_scoped`, `get_product_variant_scoped`,
+`list_product_variants_scoped`, `renew_license_scoped`, `rotate_encryption_key_scoped` and
+`update_product_variant_scoped`. Strip the follow and the last two come back as 'no check' even though
+the TABLET body carries the gate — because `orphan_permission()` returns from the first shell that
+defines the command and the desktop body is read first. Today the bridge delegation rescues them, which
+masks the defect rather than fixing it: a command whose two shell bodies differ in gating, and which
+does not itself delegate, would be reported as guarding nothing while the other shell gates it. Still
+open, and unmeasured for commands outside this allowlist.
