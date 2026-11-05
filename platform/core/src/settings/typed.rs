@@ -1,10 +1,56 @@
 //! Typed store configuration helpers.
-/*
-last audited 25-07-26 by RSA-Agent (platform-core slice C: settings/typed deep read)
-crate: platform-core | status: SAFE | lint: CLEAN
-findings: clean typed accessors with documented defaults; sync API key, terminal secret, and PG password transparently ENCRYPTED at rest via kasirmu_crypto with legacy-plaintext read fallback (corrects the broader COR-17/30 note: these secrets are not plaintext); decrypt-failure now fails closed when the stored value has ciphertext shape and decrypts under no derivation (C1 slice S1.5) while legacy plaintext still reads back unchanged; currency default has documented old-key migration fallback
-next: none | perf: N/A
-*/
+//!
+//! # Credential fail-closed surface
+//!
+//! The credential families encrypted at rest are covered by two different fail-closed
+//! gates; a reader extending a family picks the right one.
+//!
+//! **The shared gate — `decrypt_or_fail_closed`.** Used by the **five portable-family
+//! typed getters** that read an encrypted settings value and refuse to return it when it
+//! has ciphertext shape but decrypts under no known derivation:
+//! `get_sync_api_key`, `get_sync_terminal_secret`, `get_pg_sync_password`,
+//! `get_rate_sync_api_key`, `get_lan_server_psk`. These are the implemented fail-closed
+//! gate for those families — the decisions companion's D1 row once named them as the open
+//! "fallback sites"; that was stale.
+//!
+//! **The family-specific gate — for legacy plaintext that IS ciphertext-shaped.** Required
+//! when the family's legacy plaintext passes [`has_ciphertext_shape`], because then the
+//! shared helper's shape gate never fires and every pre-upgrade row would surface as a
+//! decrypt error. Two families use it today:
+//! - `get_local_api_secret` → `decrypt_local_api_secret_or_legacy`, because the legacy
+//!   local-API secret is exactly 64 lowercase hex characters (valid base64, decodes past
+//!   the 12 + 16 bar), so gating on shape would brick every existing install. The
+//!   exception is bounded by a POSITIVE test of the legacy shape (see the doc on
+//!   [`get_local_api_secret`] and its sibling [`decrypt_local_api_secret_or_legacy`]).
+//! - The two JSON-blob families — `smtp_config.password` (in [`Store::get_smtp_config`],
+//!   via [`crate::crypto::decrypt_smtp_at_rest`]) and the credential fields inside
+//!   `cloud_export_config` (in [`unseal_cloud_export_credentials`], via
+//!   [`crate::crypto::decrypt_cloud_export_secret`]) — use branch-tolerant decryptors with
+//!   format-gated legacy passthrough, for the same reason.
+//!
+//! **The one gap worth naming — the machine-bound API key path.** The portable families
+//! above derive through the static/install master-key machinery; the machine-bound API key
+//! (`license.api_key`, decrypted via [`crate::crypto::decrypt_api_key`] with a machine id)
+//! is a different derivation. Its reads on the license path
+//! (`crates/kasirmu-bridge/src/license.rs`) use `unwrap_or_else(|e| { warn; value })`,
+//! which is the pre-upgrade passthrough shape — fail-open on a decrypt failure. That is
+//! the one credential read that still does not fail closed, and it is bounded by the fact
+//! that a value that is not ciphertext-shaped passes through unchanged, so the hazard is
+//! a ciphertext-shaped value the current machine key cannot open — i.e. a row written by
+//! another install or a rotated key, not a tampered one (the GCM tag still authenticates
+//! in that case). Do not silently widen this: any new machine-bound credential reader
+//! should use the same family-specific pattern as `local_api.secret`.
+//!
+//! last audited 25-07-26 by RSA-Agent (platform-core slice C: settings/typed deep read)
+//! crate: platform-core | status: SAFE | lint: CLEAN
+//! findings: clean typed accessors with documented defaults; sync API key, terminal secret,
+//! and PG password transparently ENCRYPTED at rest via kasirmu_crypto with legacy-plaintext
+//! read fallback (corrects the broader COR-17/30 note: these secrets are not plaintext);
+//! decrypt-failure now fails closed when the stored value has ciphertext shape and decrypts
+//! under no derivation (C1 slice S1.5) while legacy plaintext still reads back unchanged;
+//! currency default has documented old-key migration fallback; credential fail-closed surface
+//! documented 2026-11-05
+//! next: none | perf: N/A
 
 use super::{Settings, keys};
 use crate::error::PlatformError;
