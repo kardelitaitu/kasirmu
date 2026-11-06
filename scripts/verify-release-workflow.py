@@ -250,13 +250,39 @@ def self_test() -> int:
         return 1
     original = io.open(WF, encoding="utf-8").read()
 
+    # The baseline has two correct shapes, keyed to where this file runs. In a
+    # checkout, git history is available as a pin cross-reference and the baseline
+    # must be clean. In a copy with no .git -- this harness stages exactly that --
+    # the git-log evidence source vanishes, so pins that appear in no other
+    # workflow file are HONESTLY unverifiable there and a clean baseline is not
+    # achievable. What must still hold: no problem of any OTHER kind, and every
+    # mutation below is still caught.
+    import subprocess
+    try:
+        in_repo = subprocess.run(
+            ["git", "rev-parse", "--is-inside-work-tree"],
+            cwd=str(ROOT), capture_output=True, text=True, timeout=60,
+        ).returncode == 0
+    except OSError:
+        in_repo = False
     base = validate(original)
-    if base:
-        print(f"FAIL: baseline release.yml is not clean ({len(base)} problem(s)):")
-        for p in base:
-            print(f"    - {p}")
-        return 1
-    print("  baseline: release.yml clean")
+    if in_repo:
+        if base:
+            print(f"FAIL: baseline release.yml is not clean ({len(base)} problem(s)):")
+            for p in base:
+                print(f"    - {p}")
+            return 1
+        print("  baseline: release.yml clean")
+    else:
+        other = [p for p in base if "appears in no other workflow" not in p]
+        if other:
+            print(f"FAIL: baseline release.yml has {len(other)} non-pin problem(s) "
+                  "in a history-less copy:")
+            for p in other:
+                print(f"    - {p}")
+            return 1
+        print(f"  baseline: {len(base)} unverifiable-pin finding(s) -- expected: no "
+              ".git here, so git-log cross-references are unavailable")
 
     rc = 0
     for name, old, new in MUTATIONS:
