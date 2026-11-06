@@ -540,6 +540,13 @@ pub const ALL: &[Migration] = &[
         id: "20261029_offline_queue_sale_id_backfill.sql",
         sql: include_str!("../migrations/20261029_offline_queue_sale_id_backfill.sql"),
     },
+    // Gift card tender unblocking (owner-question-gift-card-tender.md Q1 Option A):
+    // widens payments.method CHECK to include 'gift_card'. Rebuilds payments
+    // table keeping both indexes (idx_payments_idempotency_key, idx_payments_sale_id).
+    Migration {
+        id: "20261107_payments_gift_card_method.sql",
+        sql: include_str!("../migrations/20261107_payments_gift_card_method.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

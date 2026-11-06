@@ -4063,6 +4063,7 @@ fn payments_method_check_and_gateway_status_constraints_enforced() {
         "open_bill",
         "credit",
         "pay_later",
+        "gift_card",
         "other",
     ];
 
@@ -4104,17 +4105,20 @@ fn payments_method_check_and_gateway_status_constraints_enforced() {
     // nothing if you read its colour instead of its target. Adding it to 20261018
     // reddens exactly this assert. Any future change to the method set has to
     // touch the latest rebuild, not the earliest statement of it.
-    for gift_spelling in ["gift", "gift_card", "giftcard", "gift_cards"] {
+    // 'gift_card' is now a valid method (unblocked per Q1 Option A).
+    // Alternative informal spellings remain rejected by the constraint.
+    for invalid_gift_spelling in ["gift", "giftcard", "gift_cards"] {
         let res = conn.execute(
             "INSERT INTO payments (id, sale_id, method, amount_minor, currency, created_at)
              VALUES (?1, 'sale-pm-test', ?2, 1000, 'IDR', '2026-10-02T00:00:00.000Z')",
-            rusqlite::params![format!("pay-gift-{gift_spelling}"), gift_spelling],
+            rusqlite::params![
+                format!("pay-gift-{invalid_gift_spelling}"),
+                invalid_gift_spelling
+            ],
         );
         assert!(
             res.is_err(),
-            "{gift_spelling} must be REFUSED by the method CHECK: gift-card redemption is \
-             constrained to stay impossible until the migration, the RBAC grant and the \
-             settlement contract are decided together"
+            "{invalid_gift_spelling} must be REFUSED by the method CHECK"
         );
     }
 
