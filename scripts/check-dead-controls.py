@@ -140,6 +140,22 @@ def scan_text(src):
     return found
 
 
+def sweep_verdict(scanned, candidates):
+    """Exit code for a finished sweep: 2 read nothing, 1 found a dead control, 0 clean.
+
+    WHY THIS IS A SEPARATE FUNCTION, and why it is new. Until 2026-11-06 main() printed the
+    candidate list and then returned 0 unconditionally -- measured by planting an inert
+    <Button> in a features/*.tsx and re-running: the row appeared on stdout and the step
+    still exited 0. A wired step that prints a defect and passes is a report, not a gate,
+    and the three recorded defects it exists for would each have shipped green. The
+    candidates AND the corpus are both graded here, so the cases can pin the enforce half
+    without a tree.
+    """
+    if scanned == 0:
+        return 2
+    return 1 if candidates else 0
+
+
 def self_test():
     """Run SELF_TEST_CASES over scan_text; report every failure, not just the first."""
     bad = []
@@ -147,10 +163,19 @@ def self_test():
         got = len(scan_text(src))
         if got != expected:
             bad.append("  %s: expected %d candidate(s), detector found %d" % (name, expected, got))
+    # The VERDICT half. Before 2026-11-06 these three relationships did not exist: a
+    # candidate was printed and the run still exited 0, and a sweep of zero files exited 0
+    # too. Both are silent passes of the shape this file's own history warns about.
+    for scanned, candidates, expected in ((0, 0, 2), (0, 7, 2), (317, 0, 0), (317, 1, 1)):
+        got = sweep_verdict(scanned, candidates)
+        if got != expected:
+            bad.append("  verdict(%d file(s), %d candidate(s)): expected %d, got %d"
+                       % (scanned, candidates, expected, got))
     if bad:
         sys.stderr.write("SELF-TEST WRONG:\n" + "\n".join(bad) + "\n")
         return 2
-    print("SELF-TEST OK (%d cases, no file read)" % len(SELF_TEST_CASES))
+    print("SELF-TEST OK (%d detector cases + 4 verdict cases, no file read)"
+          % len(SELF_TEST_CASES))
     return 0
 
 
@@ -165,7 +190,11 @@ def main():
         return rc
 
     inert = []
+    scanned = 0
     for path in iter_sources(SCAN_ROOT):
+        # Counted BEFORE the noise filter: this number measures the CORPUS, and a tree that
+        # holds nothing but design/ showcases is a corpus this gate read, not an empty one.
+        scanned += 1
         rel = os.path.relpath(path, ROOT).replace(os.sep, "/")
         if "/design/" in rel or rel.endswith("DesignSystem.tsx"):
             continue
@@ -173,10 +202,18 @@ def main():
             src = handle.read()
         for line_no in scan_text(src):
             inert.append("%s:%d" % (rel, line_no))
-    print("dead-controls: %d candidate(s) with no handler, ancestor check not automated"
-          % len(inert))
+    if scanned == 0:
+        sys.stderr.write(
+            "error: swept %s and read no .tsx source file, so this run graded nothing and "
+            "its verdict would be about an empty corpus rather than about the screens. "
+            "The live tree reads 317.\n" % SCAN_ROOT)
+        return 2
+    print("dead-controls: %d candidate(s) with no handler, ancestor check not automated "
+          "(%d file(s) read)" % (len(inert), scanned))
     for row in inert:
         print("  " + row)
+    if inert:
+        return 1
     return 0
 
 

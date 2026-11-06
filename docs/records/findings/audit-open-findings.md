@@ -2304,3 +2304,32 @@ scan; neither is graded by anything yet.
 **Verified:** live run `OK -- 1575 file(s) swept`; self-test 12/12 (two new cases, both driven through
 `main()`); `--root` added so the tree under test can be named; scratch copies removed
 (`git status` shows none).
+
+### Dated correction (2026-11-06) — the dead-controls gate printed defects and passed
+
+`scripts/check-dead-controls.py` is the gate that found two real inert controls
+(`TransactionLogScreen` "Details", `WorkspaceHome` "user profile"). It ended `main()` with an
+unconditional `return 0`: the candidate list went to stdout, the exit code stayed 0, and the wired step
+`scripts/check.sh:1218` therefore passed with a dead control on the tree. Measured by planting
+`<button>Click me</button>` under `ui/src/features/`: the row appeared, exit stayed **0**. A step that
+prints a defect and passes is a report wearing a gate's name — the same class as round 30's floor, in the
+other half of the contract.
+
+**Fixed, both halves in one file:**
+
+| change | evidence |
+|---|---|
+| `sweep_verdict(scanned, candidates)`: 2 when nothing was read, 1 when a control is dead, 0 clean | planted probe → exit **1** with `ui/src/features/__dead_control_probe__/DeadProbe.tsx:2` |
+| a corpus count, printed on every run (`317 file(s) read` today) and refused at zero | copy of the script outside the repo → exit **2**, `error: swept … and read no .tsx source file` |
+| four verdict relationships added to the self-test (0 files, 0 files with candidates, 317/0, 317/1) | self-test now `9 detector cases + 4 verdict cases` |
+
+**Proof the enforce line is load-bearing:** with `if inert: return 1` deleted, the planted probe goes back
+to exit **0** while still printing the row — the pre-fix behaviour reproduced from the fix's own source.
+
+**Kept as a limit, not hidden:** the corpus count excludes nothing, but the candidate scan still skips
+`features/design/` and `DesignSystem.tsx` as measured noise (44 of the 48 hits in the round-156 sweep), and
+the INERT/RESCUED split is still not automated — the summary line says so. So this gate can now fail, but it
+cannot yet tell the two classes apart.
+
+**Verified:** live run 0 candidates over 317 files, exit 0; plant → exit 1; copy → exit 2; mutation → exit 0 as
+before; probe file and scratch directories removed (`git status` clean under `ui/src/features`).
