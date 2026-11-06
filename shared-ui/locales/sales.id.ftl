@@ -637,6 +637,7 @@ payment-method-bank-transfer = Transfer Bank
 payment-method-ewallet = Dompet Digital
 payment-method-pay-later = PayLater
 payment-method-credit = Kredit
+payment-method-gift-card = Kartu Hadiah
 payment-method-card-giro = Kartu / Giro
 payment-method-qris-ewallet = QRIS / E-Wallet
 # Kolom catatan pada pelunasan kasbon (round 211).
@@ -696,6 +697,7 @@ payment-toast-invoice-failed = Gagal menerbitkan faktur pajak
 payment-toast-finalize-failed = Penjualan gagal diselesaikan — periksa riwayat penjualan dan selesaikan secara manual
 payment-toast-void-failed = Penjualan tertunda TIDAK bisa dibatalkan — masih terbuka dan harus dibersihkan secara manual
 payment-toast-receivable-failed = Pembayaran berhasil, tetapi catatan piutang gagal dibuat — catat secara manual
+payment-toast-gift-card-redeem-failed = Pembayaran berhasil, tetapi saldo kartu hadiah TIDAK terpotong — potong saldo kartu secara manual
 payment-pay-later-select-customer = Pilih Pelanggan untuk Kasbon
 payment-pay-later-customer-desc = Kasbon mencatat piutang atas nama akun pelanggan.
 payment-pay-later-open-search = Pilih Pelanggan

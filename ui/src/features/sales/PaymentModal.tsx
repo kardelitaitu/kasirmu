@@ -43,6 +43,8 @@ import CardTenderPanel from './payment/CardTenderPanel';
 import SplitTenderRows from './payment/SplitTenderRows';
 import LoyaltyTenderPanel from './payment/LoyaltyTenderPanel';
 import PayLaterTenderPanel from './payment/PayLaterTenderPanel';
+import GiftCardPayment from '@/features/gift-cards/GiftCardPayment';
+import { redeemGiftCard } from '@/api/giftCards';
 import PaymentModalCustomerBadge from './components/PaymentModalCustomerBadge';
 import { distributeEvenly } from './payment/splitDistribution';
 import { buildCompletedSaleReceipt } from './payment/completedSale';
@@ -85,6 +87,7 @@ const PAYMENT_METHOD_MESSAGE_IDS: Record<PaymentMethod, string> = {
   open_bill: 'payment-open-bill',
   credit: 'payment-method-credit',
   pay_later: 'payment-method-pay-later',
+  gift_card: 'payment-method-gift-card',
   other: 'payment-other-placeholder',
 };
 
@@ -213,6 +216,7 @@ export default function PaymentModal({
   // un-promoted total and fails closed if the splits no longer cover it).
   const [promoPreview, setPromoPreview] = useState<PreviewPromotedTotalResult | null>(null);
   const [pointsWorthMinor, setPointsWorthMinor] = useState<number | null>(null);
+  const [giftCardApplied, setGiftCardApplied] = useState<{ cardNumber: string; amountMinor: number } | null>(null);
 
   const notifyCustomerChange = useCallback(
     (c: CustomerDto | null) => {
@@ -366,13 +370,17 @@ export default function PaymentModal({
   // the dep array holds a value (isEnabled's identity in this file is not
   // something an effect should depend on).
   const loyaltyLicensed = isEnabled(FEATURES.LOYALTY_PROGRAM);
-
+  const giftCardsLicensed = isEnabled(FEATURES.GIFT_CARDS);
 
   // A rail that loads (or reloads) to disabled while QRIS is the chosen
   // tab must not strand the cashier on a hidden surface (agents-5 R1).
   useEffect(() => {
     if (!qrisOffered && method === 'qris') setMethod('cash');
   }, [qrisOffered, method]);
+
+  useEffect(() => {
+    if (!giftCardsLicensed && method === 'gift_card') setMethod('cash');
+  }, [giftCardsLicensed, method]);
 
   // The Open Bill tender is restaurant-only (see `isRestaurantPos` above), so a
   // method chosen while the modal was on a restaurant terminal — or chosen on a
@@ -515,6 +523,7 @@ retryCurrencyLoad,
       setShortfallResult(null);
       setReceiptArgs(null);
       setCompletedSaleId(null);
+      setGiftCardApplied(null);
       setIssuingTaxInvoice(false);
       setSelectedCurrency(total.currency);
       setCustomerSearchQuery('');
@@ -1210,6 +1219,26 @@ retryCurrencyLoad,
         }
       }
 
+      if (giftCardApplied) {
+        try {
+          if (sessionToken) {
+            await redeemGiftCard(
+              sessionToken,
+              giftCardApplied.cardNumber,
+              giftCardApplied.amountMinor,
+              cartCurrency,
+              saleResult.saleId,
+            );
+          }
+        } catch (redeemErr) {
+          console.error('redeemGiftCard failed', redeemErr);
+          addToast({
+            message: requiredLocalized(l10nRef.current, 'payment-toast-gift-card-redeem-failed'),
+            type: 'warning',
+          });
+        }
+      }
+
       setDone(true);
     },
     // orderType is READ in this callback (the dine-in-only table claim) and so must
@@ -1218,7 +1247,7 @@ retryCurrencyLoad,
     // still take the dine-in branch and claim a table.
     [sessionToken, lineItemsInCartCurrency, cartCurrency, tableNumber, orderType, addToast,
      loyaltyAccount, redeemPoints, loyaltyDiscount, selectedCustomer, effectiveTotalInCartCurrency,
-     publishFiredCourses, activeMarketProfile, paymentRails, printKitchenChits, loadKdsOrders],
+     giftCardApplied, publishFiredCourses, activeMarketProfile, paymentRails, printKitchenChits, loadKdsOrders],
   );
 
   // ── Manual QRIS (gateway tender, cashier-asserted reference) ─────────
@@ -1406,6 +1435,12 @@ retryCurrencyLoad,
       if (edcTerminalFailed) return false;
       return true;
     }
+    if (method === 'gift_card') {
+      return (
+        giftCardApplied !== null &&
+        giftCardApplied.amountMinor >= Number(effectiveTotalInCartCurrency)
+      );
+    }
     return true;
     // orderType is read above (the open-bill dine-in table arm) and so must be
     // listed: without it this memo closes over the render-time value, and a cashier
@@ -1413,7 +1448,7 @@ retryCurrencyLoad,
     // bill on a table number. THIRD occurrence of this exact trap in this area
     // (see PosScreen's release guard and PaymentModal's claim guard), which is why
     // the class sweep asserts the rule positively rather than trusting each site.
-  }, [rateUnknown, splitMode, splitComplete, method, otherLabel, sufficient, customerName, tableNumber, orderType, qrReference, creditOffered, creditSettings, total.minor_units, edcTerminalFailed, cashOffered, cardOffered, isRestaurantPos, payLaterOffered, selectedCustomer]);
+  }, [rateUnknown, splitMode, splitComplete, method, otherLabel, sufficient, customerName, tableNumber, orderType, qrReference, creditOffered, creditSettings, total.minor_units, edcTerminalFailed, cashOffered, cardOffered, isRestaurantPos, payLaterOffered, selectedCustomer, giftCardApplied, effectiveTotalInCartCurrency]);
 
   /**
    * Print one kitchen chit per KDS order, when the merchant asked for it (F20).
@@ -1853,6 +1888,26 @@ retryCurrencyLoad,
         }
       }
 
+      if (giftCardApplied) {
+        try {
+          if (sessionToken) {
+            await redeemGiftCard(
+              sessionToken,
+              giftCardApplied.cardNumber,
+              giftCardApplied.amountMinor,
+              cartCurrency,
+              saleResult.saleId,
+            );
+          }
+        } catch (redeemErr) {
+          console.error('redeemGiftCard failed', redeemErr);
+          addToast({
+            message: requiredLocalized(l10n, 'payment-toast-gift-card-redeem-failed'),
+            type: 'warning',
+          });
+        }
+      }
+
       if (change) setChangeDue(change);
       setDone(true);
     } catch (err) {
@@ -1884,7 +1939,7 @@ retryCurrencyLoad,
     } finally {
       setProcessing(false);
     }
-  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, orderType, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total, tenderSnapshot, taxEstimated, publishFiredCourses, activeMarketProfile, storedMethod, methodLabel, paymentRails, printKitchenChits, loadKdsOrders, deductionLocationId, customerReceivablesSummary?.outstandingTotal.minor_units]);
+  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, orderType, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total, tenderSnapshot, taxEstimated, publishFiredCourses, activeMarketProfile, storedMethod, methodLabel, paymentRails, printKitchenChits, loadKdsOrders, deductionLocationId, customerReceivablesSummary?.outstandingTotal.minor_units, giftCardApplied]);
 
   useEffect(() => {
     if (!done || receiptArgs) return;
@@ -2620,6 +2675,23 @@ retryCurrencyLoad,
                             </span>
                           </label>
                         ))}
+                        {giftCardsLicensed && (
+                          <label
+                            className={`payment-method-label payment-method-label--gift_card${method === 'gift_card' ? ' payment-method-label--active' : ''}`}
+                            data-testid="quick-pay-button"
+                          >
+                            <input
+                              type="radio"
+                              name="payment-method"
+                              value="gift_card"
+                              checked={method === 'gift_card'}
+                              onChange={() => setMethod('gift_card')}
+                            />
+                            <span className="payment-method-name">
+                              {requiredLocalized(l10n, PAYMENT_METHOD_MESSAGE_IDS['gift_card'])}
+                            </span>
+                          </label>
+                        )}
                         <div
                           className={`payment-method-label payment-method-label--other${method === 'other' ? ' payment-method-label--active' : ''}`}
                           // This row is a div, not a label, because it holds two controls —
@@ -2819,6 +2891,21 @@ retryCurrencyLoad,
                     loadingSummary={loadingReceivablesSummary}
                     currentTotal={total}
                     creditLimitMinor={creditSettings?.maxLimitMinor ?? 0}
+                  />
+                )}
+
+                {method === 'gift_card' && (
+                  <GiftCardPayment
+                    sessionToken={sessionToken ?? ''}
+                    totalMinor={Number(effectiveTotalInCartCurrency)}
+                    currency={cartCurrency}
+                    onApplied={(amount, code) => {
+                      setTendered(String(amount));
+                      setGiftCardApplied({ cardNumber: code, amountMinor: amount });
+                    }}
+                    onError={(msg) => addToast({ message: msg, type: 'error' })}
+                    onCancel={() => setMethod('cash')}
+                    onComplete={() => {}}
                   />
                 )}
               </>

@@ -78,6 +78,7 @@ payment-method-bank-transfer = Bank Transfer
 payment-method-ewallet = E-Wallet
 payment-method-pay-later = PayLater
 payment-method-credit = Credit
+payment-method-gift-card = Gift Card
 payment-method-card-giro = Card / Giro
 payment-method-qris-ewallet = QRIS / E-Wallet
 # Kasbon (receivable) settlement's note field (round 211).
@@ -227,6 +228,7 @@ payment-toast-invoice-failed = Failed to issue tax invoice
 payment-toast-finalize-failed = The sale could not be finalised — check the sale history and settle it manually
 payment-toast-void-failed = The pending sale could NOT be voided — it is still open and must be cleared manually
 payment-toast-receivable-failed = Payment succeeded, but the receivable entry could not be created — record it manually
+payment-toast-gift-card-redeem-failed = Payment succeeded, but the gift card balance was NOT deducted — deduct the card balance manually
 payment-pay-later-select-customer = Select Customer for Kasbon
 payment-pay-later-customer-desc = Kasbon records a receivable against an identified customer account.
 payment-pay-later-open-search = Select Customer

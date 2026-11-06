@@ -1,12 +1,7 @@
-// ── UNREACHABLE, AND BLOCKED ON THE BACKEND ──────────────────────
-// Nothing imports this file. `census-orphan-modules.py` reports it on every run, and it is the
-// ONLY complete gift-card tender panel in the tree -- so it is not superseded, it is waiting.
-//
-// Mounting it is blocked by three things that are not UI glue, each verified at source in
-// todo-gift-card-redemption-ordering.md: `payments.method` is a closed CHECK with no gift
-// member, the Staff/checkout RBAC preset carries no `giftcards:redeem`, and this component
-// needs a `saleId` that `PaymentModal` does not have before `completeSaleScoped`. Two of the
-// three are an owner decision.
+// ── GIFT CARD TENDER PANEL ────────────────────────────────────────
+// Rendered by PaymentModal when the gift card payment method is selected.
+// Resolves card balance, currency guards, and stages the tender amount for checkout.
+// When saleId is present, redeems immediately; otherwise deferred to post-commit.
 // ─────────────────────────────────────────────────────────────────
 
 import { useCallback, useRef, useState } from 'react';
@@ -24,8 +19,8 @@ export interface GiftCardPaymentProps {
   totalMinor: number;
   /** Currency code. */
   currency: string;
-  /** The current sale id. */
-  saleId: string;
+  /** The current sale id (optional for pre-commit checkout tender). */
+  saleId?: string;
   /** Called with the amount that the gift card should cover (minor units). */
   onApplied: (amountMinor: number, cardNumber: string) => void;
   /** Called to show an error / toast message. */
@@ -122,7 +117,9 @@ export default function GiftCardPayment({
     loadingRef.current = true;
     setLoading(true);
     try {
-      await redeemGiftCard(sessionToken, code, amountToRedeem, currency, saleId);
+      if (saleId) {
+        await redeemGiftCard(sessionToken, code, amountToRedeem, currency, saleId);
+      }
       onApplied(amountToRedeem, code);
       onComplete();
     } catch (err) {

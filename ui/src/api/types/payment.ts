@@ -17,6 +17,7 @@ export type PaymentMethod =
   | 'open_bill'
   | 'credit'
   | 'pay_later'
+  | 'gift_card'
   | 'other';
 
 /**
