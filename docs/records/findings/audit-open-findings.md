@@ -2922,3 +2922,32 @@ own assertion style; helpers do not transfer). Both reddened immediately and wer
 the self-test grading the walker graded itself in the process.
 
 Harness rerun → **82 checkers, 2 SURVIVED, 80 killed** (3 → 2).
+
+### Dated correction (2026-11-06, round 48) — `verify-exhaustive-deps.py`: `run_eslint` was ungraded
+
+`measure()` had six thorough pure cases; `run_eslint()` — the only leg that touches the real world — was
+never called by the self-test. A blanked stub crashes `main()` on the tuple unpack, but the quiet mutations
+are scope ones, and each now has a named row:
+
+| mutation | self-test |
+|---|---|
+| drop `cwd=UI` | exit 2: the fake linter's marker never appears — it ran in the wrong tree |
+| existence guard dropped (`if False`) | exit 2: `FileNotFoundError` where the friendly SystemExit refusal is the contract |
+| stderr concat dropped | exit 2: `STDERR-PING` missing from the captured output — config errors would surface empty |
+| `return None` (the sweep's stub) | exit 1: `TypeError` on the tuple unpack — killed loudly, not by name |
+| restored | exit 0, 10 cases (6 pure + 4 through the fake) |
+
+**Fix:** a fake eslint in a scratch `node_modules/.bin/` (both spellings: `eslint.cmd` for nt, an executable
+`eslint` sh script for the other branch — only the .cmd half is provable on this machine), which `type`s a
+marker (proving WHERE it ran), pings stderr, emits one real-shaped `exhaustive-deps` finding, and exits 1.
+The `UI` module global is repointed and restored in a `finally`. The real eslint is never invoked: the
+self-test must not depend on `node_modules` or take as long as the gate itself. The docstring's
+`no file is read, written or shelled out to` claim and the `--self-test` help text were adjusted before
+they went stale.
+
+Write-time confession: the `global UI` declaration was missed on the first run — the same Python trap
+round 47 recorded for `RUNNERS`, caught immediately by the same class of check. Second occurrence of an
+identical mistake in two rounds is a pattern, not an accident: every monkeypatched module global now gets
+its `global` line written at the same time as the repoint.
+
+Harness rerun → **82 checkers, 1 SURVIVED, 81 killed** (2 → 1).

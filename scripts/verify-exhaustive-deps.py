@@ -34,8 +34,10 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UI = os.path.join(REPO, "ui")
@@ -148,8 +150,12 @@ def self_test() -> int:
     state. The rest cover the fail-closed branches measure() already has, because a
     self-test that only tests the happy path proves nothing about the guard rails.
 
-    Pure: synthetic strings only, no file is read, written or shelled out to.
+    Pure measure() cases, plus run_eslint() graded end-to-end against a FAKE linter in
+    a scratch tree (created under tempfile.mkdtemp, removed in a finally; the UI module
+    global is repointed for them and restored). The real eslint is never invoked: the
+    self-test would then depend on node_modules and take as long as the gate itself.
     """
+    global UI
     bad: list[str] = []
 
     def want(name: str, got, expect) -> None:
@@ -185,10 +191,76 @@ def self_test() -> int:
     except SystemExit:
         pass
 
+    # run_eslint() -- the only leg that touches the real world, and no case reached it:
+    # everything above feeds measure() strings directly, so the sweep blanked the runner
+    # invisibly (2026-11-06). A blanked stub crashes main() on the tuple unpack, but the
+    # quiet mutations are scope ones: dropping cwd=UI lints the WRONG TREE, dropping the
+    # stderr concat loses config errors, and dropping the existence guard turns the
+    # friendly refusal into a raw FileNotFoundError. Graded against a fake eslint that
+    # types a marker (proving WHERE it ran), pings stderr, emits one real-shaped finding
+    # and exits 1 -- exit codes must be captured, per the module docstring's own history.
+    # The UI global is repointed and restored in a finally.
+    def ok(name, cond):
+        if not cond:
+            bad.append(name)
+
+    def case(name, got, expect):
+        if got != expect:
+            bad.append(f"{name}: expected {expect!r}, got {got!r}")
+
+    MARKER = "MARKER-exhdeps-7f3a"
+    scratch = tempfile.mkdtemp(prefix="exhdeps-")
+    real_ui = UI
+    try:
+        bin_dir = os.path.join(scratch, "node_modules", ".bin")
+        os.makedirs(bin_dir)
+        with open(os.path.join(scratch, "marker.txt"), "w", encoding="utf-8") as fh:
+            fh.write(MARKER + "\n")
+        with open(os.path.join(bin_dir, "eslint.cmd"), "w", encoding="ascii") as fh:
+            fh.write("@echo off\r\n"
+                     "type marker.txt\r\n"
+                     "echo STDERR-PING 1>&2\r\n"
+                     "echo c.tsx 1:7 warning Hook has a missing dependency "
+                     "react-hooks/exhaustive-deps\r\n"
+                     "echo 2 problems ^(0 errors, 2 warnings^)\r\n"
+                     "exit /b 1\r\n")
+        with open(os.path.join(bin_dir, "eslint"), "w", encoding="ascii") as fh:
+            fh.write("#!/bin/sh\n"
+                     "cat marker.txt\n"
+                     "echo STDERR-PING >&2\n"
+                     'echo "c.tsx 1:7 warning Hook has a missing dependency '
+                     'react-hooks/exhaustive-deps"\n'
+                     'echo "2 problems (0 errors, 2 warnings)"\n'
+                     "exit 1\n")
+        os.chmod(os.path.join(bin_dir, "eslint"), 0o755)
+        try:
+            UI = scratch
+            code, output = run_eslint()
+            case("run_eslint captures the fake linter's exit code", code, 1)
+            case("it runs IN the repointed UI (marker typed) and keeps stderr",
+                 (MARKER in output, "STDERR-PING" in output), (True, True))
+            want("the full pipeline measures the fake run", measure(output, code), (2, 1))
+
+            bare = os.path.join(scratch, "bare")
+            os.makedirs(bare)
+            UI = bare
+            try:
+                run_eslint()
+                bad.append("missing eslint: expected the SystemExit refusal, got a value")
+            except SystemExit:
+                pass
+            except Exception as exc:
+                bad.append("missing eslint: expected the SystemExit refusal, got "
+                           + type(exc).__name__)
+        finally:
+            UI = real_ui
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (6 cases, no files touched)")
+    print("SELF-TEST OK (10 cases: 6 pure + 4 through a fake eslint, one scratch tree removed)")
     return 0
 
 
