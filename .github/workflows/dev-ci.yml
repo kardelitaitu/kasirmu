@@ -1698,6 +1698,16 @@ jobs:
         run: python3 scripts/verify-root-policy.py
       - name: Root allowlist policy self-test
         run: python3 scripts/verify-root-policy.py --self-test
+      # Doc uniqueness: 0.1s, standard library only, guards conflicting-authority doc copies.
+      - name: Doc uniqueness
+        run: python3 scripts/verify-doc-uniqueness.py
+      - name: Doc uniqueness self-test
+        run: python3 scripts/verify-doc-uniqueness.py --self-test
+      # Ownership map parity: 0.2s, single source modules/ownership.json vs Rust and Python.
+      - name: Ownership map parity
+        run: |
+          node scripts/generate-ownership-map.mjs --check
+          python3 scripts/verify-namespace-governance.py --check-ownership
 
       # ORDERING RULE FOR THIS JOB, and the reason these two sit last rather than
       # where they used to. Every step above measured 0-2s; these two are whole-
