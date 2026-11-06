@@ -3032,3 +3032,38 @@ Python gate sweep (round 50, check.sh `step` commands, 144 steps) → **143 gree
 `verify-core-size.py`: kasirmu-core non-db grew +4 production lines over the 40805 ceiling — from other
 lanes' core commits (`428694f9c` et al.); the gate's input set (crates/kasirmu-core/src) is untouched by
 `25051aa8b`, which touched only this script. The ceiling call belongs to whoever grew core.
+
+### Round 51 (2026-11-07) — census: what the sabotage survey actually covers in check.sh
+
+The round-50 note above said "~40 bash gate steps outside the python sweep remain unpoliced".
+Measured now, that phrasing is wrong at the mechanism level and THIS note supersedes it:
+scripts/sabotage-selftests.py globs `scripts/{verify,check}-*.{py,sh,mjs}` — bash IS surveyed —
+and keeps files containing the quoted literal `"--self-test"`. The genuinely unpoliced set is
+smaller, different, and nameable.
+
+check.sh, measured: **187 `step` invocations** — python3 143, bash 19, node 17, cargo 3, sh 2,
+bare `python` 1, RUSTDOCFLAGS-wrapped rustdoc 1, prose-pseudo 1 ("migration idempotency": the
+quoted arg is prose, the real body is the `bash -c` that follows). Python splits 79 base / 65
+`--self-test` twins.
+
+| bucket | count | policing |
+|---|---|---|
+| scripts/ verify-*/check-* with a self-test | 82 | survey blanks them — 0 SURVIVED (round 50) |
+| docs-auditor checkers (.agents/skills/docs-auditor/scripts/) | 11 | self-tested by explicit calls in scripts/check-auditor-selftests.sh — outside the survey glob |
+| generate-*.mjs `--check` | 2 | scripts/__tests__/*.test.mjs via the node --test step |
+| test-*.sh / test-*.py falsification steps | ~15 | the step IS the police: a gutted test fails the gate |
+| cargo fmt / clippy / rustdoc | 3 | compiler-enforced; nothing project-authored to gut |
+| migration smoke + idempotency | 2 | behavioral (run migrate; run twice) |
+
+Named gaps — a self-test exists but its mutation is never blanked (survey glob misses them):
+1. `.agents/skills/docs-auditor/scripts/check-*.py` × 11 — glob covers scripts/ only;
+2. `website/scripts/verify-deploy.mjs` — glob covers scripts/ only;
+3. `scripts/backup-db.sh`, `scripts/restore-db.sh` — names do not match verify-*/check-*.
+
+Recorded, not defects:
+- verify-ipc-parity.py: surveyed; its --self-test has NO dedicated check.sh step (possibly deliberate: file comments record it once cost 163–289 s); the survey still polices it locally, so this is a wiring observation, not a defect
+- verify-website-assets.py: no --self-test by design (the survey docstring records why);
+- the survey run itself stays advisory-only (scripts/gates.json; see the 2026-11-06 correction).
+
+Next candidate (round 52): widen the survey enumeration to the three outside-glob sets —
+expected ~+15 checkers, all must measure 0 SURVIVED; a survivor is a new register row.
