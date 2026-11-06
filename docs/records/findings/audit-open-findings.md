@@ -3360,3 +3360,40 @@ PASS); then the full staged survey, 91/0/1/4, exit 0.
 
 Relocation straggler remaining: 1 — check-font-bundle.mjs. Next candidate (round 60):
 the same diagnosis on its JS self-test, the last unmeasured detector in the repo.
+
+### Round 60 (2026-11-07) — the last straggler measured; the survey is fully measured
+
+`8d7007482` converts check-font-bundle.mjs from RELOCATION-SENSITIVE to
+KILLED. Survey end state: 92 killed, 0 SURVIVED, 0 RELOCATION-SENSITIVE,
+4 NO MUTATABLE, exit 0 — every detector the 96-checker survey stages is now
+measured. This closes the campaign this register has tracked since round 50.
+
+The defect was not in the checker's cases; it was in the module the checker imports.
+font-freshness.mjs computed FONT_SURFACE at MODULE LOAD -- line 61 called
+fontSurfaceSheets(repoRoot(HERE)) inside the array initializer -- and that function
+throws when git cannot answer, by contract, because returning [] would let a
+freshness check report CURRENT by measuring nothing. The contract was right and the
+placement was wrong: a throw at import time makes the module unimportable anywhere
+git cannot answer -- the harness staging copy, a bundled tool, a test runner cwd'd
+elsewhere -- so check-font-bundle's self-test in the copy never ran at all: node
+exited 1 with a stack trace from the import, before its first case.
+
+The fix separates the loud answer from the load fact. Load records the failure:
+loadDerivedSheets is null when git could not answer, FONT_SURFACE degrades to its
+static entries, and surfaceCommitsSince re-derives lazily against the repo its caller
+names -- restoring the narrow filter in a checkout, or firing the same loud throw
+where git still cannot answer. fontSurfaceSheets itself is untouched, and its throw
+contract keeps its independent pin: scripts/__tests__/font-freshness.test.mjs,
+assert.throws(/git ls-files failed/), ran green after the fix (node --test, 8/8).
+
+Two-gate proof: live check-font-bundle.mjs --self-test exit 0; the harness
+build_temp_root staging running the copy's self-test, exit 0 ("SELF-TEST OK (35 rows,
+no build read)"; the stderr git-fatal noise in a copy is cosmetic); then the full
+staged survey, 92/0/0/4, exit 0.
+
+Survey fully measured. Remaining honest gaps: the 4 NO MUTATABLE checkers (no
+mutable function to gut -- verify-deploy.mjs, verify-docker-digests.sh,
+verify-scoped-authorization.sh, verify-updater-signature.mjs) and whatever new
+checkers land unmeasured next. Next candidate (round 61+): re-run the survey against
+new arrivals, and consider hardening the harness itself (e.g. asserting staged
+junction read-only-ness).
