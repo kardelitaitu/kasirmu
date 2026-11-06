@@ -3067,3 +3067,48 @@ Recorded, not defects:
 
 Next candidate (round 52): widen the survey enumeration to the three outside-glob sets —
 expected ~+15 checkers, all must measure 0 SURVIVED; a survivor is a new register row.
+
+### Round 52 (2026-11-07) — survey widened past scripts/; the relocation control re-baselines the whole matrix
+
+`09584a8b3` and `a0ce023ff` land the round-51 census's next candidate, with one addition the
+widening forced: a **relocation control**. The harness runs each mutated checker from a temp
+copy — but a self-test that resolves paths through `__file__` fails from a copy for reasons
+that have nothing to do with the mutation, and that failure scored as a KILL it did not earn.
+The control now runs the UNMUTATED file through the same temp treatment first; a self-test
+that cannot survive relocation gets its own verdict (RELOCATION-SENSITIVE) instead of a
+borrowed one. Measured immediately: check-cite-lines.py is green in place and red from a copy —
+the widened sweep would have reported a false kill without the control. `--skip` joins `--limit`
+so the doubled matrix fits one tool call (measured in three chunks).
+
+Measured state, all rows through the real code path (96 checkers enumerated, +14 outside scripts/):
+
+| set | killed | SURVIVED | RELOCATION-SENSITIVE | NO MUTATABLE FUNCTION |
+|---|---|---|---|---|
+| existing 1–41 | 25 | 0 | 16 | 0 |
+| existing 42–82 | 26 | 0 | 13 | 2 (docker-digests.sh, scoped-authorization.sh — known limits) |
+| new 14 | 6 | 6 | 1 (check-cite-lines.py) | 1 (verify-deploy.mjs — inline body) |
+| total | 57 | 6 | 30 | 3 |
+
+**Finding 1 — six new survivors, all docs-auditor checkers.** Gutting the first candidate
+function leaves each self-test green: check-api-surface.py (`registered`), check-audit-stamps.py
+(`_git_ignored`), check-gate-runners.py (`repo_root`), check-nav-paths.py (`repo_root`),
+check-orphans.py (`md_files`), check-site-links.py (`_display`). Same class as rounds 29–33 and
+the 18 survivors of 2026-11-06; the fix pattern that worked there applies: main() delegates to
+the same function the cases grade, or the cases grow until the gutted detector goes red.
+Open until each is fixed and re-measured killed.
+
+**Finding 2 — the relocation control re-baselines history.** The round-50 note above says
+"82 checkers, 0 SURVIVED, 82 killed". With the control, 28 of those 82 prove UNMEASURABLE by
+the temp-copy mechanism (26 RELOCATION-SENSITIVE + 2 NO MUTATABLE) — the old count scored them
+as killed without evidence. This note supersedes that number: the honest state is 57 proven
+kills, 30 unmeasured, 6 survivors, 3 structurally unmutatable. Nothing was gated on the old
+count (the survey stays advisory per scripts/gates.json), so no gate decision changes — but
+every future register row must use the new vocabulary.
+
+**Finding 3 — the exit-0 discipline held.** Every chunk exited 0 despite 36 non-kill rows:
+RELOCATION-SENSITIVE and NO MUTATABLE FUNCTION are honest "cannot measure" states, not verdicts,
+and only SURVIVED reddens the survey — exactly the semantics the summary line now spells out.
+
+Next candidate (round 53): make the mutation copy a TREE copy (scripts/ + the two outside
+directories, relative layout preserved) so `__file__`-relative self-tests run true — the 30
+RELOCATION-SENSITIVE rows become measurable, and the six survivors become the only red left.
