@@ -720,8 +720,14 @@ reproduce; each correction is inline, in the bullet that carries it.
   Owner: `scripts/` for the files; `.github/workflows/dev-ci.yml` for any of them meant to be
   enforced.
 
-  **Progress 2026-09-29 — 2 of the 7 now have a runner; 5 remain.** The census above still
-  holds for the other five and has not been re-run. What changed:
+  **Progress 2026-11-06 -- re-measured the named-seven today; the "5 remain" line is stale.**
+  Re-measured by grepping each name against the live runners (
+  `.github/workflows/dev-ci.yml`, `scripts/check.sh`, `scripts/check-ui.mjs`,
+  `.githooks/pre-commit`) plus `scripts/gates.json`, on the tracked `scripts/verify-*` set
+  (51 files today; the earlier census of 30 predated the self-test sweep that added ~20
+  self-test-only companions). Today **0 of the named-seven are unwired in all** -- every one
+  of the seven is named in at least one live runner. The honest split today is not "unwired
+  vs wired" but "fully wired and running vs self-test-only vs resolved-not-to-wire":
   `verify-flaky-quarantine.py` and `verify-dockerfile-workspace.py` are both invoked by
   `check.sh` now, each with a `--self-test` beside it, all four steps registered in
   `gates.json`. `verify-flaky-quarantine.py` also gained a real `--self-test` (it used to
