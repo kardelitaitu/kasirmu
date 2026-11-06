@@ -368,11 +368,16 @@ def main() -> int:
         return self_test()
     rows = survey(args.limit, args.skip)
     survivors = [r for r in rows if r[4] == "SURVIVED"]
+    relocated = [r for r in rows if r[4] == "RELOCATION-SENSITIVE"]
+    unmutatable = [r for r in rows if r[4] == "NO MUTATABLE FUNCTION"]
+    killed = len(rows) - len(survivors) - len(relocated) - len(unmutatable)
     for name, fn, before, after, verdict in rows:
         print("  %-46s %-28s %-12s exit %s -> %s" % (name, fn[:28], verdict, before, after))
     print("")
     print("sabotage: %d checker(s), %d SURVIVED (their self-test did not notice the gutted "
-          "detector), %d killed." % (len(rows), len(survivors), len(rows) - len(survivors)))
+          "detector), %d killed, %d RELOCATION-SENSITIVE (self-test cannot run from a copy; "
+          "unmeasured, not proven), %d NO MUTATABLE FUNCTION."
+          % (len(rows), len(survivors), killed, len(relocated), len(unmutatable)))
     return 1 if survivors else 0
 
 
