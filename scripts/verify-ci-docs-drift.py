@@ -839,6 +839,35 @@ def self_test() -> int:
               len(hook_workflow_pointers_from_text(
                   "x .github/workflows/nightly.yml y", {"dev-ci.yml"})), 1)
 
+    # load_gates itself -- the fail-closed validator main() trusts before anything
+    # else. Graded against synthetic manifests in a tempdir; the module constant is
+    # rebound through globals() for the duration (self_test reads it earlier, so a
+    # global statement here would not compile) and restored in finally.
+    _saved_manifest = globals()["GATES_MANIFEST"]
+    try:
+        with tempfile.TemporaryDirectory() as tdm:
+            globals()["GATES_MANIFEST"] = Path(tdm) / "gates.json"
+            ok_status = sorted(VALID_STATUS)[0]
+            globals()["GATES_MANIFEST"].write_text(json.dumps({"gates": [
+                {"id": "alpha", "status": ok_status,
+                 "runners": {"check.sh": ["one-needle"]}},
+            ]}), encoding="utf-8")
+            if load_gates() is None:
+                failed.append("load_gates: a minimal valid manifest must load")
+            globals()["GATES_MANIFEST"].write_text(json.dumps({"gates": [
+                {"id": "alpha", "status": ok_status, "runners": "not-a-list"},
+            ]}), encoding="utf-8")
+            if load_gates() is not None:
+                failed.append("load_gates: a string runners value must fail closed")
+            globals()["GATES_MANIFEST"].write_text("{not json", encoding="utf-8")
+            if load_gates() is not None:
+                failed.append("load_gates: invalid JSON must fail closed")
+            globals()["GATES_MANIFEST"].unlink()
+            if load_gates() is not None:
+                failed.append("load_gates: a missing manifest must fail closed")
+    finally:
+        globals()["GATES_MANIFEST"] = _saved_manifest
+
     print()
     if failed:
         print(f"  {len(failed)} self-test case(s) FAILED:")

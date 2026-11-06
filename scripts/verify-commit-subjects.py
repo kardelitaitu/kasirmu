@@ -347,6 +347,35 @@ def self_test() -> int:
     # And the pattern must be anchored at the start.
     want(not pat.match("please fix(x): y"), "pattern is anchored at the start")
 
+    # The git plumbing -- the corpus comes out of it, and its docstring records why
+    # None (refusal) must stay distinct from '' (empty). Graded against a throwaway
+    # repo; ROOT is rebound through globals() for the duration (self_test reads ROOT
+    # earlier, so a global statement here would not compile) and restored in finally.
+    import shutil as _shutil
+    import tempfile
+    extra = 0
+    if _shutil.which("git"):
+        with tempfile.TemporaryDirectory() as td:
+            g = Path(td)
+            subprocess.run(["git", "init", "-q"], cwd=g, capture_output=True)
+            _saved_root = globals()["ROOT"]
+            try:
+                globals()["ROOT"] = g
+                extra += 1
+                top = (git("rev-parse", "--show-toplevel") or "").strip()
+                if Path(top).resolve() != g.resolve():
+                    bad.append(f"git rev-parse: expected the throwaway repo, got {top!r}")
+                extra += 1
+                if git("log", "-1", "HEAD") is not None:
+                    bad.append("git log in a commit-less repo must refuse with None")
+                extra += 1
+                if git("status", "--porcelain") != "":
+                    bad.append("an empty-but-successful command must return '', not None")
+            finally:
+                globals()["ROOT"] = _saved_root
+    else:
+        print("  (git unavailable: the plumbing cases are skipped)")
+
     print(f"\n  {'self-test: rule extraction and matching both correct' if not bad else f'{bad} failure(s)'}")
     return 1 if bad else 0
 

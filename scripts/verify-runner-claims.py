@@ -244,10 +244,29 @@ def self_test() -> int:
     if claims_in(corrected):
         bad.append("a corrected sentence must no longer carry the claim")
 
+    # live_ci_scripts is the liveness oracle every claim is graded against; a gutted
+    # one must turn the self-test red. The workflow feed is patched to a synthetic
+    # file so the case stays hermetic, and a vanished file must be skipped, not fatal.
+    global _live_workflow_files
+    import tempfile
+    _saved_feed = _live_workflow_files
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            wf = Path(td) / "deploy.yml"
+            wf.write_text("      run: python scripts/alpha.py\n"
+                          "      run: bash scripts/beta.sh\n"
+                          "      run: node scripts/gamma.mjs\n", encoding="utf-8")
+            _live_workflow_files = lambda: [wf, Path(td) / "gone.yml"]
+            got = live_ci_scripts()
+            if got != {"alpha.py", "beta.sh", "gamma.mjs"}:
+                bad.append(f"live_ci_scripts: expected the three basenames, got {got!r}")
+    finally:
+        _live_workflow_files = _saved_feed
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (12 cases, no files touched)")
+    print("SELF-TEST OK (%d cases, no files touched)" % (12 + 1))
     return 0
 
 

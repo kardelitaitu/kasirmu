@@ -115,10 +115,24 @@ def self_test() -> int:
         if isinstance(got, dict):
             bad.append(f"{label} must not load as a mapping")
 
+    # The re-export main() consumes: live_workflows() must hand the live set through
+    # unchanged. The rule itself is graded in scripts/_live_workflows.py; here the
+    # feed is stubbed so the plumbing is pinned without touching the live tree.
+    global _live
+    _saved_live = _live
+    _sentinel = [Path("a.yml"), Path("b.yml")]
+    try:
+        _live = lambda: _sentinel
+        got = live_workflows()
+        if got != _sentinel or not all(isinstance(p, Path) for p in got):
+            bad.append(f"live_workflows must hand main() the live set unchanged, got {got!r}")
+    finally:
+        _live = _saved_live
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (5 cases, no files touched)")
+    print("SELF-TEST OK (%d cases, no files touched)" % (5 + 1))
     return 0
 
 

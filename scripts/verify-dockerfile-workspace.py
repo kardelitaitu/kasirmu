@@ -319,6 +319,31 @@ def self_test() -> int:
     elif "NOT by b" not in found[0]:
         failures.append(f"divergence does not name the missing file: {found[0]}")
 
+    # The workspace reader -- the priming build's member list comes out of it, so a
+    # gutted one must turn the self-test red. CARGO_TOML and ROOT are patched to a
+    # throwaway workspace for the duration; restored in finally.
+    global CARGO_TOML, ROOT
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        crates = root / "crates"
+        (crates / "alpha").mkdir(parents=True)
+        (crates / "beta").mkdir()
+        (root / "Cargo.toml").write_text(
+            '[workspace]\n'
+            'members = [\n'
+            '    "crates/*",\n'
+            ']\n',
+            encoding="utf-8")
+        _saved_root, _saved_toml = ROOT, CARGO_TOML
+        try:
+            ROOT, CARGO_TOML = root, root / "Cargo.toml"
+            got = workspace_members()
+            if got != ["crates/alpha", "crates/beta"]:
+                failures.append(f"workspace_members: expected the two globbed crates, got {got!r}")
+        finally:
+            ROOT, CARGO_TOML = _saved_root, _saved_toml
+
     for f in failures:
         print(f"SELFTEST FAIL: {f}")
     if failures:

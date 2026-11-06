@@ -706,10 +706,27 @@ def self_test() -> int:
         print("FAIL self-test: the census surface is not strictly wider than the blocking "
               "one -- the two questions have collapsed back into one", file=sys.stderr)
         failures += 1
+    # The path formatter -- every finding is prefixed with it, so a gutted one must
+    # turn the self-test red. Both branches, both pure string work: a path under ROOT
+    # relativises; one outside falls back to an absolute posix path.
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        got = _rel(ROOT / "scripts" / "verify-ftl-orphans.py")
+        if got != "scripts/verify-ftl-orphans.py":
+            failures += 1
+            print("FAIL self-test: a ROOT-relative path must relativise, got %r" % (got,),
+                  file=sys.stderr)
+        got2 = _rel(Path(td) / "nested" / "x.ftl")
+        if (not isinstance(got2, str) or "\\" in got2 or not got2.endswith("x.ftl")
+                or not Path(got2).is_absolute()):
+            failures += 1
+            print("FAIL self-test: a path outside ROOT must fall back to an absolute "
+                  "posix path, got %r" % (got2,), file=sys.stderr)
+
     if failures:
         print(f"self-test: {failures} FAILURE(S)", file=sys.stderr)
         return 1
-    print(f"self-test: OK (7 directions exercised, {len(one_sided)} one-sided keys detected)")
+    print(f"self-test: OK (9 directions exercised, {len(one_sided)} one-sided keys detected)")
     return 0
 
 

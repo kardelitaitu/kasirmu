@@ -286,6 +286,21 @@ def self_test(host: list[str] | None) -> int:
         if scratch.exists():
             scratch.unlink()
 
+    # The classifier -- which files the walker even hands to the host. Pure suffix
+    # work; a gutted one must turn the self-test red before any real script runs.
+    cases += 1
+    if is_powershell(Path("tools") / "build.ps1") is not True:
+        bad.append("a .ps1 path must classify as PowerShell")
+    cases += 1
+    if is_powershell(Path("tools") / "BUILD.PS1") is not True:
+        bad.append("the suffix test must fold case: BUILD.PS1 is still PowerShell")
+    cases += 1
+    if is_powershell(Path("tools") / "build.ps1.bak") is not False:
+        bad.append("a .bak file must not classify as PowerShell")
+    cases += 1
+    if is_powershell(Path("tools") / "build.py") is not False:
+        bad.append("a .py file must not classify as PowerShell")
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2

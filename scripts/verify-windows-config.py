@@ -436,6 +436,28 @@ def self_test() -> int:
           f"{len(walked)} tauri.conf.json walked" in line2
           and f"{len(SOURCE_MANIFESTS)} source app.manifest checked" in line2, line2)
 
+    # The walker's one rule, graded through the configs parameter the function
+    # already takes for exactly this purpose -- synthetic files, no live tree.
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        per_machine = Path(td) / "per-machine.json"
+        per_machine.write_text(json.dumps(
+            {"bundle": {"windows": {"nsis": {"installMode": "perMachine"}}}}),
+            encoding="utf-8")
+        got = check_tauri_configs(False, [per_machine])
+        check("walker: an explicit perMachine installMode must be flagged",
+              isinstance(got, list) and len(got) == 1 and "perMachine" in got[0], got)
+        current_user = Path(td) / "current-user.json"
+        current_user.write_text(json.dumps(
+            {"bundle": {"windows": {"nsis": {"installMode": "currentUser"}}}}),
+            encoding="utf-8")
+        check("walker: an explicit currentUser installMode must pass clean",
+              check_tauri_configs(False, [current_user]) == [], "no errors")
+        no_nsis = Path(td) / "no-nsis.json"
+        no_nsis.write_text(json.dumps({"bundle": {}}), encoding="utf-8")
+        check("walker: a config without an nsis block is skipped, not flagged",
+              check_tauri_configs(False, [no_nsis]) == [], "no errors")
+
     print()
     if failures:
         print(f"self-test: {failures} FAILURE(S) — the floor is weaker than claimed",

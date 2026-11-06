@@ -345,6 +345,35 @@ def self_test() -> int:
     if entries_with_dead_file_refs("**O-H06 bare**\nnothing cited here\n"):
         bad.append("  dead-ref: an entry citing nothing must not be flagged")
 
+    # The git plumbing -- every ledger number flows out of it, so a gutted wrapper
+    # must turn the self-test red. Graded against a throwaway repo; REPO is patched
+    # for the duration and restored in finally.
+    global REPO
+    import shutil as _shutil
+    import tempfile
+    extra = 0
+    if _shutil.which("git"):
+        with tempfile.TemporaryDirectory() as td:
+            g = Path(td)
+            subprocess.run(["git", "init", "-q"], cwd=g, capture_output=True)
+            _saved_repo = REPO
+            try:
+                REPO = g
+                extra += 1
+                top = (git("rev-parse", "--show-toplevel") or "").strip()
+                if Path(top).resolve() != g.resolve():
+                    bad.append("  git rev-parse: expected the throwaway repo, got %r" % (top,))
+                extra += 1
+                if git("status", "--porcelain") != "":
+                    bad.append("  git status in a clean repo: expected empty stdout")
+                extra += 1
+                if git("definitely-not-a-git-command") != "":
+                    bad.append("  a failing git command must return empty stdout")
+            finally:
+                REPO = _saved_repo
+    else:
+        print("  (git unavailable: the plumbing cases are skipped)")
+
     if bad:
         sys.stderr.write("SELF-TEST WRONG:\n" + "\n".join(bad) + "\n")
         return 2
@@ -352,7 +381,7 @@ def self_test() -> int:
     # dead-ref rule. Counted explicitly because a case that runs but is not counted
     # reads as coverage it is not -- the same shape as a gate that cannot fail.
     print("SELF-TEST OK (%d cases, no file read)"
-          % (len(SUBJECT_CASES) + len(INLINE_CASES) + len(SECTION_CASES) + 1 + 4 + 6))
+          % (len(SUBJECT_CASES) + len(INLINE_CASES) + len(SECTION_CASES) + 1 + 4 + 6 + extra))
     return 0
 
 
