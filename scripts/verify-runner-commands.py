@@ -36,7 +36,9 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -127,7 +129,10 @@ def dangling(files: list[Path]) -> tuple[list[tuple[str, str]], int]:
 
 
 def self_test() -> int:
-    """Synthetic runner text only. No file is created, read or written."""
+    """Synthetic runner text, plus two live_runner_files() cases over a scratch tree
+    (created under tempfile.mkdtemp, removed in a finally; RUNNERS is repointed for
+    them and restored). Nothing in the checkout is read or written."""
+    global RUNNERS
     bad: list[str] = []
 
     # The POSIX spelling used by check.sh and the workflows.
@@ -162,10 +167,54 @@ def self_test() -> int:
     if references("      node scripts/check-links.mjs --self-test") != ["scripts/check-links.mjs"]:
         bad.append("a real step must still be parsed as a reference")
 
+    # Two local assertion helpers, matching this file's inline bad.append style.
+    def ok(name, cond):
+        if not cond:
+            bad.append(name)
+
+    def case(name, got, expect):
+        if got != expect:
+            bad.append(f"{name}: expected {expect!r}, got {got!r}")
+
+    # live_runner_files() -- the walker that decides WHICH files the gate reads, and no
+    # case reached it: everything above grades text handed to references() directly, so
+    # the sweep blanked it invisibly (2026-11-06). A blanked stub crashes dangling()
+    # loudly; the quiet mutations are scope ones -- the attic skip (a retired runner
+    # rejoining the corpus makes false findings), the plain-file branch (the hook files
+    # are runners too, not just the workflow directory), and the yaml extension. Graded
+    # against a scratch tree; RUNNERS is a module global, repointed here and restored in
+    # a finally.
+    scratch = Path(tempfile.mkdtemp(prefix="runnerfiles-"))
+    try:
+        wf = scratch / "workflows"
+        wf.mkdir()
+        (wf / "a.yml").write_text("run: python3 scripts/a.py\n", encoding="utf-8")
+        (wf / "b.yaml").write_text("run: node scripts/b.mjs\n", encoding="utf-8")
+        attic = wf / "Attic"          # the skip is case-insensitive (p.parts, lowered)
+        attic.mkdir()
+        (attic / "retired.yml").write_text("run: python3 scripts/old.py\n", encoding="utf-8")
+        nested = wf / "nested"
+        nested.mkdir()
+        (nested / "c.yml").write_text("run: bash scripts/c.sh\n", encoding="utf-8")
+        pre = scratch / "pre-commit"
+        pre.write_text("python3 scripts/d.py\n", encoding="utf-8")
+        real_runners = RUNNERS
+        try:
+            RUNNERS = (wf, pre)
+            got = live_runner_files()
+            ok("live_runner_files returns a list of runner paths", isinstance(got, list))
+            case("it reads recursive yml+yaml, skips Attic, and takes a plain file runner",
+                 sorted(p.name for p in got),
+                 ["a.yml", "b.yaml", "c.yml", "pre-commit"])
+        finally:
+            RUNNERS = real_runners
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (7 cases, no files touched)")
+    print("SELF-TEST OK (9 cases, one scratch tree removed)")
     return 0
 
 

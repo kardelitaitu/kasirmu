@@ -2895,3 +2895,30 @@ excluded, nested `.ftl` excluded — glob is non-recursive and that is now PINNE
 `No file is read or written` claim was adjusted before it went stale.
 
 Harness rerun → **82 checkers, 3 SURVIVED, 79 killed** (4 → 3).
+
+### Dated correction (2026-11-06, round 47) — `verify-runner-commands.py`: the runner walker was ungraded
+
+`live_runner_files()` decides which files the gate reads; every self-test case handed text straight to
+`references()`, so the sweep blanked the walker invisibly. A blanked stub crashes `dangling()` loudly; the
+quiet mutations are the scope ones, and each now has a named row:
+
+| mutation | self-test |
+|---|---|
+| attic skip dropped | exit 2: `retired.yml` rejoins the corpus — a retired runner's stale refs become false findings |
+| plain-file branch dropped (`elif False`) | exit 2: `pre-commit` vanishes — the hook files are runners too, not just the workflow directory |
+| `*.yaml` pattern dropped | exit 2: `b.yaml` vanishes silently |
+| `return None` (the sweep's stub) | exit 1 by `TypeError` — killed loudly, not by name |
+| restored | exit 0, 9 cases |
+
+**Fix:** a scratch tree (`workflows/` with `a.yml`, `b.yaml`, `Attic/retired.yml` — capitalized, pinning the
+case-insensitive skip — and `nested/c.yml` for recursion, plus a plain `pre-commit` file) with the module-global
+`RUNNERS` repointed to it and restored in a `finally`. The docstring's `No file is created, read or written`
+claim was adjusted before it went stale.
+
+Two write-time bugs this round caught in MY OWN draft, worth recording because they are the same class the
+sweep hunts: forgetting `global RUNNERS` (the assignment made the name local and the read raised
+`UnboundLocalError`), and reaching for an `ok()` helper this file never defines (each file's self-test has its
+own assertion style; helpers do not transfer). Both reddened immediately and were fixed before committing —
+the self-test grading the walker graded itself in the process.
+
+Harness rerun → **82 checkers, 2 SURVIVED, 80 killed** (3 → 2).
