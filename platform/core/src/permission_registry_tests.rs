@@ -744,28 +744,39 @@ fn the_owner_preset_grants_the_wildcard_and_nothing_else() {
 ///   * `sensitive_family_wildcard_rejected` stops `giftcards:*`, but an explicit
 ///     single-key grant is not a wildcard and passes it.
 ///
-/// Measured 2026-10-25: ROLE_PRESETS contains ZERO occurrences of the gift-card
-/// family across all six presets (Owner/Manager/Staff/Admin/Auditor/Custom), so
-/// redemption is reachable only through a Custom role an owner builds by hand.
-/// The gift-card payment panel (renderer layer) records the same fact and calls the
-/// cashier gap its own blocker; this test is the mechanical half of that record.
+/// Gift-card issue and manage remain owner-only (or custom roles). No built-in
+/// preset grants GIFTCARDS_ISSUE or GIFTCARDS_MANAGE.
+/// GIFTCARDS_REDEEM is granted to the checkout presets (Staff, Manager, Admin)
+/// per Q3 Option A (owner-question-gift-card-tender.md).
 #[test]
-fn no_builtin_preset_grants_a_giftcard_key() {
-    let giftcard_keys: &[&str] = &[
-        permissions::GIFTCARDS_ISSUE,
-        permissions::GIFTCARDS_REDEEM,
-        permissions::GIFTCARDS_MANAGE,
-    ];
+fn no_builtin_preset_grants_giftcard_issue_or_manage() {
+    let unpreseted_giftcard_keys: &[&str] =
+        &[permissions::GIFTCARDS_ISSUE, permissions::GIFTCARDS_MANAGE];
     for preset in crate::rbac::ROLE_PRESETS {
         for &perm in preset.permissions {
             assert!(
-                !giftcard_keys.contains(&perm),
-                "preset {} grants {} — the gift-card family is owner-only, so a \
-                 preset grant hands every member of that tier a balance-moving key",
+                !unpreseted_giftcard_keys.contains(&perm),
+                "preset {} grants {} — issue and manage are owner-only",
                 preset.name,
                 perm
             );
         }
+    }
+
+    for preset_id in [
+        crate::rbac::builtin_roles::STAFF,
+        crate::rbac::builtin_roles::MANAGER,
+        crate::rbac::builtin_roles::ADMIN,
+    ] {
+        let preset = crate::rbac::ROLE_PRESETS
+            .iter()
+            .find(|p| p.id == preset_id)
+            .expect("preset exists");
+        assert!(
+            preset.permissions.contains(&permissions::GIFTCARDS_REDEEM),
+            "preset {} must grant GIFTCARDS_REDEEM",
+            preset.name
+        );
     }
 }
 
@@ -830,7 +841,6 @@ fn every_enforced_key_is_granted_by_at_least_one_preset() {
         permissions::PURCHASING_VIEW,
         permissions::PURCHASING_MANAGE,
         permissions::GIFTCARDS_ISSUE,
-        permissions::GIFTCARDS_REDEEM,
         permissions::GIFTCARDS_MANAGE,
         permissions::SECURITY_MANAGE,
         permissions::SYNC_MANAGE,
