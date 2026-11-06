@@ -49,8 +49,10 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -331,8 +333,10 @@ def self_test() -> int:
     that has to stop at the harness footer. Those are graded here on synthetic text,
     so the case can construct the exact shape that used to be misread.
 
-    Pure: synthetic strings only. Nothing is built, run, read or written.
+    Pure: synthetic strings and one temp file (PROBE_FILE is repointed for two cases and
+    restored in a finally). Nothing is built, run, or read from the checkout.
     """
+    global PROBE_FILE
     bad: list[str] = []
 
     def want(name: str, got, expect) -> None:
@@ -435,10 +439,35 @@ def self_test() -> int:
          msvc_env_hint("error[E0425]: cannot find value `x` in this scope"), None)
     want("missing_import_libs on clean output is empty", missing_import_libs("test result: ok. 4 passed"), [])
 
+    # probe_source() -- the reader both parsers above consume, and it had no case: every
+    # assertion grades strings built in memory, so --self-test never called it and the
+    # sweep blanked it invisibly (2026-11-06). main() refuses a falsy source at exit 2,
+    # so a blanked stub STOPS the gate rather than passing it -- the mild survivor. The
+    # edit that earns these cases is the tolerant one: catch Exception and return "",
+    # which leaves main() printing "probe file not found" forever while the file sits
+    # right there. PROBE_FILE is a module global, so the two cases repoint it and the
+    # finally restores it even on failure.
+    real_probe = PROBE_FILE
+    try:
+        scratch = Path(tempfile.mkdtemp(prefix="queryplans-probe-"))
+        try:
+            probe = scratch / "query_plan_probe.rs"
+            probe.write_text('const LARGE_TABLES: &[&str] = &["scratch_table"];', encoding="utf-8")
+            PROBE_FILE = probe
+            want("probe_source returns the text of the file it is pointed at",
+                 probe_source(), 'const LARGE_TABLES: &[&str] = &["scratch_table"];')
+            PROBE_FILE = scratch / "no_such_probe.rs"
+            want("probe_source returns '' for a missing file (main's exit-2 contract)",
+                 probe_source(), "")
+        finally:
+            shutil.rmtree(scratch, ignore_errors=True)
+    finally:
+        PROBE_FILE = real_probe
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (26 cases, nothing built or run)")
+    print("SELF-TEST OK (28 cases, nothing built or run)")
     return 0
 
 

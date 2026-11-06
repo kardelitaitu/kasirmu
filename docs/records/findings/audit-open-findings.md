@@ -2825,3 +2825,29 @@ crash on `os.path.realpath(None)` and exit 1 — killed, but by a `TypeError`, n
 `_root_case` helper that reports a non-string answer as a failure; it now reds 3 named rows.
 
 Harness rerun → **82 checkers, 6 SURVIVED, 76 killed** (7 → 6).
+
+### Dated correction (2026-11-06, round 44) — `check-query-plans.py`: `probe_source` was the mild survivor
+
+Honesty first: this is the lowest-stakes survivor fixed in this series. `main()` refuses a falsy source at
+exit 2 (`probe file not found`), so the sweep's blanked stub — `return None` — would have STOPPED the gate,
+not passed it. It survived because `--self-test` grades only strings built in memory and never calls the
+function; the mutation is invisible to the self-test by the same construction as round 42's `read()`.
+
+The edit that earns the cases is the tolerant one: `except Exception: return ""` would leave `main()` printing
+`probe file not found` forever while the probe file sits right there — a permanently red gate whose message
+accuses the wrong half.
+
+| mutation | self-test |
+|---|---|
+| `probe_source` → `return None` (the sweep's stub) | exit 2: expected the file's text, got None |
+| `probe_source` → `return ""` | exit 2: same row |
+| refusal dropped (`return PROBE_FILE.read_text(...)`, no except) | exit 1: FileNotFoundError traceback on the missing-file case — killed by crash, not by a named row |
+| restored | exit 0, 28 cases |
+
+**Fix:** two cases repoint the module-global `PROBE_FILE` at a temp file (`global PROBE_FILE`, restored in a
+`finally` even on failure — verified the live `--list` still finds the real probe afterwards): a file with
+known text comes back as exactly that text, and a missing path returns `""`, pinning the contract `main()`'s
+exit-2 refusal depends on. The docstring's `Pure: synthetic strings only` claim was adjusted the way round
+41's footer was: the self-test now touches one temp dir and still builds and runs nothing.
+
+Harness rerun → **82 checkers, 5 SURVIVED, 77 killed** (6 → 5).
