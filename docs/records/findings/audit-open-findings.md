@@ -3297,3 +3297,34 @@ Relocation stragglers remaining: 3 — verify-release-workflow.py, verify-scoped
 check-font-bundle.mjs. Next candidate (round 58): verify-release-workflow.py, same
 diagnosis first (which live path or git assumption reddens its self-test in the copy),
 then the same two-gate proof.
+
+### Round 58 (2026-11-07) — the pin cross-reference gets a history-less answer
+
+`05f655759` converts verify-release-workflow.py from RELOCATION-SENSITIVE to
+KILLED: the survey guts validate() and the self-test notices from the staged copy
+(exit 0 -> 1, every mutation MISSED against a None verdict). Survey end state: 90 killed,
+0 SURVIVED, 2 RELOCATION-SENSITIVE, 4 NO MUTATABLE, exit 0.
+
+The relocation artifact this time: validate() cross-verifies every `uses:` pin against
+pin pairs harvested from OTHER workflow files AND from git history (`git log --grep=
+dependabot` over .github/workflows) — the second source exists because Dependabot bumps
+can leave a SHA unique to release.yml. The harness stages a tree without .git by design,
+so in the copy seven pins (signpath, artifact upload/download, attest-build-provenance,
+and friends) are honestly unverifiable, the baseline reported them as findings, and the
+self-test read a correct refusal-shaped baseline as a broken gate. The self-test had
+made an environment claim its baseline could not keep outside a checkout.
+
+The fix is the round-57 pattern applied to a baseline instead of a refusal: the baseline
+has two correct shapes, keyed to `git rev-parse --is-inside-work-tree` from the file's
+own root. In a checkout, clean or FAIL. In a history-less copy, exactly the
+unverifiable-pin findings are expected — any problem of ANOTHER kind still fails — and
+the mutation loop runs unchanged (all 8 mutations are git-independent and stay caught;
+measured: 7 unverifiable-pin findings in the staged copy, 8/8 mutations caught there,
+baseline clean with 8/8 in the checkout).
+
+Two-gate proof: live --self-test exit 0; the harness build_temp_root staging with the
+self-test run from the staged path, exit 0; then the full staged survey, 90/0/2/4, exit 0.
+
+Relocation stragglers remaining: 2 — verify-scoped-reads.py and check-font-bundle.mjs.
+Next candidate (round 59): verify-scoped-reads.py, same diagnosis first, then the same
+two-gate proof.
