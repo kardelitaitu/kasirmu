@@ -3266,3 +3266,34 @@ need location-independence (they must run from the staged copy the survey makes)
 their detectors can be measured at all. Next candidate (round 57): the first of the four,
 verify-migration-column-types.py — find which live path its self-test hardcodes and
 resolve it relative to the module.
+
+### Round 57 (2026-11-07) — the first relocation straggler is measured
+
+`d434e419c` converts verify-migration-column-types.py from RELOCATION-SENSITIVE
+(unmeasured, not proven) to KILLED: the survey now guts strip_comments and the self-test
+notices from the staged copy (exit 0 -> 2). Survey end state: 89 killed, 0 SURVIVED,
+3 RELOCATION-SENSITIVE, 4 NO MUTATABLE, exit 0.
+
+The defect was an environment assumption written into a case, not into the gate. The
+harness stages a repo-shaped tree WITHOUT .git by design (history and secrets never
+enter the staging tree), and self-test case (8) ran the gate's --staged-only mode, whose
+corpus comes from `git diff --cached`. In the copy the index is unreadable, the gate
+refused exactly as its own docstring requires — and the case called that refusal a red
+run. The self-test had conflated "this environment has no git index" with "the gate
+misbehaved": an unknown scope is not an empty one, and the case punished the gate for
+saying so.
+
+The fix pins BOTH correct answers, keyed to where the file runs: inside a checkout the
+staged count line (exit 0/1); outside one — no .git, or git absent — the exit-2 refusal
+naming the unreadable index, with no count and no ok line. Both branches assert the
+absence of a hollow verdict. The staged copy now exercises the refusal branch (7 CAUGHT
++ 1 CLEAN there) — more of the contract than the live tree ever exercised, which is the
+point of measuring from a copy.
+
+Two-gate proof: live --self-test exit 0; the harness's own build_temp_root staging,
+self-test run from the staged path, exit 0; then the full staged survey, 89/0/3/4, exit 0.
+
+Relocation stragglers remaining: 3 — verify-release-workflow.py, verify-scoped-reads.py,
+check-font-bundle.mjs. Next candidate (round 58): verify-release-workflow.py, same
+diagnosis first (which live path or git assumption reddens its self-test in the copy),
+then the same two-gate proof.
