@@ -3328,3 +3328,35 @@ self-test run from the staged path, exit 0; then the full staged survey, 90/0/2/
 Relocation stragglers remaining: 2 — verify-scoped-reads.py and check-font-bundle.mjs.
 Next candidate (round 59): verify-scoped-reads.py, same diagnosis first, then the same
 two-gate proof.
+
+### Round 59 (2026-11-07) — the root anchor answers in a history-less copy
+
+`1bc2ff5ac` converts verify-scoped-reads.py from RELOCATION-SENSITIVE to
+KILLED: the survey guts _git_toplevel (the file's first function) and the self-test
+notices from the staged copy (exit 0 -> 1). Survey end state: 91 killed, 0 SURVIVED,
+1 RELOCATION-SENSITIVE, 4 NO MUTATABLE, exit 0.
+
+The relocation artifact was anchor_self_test case 40a: it asserts that resolve_repo()
+lets git's answer beat the old script-relative rule, using a nested probe path. In a
+copy with no .git both answers collapse to the same fallback and the module constant
+REPO is the copy's own root, so both conjuncts failed — a correct fallback read as a
+broken priority. The fix is the round-57/58 pattern applied to a priority claim: 40a
+branches on whether git can answer for the probe's directory. Where it can, the original
+assertion holds (live: git -> the checkout beats the scripts dir). Where it cannot, the
+assertion flips to the contract that IS observable there: the fallback must equal the
+script-relative rule exactly for the same nested probe.
+
+The priority claim needed a place where git CAN answer in any world, so a new case 40d
+git-inits a throwaway repo in the system tempdir and requires _git_toplevel to return
+it (os.path.samefile, case-insensitive). This is also the kill: gutting _git_toplevel
+-- the file's first function, measured for the first time today -- makes 40d unrun
+instead of vacuously green, and the mutant exits 1 from the staged copy. The docstring's
+"none of them writes a file" stays true for 40a-40c; 40d writes only inside its own
+TemporaryDirectory, the pattern case 41c/41e already established.
+
+Two-gate proof: live --self-test exit 0; the harness build_temp_root staging with the
+self-test run from the staged path, exit 0 (40a fallback branch, 40d git branch, all
+PASS); then the full staged survey, 91/0/1/4, exit 0.
+
+Relocation straggler remaining: 1 — check-font-bundle.mjs. Next candidate (round 60):
+the same diagnosis on its JS self-test, the last unmeasured detector in the repo.
