@@ -3112,3 +3112,59 @@ and only SURVIVED reddens the survey — exactly the semantics the summary line 
 Next candidate (round 53): make the mutation copy a TREE copy (scripts/ + the two outside
 directories, relative layout preserved) so `__file__`-relative self-tests run true — the 30
 RELOCATION-SENSITIVE rows become measurable, and the six survivors become the only red left.
+
+### Round 53 (2026-11-07) — the staged tree measures true; twelve more false kills surface
+
+`84439b88c` and `a822f6fe0` replace the single-file temp copy with a STAGED TREE:
+the harness builds a repo-shaped temp root (every top-level entry of the real repo junctioned
+in, the three gate directories — scripts/, .agents, website/ — copied for real), mutates the
+checker inside the copy, and runs it there. The tracked checkout is never written; the tree
+builds in 1.0 s; a staged run costs the same as an in-place run (verify-agents-mirrors.py:
+22.1 s both, exit 0). `--skip`/`--limit` briefly died in the rewrite — a "--limit 32" smoke
+measured all 96 — and the truncation is restored and proven (`--skip 95 --limit 1` runs
+exactly restore-db.sh).
+
+The staged tree converts 26 of the 30 RELOCATION-SENSITIVE rows into real verdicts. The full
+matrix, all 96 checkers, one 500 s run:
+
+| verdict | count |
+|---|---|
+| killed | 71 |
+| SURVIVED | 18 |
+| RELOCATION-SENSITIVE (still unmeasurable from any copy) | 4 |
+| NO MUTATABLE FUNCTION | 3 |
+
+**Finding — twelve NEW survivors.** These rows were counted as kills by every earlier
+mechanism; with the control they proved to be relocation failures, and with the staged tree
+they prove to be genuine: gutting the first candidate leaves each self-test green —
+verify-ci-docs-drift.py (`load_gates`), verify-commit-subjects.py (`git`),
+verify-dockerfile-workspace.py (`workspace_members`), verify-ftl-orphans.py (`_rel`),
+verify-ps-syntax.py (`is_powershell`), verify-runner-claims.py (`live_ci_scripts`),
+verify-windows-config.py (`check_tauri_configs`), verify-workflow-syntax.py (`live_workflows`),
+check-debt-ledger.py (`git`), verify-updater-signature.mjs (`selfTest`), check-ui.mjs
+(`dockerAvailable`), check-updater-compat.mjs (`check`). With the six docs-auditor survivors
+from the round-52 note, eighteen are open. Two were re-verified through an independent route
+(mutant text confirmed different, staged mutant run exit 0):
+
+``
+check-ui.mjs mutated_differs= True relo_rc= 0 mutant_rc= 0
+verify-ci-docs-drift.py mutated_differs= True relo_rc= 0 mutant_rc= 0
+``
+
+The history of this number, honestly: 2026-11-05 "82 killed, 0 SURVIVED" → round 52
+"57 proven, 30 unmeasured, 6 survivors" → now "71 proven, 18 survivors, 4 unmeasured".
+Eleven checkers moved from killed to survived the moment the mechanism could see them; none of
+those kills was ever earned. Nothing was gated on any of it (the survey stays advisory per
+scripts/gates.json), but every future claim must come from the staged-tree mechanism.
+
+The four stragglers — verify-migration-column-types.py, verify-release-workflow.py,
+verify-scoped-reads.py, check-font-bundle.mjs — still fail from ANY copy; their self-tests
+resolve something the staging cannot mirror. Each needs its self-test made location-independent
+before the harness can grade it. Noted limit: the staging junctions are read-only by
+CONVENTION, not enforcement — a self-test that writes through one writes the real tree; none
+is known to.
+
+Next candidate (round 54): start paying down the eighteen survivors with the proven pattern
+from the 2026-11-06 round — main() delegates to the same function the cases grade, or the
+cases grow until the gutted detector goes red — beginning with the six docs-auditor checkers,
+which already have a dedicated runner to verify against.
