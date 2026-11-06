@@ -3168,3 +3168,34 @@ Next candidate (round 54): start paying down the eighteen survivors with the pro
 from the 2026-11-06 round — main() delegates to the same function the cases grade, or the
 cases grow until the gutted detector goes red — beginning with the six docs-auditor checkers,
 which already have a dedicated runner to verify against.
+
+### Round 54 (2026-11-07) — six survivors paid down; the wired police policed the fixer
+
+`45e9044d9` closes six of the eighteen open survivors — all docs-auditor — with the pattern
+the 2026-11-06 round proved: each self-test now depends on the very function the survey
+guts first, graded through synthetic tempdir fixtures, never a live path, per each checker's
+own design rules. check-api-surface.py grew cases for `registered`/`defined`/`documented`
+(handler list, command fn, doc entries — the docstring now says so); check-audit-stamps.py
+grades `_git_ignored` against a throwaway `git init` repo plus the non-repo fallback;
+check-gate-runners.py and check-nav-paths.py grade their `repo_root` resolvers live;
+check-orphans.py grades `md_files` walk and `--file` modes on a throwaway tree;
+check-site-links.py pins the house finding format — a finding must START with
+`_display(path)`. Function order untouched everywhere, so the survey's first-candidate
+choice is unchanged.
+
+**Finding — the wired police caught what the survey cannot.** The first cut of the api-surface
+fixture fed `documented()` entry lines without the backticks ENTRY_RE requires; the survey
+still said KILLED (it only grades `registered`), but `scripts/check-auditor-selftests.sh` —
+the runner wired into the docs-auditor's own policing — went red: SELF-TEST FAILED (1 of 10).
+Fixed and re-proven: runner 11/11 exit 0, staged survey over the outside-scripts set
+13 killed, 1 NO MUTATABLE FUNCTION (verify-deploy.mjs, known limit), 0 SURVIVED,
+0 RELOCATION-SENSITIVE, exit 0. The lesson is the same one the relocation control taught,
+pointed the other way: the survey answers "does the FIRST candidate matter"; only the runner
+answers "is the self-test right". Both must be green before any survivor is called closed.
+
+Survivors open: 12 (verify-ci-docs-drift, verify-commit-subjects, verify-dockerfile-workspace,
+verify-ftl-orphans, verify-ps-syntax, verify-runner-claims, verify-windows-config,
+verify-workflow-syntax, check-debt-ledger, verify-updater-signature.mjs, check-ui.mjs,
+check-updater-compat.mjs). Unmeasured: 4 stragglers. Next candidate (round 55): the same
+fixture pattern on the nine scripts/ survivors — they share one shape (pure-core self-test,
+ungraded resolver or parser), so they can go in one batch with the same two-gate proof.
