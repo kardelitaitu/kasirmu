@@ -2052,13 +2052,23 @@ gate sits two delegations away (shell → bridge A → bridge B) is still report
 is unmeasured tonight; what the measurement does say is that the follow must not be deleted as dead
 code, and the comment beside it now says why.
 
-**Corroboration from outside the function:** four allowlisted orphans also carry a plain gated body in
-the tablet shell (`get_active_cart_scoped`, `list_active_carts_scoped` = SALES_PROCESS;
-`create_product_variant_scoped` = PRODUCTS_CREATE; `update_product_variant_scoped` = PRODUCTS_UPDATE),
-measured by scanning both shells' `commands/` trees recursively and reading each definition's
-balanced body. Those verdicts agree with `orphan_permission()` on all 24 entries, so the
-first-shell-wins return noted in the BR-T1 correction above is a latent hazard today, not a live
-false negative.
+**Corroboration from outside the function:** the same both-shells scan was then run against the
+full allowlist, not just the four named here. **8 of the 24 allowlisted orphans are defined in both
+shells** — `create_product_variant_scoped`, `delete_product_variant_scoped`,
+`enqueue_offline_scoped`, `get_product_variant_scoped`, `list_pending_offline_scoped`,
+`list_product_variants_scoped`, `list_scale_devices_scoped`, `update_product_variant_scoped` — and on
+all 24 entries the first-shell verdict equals the both-shells union. So `orphan_permission()` returning
+from the first shell that defines the command currently produces the same answer as if it unioned both
+shells, and the first-shell-wins return noted in the BR-T1 correction above is a latent hazard today,
+not a live false negative.
+
+**The latent hazard, stated as a falsifiable invariant rather than a worry:** a both-shells-defined
+orphan whose **desktop** body guards nothing and whose **tablet** body does (or vice-versa) would be
+reported as ungated today while one shell gates it. Today no allowlisted orphan is in that shape, and
+the scan order that `orphan_permission()` actually iterates — `SHELLS.values()`, i.e. desktop then
+tablet — is the order a future both-shells test must union across. The hazard is real but dormant; the
+measurement that would wake it (any both-shells orphan whose per-shell verdicts disagree) is the one
+that should fail loudly before it ever reads as "no check".
 
 ### Dated correction (2026-11-06, later the same night) — the one-hop limit is now measured, and it has names
 
