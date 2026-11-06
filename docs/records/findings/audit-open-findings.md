@@ -3397,3 +3397,32 @@ verify-scoped-authorization.sh, verify-updater-signature.mjs) and whatever new
 checkers land unmeasured next. Next candidate (round 61+): re-run the survey against
 new arrivals, and consider hardening the harness itself (e.g. asserting staged
 junction read-only-ness).
+
+### Round 61 (2026-11-07) — the NO MUTATABLE set is now three; a fourth straggler appears
+
+`f53e7f0a8` converts verify-updater-signature.mjs from NO MUTATABLE to
+KILLED: the verification decision that lived inline in main() -- parse the base64
+minisign pubkey, verify the installer bytes against the manifest signature -- is now
+an exported function, verifyUpdaterSignature, that BOTH the live path and the
+self-test drive. Gutting it leaves ok !== true, so the live path fails CLOSED
+(release blocked) and the self-test fails loudly (exit 1): the survey's mutant
+exits 0 -> 1. The self-test also pins the throw contract (an unparseable pubkey
+must throw, not return false) and the tamper rejection through the same wrapper.
+The live usage/bad-manifest exits (2/1) are unchanged. Survey end state: 92 killed,
+0 SURVIVED, 1 RELOCATION-SENSITIVE, 3 NO MUTATABLE, exit 0.
+
+NEW STRAGGLER, found by the survey mid-session: check-updater-compat.mjs flipped to
+RELOCATION-SENSITIVE between the round-60 survey (06:08, KILLED) and this round's
+(--:--), with NO commit in between and its file unchanged since fe02d1972. Mechanism,
+diagnosed: its self-test shells out to `cargo build --release` of a Rust harness
+(line 144), the staging strips target/ so every staged run re-links, and rust-lld
+could not open kernel32.lib -- the MSVC link environment was present for the first
+survey of the morning and absent for the second, an environment claim a staging copy
+cannot always keep. The live self-test stayed green throughout. Round 62 candidate:
+make the harness-build probe honest under a dead toolchain (printed skip, census
+floor still meaningful), the same observable-branch pattern as rounds 57-61.
+
+Honest limits this round: the error message for an unparseable pubkey merged from
+"Failed to parse updater pubkey:" into "Failed to verify updater signature:" (the
+underlying parse error text still names the cause); the root cause of the mid-session
+link-env loss is not pinned -- only its mechanism and reproducibility are recorded.
