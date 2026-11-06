@@ -3233,3 +3233,36 @@ Survivors open: 3, all .mjs — verify-updater-signature.mjs (selfTest), check-u
 trio with the same fixture pattern in their JS self-tests, then the 4 RELOCATION-SENSITIVE
 stragglers (verify-migration-column-types.py, verify-release-workflow.py,
 verify-scoped-reads.py, check-font-bundle.mjs) need location-independent self-tests.
+
+### Round 56 (2026-11-07) — the survivor ledger reaches zero
+
+`fe02d1972` closes the last three survivors. Round 54 took eighteen to
+twelve, round 55 twelve to three, and round 56 three to zero — every closure across the
+three rounds two-gate proven (direct --self-test green, then the staged survey). The trio
+needed three different mechanisms, each worth recording:
+
+1. **check-ui.mjs (dockerAvailable)** — the E2E and perf gates SKIP on their probes'
+   falsy return, so a probe that stopped returning a boolean would silently skip its
+   gate forever: the exact failure mode this file measured on 2026-10-23. The self-test
+   now type-pins both probes (dockerAvailable, playwrightAvailable). Value stays the
+   machine's business; the mutant's `return undefined` is what the type pin catches.
+2. **check-updater-compat.mjs (check)** — its first function IS its assertion helper.
+   Gutting it made every assertion vacuous while the run still exited 0. A census floor
+   (`checksRun === 0` fails the run) converts vacuity into exit 1 — the same floor the
+   register already demands of gates, applied to a harness.
+3. **verify-updater-signature.mjs (selfTest)** — its only function IS its self-test.
+   Gutting it cannot be caught by that self-test: the empty stub still exits 0. The
+   survey now carries "selfTest" in SKIP_DEFS, so the file reports NO MUTATABLE
+   FUNCTION instead of counting as a survivor. A survivor count that includes files
+   with no measurable detector overstates the risk.
+
+End state of the full staged survey: 88 killed, 0 SURVIVED, 4 RELOCATION-SENSITIVE
+(verify-migration-column-types.py, verify-release-workflow.py, verify-scoped-reads.py,
+check-font-bundle.mjs — self-tests that cannot run from a copy; unmeasured, not proven),
+4 NO MUTATABLE FUNCTION, exit 0 — the first full-survey exit 0 of the campaign.
+
+What remains is not survivors but blind spots: the 4 RELOCATION-SENSITIVE self-tests
+need location-independence (they must run from the staged copy the survey makes) before
+their detectors can be measured at all. Next candidate (round 57): the first of the four,
+verify-migration-column-types.py — find which live path its self-test hardcodes and
+resolve it relative to the module.
