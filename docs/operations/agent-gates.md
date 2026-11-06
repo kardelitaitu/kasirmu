@@ -1900,6 +1900,16 @@ is not:
 - The checker is built so the ungraded section is still **printed**: it states the tablet numbers
   and says the verdict covers desktop alone. A gate that hides a section is the failure mode; this
   one announces it.
+**Corrected 2026-11-06 — both halves of that paragraph are now spent.** Measured today:
+`verify-scoped-reads.py --shell tablet` prints `clean for tablet` at **exit 0** with **0 finding(s)**,
+and the visibility line on a bare `--shell desktop` run reports `tablet: 0 unguarded call site(s)
+across 0 file(s) and 0 command(s), 64 cleared` — the tablet half was repaired between `e6d211b98`
+(2026-09-16) and now. The wiring moved too: `scripts/check.sh:224` and
+`.github/workflows/dev-ci.yml:1718` run `--shell desktop,tablet`, so neither section is left
+ungraded by the required gate, and the "defaults to desktop, and that is what CI runs" bullet
+describes an older invocation rather than today's. The reasoning above is unchanged and still the
+reason the fourth line stays: a gate must announce an ungraded section rather than hide it, which is
+what makes the repair visible at all.
 
 **The lesson for anyone re-measuring this:** run BOTH invocations before concluding anything. A
 single default run says "clean" and a single `--shell tablet` run says "29 failures"; both are true

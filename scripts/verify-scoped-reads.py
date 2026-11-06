@@ -103,6 +103,18 @@ finding lives. That number is stated, never scored -- same contract as
 the three above, and case 39 pins both halves: the line prints what an independent audit of the
 other section computed, and the run's exit code does not move whether it says 0 or 101.
 
+CORRECTED 2026-11-06: that 101 is spent, and the sentence it supported no longer holds. Both
+sections grade clean today -- `--shell tablet` prints `clean for tablet` at exit 0, and the
+visibility line on a bare `--shell desktop` run reports `tablet: 0 unguarded call site(s) across
+0 file(s) and 0 command(s), 64 cleared`. The tablet half was repaired somewhere between
+e6d211b98 (2026-09-16) and now, so the fourth line has become a report about a section that is
+clean rather than a warning about a hidden red. It stays for exactly the reason it was added: the
+moment someone grades one shell and the other drifts red again, this line is the only place the
+run says so unasked. Case 39's contract is unchanged -- the number is stated, never scored, and 0
+or 101 never moves the exit code. Read the paragraph above as history with a measurement
+attached, not as today's status: a quoted finding count is only as current as the tip it was
+measured on.
+
 usage:
     python scripts/verify-scoped-reads.py                # check the tree
     python scripts/verify-scoped-reads.py --self-test    # classifier + entry-shape reader

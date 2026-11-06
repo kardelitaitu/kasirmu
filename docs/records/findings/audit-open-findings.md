@@ -2195,3 +2195,34 @@ cannot be removed from one and left in the other.
 `VIOLATION in apps/mobile-tauri/src/commands/workspaces.rs:40: store_id: String,` and `1 violation(s)`;
 restoring it returns PASS. The falsification suite (`scripts/test-no-raw-params.sh`, which plants a probe in
 the real directory) still proves both directions, and the classifier self-test is unchanged at 7 cases.
+
+### Dated correction (2026-11-06) — the scoped-reads gap was closed, and three documents kept claiming it open
+
+Rounds 25 and 27 found gates that graded one shell **silently**. This one is the opposite and worth
+recording for that reason: `scripts/verify-scoped-reads.py` graded one shell **loudly** — it printed the
+ungraded section's numbers and said the verdict covered the other one — and its documentation, plus the
+operations doc, kept quoting that gap years after the tree had closed it.
+
+Three separate stale claims, all measured today:
+
+| where | claim | measured 2026-11-06 |
+|---|---|---|
+| `verify-scoped-reads.py` docstring (fourth-line paragraph) | tablet contributes **101** findings at exit 1 | `--shell tablet` → `clean for tablet`, **0** findings, exit 0 |
+| `docs/operations/agent-gates.md:1892` + its `docs/src` mirror | prints **29** tablet findings | same run, **0** |
+| same paragraph, bullet 1 | `--shell` defaults to desktop and "that is what `check.sh:189` and CI run" | `scripts/check.sh:224` and `dev-ci.yml:1718` run **`--shell desktop,tablet`** |
+
+The repair that closed the gap happened between `e6d211b98` (2026-09-16) and today; nothing in this round
+changed the gate's behaviour. What changed is what the three places say about it: each now carries a dated
+correction that keeps the historical number, states today's measurement with the command that produced it,
+and says which part of the original reasoning survives — the line stays because a gate must announce an
+ungraded section rather than hide it, and that is exactly what made the closure visible.
+
+**Why this is worth a round:** a stale finding count is not neutral. Rounds 25 and 27 both started from a
+gate whose *subject* was one shell; this round started from a gate whose *documentation* said its subject was
+one shell, when the wiring had already moved to two. Both directions cost a reader the same thing — a walk to
+a place where the fact no longer lives.
+
+**Verified after the edits:** `verify-scoped-reads.py --self-test` passes; desktop, tablet and
+`desktop,tablet` runs each print clean; `cite lines` 227 OK / 0 drifted / 0 symbol-gone; dead refs 0 in 13
+live docs; `verify-agents-mirrors.py` reports every policed mirror agrees (the two `agent-gates.md` copies
+carry byte-identical corrections).
