@@ -277,6 +277,10 @@ def survey(limit: int | None, skip: int = 0) -> list[tuple[str, str, int, int, s
     # Require the argparse flag itself, i.e. the string inside a quoted literal.
     flag = re.compile(r"""["']--self-test["']""")
     files = [f for f in files if flag.search(f.read_text(encoding="utf-8", errors="replace"))]
+    if skip:
+        files = files[skip:]
+    if limit:
+        files = files[:limit]
     rows = []
     with tempfile.TemporaryDirectory() as td:
         td_root = build_temp_root(Path(td))
