@@ -518,7 +518,7 @@ Sessions are in-memory (`web_otp.go:13-19`), so a restart drops admin sessions: 
 
 **Run one command first.** `python scripts/verify-deployment.py` probes this surface and exits
 non-zero while any ADR #54 route is missing, printing the expected status for each. Its default
-base is `https://license.kasir.mu` (`scripts/verify-deployment.py:116`, where `bases = a.base or [...]` defaults), the canonical name.
+base is `https://license.kasir.mu` (`scripts/verify-deployment.py:189`, where `bases = a.base or [...]` defaults), the canonical name.
 
 **Status measured 2026-09-21: the deployment is COMPLETE.** Every route the verifier checks
 answers — `GET /api/v1/web/me` and `GET /api/v1/web/identities` → 401, `POST
