@@ -39,6 +39,7 @@ import argparse
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -207,6 +208,30 @@ def self_test() -> int:
         "Some(v) => unsafe { std::env::set_var(k, v) },",
     ):
         expect(f"a mid-expression block IS a construct: {mid[:34]!r}", _matches(mid))
+
+    # (8) THE WHOLE PIPELINE, over a scratch repository. The sabotage sweep found `scan`
+    # SURVIVED on 2026-11-06: replacing its body with `return [], 0` left this self-test
+    # green, because every case above grades _matches()/_has_finding() and none graded the
+    # git grep, the file read, or the loop joining them. A self-test that never runs the
+    # function under test cannot notice it being gutted -- so this case builds a real
+    # one-file repository and asserts BOTH directions through scan().
+    with tempfile.TemporaryDirectory() as tmp:
+        scratch = Path(tmp)
+        (scratch / "probe.rs").write_text(
+            "fn unmarked() {\n"
+            "    let y = unsafe { foo() };\n"
+            "}\n"
+            "\n"
+            "fn marked() {\n"
+            "    // SAFETY: the API contract guarantees non-null.\n"
+            "    let x = unsafe { bar() };\n"
+            "}\n",
+            encoding="utf-8")
+        subprocess.run(["git", "init", "-q"], cwd=scratch, check=True)
+        subprocess.run(["git", "add", "probe.rs"], cwd=scratch, check=True)
+        found, seen_constructs = scan(scratch)
+        expect("scan() over a scratch repo reports the unmarked construct only",
+               len(found) == 1 and "probe.rs:2" in found[0] and seen_constructs == 2)
 
     print()
     if failures:

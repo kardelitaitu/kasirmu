@@ -2383,3 +2383,51 @@ exit 2 naming the directory it walked.
 | restored | `0 candidates in ui/src (730 file(s) read)`, exit 0; self-test 5 detector + 6 verdict cases pass |
 
 **Verified:** all four rows above, probe directory removed (`git status` clean under `ui/src`).
+
+### Dated correction (2026-11-06) — the sabotage harness reports 17 survivors, and nothing gates it
+
+The survey tool from round 30's list turned out not to be a gate at all. `scripts/sabotage-selftests.py`
+blanks a function body in each checker and asks whether that checker's `--self-test` notices. Its own
+`--self-test` is wired (`scripts/check.sh:1241`); the **survey is not wired anywhere**, and
+`scripts/gates.json:353` records it as *Advisory / local matrix only* with a reasoned `_note`. So the
+numbers below have never failed a build.
+
+Measured at HEAD this round: **82 checkers, 18 SURVIVED, 64 killed, exit 1.** A survivor is a checker
+whose self-test stays green when its detector is gutted — the same class as rounds 29-33, one layer up.
+
+**Closed this round — `verify-unsafe-safety.py` / `scan`.** Its self-test graded `_matches()` and
+`_has_finding()` only; the function that does the `git grep`, the file read and the loop was never called,
+so replacing its body with `return [], 0` changed nothing. New case (8) builds a **scratch git repository**
+with one file holding an unmarked and a marked construct, calls `scan(scratch)`, and asserts one finding at
+`probe.rs:2` out of two constructs seen. Proof: gut `scan` to `return [], 0` → self-test exits **1** at that
+case; restore → passes. The harness itself now reports **17 SURVIVED / 65 killed**.
+
+**Still surviving (17), unchanged this round:**
+
+| checker | gutted function |
+|---|---|
+| `verify-coverage-floors.py` | `load_floors` |
+| `verify-deployment.py` | `probe` |
+| `verify-exhaustive-deps.py` | `run_eslint` |
+| `verify-flaky-quarantine.py` | `_git_toplevel` |
+| `verify-fluent-dynamic-families.py` | `bundle_files` |
+| `verify-runner-commands.py` | `live_runner_files` |
+| `verify-status-fallbacks.py` | `_read` |
+| `verify-ui-coverage-floors.py` | `load_floors` |
+| `check-chokepoints.py` | `repo_root` |
+| `check-orphan-prototype-files.py` | `tracked_files` |
+| `check-query-plans.py` | `probe_source` |
+| `check-rust-doc-paths.py` | `tracked` |
+| `verify-docker-persistence.sh` | `cleanup` |
+| `verify-scoped-coverage.sh` | `run_shell` |
+| `check-bundle.mjs` | `gzipBytes` |
+| `check-server-origins.mjs` | `read` |
+| `check-testid.mjs` | `isExcluded` |
+
+Each needs the same treatment: a case that CALLS the gutted function over a fixture. `load_floors`,
+`repo_root`, `_git_toplevel` and `_read` survive in pairs or triples, so one shared fixture helper would
+close several at once — a candidate for one round of its own rather than seventeen.
+
+**Not changed:** the survey stays unwired. Wiring it would fail most builds today (exit 1 at 17
+survivors), so it is an owner decision, not a silent tightening — the `gates.json` advisory note is the
+record of that choice and is left intact.
