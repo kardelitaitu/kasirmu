@@ -3023,3 +3023,12 @@ gone`) could never pass while `main`'s identical call remained. Re-run with a co
 (`cleared = audit(...)`): **killed — 14 rows red, led by case 41d.** All five --repo mutations now proven.
 The two full-patch losses of 23:37/00:15 stand as measured (whole-file revert, clean status); only the M3
 row's mechanism claim is corrected.
+
+Harness rerun (round 50, foreground, quiet tree) → **82 checkers, 0 SURVIVED, 82 killed.** The six exit-1
+survey jobs another lane logged 23:46–02:12 were survey-vs-survey contention (each run saw the other's
+blanks), not a regression: the same commit measures green when only one survey runs.
+
+Python gate sweep (round 50, check.sh `step` commands, 144 steps) → **143 green, 1 red.** The red is
+`verify-core-size.py`: kasirmu-core non-db grew +4 production lines over the 40805 ceiling — from other
+lanes' core commits (`428694f9c` et al.); the gate's input set (crates/kasirmu-core/src) is untouched by
+`25051aa8b`, which touched only this script. The ceiling call belongs to whoever grew core.
