@@ -943,19 +943,12 @@ Re-measured each finding against the current tree (tip `0b11d9246`, 149 gates in
 51 tracked `scripts/verify-*` checkers, live runners `.github/workflows/dev-ci.yml`,
 `scripts/check.sh`, `scripts/check-ui.mjs`, `.githooks/pre-commit`):
 
-- **GI-1 (Dual answers in gates.json): RE-MEASURED.** Of the 149 gates, 113 carry both `runners` and
-  `ci`, 4 carry `ci`-only, 17 carry `runners`-only (local/hook only), and 15 are retired records.
-  While the 2026-09-20 correction fixed the 3 original contradictory notes (`scoped-coverage`,
-  `topology-parity`, `test-shadow-copies`), new dual-answer prose drift has appeared:
-  - `root-policy`: carries `"ci": {"workflow": "dev-ci.yml", "job": "static-gates", ...}` and is
-    executed at `dev-ci.yml:1698`, yet its `_note` still states: *"Local-only by design: it inspects the
-    working tree, so a runner checkout may legitimately carry ephemera this repo does not own;
-    therefore no ci key, and pre-commit is deliberately not lengthened - scripts/check.sh is its only
-    runner."*
-  - `ownership-map-parity`: carries a `ci` key (`dev-ci.yml#static-gates`), yet its `_note` claims:
-    *"Local-only runner today; adding a dev-ci"*.
-  The structural defect holds: `_note` prose is not validated against the `ci` object of the same
-  record.
+- **GI-1 (Dual answers in gates.json): RE-MEASURED & REPAIRED (2026-11-06).** Of the 149 gates,
+  113 carry both `runners` and `ci`, 4 carry `ci`-only, 17 carry `runners`-only (local/hook only),
+  and 15 are retired records.
+  The two remaining dual-answer prose notes (`root-policy` claiming local-only despite being in CI,
+  and `ownership-map-parity` claiming local-only while having a CI block) were repaired in `scripts/gates.json`.
+  Both are now explicitly wired and tested in `dev-ci.yml#static-gates` and in `scripts/check.sh`.
 
 - **GI-2 (Prose numbers that rot): RE-MEASURED.** Ran `python scripts/verify-ipc-parity.py` and
   `python scripts/verify-shell-registration.py` (both OK, 19:46 +07).
@@ -984,11 +977,12 @@ Re-measured each finding against the current tree (tip `0b11d9246`, 149 gates in
      reading full post-stage file contents off disk.
   The semantic split is stable, ununified by design, and owned by the respective checker scripts.
 
-- **GI-5 (Two CI claims with no backstop): RE-MEASURED.**
-  1. `doc-uniqueness`: `scripts/gates.json:1175` promises `"ci": {"workflow": "dev-ci.yml", "job":
-     "static-gates"}` and claims in `_note:1177` *"Promoted to required with a ci block in the same
-     ruling"*. Searching `.github/` yields **0 hits** for `verify-doc-uniqueness`. The CI claim has
-     no backstop in CI and is enforced only developer-locally via `scripts/check.sh:376`.
+- **GI-5 (Two CI claims with no backstop): RE-MEASURED & REPAIRED (2026-11-06).**
+  1. `doc-uniqueness`: Previously, `scripts/gates.json:1175` promised `"ci": {"workflow": "dev-ci.yml",
+     "job": "static-gates"}` and claimed in `_note:1177` *"Promoted to required with a ci block in the same
+     ruling"*, but `.github/workflows/dev-ci.yml` lacked any step running `verify-doc-uniqueness.py`.
+     **Closed 2026-11-06**: Added `Doc uniqueness` and `Doc uniqueness self-test` steps to
+     `dev-ci.yml#static-gates`. The gate now has true CI backstop off the developer's machine.
   2. `verify-ftl-orphans.py` (`--staged-only`): Remains pre-commit step 7 only (`.githooks/pre-commit:257`).
      CI runs `--self-test` and `--census` (`dev-ci.yml:332, 339`), which serves as a full-repo backstop,
      though commit-staged indexing has no representation in CI by design.
