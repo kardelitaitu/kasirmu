@@ -24,7 +24,7 @@ pub struct TopologyData {
 /// serde_json (default) serialises non-finite floats as JSON `null`,
 /// which cannot roundtrip back to `f64`.  This guard prevents the
 /// entire topology from being poisoned by a single bad coordinate.
-pub fn ser_f64_finite<S>(val: &f64, s: S) -> Result<S::Ok, S::Error>
+pub(crate) fn ser_f64_finite<S>(val: &f64, s: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
@@ -32,7 +32,7 @@ where
 }
 
 /// Deserialise an f64, mapping JSON `null` to `0.0`.
-pub fn de_f64_or_null<'de, D>(d: D) -> Result<f64, D::Error>
+pub(crate) fn de_f64_or_null<'de, D>(d: D) -> Result<f64, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -52,7 +52,7 @@ where
 ///
 /// `#[serde(default)]` only kicks in when the field is *absent*, not
 /// when it is explicitly `null`.  This helper covers the `null` case.
-pub fn de_direction_or_null<'de, D>(d: D) -> Result<WireDirection, D::Error>
+pub(crate) fn de_direction_or_null<'de, D>(d: D) -> Result<WireDirection, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -247,7 +247,7 @@ pub struct TopologyWirePayload {
 }
 
 /// Default wire direction when the field is absent or explicitly null.
-pub fn default_direction() -> WireDirection {
+pub(crate) fn default_direction() -> WireDirection {
     WireDirection::OneWay
 }
 
