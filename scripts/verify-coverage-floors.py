@@ -248,6 +248,26 @@ def self_test() -> int:
     code, _ = grade(skewed, {"platform-sync": 66.0})
     expect("many small covered lines cannot mask one large uncovered file", code == 1)
 
+    # (7) load_floors() -- the one function that touches disk. Every case above hands
+    #     grade() a dict literal, so this had no case at all and the sabotage sweep found
+    #     it SURVIVED on 2026-11-06: a body replaced by `return {}` would have gated every
+    #     crate against nothing. It takes a path, so the fixture is a temp file.
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        manifest = Path(tmp) / "floors.json"
+        manifest.write_text(
+            json.dumps({"floors": {"foundation": 97.0, "platform-sync": 66}}), encoding="utf-8")
+        expect("load_floors() reads a manifest and coerces every floor to float",
+               load_floors(manifest) == {"foundation": 97.0, "platform-sync": 66.0})
+        empty = Path(tmp) / "no-floors.json"
+        empty.write_text(json.dumps({"floors": {}}), encoding="utf-8")
+        try:
+            load_floors(empty)
+            expect("a manifest declaring no floors is refused", False)
+        except ValueError:
+            expect("a manifest declaring no floors is refused, not read as 'nothing to gate'", True)
+
     print()
     if failures:
         print(f"self-test: FAIL ({len(failures)})")

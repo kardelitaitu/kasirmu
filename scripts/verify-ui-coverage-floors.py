@@ -137,11 +137,34 @@ def self_test() -> int:
         failures += 1
     except ValueError:
         pass
+    # load_floors() -- the only function that touches disk, and it had no case: every
+    # grade() case above builds its floors inline, so the sabotage sweep found it SURVIVED
+    # on 2026-11-06. A body of `return {}` would have passed every metric vacuously.
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        good = Path(tmp) / "floors.json"
+        good.write_text(json.dumps({"ui_floors": {"lines": 85.7, "branches": 76}}), encoding="utf-8")
+        if load_floors(good) != {"lines": 85.7, "branches": 76.0}:
+            print(f"FAIL self-test: load_floors() misread a ui_floors manifest: {load_floors(good)}", file=sys.stderr)
+            failures += 1
+        # A manifest with no ui_floors map must refuse, not read as "no metric is gated".
+        for label, body in (("absent", {}), ("empty", {"ui_floors": {}}),
+                            ("not a map", {"ui_floors": [1, 2]})):
+            bad = Path(tmp) / f"{label.replace(' ', '-')}.json"
+            bad.write_text(json.dumps(body), encoding="utf-8")
+            try:
+                load_floors(bad)
+                print(f"FAIL self-test: a {label} ui_floors manifest graded clean", file=sys.stderr)
+                failures += 1
+            except ValueError:
+                pass
     if failures:
         print(f"self-test: {failures} FAILURE(S)", file=sys.stderr)
         return 1
-    print("self-test: OK (4 cases -- real measurement passes, one shortfall fires,"
-          "  an exact floor passes, an absent metric refuses)")
+    print("self-test: OK (8 cases -- real measurement passes, one shortfall fires, an exact"
+          " floor passes, an absent metric refuses, and load_floors() reads a real manifest"
+          " while refusing one that declares no ui_floors)")
     return 0
 
 def main() -> int:

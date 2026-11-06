@@ -2483,3 +2483,36 @@ refuses at exit 2 naming the checkout it looked in. Neither count changed on the
 
 Two of the remaining are pairs (`load_floors` in both coverage-floor checkers) and two are shell scripts,
 where the mutator blanks a shell function instead of a Python one.
+
+### Dated correction (2026-11-06, round 36) — the `load_floors` pair, and my own sweep was reading a fifth of the gate file
+
+**Part 1 — two more survivors closed.** `load_floors()` exists in both `verify-coverage-floors.py` and
+`verify-ui-coverage-floors.py`, and in both files **every** case handed `grade()` a dict literal, so the one
+function that touches disk had no case at all. The sabotage sweep scored both SURVIVED: a body replaced by
+`return {}` would have gated every crate against nothing and printed a clean sheet.
+
+Fix: a case that writes a real manifest to a temp file and calls `load_floors()` on it, plus the refusal
+direction — `{"floors": {}}` (py), and `{}` / `{"ui_floors": {}}` / `{"ui_floors": [1, 2]}` (ui) must
+raise rather than read as "no metric is gated". Proof: gutting either body reddens 2 and 4 cases
+respectively; restored, both pass. Live runs unchanged (`ui-coverage-floors: OK`, every metric above floor).
+The UI self-test's own printed count was stale at "4 cases" while it ran 8 — corrected in the same edit.
+
+**Part 2 — the sweep numbers this session has been reporting were wrong, and by a factor of two.** The
+ad-hoc helper I used to run `scripts/check.sh`'s python steps matched only lines beginning with `step "` at
+column 0. **76 of the 155 step calls are indented** (they sit inside `if`/`case` blocks), so every
+"79 gates, 78 green" line since round 28 measured the unindented subset only. Re-measured this round with
+a whitespace-tolerant parse:
+
+| measurement | before (my helper) | true |
+|---|---|---|
+| python steps in `scripts/check.sh` | 79 | **155** (76 indented, 69 of them `--self-test`) |
+| green | 78 | **152** |
+| red | 1 | **3** — `query plan gate` (no MSVC env in a bare shell), `coverage floors` (no `coverage-probe.json`; needs the llvm-cov run the step prints), `test workspace flake receipt (junit)` (no `target/nextest/default/junit.xml`; needs the nextest run) |
+
+A fourth step read red (`analytics tz invariance`) and was my runner's fault, not the gate's: that step runs
+with `ui/` as its cwd, so `python3 ../scripts/check-tz-invariance.py` resolves there. Re-run from `ui/` it
+is **exit 0** (`PASS: identical result under 5 host zones -> 429 passed, 0 failed`). None of the three true
+reds was introduced by this session's commits; all three need an artifact only a full local matrix run
+produces.
+
+**Harness:** rerun of `scripts/sabotage-selftests.py` → **82 checkers, 13 SURVIVED, 69 killed** (15 → 13).
