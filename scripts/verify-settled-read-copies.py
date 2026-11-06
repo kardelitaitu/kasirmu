@@ -46,10 +46,29 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+# The root is asked of git first and taken from __file__ only as a fallback. Written this
+# way because the OTHER half of this file's contract is a zero-finding verdict, and a copy
+# of the script outside this checkout used to walk its own empty parent and print
+# "OK -- 0 file(s) swept" at exit 0. Measured 2026-11-06; the same closure
+# scripts/verify-scoped-reads.py carries (its F-2 note is the long version).
+def _repo_root() -> Path:
+    """git's answer for the directory holding this file, or its parent when git cannot."""
+    here = Path(__file__).resolve().parent
+    try:
+        proc = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=here,
+                              capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return here.parent
+    if proc.returncode != 0 or not (proc.stdout or "").strip():
+        return here.parent
+    return Path(proc.stdout.strip()).resolve()
+
+
+ROOT = _repo_root()
 UI_SRC = ROOT / "ui" / "src"
 # The one file allowed to declare the union. Anything else that spells it out is a copy.
 OWNER = "ui/src/utils/settle-read.ts"
@@ -68,10 +87,10 @@ SOURCE_SUFFIXES = frozenset({".ts", ".tsx"})
 SKIP_DIRS = frozenset({"node_modules", "dist", "build", "__snapshots__"})
 
 
-def ui_sources() -> list[Path]:
-    """Every source file under ui/src, skipping dependency and build trees."""
+def ui_sources(root: Path = UI_SRC) -> list[Path]:
+    """Every source file under ROOT, skipping dependency and build trees."""
     out: list[Path] = []
-    for p in sorted(UI_SRC.rglob("*")):
+    for p in sorted(root.rglob("*")):
         if not p.is_file() or p.suffix not in SOURCE_SUFFIXES:
             continue
         if any(part in SKIP_DIRS for part in p.parts):
@@ -220,6 +239,27 @@ def self_test() -> int:
     case("a value literal is not a declaration",
          {"utils/settle-read.ts": OWNER, "features/x/Thing.tsx": VALUE}, 0)
 
+    # 11-12. THE FLOOR, through main() so the wiring is graded and not a copy of it.
+    # Measured 2026-11-06: without the sweep floor a copy of this script beside an empty
+    # ui/src printed "OK -- 0 file(s) swept" and exited 0.
+    import contextlib
+    import io
+
+    def run_main(argv):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            return main(argv), buf.getvalue()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        code, said = run_main(["--root", tmp])
+        cases.append(("an empty corpus is refused, and says why",
+                      code == 2 and "no .ts/.tsx source file" in said))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "only.ts").write_text("export const a = 1;", encoding="utf-8")
+        code, _said = run_main(["--root", tmp])
+        cases.append(("a one-file corpus still gets a verdict", code == 0))
+
     failed = 0
     for name, ok in cases:
         mark = "ok  " if ok else "FAIL"
@@ -236,11 +276,25 @@ def main(argv):
     ap.add_argument("--self-test", action="store_true",
                     help="prove the rule can still fail")
     ap.add_argument("--json", action="store_true", help="machine-readable findings")
+    ap.add_argument("--root", default=None, metavar="PATH",
+                    help="sweep PATH instead of <repo>/ui/src. A tree holding no source "
+                         "file is refused, not reported clean.")
     args = ap.parse_args(argv)
     if args.self_test:
         return self_test()
-    swept = len(ui_sources())
-    findings = find_copies(UI_SRC)
+    root = Path(args.root).resolve() if args.root else UI_SRC
+    swept = len(ui_sources(root))
+    # THE FLOOR. "no re-declaration found" and "the sweep read nothing" both print OK, and
+    # only one of them is a fact about the union. Measured 2026-11-06: a copy of this script
+    # placed beside an empty ui/src printed "OK -- 0 file(s) swept" at exit 0. The live tree
+    # sweeps 1575 files, so a floor of one is the whole difference between a verdict and a
+    # shrug -- and exit 2, because 1 already means "a finding".
+    if swept == 0:
+        print(f"error: swept {root} and found no .ts/.tsx source file, so this run graded "
+              f"nothing and its verdict would be about an empty corpus rather than about "
+              f"{OWNER}. Pass --root PATH to name the tree you meant.", file=sys.stderr)
+        return 2
+    findings = find_copies(root)
     if args.json:
         print(json.dumps({"owner": OWNER, "swept": swept, "findings": findings}, indent=2))
         return 1 if findings else 0

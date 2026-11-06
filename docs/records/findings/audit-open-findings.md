@@ -2260,3 +2260,47 @@ the probe's drive happens to be a repository.
 
 **Verified:** desktop, tablet and `desktop,tablet` runs each clean; self-test PASS; the by-hand copy
 measurements above; scratch directories removed (`git status` shows none).
+
+### Dated correction (2026-11-06) — six gates call an empty corpus clean; one of them no longer does
+
+Round 29 closed the `__file__` anchor in `verify-scoped-reads.py`. This round asked the same question
+of every python gate `scripts/check.sh` wires, by running each one **from a temp directory holding only
+a copy of the script** — a corpus that is not a repository and has no sources in it. Method: 69 wired
+python steps; the scripts were copied alone, so a local import or a missing fixture is a refusal and only
+the runs that come back **exit 0** are interesting.
+
+| gate | what it printed over an empty corpus |
+|---|---|
+| `verify-settled-read-copies.py` | `OK -- 0 file(s) swept` |
+| `check-dead-controls.py` | `0 candidate(s) with no handler` |
+| `check-pipeline-verdicts.py` | `OK - no condition reads a swallower's status` |
+| `check-state-closure-after-await.py` | `0 candidates in ui/src` |
+| `census-orphan-modules.py` | `ORPHAN=0, LIVE=0` |
+| `sabotage-selftests.py` | `0 checker(s), 0 SURVIVED` |
+
+Nine other gates refused in their own voice (exit 2 with `BROKEN`/`not found`, exit 1 with a traceback,
+or a `git` failure), which is the honest direction: a gate that cannot find its corpus should not be
+able to say the corpus is clean.
+
+**Fixed this round — `verify-settled-read-copies.py`:** two changes in one file, because it had both
+halves. The root now asks `git rev-parse --show-toplevel` first with `__file__` as the fallback, and
+`main()` refuses a sweep of **zero** files with exit 2 and a sentence that names the tree it swept and
+the flag that would have named a different one. The floor is safe to set at one because the live tree
+sweeps **1575** files.
+
+| probe | before | after |
+|---|---|---|
+| copy in `%TEMP%/settled-copy-a/scripts/` | `OK -- 0 file(s) swept`, exit 0 | `error: swept ... found no .ts/.tsx source file`, exit 2 |
+| copy at `.settled-copy-b/scripts/` (inside this checkout) | walks the copy's own empty parent | walks **1575** files of the real checkout |
+| floor deleted, copy outside the repo | — | reproduces the old false green: `OK -- 0 file(s) swept`, and the self-test drops to 11/12 |
+
+**Still open, with the measurement attached:** the other five gates in the table still print a clean-
+looking line over an empty corpus. They are not all the same severity — `census-orphan-modules.py` and
+`sabotage-selftests.py` print counts that a reader can see are zero, while `check-dead-controls.py` and
+`check-pipeline-verdicts.py` print a verdict-shaped `OK`. Also still true: 52 of the 69 wired python
+gates derive a root from `__file__` and only two of them ask git. Both numbers come from the same
+scan; neither is graded by anything yet.
+
+**Verified:** live run `OK -- 1575 file(s) swept`; self-test 12/12 (two new cases, both driven through
+`main()`); `--root` added so the tree under test can be named; scratch copies removed
+(`git status` shows none).
