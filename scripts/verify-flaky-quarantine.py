@@ -47,9 +47,12 @@ gate does not implement (a refused command line, not a failed check); 0 otherwis
 
 import datetime
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 # Relative to the REPOSITORY ROOT, and only ever joined to a root that was accepted
@@ -168,7 +171,9 @@ def self_test() -> int:
     future flag would fall through to a green again -- silently, and in the exact way
     this file's own docstring records.
 
-    Pure: argv lists in, no file is read or written.
+    Pure argv/regex cases, plus three _git_toplevel cases over a scratch git repository
+    (created under tempfile.mkdtemp and removed in a finally; nothing in the checkout is
+    read or written).
     """
     bad: list[str] = []
 
@@ -196,10 +201,45 @@ def self_test() -> int:
     want("iso date accepted", bool(DATE_RE.match("2026-09-29")), True)
     want("a non-date is not a date", bool(DATE_RE.match("29/09/2026")), False)
 
+    # _git_toplevel() -- two of resolve_root()'s four candidates, and no case reached it:
+    # the assertions above are argv and regex only, so the sweep blanked it invisibly
+    # (2026-11-06). Honest stakes: in the standard layout 'here.parent' still finds the
+    # root, so a blanked stub keeps THIS checkout green -- what it silently loses is the
+    # contract for every other layout (run from any cwd of a repo the script does not sit
+    # in) and the None-refusal resolve_root() relies on to skip a candidate. Graded
+    # against a scratch 'git init' repo, removed in the finally.
+    def tl(label, start, expect):
+        got = _git_toplevel(start)
+        if expect is None:
+            if got is not None:
+                bad.append(f"{label}: expected None, got {got!r}")
+            return
+        if got is None or os.path.normcase(str(got.resolve())) != os.path.normcase(str(expect.resolve())):
+            bad.append(f"{label}: expected {expect!r}, got {got!r}")
+
+    scratch_root = Path(tempfile.mkdtemp(prefix="flakyq-toplevel-"))
+    try:
+        nested = scratch_root / "nested" / "deeper"
+        nested.mkdir(parents=True)
+        init = subprocess.run(["git", "init", "-q", str(scratch_root)],
+                              capture_output=True, text=True)
+        if init.returncode != 0:
+            bad.append("git init failed in the scratch dir: " + init.stderr.strip()[:120])
+        else:
+            tl("_git_toplevel returns the scratch repo's root", scratch_root, scratch_root)
+            tl("_git_toplevel ascends from a nested cwd", nested, scratch_root)
+        plain = Path(tempfile.mkdtemp(prefix="flakyq-nogit-"))
+        try:
+            tl("_git_toplevel refuses a directory that is not a work tree", plain, None)
+        finally:
+            plain.rmdir()
+    finally:
+        shutil.rmtree(scratch_root, ignore_errors=True)
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (10 cases, no files touched)")
+    print("SELF-TEST OK (13 cases: 10 pure + 3 over a scratch git repo, removed)")
     return 0
 
 

@@ -2851,3 +2851,26 @@ exit-2 refusal depends on. The docstring's `Pure: synthetic strings only` claim 
 41's footer was: the self-test now touches one temp dir and still builds and runs nothing.
 
 Harness rerun → **82 checkers, 5 SURVIVED, 77 killed** (6 → 5).
+
+### Dated correction (2026-11-06, round 45) — `verify-flaky-quarantine.py`: `_git_toplevel` had no case
+
+Same shape as round 43: `--self-test` graded argv lists and two regexes, so the function feeding two of
+`resolve_root()`'s four candidates was never called. Honesty about the stakes, though — this is between
+round 43 (real) and round 44 (mild): in the standard layout `here.parent` still finds the root, so a blanked
+stub keeps THIS checkout green. What it silently loses is the contract for every other layout — a repo the
+script does not sit in, resolved via `git rev-parse` from an arbitrary cwd — and the `None` refusal
+`resolve_root()` relies on to skip a candidate.
+
+| mutation | self-test |
+|---|---|
+| `_git_toplevel` → `return None` (the sweep's stub) | exit 2: scratch root cases expected the repo, got None |
+| drop `cwd=str(start)` from the subprocess call | exit 2: returns the process cwd (`C:/dev/kasirmu`) for the scratch dir — proves the case really checks WHICH repo, not just any answer |
+| never refuses (`return Path(str(start))`) | exit 2: returns the nested cwd itself, and accepts a non-repo dir |
+| restored | exit 0, 13 cases |
+
+**Fix:** three cases over a scratch `git init` repo in `tempfile.mkdtemp` (removed in a `finally`): the root
+IS the scratch dir; a nested cwd resolves to the same parent; a plain temp dir returns `None`. The docstring's
+`Pure: argv lists in, no file is read or written` was adjusted before it went stale, and a dead branch the
+first draft left in the helper was removed before committing.
+
+Harness rerun → **82 checkers, 4 SURVIVED, 78 killed** (5 → 4).
