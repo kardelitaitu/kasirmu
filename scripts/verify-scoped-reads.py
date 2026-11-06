@@ -127,6 +127,7 @@ import io
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import time
@@ -153,7 +154,55 @@ import time
 # REPO is still __file__-derived, so the refusal fires in the wrong checkout rather than
 # pointing at the right one, and --repo does not exist to say which tree was meant.
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# ── The root anchor: git's answer first, the script's parent second ──────────
+#
+# CLOSED 2026-11-06 (F-2 above, the anchor half). The paragraph above is kept as history:
+# it recorded that REPO came from __file__ with nothing arguing for it, and that a gate
+# whose default on an empty corpus is clean will report a repository it is not looking at.
+# The reproduction it cites was real -- a HEAD-identical copy beside a copied allowlist
+# printed 'clean for desktop' over 0 files.
+#
+# git's answer is now asked FIRST, from the directory holding this file, and the
+# script-relative anchor is only the fallback for the case git cannot answer at all (a copy
+# sitting outside any repository, a git-less box). What that buys, measured: a copy of this
+# script placed ANYWHERE inside a checkout grades that checkout, instead of the directory
+# above the copy. What it does not buy: a --repo flag. There is still no way to name a tree
+# that git cannot find from the script's own location, and require_gradeable_corpus() is
+# what refuses that run -- exit 2, before a verdict -- rather than a clean sentence over a
+# corpus nobody walked. Taken the same way scripts/verify-agents-mirrors.py takes it.
+def _git_toplevel(where):
+    """git's `rev-parse --show-toplevel` for a directory, or None when git cannot answer.
+
+    None covers every way git can fail to name a tree: no git binary, a cwd outside any
+    repository, a timeout, a non-zero exit, an empty answer. The caller cannot tell those
+    apart and does not need to -- what it needs is a fact it may fall back from.
+    """
+    directory = where if os.path.isdir(where) else os.path.dirname(where)
+    try:
+        proc = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=directory,
+                              capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    top = (proc.stdout or "").strip()
+    return os.path.abspath(top) if top else None
+
+
+def resolve_repo(start=None):
+    """The checkout root to grade: git first, this file's parent only as a fallback.
+
+    Start is a path to THIS script (or a stand-in for it); the directory searched is the
+    one holding it, so an ordinary run and a copy behave the same way.
+    """
+    here = os.path.dirname(os.path.abspath(start or __file__))
+    top = _git_toplevel(here)
+    if top:
+        return top
+    return os.path.dirname(here)
+
+
+REPO = resolve_repo()
 ALLOWLIST = os.path.join(REPO, "scripts", "ipc-parity-allowlist.json")
 BASELINE = os.path.join(REPO, "scripts", "scoped-reads-baseline.json")
 
@@ -3177,6 +3226,52 @@ def _platform_guard_self_test():
             failures += 1
     return failures
 
+def anchor_self_test():
+    """Cases 40a-40c: resolve_repo() -- git's answer first, __file__ only as a fallback.
+
+    These three are the closure's witness, and none of them writes a file: 40a uses a path
+    that need not exist to show the two anchors DIFFER for the same input (git resolves to
+    the checkout, the old __file__ rule resolves to the directory above the copy), 40b shows
+    the live assignment agrees, and 40c proves no exception escapes when git cannot answer.
+    What they cannot prove is that a real copy grades the right tree -- that was measured by
+    hand on 2026-11-06, a copy at .anchor-copy-a/scripts/ grading 669 files of this checkout
+    where the old rule would have graded the copy's own empty parent.
+    """
+    print("  root anchor")
+    fails = 0
+
+    def report(label, ok, detail):
+        nonlocal fails
+        print(f"    {'ok  ' if ok else 'FAIL'} {label}" + (f"  {detail}" if detail else ""))
+        if not ok:
+            fails += 1
+
+    # 40a -- the ordering. A path inside the checkout whose __file__-style parent is NOT the
+    # checkout: git has to win for the answer to be the root.
+    probe = os.path.join(REPO, "scripts", "__anchor_probe__", "verify-scoped-reads.py")
+    got = resolve_repo(probe)
+    script_relative = os.path.dirname(os.path.dirname(os.path.abspath(probe)))
+    report("case 40a git's answer beats the script-relative one inside the checkout",
+           got == REPO and script_relative != REPO,
+           f"git -> {got}; __file__-style -> {script_relative}")
+
+    # 40b -- the live assignment, through the same function main() uses.
+    report("case 40b this file resolves to REPO", resolve_repo(__file__) == REPO, REPO)
+
+    # 40c -- git cannot answer: the fallback is script-relative and nothing raises. Expected
+    # is computed, not assumed: on a box where the probe's drive IS a repository, the git
+    # branch is what this asserts, and the case still proves the contract.
+    outside = os.path.join(os.sep, "__scoped_reads_anchor_probe__", "scripts",
+                           "verify-scoped-reads.py")
+    outside_dir = os.path.dirname(os.path.abspath(outside))
+    git_answer = _git_toplevel(outside_dir)
+    expected = git_answer or os.path.dirname(outside_dir)
+    report("case 40c outside a repository the fallback is script-relative",
+           resolve_repo(outside) == expected,
+           f"{resolve_repo(outside)} (git answered: {git_answer or 'no'})")
+    return fails
+
+
 def self_test():
     print("  verify-scoped-reads self-test")
     failures = 0
@@ -3208,6 +3303,7 @@ def self_test():
     else:
         print("    ok   classifier can report a violation (not vacuous)")
     failures += _platform_guard_self_test()
+    failures += anchor_self_test()
     failures += _shape_self_test()
     failures += _read_retry_self_test()
     failures += _aim_self_test()

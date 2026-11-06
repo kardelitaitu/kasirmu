@@ -2230,3 +2230,33 @@ live docs; `verify-agents-mirrors.py` reports its one policed mirror agrees. Onl
 tracked correction; the untracked copy was edited as well so an existing local build shows the fix without
 a rebuild. The mirror gate (`verify-agents-mirrors.py`) does not compare those two copies and this note does
 not claim it does.
+
+### Dated correction (2026-11-06) — the F-2 anchor is closed in `verify-scoped-reads.py`
+
+The file's own F-2 note said the root came from `__file__` with nothing arguing for it, and that a
+HEAD-identical copy run from a temp directory printed `clean for desktop` over **0 files walked**. Half of
+that was closed earlier by `require_gradeable_corpus()` (a zero walk now refuses at exit 2); what stayed
+open was the anchor itself — the refusal fired in the *wrong checkout* instead of pointing at the right one.
+
+**The change:** `REPO = resolve_repo()`, and `resolve_repo()` asks `git rev-parse --show-toplevel` from
+the directory holding the script, falling back to the script-relative parent only when git cannot answer (no
+binary, no repository, non-zero exit, empty answer, timeout). Same closure `verify-agents-mirrors.py`
+already takes.
+
+| probe | before | after |
+|---|---|---|
+| copy at `.anchor-copy-a/scripts/` (inside this checkout) | grades `.anchor-copy-a` → 0 files → refusal | grades **669 files** of the real checkout, clean |
+| copy at `%TEMP%/anchor-probe-d/scripts/` (outside any repo) | allowlist-not-found, exit 2, naming the copy's tree | unchanged — exit 2, naming the copy's tree |
+
+**Not closed, and named rather than implied:** there is still no `--repo` flag, so a tree git cannot find
+from the script's own location cannot be named; the zero-walk refusal remains what catches that. The
+docstring says so at the anchor block instead of leaving a reader to discover it.
+
+**Proof the new cases can fail:** with the git probe removed from `resolve_repo()`, case 40a reddens
+(`git -> C:\dev\kasirmu\scripts; __file__-style -> C:\dev\kasirmu\scripts`) and the self-test exits
+`FAIL (1)`; restoring the probe returns `self-test: PASS`. Cases 40a–40c write no files: 40a uses a path
+that need not exist, 40c computes its expectation from a second git probe so it cannot flake on a box where
+the probe's drive happens to be a repository.
+
+**Verified:** desktop, tablet and `desktop,tablet` runs each clean; self-test PASS; the by-hand copy
+measurements above; scratch directories removed (`git status` shows none).
