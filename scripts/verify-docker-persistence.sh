@@ -23,6 +23,23 @@
 
 set -euo pipefail
 
+# ── Verdict vocabulary ───────────────────────────────────────────────
+# Defined ABOVE the self-test block (moved 2026-11-06) so the cases grade the real
+# functions. Before the move, case 3 called fail() before it existed: bash answered
+# "command not found", which is ALSO a non-zero exit, so the case passed while proving
+# that fail() exits nothing at all.
+GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
+pass() { printf "${GREEN}✔ %s${NC}\n" "$1"; }
+fail() { printf "${RED}✘ %s${NC}\n" "$1"; exit 1; }
+
+# Cleanup runs on EXIT of a real run. It is defined here so the self-test can grade it with
+# a docker stub; the sabotage sweep reported a gutted cleanup() SURVIVING because no case
+# ever called it.
+cleanup() {
+    docker rm -f "$CLOUD_CONTAINER" "$LICENSE_CONTAINER" >/dev/null 2>&1 || true
+    docker volume rm "$CLOUD_VOL" "$LICENSE_VOL" >/dev/null 2>&1 || true
+}
+
 # ── SELF-TEST ────────────────────────────────────────────────────────
 # This gate had NO proof form of any kind until 2026-10-24: no --self-test, no companion
 # test, no measured mutation, and no note explaining an absence. It was also invoked by no
@@ -98,23 +115,51 @@ print('OK' if need <= names else 'MISSING:' + ','.join(sorted(need - names)))
 
     # 3. fail() must EXIT, not merely print. A fail() that returned would let the script
     #    run on to the next stage after a lost record and still reach the final green line.
+    #    THIS CASE WAS VACUOUS until 2026-11-06: fail() was defined 100 lines BELOW the block,
+    #    so the subshell died of "command not found" (exit 127) instead of running fail().
+    #    It passed even when fail()'s body was blanked. The vocabulary above fixes that.
     st_case
     if ( fail "planted" ) >/dev/null 2>&1; then
         printf 'SELF-TEST WRONG: fail() returned instead of exiting\n' >&2
         st_fails=$((st_fails + 1))
     fi
 
+    # 3b. cleanup() -- the only function that touches the daemon, and it had no case at all,
+    #     which is why the sabotage sweep scored it SURVIVED: nothing called it. No daemon is
+    #     needed to grade it: a shell FUNCTION named docker shadows the binary, so the recorder
+    #     sees exactly the argv cleanup() builds from the four name variables. A future edit
+    #     that hardcodes a container name, drops a volume, or returns early fails here.
+    st_case
+    _rec="$(mktemp)"
+    CLOUD_CONTAINER=probe-cloud-1; LICENSE_CONTAINER=probe-license-1
+    CLOUD_VOL=probe-cloud-vol; LICENSE_VOL=probe-license-vol
+    docker() { printf '%s\n' "$*" >> "$_rec"; }
+    cleanup
+    unset -f docker
+    if ! grep -qxF 'rm -f probe-cloud-1 probe-license-1' "$_rec" ||
+       ! grep -qxF 'volume rm probe-cloud-vol probe-license-vol' "$_rec" ||
+       [ "$(grep -c . "$_rec")" -ne 2 ]; then
+        printf 'SELF-TEST WRONG: cleanup() did not remove both containers and both volumes (recorder: %s)\n' \
+            "$(tr '\n' '|' < "$_rec")" >&2
+        st_fails=$((st_fails + 1))
+    fi
+    rm -f "$_rec"
+
     # 4. NO DAEMON, BY CONSTRUCTION. The first draft of this case called a function that
     #    does not exist and fell back to "|| echo absent": it asserted nothing and would have
-    #    passed even if --self-test had gone on to build images. The second draft re-ran this
-    #    script under "sh $0 --self-test", which is RECURSION -- and it hung until killed,
-    #    which is how that was found. Grade the structural fact instead: this block sits
-    #    ABOVE the first docker invocation in the file, so nothing below can have run.
+    #    passed even if --self-test had gone on to build images. The second re-ran this script
+    #    under "sh $0 --self-test", which is RECURSION -- and it hung until killed. The third
+    #    grepped for the first docker line, which stopped meaning anything on 2026-11-06 when
+    #    cleanup()'s body (docker rm / docker volume rm) moved above this block: a DEFINITION
+    #    executes nothing. Grade the invariant that actually matters: --self-test exits before
+    #    the script's first executable statement and before the EXIT trap arms cleanup.
     st_case
-    first_docker=$(grep -n -m1 -E '^[[:space:]]*docker (build|run|volume|compose|rm)' "$0" | cut -d: -f1)
+    first_stmt=$(grep -n -m1 -E '^cd "\$\(dirname "\$0"\)/\.\."' "$0" | cut -d: -f1)
+    trap_line=$(grep -n -m1 -E '^trap cleanup EXIT' "$0" | cut -d: -f1)
     self_case_line=$(grep -n -m1 -E 'st_fails=0' "$0" | cut -d: -f1)
-    if [ -z "$first_docker" ] || [ -z "$self_case_line" ] || [ "$self_case_line" -gt "$first_docker" ]; then
-        printf 'SELF-TEST WRONG: the self-test block is not above the first docker call\n' >&2
+    if [ -z "$first_stmt" ] || [ -z "$trap_line" ] || [ -z "$self_case_line" ] ||
+       [ "$self_case_line" -gt "$first_stmt" ] || [ "$self_case_line" -gt "$trap_line" ]; then
+        printf 'SELF-TEST WRONG: the self-test block does not exit before the script starts\n' >&2
         st_fails=$((st_fails + 1))
     fi
 
@@ -137,14 +182,6 @@ LICENSE_VOL="oz-persist-verify-license"
 CLOUD_CONTAINER="oz-persist-verify-cloud-1"
 LICENSE_CONTAINER="oz-persist-verify-license-1"
 
-GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
-pass() { printf "${GREEN}✔ %s${NC}\n" "$1"; }
-fail() { printf "${RED}✘ %s${NC}\n" "$1"; exit 1; }
-
-cleanup() {
-    docker rm -f "$CLOUD_CONTAINER" "$LICENSE_CONTAINER" >/dev/null 2>&1 || true
-    docker volume rm "$CLOUD_VOL" "$LICENSE_VOL" >/dev/null 2>&1 || true
-}
 trap cleanup EXIT
 cleanup
 

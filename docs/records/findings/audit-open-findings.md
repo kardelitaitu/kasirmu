@@ -2516,3 +2516,38 @@ reds was introduced by this session's commits; all three need an artifact only a
 produces.
 
 **Harness:** rerun of `scripts/sabotage-selftests.py` → **82 checkers, 13 SURVIVED, 69 killed** (15 → 13).
+
+### Dated correction (2026-11-06, round 37) — `verify-docker-persistence.sh`: a survivor, and a case that had never tested anything
+
+**The survivor.** `cleanup()` was scored SURVIVED by `scripts/sabotage-selftests.py`: no self-test case called
+it. It is also the function a real run depends on to leave no containers and no volumes behind — the
+failure it prevents is silent volume growth across runs, so a broken `cleanup()` costs nothing visible
+until the host fills up.
+
+**The defect found while fixing it — case 3 was vacuous, and had been since the block was written.**
+`fail()` was defined 100 lines BELOW the `--self-test` block, so `( fail "planted" )` died of `command not
+found` (exit 127) rather than by running `fail()`. The case accepted any non-zero exit, so it passed with
+`fail()`'s body blanked. Measured on the pre-change file:
+
+```
+HEAD (pre-fix), fail() body blanked -> SELF-TEST OK (7 cases, no daemon), exit 0
+fixed file,    fail() body blanked -> SELF-TEST FAILED (1 of 8 cases), exit 2
+               "SELF-TEST WRONG: fail() returned instead of exiting"
+```
+
+**Fix, three parts:**
+
+1. The verdict vocabulary (`GREEN/RED/NC`, `pass`, `fail`) and `cleanup()` moved **above** the self-test
+   block, so the cases grade the real functions. Case 3 now genuinely proves that `fail()` exits.
+2. New case for `cleanup()`: a shell FUNCTION named `docker` shadows the binary and records argv; the case
+   sets the four name variables to probes and asserts exactly two calls — `rm -f probe-cloud-1
+   probe-license-1` and `volume rm probe-cloud-vol probe-license-vol`. Blank the body → `SELF-TEST WRONG:`
+   naming the empty recorder, exit 2. No daemon involved.
+3. Case 4's structural guard rewritten. It asserted "the first `docker` line is below this block", which
+   stopped meaning anything the moment `cleanup()`'s body (`docker rm`, `docker volume rm`) moved above it —
+   a definition executes nothing. It now asserts the stronger, still-textual invariant: `--self-test` exits
+   before the script's first executable statement (`cd "$(dirname "$0")/.."`) and before `trap cleanup EXIT`.
+
+**Verified:** `bash -n` parses; self-test `8 cases` green; both mutations red; the pre-fix vacuity measured
+on a copy of `HEAD:scripts/verify-docker-persistence.sh`; harness rerun → **82 checkers, 12 SURVIVED, 70
+killed** (13 → 12).
