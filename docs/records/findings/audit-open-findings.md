@@ -2984,3 +2984,36 @@ function per checker and grades the self-test's response — a self-test that gr
 thoroughly still passes, and the ~40 bash gate steps outside the python sweep remain unpoliced by it.
 
 Harness rerun → **82 checkers, 0 SURVIVED, 82 killed** (1 → 0).
+
+### Dated note (2026-11-07, round 50) — `verify-scoped-reads.py`: the F-2 note's other half shipped as `--repo`
+
+The anchor fix (`30c3282ea`) made a copy grade the tree it sits in but left no way to NAME a tree git
+cannot find from the script's own location. `audit()` always owned a `repo=` seam; `main()` never passed
+one. Commit `25051aa8b` exposes it: `resolve_repo_flag()` returns (tree, provenance); a named tree that is
+not a directory is refused at resolution as an `EmptyCorpus` — the one handler, `error:`, exit 2, before any
+verdict; `--repo` without `--allowlist` grades the named tree's OWN `scripts/ipc-parity-allowlist.json` and
+the surfaces line says so; an explicit `--allowlist` still wins.
+
+**Aiming migration.** The self-test's drive helpers no longer rebind `audit.__defaults__` — they pass
+`--repo` through the real `main()`, so every fixture case now exercises the flag path itself (the rebind
+trick silently graded the real checkout the moment `main()` passed `repo=` explicitly — 14 cases caught it
+before the repair). `describe_unggraded()` now takes the run's repo, so the ungraded-shell line's digits
+describe the same tree the verdict covers; case 39 pins stated-digits == independent-audit-digits.
+
+| mutation | self-test |
+|---|---|
+| blank resolver default (`return None`) | case 41a red + unpack `TypeError` through every drive case — killed |
+| drop the isdir refusal | case 41c red alone — killed |
+| drop the `--repo` default-allowlist branch | case 41d red alone — killed |
+| drop the ungraded-line repo threading | case 39 red (stated 0/0/0 vs truth 1) — killed |
+| drop `repo=` in `main`'s audit call | attempted 3× — concurrent writer kept restoring HEAD mid-write; mutant never survived a read-back. PENDING, expected row: 41d |
+
+The pending row is honest, not stylistic: the four proven mutations each ran ~45 s on live mutants; the
+fifth could not be placed (8 retries over ~24 s, read-back verified). A quiet lane should finish it.
+
+**Incident, recorded because it shaped the commit.** Two rounds of uncommitted work on this file were
+silently reverted by a concurrent lane's buffer saves (measured 23:37 and 00:15: `git status` clean, my
+patch absent, HEAD unchanged). Countermeasure: patch + self-test + commit in ONE call — `25051aa8b` landed
+that way, 174 insertions, 23 deletions, self-test PASS at commit time.
+
+Harness rerun → pending (launched this round; result lands on the round card).
