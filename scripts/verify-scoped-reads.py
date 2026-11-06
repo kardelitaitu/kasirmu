@@ -3280,9 +3280,20 @@ def anchor_self_test():
     probe = os.path.join(REPO, "scripts", "__anchor_probe__", "verify-scoped-reads.py")
     got = resolve_repo(probe)
     script_relative = os.path.dirname(os.path.dirname(os.path.abspath(probe)))
-    report("case 40a git's answer beats the script-relative one inside the checkout",
-           got == REPO and script_relative != REPO,
-           f"git -> {got}; __file__-style -> {script_relative}")
+    # 40a's ordering claim has two correct shapes, keyed to whether git can answer for the
+    # probe's directory at all. Inside a checkout the git answer wins and the old
+    # __file__-style rule is shown to differ. In a copy with no .git -- this harness stages
+    # exactly that -- the priority is unobservable, and what must hold instead is that the
+    # fallback answers EXACTLY the old script-relative rule for the same nested probe.
+    probe_git = _git_toplevel(os.path.dirname(probe))
+    if probe_git:
+        report("case 40a git's answer beats the script-relative one inside the checkout",
+               got == REPO and script_relative != REPO,
+               f"git -> {got}; __file__-style -> {script_relative}")
+    else:
+        report("case 40a no git answer here: the fallback IS the script-relative rule",
+               got == script_relative,
+               f"fallback -> {got}; script-relative -> {script_relative}")
 
     # 40b -- the live assignment, through the same function main() uses.
     report("case 40b this file resolves to REPO", resolve_repo(__file__) == REPO, REPO)
@@ -3298,6 +3309,22 @@ def anchor_self_test():
     report("case 40c outside a repository the fallback is script-relative",
            resolve_repo(outside) == expected,
            f"{resolve_repo(outside)} (git answered: {git_answer or 'no'})")
+    # 40d -- the git branch itself, graded where it can be MADE to answer: a throwaway
+    # repo makes _git_toplevel return a fact regardless of whether the ambient tree is a
+    # checkout, so the branch is pinned in a history-less staging copy too -- and gutting
+    # _git_toplevel unruns this case instead of passing it vacuously.
+    import shutil as _shutil
+    import tempfile as _tempfile
+    if _shutil.which("git"):
+        with _tempfile.TemporaryDirectory(prefix="oz-scoped-40d-") as tdr:
+            subprocess.run(["git", "init", "-q"], cwd=tdr, capture_output=True)
+            top = _git_toplevel(tdr)
+            report("case 40d a throwaway repo makes git's branch answer",
+                   isinstance(top, str) and os.path.samefile(top, tdr),
+                   f"git -> {top}")
+    else:
+        print("    (git unavailable: case 40d is skipped)")
+
     return fails
 
 
