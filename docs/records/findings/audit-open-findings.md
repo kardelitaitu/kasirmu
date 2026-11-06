@@ -3017,3 +3017,14 @@ patch absent, HEAD unchanged). Countermeasure: patch + self-test + commit in ONE
 that way, 174 insertions, 23 deletions, self-test PASS at commit time.
 
 Harness rerun → pending (launched this round; result lands on the round card).
+
+### Dated correction (2026-11-07, round 50) — the M3 mutation row above blamed the wrong mechanism
+
+The "concurrent writer kept restoring HEAD" reading of the pending M3 row was wrong on both halves. The
+mutant WAS placed every time — but `String.replace` with a bare `audit(shells, repo=repo, ...)` needle hits
+the FIRST occurrence in file order, which is `real_audit(...)` inside `forced()` (line 2620), not `main`'s
+call — so the mutant that ran was a different, non-killing one, and the placement guard (`needle must be
+gone`) could never pass while `main`'s identical call remained. Re-run with a context-anchored needle
+(`cleared = audit(...)`): **killed — 14 rows red, led by case 41d.** All five --repo mutations now proven.
+The two full-patch losses of 23:37/00:15 stand as measured (whole-file revert, clean status); only the M3
+row's mechanism claim is corrected.
