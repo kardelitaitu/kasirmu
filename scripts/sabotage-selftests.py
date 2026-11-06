@@ -18,6 +18,7 @@ the tracked tree.
 USAGE
     python scripts/sabotage-selftests.py            # full sweep, prints a table
     python scripts/sabotage-selftests.py --limit 5  # first five checkers only
+    python scripts/sabotage-selftests.py --skip 41  # the rest, for chunked runs
 """
 
 from __future__ import annotations
@@ -198,7 +199,7 @@ def run_self_test(path: Path) -> int | None:
     return r.returncode
 
 
-def survey(limit: int | None) -> list[tuple[str, str, int, int, str]]:
+def survey(limit: int | None, skip: int = 0) -> list[tuple[str, str, int, int, str]]:
     """(checker, mutated function, before, after, verdict) for every candidate."""
     # Three languages, two mechanisms. Python is mutated through its AST (find the
     # FunctionDef, replace the body). .sh and .mjs have no stdlib parser here, so they are
@@ -209,15 +210,27 @@ def survey(limit: int | None) -> list[tuple[str, str, int, int, str]]:
     # just a syntax error. Both mechanisms answer the same question: does the self-test
     # notice its detector being gutted.
     files = []
-    for pattern in ("verify-*.py", "check-*.py", "verify-*.sh", "check-*.sh",
-                    "verify-*.mjs", "check-*.mjs"):
-        files.extend(sorted((ROOT / "scripts").glob(pattern)))
+    for base, pattern in (
+        ("scripts", "verify-*.py"), ("scripts", "check-*.py"),
+        ("scripts", "verify-*.sh"), ("scripts", "check-*.sh"),
+        ("scripts", "verify-*.mjs"), ("scripts", "check-*.mjs"),
+        # Outside scripts/ but self-tested and wired into check.sh (round-51 census):
+        # the docs-auditor checkers via scripts/check-auditor-selftests.sh, the website
+        # deploy prober via its own step. backup-db.sh / restore-db.sh are named
+        # outright: their names predate the verify-*/check-* convention.
+        (".agents/skills/docs-auditor/scripts", "check-*.py"),
+        ("website/scripts", "verify-*.mjs"),
+    ):
+        files.extend(sorted((ROOT / base).glob(pattern)))
+    files.extend(ROOT / "scripts" / name for name in ("backup-db.sh", "restore-db.sh"))
     # A substring search is not a census: verify-website-assets.py MENTIONS --self-test
     # in a paragraph explaining why it has none, and that prose was read as a capability
     # (it then errored "unrecognized arguments", recorded here as PATH ALREADY RED).
     # Require the argparse flag itself, i.e. the string inside a quoted literal.
     flag = re.compile(r"""["']--self-test["']""")
     files = [f for f in files if flag.search(f.read_text(encoding="utf-8", errors="replace"))]
+    if skip:
+        files = files[skip:]
     if limit:
         files = files[:limit]
     rows = []
@@ -251,14 +264,28 @@ def survey(limit: int | None) -> list[tuple[str, str, int, int, str]]:
             # a pass.
             rows.append((p.name, "-", 0, 0, "NO MUTATABLE FUNCTION"))
             continue
-        # Mutate only the FIRST candidate: enough to answer "can this self-test fail".
-        name, s0, e0 = cands[0]
-        if p.suffix in (".sh", ".mjs"):
-            mutated = blank_text_body(src, s0, e0, p.suffix)
-        else:
-            mutated = blank_body(src, name, s0, e0)
+        # Relocation control: a self-test that resolves paths through __file__ (or
+        # imports a sibling by location) fails from the temp copy for reasons that have
+        # nothing to do with the mutation -- and that failure scores as a KILL it did
+        # not earn. Run the UNMUTATED file through the same temp treatment first; if it
+        # cannot survive relocation, the harness says so instead of claiming a verdict.
+        # Measured round 52: check-cite-lines.py --self-test is green in place and red
+        # from a copy, so the widened sweep would have reported a false kill.
         with tempfile.TemporaryDirectory() as td:
-            copy = Path(td) / p.name
+            td_path = Path(td)
+            relo = td_path / p.name
+            relo.write_text(src, encoding="utf-8")
+            relo_rc = run_self_test(relo)
+            if relo_rc not in (0, None):
+                rows.append((p.name, "-", 0, relo_rc, "RELOCATION-SENSITIVE"))
+                continue
+            # Mutate only the FIRST candidate: enough to answer "can this self-test fail".
+            name, s0, e0 = cands[0]
+            if p.suffix in (".sh", ".mjs"):
+                mutated = blank_text_body(src, s0, e0, p.suffix)
+            else:
+                mutated = blank_body(src, name, s0, e0)
+            copy = td_path / p.name
             copy.write_text(mutated, encoding="utf-8")
             after = run_self_test(copy)
         verdict = "KILLED" if after not in (0, None) else "SURVIVED"
@@ -331,12 +358,15 @@ def self_test() -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--skip", type=int, default=0,
+                    help="Drop the first N checkers of the filtered list, so the full "
+                         "matrix can be measured in chunks that fit one tool call.")
     ap.add_argument("--self-test", action="store_true",
                     help="Grade the mutator on synthetic sources and exit.")
     args = ap.parse_args()
     if args.self_test:
         return self_test()
-    rows = survey(args.limit)
+    rows = survey(args.limit, args.skip)
     survivors = [r for r in rows if r[4] == "SURVIVED"]
     for name, fn, before, after, verdict in rows:
         print("  %-46s %-28s %-12s exit %s -> %s" % (name, fn[:28], verdict, before, after))
