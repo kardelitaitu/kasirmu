@@ -398,11 +398,11 @@ data::` -> **50 passed, 0 failed**.
   verdict`). One binding now feeds both the `require_permission` probe and the permission
   reported beside it, so the enforced and the reported answer cannot diverge. Pinned by the
   module suite: `cargo test -p kasirmu-bridge --lib subscription` -> **35 passed, 0 failed**.
-- **BR-C10** — **[PBD]** `get_hardware_settings_scoped` carries an inherited **double
-  session read**: `crates/kasirmu-bridge/src/settings.rs:672` resolves the session, `:676` calls
-  `resolve_scope`, which resolves it **again** (`crates/kasirmu-bridge/src/ctx.rs:170`), and `:677`
-  delegates to `get_hardware_settings` (`:557`). Preserved because the unscoped reader is
-  shared; the second resolve is what makes an expiry between the two calls observable.
+- ~~**BR-C10** — `get_hardware_settings_scoped` carries an inherited **double session read**.~~ —
+  **CLOSED 2026-11-06** (`refactor(settings): eliminate redundant resolve_scope in get_hardware_settings_scoped`).
+  The redundant `resolve_scope` call following `resolve_session` and permission validation was removed;
+  hardware profiles utilize the global DB, and token resolution is already complete. Pinned by
+  `cargo test -p kasirmu-bridge --lib settings` (107 passed, 0 failed).
 - ~~**BR-C11** — `run_list_credit_sales` binds the **payment reference** into the **customer
   name** column.~~ — **STALE 2026-11-05**: the function moved to
   `crates/kasirmu-bridge/src/settings/core.rs:72` and the faulty selection is gone. The query

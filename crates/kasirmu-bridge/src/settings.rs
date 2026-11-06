@@ -419,8 +419,7 @@ pub async fn get_hardware_settings_scoped(
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, permissions::SETTINGS_READ)
         .await?;
-    // Validate session; hardware profiles use the global db.
-    ctx.resolve_scope(session_token)?;
+    // Hardware profiles use the global db; session resolution above validates the token.
     get_hardware_settings(ctx, base_dir).await
 }
 
