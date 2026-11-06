@@ -2807,3 +2807,30 @@ deep, unlike the docker gate's `--self-test` loop that re-entered the whole scri
 Live line unchanged. Harness rerun → **82 checkers, 7 SURVIVED, 75 killed** (8 → 7). Described as a probe
 rather than a rewrite deliberately: moving the gate body into `main()` would have touched sixty lines of a
 drift guard to grade one branch.
+
+### Dated correction (2026-11-06, round 43) — `check-chokepoints.py`: `repo_root` decided every read, ungraded
+
+`--self-test` builds its file dictionaries in memory, so nothing called `repo_root()`; the sweep blanked it and
+the self-test still exited 0. It is the one function that decides WHERE every other read happens: `""` makes
+each `_git()` run `-C ""` and the failure surfaces later as `git diff failed`, naming neither the cause nor the
+missing root.
+
+**Also fixed, unrelated to the case:** `repo_root` ran `text=True` without `encoding`, while `_git()` twelve
+lines below documents at length why that is silent on Windows — a non-ASCII checkout path decodes through the
+locale codec to mojibake. It now passes `encoding="utf-8", errors="replace"`, takes an optional `cwd`, and
+refuses an empty `rev-parse` answer instead of returning `""`.
+
+| mutation | self-test |
+|---|---|
+| `repo_root` → `return None` | exit 2, 3 rows: returned None (twice), accepted a non-repo dir |
+| `repo_root` → `return ""` | exit 2, 3 rows: returned '' (twice), accepted a non-repo dir |
+| drop `cwd=cwd` from the subprocess call | exit 2, 3 rows: returns this checkout's root for the scratch dir |
+| restored | exit 0, 12 rule cases + 3 root cases |
+
+**Fix:** three cases over a scratch `git init` directory in `tempfile.mkdtemp`, so the self-test still needs no
+checkout: the root IS the scratch dir; a nested cwd resolves to the same parent (proves it asks git instead of
+echoing cwd); a plain temp dir raises `SystemExit` (proves the refusal). The first version let `return None`
+crash on `os.path.realpath(None)` and exit 1 — killed, but by a `TypeError`, not by a named row. Hardened with a
+`_root_case` helper that reports a non-string answer as a failure; it now reds 3 named rows.
+
+Harness rerun → **82 checkers, 6 SURVIVED, 76 killed** (7 → 6).

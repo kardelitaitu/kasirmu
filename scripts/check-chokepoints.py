@@ -35,7 +35,9 @@ import fnmatch
 import os
 import re
 import subprocess
+import shutil
 import sys
+import tempfile
 
 # ---------------------------------------------------------------------------
 # The chokepoint table. Adding a rule is a data edit, not a code edit.
@@ -113,11 +115,32 @@ RULES = (
 GIT_BASH = "C:/Program Files/Git/bin/bash.exe"
 
 
-def repo_root():
-    out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+def repo_root(cwd=None):
+    """Absolute root of the work tree containing `cwd` (default: this process's cwd).
+
+    ENCODING IS NOT OPTIONAL here either -- see _git() below, which explains the silent
+    CP-1252 mismatch in full. `--show-toplevel` prints the path as UTF-8 bytes; decoded with
+    the locale codec on Windows a non-ASCII checkout path becomes mojibake, `_git` then runs
+    against a directory that does not exist, and the failure surfaces as "git diff failed"
+    naming neither the encoding nor the path. errors="replace" keeps a bad byte visible in the
+    message instead of killing the reader thread.
+    """
+    out = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     if out.returncode != 0:
         raise SystemExit("not a git work tree")
-    return out.stdout.strip()
+    root = out.stdout.strip()
+    if not root:
+        # rev-parse exiting 0 with nothing on stdout is not a root: every _git() call would
+        # then run with -C "" and fail later with a message about the diff, not the cause.
+        raise SystemExit("git rev-parse returned an empty root")
+    return root
 
 
 def _git(root, *args):
@@ -297,6 +320,60 @@ def self_test():
             print("         fired=%s (want %s) missing=%s (want %s)"
                   % (fired, expect_fired, missing, expect_missing))
             failures += 1
+
+    # repo_root() -- the one function that decides WHERE every other read happens, and it had
+    # no case: --self-test builds its file dicts in memory and never calls it, so blanking it
+    # (return None / "") was invisible to the sweep (2026-11-06). Graded against a scratch git
+    # repository, so the self-test still needs no checkout: init -> the root IS the scratch dir;
+    # a nested cwd -> the root is the parent (proves it asks git rather than echoing cwd);
+    # a plain temp dir -> SystemExit (proves the refusal, not a silent "").
+    def _root_case(label, expected, **kwargs):
+        try:
+            got = repo_root(**kwargs)
+        except SystemExit:
+            raise
+        except Exception as exc:                     # a mutation that returns a non-path
+            print("    FAIL %s: raised %s: %s" % (label, type(exc).__name__, exc))
+            return False
+        if not isinstance(got, str) or not got:
+            print("    FAIL %s: returned %r, not a non-empty path" % (label, got))
+            return False
+        if os.path.normcase(os.path.realpath(got)) != os.path.normcase(os.path.realpath(expected)):
+            print("    FAIL %s: got %r want %r" % (label, got, expected))
+            return False
+        print("    ok   " + label)
+        return True
+
+    scratch = tempfile.mkdtemp(prefix="chokepoints-root-")
+    try:
+        sub = os.path.join(scratch, "nested", "deeper")
+        os.makedirs(sub)
+        git_init = subprocess.run(["git", "init", "-q", scratch], capture_output=True, text=True)
+        if git_init.returncode != 0:
+            print("    FAIL repo_root cases: git init failed in the scratch dir")
+            failures += 1
+        else:
+            if not _root_case("repo_root returns the scratch root", scratch, cwd=scratch):
+                failures += 1
+            if not _root_case("repo_root ascends from a nested cwd", scratch, cwd=sub):
+                failures += 1
+        plain = tempfile.mkdtemp(prefix="chokepoints-nogit-")
+        try:
+            try:
+                repo_root(cwd=plain)
+            except SystemExit:
+                print("    ok   repo_root refuses a directory that is not a work tree")
+            except Exception as exc:
+                print("    FAIL repo_root raised %s instead of refusing a non-repo dir"
+                      % type(exc).__name__)
+                failures += 1
+            else:
+                print("    FAIL repo_root accepted a directory that is not a work tree")
+                failures += 1
+        finally:
+            os.rmdir(plain)
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
     return failures
 
 
