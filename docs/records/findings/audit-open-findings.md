@@ -320,10 +320,17 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
   `:1652-1667` are `_scoped`, so the 16-of-17 arithmetic no longer describes any state the
   shell can be in. Re-checked by grepping every `.rs` under `apps/` and `crates/` for the bare
   name: four hits, none of them a Tauri command.
-- **BR-C2** — **[PBD]** `build_device_binding_dto` treats a keyring **read failure** as an
+- ~~**BR-C2** — `build_device_binding_dto` treated a keyring **read failure** as an
   invalid signature: `crates/kasirmu-bridge/src/terminals.rs:343` →
-  `verify_binding(...).unwrap_or(false)` at `:357-364`, so `signature_valid:false` cannot be
-  distinguished from "the device secret could not be read" (`verify_binding` is at `:78`).
+  `verify_binding(...).unwrap_or(false)` at `:357-364`, so `signature_valid:false` could not be
+  distinguished from "the device secret could not be read" (`verify_binding` is at `:78`).~~ — **CLOSED**
+  2026-11-06 (`fix(bridge): do not treat an unreadable keyring as a forged device binding (BR-C2)`).
+  The DTO now propagates `verify_binding`'s `Err` as an `Internal` error named after the credential
+  store, and keeps the unbound case answering `false` without consulting the keyring — those are
+  different facts and they prompt opposite actions (re-bind vs. unlock the store).
+  Pinned by `binding_dto_surfaces_an_unreadable_keyring_instead_of_a_false_verdict` and
+  `binding_dto_answers_unbound_without_reading_the_keyring`:
+  `cargo test -p kasirmu-bridge --lib terminals` → **2 passed** for those two cases (37 passed, 0 failed in the module).
 - ~~**BR-C3** — `export_data` accepts `date_from` / `date_to` over IPC and **never reads
 them** — a user-scoped "export this date range" silently exported everything.~~ — **CLOSED
 2026-11-05** (`fix(bridge): honour the export date window instead of ignoring it`). The window
