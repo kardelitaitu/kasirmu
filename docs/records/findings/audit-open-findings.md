@@ -2573,3 +2573,18 @@ fixed file,    fail() body blanked -> SELF-TEST FAILED (1 of 8 cases), exit 2
 **Verified:** `bash -n` parses; self-test `8 cases` green; both mutations red; the pre-fix vacuity measured
 on a copy of `HEAD:scripts/verify-docker-persistence.sh`; harness rerun → **82 checkers, 12 SURVIVED, 70
 killed** (13 → 12).
+
+**Commit attribution, corrected the same day.** The code half of this round is NOT in `278b1c934`;
+that commit holds this note alone. Another session's `bdd11a725` (*chore(scripts): refresh l10n baseline
+and harden verify-scoped-coverage gate*) recorded the working-tree copy of `scripts/verify-scoped-coverage.sh`
+with my in-flight edit in it — checked: its diff for that path is exactly the `run_shell()` move plus the
+three fixture cases, no foreign hunks, and `git status` is clean there. Two consequences worth writing down,
+because neither is visible from the commit graph:
+
+* The change is committed and correct, but the subject that carries it describes someone else's intent.
+* The move was made by `fs.writeFileSync` on a file another lane was touching at the same moment (their
+  commit landed 16:56; my writes were 16:33 and 16:45). If they had an uncommitted hunk in that file, my
+  write replaced it and it is not in their commit. Flagged for that lane rather than assumed harmless.
+
+Re-verified after the fact: `git show HEAD:scripts/verify-scoped-coverage.sh` contains the fixture cases
+(`one temp fixture tree`), self-test `9 cases`, live gate green.
