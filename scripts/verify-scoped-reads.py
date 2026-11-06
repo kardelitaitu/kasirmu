@@ -129,6 +129,7 @@ import os
 import re
 import subprocess
 import sys
+import shutil
 import tempfile
 import time
 
@@ -166,10 +167,11 @@ import time
 # script-relative anchor is only the fallback for the case git cannot answer at all (a copy
 # sitting outside any repository, a git-less box). What that buys, measured: a copy of this
 # script placed ANYWHERE inside a checkout grades that checkout, instead of the directory
-# above the copy. What it does not buy: a --repo flag. There is still no way to name a tree
-# that git cannot find from the script's own location, and require_gradeable_corpus() is
-# what refuses that run -- exit 2, before a verdict -- rather than a clean sentence over a
-# corpus nobody walked. Taken the same way scripts/verify-agents-mirrors.py takes it.
+# above the copy. What it did not buy then, and has now: the --repo flag (closed 2026-11-06).
+# A caller can name a tree git cannot find from the script's own location -- another checkout,
+# a fixture -- and resolve_repo_flag() refuses a named tree that is not a directory, in the
+# same EmptyCorpus family, before the walk. Cases 41a-41e grade it. require_gradeable_corpus()
+# is still what refuses an empty corpus on the default path -- exit 2, before a verdict.
 def _git_toplevel(where):
     """git's `rev-parse --show-toplevel` for a directory, or None when git cannot answer.
 
@@ -1352,6 +1354,11 @@ def build_argparser():
                     help="grade PATH instead of the checkout copy at scripts/ipc-parity-"
                          "allowlist.json. The file is only read, never written, and the "
                          "default is unchanged.")
+    ap.add_argument("--repo", default=None, metavar="PATH",
+                    help="grade the tree at PATH instead of the one git resolves from this "
+                         "script's location (the F-2 note). The named tree's own scripts/"
+                         "ipc-parity-allowlist.json is graded unless --allowlist names a "
+                         "file. A PATH that is not a directory is refused, not walked.")
     return ap
 
 
@@ -1391,6 +1398,33 @@ def resolve_shells(raw):
             f'them explicitly (--shell {all_of_them}) rather than leaving the value empty, '
             f'because guessing what a blank argument meant is how a typo becomes evidence.')
     return shells
+
+
+def resolve_repo_flag(raw):
+    """(the tree to grade, how it was chosen) -- --repo's answer or the module default.
+
+    WHY THIS EXISTS. The F-2 note at the top of this file records the half the anchor fix
+    did not buy: REPO now comes from git (then __file__), and there was still no way to
+    NAME a tree git cannot find from the script's own location -- a checkout on another
+    disk, a tree whose root sits above a bind mount, a fixture. audit() has owned a repo=
+    parameter all along; main() simply never passed one. The flag is that seam, exposed.
+
+    A named tree that is not a directory is refused HERE, at resolution, as an
+    EmptyCorpus -- the same family as every other refusal in this file, so it leaves
+    through main()'s one handler with the one voice and exit 2. A typo'd path would
+    otherwise surface later as a corpus refusal pointing at <tree>/ui/src: the right
+    tree named in the wrong sentence. 'error:' and 2 say this run graded nothing.
+    """
+    if not raw:
+        return REPO, "module default"
+    tree = os.path.abspath(raw)
+    if not os.path.isdir(tree):
+        raise EmptyCorpus(
+            "--repo " + raw + " resolves to " + tree + ", which is not a directory. This "
+            "run graded nothing, and no verdict below would have been about that tree "
+            "anyway -- the flag exists to name the tree (the F-2 note), and naming it "
+            "wrong is a refusal, not a verdict about some other checkout.")
+    return tree, "--repo"
 
 
 def resolve_allowlist(path=None):
@@ -1453,7 +1487,7 @@ def describe_clearance(cleared):
             + str(len(set(row[1] for row in cleared))) + " command(s).")
 
 
-def describe_unggraded(shells, allowlist):
+def describe_unggraded(shells, allowlist, repo=REPO):
     """One line: what the shell sections this run did NOT grade would have reported.
 
     Informational by the same contract as describe_coverage() and describe_clearance(), aimed
@@ -1489,6 +1523,10 @@ def describe_unggraded(shells, allowlist):
     refuses rather than reads as empty -- is stated as undrawable, not dropped: an absent number
     and a zero read the same to a reader and mean different things, which is the defect the
     other two lines were built to avoid.
+
+    The audit below runs with the run's OWN repo -- threaded since --repo landed -- so the
+    digits it states describe the same tree the verdict covers, not whichever checkout this
+    file happens to sit in.
     """
     others = [shell for shell in SHELL_SECTIONS if shell not in shells]
     if not others:
@@ -1496,7 +1534,7 @@ def describe_unggraded(shells, allowlist):
     parts = []
     for shell in others:
         try:
-            violations, _shape, _scanned, _coverage, cleared = audit([shell], allowlist=allowlist)
+            violations, _shape, _scanned, _coverage, cleared = audit([shell], repo=repo, allowlist=allowlist)
         except AllowlistUnreadable:
             parts.append(shell + ": not computable here (audit refuses that section)")
             continue
@@ -2179,8 +2217,7 @@ def _wrapper_self_test():
         saved, saved_err = sys.stdout, sys.stderr
         sys.stdout, sys.stderr = buf, ebuf
         try:
-            audit.__defaults__ = (root, ALLOWLIST)
-            rc = main(["--allowlist", allowlist])
+            rc = main(["--allowlist", allowlist, "--repo", root])
         except BaseException as exc:
             rc = "bare " + type(exc).__name__ + ": " + str(exc)
         finally:
@@ -2360,8 +2397,7 @@ def _pattern_self_test():
     saved, saved_err = sys.stdout, sys.stderr
     sys.stdout, sys.stderr = buf, ebuf
     try:
-        audit.__defaults__ = (root, ALLOWLIST)
-        rc = main(["--allowlist", al])
+        rc = main(["--allowlist", al, "--repo", root])
     except BaseException as exc:
         rc = "bare " + type(exc).__name__ + ": " + str(exc)
     finally:
@@ -2438,8 +2474,7 @@ def _coverage_self_test():
         saved, saved_err = sys.stdout, sys.stderr
         sys.stdout, sys.stderr = buf, ebuf
         try:
-            audit.__defaults__ = (root, ALLOWLIST)
-            rc = main(["--allowlist", allowlist] + list(argv))
+            rc = main(["--allowlist", allowlist, "--repo", root] + list(argv))
         except BaseException as exc:
             rc = "bare " + type(exc).__name__ + ": " + str(exc)
         finally:
@@ -2782,12 +2817,7 @@ def _corpus_self_test():
     ui/src, and ui/src holding a README each printed '0 production file(s) graded' plus
     'clean for desktop.' and exited 0.
 
-    main() is driven for real, with audit()'s own defaults rebound through __defaults__ and
-    restored in a finally: audit(shells, repo=REPO) captures REPO at definition, so rebinding
-    the module global alone would grade the real checkout and the case would prove nothing.
-    That is the same trick the sibling gate's writer cases play on ALLOWLIST_PATH, and it is
-    the difference between testing the gate and testing a copy of it.
-
+    main() is driven for real, with the tree aimed through the --repo flag and,    restored in a finally: audit(shells, repo=REPO) captures REPO at,    definition, so rebinding     the module global alone would grade the real,    checkout and the case would prove nothing.     That is the same trick the,    sibling gate's writer cases play on ALLOWLIST_PATH, and it is     the,    difference between testing the gate and testing a copy of it. 
     Case 16 is the load-bearing control: a POPULATED corpus with genuinely nothing wrong in it
     must still grade and still print its verdict. A guard that refused every small tree would
     be a redder hazard than the one it closes, and it is the half of the line this file keeps
@@ -2803,8 +2833,7 @@ def _corpus_self_test():
         saved, saved_err = sys.stdout, sys.stderr
         sys.stdout, sys.stderr = buf, ebuf
         try:
-            audit.__defaults__ = (repo, ALLOWLIST)
-            rc = main(["--allowlist", ALLOWLIST])
+            rc = main(["--allowlist", ALLOWLIST, "--repo", repo])
         except BaseException as exc:
             rc = "bare " + type(exc).__name__ + ": " + str(exc)
         finally:
@@ -3272,6 +3301,111 @@ def anchor_self_test():
     return fails
 
 
+def repo_flag_self_test():
+    """Cases 41a-41e: resolve_repo_flag() and the --repo wiring through the real main().
+
+    The flag is the other half of the F-2 note: the anchor fix made a copy grade the tree
+    it sits in; this flag names a tree git cannot find from the script's own location.
+    41a-41c grade the resolver (pure, one scratch dir, removed in a finally). 41d drives
+    the REAL main() over a scratch checkout with NO --allowlist and NO __defaults__
+    rebinding: the flag alone must point audit() at the named tree's corpus AND its own
+    allowlist copy, which the surfaces line proves in one sentence. 41e drives the
+    refusal: a tree that is not a directory leaves through the one AllowlistUnreadable
+    handler, 'error:' voice, exit 2, naming the path.
+    """
+    print("  --repo flag")
+    fails = 0
+
+    def report(label, ok, detail):
+        nonlocal fails
+        print(f"    {'ok  ' if ok else 'FAIL'} {label}" + (f"  {detail}" if detail else ""))
+        if not ok:
+            fails += 1
+
+    # 41a -- the absent flag changes nothing.
+    report("case 41a --repo absent resolves to the module default",
+           resolve_repo_flag(None) == (REPO, "module default"), str(resolve_repo_flag(None)))
+
+    # 41b -- a named tree resolves absolute, provenance "--repo".
+    scratch = tempfile.mkdtemp(prefix="oz-scoped-41b-")
+    try:
+        got = resolve_repo_flag(scratch)
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+    report("case 41b --repo names the tree and says so",
+           got == (os.path.abspath(scratch), "--repo"), str(got))
+
+    # 41c -- a path that is not a directory is refused at resolution, not at the walk.
+    base = tempfile.mkdtemp(prefix="oz-scoped-41c-")
+    missing = os.path.join(base, "nope")
+    try:
+        resolve_repo_flag(missing)
+        ok41c, detail = False, "returned a value instead of raising"
+    except EmptyCorpus as exc:
+        ok41c, detail = missing in str(exc), str(exc)[:90]
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+    report("case 41c a named tree that is not a directory is refused by name", ok41c, detail)
+
+    # 41d -- end to end: main(["--repo", root]) grades the fixture tree AND its own
+    # allowlist copy. No --allowlist, no __defaults__ rebinding: only the flag aims the run.
+    root = tempfile.mkdtemp(prefix="oz-scoped-41d-")
+    try:
+        scripts = os.path.join(root, "scripts")
+        os.makedirs(scripts)
+        src = os.path.join(root, "ui", "src")
+        os.makedirs(os.path.join(src, "api"))
+        os.makedirs(os.path.join(src, "features"))
+        with io.open(os.path.join(scripts, "ipc-parity-allowlist.json"), "w",
+                     encoding="utf-8") as fh:
+            json.dump({"desktop": ["zz_alpha"], "tablet": []}, fh)
+        with io.open(os.path.join(scripts, "scoped-reads-baseline.json"), "w",
+                     encoding="utf-8") as fh:
+            fh.write("{\"entries\": []}")
+        with io.open(os.path.join(src, "api", "probe.ts"), "w", encoding="utf-8") as fh:
+            fh.write("export const wv0_zz_alpha = (t: string) => "
+                     "loggedInvoke<any>('zz_alpha', { t });\n")
+        with io.open(os.path.join(src, "features", "Blank.tsx"), "w", encoding="utf-8") as fh:
+            fh.write("export const Blank = () => null;\n")
+        buf, ebuf = io.StringIO(), io.StringIO()
+        saved, saved_err = sys.stdout, sys.stderr
+        try:
+            sys.stdout, sys.stderr = buf, ebuf
+            rc = main(["--repo", root])
+        except BaseException as exc:
+            rc = "bare " + type(exc).__name__ + ": " + str(exc)
+        finally:
+            sys.stdout, sys.stderr = saved, saved_err
+        out = buf.getvalue() + ebuf.getvalue()
+        want_surface = ("1 production file(s) graded against "
+                        + os.path.join(root, "scripts", "ipc-parity-allowlist.json")
+                        + " (--repo default (the named tree's own copy)).")
+        report("case 41d --repo alone grades the named tree's corpus and its own allowlist",
+               rc == 0 and want_surface in out and "clean for desktop." in out,
+               "rc=" + repr(rc) + " surfaces-line="
+               + ("present" if want_surface in out else "MISSING"))
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    # 41e -- end to end: the refusal, through the one handler, naming the path. `missing`
+    # from 41c deliberately does not exist.
+    buf, ebuf = io.StringIO(), io.StringIO()
+    saved, saved_err = sys.stdout, sys.stderr
+    try:
+        sys.stdout, sys.stderr = buf, ebuf
+        rc = main(["--repo", missing])
+    except BaseException as exc:
+        rc = "bare " + type(exc).__name__ + ": " + str(exc)
+    finally:
+        sys.stdout, sys.stderr = saved, saved_err
+    out = buf.getvalue() + ebuf.getvalue()
+    report("case 41e a wrong --repo refuses with error: and exit 2, naming the path",
+           rc == 2 and out.startswith("error: ") and missing in out,
+           "rc=" + repr(rc) + " first-line="
+           + (out.splitlines() or ["(none)"])[0][:70])
+    return fails
+
+
 def self_test():
     print("  verify-scoped-reads self-test")
     failures = 0
@@ -3304,6 +3438,7 @@ def self_test():
         print("    ok   classifier can report a violation (not vacuous)")
     failures += _platform_guard_self_test()
     failures += anchor_self_test()
+    failures += repo_flag_self_test()
     failures += _shape_self_test()
     failures += _read_retry_self_test()
     failures += _aim_self_test()
@@ -3329,15 +3464,31 @@ def main(argv=None):
     if args.self_test:
         return self_test()
 
-    allowlist, how = resolve_allowlist(args.allowlist)
     try:
+        # Both seams resolve INSIDE the try, ahead of audit() and so ahead of the walk: a
+        # --repo that names no directory is refused by the same handler as every other
+        # ungradeable input -- EmptyCorpus is an AllowlistUnreadable, so one handler, one
+        # 'error:' voice, exit 2, before any verdict. No provenance line is printed:
+        # the surfaces line already names the allowlist graded (inside the named tree
+        # unless --allowlist says otherwise), and stdout's line layout is pinned
+        # line-for-line by the self-test's refusal cases.
+        repo, how_repo = resolve_repo_flag(args.repo)
+        if args.allowlist:
+            allowlist, how = resolve_allowlist(args.allowlist)
+        elif args.repo:
+            # The named tree grades against ITS OWN policy copy, the way audit()'s repo=
+            # seam always implied; an explicit --allowlist still wins.
+            allowlist = os.path.join(repo, "scripts", "ipc-parity-allowlist.json")
+            how = how_repo + " default (the named tree's own copy)"
+        else:
+            allowlist, how = resolve_allowlist(None)
         # Resolved INSIDE the try, ahead of audit() and so ahead of the walk: a run that
         # names no shell has nothing to grade, and that is a property of the argument, which
         # is why it is refused here rather than discovered in the verdict below. NoShellsNamed
         # is an AllowlistUnreadable, so it leaves through the handler under this one -- the
         # gate's one-line error: voice and its refusal code, no new handler.
         shells = resolve_shells(args.shell)
-        violations, shape_problems, scanned, coverage, cleared = audit(shells, allowlist=allowlist)
+        violations, shape_problems, scanned, coverage, cleared = audit(shells, repo=repo, allowlist=allowlist)
     except AllowlistUnreadable as exc:
         # A file this gate cannot open is not a clean tree and not a dirty one; saying so
         # in a sentence is the whole difference between a red run someone can act on and a
@@ -3367,7 +3518,7 @@ def main(argv=None):
     # the sections this run did NOT grade are holding. Printed LAST of the three so the ratio
     # and the clearance keep the line positions the self-test pins, and tested only for
     # presence -- never on a number inside the string.
-    ungraded = describe_unggraded(shells, allowlist)
+    ungraded = describe_unggraded(shells, allowlist, repo)
     if ungraded:
         print(ungraded)
     if shape_problems:
