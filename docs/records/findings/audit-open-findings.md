@@ -248,15 +248,12 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
   returned by `resolve_scope` and persists the logo path to the session's store DB, matching
   `get_brand_settings_scoped` and sibling setters. Pinned by `scoped_brand_logo_round_trips_through_the_store_db`
   in `branding_tests.rs` (14 passed, 0 failed). Stamped closed in register.
-- **BR-S4** — **[PBD]** `open_product_images_scoped` authenticates and authorises nothing:
-  `apps/desktop-tauri/src/commands/browser.rs:32-41` delegates to
-  `crates/kasirmu-bridge/src/browser.rs:64`, which calls `resolve_store` and no `require_permission`
-  anywhere in the module — the *intent* is stated at `crates/kasirmu-bridge/src/browser.rs:61-63`
-  and ADR #38 frames the same line as auth-only
-  (`docs/decisions/2026-08-11-adr38-retail-row-context-menu-browser-images.md:81`, "resolves
-  the session (auth precedent, ADR #7)"), which is why this reads as designed rather than
-  as a hole. **Correction to the hand-off:** no `ADR #38` *code* comment describes the
-  missing authorisation; the descriptive text is the module doc above plus the ADR line.
+- ~~**BR-S4** — `open_product_images_scoped` authenticates and authorises nothing~~ —
+  **CLOSED 2026-11-07** (`fix(browser): gate open_product_images_scoped with PRODUCTS_READ (BR-S4)`).
+  `product_image_search_url` in `crates/kasirmu-bridge/src/browser.rs:56-85` now calls
+  `ctx.require_session_permission(&session, permissions::PRODUCTS_READ)` after session resolution
+  and before accessing the store DB. Pinned by `product_image_search_url_refuses_session_lacking_products_read`
+  and `product_image_search_url_accepts_session_with_products_read` in `browser_tests.rs`.
 - **BR-S5** — **[PBD]** `pick_logo_file` has no gate (`apps/desktop-tauri/src/commands/branding.rs:102`)
   where `pick_logo_file_scoped` holds `SETTINGS_EDIT`
   (`apps/desktop-tauri/src/commands/branding.rs:164`, gate at `:171`). Both keep their bodies
@@ -483,20 +480,18 @@ data::` -> **50 passed, 0 failed**.
   (109 → 107) and `scripts/ipc-parity-allowlist.json` (`scoped_orphans` debt reduced from
   24 → 22, gated dead surface from 10 → 8). All IPC and surface checkers confirm clean parity.
   wrong lines of that file.
-- **BR-D5** — **[PBD]** four model helpers are `pub` **only** so `model_tests.rs` can reach
-  them: `crates/kasirmu-bridge/src/topology/model.rs:27` (`ser_f64_finite`), `:35`
-  (`de_f64_or_null`), `:55` (`de_direction_or_null`), `:250` (`default_direction`). They are
-  the narrowable half of the topology visibility cost in ADR #49 §Consequences (4 of 28).
+- ~~**BR-D5** — four model helpers are `pub` only so `model_tests.rs` can reach them~~ —
+  **CLOSED 2026-11-07** (`refactor(topology): scope serialization helpers to pub(crate) (BR-D5)`).
+  `ser_f64_finite`, `de_f64_or_null`, `de_direction_or_null`, and `default_direction` in
+  `crates/kasirmu-bridge/src/topology/model.rs` are narrowed from `pub` to `pub(crate)` now that
+  `model_tests.rs` is mounted internally as a sibling module. Pinned by `cargo test -p kasirmu-bridge --lib topology`
+  (333 passed, 0 failed).
 
 ### Tooling gaps found while building the gates
 
-- **BR-T1** — `scripts/verify-ipc-parity.py` walks `commands/` **recursively** for its
-  registry/unregistered scan (`rglob` at `:119`) but the gate-balance half
-  (`orphan_permission`, `:246`) reads bodies through a **non-recursive** glob —
-  `scripts/verify-ipc-parity.py:272` (`for rs in sorted(cmd_dir.glob("*.rs"))`).
-  **Correction to the hand-off:** the line is `:272`, not `:277`. Consequence:
-  `apps/desktop-tauri/src/commands/topology/` — 7 `require_permission` sites today, all in
-  `topology/commands.rs` — has never been examined by that half.
+- ~~**BR-T1** — `scripts/verify-ipc-parity.py` gate-balance scan non-recursive glob~~ —
+  **CLOSED 2026-11-06** (`scripts/verify-ipc-parity.py:2639`). The scanner now uses `cmd_dir.rglob("*.rs")`,
+  matching the reach of the registry scan and examining `apps/desktop-tauri/src/commands/topology/`.
 - **BR-T2** — the extraction's own count invariant is blind in the same way: `grep -rh
   'pub async fn' apps/desktop-tauri/src/commands/*.rs` is non-recursive, so it cannot see the
   **12** sites under `commands/topology/`. Measured today: **488** top-level vs **500**

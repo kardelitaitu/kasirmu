@@ -20,3 +20,40 @@ fn urlencoding_encodes_query() {
 fn urlencoding_keeps_unreserved_chars() {
     assert_eq!(urlencoding("a-z_A.Z~0"), "a-z_A.Z~0");
 }
+
+#[tokio::test]
+async fn product_image_search_url_refuses_session_lacking_products_read() {
+    let bridge = crate::testing::TestBridge::new();
+    let token = bridge.token_granting(permissions::CUSTOMERS_VIEW).await;
+    let ctx = bridge.ctx();
+
+    let err = product_image_search_url(&ctx, &token, "SKU-123")
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, BridgeError::PermissionDenied(_)),
+        "expected PermissionDenied, got: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn product_image_search_url_accepts_session_with_products_read() {
+    let bridge = crate::testing::TestBridge::new();
+    let token = bridge.token_granting(permissions::PRODUCTS_READ).await;
+    let ctx = bridge.ctx();
+
+    // Past permission gate, but product does not exist -> NotFound
+    let err = product_image_search_url(&ctx, &token, "SKU-NOTFOUND")
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            BridgeError::Core {
+                sub_kind: kasirmu_core::CoreErrorKind::NotFound,
+                ..
+            }
+        ),
+        "expected NotFound core error past permission gate, got: {err:?}"
+    );
+}
