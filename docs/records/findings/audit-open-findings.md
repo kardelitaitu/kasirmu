@@ -355,10 +355,28 @@ data::` -> **50 passed, 0 failed**.
   write it under the same guard. `cargo test -p kasirmu-bridge --lib data::` -> **51 passed,
   0 failed**; the pin is structural (a lock scope is not observable from a test), so the
   guard against regression is the scope block itself, not an assertion.
-- **BR-C5** — **[PBD]** `import_data` mixes connection-bound existence probes with
-  transaction writes inside one open transaction: tx at `crates/kasirmu-bridge/src/data.rs:518`,
-  `store.conn()` probes at `:562`, `:589`, `:614`, `:645`, `tx.execute` writes at `:570`,
-  `:575`, `:624`, `:629`, `:653`, `:659`. The two paths can disagree about the same row.
+- **BR-C5** — **[PBD / STALE 2026-11-06 — re-grep before trusting the cited shape]**
+  `import_data` used to mix connection-bound existence probes with transaction writes inside one
+  open transaction. That cited shape no longer exists in `import_data` today: the body now opens a
+  single `tx` (`crates/kasirmu-bridge/src/data.rs:540`) and does every existence read through
+  `tx.prepare_cached("SELECT …")` + `rows.next()` / `tx.execute(` writes — there are **no**
+  `store.conn()` probes left in the body.
+
+  What remains on the `conn` BEFORE the `tx` opens are the two pre-transaction batch gates
+  (`gate_import_product_batch`, `gate_import_user_batch` — `crates/kasirmu-bridge/src/data.rs:530`,
+  `:537`), and each of those does ONE `store.conn().prepare_cached("SELECT …")` read to build its
+  pre-tx snapshot. That is a single connection used once read-only (in the gate), then reused for the
+  write transaction — the same `conn` that feeds `Store::new(&conn)` at `:524` and
+  `conn.unchecked_transaction()` at `:540`. The cited citation `:518` is stale (today's `tx` opens at
+  `:540`); the cited `store.conn()` probe lines are stale (none remain in the body).
+
+  The open question that survives the refactor is therefore narrower than the original text: it is now
+  the standard **quota-gate-snapshot vs write-transaction** ordering the crate already centralises in
+  `quota_gate` (W4-S1) — a read-only pre-tx snapshot that CANNOT disagree with the tx's eventual
+  writes because the gate only REFUSES, never writes, and a WAL snapshot that sees the pre-tx state.
+  Re-grep `store.conn()` and `tx.execute(` in `crates/kasirmu-bridge/src/data.rs` before trusting any
+  older note about the body; whoever picks this up next decides whether that narrower shape still needs a
+  ruling or is covered by the existing quota-gate design.
 - ~~**BR-C6** — `export_data`'s features map silently **empties** on a read error
   (`load_features().map(...).unwrap_or_default()`) — a failed feature read exported as "no
   features", not as an error.~~ — **CLOSED 2026-11-05**. The export now propagates with `?`,
