@@ -381,10 +381,6 @@
       "shell": "tablet",
       "reason": "The tablet's cart and sales surfaces are its own flow; the desktop's equivalent commands are the scoped ones it registers."
     },
-    "get_active_cart_scoped": {
-      "shell": "tablet",
-      "reason": "The tablet's cart and sales surfaces are its own flow; the desktop's equivalent commands are the scoped ones it registers."
-    },
     "get_build_fingerprint": {
       "shell": "tablet",
       "reason": "Device-only: Android update handling (APK download/install), the hardware settings panel, the memory-pressure callback and the scale reader. No desktop counterpart exists."
@@ -398,10 +394,6 @@
       "reason": "Device-only: Android update handling (APK download/install), the hardware settings panel, the memory-pressure callback and the scale reader. No desktop counterpart exists."
     },
     "get_sale": {
-      "shell": "tablet",
-      "reason": "The tablet's cart and sales surfaces are its own flow; the desktop's equivalent commands are the scoped ones it registers."
-    },
-    "list_active_carts_scoped": {
       "shell": "tablet",
       "reason": "The tablet's cart and sales surfaces are its own flow; the desktop's equivalent commands are the scoped ones it registers."
     },

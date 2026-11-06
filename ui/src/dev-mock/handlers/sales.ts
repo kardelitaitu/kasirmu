@@ -709,8 +709,6 @@ export function createSalesHandlers(deps: SalesDeps): Record<string, MockHandler
 
   'hold_cart': (args) => holdMockCart(unwrapArgs, args),
   'hold_cart_scoped': (args) => holdMockCart(unwrapArgs, args),
-  'list_active_carts': () => ({ carts: [] }),
-  'get_active_cart': () => null,
   'list_held_carts': () => mockHeldCarts.map(heldCartSummary),
   'list_held_carts_scoped': () => mockHeldCarts.map(heldCartSummary),
   'list_open_bills': () => mockHeldCarts.filter((cart) => cart.bill_type === 'open_bill').map(heldCartSummary),

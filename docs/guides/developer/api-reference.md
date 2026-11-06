@@ -607,7 +607,6 @@ Supplier debts raised outside a purchase order. Desktop-only for now.
 - **`complete_sale_with_resolved_shortfalls_scoped`** [D+T] — Complete a sale with cashier-resolved shortfalls (split fulfillment).
 - **`compute_cart_tax_scoped`** [D+T] — Compute cart tax for the store resolved from a session token. ADR #7.
 - **`delete_held_cart_scoped`** [D+T] — Delete a held cart in the store resolved from a session token. ADR #7.
-- **`get_active_cart_scoped`** [T] — Load a cart in the session scope. ADR #7.
 - **`get_cart_deduction_location`** [T] — Return the deduction location info for an active cart. ⚠️ **Tablet only — calling this from the DESKTOP shell throws "command not found"**, because desktop registers only the scoped twin below. Call the `_scoped` variant from any code that can run on both shells.
 - **`get_cart_deduction_location_scoped`** [D+T] — Scoped variant of `get_cart_deduction_location` (ADR #7).
 
@@ -623,7 +622,6 @@ Supplier debts raised outside a purchase order. Desktop-only for now.
 > interchangeable from shell-branching code** — reach for the scoped name.
 - **`get_held_cart_scoped`** [D+T] — Get a held cart from the store resolved from a session token. ADR #7.
 - **`hold_cart_scoped`** [D+T] — Hold a cart in the store resolved from a session token. ADR #7.
-- **`list_active_carts_scoped`** [T] — List active carts in the session scope. ADR #7.
 - **`list_held_carts_scoped`** [D+T] — List held carts for the store resolved from a session token. ADR #7.
 - **`list_open_bills_scoped`** [D+T] — List open bills for the store resolved from a session token. ADR #7.
 - **`override_cart_deduction_location_scoped`** [D+T] — Override the deduction location lock on an active cart.

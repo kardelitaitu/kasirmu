@@ -472,22 +472,13 @@ data::` -> **50 passed, 0 failed**.
   `commands/sync.rs:81`, `:95`, `:105`, `:135`, `:148`; `commands/terminals.rs:270`.
   Each is `#[allow(dead_code)]` with a comment naming its test file as the only caller; all
   are cleanup candidates **once their tests relocate to `oz-bridge`**, not before.
-- **BR-D4** — **[PBD]** dead IPC surface per the parity gate (measured, `python
-  scripts/verify-ipc-parity.py`): 25 allowlisted orphans = **23 redundant twins** with no
-  check + **2 GATED DEAD SURFACE** carrying a real `SALES_PROCESS` gate with no reachable
-  caller — `get_active_cart_scoped` and `list_active_carts_scoped
-  (`scripts/ipc-parity-allowlist.json:194`, `:201`). **Correction to the hand-off:** the
-  second is `SALES_PROCESS`, not `SALE_PROCESS`, and both live tablet-side (registered in
-  tablet `lib.rs:550-551`). **Second correction to this entry, 2026-09-13 09:50 +07, tip
-  `ad76c16c2`:** the two clauses it just lost were both wrong. the declarations are
-  `apps/mobile-tauri/src/commands/pos.rs:278` (`list_active_carts_scoped`) and `:313`
-  (`get_active_cart_scoped`) — not `:270`/`:305`, stale by eight (query: `git grep -n
-  "fn list_active_carts_scoped\|fn get_active_cart_scoped" --
-  apps/mobile-tauri/src/commands/pos.rs`, 09:45 +07). and there is no desktop-scoped
-  `scoped_orphans` list that could hold anything: `scripts/ipc-parity-allowlist.json` carries
-  **one shared** `scoped_orphans` section at `:188-214`, while `desktop` (`:3`) and `tablet`
-  (`:32`) are separate per-shell lists (query: read the file's top-level keys, 09:45 +07). the
-  clause promised a reader a section that does not exist, and this week it sent a worker to the
+- ~~**BR-D4** — **[PBD]** dead IPC surface per the parity gate~~ — **CLOSED 2026-11-06**
+  (`refactor(pos): retire uncalled get_active_cart_scoped and list_active_carts_scoped`).
+  Both dead commands were removed from `apps/mobile-tauri/src/commands/pos.rs` and its
+  `generate_handler![]`, unmounted from `ui/src/dev-mock/handlers/sales.ts`, removed from
+  `docs/guides/developer/api-reference.md`, and pruned from both `scripts/shell-divergence.json`
+  (109 → 107) and `scripts/ipc-parity-allowlist.json` (`scoped_orphans` debt reduced from
+  24 → 22, gated dead surface from 10 → 8). All IPC and surface checkers confirm clean parity.
   wrong lines of that file.
 - **BR-D5** — **[PBD]** four model helpers are `pub` **only** so `model_tests.rs` can reach
   them: `crates/kasirmu-bridge/src/topology/model.rs:27` (`ser_f64_finite`), `:35`

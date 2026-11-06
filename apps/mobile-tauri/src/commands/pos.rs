@@ -204,49 +204,6 @@ pub async fn start_sale_scoped(
     })
 }
 
-// ── List Active Carts ────────────────────────────────────────────────
-
-/// List active carts in the session scope. ADR #7.
-#[command]
-pub async fn list_active_carts_scoped(
-    session_token: String,
-    state: State<'_, AppState>,
-) -> Result<Vec<CartId>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS)
-        .await?;
-    let conn_arc = state.resolve_store(&session_token)?;
-    let db = conn_arc
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let ids = store.list_active_carts()?;
-    drop(db);
-    Ok(ids)
-}
-
-// ── Get Active Cart ──────────────────────────────────────────────────
-
-/// Load a cart in the session scope. ADR #7.
-#[command]
-pub async fn get_active_cart_scoped(
-    session_token: String,
-    cart_id: CartId,
-    state: State<'_, AppState>,
-) -> Result<Option<Cart>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS)
-        .await?;
-    let conn_arc = state.resolve_store(&session_token)?;
-    let db = conn_arc
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let cart = store.load_active_cart(&cart_id)?;
-    drop(db);
-    Ok(cart)
-}
-
 // ── Add Line ─────────────────────────────────────────────────────────
 
 /// Resolve the unit price for an `add_line_scoped` request (FRONTEND-03).
