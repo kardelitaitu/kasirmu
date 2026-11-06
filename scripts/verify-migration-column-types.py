@@ -535,24 +535,46 @@ def self_test() -> int:
     # (8) The hook's own invocation is still a scope, not a refusal.
     #     Mutation: treat --staged-only as a root argument, or refuse an empty staged set; either
     #     one turns pre-commit step 4 red on every commit in the repository.
+    #     The scope question has two correct answers, keyed to where this file runs: inside a
+    #     checkout the index is readable and the run reports its staged count; in a copy with
+    #     no .git — this harness stages exactly that — the run MUST refuse, because an unknown
+    #     scope is not an empty one. Both branches are pinned, so the case is honest in both
+    #     worlds and a hollow verdict is caught in either.
+    try:
+        in_repo = subprocess.run(
+            ["git", "rev-parse", "--is-inside-work-tree"],
+            cwd=str(ROOT), capture_output=True, text=True, timeout=60,
+        ).returncode == 0
+    except OSError:
+        in_repo = False
     rc, out, err = _run_gate(["--staged-only"])
     folded = (out + err).replace("\\", "/")
     staged_count = _SCANNED_RE.search(folded)
-    verdict(
-        rc in (0, 1) and "staged migration file(s)" in folded and staged_count is not None,
-        "CLEAN",
-        "--staged-only still reports its staged scope (exit "
-        f"{rc}, {staged_count.group(1) if staged_count else '?'} file(s) in scope)",
-        "exit 0 or 1 and a staged count line — never the exit 2 refusal",
-        f"exit {rc}",
-    )
+    if in_repo:
+        verdict(
+            rc in (0, 1) and "staged migration file(s)" in folded and staged_count is not None,
+            "CLEAN",
+            "--staged-only still reports its staged scope (exit "
+            f"{rc}, {staged_count.group(1) if staged_count else '?'} file(s) in scope)",
+            "exit 0 or 1 and a staged count line — never the exit 2 refusal",
+            f"exit {rc}",
+        )
+    else:
+        verdict(
+            rc == 2 and "git index" in err and not _verdict_printed(out + err),
+            "CAUGHT",
+            "--staged-only outside a checkout: the unknown scope is refused, never read as empty",
+            "exit 2 naming the unreadable git index, with no count and no ok line",
+            f"exit {rc}, index named={'git index' in err}, verdict printed={_verdict_printed(out + err)}",
+        )
 
     rc_out = 0 if red == 0 else 2
     print(f"  tally: {caught + clean} green = {caught} CAUGHT + {clean} CLEAN; {red} red; "
           f"exit {rc_out}")
     print("  LIMIT: nothing calls this flag. scripts/gates.json and dev-ci.yml sit outside this "
-          "file, so a green tally is a developer tool, not enforcement — and cases (7) and (8) "
-          "read the live tree, so their counts move with every migration by design.")
+          "file, so a green tally is a developer tool, not enforcement — case (7) reads the live "
+          "tree, so its count moves with every migration by design; case (8) answers correctly "
+          "in a checkout or out of one.")
     if red:
         print("  a case slipped through: the behaviour it pins is no longer pinned (exit 2, not "
               "1 — a broken self-test must not impersonate a float-column finding)")
