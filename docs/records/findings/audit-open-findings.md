@@ -2333,3 +2333,29 @@ cannot yet tell the two classes apart.
 
 **Verified:** live run 0 candidates over 317 files, exit 0; plant → exit 1; copy → exit 2; mutation → exit 0 as
 before; probe file and scratch directories removed (`git status` clean under `ui/src/features`).
+
+### Dated correction (2026-11-06) — pipeline-verdicts called an empty sweep OK
+
+Third gate from round 30's survey to get a verdict. `scripts/check-pipeline-verdicts.py` walked
+`*.sh` under five directories and printed `OK - no condition reads a swallower's status` with exit 0
+whether it had read 71 scripts or none — zero findings and zero files are the same value inside that
+loop. Measured by copying the script outside the checkout, where the five directories do not exist: the
+body never ran and the gate reported the tree clean.
+
+**Fixed:** `verdict(scanned, findings)` is now the only source of the exit code (2 read nothing, 1 a
+wrong-status read, 0 clean); the count is printed on every run (`71 shell script(s) read`); and a zero
+sweep writes the refusal to stderr instead of the `OK` line, naming the five directories searched.
+
+**The two guards do different work, and the mutation shows which is which:**
+
+| mutation | result |
+|---|---|
+| refusal message removed only | exit **2**, but the `OK ... (0 shell script(s) read)` line is printed first — the confusing direction |
+| refusal message AND the `scanned == 0` arm of `verdict()` removed | exit **0** with `OK ... (0 shell script(s) read)` — the pre-fix false green — and the self-test reddens at `verdict(0 file(s), 0 finding(s)): expected 2, got 0` |
+| restored | live `OK ... (71 shell script(s) read)` exit 0; self-test 9 detector + 4 verdict cases pass |
+
+A planted `scripts/__pipeline_probe__.sh` holding `if s=$(printf x | tail -1); then` still exits **1** with the
+existing repair text, so the detection half was already load-bearing and is unchanged.
+
+**Verified:** live run 71 files, exit 0; copy outside the repo exits 2; both mutations as tabled; probe
+deleted (`git status` clean under `scripts/` apart from this edit).

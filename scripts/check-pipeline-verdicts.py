@@ -176,10 +176,18 @@ def self_test() -> int:
         got = len(findings_in(text, "fixture"))
         if got != want:
             bad.append("  %s: expected %d finding(s), got %d" % (name, want, got))
+    # The VERDICT half: before 2026-11-06 an empty sweep exited 0, so these three states
+    # were indistinguishable from a clean tree. 0 files is a refusal -- 2 -- whatever the
+    # findings say.
+    for scanned, findings, want in ((0, 0, 2), (0, 3, 2), (71, 0, 0), (71, 1, 1)):
+        got = verdict(scanned, findings)
+        if got != want:
+            bad.append("  verdict(%d file(s), %d finding(s)): expected %d, got %d"
+                       % (scanned, findings, want, got))
     if bad:
         sys.stderr.write("SELF-TEST WRONG:\n" + "\n".join(bad) + "\n")
         return 2
-    print("SELF-TEST OK (%d cases, no file read)" % len(CASES))
+    print("SELF-TEST OK (%d detector cases + 4 verdict cases, no file read)" % len(CASES))
     return 0
 
 
@@ -199,11 +207,33 @@ def targets() -> list[Path]:
     return out
 
 
+def verdict(scanned: int, findings: int) -> int:
+    """Exit code for a finished sweep: 2 read nothing, 1 a wrong-status read, 0 clean.
+
+    WHY THE CORPUS IS GRADED HERE TOO. Until 2026-11-06 an empty sweep printed
+    "OK - no condition reads a swallower's status" and exited 0, because zero findings and
+    zero files look identical from inside the loop. Measured by copying this script outside
+    the checkout: the five target directories did not exist, the loop body never ran, and
+    the gate reported the tree clean. The live tree reads 71 shell scripts.
+    """
+    if scanned == 0:
+        return 2
+    return 1 if findings else 0
+
+
 def main() -> int:
     bad: list[str] = []
+    scanned = 0
     for p in targets():
+        scanned += 1
         bad.extend(findings_in(p.read_text(encoding="utf-8", errors="replace"),
                                p.relative_to(ROOT).as_posix()))
+    if scanned == 0:
+        sys.stderr.write(
+            "error: read no .sh file under %s, so this run graded nothing and its verdict "
+            "would be about an empty corpus rather than about the scripts. The live tree "
+            "reads 71.\n" % ", ".join(TARGET_DIRS))
+        return 2
     for line in bad:
         print("  " + line)
     if bad:
@@ -211,9 +241,10 @@ def main() -> int:
               % len(bad))
         print("  A pipeline exits with its LAST command's status. Test the RESULT")
         print("  (if [ -n \"$var\" ]), not the substitution.")
-        return 1
-    print("check-pipeline-verdicts: OK - no condition reads a swallower's status")
-    return 0
+        return verdict(scanned, len(bad))
+    print("check-pipeline-verdicts: OK - no condition reads a swallower's status "
+          "(%d shell script(s) read)" % scanned)
+    return verdict(scanned, len(bad))
 
 
 if __name__ == "__main__":
