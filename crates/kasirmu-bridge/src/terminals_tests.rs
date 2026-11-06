@@ -793,3 +793,69 @@ async fn bridge_device_binding_with_another_keyring_falls_back_to_primary() {
     );
     assert_eq!(resolution.store_id, "default");
 }
+
+// ── BR-C2: an unreadable keyring is not a forged signature ────────────
+
+/// A keyring whose every operation fails, standing in for a platform credential
+/// store that is locked, unavailable or otherwise unreadable.
+struct UnreadableKeyring;
+
+impl Keyring for UnreadableKeyring {
+    fn get_secret(&self, _name: &str) -> Result<Option<String>, kasirmu_security::SecurityError> {
+        Err(kasirmu_security::SecurityError::KeyUnavailable(
+            "credential store locked".into(),
+        ))
+    }
+
+    fn set_secret(&self, _name: &str, _value: &str) -> Result<(), kasirmu_security::SecurityError> {
+        Err(kasirmu_security::SecurityError::KeyUnavailable(
+            "credential store locked".into(),
+        ))
+    }
+
+    fn delete_secret(&self, _name: &str) -> Result<bool, kasirmu_security::SecurityError> {
+        Err(kasirmu_security::SecurityError::KeyUnavailable(
+            "credential store locked".into(),
+        ))
+    }
+}
+
+/// A binding whose secret cannot be READ must surface as an error, not as
+/// `signature_valid: false`.
+///
+/// The two are different facts and they prompt opposite actions: `false` says
+/// "this binding is forged, re-bind or clear it", while an unreadable keyring
+/// says "this machine's credential store is unavailable" — and re-binding is
+/// exactly the wrong repair for the second. `verify_binding` already draws the
+/// line (`Ok(false)` for every signature it can judge, `Err` only when the
+/// store cannot be read); the DTO builder used to erase it with
+/// `unwrap_or(false)`.
+#[test]
+fn binding_dto_surfaces_an_unreadable_keyring_instead_of_a_false_verdict() {
+    set_test_binding_keyring(Box::new(UnreadableKeyring));
+    let err = build_device_binding_dto(
+        "term-1",
+        Some(("store-a".to_string(), "ws-a-1".to_string(), "00".repeat(32))),
+    )
+    .expect_err("an unreadable keyring must be an error, not a false verdict");
+    match err {
+        BridgeError::Internal(message) => assert!(
+            message.contains("keyring"),
+            "the error must name the credential store: {message}"
+        ),
+        other => panic!("expected an Internal error, got {other:?}"),
+    }
+}
+
+/// The unbound case never consults the keyring, so it must keep answering
+/// `false` even when the credential store is unreadable — otherwise a terminal
+/// with no binding would report an error where the honest answer is \"nothing is
+/// bound\".
+#[test]
+fn binding_dto_answers_unbound_without_reading_the_keyring() {
+    set_test_binding_keyring(Box::new(UnreadableKeyring));
+    let dto = build_device_binding_dto("term-1", None).expect("unbound needs no keyring");
+    assert!(!dto.bounded);
+    assert!(!dto.signature_valid);
+    assert_eq!(dto.bound_store_id, None);
+}

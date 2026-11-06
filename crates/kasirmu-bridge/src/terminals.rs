@@ -420,14 +420,23 @@ fn build_device_binding_dto(
         }),
         Some((store_id, instance_id, signature)) => {
             let keyring = binding_keyring()?;
+            // BR-C2: a keyring READ FAILURE is not a signature verdict, so it
+            // must not become one here. `verify_binding` returns `Ok(false)` for
+            // every input it can actually judge — a non-hex signature, a
+            // signature for another store, one minted with another secret — and
+            // `Err` only when the credential store itself could not be read.
+            // `.unwrap_or(false)` collapsed both into "invalid signature", which
+            // told the operator their binding had been forged when the truth was
+            // "this machine's keyring is locked". That is the wrong repair to
+            // prompt: the indicated action is a re-bind, which destroys a
+            // binding that was never wrong.
             let valid = verify_binding(
                 keyring.as_ref(),
                 terminal_id,
                 &store_id,
                 &instance_id,
                 &signature,
-            )
-            .unwrap_or(false);
+            )?;
 
             Ok(DeviceBindingDto {
                 bounded: true,
