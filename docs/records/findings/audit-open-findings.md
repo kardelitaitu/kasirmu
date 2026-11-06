@@ -2224,5 +2224,7 @@ a place where the fact no longer lives.
 
 **Verified after the edits:** `verify-scoped-reads.py --self-test` passes; desktop, tablet and
 `desktop,tablet` runs each print clean; `cite lines` 227 OK / 0 drifted / 0 symbol-gone; dead refs 0 in 13
-live docs; `verify-agents-mirrors.py` reports every policed mirror agrees (the two `agent-gates.md` copies
-carry byte-identical corrections).
+live docs; `verify-agents-mirrors.py` reports its one policed mirror agrees. Only
+`docs/operations/agent-gates.md` is tracked — `docs/src/operations/` is gitignored generated output
+(`.gitignore:170`) that received the same text so a local build renders the correction. The mirror gate
+does not compare those two copies, and this note does not claim it does.
