@@ -385,10 +385,12 @@ data::` -> **50 passed, 0 failed**.
   parse behaviour is a property of `Settings::load_features`, not of this command, so only
   this body's choice to propagate is ours to pin.  `cargo test -p kasirmu-bridge --lib data::`
   -> **51 passed, 0 failed**.
-- **BR-C7** — **[PBD]** `gather_usage` turns four database faults into logged zeros:
-  `crates/kasirmu-bridge/src/subscription.rs:127-145` (`count_locations`, `count_staff_users`,
-  `count_terminals`, `count_warehouse_locations`, each `unwrap_or_else(|e| { warn; 0 })`), so
-  quota gates see "no usage" rather than "unknown".
+- ~~**BR-C7** — `gather_usage` turns four database faults into logged zeros.~~ —
+  **CLOSED 2026-11-06** (`refactor(subscription): fail-closed quota usage counts on database read errors`).
+  `gather_usage` in `crates/kasirmu-bridge/src/subscription.rs:132-150` now logs the database error and
+  reports `i64::MAX` for the faulted counter rather than `0`. Quota gates evaluate against the limit
+  and fail closed (locking creation doors on DB errors) rather than assuming zero usage. Pinned by
+  `cargo test -p kasirmu-bridge --lib subscription` (35 passed, 0 failed).
 - **BR-C8** — **[PBD]** `per_location_over_quota_rows` has a TOCTOU shape:
   `crates/kasirmu-bridge/src/subscription.rs:639` probes `manager.store_db_exists(store_id)` and
   `:642` then opens it (`open_store`); the file can appear or vanish between the two. A

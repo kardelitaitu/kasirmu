@@ -128,24 +128,26 @@ pub struct SubscriptionCapabilitiesDto {
 /// Gather the usage counts the gates and the caps DTO share, best-effort:
 /// they drive approaching-limit banners and verdict details, and a broken
 /// global DB must still yield a definitive fail-closed payload rather
-/// than an IPC error.
+/// than an IPC error. On a database read fault, each axis reports i64::MAX
+/// so quota gates fail closed (locking creation doors) rather than assuming
+/// zero consumption.
 fn gather_usage(store: &Store<'_>) -> UsageCounts {
     UsageCounts {
         locations: store.count_locations().unwrap_or_else(|e| {
-            tracing::warn!("location count failed — reporting 0: {e}");
-            0
+            tracing::warn!("location count failed — reporting fail-closed limit: {e}");
+            i64::MAX
         }),
         staff_users: store.count_staff_users().unwrap_or_else(|e| {
-            tracing::warn!("staff count failed — reporting 0: {e}");
-            0
+            tracing::warn!("staff count failed — reporting fail-closed limit: {e}");
+            i64::MAX
         }),
         pos_instances: store.count_terminals().unwrap_or_else(|e| {
-            tracing::warn!("terminal count failed — reporting 0: {e}");
-            0
+            tracing::warn!("terminal count failed — reporting fail-closed limit: {e}");
+            i64::MAX
         }),
         warehouses: store.count_warehouse_locations().unwrap_or_else(|e| {
-            tracing::warn!("warehouse count failed — reporting 0: {e}");
-            0
+            tracing::warn!("warehouse count failed — reporting fail-closed limit: {e}");
+            i64::MAX
         }),
     }
 }
