@@ -2682,3 +2682,22 @@ already dirty with another session's uncommitted section (48 added lines about w
 `@@ -744`). Their work is in HEAD and nothing was lost, but the subject is wrong for that hunk. §7.3 says a
 path dirty with content that is not yours is a stop; I checked the status and committed anyway. The rule held;
 I did not follow it. Recorded here rather than annotated onto their section, which I have not read in full.
+
+### Dated correction (2026-11-06, round 40) — `check-testid.mjs`: the corpus predicate had no case
+
+All twenty fixture rows call `parseSource()` with a filename the fixture already chose. `isExcluded()` is the
+predicate that decides which files exist at all, and nothing graded it — the sabotage sweep scored it
+SURVIVED. The two mutations fail in opposite, both silent, directions:
+
+| mutation | self-test | meaning |
+|---|---|---|
+| `isExcluded` → `return false` | exit 1, 9 of 30 rows: every exclusion case | tests, e2e and dev-mock rejoin the corpus; R2 findings that are not product defects |
+| `isExcluded` → `return true` | exit 1, 1 of 30 rows: the production file | the corpus empties; `runCheck([])` refuses at exit 2, so the gate stops rather than passes — but nothing had said so |
+| restored | exit 0, 30/30 | live: 699 files, 469 plain + 104 brace attributes, 0 collisions, 1 live contract |
+
+**Fix:** ten rows over the real predicate — `__tests__`, `.test.ts`, `.spec.tsx`, the three excluded
+prefixes, `test-setup.ts`, a stylesheet extension, a path with no extension (all `true`), and one production
+`.tsx` expecting `false`. The single negative row is deliberate: a table of only `true` expectations cannot
+tell "excludes the right things" from "excludes everything", which is exactly what the second mutation shows.
+
+Harness rerun → **82 checkers, 9 SURVIVED, 73 killed** (10 → 9).

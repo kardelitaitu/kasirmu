@@ -510,6 +510,29 @@ function selfTest() {
   const stale = analyze(twoFiles, { max_duplicate_contracts: 1, contracts: [{ literal: 'gone-now', files: ['ui/src/a/A.tsx'] }] });
   add('synthetic (B4.1)', 'contracts row for a literal with no live collision', 'exit 1, STALE', 'exit ' + stale.exit + ' -- ' + (stale.findings[0] ?? 'clean'), stale.exit === EXIT.FINDINGS && stale.findings.some((f) => f.startsWith('STALE')));
 
+  // isExcluded() -- the corpus gate. Every fixture row above calls parseSource() with a
+  // filename already chosen for it, so the predicate that DECIDES which files exist had no
+  // case and the sabotage sweep scored it SURVIVED on 2026-11-06. Both directions matter:
+  // `return false` scans tests and mocks (R2 findings that are not product defects), and
+  // `return true` empties the corpus -- runCheck([]) then refuses with exit 2, so the gate
+  // would stop rather than pass, but no case said so.
+  const EXCLUSION = [
+    ['ui/src/features/x/__tests__/A.test.tsx', true, 'a __tests__ directory'],
+    ['ui/src/foo.test.ts', true, 'a .test.ts basename'],
+    ['ui/src/foo.spec.tsx', true, 'a .spec.tsx basename'],
+    ['ui/e2e/checkout.ts', true, 'the e2e prefix'],
+    ['ui/src/dev-mock/mock.ts', true, 'the dev-mock prefix'],
+    ['ui/src/test-utils/render.tsx', true, 'the test-utils prefix'],
+    ['ui/src/test-setup.ts', true, 'the exact test-setup path'],
+    ['ui/src/features/x/A.styles.css', true, 'an extension that is not source'],
+    ['ui/src/features/x/noext', true, 'a path with no extension at all'],
+    ['ui/src/features/retail/RetailPosScreen.tsx', false, 'a production source file'],
+  ];
+  for (const [path, want, label] of EXCLUSION) {
+    const got = isExcluded(path);
+    add('synthetic (section 3) ' + label, path, String(want), String(got), got === want);
+  }
+
   const empty = runCheck([]);
   add('synthetic (C8)', '0 files scanned', 'exit 2', 'exit ' + empty.exit + ' -- ' + empty.lines[0], empty.exit === EXIT.CANNOT_RUN);
 
