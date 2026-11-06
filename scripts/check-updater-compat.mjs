@@ -50,7 +50,9 @@ const EXE = join(HARNESS_DIR, "target", "release", process.platform === "win32" 
 const FIXTURES = join(HARNESS_DIR, "fixtures");
 
 let failures = 0;
+let checksRun = 0; // census floor: gutted assertions must UNRUN, not pass vacuously
 function check(name, cond, detail = "") {
+  checksRun += 1;
   if (cond) {
     console.log(`  PASS  ${name}${detail ? ` — ${detail}` : ""}`);
   } else {
@@ -283,6 +285,10 @@ try {
   }
 
   console.log("\n=== RESULT ===");
+  if (checksRun === 0) {
+    failures += 1;
+    console.error("FLOOR UNMET: no check ran — a harness that asserts nothing proves nothing.");
+  }
   if (failures === 0) {
     console.log("ALL CHECKS PASSED — generated updater signatures are accepted by the real Tauri client verifier.");
   } else {

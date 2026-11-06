@@ -172,7 +172,8 @@ function manifestAudit({ readable, needles, declared }) {
 }
 
 /**
- * Self-test: grade the verdict and the manifest audit. No child process, no file read.
+ * Self-test: grade the verdict, the manifest audit and the availability probes.
+ * The probe cases shell out (that IS the behavior under test); the rest touch nothing.
  */
 const SELF_TEST_CASES = [
   // The happy path.
@@ -215,7 +216,19 @@ function selfTest() {
     for (const line of failures) console.error(line);
     return 2;
   }
-  console.log(`SELF-TEST OK (${SELF_TEST_CASES.length + 4} cases, no child process)`);
+  // The availability probes: both gates SKIP on their falsy return, so a probe that
+  // stopped returning a boolean would silently skip its gate forever — the measured
+  // 2026-10-23 failure mode. Type-pinned, not value-pinned: whether Docker IS
+  // reachable is the machine's business, not the self-test's.
+  if (typeof dockerAvailable() !== 'boolean') {
+    console.error('FAIL dockerAvailable must return a boolean');
+    process.exit(1);
+  }
+  if (typeof playwrightAvailable() !== 'boolean') {
+    console.error('FAIL playwrightAvailable must return a boolean');
+    process.exit(1);
+  }
+  console.log(`SELF-TEST OK (${SELF_TEST_CASES.length + 6} cases)`);
   return 0;
 }
 

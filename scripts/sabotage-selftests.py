@@ -35,7 +35,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 #: Never blanked: these ARE the harness, or are the entry point.
-SKIP_DEFS = {"main", "self_test", "_self_test", "run", "cli"}
+SKIP_DEFS = {"main", "self_test", "_self_test", "selfTest", "run", "cli"}
+# selfTest is the JS naming convention for a self-test function. Gutting a file's ONLY
+# function when that function IS the self-test cannot be caught by that self-test — the
+# empty stub still exits 0 — so such a file reports NO MUTATABLE FUNCTION instead of
+# counting as a survivor (verify-updater-signature.mjs, measured 2026-11-07).
 
 #: Bare "bash" is WSL here and cannot see the Windows tree (exit 127), so a .sh self-test
 #: run through it would fail for the wrong reason and score as a killed mutation.
