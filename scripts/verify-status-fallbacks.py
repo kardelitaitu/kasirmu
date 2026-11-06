@@ -59,6 +59,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -193,10 +194,41 @@ def self_test() -> int:
         if hits:
             print(f"FAIL self-test: the {name} case was wrongly flagged {hits}", file=sys.stderr)
             failures += 1
+
+    # _read() -- the ONLY way a file reaches the rule, and the one function whose failure
+    # direction is invisible. The sabotage sweep scored it SURVIVED on 2026-11-06: gutting
+    # it left the three defect cases and the three honest shapes green, because every case
+    # grades a string already in memory. Nothing proved the two things callers rely on:
+    # that it returns the file's TEXT, and that a file which will not open is a REFUSAL
+    # (exit 2) rather than an empty string that reads as "this file had no findings".
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        probe = tmp / "probe.ts"
+        probe.write_text("export const x = 1;\n", encoding="utf-8")
+        try:
+            got = _read(probe)
+        except SystemExit:
+            print("FAIL self-test: _read() refused a readable file", file=sys.stderr)
+            failures += 1
+        else:
+            if got != "export const x = 1;\n":
+                print(f"FAIL self-test: _read() returned {got!r} instead of the file's text",
+                      file=sys.stderr)
+                failures += 1
+        for label, path in (("a missing file", tmp / "absent.ts"), ("a directory", tmp)):
+            try:
+                _read(path)
+            except SystemExit:
+                pass
+            else:
+                print(f"FAIL self-test: _read() accepted {label} instead of refusing",
+                      file=sys.stderr)
+                failures += 1
     if failures:
         print(f"self-test: {failures} FAILURE(S)", file=sys.stderr)
         return 1
-    print(f"self-test: OK ({len(bad)} defects detected, {len(good)} honest shapes accepted)")
+    print(f"self-test: OK ({len(bad)} defects detected, {len(good)} honest shapes accepted,"
+          f" 3 _read cases)")
     return 0
 
 

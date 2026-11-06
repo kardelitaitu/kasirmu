@@ -744,12 +744,53 @@ reproduce; each correction is inline, in the bullet that carries it.
   inactive repos. That is an owner's call about cost and about whether the repo wants
   nightly CI at all, and it is not something a documentation commit should decide.
 
-  The five still unwired: `verify-fluent-dynamic-families.py`,
-  `verify-quota-coverage.sh`, and the docker family `verify-docker-all.sh` /
-  `verify-docker-digests.sh` / `verify-docker-persistence.sh`. The last three are one
-  unit — `verify-docker-all.sh` is a wrapper whose two children are reachable only
-  through it and through retired `.bak` workflows, so wiring any of them means deciding
-  the whole family's fate, not one file's.
+    - `verify-fluent-dynamic-families.py` -- **wired and running**: `check.sh:1199` (the gate)
+    and `check.sh:1206` (its `--self-test`), and `dev-ci.yml:1603`. Same shape the Progress
+    note credits `flaky-quarantine`/`dockerfile-workspace` with. RESOLVED and wired.
+  - `verify-dockerfile-workspace.py` -- **wired and running**: `check.sh:300` and
+    `check.sh:301` (`--self-test`), and `dev-ci.yml:1252`. RESOLVED and wired.
+  - `verify-flaky-quarantine.py` -- **wired and running**: `check.sh:1143` and
+    `check.sh:1144` (`--self-test`). RESOLVED and wired. (The Progress note itself records
+    this one; it just omits that `fluent-dynamic-families` got the same treatment.)
+  - `verify-quota-coverage.sh` -- **self-test-only, by design, RESOLVED**: `check.sh:1176`
+    runs its `--self-test`; the gate itself is NOT a step because its non-zero exit is a
+    REPORT, not a verdict (the `seed_primary_store` bootstrap door is deliberately ungated for
+    good -- gating it makes a fresh install unbootable). Same shape the note already records
+    for this one: "a report whose finding is information for a human, not a PR condition."
+    Do NOT wire it as a blocking step.
+  - `verify-docker-all.sh` -- **self-test-only**: `check.sh:319` runs its `--self-test`; the
+    gate itself is not a step because every stage needs a live Docker daemon and
+    `verify-docker-all.sh` orchestrates four stages, so the body cannot run in a no-daemon
+    step. The self-test is the enforceable half (text analysis, no daemon).
+  - `verify-docker-digests.sh` -- **self-test-only**: `check.sh:312` runs its `--self-test`;
+    the gate itself re-resolves every `image:tag@sha256:` against a REGISTRY, so a real run
+    is a manual "refresh a pin" action, not a PR condition. The file itself argues for that
+    cadence ("manual script, not gate -- run by hand before refreshing a pin"), and that
+    argument is the finding, not a defect in the wiring.
+  - `verify-docker-persistence.sh` -- **self-test-only**: `check.sh:330` runs its
+    `--self-test`; the gate itself is reachable only through `verify-docker-all.sh`'s stage 1,
+    which `--self-test` exits before, so the body has no independent runner. The self-test is
+    the enforceable half.
+
+  So today the named-seven split is: **3 fully wired and running** (
+  `verify-fluent-dynamic-families.py`, `verify-dockerfile-workspace.py`,
+  `verify-flaky-quarantine.py`), **3 self-test-only** (the docker family
+  `verify-docker-all.sh` / `verify-docker-digests.sh` / `verify-docker-persistence.sh`), and
+  **1 resolved-not-to-wire** (`verify-quota-coverage.sh`). The "5 remain" line is stale on
+  both counts: three of the five it names are now wired and running, and one of the five
+  (`quota-coverage`) is resolved, not unwired. The only state that has not changed is the
+  docker family's: its self-tests are wired and its gates are still not steps, which is the
+  same partial-wire shape the note already describes for them.
+
+  The docker family decision is unchanged and is still a decision, not a defect: giving the
+  three docker gates a real (non-self-test) runner means a live Docker daemon and/or a
+  registry hit, which is a different cadence from a PR gate. The draft that did this (
+  `docker-digest-drift.yml.bak:5-10`) is still in the tree and still argues for a dedicated
+  scheduled workflow rather than a schedule on `dev-ci.yml`, and `dev-ci.yml:575` still
+  carries the "WHY NOT A SCHEDULE" note. First live schedule in the repository = owner's call
+  about cost and about whether the repo wants nightly CI at all; not a documentation commit's
+  call. The part that IS a documentation defect and IS fixed here is the "5 remain" line and
+  the "five still unwired" list: they no longer describe the tree.
 
   **Corrected 2026-09-29: the Docker caution below was wrong, and `fluent-dynamic` is
   resolved.** I wrote that "the docker three likely need a Docker daemon and so cannot
@@ -2598,3 +2639,34 @@ because neither is visible from the commit graph:
 
 Re-verified after the fact: `git show HEAD:scripts/verify-scoped-coverage.sh` contains the fixture cases
 (`one temp fixture tree`), self-test `9 cases`, live gate green.
+
+### Dated correction (2026-11-06, round 39) — `verify-status-fallbacks.py`: `_read` was the one unproven path
+
+Every self-test case in this gate graded a string already in memory. `_read()` is the only way a file reaches
+the rule, and it had no case, so the sabotage sweep scored it SURVIVED. The failure direction that matters is
+not a crash: it is a silent empty string. `grade()` would then print
+`status-fallbacks: OK (no default names a concrete status)` over a tree it never read — the gate reporting
+clean on zero evidence.
+
+**Fix:** three cases in `self_test()`, over a `tempfile.TemporaryDirectory` —
+
+| case | asserts |
+|---|---|
+| a readable temp file | `_read()` returns the file's exact text, not `""` |
+| a missing file | refuses with `SystemExit` (exit 2), does not return |
+| a directory | refuses too — `IsADirectoryError` is an `OSError`, so one `except` covers both |
+
+**Mutations measured, because a case that cannot fail is the thing this file keeps finding:**
+
+```
+_read() body -> return ""                    exit 1, 3 FAILURE(S): text, missing file, directory
+report refuses but except OSError -> return ""  exit 1, 2 FAILURE(S): missing file, directory
+restored                                      exit 0, 3 defects + 3 honest shapes + 3 _read cases
+```
+
+The second mutation is the realistic one: a future edit that keeps `read_text` but turns the refusal into a
+fallback value. It reddens exactly the two cases that name it and leaves the text case green, which is what
+distinguishes a targeted case from a blanket one.
+
+Live: `status-fallbacks: OK (no default names a concrete status)`. Harness rerun → **82 checkers, 10 SURVIVED,
+72 killed** (11 → 10).
