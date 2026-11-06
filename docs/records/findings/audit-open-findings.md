@@ -3199,3 +3199,37 @@ verify-workflow-syntax, check-debt-ledger, verify-updater-signature.mjs, check-u
 check-updater-compat.mjs). Unmeasured: 4 stragglers. Next candidate (round 55): the same
 fixture pattern on the nine scripts/ survivors — they share one shape (pure-core self-test,
 ungraded resolver or parser), so they can go in one batch with the same two-gate proof.
+
+### Round 55 (2026-11-07) — nine scripts/ survivors closed; the ledger reaches 3
+
+`28a06cf04` applies the round-54 pattern to the nine scripts/ survivors, closing twelve of
+the eighteen survivors across two rounds. Each self-test now grades the function the survey
+guts first: load_gates (four fail-closed manifest cases), the two git() wrappers (throwaway
+repos: toplevel resolution, the None-vs-empty refusal contract, failure -> empty stdout),
+workspace_members (glob expansion over a throwaway workspace), _rel (both branches),
+is_powershell (suffix contract, case folding, .bak exclusion), live_ci_scripts (synthetic
+workflow feed via the imported _live_workflow_files), check_tauri_configs (through its own
+configs parameter: perMachine flagged, currentUser clean, nsis-less skipped), and
+live_workflows (the re-export pinned with a stubbed feed).
+
+**Two binding forms.** Where the self-test never mentions the patched name before the patch
+point, a plain `global X` statement works (dockerfile-workspace, debt-ledger). Where it
+does — ci-docs-drift reads GATES_MANIFEST, commit-subjects reads ROOT — a trailing global
+statement would not compile, so the constant is rebound through globals() and restored in
+finally. A pre-edit scan of each self_test body chose the form mechanically; the survey's
+relocation run proves the rebound constant does not leak.
+
+**Two fixture lessons the direct gate caught.** verify-dockerfile-workspace: the members
+regex reads quoted lines, so an inline `members = ["crates/*"]` matches nothing — the
+throwaway manifest must be pretty-printed. check-debt-ledger: git stdout carries a
+trailing newline, so toplevel output is stripped before the path comparison.
+
+Two-gate proof: nine direct --self-test runs exit 0, then the full staged survey measures
+86 killed, 3 SURVIVED, 4 RELOCATION-SENSITIVE, 3 NO MUTATABLE FUNCTION, exit 1. No new
+survivors, no already-red rows.
+
+Survivors open: 3, all .mjs — verify-updater-signature.mjs (selfTest), check-ui.mjs
+(dockerAvailable), check-updater-compat.mjs (check). Next candidate (round 56): close the
+trio with the same fixture pattern in their JS self-tests, then the 4 RELOCATION-SENSITIVE
+stragglers (verify-migration-column-types.py, verify-release-workflow.py,
+verify-scoped-reads.py, check-font-bundle.mjs) need location-independent self-tests.
