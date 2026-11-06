@@ -937,6 +937,67 @@ was corrected here". GI-1's note half is therefore 3 defects → 0.
 repair (13:52 +07), because it tests that a `_note` exists rather than that its content matches the
 tree. That is GI-2's point and this correction does not touch it.
 
+### Dated refresh (2026-11-06, 19:45 +07) — GI-1, GI-2, GI-3, GI-5, GI-6 live status census
+
+Re-measured each finding against the current tree (tip `0b11d9246`, 149 gates in `scripts/gates.json`,
+51 tracked `scripts/verify-*` checkers, live runners `.github/workflows/dev-ci.yml`,
+`scripts/check.sh`, `scripts/check-ui.mjs`, `.githooks/pre-commit`):
+
+- **GI-1 (Dual answers in gates.json): RE-MEASURED.** Of the 149 gates, 113 carry both `runners` and
+  `ci`, 4 carry `ci`-only, 17 carry `runners`-only (local/hook only), and 15 are retired records.
+  While the 2026-09-20 correction fixed the 3 original contradictory notes (`scoped-coverage`,
+  `topology-parity`, `test-shadow-copies`), new dual-answer prose drift has appeared:
+  - `root-policy`: carries `"ci": {"workflow": "dev-ci.yml", "job": "static-gates", ...}` and is
+    executed at `dev-ci.yml:1698`, yet its `_note` still states: *"Local-only by design: it inspects the
+    working tree, so a runner checkout may legitimately carry ephemera this repo does not own;
+    therefore no ci key, and pre-commit is deliberately not lengthened - scripts/check.sh is its only
+    runner."*
+  - `ownership-map-parity`: carries a `ci` key (`dev-ci.yml#static-gates`), yet its `_note` claims:
+    *"Local-only runner today; adding a dev-ci"*.
+  The structural defect holds: `_note` prose is not validated against the `ci` object of the same
+  record.
+
+- **GI-2 (Prose numbers that rot): RE-MEASURED.** Ran `python scripts/verify-ipc-parity.py` and
+  `python scripts/verify-shell-registration.py` (both OK, 19:46 +07).
+  - `gates.json:446` (`ipc-parity`) frozen note claims: *"Measured 2026-09-18: 441 UI command strings;
+    desktop 455 registered / 9 unregistered UI names / 3 unregistered fns; tablet 320 registered /
+    138 unregistered UI names / 3 unregistered fns. The 25 allowlisted scoped orphans..."*
+    - **Current live numbers (2026-11-06):**
+      - Total UI command strings: **503** (+62 from 441)
+      - Desktop: **510** registered (+55 from 455) / **15** unregistered UI names / **2** unregistered
+        command fns
+      - Tablet: **439** registered (+119 from 320) / **78** unregistered UI names / **3** unregistered
+        command fns
+      - Scoped orphans: **24** allowlisted entries (**0** unsuffixed; down from 25 on 09-18, up from
+        21 on 10-24).
+  - `gates.json:461` (`shell-registration`) note claims: *"desktop 511 handler entries, tablet 440,
+    90 desktop-only and 19 tablet-only."*
+    - **Current live numbers (2026-11-06):** 109 total documented divergences in `scripts/shell-divergence.json`,
+      with exact split **90 desktop** and **19 tablet** preserved and verified across both shells.
+
+- **GI-3 (--staged-only three semantics): RE-MEASURED.** Verified all `scripts/verify-*.py`
+  implementations. Exactly three scripts define `--staged-only`, each preserving its distinct semantic:
+  1. `scripts/verify-ftl-orphans.py:493`: Inspects true git index diff (`git diff --cached -U0`).
+  2. `scripts/verify-migration-column-types.py:118/145`: Inspects staged file names from index
+     (`git diff --cached --name-only`), but reads working tree bytes off disk via `path.read_text`.
+  3. `scripts/verify-bundle-parity.py:119`: Pathlist filtering CLI argument (`--staged-only PATH...`),
+     reading full post-stage file contents off disk.
+  The semantic split is stable, ununified by design, and owned by the respective checker scripts.
+
+- **GI-5 (Two CI claims with no backstop): RE-MEASURED.**
+  1. `doc-uniqueness`: `scripts/gates.json:1175` promises `"ci": {"workflow": "dev-ci.yml", "job":
+     "static-gates"}` and claims in `_note:1177` *"Promoted to required with a ci block in the same
+     ruling"*. Searching `.github/` yields **0 hits** for `verify-doc-uniqueness`. The CI claim has
+     no backstop in CI and is enforced only developer-locally via `scripts/check.sh:376`.
+  2. `verify-ftl-orphans.py` (`--staged-only`): Remains pre-commit step 7 only (`.githooks/pre-commit:257`).
+     CI runs `--self-test` and `--census` (`dev-ci.yml:332, 339`), which serves as a full-repo backstop,
+     though commit-staged indexing has no representation in CI by design.
+
+- **GI-6 (Staleness loop keyed on _scoped suffix): RE-MEASURED.** `scripts/ipc-parity-allowlist.json`
+  currently holds **24** entries under `scoped_orphans`. **24 of 24** end with `_scoped` (**0 unsuffixed**).
+  Self-test case 10 in `verify-ipc-parity.py` guards this invariant, asserting that unsuffixed entries are
+  dropped while all 24 allowlisted entries match the collector filter. The invariant remains unbroken.
+
 ### Dated correction (2026-10-27) — GI-7's F-TWO is closed; the empty-corpus green now refuses
 
 **Re-measured by reproducing it, not by reading the code.** A throwaway root was built from
