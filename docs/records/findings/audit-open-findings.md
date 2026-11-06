@@ -2431,3 +2431,55 @@ close several at once — a candidate for one round of its own rather than seven
 **Not changed:** the survey stays unwired. Wiring it would fail most builds today (exit 1 at 17
 survivors), so it is an owner decision, not a silent tightening — the `gates.json` advisory note is the
 record of that choice and is left intact.
+
+### Dated correction (2026-11-06, round 35) — two more survivors closed: the `git ls-files` wrappers
+
+Round 34 left 17 survivors in `scripts/sabotage-selftests.py`. This round took the pair whose gutted
+function is the **corpus** rather than a predicate: `tracked()` in `check-rust-doc-paths.py` and
+`tracked_files()` in `check-orphan-prototype-files.py`. Both are thin `git ls-files` wrappers, and both
+self-tests graded only the functions FED by them (`scan()`, `orphans()`) with hand-written file lists —
+so a body replaced by `return set()` / `return []` left every case green and the checker quietly comparing
+documents against an empty corpus.
+
+**Fix, same recipe in both files:** the wrapper takes a `root` parameter, and one new case builds a
+**scratch git repository** (a `.rs` plus a `.txt` in one; `prototypes/a.js` plus a file outside the tree in
+the other), stages it, and asserts what comes back. `check-rust-doc-paths.py` also asserts the answer is
+that root's, not this checkout's (`Cargo.toml` absent), which is what a cached or hardcoded corpus would
+get wrong.
+
+| mutation | self-test |
+|---|---|
+| `tracked()` → `return set()` | exit **2**: `tracked() lists the repository it is pointed at: expected {'crates/real.rs', 'notes.txt'}, got set()` |
+| `tracked_files()` → `return []` | exit **2**: `tracked_files() over a scratch repository: expected ['prototypes/a.js'], got []` |
+| restored | both pass: `25 cases; one scratch repository` / `5 detector cases + 1 corpus case` |
+
+**Second fix in the orphan checker, same file:** its `main()` printed `no tracked files under prototypes/ --
+nothing to check` and returned **0** — the empty-corpus pass that rounds 30-33 closed elsewhere. It now
+refuses at exit 2 naming the checkout it looked in. Neither count changed on the live tree
+(`1430 .rs file(s) scanned`, `0 orphan(s) among 10 deployed file(s)`).
+
+**Harness confirms both:** rerun of `scripts/sabotage-selftests.py` → **82 checkers, 15 SURVIVED, 67 killed**
+(was 17 / 65).
+
+**Still surviving (15):**
+
+| checker | gutted function |
+|---|---|
+| `verify-coverage-floors.py` | `load_floors` |
+| `verify-deployment.py` | `probe` |
+| `verify-exhaustive-deps.py` | `run_eslint` |
+| `verify-flaky-quarantine.py` | `_git_toplevel` |
+| `verify-fluent-dynamic-families.py` | `bundle_files` |
+| `verify-runner-commands.py` | `live_runner_files` |
+| `verify-status-fallbacks.py` | `_read` |
+| `verify-ui-coverage-floors.py` | `load_floors` |
+| `check-chokepoints.py` | `repo_root` |
+| `check-query-plans.py` | `probe_source` |
+| `verify-docker-persistence.sh` | `cleanup` |
+| `verify-scoped-coverage.sh` | `run_shell` |
+| `check-bundle.mjs` | `gzipBytes` |
+| `check-server-origins.mjs` | `read` |
+| `check-testid.mjs` | `isExcluded` |
+
+Two of the remaining are pairs (`load_floors` in both coverage-floor checkers) and two are shell scripts,
+where the mutator blanks a shell function instead of a Python one.

@@ -58,16 +58,20 @@ import argparse
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TREE = "prototypes"
 
-def tracked_files() -> list[str]:
-    """Tracked paths, via git, so build output and gitignored copies never appear."""
+def tracked_files(root: Path = REPO_ROOT) -> list[str]:
+    """Tracked paths under TREE in `root`, via git, so build output and gitignored copies
+    never appear. `root` is a parameter so a self-test can point this at a scratch
+    repository: the corpus was untested until round 35, which is why gutting this body
+    survived the sabotage sweep."""
     out = subprocess.run(
         ["git", "ls-files", TREE],
-        cwd=REPO_ROOT,
+        cwd=root,
         capture_output=True,
         text=True,
         check=True,
@@ -158,11 +162,25 @@ def self_test() -> int:
         got = orphans(list(files), corpus)
         if got != expected:
             bad.append(f"  {name}: expected {expected!r}, detector returned {got!r}")
+    # THE CORPUS HALF (added 2026-11-06, round 35). Every case above hands orphans() a
+    # hand-written file list, so tracked_files() was never called and a gutted body
+    # survived the sabotage sweep. It reads git, so the fixture is a scratch repository.
+    with tempfile.TemporaryDirectory() as tmp:
+        scratch = Path(tmp)
+        (scratch / TREE).mkdir()
+        (scratch / TREE / "a.js").write_text("console.log(1);\n", encoding="utf-8")
+        (scratch / "loose.js").write_text("outside the tree\n", encoding="utf-8")
+        subprocess.run(["git", "init", "-q"], cwd=scratch, check=True)
+        subprocess.run(["git", "add", TREE, "loose.js"], cwd=scratch, check=True)
+        got = tracked_files(scratch)
+        if got != [f"{TREE}/a.js"]:
+            bad.append(f"  tracked_files() over a scratch repository: expected "
+                       f"['{TREE}/a.js'], got {got!r}")
     if bad:
         print("SELF-TEST WRONG:", file=sys.stderr)
         print("\n".join(bad), file=sys.stderr)
         return 2
-    print(f"SELF-TEST OK ({len(SELF_TEST_CASES)} cases, no file read)")
+    print(f"SELF-TEST OK ({len(SELF_TEST_CASES)} detector cases + 1 corpus case)")
     return 0
 
 
@@ -185,8 +203,13 @@ def main() -> int:
 
     files = tracked_files()
     if not files:
-        print(f"orphan-prototype-files: no tracked files under {TREE}/ -- nothing to check")
-        return 0
+        # Not a clean tree: a tree that was not read. Measured 2026-11-06 -- this branch
+        # printed "nothing to check" and exited 0, so a copy of the script outside the
+        # checkout reported the prototypes clean while looking at no file at all.
+        print(f"error: git lists no tracked file under {TREE}/ in {REPO_ROOT}, so this run "
+              f"graded nothing and its 'nothing to check' would be about an empty corpus. "
+              f"Pass a checkout with {TREE}/ populated.", file=sys.stderr)
+        return 2
 
     corpus = all_tracked_text()
     found = orphans(files, corpus)

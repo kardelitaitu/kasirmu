@@ -96,8 +96,10 @@ LINE_CITE_RE = re.compile(
 )
 
 
-def tracked() -> set:
-    out = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True)
+def tracked(root: Path = ROOT) -> set:
+    """Tracked paths of `root`. The parameter exists so a self-test can point this at a
+    scratch repository -- the corpus half had no case until round 35."""
+    out = subprocess.run(["git", "ls-files"], cwd=root, capture_output=True, text=True)
     if out.returncode != 0:
         raise SystemExit("error: not a git checkout")
     return set(out.stdout.splitlines())
@@ -436,10 +438,30 @@ def self_test() -> int:
         want("a bare filename with a line is NOT extracted",
              bool(LINE_CITE_RE.search("/// see lib.rs:42 here")), False)
 
+    # ── THE CORPUS HALF (added 2026-11-06, round 35) ──────────────────────
+    #
+    # tracked() decides which paths a citation may resolve against, and the sabotage sweep
+    # (scripts/sabotage-selftests.py) found it SURVIVED: gutting its body left every case
+    # above green, because all of them feed scan() a hand-written tracked set. git ls-files
+    # will only answer a real repository, so this case builds one.
+    with _tempfile.TemporaryDirectory() as _d:
+        _repo = Path(_d)
+        (_repo / "crates").mkdir()
+        (_repo / "crates" / "real.rs").write_text("fn a() {}\n", encoding="utf-8")
+        (_repo / "notes.txt").write_text("prose\n", encoding="utf-8")
+        subprocess.run(["git", "init", "-q"], cwd=_repo, check=True)
+        subprocess.run(["git", "add", "crates/real.rs", "notes.txt"], cwd=_repo, check=True)
+        want("tracked() lists the repository it is pointed at",
+             tracked(_repo), {"crates/real.rs", "notes.txt"})
+        # And it is THAT root's answer, not a cached or global one: Cargo.toml exists in
+        # this checkout and in no scratch repository.
+        want("tracked() does not answer with another checkout's paths",
+             "Cargo.toml" in tracked(_repo), False)
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (24 cases, no file or git read)")
+    print("SELF-TEST OK (25 cases; one scratch repository, no checkout read)")
     return 0
 
 
