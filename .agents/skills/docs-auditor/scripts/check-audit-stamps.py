@@ -278,10 +278,38 @@ def self_test() -> int:
             bad.append("  %s: must be flagged as an impossible date, got none" % name)
         if not should_flag and flagged:
             bad.append("  %s: must NOT be flagged, got %r" % (name, flagged))
+    # The ignore filter, graded against a throwaway git repo -- no live paths. main()
+    # consults _git_ignored to tell repo claims from scratch; a gutted one must turn
+    # the self-test red instead of silently checking (or skipping) everything.
+    import shutil
+    import tempfile
+    extra = 0
+    if shutil.which("git"):
+        with tempfile.TemporaryDirectory() as td:
+            g = pathlib.Path(td)
+            (g / ".gitignore").write_text("ignored/\n", encoding="utf-8")
+            (g / "tracked.md").write_text("x", encoding="utf-8")
+            (g / "ignored").mkdir()
+            (g / "ignored" / "x.md").write_text("y", encoding="utf-8")
+            subprocess.run(["git", "init", "-q"], cwd=g, capture_output=True)
+            extra += 1
+            got = _git_ignored(g, ["tracked.md", "ignored/x.md"])
+            if got != {"ignored/x.md"}:
+                bad.append("  git check-ignore: expected {'ignored/x.md'}, got %r" % (got,))
+        with tempfile.TemporaryDirectory() as td:
+            norepo = pathlib.Path(td)
+            (norepo / "a.md").write_text("x", encoding="utf-8")
+            extra += 1
+            got2 = _git_ignored(norepo, ["a.md"])
+            if got2 != set():
+                bad.append("  non-repo fallback: expected empty set, got %r" % (got2,))
+    else:
+        print("  (git unavailable: the check-ignore cases are skipped)")
     if bad:
         sys.stderr.write("SELF-TEST WRONG:" + chr(10) + chr(10).join(bad) + chr(10))
         return 2
-    print("SELF-TEST OK (%d cases, no file read)" % (len(CLASSIFY_CASES) + len(BAD_DATE_CASES)))
+    print("SELF-TEST OK (%d cases, live tree untouched)"
+          % (len(CLASSIFY_CASES) + len(BAD_DATE_CASES) + extra))
     return 0
 
 

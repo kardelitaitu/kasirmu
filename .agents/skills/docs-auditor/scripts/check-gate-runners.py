@@ -272,10 +272,22 @@ def self_test() -> int:
         got, _ = reachability(gates, steps, get_jobs, lambda n, l: False)
         if got != expected:
             bad.append("  reach %s: expected %r, got %r" % (name, expected, got))
+    # The root resolver, graded live: repo_root() is what main() aims at the gates
+    # manifest, and a gutted one must turn the self-test red rather than leave every
+    # read pointing at None.
+    try:
+        rp = repo_root()
+        rooted = rp is not None and rp.is_dir() and (
+            (rp / ".git").exists() or (rp / "Cargo.toml").is_file())
+    except SystemExit:
+        rooted = False
+    if not rooted:
+        bad.append("  repo_root: did not resolve to a checkout-shaped directory")
     if bad:
         sys.stderr.write("SELF-TEST WRONG:" + chr(10) + chr(10).join(bad) + chr(10))
         return 2
-    print("SELF-TEST OK (%d cases, no file read)" % (len(JOB_CASES) + len(REACH_CASES)))
+    print("SELF-TEST OK (%d cases, live tree untouched)"
+          % (len(JOB_CASES) + len(REACH_CASES) + 1))
     return 0
 
 

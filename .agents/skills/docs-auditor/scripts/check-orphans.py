@@ -323,7 +323,8 @@ def main():
 
 
 def self_test() -> int:
-    """Pin the census floor and the three detectors, in one run, touching no file.
+    """Pin the census floor, the three detectors and the corpus enumerator, in one run,
+    on synthetic fixtures (a throwaway tree for the enumerator).
 
     The floor is the half a green line cannot show: all three checks are "count the hits",
     and a zero-hit run over a zero-file corpus announces itself as clean. The detector
@@ -351,10 +352,30 @@ def self_test() -> int:
     clean = ["# A well formed document", "", "## Section one", "", "### Subsection"]
     want("check B stays quiet on well-formed input", CHECKS["b"](clean), [])
 
+    # The corpus enumerator, graded against a throwaway tree: md_files() decides what
+    # the three detectors ever get to see, so a gutted one must turn the self-test red
+    # instead of silently feeding them nothing.
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        for fname in ("a.md", "b.md"):
+            with open(os.path.join(td, fname), "w", encoding="utf-8") as fh:
+                fh.write("# x\n")
+        try:
+            got = sorted(os.path.basename(p) for p in md_files(td))
+        except Exception as exc:
+            got = ["<raised: %r>" % (exc,)]
+        if got != ["a.md", "b.md"]:
+            bad.append("md_files walk: expected ['a.md', 'b.md'], got %r" % (got,))
+        try:
+            single = list(md_files(td, single="z.md"))
+        except Exception as exc:
+            single = ["<raised: %r>" % (exc,)]
+        if single != ["z.md"]:
+            bad.append("md_files --file mode: expected ['z.md'], got %r" % (single,))
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (4 cases, no files touched)")
+    print("SELF-TEST OK (6 cases, live tree untouched)")
     return 0
 
 

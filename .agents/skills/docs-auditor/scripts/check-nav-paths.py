@@ -179,6 +179,15 @@ def self_test():
     cases.append(('correct path clean', base == 0))
     cases.append(('Settings child accepted', len(check_docs([('x.md', 'open **Settings \u2192 License**')], nav, tree, 'en')) == 0))
     cases.append(('route as parent accepted', len(check_docs([('x.md', 'open **staff \u2192 Staff**')], nav, tree, 'en')) == 0))
+    # The root resolver, graded live: main() aims check() at repo_root(), so a gutted
+    # resolver must turn the self-test red rather than leave every read at None.
+    try:
+        rp = repo_root()
+        rooted = rp is not None and rp.is_dir() and (
+            (rp / '.git').exists() or (rp / 'Cargo.toml').is_file())
+    except SystemExit:
+        rooted = False
+    cases.append(('repo_root resolves to a checkout-shaped directory', rooted))
     bad = [n for n, ok in cases if not ok]
     if bad:
         print('SELF-TEST WRONG: ' + ', '.join(bad), file=sys.stderr)
