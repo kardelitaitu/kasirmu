@@ -355,28 +355,25 @@ data::` -> **50 passed, 0 failed**.
   write it under the same guard. `cargo test -p kasirmu-bridge --lib data::` -> **51 passed,
   0 failed**; the pin is structural (a lock scope is not observable from a test), so the
   guard against regression is the scope block itself, not an assertion.
-- **BR-C5** — **[PBD / STALE 2026-11-06 — re-grep before trusting the cited shape]**
-  `import_data` used to mix connection-bound existence probes with transaction writes inside one
-  open transaction. That cited shape no longer exists in `import_data` today: the body now opens a
-  single `tx` (`crates/kasirmu-bridge/src/data.rs:540`) and does every existence read through
-  `tx.prepare_cached("SELECT …")` + `rows.next()` / `tx.execute(` writes — there are **no**
-  `store.conn()` probes left in the body.
-
-  What remains on the `conn` BEFORE the `tx` opens are the two pre-transaction batch gates
-  (`gate_import_product_batch`, `gate_import_user_batch` — `crates/kasirmu-bridge/src/data.rs:530`,
-  `:537`), and each of those does ONE `store.conn().prepare_cached("SELECT …")` read to build its
-  pre-tx snapshot. That is a single connection used once read-only (in the gate), then reused for the
-  write transaction — the same `conn` that feeds `Store::new(&conn)` at `:524` and
-  `conn.unchecked_transaction()` at `:540`. The cited citation `:518` is stale (today's `tx` opens at
-  `:540`); the cited `store.conn()` probe lines are stale (none remain in the body).
-
-  The open question that survives the refactor is therefore narrower than the original text: it is now
-  the standard **quota-gate-snapshot vs write-transaction** ordering the crate already centralises in
-  `quota_gate` (W4-S1) — a read-only pre-tx snapshot that CANNOT disagree with the tx's eventual
-  writes because the gate only REFUSES, never writes, and a WAL snapshot that sees the pre-tx state.
-  Re-grep `store.conn()` and `tx.execute(` in `crates/kasirmu-bridge/src/data.rs` before trusting any
-  older note about the body; whoever picks this up next decides whether that narrower shape still needs a
-  ruling or is covered by the existing quota-gate design.
+- ~~**BR-C5** — `import_data` used to mix connection-bound existence probes with
+  transaction writes inside one open transaction.~~ — **CLOSED 2026-11-06**.
+  The cited shape no longer exists and was replaced by the crate's own design: `import_data` now opens
+  a single `tx` (`crates/kasirmu-bridge/src/data.rs:540`) and does every existence read through
+  `tx.prepare_cached("SELECT …")` + `rows.next()` plus `tx.execute(` writes — there are **no**
+  `store.conn()` probes left in the body. The only reads that touch `conn` before the `tx` opens are
+  the two pre-transaction batch gates (`gate_import_product_batch`, `gate_import_user_batch` at
+  `:530`/`:537`), and each of those is exactly one `store.conn().prepare_cached("SELECT …")`
+  read used to build a pre-tx snapshot, then it refuses (never writes) via the centralised
+  `Store::ensure_quota_allows` (W4-S2 / `quota_gate`, W4-S1). That is the same read-only-pre-tx-
+  snapshot-then-write-transaction shape the quota gate already centralises, so the original "two paths
+  can disagree about the same row" concern is now covered by the existing design rather than by a
+  module-local fix: the gate's snapshot cannot disagree with the tx's eventual writes because the gate
+  only refuses and WAL sees the pre-tx state for that snapshot. The stale citations (`tx` at `:518`,
+  `store.conn()` probes at `:562`/`:589`/`:614`/`:645`) are dead text; today's `tx` opens at `:540`
+  and the body has no `store.conn()` calls. Pinned by re-grep: `rg -n "store.conn()|tx.execute|tx.prepare"
+  crates/kasirmu-bridge/src/data.rs` shows the body has no `store.conn()` and the only `conn`-touched
+  reads before `tx` are the two W4-S2 gates. The PBR verdict from the original text does not apply to
+  the current shape.
 - ~~**BR-C6** — `export_data`'s features map silently **empties** on a read error
   (`load_features().map(...).unwrap_or_default()`) — a failed feature read exported as "no
   features", not as an error.~~ — **CLOSED 2026-11-05**. The export now propagates with `?`,
