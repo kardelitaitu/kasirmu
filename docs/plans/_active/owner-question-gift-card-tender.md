@@ -1,16 +1,13 @@
 # Owner question — gift card redemption: three questions that block the last third
 
-> **DEFERRED 2026-10-26 — the owner has parked gift-card tender work.** No further gift-card
-> tender, migration, RBAC or settlement work should start from this file without a fresh
-> instruction. The analysis below is kept because it is still correct and was expensive to
-> establish: it records the three open rulings, the two gate traps (`payments.method` lives in
-> `20261018`, not `20261017`; `GIFTCARDS_REDEEM` is in `ALL_ENFORCED`, not `ROLE_PRESETS`), and
-> why the migration must not be done alone. THIS file is the consolidated question set;
-> the full reasoning and gate traps are in [todo-gift-card-redemption-ordering.md](todo-gift-card-redemption-ordering.md).
->
-> What is NOT deferred: the currency-mismatch guards shipped in rounds 244-247 are live on the
-> tender and top-up paths, and their tests must keep passing. Deferring the FEATURE does not
-> defer its correctness.
+> **RESOLVED 2026-11-07 — all three questions answered and shipped.**
+> - **Q1:** Option A (gift split covers total). Rebuild migration `20261107_payments_gift_card_method.sql`
+>   widens `payments.method` CHECK to include `'gift_card'`, re-creates both indexes, and updates `init.pg.sql`.
+> - **Q2:** Option B (post-commit redemption with warning toast on failure, matching loyalty precedent)
+>   wired in `ui/src/features/sales/PaymentModal.tsx`.
+> - **Q3:** Option A (grant `GIFTCARDS_REDEEM` to checkout roles: `STAFF`, `MANAGER`, `ADMIN`) in
+>   `platform/core/src/rbac_presets.rs`.
+> - **Mount:** `GiftCardPayment.tsx` mounted in `PaymentModal.tsx` under `FEATURES.GIFT_CARDS`.
 
 **Why this file exists.** `todo-gift-card-redemption-ordering.md` (241 lines) records the
 gift-card tender as complete except for three parts that must be decided together. Those
