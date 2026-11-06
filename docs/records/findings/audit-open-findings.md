@@ -2701,3 +2701,28 @@ prefixes, `test-setup.ts`, a stylesheet extension, a path with no extension (all
 tell "excludes the right things" from "excludes everything", which is exactly what the second mutation shows.
 
 Harness rerun → **82 checkers, 9 SURVIVED, 73 killed** (10 → 9).
+
+### Dated correction (2026-11-06, round 41) — `check-bundle.mjs`: the measurement had no case
+
+Forty odd pages of this file argue that a comparison which silently stops happening reports CLEAN. The number
+every comparison is made of — `gzipBytes()` — was the one function with no case, and the sabotage sweep
+scored it SURVIVED. Its dangerous mutation is not a crash: `return 0` makes every row read `0 KB / 500 KB
+✔`, which is precisely the silent-zero class R2 was written against, one level lower.
+
+| mutation | self-test | rows that caught it |
+|---|---|---|
+| `gzipBytes` → `return 0` | exit 2, 3 of 34 | R6a finite/positive, R6b empty≠0, R6e bigger measures bigger |
+| `gzipBytes` → raw `readFileSync().length` | exit 2, 2 of 34 | R6b empty≠0, R6c 100 KB compresses far below raw |
+| restored | exit 0, 34 cases | live run unchanged |
+
+**Fix:** five cases over a scratch directory (`mkdtempSync` under `os.tmpdir()`, removed in a `finally`): a
+real file measures finite and positive; an EMPTY file is not 0 bytes (gzip always carries a header); 100 KB
+of one byte compresses below a tenth of its raw size; the same file measures the same twice; a larger
+payload measures larger. The raw-length mutation is the one a "simplification" would actually produce — it
+passes R6a and R6e and fails exactly the two cases that name compression.
+
+The self-test footer said `no files touched`, which was true until this commit and is not any more: it now
+reads `one scratch dir removed`, and the header comment says what the directory is for. Verified under both
+the agent's shell and pwsh, and the scratch directory does not survive the run.
+
+Harness rerun → **82 checkers, 8 SURVIVED, 74 killed** (9 → 8).

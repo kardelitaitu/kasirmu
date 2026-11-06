@@ -49,9 +49,10 @@
  */
 
 import { execSync } from 'child_process';
-import { readFileSync, readdirSync, statSync, existsSync } from 'fs';
+import { mkdtempSync, readFileSync, readdirSync, statSync, existsSync, rmSync, writeFileSync } from 'fs';
 import { gzipSync } from 'zlib';
 import { join, resolve, dirname } from 'path';
+import { tmpdir } from 'os';
 import { fileURLToPath } from 'url';
 
 /* ── ANSI helpers ───────────────────────────────────────────────────── */
@@ -229,10 +230,11 @@ function checkBudgets(rows) {
 
 /* ══ Self-test ════════════════════════════════════════════════════════
  * Cases drive checkBudgets / pickEntry / entryFromHtml / classify with
- * synthetic measurements. No file is created, read or written (pickEntry's
- * outDir argument is omitted, so its filesystem arm is skipped), and the real
- * budgets are injected so a developer's BUDGET_* override cannot change what
- * a case means.
+ * synthetic measurements, and gzipBytes against a scratch directory created
+ * under os.tmpdir() and removed in a finally block (see R6; before 2026-11-06
+ * the one function that turns a file into a number had no case). Nothing in
+ * the repository is read or written, and the real budgets are injected so a
+ * developer's BUDGET_* override cannot change what a case means.
  *
  * Fixture budgets are 100 / 300 / 600 / 600 / 400 KB, and every boundary case
  * lands exactly on one of them or one byte either side. */
@@ -408,12 +410,40 @@ function selfTest() {
     classify(['a.js', 'b.css', 'c.woff2', 'd.png', 'e.JS', 'f.js.map']),
     { js: ['a.js'], css: ['b.css'], woff2: ['c.woff2'] });
 
+  // ── R6: the measurement itself ─────────────────────────────────────
+  // gzipBytes() is where every number this gate compares comes from, and it had no
+  // case: the sabotage sweep scored it SURVIVED on 2026-11-06. The dangerous mutation
+  // is not a crash — `return 0` turns every row into "0 KB / budget ✔", the silent
+  // zero this whole file exists to refuse. The scratch dir is created here and removed
+  // in the finally block; nothing in the repository is touched.
+  const scratch = mkdtempSync(join(tmpdir(), 'kasirmu-bundle-'));
+  try {
+    const smallPath = join(scratch, 'small.js');
+    writeFileSync(smallPath, 'const a = 1;\n');
+    const emptyPath = join(scratch, 'empty.js');
+    writeFileSync(emptyPath, '');
+    const bigPath = join(scratch, 'big.js');
+    writeFileSync(bigPath, 'a'.repeat(100 * KB));
+
+    const gSmall = gzipBytes(smallPath);
+    want('R6a gzipBytes measures a real file (finite, positive)',
+      Number.isFinite(gSmall) && gSmall > 0, true);
+    want('R6b an EMPTY file is not 0 bytes (the silent-zero shape)',
+      gzipBytes(emptyPath) > 0, true);
+    want('R6c 100 KB of one byte compresses far below its raw size',
+      gzipBytes(bigPath) < (100 * KB) / 10, true);
+    want('R6d the same file measures the same twice', gzipBytes(smallPath) === gSmall, true);
+    want('R6e a larger payload measures larger', gzipBytes(bigPath) > gSmall, true);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+
   if (problems.length > 0) {
     for (const p of problems) console.error('  FAIL ' + p);
     console.error('SELF-TEST FAILED (' + problems.length + ' of ' + count + ' cases)');
     process.exit(2);
   }
-  console.log('SELF-TEST OK (' + count + ' cases, no files touched)');
+  console.log('SELF-TEST OK (' + count + ' cases, one scratch dir removed)');
   process.exit(0);
 }
 
