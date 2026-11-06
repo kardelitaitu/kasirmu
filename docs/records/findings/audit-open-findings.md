@@ -242,11 +242,12 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
   compatibility" — `crates/kasirmu-bridge/src/branding.rs:188-192` (comment `:189-190`) — and the
   scoped twin repeats the same skip at `crates/kasirmu-bridge/src/branding.rs:254-256`, so the
   H-3 containment rule (`branding.rs:71-74`) is conditional on the shell, not on the caller.
-- **BR-S3** — **[PBD]** `set_brand_logo_path_scoped` gates `SETTINGS_EDIT`
-  (`crates/kasirmu-bridge/src/branding.rs:247`), opens the scope's **store** db (`:249`) and then
-  persists to the **global** db (`:252`, `:255`) — while both siblings in the same file write
-  the store db (`:215-217` colour, `:232-234` name). A scoped logo write therefore lands on
-  the shared tenant row, not the store's.
+- ~~**BR-S3** — `set_brand_logo_path_scoped` gates `SETTINGS_EDIT` and persists to global instead of store db~~ —
+  **CLOSED 2026-09-27** (`83b2f6c1f1 fix(branding): write the scoped logo where its scoped reader reads`).
+  `set_brand_logo_path_scoped` in `crates/kasirmu-bridge/src/branding.rs:240-268` binds the store connection
+  returned by `resolve_scope` and persists the logo path to the session's store DB, matching
+  `get_brand_settings_scoped` and sibling setters. Pinned by `scoped_brand_logo_round_trips_through_the_store_db`
+  in `branding_tests.rs` (14 passed, 0 failed). Stamped closed in register.
 - **BR-S4** — **[PBD]** `open_product_images_scoped` authenticates and authorises nothing:
   `apps/desktop-tauri/src/commands/browser.rs:32-41` delegates to
   `crates/kasirmu-bridge/src/browser.rs:64`, which calls `resolve_store` and no `require_permission`
