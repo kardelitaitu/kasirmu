@@ -25,6 +25,78 @@ cd "$(dirname "$0")/.."
 #
 # The dispatch must run before the live gate reaches its exit 0, and the predicate must
 # not reach into the live body, so it is written standalone here.
+# The verdict colours are defined here, not beside the live scan below, because run_shell()
+# prints with them and the self-test now calls run_shell() directly (set -u made an
+# ordering mistake a hard error: "RED: unbound variable", measured 2026-11-06).
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+# run_shell() is defined ABOVE the self-test block since 2026-11-06: the self-test grades
+# the REAL function, and before the move it could only grade a copy of the classifier while
+# the live body stayed untested (the sabotage sweep scored the real one SURVIVED).
+run_shell() {
+    local shell="$1" lib_rel="$2" cmd_rel="$3" extra_allow="$4" floor_twins="$5" floor_reg="$6"
+    local allowed scoped_funcs registered_unscoped registered_count twin_count cmd fn_name
+
+    allowed="${ALLOWLIST}|${extra_allow}"
+
+    # Get all _scoped function names
+    # || true is NOT cosmetic: under set -euo pipefail a grep matching nothing exits 1 and
+    # the ASSIGNMENT fails, so the whole script dies here before printing anything --
+    # measured 2026-10-23 as exit 1 with EMPTY stdout and stderr, which reads to a caller
+    # as "the gate had nothing to say" rather than "the gate broke".
+    scoped_funcs=$(grep -roh "pub async fn [a-z_]*_scoped" "$cmd_rel" --include="*.rs" 2>/dev/null | sed 's/pub async fn //' | sort -u || true)
+
+    # Get all registered unscoped commands (not _scoped themselves)
+    registered_unscoped=$(grep -oE 'commands::[a-z_]+::[a-z_]+,' "$lib_rel" | sed 's/,$//' | grep -v '_scoped$' | sort -u || true)
+
+    # A FLOOR, without which this gate cannot tell "every command is covered" from
+    # "the derivation found no commands at all". Both print PASS. The second is not
+    # hypothetical: the subject comes from grepping lib.rs for `commands::a::b,`, so
+    # a rename, a move to a registration macro, or a change of quoting empties it --
+    # and an empty subject makes the loop below run zero times, leaving violations
+    # at 0. `set -e` does not save it: the derivation ends in `grep -v`, which exits
+    # 0 on empty input, so nothing aborts.
+    registered_count=$(printf "%s\n" "$registered_unscoped" | grep -c . || true)
+    # The SECOND floor: the twin half of the subject. With a dead twin scan every command
+    # falls to the allowlist and the gate prints PASS with twin coverage 0; the registered
+    # floor reads only the OTHER half and cannot see it.
+    twin_count=$(printf "%s\n" "$scoped_funcs" | grep -c . || true)
+    if [ "$twin_count" -lt "$floor_twins" ]; then
+        echo -e "${RED}FAIL: derived $twin_count _scoped twin(s) from $cmd_rel -- below the floor"
+        echo "  of ${floor_twins}. Every command would fall through to the allowlist and this gate"
+        echo "  would print PASS with twin coverage 0. The twin scan is broken, not the tree." >&2
+        exit 1
+    fi
+
+    if [ "$registered_count" -lt "$floor_reg" ]; then
+        echo -e "${RED}FAIL: derived only $registered_count registered command(s) from $lib_rel - below"
+        echo "  the floor of ${floor_reg}; the derivation is broken, so this gate would pass by"
+        echo "  checking nothing." >&2
+        exit 1
+    fi
+
+    while IFS= read -r cmd; do
+        fn_name=$(echo "$cmd" | awk -F:: '{print $NF}')
+
+        # Check if it has a _scoped counterpart
+        if printf '%s\n' "$scoped_funcs" | grep -qxF "${fn_name}_scoped"; then
+            continue
+        fi
+
+        # Check if it's in the allowlist
+        if printf '%s\n' "$fn_name" | grep -qE "^(${allowed})$"; then
+            continue
+        fi
+
+        echo -e "${RED}VIOLATION${NC}: [$shell] $cmd has no _scoped variant"
+        violations=$((violations + 1))
+    done <<< "$registered_unscoped"
+
+    echo "  ($shell: $registered_count registered unscoped command(s), $twin_count _scoped twin(s))"
+}
+
 self_test() {
     local fails=0 total=0
 
@@ -62,11 +134,56 @@ self_test() {
     # an empty twin set covers nothing
     c "an empty twin set covers nothing" violation anything "" ""
 
+    # run_shell() -- the derivation, the two floors and the loop. Every case above grades a
+    # COPY of the classifier (`classify` is a re-implementation, deliberately kept out of the
+    # live body), so the sabotage sweep scored the REAL run_shell() SURVIVED on 2026-11-06:
+    # gutting it left all six cases green while the gate would have checked nothing. Grade the
+    # real function over a fixture tree -- two files, no repository, no daemon.
+    _probe="$(mktemp -d)"
+    printf 'commands::probe::nice,\n' > "$_probe/lib.rs"
+    mkdir -p "$_probe/cmd"
+    printf 'pub async fn nice_scoped(x: i32) {}\n' > "$_probe/cmd/probe.rs"
+
+    # (a) a twin covers it: no VIOLATION, and the count line proves the derivation ran.
+    _out="$( ( ALLOWLIST=""; violations=0; run_shell probe "$_probe/lib.rs" "$_probe/cmd" "" 1 1 ) 2>&1 )" || true
+    total=$((total + 1))
+    case "$_out" in
+        *VIOLATION*)
+            printf '  FAIL run_shell(): a twin-covered command was reported as a violation\n' >&2
+            fails=$((fails + 1)) ;;
+        *"1 registered unscoped command(s), 1 _scoped twin(s)"*) ;;
+        *)
+            printf '  FAIL run_shell(): the count line is missing or wrong: %s\n' "$_out" >&2
+            fails=$((fails + 1)) ;;
+    esac
+
+    # (b) no twin -> VIOLATION, named. The direction that must never go silent.
+    printf 'pub async fn other_scoped() {}\n' > "$_probe/cmd/probe.rs"
+    _out="$( ( ALLOWLIST=""; violations=0; run_shell probe "$_probe/lib.rs" "$_probe/cmd" "" 1 1 ) 2>&1 )" || true
+    total=$((total + 1))
+    case "$_out" in
+        *VIOLATION*"commands::probe::nice"*) ;;
+        *)
+            printf '  FAIL run_shell(): an uncovered command was not reported: %s\n' "$_out" >&2
+            fails=$((fails + 1)) ;;
+    esac
+
+    # (c) a floor breach refuses. Without this, the derivation collapsing to nothing would
+    #     print a clean count line and exit 0 -- the "gate checked nothing" failure.
+    _rc=0
+    _out="$( ( ALLOWLIST=""; violations=0; run_shell probe "$_probe/lib.rs" "$_probe/cmd" "" 5 1 ) 2>&1 )" || _rc=$?
+    total=$((total + 1))
+    if [ "$_rc" -eq 0 ] || ! printf '%s' "$_out" | grep -q 'below the floor'; then
+        printf '  FAIL run_shell(): a twin floor of 5 over one twin did not refuse (rc=%s)\n' "$_rc" >&2
+        fails=$((fails + 1))
+    fi
+    rm -rf "$_probe"
+
     if [ "$fails" -gt 0 ]; then
         printf 'SELF-TEST FAILED (%d of %d cases)\n' "$fails" "$total" >&2
         return 2
     fi
-    printf 'SELF-TEST OK (%d cases, no tree read)\n' "$total"
+    printf 'SELF-TEST OK (%d cases, one temp fixture tree, no daemon)\n' "$total"
     return 0
 }
 
@@ -76,10 +193,6 @@ if [ "${1:-}" = "--self-test" ]; then
 fi
 
 self_test || { echo "CLASSIFIER WENT DEAF: not trusting the scan below." >&2; exit 2; }
-
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-NC='\033[0m'
 
 violations=0
 
@@ -290,67 +403,6 @@ TABLET_ALLOWLIST="check_app_update|prepare_and_launch_update|start_apk_download|
 #
 # A shell is graded against the SHARED categories plus its own list, so an entry justified
 # for one shell cannot silence the other; the desktop keeps exactly the list it had.
-run_shell() {
-    local shell="$1" lib_rel="$2" cmd_rel="$3" extra_allow="$4" floor_twins="$5" floor_reg="$6"
-    local allowed scoped_funcs registered_unscoped registered_count twin_count cmd fn_name
-
-    allowed="${ALLOWLIST}|${extra_allow}"
-
-    # Get all _scoped function names
-    # || true is NOT cosmetic: under set -euo pipefail a grep matching nothing exits 1 and
-    # the ASSIGNMENT fails, so the whole script dies here before printing anything --
-    # measured 2026-10-23 as exit 1 with EMPTY stdout and stderr, which reads to a caller
-    # as "the gate had nothing to say" rather than "the gate broke".
-    scoped_funcs=$(grep -roh "pub async fn [a-z_]*_scoped" "$cmd_rel" --include="*.rs" 2>/dev/null | sed 's/pub async fn //' | sort -u || true)
-
-    # Get all registered unscoped commands (not _scoped themselves)
-    registered_unscoped=$(grep -oE 'commands::[a-z_]+::[a-z_]+,' "$lib_rel" | sed 's/,$//' | grep -v '_scoped$' | sort -u || true)
-
-    # A FLOOR, without which this gate cannot tell "every command is covered" from
-    # "the derivation found no commands at all". Both print PASS. The second is not
-    # hypothetical: the subject comes from grepping lib.rs for `commands::a::b,`, so
-    # a rename, a move to a registration macro, or a change of quoting empties it --
-    # and an empty subject makes the loop below run zero times, leaving violations
-    # at 0. `set -e` does not save it: the derivation ends in `grep -v`, which exits
-    # 0 on empty input, so nothing aborts.
-    registered_count=$(printf "%s\n" "$registered_unscoped" | grep -c . || true)
-    # The SECOND floor: the twin half of the subject. With a dead twin scan every command
-    # falls to the allowlist and the gate prints PASS with twin coverage 0; the registered
-    # floor reads only the OTHER half and cannot see it.
-    twin_count=$(printf "%s\n" "$scoped_funcs" | grep -c . || true)
-    if [ "$twin_count" -lt "$floor_twins" ]; then
-        echo -e "${RED}FAIL: derived $twin_count _scoped twin(s) from $cmd_rel -- below the floor"
-        echo "  of ${floor_twins}. Every command would fall through to the allowlist and this gate"
-        echo "  would print PASS with twin coverage 0. The twin scan is broken, not the tree." >&2
-        exit 1
-    fi
-
-    if [ "$registered_count" -lt "$floor_reg" ]; then
-        echo -e "${RED}FAIL: derived only $registered_count registered command(s) from $lib_rel - below"
-        echo "  the floor of ${floor_reg}; the derivation is broken, so this gate would pass by"
-        echo "  checking nothing." >&2
-        exit 1
-    fi
-
-    while IFS= read -r cmd; do
-        fn_name=$(echo "$cmd" | awk -F:: '{print $NF}')
-
-        # Check if it has a _scoped counterpart
-        if printf '%s\n' "$scoped_funcs" | grep -qxF "${fn_name}_scoped"; then
-            continue
-        fi
-
-        # Check if it's in the allowlist
-        if printf '%s\n' "$fn_name" | grep -qE "^(${allowed})$"; then
-            continue
-        fi
-
-        echo -e "${RED}VIOLATION${NC}: [$shell] $cmd has no _scoped variant"
-        violations=$((violations + 1))
-    done <<< "$registered_unscoped"
-
-    echo "  ($shell: $registered_count registered unscoped command(s), $twin_count _scoped twin(s))"
-}
 
 echo "=== Scoped Coverage Check ==="
 echo "  (each shell against the shared categories plus its own list)"
