@@ -12,8 +12,8 @@ top-level function that RETURNS something (skipping __main__/main/self_test), re
 its body with a neutral return, runs --self-test, and records whether the exit code
 changed. A SURVIVOR is a self-test that did not notice its detector being gutted.
 
-It writes files, so it only ever runs against a COPY under target/. Never point it at
-the tracked tree.
+It writes files, so every mutated run executes from a STAGED copy: a repo-shaped temp
+tree (junctioned siblings, copied gate directories) -- never against the tracked checkout.
 
 USAGE
     python scripts/sabotage-selftests.py            # full sweep, prints a table
@@ -199,6 +199,54 @@ def run_self_test(path: Path) -> int | None:
     return r.returncode
 
 
+def build_temp_root(dest: Path, root: Path = ROOT) -> Path:
+    """Stage a repo-shaped tree under dest: junctioned siblings, copied gate roots.
+
+    A self-test that resolves paths through __file__ needs its checker to live at a
+    plausible repo path with the repo's OTHER files reachable from there. So the temp
+    tree junctions every top-level entry of the real repo (read-only by convention --
+    nothing in this harness writes outside the three copied roots) and makes REAL
+    copies of the enumeration roots, where the mutated bytes go. The tracked checkout
+    is never written: all harness writes land under dest.
+    """
+    for entry in sorted(root.iterdir()):
+        if entry.name in (".git", ".env"):
+            continue                       # history and secrets never enter the staging tree
+        target = dest / entry.name
+        if entry.name in OVERLAY_ROOTS and entry.is_dir():
+            _overlay(entry, target)
+        elif entry.is_dir():
+            _link_or_copy(entry, target)
+        else:
+            shutil.copy2(entry, target)
+    return dest
+
+
+OVERLAY_ROOTS = ("scripts", ".agents", "website")
+SKIP_NAMES = {"node_modules", "__pycache__", "dist", ".astro", "build", "target"}
+
+
+def _overlay(real: Path, mirror: Path) -> None:
+    """Copy a gate directory wholesale (it is small text); skip regenerable dirs."""
+    mirror.mkdir(parents=True, exist_ok=True)
+    for child in sorted(real.iterdir()):
+        if child.name in SKIP_NAMES:
+            continue
+        if child.is_dir():
+            _overlay(child, mirror / child.name)
+        else:
+            shutil.copy2(child, mirror / child.name)
+
+
+def _link_or_copy(real: Path, mirror: Path) -> None:
+    """Junction a sibling directory so __file__-relative reads reach the real bytes."""
+    r = subprocess.run(["cmd", "/c", "mklink", "/J", str(mirror), str(real)],
+                       capture_output=True, text=True)
+    if r.returncode != 0:                  # non-Windows or denied: copy instead
+        shutil.copytree(real, mirror,
+                        ignore=shutil.ignore_patterns(*SKIP_NAMES))
+
+
 def survey(limit: int | None, skip: int = 0) -> list[tuple[str, str, int, int, str]]:
     """(checker, mutated function, before, after, verdict) for every candidate."""
     # Three languages, two mechanisms. Python is mutated through its AST (find the
@@ -229,53 +277,30 @@ def survey(limit: int | None, skip: int = 0) -> list[tuple[str, str, int, int, s
     # Require the argparse flag itself, i.e. the string inside a quoted literal.
     flag = re.compile(r"""["']--self-test["']""")
     files = [f for f in files if flag.search(f.read_text(encoding="utf-8", errors="replace"))]
-    if skip:
-        files = files[skip:]
-    if limit:
-        files = files[:limit]
     rows = []
-    for p in files:
-        src = p.read_text(encoding="utf-8", errors="replace")
-        base = run_self_test(p)
-        if base != 0:
-            rows.append((p.name, "-", base if base is not None else -1, -1, "PATH ALREADY RED"))
-            continue
-        if p.suffix == ".sh":
-            # SH_FUNC is anchored at column 0, so INDENTED helpers are not candidates --
-            # which is deliberate here: verify-docker-persistence.sh defines its three
-            # graded predicates (survived, colls, fail-shape) INSIDE the --self-test
-            # block, where they cannot be reached by the live path. Its only top-level
-            # function is cleanup(), pure I/O. So this file reports 0 killed BECAUSE the
-            # harness cannot see its graded logic, not because the logic is ungraded --
-            # the assertions there were measured by hand (three verdict mutations, all
-            # killed, round 81).
-            cands = text_functions(src, SH_FUNC)
-        elif p.suffix == ".mjs":
-            cands = text_functions(src, MJS_FUNC)
-        else:
-            cands = candidate_functions(src)
-        if not cands:
-            # Shell checkers whose detector is written INLINE (a long top-level body, no
-            # helper functions) cannot be mutated by this harness: there is no function to
-            # gut. Measured 2026-10-24: verify-docker-digests.sh, verify-scoped-authorization.sh
-            # and verify-scoped-coverage.sh each declare exactly one function, self_test, and
-            # skip it by name. That is a LIMIT of the sweep, not a verdict on those three --
-            # they are graded by hand instead, and this row says so rather than reading as
-            # a pass.
-            rows.append((p.name, "-", 0, 0, "NO MUTATABLE FUNCTION"))
-            continue
-        # Relocation control: a self-test that resolves paths through __file__ (or
-        # imports a sibling by location) fails from the temp copy for reasons that have
-        # nothing to do with the mutation -- and that failure scores as a KILL it did
-        # not earn. Run the UNMUTATED file through the same temp treatment first; if it
-        # cannot survive relocation, the harness says so instead of claiming a verdict.
-        # Measured round 52: check-cite-lines.py --self-test is green in place and red
-        # from a copy, so the widened sweep would have reported a false kill.
-        with tempfile.TemporaryDirectory() as td:
-            td_path = Path(td)
-            relo = td_path / p.name
-            relo.write_text(src, encoding="utf-8")
-            relo_rc = run_self_test(relo)
+    with tempfile.TemporaryDirectory() as td:
+        td_root = build_temp_root(Path(td))
+        for p in files:
+            src = p.read_text(encoding="utf-8", errors="replace")
+            base = run_self_test(p)
+            if base != 0:
+                rows.append((p.name, "-", base if base is not None else -1, -1, "PATH ALREADY RED"))
+                continue
+            if p.suffix == ".sh":
+                cands = text_functions(src, SH_FUNC)
+            elif p.suffix == ".mjs":
+                cands = text_functions(src, MJS_FUNC)
+            else:
+                cands = candidate_functions(src)
+            if not cands:
+                rows.append((p.name, "-", 0, 0, "NO MUTATABLE FUNCTION"))
+                continue
+            # Relocation control, staged edition: the UNMUTATED file runs from the same
+            # staged path the mutant will use. A self-test that still cannot run from
+            # there gets its own verdict instead of lending its failure to a mutant.
+            rel_target = td_root / p.relative_to(ROOT)
+            rel_target.write_text(src, encoding="utf-8")
+            relo_rc = run_self_test(rel_target)
             if relo_rc not in (0, None):
                 rows.append((p.name, "-", 0, relo_rc, "RELOCATION-SENSITIVE"))
                 continue
@@ -285,11 +310,10 @@ def survey(limit: int | None, skip: int = 0) -> list[tuple[str, str, int, int, s
                 mutated = blank_text_body(src, s0, e0, p.suffix)
             else:
                 mutated = blank_body(src, name, s0, e0)
-            copy = td_path / p.name
-            copy.write_text(mutated, encoding="utf-8")
-            after = run_self_test(copy)
-        verdict = "KILLED" if after not in (0, None) else "SURVIVED"
-        rows.append((p.name, name, 0, after if after is not None else -1, verdict))
+            rel_target.write_text(mutated, encoding="utf-8")
+            after = run_self_test(rel_target)
+            verdict = "KILLED" if after not in (0, None) else "SURVIVED"
+            rows.append((p.name, name, 0, after if after is not None else -1, verdict))
     return rows
 
 
