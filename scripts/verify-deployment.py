@@ -24,9 +24,12 @@ Exit: 0 deployment complete, 1 incomplete or failing, 2 usage/transport error.
 """
 
 import argparse
+import http.server
 import json
+import socket
 import ssl
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -99,10 +102,80 @@ def self_test() -> int:
     ]
     bad = ['%s vs %s -> %s want %s' % (got, want, classify(got, want), want_want)
            for got, want, want_want in cases if classify(got, want) != want_want]
+    # probe() -- the only leg that leaves the process, and no case above reaches it:
+    # they grade classify() on constants, so the sweep blanked the prober invisibly
+    # (2026-11-06). A blanked stub crashes main() on the tuple unpack, but the quiet
+    # mutations are scope ones: a dropped body/header, the HTTPError branch read as
+    # transport (every expected-4xx route would misreport), a lost Location header (the
+    # redirect IS the answer), and a transport error that crashes instead of returning
+    # (None, detail). Graded against a LOOPBACK http.server in a daemon thread -- real
+    # HTTP, real sockets, no DNS, no TLS, no external network. The URL carries a trailing
+    # slash to pin the rstrip() contract, and one case dials a port with no listener for
+    # the transport branch.
+    def want2(name, got, expect):
+        if got != expect:
+            bad.append('%s: expected %r, got %r' % (name, expect, got))
+
+    seen = []  # (method, path, content_type, body) per request the server accepted
+    RESP = {'/ok': (200, {'Location': 'http://x/there'}),
+            '/missing': (404, {}),
+            '/redirect': (302, {'Location': 'http://x/there'}),
+            '/echo': (400, {})}
+    srv = http.server.HTTPServer(('127.0.0.1', 0), type('H', (http.server.BaseHTTPRequestHandler,), {
+        'log_message': lambda self, *a: None,
+    }))
+    def _one(self):
+        length = int(self.headers.get('Content-Length') or 0)
+        body = self.rfile.read(length) if length else b''
+        seen.append((self.command, self.path, self.headers.get('Content-Type'), body))
+        status, hdrs = RESP.get(self.path, (500, {}))
+        self.send_response(status)
+        for k, v in hdrs.items():
+            self.send_header(k, v)
+        self.end_headers()
+    hcls = srv.RequestHandlerClass
+    hcls.do_GET = _one
+    hcls.do_POST = _one
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+    n_net = 0
+    try:
+        base = 'http://127.0.0.1:%d' % srv.server_port
+        want2('a 200 answers with its Location header', probe(base, 'GET', '/ok', None),
+              (200, 'http://x/there')); n_net += 1
+        got, extra = probe(base, 'POST', '/echo', {'x': 1})
+        try:
+            sent = json.loads(seen[-1][3].decode())
+        except Exception:
+            sent = '<unparseable>'   # a dropped body must NAME itself, not crash the case
+        want2('a POST body travels as JSON with its Content-Type',
+              (got, seen[-1][0], seen[-1][2], sent),
+              (400, 'POST', 'application/json', {'x': 1})); n_net += 1
+        before = len(seen)
+        want2('a 404 arrives through the HTTPError branch', probe(base, 'GET', '/missing', None), (404, ''))
+        want2('a trailing-slash base is rstripped, not doubled',
+              (len(seen) == before + 1, seen[-1][1]), (True, '/missing')); n_net += 2
+        want2('a redirect is the answer, never a follow', probe(base, 'GET', '/redirect', None),
+              (302, 'http://x/there')); n_net += 1
+        free = socket.socket()
+        free.bind(('127.0.0.1', 0))
+        dead = 'http://127.0.0.1:%d' % free.getsockname()[1]
+        free.close()
+        try:
+            got, extra = probe(dead, 'GET', '/x', None)
+            want2('an unreachable port reports transport, with the reason',
+                  (got, bool(extra)), (None, True))
+        except Exception as exc:
+            bad.append('transport: expected (None, reason), got ' + type(exc).__name__)
+        n_net += 1
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
     if bad:
         print('SELF-TEST WRONG: ' + '; '.join(bad), file=sys.stderr)
         return 2
-    print('SELF-TEST OK (%d cases)' % len(cases))
+    print('SELF-TEST OK (%d cases: %d pure + %d over a loopback HTTP server)' % (len(cases) + n_net, len(cases), n_net))
     return 0
 
 def main() -> int:

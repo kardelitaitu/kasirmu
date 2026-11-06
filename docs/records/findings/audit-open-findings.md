@@ -2951,3 +2951,33 @@ identical mistake in two rounds is a pattern, not an accident: every monkeypatch
 its `global` line written at the same time as the repoint.
 
 Harness rerun → **82 checkers, 1 SURVIVED, 81 killed** (2 → 1).
+
+### Dated correction (2026-11-06, round 49) — `verify-deployment.py`: `probe` was ungraded — and that was the LAST survivor
+
+`classify()` had eight pure cases; `probe()` — the only leg that leaves the process — was never called.
+This looked like the one survivor that might deserve a documented refusal-to-grade ("needs a live
+deployment"), and that reading was wrong: every property worth grading is gradeable against a LOOPBACK
+HTTP server in a daemon thread — real HTTP, real sockets, no DNS, no TLS, no external network.
+
+| mutation | self-test |
+|---|---|
+| body/header dropped (`data = None`) | exit 2: `Content-Type None`, body `<unparseable>` — named, not crashed |
+| HTTPError branch read as transport | exit 2: the 400 arrives as `(None, ...)` — every expected-4xx route would misreport |
+| Location header dropped | exit 2: the 200 answers with `''` — and a redirect IS the answer here |
+| transport branch made to raise | exit 2: `URLError` named where `(None, reason)` is the contract |
+| `return None` (the sweep's stub) | exit 1: `TypeError` on the tuple unpack — killed loudly, not by name |
+| restored | exit 0, 14 cases: 8 pure + 6 over loopback |
+
+**Fix:** six cases over a scratch `http.server` on `127.0.0.1:0` (200+Location, POST JSON shape as seen
+server-side, 404 through the HTTPError branch, a trailing-slash base pinning `rstrip()`, a 302 that must
+not be followed, and a dead port for the transport branch), shut down in a `finally`. A first-draft dead
+line (`srv.handle_one_request = None`) was removed before committing; the POST case parses defensively so
+a dropped body NAMES itself instead of crashing the case.
+
+**Milestone: the sabotage survey is fully green — 82 checkers, 0 SURVIVED, 82 killed.** Trajectory across
+rounds 39–49: 11 → 10 → 9 → 8 → 7 → 6 → 5 → 4 → 3 → 2 → 1 → 0. Every checker's self-test now notices a
+gutted first candidate function. This closes the SURVIVOR class of finding only: the survey blanks one
+function per checker and grades the self-test's response — a self-test that grades the wrong thing
+thoroughly still passes, and the ~40 bash gate steps outside the python sweep remain unpoliced by it.
+
+Harness rerun → **82 checkers, 0 SURVIVED, 82 killed** (1 → 0).
