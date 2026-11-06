@@ -2726,3 +2726,29 @@ reads `one scratch dir removed`, and the header comment says what the directory 
 the agent's shell and pwsh, and the scratch directory does not survive the run.
 
 Harness rerun → **82 checkers, 8 SURVIVED, 74 killed** (9 → 8).
+
+### Dated correction (2026-11-06, round 42) — `check-server-origins.mjs`: `read` was structurally unprovable
+
+This one is not a missing case, it is a case that could not be written where the self-test lives. The block
+runs at line 38 and exits 0; the gate reads its first file at line 63. So `--self-test` never touches
+`read()`, and the sweep's gutted stub (`return undefined`) leaves it exiting 0 — SURVIVED by construction.
+
+The failure that matters is the tolerant edit: `catch (e) { return ''; }`. Then every `check()` runs over an
+empty string, `constant()` refuses with exit 2 for `server_origin.rs` (so this gate stops) — but the same edit
+in a sibling checker whose parse tolerates empty input prints `ok:` over a tree it never read.
+
+**Fix:** a child-process probe, not a refactor. `--probe-read <path>` is handled immediately after `read()` is
+defined, before any other work: it calls `read()` on a path that must refuse and exits with whatever `read()`
+decided. Two self-test cases assert the probe exits 2 and that stderr names the file. The self-test still reads
+no checkout — the probe is this file with a flag that exits before the gate — and the recursion is one level
+deep, unlike the docker gate's `--self-test` loop that re-entered the whole script.
+
+| mutation | self-test |
+|---|---|
+| `read()` → `return undefined` (the sweep's stub) | exit 2: probe exits 0, stderr has no refusal |
+| `catch` → `return ''` | exit 2: identical two failures |
+| restored | exit 0, `8 cases: 6 predicates + 1 child probe in 2 halves` |
+
+Live line unchanged. Harness rerun → **82 checkers, 7 SURVIVED, 75 killed** (8 → 7). Described as a probe
+rather than a rewrite deliberately: moving the gate body into `main()` would have touched sixty lines of a
+drift guard to grade one branch.
