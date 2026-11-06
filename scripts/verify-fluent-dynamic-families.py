@@ -56,7 +56,9 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 # Repo root, script-relative: scripts/ sits one level below it. An explicit
@@ -276,7 +278,9 @@ def well_formed(families) -> bool:
 
 
 def self_test() -> int:
-    """Cases for the four rules this checker applies. No file is read or written.
+    """Cases for the rules this checker applies. Synthetic strings, plus one scratch
+    tree of .ftl files for bundle_files()/load_bundles(), removed in a finally; nothing
+    in the checkout is read or written.
 
     Each case drives the REAL function main() calls (read_keys, family_findings,
     gap_count, unbounded_report, vacuous_reason) -- never a reimplementation, which is
@@ -387,12 +391,37 @@ def self_test() -> int:
     ok("R8 the LIVE bounded table is well formed", well_formed(FAMILIES))
     ok("R8 the live bounded list is not empty", bool(FAMILIES))
 
+    # bundle_files() -- the walker that decides WHICH files the gate reads, and no case
+    # reached it: everything above grades strings and sets built in memory, so the sweep
+    # blanked it invisibly (2026-11-06). A blanked stub crashes load_bundles() loudly
+    # rather than passing -- the realistic mutations are scope ones: [] reads nothing
+    # (the gate then refuses only through vacuous_reason), and a recursive pattern
+    # silently pulls bundles from OUTSIDE the locales root. Graded against a scratch
+    # tree, removed in the finally.
+    scratch = Path(tempfile.mkdtemp(prefix="fluentfam-bundles-"))
+    try:
+        (scratch / "z.ftl").write_text("z-key = Z\n", encoding="utf-8")
+        (scratch / "a.ftl").write_text("a-key = A\n", encoding="utf-8")
+        (scratch / "z.id.ftl").write_text("z-key = Z-ID\n", encoding="utf-8")
+        (scratch / "notes.txt").write_text("not = a bundle\n", encoding="utf-8")
+        sub = scratch / "nested"
+        sub.mkdir()
+        (sub / "d.ftl").write_text("d-key = D\n", encoding="utf-8")
+        case("bundle_files lists only the root's *.ftl, sorted",
+             [f.name for f in bundle_files(scratch)], ["a.ftl", "z.ftl", "z.id.ftl"])
+        en, id_, count = load_bundles(scratch)
+        case("load_bundles unions the EN files and reads the ID file",
+             (sorted(en), sorted(id_), count),
+             (["a-key", "z-key"], ["z-key"], 3))
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
     if bad:
         for line in bad:
             print("  MISSED " + line)
         print("SELF-TEST WRONG (" + str(len(bad)) + "/" + str(n) + " cases)")
         return 2
-    print("SELF-TEST OK (" + str(n) + " cases, no files touched)")
+    print("SELF-TEST OK (" + str(n) + " cases, one scratch tree removed)")
     return 0
 
 

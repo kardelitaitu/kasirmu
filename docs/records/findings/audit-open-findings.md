@@ -2874,3 +2874,24 @@ IS the scratch dir; a nested cwd resolves to the same parent; a plain temp dir r
 first draft left in the helper was removed before committing.
 
 Harness rerun → **82 checkers, 4 SURVIVED, 78 killed** (5 → 4).
+
+### Dated correction (2026-11-06, round 46) — `verify-fluent-dynamic-families.py`: the walker was ungraded
+
+`bundle_files()` decides WHICH files the gate reads; every self-test case graded strings and sets built in
+memory, so the sweep blanked it invisibly. A blanked stub crashes `load_bundles()` with a `TypeError` — loud,
+the round-44 shape — but the mutations worth pinning are the SCOPE ones, and those are quiet:
+
+| mutation | self-test |
+|---|---|
+| `bundle_files` → `return []` (reads nothing) | exit 2, both rows: the walker case and `load_bundles` → `(set(), set(), 0)` |
+| pattern → `"**/*.ftl"` (recursive) | exit 2, both rows: the nested `d.ftl` joins the corpus and its keys join EN |
+| `bundle_files` → `return None` (the sweep's stub) | exit 1 by `TypeError` crash — killed loudly, not by a named row |
+| restored | exit 0, 32 cases |
+
+**Fix:** one scratch tree (`tempfile.mkdtemp`, removed in a `finally`) holding `a.ftl`, `z.ftl`, `z.id.ftl`, a
+decoy `notes.txt`, and a `nested/d.ftl`: the walker must return exactly the three root bundles sorted (`.txt`
+excluded, nested `.ftl` excluded — glob is non-recursive and that is now PINNED, so a well-meant recursive
+"fix" fails by name), and `load_bundles` must union the EN files, read the ID file, and count 3. The docstring's
+`No file is read or written` claim was adjusted before it went stale.
+
+Harness rerun → **82 checkers, 3 SURVIVED, 79 killed** (4 → 3).
