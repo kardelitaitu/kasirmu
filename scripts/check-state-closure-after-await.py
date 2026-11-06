@@ -240,10 +240,31 @@ def iter_sources(root):
 
 
 def run_scan():
+    """(findings, files read). The file count is returned because the two halves of this
+    script's verdict are separate facts: "no candidate" and "no file" print the same
+    sentence, and until 2026-11-06 they did -- a copy of this script outside the checkout
+    found no ui/src, walked nothing, and reported 0 candidates over the tree. The live
+    corpus is 730 files, so a floor of one costs nothing. Measured 2026-11-06.
+    """
     findings = []
+    scanned = 0
     for path in iter_sources(SCAN_ROOT):
+        scanned += 1
         findings.extend(scan_file(path))
-    return findings
+    return findings, scanned
+
+
+def verdict(scanned, findings, strict):
+    """Exit code: 2 read nothing, 1 a candidate under --strict, 0 otherwise.
+
+    The report step in scripts/check.sh is wired WITHOUT --strict on purpose -- every hit
+    here is a CANDIDATE that needs a human to confirm the variable is the stale closure --
+    so a candidate does not fail the build. The CORPUS does: a sweep that read nothing has
+    not earned the sentence "0 candidates in ui/src".
+    """
+    if scanned == 0:
+        return 2
+    return 1 if (strict and findings) else 0
 
 
 def self_test():
@@ -299,10 +320,20 @@ async function go() {
             print('  FAIL %-28s expected %d, got %d' % (label, expected, got))
         else:
             print('  ok   %-28s (%d)' % (label, got))
+    # The VERDICT half, which the cases above do not touch: they grade the matcher on one
+    # source text at a time, so a tree of zero files was never in their reach.
+    for scanned, hits, strict, want in ((0, 0, False, 2), (0, 4, True, 2),
+                                        (730, 0, False, 0), (730, 0, True, 0),
+                                        (730, 2, False, 0), (730, 2, True, 1)):
+        got = verdict(scanned, hits, strict)
+        if got != want:
+            failures += 1
+            print('  FAIL verdict(%d file(s), %d hit(s), strict=%s) expected %d, got %d'
+                  % (scanned, hits, strict, want, got))
     if failures:
         print('self-test: %d failure(s)' % failures)
         return 2
-    print('self-test: all %d cases pass' % len(cases))
+    print('self-test: all %d detector cases + 6 verdict cases pass' % len(cases))
     return 0
 
 
@@ -316,12 +347,19 @@ def main():
     if args.self_test:
         return self_test()
 
-    findings = run_scan()
+    findings, scanned = run_scan()
+    if scanned == 0:
+        sys.stderr.write(
+            'error: read no .ts/.tsx file under %s, so this run graded nothing and its '
+            'verdict would be about an empty corpus rather than about the screens. The '
+            'live tree reads 730.\n' % SCAN_ROOT)
+        return 2
     if args.json:
         print(json.dumps(findings, indent=2))
     else:
         if not findings:
-            print('state-closure-after-await: 0 candidates in ui/src')
+            print('state-closure-after-await: 0 candidates in ui/src (%d file(s) read)'
+                  % scanned)
         else:
             print('state-closure-after-await: %d candidate(s) -- a setter replacing state'
                   ' from a variable bound by useState, after an await.' % len(findings))
@@ -332,7 +370,7 @@ def main():
                 print('  %s:%d  %s(%s.%s(' % (f['file'], f['line'], f['setter'],
                                               f['variable'],'map'))
                 print('      %s' % f['text'])
-    return 1 if (args.strict and findings) else 0
+    return verdict(scanned, findings, args.strict)
 
 
 if __name__ == '__main__':

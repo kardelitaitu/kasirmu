@@ -2359,3 +2359,27 @@ existing repair text, so the detection half was already load-bearing and is unch
 
 **Verified:** live run 71 files, exit 0; copy outside the repo exits 2; both mutations as tabled; probe
 deleted (`git status` clean under `scripts/` apart from this edit).
+
+### Dated correction (2026-11-06) — state-closure printed "0 candidates" for a sweep of nothing
+
+Fourth gate from round 30's survey. `scripts/check-state-closure-after-await.py` is wired twice in
+`scripts/check.sh` (:263 self-test, :264 report) and the report step deliberately omits `--strict`, so
+a candidate does not fail the build — every hit needs a human to confirm the variable is the stale closure.
+**That design is unchanged and is not the defect.** The defect was the other half: a sweep that read
+nothing printed `0 candidates in ui/src` and exited 0, so "no stale closure found" and "no file was
+opened" produced the same sentence. Measured by copying the script outside the checkout: no `ui/src`,
+nothing walked, tree reported clean.
+
+**Fixed:** `run_scan()` now returns `(findings, scanned)` and `verdict(scanned, findings, strict)` is
+the only source of the exit code (2 read nothing, 1 a candidate **under --strict**, 0 otherwise); the live
+count prints on the report line (`0 candidates in ui/src (730 file(s) read)`); a zero sweep refuses at
+exit 2 naming the directory it walked.
+
+| probe | result |
+|---|---|---|
+| copy of the script outside any checkout | before: `0 candidates in ui/src`, exit 0 — after: `error: read no .ts/.tsx file under …`, exit **2** |
+| planted stale closure under `ui/src/__state_closure_probe__/` | report step: 1 candidate, exit **0** (by design); `--strict`: exit **1** |
+| both guards removed, copy outside the repo | `0 candidates in ui/src (0 file(s) read)`, exit **0** — the pre-fix false green; self-test reddens at `verdict(0 file(s), 4 hit(s), strict=True) expected 2, got 1` |
+| restored | `0 candidates in ui/src (730 file(s) read)`, exit 0; self-test 5 detector + 6 verdict cases pass |
+
+**Verified:** all four rows above, probe directory removed (`git status` clean under `ui/src`).
