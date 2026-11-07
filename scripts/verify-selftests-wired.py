@@ -251,8 +251,26 @@ def uncalled_selftests() -> list[str]:
             if declares_selftest(rel) and not called(rel.name, text)]
 
 
+def harness_census_dirs(text: str) -> list[str]:
+    """The sabotage harness's CENSUS_DIRS as repo-relative strings, from its
+    source. Round-88, the mirror side: the harness grades THIS gate's
+    CHECKER_DIRS, and this case grades the harness's census dirs back. If one
+    gate widens its audit scope alone, the unshared dirs go unaudited by the
+    other -- the tuple is plain quoted whole paths, so a quoted-string scan
+    over the assignment is the whole parse. A missing block parses to [],
+    which reddens the mirror case.
+    """
+    block = re.search(r"CENSUS_DIRS\s*=\s*\(([^)]*)\)",
+                      strip_full_line_comments(text), re.S)
+    if block is None:
+        return []
+    return re.findall(r'"([^"]+)"', block.group(1))
+
+
 def self_test() -> int:
-    """Pure over synthetic runner text. No file is created, read or written."""
+    """Pure over synthetic runner text; no file is created or written. The two
+    live reads are the tree audit below and (round-88) the harness's CENSUS_DIRS
+    source, each held to its own mirror case."""
     bad: list[str] = []
 
     def want(name: str, got, expect) -> None:
@@ -278,6 +296,13 @@ def self_test() -> int:
          called("verify-x.py", "# python3 scripts/verify-x.py --self-test  (documented, uncalled)"), False)
 
     # The real tree must have the property, or this gate is not earning its place.
+    want("the harness-dir parser reads the plain tuple",
+         harness_census_dirs('CENSUS_DIRS = ("a", "b/c")'), ["a", "b/c"])
+    live_src = (ROOT / "scripts" / "sabotage-selftests.py").read_text(
+        encoding="utf-8", errors="replace")
+    want("the census harness's dirs mirror this gate's audit dirs",
+         harness_census_dirs(live_src),
+         [d.relative_to(ROOT).as_posix() for d in CHECKER_DIRS])
     live = uncalled_selftests()
     if live:
         bad.append("live tree has " + str(len(live)) + " uncalled self-test(s): "
@@ -286,7 +311,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (6 cases, no files touched)")
+    print("SELF-TEST OK (8 cases, no files touched)")
     return 0
 
 
