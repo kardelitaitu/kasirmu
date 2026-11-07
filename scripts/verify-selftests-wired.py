@@ -176,12 +176,20 @@ def checkers() -> list[Path]:
     return found
 
 
+def declares_in(text: str) -> bool:
+    """PURE: a quoted --self-test on a LIVE line declares a self-test.
+    Round-95: the search ran over raw text, so a quoted flag in a comment
+    declared -- the r84 semantics (comments cannot wire, load, invoke) now
+    extend to declare."""
+    return bool(re.search(r"""["']--self-test["']""", strip_full_line_comments(text)))
+
+
 def declares_selftest(rel: Path) -> bool:
     try:
         text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
-    return bool(re.search(r"""["']--self-test["']""", text))
+    return declares_in(text)
 
 
 def runner_text() -> str:
@@ -354,6 +362,11 @@ def self_test() -> int:
     want("a comment mentioning the flag is not a caller",
          called("verify-x.py", "# python3 scripts/verify-x.py --self-test  (documented, uncalled)"), False)
 
+    # ── the declaration predicate is comment-blind (round-95) ─────────────────
+    want("a quoted flag on a live line declares a self-test",
+         declares_in('if "--self-test" in sys.argv: run()'), True)
+    want("a quoted flag in a comment does not declare",
+         declares_in('# x.py "--self-test" (documented, aspirational)'), False)
     # ── the audited set's basename collisions (round-93) ──────────────────────
     want("the collision classifier finds a synthetic pair",
          collisions_of([("a.py", "scripts/a.py"), ("a.py", "x/a.py"),

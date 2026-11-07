@@ -611,6 +611,15 @@ def runner_texts() -> dict[str, str]:
     return texts
 
 
+def declares_flag(text: str) -> bool:
+    """The census's declaration predicate: a QUOTED --self-test on a live line.
+    Round-95: the search ran over raw text, so a quoted flag in a COMMENT
+    declared a self-test -- the r84 semantics (comments cannot wire, load,
+    invoke) now extend to declare. Measured before landing: no flag carrier's
+    flag is comment-only, so every verdict is unchanged."""
+    return bool(SELF_TEST_FLAG.search(_drop_comment_lines(text)))
+
+
 def _drop_comment_lines(text: str) -> str:
     """Whole-line comments dropped -- the partner's strip_full_line_comments.
 
@@ -789,7 +798,7 @@ def census_files() -> list[Path]:
     # harness self-test holds that list to the criterion), and
     # sabotage-selftests.py is this harness.
     files.extend(ROOT / "scripts" / name for name in CENSUS_NAMED)
-    return [f for f in files if SELF_TEST_FLAG.search(f.read_text(encoding="utf-8", errors="replace"))]
+    return [f for f in files if declares_flag(f.read_text(encoding="utf-8", errors="replace"))]
 
 
 def flag_carriers(root: Path = ROOT) -> list[str]:
@@ -813,7 +822,7 @@ def flag_carriers(root: Path = ROOT) -> list[str]:
                 text = f.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
-            if SELF_TEST_FLAG.search(text):
+            if declares_flag(text):
                 out.append(f.relative_to(root).as_posix())
     return out
 
@@ -935,13 +944,13 @@ def census_enumeration_problems() -> list[str]:
                 rel = p.relative_to(ROOT).as_posix()
                 if rel in accounted or not (p.is_file() and CONVENTION_RE.match(p.name)):
                     continue
-                if not SELF_TEST_FLAG.search(p.read_text(encoding="utf-8", errors="replace")):
+                if not declares_flag(p.read_text(encoding="utf-8", errors="replace")):
                     problems.append(rel + " matches the census convention but carries no --self-test")
     for name in CENSUS_NAMED:
         p = ROOT / "scripts" / name
         if not p.exists():
             problems.append("scripts/" + name + " is in CENSUS_NAMED but is gone")
-        elif not SELF_TEST_FLAG.search(p.read_text(encoding="utf-8", errors="replace")):
+        elif not declares_flag(p.read_text(encoding="utf-8", errors="replace")):
             problems.append("scripts/" + name + " is in CENSUS_NAMED but carries no --self-test")
     return sorted(problems)
 
@@ -1044,7 +1053,7 @@ def census_carriers() -> list[str]:
         if p.suffix not in (".py", ".sh", ".mjs"):
             continue
         try:
-            if SELF_TEST_FLAG.search(p.read_text(encoding="utf-8", errors="replace")):
+            if declares_flag(p.read_text(encoding="utf-8", errors="replace")):
                 carriers.append(rel.replace("\\", "/"))
         except OSError:
             continue
@@ -1314,7 +1323,7 @@ def self_test() -> int:
     want("every excluded script still exists",
          all((ROOT / rel).exists() for rel in CENSUS_EXCLUDED), True)
     want("every excluded script still quotes the self-test flag",
-         all(SELF_TEST_FLAG.search((ROOT / rel).read_text(encoding="utf-8", errors="replace"))
+         all(declares_flag((ROOT / rel).read_text(encoding="utf-8", errors="replace"))
              for rel in CENSUS_EXCLUDED if (ROOT / rel).exists()), True)
     want("every runner file the census scans still exists",
          all((ROOT / rel).exists() for rel in RUNNER_FILES), True)
@@ -1345,7 +1354,7 @@ def self_test() -> int:
          census_enumeration_problems(), [])
     want("every unflagged account still exists and stays flag-less",
          all((ROOT / rel).exists()
-             and not SELF_TEST_FLAG.search((ROOT / rel).read_text(encoding="utf-8", errors="replace"))
+             and not declares_flag((ROOT / rel).read_text(encoding="utf-8", errors="replace"))
              for rel, _ in CENSUS_UNFLAGGED), True)
     unflagged_texts = runner_texts()
     want("each unflagged account's declared wiring is still exactly true",
@@ -1524,6 +1533,16 @@ def self_test() -> int:
          alliance_grade(2, "its own cause") != [0], True)
     want("a timeout is not the green grade either",
          alliance_grade(None, "timeout") != [0], True)
+    # ── the declaration predicate is comment-blind (round-95) ─────────────────
+    want("a quoted flag in a comment does not declare a self-test",
+         declares_flag('# add a "--self-test" mode someday'), False)
+    want("a quoted flag on a live line declares",
+         declares_flag('if "--self-test" in sys.argv:\n    run_self_test()'), True)
+    carrier_rels = flag_carriers(ROOT)
+    want("no flag carrier's flag lives only in a comment",
+         [declares_flag((ROOT / rel).read_text(encoding="utf-8", errors="replace"))
+          == bool(SELF_TEST_FLAG.search((ROOT / rel).read_text(encoding="utf-8", errors="replace")))
+          for rel in carrier_rels], [True] * len(carrier_rels))
     # ── the OK line's case count is derived, not a literal (round-94) ──────────
     # Measured before landing: this gate's literal said 98 over 92 want() sites,
     # the partner's said 12 over 11, and the fixture below still quoted the
