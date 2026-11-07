@@ -3498,3 +3498,39 @@ fail-safe direction is relied on and recorded: a misclassification can only DROP
 candidates (NO MUTATABLE), never produce a false KILLED. The stripper is graded only by
 the harness's synthetic fixtures. Remaining unmeasured: verify-docker-digests.sh,
 verify-scoped-authorization.sh.
+
+### Round 64 (2026-11-07) — the digest gate's self-test graded a COPY of its decision; pin_verdict() makes it grade the live one, 95/0/0/1
+
+verify-docker-digests.sh was NO MUTATABLE because none of its functions are visible to
+the shell extraction: self_test is skip-listed, and n_pins/chk are defined INDENTED
+inside it (SH_FUNC anchors on column 0) and n_pins is a one-liner besides. The real
+gap the row was pointing at: the live drift decision — pinned vs currently-resolved
+digest — lived INLINE in the scan loop (lines 144-150), and the self-test's two
+comparison cases graded an inline COPY of it (`[ "$a" = "$b" ] && echo same || echo diff`),
+breaking the file's own stated principle (line 50-51: "named once so the self-test
+grades the SAME regex the live scan uses").
+
+`` (this round's commit) extracts pin_verdict() as a top-level function wired into BOTH
+paths: the scan loop now decides with `[ "$(pin_verdict "$pinned" "$current")" = "same" ]` and
+the self-test's two comparison cases call pin_verdict directly. Gutting it (staged,
+via the survey's own blank_text_body + run_self_test machinery) makes both comparison
+cases fail -> exit 2; the bare live run under the same gutting would report drift on
+every pin — the fail-closed direction. Pre-gates before the survey: live --self-test
+8 cases exit 0; text_functions finds exactly one candidate (pin_verdict, lines 58-65);
+staged mutant probe KILLED exit 2.
+
+Two process notes recorded honestly: (1) the first wiring said "drift" where the
+gate's case vocabulary says "diff" — the live gate caught it (1 of 8 cases FAIL)
+before any survey ran, which is the gate working; (2) a mutant probe written with a
+BARE `bash` died at exit 127 — the WSL trap the harness's run_self_test comment already
+documents (Git's bash by full path, MSYS path conversion); re-running the probe through
+sab.run_self_test itself removed the divergence between probe and survey.
+
+Proof: full survey 95 killed, 0 SURVIVED, 0 RELOCATION-SENSITIVE, 1 NO MUTATABLE,
+exit 0 — verify-docker-digests.sh pin_verdict KILLED 0 -> 2, no other row changed.
+
+Honest limits: the unresolvable-pin branch stays in the scan loop (it needs per-file
+drift bookkeeping) and is NOT fixture-graded — it is graded only by its fail-closed
+exit direction; the script remains a manual gate that nothing schedules (its own
+header, measured 2026-09-16, still stands). Remaining unmeasured:
+verify-scoped-authorization.sh.
