@@ -1687,6 +1687,18 @@ def self_test() -> int:
                  for p in real108.rglob("*") if p.is_file())],
          ["MUTATED", "deep", False, "orig", "deep",
           ["__pycache__/c.pyc", "a.py", "sub/b.py"]])
+    # ── the porcelain grammar the write-through parse assumes (round-109) ─────
+    # junction_writethrough slices line[:2] and line[3:] -- a git upgrade or a
+    # --porcelain=v2 slip would silently break that arithmetic. Element 1 is
+    # vacuous when the tracked tree is CLEAN (all() over [] -- named here, the
+    # r106 rule); it runs for real whenever the tree is dirty, which in this
+    # checkout is often. Elements 2-3 are non-vacuous at any tree state.
+    por109 = git_status_porcelain().splitlines()
+    want("live porcelain fits the v1 grammar, and an unchanged snapshot pairs to none",
+         [all(re.match(r"^[MADRCUTX?!B ]{2} \S", l) for l in por109),
+          junction_writethrough("\n".join(por109), "\n".join(por109)) == [],
+          junction_writethrough("", "") == []],
+         [True, True, True])
     # ── the survey's exit contract is graded, not remembered (round-97) ───────
     # survey_exit, junction_writethrough and survey_slice had no cases at all --
     # the r51 disease (exit 0 over unmeasured rows) could return by a one-line
