@@ -23,6 +23,13 @@
 > fail-fast stub (`crates/kasirmu-core/src/db/payment_gateways.rs`), so §1.4's Midtrans
 > CRUD is still Phase 2.
 >
+> **UPDATE 2026-11-07: Phase 2 `payment_gateways` CRUD shipped and verified.**
+> `crates/kasirmu-core/src/db/payment_gateways.rs` is fully implemented with transparent
+> at-rest encryption via `kasirmu-crypto` (`encrypt_payment_gateway_config` /
+> `decrypt_payment_gateway_config`), tested by 7 unit tests (100% green), exposed through
+> `kasirmu-bridge::local_payment` (the four `*_scoped` commands), registered in both desktop
+> and mobile shells, and wired to `RestaurantPaymentsScreen.tsx`.
+>
 > **What this means for the plan's status line:** "Phase 1 is spec-ready" is now
 > **superseded in the good direction** — Phase 1 shipped without the spec package §4.1
 > called for, and the rail model that landed is broader than the per-workspace-type
