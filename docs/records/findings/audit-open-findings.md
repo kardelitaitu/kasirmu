@@ -5009,3 +5009,24 @@ real bytes; it deliberately does not write through a junction to prove the write
 lands in the real tree -- that direction is what the guard's canary history already
 measured, and a probe that writes to the shared checkout to prove writing to the
 shared checkout is possible is a hazard the case does not need.
+
+### Round 99 (2026-11-07) — tree readability and unreadable fallback graded
+
+Round-98 retired the mutator and staging seams; the remaining unexercised code in the
+alliance was the partner gate's I/O error fallback (`declares_selftest()` catching
+`OSError` and returning `False`), plus the risk that missing audit directories or
+unreadable checkers would silently shrink the audited set with no named failure.
+
+`404cece4f`: five new cases (+23 lines):
+- In `scripts/sabotage-selftests.py`: graded that every directory in `CENSUS_DIRS`
+  exists on disk (preventing silent shrinkage of the sweep's census).
+- In `scripts/verify-selftests-wired.py`: graded that every directory in `CHECKER_DIRS`
+  exists, that every runner script in `RUNNERS` exists, that every audited checker in
+  the tree is readable by name (`readable(rel)` returning `True`), and that an
+  unreadable checker explicitly returns `False` via the `OSError` fallback in
+  `declares_selftest()`.
+
+Kill directions: a vanished census directory is CAUGHT; an unreadable checker
+simulated as `True` is CAUGHT; a missing checker dir or missing runner is CAUGHT;
+controls green. Both gates green (117 harness, 17 partner); full survey clean.
+
