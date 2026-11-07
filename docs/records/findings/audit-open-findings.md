@@ -4205,3 +4205,42 @@ content silently; the [slice ... of 108 censused] note makes the SIZE visible, n
 membership. The chunk exit contract measures its own rows only (a clean chunk exits 0
 even while unmeasured census rows remain) — that is the point of chunking, and the
 censused total in the note is what makes the remaining work countable.
+
+### Round 79 (2026-11-07) — the exclusion alarm's fire direction, graded every run
+
+The r78 card asked for a census-criterion regression: when an excluded file actually
+becomes wired, do the exclusion cases redden exactly one clear case, or crash into a
+muddy loop? Measured before touching anything, with a temp check.sh naming
+restaurant-coverage.py under a patched ROOT (no real-tree edit):
+
+- **The shape is already clean**: exactly ONE bad entry — "scripts/restaurant-coverage.py
+  is now pipeline-wired (scripts/check.sh) — it must join the census" — file, runner,
+  remedy, no crash, no muddy second signal (the transitive-load scan is a different
+  signal with its own line and only fires when a censused file LOADS the excluded file,
+  not when a runner invokes it).
+- **But the fire direction had never been graded**: the unwired loop's graded case
+  covers the live tree's silence (pipeline_references == []); that the alarm FIRES when
+  the signal appears was proven only in ephemeral kill probes (.agents/, untracked) —
+  rerun once in round 72 and never again since. A regression in the signal function
+  itself (e.g. someone inverts the substring match) would pass the self-test forever.
+
+`fb4433380`: pipeline_references() is split into runner_texts() (the disk corpus,
+unchanged semantics: RUNNER_FILES + recursive attic-skipped workflows) and a PURE
+wiring_hits(name, texts) — sorted output, substring match preserved. The self-test now
+holds the signal both ways with a synthetic dict, writing no files (50 -> 52 cases):
+a wired exclusion surfaces with its runner named; an unwired name stays silent.
+
+Kill directions: a signal that never fires is CAUGHT; a signal that fires on everything
+is CAUGHT; control 52/52 green. Live fire shape re-measured post-refactor: temp check.sh
+-> ['scripts/check.sh'] -> the exact bad-entry line above. Both gates green: harness
+52 cases exit 0, partner 6 cases, full survey 108 checker(s), 0 SURVIVED, 108 killed,
+0 RELOCATION-SENSITIVE, 0 NO MUTATABLE, 0 PATH ALREADY RED, exit 0.
+
+Honest limits: wiring_hits matches by SUBSTRING, so a runner mentioning a longer name
+that CONTAINS an excluded basename (no such file exists today) would fire a false
+alarm — the false direction is safe here (it sends a human to look, the correct
+failure direction for a parked script), while the true direction (mention => wiring)
+is the r69 lesson and cannot be tightened without missing shell one-liners. The
+transitive scan (censused files' text, lines 973-978) keeps its own substring semantics
+and its own message; its fire direction remains probe-proven only — same shape as this
+round started with, left for a future round if it ever earns a pure refactor too.
