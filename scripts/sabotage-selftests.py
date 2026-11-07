@@ -504,6 +504,13 @@ SKIP_NAMES = {"node_modules", "__pycache__", "dist", ".astro", "build", "target"
 
 
 def _overlay(real: Path, mirror: Path) -> None:
+    """Copy a gate directory wholesale (it is small text); skip regenerable dirs.
+
+    Graded (round-108) on the property the whole staged-run design stands on:
+    the mirror is a COPY, so mutating it cannot reach the tracked checkout --
+    copy2, never os.link, and the real tree is read-only to this function. The
+    skip-names are the regenerable dirs the census never needs in a staged run.
+    """
     """Copy a gate directory wholesale (it is small text); skip regenerable dirs."""
     mirror.mkdir(parents=True, exist_ok=True)
     for child in sorted(real.iterdir()):
@@ -1650,6 +1657,36 @@ def self_test() -> int:
           self_test_command(Path("a.ps1"))[0] == sys.executable,
           self_test_command(Path("a.ps1"))[1:] == ["a.ps1", "--self-test"]],
          [True, True, True, True, True])
+    # ── the staged mirror is a COPY: the safety property (round-108) ──────────
+    tmp108 = Path(tempfile.mkdtemp())
+    real108 = tmp108 / "real"
+    (real108 / "sub").mkdir(parents=True)
+    (real108 / "a.py").write_text("orig", encoding="utf-8")
+    (real108 / "sub" / "b.py").write_text("deep", encoding="utf-8")
+    (real108 / "__pycache__").mkdir()
+    (real108 / "__pycache__" / "c.pyc").write_text("junk", encoding="utf-8")
+    mirror108 = tmp108 / "mirror"
+    _overlay(real108, mirror108)
+    def read108(p: Path) -> str:
+        """A case must red cleanly under a broken overlay, not crash (r105 rule)."""
+        try:
+            return p.read_text(encoding="utf-8")
+        except OSError:
+            return "<missing>"
+    try:
+        (mirror108 / "a.py").write_text("MUTATED", encoding="utf-8")
+    except OSError:
+        pass  # a killed overlay leaves no file to mutate; the reads below red it
+    want("an overlay copies the tree, skips regenerables, never touches the real one",
+         [read108(mirror108 / "a.py"),
+          read108(mirror108 / "sub" / "b.py"),
+          (mirror108 / "__pycache__").exists(),
+          read108(real108 / "a.py"),
+          read108(real108 / "sub" / "b.py"),
+          sorted(p.relative_to(real108).as_posix()
+                 for p in real108.rglob("*") if p.is_file())],
+         ["MUTATED", "deep", False, "orig", "deep",
+          ["__pycache__/c.pyc", "a.py", "sub/b.py"]])
     # ── the survey's exit contract is graded, not remembered (round-97) ───────
     # survey_exit, junction_writethrough and survey_slice had no cases at all --
     # the r51 disease (exit 0 over unmeasured rows) could return by a one-line
@@ -1702,7 +1739,10 @@ def self_test() -> int:
     with tempfile.TemporaryDirectory() as td98s:
         staged98 = build_temp_root(Path(td98s))
         canary = staged98 / "scripts" / "__r98_canary.py"
-        canary.write_text("x = 1\n", encoding="utf-8")
+        try:
+            canary.write_text("x = 1\n", encoding="utf-8")
+        except OSError:
+            pass  # a killed overlay stages nothing; the is_file() element reds it
         want("staged gate roots are real copies -- a staged write stays staged",
              [canary.is_file(),
               not (ROOT / "scripts" / "__r98_canary.py").exists(),
