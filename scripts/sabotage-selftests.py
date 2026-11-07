@@ -757,6 +757,52 @@ def census_enumeration_problems() -> list[str]:
     return sorted(problems)
 
 
+def transitively_loaded(name: str, censused_texts: dict[str, str]) -> list[str]:
+    """Censused files whose text names `name` -- the r69 path-load signal, PURE.
+
+    A runner scan cannot see a checker loaded by path from another checker's
+    code (round-69: allowlist-schema.py, loaded by verify-ipc-parity.py and
+    verify-scoped-reads.py). Substring semantics, same as the exclusion
+    direction's scan; a comment mention over-fires toward "wired", which is
+    the safe direction for a censused file.
+    """
+    return sorted(rel for rel, text in censused_texts.items()
+                  if Path(rel).name != name and name in text)
+
+
+def censused_wiring_problems() -> list[str]:
+    """Censused files that no runner invokes and no censused file loads.
+
+    The census criterion's second half -- a RUNNING pipeline depends on it --
+    was held only backwards (an EXCLUDED file gaining wiring reddens) and
+    structurally for convention files (the partner gate audits every
+    flag-carrying SCRIPT_RE match). The seven CENSUS_NAMED files match no
+    convention prefix, so the partner cannot see them: a named file whose
+    runner step was deleted stayed censused forever with nobody grading the
+    loss -- the coverage case compares enumeration, not invocation. Round-81
+    measurement: 107 of 108 runner-wired; allowlist-schema.py is the one
+    transitive case -- the r69 shape, now held instead of remembered.
+    """
+    texts = runner_texts()
+    censused = census_files()
+    censused_texts: dict[str, str] = {}
+    for p in censused:
+        try:
+            censused_texts[p.relative_to(ROOT).as_posix()] = p.read_text(
+                encoding="utf-8", errors="replace")
+        except OSError:
+            pass
+    problems = []
+    for p in censused:
+        if wiring_hits(p.name, texts):
+            continue
+        if transitively_loaded(p.name, censused_texts):
+            continue
+        problems.append(p.name + " is censused but no runner invokes it "
+                        "and no censused file loads it")
+    return problems
+
+
 def census_carriers() -> list[str]:
     """Tracked scripts quoting the self-test flag, derived INDEPENDENTLY.
 
@@ -1082,6 +1128,21 @@ def self_test() -> int:
          [sorted(wiring_hits(bn, unflagged_texts)) == sorted(exp)
           for _, claims in CENSUS_UNFLAGGED for bn, exp in claims],
          [True] * sum(len(cl) for _, cl in CENSUS_UNFLAGGED))
+
+    # ── the criterion's wiring half, held for the WHOLE censused set (r81) ────
+    want("every censused file stays runner-wired or transitively loaded",
+         censused_wiring_problems(), [])
+    want("a path-load in a censused file counts as the wiring",
+         transitively_loaded("allowlist-schema.py",
+                             {"scripts/verify-ipc-parity.py":
+                              "spec_from_file_location('m', REPO / 'scripts/allowlist-schema.py')",
+                              "scripts/verify-x.py": "nothing"}),
+         ["scripts/verify-ipc-parity.py"])
+    want("a file does not load itself",
+         transitively_loaded("verify-x.py",
+                             {"scripts/verify-x.py": "python3 scripts/verify-x.py --self-test",
+                              "scripts/verify-y.py": "y"}),
+         [])
     for rel in CENSUS_EXCLUDED:
         refs = pipeline_references(Path(rel).name)
         if refs:
@@ -1173,7 +1234,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (55 cases, one alliance self-test runs: verify-selftests-wired)")
+    print("SELF-TEST OK (58 cases, one alliance self-test runs: verify-selftests-wired)")
     return 0
 
 
