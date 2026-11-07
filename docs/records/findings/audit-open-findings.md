@@ -3700,3 +3700,50 @@ substring search (no such indirection exists today; if one appears, the coverage
 script under three roots on every harness self-test — a cost of a few hundred
 milliseconds, accepted deliberately. The excluded four remain unmeasured until
 something runs them.
+
+### Round 68 (2026-11-07) — staged isolation gets a witness: the survey fails on tracked dirt it did not start with
+
+The survey's staged runs rest on junctioned siblings — build_temp_root links every
+top-level entry back at the REAL checkout (except .git/.env; website is overlaid). That
+is what makes a staged copy repo-shaped, and it is also ~321 processes per survey each
+holding a live path into the tracked tree. Nothing proved the flows were one-way.
+
+The hazard was proven before the guard was written: a canary written to the staged
+crates/ through build_temp_root's junction appeared BYTE-IDENTICAL in the real crates/
+(and was removed again). A checker that writes during a mutant run lands its bytes in
+tracked files, silently, from inside the harness that exists to keep the tree safe.
+
+`87a1c7947` adds the witness:
+
+- `junction_writethrough(before, after)` — the graded decision. Two
+  git-status --porcelain snapshots around the whole survey; a line in the after-
+  snapshot that was not in the before-snapshot and is not untracked scratch ('??' —
+  caches and .agents probes are common and benign) is a write-through. Pure, so the
+  self-test grades it on synthetic snapshots in six cases: new modification, staged
+  addition and deletion reported; pre-existing dirt not re-reported; untracked never
+  counts; empty after is clean.
+- `git_status_porcelain()` + main() glue: the survey now snapshots the tree around
+  itself; any write-through prints a STAGED WRITE-THROUGH section naming the paths,
+  tells the operator not to trust the table above it, and fails the exit.
+- self_test grows 15 -> 26 cases; the kill directions were proven by monkeypatch: a
+  detector returning [] is CAUGHT, a detector misreporting real changes as untracked
+  is CAUGHT, the untouched control stays green.
+
+The guard then measured the real thing: a full 107-checker survey ran with the
+snapshots in place and reported NO write-through — ~321 staged processes left zero
+tracked dirt. That is the isolation claim measured behaviourally for the first time,
+not assumed from reading build_temp_root.
+
+Proof: harness --self-test exit 0 (26 cases); kill probes 2/2 CAUGHT + control green;
+--limit 1 end-to-end through real main() exit 0; full survey 107 checker(s),
+0 SURVIVED, 107 killed, 0 RELOCATION-SENSITIVE, 0 NO MUTATABLE, exit 0, no
+write-through section.
+
+Honest limits: the witness is a DETECTOR, not a prevention — a write-through is caught
+after it has happened, and the canary experiment shows it CAN happen; the recovery is
+git itself (the dirt is named and uncommitted, so a revert or a hand clean restores).
+The '??' carve-out means a mutant that creates an untracked file in the real tree
+would not fail the exit — untracked noise is the price of not failing on every
+legitimate cache; the tracked half is the half git can restore by name. The
+before-snapshot also means the guard says nothing about dirt that existed before the
+survey — by design: the survey answers only for its own runs.
