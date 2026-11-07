@@ -445,16 +445,18 @@ def _link_or_copy(real: Path, mirror: Path) -> None:
                         ignore=shutil.ignore_patterns(*SKIP_NAMES))
 
 
-def survey(limit: int | None, skip: int = 0) -> list[tuple[str, str, int, int, str]]:
-    """(checker, mutated function, before, after, verdict) for every candidate."""
-    # Three languages, two mechanisms. Python is mutated through its AST (find the
-    # FunctionDef, replace the body). .sh and .mjs have no stdlib parser here, so they are
-    # mutated by TEXT: locate "name() {" / "function name(", then walk braces over a
-    # comment-and-string-blanked copy to find the closing brace. Blanking first matters --
-    # a "}" inside a quoted message would otherwise close the function early and the
-    # "mutation" would be a broken file, which reads as the self-test working when it is
-    # just a syntax error. Both mechanisms answer the same question: does the self-test
-    # notice its detector being gutted.
+def census_files() -> list[Path]:
+    """Every self-tested, pipeline-wired script the sabotage survey grades.
+
+    The single enumeration site: survey() and any census-completeness check must
+    call THIS, never a copy of its globs -- a copied glob list rots the moment a
+    checker lands (round-66: five website check-* scripts and six named scripts/
+    files were invisible to exactly such a copy while 96 rows read as the world).
+    Membership criterion: the script carries a quoted --self-test AND a running
+    pipeline (check.sh step, pre-push, workflow, website package.json) depends
+    on it. Scripts that self-test but no pipeline runs are out, named in the
+    comment below.
+    """
     files = []
     for base, pattern in (
         ("scripts", "verify-*.py"), ("scripts", "check-*.py"),
@@ -466,15 +468,45 @@ def survey(limit: int | None, skip: int = 0) -> list[tuple[str, str, int, int, s
         # outright: their names predate the verify-*/check-* convention.
         (".agents/skills/docs-auditor/scripts", "check-*.py"),
         ("website/scripts", "verify-*.mjs"),
+        # Round-51 census missed the website check-* convention entirely: five more
+        # self-tested checkers wired into check.sh, dev-ci.yml, and the website
+        # package.json precheck ran unmeasured under every verify-*-* glob.
+        ("website/scripts", "check-*.py"),
+        ("website/scripts", "check-*.mjs"),
     ):
         files.extend(sorted((ROOT / base).glob(pattern)))
-    files.extend(ROOT / "scripts" / name for name in ("backup-db.sh", "restore-db.sh"))
+    # Named outright, round-66 census: self-tested scripts whose verdicts gates
+    # depend on but whose names match no convention above -- two check.sh steps
+    # each, one dev-ci step, one release-workflow signer, and the pre-push
+    # orchestrator itself. Deliberately NOT censused (checked 2026-11-07):
+    # allowlist-schema.py, sign-plugin.py, restaurant-coverage.py and
+    # extract-updater-seed.py carry --self-test but no pipeline runs them, and
+    # sabotage-selftests.py is this harness.
+    files.extend(ROOT / "scripts" / name for name in (
+        "backup-db.sh", "restore-db.sh",
+        "census-orphan-modules.py", "classify-finding-reachability.py",
+        "scan-unwrap-panic.py", "generate-pg-migration.py",
+        "generate-latest-json.mjs", "run-pre-push.py",
+    ))
     # A substring search is not a census: verify-website-assets.py MENTIONS --self-test
     # in a paragraph explaining why it has none, and that prose was read as a capability
     # (it then errored "unrecognized arguments", recorded here as PATH ALREADY RED).
     # Require the argparse flag itself, i.e. the string inside a quoted literal.
     flag = re.compile(r"""["']--self-test["']""")
-    files = [f for f in files if flag.search(f.read_text(encoding="utf-8", errors="replace"))]
+    return [f for f in files if flag.search(f.read_text(encoding="utf-8", errors="replace"))]
+
+
+def survey(limit: int | None, skip: int = 0) -> list[tuple[str, str, int, int, str]]:
+    """(checker, mutated function, before, after, verdict) for every candidate."""
+    # Three languages, two mechanisms. Python is mutated through its AST (find the
+    # FunctionDef, replace the body). .sh and .mjs have no stdlib parser here, so they are
+    # mutated by TEXT: locate "name() {" / "function name(", then walk braces over a
+    # comment-and-string-blanked copy to find the closing brace. Blanking first matters --
+    # a "}" inside a quoted message would otherwise close the function early and the
+    # "mutation" would be a broken file, which reads as the self-test working when it is
+    # just a syntax error. Both mechanisms answer the same question: does the self-test
+    # notice its detector being gutted.
+    files = census_files()
     if skip:
         files = files[skip:]
     if limit:
