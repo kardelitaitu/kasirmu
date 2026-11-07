@@ -96,6 +96,13 @@ RUNNERS = (
     ROOT / "scripts" / "check.sh",
     ROOT / "scripts" / "check.ps1",
     ROOT / ".githooks" / "pre-commit",
+    # The push-side hook. It names no checker today (measured 2026-11-07:
+    # zero verify-*/check-* or --self-test lines), but the census gate scans it
+    # for wiring, and a self-test wired into it tomorrow would be reported
+    # uncalled by THIS gate if the hook stayed invisible here -- the
+    # false-finding failure mode that gets a gate muted. Added by round 74's
+    # runner-list reconciliation, which works both ways.
+    ROOT / ".githooks" / "pre-push",
     # A runner can be a SCRIPT whose job is to run self-tests. `check-auditor-selftests.sh`
     # loops over eight docs-auditor checkers and passes --self-test to each; it is invoked
     # by check.sh and by dev-ci.yml, so every one of those eight IS wired. Leaving it out

@@ -519,6 +519,25 @@ CENSUS_EXCLUDED = (
 )
 
 
+#: Every place a RUNNING pipeline can wire a checker. This is
+#: verify-selftests-wired.py's RUNNERS list kept in step (round-74):
+#: scripts/check.ps1 and scripts/check-auditor-selftests.sh were invisible to
+#: the scan below, so an excluded script invoked by either read as unwired in
+#: THIS vocabulary while the other gate called it wired -- two gates answering
+#: an overlapping question with different runner sets make "wired" ambiguous
+#: at exactly the boundary where a parked script's life is decided.
+#: wiring_runner_gaps() holds the two lists to each other in both directions.
+RUNNER_FILES = (
+    "scripts/check.sh",
+    ".githooks/pre-commit",
+    ".githooks/pre-push",
+    "scripts/check.ps1",
+    "scripts/check-auditor-selftests.sh",
+    "website/package.json",
+    "ui/package.json",
+)
+
+
 def pipeline_references(name: str) -> list[str]:
     """Pipeline files mentioning `name` -- the wiring half of the criterion.
 
@@ -526,17 +545,54 @@ def pipeline_references(name: str) -> list[str]:
     the honest direction for holding CENSUS_EXCLUDED: the moment ANY pipeline
     names an excluded file, the self-test reddens and a human decides whether
     the file belongs in the census.
+
+    Workflow scanning is RECURSIVE with attic/ skipped: a retired workflow is
+    never executed (GitHub ignores .bak; the attic holds the rest), and the
+    same false negative verify-flaky-quarantine.py suffered from .bak runners
+    would wire a dead thing here.
     """
     hits = []
-    for rel in ("scripts/check.sh", ".githooks/pre-push",
-                "website/package.json", "ui/package.json"):
+    for rel in RUNNER_FILES:
         p = ROOT / rel
         if p.exists() and name in p.read_text(encoding="utf-8", errors="replace"):
             hits.append(rel)
-    for wf in sorted((ROOT / ".github" / "workflows").glob("*.y*ml")):
+    for wf in sorted((ROOT / ".github" / "workflows").rglob("*.y*ml")):
+        if "attic" in {q.lower() for q in wf.parts}:
+            continue
         if name in wf.read_text(encoding="utf-8", errors="replace"):
             hits.append(wf.relative_to(ROOT).as_posix())
     return hits
+
+
+def _other_gate_runners() -> set[str]:
+    """The runner paths named by verify-selftests-wired.py's RUNNERS block."""
+    text = (ROOT / "scripts/verify-selftests-wired.py").read_text(encoding="utf-8", errors="replace")
+    block = text.split("RUNNERS = (", 1)[1].split("\n)", 1)[0]
+    out: set[str] = set()
+    for ln in block.splitlines():
+        if not ln.lstrip().startswith("#"):
+            toks = re.findall(r'"([^"]+)"', ln)
+            if toks:
+                out.add("/".join(toks))
+    return out
+
+
+def wiring_runner_gaps() -> list[str]:
+    """Divergences between the census's runner list and the other wiring gate's.
+
+    Two-sided on purpose: a runner the other gate knows must be scannable
+    here (its invisibility would let an exclusion depend on wiring this
+    vocabulary cannot see), and every baseline runner here must still be
+    named there (the other gate narrowing on its own would deserve the same
+    alarm). Either side changing alone reddens.
+    """
+    other = _other_gate_runners()
+    gaps = sorted(r for r in other
+                  if "." in r.rsplit("/", 1)[-1] and r not in RUNNER_FILES)
+    for rel in RUNNER_FILES:
+        if rel not in other:
+            gaps.append(rel + " is no longer in verify-selftests-wired's RUNNERS")
+    return gaps
 
 
 def census_files() -> list[Path]:
@@ -547,7 +603,8 @@ def census_files() -> list[Path]:
     checker lands (round-66: five website check-* scripts and six named scripts/
     files were invisible to exactly such a copy while 96 rows read as the world).
     Membership criterion: the script carries a quoted --self-test AND a running
-    pipeline depends on it -- directly (check.sh step, pre-push, workflow,
+    pipeline depends on it -- directly (check.sh step, pre-commit or pre-push
+    hook, workflow,
     website package.json) or transitively (a censused checker loads it by
     path; round-69: the shared allowlist schema). Scripts that self-test but
     nothing depends on are out, listed in CENSUS_EXCLUDED and held there by
@@ -836,6 +893,10 @@ def self_test() -> int:
     want("every excluded script still quotes the self-test flag",
          all(SELF_TEST_FLAG.search((ROOT / rel).read_text(encoding="utf-8", errors="replace"))
              for rel in CENSUS_EXCLUDED if (ROOT / rel).exists()), True)
+    want("every runner file the census scans still exists",
+         all((ROOT / rel).exists() for rel in RUNNER_FILES), True)
+    want("the census's runner list agrees with verify-selftests-wired's",
+         wiring_runner_gaps(), [])
     for rel in CENSUS_EXCLUDED:
         refs = pipeline_references(Path(rel).name)
         if refs:
@@ -895,7 +956,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (40 cases, no checker is run)")
+    print("SELF-TEST OK (42 cases, no checker is run)")
     return 0
 
 
