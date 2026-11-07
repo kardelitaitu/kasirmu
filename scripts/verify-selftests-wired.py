@@ -192,6 +192,21 @@ def declares_selftest(rel: Path) -> bool:
     return declares_in(text)
 
 
+def in_attic(p: Path) -> bool:
+    """A runner file under an attic/ directory is RETIRED and never counted.
+
+    .github/workflows/attic/ holds retired workflows (measured 2026-11-07:
+    eleven .bak files) and GitHub never executes one -- but a retired file that
+    KEEPS a .y*ml suffix would be read by runner_text()'s walk and count as a
+    live caller, which is how verify-flaky-quarantine.py once looked wired: its
+    only two invocations were in ci.yml.bak and nightly.yml.bak. Case-insensitive
+    so a rename to Attic/ cannot resurrect retired callers. Extracted (round-100)
+    so runner_files() shares the filter instead of disagreeing with runner_text()
+    about what a caller file is.
+    """
+    return "attic" in {q.lower() for q in p.parts}
+
+
 def runner_text() -> str:
     parts: list[str] = []
     for r in RUNNERS:
@@ -203,7 +218,7 @@ def runner_text() -> str:
                 # which is how verify-flaky-quarantine.py looked live: its only two
                 # invocations were in ci.yml.bak and nightly.yml.bak. Measured, not
                 # assumed: the attic here is where the false negative came from.
-                if "attic" in {q.lower() for q in p.parts}:
+                if in_attic(p):
                     continue
                 try:
                     parts.append(p.read_text(encoding="utf-8", errors="replace"))
@@ -288,7 +303,8 @@ def runner_files() -> list:
         if entry.is_file():
             out.append(entry)
         elif entry.is_dir():
-            out.extend(sorted(q for q in entry.rglob("*.y*ml")))
+            out.extend(sorted(q for q in entry.rglob("*.y*ml")
+                              if not in_attic(q)))
     return out
 
 
@@ -414,6 +430,12 @@ def self_test() -> int:
          [(str(rel), True) for rel in checkers()])
     want("an unreadable checker reads as not-declaring -- the explicit fallback",
          declares_selftest(Path("no/such/checker.py")), False)
+    want("a retired workflow under attic/ is never a runner file",
+         [in_attic(Path(".github/workflows/attic/ci.yml")),
+          in_attic(Path(".github/workflows/Attic/ci.yml")),
+          in_attic(Path(".github/workflows/dev-ci.yml")),
+          any(in_attic(f) for f in runner_files())],
+         [True, True, False, False])
     live = uncalled_selftests()
     if live:
         bad.append("live tree has " + str(len(live)) + " uncalled self-test(s): "

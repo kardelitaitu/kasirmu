@@ -1620,6 +1620,28 @@ def self_test() -> int:
          not td_path.exists(), True)
     want("every census directory in scope exists",
          [d for d in CENSUS_DIRS if not Path(d).is_dir()], [])
+    # ── the text mutator's string edges are graded, not inherited (round-100) ──
+    # braces_span is a RAW brace counter -- the docstring says so -- and the
+    # stripper's whole job is feeding it brace-free text. Grade the pair
+    # TOGETHER so the rawness and the reason for the stripper are both pinned.
+    raw100 = 'f() { s = "}"; }'
+    want("a quoted closing brace does not close the span early",
+         [braces_span(strip_comments_and_strings(raw100), 4),
+          braces_span(raw100, 4)], [15, 11])
+    want("a hash inside quotes is content, not a comment that eats the span",
+         [strip_comments_and_strings('x = "# { eat }"; y{1}').count("{"),
+          strip_comments_and_strings('x = "# { eat }"; y{1}').count("}")], [1, 1])
+    want("an unbalanced span reads as None in both directions",
+         [braces_span("{a", 0), braces_span("}a{", 0)], [None, None])
+    re100 = _strip_js('const re = /"([^"]+)"/g; f(){1}')
+    tpl100 = _strip_js('\u0060a\u0024{x{1}}b\u0060; g(){2}')
+    want("regex and template contents never leak braces into the counter",
+         [[re100.count("{"), re100.count("}")],
+          [tpl100.count("{"), tpl100.count("}")]], [[1, 1], [1, 1]])
+    miss100_rc, miss100_cause = run_self_test_out(Path("no/such/census-checker.py"))
+    want("a vanished census script reads as rc 2 with a named cause",
+         [miss100_rc, bool(miss100_cause), "can't open" in miss100_cause],
+         [2, True, True])
     # ── the declaration predicate is comment-blind (round-95) ─────────────────
     want("a quoted flag in a comment does not declare a self-test",
          declares_flag('# add a "--self-test" mode someday'), False)
