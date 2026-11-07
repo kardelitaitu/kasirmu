@@ -4745,3 +4745,41 @@ runner naming the path in prose still counts, the same text-scan class as every 
 since r76. The collided pair's wiring is graded to "at least one full-path mention per
 file", deliberately not to the exact runner list: adding a runner should never redden a
 precision case.
+
+### Round 93 (2026-11-07) — the partner's shared call signal is graded at the collision
+
+Round-92 graded the census's basename collision on the harness side; the partner side
+carried the same shape with a docstring that overclaimed: uncalled_selftests() said the
+check-gate-runners.py collision "is resolved by checkers() returning paths ... each is
+matched on its own name". True of the ENUMERATION, false of the SIGNAL: called() keys on
+the basename CALL_RE extracts, so one copy's --self-test invocation anywhere in the
+runner corpus satisfies called() for BOTH copies. Deleting the docs-auditor copy's
+flag-invocation would redden nothing on either gate. Measured: the partner's audited
+set is 102, with exactly one collision — the same pair as the census — and each copy's
+self-test is flag-invoked by full path today (check.sh for scripts/,
+check-auditor-selftests.sh for the docs-auditor copy — its line:
+python3 .agents/skills/docs-auditor/scripts/check-gate-runners.py --self-test).
+
+`bfe5d4adb`: the partner gains runner_files() (per-file runner texts — the workflows dir
+rglobbed — which runner_text()'s single blob cannot key), collisions_of() (the pure
+pair-classifier, same shape as the harness's), and collided_audited() (live over
+SCRIPT_RE + declares_selftest in CHECKER_DIRS). Four new cases (8 -> 12): the synthetic
+pair found, the collision-free set empty, the audited collision pinned to the census's
+pair, and each collided copy's self-test graded to a FULL-PATH flag-invocation — the
+precision called() cannot see. The docstring now names the half-truth instead of
+asserting resolution. The helpers were inserted after uncalled_selftests(), before
+self_test(), so the survey's cands[0] for this checker stays checkers() — measured: the
+survey result is unchanged.
+
+Kill directions: a collision-blind classifier is CAUGHT (the synthetic-pair case); a
+corpus-blind precision lie is CAUGHT (the full-path case over an empty runner_files()
+reads False and reddens); control 12/12 green. Both gates green: harness 98 cases exit
+0, partner 12 cases; full survey 109 checker(s), 0 SURVIVED, 109 killed,
+0 RELOCATION-SENSITIVE, 0 NO MUTATABLE FUNCTION, 0 PATH ALREADY RED, exit 0.
+
+Honest limits: the full-path form is the literal `rel + " --self-test"` substring in
+comment-stripped runner text — an invocation with the path quoted differently (cd into
+the dir plus a bare basename) would rot the claim even though the checker still runs;
+that form would need a chdir-aware parser, not attempted here. The partner pins the
+same pair the harness pins, but the two gates do not cross-grade each other's collision
+sets — agreement today is by both pinning the same shape, not by a mirror case.
