@@ -3797,3 +3797,50 @@ direction as pipeline_references: a human decides). It reads all censused files 
 harness self-test, doubling their reads — a few hundred milliseconds, accepted. The
 remaining three exclusions are each one manual-run away from this same treatment if a
 pipeline ever grows a step for them; the gate will name the moment.
+
+### Round 70 (2026-11-07) — the survey's exit stops lying: unmeasured rows fail the exit
+
+Reading main() for the r68 integration surfaced an exit contract that contradicted the
+table printed above it: only SURVIVED rows (and, since r68, write-throughs) failed the
+exit. A survey whose rows read RELOCATION-SENSITIVE ("unmeasured, not proven"), NO
+MUTATABLE FUNCTION, or PATH ALREADY RED still exited 0 — the exact shape of the r51
+survey, which scored 6 relocation-sensitive rows under a green exit and read as a clean
+sheet. Worse, the summary line ARITHMETICALLY counted PATH ALREADY RED rows as killed
+(killed = rows - survived - relocated - unmutatable), so a red-at-tip checker inflated
+the one number an operator reads as the score.
+
+`f22334142` replaces the inline decision with a graded one:
+
+- `survey_exit(rows, through)` — green ONLY when every row's verdict is KILLED and the
+  tree came back clean. All four unmeasured verdicts (SURVIVED, RELOCATION-SENSITIVE,
+  NO MUTATABLE FUNCTION, PATH ALREADY RED) and any write-through now fail. The
+  docstring carries the r51 precedent: the table already says "unmeasured, not proven";
+  an exit 0 over it was the harness contradicting its own table.
+- main() counts killed EXPLICITLY (verdict == KILLED), names PATH ALREADY RED in the
+  summary (it was previously invisible as a class), and prints
+  "survey: N row(s) unmeasured -- exit 1 by contract." whenever the exit is not green.
+- self_test grows 27 -> 33 cases: all-killed+clean -> 0; each of the four unmeasured
+  verdicts -> 1; a write-through with every row killed -> 1. Kill directions proven by
+  monkeypatch: an exit that says 0 over everything is CAUGHT (the survivor case fails),
+  an exit that says 1 over everything is CAUGHT (the all-killed case fails); control
+  stays 33/33 green.
+
+Scope discipline: check.sh consumes only --self-test (verified: line 1241, the only
+pipeline reference to the harness), so the survey path whose exit changed is
+manual-only — no pipeline could regress from the tightening. The chunked flags
+(--limit/--skip) keep coherent semantics: the exit speaks for the slice measured.
+
+The green path was then measured on the real thing: full survey 108 checker(s),
+0 SURVIVED, 108 killed, 0 RELOCATION-SENSITIVE, 0 NO MUTATABLE, 0 PATH ALREADY RED,
+exit 0 — same verdicts as r69, now under a contract where any future unmeasured row
+turns the exit red instead of riding under it.
+
+Honest limits: "unmeasured fails the exit" makes the survey STRICTER, not more capable —
+a relocation-sensitive row now demands the same human attention it always needed, but
+the harness still cannot measure WHY a self-test cannot run from a copy (run_self_test
+returns an exit code only; the failed base run's stderr is discarded). That diagnosis
+gap is the next honest increment if the class ever fires again. PATH ALREADY RED rows
+failing the exit also means a single environment-broken checker (say, a missing
+interpreter for its subprocess) reddens an otherwise full survey — by design: the
+survey's product is a proven-clean sheet, and "clean except one row I could not read"
+is not that.
