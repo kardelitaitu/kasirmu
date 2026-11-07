@@ -503,14 +503,10 @@ data::` -> **50 passed, 0 failed**.
   target-dir contention rule); recorded as a gate-provenance rule: a compile proof needs the
   `Checking <crate> (<this tree's path>)` line, and a runtime proof needs the merged tree or a
   private `--target-dir`.
-- **BR-T4** — **new, found while cross-checking BR-T1**: `orphan_permission`'s body window is
-  the **desktop** file (`scripts/verify-ipc-parity.py:272-291`, "`require_permission` not in
-  body → None"), but after extraction the gate text lives in the bridge
-  (`crates/kasirmu-bridge/src/pos.rs:232`, `:345`). 16 of the 25 allowlisted orphans now have zero
-  gate text in their desktop body; for those 16 the bridge body also has none, so no verdict
-  has flipped **yet** — but the check can no longer see an extracted desktop gate, and the
-  campaign is still moving bodies. The two GATED verdicts in `BR-D4` were reachable only
-  because a **tablet** copy of the body still carries the gate inline.
+- ~~**BR-T4** — `orphan_permission` body window cannot see extracted bridge gates~~ —
+  **CLOSED 2026-11-06** (`scripts/verify-ipc-parity.py:2553-2592`). `_gate_within` and `_bridge_fn_body`
+  follow delegations from desktop/tablet shell command wrappers directly into `crates/kasirmu-bridge/src/**/*.rs`,
+  caching function bodies and checking up to `budget` hops for `permissions::[A-Z_]+`. Pinned by parity self-tests.
 
 ### dated addendum, 2026-09-13 09:50 +07 (tip `ad76c16c2`) — the two cart orphans, and the recurrence
 
