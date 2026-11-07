@@ -3647,3 +3647,56 @@ whenever checkers are added or wiring changes. The survey still grades only cand
 per file; functions below the first are measured exactly as far as each self-test
 reaches. The four excluded website scripts remain unmeasured until something runs
 them.
+
+### Round 67 (2026-11-07) — the census learns to defend itself: the membership criterion is now a self-test case
+
+Round 66 rewired the census to 107 files but left its truth resting on a hand-maintained
+glob list — the same shape of thing that had rotted once already. `4795df675` closes
+that: self_test() now holds census_files() to its own membership criterion.
+
+Three pieces land as one mechanism:
+
+- `CENSUS_EXCLUDED` (module constant): the four self-tested scripts deliberately
+  outside the census — allowlist-schema.py, sign-plugin.py, restaurant-coverage.py,
+  extract-updater-seed.py, all at scripts/ — with the criterion and its 2026-11-07
+  wiring measurement in the comment. census_files() references the constant instead of
+  naming the files in prose, so there is ONE place a exclusion can be challenged.
+- `census_carriers()`: an INDEPENDENT re-derivation — `git ls-files` over the census
+  roots, filtered by `SELF_TEST_FLAG` (the quoted "--self-test" literal, extracted to a
+  shared constant whose comment carries the verify-website-assets.py prose lesson). It
+  deliberately does NOT call census_files(): the whole point is that a rotting glob
+  shows up as a DIFFERENCE between two derivations instead of agreement between two
+  copies of one assumption.
+- `pipeline_references()`: the wiring half — check.sh, .githooks/pre-push, both
+  package.json manifests, every GitHub workflow. A reference is necessary-not-sufficient
+  evidence of wiring, which is the honest direction for the exclusion list: the moment
+  ANY pipeline names an excluded file, the self-test reddens and a human decides.
+
+Five census cases joined the self-test (15 -> 20): coverage both directions (a missing
+script and a graded non-carrier are named individually), census non-empty, every
+excluded script still exists, every excluded script still unwired, and the harness is
+never its own subject. Each failure direction was then PROVEN by monkeypatching one
+piece and running self_test(): a dropped glob is CAUGHT naming the lost script; an
+emptied derivation is CAUGHT naming all 107 as non-carriers; an excluded file that
+becomes pipeline-wired is CAUGHT; an emptied exclusion list is CAUGHT naming the four;
+the untouched control stays green at 20/20.
+
+The derivation probe's first run caught a defect before the gate even existed — in the
+probe's own assumption: the four excluded scripts live at scripts/, not under
+website/scripts/ as the round-66 card loosely said. The real state is exactly
+consistent: 112 tracked carriers = 107 censused + 4 excluded + 1 harness, zero extras,
+zero wiring on any excluded file. A self-test-carrying script that lands without a
+census membership now reddens the harness the moment anyone runs --self-test, instead
+of surfacing as a blind spot in the next survey's exit summary.
+
+Proof: harness --self-test exit 0 (20 cases); four-direction kill probes all CAUGHT;
+full staged survey unchanged at 107 checker(s), 0 SURVIVED, 107 killed,
+0 RELOCATION-SENSITIVE, 0 NO MUTATABLE, exit 0 — the gate touches no censused checker.
+
+Honest limits: the criterion's wiring half is still reference-based — a pipeline that
+runs a checker through a variable name or an indirection would not be seen by a
+substring search (no such indirection exists today; if one appears, the coverage case's
+"extra"/"missing" diff is where it will show). census_carriers() reads every tracked
+script under three roots on every harness self-test — a cost of a few hundred
+milliseconds, accepted deliberately. The excluded four remain unmeasured until
+something runs them.
