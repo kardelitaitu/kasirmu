@@ -5386,3 +5386,36 @@ case -- an intentional tripwire, not a portability defect. The SKIP_NAMES filter
 inside the fallback's copytree remains graded only by _overlay's cases (the
 fallback path itself is not exercised -- faking mklink failure would grade the
 mock).
+
+### Round 111 (2026-11-08) — the text blanker's body and parse claims
+
+The r98 census missed one path: blank_text_body, the .sh/.mjs sibling mutator that
+carries 25 of the 109 censused checkers (16 .mjs + 9 .sh), had cases grading brace
+COUNTS only -- never that the body is really gone, never the marker, never a
+sibling function surviving, and never the docstring's "the file still parses"
+claim with a real interpreter. That last gap is the dangerous one: the docstring
+itself warns a non-parsing mutant scores KILLED while proving nothing, and the
+brace-count proxy can pass while the file fails to load. `8a9a713f0` (+1 case,
+131->132, derived) grades all four on two synthetic sources: the gutted lines are
+absent, "MUTATION: detector gutted" is present (blank_body's marker is graded at
+r98; NEUTRAL's was not), the second function's body survives, and the mutants are
+parsed for real -- bash -n through GIT_BASH (bare bash is WSL here, the standing
+hazard) and node --check. Guards on the candidate lists follow the r105 rule: a
+killed text_functions sets the mutant text to "UNBLANKED", so every element reds
+instead of the fixture crashing on cands[0].
+
+Kill directions: a no-op mutation is CAUGHT (by the existing differs-cases and the
+new body-gone elements); a dropped marker is CAUGHT; a syntax-error mutant is
+CAUGHT by the new parse elements (and already by the brace counts); control green.
+One probe-script correction worth registering: the sabotage wrapper must capture
+the ORIGINAL function before patching -- calling s.blank_text_body inside its own
+replacement recursed to RecursionError and crashed the case rather than reddening
+it (the same red-not-crash rule, on the probe side this time). Full survey
+109/0/109/0/0/0, exit 0.
+
+Honest limits: the case runs two real interpreters per self-test (~100ms), a
+deliberate cost paid once. bash -n / node --check parse the mutant text, not the
+staged-run environment -- a checker whose .mjs relies on import resolution is not
+exercised (the survey itself runs it live, so the coverage gap is the mutation
+form, not the execution). The r108 overlay ungraded note stands reduced: both
+gates' mutation machinery is now graded end to end.
