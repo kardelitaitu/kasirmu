@@ -142,7 +142,11 @@ AWK
 # awk (broken arg passing, a lost -v) reddens in the self-test instead of
 # silencing the live scan.
 run_classifier() {
-  awk -v PERM="$PERM" -v STORE="$STORE" -v LISTED="$SELF_SCOPED" "$@" "$AWK_PROG"
+  # The PROGRAM comes first and the files after: awk's first non-option
+  # argument IS the program, so a file passed before it (d3dc89c38 put "$@"
+  # before "$AWK_PROG") becomes the program and the scan dies with a syntax
+  # error -- which non-strict mode then masked as a plain exit 0.
+  awk -v PERM="$PERM" -v STORE="$STORE" -v LISTED="$SELF_SCOPED" "$AWK_PROG" "$@"
 }
 
 # ── Self-test ────────────────────────────────────────────────────────────────
@@ -165,7 +169,7 @@ self_test() {
     total=$((total + 1))
     # Cases parse the UNREASONED line, so the hardcoded scanned-floor firing under
     # them is harmless; the floor itself is graded by case 7 below.
-    got=$(printf '%s' "$src" | run_classifier -v SRC="selftest" 2>/dev/null \
+    got=$(printf '%s' "$src" | run_classifier SRC="selftest" 2>/dev/null \
       | sed -n 's/.*UNREASONED: \([0-9]*\).*/\1/p')
     if [ "$got" != "$want" ]; then
       printf '  FAIL %s: expected %s unreasoned, got "%s"\n' "$label" "$want" "$got"
@@ -215,9 +219,28 @@ self_test() {
        Ok(())
      }'
 
+  # THE FILE PATH. This case drives a FILE through the argument position, the
+  # only path that can catch a wrapper-order break -- every case above pipes
+  # stdin, and the live scan passes find(1) files. Measured 2026-11-08:
+  # d3dc89c38 put the program after "$@" and every stdin case stayed green
+  # while the live scan died on a syntax error.
+  total=$((total + 1))
+  case_file=$(mktemp)
+  printf '%s\n' 'pub async fn leaky_file_scoped(session: &Session) -> Result<()> {' \
+    '  let store = resolve_store(&session);' \
+    '  Ok(())' \
+    '}' > "$case_file"
+  gotf=$(run_classifier SRC="selftest" "$case_file" 2>/dev/null \
+    | sed -n 's/.*UNREASONED: \([0-9]*\).*/\1/p')
+  rm -f "$case_file"
+  if [ "$gotf" != "1" ]; then
+    printf '  FAIL a file passed as an argument is graded: expected 1 unreasoned, got "%s"\n' "$gotf"
+    fails=$((fails + 1))
+  fi
+
   # 7. THE FLOOR. An empty subject must refuse rather than report a clean zero.
   total=$((total + 1))
-  if printf '' | run_classifier -v SRC="empty" >/dev/null 2>&1; then
+  if printf '' | run_classifier SRC="empty" >/dev/null 2>&1; then
     printf '  FAIL the empty subject must exit non-zero, it exited 0\n'
     fails=$((fails + 1))
   fi
@@ -238,7 +261,7 @@ fi
 # Grade the classifier before grading the crate.
 self_test || { echo "CLASSIFIER WENT DEAF: not trusting the scan below." >&2; exit 2; }
 
-run_classifier -v SRC="$SRC" $(find "$SRC" -name "*.rs" ! -name "*_tests.rs")
+run_classifier SRC="$SRC" $(find "$SRC" -name "*.rs" ! -name "*_tests.rs")
 rc=$?
 
 # awk exits 1 whenever it found an unreasoned fn; only --strict treats that as
