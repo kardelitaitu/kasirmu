@@ -1551,6 +1551,31 @@ def self_test() -> int:
          [self_test_command(Path("a.sh"))[0] == GIT_BASH,
           self_test_command(Path("a.mjs"))[0] == "node",
           self_test_command(Path("a.py"))[0] == sys.executable], [True, True, True])
+    # ── the survey's exit contract is graded, not remembered (round-97) ───────
+    # survey_exit, junction_writethrough and survey_slice had no cases at all --
+    # the r51 disease (exit 0 over unmeasured rows) could return by a one-line
+    # edit, and survey_slice's docstring PROMISED synthetic grading that did
+    # not exist. All three are pure; graded on synthetic rows and lists.
+    row97 = lambda v: ("x.py", "f", 0, 2, v, "")
+    files9 = [Path("c%02d.py" % i) for i in range(9)]
+    want("an all-killed sweep exits 0",
+         survey_exit([row97("KILLED")], []), 0)
+    want("every unmeasured verdict fails the exit contract",
+         [survey_exit([row97(v)], [])
+          for v in ("SURVIVED", "PATH ALREADY RED", "RELOCATION-SENSITIVE",
+                    "NO MUTATABLE FUNCTION")], [1, 1, 1, 1])
+    want("a clean sweep with a write-through still fails",
+         survey_exit([row97("KILLED")], [(" M", "scripts/check.sh")]), 1)
+    want("the write-through guard reports new tracked lines only",
+         junction_writethrough("?? .agents/x.py\n",
+                               "?? .agents/x.py\n M scripts/check.sh\n?? .agents/new.py"),
+         [(" M", "scripts/check.sh")])
+    want("consecutive slices partition the census, no overlap or gap",
+         [a == b for a, b in zip(
+             [f for i in (0, 4, 8) for f in survey_slice(files9, 4, i)],
+             files9)], [True] * 9)
+    want("no limit slices to the tail",
+         survey_slice(files9, None, 7), files9[7:])
     # ── the declaration predicate is comment-blind (round-95) ─────────────────
     want("a quoted flag in a comment does not declare a self-test",
          declares_flag('# add a "--self-test" mode someday'), False)
