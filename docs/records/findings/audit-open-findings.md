@@ -4499,3 +4499,34 @@ junction-stable in the staged copies); the KNOWN_RASTER_SVGS pin is a policy rat
 not a behavior test — it reddens on any addition, by design. The gate's own tree-walk
 rules (size, base64, orphan) remain graded by the survey's mutation model, not by
 synthetic fixtures.
+
+### Round 86 (2026-11-07) — the alliance fire directions, graded
+
+The last probe-proven limit in the harness's own honest-limits ledger was the alliance
+case's fire direction: rounds 84 and 85 verified by INSPECTION that a red partner
+reddens ([rc] + cause-if-red against [0] lands [2, cause] on failure, [None] on a
+timeout), but inspection is a reading, not a grade. The case's arithmetic lived inline
+-- exactly the shape the harness exists to retire.
+
+`867af9aca`: the arithmetic is extracted into alliance_grade(rc, cause) -- pure, sitting
+beside run_self_test_out, the runner it grades -- and the live case calls it. Four new
+graded cases (69 -> 73): a red partner's [2, "its own cause"]; that this is not the
+green grade; that a timeout's [None] is not the green grade either; and the round-76
+lesson as a pinned case -- a green partner's cause is the partner's own OK line (the
+stdout fallback in failure_cause), so alliance_grade must DROP it on green or every
+green run reddens. The live tree's green run doubles as the fallback's proof: the case
+runs the real partner every self-test.
+
+Kill directions: a lying grade (always [0]) is CAUGHT by the red-direction cases; a
+leaking grade ([rc, cause] always) is CAUGHT twice -- by the pinned green-drop case
+and by the live case itself, whose green partner then grades [0, "SELF-TEST OK..."].
+Control 73/73 green. Both gates green: harness 73 cases exit 0, partner 6 cases, full
+survey 109 checker(s), 0 SURVIVED, 109 killed, 0 RELOCATION-SENSITIVE, 0 NO MUTATABLE
+FUNCTION, 0 PATH ALREADY RED, exit 0.
+
+Honest limits: alliance_grade is graded over its INPUTS; the LIVE half (that
+run_self_test_out really returns (2, cause) on a red partner) still rests on the
+partner being red-on-red by its own gate -- the partner's exit contract is its own
+self-test's subject, and the alliance case runs the real partner file every round.
+The timeout direction is graded as arithmetic ([None] != [0]); the 300-second wall
+itself is run_self_test_out's contract, unchanged since round 76.
