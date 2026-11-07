@@ -1239,6 +1239,37 @@ def survey_exit(rows: list[tuple[str, str, int, int, str, str]],
     return 1 if (any(r[4] != "KILLED" for r in rows) or through) else 0
 
 
+def survey_summary(rows, skip, limit, censused) -> str:
+    """The one-line verdict summary, full or sliced.
+
+    A chunked run must say so: a summary that reads "30 checker(s)" is
+    indistinguishable from a full census of 30, and chunks that silently miss
+    checkers read as measured (the round-66 disease in slice form). The sliced
+    line names skip, limit and the census denominator so a chunk can never read
+    as the whole; the full line keeps the per-verdict parentheticals that tell
+    the operator what each non-KILLED verdict means. Extracted (round-101) so
+    the operator-facing half of the slice contract is GRADED, not assumed.
+    """
+    survivors = [r for r in rows if r[4] == "SURVIVED"]
+    relocated = [r for r in rows if r[4] == "RELOCATION-SENSITIVE"]
+    unmutatable = [r for r in rows if r[4] == "NO MUTATABLE FUNCTION"]
+    already_red = [r for r in rows if r[4] == "PATH ALREADY RED"]
+    killed = [r for r in rows if r[4] == "KILLED"]
+    if limit is not None or skip:
+        return ("sabotage: %d checker(s) [slice skip=%s limit=%s of %d censused], "
+                "%d SURVIVED, %d killed, %d RELOCATION-SENSITIVE, %d NO MUTATABLE, "
+                "%d PATH ALREADY RED."
+                % (len(rows), skip, limit, censused,
+                   len(survivors), len(killed), len(relocated), len(unmutatable),
+                   len(already_red)))
+    return ("sabotage: %d checker(s), %d SURVIVED (their self-test did not notice the gutted "
+            "detector), %d killed, %d RELOCATION-SENSITIVE (self-test cannot run from a copy; "
+            "unmeasured, not proven), %d NO MUTATABLE FUNCTION, %d PATH ALREADY RED (red "
+            "before any mutation)."
+            % (len(rows), len(survivors), len(killed), len(relocated), len(unmutatable),
+               len(already_red)))
+
+
 def self_test() -> int:
     """Grade the four parts that can lie silently: the MUTATOR, the CENSUS,
     the STAGED-RUN ISOLATION, and the EXIT.
@@ -1642,6 +1673,18 @@ def self_test() -> int:
     want("a vanished census script reads as rc 2 with a named cause",
          [miss100_rc, bool(miss100_cause), "can't open" in miss100_cause],
          [2, True, True])
+    # ── the summary line's slice contract is graded, not assumed (round-101) ──
+    rows101 = [("a.py", "f", 0, 2, "KILLED", ""),
+               ("b.py", "f", 0, 2, "SURVIVED", "cause x")]
+    want("a chunked summary names the slice, never reads as a full census",
+         [survey_summary(rows101, 4, 2, 109).count("[slice skip=4 limit=2 of 109 censused]"),
+          survey_summary(rows101, 4, 2, 109).count("1 SURVIVED"),
+          survey_summary(rows101, 4, 2, 109).count("1 killed"),
+          survey_summary(rows101, 4, 2, 109).count("2 checker(s), 1 SURVIVED (")], [1, 1, 1, 0])
+    want("a full summary keeps the per-verdict meanings and no slice marker",
+         [survey_summary(rows101, 0, None, 2).count("2 checker(s)"),
+          survey_summary(rows101, 0, None, 2).count("SURVIVED (their self-test did not notice"),
+          survey_summary(rows101, 0, None, 2).count("[slice")], [1, 1, 0])
     # ── the declaration predicate is comment-blind (round-95) ─────────────────
     want("a quoted flag in a comment does not declare a self-test",
          declares_flag('# add a "--self-test" mode someday'), False)
@@ -1781,34 +1824,13 @@ def main() -> int:
     # A chunked run must say so: a summary that reads "30 checker(s)" is
     # indistinguishable from a full census of 30, and chunks that silently
     # miss checkers read as measured (the round-66 disease in slice form).
-    slice_note = ""
-    if args.limit is not None or args.skip:
-        slice_note = " [slice skip=%s limit=%s of %d censused]" % (
-            args.skip, args.limit, len(census_files()))
     through = junction_writethrough(before_tree, git_status_porcelain())
-    survivors = [r for r in rows if r[4] == "SURVIVED"]
-    relocated = [r for r in rows if r[4] == "RELOCATION-SENSITIVE"]
-    unmutatable = [r for r in rows if r[4] == "NO MUTATABLE FUNCTION"]
-    already_red = [r for r in rows if r[4] == "PATH ALREADY RED"]
-    killed = [r for r in rows if r[4] == "KILLED"]
     for name, fn, before, after, verdict, cause in rows:
         print("  %-46s %-28s %-12s exit %s -> %s" % (name, fn[:28], verdict, before, after))
         if cause:
             print("      cause: %s" % cause)
     print("")
-    print("sabotage: %d checker(s), %d SURVIVED (their self-test did not notice the gutted "
-          "detector), %d killed, %d RELOCATION-SENSITIVE (self-test cannot run from a copy; "
-          "unmeasured, not proven), %d NO MUTATABLE FUNCTION, %d PATH ALREADY RED (red "
-          "before any mutation)."
-          % (len(rows), len(survivors), len(killed), len(relocated), len(unmutatable),
-             len(already_red))) if not slice_note else None
-    if slice_note:
-        print("sabotage: %d checker(s) [slice skip=%s limit=%s of %d censused], "
-              "%d SURVIVED, %d killed, %d RELOCATION-SENSITIVE, %d NO MUTATABLE, "
-              "%d PATH ALREADY RED."
-              % (len(rows), args.skip, args.limit, len(census_files()),
-                 len(survivors), len(killed), len(relocated), len(unmutatable),
-                 len(already_red)))
+    print(survey_summary(rows, args.skip, args.limit, len(census_files())))
     if through:
         print("")
         print("STAGED WRITE-THROUGH: the survey left tracked dirt in the real tree:")
@@ -1816,7 +1838,7 @@ def main() -> int:
             print("  %s %s" % (st, path))
         print("  a staged run wrote through a junctioned sibling; do not trust")
         print("  the table above until this is explained.")
-    unmeasured = len(rows) - len(killed)
+    unmeasured = len(rows) - sum(1 for r in rows if r[4] == "KILLED")
     if unmeasured:
         print("survey: %d row(s) unmeasured -- exit 1 by contract." % unmeasured)
     return survey_exit(rows, through)
