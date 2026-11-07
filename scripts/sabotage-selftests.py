@@ -682,6 +682,11 @@ CONVENTION_PREFIXES = ("verify", "check", "classify", "census")
 CONVENTION_RE = re.compile(
     r"^(?:" + "|".join(CONVENTION_PREFIXES) + r")-[A-Za-z0-9_-]+\.(?:py|mjs|sh)$")
 
+#: The dirs the census walks -- ONE constant, consumed by census_files() and by
+#: flag_carriers() (round-87). A second inline copy is the round-66 disease:
+#: the copied glob rots the moment a checker lands elsewhere.
+CENSUS_DIRS = ("scripts", ".agents/skills/docs-auditor/scripts", "website/scripts")
+
 
 # Named outright, round-66 census: self-tested scripts whose verdicts gates
 # depend on but whose names match NO convention prefix -- see census_files()
@@ -710,7 +715,7 @@ def census_files() -> list[Path]:
     self_test().
     """
     files = []
-    for base in ("scripts", ".agents/skills/docs-auditor/scripts", "website/scripts"):
+    for base in CENSUS_DIRS:
         d = ROOT / base
         if d.is_dir():
             # The convention as a per-file match, not a matrix of glob pairs:
@@ -735,6 +740,50 @@ def census_files() -> list[Path]:
     # sabotage-selftests.py is this harness.
     files.extend(ROOT / "scripts" / name for name in CENSUS_NAMED)
     return [f for f in files if SELF_TEST_FLAG.search(f.read_text(encoding="utf-8", errors="replace"))]
+
+
+def flag_carriers(root: Path = ROOT) -> list[str]:
+    """Every quoted-flag .py/.mjs/.sh in CENSUS_DIRS, as repo-relative paths.
+
+    The census's honest DENOMINATOR, walked rather than curated. census_files()
+    unions the convention and CENSUS_NAMED, so a NEW checker named outside the
+    convention and wired into a runner would enter neither ledger and the
+    survey would never grade it -- silent, the round-66 disease in a new key.
+    Round-87: this walk exists so that file reddens the self-test instead.
+    """
+    out = []
+    for base in CENSUS_DIRS:
+        d = root / base
+        if not d.is_dir():
+            continue
+        for f in sorted(d.iterdir()):
+            if not f.is_file() or f.suffix not in (".py", ".mjs", ".sh"):
+                continue
+            try:
+                text = f.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if SELF_TEST_FLAG.search(text):
+                out.append(f.relative_to(root).as_posix())
+    return out
+
+
+def account_carriers(carriers: list[str],
+                     named: tuple[str, ...] = CENSUS_NAMED,
+                     excluded: tuple[str, ...] = CENSUS_EXCLUDED,
+                     meter: str = "sabotage-selftests.py",
+                     convention: "re.Pattern[str]" = CONVENTION_RE) -> list[str]:
+    """PURE: which flag-carriers no ledger holds. Four ledgers, each with its
+    own key shape: the convention census-matches by basename, CENSUS_NAMED is
+    basenames, CENSUS_EXCLUDED is scripts/-relative paths, and the meter is
+    this harness file -- it runs the survey, it is not a survey subject.
+    Round-87: the completeness claim is this function's empty result, graded
+    live and pure; a carrier outside all four reddens.
+    """
+    known = set(named) | {Path(rel).name for rel in excluded} | {meter}
+    return [rel for rel in carriers
+            if not convention.match(Path(rel).name)
+            and Path(rel).name not in known]
 
 
 # ── census-eligible files that deliberately do NOT carry --self-test ─────────
@@ -1320,6 +1369,25 @@ def self_test() -> int:
     want("check.sh still runs the alliance partner's self-test per commit",
          checksh_invokes_alliance(), True)
 
+    # ── the census's denominator is walked, not curated (round-87) ────────────
+    want("every flag-carrier in the census dirs is accounted",
+         account_carriers(flag_carriers()), [])
+    want("a convention carrier is accounted by its name alone",
+         account_carriers(["scripts/check-tz-invariance.py"]), [])
+    want("the walk actually sees the known carriers",
+         [c in flag_carriers() for c in
+          ("scripts/sabotage-selftests.py", "scripts/backup-db.sh")],
+         [True, True])
+    want("a new non-convention carrier with no ledger entry reddens",
+         account_carriers(["scripts/orchestrate-x.py"]), ["scripts/orchestrate-x.py"])
+    want("a CENSUS_NAMED basename is accounted",
+         account_carriers(["scripts/backup-db.sh"]), [])
+    want("a CENSUS_EXCLUDED path is accounted",
+         account_carriers(["scripts/sign-plugin.py"]), [])
+    want("the meter is accounted and not a subject of its own survey",
+         [account_carriers(["scripts/sabotage-selftests.py"]),
+          any(p.name == "sabotage-selftests.py" for p in census_files())],
+         [[], False])
     # ── survey slices are deterministic, bounded, self-describing (round-78) ──
     want("a negative --skip is refused (it would wrap to the census tail)",
          slice_error(None, -1) is not None, True)
@@ -1337,7 +1405,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (73 cases, one alliance self-test runs: verify-selftests-wired)")
+    print("SELF-TEST OK (80 cases, one alliance self-test runs: verify-selftests-wired)")
     return 0
 
 
