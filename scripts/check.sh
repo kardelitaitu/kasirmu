@@ -1097,6 +1097,9 @@ fi
 # Asset hygiene is stdlib-only, so it runs even when npm is unavailable above.
 # Gate: scripts/gates.json → "website-assets".
 step "website assets" "python3 scripts/verify-website-assets.py" python3 scripts/verify-website-assets.py
+# The census refused a wired gate with no self-test (round 85): the flag is on
+# the checker now, so the pipeline must invoke it like every other self-test.
+step "website assets self-test" "python3 scripts/verify-website-assets.py --self-test" python3 scripts/verify-website-assets.py --self-test
 # The link checker's SELF-TEST, which nothing ran. CI invokes `npm run check:links` =
 # `node scripts/check-links.mjs` WITHOUT --self-test, so the gate ran and its 19 liveness
 # cases never did -- a checker that cannot be shown to fail is worthless, which is the

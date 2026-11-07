@@ -755,13 +755,10 @@ CENSUS_UNFLAGGED = (
     # check.sh:295 + dev-ci.yml:1038; it is itself in RUNNER_FILES.
     ("scripts/check-auditor-selftests.sh",
      (("check-auditor-selftests.sh", (".github/workflows/dev-ci.yml", "scripts/check.sh")),)),
-    # A wired gate with NO self-test anywhere (its single unquoted mention is
-    # prose) -- the known unclosable "checkers without self-tests" gap, made
-    # VISIBLE by this account instead of shed silently. Invoked at
-    # check.sh:1099 + dev-ci.yml:228; run-pre-push.py:462 also invokes it but
-    # lies outside the runner corpus (RUNNER_FILES is the partner-shared list).
-    ("scripts/verify-website-assets.py",
-     (("verify-website-assets.py", (".github/workflows/dev-ci.yml", "scripts/check.sh")),)),
+    # The fourth entry here was scripts/verify-website-assets.py, the known
+    # unclosable "checkers without self-tests" gap (round-80 accounting).
+    # Retired 2026-11-07: the gate grew a graded --self-test and joined the
+    # census by convention; nothing flag-less and runner-wired remains.
 )
 
 

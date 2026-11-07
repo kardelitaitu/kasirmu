@@ -17,14 +17,21 @@ each with a different failure mode:
      zero-grep-count stops meaning "unused". That self-disabling is the whole
      reason this third check is safe to enforce rather than advisory.
 
-NO --self-test HERE, AND THE REASON IS MEASURED, NOT ASSUMED. Measured 2026-09-29:
-LITERAL_IMPORT was mutated to a pattern that cannot match, and this gate went LOUD --
-exit 1, with every asset reported ORPHAN. Its two extraction paths both fail toward
-noise rather than silence: break the import regex and references vanish, so everything
-looks unreferenced; break the dynamic-resolver regex and find_dynamic_resolvers() returns
-empty, which ENABLES the orphan check rather than disabling it. A liveness test is for
-gates that can go quiet, and this one cannot. It was left without a self-test on that
-reasoning in round 14, before anything had been measured; this is the measurement.
+The self-test story is measured twice. Measured 2026-09-29: LITERAL_IMPORT was
+mutated to a pattern that cannot match, and this gate went LOUD -- exit 1, with
+every asset reported ORPHAN. Both extraction paths fail toward noise rather than
+silence: break the import regex and references vanish, so everything looks
+unreferenced; break the dynamic-resolver regex and find_dynamic_resolvers()
+returns empty, which ENABLES the orphan check rather than disabling it. That
+measured loudness is why this gate carried no --self-test from round 14 on.
+Measured 2026-11-07 (round 85): the census refused that stance -- a wired gate
+with no flag is precisely the "checkers without self-tests" gap, held by a
+CENSUS_UNFLAGGED account. The flag is here now, and the self-test grades the
+vocabulary directly: the four dynamic shapes, the ?url suffix split, the
+ratchet baseline, the verdict composer, and the two live scans' return types
+(a gutted scan returns None, which the isinstance cases catch). Liveness is
+additionally measured per candidate by the sabotage survey, whose first
+candidate here is find_dynamic_resolvers.
 
 KNOWN LIMIT -- what the orphan rule cannot see while a dynamic resolver exists.
 In that state this tool grades NOTHING about whether an asset is referenced: an
@@ -206,5 +213,55 @@ def main() -> int:
     return 1 if problems else 0
 
 
+def self_test() -> int:
+    """Grade the guard's own vocabulary: the four dynamic shapes, the ?url
+    suffix split, the ratchet baseline, the verdict composer, and the two
+    live scans' return types (a gutted scan returns None, which the
+    isinstance cases catch)."""
+    bad: list[str] = []
+
+    def want(name, got, expect):
+        if got != expect:
+            bad.append(f"{name}: expected {expect!r}, got {got!r}")
+
+    def dyn(line: str) -> bool:
+        return any(rx.search(line) for rx in DYNAMIC)
+
+    want("a plain literal import is not a dynamic resolver",
+         dyn("import logo from '../assets/logo.svg'"), False)
+    want("import.meta.glob is a dynamic resolver",
+         dyn("const m = import.meta.glob('../assets/*')"), True)
+    want("a template-string asset path is a dynamic resolver",
+         dyn('const p = `../assets/${name}.svg`'), True)
+    want("a concatenated asset path is a dynamic resolver",
+         dyn('const p = "../assets/" + name'), True)
+    want("a .concat call naming assets is a dynamic resolver",
+         dyn("const p = base.concat('/assets/', name)"), True)
+    m = LITERAL_IMPORT.search("import logo from '../assets/logo-os-windows.svg?url'")
+    want("a vite ?url suffix is part of the specifier",
+         m.group(2) if m else None, "logo-os-windows.svg?url")
+    want("the file name is split from the vite suffix",
+         re.split(r"[?#]", m.group(2), maxsplit=1)[0] if m else None,
+         "logo-os-windows.svg")
+    want("the dynamic-resolver scan returns a list",
+         isinstance(find_dynamic_resolvers(), list), True)
+    want("the reference scan returns a set",
+         isinstance(collect_referenced(), set), True)
+    want("the grandfathered raster baseline is exactly the known export",
+         sorted(KNOWN_RASTER_SVGS), ["logo-os-android.svg"])
+    want("one rule names itself", list_graded(["a"]), "a")
+    want("two rules join with or", list_graded(["a", "b"]), "a or b")
+    want("three rules use the oxford comma",
+         list_graded(["a", "b", "c"]), "a, b, or c")
+
+    if bad:
+        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
+        return 2
+    print("SELF-TEST OK (13 cases, reads the live tree read-only)")
+    return 0
+
+
 if __name__ == "__main__":
+    if "--self-test" in sys.argv[1:]:
+        sys.exit(self_test())
     sys.exit(main())
