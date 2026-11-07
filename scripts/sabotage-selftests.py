@@ -394,6 +394,16 @@ def failure_cause(stderr: str, stdout: str) -> str:
     return ""
 
 
+def alliance_grade(rc: int | None, cause: str) -> list:
+    """The alliance case's arithmetic, pure: [rc] on green, [rc, cause] on red,
+    [None] on a timeout -- each graded against [0]. The cause rides along ONLY
+    when red: on a green run failure_cause carries the partner's own OK line
+    (stdout fallback), and letting it leak would redden every green partner.
+    Extracted (round-86) so the fire directions are GRADED, not probe-proven.
+    """
+    return [rc] + ([cause] if rc else [])
+
+
 def run_self_test_out(path: Path) -> tuple[int | None, str]:
     """Run the checker's --self-test with the interpreter its extension implies.
 
@@ -1298,7 +1308,15 @@ def self_test() -> int:
     # the §7.3 stop condition, a human fact no pin can encode.
     arc, acause = run_self_test_out(ROOT / ALLIANCE_PARTNER)
     want("verify-selftests-wired's own self-test stays green (the alliance gate)",
-         [arc] + ([acause] if arc else []), [0])
+         alliance_grade(arc, acause), [0])
+    want("a red partner reddens the alliance case, cause riding along",
+         alliance_grade(2, "its own cause"), [2, "its own cause"])
+    want("a red partner is not the green grade",
+         alliance_grade(2, "its own cause") != [0], True)
+    want("a timeout is not the green grade either",
+         alliance_grade(None, "timeout") != [0], True)
+    want("a green partner drops the OK-line cause (round-76 fallback)",
+         alliance_grade(0, "SELF-TEST OK (6 cases, no files touched)"), [0])
     want("check.sh still runs the alliance partner's self-test per commit",
          checksh_invokes_alliance(), True)
 
@@ -1319,7 +1337,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (69 cases, one alliance self-test runs: verify-selftests-wired)")
+    print("SELF-TEST OK (73 cases, one alliance self-test runs: verify-selftests-wired)")
     return 0
 
 
