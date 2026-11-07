@@ -442,6 +442,14 @@ def self_test_command(path: Path) -> list[str]:
         return [GIT_BASH, str(path), "--self-test"]
     if suffix == ".mjs":
         return ["node", str(path), "--self-test"]
+    # The FALLBACK is a named trade-off, not an accident: any suffix not listed
+    # above runs under Python. Measured 2026-11-08, the census holds only .py,
+    # .mjs and .sh (109 = 84 + 16 + 9), so the fallback is latent -- but a
+    # sixth extension (a .ps1 checker, say) would run here SILENTLY and fail
+    # with a Python SyntaxError instead of a verdict that says "no interpreter
+    # known for this suffix". The argv shape is graded for the same reason: the
+    # flag must stay LAST, because "python --self-test a.py" fails all 109
+    # self-tests at once with a usage error. Graded (round-107).
     return [sys.executable, str(path), "--self-test"]
 
 
@@ -1635,6 +1643,13 @@ def self_test() -> int:
          [self_test_command(Path("a.sh"))[0] == GIT_BASH,
           self_test_command(Path("a.mjs"))[0] == "node",
           self_test_command(Path("a.py"))[0] == sys.executable], [True, True, True])
+    want("a self-test command keeps the interpreter first and the flag last",
+         [self_test_command(Path("a.sh"))[1:] == ["a.sh", "--self-test"],
+          self_test_command(Path("a.mjs"))[1:] == ["a.mjs", "--self-test"],
+          self_test_command(Path("a.py"))[1:] == ["a.py", "--self-test"],
+          self_test_command(Path("a.ps1"))[0] == sys.executable,
+          self_test_command(Path("a.ps1"))[1:] == ["a.ps1", "--self-test"]],
+         [True, True, True, True, True])
     # ── the survey's exit contract is graded, not remembered (round-97) ───────
     # survey_exit, junction_writethrough and survey_slice had no cases at all --
     # the r51 disease (exit 0 over unmeasured rows) could return by a one-line
