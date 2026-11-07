@@ -4888,3 +4888,38 @@ Kill directions: `GIT_BASH` pointing nowhere is CAUGHT; `node` unresolvable on P
 CAUGHT; dispatch mapped to a non-existent runner yields a handled failure cause containing
 `"not found"` rather than crashing; control green (104 cases, exit 0).
 
+
+### Round 96 (2026-11-07) — a missing interpreter is a named verdict, not a traceback
+
+The r95 card's candidate measured true and got narrower on inspection. The sweep runs
+UNCONDITIONALLY — `python scripts/sabotage-selftests.py` goes straight to survey();
+the self-test is a separate invocation — so grading the interpreters inside self_test
+protects the gate, not the sweep. The sweep's actual protection had to live in
+run_self_test_out itself, which caught only TimeoutExpired: with Git's bash or node
+gone, subprocess raises FileNotFoundError and the survey dies as a traceback — every
+.sh/.mjs row unmeasured, none named. And 16 of the 109 censused checkers are .mjs,
+running through bare "node" off PATH; 9 are .sh running through a hardcoded
+C:\\Program Files\\Git\\bin\\bash.exe. Both ungraded.
+
+`3a35a4f58`: the suffix→interpreter dispatch is extracted into a PURE
+self_test_command() (the WSL trap re-documented where it is enforced), run_self_test_out
+routes through it, and FileNotFoundError is caught into the named cause "self-test
+could not run: interpreter <x> not found". The sweep needs no change: a (None, cause)
+base row already lands as PATH ALREADY RED with the cause carried and exit 1 by
+contract — the named-unmeasured verdict, not a crash. Three cases (104 total): the .sh
+interpreter resolves, the .mjs interpreter resolves, and the dispatch maps each suffix
+to its interpreter purely.
+
+Kill directions: GIT_BASH pointed nowhere is CAUGHT (the .sh case); node resolving to
+nothing is CAUGHT (the .mjs case); the dispatch lied into a nonexistent interpreter is
+CAUGHT live at the cause layer — run_self_test_out on a real .sh checker returned
+(None, "... interpreter ... not found") instead of raising, control rc 0. Both gates
+green (104 and 13); full survey 109 checker(s), 0 SURVIVED, 109 killed,
+0 RELOCATION-SENSITIVE, 0 NO MUTATABLE FUNCTION, 0 PATH ALREADY RED, exit 0.
+
+Honest limits: the named-cause verdict reuses the PATH ALREADY RED row shape — its
+semantics ("red before any mutation") is not literally true for a missing interpreter,
+but the row's contract (unmeasured, exit 1, cause named) is preserved and the
+alternative was a traceback. The partner never runs a checker, so it has no interpreter
+seam to grade this round. sys.executable and node are graded for RESOLUTION, not
+version — a too-old node that mis-parses a checker is a different, unmeasured failure.
