@@ -1239,6 +1239,22 @@ def survey_exit(rows: list[tuple[str, str, int, int, str, str]],
     return 1 if (any(r[4] != "KILLED" for r in rows) or through) else 0
 
 
+def unmeasured_banner(rows) -> str:
+    """The line explaining why a survey with unmeasured rows will not exit 0, "" when none.
+
+    survey_exit() refuses exit 0 while any row's verdict is not KILLED; this
+    banner is the WHY beside that refusal, and its count is the SAME arithmetic
+    (every non-KILLED verdict), derived here rather than trusted to agree.
+    Round-103 correction: the old inline text claimed "exit 1 by contract" --
+    FALSE when a write-through fires too, where survey_exit returns 2. The
+    banner now claims only what its own arithmetic guarantees: an exit 0 would
+    contradict the table printed above it.
+    """
+    unmeasured = sum(1 for r in rows if r[4] != "KILLED")
+    return "" if not unmeasured else ("survey: %d row(s) unmeasured -- an exit 0 would "
+                                      "contradict the table above it." % unmeasured)
+
+
 def survey_summary(rows, skip, limit, censused) -> str:
     """The one-line verdict summary, full or sliced.
 
@@ -1673,6 +1689,14 @@ def self_test() -> int:
     want("a vanished census script reads as rc 2 with a named cause",
          [miss100_rc, bool(miss100_cause), "can't open" in miss100_cause],
          [2, True, True])
+    # ── the unmeasured banner agrees with the exit it explains (round-103) ──
+    rows103 = [("a.py", "f", 0, 2, "KILLED", ""),
+               ("b.py", "f", 0, 2, "SURVIVED", "c"),
+               ("c.py", "f", 0, 2, "RELOCATION-SENSITIVE", "c")]
+    want("the banner counts every non-KILLED row and claims no exit code",
+         [unmeasured_banner(rows103).count("2 row(s) unmeasured"),
+          "exit 1" in unmeasured_banner(rows103),
+          unmeasured_banner([("a.py", "f", 0, 2, "KILLED", "")])], [1, False, ""])
     # ── the summary line's slice contract is graded, not assumed (round-101) ──
     rows101 = [("a.py", "f", 0, 2, "KILLED", ""),
                ("b.py", "f", 0, 2, "SURVIVED", "cause x")]
@@ -1838,9 +1862,9 @@ def main() -> int:
             print("  %s %s" % (st, path))
         print("  a staged run wrote through a junctioned sibling; do not trust")
         print("  the table above until this is explained.")
-    unmeasured = len(rows) - sum(1 for r in rows if r[4] == "KILLED")
-    if unmeasured:
-        print("survey: %d row(s) unmeasured -- exit 1 by contract." % unmeasured)
+    banner = unmeasured_banner(rows)
+    if banner:
+        print(banner)
     return survey_exit(rows, through)
 
 
