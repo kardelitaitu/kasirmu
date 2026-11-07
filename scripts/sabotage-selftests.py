@@ -809,6 +809,39 @@ def account_carriers(carriers: list[str],
             and Path(rel).name not in known]
 
 
+def orchestrator_invocations(text: str) -> list[str]:
+    """Script basenames the pre-push orchestrator invokes, comment lines
+    dropped, deduped, sorted. Round-89: run-pre-push.py is runner-WIRED (the
+    pre-push hook, check.sh and check.ps1 all name it) but is not itself a
+    runner file, so the wiring scan cannot see its children -- the mirror
+    property below is what keeps a sole-provider checker from hiding behind
+    it.
+    """
+    return sorted(set(re.findall(r"scripts/([A-Za-z0-9_-]+\.(?:py|mjs|sh))",
+                                 _drop_comment_lines(text))))
+
+
+def sole_orchestrator_wiring(invocations: list[str],
+                             runner_texts: dict[str, str],
+                             named: tuple[str, ...] = CENSUS_NAMED,
+                             convention: "re.Pattern[str]" = CONVENTION_RE) -> list[str]:
+    """PURE: census-shaped checkers the orchestrator invokes that NO runner
+    file names. Census-shaped = convention basename or CENSUS_NAMED basename,
+    exactly the scripts whose wiring the census claims to know; helpers
+    outside that shape are out of the claim's scope. Round-89: the live
+    measurement is empty -- the orchestrator is a mirror of runner-visible
+    gates -- and this function is the graded form of that measurement.
+    """
+    known = set(named)
+    out = []
+    for n in invocations:
+        base = Path(n).name
+        if ((convention.match(base) or base in known)
+                and not any(base in t for t in runner_texts.values())):
+            out.append(base)
+    return out
+
+
 # ── census-eligible files that deliberately do NOT carry --self-test ─────────
 # The flag filter in census_files() makes flag-loss silent: a checker whose
 # self-test was removed drops out of BOTH sides of the coverage diff (round-80
@@ -1419,6 +1452,23 @@ def self_test() -> int:
     want("the census dirs mirror the alliance partner's audit dirs",
          _parse_partner_dirs((ROOT / ALLIANCE_PARTNER).read_text(encoding="utf-8", errors="replace")),
          list(CENSUS_DIRS))
+    # ── the pre-push orchestrator is a mirror, not a sole provider (round-89) ──
+    want("a census-shaped checker no runner mentions reddens",
+         sole_orchestrator_wiring(["scripts/verify-lonely.py"], {"r": "unrelated"}),
+         ["verify-lonely.py"])
+    want("a runner mention satisfies the mirror property",
+         sole_orchestrator_wiring(["scripts/verify-dup.py"],
+                                  {"scripts/check.sh": "run verify-dup.py"}), [])
+    want("a non-census helper is out of the claim's scope",
+         sole_orchestrator_wiring(["scripts/helper.py"], {"r": "unrelated"}), [])
+    want("the extraction sees the orchestrator's real invocations",
+         [n in orchestrator_invocations((ROOT / "scripts/run-pre-push.py").read_text(encoding="utf-8", errors="replace"))
+          for n in ("verify-website-assets.py", "check-tz-invariance.py")], [True, True])
+    want("every census-shaped checker the orchestrator invokes is runner-visible",
+         sole_orchestrator_wiring(
+             orchestrator_invocations((ROOT / "scripts/run-pre-push.py").read_text(encoding="utf-8", errors="replace")),
+             {rel: (ROOT / rel).read_text(encoding="utf-8", errors="replace") for rel in RUNNER_FILES}),
+         [])
     # ── survey slices are deterministic, bounded, self-describing (round-78) ──
     want("a negative --skip is refused (it would wrap to the census tail)",
          slice_error(None, -1) is not None, True)
@@ -1436,7 +1486,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (83 cases, one alliance self-test runs: verify-selftests-wired)")
+    print("SELF-TEST OK (88 cases, one alliance self-test runs: verify-selftests-wired)")
     return 0
 
 
