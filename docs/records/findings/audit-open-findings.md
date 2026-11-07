@@ -3534,3 +3534,49 @@ drift bookkeeping) and is NOT fixture-graded — it is graded only by its fail-c
 exit direction; the script remains a manual gate that nothing schedules (its own
 header, measured 2026-09-16, still stands). Remaining unmeasured:
 verify-scoped-authorization.sh.
+
+### Round 65 (2026-11-07) — the last NO MUTATABLE row falls: the survey is fully measured, 96/0/0/0
+
+verify-scoped-authorization.sh was NO MUTATABLE for structural reasons: its whole
+classifier lives in an awk heredoc ($AWK_PROG), self_test is skip-listed, and run_case
+is indented (SH_FUNC anchors on column 0) — so no bash function existed for the mutator
+to reach, even though the self-test was already strong (it drives the EXACT $AWK_PROG
+text the live scan runs, over synthetic Rust fixtures, both directions, plus a
+scanned-floor refusal case).
+
+`` extracts run_classifier() as the classifier's single invocation site: the live scan
+(line 241) and every self-test case now call the same top-level wrapper, which carries
+PERM/STORE/LISTED and appends the caller's -v arguments before $AWK_PROG. The kill is
+doubled: gutting it makes all seven cases fail (empty output != expected UNREASONED
+count) -> exit 2, AND a bare live run of the same mutant refuses at the pre-existing
+`self_test || { echo "CLASSIFIER WENT DEAF..."; exit 2; }` guard before ever scanning — the
+live path fails closed too, not just the graded one. Two dead vestiges in the exact
+edited lines went with it: a no-op `if ... then : ; fi` block that ran the awk twice for
+nothing, and `-v FLOOR=0` — a variable the awk program has NEVER read (the floor is
+hardcoded at 150), propping up a false comment claiming the SRC label disables the
+floor. The truth, now written there: cases parse the UNREASONED line, so the floor
+firing under them is harmless, and the floor itself is case 7.
+
+Pre-gates before the survey: live --self-test 7 cases exit 0; text_functions finds
+exactly one candidate (run_classifier, lines 144-146); staged gutted mutant via
+sab.run_self_test -> exit 2, KILLED. Proof: full survey 96 killed, 0 SURVIVED,
+0 RELOCATION-SENSITIVE, 0 NO MUTATABLE FUNCTION, exit 0 — every one of the 96 checkers
+in the sabotage survey is now measured from a staged copy, and no row changed this
+round except the target.
+
+Milestone context (this register, rounds 50-65): the survey opened with 18 SURVIVED;
+round 56 drove survivors to zero but left 18 unmeasured (relocation or NO MUTATABLE);
+rounds 57-63 cleared relocation 4 -> 0 (ending in the r62 discovery that the survey
+itself poisoned a control by never restoring staged bytes); rounds 63-65 cleared
+NO MUTATABLE 3 -> 0 (r63: the mutator's JS stripper was blind to regex/template
+literals; r64: the digest gate's self-test graded a COPY of its decision; r65: this
+extraction).
+
+Honest limits: the mutator only reaches BASH functions — the awk program inside the
+heredoc (classify(), the 150-hardcoded floor) is graded by the self-test's fixtures
+but is outside the survey's gutting reach; a change to the PERM regex or the floor
+constant would redden the self-test yet would never be probed by the survey. The
+--strict mode remains wired nowhere (report mode is the default by design until the
+unreasoned count reaches zero — the header's own words). The survey being fully
+measured is a state, not a finish line: new checkers must arrive measured, and the
+harness's own blind spots (r62 restore, r63 stripper) were found by running it.
