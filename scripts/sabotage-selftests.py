@@ -377,8 +377,31 @@ def blank_text_body(src: str, open_line: int, close_line: int, suffix: str) -> s
     return "\n".join(lines[:open_line] + [NEUTRAL[suffix]] + lines[close_line - 1:])
 
 
-def run_self_test(path: Path) -> int | None:
-    """Run the checker's --self-test with the interpreter its extension implies."""
+def failure_cause(stderr: str, stdout: str) -> str:
+    """The one line a failed self-test's output says WHY in, or "" if none.
+
+    The LAST non-empty line: self-tests print their progress first and their
+    verdict last, so the tail is the sentence an operator needs. stderr is
+    preferred (refusals and tracebacks land there); stdout is the fallback for
+    checkers that report failure to it. Truncated to one table-width line --
+    the cause is a pointer for a human, not the whole log.
+    """
+    for text in (stderr, stdout):
+        lines = [l.strip() for l in text.splitlines() if l.strip()]
+        if lines:
+            cause = lines[-1]
+            return cause[:107] + "..." if len(cause) > 110 else cause
+    return ""
+
+
+def run_self_test_out(path: Path) -> tuple[int | None, str]:
+    """Run the checker's --self-test with the interpreter its extension implies.
+
+    Returns (exit code, failure cause line). The cause is extracted from the
+    run's own output by failure_cause() and carried on the survey row, because
+    a verdict that names no cause sends the operator re-running the failure by
+    hand. An empty cause means the run passed or left nothing to quote.
+    """
     suffix = path.suffix
     if suffix == ".sh":
         # Git's bash by FULL PATH, never a bare "bash": on this workstation the bare name
@@ -393,8 +416,13 @@ def run_self_test(path: Path) -> int | None:
     try:
         r = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=300)
     except subprocess.TimeoutExpired:
-        return None
-    return r.returncode
+        return None, "self-test timed out after 300s"
+    return r.returncode, failure_cause(r.stderr, r.stdout)
+
+
+def run_self_test(path: Path) -> int | None:
+    """The exit code only -- the shape every caller before round-71 relied on."""
+    return run_self_test_out(path)[0]
 
 
 def build_temp_root(dest: Path, root: Path = ROOT) -> Path:
@@ -592,9 +620,10 @@ def survey(limit: int | None, skip: int = 0) -> list[tuple[str, str, int, int, s
         td_root = build_temp_root(Path(td))
         for p in files:
             src = p.read_text(encoding="utf-8", errors="replace")
-            base = run_self_test(p)
+            base, base_cause = run_self_test_out(p)
             if base != 0:
-                rows.append((p.name, "-", base if base is not None else -1, -1, "PATH ALREADY RED"))
+                rows.append((p.name, "-", base if base is not None else -1, -1,
+                             "PATH ALREADY RED", base_cause))
                 continue
             if p.suffix == ".sh":
                 cands = text_functions(src, SH_FUNC)
@@ -603,16 +632,16 @@ def survey(limit: int | None, skip: int = 0) -> list[tuple[str, str, int, int, s
             else:
                 cands = candidate_functions(src)
             if not cands:
-                rows.append((p.name, "-", 0, 0, "NO MUTATABLE FUNCTION"))
+                rows.append((p.name, "-", 0, 0, "NO MUTATABLE FUNCTION", ""))
                 continue
             # Relocation control, staged edition: the UNMUTATED file runs from the same
             # staged path the mutant will use. A self-test that still cannot run from
             # there gets its own verdict instead of lending its failure to a mutant.
             rel_target = td_root / p.relative_to(ROOT)
             rel_target.write_text(src, encoding="utf-8")
-            relo_rc = run_self_test(rel_target)
+            relo_rc, relo_cause = run_self_test_out(rel_target)
             if relo_rc not in (0, None):
-                rows.append((p.name, "-", 0, relo_rc, "RELOCATION-SENSITIVE"))
+                rows.append((p.name, "-", 0, relo_rc, "RELOCATION-SENSITIVE", relo_cause))
                 continue
             # Mutate only the FIRST candidate: enough to answer "can this self-test fail".
             name, s0, e0 = cands[0]
@@ -623,7 +652,7 @@ def survey(limit: int | None, skip: int = 0) -> list[tuple[str, str, int, int, s
             rel_target.write_text(mutated, encoding="utf-8")
             after = run_self_test(rel_target)
             verdict = "KILLED" if after not in (0, None) else "SURVIVED"
-            rows.append((p.name, name, 0, after if after is not None else -1, verdict))
+            rows.append((p.name, name, 0, after if after is not None else -1, verdict, ""))
             # Restore the staged bytes: a mutant's residue must not leak into the
             # shared tree. Measured 2026-11-07: check-updater-compat's staged control
             # spawned the PREVIOUS checker's still-gutted verify-updater-signature.mjs
@@ -661,7 +690,7 @@ def junction_writethrough(before: str, after: str) -> list[tuple[str, str]]:
     return out
 
 
-def survey_exit(rows: list[tuple[str, str, int, int, str]],
+def survey_exit(rows: list[tuple[str, str, int, int, str, str]],
                 through: list[tuple[str, str]]) -> int:
     """The survey's exit contract: green ONLY when every row killed, cleanly.
 
@@ -797,7 +826,7 @@ def self_test() -> int:
          junction_writethrough("", " D docs/x.md"), [(" D", "docs/x.md")])
 
     # ── the survey's exit contract: only an all-killed, clean-tree survey is 0 ──
-    row = lambda v: ("x.py", "f", 0, 1, v)
+    row = lambda v: ("x.py", "f", 0, 1, v, "")
     want("an all-killed survey with a clean tree exits 0",
          survey_exit([row("KILLED"), row("KILLED")], []), 0)
     want("a survivor fails the exit", survey_exit([row("KILLED"), row("SURVIVED")], []), 1)
@@ -810,10 +839,22 @@ def self_test() -> int:
     want("a write-through fails the exit even with every row killed",
          survey_exit([row("KILLED")], [(" M", "crates/x.rs")]), 1)
 
+    # ── a failed run's cause rides on the row, not in the bit bucket ──────────
+    want("the stderr tail is the cause",
+         failure_cause("ok 1\nok 2\nerror: bad shape\n", "ignored"), "error: bad shape")
+    want("stdout is the fallback when stderr is empty",
+         failure_cause("", "progress\nthe real failure"), "the real failure")
+    want("blank lines never become the cause",
+         failure_cause("\n  \nthe actual cause\n", ""), "the actual cause")
+    want("nothing to quote is an empty cause", failure_cause("", ""), "")
+    long_line = "x" * 200
+    want("a cause longer than a table line is truncated",
+         failure_cause(long_line, ""), long_line[:107] + "...")
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (33 cases, no checker is run)")
+    print("SELF-TEST OK (38 cases, no checker is run)")
     return 0
 
 
@@ -836,8 +877,10 @@ def main() -> int:
     unmutatable = [r for r in rows if r[4] == "NO MUTATABLE FUNCTION"]
     already_red = [r for r in rows if r[4] == "PATH ALREADY RED"]
     killed = [r for r in rows if r[4] == "KILLED"]
-    for name, fn, before, after, verdict in rows:
+    for name, fn, before, after, verdict, cause in rows:
         print("  %-46s %-28s %-12s exit %s -> %s" % (name, fn[:28], verdict, before, after))
+        if cause:
+            print("      cause: %s" % cause)
     print("")
     print("sabotage: %d checker(s), %d SURVIVED (their self-test did not notice the gutted "
           "detector), %d killed, %d RELOCATION-SENSITIVE (self-test cannot run from a copy; "
