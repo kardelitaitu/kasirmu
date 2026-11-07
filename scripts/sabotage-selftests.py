@@ -801,12 +801,14 @@ def transitively_loaded(name: str, censused_texts: dict[str, str]) -> list[str]:
 
     A runner scan cannot see a checker loaded by path from another checker's
     code (round-69: allowlist-schema.py, loaded by verify-ipc-parity.py and
-    verify-scoped-reads.py). Substring semantics, same as the exclusion
-    direction's scan; a comment mention over-fires toward "wired", which is
-    the safe direction for a censused file.
+    verify-scoped-reads.py). Comment lines are not loads (round-84: the
+    round-81 note called comment over-firing "the safe direction" -- wrong:
+    the r83 alignment established that a comment mention wiring a file is a
+    graded lie, and a load is wiring).
     """
     return sorted(rel for rel, text in censused_texts.items()
-                  if Path(rel).name != name and name in text)
+                  if Path(rel).name != name
+                  and name in _drop_comment_lines(text))
 
 
 def censused_wiring_problems() -> list[str]:
@@ -987,7 +989,7 @@ def junction_writethrough(before: str, after: str) -> list[tuple[str, str]]:
     return out
 
 
-def checksh_invokes_self_test() -> bool:
+def checksh_invokes_self_test(text: str | None = None) -> bool:
     """The pipeline's slice: check.sh must still invoke the harness's --self-test.
 
     The campaign's two-gate protocol rests on one line of check.sh: it is what
@@ -999,12 +1001,13 @@ def checksh_invokes_self_test() -> bool:
     and the round-70 exit contract (unmeasured fails) would redden unrelated
     commits the moment any lane's checker sat under active development.
     """
-    return ("scripts/sabotage-selftests.py --self-test"
-            in (ROOT / "scripts/check.sh").read_text(encoding="utf-8", errors="replace"))
+    if text is None:
+        text = (ROOT / "scripts/check.sh").read_text(encoding="utf-8", errors="replace")
+    return "scripts/sabotage-selftests.py --self-test" in _drop_comment_lines(text)
 
 
 
-def checksh_invokes_alliance() -> bool:
+def checksh_invokes_alliance(text: str | None = None) -> bool:
     """check.sh still runs the alliance partner's self-test per commit.
 
     Round-73 graded this harness's own wiring for the same reason: the pipeline
@@ -1016,8 +1019,9 @@ def checksh_invokes_alliance() -> bool:
     commit. Measured 2026-11-07: that state reddens nothing anywhere -- this
     case is the only alarm.
     """
-    return "scripts/verify-selftests-wired.py --self-test" in \
-        (ROOT / "scripts/check.sh").read_text(encoding="utf-8", errors="replace")
+    if text is None:
+        text = (ROOT / "scripts/check.sh").read_text(encoding="utf-8", errors="replace")
+    return "scripts/verify-selftests-wired.py --self-test" in _drop_comment_lines(text)
 
 def survey_exit(rows: list[tuple[str, str, int, int, str, str]],
                 through: list[tuple[str, str]]) -> int:
@@ -1216,13 +1220,24 @@ def self_test() -> int:
          wiring_hits("verify-x.py",
                      {"scripts/check.sh": "# retired\n  run: python3 scripts/verify-x.py --self-test"}),
          ["scripts/check.sh"])
+    want("a commented-out step does not wire the harness's self-test",
+         checksh_invokes_self_test("# python scripts/sabotage-selftests.py --self-test"), False)
+    want("a commented-out step does not wire the alliance",
+         checksh_invokes_alliance("# python scripts/verify-selftests-wired.py --self-test"), False)
+    want("a live step beside a comment still wires the harness",
+         checksh_invokes_self_test("# retired\npython scripts/sabotage-selftests.py --self-test"), True)
+    want("a comment naming a checker is not a load",
+         transitively_loaded("allowlist-schema.py",
+                             {"scripts/verify-x.py": "# allowlist-schema.py was dropped here"}),
+         [])
     for rel in CENSUS_EXCLUDED:
         refs = pipeline_references(Path(rel).name)
         if refs:
             bad.append(f"{rel} is now pipeline-wired ({', '.join(refs)}) — it must join the census")
     excluded_names = [Path(rel).name for rel in CENSUS_EXCLUDED]
     for c in sorted(censused):
-        text = (ROOT / c).read_text(encoding="utf-8", errors="replace")
+        text = _drop_comment_lines(
+            (ROOT / c).read_text(encoding="utf-8", errors="replace"))
         for rel, nm in zip(CENSUS_EXCLUDED, excluded_names):
             if nm in text:
                 bad.append(f"{rel} is loaded by censused {c} — it must join the census")
@@ -1307,7 +1322,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (65 cases, one alliance self-test runs: verify-selftests-wired)")
+    print("SELF-TEST OK (69 cases, one alliance self-test runs: verify-selftests-wired)")
     return 0
 
 
