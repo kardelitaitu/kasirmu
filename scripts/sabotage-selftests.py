@@ -404,6 +404,30 @@ def alliance_grade(rc: int | None, cause: str) -> list:
     return [rc] + ([cause] if rc else [])
 
 
+def ok_line_count(text: str) -> int | None:
+    """PURE: the case count a SELF-TEST OK line declares -- None when the text
+    is not an OK line. Round-94: the alliance fixture quoted the partner's old
+    8-case line after the partner had grown past it, a stale literal no case
+    parsed -- and both gates' own OK counts turned out to be hand-maintained
+    lies (this gate said 98 over 92 want() sites, the partner 12 over 11). The
+    counts are now derived from the inventory and graded against it."""
+    m = re.search(r"SELF-TEST OK \((\d+) cases", text)
+    return int(m.group(1)) if m else None
+
+
+def want_inventory(text: str) -> int:
+    """PURE: the number of want() call sites in a gate's source -- the count an
+    OK line must declare. Sites are counted after full-line comment strips by
+    the call token, excluding want's own def line; a multi-line call counts
+    once, and a site inside a loop counts once (the printed number is CASES,
+    not assertions -- three sites here fire once per parsed suffix). The count
+    is LINE-START calls on comment-stripped text: every call site opens its
+    own line here, and a prose mention of want() in a docstring must not
+    count (the first draft's regex-all counter matched this gate's own
+    helper docstring and over-counted by one)."""
+    return len(re.findall(r"^[ \t]+want\(", _drop_comment_lines(text), re.M))
+
+
 def run_self_test_out(path: Path) -> tuple[int | None, str]:
     """Run the checker's --self-test with the interpreter its extension implies.
 
@@ -1500,8 +1524,32 @@ def self_test() -> int:
          alliance_grade(2, "its own cause") != [0], True)
     want("a timeout is not the green grade either",
          alliance_grade(None, "timeout") != [0], True)
+    # ── the OK line's case count is derived, not a literal (round-94) ──────────
+    # Measured before landing: this gate's literal said 98 over 92 want() sites,
+    # the partner's said 12 over 11, and the fixture below still quoted the
+    # partner's 8-case line. A count no case reads is a lie with tenure.
+    partner_src = (ROOT / ALLIANCE_PARTNER).read_text(encoding="utf-8", errors="replace")
+    harness_src = Path(__file__).read_text(encoding="utf-8", errors="replace")
+    want("the OK-line count parser reads the declared number",
+         ok_line_count("SELF-TEST OK (12 cases, no files touched)"), 12)
+    want("a non-OK line declares no count",
+         ok_line_count("SELF-TEST WRONG: red"), None)
+    fixture = "SELF-TEST OK (%d cases, no files touched)" % want_inventory(partner_src)
+    want("the round-76 fixture quotes the partner's live inventory",
+         ok_line_count(fixture), want_inventory(partner_src))
+    want("the partner's live OK count equals its want() inventory",
+         [ok_line_count(acause), want_inventory(partner_src)],
+         [want_inventory(partner_src)] * 2)
+    want("this gate's OK print derives its count from the inventory",
+         [l.count("want_inventory(")
+          for l in harness_src.splitlines()
+          if l.strip().startswith("print(") and "SELF-TEST OK" in l], [1])
+    want("the partner's OK print derives its count too",
+         [l.count("want_inventory(")
+          for l in partner_src.splitlines()
+          if "SELF-TEST OK" in l and "print(" in l], [1])
     want("a green partner drops the OK-line cause (round-76 fallback)",
-         alliance_grade(0, "SELF-TEST OK (8 cases, no files touched)"), [0])
+         alliance_grade(0, fixture), [0])
     want("check.sh still runs the alliance partner's self-test per commit",
          checksh_invokes_alliance(), True)
 
@@ -1585,7 +1633,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (98 cases, one alliance self-test runs: verify-selftests-wired)")
+    print(f"SELF-TEST OK ({want_inventory(Path(__file__).read_text(encoding='utf-8'))} cases, one alliance self-test runs: verify-selftests-wired)")
     return 0
 
 

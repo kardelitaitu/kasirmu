@@ -318,6 +318,14 @@ def collided_audited() -> dict:
     return collisions_of(pairs)
 
 
+def want_inventory(text: str) -> int:
+    """PURE: the number of want() call sites in this gate's source, counted
+    after full-line comment strips and excluding want's own def line. Round-94,
+    the partner side of the harness's repair: the OK line's count was a
+    hand-maintained literal (12 over 11 real sites) that no case read."""
+    return len(re.findall(r"^[ \t]+want\(", strip_full_line_comments(text), re.M))
+
+
 def self_test() -> int:
     """Pure over synthetic runner text; no file is created or written. The two
     live reads are the tree audit below and (round-88) the harness's CENSUS_DIRS
@@ -380,7 +388,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (12 cases, no files touched)")
+    print(f"SELF-TEST OK ({want_inventory(Path(__file__).read_text(encoding='utf-8'))} cases, no files touched)")
     return 0
 
 
