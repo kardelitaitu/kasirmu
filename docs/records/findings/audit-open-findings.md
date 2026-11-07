@@ -3888,3 +3888,49 @@ imprecisely, and the fix is reading the checker, not growing the row. The trunca
 110 characters could clip a long generated sentence; the leading 107 characters have
 held every refusal sentence in this repo's checkers so far. The timeout cause names no
 checker-specific detail — the harness cannot know what the killed subprocess was doing.
+
+### Round 72 (2026-11-07) — the exclusion list now carries its own evidence, both directions
+
+Round 72's candidate was the audit of the three remaining CENSUS_EXCLUDED entries. The
+question for each: is the feature it serves still in the repo, or is the script a parked
+relic? All three were read in full (313 + 252 + 310 lines) and traced to their consumers:
+
+- **sign-plugin.py — ALIVE.** It is the signing half of a two-sided protocol: the
+  verifying half is `crates/kasirmu-plugin/src/signature.rs` (`plugin_digest`), the
+  flow is documented in docs/guides/developer/plugin-guide.md (audited 2026-10-11,
+  verification wired at manager.rs:217), and the example plugin it can sign ships in
+  scripts/examples/example-discount/. Stays excluded: an operator release step, not a
+  pipeline dependency.
+- **restaurant-coverage.py — ALIVE.** The surface it audits is live (109 specs under
+  ui/e2e/ against the feature files), and it is the instrument five records under
+  docs/records/audits/ were written with. Its docstring encodes a lesson this campaign
+  re-learned independently (an empty reading is evidence about the INSTRUMENT first) —
+  it carries a self-check that withholds numbers when it cannot see a known positive.
+- **extract-updater-seed.py — ALIVE.** The updater is a shipped feature: the pubkey is
+  pinned at apps/desktop-tauri/tauri.conf.json:73 and the live release.yml signs updater
+  manifests with the UPDATER_PRIVATE_KEY secret this tool recovers from the rsign key
+  file. A key-recovery utility is exactly the tool you cannot reconstruct after the
+  fact.
+
+`9f96307c4` makes that evidence durable at the point of exclusion: CENSUS_EXCLUDED's
+comment now names each file's consumer (the re-derivation would cost 875 docstring lines
+at every audit), and self_test() grows the mirror-direction gate — 38 -> 39 cases:
+
+- want("every excluded script still quotes the self-test flag", ...) — an exclusion
+  that silently stops self-testing is a dead file that should be deleted, not parked
+  under an exclusion that reads as "alive, just unwired". Missing files are already
+  flagged by the exists-case, so the flag check guards only existing entries.
+- Kill direction proven on a REAL non-carrier: scripts/_find_doc_ignore.py (a tracked
+  scripts/*.py that exists and does not quote the flag) injected into CENSUS_EXCLUDED is
+  CAUGHT by exactly the new case; the control stays 39/39 green.
+
+Both gates green: self-test 39 cases, full survey 108 checker(s), 0 SURVIVED, 108
+killed, 0 RELOCATION-SENSITIVE, 0 NO MUTATABLE, 0 PATH ALREADY RED, exit 0 — unchanged
+verdicts, as expected, since the exclusion list itself did not change.
+
+Honest limits: the flag gate checks that the file still CARRIES a self-test, not that
+the self-test still passes — a broken excluded self-test stays invisible to the census
+by design (that is what being excluded means); the remedy is the file joining the
+census, which the wiring/coverage cases keep making cheap. The per-file evidence in the
+comment is a snapshot (2026-11-07): the docstrings remain the source of truth, and the
+comment is a pointer into them, not a replacement.
