@@ -937,6 +937,37 @@ def transitively_loaded(name: str, censused_texts: dict[str, str]) -> list[str]:
                   and name in _drop_comment_lines(text))
 
 
+def collisions_of(pairs: list[tuple[str, str]]) -> dict[str, list[str]]:
+    """PURE: basenames borne by more than one file, from (basename, rel) pairs,
+    keyed by basename with sorted rel paths. Round-92: the wiring corpus keys
+    on basenames -- wiring_hits, account_carriers, sole_orchestrator_wiring
+    and the exclusion case all match by name -- so two files sharing a
+    basename are ONE key to every signal, and deleting one file's runner step
+    looks like nothing. This is the graded shape of that precision limit.
+    """
+    seen: dict[str, list[str]] = {}
+    for name, rel in pairs:
+        seen.setdefault(name, []).append(rel)
+    return {n: sorted(rels) for n, rels in seen.items() if len(rels) > 1}
+
+
+def collided_census_names() -> dict[str, list[str]]:
+    """The census's own collisions, live. The census has exactly one today --
+    check-gate-runners.py in scripts/ and in the docs-auditor skill -- and
+    the sibling case holds each collided file to a FULL-path mention, so the
+    shared basename is not what wires it."""
+    return collisions_of([(p.name, p.relative_to(ROOT).as_posix())
+                          for p in census_files()])
+
+
+def fullpath_wiring(rel: str, texts: dict[str, str]) -> list[str]:
+    """PURE: runners whose comment-stripped text contains the FULL
+    repo-relative path -- identity-precision wiring, as opposed to the
+    basename scan. A bare-basename mention does not satisfy it."""
+    return sorted(rr for rr, t in texts.items()
+                  if rel in _drop_comment_lines(t))
+
+
 def censused_wiring_problems() -> list[str]:
     """Censused files that no runner invokes and no censused file loads.
 
@@ -1313,6 +1344,26 @@ def self_test() -> int:
           + transitively_loaded(Path(rel).name, censused_texts)
           for rel in CENSUS_EXCLUDED],
          [[], [], []])
+    # ── the wiring corpus's key is a basename; collisions are a precision lie ──
+    want("the collision detector finds a synthetic pair",
+         collisions_of([("a.py", "scripts/a.py"), ("a.py", "x/scripts/a.py"),
+                        ("b.py", "scripts/b.py")]),
+         {"a.py": ["scripts/a.py", "x/scripts/a.py"]})
+    want("a collision-free set yields nothing",
+         collisions_of([("a.py", "scripts/a.py"), ("b.py", "x/b.py")]), {})
+    want("the census has exactly one basename collision, the known pair",
+         collided_census_names(),
+         {"check-gate-runners.py": [".agents/skills/docs-auditor/scripts/check-gate-runners.py",
+                                    "scripts/check-gate-runners.py"]})
+    want("full-path wiring is not satisfied by the basename alone",
+         fullpath_wiring("scripts/verify-x.py", {"r": "run verify-x.py"}), [])
+    want("a full path mention is identity wiring",
+         fullpath_wiring("scripts/verify-x.py", {"r": "run scripts/verify-x.py"}),
+         ["r"])
+    want("each collided file is wired by its full path, not the shared name",
+         [bool(fullpath_wiring(rel, unflagged_texts))
+          for rels in collided_census_names().values() for rel in rels],
+         [True] * sum(len(rels) for rels in collided_census_names().values()))
     # ── the criterion's wiring half, held for the WHOLE censused set (r81) ────
     want("every censused file stays runner-wired or transitively loaded",
          censused_wiring_problems(), [])
@@ -1534,7 +1585,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (93 cases, one alliance self-test runs: verify-selftests-wired)")
+    print("SELF-TEST OK (98 cases, one alliance self-test runs: verify-selftests-wired)")
     return 0
 
 
