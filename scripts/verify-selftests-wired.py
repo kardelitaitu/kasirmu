@@ -436,6 +436,17 @@ def self_test() -> int:
           in_attic(Path(".github/workflows/dev-ci.yml")),
           any(in_attic(f) for f in runner_files())],
          [True, True, False, False])
+    # ── the audit's own report is graded, not just its verdict (round-102) ──
+    rep102 = uncalled_report(["scripts/verify-flaky.py", "scripts/verify-wired.py"])
+    want("an uncalled report names each checker with an honest count",
+         [rep102.startswith("verify-selftests-wired: 2 self-test(s) invoked by no runner"),
+          rep102.count("scripts/verify-flaky.py"),
+          rep102.count("scripts/verify-wired.py"),
+          rep102.count("-- declares --self-test, but no runner passes the flag"),
+          rep102.count("verify-selftests-wired: 3 self-test(s)")], [True, 1, 1, 2, 0])
+    want("the clean audit's line is derived from the census, not hardcoded",
+         [wired_ok_line(17, 100).count("17 of 100 checker(s)"),
+          wired_ok_line(0, 1).count("0 of 1 checker(s)")], [1, 1])
     live = uncalled_selftests()
     if live:
         bad.append("live tree has " + str(len(live)) + " uncalled self-test(s): "
@@ -446,6 +457,34 @@ def self_test() -> int:
         return 2
     print(f"SELF-TEST OK ({want_inventory(Path(__file__).read_text(encoding='utf-8'))} cases, no files touched)")
     return 0
+
+
+def uncalled_report(live: list[str]) -> str:
+    """The named failures: an honest count in the header, one remedy line per checker.
+
+    The report is the gate's product -- a header count that lies about the number
+    of names under it, or a checker that goes unnamed, sends the operator to
+    rediscover what this file exists to report. Extracted from main() (round-102)
+    so the shape -- count == len(live), every checker named beside its remedy --
+    is GRADED, not assumed.
+    """
+    head = f"verify-selftests-wired: {len(live)} self-test(s) invoked by no runner:"
+    body = "".join(
+        f"\n    {n} -- declares --self-test, but no runner passes the flag. "
+        f"Add a step beside its gate in .github/workflows/dev-ci.yml and "
+        f"scripts/check.sh, or delete the flag if it was never meant to run."
+        for n in live)
+    return head + body
+
+
+def wired_ok_line(declared: int, total: int) -> str:
+    """The clean-audit line, derived from the census the same way the verdict is.
+
+    Round-102: "17 of 100" must be COUNTED, not typed -- a hardcoded N of M
+    would keep reading as green after the census changed under it.
+    """
+    return (f"verify-selftests-wired: OK — {declared} of {total} checker(s) in scope "
+            f"declare a --self-test and every one is invoked by a runner.")
 
 
 def main() -> int:
@@ -460,14 +499,9 @@ def main() -> int:
     total = len(checkers())
     declared = sum(1 for n in checkers() if declares_selftest(n))
     if live:
-        print(f"verify-selftests-wired: {len(live)} self-test(s) invoked by no runner:")
-        for n in live:
-            print(f"    {n} -- declares --self-test, but no runner passes the flag. "
-                  f"Add a step beside its gate in .github/workflows/dev-ci.yml and "
-                  f"scripts/check.sh, or delete the flag if it was never meant to run.")
+        print(uncalled_report(live))
         return 1
-    print(f"verify-selftests-wired: OK — {declared} of {total} checker(s) in scope "
-          f"declare a --self-test and every one is invoked by a runner.")
+    print(wired_ok_line(declared, total))
     return 0
 
 
