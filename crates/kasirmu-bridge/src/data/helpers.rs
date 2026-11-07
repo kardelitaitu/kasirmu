@@ -123,12 +123,12 @@ pub(super) fn export_date_window(
     };
     let from = from.map(|raw| parse(raw, "date_from")).transpose()?;
     let to = to.map(|raw| parse(raw, "date_to")).transpose()?;
-    if let (Some(start), Some(end)) = (from, to) {
-        if start > end {
-            return Err(BridgeError::Invalid(format!(
-                "date_from ({start}) is after date_to ({end}), so the export window is empty"
-            )));
-        }
+    if let (Some(start), Some(end)) = (from, to)
+        && start > end
+    {
+        return Err(BridgeError::Invalid(format!(
+            "date_from ({start}) is after date_to ({end}), so the export window is empty"
+        )));
     }
     Ok(Some(ExportDateWindow { from, to }))
 }
@@ -156,7 +156,7 @@ pub(super) fn created_at_in_window(created_at: &str, window: &ExportDateWindow) 
     let Some(day) = day else {
         return true;
     };
-    window.from.map_or(true, |start| day >= start) && window.to.map_or(true, |end| day <= end)
+    window.from.is_none_or(|start| day >= start) && window.to.is_none_or(|end| day <= end)
 }
 
 /// The batch quota gate for `import_data` (W4-S2), extracted so tests
