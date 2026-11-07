@@ -58,7 +58,9 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ("avatars", 1, &["STAFF_UPDATE"]),
     ("desktop_link", 0, &[]),
     ("branding", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
-    ("browser", 0, &[]),
+    // 0 -> 1 in 428694f9c "fix(browser): gate open_product_images_scoped with
+    // PRODUCTS_READ (BR-S4)" -- the image browser is no longer ungated.
+    ("browser", 1, &["PRODUCTS_READ"]),
     // 1 gate call with SETTINGS_READ, absent from the pin. A REAL unpinned gate: the
     // one-click diagnostic archive export (bf8e004f9) resolves the session and then
     // requires SETTINGS_READ in the bridge, so this row reviews a live permission.
@@ -221,9 +223,12 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     // 4 -> 5 in fd4a0ff6e "feat(sync): add dead_letter_count to PgDaemonStatus and
     // gate list_remote_failures_scoped" -- one newly gated command, same key.
     ("offline", 5, &["SYNC_MANAGE"]),
+    // 4 -> 5 in 160734e90 "feat(receipt): add credit terms formatting, kasbon
+    // settlement printing, and ar/ap aging export" -- the aging export carries a
+    // gate call; the key set is unchanged.
     (
         "payables",
-        4,
+        5,
         &[
             "PAYABLES_CREATE",
             "PAYABLES_SETTLE",
@@ -290,9 +295,11 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ("qris_auto", 1, &["SALES_PROCESS"]),
     ("qris_listener", 3, &["SALES_PROCESS"]),
     ("receipt_format", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
+    // 7 -> 8 by the same 160734e90 as the payables row: the aging export spans
+    // both ledgers, one new gated call each side.
     (
         "receivables",
-        7,
+        8,
         &[
             "RECEIVABLES_COLLECT",
             "RECEIVABLES_CREATE",
@@ -364,7 +371,9 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
             "TOPOLOGY_WRITE",
         ],
     ),
-    ("sync", 12, &["SYNC_MANAGE"]),
+    // 12 -> 11 in b15cf5fd7 "refactor(sync): retire pending_sync_count_scoped,
+    // the gated duplicate of the ungated count" -- the gate call retired with it.
+    ("sync", 11, &["SYNC_MANAGE"]),
     // Pinned at its measured shape: the sync test pins module declares the
     // gates the sync tests drive, but carries no gate CALL of its own, so the
     // census reads 0 from it. It is a row because the census walks every
@@ -492,9 +501,12 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     ("offline", 4, &["SYNC_MANAGE"]),
     ("picker_ticket", 0, &[]),
     // 17 -> 22: aggregated with pos/ submodules in tablet commands.
+    // 22 -> 20 in 636935f4f "refactor(pos): retire uncalled
+    // get_active_cart_scoped and list_active_carts_scoped" -- two gated commands
+    // with no callers retired together.
     (
         "pos",
-        22,
+        20,
         &["SALES_DISCOUNT", "SALES_OVERRIDE_PRICE", "SALES_PROCESS"],
     ),
     (
@@ -568,7 +580,9 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
             "TOPOLOGY_WRITE",
         ],
     ),
-    ("sync", 9, &["SYNC_MANAGE"]),
+    // 9 -> 8 by the same b15cf5fd7 as the desktop row: the tablet parity module
+    // carried the same gated duplicate.
+    ("sync", 8, &["SYNC_MANAGE"]),
     (
         "tables",
         6,
