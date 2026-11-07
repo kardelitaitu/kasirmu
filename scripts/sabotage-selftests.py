@@ -1239,6 +1239,23 @@ def survey_exit(rows: list[tuple[str, str, int, int, str, str]],
     return 1 if (any(r[4] != "KILLED" for r in rows) or through) else 0
 
 
+def row_lines(row) -> list[str]:
+    """The table lines for one survey row: the row, then its cause when red.
+
+    The line's contract is ADJACENCY: the verdict sits between the function
+    name and the exit pair, and the BEFORE exit prints before the AFTER exit --
+    a row whose columns swapped would read "exit 2 -> 0", which is the mutation
+    improving things, the one reading that would hide a live detector. The
+    cause line indents under its row so a red row's evidence stays attached to
+    it. Extracted (round-105) as the last ungraded message in main().
+    """
+    name, fn, before, after, verdict, cause = row
+    lines = ["  %-46s %-28s %-12s exit %s -> %s" % (name, fn[:28], verdict, before, after)]
+    if cause:
+        lines.append("      cause: %s" % cause)
+    return lines
+
+
 def writethrough_banner(through: list[tuple[str, str]]) -> str:
     """The block explaining that a staged run wrote tracked dirt into the real tree, "" when clean.
 
@@ -1723,6 +1740,19 @@ def self_test() -> int:
          [wt104.count("STAGED WRITE-THROUGH: the survey left tracked dirt"),
           wt104.count(" M crates/x.rs"), wt104.count("?? y.py"),
           wt104.count("do not trust"), writethrough_banner([])], [1, 1, 1, 1, ""])
+    # ── the table row itself, the last ungraded message (round-105) ──
+    want("a table row keeps verdict and exit pair adjacent, cause attached",
+         [row_lines(("scripts/x.py", "fn", 0, 2, "KILLED", "cause why"))[0].count("x.py"),
+          row_lines(("scripts/x.py", "fn", 0, 2, "KILLED", "cause why"))[0].count("exit 0 -> 2"),
+          "exit 2 -> 0" in row_lines(("scripts/x.py", "fn", 0, 2, "KILLED", "cause why"))[0],
+          row_lines(("a.py", "f", 0, 2, "KILLED", "")),
+          len(row_lines(("a.py", "f", 0, 2, "SURVIVED", "watched and said nothing"))) == 2
+          and row_lines(("a.py", "f", 0, 2, "SURVIVED", "watched and said nothing"))[1]
+          == "      cause: watched and said nothing",
+          len(row_lines(("a.py", "f", 0, 2, "KILLED", ""))) == 1],
+         [1, 1, False,
+          ["  %-46s %-28s %-12s exit %s -> %s" % ("a.py", "f", "KILLED", 0, 2)],
+          True, True])
     # ── the summary line's slice contract is graded, not assumed (round-101) ──
     rows101 = [("a.py", "f", 0, 2, "KILLED", ""),
                ("b.py", "f", 0, 2, "SURVIVED", "cause x")]
@@ -1875,10 +1905,9 @@ def main() -> int:
     # indistinguishable from a full census of 30, and chunks that silently
     # miss checkers read as measured (the round-66 disease in slice form).
     through = junction_writethrough(before_tree, git_status_porcelain())
-    for name, fn, before, after, verdict, cause in rows:
-        print("  %-46s %-28s %-12s exit %s -> %s" % (name, fn[:28], verdict, before, after))
-        if cause:
-            print("      cause: %s" % cause)
+    for row in rows:
+        for line in row_lines(row):
+            print(line)
     print("")
     print(survey_summary(rows, args.skip, args.limit, len(census_files())))
     write = writethrough_banner(through)
