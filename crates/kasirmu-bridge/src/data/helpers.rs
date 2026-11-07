@@ -10,7 +10,7 @@
 //! move without touching those scans.
 //!
 //! Main items: [`exportable_settings_rows`], [`gate_import_product_batch`],
-//! [`gate_import_user_batch`], [`export_date_window`].
+//! [`gate_import_user_batch`], and `export_date_window` (module-private).
 
 use std::path::Path;
 
