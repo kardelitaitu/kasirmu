@@ -537,6 +537,15 @@ RUNNER_FILES = (
     "ui/package.json",
 )
 
+#: The alliance partner (round-76): the other wiring gate, whose self-test this
+#: harness runs as a graded case. Its flag is itself wired (check.sh
+#: "self-tests wired self-test" step, dev-ci.yml) and its self-test costs under
+#: half a second, so the pairing the campaign relies on -- two gates, each run
+#: green every round -- is enforced by the census side instead of remembered by
+#: the operator. One-directional ON PURPOSE: the harness grades the alliance;
+#: the partner never runs THIS self-test, so the case cannot recurse.
+ALLIANCE_PARTNER = "scripts/verify-selftests-wired.py"
+
 
 def pipeline_references(name: str) -> list[str]:
     """Pipeline files mentioning `name` -- the wiring half of the criterion.
@@ -968,10 +977,20 @@ def self_test() -> int:
     want("a cause longer than a table line is truncated",
          failure_cause(long_line, ""), long_line[:107] + "...")
 
+    # ── the two-gate alliance is itself two-gated (round-76) ──────────────────
+    # run_self_test_out is the survey's own runner: same timeout contract, same
+    # failure_cause on red, so a partner self-test that starts failing surfaces
+    # here with its cause line, not as a memory that someone ran it by hand.
+    # The cause rides along ONLY when red -- on a green run failure_cause
+    # carries the partner's own OK line (stdout fallback), not "".
+    arc, acause = run_self_test_out(ROOT / ALLIANCE_PARTNER)
+    want("verify-selftests-wired's own self-test stays green (the alliance gate)",
+         [arc] + ([acause] if arc else []), [0])
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (43 cases, no checker is run)")
+    print("SELF-TEST OK (44 cases, one alliance self-test runs: verify-selftests-wired)")
     return 0
 
 
