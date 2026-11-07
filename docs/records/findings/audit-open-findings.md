@@ -5452,3 +5452,41 @@ snapshot pair) is graded through its live wiring and the components' cases, not 
 a unit. A future checker added to the tree re-enters the census automatically; the
 machinery that grades it is now itself graded. The campaign this goal spawned is
 complete; the tree keeps its gates either way.
+
+### Round 113 (2026-11-08) — check.sh beyond the alliance: two bridge lints, one dead scanner
+
+With the campaign closed at r112, the sweep widened to the repo's own gate suite and
+`scripts/check.sh` was re-run from the top. Steps 04-10 pass after two kasirmu-bridge
+fixes: `b010c8b0a` clears three clippy lints in data/helpers.rs (the nested if at the
+export-date-window guard became a let-chain, and two `map_or(true, …)` became
+`is_none_or(…)`), `8e8c98814` clears the rustdoc `private_intra_doc_links` warning by
+de-linking the module-private `export_date_window` in the module doc.
+
+Step 11 (scoped authorization, H-1b) then failed with an awk SYNTAX ERROR, not a
+finding: `awk: cmd. line:1: crates/kasirmu-bridge/src/analytics.rs` -- the gate's own
+subject file parsed as the awk PROGRAM. Archaeology: `d3dc89c38` ("extract
+run_classifier so the self-test drives the single awk invocation site") rewrote the
+invocation as `awk -v PERM -v STORE -v LISTED "$@" "$AWK_PROG"` -- program AFTER the
+args -- while the live scan passes `(find ...)` through `"$@"`, so the first find()
+result became the program and every live run since has died before scanning anything.
+The self-test stayed green for weeks because all seven of its cases drive stdin and
+never a file argument: the wrapper-order seam was invisible to the very cases the
+extraction added. `41ed8ff3e` puts the program first, converts the three call sites to
+the POSIX file-position assignment form (`SRC="..."`), and adds an eighth case that
+drives a FILE through the argument position -- the only path that can catch this class.
+Probe, measured: with the broken order restored, all 8 cases red; under the same
+breakage the pre-fix seven stdin cases were green, which is exactly how it shipped.
+The scanner is alive again: --strict reports 379 scanned, 36 explained, UNREASONED: 0,
+exit 0, and check.sh step 11 passes.
+
+Honest limit, environmental and machine-level, NOT a repo defect: check.sh steps beyond
+11 (the nextest workspace runs) cannot complete on this checkout right now -- rust-lld
+fails with "could not open 'kernel32.lib'" and sibling SDK libs. Measured this round:
+the MSVC toolset (14.44.35207, msvcrt.lib present) and the Windows SDK (10.0.26100.0,
+kernel32.lib present) are intact on disk, but `vswhere -all` reports NO instances --
+the VS BuildTools instance registration is broken; 333 linked .exe files under
+target/debug/deps (newest 2026-11-07) prove linking worked the day before, so the
+registration was lost between then and now. A VS-Installer repair is a machine-level
+operation on a shared machine and was not attempted. The bridge fixes are verified by
+`cargo clippy -p kasirmu-bridge --all-targets -- -D warnings` (exit 0, link-free);
+crate tests additionally need the linker environment repaired.
