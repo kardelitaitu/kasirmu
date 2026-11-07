@@ -4571,3 +4571,39 @@ between the two gates is ungraded — widening it would mean parsing a parenthes
 ROOT / piece expression, which the r82 parse style could do but this round did not).
 The flag search is the same quoted-literal rule as SELF_TEST_FLAG, so unquoted
 invocation prose stays out, as intended since round 80.
+
+### Round 88 (2026-11-07) — the audit dirs are held equal from both sides
+
+The r87 card named the seam its own walk could not grade: the harness's CENSUS_DIRS and
+the alliance partner's CHECKER_DIRS are the same three dirs TODAY, and nothing held them
+equal — one gate could widen (or lose) its audit scope alone, and the unshared dirs would
+go ungraded by the other gate silently. Measured both texts: the harness writes the tuple
+as plain quoted whole paths; the partner writes each dir as a ROOT / "piece" / ...
+expression, so its parse must join quoted pieces between commas (r82-style source parse,
+with whole-line comments dropped first — the round-83 primitive — so a commented entry
+cannot count; a missing block parses to [] and reddens).
+
+Two commits, one per gate, each case reading the other's EXISTING constant — the mirrors
+are independent and either order lands green:
+- 0e32bbbcc (partner): harness_census_dirs() + two cases (pure tuple read, live mirror),
+  6 -> 8 cases; the self_test docstring now names its two live reads honestly.
+- 5c5357130 (harness): _parse_partner_dirs() + three cases (pure ROOT-piece join, missing-
+  block refusal, live mirror), 80 -> 83 cases; the r86 case's synthetic partner OK line
+  updated to the partner's new 8-case shape.
+
+First landing caught a real platform fact: the partner's expected list used
+str(d.relative_to(ROOT)), which yields backslashes on Windows, against the harness's
+posix tuple — the SELF-TEST fired on the separator before any commit. as_posix() on both
+sides is the fix, and the probes patch the same lie family afterwards.
+
+Kill directions (both gates): a lying-always-equal parser is CAUGHT by its own pure case
+on each side; a blind refusal is CAUGHT (the refusal case pins the empty parse, and the
+live mirror reddens); controls green — harness 83 cases exit 0, partner 8 cases. Full
+survey 109 checker(s), 0 SURVIVED, 109 killed, 0 RELOCATION-SENSITIVE, 0 NO MUTATABLE
+FUNCTION, 0 PATH ALREADY RED, exit 0.
+
+Honest limits: the mirror grades DIR EQUALITY, not purpose — if one gate renamed its
+constant or moved its list out of source (say into a config file), both parsers parse to
+[] and both mirror cases redden together: loud, but the diagnosis ("missing block") would
+point at the wrong rename until someone reads the diff. The partner's RUNNERS block
+remains a separate sync question (graded since r82's two-sided diff).
