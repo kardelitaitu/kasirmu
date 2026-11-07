@@ -428,6 +428,23 @@ def want_inventory(text: str) -> int:
     return len(re.findall(r"^[ \t]+want\(", _drop_comment_lines(text), re.M))
 
 
+def self_test_command(path: Path) -> list[str]:
+    """The interpreter a checker's extension implies -- pure, so the mapping is
+    gradeable without running anything. Round-96: the dispatch lived inline in
+    run_self_test_out, and a missing interpreter crashed the sweep with an
+    unhandled FileNotFoundError instead of a named verdict. .sh must go through
+    Git's bash by FULL PATH, never a bare "bash": on this workstation the bare
+    name resolves to WSL, which cannot see the Windows tree and exits 127 -- a
+    checker that never ran, which at the sweep level would have read as every
+    .sh self-test "catching" every mutation."""
+    suffix = path.suffix
+    if suffix == ".sh":
+        return [GIT_BASH, str(path), "--self-test"]
+    if suffix == ".mjs":
+        return ["node", str(path), "--self-test"]
+    return [sys.executable, str(path), "--self-test"]
+
+
 def run_self_test_out(path: Path) -> tuple[int | None, str]:
     """Run the checker's --self-test with the interpreter its extension implies.
 
@@ -436,21 +453,13 @@ def run_self_test_out(path: Path) -> tuple[int | None, str]:
     a verdict that names no cause sends the operator re-running the failure by
     hand. An empty cause means the run passed or left nothing to quote.
     """
-    suffix = path.suffix
-    if suffix == ".sh":
-        # Git's bash by FULL PATH, never a bare "bash": on this workstation the bare name
-        # resolves to WSL, which cannot see the Windows tree and exits 127. That is not a
-        # killed mutation, it is a checker that never ran -- and at the sweep level it would
-        # have read as every .sh self-test "catching" every mutation.
-        cmd = [GIT_BASH, str(path), "--self-test"]
-    elif suffix == ".mjs":
-        cmd = ["node", str(path), "--self-test"]
-    else:
-        cmd = [sys.executable, str(path), "--self-test"]
+    cmd = self_test_command(path)
     try:
         r = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=300)
     except subprocess.TimeoutExpired:
         return None, "self-test timed out after 300s"
+    except FileNotFoundError:
+        return None, "self-test could not run: interpreter " + cmd[0] + " not found"
     return r.returncode, failure_cause(r.stderr, r.stdout)
 
 
@@ -1533,6 +1542,15 @@ def self_test() -> int:
          alliance_grade(2, "its own cause") != [0], True)
     want("a timeout is not the green grade either",
          alliance_grade(None, "timeout") != [0], True)
+    # ── the interpreter resolution is graded, not assumed (round-96) ───────────
+    want("the .sh interpreter resolves (Git's bash by full path, never bare)",
+         Path(GIT_BASH).exists(), True)
+    want("the .mjs interpreter resolves (node on PATH)",
+         shutil.which("node") is not None, True)
+    want("the dispatch maps each suffix to its interpreter",
+         [self_test_command(Path("a.sh"))[0] == GIT_BASH,
+          self_test_command(Path("a.mjs"))[0] == "node",
+          self_test_command(Path("a.py"))[0] == sys.executable], [True, True, True])
     # ── the declaration predicate is comment-blind (round-95) ─────────────────
     want("a quoted flag in a comment does not declare a self-test",
          declares_flag('# add a "--self-test" mode someday'), False)
