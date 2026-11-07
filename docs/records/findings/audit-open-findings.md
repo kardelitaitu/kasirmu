@@ -3426,3 +3426,36 @@ Honest limits this round: the error message for an unparseable pubkey merged fro
 "Failed to parse updater pubkey:" into "Failed to verify updater signature:" (the
 underlying parse error text still names the cause); the root cause of the mid-session
 link-env loss is not pinned -- only its mechanism and reproducibility are recorded.
+
+### Round 62 (2026-11-07) — a relocation verdict that was never the checker's fault; the survey is fully measured again, 93/0/0/3
+
+`d8b5003f` gives check-updater-compat.mjs a real --self-test mode: the phases that
+need no Rust (generate-latest-json round-trip, Node-verifier agreement, keyid match,
+committed pubkey parse, both child self-tests) are ALWAYS graded — the census floor stays
+meaningful — while the Rust-harness phases attempt the build and, when the toolchain
+cannot answer, PRINT the skip and name the bare run as their grader (it still refuses
+with exit 2). Proven in both shapes: healthy toolchain -> 10 checks, full run incl.
+harness; simulated dead linker (bogus RUSTC_WRAPPER) -> 7-check subset, exit 0, skips
+printed; bare run under the same simulation -> FATAL exit 2, refusal kept. The staged
+control in the genuinely broken-for-fresh-compiles linker environment now exits 0 —
+the exact condition that produced exit 2 under the old code.
+
+`184d306f` is the deeper finding: THE SURVEY NEVER RESTORED A CHECKER'S STAGED
+BYTES AFTER ITS MUTANT RUN. The relocation verdict on check-updater-compat was produced
+by the harness itself: verify-updater-signature.mjs runs earlier (verify-*.mjs before
+check-*.mjs), its gutted mutant stayed in the shared staged tree, and check-updater-compat's
+control then spawned the still-gutted file and failed with "verifyUpdaterSignature
+rejected a valid signature" — cross-checker contamination, not relocation. This also
+CORRECTS round 61's finding: the mid-morning "flip" was this poison (present only once
+round 61 made verify-updater-signature mutable — in round 60 it was NO MUTATABLE, so no
+mutant, no poison), not the cargo link environment; the linker failure is real for fresh
+staged compiles (serde_core/libc build scripts) but now degrades to the printed skip.
+Fix: the survey restores the original bytes after every mutant run; the harness self-test
+stays green; the full survey reads 93 killed, 0 SURVIVED, 0 RELOCATION-SENSITIVE,
+3 NO MUTATABLE, exit 0 — every mutable checker measured from a staged copy.
+
+Honest limits: the dead-toolchain shape was proven by simulation (a bogus RUSTC_WRAPPER),
+not by waiting for a live dead environment; the linker env's true state machine
+(healthy live builds vs failing fresh compiles in the same minutes) is still not
+root-caused. Remaining unmeasured: verify-deploy.mjs, verify-docker-digests.sh,
+verify-scoped-authorization.sh (NO MUTATABLE).
