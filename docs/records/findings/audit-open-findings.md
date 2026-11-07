@@ -3844,3 +3844,47 @@ failing the exit also means a single environment-broken checker (say, a missing
 interpreter for its subprocess) reddens an otherwise full survey — by design: the
 survey's product is a proven-clean sheet, and "clean except one row I could not read"
 is not that.
+
+### Round 71 (2026-11-07) — an unmeasured row now names its cause instead of discarding it
+
+Round 70 made every unmeasured verdict fail the exit; its honest limit said the harness
+still could not say WHY a self-test failed — run_self_test captured the run's output and
+threw it away (subprocess capture_output=True, returncode only). A PATH ALREADY RED row
+was a verdict token plus an exit number, and the operator's only move was to re-run the
+failure by hand.
+
+`b277bf1dd` closes that loop:
+
+- `failure_cause(stderr, stdout)` — the graded extractor. The LAST non-empty line of
+  stderr (self-tests print progress first, verdict last), stdout as fallback, blank
+  lines skipped, truncated to one table-width line. Five self-test cases pin each rule
+  (33 -> 38 cases).
+- `run_self_test_out(path)` — the run itself: (exit code, cause). The timeout branch
+  finally distinguishes itself: a TimeoutExpired now returns the cause string
+  "self-test timed out after 300s" instead of a bare None that read identically to any
+  other red run. `run_self_test` stays as the code-only wrapper every pre-r71 caller
+  relied on.
+- Survey rows grow a sixth field: PATH ALREADY RED and RELOCATION-SENSITIVE rows carry
+  their run's cause; KILLED/SURVIVED/NO MUTATABLE rows carry "" (a SURVIVED row's
+  self-test PASSED — there is no failure line to quote). main() prints each cause under
+  its row as "      cause: <line>".
+- Kill directions proven by monkeypatch: an extractor returning "" always is CAUGHT (the
+  four non-empty fixtures fail); an extractor that lies is CAUGHT; the control stays
+  38/38 green.
+- End-to-end demonstration (probe, not committed): a patched run returning
+  (1, "ModuleNotFoundError: No module named 'flask'") drives main() to print
+  "cause: ModuleNotFoundError: No module named 'flask'" under the red row, the r70 line
+  "survey: 1 row(s) unmeasured -- exit 1 by contract.", and exit 1 — the r70 exit
+  contract and the r71 cause line working as one unit.
+
+The green path was measured on the real thing again: full survey 108 checker(s),
+0 SURVIVED, 108 killed, 0 RELOCATION-SENSITIVE, 0 NO MUTATABLE, 0 PATH ALREADY RED,
+exit 0, ZERO cause lines printed — causes exist only where the survey has something to
+say, and at tip it has nothing.
+
+Honest limits: the cause is ONE line by design — a pointer for a human, not the log; a
+traceback whose last line is a generic wrapper (e.g. "SystemExit: 2") will point
+imprecisely, and the fix is reading the checker, not growing the row. The truncation at
+110 characters could clip a long generated sentence; the leading 107 characters have
+held every refusal sentence in this repo's checkers so far. The timeout cause names no
+checker-specific detail — the harness cannot know what the killed subprocess was doing.
