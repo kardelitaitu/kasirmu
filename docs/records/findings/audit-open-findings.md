@@ -4645,3 +4645,34 @@ concatenation (the AGENTS.md pathspec hazard) can mention a checker in a form no
 substring finds; that class of lie is unmeasured everywhere, not just here. And the
 claim covers census-shaped scripts only: a sole-provider HELPER stays invisible by
 design, pinned by its own case rather than hidden.
+
+### Round 90 (2026-11-07) — the CI plane is held to the mirror property too
+
+The r89 property had a blind spot by construction: the harness's wiring scan reads
+RUNNER_FILES, and RUNNER_FILES holds no .yml — while census_files()'s own docstring
+counts a workflow as DIRECT wiring. Measured across all five workflow files
+(android, dev-ci, docker-digest-drift, release, website): 105 script invocations, 84
+census-shaped, and the exclusive list is EMPTY — every workflow-invoked census-shaped
+script is also named in a runner file. The docstring's claim is true today only by
+REDUNDANCY, and nothing graded that.
+
+`e0a2781b5`: workflow_invocations() (the r83 comment primitive applied to YAML — a
+commented step cannot invoke anything) plus four cases (88 -> 92): extraction with
+comment-drop graded purely, the comment-alone refusal pinned, the dev-ci walk pinned to
+two real invocations (blind-lie direction), and the live mirror over ALL workflow files
+held empty through the r89 classifier (sole_orchestrator_wiring is generic; its docstring
+now says so). census_files()'s docstring states the machinery honestly: a workflow counts
+on the partner's scan directly, and on this harness's scan only through the graded
+round-90 redundancy.
+
+Kill directions: a blind CI walk is CAUGHT (the extractor's pure case); an
+always-mirrored classifier lie is CAUGHT (the r89 synthetic case reddens through the
+shared classifier); control 92/92 green. Both gates green: harness 92 cases exit 0,
+partner 8 cases; full survey 109 checker(s), 0 SURVIVED, 109 killed, 0
+RELOCATION-SENSITIVE, 0 NO MUTATABLE FUNCTION, 0 PATH ALREADY RED, exit 0.
+
+Honest limits: the mirror is graded against RUNNER_FILES' texts, inheriting their
+substring blindness (a concatenation-built invocation dodges it — unmeasured
+everywhere). The live case walks the workflows DIR each run; a workflow file with a
+non-.yml suffix (.yaml is covered; a new extension would be silently out) — the suffix
+tuple is pinned in the case's own code, so widening it is a visible diff.
