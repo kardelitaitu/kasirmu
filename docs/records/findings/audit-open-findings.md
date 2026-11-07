@@ -4072,3 +4072,50 @@ case, which grades the whole enumeration every run. The named list is still hand
 — it stays honest only because the coverage case (expected = carriers - excluded -
 harness) reddens the moment a named entry's file stops existing, stops self-testing, or
 a self-tested name joins no convention and no named list.
+
+### Round 76 (2026-11-07) — the two-gate alliance is itself two-gated
+
+Rounds 74 and 75 made the census and verify-selftests-wired share one runner
+vocabulary and one name convention, each held to the other by graded cases. What
+nobody graded was the pairing itself: every round, the operator ran BOTH gates by hand
+and read two green lines. If the partner's self-test went red — a case rotted, its
+temp-copy machinery broke — the census self-test stayed green and only a remembered
+manual step would notice. Round 76 closes that.
+
+`fae6c74ec`: the harness's self_test() now runs the partner's `--self-test` as a graded
+case through run_self_test_out — the survey's own runner, so the same timeout contract
+and the same failure_cause grading apply. The partner's flag is itself wired (check.sh
+"self-tests wired self-test" step at :1253, dev-ci.yml:1611) and its self-test costs
+473 ms, so the harness self-test goes from ~0.15 s to ~0.62 s total — cheap enough that
+check.sh can keep running the case set per commit. The closing print now says
+"(44 cases, one alliance self-test runs: verify-selftests-wired)" — the old
+"no checker is run" line was a property of the case set, and the property changed, so
+the line changed with it.
+
+Deliberately one-directional: the harness grades the alliance; the partner never runs
+THIS self-test. A symmetric case would recurse (partner's self-test runs the harness's
+self-test runs the partner's...). The wiring dimension stays bidirectional — check.sh
+invokes both gates, and the partner's own corpus polices the harness's flag as one of
+its 105 declared self-tests.
+
+Measured correction mid-round: the first cut expected [rc, ""] — failure_cause returns
+the partner's OK LINE on a green run (stdout fallback, r71 semantics), not "" so the
+case fired wrongly on the live tree and the harness self-test went red on its own
+invention. The honest shape: the cause rides along only when red
+(`[arc] + ([acause] if arc else [])` vs [0]) — green is exactly [0]; red shows the
+partner's own failure line in the want message.
+
+Kill directions: a lying runner (patched to return (1, "fabricated failure")) is
+CAUGHT; a partner copy whose self-test exits 2 (temp file, pointed at via the new
+ALLIANCE_PARTNER pathspec) is CAUGHT with its real cause line in the message; control
+44/44 green. Both gates green: harness 44 cases exit 0, partner 6 cases, full survey
+108 checker(s), 0 SURVIVED, 108 killed, 0 RELOCATION-SENSITIVE, 0 NO MUTATABLE, 0 PATH
+ALREADY RED, exit 0.
+
+Honest limits: the alliance case trusts run_self_test_out's subprocess to behave like
+check.sh's invocation of the partner — same interpreter (sys.executable vs python3 in
+check.sh), same tree, no env pinning; a divergence that only manifests under check.sh's
+environment would need a check.sh-side case, which is the r73 boundary (the pipeline
+runs graded cases only, the survey stays manual). The partner's self-test internally
+runs ITS bare gate against a temp copy of the live tree — so the census self-test now
+costs one git-ls-files-free scan of three script dirs, still side-effect-free.
