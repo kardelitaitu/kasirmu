@@ -4783,3 +4783,47 @@ the dir plus a bare basename) would rot the claim even though the checker still 
 that form would need a chdir-aware parser, not attempted here. The partner pins the
 same pair the harness pins, but the two gates do not cross-grade each other's collision
 sets — agreement today is by both pinning the same shape, not by a mirror case.
+
+### Round 94 (2026-11-07) — the OK line's case count is derived, not a literal
+
+The r93 card named the collision-set mirror as the next candidate, but measuring it
+first showed the mirror adds no new enforcement: each gate's pin already grades its own
+live set, and the sets' corpora (census 109, audited 102) differ by design, so equality
+would overclaim and containment is implied by the hard gate. Meanwhile the OTHER named
+limit (cd-then-bare invocation) measured clean — check-auditor-selftests.sh cds only to
+the root and invokes every auditor checker by full relative path. What the measuring
+UNCOVERED instead was bigger: the case counts in both gates' OK lines are
+hand-maintained literals, and they had drifted. This gate's self-test printed
+"SELF-TEST OK (98 cases" while its source holds 92 want() call sites; the partner
+printed 12 while holding 11; and the alliance fixture (the round-76 green-drop case)
+still quoted the partner's 8-case line from before rounds 91-93 grew it. A count no
+case reads is a lie with tenure — the exact disease the census exists to catch, found
+in the gates' own OK lines.
+
+`62e690b63`: both gates now DERIVE the count — want_inventory() counts line-start want(
+call sites on comment-stripped source (every call site opens its own line in both
+gates; prose is immune), and the OK print reads its own file. The harness adds
+ok_line_count() and six cases: the parser's two directions, the round-76 fixture tied
+to the partner's live inventory (a partner case added without the harness noticing now
+impossible), the partner's LIVE OK count graded against its inventory, and both OK
+prints pinned to their derivation (a revert to a literal reddens). The printed 98 —
+which was the lie — becomes true by construction: 92 original sites plus six new cases.
+
+Two draft-catches before green, both worth recording. First, the print-pin cases'
+filter matched the cases' OWN source lines (they contain the strings "SELF-TEST OK" and
+"print(" literally) — [0, 0, 1] instead of [1]; fixed with a startswith("print(")
+filter. Second, the first want_inventory used a regex-all counter whose own DOCSTRING
+mentioned want() — a prose-mention inflation; replaced with line-start counting, which
+also matches the historical numbers exactly (92/11 before the new cases).
+
+Kill directions (disk-edit probes, byte-exact restore verified): reverting the harness
+print to a literal is CAUGHT (the derivation pin); reverting the partner print to its
+old 12-literal is CAUGHT (the live OK count reads 12 against inventory 11); control
+green 98/98 and 11/11. Both gates green; full survey 109 checker(s), 0 SURVIVED,
+109 killed, 0 RELOCATION-SENSITIVE, 0 NO MUTATABLE FUNCTION, 0 PATH ALREADY RED, exit 0.
+
+Honest limits: the printed number means CALL SITES — three sites in this gate's
+parse-refused block fire once per parsed suffix, so runtime assertions exceed sites;
+the number is "cases" in the census's sense, now defined rather than remembered. A
+want() helper invoked outside self_test would still inflate the static count — none
+exists, and the line-start shape makes one visible in review.
