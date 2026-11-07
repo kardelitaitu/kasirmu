@@ -445,6 +445,50 @@ def _link_or_copy(real: Path, mirror: Path) -> None:
                         ignore=shutil.ignore_patterns(*SKIP_NAMES))
 
 
+#: The self-test capability marker: the argparse flag INSIDE a quoted literal.
+#: A substring search is not a census -- verify-website-assets.py MENTIONS
+#: --self-test in a paragraph explaining why it has none, and that prose was
+#: once read as a capability (it then errored "unrecognized arguments",
+#: recorded in the round-51 survey as PATH ALREADY RED).
+SELF_TEST_FLAG = re.compile(r"""["']--self-test["']""")
+
+#: Self-tested scripts deliberately OUTSIDE the census: no running pipeline
+#: depends on them (measured 2026-11-07 against scripts/check.sh,
+#: .githooks/pre-push, the GitHub workflows and both package.json manifests).
+#: self_test() holds this list to the criterion with census_carriers() and
+#: pipeline_references(): a pipeline that starts depending on one of these
+#: reddens the self-test until the file joins the census, and a new
+#: self-test-carrying script that lands without a census membership reddens it
+#: too -- the round-66 failure mode, where eleven self-tested checkers ran
+#: unmeasured under a copied glob list while 96 rows read as the world.
+CENSUS_EXCLUDED = (
+    "scripts/allowlist-schema.py",
+    "scripts/sign-plugin.py",
+    "scripts/restaurant-coverage.py",
+    "scripts/extract-updater-seed.py",
+)
+
+
+def pipeline_references(name: str) -> list[str]:
+    """Pipeline files mentioning `name` -- the wiring half of the criterion.
+
+    A reference is necessary-but-not-sufficient evidence of wiring, which is
+    the honest direction for holding CENSUS_EXCLUDED: the moment ANY pipeline
+    names an excluded file, the self-test reddens and a human decides whether
+    the file belongs in the census.
+    """
+    hits = []
+    for rel in ("scripts/check.sh", ".githooks/pre-push",
+                "website/package.json", "ui/package.json"):
+        p = ROOT / rel
+        if p.exists() and name in p.read_text(encoding="utf-8", errors="replace"):
+            hits.append(rel)
+    for wf in sorted((ROOT / ".github" / "workflows").glob("*.y*ml")):
+        if name in wf.read_text(encoding="utf-8", errors="replace"):
+            hits.append(wf.relative_to(ROOT).as_posix())
+    return hits
+
+
 def census_files() -> list[Path]:
     """Every self-tested, pipeline-wired script the sabotage survey grades.
 
@@ -454,8 +498,8 @@ def census_files() -> list[Path]:
     files were invisible to exactly such a copy while 96 rows read as the world).
     Membership criterion: the script carries a quoted --self-test AND a running
     pipeline (check.sh step, pre-push, workflow, website package.json) depends
-    on it. Scripts that self-test but no pipeline runs are out, named in the
-    comment below.
+    on it. Scripts that self-test but no pipeline runs are out, listed in
+    CENSUS_EXCLUDED and held there by self_test().
     """
     files = []
     for base, pattern in (
@@ -478,9 +522,9 @@ def census_files() -> list[Path]:
     # Named outright, round-66 census: self-tested scripts whose verdicts gates
     # depend on but whose names match no convention above -- two check.sh steps
     # each, one dev-ci step, one release-workflow signer, and the pre-push
-    # orchestrator itself. Deliberately NOT censused (checked 2026-11-07):
-    # allowlist-schema.py, sign-plugin.py, restaurant-coverage.py and
-    # extract-updater-seed.py carry --self-test but no pipeline runs them, and
+    # orchestrator itself. Deliberately NOT censused: the four scripts listed
+    # in CENSUS_EXCLUDED carry --self-test but no pipeline runs them (the
+    # harness self-test holds that list to the criterion), and
     # sabotage-selftests.py is this harness.
     files.extend(ROOT / "scripts" / name for name in (
         "backup-db.sh", "restore-db.sh",
@@ -488,12 +532,33 @@ def census_files() -> list[Path]:
         "scan-unwrap-panic.py", "generate-pg-migration.py",
         "generate-latest-json.mjs", "run-pre-push.py",
     ))
-    # A substring search is not a census: verify-website-assets.py MENTIONS --self-test
-    # in a paragraph explaining why it has none, and that prose was read as a capability
-    # (it then errored "unrecognized arguments", recorded here as PATH ALREADY RED).
-    # Require the argparse flag itself, i.e. the string inside a quoted literal.
-    flag = re.compile(r"""["']--self-test["']""")
-    return [f for f in files if flag.search(f.read_text(encoding="utf-8", errors="replace"))]
+    return [f for f in files if SELF_TEST_FLAG.search(f.read_text(encoding="utf-8", errors="replace"))]
+
+
+def census_carriers() -> list[str]:
+    """Tracked scripts quoting the self-test flag, derived INDEPENDENTLY.
+
+    git ls-files over the census roots -- not a call into census_files(). This
+    re-derivation is what self_test() grades the census against, so a glob that
+    rots (round-66's failure mode) shows up as a DIFFERENCE between the two
+    instead of agreement between two copies of the same assumption.
+    """
+    out = subprocess.run(
+        ["git", "ls-files", "scripts", "website/scripts",
+         ".agents/skills/docs-auditor/scripts"],
+        cwd=ROOT, capture_output=True, text=True, check=True,
+    )
+    carriers = []
+    for rel in out.stdout.splitlines():
+        p = ROOT / rel
+        if p.suffix not in (".py", ".sh", ".mjs"):
+            continue
+        try:
+            if SELF_TEST_FLAG.search(p.read_text(encoding="utf-8", errors="replace")):
+                carriers.append(rel.replace("\\", "/"))
+        except OSError:
+            continue
+    return carriers
 
 
 def survey(limit: int | None, skip: int = 0) -> list[tuple[str, str, int, int, str]]:
@@ -559,13 +624,15 @@ def survey(limit: int | None, skip: int = 0) -> list[tuple[str, str, int, int, s
 
 
 def self_test() -> int:
-    """Grade the MUTATOR, which is the part that can lie silently.
+    """Grade the two parts that can lie silently: the MUTATOR and the CENSUS.
 
     A mutation harness has one failure mode worth fearing: producing a mutation that is
     not one. A blanked function that leaves a syntax error makes every self-test "fail"
     and scores as KILLED while proving nothing -- the harness would report a clean sheet
-    over checkers it never tested. So the cases here are about the mutants being VALID:
-    parsable, brace-balanced, and actually different from the source.
+    over checkers it never tested. So the mutant cases are about the mutants being VALID:
+    parsable, brace-balanced, and actually different from the source. The census cases
+    hold census_files() to its own membership criterion (round-66: a hand-copied glob
+    list hid eleven self-tested checkers while 96 rows read as the world).
     """
     import subprocess as sp
 
@@ -634,10 +701,30 @@ def self_test() -> int:
     want("template literals do not leak braces",
          [c[0] for c in text_functions(tpl_fixture, MJS_FUNC, js=True)], ["f"])
 
+    # ── the census is held to its own membership criterion (round-66 lesson) ──
+    carriers = set(census_carriers())
+    censused = {f.relative_to(ROOT).as_posix() for f in census_files()}
+    expected = carriers - set(CENSUS_EXCLUDED) - {"scripts/sabotage-selftests.py"}
+    missing = sorted(expected - censused)
+    extra = sorted(censused - expected)
+    if missing:
+        bad.append("census misses self-tested script(s): " + ", ".join(missing))
+    if extra:
+        bad.append("census grades non-carrier(s): " + ", ".join(extra))
+    want("the census is not empty", bool(censused), True)
+    want("every excluded script still exists",
+         all((ROOT / rel).exists() for rel in CENSUS_EXCLUDED), True)
+    for rel in CENSUS_EXCLUDED:
+        refs = pipeline_references(Path(rel).name)
+        if refs:
+            bad.append(f"{rel} is now pipeline-wired ({', '.join(refs)}) — it must join the census")
+    want("the harness is never its own subject",
+         "scripts/sabotage-selftests.py" not in censused, True)
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (15 cases, no checker is run)")
+    print("SELF-TEST OK (20 cases, no checker is run)")
     return 0
 
 
