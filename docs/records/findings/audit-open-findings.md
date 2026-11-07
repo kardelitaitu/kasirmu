@@ -5146,3 +5146,28 @@ dev-ci.yml and check.sh") is graded only for presence, not for accuracy against 
 current RUNNERS list — if the canonical runners ever move, the remedy must be edited
 by hand; a checker-grade for that direction would mean parsing a string for a policy,
 which is the kind of audit this campaign has learned to distrust.
+
+### Round 103 (2026-11-07) — the unmeasured banner claimed an exit code it did not control
+
+Verification before writing found a REAL falsehood, not just an ungraded inline
+block. The banner main() printed beside unmeasured rows said "exit 1 by contract" —
+true in the corner it usually fires in, FALSE when a staged write-through fires too:
+survey_exit() returns 2 there, and the banner printed one line above it promised 1.
+The old wording was a leftover of the r51-era contract when the exit had one failure
+shape; survey_exit has graded both shapes (rows → 1, through → 2) since r97.
+
+`8c3197e50` extracts unmeasured_banner(rows) and corrects the claim to what its own
+arithmetic guarantees: "N row(s) unmeasured -- an exit 0 would contradict the table
+above it." The count is the SAME arithmetic survey_exit uses (every non-KILLED
+verdict), now derived in one named function instead of two inline derivations that
+merely happened to agree. Full-run output is unchanged (the banner is empty on a
+clean survey; today's run: 109/0/109/0/0/0, exit 0). +1 harness case (124→125,
+derived): the banner counts every non-KILLED row, claims no exit code, and is empty
+when every row killed. Kill directions: an undercounting banner (survivors only) is
+CAUGHT; a silent banner is CAUGHT; the return of the exit-1 claim is CAUGHT; control
+green.
+
+Honest limits: the banner and survey_exit still derive their counts separately — the
+agreement is graded, not shared code; unifying them would mean survey_exit returning
+a richer value than an int, a contract change this round did not want to make. The
+per-row table lines remain ungraded (r101's limit, still true).
