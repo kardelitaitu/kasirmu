@@ -5091,3 +5091,31 @@ through the pure alliance_grade(None, ...) arithmetic — simulating a real time
 a self-test case would cost the timeout itself. The runner_files attic case is
 vacuously clean today (no .y*ml under attic/); its value is the guard on the rename
 direction, not a current catch.
+
+### Round 101 (2026-11-07) — the survey summary, extracted and graded
+
+The slice contract had a graded half and an assumed half. slice_error() and
+survey_slice() were graded (r84/r97): which slices are refused, which checkers a
+slice measures. What the OPERATOR is told was not: the summary line was built
+inline in main() — two different formats, chosen by whether --limit/--skip was
+given — and nothing graded that a chunked run's summary can never read as a full
+census. That is the round-66 disease in slice form, and the r97 slice cases grade
+the MEASUREMENT while the MESSAGE beside it went unmeasured.
+
+`dd921a8e7` is a behavior-preserving extraction plus grading: survey_summary(rows,
+skip, limit, censused) now builds both forms (sliced line names skip, limit and the
+census denominator; full line keeps the per-verdict parentheticals), main() prints
+it, and the inline duplication is gone. +2 harness cases (122→124, derived): a
+chunked summary names the slice and never matches the full-census phrasing; a full
+summary keeps the parentheticals and carries no slice marker. Kill directions: a
+summary that flattens to bare OK is CAUGHT; one that drops the denominator is
+CAUGHT; a chunked run summarized as a full census is CAUGHT; controls green.
+
+Honest limits: the per-row table lines and the STAGED WRITE-THROUGH banner are
+still printed directly by main() and ungraded — only the summary line, the one
+that answers "did I just measure everything?", moved into a graded function.
+The round's first patch run also caught two of its own defects live (an
+expectation miscounted from its own fixture rows, and main() still referencing a
+local the extraction removed — NameError on every real run); both fixed before
+any gate run was trusted, which is the draft-catch doing its job on the harness
+itself.
