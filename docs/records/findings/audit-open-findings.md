@@ -5263,3 +5263,36 @@ Write-Output — a runner language with another print verb would slip the classi
 the class is a measurement-driven snapshot, not a grammar. And CALL_RE's other
 imprecision named at r74 (a trailing comment on a live line counts) remains graded
 as accepted behavior, not fixed.
+
+### Round 107 (2026-11-08) — the dispatch's argv shape and its silent fallback
+
+self_test_command's dispatch cases graded only the interpreter ([0]); the argv SHAPE
+was ungraded, and so was the FALLBACK branch. Two latent diseases, both named now:
+
+- The flag must stay LAST. "python --self-test a.py" is a usage error for every
+  checker at once -- a dispatch refactor that reorders the argv would turn the whole
+  survey into 109 simultaneous failures with a cause that names Python's option
+  parser, not the refactor. Graded: [1:] == ["<file>", "--self-test"] for all three
+  suffixes.
+- The FALLBACK is a named trade-off, not an accident: any suffix not .sh/.mjs runs
+  under Python. Measured 2026-11-08, the census holds only .py/.mjs/.sh
+  (109 = 84 + 16 + 9), so a sixth extension (a .ps1 checker) would run here SILENTLY
+  and fail with a Python SyntaxError instead of a verdict that says "no interpreter
+  known for this suffix". The fallback is pinned as behavior (a.ps1 -> sys.executable,
+  argv shape identical) with the trade-off named in the dispatch's own comment; the
+  day a sixth extension enters scope, the pin forces the conscious choice: add the
+  branch, or accept the misleading cause -- in writing.
+
+`38f122649` (+1 case, 127->128, derived). Kill directions: the flag moving to the
+front is CAUGHT (via the alliance cascade -- the partner run itself breaks, which is
+the graded catastrophe in miniature); the flag dropped is CAUGHT directly; the
+fallback dispatching to node is CAUGHT; control green. Full survey 109/0/109/0/0/0,
+exit 0.
+
+Honest limits: the fallback pin GRADES the silent behavior, it does not FIX the
+misleading cause a sixth extension would produce -- a named "unknown suffix" verdict
+would be strictly better and is a candidate for the round that needs it (the census
+guard would surface the sixth extension first, so the misleading cause is doubly
+buffered). And the alliance-cascade probes (A, C) red through the partner's case
+rather than the new case alone -- acceptable: the new case narrows the cause, the
+cascade proves the blast radius.
