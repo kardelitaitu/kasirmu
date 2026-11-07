@@ -5354,3 +5354,35 @@ would parse as path "old -> new" (a survey never stages renames, so the live ris
 is nil). The grammar's character class is the v1 enumeration from git's docs as
 observed (MADRCUTX?!B plus space); a future git adding a letter would red element 1
 and force the conscious widening -- that is the case working, not a defect.
+
+### Round 110 (2026-11-08) — the junction property: staged siblings read live bytes
+
+The LAST ungraded harness def (the r98 census now reads 51 defs, zero unnamed):
+_link_or_copy junctions every top-level sibling into the staged tree so
+__file__-relative reads reach the REAL bytes -- a claim the r98 case graded only as
+existence (the mirror is there, its rglob non-empty), never as the junction
+property itself. `f687073e6` (+1 case, 130->131, derived) grades the live
+property on a temp fixture: a file written into the real dir AFTER linking must be
+readable through the mirror. A junction gives "late"; the copytree fallback gives
+"<missing>" and reds -- which is deliberate: the fallback is the named degradation
+for non-Windows/denied environments, and if this workstation ever degrades to it,
+the self-test must turn red so the operator accepts the weaker guarantee
+consciously (the same rule the r109 grammar pin follows). Seed visibility (works
+for both branches) is graded alongside so the case reds on a no-op or an empty
+shell too.
+
+Measured: mklink /J inside a temp tree, through-read works, TemporaryDirectory
+cleanup removes the junction cleanly. One operational note: two gate runs this
+round exceeded the default 120s tool deadline (four full self-tests in one call;
+each self-test runs the alliance partner live) -- the probe script and the survey
+need the 600s budget, as the survey always has. Kill directions: link never
+happens is CAUGHT, a copy-instead-of-junction is CAUGHT (the named degradation
+trips the pin), an empty shell is CAUGHT; control green. Full survey
+109/0/109/0/0/0, exit 0.
+
+Honest limits: the case pins THIS machine's junction behavior; on a machine where
+junctions are denied, the self-test is red BY DESIGN until the operator amends the
+case -- an intentional tripwire, not a portability defect. The SKIP_NAMES filtering
+inside the fallback's copytree remains graded only by _overlay's cases (the
+fallback path itself is not exercised -- faking mklink failure would grade the
+mock).
