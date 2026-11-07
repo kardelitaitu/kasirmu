@@ -4903,3 +4903,45 @@ names the sweep's missing-interpreter verdict, which lands as PATH ALREADY RED w
 cause carried and exit 1 by contract. Honest limits: "red before any mutation" is not
 literally true for a missing interpreter, but the row's contract (unmeasured, exit 1,
 cause named) is preserved; interpreters are graded for resolution, not version.
+
+### Round 97 (2026-11-07) — the survey's exit contract is graded, not remembered
+
+The r96 card's candidates — survey_exit's unmeasured contract, the junction
+writethrough guard — measured TRUE and then took a turn this register should record
+honestly. Two sessions worked the same seam in the same hour: this session's recon
+grepped self_test with a line limit and a single-line pattern, found no cases for
+survey_exit, junction_writethrough or survey_slice, and landed six cases — while the
+other session's cases for the SAME three functions were landing concurrently
+(their writethrough row vocabulary is wider: staged additions, deletions,
+prior-dirt, empty-after; their exits are per-verdict; their slice cases cover
+mid-census order). The docstring's promise ("graded in self_test with synthetic
+lists") was TRUE by the time this session's cases landed; the recon that called it a
+lie was truncated — the exact truncated-hit-list trap the AGENTS.md dead-screen rule
+names, this time in a grep. A claim of grading with no grading was found; it turned
+out the measurement was the lie, not the claim.
+
+`0c4e07391`: one commit carries BOTH sessions' case sets, swept consciously and
+vouched: the union's self-test is green (110 cases — 104 pre-existing, six from this
+session, the rest the other session's), the sets are same-purpose and complementary,
+and the shared-tree alternative was leaving the file dirty for a third lane to sweep
+silently (the r96 disease, applied forward instead of discovered after). What the
+union now grades: only an all-killed, clean-tree survey exits 0 and every unmeasured
+verdict (SURVIVED, PATH ALREADY RED, RELOCATION-SENSITIVE, NO MUTATABLE FUNCTION)
+fails it; a write-through fails it even with every row killed; the writethrough guard
+reports only NEW tracked lines ('??' scratch is benign, prior dirt is not re-reported,
+deletions and staged additions are reported); consecutive --limit/--skip chunks
+partition the census exactly, in order, without overlap or gap, and no limit slices
+to the tail.
+
+Kill directions: survey_exit lying green on unmeasured rows is CAUGHT (the r51
+disease, now impossible to reintroduce silently); the writethrough guard sleeping is
+CAUGHT; a slice that ignores the limit is CAUGHT (chunk overlap reds the partition
+case); control green. Both gates green (110 and 13); full survey 109 checker(s),
+0 SURVIVED, 109 killed, 0 RELOCATION-SENSITIVE, 0 NO MUTATABLE FUNCTION,
+0 PATH ALREADY RED, exit 0.
+
+Honest limits: the exit-contract cases grade the CONTRACT, not the sweep's row
+population — a sweep that enumerated nothing still exits 0, guarded only by the
+census-not-empty case one layer up. Redundant grading now exists by design (two
+independent case sets for one contract); neither set is a lie, and the redundancy is
+recorded here so a future dedup does not read it as drift.
