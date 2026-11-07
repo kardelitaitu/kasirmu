@@ -3580,3 +3580,70 @@ constant would redden the self-test yet would never be probed by the survey. The
 unreasoned count reaches zero — the header's own words). The survey being fully
 measured is a state, not a finish line: new checkers must arrive measured, and the
 harness's own blind spots (r62 restore, r63 stripper) were found by running it.
+
+### Round 66 (2026-11-07) — the census itself was incomplete: 96 was never the world; rewired to 107/0/0/0
+
+The "fully measured" milestone of round 65 stood on an enumeration nobody measured.
+The survey's file list was a hand-copied glob set that had drifted from the repo: five
+self-test-carrying, pipeline-wired website/scripts/check-* gates and six named
+scripts/ tools were invisible to it. 96 rows read as the whole world while the real
+census was 107 — the same failure mode the survey exists to catch, living in the
+survey's own head.
+
+`4bc5cfd3d` extracts census_files() as the ONE enumeration site: glob tuple gains
+("website/scripts", "check-*.py") and ("website/scripts", "check-*.mjs"); the named
+list gains census-orphan-modules.py, classify-finding-reachability.py,
+scan-unwrap-panic.py, generate-pg-migration.py, generate-latest-json.mjs,
+run-pre-push.py; the docstring states the membership criterion (a quoted --self-test
+literal AND a running pipeline depends on the file) and warns that copied glob lists
+rot. Deliberate exclusions are named, not silent: allowlist-schema.py, sign-plugin.py,
+restaurant-coverage.py, extract-updater-seed.py carry no running pipeline; the harness
+itself is not its own subject.
+
+The first survey on the new census came back RED on exit — 3 SURVIVED and 1
+RELOCATION-SENSITIVE among the 11 new rows. The gap was real defects, not
+bookkeeping, and each was fixed in the round-61 pattern (extract the live decision,
+grade the same function from the self-test, staged-probe the gutted cands[0] to
+KILLED before spending the survey):
+
+- check-doc-parity.py `3b99f1f1b` — the self-test graded census_problem only; the
+  per-page detectors were ungraded. frontmatter_text()/headings_text() extracted;
+  the WARN loop's wrappers delegate; six cases pin plain values, quote stripping,
+  absent key -> "", line-start anchoring, ##-level counting. Gutted parser -> exit 2.
+- check-seo.mjs `8c56845dc` — RELOCATION root cause: the self-test required a BUILT
+  site. Three module-level reads of website/dist (page walk, sitemap walk, the
+  dist/_headers read in parseHeaders) died with ENOENT from a staged copy, and the
+  live verdict then drove process.exitCode over that void. Now the walks and the
+  _headers read are guarded under --self-test (the block re-enters only pure
+  decisions); parseHeadersText() is extracted and graded both directions; walkAll
+  gets a tempdir fixture, so a gutted walker cannot hide behind "the self-test never
+  walks"; liveExitCode is still computed — the self-test pins it against the pure
+  re-computation — but no longer sets the exit code. Three iteration surprises are
+  recorded for the next person touching this file: the first guard missed the SECOND
+  walkAll at line 830; parseHeaders was entirely ungraded; and deleting the
+  liveExitCode binding broke the self-test's own pin at :1897 (the binding must
+  exist; only its exit-driving is conditional).
+- run-pre-push.py `d00e9120a` — the self-test asserted nothing about the bash
+  resolver. bash_candidates() extracted (pure); cases pin >=1 candidate, all named
+  bash.exe, the Program Files pair always absolute, and get_bash() resolving to an
+  existing bash.exe on Windows. Honest wrinkle: the first draft asserted EVERY
+  candidate absolute, which is FALSE in an environment without LOCALAPPDATA — the
+  third candidate is legitimately relative there and get_bash handles it via
+  exists(); the assertion was narrowed to the pair that is absolute by construction.
+- generate-pg-migration.py `d4acc1ec8` — registry_ids() fed render() but no
+  self-test case. _self_test_registry_ids drives the real parser over the real
+  migrations.rs (reached through the staged junction): non-empty, all .sql, no
+  repeats — 83 migrations in registry order. Gutted parser -> SystemExit 2.
+
+Proof: full survey 107 checker(s), 0 SURVIVED, 107 killed, 0 RELOCATION-SENSITIVE,
+0 NO MUTATABLE, exit 0. Live gates: all five self-tests exit 0 (the four checkers
+plus the harness's 15 cases).
+
+Honest limits: the census criterion depends on the --self-test literal and pipeline
+wiring STAYING true — a checker whose pipeline wiring disappears silently drops out
+of the census, so the completeness probe (staged census vs. an independent
+replication of the enumeration) is kept in .agents/r66-census.py and should be re-run
+whenever checkers are added or wiring changes. The survey still grades only cands[0]
+per file; functions below the first are measured exactly as far as each self-test
+reaches. The four excluded website scripts remain unmeasured until something runs
+them.
