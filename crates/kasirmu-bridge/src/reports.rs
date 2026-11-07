@@ -50,27 +50,23 @@ pub const MAX_TREND_CATEGORIES: i64 = 10;
 
 /// Resolve the session's store database for a report command.
 ///
-/// Port of the shell helper: resolve the session token, check the permission
-/// for session.user_id against the GLOBAL identity store (non-scope-aware, as
-/// the original was), then open the session's own store database.
+/// Check the permission for the session using `require_session_permission`
+/// (scope-aware, verifying that the user's role grants `permission` and their
+/// assignment covers `session.store_id`), then open the session's own store database.
 ///
 /// # Errors
 ///
 /// Returns BridgeError::InvalidSession for an unknown or expired token,
-/// BridgeError::PermissionDenied when the role lacks the permission,
-/// BridgeError::Internal when the store database cannot be opened, and
-/// BridgeError::Core for identity-store read failures.
+/// BridgeError::PermissionDenied when the role lacks the permission or the user's
+/// assignment does not cover the store, BridgeError::Internal when the store database
+/// cannot be opened, and BridgeError::Core for identity-store read failures.
 pub async fn resolve_report_scope(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
     permission: &str,
 ) -> Result<Arc<std::sync::Mutex<rusqlite::Connection>>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    {
-        let db = ctx.db.lock().await;
-        let identity_store = Store::new(&db);
-        ctx.require_permission_for_user(&identity_store, &session.user_id, permission)?;
-    }
+    ctx.require_session_permission(&session, permission).await?;
     ctx.db_manager
         .open_store(&session.store_id)
         .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))

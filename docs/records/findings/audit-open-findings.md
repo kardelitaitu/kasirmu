@@ -267,9 +267,13 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
   (T11b option iii), resolving silent failures on rollback detection. Pinned by
   `set_setting_refuses_spoofed_identity_without_active_session` and
   `set_setting_accepts_user_with_active_session_and_permission` in `settings_tests.rs`.
-- **BR-S7** — **[PBD]** `resolve_report_scope` authorises against the **global** identity db
-  (`crates/kasirmu-bridge/src/reports.rs:65`, `:67-69`) and then opens
-  `session.store_id`'s store db (`:71-73`) with no re-check of the binding between them.
+- ~~**BR-S7** — `resolve_report_scope` authorises against global db without re-check of store binding~~ —
+  **CLOSED 2026-11-07** (`fix(reports): enforce scope-aware session permission and store binding in resolve_report_scope (BR-S7)`).
+  `resolve_report_scope` in `crates/kasirmu-bridge/src/reports.rs:63-74` upgraded to call
+  `ctx.require_session_permission(&session, permission).await?`, validating the user's role permission,
+  active user status, and scoped store/branch assignment coverage over `session.store_id`, implementing
+  Owner Ruling R10 (scope-aware gate is authoritative). Pinned by
+  `scoped_report_enforces_store_binding_against_scoped_assignment` in `reports_tests.rs`.
 - **BR-S8** — **[PBD]** `get_customer_scoped` is the one customer door that fails on gate
   **kind** rather than gate order, and it is why the door is *not* delegated (ADR #49 §4:
   *"Gates that are not scope-aware stay not scope-aware; an extraction is not the place to

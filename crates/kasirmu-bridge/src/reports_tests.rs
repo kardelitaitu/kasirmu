@@ -164,6 +164,45 @@ async fn scoped_report_returns_conn_for_valid_session() {
     assert!(result.is_ok(), "valid session should resolve scope");
 }
 
+#[tokio::test]
+async fn scoped_report_enforces_store_binding_against_scoped_assignment() {
+    use kasirmu_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
+
+    let conn = crate::testing::temp_conn();
+    {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+        conn.execute(
+            "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+             VALUES ('user-owner', 'owner', 'hash', 'Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+        store
+            .set_assignment(
+                "user-owner",
+                "role-owner",
+                &AssignmentSpec {
+                    scope_mode: ScopeMode::Scoped,
+                    branches_all: false,
+                    branches: vec!["store-a".into()],
+                    workspaces_all: true,
+                    workspaces: vec![],
+                    scope_type: ScopeType::Organization,
+                    scope_id: None,
+                },
+            )
+            .unwrap();
+    }
+
+    let state = scoped_state(conn, "tok-b", "user-owner", "role-owner", "store-b");
+    let result = resolve_report_scope(&state.ctx(), "tok-b", permissions::REPORTS_VIEW).await;
+    assert!(
+        matches!(result, Err(BridgeError::PermissionDenied(_))),
+        "resolve_report_scope must refuse session targeting store outside assigned branch"
+    );
+}
+
 // ── Helpers ───────────────────────────────────────────────────────
 
 fn seed_owner(conn: &rusqlite::Connection) {
