@@ -5419,3 +5419,36 @@ staged-run environment -- a checker whose .mjs relies on import resolution is no
 exercised (the survey itself runs it live, so the coverage gap is the mutation
 form, not the execution). The r108 overlay ungraded note stands reduced: both
 gates' mutation machinery is now graded end to end.
+
+### Round 112 (2026-11-08) — the campaign closes: census zero by measurement
+
+The ungraded-def census was re-run fresh this round: harness 51 top-level defs,
+ZERO ungraded in self_test; partner 17 defs, ZERO ungraded. Every mutation path is
+graded end to end (blank_body r98, blank_text_body r111, _link_or_copy r110,
+_overlay r108, junction_writethrough r97/r109), every survey verdict is graded
+(row_lines r105, unmeasured_banner r103, writethrough_banner r104, survey_summary
+r101, survey_exit r98, survey_slice r98), the pipeline's slice is graded
+(checksh_invokes_self_test/alliance, comment-dropping and live), and the partner's
+case count is pinned in the harness (want_inventory(partner_src) graded against
+ok_line_count, cases at lines 1898-1912 of the harness).
+
+One correction registered per the standing rule: the round-110 card named
+checksh_invokes_self_test's message shape as the next candidate -- re-measurement
+shows that seam was already closed (cases grading the comment-drop direction and
+the live wiring both existed). A candidate written from memory instead of the
+census is the same disease the campaign documents; the census is the source.
+
+Final evidence, all measured this round: harness 132 cases (derived), partner 23
+cases (derived), full survey 109 checker(s) / 0 SURVIVED / 109 killed / 0 / 0 / 0,
+exit 0, tracked tree clean at 21567bdf0. Twenty-eight rounds (85-112) of measured
+incremental grading, every round committed with the harness's own discipline: a
+case must red on the assertion, never crash on the assumption; a guard whose
+failure mode is silence must carry its positive verdict; a claim must be measured
+before it is written down.
+
+Honest limits: the closure claim is def-level and machine-graded, not a proof that
+every POSSIBLE seam is graded -- inline logic in main() (the before/after
+snapshot pair) is graded through its live wiring and the components' cases, not as
+a unit. A future checker added to the tree re-enters the census automatically; the
+machinery that grades it is now itself graded. The campaign this goal spawned is
+complete; the tree keeps its gates either way.
