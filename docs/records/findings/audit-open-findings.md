@@ -5197,3 +5197,33 @@ ungraded, now the ONLY unprinted-graded seam left in either gate's main(). The
 banner's advice is graded for presence, not for its truth against future survey
 semantics — if survey_exit ever gains a third failure shape, the wording must be
 re-read, not re-derived.
+
+### Round 105 (2026-11-08) — the table row itself, the last ungraded message
+
+The per-row table line was the densest operator surface left ungraded: one format
+string printed for every survey row, with the verdict sitting between the function
+name and the exit pair. Its contract is ADJACENCY — the BEFORE exit prints before
+the AFTER exit — because a row whose columns swapped reads "exit 2 -> 0": the
+mutation improving things, the one reading that would hide a live detector. The
+cause line's attachment matters the same way: a red row's evidence must stay under
+its row, and a green row must grow no phantom cause.
+
+`4fc32d631` extracts row_lines(row) — behavior-preserving, main() iterates it — and
+grades the shape (+1 case, 126→127, derived): the row names its checker, the pair
+reads "exit 0 -> 2" and never "exit 2 -> 0", a no-cause row's line matches the
+format EXACTLY (pinned by string equality, not substring), a red row's cause line
+attaches with the indent, and a green row stays one line. Kill directions: a
+before/after swap is CAUGHT; a detached cause is CAUGHT; a phantom cause on a green
+row is CAUGHT; control green.
+
+The probes themselves taught the round's second lesson: the first draft indexed
+row_lines(...)[1] unconditionally, so the detached-cause probe CRASHED the
+self-test (IndexError) instead of reddening it — a crash still kills the mutation,
+but the case must red cleanly, not die. Hardened with guarded access before any
+gate was trusted. Full survey 109/0/109/0/0/0, exit 0.
+
+Honest limits: the %-46s/%-28s/%-12s column widths are graded by the exact-match
+element, but a name longer than 46 characters still shifts the row — accepted
+(never observed in the census; the widest checker path is shorter). With this, both
+gates' main() functions print only graded, named functions: the message-contract
+arc (r101-r105) is closed.
