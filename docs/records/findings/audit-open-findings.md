@@ -5489,4 +5489,4 @@ target/debug/deps (newest 2026-11-07) prove linking worked the day before, so th
 registration was lost between then and now. A VS-Installer repair is a machine-level
 operation on a shared machine and was not attempted. The bridge fixes are verified by
 `cargo clippy -p kasirmu-bridge --all-targets -- -D warnings` (exit 0, link-free);
-crate tests additionally need the linker environment repaired.
+crate tests additionally need the linker environment repaired. The bypass was then proven: the full kasirmu-bridge suite ran under that env -- 1566 tests, 1566 passed, 0 skipped -- so the r113 bridge fixes are verified at runtime, not only by clippy.
