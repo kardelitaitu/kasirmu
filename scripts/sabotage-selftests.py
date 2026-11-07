@@ -577,6 +577,21 @@ def runner_texts() -> dict[str, str]:
     return texts
 
 
+def _drop_comment_lines(text: str) -> str:
+    """Whole-line comments dropped -- the partner's strip_full_line_comments.
+
+    A checker documenting its own dead flag beside the flag it declares must
+    not read as WIRED here either; the partner's docstring records the live
+    case that made the strip necessary on its side
+    (verify-migration-column-types.py). Measured 2026-11-07: zero censused
+    files and zero accounts change verdict under the strip, so this aligns
+    the two vocabularies without moving the live tree. Whole-line only:
+    a trailing comment on a live line stays counted, and that
+    under-reporting toward wired is named rather than hidden.
+    """
+    return "\n".join(ln for ln in text.split("\n") if not ln.lstrip().startswith("#"))
+
+
 def wiring_hits(name: str, texts: dict[str, str]) -> list[str]:
     """Runner paths whose text mentions `name` -- the wiring signal, PURE.
 
@@ -584,9 +599,12 @@ def wiring_hits(name: str, texts: dict[str, str]) -> list[str]:
     every run (round-79): until now a wired exclusion was proven to redden
     only by ephemeral probes against a doctored tree, while the graded case
     covered the live tree's silence. Sorted output keeps the alarm message
-    deterministic.
+    deterministic. Comment lines do not wire (round-83, the partner's
+    semantics): a checker whose only runner mention sits in a comment is
+    NOT wired, and counting the comment would grade a lie.
     """
-    return sorted(rel for rel, text in texts.items() if name in text)
+    return sorted(rel for rel, text in texts.items()
+                  if name in _drop_comment_lines(text))
 
 
 def _parse_other_runners(text: str) -> tuple[set[str], list[str]]:
@@ -1184,6 +1202,20 @@ def self_test() -> int:
          runner_gaps({"scripts/check.sh"}),
          [rel + " is no longer in verify-selftests-wired's RUNNERS"
           for rel in RUNNER_FILES if rel != "scripts/check.sh"])
+
+    # ── the flag-declaration and comment vocabularies are shared (r83) ────────
+    want("the partner's flag-declaration literal is the same quoted-flag regex",
+         SELF_TEST_FLAG.pattern in
+         (ROOT / "scripts/verify-selftests-wired.py").read_text(encoding="utf-8", errors="replace"),
+         True)
+    want("a whole-line comment is not wiring (the partner's semantics)",
+         wiring_hits("verify-x.py",
+                     {"scripts/check.sh": "# python3 scripts/verify-x.py --self-test  (dead)"}),
+         [])
+    want("a live line beside a comment still wires",
+         wiring_hits("verify-x.py",
+                     {"scripts/check.sh": "# retired\n  run: python3 scripts/verify-x.py --self-test"}),
+         ["scripts/check.sh"])
     for rel in CENSUS_EXCLUDED:
         refs = pipeline_references(Path(rel).name)
         if refs:
@@ -1275,7 +1307,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (62 cases, one alliance self-test runs: verify-selftests-wired)")
+    print("SELF-TEST OK (65 cases, one alliance self-test runs: verify-selftests-wired)")
     return 0
 
 
