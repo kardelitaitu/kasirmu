@@ -467,14 +467,17 @@ data::` -> **50 passed, 0 failed**.
   and `missing_docs` never fires for the helper.~~ — **CLOSED 2026-11-05**, same commit as
   BR-D1: the block now sits directly above `fn device_hostname()`, which is where the
   attribute was always meant to land.
-- **BR-D3** — **[PBD]** caller-outside-tests-only desktop adapters. **Correction to the
-  hand-off:** the count is **15**, not five, and the two named precedents are already
-  harvested — the settings adapter went in `2d233fc5b` and the tax rounding-mode adapter in
-  `ee56fd04d`. Remaining: `commands/data.rs:53`, `:86`, `:95`; `commands/features.rs:33`,
-  `:38`; `commands/offline.rs:24`, `:31`, `:36`; `commands/products_images.rs:139`;
-  `commands/sync.rs:81`, `:95`, `:105`, `:135`, `:148`; `commands/terminals.rs:270`.
-  Each is `#[allow(dead_code)]` with a comment naming its test file as the only caller; all
-  are cleanup candidates **once their tests relocate to `oz-bridge`**, not before.
+- ~~**BR-D3** — **[PBD]** caller-outside-tests-only desktop adapters~~ — **CLOSED 2026-11-07**
+  (`refactor(desktop-tauri): remove dead test adapter shims (BR-D3)`).
+  All 14 uncalled Wave-A/Wave-F desktop adapters across `commands/data.rs` (`exportable_settings_rows`,
+  `gate_import_product_batch`, `gate_import_user_batch`), `commands/features.rs` (`feature_to_module_id`,
+  `all_feature_metadata`), `commands/offline.rs` (`run_list_pending_offline`, `run_requeue_remote_failure`,
+  `run_list_remote_failures`), `commands/products_images.rs` (`transcode_to_webp`), `commands/sync.rs`
+  (`update_sync_settings_data`, `run_get_pg_sync_settings`, `update_pg_sync_settings_data`,
+  `resolve_sync_probe_url`, `validate_pull_consent`), and `commands/terminals.rs` (`run_list_terminals`)
+  were audited, confirmed covered in `crates/kasirmu-bridge/src/*_tests.rs`, and removed from `apps/desktop-tauri`.
+  Registration gate debt ledger updated (`browser::open_product_images_scoped` paid in BR-S4 and retired).
+  All 178 `kasirmu-app` unit/integration tests pass.
 - ~~**BR-D4** — **[PBD]** dead IPC surface per the parity gate~~ — **CLOSED 2026-11-06**
   (`refactor(pos): retire uncalled get_active_cart_scoped and list_active_carts_scoped`).
   Both dead commands were removed from `apps/mobile-tauri/src/commands/pos.rs` and its

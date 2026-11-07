@@ -15,6 +15,7 @@
 //! functions.
 
 use super::*;
+use kasirmu_core::db::Store;
 use kasirmu_core::migrations;
 use kasirmu_core::permissions;
 use kasirmu_core::session::SessionContext;

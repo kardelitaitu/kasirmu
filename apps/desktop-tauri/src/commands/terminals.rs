@@ -246,12 +246,3 @@ pub async fn clear_device_binding_scoped(
         .await
         .map_err(Into::into)
 }
-
-// ── Test-facing adapter ──────────────────────────────────────────────
-
-// Kept because terminals_tests.rs calls this helper directly; production reads
-// now go through the bridge, so nothing in this module calls it.
-#[allow(dead_code)]
-fn run_list_terminals(conn: &rusqlite::Connection) -> Result<Vec<TerminalDto>, AppError> {
-    kasirmu_bridge::terminals::run_list_terminals(conn).map_err(Into::into)
-}

@@ -11,12 +11,10 @@
 //! pre-transaction position of both quota gates, the single transaction
 //! boundary and every error string are byte-identical. The eight DTOs moved
 //! and are re-exported so the sibling `data_tests.rs` still names them (including
-//! the M-7 assertion that `BackupStatus` never carries a path), and the three
-//! helpers that file calls stay as `AppError` adapters.
+//! the M-7 assertion that `BackupStatus` never carries a path).
 
 use tauri::State;
 
-use kasirmu_core::db::Store;
 use kasirmu_core::permissions;
 
 use crate::commands::authz::require_permission_for_session;
@@ -48,13 +46,6 @@ pub async fn create_backup(state: State<'_, AppState>) -> Result<BackupResult, A
     kasirmu_bridge::data::create_backup(&ctx, &db_path)
         .await
         .map_err(Into::into)
-}
-
-/// Adapter over `kasirmu_bridge::data::exportable_settings_rows`; the redaction rule moved
-/// with the export body.
-#[allow(dead_code)] // retained by the Wave-F extraction contract for sibling tests
-fn exportable_settings_rows(rows: Vec<(String, String)>) -> Vec<serde_json::Value> {
-    kasirmu_bridge::data::exportable_settings_rows(rows)
 }
 
 #[tauri::command]
@@ -97,25 +88,6 @@ pub async fn import_preview(
     kasirmu_bridge::data::import_preview(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
-}
-
-/// AppError adapter over `kasirmu_bridge::data::gate_import_product_batch` — retained
-/// because the sibling tests drive this exact production decision.
-#[allow(dead_code)] // retained by the Wave-F extraction contract for sibling tests
-pub(crate) fn gate_import_product_batch(
-    store: &Store<'_>,
-    products: &[serde_json::Value],
-) -> Result<i64, AppError> {
-    kasirmu_bridge::data::gate_import_product_batch(store, products).map_err(Into::into)
-}
-
-/// AppError adapter over `kasirmu_bridge::data::gate_import_user_batch`.
-#[allow(dead_code)] // retained by the Wave-F extraction contract for sibling tests
-pub(crate) fn gate_import_user_batch(
-    store: &Store<'_>,
-    users: &[serde_json::Value],
-) -> Result<i64, AppError> {
-    kasirmu_bridge::data::gate_import_user_batch(store, users).map_err(Into::into)
 }
 
 #[tauri::command]

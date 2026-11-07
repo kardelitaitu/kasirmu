@@ -16,19 +16,15 @@
 //! which lives in `platform-sync`, a crate the bridge does not depend on; the
 //! same goes for `settings_changed_sink`, which the shell's lib.rs uses to
 //! build that daemon's sink. The DTOs moved to the bridge and come back
-//! through `pub use`; the free functions the moved test module called directly stay
-//! as `AppError`-returning adapters over the bridge originals.
-
+//! through `pub use`. The dead Wave-F test adapters were retired in BR-D3; their
+//! tests live in `crates/kasirmu-bridge/src/sync_tests.rs`.
+//!
 use std::sync::Arc;
 
-use rusqlite::Connection;
 use tauri::State;
 
 use kasirmu_bridge::ctx::EventSink;
 use kasirmu_core::events::SettingsUpdated;
-#[allow(unused_imports)] // kept by the Wave-F extraction contract; the tests that
-// exercised these adapters live in crates/kasirmu-bridge/src/sync_tests.rs
-use kasirmu_core::settings::Settings;
 use kasirmu_core::sync_client::{self, PullResult, SyncAttemptResult};
 use platform_sync::daemon::SettingsChangedSink;
 use platform_sync::pg_daemon::PgDaemonStatus;
@@ -55,52 +51,7 @@ pub async fn get_sync_settings_scoped(
         .map_err(Into::into)
 }
 
-/// Persist sync settings (server URL, API key, enabled flag) atomically.
-///
-/// All three writes execute inside a single SQLite transaction so a
-/// failure on any one rolls back the others — the same atomicity fix the
-/// tablet client landed. Clearing the server URL (passing `null` or an
-/// empty string) writes an EMPTY row rather than deleting it: that
-/// row-presence contract is what `sync_bootstrap::should_auto_provision`
-/// relies on to distinguish a cleared+disabled install from a fresh one.
-///
-/// Adapter over `kasirmu_bridge::sync::update_sync_settings_data`: the name,
-/// parameter list and `AppError` return are unchanged so the bridge's tests
-/// keep exercising the atomicity + clearing contract without a Tauri runtime.
-#[allow(dead_code)] // retained by the Wave-F extraction contract; its tests live in
-// crates/kasirmu-bridge/src/sync_tests.rs (moved there in 9b14d9d0b)
-pub fn update_sync_settings_data(
-    conn: &Connection,
-    args: &UpdateSyncSettingsArgs,
-) -> Result<(), AppError> {
-    kasirmu_bridge::sync::update_sync_settings_data(conn, args).map_err(Into::into)
-}
-
 // ── PostgreSQL sync settings & daemon commands ──────────────────
-
-/// Business logic for `get_pg_sync_settings` (extracted for testing).
-///
-/// Adapter over `kasirmu_bridge::sync::run_get_pg_sync_settings`, kept
-/// `AppError`-returning for the bridge's tests.
-#[allow(dead_code)] // retained by the Wave-F extraction contract; its tests live in
-// crates/kasirmu-bridge/src/sync_tests.rs (moved there in 9b14d9d0b)
-fn run_get_pg_sync_settings(conn: &Connection) -> Result<PgSyncSettingsDto, AppError> {
-    kasirmu_bridge::sync::run_get_pg_sync_settings(conn).map_err(Into::into)
-}
-
-/// Persist PG sync settings atomically in a single transaction.
-///
-/// Extracted as a free function so the persistence contract (optional
-/// field clearing + password preservation) can be tested without a Tauri
-/// runtime, mirroring `update_sync_settings_data`.
-#[allow(dead_code)] // retained by the Wave-F extraction contract; its tests live in
-// crates/kasirmu-bridge/src/sync_tests.rs (moved there in 9b14d9d0b)
-pub fn update_pg_sync_settings_data(
-    conn: &Connection,
-    args: &UpdatePgSyncSettingsArgs,
-) -> Result<(), AppError> {
-    kasirmu_bridge::sync::update_pg_sync_settings_data(conn, args).map_err(Into::into)
-}
 
 /// SYNC-10 settings sink shared by the SQLite and PG daemons: a settings
 /// change applied by sync is re-emitted as the `settings_updated` Tauri
@@ -122,32 +73,6 @@ pub fn settings_changed_sink(sink: Option<Arc<dyn EventSink>>) -> SettingsChange
             sink.emit("settings_updated", payload);
         }
     })
-}
-
-/// Resolve the URL used by the status-bar health probe.
-///
-/// Explicitly supplied and persisted URLs always win. The debug-only local
-/// fallback is intentionally added here rather than in the frontend so the
-/// status indicator can recover even while auto-provisioning is still writing
-/// the persisted settings row.
-#[allow(dead_code)] // retained by the Wave-F extraction contract; its tests live in
-// crates/kasirmu-bridge/src/sync_tests.rs (moved there in 9b14d9d0b)
-fn resolve_sync_probe_url(
-    candidate: Option<String>,
-    saved: Option<String>,
-    allow_local_fallback: bool,
-) -> Option<String> {
-    kasirmu_bridge::sync::resolve_sync_probe_url(candidate, saved, allow_local_fallback)
-}
-
-/// Reject a pull that lacks explicit destructive consent (H-2).
-///
-/// Extracted as a free function so the consent gate can be unit-tested
-/// without a Tauri runtime.
-#[allow(dead_code)] // retained by the Wave-F extraction contract; its tests live in
-// crates/kasirmu-bridge/src/sync_tests.rs (moved there in 9b14d9d0b)
-fn validate_pull_consent(args: &SyncPullArgs) -> Result<(), AppError> {
-    kasirmu_bridge::sync::validate_pull_consent(args).map_err(Into::into)
 }
 
 // ── Scoped variants (ADR #7) ────────────────────────────────────

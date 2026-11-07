@@ -20,24 +20,12 @@ findings: unsafe env::set_var removed from async command path; terminal_id writt
 
 use tauri::State;
 
-use kasirmu_core::Feature;
-
 use crate::error::AppError;
 use crate::state::AppState;
 
 pub use kasirmu_bridge::features::{
     FeatureDto, ListAllFeaturesResult, SetFeatureArgs, SetFeatureResult, SetFeaturesBulkArgs,
 };
-
-#[allow(dead_code)] // features_tests.rs calls this helper directly
-fn feature_to_module_id(feature: Feature) -> Option<&'static str> {
-    kasirmu_bridge::features::feature_to_module_id(feature)
-}
-
-#[allow(dead_code)] // features_tests.rs calls this helper directly
-fn all_feature_metadata() -> Vec<(Feature, &'static str, &'static str, &'static str)> {
-    kasirmu_bridge::features::all_feature_metadata()
-}
 
 /// Fetch every known feature with its current enabled status, metadata,
 /// and dependency information.
