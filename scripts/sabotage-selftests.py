@@ -1298,6 +1298,21 @@ def self_test() -> int:
           for _, claims in CENSUS_UNFLAGGED for bn, exp in claims],
          [True] * sum(len(cl) for _, cl in CENSUS_UNFLAGGED))
 
+    # ── the exclusion account is held to its own criterion, live (round-91) ───
+    # The pure fire direction (wiring_hits above) graded the SIGNAL; this is
+    # the live claim: the three excluded scripts carry a self-test and nothing
+    # depends on them. If one gains a runner step or a path-load, the account
+    # is a hiding place -- a wired, self-tested checker outside the census --
+    # and this case reddens with the wiring named, forcing the decision:
+    # census it or unwire it. Measured 2026-11-07: all three silent.
+    censused_texts = {p.relative_to(ROOT).as_posix():
+                      p.read_text(encoding="utf-8", errors="replace")
+                      for p in census_files()}
+    want("every excluded script is still unwired -- runner and load",
+         [wiring_hits(Path(rel).name, unflagged_texts)
+          + transitively_loaded(Path(rel).name, censused_texts)
+          for rel in CENSUS_EXCLUDED],
+         [[], [], []])
     # ── the criterion's wiring half, held for the WHOLE censused set (r81) ────
     want("every censused file stays runner-wired or transitively loaded",
          censused_wiring_problems(), [])
@@ -1519,7 +1534,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (92 cases, one alliance self-test runs: verify-selftests-wired)")
+    print("SELF-TEST OK (93 cases, one alliance self-test runs: verify-selftests-wired)")
     return 0
 
 
