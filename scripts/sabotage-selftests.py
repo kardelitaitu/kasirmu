@@ -661,9 +661,26 @@ def junction_writethrough(before: str, after: str) -> list[tuple[str, str]]:
     return out
 
 
+def survey_exit(rows: list[tuple[str, str, int, int, str]],
+                through: list[tuple[str, str]]) -> int:
+    """The survey's exit contract: green ONLY when every row killed, cleanly.
+
+    A row whose verdict is not KILLED is a row the survey could not measure:
+    PATH ALREADY RED (the checker is red before any mutation),
+    RELOCATION-SENSITIVE (its self-test cannot run from a copy), NO MUTATABLE
+    FUNCTION (nothing to gut), SURVIVED (the worst -- the self-test watched the
+    gutting and said nothing). The table already says "unmeasured, not proven"
+    about every one of them, so an exit 0 over them would contradict the table
+    printed above it -- the r51 survey scored 6 relocation-sensitive rows under
+    an exit 0 and called the sheet clean. A write-through fails for the same
+    reason: the harness that guards the tree may not break it silently.
+    """
+    return 1 if (any(r[4] != "KILLED" for r in rows) or through) else 0
+
+
 def self_test() -> int:
-    """Grade the three parts that can lie silently: the MUTATOR, the CENSUS,
-    and the STAGED-RUN ISOLATION.
+    """Grade the four parts that can lie silently: the MUTATOR, the CENSUS,
+    the STAGED-RUN ISOLATION, and the EXIT.
 
     A mutation harness has one failure mode worth fearing: producing a mutation that is
     not one. A blanked function that leaves a syntax error makes every self-test "fail"
@@ -779,10 +796,24 @@ def self_test() -> int:
     want("a deletion is reported",
          junction_writethrough("", " D docs/x.md"), [(" D", "docs/x.md")])
 
+    # ── the survey's exit contract: only an all-killed, clean-tree survey is 0 ──
+    row = lambda v: ("x.py", "f", 0, 1, v)
+    want("an all-killed survey with a clean tree exits 0",
+         survey_exit([row("KILLED"), row("KILLED")], []), 0)
+    want("a survivor fails the exit", survey_exit([row("KILLED"), row("SURVIVED")], []), 1)
+    want("a relocation-sensitive row fails the exit",
+         survey_exit([row("RELOCATION-SENSITIVE")], []), 1)
+    want("a no-mutatable row fails the exit",
+         survey_exit([row("NO MUTATABLE FUNCTION")], []), 1)
+    want("a path-already-red row fails the exit",
+         survey_exit([row("PATH ALREADY RED")], []), 1)
+    want("a write-through fails the exit even with every row killed",
+         survey_exit([row("KILLED")], [(" M", "crates/x.rs")]), 1)
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (27 cases, no checker is run)")
+    print("SELF-TEST OK (33 cases, no checker is run)")
     return 0
 
 
@@ -803,14 +834,17 @@ def main() -> int:
     survivors = [r for r in rows if r[4] == "SURVIVED"]
     relocated = [r for r in rows if r[4] == "RELOCATION-SENSITIVE"]
     unmutatable = [r for r in rows if r[4] == "NO MUTATABLE FUNCTION"]
-    killed = len(rows) - len(survivors) - len(relocated) - len(unmutatable)
+    already_red = [r for r in rows if r[4] == "PATH ALREADY RED"]
+    killed = [r for r in rows if r[4] == "KILLED"]
     for name, fn, before, after, verdict in rows:
         print("  %-46s %-28s %-12s exit %s -> %s" % (name, fn[:28], verdict, before, after))
     print("")
     print("sabotage: %d checker(s), %d SURVIVED (their self-test did not notice the gutted "
           "detector), %d killed, %d RELOCATION-SENSITIVE (self-test cannot run from a copy; "
-          "unmeasured, not proven), %d NO MUTATABLE FUNCTION."
-          % (len(rows), len(survivors), killed, len(relocated), len(unmutatable)))
+          "unmeasured, not proven), %d NO MUTATABLE FUNCTION, %d PATH ALREADY RED (red "
+          "before any mutation)."
+          % (len(rows), len(survivors), len(killed), len(relocated), len(unmutatable),
+             len(already_red)))
     if through:
         print("")
         print("STAGED WRITE-THROUGH: the survey left tracked dirt in the real tree:")
@@ -818,7 +852,10 @@ def main() -> int:
             print("  %s %s" % (st, path))
         print("  a staged run wrote through a junctioned sibling; do not trust")
         print("  the table above until this is explained.")
-    return 1 if (survivors or through) else 0
+    unmeasured = len(rows) - len(killed)
+    if unmeasured:
+        print("survey: %d row(s) unmeasured -- exit 1 by contract." % unmeasured)
+    return survey_exit(rows, through)
 
 
 if __name__ == "__main__":
