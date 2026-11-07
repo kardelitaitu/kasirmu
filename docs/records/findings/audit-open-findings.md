@@ -4827,3 +4827,43 @@ parse-refused block fire once per parsed suffix, so runtime assertions exceed si
 the number is "cases" in the census's sense, now defined rather than remembered. A
 want() helper invoked outside self_test would still inflate the static count — none
 exists, and the line-start shape makes one visible in review.
+
+### Round 95 (2026-11-07) — a quoted flag in a comment declares nothing
+
+The r94 card's second candidate — audit the partner's declares_selftest() for flag
+forms the regex misses — measured into a semantics gap instead. Both gates' declaration
+predicates are the SAME quoted-flag regex (["']--self-test["']) run over RAW text, so a
+quoted flag inside a COMMENT declared a self-test on both sides: the r84 alignment
+established that comments cannot wire, load, or invoke, and declare is the fourth verb.
+The consequence on the harness side: a checker whose only flag mention is prose (a
+"# add a --self-test mode someday" line with quoted flag) enters the census, the survey
+runs its nonexistent self-test, and the checker's mutations all SURVIVE — loud, but a
+liar's verdict rather than a named one. On the partner side: an audited checker that
+declared only in prose would be hard-gated as uncalled — red pointing at the runner
+when the true defect is the false declaration. Measured before landing: no real file's
+quoted flag is comment-only (raw and comment-stripped verdicts agree for every file in
+the three audit dirs), so tightening is verdict-neutral on the live tree.
+
+`6ba9a3ae5`: the harness gains declares_flag() — the quoted-flag regex over
+_drop_comment_lines() — and all seven raw search sites now route through it
+(census_files' filter, flag_carriers, census-enumeration's two existence checks, the
+carrier walk, the unflagged accounts' has-flag assert, the excluded three's no-flag
+assert). The partner gains declares_in() (the same shape over
+strip_full_line_comments()) and declares_selftest() routes through it. Five new cases
+(101 harness, 13 partner): comment-only does not declare, a live quoted line declares,
+and — the live direction — no flag carrier's flag lives only in a comment, graded per
+carrier across the whole walk.
+
+Kill directions: reverting declares_flag to the raw search is CAUGHT (the comment-only
+pure case); a blind lie is CAUGHT (the census is not empty — the predicate is
+load-bearing in both directions); reverting the partner's declares_in to raw is CAUGHT;
+both controls green. Both gates green (101 and 13, derived counts); full survey 109
+checker(s), 0 SURVIVED, 109 killed, 0 RELOCATION-SENSITIVE, 0 NO MUTATABLE FUNCTION,
+0 PATH ALREADY RED, exit 0.
+
+Honest limits: the declare predicate is LINE-based comment stripping — a trailing
+comment on a live line that quotes the flag still counts as declaring (same line-based
+limit as every r84 predicate, re-measured harmless at r83). The partner's
+declares_selftest still returns False on an unreadable file — an OSError is a silent
+not-declared rather than a named problem; the harness's carrier walk has the same shape,
+and both are pre-existing, unchanged here.
