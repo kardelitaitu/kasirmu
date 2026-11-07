@@ -4025,3 +4025,50 @@ reading as agreement: dropping the block fails the case from the baseline direct
 The census watching an inert pre-push costs one exists+read per exclusion check and
 buys the prospective direction — a hook that gains checker wiring later is already
 watched, which is the same trade verify-selftests-wired's own comments defend.
+
+### Round 75 (2026-11-07) — one checker-NAME vocabulary across both wiring gates
+
+Round 75 asked the r74 card's question one level up: the runner lists now agree — do
+the NAME conventions? They did not. verify-selftests-wired's SCRIPT_RE matches four
+prefixes (verify|check|classify|census) structurally; the census enumerated the same
+four with NINE hard-coded glob pairs (verify-*|check-* only, per dir x suffix) and put
+the other two prefixes' files in a hand-copied named list:
+classify-finding-reachability.py and census-orphan-modules.py sat there because their
+prefixes matched no glob — the census trailing the other gate's widening by exactly
+that widening (its r157 added classify-|census- for these two files after they landed
+invisible).
+
+`60c934b6f` reconciles structurally rather than by adding glob pair #10:
+
+- CONVENTION_PREFIXES + CONVENTION_RE built from it — the four prefixes, once, next to
+  the census they define. census_files()'s glob step becomes one per-file regex match
+  per census dir, killing the glob-pair MATRIX problem outright: a new docs-auditor
+  verify-*.mjs or website classify-*.sh can no longer fall between a pair nobody wrote
+  down (the exact rot class round-66 measured). The named list keeps the six names
+  matching NO convention prefix (backup-db, restore-db, scan-unwrap-panic,
+  generate-pg-migration, generate-latest-json, run-pre-push, allowlist-schema — the
+  transitive case from r69) and loses the two now covered by convention; its comment
+  records the move.
+- New graded case (42 -> 43): the other gate's SCRIPT_RE prefix set, extracted
+  textually from its source, must equal CONVENTION_PREFIXES. Two-sided in effect: the
+  other gate widening tomorrow (a fifth prefix) reddens the census until the
+  convention follows; this convention drifting (a prefix dropped) reddens on the
+  baseline side. One vocabulary, enforced from the census side.
+- Kill directions proven: harness dropping a prefix is CAUGHT at want level; the other
+  gate gaining scan- in a temp-ROOT copy is CAUGHT by the same comparison the want
+  performs (full self_test is not run against a fake ROOT — census_carriers() needs a
+  real git tree, the probe measures the case's own comparison directly).
+- Both gates green: self-test 43 cases, the other gate's 6 cases untouched-green, full
+  survey 108 checker(s), 0 SURVIVED, 108 killed, 0 RELOCATION-SENSITIVE, 0 NO MUTATABLE,
+  0 PATH ALREADY RED, exit 0 — the regex-driven convention enumerates EXACTLY the same
+  108 files the glob matrix did, now with no per-dir asymmetry to maintain.
+
+Honest limits: CONVENTION_RE is a COPY of SCRIPT_RE's shape, not an import — the two
+gates stay derivation-independent by design (r69), so the regex bodies can drift in
+ways other than the prefix set (a stricter name charset on one side would not redden
+the prefix case). The prefix set is the part that has historically rotted; a
+charset-level drift would surface as a census-vs-carriers DIFFERENCE in the coverage
+case, which grades the whole enumeration every run. The named list is still hand-copied
+— it stays honest only because the coverage case (expected = carriers - excluded -
+harness) reddens the moment a named entry's file stops existing, stops self-testing, or
+a self-tested name joins no convention and no named list.
