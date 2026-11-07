@@ -634,6 +634,17 @@ CONVENTION_RE = re.compile(
     r"^(?:" + "|".join(CONVENTION_PREFIXES) + r")-[A-Za-z0-9_-]+\.(?:py|mjs|sh)$")
 
 
+# Named outright, round-66 census: self-tested scripts whose verdicts gates
+# depend on but whose names match NO convention prefix -- see census_files()
+# for the per-file why. One site; a copy is the round-66 disease.
+CENSUS_NAMED = (
+    "backup-db.sh", "restore-db.sh",
+    "scan-unwrap-panic.py", "generate-pg-migration.py",
+    "generate-latest-json.mjs", "run-pre-push.py",
+    "allowlist-schema.py",
+)
+
+
 def census_files() -> list[Path]:
     """Every self-tested, pipeline-wired script the sabotage survey grades.
 
@@ -673,13 +684,77 @@ def census_files() -> list[Path]:
     # CENSUS_EXCLUDED carry --self-test but nothing depends on them (the
     # harness self-test holds that list to the criterion), and
     # sabotage-selftests.py is this harness.
-    files.extend(ROOT / "scripts" / name for name in (
-        "backup-db.sh", "restore-db.sh",
-        "scan-unwrap-panic.py", "generate-pg-migration.py",
-        "generate-latest-json.mjs", "run-pre-push.py",
-        "allowlist-schema.py",
-    ))
+    files.extend(ROOT / "scripts" / name for name in CENSUS_NAMED)
     return [f for f in files if SELF_TEST_FLAG.search(f.read_text(encoding="utf-8", errors="replace"))]
+
+
+# ── census-eligible files that deliberately do NOT carry --self-test ─────────
+# The flag filter in census_files() makes flag-loss silent: a checker whose
+# self-test was removed drops out of BOTH sides of the coverage diff (round-80
+# measurement -- the coverage case cannot see it at all), and a
+# convention-matching file with no flag never enters any ledger. Everything
+# the pre-filter enumeration finds must either carry the flag or be accounted
+# here with its wiring DECLARED, and the declared wiring is graded with the
+# round-79 pure signal, so a stale account reddens instead of rotting.
+CENSUS_UNFLAGGED = (
+    # Deliberately runner-less by its own docstring: it is a census, not a
+    # gate, and "claims none of that authority" -- a flag would make it a fake
+    # control (the round-66 disease). Zero runner mentions, measured 2026-11-07.
+    ("scripts/census-sync-ingest-admits.py", ()),
+    # The COR-7 replay-fork gate carries no --self-test BY DESIGN: its cases
+    # live in scripts/test-replay-fork.py (external self-test; that file's
+    # docstring records a mutation probe that once MISSED the gate, which is
+    # why case keying matters). Gate and self-test must stay invoked exactly
+    # as declared or the account is stale.
+    ("scripts/check-replay-fork.py",
+     (("check-replay-fork.py", (".github/workflows/dev-ci.yml", "scripts/check.sh")),
+      ("test-replay-fork.py", (".github/workflows/dev-ci.yml", "scripts/check.sh")))),
+    # A RUNNER, not a checker: it invokes eleven docs-auditor self-tests with
+    # UNQUOTED --self-test (deliberately explicit, its own lines 21-23 explain
+    # why), so SELF_TEST_FLAG's quoted-only rule rightly keeps it out of the
+    # carrier set -- but the convention sweep catches it by name. Wired at
+    # check.sh:295 + dev-ci.yml:1038; it is itself in RUNNER_FILES.
+    ("scripts/check-auditor-selftests.sh",
+     (("check-auditor-selftests.sh", (".github/workflows/dev-ci.yml", "scripts/check.sh")),)),
+    # A wired gate with NO self-test anywhere (its single unquoted mention is
+    # prose) -- the known unclosable "checkers without self-tests" gap, made
+    # VISIBLE by this account instead of shed silently. Invoked at
+    # check.sh:1099 + dev-ci.yml:228; run-pre-push.py:462 also invokes it but
+    # lies outside the runner corpus (RUNNER_FILES is the partner-shared list).
+    ("scripts/verify-website-assets.py",
+     (("verify-website-assets.py", (".github/workflows/dev-ci.yml", "scripts/check.sh")),)),
+)
+
+
+def census_enumeration_problems() -> list[str]:
+    """What the census's PRE-FLAG enumeration sheds silently.
+
+    census_files() filters BY the flag, so flag-loss moves carriers and
+    censused together and the coverage diff stays empty -- a checker whose
+    self-test was removed leaves the survey without a line (the round-72
+    mirror was graded for EXCLUDED files only). Same silence if a
+    CENSUS_NAMED entry is deleted outright. This is the honest denominator:
+    convention-matching files in the census dirs plus every CENSUS_NAMED
+    entry must carry the flag or sit in CENSUS_UNFLAGGED.
+    """
+    accounted = {rel for rel, _ in CENSUS_UNFLAGGED}
+    problems = []
+    for base in ("scripts", ".agents/skills/docs-auditor/scripts", "website/scripts"):
+        d = ROOT / base
+        if d.is_dir():
+            for p in sorted(d.iterdir()):
+                rel = p.relative_to(ROOT).as_posix()
+                if rel in accounted or not (p.is_file() and CONVENTION_RE.match(p.name)):
+                    continue
+                if not SELF_TEST_FLAG.search(p.read_text(encoding="utf-8", errors="replace")):
+                    problems.append(rel + " matches the census convention but carries no --self-test")
+    for name in CENSUS_NAMED:
+        p = ROOT / "scripts" / name
+        if not p.exists():
+            problems.append("scripts/" + name + " is in CENSUS_NAMED but is gone")
+        elif not SELF_TEST_FLAG.search(p.read_text(encoding="utf-8", errors="replace")):
+            problems.append("scripts/" + name + " is in CENSUS_NAMED but carries no --self-test")
+    return sorted(problems)
 
 
 def census_carriers() -> list[str]:
@@ -994,6 +1069,19 @@ def self_test() -> int:
          wiring_hits("restaurant-coverage.py", synth), ["scripts/check.sh"])
     want("an unwired name stays silent",
          wiring_hits("sign-plugin.py", synth), [])
+
+    # ── the census enumeration cannot shed a file silently (round-80) ─────────
+    want("the census enumeration sheds nothing silently",
+         census_enumeration_problems(), [])
+    want("every unflagged account still exists and stays flag-less",
+         all((ROOT / rel).exists()
+             and not SELF_TEST_FLAG.search((ROOT / rel).read_text(encoding="utf-8", errors="replace"))
+             for rel, _ in CENSUS_UNFLAGGED), True)
+    unflagged_texts = runner_texts()
+    want("each unflagged account's declared wiring is still exactly true",
+         [sorted(wiring_hits(bn, unflagged_texts)) == sorted(exp)
+          for _, claims in CENSUS_UNFLAGGED for bn, exp in claims],
+         [True] * sum(len(cl) for _, cl in CENSUS_UNFLAGGED))
     for rel in CENSUS_EXCLUDED:
         refs = pipeline_references(Path(rel).name)
         if refs:
@@ -1085,7 +1173,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (52 cases, one alliance self-test runs: verify-selftests-wired)")
+    print("SELF-TEST OK (55 cases, one alliance self-test runs: verify-selftests-wired)")
     return 0
 
 
