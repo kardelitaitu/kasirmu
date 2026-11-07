@@ -4709,3 +4709,39 @@ Honest limits: the live case reads census_files() for the load half, so a load f
 NON-censused file (another excluded script importing a sibling) is out of the claim's
 scope — two excluded scripts wiring each other stays invisible to this case, and to
 every wiring signal in both gates (the load corpus is censused files only).
+
+### Round 92 (2026-11-07) — the wiring corpus's basename key is graded for collisions
+
+First, a correction to the r91 note's named limit: an excluded-to-excluded load creates
+no RUNNING-pipeline dependence — the criterion is pipeline dependence, not mentions — so
+the load corpus staying censused-only is the census's semantics, not a hole. The limit
+was real as a sentence but not as a seam. The sharper seam was sitting in the r87 walk's
+own output: check-gate-runners.py exists TWICE — scripts/ and
+.agents/skills/docs-auditor/scripts/ — the census's only basename collision (measured:
+exactly one among 109). Every basename-keyed signal (wiring_hits, account_carriers,
+sole_orchestrator_wiring, the exclusion case, the unflagged accounts' declared wiring)
+sees ONE name where there are TWO files: deleting one copy's runner step looks like
+nothing, because the other copy's mentions satisfy the shared key. Today the ambiguity
+is masked — both copies are invoked by FULL path in the same three runners (check.sh,
+check-auditor-selftests.sh, dev-ci.yml) — which is precisely why it needed grading
+before it rotted.
+
+`bc092f207`: collisions_of() is the PURE pair-classifier; collided_census_names() applies
+it live to the census; fullpath_wiring() is identity-precision wiring (the full
+repo-relative path in comment-stripped runner text — a bare basename does not satisfy
+it, pinned). Six new cases (93 -> 98): synthetic pair found, collision-free set empty,
+the live collision pinned to the known pair (a NEW collision reddens the shape and
+forces conscious handling), basename-insufficiency pinned, full-path mention accepted,
+and each collided file graded to at least one full-path runner mention.
+
+Kill directions: a collision-blind lie is CAUGHT (the synthetic-pair case); a
+basename-grade fullpath lie is CAUGHT (the basename-insufficiency pin); control 98/98
+green. Both gates green: harness 98 cases exit 0, partner 8 cases; full survey 109
+checker(s), 0 SURVIVED, 109 killed, 0 RELOCATION-SENSITIVE, 0 NO MUTATABLE FUNCTION,
+0 PATH ALREADY RED, exit 0.
+
+Honest limits: full-path wiring is substring containment in comment-stripped text — a
+runner naming the path in prose still counts, the same text-scan class as every signal
+since r76. The collided pair's wiring is graded to "at least one full-path mention per
+file", deliberately not to the exact runner list: adding a runner should never redden a
+precision case.
