@@ -3971,3 +3971,57 @@ verify-selftests-wired.py watches the other side). The negative half (check.sh m
 never run the bare survey) is deliberately a comment, not a want: a legitimate future
 `--limit N` slice in the pipeline should not require editing the harness to be
 allowed, and a graded negative would have said otherwise.
+
+### Round 74 (2026-11-07) — the two wiring gates now share one runner vocabulary
+
+Round 74 asked the r73 card's question: does verify-selftests-wired.py (the gate that
+polices "does a self-test flag have a caller", 311 lines, censused, check.sh:1246)
+agree with the sabotage census on what "wired" means? It did not — and the divergence
+the harness's new agreement case surfaced on its FIRST live run was better than the one
+hunted for:
+
+- **Hunted for**: verify-selftests-wired's RUNNERS list knows two runners
+  pipeline_references never scanned — scripts/check.ps1 and
+  scripts/check-auditor-selftests.sh (the aggregator that loops eight docs-auditor
+  checkers, whose omission once produced six false findings there). An excluded script
+  invoked by either would read as unwired in the census's vocabulary while the other
+  gate called it wired.
+- **Surfaced live**: the two gates watched DIFFERENT GIT HOOKS. The other gate's
+  RUNNERS names .githooks/pre-commit; the census had .githooks/pre-push since the r51
+  census. Measured: pre-push names ZERO checkers (an inert entry — the campaign's
+  criterion cited a hook that carries no checker wiring), while pre-commit carries
+  three real gate invocations (verify-bundle-parity.py, verify-migration-column-types.py,
+  verify-ftl-orphans.py, all --staged-only, bare — which is why the other gate's
+  flag-matching never counted them).
+
+`5f77fa25b` reconciles in both directions:
+
+- The census: RUNNER_FILES extracted as a module constant — now seven runner files
+  including both hooks — and workflow scanning is recursive with attic/ skipped
+  (pre-checked: no attic workflow names any of the three exclusions, so the widening
+  cannot wire a retired thing). pipeline_references consumes the constant.
+- The other gate: .githooks/pre-push added to its RUNNERS with the measurement in a
+  comment — it names no checker today, but a self-test wired into it tomorrow would
+  be reported uncalled if the hook stayed invisible (the false-finding failure mode
+  that gets gates muted).
+- New graded case, two-sided: wiring_runner_gaps() parses the other gate's RUNNERS
+  block and demands every file-typed runner it names is scannable here AND every
+  baseline runner here is still named there. Either gate narrowing its runner list
+  alone now reddens the census self-test. 40 -> 42 cases (plus a runner-files-exist
+  case mirroring the exclusion-exists one).
+
+Kill directions, each precise to one side: dropping check.ps1 from RUNNER_FILES is
+CAUGHT with exactly that gap named; a stripped copy of verify-selftests-wired.py under
+a temp ROOT is CAUGHT with exactly its gap named; control 42/42 green. The other gate
+stays green untouched (6 cases; bare run 101 of 105 checkers, every declared self-test
+invoked). Both gates green: self-test 42 cases, full survey 108 checker(s), 0 SURVIVED,
+108 killed, 0 RELOCATION-SENSITIVE, 0 NO MUTATABLE, 0 PATH ALREADY RED, exit 0.
+
+Honest limits: the agreement case parses the other gate's RUNNERS block TEXTUALLY (a
+"ROOT / a / b" per line, comments skipped) — a restructure of that file that moves the
+block or renames the variable reads as an empty parse, and the baseline-side check
+(every RUNNER_FILES entry must still be named there) is what keeps an empty parse from
+reading as agreement: dropping the block fails the case from the baseline direction.
+The census watching an inert pre-push costs one exists+read per exclusion check and
+buys the prospective direction — a hook that gains checker wiring later is already
+watched, which is the same trade verify-selftests-wired's own comments defend.
