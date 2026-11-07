@@ -1239,6 +1239,26 @@ def survey_exit(rows: list[tuple[str, str, int, int, str, str]],
     return 1 if (any(r[4] != "KILLED" for r in rows) or through) else 0
 
 
+def writethrough_banner(through: list[tuple[str, str]]) -> str:
+    """The block explaining that a staged run wrote tracked dirt into the real tree, "" when clean.
+
+    junction_writethrough() DETECTS a write-through (graded pure since r97);
+    this block is what the operator is TOLD about it. The claim is deliberately
+    conservative -- the table above may have measured mutations while the tree
+    moved under the survey, so nothing it says can be trusted until the dirt is
+    explained. Extracted (round-104) so the shape -- every offending path named
+    exactly once beside the advice, nothing printed when clean -- is graded,
+    the last message in main() to earn that.
+    """
+    if not through:
+        return ""
+    lines = ["", "STAGED WRITE-THROUGH: the survey left tracked dirt in the real tree:"]
+    lines += ["  %s %s" % (st, path) for st, path in through]
+    lines += ["  a staged run wrote through a junctioned sibling; do not trust",
+              "  the table above until this is explained."]
+    return "\n".join(lines)
+
+
 def unmeasured_banner(rows) -> str:
     """The line explaining why a survey with unmeasured rows will not exit 0, "" when none.
 
@@ -1697,6 +1717,12 @@ def self_test() -> int:
          [unmeasured_banner(rows103).count("2 row(s) unmeasured"),
           "exit 1" in unmeasured_banner(rows103),
           unmeasured_banner([("a.py", "f", 0, 2, "KILLED", "")])], [1, False, ""])
+    # ── the write-through banner is graded, not assumed (round-104) ──
+    wt104 = writethrough_banner([(" M", "crates/x.rs"), ("??", "y.py")])
+    want("a write-through banner names each offending path beside the advice",
+         [wt104.count("STAGED WRITE-THROUGH: the survey left tracked dirt"),
+          wt104.count(" M crates/x.rs"), wt104.count("?? y.py"),
+          wt104.count("do not trust"), writethrough_banner([])], [1, 1, 1, 1, ""])
     # ── the summary line's slice contract is graded, not assumed (round-101) ──
     rows101 = [("a.py", "f", 0, 2, "KILLED", ""),
                ("b.py", "f", 0, 2, "SURVIVED", "cause x")]
@@ -1855,13 +1881,9 @@ def main() -> int:
             print("      cause: %s" % cause)
     print("")
     print(survey_summary(rows, args.skip, args.limit, len(census_files())))
-    if through:
-        print("")
-        print("STAGED WRITE-THROUGH: the survey left tracked dirt in the real tree:")
-        for st, path in through:
-            print("  %s %s" % (st, path))
-        print("  a staged run wrote through a junctioned sibling; do not trust")
-        print("  the table above until this is explained.")
+    write = writethrough_banner(through)
+    if write:
+        print(write)
     banner = unmeasured_banner(rows)
     if banner:
         print(banner)
