@@ -1238,6 +1238,12 @@ step "selftest sweep self-test" "python3 scripts/verify-selftest-sweep.py --self
 # error makes every checker "fail", scoring as KILLED while proving nothing. The cases
 # grade that the mutants PARSE, that braces inside strings do not close a function
 # early, and that self_test is never its own candidate.
+# The pipeline runs the graded CASES only. The SURVEY (108 staged mutation
+# runs, 12-17 minutes) stays a manual decision tool: its round-70 exit
+# contract (every unmeasured verdict fails) is the wrong shape for a
+# per-commit gate, where one checker under development in another lane would
+# redden every unrelated commit. The harness's checksh_invokes_self_test()
+# holds THIS line to itself -- drop or reword it and the self-test reddens.
 step "sabotage mutator self-test" "python3 scripts/sabotage-selftests.py --self-test" python3 scripts/sabotage-selftests.py --self-test
 
 step "runner commands" "python3 scripts/verify-runner-commands.py" python3 scripts/verify-runner-commands.py

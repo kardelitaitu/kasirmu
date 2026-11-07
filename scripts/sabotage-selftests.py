@@ -708,6 +708,22 @@ def junction_writethrough(before: str, after: str) -> list[tuple[str, str]]:
     return out
 
 
+def checksh_invokes_self_test() -> bool:
+    """The pipeline's slice: check.sh must still invoke the harness's --self-test.
+
+    The campaign's two-gate protocol rests on one line of check.sh: it is what
+    runs these graded cases on every commit. If that line drifts away (renamed
+    flag, dropped step), the harness keeps passing for everyone who runs it by
+    hand and silently stops being a pipeline gate for everyone else. The
+    inverse holds by design and is documented at the call site: check.sh runs
+    NO survey -- 12-17 minutes of staged mutation per commit is not a gate,
+    and the round-70 exit contract (unmeasured fails) would redden unrelated
+    commits the moment any lane's checker sat under active development.
+    """
+    return ("scripts/sabotage-selftests.py --self-test"
+            in (ROOT / "scripts/check.sh").read_text(encoding="utf-8", errors="replace"))
+
+
 def survey_exit(rows: list[tuple[str, str, int, int, str, str]],
                 through: list[tuple[str, str]]) -> int:
     """The survey's exit contract: green ONLY when every row killed, cleanly.
@@ -833,6 +849,10 @@ def self_test() -> int:
     want("the harness is never its own subject",
          "scripts/sabotage-selftests.py" not in censused, True)
 
+    # ── the pipeline's slice: check.sh runs the graded cases, never the survey ──
+    want("check.sh still invokes the harness's --self-test",
+         checksh_invokes_self_test(), True)
+
     # ── staged runs must never write through a junctioned sibling ────────────
     want("a new modification is reported",
          junction_writethrough("", " M scripts/x.py"), [(" M", "scripts/x.py")])
@@ -875,7 +895,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (39 cases, no checker is run)")
+    print("SELF-TEST OK (40 cases, no checker is run)")
     return 0
 
 
