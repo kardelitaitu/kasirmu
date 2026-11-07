@@ -5296,3 +5296,35 @@ guard would surface the sixth extension first, so the misleading cause is doubly
 buffered). And the alliance-cascade probes (A, C) red through the partner's case
 rather than the new case alone -- acceptable: the new case narrows the cause, the
 cascade proves the blast radius.
+
+### Round 108 (2026-11-08) — the staged mirror is a copy: the safety property, graded
+
+The r98 census of ungraded defs, re-run, named three survivors in the harness
+(51 defs): _overlay, _link_or_copy, git_status_porcelain -- the infrastructure
+layer everything else stands on. _overlay's contract is the most load-bearing: the
+staged mirror must be a COPY (copy2, never os.link), so mutating a checker in the
+staged tree cannot reach the tracked checkout. `2c49d863c` (+1 case, 128->129,
+derived) grades it with a temp fixture: the mirror carries the tree (sub/b.py
+"deep"), the skip-names are skipped (__pycache__ absent from the mirror, still
+present in the real fixture), and -- the safety element -- a write into the
+mirror's file leaves the real one at "orig". A hard-link overlay would fail that
+element: the write leaks through. The docstring names the property outright.
+
+The probes taught the round's lesson three times running (r105 once, r108 three
+times): a case must red CLEANLY under a killed helper, and that means EVERY fixture
+operation is a potential crash -- not just reads. Probe C (overlay copies nothing)
+crashed first on the unguarded MUTATION write, then on the r98 case's canary write
+-- an older case failing the same rule. All fixture writes now guarded with
+try/OSError/pass; all three probes red the assertion, not the assumption (the
+killed helper's damage reads as "<missing>"/"MUTATED" exactly where the expectation
+lives). Also fixed: an ASCII-naive sort expectation -- rglob's POSIX relative paths
+sort "__pycache__/c.pyc" BEFORE "a.py" (underscore 0x5F < letter 0x61); the
+expectation now states the real order. Kill directions: skip-names copied is
+CAUGHT, hard-linked mirror is CAUGHT (via the leak into the real fixture), a no-op
+overlay is CAUGHT; control green. Full survey 109/0/109/0/0/0, exit 0.
+
+Honest limits: _link_or_copy's junction/copytree fallback remains ungraded (its
+success path is exercised live by every survey; faking mklink failure in-process
+would grade the mock, not the code) -- named here rather than papered over.
+git_status_porcelain is a two-line live wrapper feeding junction_writethrough,
+which the r97 cases grade; the porcelain grammar itself is still unpinned.
