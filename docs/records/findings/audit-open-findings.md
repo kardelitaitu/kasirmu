@@ -4676,3 +4676,36 @@ substring blindness (a concatenation-built invocation dodges it — unmeasured
 everywhere). The live case walks the workflows DIR each run; a workflow file with a
 non-.yml suffix (.yaml is covered; a new extension would be silently out) — the suffix
 tuple is pinned in the case's own code, so widening it is a visible diff.
+
+### Round 91 (2026-11-07) — the exclusion account is held to its own criterion, live
+
+The case inventory (measured before landing: 82 graded want() names read out of order)
+showed the exclusion machinery's fire direction graded PURELY since round-79 — a
+synthetic runner dict — while the LIVE claim sat ungraded: if sign-plugin.py,
+restaurant-coverage.py or extract-updater-seed.py gained a runner step or a path-load,
+no gate would redden. The exclusion list would become a hiding place: a wired,
+flag-carrying, self-tested checker outside the census — invisible to the survey, to
+censused_wiring_problems (which grades only censused files), to the r87 walk (which
+trusts the exclusion ledger), and to the partner (none of the three matches SCRIPT_RE).
+
+`e3008e254`: one live case (92 -> 93) holding all three excluded scripts to BOTH halves
+of their account's criterion — no runner names them (wiring_hits) and no censused file
+loads them (transitively_loaded) — expecting three empty lists. Measured before
+landing: all three silent on both signals. If the account rots, the case reddens with
+the wiring named and forces the decision: census it or unwire it.
+
+A probe lesson worth recording: the first probe pair patched the signals to lie about
+one file TOWARD the truth (returning [] for a file whose truth is []) and passed —
+indistinguishable by construction. The correct probe directions: an over-firing lie is
+CAUGHT by the new live case (proving it reads the signal), and a silent lie is CAUGHT by
+the round-79 pure case (a wired exclusion surfaces with its runner named) — the two
+layers hold each other's opposite failure mode. Control 93/93 green.
+
+Both gates green: harness 93 cases exit 0, partner 8 cases; full survey 109 checker(s),
+0 SURVIVED, 109 killed, 0 RELOCATION-SENSITIVE, 0 NO MUTATABLE FUNCTION, 0 PATH ALREADY
+RED, exit 0.
+
+Honest limits: the live case reads census_files() for the load half, so a load from a
+NON-censused file (another excluded script importing a sibling) is out of the claim's
+scope — two excluded scripts wiring each other stays invisible to this case, and to
+every wiring signal in both gates (the load corpus is censused files only).
