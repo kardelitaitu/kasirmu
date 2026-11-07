@@ -4160,3 +4160,48 @@ links: the partner's self-test green (r76), check.sh carrying the partner's step
 (r77), and the runner/name vocabularies shared (r74/r75) — but the chain's terminal
 still trusts check.sh's own integrity, which no case grades (the eight-step hook list
 is graded by verify-agents-mirrors.py, a different lane).
+
+### Round 78 (2026-11-07) — survey slices: deterministic, bounded, self-describing
+
+The r77 card pointed at the exclusion evidence; reading the actual code moved the round.
+The exclusion properties were already graded (exists / flag-carried / unwired /
+not-transitively-loaded, lines 925-947, all auto-iterating CENSUS_EXCLUDED) — but the
+long-parked candidate "survey --limit N slice semantics" turned out to hide three real
+defects in main()'s chunked-measurement mode:
+
+- **--skip -3 silently WRAPPED**: `files[skip:]` on a negative skip measures the LAST
+  three checkers, not an error — the operator believes they measured the head of the
+  census. Python slicing semantics interpreting operator intent.
+- **--limit 0 silently measured EVERYTHING**: `if limit:` is falsy on 0, so the "empty
+  chunk" was a full 12-17 minute survey — the opposite of what was asked.
+- **A chunk's summary was indistinguishable from a full census**: "sabotage: 30
+  checker(s) ..." reads the same whether 30 is the whole world or 30 of 108 — chunks
+  that silently miss checkers read as measured, the round-66 disease in slice form.
+
+`b015c9d3b`: slice_error() (pure validator: negative skip refused, non-positive limit
+refused, with the WHY in each message) + survey_slice() (deterministic slice in
+census_files()'s documented order — three dirs in fixed tuple order, sorted within
+each, then the named list — so consecutive chunks partition with neither overlap nor
+gap). survey() now calls survey_slice; SystemExit carries the refusal message. main()
+prints "[slice skip=N limit=M of 108 censused]" on any chunked run — live-verified:
+`--limit 2` ends "sabotage: 2 checker(s) [slice skip=0 limit=2 of 108 censused], 0
+SURVIVED, 2 killed ...", so chunk sums can be checked against 108 by an operator.
+
+Graded at the self-test level with SYNTHETIC lists (running real checkers is never a
+self-test act): five new cases (45 -> 50) — negative skip refused, non-positive limit
+refused both ways, valid chunk passes, consecutive 2-chunks of a 6-list sum to exactly
+6, and a mid-census slice takes exactly the census-order rows (["b.py", "c.py"]).
+Kill directions: a lying slice that ignores skip/limit is CAUGHT by the partition
+arithmetic (expected 6, got 18); a lying validator is CAUGHT by the refusal cases;
+control 50/50 green. Both gates green: self-test 50 cases exit 0, partner 6 cases,
+full survey 108 checker(s), 0 SURVIVED, 108 killed, 0 RELOCATION-SENSITIVE, 0 NO
+MUTATABLE, 0 PATH ALREADY RED, exit 0.
+
+Honest limits: the partition cases grade slice ARITHMETIC on synthetic lists, not that
+census_files()'s order is stable across Python versions — the order is held by
+fixed tuple iteration + per-dir sorted(), which is deterministic by construction, but
+a future edit that reorders the dir tuple or the named list changes every chunk's
+content silently; the [slice ... of 108 censused] note makes the SIZE visible, not the
+membership. The chunk exit contract measures its own rows only (a clean chunk exits 0
+even while unmeasured census rows remain) — that is the point of chunking, and the
+censused total in the note is what makes the remaining work countable.
