@@ -274,18 +274,11 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
   active user status, and scoped store/branch assignment coverage over `session.store_id`, implementing
   Owner Ruling R10 (scope-aware gate is authoritative). Pinned by
   `scoped_report_enforces_store_binding_against_scoped_assignment` in `reports_tests.rs`.
-- **BR-S8** — **[PBD]** `get_customer_scoped` is the one customer door that fails on gate
-  **kind** rather than gate order, and it is why the door is *not* delegated (ADR #49 §4:
-  *"Gates that are not scope-aware stay not scope-aware; an extraction is not the place to
-  widen a gate."*). The tablet gates with the **non-scope-aware**
-  `require_customer_permission` (`apps/mobile-tauri/src/commands/customers.rs:91` →
-  `require_permission_for_user` on the global identity db, `:279-286`), where
-  `crates/kasirmu-bridge/src/customers.rs:428` uses the scope-aware
-  `ctx.require_session_permission`. The bridge's doc block (`:410-414`) asserts the shell
-  used the scope-aware form — true of the **desktop** (`apps/desktop-tauri/src/
-  commands/customers.rs:193-195` already delegates), false of the tablet. A third
-  two-shell fork for the same owner ruling as `history`'s five export doors and
-  `settings`' six scoped setters.
+- ~~**BR-S8** — `get_customer_scoped` gate kind fork between tablet and bridge~~ —
+  **CLOSED 2026-09-25** under Owner Ruling R10 (`0183187c33`).
+  `apps/mobile-tauri/src/commands/customers.rs:114` delegates `get_customer_scoped` to
+  `kasirmu_bridge::customers::get_scoped(&ctx, &id, &session_token)`, adopting the scope-aware
+  `require_session_permission` gate authoritative across both shells. Pinned by `customers_tests.rs`.
 - **BR-S9** — **[PBD]** the two receipt-format **setters** are a two-shell gate fork, which is why they
   are *not* delegated. The tablet runs **one** gate, the scope-aware
   `require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT)`
@@ -436,21 +429,13 @@ data::` -> **50 passed, 0 failed**.
 - ~~**BR-X3** — `apps/desktop-tauri/src/commands/settings.rs` promises settings "may be exposed here in the future"~~ —
   **CLOSED 2026-11-07** (`docs(desktop-tauri): update settings module doc reflecting exposed commands (BR-X3)`).
   Module doc rewritten to document store-scoped, hardware, and receipt settings delegation to `kasirmu_bridge::settings`.
-- **BR-X4** — **[PBD]** and as a **two-shell fork** in `customers`, which is why five of its
-  seven doors are *not* delegated. The tablet opens the store db **before** the permission
-  gate (`resolve_scope` → `require_customer_permission`) at
-  `apps/mobile-tauri/src/commands/customers.rs:115-116` (`create`), `:141-142` (`update`),
-  `:167-168` (`delete`), `:194-195` (`search`) and `:226-227` (`history`); the bridge twins
-  gate first and open afterwards (`crates/kasirmu-bridge/src/customers.rs:458-460`, `:488-490`,
-  `:516-518`, `:545-547`, `:579-581`). The bridge is **not** consistent about this — it
-  preserves the open-before-gate order in `gift_cards` (`:49-51`), `loyalty` (`:87-89`) and
-  `purchasing` (`:500-502`) — so this is the desktop body the module was ported from, not a
-  crate rule. It matters because `open_store` is not free: on a cache miss it creates the
-  directory, creates the database file and runs migrations
-  (`platform/core/src/database/manager.rs:73-103`). So against an unopenable store an
-  unauthorized caller gets `Internal("opening store db: …")` on the tablet and
-  `PermissionDenied` on the desktop. **Owner ruling needed** — one answer settles this,
-  BR-S8, `history`'s five export doors and `settings`' six scoped setters.
+- ~~**BR-X4** — two-shell store-open vs permission gate order fork in customers~~ —
+  **CLOSED 2026-09-25** under Owner Ruling R10 (`43c0154bec` and sweeps).
+  All 5 tablet customer commands (`create_customer_scoped`, `update_customer_scoped`, `delete_customer_scoped`,
+  `search_customers_scoped`, `get_customer_history_scoped`) in `apps/mobile-tauri/src/commands/customers.rs`
+  gate before opening the store DB (`resolve_session` → `require_customer_permission` → `resolve_store`),
+  matching the bridge's gate-first order. Entire tablet gate-order population reduced from 69 → 0
+  (`registration_gate_tests.rs:1814`). Pinned by `customers_tests.rs`.
 
 ### Doc / test debt
 
