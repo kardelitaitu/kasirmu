@@ -617,6 +617,29 @@ def wiring_hits(name: str, texts: dict[str, str]) -> list[str]:
                   if name in _drop_comment_lines(text))
 
 
+def _parse_partner_dirs(text: str) -> list[str]:
+    """The alliance partner's CHECKER_DIRS as repo-relative dir strings.
+
+    r82-style source parse: the partner writes each dir as ROOT / "piece" /
+    ..., so the quoted pieces between commas are joined with "/". Whole-line
+    comments are dropped first (the round-83 primitive) so a commented entry
+    cannot count, and a missing block parses to [] -- which reddens the
+    mirror case. Round-88: the harness's CENSUS_DIRS and the partner's
+    CHECKER_DIRS are held equal from BOTH sides (the partner carries the
+    mirror case), so one gate cannot widen its audit scope alone.
+    """
+    block = re.search(r"CHECKER_DIRS\s*=\s*\(([^)]*)\)",
+                      _drop_comment_lines(text), re.S)
+    if block is None:
+        return []
+    out = []
+    for entry in block.group(1).split(","):
+        pieces = re.findall(r'"([^"]+)"', entry)
+        if pieces:
+            out.append("/".join(pieces))
+    return out
+
+
 def _parse_other_runners(text: str) -> tuple[set[str], list[str]]:
     """The partner's RUNNERS block, parsed -- plus every line REFUSED.
 
@@ -1365,7 +1388,7 @@ def self_test() -> int:
     want("a timeout is not the green grade either",
          alliance_grade(None, "timeout") != [0], True)
     want("a green partner drops the OK-line cause (round-76 fallback)",
-         alliance_grade(0, "SELF-TEST OK (6 cases, no files touched)"), [0])
+         alliance_grade(0, "SELF-TEST OK (8 cases, no files touched)"), [0])
     want("check.sh still runs the alliance partner's self-test per commit",
          checksh_invokes_alliance(), True)
 
@@ -1388,6 +1411,14 @@ def self_test() -> int:
          [account_carriers(["scripts/sabotage-selftests.py"]),
           any(p.name == "sabotage-selftests.py" for p in census_files())],
          [[], False])
+    want("the partner-dir parser joins ROOT pieces",
+         _parse_partner_dirs('CHECKER_DIRS = (ROOT / "a", ROOT / "b" / "c")'),
+         ["a", "b/c"])
+    want("a missing CHECKER_DIRS block parses to nothing (and reddens)",
+         _parse_partner_dirs("x = 1"), [])
+    want("the census dirs mirror the alliance partner's audit dirs",
+         _parse_partner_dirs((ROOT / ALLIANCE_PARTNER).read_text(encoding="utf-8", errors="replace")),
+         list(CENSUS_DIRS))
     # ── survey slices are deterministic, bounded, self-describing (round-78) ──
     want("a negative --skip is refused (it would wrap to the census tail)",
          slice_error(None, -1) is not None, True)
@@ -1405,7 +1436,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (80 cases, one alliance self-test runs: verify-selftests-wired)")
+    print("SELF-TEST OK (83 cases, one alliance self-test runs: verify-selftests-wired)")
     return 0
 
 
