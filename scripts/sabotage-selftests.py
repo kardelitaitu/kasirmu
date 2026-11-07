@@ -733,7 +733,10 @@ def census_files() -> list[Path]:
     pipeline depends on it -- directly (check.sh step, pre-commit or pre-push
     hook, workflow,
     website package.json) or transitively (a censused checker loads it by
-    path; round-69: the shared allowlist schema). Scripts that self-test but
+    path; round-69: the shared allowlist schema). A workflow counts on the
+    PARTNER's scan directly; this harness sees workflow invocations only
+    through the round-90 graded redundancy -- every workflow-invoked
+    census-shaped script must also be named in a runner file. Scripts that self-test but
     nothing depends on are out, listed in CENSUS_EXCLUDED and held there by
     self_test().
     """
@@ -816,6 +819,17 @@ def orchestrator_invocations(text: str) -> list[str]:
     runner file, so the wiring scan cannot see its children -- the mirror
     property below is what keeps a sole-provider checker from hiding behind
     it.
+    """
+    return sorted(set(re.findall(r"scripts/([A-Za-z0-9_-]+\.(?:py|mjs|sh))",
+                                 _drop_comment_lines(text))))
+
+
+def workflow_invocations(text: str) -> list[str]:
+    """Script basenames a workflow file invokes, comment lines dropped, deduped,
+    sorted. Round-90: the CI plane applied to the round-89 property -- a YAML
+    comment cannot invoke anything, and the mirror case below holds every
+    workflow-invoked census-shaped script to a runner file's text, since this
+    harness's wiring scan reads no .yml.
     """
     return sorted(set(re.findall(r"scripts/([A-Za-z0-9_-]+\.(?:py|mjs|sh))",
                                  _drop_comment_lines(text))))
@@ -1469,6 +1483,25 @@ def self_test() -> int:
              orchestrator_invocations((ROOT / "scripts/run-pre-push.py").read_text(encoding="utf-8", errors="replace")),
              {rel: (ROOT / rel).read_text(encoding="utf-8", errors="replace") for rel in RUNNER_FILES}),
          [])
+    # ── the CI plane is a mirror too (round-90) ───────────────────────────────
+    want("the workflow extractor reads invocations and drops comments",
+         workflow_invocations("run: python3 scripts/verify-x.py  # tail\n"
+                              + "# scripts/verify-commented.py --self-test\n"
+                              + "- python3 scripts/check-y.py --strict"),
+         ["check-y.py", "verify-x.py"])
+    want("a workflow comment alone invokes nothing",
+         workflow_invocations("# scripts/verify-commented.py --self-test"), [])
+    want("the workflow walk sees real CI invocations",
+         [n in workflow_invocations((ROOT / ".github" / "workflows" / "dev-ci.yml").read_text(encoding="utf-8", errors="replace"))
+          for n in ("verify-website-assets.py", "verify-architecture-boundaries.py")],
+         [True, True])
+    want("every workflow-invoked census-shaped script is runner-visible",
+         sole_orchestrator_wiring(
+             [n for p in sorted((ROOT / ".github" / "workflows").iterdir())
+              if p.suffix in (".yml", ".yaml")
+              for n in workflow_invocations(p.read_text(encoding="utf-8", errors="replace"))],
+             {rel: (ROOT / rel).read_text(encoding="utf-8", errors="replace") for rel in RUNNER_FILES}),
+         [])
     # ── survey slices are deterministic, bounded, self-describing (round-78) ──
     want("a negative --skip is refused (it would wrap to the census tail)",
          slice_error(None, -1) is not None, True)
@@ -1486,7 +1519,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (88 cases, one alliance self-test runs: verify-selftests-wired)")
+    print("SELF-TEST OK (92 cases, one alliance self-test runs: verify-selftests-wired)")
     return 0
 
 
