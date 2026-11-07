@@ -4945,3 +4945,26 @@ population — a sweep that enumerated nothing still exits 0, guarded only by th
 census-not-empty case one layer up. Redundant grading now exists by design (two
 independent case sets for one contract); neither set is a lie, and the redundancy is
 recorded here so a future dedup does not read it as drift.
+
+### Register correction (2026-11-07) — the round-97 entry's cross-lane narrative is false
+
+Measured against history, the round-97 entry above is wrong about WHO and WHEN. The
+survey-contract cases ("a survivor fails the exit", "a new modification is reported",
+the slice partition) are not another session's concurrent work: `git log -S` traces
+them to `f22334142` (survey exit over unmeasured rows), `87a1c7947` (survey fails on
+tracked dirt left by staged runs — where junction_writethrough itself landed), and
+`b015c9d3b` (validated, self-describing survey slices) — older rounds' landings that
+were part of the standing case count all along (98 at round 94, 101 at round 95). No
+second session worked this seam this hour; the sweep suspicion was pattern-matching on
+the r96 incident.
+
+The actual defect this session contributed: a recon grep that was line-limited
+(`i < 1430`) and single-line declared the contract ungraded, and the six cases in
+`0c4e07391` are REDUNDANT coverage of an already-graded contract — every one a true
+statement, none new enforcement (their shapes overlap the standing cases almost
+entirely; the exact-order zip partition and the tail slice are the only additions not
+already present). The docstring's "graded in self_test with synthetic lists" was true
+when this session called it a lie. The lesson is the register's own recurring one,
+third instance now: a truncated hit list reads as absence — measure history
+(`git log -S`, `git show <rev>:<path>`) before declaring a seam ungraded, and never
+trust a single-line pattern against multi-line calls.
