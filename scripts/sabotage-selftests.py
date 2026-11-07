@@ -484,8 +484,23 @@ SELF_TEST_FLAG = re.compile(r"""["']--self-test["']""")
 #: depends on them and no censused file loads them (measured 2026-11-07 against
 #: scripts/check.sh, .githooks/pre-push, the GitHub workflows, both package.json
 #: manifests and every censused file's text). They are standalone operator
-#: tools. self_test() holds this list to the criterion with census_carriers()
-#: and pipeline_references(): a pipeline that starts depending on one of these
+#: tools, audited 2026-11-07 (round-72), each ALIVE with its consumer named --
+#: the per-file evidence that would otherwise have to be re-derived from 875
+#: lines of docstring at every audit:
+#:
+#:   sign-plugin.py -- signs plugins; the verifying side is
+#:       crates/kasirmu-plugin/src/signature.rs (plugin_digest), the flow is
+#:       documented in docs/guides/developer/plugin-guide.md, and the example
+#:       plugin it signs ships in scripts/examples/example-discount/.
+#:   restaurant-coverage.py -- audits e2e coverage of the restaurant surface
+#:       (109 specs under ui/e2e/ against the feature files); the instrument
+#:       five records under docs/records/audits/ were written with.
+#:   extract-updater-seed.py -- recovers the Ed25519 seed behind the updater
+#:       pubkey pinned at apps/desktop-tauri/tauri.conf.json:73, the secret
+#:       the live release.yml updater signing consumes.
+#:
+#: self_test() holds this list to the criterion with census_carriers() and
+#: pipeline_references(): a pipeline that starts depending on one of these
 #: reddens the self-test until the file joins the census, and a new
 #: self-test-carrying script that lands without a census membership reddens it
 #: too -- the round-66 failure mode, where eleven self-tested checkers ran
@@ -493,7 +508,10 @@ SELF_TEST_FLAG = re.compile(r"""["']--self-test["']""")
 #: Round-69 lesson, now graded: allowlist-schema.py sat here as "no pipeline
 #: runs it" while two censused gates loaded it by path -- wiring a name search
 #: over pipeline files cannot see, so self_test() also scans censused files'
-#: text for an excluded basename.
+#: text for an excluded basename. Round-72 adds the mirror direction: an
+#: excluded script that stops quoting the flag is a dead file that should be
+#: deleted, not parked here, and the flag check below reddens when that
+#: happens.
 CENSUS_EXCLUDED = (
     "scripts/sign-plugin.py",
     "scripts/restaurant-coverage.py",
@@ -799,6 +817,9 @@ def self_test() -> int:
     want("the census is not empty", bool(censused), True)
     want("every excluded script still exists",
          all((ROOT / rel).exists() for rel in CENSUS_EXCLUDED), True)
+    want("every excluded script still quotes the self-test flag",
+         all(SELF_TEST_FLAG.search((ROOT / rel).read_text(encoding="utf-8", errors="replace"))
+             for rel in CENSUS_EXCLUDED if (ROOT / rel).exists()), True)
     for rel in CENSUS_EXCLUDED:
         refs = pipeline_references(Path(rel).name)
         if refs:
@@ -854,7 +875,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (38 cases, no checker is run)")
+    print("SELF-TEST OK (39 cases, no checker is run)")
     return 0
 
 
