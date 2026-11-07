@@ -3747,3 +3747,53 @@ would not fail the exit — untracked noise is the price of not failing on every
 legitimate cache; the tracked half is the half git can restore by name. The
 before-snapshot also means the guard says nothing about dirt that existed before the
 survey — by design: the survey answers only for its own runs.
+
+### Round 69 (2026-11-07) — the exclusion list loses its first member: the shared schema was wired all along
+
+Round 66 classified four self-tested scripts as "no pipeline runs them" and parked them
+in the exclusion comment; round 67 turned that comment into CENSUS_EXCLUDED and held it
+with a name search over pipeline files. Round 69 ran the criterion's own logic against
+the list and found one member was never truly unwired.
+
+scripts/allowlist-schema.py is a library: "Nothing here opens a file." Its consumers are
+the two gates that read the allowlist — verify-ipc-parity.py (ALLOWLIST_SCHEMA_PATH,
+:112) and verify-scoped-reads.py (SCHEMA_PATH, :471, loaded with spec_from_file_location
+because the hyphen forbids a normal import). Both gates are censused; check.sh runs
+them. So the schema is wired TRANSITIVELY, and the r66 "unwired" verdict was an artifact
+of asking only pipeline files for the name — wiring by import is invisible to that
+search. The other three exclusions (sign-plugin.py, restaurant-coverage.py,
+extract-updater-seed.py) genuinely have zero consumers anywhere; they stay excluded as
+standalone operator tools.
+
+Wiring it exposed the second defect: a feasibility probe gutted the module's cands[0]
+and its own self-test stayed GREEN — SURVIVED. cands[0] was is_comment_key, and git grep
+found its only references were its own definition and COMMENT_PREFIX, its only consumer:
+dead code, exported for nobody, not even carrying the "for the day a caller wants the
+words" caveat its siblings state_empty/defaulted_empty carry. 688e7e7bb deletes both. With it
+gone, cands[0] is stated_empty — graded directly at three self-test assertions — and the
+re-probe reads KILLED (base exit 0, mutant exit 1).
+
+fc32b6ce1 completes the move:
+
+- census_files() names allowlist-schema.py outright, with the reason in the comment: a
+  schema the survey refuses to grade is a schema its two gates can silently disagree
+  about — the exact disease the module exists to cure.
+- The census docstring's criterion gains the transitive clause: a pipeline depends on a
+  script directly or through a censused checker loading it by path.
+- self_test() grows a graded case that would have caught this rots-forward: every
+  censused file's text is scanned for an excluded basename, and a hit reddens with
+  "<excluded> is loaded by censused <file> — it must join the census". Kill probe:
+  re-adding the schema to CENSUS_EXCLUDED is CAUGHT twice over (coverage AND the new
+  importer scan); the control stays green. Case count 26 -> 27.
+
+The survey now reads 108 checker(s), 0 SURVIVED, 108 killed, 0 RELOCATION-SENSITIVE,
+0 NO MUTATABLE, exit 0 — the shared schema's verdicts are measured like every gate that
+consumes them, and the harness self-test proved the new row lands at the right spot in
+the census table (allowlist-schema.py / stated_empty / KILLED / exit 0 -> 1).
+
+Honest limits: the importer scan is text-level — a censused file that mentions an
+excluded basename in PROSE reddens too (necessary-not-sufficient, same documented
+direction as pipeline_references: a human decides). It reads all censused files on every
+harness self-test, doubling their reads — a few hundred milliseconds, accepted. The
+remaining three exclusions are each one manual-run away from this same treatment if a
+pipeline ever grows a step for them; the gate will name the moment.
