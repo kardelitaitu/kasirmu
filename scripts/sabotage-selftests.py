@@ -560,17 +560,33 @@ def pipeline_references(name: str) -> list[str]:
     same false negative verify-flaky-quarantine.py suffered from .bak runners
     would wire a dead thing here.
     """
-    hits = []
+    return wiring_hits(name, runner_texts())
+
+
+def runner_texts() -> dict[str, str]:
+    """Every runner's text, keyed by repo-relative path -- the wiring corpus."""
+    texts: dict[str, str] = {}
     for rel in RUNNER_FILES:
         p = ROOT / rel
-        if p.exists() and name in p.read_text(encoding="utf-8", errors="replace"):
-            hits.append(rel)
+        if p.exists():
+            texts[rel] = p.read_text(encoding="utf-8", errors="replace")
     for wf in sorted((ROOT / ".github" / "workflows").rglob("*.y*ml")):
         if "attic" in {q.lower() for q in wf.parts}:
             continue
-        if name in wf.read_text(encoding="utf-8", errors="replace"):
-            hits.append(wf.relative_to(ROOT).as_posix())
-    return hits
+        texts[wf.relative_to(ROOT).as_posix()] = wf.read_text(encoding="utf-8", errors="replace")
+    return texts
+
+
+def wiring_hits(name: str, texts: dict[str, str]) -> list[str]:
+    """Runner paths whose text mentions `name` -- the wiring signal, PURE.
+
+    Kept pure so self_test() can hold the exclusion alarm's FIRE direction
+    every run (round-79): until now a wired exclusion was proven to redden
+    only by ephemeral probes against a doctored tree, while the graded case
+    covered the live tree's silence. Sorted output keeps the alarm message
+    deterministic.
+    """
+    return sorted(rel for rel, text in texts.items() if name in text)
 
 
 def _other_gate_runners() -> set[str]:
@@ -966,6 +982,18 @@ def self_test() -> int:
     want("the census's name convention matches verify-selftests-wired's SCRIPT_RE",
          sorted((other.group(1) if other else "?").split("|")),
          sorted(CONVENTION_PREFIXES))
+    # ── the exclusion alarm fires on the signal, not only on the live tree ────
+    # Measured 2026-11-07 (round-79): a wired exclusion yields exactly ONE bad
+    # entry -- "<rel> is now pipeline-wired (<runner>) — it must join the
+    # census" -- no crash, no muddy second signal (the transitive scan is a
+    # different signal with its own line). The fire direction below is graded
+    # purely; no file is written.
+    synth = {"scripts/check.sh": "run: python3 scripts/restaurant-coverage.py --x",
+             "ui/package.json": "nothing relevant"}
+    want("a wired exclusion surfaces with its runner named",
+         wiring_hits("restaurant-coverage.py", synth), ["scripts/check.sh"])
+    want("an unwired name stays silent",
+         wiring_hits("sign-plugin.py", synth), [])
     for rel in CENSUS_EXCLUDED:
         refs = pipeline_references(Path(rel).name)
         if refs:
@@ -1057,7 +1085,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (50 cases, one alliance self-test runs: verify-selftests-wired)")
+    print("SELF-TEST OK (52 cases, one alliance self-test runs: verify-selftests-wired)")
     return 0
 
 
