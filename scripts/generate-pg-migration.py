@@ -1716,6 +1716,22 @@ def render() -> tuple[str, int, int, int, list[str]]:
     return "\n".join(out).replace("\n", "\r\n") + "\n", len(ordered), len(indexes), len(seeds), skipped
 
 
+def _self_test_registry_ids():
+    """The registry parser sees the real chain: non-empty .sql ids, no repeats.
+
+    registry_ids() reads migrations.rs, which the sabotage survey's staged tree
+    reaches through a junction — so this case is graded there too, and a gutted
+    parser (None) fails here instead of silently shortening every rendered
+    snapshot.
+    """
+    ids = registry_ids()
+    if not ids or not all(i.endswith(".sql") for i in ids):
+        raise SystemExit(f"self-test FAIL: registry_ids() -> {ids!r} (need non-empty .sql ids)")
+    if len(set(ids)) != len(ids):
+        raise SystemExit("self-test FAIL: registry_ids() repeats an id")
+    print(f"ok: registry_ids self-test ({len(ids)} migrations in registry order)")
+
+
 def main(argv: list[str]) -> int:
     check = "--check" in argv
     if "--self-test" in argv:
@@ -1723,6 +1739,7 @@ def main(argv: list[str]) -> int:
         _self_test_rls_exempt_reasons()
         _self_test_trigger_gate()
         _self_test_reconciliation_gate()
+        _self_test_registry_ids()
         return 0
     body, n_tables, n_indexes, n_seeds, skipped = render()
 
