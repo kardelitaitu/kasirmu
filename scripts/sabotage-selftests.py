@@ -623,8 +623,36 @@ def survey(limit: int | None, skip: int = 0) -> list[tuple[str, str, int, int, s
     return rows
 
 
+def git_status_porcelain() -> str:
+    """The tracked tree's dirt, exactly as `git status --porcelain` prints it."""
+    return subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=ROOT, capture_output=True, text=True, check=True,
+    ).stdout
+
+
+def junction_writethrough(before: str, after: str) -> list[tuple[str, str]]:
+    """Tracked-tree changes that appeared between two porcelain snapshots.
+
+    build_temp_root junctions every top-level sibling back at the REAL
+    checkout, so each staged run is 300+ per survey chances for a checker to
+    land a write in tracked files (measured 2026-11-07: a canary written to
+    the staged crates/ appears in the real crates/). A survey owes the tree
+    zero changes: anything in `after` that was not in `before` and is not
+    untracked scratch ('??' — caches and .agents probes are common and benign)
+    is a write-through and the survey's exit must say so.
+    """
+    prior = set(before.splitlines())
+    out = []
+    for line in after.splitlines():
+        if line and line not in prior and not line.startswith("??"):
+            out.append((line[:2], line[3:]))
+    return out
+
+
 def self_test() -> int:
-    """Grade the two parts that can lie silently: the MUTATOR and the CENSUS.
+    """Grade the three parts that can lie silently: the MUTATOR, the CENSUS,
+    and the STAGED-RUN ISOLATION.
 
     A mutation harness has one failure mode worth fearing: producing a mutation that is
     not one. A blanked function that leaves a syntax error makes every self-test "fail"
@@ -721,10 +749,23 @@ def self_test() -> int:
     want("the harness is never its own subject",
          "scripts/sabotage-selftests.py" not in censused, True)
 
+    # ── staged runs must never write through a junctioned sibling ────────────
+    want("a new modification is reported",
+         junction_writethrough("", " M scripts/x.py"), [(" M", "scripts/x.py")])
+    want("pre-existing dirt is not re-reported",
+         junction_writethrough(" M scripts/x.py", " M scripts/x.py"), [])
+    want("untracked scratch never counts as write-through",
+         junction_writethrough("", "?? .agents/probe.py"), [])
+    want("an empty after is no write-through", junction_writethrough(" M a", ""), [])
+    want("a staged addition is reported",
+         junction_writethrough("", "A  crates/new.py"), [("A ", "crates/new.py")])
+    want("a deletion is reported",
+         junction_writethrough("", " D docs/x.md"), [(" D", "docs/x.md")])
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (20 cases, no checker is run)")
+    print("SELF-TEST OK (26 cases, no checker is run)")
     return 0
 
 
@@ -739,7 +780,9 @@ def main() -> int:
     args = ap.parse_args()
     if args.self_test:
         return self_test()
+    before_tree = git_status_porcelain()
     rows = survey(args.limit, args.skip)
+    through = junction_writethrough(before_tree, git_status_porcelain())
     survivors = [r for r in rows if r[4] == "SURVIVED"]
     relocated = [r for r in rows if r[4] == "RELOCATION-SENSITIVE"]
     unmutatable = [r for r in rows if r[4] == "NO MUTATABLE FUNCTION"]
@@ -751,7 +794,14 @@ def main() -> int:
           "detector), %d killed, %d RELOCATION-SENSITIVE (self-test cannot run from a copy; "
           "unmeasured, not proven), %d NO MUTATABLE FUNCTION."
           % (len(rows), len(survivors), killed, len(relocated), len(unmutatable)))
-    return 1 if survivors else 0
+    if through:
+        print("")
+        print("STAGED WRITE-THROUGH: the survey left tracked dirt in the real tree:")
+        for st, path in through:
+            print("  %s %s" % (st, path))
+        print("  a staged run wrote through a junctioned sibling; do not trust")
+        print("  the table above until this is explained.")
+    return 1 if (survivors or through) else 0
 
 
 if __name__ == "__main__":
