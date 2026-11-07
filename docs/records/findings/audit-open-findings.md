@@ -4430,3 +4430,42 @@ not hidden). The flag case grades the literal's PRESENCE in the partner's source
 that the partner USES it in declares_selftest — a partner rewrite that keeps the
 string but changes the call would pass this case while changing semantics; the
 partner's own six cases and the live alliance run (r76) are the backstop there.
+
+### Round 84 (2026-11-07) — comments satisfy no wiring check
+
+The r83 card's worry about the alliance case's exit contract dissolved on inspection:
+`run_self_test_out` returns (exit, cause) and the case wants [arc] + cause-if-red
+against [0] — a failing partner case lands as [2, cause], a timeout as [None]; the
+contract already surfaces both. Reading the case exposed the REAL remainder: four
+textual signals still matched comment-blind RAW text, where a commented-out step
+satisfies the check and a comment mention grades a lie. (1) checksh_invokes_self_test
+and (2) checksh_invokes_alliance — the two per-commit wiring checks would stay green
+on a commented-out invocation; (3) transitively_loaded — a comment naming a censused
+file counted as a LOAD, the false-wired direction; (4) the exclusion transitive scan —
+a comment naming an excluded file forced it into the census (the loud direction, but
+the same vocabulary lie). The r81 note had even argued comment over-firing was "the
+safe direction" for a censused file — wrong under the r83 alignment, and now corrected
+in place.
+
+Measured before landing: every live invocation and load sits on a live line (check.sh
+steps at :295/:777/alliance; the allowlist-schema loads in code), so the alignment is
+behavior-preserving on the live tree.
+
+`4615cd59e`: both checksh_invokes_* gain an optional text param (pure over given
+text, disk default) and match over _drop_comment_lines; transitively_loaded strips
+before matching; the exclusion scan strips the censused text. Four new cases (65 ->
+69): a commented-out step wires neither the harness nor the alliance; a live step
+beside a comment still wires; a comment naming a checker is not a load.
+
+Kill directions: a lying strip (identity) is CAUGHT — the comment cases redden
+immediately; a lying loads signal (everything loads everything) is CAUGHT by the
+r81 pure case; control 69/69 green. Both gates green: harness 69 cases exit 0,
+partner 6 cases, full survey 108 checker(s), 0 SURVIVED, 108 killed, 0
+RELOCATION-SENSITIVE, 0 NO MUTATABLE FUNCTION, 0 PATH ALREADY RED, exit 0.
+
+Honest limits: the alliance case's fire direction on a RED partner remains
+probe-proven rather than graded — the case runs the real partner file, and a
+self-test that fakes its partner would grade nothing; the contract arithmetic is
+visible at the case and the partner is green by its own gate every run. The
+checksh_invokes_* functions now take text, but their LIVE cases still read the disk
+file (the working tree is what the pipeline runs, consistent with every other case).
