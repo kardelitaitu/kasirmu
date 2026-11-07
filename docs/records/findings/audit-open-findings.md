@@ -4473,3 +4473,42 @@ self-test that fakes its partner would grade nothing; the contract arithmetic is
 visible at the case and the partner is green by its own gate every run. The
 checksh_invokes_* functions now take text, but their LIVE cases still read the disk
 file (the working tree is what the pipeline runs, consistent with every other case).
+
+### Round 85 (2026-11-07) — the unclosable gap closed
+
+The census's last honest gap was the one round-80's accounting had made visible rather
+than closable: verify-website-assets.py, wired at check.sh:1099 + dev-ci.yml:228, with
+NO --self-test anywhere — held by a CENSUS_UNFLAGGED account, the only flag-less,
+runner-wired checker left. Its own docstring carried a measured round-14-era defense:
+both extraction paths fail toward noise (break the import regex and every asset reads
+ORPHAN; break the dynamic-resolver regex and the orphan check ENABLES), so a liveness
+test was said to have nothing to catch. That argument answered "can it go quiet" but
+not the census's question — "is the capability declared and graded" — and the survey's
+per-candidate mutation model measures liveness directly anyway.
+
+`0bd73e523`: the gate grew a graded --self-test (13 cases: the four dynamic shapes, a
+plain literal import NOT matching, the vite ?url suffix split — the every-asset-looks-
+orphaned lesson — the KNOWN_RASTER_SVGS ratchet pinned at exactly logo-os-android.svg,
+list_graded's 1/2/3 forms, and the two live scans' return types, where a gutted scan
+returns None and the isinstance cases catch it). check.sh gains a self-test step beside
+the gate step; the checker is wired twice over (gate + its self-test). The harness
+retired the CENSUS_UNFLAGGED account; nothing flag-less and runner-wired remains.
+
+Wiring lesson measured this round: the check.sh invocation ran the CHECKER without the
+flag, so the partner's hard gate went red on the first landing — declared self-test,
+uncalled. A checker's invocation is not its self-test's invocation; the partner's
+CALL_RE demands the flag, and now the pipeline invokes it like every other self-test.
+
+Kill directions: resurrecting the CENSUS_UNFLAGGED entry is CAUGHT (the file now
+carries the flag, so the flag-less-accounts case reddens); the alliance case red on
+the unwired intermediate was itself the live catch. Survey first grading: the new
+checker's self-test KILLED its first candidate (find_dynamic_resolvers gutted ->
+None -> caught). Both gates green: harness 69 cases exit 0, partner 6 cases, full
+survey 109 checker(s), 0 SURVIVED, 109 killed, 0 RELOCATION-SENSITIVE, 0 NO MUTATABLE
+FUNCTION, 0 PATH ALREADY RED, exit 0.
+
+Honest limits: the self-test's scan cases read the live website/src tree (read-only,
+junction-stable in the staged copies); the KNOWN_RASTER_SVGS pin is a policy ratchet,
+not a behavior test — it reddens on any addition, by design. The gate's own tree-walk
+rules (size, base64, orphan) remain graded by the survey's mutation model, not by
+synthetic fixtures.
