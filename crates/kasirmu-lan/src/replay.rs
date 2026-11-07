@@ -366,6 +366,23 @@ impl OfflineReplayBuffer {
         );
     }
 
+    /// The next eviction victim only — the head of the insertion index
+    /// with its identity label. The differential test reads exactly this
+    /// after every push; materializing the whole labeled order (up to
+    /// MAX_OFFLINE_BUFFER_TOTAL entries, one String each) per push pushed
+    /// the test past the 30s quick-profile timeout (measured 2026-11-08:
+    /// 33.3s under the default profile, dominated by ~40M throwaway
+    /// String allocations).
+    #[cfg(test)]
+    pub(crate) async fn eviction_head(&self) -> Option<(u64, String)> {
+        self.inner
+            .lock()
+            .await
+            .fifo
+            .front()
+            .map(|(seq, key)| (*seq, key.label()))
+    }
+
     /// The global eviction order as it stands (oldest insertion first) —
     /// the exact list the total cap will pop from, oldest first.
     #[cfg(test)]

@@ -306,7 +306,7 @@ async fn eviction_matches_the_old_full_scan_for_the_same_insertion_sequence() {
                 "op {i}: population diverged from the scan oracle"
             );
             assert_eq!(
-                buffer.eviction_order().await.first().cloned(),
+                buffer.eviction_head().await,
                 oracle.head(),
                 "op {i}: the next eviction victim must be the one the old scan picked"
             );
