@@ -5119,3 +5119,30 @@ expectation miscounted from its own fixture rows, and main() still referencing a
 local the extraction removed — NameError on every real run); both fixed before
 any gate run was trusted, which is the draft-catch doing its job on the harness
 itself.
+
+### Round 102 (2026-11-07) — the wiring audit's report, extracted and graded
+
+The partner gate's verdict was live-graded (the harness alliance case runs it every
+self-test) but its REPORT was not: the uncalled-audit's output — an honest header
+count, one named remedy line per checker — was built inline in main(), same shape as
+the round-101 summary. A report that said "3 self-test(s) invoked by no runner" while
+naming two, or named only the first of three, would still have exited 1 with a
+plausible-looking block: the exit code was graded, the text the operator reads was
+not.
+
+`341780025` extracts uncalled_report(live) and wired_ok_line(declared, total),
+behavior-preserving (main() prints them; live output byte-identical — "102 of 105"
+counted, not typed). +2 partner cases (18→20, derived): the report names each checker
+exactly once beside its remedy, the header count matches the names under it, a
+phantom third self-test appears nowhere; the clean line's "N of M" derives from the
+census arguments. Kill directions: a header count that lies is CAUGHT; a checker
+that goes unnamed is CAUGHT; a hardcoded clean line is CAUGHT; control green. Full
+survey 109/0/109/0/0/0, exit 0.
+
+Honest limits: main()'s declared/total computation is two inline comprehensions over
+checkers()/declares_selftest — the census functions are graded (r95/r99), the
+comprehensions themselves are not. The remedy text ("add a step beside its gate in
+dev-ci.yml and check.sh") is graded only for presence, not for accuracy against the
+current RUNNERS list — if the canonical runners ever move, the remedy must be edited
+by hand; a checker-grade for that direction would mean parsing a string for a policy,
+which is the kind of audit this campaign has learned to distrust.
