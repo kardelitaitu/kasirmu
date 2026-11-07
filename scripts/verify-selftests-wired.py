@@ -393,6 +393,27 @@ def self_test() -> int:
     want("the census harness's dirs mirror this gate's audit dirs",
          harness_census_dirs(live_src),
          [d.relative_to(ROOT).as_posix() for d in CHECKER_DIRS])
+    # ── the reading direction is named, never silent (round-99) ───────────────
+    # This gate's worst failure mode is silent absence: a checker dir that
+    # vanishes shrinks the audited set with no signal, an unreadable checker
+    # reads as not-declaring (declares_selftest's OSError fallback), a vanished
+    # runner silently drops its invocations. Grade the tree the gate reads,
+    # with the missing name in the failure message, not in a swallowed except.
+    def readable(rel):
+        try:
+            (ROOT / rel).read_text(encoding="utf-8", errors="replace")
+            return True
+        except OSError:
+            return False
+    want("every checker dir in scope exists",
+         [str(d) for d in CHECKER_DIRS if not d.is_dir()], [])
+    want("every runner this gate reads exists",
+         [str(rt) for rt in RUNNERS if not rt.exists()], [])
+    want("every audited checker is readable by name",
+         [(str(rel), readable(rel)) for rel in checkers()],
+         [(str(rel), True) for rel in checkers()])
+    want("an unreadable checker reads as not-declaring -- the explicit fallback",
+         declares_selftest(Path("no/such/checker.py")), False)
     live = uncalled_selftests()
     if live:
         bad.append("live tree has " + str(len(live)) + " uncalled self-test(s): "

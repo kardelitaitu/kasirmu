@@ -1618,6 +1618,8 @@ def self_test() -> int:
         td_path = Path(td98s)
     want("the staging tree is cleaned up after the survey shape",
          not td_path.exists(), True)
+    want("every census directory in scope exists",
+         [d for d in CENSUS_DIRS if not Path(d).is_dir()], [])
     # ── the declaration predicate is comment-blind (round-95) ─────────────────
     want("a quoted flag in a comment does not declare a self-test",
          declares_flag('# add a "--self-test" mode someday'), False)
