@@ -136,6 +136,15 @@ read -r -d '' AWK_PROG <<'AWK' || true
   }
 AWK
 
+# The classifier's single invocation site: both the live scan below and every
+# self-test case drive $AWK_PROG through THIS wrapper, so the cases grade the
+# same program text the crate scan runs -- and a wrapper that stops invoking
+# awk (broken arg passing, a lost -v) reddens in the self-test instead of
+# silencing the live scan.
+run_classifier() {
+  awk -v PERM="$PERM" -v STORE="$STORE" -v LISTED="$SELF_SCOPED" "$@" "$AWK_PROG"
+}
+
 # ── Self-test ────────────────────────────────────────────────────────────────
 #
 # The classifier is one awk function with four branches, and every branch decides
@@ -154,10 +163,9 @@ self_test() {
   run_case() {
     local label="$1" want="$2" src="$3" got
     total=$((total + 1))
-    # scanned floor is disabled for cases by passing a generous SRC label; the floor
-    # itself is exercised separately below.
-    got=$(printf '%s' "$src" | awk -v PERM="$PERM" -v STORE="$STORE" \
-      -v LISTED="$SELF_SCOPED" -v SRC="selftest" -v FLOOR=0 "$AWK_PROG" 2>/dev/null \
+    # Cases parse the UNREASONED line, so the hardcoded scanned-floor firing under
+    # them is harmless; the floor itself is graded by case 7 below.
+    got=$(printf '%s' "$src" | run_classifier -v SRC="selftest" 2>/dev/null \
       | sed -n 's/.*UNREASONED: \([0-9]*\).*/\1/p')
     if [ "$got" != "$want" ]; then
       printf '  FAIL %s: expected %s unreasoned, got "%s"\n' "$label" "$want" "$got"
@@ -208,13 +216,8 @@ self_test() {
      }'
 
   # 7. THE FLOOR. An empty subject must refuse rather than report a clean zero.
-  if printf '' | awk -v PERM="$PERM" -v STORE="$STORE" -v LISTED="$SELF_SCOPED" \
-      -v SRC="empty" "$AWK_PROG" >/dev/null 2>&1; then
-    : # floor fires via exit 2, handled below
-  fi
   total=$((total + 1))
-  if printf '' | awk -v PERM="$PERM" -v STORE="$STORE" -v LISTED="$SELF_SCOPED" \
-      -v SRC="empty" "$AWK_PROG" >/dev/null 2>&1; then
+  if printf '' | run_classifier -v SRC="empty" >/dev/null 2>&1; then
     printf '  FAIL the empty subject must exit non-zero, it exited 0\n'
     fails=$((fails + 1))
   fi
@@ -235,8 +238,7 @@ fi
 # Grade the classifier before grading the crate.
 self_test || { echo "CLASSIFIER WENT DEAF: not trusting the scan below." >&2; exit 2; }
 
-awk -v PERM="$PERM" -v STORE="$STORE" -v LISTED="$SELF_SCOPED" -v SRC="$SRC" \
-  "$AWK_PROG" $(find "$SRC" -name "*.rs" ! -name "*_tests.rs")
+run_classifier -v SRC="$SRC" $(find "$SRC" -name "*.rs" ! -name "*_tests.rs")
 rc=$?
 
 # awk exits 1 whenever it found an unreasoned fn; only --strict treats that as
