@@ -692,6 +692,39 @@ def census_carriers() -> list[str]:
     return carriers
 
 
+def slice_error(limit: int | None, skip: int) -> str | None:
+    """Why --limit/--skip would measure the wrong thing, or None if they are sane.
+
+    Python slicing silently wraps negatives (files[-3:] is the LAST three), and
+    0 is falsy, so a naive `if limit:` turns --limit 0 into a FULL survey.
+    Both failure directions read as measured, so they are refused instead of
+    interpreted.
+    """
+    if skip < 0:
+        return "--skip must be >= 0 (a negative value would wrap to the census tail)"
+    if limit is not None and limit <= 0:
+        return "--limit must be > 0 (0 or negative measures nothing)"
+    return None
+
+
+def survey_slice(files: list[Path], limit: int | None, skip: int) -> list[Path]:
+    """The deterministic slice --limit/--skip measure.
+
+    Order is census_files()'s own -- three census dirs in fixed tuple order,
+    sorted within each dir, then the named list -- identical every run, so
+    consecutive chunks [skip:skip+limit] partition the census with neither
+    overlap nor gap (graded in self_test with synthetic lists; running real
+    checkers is never a self-test act). Bounds are validated by slice_error.
+    """
+    problem = slice_error(limit, skip)
+    if problem:
+        raise SystemExit(problem)
+    out = files[skip:]
+    if limit is not None:
+        out = out[:limit]
+    return out
+
+
 def survey(limit: int | None, skip: int = 0) -> list[tuple[str, str, int, int, str]]:
     """(checker, mutated function, before, after, verdict) for every candidate."""
     # Three languages, two mechanisms. Python is mutated through its AST (find the
@@ -702,11 +735,7 @@ def survey(limit: int | None, skip: int = 0) -> list[tuple[str, str, int, int, s
     # "mutation" would be a broken file, which reads as the self-test working when it is
     # just a syntax error. Both mechanisms answer the same question: does the self-test
     # notice its detector being gutted.
-    files = census_files()
-    if skip:
-        files = files[skip:]
-    if limit:
-        files = files[:limit]
+    files = survey_slice(census_files(), limit, skip)
     rows = []
     with tempfile.TemporaryDirectory() as td:
         td_root = build_temp_root(Path(td))
@@ -1011,10 +1040,24 @@ def self_test() -> int:
     want("check.sh still runs the alliance partner's self-test per commit",
          checksh_invokes_alliance(), True)
 
+    # ── survey slices are deterministic, bounded, self-describing (round-78) ──
+    want("a negative --skip is refused (it would wrap to the census tail)",
+         slice_error(None, -1) is not None, True)
+    want("a non-positive --limit is refused (0 is falsy, not empty)",
+         [slice_error(0, 0) is not None, slice_error(-1, 0) is not None],
+         [True, True])
+    want("a valid chunk passes the bounds check",
+         slice_error(30, 0), None)
+    synth = [Path(n + ".py") for n in "abcdef"]
+    want("consecutive chunks partition the census without overlap or gap",
+         sum(len(survey_slice(synth, 2, s)) for s in (0, 2, 4)), 6)
+    want("a mid-census slice takes exactly the census-order rows",
+         [p.name for p in survey_slice(synth, 2, 1)], ["b.py", "c.py"])
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (45 cases, one alliance self-test runs: verify-selftests-wired)")
+    print("SELF-TEST OK (50 cases, one alliance self-test runs: verify-selftests-wired)")
     return 0
 
 
@@ -1031,6 +1074,13 @@ def main() -> int:
         return self_test()
     before_tree = git_status_porcelain()
     rows = survey(args.limit, args.skip)
+    # A chunked run must say so: a summary that reads "30 checker(s)" is
+    # indistinguishable from a full census of 30, and chunks that silently
+    # miss checkers read as measured (the round-66 disease in slice form).
+    slice_note = ""
+    if args.limit is not None or args.skip:
+        slice_note = " [slice skip=%s limit=%s of %d censused]" % (
+            args.skip, args.limit, len(census_files()))
     through = junction_writethrough(before_tree, git_status_porcelain())
     survivors = [r for r in rows if r[4] == "SURVIVED"]
     relocated = [r for r in rows if r[4] == "RELOCATION-SENSITIVE"]
@@ -1047,7 +1097,14 @@ def main() -> int:
           "unmeasured, not proven), %d NO MUTATABLE FUNCTION, %d PATH ALREADY RED (red "
           "before any mutation)."
           % (len(rows), len(survivors), len(killed), len(relocated), len(unmutatable),
-             len(already_red)))
+             len(already_red))) if not slice_note else None
+    if slice_note:
+        print("sabotage: %d checker(s) [slice skip=%s limit=%s of %d censused], "
+              "%d SURVIVED, %d killed, %d RELOCATION-SENSITIVE, %d NO MUTATABLE, "
+              "%d PATH ALREADY RED."
+              % (len(rows), args.skip, args.limit, len(census_files()),
+                 len(survivors), len(killed), len(relocated), len(unmutatable),
+                 len(already_red)))
     if through:
         print("")
         print("STAGED WRITE-THROUGH: the survey left tracked dirt in the real tree:")
