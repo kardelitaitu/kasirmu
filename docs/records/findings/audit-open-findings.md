@@ -4119,3 +4119,44 @@ environment would need a check.sh-side case, which is the r73 boundary (the pipe
 runs graded cases only, the survey stays manual). The partner's self-test internally
 runs ITS bare gate against a temp copy of the live tree — so the census self-test now
 costs one git-ls-files-free scan of three script dirs, still side-effect-free.
+
+### Round 77 (2026-11-07) — the race measured, the partner's per-commit wiring graded
+
+The r76 card asked: can uncommitted concurrent edits to the partner fool either gate,
+and should the alliance case pin to the committed blob? Round 77 measured before
+touching anything, and the measurement killed the pin idea with evidence:
+
+- **Interpreter identity dissolved**: python and python3 are the same CPython 3.14.5
+  here, so run_self_test_out's sys.executable invocation matches check.sh's invocation
+  of the partner, not merely its tree. r76's honest limit (interpreter divergence) is
+  gone; the alliance comment now carries the measurement.
+- **Working-tree grading is deliberate and uniform**: every case reads the working
+  tree — census_carriers, the SCRIPT_RE extraction (r75), the runner agreement (r74),
+  the alliance case (r76), and the survey itself. Pinning ONE case to HEAD would
+  diverge it from the rest; a mid-edit tree is the §7.3 stop condition ("dirty with
+  content that is not yours: stop and say so"), a human fact no pin can encode. The
+  gates grading the tree you are about to trust IS the design; the race is owned by
+  the commit policy, not by a blob read.
+- **The real gap found instead**: the partner's self-test cannot see its own per-commit
+  wiring. Its wiring criterion accepts ANY runner — measured: dropping check.sh's
+  "self-tests wired self-test" step (check.sh:1253) while dev-ci.yml:1611 keeps its
+  twin leaves the partner wired, its self-test green, and per-commit enforcement
+  silently gone, reddening nothing anywhere. Exactly the r73 shape (this harness's own
+  flag got a checksh_invokes_self_test case then), one layer out.
+
+`94820ee7b` adds checksh_invokes_alliance() + a graded case (44 -> 45): check.sh must
+still carry "scripts/verify-selftests-wired.py --self-test". Kill directions: a lying
+helper is CAUGHT; a real check.sh copy minus the step, under a temp ROOT read at helper
+level (no git calls — the r75 lesson about fake ROOTs), is CAUGHT; control 45/45 green.
+Both gates green: harness 45 cases exit 0, partner 6 cases, full survey 108 checker(s),
+0 SURVIVED, 108 killed, 0 RELOCATION-SENSITIVE, 0 NO MUTATABLE, 0 PATH ALREADY RED,
+exit 0.
+
+Honest limits: the case demands the literal step string in check.sh — a legitimate
+refactor of check.sh's step syntax (quoting, line wrapping) reddens it and costs one
+comment-line update here; that brittleness is the same direction as r73's case and is
+the point (the string IS the enforcement). The alliance chain now has three graded
+links: the partner's self-test green (r76), check.sh carrying the partner's step
+(r77), and the runner/name vocabularies shared (r74/r75) — but the chain's terminal
+still trusts check.sh's own integrity, which no case grades (the eight-step hook list
+is graded by verify-agents-mirrors.py, a different lane).
