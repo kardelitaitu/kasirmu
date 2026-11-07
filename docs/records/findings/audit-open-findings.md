@@ -5328,3 +5328,29 @@ success path is exercised live by every survey; faking mklink failure in-process
 would grade the mock, not the code) -- named here rather than papered over.
 git_status_porcelain is a two-line live wrapper feeding junction_writethrough,
 which the r97 cases grade; the porcelain grammar itself is still unpinned.
+
+### Round 109 (2026-11-08) — the porcelain grammar, pinned live
+
+junction_writethrough's arithmetic (line[:2], line[3:]) assumes git's porcelain v1
+"XY path" shape, but nothing asserted the LIVE text fits it: a git upgrade or a
+--porcelain=v2 slip would silently break the write-through detector's input -- the
+parse reds with garbage paths at best, swallows real writes at worst. `04471d06f`
+(+1 case, 129->130, derived) pins it: every line of the live git_status_porcelain()
+matches ^[MADRCUTX?!B ]{2} \S, an unchanged snapshot pair yields no write-throughs
+(non-vacuous at ANY tree state -- the real git output feeds the real parse), and the
+empty edge pairs to none.
+
+The case states its own vacuity honestly: element 1 is all() over [] when the
+tracked tree is CLEAN -- the r106 vacuous-guard rule, named in the comment rather
+than hidden. It runs for real whenever the tree is dirty, which in this checkout is
+often; elements 2-3 carry the case on clean days. Kill directions: a v2-shaped
+snapshot is CAUGHT by element 1 (the grammar, not the parse, reds); a phantom
+write-through is CAUGHT by the r97 case (the pair's positive direction lives there);
+a swallowed write-through is CAUGHT by the same r97 case; control green. Full
+survey 109/0/109/0/0/0, exit 0.
+
+Honest limits: the rename-arrow imprecision named at r97 stands -- "R  old -> new"
+would parse as path "old -> new" (a survey never stages renames, so the live risk
+is nil). The grammar's character class is the v1 enumeration from git's docs as
+observed (MADRCUTX?!B plus space); a future git adding a letter would red element 1
+and force the conscious widening -- that is the case working, not a defect.
