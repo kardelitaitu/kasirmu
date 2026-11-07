@@ -18,22 +18,36 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOCS = os.path.join(ROOT, "src", "content", "docs")
 
 
+def frontmatter_text(text: str, key: str) -> str:
+    """The 'updated' value in frontmatter text, quotes stripped; '' when absent.
+
+    Named once: the live per-page loop and the self-test grade THIS parser, not
+    a copy of it — a gutted parser reddens the self-test instead of silencing
+    the 'updated differs' warnings.
+    """
+    m = re.search(rf"^{key}:\s*(.+)$", text, re.M)
+    return m.group(1).strip().strip('"') if m else ""
+
+
+def frontmatter(path: str, key: str) -> str:
+    with open(path, encoding="utf8") as fh:
+        return frontmatter_text(fh.read(), key)
+
+
+def headings_text(text: str) -> int:
+    return len(re.findall(r"^## ", text, re.M))
+
+
+def headings(path: str) -> int:
+    with open(path, encoding="utf8") as fh:
+        return headings_text(fh.read())
+
+
 def slugs(locale: str) -> set:
     return {
         os.path.basename(p)[:-3]
         for p in glob.glob(os.path.join(DOCS, locale, "*.md"))
     }
-
-
-def frontmatter(path: str, key: str) -> str:
-    with open(path, encoding="utf8") as fh:
-        m = re.search(rf"^{key}:\s*(.+)$", fh.read(), re.M)
-    return m.group(1).strip().strip('"') if m else ""
-
-
-def headings(path: str) -> int:
-    with open(path, encoding="utf8") as fh:
-        return len(re.findall(r"^## ", fh.read(), re.M))
 
 
 # The fewest pages a real locale directory can hold. The site ships 20 per locale; the
@@ -78,6 +92,17 @@ def self_test() -> int:
     def want(name: str, got, expect) -> None:
         if got != expect:
             cases.append(f"{name}: expected {expect!r}, got {got!r}")
+
+    # The per-page detectors, through the SAME functions the WARN loop calls.
+    want("frontmatter reads a plain updated",
+         frontmatter_text("title: x\nupdated: 2026-01-02\n", "updated"), "2026-01-02")
+    want("frontmatter strips double quotes",
+         frontmatter_text('updated: "2026-01-02"\n', "updated"), "2026-01-02")
+    want("frontmatter misses an absent key", frontmatter_text("title: x\n", "updated"), "")
+    want("frontmatter anchors the key at line start",
+         frontmatter_text("xupdated: 2026-01-02\n", "updated"), "")
+    want("headings counts only ##-level", headings_text("## a\n### b\n## c\n"), 2)
+    want("headings of empty text is zero", headings_text(""), 0)
 
     want("a real census passes", census_problem(set(range(20)), set(range(20))), "")
 
