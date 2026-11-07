@@ -51,6 +51,19 @@ FILES=(
 # uses instead of a copy of it.
 PIN_RE='[A-Za-z0-9._/-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}'
 
+# The live drift decision, named once: the self-test below grades the SAME
+# comparison the scan uses instead of a copy of it (the principle PIN_RE already
+# follows). "unresolvable" stays in the scan loop -- it needs the per-file drift
+# bookkeeping and is graded by the fail-closed branch, not by fixtures.
+pin_verdict() {
+    local pinned="$1" current="$2"
+    if [ "$current" = "$pinned" ]; then
+        echo same
+    else
+        echo diff
+    fi
+}
+
 drift=0
 pins_seen=0
 declare -a drift_lines=()
@@ -93,9 +106,9 @@ self_test() {
     # Digest-only (no tag) does not match, and that is stated rather than hidden.
     chk "a digest-only reference is not matched" 0 "$(n_pins "image: nginx@sha256:$d64")"
 
-    chk "identical digests agree" same "$( [ "$d64" = "$d64" ] && echo same || echo diff )"
     local other="ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-    chk "different digests are drift" diff "$( [ "$d64" = "$other" ] && echo same || echo diff )"
+    chk "identical digests agree" same "$(pin_verdict "$d64" "$d64")"
+    chk "different digests are drift" diff "$(pin_verdict "$d64" "$other")"
 
     if [ "$fails" -gt 0 ]; then
         printf 'SELF-TEST FAILED (%d of %d cases)\n' "$fails" "$total" >&2
@@ -141,7 +154,7 @@ for f in "${FILES[@]}"; do
             drift_lines+=("$f: $tag  UNRESOLVABLE (network/registry error)")
             continue
         fi
-        if [ "$current" = "$pinned" ]; then
+        if [ "$(pin_verdict "$pinned" "$current")" = "same" ]; then
             echo "  ✔ $tag → $pinned"
         else
             echo "  ✘ $tag DRIFT: pinned $pinned, now $current"
