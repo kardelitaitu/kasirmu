@@ -4867,3 +4867,24 @@ limit as every r84 predicate, re-measured harmless at r83). The partner's
 declares_selftest still returns False on an unreadable file — an OSError is a silent
 not-declared rather than a named problem; the harness's carrier walk has the same shape,
 and both are pre-existing, unchanged here.
+
+### Round 96 (2026-11-07) — pure command resolution and handled interpreter fault
+
+The r95 card's audit identified that `run_self_test_out()` dispatched interpreters inline,
+and an unresolvable or missing interpreter would raise an unhandled `FileNotFoundError`
+crashing the sweep rather than returning a structured test verdict. Furthermore, `.sh`
+checkers require Git's bash by full path (`GIT_BASH`) on Windows to avoid routing to
+WSL, which exits 127 and could falsely appear as every `.sh` mutation being caught.
+
+`c434775c9`: factored command creation into `self_test_command(path: Path) -> list[str]`,
+making command dispatch a pure function graded independently in `self_test()`.
+`run_self_test_out()` now handles `FileNotFoundError` explicitly, returning
+`(None, "self-test could not run: interpreter " + cmd[0] + " not found")`. Added three
+graded assertions to `self_test()`: verifying that `GIT_BASH` exists on disk, that `node`
+resolves on `PATH`, and that `self_test_command` accurately maps `.sh`, `.mjs`, and `.py`
+suffixes to their respective runners (bringing case count to 104).
+
+Kill directions: `GIT_BASH` pointing nowhere is CAUGHT; `node` unresolvable on PATH is
+CAUGHT; dispatch mapped to a non-existent runner yields a handled failure cause containing
+`"not found"` rather than crashing; control green (104 cases, exit 0).
+
