@@ -1576,6 +1576,48 @@ def self_test() -> int:
              files9)], [True] * 9)
     want("no limit slices to the tail",
          survey_slice(files9, None, 7), files9[7:])
+    # ── the python mutator and the staging tree are graded (round-98) ─────────
+    # candidate_functions and blank_body decide WHICH detector 84 of the 109
+    # censused checkers lose -- and build_temp_root decides whether the survey's
+    # 300+ staged runs can write through to the shared checkout. Neither had a
+    # case; both are graded here on synthetic sources and a real staging tree.
+    synth_py = (
+        "def tiny(): return 1\n"
+        "def first_detector(x):\n"
+        "    total = x + 1\n"
+        "    return total\n"
+        "def second_detector():\n"
+        "    note = 'kept'\n"
+        "    return note\n"
+        "def __dunder__():\n"
+        "    return 1\n"
+    )
+    cands98 = candidate_functions(synth_py)
+    want("the python candidate picker takes blankable top-level functions only",
+         [c[0] for c in cands98], ["first_detector", "second_detector"])
+    mutated98 = blank_body(synth_py, *cands98[0])
+    want("the python blanker guts the first candidate, keeps the rest, still parses",
+         ["total" not in mutated98, "return note" in mutated98,
+          "tiny" in mutated98, "MUTATION: detector gutted" in mutated98,
+          bool(ast.parse(mutated98))], [True] * 5)
+    with tempfile.TemporaryDirectory() as td98s:
+        staged98 = build_temp_root(Path(td98s))
+        canary = staged98 / "scripts" / "__r98_canary.py"
+        canary.write_text("x = 1\n", encoding="utf-8")
+        want("staged gate roots are real copies -- a staged write stays staged",
+             [canary.is_file(),
+              not (ROOT / "scripts" / "__r98_canary.py").exists(),
+              (staged98 / "scripts" / "sabotage-selftests.py").is_file()],
+             [True, True, True])
+        want("history and secrets never enter the staging tree",
+             [not (staged98 / ".git").exists(), not (staged98 / ".env").exists()],
+             [True, True])
+        want("staged siblings reach the real bytes (junction or copy)",
+             [(staged98 / "docs").exists(),
+              any((staged98 / "docs").rglob("*.md"))], [True, True])
+        td_path = Path(td98s)
+    want("the staging tree is cleaned up after the survey shape",
+         not td_path.exists(), True)
     # ── the declaration predicate is comment-blind (round-95) ─────────────────
     want("a quoted flag in a comment does not declare a self-test",
          declares_flag('# add a "--self-test" mode someday'), False)
