@@ -192,6 +192,29 @@ def declares_selftest(rel: Path) -> bool:
     return declares_in(text)
 
 
+PRINT_FORM = re.compile(r"\s*(?:-\s*)?(?:run:\s*)?(?:echo|printf|Write-Host|Write-Output)\b")
+
+
+def wired_only_by_print(name: str, text: str) -> bool:
+    """A checker whose every flag-mention in runners is a PRINT form, not a call.
+
+    CALL_RE is deliberately unanchored (a step that pipes or redirects still
+    calls the flag), which also lets a line that merely ECHOES the flag count
+    as wiring -- a runner that prints instructions would report a checker wired
+    that nothing invokes. Measured 2026-11-08: 188 flag-mention lines in the
+    live runners, ZERO print-form (checked twice, with and without the YAML
+    "- run:" prefix), so the acceptance is latent. Extracted (round-106) so the
+    live case can GUARD the direction: a checker whose only flag-mentions are
+    print-forms must surface, not pass silently.
+    """
+    stem = name.rsplit(".", 1)[0]
+    hits = [ln for ln in text.split("\n")
+            if re.search(re.escape(stem) + r"(?:\.[\w-]+)?[^\w.-]*--self-test", ln)]
+    if not hits:
+        return False
+    return all(PRINT_FORM.match(ln) for ln in hits)
+
+
 def in_attic(p: Path) -> bool:
     """A runner file under an attic/ directory is RETIRED and never counted.
 
@@ -447,6 +470,23 @@ def self_test() -> int:
     want("the clean audit's line is derived from the census, not hardcoded",
          [wired_ok_line(17, 100).count("17 of 100 checker(s)"),
           wired_ok_line(0, 1).count("0 of 1 checker(s)")], [1, 1])
+    # ── the unanchored CALL_RE's named trade-off is pinned and guarded (round-106) ──
+    want("the named trade-off is pinned: an echoed flag still counts as wiring",
+         [called("verify-x.py", 'run: echo "python3 scripts/verify-x.py --self-test"'),
+          called("verify-x.py", "run: python3 scripts/verify-x.py --self-test 2>&1 | tee log"),
+          called("verify-x.py", "bash -c 'python3 scripts/verify-x.py --self-test' || true")],
+         [True, True, True])
+    text106 = runner_text()
+    want("no live checker is wired only by a runner that merely prints",
+         [str(rel) for rel in checkers() if declares_selftest(rel)
+          and wired_only_by_print(rel.name, text106)], [])
+    want("print-form-only wiring reads as wired-only-by-print, a real call does not",
+         [wired_only_by_print("verify-x.py", 'run: echo "python3 scripts/verify-x.py --self-test"'),
+          wired_only_by_print("verify-x.py", "run: python3 scripts/verify-x.py --self-test"),
+          wired_only_by_print("verify-x.py", "nothing relevant here"),
+          wired_only_by_print("verify-x.py",
+                              'run: echo "x --self-test"\nrun: python3 scripts/verify-x.py --self-test')],
+         [True, False, False, False])
     live = uncalled_selftests()
     if live:
         bad.append("live tree has " + str(len(live)) + " uncalled self-test(s): "
