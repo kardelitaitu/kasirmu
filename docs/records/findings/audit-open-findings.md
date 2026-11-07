@@ -3510,7 +3510,7 @@ comparison cases graded an inline COPY of it (`[ "$a" = "$b" ] && echo same || e
 breaking the file's own stated principle (line 50-51: "named once so the self-test
 grades the SAME regex the live scan uses").
 
-`` (this round's commit) extracts pin_verdict() as a top-level function wired into BOTH
+`3486b4e84` extracts pin_verdict() as a top-level function wired into BOTH
 paths: the scan loop now decides with `[ "$(pin_verdict "$pinned" "$current")" = "same" ]` and
 the self-test's two comparison cases call pin_verdict directly. Gutting it (staged,
 via the survey's own blank_text_body + run_self_test machinery) makes both comparison
