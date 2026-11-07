@@ -4888,7 +4888,7 @@ Kill directions: `GIT_BASH` pointing nowhere is CAUGHT; `node` unresolvable on P
 CAUGHT; dispatch mapped to a non-existent runner yields a handled failure cause containing
 `"not found"` rather than crashing; control green (104 cases, exit 0).
 
-### Round 96 (2026-11-07) — register dedup (this entry was appended twice)
+### Register correction (2026-11-07) — the round-96 entry was recorded twice
 
 The same landed change was registered twice — once by the session whose pathspec commit
 swept the in-flight edit (`c434775c9`, note `3a35a4f58`), once by the session that
