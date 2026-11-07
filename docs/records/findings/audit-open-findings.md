@@ -4300,3 +4300,54 @@ accounting it does not close the gap, it just stops the census from pretending t
 isn't there. A fifth category (convention file in the docs-auditor/website dirs with an
 unquoted flag mention) would surface the same way the first four did — by reddening the
 shed case the moment it lands.
+
+### Round 81 (2026-11-07) — the criterion's wiring half, held for the whole censused set
+
+The r80 card asked whether the partner's tolerance and the harness's four accounts tell
+the same story. Measured: the partner has NO tolerance list — its gate is hard (any
+declared --self-test invoked by no runner exits 1 with the remedy printed). The two
+gates agree STRUCTURALLY: the three CENSUS_EXCLUDED names never matched its SCRIPT_RE
+(sign-/restaurant-/extract- prefixes are outside it), and all four CENSUS_UNFLAGGED
+accounts fail its quoted-flag test — so nothing is double-counted and nothing slips
+between them on the convention side.
+
+But reading the partner's corpus rule exposed the real seam: **nobody held the censused
+population's wiring**. The partner audits only flag-carrying SCRIPT_RE matches; the
+seven CENSUS_NAMED files match no convention prefix, so they are invisible to it. The
+harness's coverage case compares ENUMERATION (carriers vs censused), not INVOCATION —
+a named file whose runner step was deleted stayed censused forever: its self-test
+stopped being invoked by any pipeline, the survey kept grading it by hand, and no gate
+reddened. The census criterion's second half ("a running pipeline depends on it") was
+held only BACKWARDS (an excluded file gaining wiring reddens, r72) and structurally
+(convention files via the partner), never directly for the set itself.
+
+`0a9022e10`: censused_wiring_problems() — every censused file must be runner-wired
+(wiring_hits over the runner corpus) OR transitively loaded (the r69 path-load shape,
+now a pure helper transitively_loaded(name, censused_texts) with self-exclusion).
+Three new cases (55 -> 58): the whole censused set stays wired-or-loaded; a path-load
+in a censused file counts as the wiring (the allowlist-schema shape, synthetic);
+a file does not load itself. Round-81 live measurement: 107 of 108 runner-wired;
+allowlist-schema.py is the one transitive case (loaded by verify-ipc-parity.py and
+verify-scoped-reads.py) — held now instead of remembered.
+
+The two gates' union is now complete and each half is graded: partner = every
+flag-carrying convention file must be invoked (its own hard gate); harness = every
+censused file (named included) must be invoked or loaded; the convention namespace is
+partitioned by the shed case (r80); runner vocabulary agreed both ways (r74); name
+convention agreed (r75).
+
+Kill directions: a lying wiring_hits (nothing runner-wired) is CAUGHT (the shared
+signal's lie cannot survive the self-test); a dead transitive half is CAUGHT by the new
+case itself ("...is censused but no runner invokes it and no censused file loads it");
+control 58/58 green. Both gates green: harness 58 cases exit 0, partner 6 cases, full
+survey 108 checker(s), 0 SURVIVED, 108 killed, 0 RELOCATION-SENSITIVE, 0 NO MUTATABLE,
+0 PATH ALREADY RED, exit 0.
+
+Honest limits: the transitive half keeps substring semantics (a comment mention fires
+TOWARD wired — the safe direction for a censused file, the dangerous one for an
+exclusion, where the existing scan runs the other way). The wiring corpus is
+RUNNER_FILES + workflows: a censused file invoked ONLY from outside that corpus
+(run-pre-push.py, which sits outside the partner-shared list) reads as transitive-or-
+unwired here — none exists today (verified: 107 runner-wired via corpus-visible
+callers), but a future checker wired solely through a non-corpus orchestrator would
+need either a corpus widening (an alliance move, both sides) or a declared account.
