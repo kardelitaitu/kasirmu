@@ -4244,3 +4244,59 @@ is the r69 lesson and cannot be tightened without missing shell one-liners. The
 transitive scan (censused files' text, lines 973-978) keeps its own substring semantics
 and its own message; its fire direction remains probe-proven only — same shape as this
 round started with, left for a future round if it ever earns a pure refactor too.
+
+### Round 80 (2026-11-07) — the census enumeration sheds nothing silently
+
+The r79 card asked whether the coverage case's message distinguishes "never enumerated"
+from "flag lost". Measured: it cannot see flag loss AT ALL. census_files() filters BY
+SELF_TEST_FLAG (quoted-only), census_carriers() filters the same way, so a checker whose
+self-test was removed drops out of BOTH sides of the coverage diff — missing stays empty,
+extra stays empty, the file leaves the survey with no line. The round-72 mirror direction
+("an excluded script that stops quoting the flag is a dead file") was graded for
+CENSUS_EXCLUDED only; for censused files the same loss was invisible. Worse: a
+convention-matching file with no flag never entered ANY ledger — no census row, no
+coverage diff, no partner alarm.
+
+`4385ad9bc`: CENSUS_NAMED extracted to one constant (census_files() semantics unchanged);
+census_enumeration_problems() = the PRE-FLAG enumeration (convention-matching files in
+the three census dirs + every CENSUS_NAMED entry) held to "carries the flag OR is
+accounted in CENSUS_UNFLAGGED with its wiring declared". Three new cases (52 -> 55):
+nothing sheds silently; every account exists and stays flag-less (an account GAINING a
+flag is a stale account — it should join the census properly); each account's DECLARED
+wiring is still exactly true, graded with round-79's pure wiring_hits signal.
+
+The alarm's first act found two silent drops my own first scan missed (my scan matched
+bare --self-test; the real filter is quoted-only):
+- **scripts/check-auditor-selftests.sh** — a RUNNER, not a checker: eleven explicit
+  UNQUOTED --self-test invocations of docs-auditor checkers (its own lines 21-23 explain
+  why explicit), in RUNNER_FILES itself, wired at check.sh:295 + dev-ci.yml:1038. The
+  convention sweep caught it by name; the flag filter rightly dropped it; nothing said so.
+- **scripts/verify-website-assets.py** — a wired gate with NO self-test anywhere (its one
+  --self-test mention is prose): check.sh:1099 + dev-ci.yml:228 (+ run-pre-push.py:462,
+  outside the runner corpus). The known unclosable "checkers without self-tests" gap,
+  now VISIBLE instead of shed.
+
+Both are accounted in CENSUS_UNFLAGGED with declared wiring; the harness had prior
+history with verify-website-assets.py (line 477: "a substring search is not a census").
+The other two accounts: census-sync-ingest-admits.py (deliberately runner-less by its own
+docstring — zero runner mentions, graded to STAY zero) and check-replay-fork.py (external
+self-test test-replay-fork.py by design; both gate and self-test graded invoked at
+check.sh + dev-ci.yml exactly as declared).
+
+Kill directions: a temp-tree fake flag-less convention file + a deleted CENSUS_NAMED
+entry both fire the shed case (CAUGHT); dropping the account tuple fires it (CAUGHT);
+a declared-wiring lie (replay-fork's gate claim quietly losing check.sh) is CAUGHT by
+the exactness case with the per-claim signal ([False, True, True, True]); control
+55/55 green. Both gates green: harness 55 cases exit 0, partner 6 cases, full survey
+108 checker(s), 0 SURVIVED, 108 killed, 0 RELOCATION-SENSITIVE, 0 NO MUTATABLE, 0 PATH
+ALREADY RED, exit 0.
+
+Honest limits: the shed scan reads the live tree, so its fire direction stays
+probe-proven (temp ROOT, helper-level) rather than file-free — same shape as the
+transitive scan; the accounts' evidence is comment-carried for the WHY (like
+CENSUS_EXCLUDED r72) but their wiring is DECLARED and graded, so they cannot rot the
+way prose evidence can. verify-website-assets.py remains a gate with no self-test —
+accounting it does not close the gap, it just stops the census from pretending the gap
+isn't there. A fifth category (convention file in the docs-auditor/website dirs with an
+unquoted flag mention) would surface the same way the first four did — by reddening the
+shed case the moment it lands.
