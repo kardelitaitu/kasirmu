@@ -1687,6 +1687,24 @@ def self_test() -> int:
                  for p in real108.rglob("*") if p.is_file())],
          ["MUTATED", "deep", False, "orig", "deep",
           ["__pycache__/c.pyc", "a.py", "sub/b.py"]])
+    # ── the junction property: staged siblings read live bytes (round-110) ────
+    # _link_or_copy's docstring claims __file__-relative reads reach the REAL
+    # bytes -- which is only true of a junction, not of the copytree fallback.
+    # The fixture writes a file into the real dir AFTER linking; the mirror must
+    # see it. If the environment ever degrades to the copy fallback, this case
+    # reds and forces the degradation to be conscious (the r109 grammar rule:
+    # the pin trips, the operator chooses).
+    with tempfile.TemporaryDirectory() as td110:
+        real110 = Path(td110) / "real-sibling"
+        real110.mkdir()
+        (real110 / "seed.txt").write_text("seed", encoding="utf-8")
+        mirror110 = Path(td110) / "staged" / "real-sibling"
+        mirror110.parent.mkdir()
+        _link_or_copy(real110, mirror110)
+        (real110 / "later.txt").write_text("late", encoding="utf-8")
+        want("a linked sibling reads the real dir's live bytes (junction, not a copy)",
+             [read108(mirror110 / "seed.txt"), read108(mirror110 / "later.txt")],
+             ["seed", "late"])
     # ── the porcelain grammar the write-through parse assumes (round-109) ─────
     # junction_writethrough slices line[:2] and line[3:] -- a git upgrade or a
     # --porcelain=v2 slip would silently break that arithmetic. Element 1 is
