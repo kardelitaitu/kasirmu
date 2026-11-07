@@ -245,6 +245,10 @@ def uncalled_selftests() -> list[str]:
     `check-cite-lines`. So the path is split here, and the collision that a basename-only
     scope would hide is resolved by `checkers()` returning paths: two different programs
     named check-gate-runners.py are two entries, and each is matched on its own name.
+    Round-93 honesty: the ENUMERATION is per-path, but the call signal is still the
+    shared basename -- one copy's flag-invocation satisfies called() for both. The
+    collided pair's flag-invocations are therefore graded by FULL path in self_test
+    (round-93 cases), because called() cannot tell the copies apart.
     """
     text = runner_text()
     return [str(rel) for rel in checkers()
@@ -265,6 +269,53 @@ def harness_census_dirs(text: str) -> list[str]:
     if block is None:
         return []
     return re.findall(r'"([^"]+)"', block.group(1))
+
+
+def runner_files() -> list:
+    """Every runner FILE: RUNNERS entries that are files, plus the .y*ml under
+    directory entries (the workflows dir). Round-93: the full-path precision
+    cases need per-file texts, which runner_text()'s single blob cannot key."""
+    out = []
+    for entry in RUNNERS:
+        if entry.is_file():
+            out.append(entry)
+        elif entry.is_dir():
+            out.extend(sorted(q for q in entry.rglob("*.y*ml")))
+    return out
+
+
+def collisions_of(pairs) -> dict:
+    """PURE: basenames borne by more than one audited checker, from
+    (basename, rel) pairs. Round-93, the partner side of the harness's r92
+    seam: called() keys on basenames, so two copies sharing a name are ONE
+    key -- a runner invoking either copy's self-test satisfies called() for
+    both."""
+    seen = {}
+    for name, rel in pairs:
+        seen.setdefault(name, []).append(rel)
+    return {n: sorted(rels) for n, rels in seen.items() if len(rels) > 1}
+
+
+def collided_audited() -> dict:
+    """The audited set's collisions, live. The set has exactly one today --
+    the same check-gate-runners.py pair the harness's census carries -- and
+    the sibling case holds each collided copy's SELF-TEST to a full-path
+    flag-invocation, because called() cannot tell the copies apart."""
+    pairs = []
+    for d in CHECKER_DIRS:
+        if not d.is_dir():
+            continue
+        for f in sorted(d.iterdir()):
+            if not f.is_file() or f.suffix not in (".py", ".mjs", ".sh"):
+                continue
+            if not SCRIPT_RE.match(f.name):
+                continue
+            try:
+                if declares_selftest(f):
+                    pairs.append((f.name, f.relative_to(ROOT).as_posix()))
+            except OSError:
+                continue
+    return collisions_of(pairs)
 
 
 def self_test() -> int:
@@ -295,6 +346,24 @@ def self_test() -> int:
     want("a comment mentioning the flag is not a caller",
          called("verify-x.py", "# python3 scripts/verify-x.py --self-test  (documented, uncalled)"), False)
 
+    # ── the audited set's basename collisions (round-93) ──────────────────────
+    want("the collision classifier finds a synthetic pair",
+         collisions_of([("a.py", "scripts/a.py"), ("a.py", "x/a.py"),
+                        ("b.py", "scripts/b.py")]),
+         {"a.py": ["scripts/a.py", "x/a.py"]})
+    want("a collision-free audited set yields nothing",
+         collisions_of([("a.py", "scripts/a.py")]), {})
+    coll = collided_audited()
+    want("the audited set has exactly one collision, the census's pair",
+         coll,
+         {"check-gate-runners.py": [".agents/skills/docs-auditor/scripts/check-gate-runners.py",
+                                    "scripts/check-gate-runners.py"]})
+    want("each collided copy's self-test is flag-invoked by full path",
+         [any((rel + " --self-test") in strip_full_line_comments(
+                  rf.read_text(encoding="utf-8", errors="replace"))
+              for rf in runner_files())
+          for rels in coll.values() for rel in rels],
+         [True] * sum(len(rels) for rels in coll.values()))
     # The real tree must have the property, or this gate is not earning its place.
     want("the harness-dir parser reads the plain tuple",
          harness_census_dirs('CENSUS_DIRS = ("a", "b/c")'), ["a", "b/c"])
@@ -311,7 +380,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (8 cases, no files touched)")
+    print("SELF-TEST OK (12 cases, no files touched)")
     return 0
 
 
