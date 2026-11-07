@@ -390,10 +390,12 @@ data::` -> **50 passed, 0 failed**.
   reports `i64::MAX` for the faulted counter rather than `0`. Quota gates evaluate against the limit
   and fail closed (locking creation doors on DB errors) rather than assuming zero usage. Pinned by
   `cargo test -p kasirmu-bridge --lib subscription` (35 passed, 0 failed).
-- **BR-C8** — **[PBD]** `per_location_over_quota_rows` has a TOCTOU shape:
-  `crates/kasirmu-bridge/src/subscription.rs:639` probes `manager.store_db_exists(store_id)` and
-  `:642` then opens it (`open_store`); the file can appear or vanish between the two. A
-  store that fails to answer is skipped, not fatal (`:660-663`).
+- ~~**BR-C8** — `per_location_over_quota_rows` has a TOCTOU shape on store DB access~~ —
+  **CLOSED 2026-11-07** (`fix(subscription): eliminate TOCTOU abort in per_location_over_quota_rows (BR-C8)`).
+  `crates/kasirmu-bridge/src/subscription.rs:651-667` now gracefully matches and skips on store DB open and
+  mutex lock failures with a logged warning, preventing transient deletion or unopenable DBs from aborting
+  the entire over-quota report with `BridgeError::Internal`. Pinned by
+  `cargo test -p kasirmu-bridge --lib subscription` (35 passed, 0 failed).
 - ~~**BR-C9** — `gate_permission` is computed twice for the same feature in one verdict.~~ —
   **CLOSED 2026-11-05** (`refactor(subscription): derive the gated permission once per
   verdict`). One binding now feeds both the `require_permission` probe and the permission

@@ -635,8 +635,9 @@ pub fn load_over_quota_report(
 ///
 /// # Errors
 ///
-/// Returns [`BridgeError::Internal`] when a store database that exists cannot
-/// be opened or locked; an unreadable store is skipped, never fatal.
+/// An unreadable or unopenable store is skipped with a warning rather than
+/// aborting the whole report, preventing TOCTOU races where a store database file
+/// is removed between existence check and opening.
 pub fn per_location_over_quota_rows(
     locations: &[(String, String)],
     manager: &StoreDatabaseManager,
@@ -648,12 +649,20 @@ pub fn per_location_over_quota_rows(
         if !manager.store_db_exists(store_id) {
             continue;
         }
-        let conn = manager
-            .open_store(store_id)
-            .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
-        let db = conn
-            .lock()
-            .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+        let conn = match manager.open_store(store_id) {
+            Ok(conn) => conn,
+            Err(e) => {
+                tracing::warn!(store_id = %store_id, error = %e, "per-location quota dims: store open failed, skipping");
+                continue;
+            }
+        };
+        let db = match conn.lock() {
+            Ok(db) => db,
+            Err(e) => {
+                tracing::warn!(store_id = %store_id, error = %e, "per-location quota dims: store lock failed, skipping");
+                continue;
+            }
+        };
         let store = Store::new(&db);
         // A store database that fails to answer is skipped rather than
         // aborting the whole report: one unreadable location must not hide the
