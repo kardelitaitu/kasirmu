@@ -3459,3 +3459,42 @@ not by waiting for a live dead environment; the linker env's true state machine
 (healthy live builds vs failing fresh compiles in the same minutes) is still not
 root-caused. Remaining unmeasured: verify-deploy.mjs, verify-docker-digests.sh,
 verify-scoped-authorization.sh (NO MUTATABLE).
+
+### Round 63 (2026-11-07) — the mutator was blind, not the checker: a JS-aware stripper makes verify-deploy.mjs measurable, 94/0/0/2
+
+verify-deploy.mjs carried a real --self-test all along (28 fixture cases driving the
+exported routePatterns/originsFor/planOrigins/verdict/... and the real main() with fs
+and fetch stubbed) — its NO MUTATABLE verdict was the mutator failing to SEE the
+functions, the same class as round 56's export-regex miss. Mechanism, diagnosed:
+strip_comments_and_strings had no notion of JS regex literals; the route extraction
+regex /"([^"]+)"/g in routePatterns was read as a string opening at its first double
+quote, and the phantom string then swallowed source until the next double quote
+ANYWHERE in the file — balanced function braces included — so braces_span never
+balanced and every candidate in the file was dropped.
+
+`810959a8` adds _strip_js (used when text_functions runs with js=True): a mode-stack
+stripper for .mjs covering line/block comments, quoted strings, backtick templates
+with nested ${...} interpolation, and regex literals with [...] class handling. A
+regex may start only after ( = , : [ ! & | ? { ; < or a value-yielding keyword — never
+directly after an identifier or a close paren, which is division. The .sh path is
+byte-identical (default js=False). The harness self-test earned five new cases — and
+they EARNED their keep twice in the writing: a garbled template fixture (a stray
+backtick re-opening a template that swallows the function close) failed the self-test
+before it could lie, and the fixture rewrite then exposed a real stripper defect: the
+interpolation's closing } passed through unblanked in code mode, so braces_span took
+it for the function's close (close - open = 1 < 2 -> candidate dropped). Interpolation
+braces are template machinery and are now blanked like their ${ opener.
+
+Proof: harness --self-test 15 cases, exit 0; text_functions on the live file finds 8
+candidates, routePatterns first; full survey 94 killed, 0 SURVIVED, 0
+RELOCATION-SENSITIVE, 2 NO MUTATABLE, exit 0 — verify-deploy.mjs routePatterns KILLED
+0 -> 2 (gutting it makes the self-test's very first case throw), and no other .mjs row
+changed either its verdict or its mutated function.
+
+Honest limits: the regex-start heuristic is a counter, not a parser — division directly
+after ( = , : [ etc. is impossible in JS, but exotic shapes (`a++ / 2` is handled by
+excluding +/- from the preceders; others may not be) could still misclassify, and the
+fail-safe direction is relied on and recorded: a misclassification can only DROP
+candidates (NO MUTATABLE), never produce a false KILLED. The stripper is graded only by
+the harness's synthetic fixtures. Remaining unmeasured: verify-docker-digests.sh,
+verify-scoped-authorization.sh.
