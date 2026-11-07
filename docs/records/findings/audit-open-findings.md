@@ -5227,3 +5227,39 @@ element, but a name longer than 46 characters still shifts the row — accepted
 (never observed in the census; the widest checker path is shorter). With this, both
 gates' main() functions print only graded, named functions: the message-contract
 arc (r101-r105) is closed.
+
+### Round 106 (2026-11-08) — the unanchored call's named trade-off, pinned and guarded
+
+CALL_RE is deliberately unanchored (a step that pipes or redirects still calls the
+flag), which also lets a line that merely ECHOES the flag count as wiring: a runner
+that prints instructions would report a checker wired that nothing invokes. The
+trade-off is named in the gate's header (the argv/exports judgement), but nothing
+graded it — in either direction. Measured first: 188 flag-mention lines in the live
+runners, ZERO print-form (checked twice, with and without the YAML "- run:" prefix),
+so the false-positive is latent. `76267bc4b` (+3 partner cases, 20→23, derived):
+
+- The trade-off is PINNED: an echoed flag counts as wiring BY DESIGN, a piped
+  invocation still counts, a bash -c invocation still counts. A future refactor that
+  anchors CALL_RE trips this case deliberately — the conscious-update rule.
+- The latent direction is GUARDED live: wired_only_by_print(name, text) classifies a
+  checker's flag-mentions, and a live case requires no declaring checker to be wired
+  only by print-form lines — the day a real invocation is replaced by an echo, the
+  partner reds with the checker's name.
+- The helper's truth table is graded directly: print-form-only → True, a real call
+  among hits → False, no hits → False, mixed → False.
+
+The round's lesson is the draft-catch catching a VACUOUS GUARD: the first hits regex
+matched the stem but could not cross the ".py" extension, so it found nothing, the
+live guard passed with an empty list — and passed GREEN. The live case alone would
+never have noticed; the truth-table case (element: print-form-only → True) reddened
+immediately. A guard whose failure mode is silence needs a case that asserts its
+POSITIVE verdict somewhere, or it is not a guard. Kill directions: print-forms never
+matching is CAUGHT (by the truth-table case); everything matching is CAUGHT (by the
+live case, naming real checkers); a guard that always passes is CAUGHT; control
+green. Full survey 109/0/109/0/0/0, exit 0.
+
+Honest limits: wired_only_by_print's PRINT_FORM covers echo/printf/Write-Host/
+Write-Output — a runner language with another print verb would slip the classifier;
+the class is a measurement-driven snapshot, not a grammar. And CALL_RE's other
+imprecision named at r74 (a trailing comment on a live line counts) remains graded
+as accepted behavior, not fixed.
