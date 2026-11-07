@@ -5490,3 +5490,61 @@ registration was lost between then and now. A VS-Installer repair is a machine-l
 operation on a shared machine and was not attempted. The bridge fixes are verified by
 `cargo clippy -p kasirmu-bridge --all-targets -- -D warnings` (exit 0, link-free);
 crate tests additionally need the linker environment repaired. The bypass was then proven: the full kasirmu-bridge suite ran under that env -- 1566 tests, 1566 passed, 0 skipped -- so the r113 bridge fixes are verified at runtime, not only by clippy.
+
+### Round 114 (2026-11-08) — the workspace suite, sliced past the broken linker registration
+
+The manual vcvars-equivalent environment (LIB/INCLUDE/PATH aimed at the intact toolset
+14.44.35207 + SDK 10.0.26100.0) proved the VS *registration* is the only breakage, and
+made the r113-blocked nextest workspace runs possible again — one crate group at a time.
+The full workspace cannot fit one 545-second execution window (compile+run), so it was
+sliced; every slice ran to completion under the `quick` profile. Receipts, all green:
+kasirmu-bridge 1566/1566 (r113, same env); slice A (crypto, logging, qris-core, lan,
+lua, plugin, security, notification, media, test-support, platform-kernel/core/
+instance-guard/startup, cli) 1670/1670; slice B (kasirmu-core + the 12 modules-*)
+4625/4625; slice C1 (hal, payment, reporting) 815/815; slice C2' (platform-sync,
+kasirmu-cloud, kasirmu-local-api, default features) 945/945 after one fix; slice E
+(kasirmu-api, default features) 374/374; slice F (foundation, kasirmu-app,
+kasirmu-mobile) 1569/1569 after one fix. Total 11,564 tests run.
+
+Slice A's single timeout was NOT a product hang: `eviction_matches_the_old_full_scan_
+for_the_same_insertion_sequence` measured 33.3s under the default profile —
+slow-but-correct, over only the quick profile's 30s cap. The waste was test
+machinery: the differential driver asserted `eviction_order().await.first()` after
+every one of thousands of pushes, materializing up to MAX_OFFLINE_BUFFER_TOTAL (8192)
+String-labeled entries each time — on the order of 40M throwaway allocations.
+`5915f8562` adds `eviction_head()` (O(1) front read) for the per-push assertion;
+the two single-shot sites keep exercising the full-order accessor. Re-measured 26.9s,
+quick PASS; slice A re-run 1670/1670.
+
+Slice C2' surfaced two REAL reds, both wall-clock time bombs in the SQLite prune
+fixtures of apps/cloud-server: `created_at = '2026-08-09T00:00:00Z'` was authored as
+"recent" and crossed the 90-day retention horizon on 2026-08-10 — the prune then began
+deleting the very row each test asserts must survive, and the counter test recorded 3
+deletions where 2 were expected (measured 2026-11-08, horizon = 2026-08-10). A green
+codebase reddened by wall-clock time. `043d2a927` gives both fixtures a relative
+stamp (Utc::now() - 30 days), mirroring the PG prune tests in the same file, which
+already computed recency dynamically. The sent_reports PG test's '2026-08-01/02'
+literals were checked and are NOT bombs: survival there is keyed on `sent_at`
+(dynamic); period is a label. C2' re-run 945/945, 77 skipped (pg-gated ignores).
+
+Slice F surfaced gate-census drift in the Tauri clients: 5 of 70 desktop rows and 2 of
+62 tablet rows disagreed with source, and every one traced to a deliberate, named
+commit whose author did not refresh the pin: `428694f9c` gated the browser image
+viewer with PRODUCTS_READ (0→1); `160734e90` added ar/ap aging-export gate calls to
+payables (4→5) and receivables (7→8); `b15cf5fd7` retired the gated duplicate
+pending_sync_count_scoped (desktop 12→11, tablet 9→8); `636935f4f` retired two
+uncalled pos commands (22→20). Before touching the pin, the exact counts were
+re-measured by replicating the census engine (comment-stripped, wrapper-definitions
+excluded, both gate vocabularies, test blocks stripped) — all six agreed with the
+test's own numbers. `bcec1727d` updates the six rows with per-row comments naming
+the source commits, per the pin's own rule that the full set is the review signal.
+Slice F re-run 1569/1569.
+
+Honest limits, environmental and machine-level, NOT repo defects: PG-gated integration
+tests (pg-tests) are not exercised here — Docker daemon down (npipe docker_engine not
+found), OZ_TEST_PG_URL unreachable; slices C2'/E ran on default features where those
+tests compile out (77 ignored in C2'; the feature-on build fails loud by its own
+contract, measured in the r113 span). The kasirmu-api --all-features build with
+pg-tests exceeds the execution window. The VS BuildTools registration itself remains
+broken; every run above went through the manual env. UI lanes (vitest) were not
+touched this session.
