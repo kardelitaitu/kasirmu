@@ -4388,3 +4388,45 @@ exists in the live block; the failure is loud, which is the direction that matte
 but a future rewrite should decide the semantics deliberately). The partner side still
 does not parse the harness's list back (one-directional by design; its own gate is
 hard and its corpus rule is structural).
+
+### Round 83 (2026-11-07) — the flag and comment vocabularies are shared
+
+Two alliance seams remained ungraded. First, the FLAG-DECLARATION literal: both gates
+decide "this file declares a self-test" with the quoted-only regex
+`["']--self-test["']` — as separate copies. Round-80 proved the quoted-only semantics
+is load-bearing (check-auditor-selftests.sh's eleven UNQUOTED invocations rightly
+declare nothing), but nothing held the two literals together: one side loosening to a
+bare --self-test match would change who "declares" without any alarm. Second, the
+COMMENT-STRIP divergence: the partner's called() drops whole-line comments before
+matching (its docstring records the live case — verify-migration-column-types.py
+documenting its own dead flag beside the flag), while the harness's wiring_hits
+counted them — the two gates could give OPPOSITE answers to "is this wired" for a
+file whose only runner mention sits in a comment: the harness would keep it censused
+(r81) or excluded (r72) on comment-wiring while the partner reddened. The harness's
+direction was the dangerous one: comment-wiring grading a lie.
+
+Measured 2026-11-07 before landing: the partner's literal is verbatim identical to
+SELF_TEST_FLAG.pattern, and ZERO censused files and ZERO accounts change verdict
+under the strip — the alignment is behavior-preserving on the live tree.
+
+`5b6da0c24`: _drop_comment_lines() — the partner's strip_full_line_comments
+semantics, whole-line only, with the under-reporting toward wired named; wiring_hits
+matches against stripped text. Three new cases (62 -> 65): the partner's source must
+contain the harness's flag literal verbatim (the r75 shape applied to the flag — one
+side changing it alone reddens); a whole-line comment is not wiring; a live line
+beside a comment still wires.
+
+Kill directions: a lying flag literal (patched to an unquoted shape) is CAUGHT — the
+case reads the live literal, and the false literal also fails the exclusion case
+upstream (the literal is load-bearing in both places, which the probe shows); a lying
+strip (comments wire again) is CAUGHT by the new pure case; control 65/65 green. Both
+gates green: harness 65 cases exit 0, partner 6 cases, full survey 108 checker(s),
+0 SURVIVED, 108 killed, 0 RELOCATION-SENSITIVE, 0 NO MUTATABLE FUNCTION, 0 PATH
+ALREADY RED, exit 0.
+
+Honest limits: the strip is whole-line only by the partner's own documented choice —
+a trailing comment on a live line stays counted (under-reporting toward wired, named
+not hidden). The flag case grades the literal's PRESENCE in the partner's source, not
+that the partner USES it in declares_selftest — a partner rewrite that keeps the
+string but changes the call would pass this case while changing semantics; the
+partner's own six cases and the live alliance run (r76) are the backstop there.
