@@ -2445,3 +2445,38 @@ async fn hw_no_source_returns_defaults_and_pins_a_row() {
          to one row from the first read on",
     );
 }
+
+// ── BR-S6: set_setting session verification tests ───────────────────
+
+#[tokio::test]
+async fn set_setting_refuses_spoofed_identity_without_active_session() {
+    let tb = crate::testing::TestBridge::new();
+    let ctx = tb.ctx();
+
+    let err = set_setting(&ctx, "store.name", "Attacker Store", "spoofed-user")
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, BridgeError::InvalidSession),
+        "expected InvalidSession for actor without live session, got {err:?}",
+    );
+}
+
+#[tokio::test]
+async fn set_setting_accepts_user_with_active_session_and_permission() {
+    let tb = crate::testing::TestBridge::new();
+    let token = tb.token_granting(permissions::SETTINGS_EDIT).await;
+    let ctx = tb.ctx();
+    let session = ctx.resolve_session(&token).expect("must resolve session");
+
+    set_setting(&ctx, "store.name", "Verified Store", &session.user_id)
+        .await
+        .expect("must succeed with valid active session and permission");
+
+    let read_back = {
+        let conn = ctx.db.lock().await;
+        let store = kasirmu_core::db::Store::new(&conn);
+        store.get_setting("store.name").unwrap()
+    };
+    assert_eq!(read_back.as_deref(), Some("Verified Store"));
+}

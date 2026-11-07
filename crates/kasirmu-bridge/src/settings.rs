@@ -750,6 +750,21 @@ pub async fn set_setting(
     value: &str,
     user_id: &str,
 ) -> Result<(), BridgeError> {
+    // Verify that the caller-supplied user_id belongs to an active, authenticated
+    // session on this device to prevent caller-supplied identity spoofing (BR-S6).
+    let has_live_session = {
+        let store = ctx
+            .sessions
+            .read()
+            .map_err(|e| BridgeError::Internal(format!("session store lock poisoned: {e}")))?;
+        store
+            .values()
+            .any(|s| s.user_id == user_id && !s.is_expired())
+    };
+    if !has_live_session {
+        return Err(BridgeError::InvalidSession);
+    }
+
     // Extract terminal_id first.
     let terminal_id = ctx
         .terminal_id

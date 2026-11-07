@@ -258,11 +258,14 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
   where `pick_logo_file_scoped` holds `SETTINGS_EDIT`
   (`apps/desktop-tauri/src/commands/branding.rs:164`, gate at `:171`). Both keep their bodies
   desktop-side (no seam for `tauri::dialog` — ADR #49 §What was NOT extracted).
-- **BR-S6** — **[PBD]** `set_setting` authorises a **caller-supplied** identity:
-  `crates/kasirmu-bridge/src/settings.rs:989` takes `user_id: &str` (`:993`) and gates *that* at
-  `:1007` (`require_permission_for_user`), while the value arrives from the renderer at
-  `apps/desktop-tauri/src/commands/settings.rs:277` — the gate answers for whoever the
-  caller names, not for the session.
+- ~~**BR-S6** — `set_setting` authorises a caller-supplied identity~~ —
+  **CLOSED 2026-11-07** (`fix(settings): verify active session for caller-supplied identity in set_setting (BR-S6)`).
+  `set_setting` in `crates/kasirmu-bridge/src/settings.rs:747` now verifies that the supplied `user_id` has an active,
+  non-expired session in `ctx.sessions` before checking permissions, preventing unauthenticated callers from naming
+  arbitrary privileged identities. `UpdateBanner.tsx` pre-login preference persistence migrated to `localStorage`
+  (T11b option iii), resolving silent failures on rollback detection. Pinned by
+  `set_setting_refuses_spoofed_identity_without_active_session` and
+  `set_setting_accepts_user_with_active_session_and_permission` in `settings_tests.rs`.
 - **BR-S7** — **[PBD]** `resolve_report_scope` authorises against the **global** identity db
   (`crates/kasirmu-bridge/src/reports.rs:65`, `:67-69`) and then opens
   `session.store_id`'s store db (`:71-73`) with no re-check of the binding between them.
