@@ -167,7 +167,8 @@
 //
 // SPEED: reads every built page, the sitemap and the docs corpus — ~40 ms. It is
 // a post-build step, not a crawler.
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { accessibilityIssues } from '../src/lib/accessibility.ts';
@@ -645,21 +646,24 @@ function parsePage(file) {
 // Cloudflare's format: a path line, then indented `Name: value` lines. The
 // paths in public/_headers are themselves indented, so indentation alone cannot
 // distinguish them — a `Name:` prefix is what marks a header line.
-function parseHeaders() {
-  const lines = readFileSync(join(DIST, '_headers'), 'utf8').split('\n');
+function parseHeadersText(text) {
   const rules = [];
   let current = null;
-  for (const line of lines) {
-    const text = line.trim();
-    if (!text || text.startsWith('#')) continue;
-    if (/^[A-Za-z0-9-]+:\s/.test(text)) {
-      if (current) current.headers.push([text.split(':')[0].toLowerCase(), text.slice(text.indexOf(':') + 1).trim()]);
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    if (/^[A-Za-z0-9-]+:\s/.test(trimmed)) {
+      if (current) current.headers.push([trimmed.split(':')[0].toLowerCase(), trimmed.slice(trimmed.indexOf(':') + 1).trim()]);
       continue;
     }
-    current = { path: text, headers: [] };
+    current = { path: trimmed, headers: [] };
     rules.push(current);
   }
   return rules;
+}
+
+function parseHeaders() {
+  return parseHeadersText(readFileSync(join(DIST, '_headers'), 'utf8'));
 }
 
 /** Vercel/Pages-style path patterns: `*` matches within the string. */
@@ -674,7 +678,11 @@ function headerValue(rules, url, name) {
 // Read before the live exit decision below, so --self-test can ask that
 // decision what it would do with the findings the gate actually produced.
 const SELF_TEST = process.argv.includes('--self-test');
-const files = walkAll(DIST).filter((f) => f.endsWith('.html')).sort();
+// The self-test block below re-enters only the PURE decisions, so it needs no
+// built site — and the staged copies the sabotage survey runs from have no
+// dist/ at all. Walking DIST unconditionally made the whole self-test die with
+// ENOENT before its first assertion (RELOCATION-SENSITIVE, round 66).
+const files = SELF_TEST ? [] : walkAll(DIST).filter((f) => f.endsWith('.html')).sort();
 const pages = files.map(parsePage);
 const findings = [];
 const add = (check, page, message) => findings.push({ check, page, message });
@@ -822,7 +830,9 @@ for (const page of pages.filter((p) => p.rec && hasHead(p.rec))) {
 }
 
 // 3. sitemap ⇄ built public pages, both directions.
-const sitemapFiles = walkAll(DIST).filter((f) => /sitemap-\d+\.xml$/.test(f));
+// Same staged-copy guard as the page walk above: the self-test re-enters only
+// the pure decisions, and the staged tree has no dist/ to walk.
+const sitemapFiles = SELF_TEST ? [] : walkAll(DIST).filter((f) => /sitemap-\d+\.xml$/.test(f));
 const sitemapIndex = join(DIST, 'sitemap-index.xml');
 const submitted = [];
 // Read the index ONCE, and guard the read: a missing index is a finding, not a
@@ -867,7 +877,9 @@ const sitemap = sitemapVerdict({
 for (const { page, message } of sitemap.problems) add('sitemap', page, message);
 
 // 4. noindex discipline.
-const headerRules = parseHeaders();
+// Staged-copy guard, same reason as the dist walks above: the self-test grades
+// parseHeadersText directly, so the built _headers file is live-path-only.
+const headerRules = SELF_TEST ? [] : parseHeaders();
 for (const page of pages) {
   const { rec } = page;
   if (!rec) continue;
@@ -1432,7 +1444,13 @@ if (findings.length) {
 // build finds — so deleting it, or neutralising its test, reddens the gate
 // instead of quietly turning every future defect into "SEO/HEAD OK".
 const liveExitCode = verdict(findings).exitCode;
-if (liveExitCode) {
+if (SELF_TEST) {
+  // Under --self-test nothing real was scanned: the staged copy has no build,
+  // the walk was empty, and the sitemap emptiness floor fires over that void.
+  // The decision is still COMPUTED — the self-test below pins that it agrees
+  // with the pure re-computation — but it must not drive the exit code; the
+  // self-test's own result does.
+} else if (liveExitCode) {
   process.exitCode = 1;
 } else {
   console.log('\nSEO/HEAD OK');
@@ -1457,6 +1475,45 @@ if (SELF_TEST) {
   const lines = (problems) => problems.map((p) => `${p.page} ${p.message}`);
   const anyLine = (problems, re) => lines(problems).some((line) => re.test(line));
   const describeTag = (loc) => `is a stand-in reason for ${loc}`;
+
+  // ── walkAll ───────────────────────────────────────────────────────────────
+  {
+    // The one I/O helper the live gate leans on. Give it a fixture of its own
+    // so a gutted walker cannot hide behind "the self-test never walks".
+    const root = mkdtempSync(join(tmpdir(), 'check-seo-walk-'));
+    mkdirSync(join(root, 'sub'), { recursive: true });
+    writeFileSync(join(root, 'a.html'), '');
+    writeFileSync(join(root, 'sub', 'b.html'), '');
+    const walked = walkAll(root).map((p) => relative(root, p).split(sep).join('/')).sort();
+    expect('walkAll-reaches-nested-files', walked.join(',') === 'a.html,sub/b.html', walked.join(',') || String(walked));
+    rmSync(root, { recursive: true, force: true });
+  }
+
+  // ── parseHeadersText ─────────────────────────────────────────────────────
+  {
+    // The _headers parser on its own text: comments, blank lines, a header line
+    // under a path (the Name: prefix marks it — indentation cannot, because the
+    // paths in public/_headers are themselves indented), and the empty input.
+    const rules = parseHeadersText([
+      '# a comment',
+      '',
+      '/en/*',
+      '  X-Robots-Tag: noindex',
+      '  Cache-Control: public, max-age=3600',
+      '/id/pricing/',
+      '  X-Robots-Tag: index',
+    ].join('\n'));
+    expect('headers-parses-paths-and-headers',
+      rules.length === 2
+      && rules[0].path === '/en/*'
+      && rules[0].headers.length === 2
+      && rules[0].headers[0][0] === 'x-robots-tag'
+      && rules[0].headers[0][1] === 'noindex'
+      && rules[1].path === '/id/pricing/'
+      && rules[1].headers.length === 1,
+      JSON.stringify(rules));
+    expect('headers-empty-text-is-no-rules', parseHeadersText('').length === 0, String(parseHeadersText('').length));
+  }
 
   // ── sitemapVerdict ────────────────────────────────────────────────────────
   const S = 'https://kasir.mu';
