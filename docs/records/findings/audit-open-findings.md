@@ -4351,3 +4351,40 @@ RUNNER_FILES + workflows: a censused file invoked ONLY from outside that corpus
 unwired here — none exists today (verified: 107 runner-wired via corpus-visible
 callers), but a future checker wired solely through a non-corpus orchestrator would
 need either a corpus widening (an alliance move, both sides) or a declared account.
+
+### Round 82 (2026-11-07) — the alliance's list parse is total
+
+The r81 card asked whether the alliance's textual list parsing could silently tolerate a
+reformat. Measured: the r74 parser (`_other_gate_runners`) read the partner's RUNNERS
+block line by line and kept only lines carrying quoted tokens — a line with NO quoted
+token (a variable splat `RUNNERS_BASE,`, a computed path) was SILENTLY DROPPED. The
+partner would then scan a runner this vocabulary cannot see, and the agreement's whole
+point — no runner outside the shared list, because an exclusion could depend on wiring
+the census cannot scan — dies QUIETLY. Live measurement 2026-11-07: the partner's block
+has 32 lines (23 comments, zero no-quote code lines) and parses to exactly 8 entries
+(7 file-typed + the workflows dir), gaps [] — the silent drop has not fired yet; this
+makes the next one loud.
+
+`36f1cbc98`: the parse is now TOTAL and PURE. `_parse_other_runners(text) ->
+(entries, refused)`: every block line yields either an entry or a refusal naming its
+line; a missing RUNNERS block is refused outright. `runner_gaps(other_file_runners)`
+holds the two-sided gap arithmetic purely. `wiring_runner_gaps()` = disk read +
+parse + refusals ARE gaps. Four new cases (58 -> 62): a variable-splat line is
+refused, not silently dropped; a missing block is refused; a partner runner only it
+knows is a gap named; a shrunken partner set reports every lost runner exactly once
+(the shared member is not double-reported — a first draft of this case expected all
+seven from a set holding one baseline runner and the SELF-TEST caught the draft before
+any commit; the alarm grading its own alarm's arithmetic is the point of the shape).
+
+Kill directions: a lying total parser (refuses nothing, sees nothing) is CAUGHT by the
+live agreement case; a lying gap arithmetic (all agreement silent) is CAUGHT by the
+new pure cases; control 62/62 green. Both gates green: harness 62 cases exit 0,
+partner 6 cases, full survey 108 checker(s), 0 SURVIVED, 108 killed, 0
+RELOCATION-SENSITIVE, 0 NO MUTATABLE FUNCTION, 0 PATH ALREADY RED, exit 0.
+
+Honest limits: the parse still joins ALL quoted tokens on a line, so a trailing
+comment carrying quotes would garble an entry into a loud false gap (no such line
+exists in the live block; the failure is loud, which is the direction that matters —
+but a future rewrite should decide the semantics deliberately). The partner side still
+does not parse the harness's list back (one-directional by design; its own gate is
+hard and its corpus rule is structural).
