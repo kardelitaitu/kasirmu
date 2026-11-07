@@ -3544,7 +3544,7 @@ to reach, even though the self-test was already strong (it drives the EXACT $AWK
 text the live scan runs, over synthetic Rust fixtures, both directions, plus a
 scanned-floor refusal case).
 
-`` extracts run_classifier() as the classifier's single invocation site: the live scan
+`d3dc89c38` extracts run_classifier() as the classifier's single invocation site: the live scan
 (line 241) and every self-test case now call the same top-level wrapper, which carries
 PERM/STORE/LISTED and appends the caller's -v arguments before $AWK_PROG. The kill is
 doubled: gutting it makes all seven cases fail (empty output != expected UNREASONED
