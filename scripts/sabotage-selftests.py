@@ -589,17 +589,41 @@ def wiring_hits(name: str, texts: dict[str, str]) -> list[str]:
     return sorted(rel for rel, text in texts.items() if name in text)
 
 
-def _other_gate_runners() -> set[str]:
-    """The runner paths named by verify-selftests-wired.py's RUNNERS block."""
-    text = (ROOT / "scripts/verify-selftests-wired.py").read_text(encoding="utf-8", errors="replace")
+def _parse_other_runners(text: str) -> tuple[set[str], list[str]]:
+    """The partner's RUNNERS block, parsed -- plus every line REFUSED.
+
+    TOTAL on purpose (round-82): the r74 parser silently dropped any entry
+    line with no quoted token -- a variable splat or computed path joins the
+    partner's scan while this side sees nothing, and the whole point of the
+    agreement (no runner outside this vocabulary) dies QUIETLY. Measured
+    2026-11-07: the live block has zero such lines, so the parse is exact
+    today; this makes the next one loud. Every block line yields either an
+    entry or a refusal naming its line.
+    """
+    if "RUNNERS = (" not in text:
+        return set(), ["verify-selftests-wired.py no longer has a RUNNERS = ( block"]
     block = text.split("RUNNERS = (", 1)[1].split("\n)", 1)[0]
-    out: set[str] = set()
-    for ln in block.splitlines():
-        if not ln.lstrip().startswith("#"):
-            toks = re.findall(r'"([^"]+)"', ln)
-            if toks:
-                out.add("/".join(toks))
-    return out
+    entries: set[str] = set()
+    refused: list[str] = []
+    for i, ln in enumerate(block.splitlines(), 1):
+        if not ln.strip() or ln.lstrip().startswith("#"):
+            continue
+        toks = re.findall(r'"([^"]+)"', ln)
+        if toks:
+            entries.add("/".join(toks))
+        else:
+            refused.append(f"partner RUNNERS line {i} has no quoted path: {ln.strip()[:60]}")
+    return entries, refused
+
+
+def runner_gaps(other_file_runners: set[str]) -> list[str]:
+    """The two-sided runner-list gaps, PURE over the partner's parsed entries."""
+    gaps = sorted(r for r in other_file_runners
+                  if "." in r.rsplit("/", 1)[-1] and r not in RUNNER_FILES)
+    for rel in RUNNER_FILES:
+        if rel not in other_file_runners:
+            gaps.append(rel + " is no longer in verify-selftests-wired's RUNNERS")
+    return gaps
 
 
 def wiring_runner_gaps() -> list[str]:
@@ -609,15 +633,12 @@ def wiring_runner_gaps() -> list[str]:
     here (its invisibility would let an exclusion depend on wiring this
     vocabulary cannot see), and every baseline runner here must still be
     named there (the other gate narrowing on its own would deserve the same
-    alarm). Either side changing alone reddens.
+    alarm). Either side changing alone reddens -- and so does a line the
+    parser cannot read: refusals ARE gaps.
     """
-    other = _other_gate_runners()
-    gaps = sorted(r for r in other
-                  if "." in r.rsplit("/", 1)[-1] and r not in RUNNER_FILES)
-    for rel in RUNNER_FILES:
-        if rel not in other:
-            gaps.append(rel + " is no longer in verify-selftests-wired's RUNNERS")
-    return gaps
+    other, refused = _parse_other_runners(
+        (ROOT / "scripts/verify-selftests-wired.py").read_text(encoding="utf-8", errors="replace"))
+    return refused + runner_gaps(other)
 
 
 #: The checker-name convention, one vocabulary with verify-selftests-wired.py's
@@ -1143,6 +1164,26 @@ def self_test() -> int:
                              {"scripts/verify-x.py": "python3 scripts/verify-x.py --self-test",
                               "scripts/verify-y.py": "y"}),
          [])
+
+    # ── the alliance's list parse is total, not silently partial (r82) ─────────
+    splat_entries, splat_refused = _parse_other_runners(
+        'RUNNERS = (\n'
+        '    ROOT / "scripts" / "check.sh",\n'
+        '    RUNNERS_BASE,\n'
+        ')\n')
+    want("a variable-splat runner line is refused, not silently dropped",
+         [sorted(splat_entries), len(splat_refused)], [["scripts/check.sh"], 1])
+    want("a missing RUNNERS block is refused outright",
+         _parse_other_runners("def main(): ...\n")[1] != [], True)
+    want("a partner runner only it knows is a gap, named",
+         runner_gaps({"scripts/check.sh", "scripts/check-new.sh"})[:1],
+         ["scripts/check-new.sh"])
+    # the set passed holds ONE baseline runner, so exactly the other six are
+    # reported -- and the shared member is NOT double-reported as an extra.
+    want("a shrunken partner set reports every lost runner, once",
+         runner_gaps({"scripts/check.sh"}),
+         [rel + " is no longer in verify-selftests-wired's RUNNERS"
+          for rel in RUNNER_FILES if rel != "scripts/check.sh"])
     for rel in CENSUS_EXCLUDED:
         refs = pipeline_references(Path(rel).name)
         if refs:
@@ -1234,7 +1275,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (58 cases, one alliance self-test runs: verify-selftests-wired)")
+    print("SELF-TEST OK (62 cases, one alliance self-test runs: verify-selftests-wired)")
     return 0
 
 
