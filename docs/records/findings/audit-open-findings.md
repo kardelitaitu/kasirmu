@@ -3934,3 +3934,38 @@ by design (that is what being excluded means); the remedy is the file joining th
 census, which the wiring/coverage cases keep making cheap. The per-file evidence in the
 comment is a snapshot (2026-11-07): the docstrings remain the source of truth, and the
 comment is a pointer into them, not a replacement.
+
+### Round 73 (2026-11-07) — the pipeline's slice of the harness is now a graded fact
+
+Rounds 70-71 changed the survey's exit contract and gave unmeasured rows a cause; this
+round asked the question the r72 card left open: what does the PIPELINE inherit from
+that? The answer, verified at scripts/check.sh:1241: it runs the graded CASES only --
+`step "sabotage mutator self-test" ... --self-test` -- and never the survey. That
+split is correct and is now deliberate rather than implicit, in both directions:
+
+- **The survey stays manual, by design.** 12-17 minutes of staged mutation per commit
+  is not a gate, and the round-70 exit contract (every unmeasured verdict fails) would
+  redden every unrelated commit the moment any lane's checker sat under active
+  development. The rationale now lives at the call site in check.sh, where the next
+  auditor looks, not only in this register.
+- **The wiring that DOES exist is graded.** The whole two-gate protocol rests on one
+  line of check.sh: if it drifts away (renamed flag, dropped step), the harness keeps
+  passing for everyone who runs it by hand and silently stops being a pipeline gate
+  for everyone else. `checksh_invokes_self_test()` text-scans check.sh for the
+  invocation; self_test() grows 39 -> 40 cases with
+  want("check.sh still invokes the harness's --self-test", ...).
+
+Kill directions proven: a lying wiring case (returns False) is CAUGHT by the want; the
+helper pointed at a stripped check.sh in a temp ROOT returns False (the grade reads the
+REAL file, not a fixture, so the case cannot pass by construction); the control stays
+40/40 green. bash -n confirms the comment edit left check.sh parseable. Both gates
+green: self-test 40 cases, full survey 108 checker(s), 0 SURVIVED, 108 killed,
+0 RELOCATION-SENSITIVE, 0 NO MUTATABLE, 0 PATH ALREADY RED, exit 0.
+
+Honest limits: the grade asserts the invocation LINE exists, not that the pipeline
+executes it (check.sh could grow an early exit that skips the step before reaching
+line 1241 — the step helper's own wiring is check.sh's business, and
+verify-selftests-wired.py watches the other side). The negative half (check.sh must
+never run the bare survey) is deliberately a comment, not a want: a legitimate future
+`--limit N` slice in the pipeline should not require editing the harness to be
+allowed, and a graded negative would have said otherwise.
