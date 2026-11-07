@@ -5171,3 +5171,29 @@ Honest limits: the banner and survey_exit still derive their counts separately �
 agreement is graded, not shared code; unifying them would mean survey_exit returning
 a richer value than an int, a contract change this round did not want to make. The
 per-row table lines remain ungraded (r101's limit, still true).
+
+### Round 104 (2026-11-08) — the write-through banner, the last message in main()
+
+junction_writethrough() has been graded pure since r97, but the block printed beside
+its detections was inline in main(): header, one line per offending (status, path),
+and the conservative advice ("do not trust the table above until this is explained").
+The banner's claim is deliberately conservative and correct — a write-through means
+the real tree moved while the survey measured it, so the table cannot be trusted —
+but the SHAPE was ungraded: a banner that silently dropped one of two offending
+paths, fired on a clean tree, or flipped the advice to "carry on" would have exited
+2 with plausible-looking text.
+
+`19379d945` extracts writethrough_banner(through) — behavior-preserving (the ""-first
+line join reproduces the original byte stream), main() prints it, and the extraction
+completes the message-contract hunt through main(): survey_summary (r101), the wiring
+audit's report (r102), unmeasured_banner (r103), and now this. +1 harness case
+(125→126, derived): the banner names each offending path exactly once beside the
+advice, and prints nothing when clean. Kill directions: a dropped path is CAUGHT; a
+banner on a clean tree is CAUGHT; flipped advice is CAUGHT; control green. Full
+survey 109/0/109/0/0/0, exit 0.
+
+Honest limits: main() still prints the per-row table lines directly — those stay
+ungraded, now the ONLY unprinted-graded seam left in either gate's main(). The
+banner's advice is graded for presence, not for its truth against future survey
+semantics — if survey_exit ever gains a third failure shape, the wording must be
+re-read, not re-derived.
