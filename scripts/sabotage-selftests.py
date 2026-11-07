@@ -103,10 +103,15 @@ def braces_span(src: str, open_idx: int) -> int | None:
     return None
 
 
-def text_functions(src: str, pattern: re.Pattern) -> list[tuple[str, int, int]]:
-    """(name, open_line, close_line) for functions found by TEXT, for .sh and .mjs."""
+def text_functions(src: str, pattern: re.Pattern, js: bool = False) -> list[tuple[str, int, int]]:
+    """(name, open_line, close_line) for functions found by TEXT, for .sh and .mjs.
+
+    js=True switches the stripper to the JS-aware one: regex and template literals
+    exist only in .mjs, and a quote-only stripper mis-reads /"([^"]+)"/g as a
+    string, then eats balanced braces until the next quote anywhere in the file.
+    """
     out = []
-    stripped = strip_comments_and_strings(src)
+    stripped = strip_comments_and_strings(src, js=js)
     for m in pattern.finditer(src):
         name = m.group(1)
         if name in SKIP_DEFS or name.startswith("__"):
@@ -125,8 +130,197 @@ def text_functions(src: str, pattern: re.Pattern) -> list[tuple[str, int, int]]:
     return out
 
 
-def strip_comments_and_strings(src: str) -> str:
-    """Blank # // /* */ and quoted contents, preserving offsets and newlines."""
+_JS_REGEX_PRECEDERS = set("(=,:[!&|?{};<")
+_JS_REGEX_KEYWORDS = ("return", "typeof", "instanceof", "in", "of", "new", "delete",
+                      "void", "case", "do", "else", "yield", "await")
+
+
+def _strip_js(src: str) -> str:
+    """JS-aware blanking for .mjs sources: line and block comments, quoted
+    strings, template literals with nested interpolations, and regex literals.
+    Contents are blanked; offsets and newlines are preserved.
+
+    Regex literals are the point: a quote-only stripper reads /"([^"]+)"/g as a
+    string opening at the first double quote, and the phantom string then
+    swallows source until the next double quote anywhere in the file — balanced
+    function braces included. Measured 2026-11-07: every candidate in
+    website/scripts/verify-deploy.mjs was dropped that way and a checker
+    carrying 28 self-test cases scored NO MUTATABLE FUNCTION. A regex may start
+    after ( = , : [ ! & | ? { ; < or a value-yielding keyword — never directly
+    after an identifier or a close paren, which is division.
+    """
+    out = list(src)
+    n = len(src)
+    modes = ["code"]            # nesting stack: code/sq/dq/tpl/re/line/block
+    re_class = [False]          # inside [...] of the frame's regex
+    interp = []                 # ${ depth per interpolation frame
+
+    def blank(i):
+        if out[i] != "\n":
+            out[i] = " "
+
+    i = 0
+    while i < n:
+        ch = src[i]
+        two = src[i:i + 2]
+        mode = modes[-1]
+        if mode == "code":
+            if two == "//":
+                blank(i)
+                if i + 1 < n:
+                    blank(i + 1)
+                modes.append("line")
+                i += 2
+                continue
+            if two == "/*":
+                blank(i)
+                blank(i + 1)
+                modes.append("block")
+                i += 2
+                continue
+            if ch in "'\"":
+                modes.append("sq" if ch == "'" else "dq")
+                blank(i)
+                i += 1
+                continue
+            if ch == "`":
+                modes.append("tpl")
+                blank(i)
+                i += 1
+                continue
+            if ch == "/":
+                j = i - 1
+                while j >= 0 and src[j] in " \t\r\n":
+                    j -= 1
+                prev = src[j] if j >= 0 else ";"
+                word = ""
+                k = j
+                while k >= 0 and (src[k].isalnum() or src[k] in "_$"):
+                    word = src[k] + word
+                    k -= 1
+                if j < 0 or prev in _JS_REGEX_PRECEDERS or word in _JS_REGEX_KEYWORDS:
+                    modes.append("re")
+                    re_class.append(False)
+                    blank(i)
+                i += 1
+                continue
+            if interp and ch == "{":
+                interp[-1] += 1
+                blank(i)             # interpolation braces are template machinery,
+                i += 1               # not the function's braces: blank them all
+                continue
+            if interp and ch == "}":
+                blank(i)
+                if interp[-1] == 0:
+                    interp.pop()
+                    modes.pop()      # ${...} closed: back to the template
+                else:
+                    interp[-1] -= 1
+                i += 1
+                continue
+            i += 1
+            continue
+        if mode == "line":
+            if ch == "\n":
+                modes.pop()
+            else:
+                blank(i)
+            i += 1
+            continue
+        if mode == "block":
+            if two == "*/":
+                blank(i)
+                blank(i + 1)
+                modes.pop()
+                i += 2
+                continue
+            blank(i)
+            i += 1
+            continue
+        if mode in ("sq", "dq"):
+            q = "'" if mode == "sq" else '"'
+            if ch == "\\":
+                blank(i)
+                if i + 1 < n:
+                    blank(i + 1)
+                i += 2
+                continue
+            if ch == q:
+                blank(i)
+                modes.pop()
+                i += 1
+                continue
+            if ch == "\n":          # unterminated: recover at the newline
+                modes.pop()
+                i += 1
+                continue
+            blank(i)
+            i += 1
+            continue
+        if mode == "tpl":
+            if ch == "\\":
+                blank(i)
+                if i + 1 < n:
+                    blank(i + 1)
+                i += 2
+                continue
+            if two == "${":
+                blank(i)
+                blank(i + 1)
+                interp.append(0)
+                modes.append("code")
+                i += 2
+                continue
+            if ch == "`":
+                blank(i)
+                modes.pop()
+                i += 1
+                continue
+            blank(i)
+            i += 1
+            continue
+        if mode == "re":
+            if ch == "\\":
+                blank(i)
+                if i + 1 < n:
+                    blank(i + 1)
+                i += 2
+                continue
+            if ch == "\n":          # a regex cannot span lines: recover
+                modes.pop()
+                re_class.pop()
+                i += 1
+                continue
+            if re_class[-1]:
+                if ch == "]":
+                    re_class[-1] = False
+                blank(i)
+                i += 1
+                continue
+            if ch == "[":
+                re_class[-1] = True
+                blank(i)
+                i += 1
+                continue
+            if ch == "/":
+                modes.pop()
+                re_class.pop()
+            blank(i)
+            i += 1
+            continue
+    return "".join(out)
+
+
+def strip_comments_and_strings(src: str, js: bool = False) -> str:
+    """Blank # // /* */ and quoted contents, preserving offsets and newlines.
+
+    js=True adds the two literal kinds shell has no notion of and JS code is
+    full of: regex literals (whose quotes and brackets would otherwise read as
+    strings) and template literals (whose contents — and ${} interpolations
+    — must not leak braces into the brace counter). See _strip_js.
+    """
+    if js:
+        return _strip_js(src)
     out = list(src)
     i = 0
     n = len(src)
@@ -297,7 +491,7 @@ def survey(limit: int | None, skip: int = 0) -> list[tuple[str, str, int, int, s
             if p.suffix == ".sh":
                 cands = text_functions(src, SH_FUNC)
             elif p.suffix == ".mjs":
-                cands = text_functions(src, MJS_FUNC)
+                cands = text_functions(src, MJS_FUNC, js=True)
             else:
                 cands = candidate_functions(src)
             if not cands:
@@ -387,10 +581,31 @@ def self_test() -> int:
     want("self_test is never a candidate",
          [c[0] for c in text_functions("self_test() {\n  a\n  b\n}\n", SH_FUNC)], [])
 
+    # A regex literal containing quotes must not read as a string: the phantom string
+    # then swallows balanced braces and every candidate in the file is dropped
+    # (measured 2026-11-07 on website/scripts/verify-deploy.mjs, which carries 28
+    # self-test cases and scored NO MUTATABLE FUNCTION). The tricky fixture above
+    # must also survive the JS-aware stripper, and templates must not leak braces.
+    regexy = ("function f() {\n"
+              '  const m = [...s.matchAll(/"([^"]+)"/g)];\n'
+              "  if (m) { use(m); }\n"
+              "}\nafter();")
+    cands = text_functions(regexy, MJS_FUNC, js=True)
+    want("a quote-bearing regex does not hide the function", [c[0] for c in cands], ["f"])
+    want("...and the close is still the real one", [c[2] for c in cands], [4])
+    want("tricky holds under the JS stripper too",
+         [c[0] for c in text_functions(tricky, MJS_FUNC, js=True)], ["f"])
+    tpl_fixture = ("function f() {\n"
+                   "  const s = `a ${x} b`;\n"
+                   "  log(`}`);\n"
+                   "}\n")
+    want("template literals do not leak braces",
+         [c[0] for c in text_functions(tpl_fixture, MJS_FUNC, js=True)], ["f"])
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (10 cases, no checker is run)")
+    print("SELF-TEST OK (15 cases, no checker is run)")
     return 0
 
 
