@@ -453,16 +453,20 @@ def _link_or_copy(real: Path, mirror: Path) -> None:
 SELF_TEST_FLAG = re.compile(r"""["']--self-test["']""")
 
 #: Self-tested scripts deliberately OUTSIDE the census: no running pipeline
-#: depends on them (measured 2026-11-07 against scripts/check.sh,
-#: .githooks/pre-push, the GitHub workflows and both package.json manifests).
-#: self_test() holds this list to the criterion with census_carriers() and
-#: pipeline_references(): a pipeline that starts depending on one of these
+#: depends on them and no censused file loads them (measured 2026-11-07 against
+#: scripts/check.sh, .githooks/pre-push, the GitHub workflows, both package.json
+#: manifests and every censused file's text). They are standalone operator
+#: tools. self_test() holds this list to the criterion with census_carriers()
+#: and pipeline_references(): a pipeline that starts depending on one of these
 #: reddens the self-test until the file joins the census, and a new
 #: self-test-carrying script that lands without a census membership reddens it
 #: too -- the round-66 failure mode, where eleven self-tested checkers ran
 #: unmeasured under a copied glob list while 96 rows read as the world.
+#: Round-69 lesson, now graded: allowlist-schema.py sat here as "no pipeline
+#: runs it" while two censused gates loaded it by path -- wiring a name search
+#: over pipeline files cannot see, so self_test() also scans censused files'
+#: text for an excluded basename.
 CENSUS_EXCLUDED = (
-    "scripts/allowlist-schema.py",
     "scripts/sign-plugin.py",
     "scripts/restaurant-coverage.py",
     "scripts/extract-updater-seed.py",
@@ -497,9 +501,11 @@ def census_files() -> list[Path]:
     checker lands (round-66: five website check-* scripts and six named scripts/
     files were invisible to exactly such a copy while 96 rows read as the world).
     Membership criterion: the script carries a quoted --self-test AND a running
-    pipeline (check.sh step, pre-push, workflow, website package.json) depends
-    on it. Scripts that self-test but no pipeline runs are out, listed in
-    CENSUS_EXCLUDED and held there by self_test().
+    pipeline depends on it -- directly (check.sh step, pre-push, workflow,
+    website package.json) or transitively (a censused checker loads it by
+    path; round-69: the shared allowlist schema). Scripts that self-test but
+    nothing depends on are out, listed in CENSUS_EXCLUDED and held there by
+    self_test().
     """
     files = []
     for base, pattern in (
@@ -522,8 +528,12 @@ def census_files() -> list[Path]:
     # Named outright, round-66 census: self-tested scripts whose verdicts gates
     # depend on but whose names match no convention above -- two check.sh steps
     # each, one dev-ci step, one release-workflow signer, and the pre-push
-    # orchestrator itself. Deliberately NOT censused: the four scripts listed
-    # in CENSUS_EXCLUDED carry --self-test but no pipeline runs them (the
+    # orchestrator itself. allowlist-schema.py joins in round-69: both gates
+    # that consume it (verify-ipc-parity.py, verify-scoped-reads.py) load it by
+    # path, so it is wired TRANSITIVELY -- and a schema the survey refuses to
+    # grade is a schema its two gates can silently disagree about, the disease
+    # the module exists to cure. Deliberately NOT censused: the three scripts
+    # in CENSUS_EXCLUDED carry --self-test but nothing depends on them (the
     # harness self-test holds that list to the criterion), and
     # sabotage-selftests.py is this harness.
     files.extend(ROOT / "scripts" / name for name in (
@@ -531,6 +541,7 @@ def census_files() -> list[Path]:
         "census-orphan-modules.py", "classify-finding-reachability.py",
         "scan-unwrap-panic.py", "generate-pg-migration.py",
         "generate-latest-json.mjs", "run-pre-push.py",
+        "allowlist-schema.py",
     ))
     return [f for f in files if SELF_TEST_FLAG.search(f.read_text(encoding="utf-8", errors="replace"))]
 
@@ -746,6 +757,12 @@ def self_test() -> int:
         refs = pipeline_references(Path(rel).name)
         if refs:
             bad.append(f"{rel} is now pipeline-wired ({', '.join(refs)}) — it must join the census")
+    excluded_names = [Path(rel).name for rel in CENSUS_EXCLUDED]
+    for c in sorted(censused):
+        text = (ROOT / c).read_text(encoding="utf-8", errors="replace")
+        for rel, nm in zip(CENSUS_EXCLUDED, excluded_names):
+            if nm in text:
+                bad.append(f"{rel} is loaded by censused {c} — it must join the census")
     want("the harness is never its own subject",
          "scripts/sabotage-selftests.py" not in censused, True)
 
@@ -765,7 +782,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (26 cases, no checker is run)")
+    print("SELF-TEST OK (27 cases, no checker is run)")
     return 0
 
 
