@@ -4607,3 +4607,41 @@ constant or moved its list out of source (say into a config file), both parsers 
 [] and both mirror cases redden together: loud, but the diagnosis ("missing block") would
 point at the wrong rename until someone reads the diff. The partner's RUNNERS block
 remains a separate sync question (graded since r82's two-sided diff).
+
+### Round 89 (2026-11-07) — the pre-push orchestrator is graded a mirror
+
+The r86 card's open question, measured: run-pre-push.py invokes 18 checker scripts in
+gate form, and the exclusive list is EMPTY — every one is also named in a runner file
+(check.sh, the hooks, dev-ci.yml, the package.jsons). The orchestrator is itself
+runner-wired (pre-push hook, check.sh, check.ps1) but is NOT a runner file, so the
+census's wiring scan cannot see its children: a checker invoked ONLY by the orchestrator
+would be sole-provider wiring invisible to both gates. Today that is a latent seam, not
+a live one — so the round's step is to grade the mirror property itself.
+
+`f35a1642c`: orchestrator_invocations() extracts the scripts/ basenames the orchestrator
+invokes (comment lines dropped — the r83 primitive; a commented invocation cannot wire);
+sole_orchestrator_wiring() is the PURE classifier: census-shaped checkers (convention or
+CENSUS_NAMED basename) no runner file names. Five new cases (83 -> 88): the synthetic
+lonely checker reddens; a runner mention satisfies; a non-census helper is OUT of the
+claim's scope (the property is about scripts whose wiring the census claims to know, not
+about every helper — pinned, not implied); the extraction sees two real invocations (the
+blind-lie direction); and the live mirror is empty.
+
+The live self-test caught its own draft before any commit: the classifier's first draft
+matched the anchored convention against the FULL rel path ("scripts/verify-lonely.py")
+instead of the basename and returned [] on the synthetic red case — control reddening on
+landing, the same shape as rounds 87 and 88. Fixed to basename matching, consistent with
+account_carriers' key shape.
+
+Kill directions: an always-mirrored classifier lie is CAUGHT (the synthetic case);
+a blind extraction lie is CAUGHT (the sees-real-invocations pin); control 88/88 green.
+Both gates green: harness 88 cases exit 0, partner 8 cases; full survey 109 checker(s),
+0 SURVIVED, 109 killed, 0 RELOCATION-SENSITIVE, 0 NO MUTATABLE FUNCTION, 0 PATH ALREADY
+RED, exit 0.
+
+Honest limits: the mirror property is graded against RUNNER FILES' TEXTS, so it
+inherits their blindness — an invocation inside a workflow step built by string
+concatenation (the AGENTS.md pathspec hazard) can mention a checker in a form no
+substring finds; that class of lie is unmeasured everywhere, not just here. And the
+claim covers census-shaped scripts only: a sole-provider HELPER stays invisible by
+design, pinned by its own case rather than hidden.
