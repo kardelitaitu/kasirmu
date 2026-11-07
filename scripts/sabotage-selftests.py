@@ -1390,6 +1390,34 @@ def self_test() -> int:
     want("an exported function is a candidate",
          [c[0] for c in text_functions("export function g() {\n  a();\n  b();\n}\n", MJS_FUNC)],
          ["g"])
+    # ── the text blanker guts, marks, keeps siblings, and REALLY parses (r111) ─
+    # The loop above grades brace counts; the parse claim ("the file still
+    # parses") is graded here with the real interpreters, because a mutant that
+    # will not parse scores KILLED while proving nothing -- the exact disease
+    # the docstring names. Guards on cands follow the r105 rule: a killed
+    # helper must red the assertion, not crash the fixture.
+    sh_src111 = "f() {\n  echo a\n  echo b\n}\ng() {\n  echo kept\n}\n"
+    sh_cs = text_functions(sh_src111, SH_FUNC)
+    sh_mut = blank_text_body(sh_src111, sh_cs[0][1], sh_cs[0][2], ".sh") if sh_cs else "UNBLANKED"
+    mjs_src111 = "function f() {\n  return 1;\n  return 2;\n}\nfunction g() {\n  return 3;\n}\n"
+    mjs_cs = text_functions(mjs_src111, MJS_FUNC, js=True)
+    mjs_mut = blank_text_body(mjs_src111, mjs_cs[0][1], mjs_cs[0][2], ".mjs") if mjs_cs else "UNBLANKED"
+    with tempfile.TemporaryDirectory() as td111:
+        sh_tmp = Path(td111) / "m.sh"
+        sh_tmp.write_text(sh_mut, encoding="utf-8")
+        mjs_tmp = Path(td111) / "m.mjs"
+        mjs_tmp.write_text(mjs_mut, encoding="utf-8")
+        want("the text blanker guts the body, marks it, and the file really parses",
+             [bool(sh_cs), bool(mjs_cs),
+              "echo a" not in sh_mut and "echo b" not in sh_mut,
+              "MUTATION: detector gutted" in sh_mut,
+              "echo kept" in sh_mut,
+              subprocess.run([GIT_BASH, "-n", str(sh_tmp)], capture_output=True).returncode,
+              "return 1" not in mjs_mut and "return 2" not in mjs_mut,
+              "MUTATION: detector gutted" in mjs_mut,
+              "return 3" in mjs_mut,
+              subprocess.run(["node", "--check", str(mjs_tmp)], capture_output=True).returncode],
+             [True, True, True, True, True, 0, True, True, True, 0])
 
     # self_test itself is never a candidate, in any language: blanking the thing under
     # test and then reporting what it says is the definition of a meaningless result.
