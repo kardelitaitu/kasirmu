@@ -4968,3 +4968,44 @@ when this session called it a lie. The lesson is the register's own recurring on
 third instance now: a truncated hit list reads as absence — measure history
 (`git log -S`, `git show <rev>:<path>`) before declaring a seam ungraded, and never
 trust a single-line pattern against multi-line calls.
+
+### Round 98 (2026-11-07) — the python mutator and the staging tree are graded
+
+The round-97 correction's lesson, applied as a census instead of another grep: for
+every top-level def in both gates, is the name referenced anywhere in its own
+self_test body? Measured 2026-11-07, the harness had 47 top-level defs and 9 with no
+reference; the partner had 13 and 3. Each candidate was then VERIFIED rather than
+assumed (the round-97 defect, not repeated): the partner's three (checkers,
+declares_selftest, runner_text) are all transitively exercised by the
+collided_audited and audited-set cases -- not seams. The harness's .sh/.mjs mutator
+(text_functions, blank_text_body, braces_span, _strip_js) is likewise transitively
+graded. Two REAL seams remained, both with wide blast radius and zero direct grading:
+
+- `candidate_functions` + `blank_body` decide WHICH top-level python function 84 of
+  the 109 censused checkers lose. The picker's rules (blankable = top-level def,
+  not SKIP_DEFS, not __-prefixed, body of at least TWO STATEMENTS -- len(node.body),
+  not two lines) and the blanker's output (the span replaced by one `return None
+  # MUTATION: detector gutted` stub that still parses) were ungraded. A regression
+  that picked nested or one-statement functions, or emitted an unparseable stub,
+  would silently shift what every "killed" verdict has meant since round 51.
+- `build_temp_root` + `_overlay` + `_link_or_copy` decide whether the survey's
+  300+ staged runs per survey can write through to the shared checkout. The
+  writethrough GUARD has been graded since 87a1c7947; the STAGING itself was not:
+  no case proved gate roots land as real copies, that a staged write stays staged
+  (canary written to the staged scripts/ root and shown absent from the real one),
+  that .git and .env never enter the tree, or that the tree is cleaned up.
+
+`5ef50690d`: six cases, +42 lines, all pure or tempfile-scoped. Kill directions:
+a picker that accepts one-line bodies is CAUGHT; a blanker that returns the source
+unchanged is CAUGHT; an _overlay that stops copying the gate roots is CAUGHT (the
+staged-write case reds before any real-tree write); control green. Both gates green
+(116 and 13, derived); full survey 109 checker(s), 0 SURVIVED, 109 killed, 0/0/0,
+exit 0.
+
+Honest limits: git_status_porcelain remains ungraded -- a subprocess wrapper whose
+grading would be a re-execution of git status, covered today only by the writethrough
+guard's cases consuming its shape. The staging case asserts sibling READS reach the
+real bytes; it deliberately does not write through a junction to prove the write
+lands in the real tree -- that direction is what the guard's canary history already
+measured, and a probe that writes to the shared checkout to prove writing to the
+shared checkout is possible is a hazard the case does not need.
