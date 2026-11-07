@@ -798,6 +798,22 @@ def checksh_invokes_self_test() -> bool:
             in (ROOT / "scripts/check.sh").read_text(encoding="utf-8", errors="replace"))
 
 
+
+def checksh_invokes_alliance() -> bool:
+    """check.sh still runs the alliance partner's self-test per commit.
+
+    Round-73 graded this harness's own wiring for the same reason: the pipeline
+    runs graded case sets per commit, and a self-test nobody per-commits rots
+    in silence. The partner sits one layer out with a hole its own gate cannot
+    see: its wiring criterion accepts ANY runner, so moving its step to
+    CI-only (dropping check.sh's "self-tests wired self-test" step while
+    dev-ci.yml keeps its twin) leaves it wired, green, and unenforced per
+    commit. Measured 2026-11-07: that state reddens nothing anywhere -- this
+    case is the only alarm.
+    """
+    return "scripts/verify-selftests-wired.py --self-test" in \
+        (ROOT / "scripts/check.sh").read_text(encoding="utf-8", errors="replace")
+
 def survey_exit(rows: list[tuple[str, str, int, int, str, str]],
                 through: list[tuple[str, str]]) -> int:
     """The survey's exit contract: green ONLY when every row killed, cleanly.
@@ -983,14 +999,22 @@ def self_test() -> int:
     # here with its cause line, not as a memory that someone ran it by hand.
     # The cause rides along ONLY when red -- on a green run failure_cause
     # carries the partner's own OK line (stdout fallback), not "".
+    # Measured 2026-11-07 (round-77): python and python3 are the same CPython
+    # 3.14.5 here, so this runner matches check.sh's invocation, not merely its
+    # tree. Like every other case this one grades the WORKING TREE -- the
+    # survey, census_carriers and the SCRIPT_RE extraction all do -- so pinning
+    # this one case to HEAD would diverge it from the rest; a mid-edit tree is
+    # the §7.3 stop condition, a human fact no pin can encode.
     arc, acause = run_self_test_out(ROOT / ALLIANCE_PARTNER)
     want("verify-selftests-wired's own self-test stays green (the alliance gate)",
          [arc] + ([acause] if arc else []), [0])
+    want("check.sh still runs the alliance partner's self-test per commit",
+         checksh_invokes_alliance(), True)
 
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (44 cases, one alliance self-test runs: verify-selftests-wired)")
+    print("SELF-TEST OK (45 cases, one alliance self-test runs: verify-selftests-wired)")
     return 0
 
 
