@@ -23,11 +23,16 @@
 //   node scripts/check-updater-compat.mjs
 //   node scripts/check-updater-compat.mjs --no-build   (use prebuilt harness)
 //   node scripts/check-updater-compat.mjs --keep-temp  (inspect temp workdir)
+//   node scripts/check-updater-compat.mjs --self-test  (wiring subset, honest skips)
 //
 // Exit codes:
-//   0 — all checks passed
+//   0 — all checks passed (under --self-test: every check that could run passed)
 //   1 — a check failed
-//   2 — usage/environment error (e.g. no cargo)
+//   2 — usage/environment error (e.g. no cargo) — the BARE run's refusal. --self-test
+//       never exits 2: a dead toolchain there is a PRINTED skip, not a crash, because
+//       the mutation survey runs --self-test from a copy whose only defect may be a
+//       missing linker (measured 2026-11-07: rust-lld could not open kernel32.lib,
+//       mid-morning, with no commit between a green and a red survey).
 
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -123,40 +128,65 @@ let workdirExe = EXE;
 const argv = process.argv.slice(2);
 const noBuild = argv.includes("--no-build");
 const keepTemp = argv.includes("--keep-temp");
+const selfTestMode = argv.includes("--self-test");
 
 console.log("=== kasir.mu updater client compatibility check ===");
 console.log(`Harness: ${EXE}`);
 
-// 1. Build the harness (unless --no-build).
+// 1. Build the harness (unless --no-build). The bare run REFUSES (exit 2) when the
+// toolchain cannot answer — that is the live gate's honest behavior and it does not
+// change. --self-test has a second correct shape: the same refusal becomes a PRINTED
+// skip, and every phase that needs no Rust is still graded. A copy whose only defect
+// is a missing linker stays measurable, and a skipped phase is never read as a pass —
+// the summary names the subset.
+let harnessReady = false;
 if (!noBuild) {
   if (!existsSync(join(HARNESS_DIR, "Cargo.toml"))) {
-    console.error("FATAL: harness Cargo.toml missing at " + join(HARNESS_DIR, "Cargo.toml"));
-    process.exit(2);
+    if (selfTestMode) {
+      console.log("  (skip)  harness Cargo.toml missing — Rust phases skipped");
+    } else {
+      console.error("FATAL: harness Cargo.toml missing at " + join(HARNESS_DIR, "Cargo.toml"));
+      process.exit(2);
+    }
+  } else {
+    console.log("Building harness (cargo build --release)...");
+    // Build environment: if sccache is not available on PATH, explicitly unset
+    // RUSTC_WRAPPER so .cargo/config.toml's `rustc-wrapper = "sccache"` doesn't fail.
+    const cargoEnv = { ...process.env };
+    const sccacheProbe = spawnSync("sccache", ["--version"], { stdio: "ignore" });
+    if (sccacheProbe.error || sccacheProbe.status !== 0) {
+      cargoEnv.RUSTC_WRAPPER = "";
+    }
+    const b = spawnSync("cargo", ["build", "--release", "--manifest-path", join(HARNESS_DIR, "Cargo.toml")], {
+      encoding: "utf8",
+      cwd: HARNESS_DIR,
+      timeout: 300_000,
+      env: cargoEnv,
+    });
+    if (b.status !== 0) {
+      if (selfTestMode) {
+        const why = String(b.stderr || b.stdout || "").trim().split("\n").filter(Boolean).pop() || "unknown cargo failure";
+        console.log(`  (skip)  Rust toolchain cannot build here — ${why}`);
+        console.log("  (skip)  harness phases are the bare run's job: it refuses with exit 2");
+      } else {
+        console.error(b.stderr || b.stdout);
+        console.error("FATAL: cargo build failed — cannot run compatibility check");
+        process.exit(2);
+      }
+    } else {
+      harnessReady = true;
+    }
   }
-  console.log("Building harness (cargo build --release)...");
-  // Build environment: if sccache is not available on PATH, explicitly unset
-  // RUSTC_WRAPPER so .cargo/config.toml's `rustc-wrapper = "sccache"` doesn't fail.
-  const cargoEnv = { ...process.env };
-  const sccacheProbe = spawnSync("sccache", ["--version"], { stdio: "ignore" });
-  if (sccacheProbe.error || sccacheProbe.status !== 0) {
-    cargoEnv.RUSTC_WRAPPER = "";
-  }
-  const b = spawnSync("cargo", ["build", "--release", "--manifest-path", join(HARNESS_DIR, "Cargo.toml")], {
-    encoding: "utf8",
-    cwd: HARNESS_DIR,
-    timeout: 300_000,
-    env: cargoEnv,
-  });
-  if (b.status !== 0) {
-    console.error(b.stderr || b.stdout);
-    console.error("FATAL: cargo build failed — cannot run compatibility check");
-    process.exit(2);
-  }
+} else {
+  harnessReady = existsSync(EXE);
 }
 
-if (!existsSync(EXE)) {
+if (!harnessReady && !selfTestMode) {
   console.error(`FATAL: harness binary not found at ${EXE} (build failed?)`);
   process.exit(2);
+}
+if (!harnessReady) {
+  console.log(`  (skip)  no harness binary at ${EXE} — Rust phases skipped`);
 }
 
 const workdir = keepTemp
@@ -168,7 +198,7 @@ const workdir = keepTemp
   : mkdtempSync(join(tmpdir(), "oz-updater-compat-"));
 
 // Windows: copy the harness into the space-free workdir before any run.
-if (process.platform === "win32") {
+if (process.platform === "win32" && harnessReady) {
   const dest = join(workdir, "oz-updater-compat-check.exe");
   const { copyFileSync } = await import("node:fs");
   copyFileSync(EXE, dest);
@@ -179,18 +209,22 @@ if (process.platform === "win32") {
 try {
   // 2. FIDELITY: real tauri-cli 2.11.1 fixture must verify through the harness.
   console.log("\n[1/4] Real-signer fidelity (tauri-cli 2.11.1 fixture)");
-  const realPub = readFileSync(join(FIXTURES, "real-tauri-cli-2.11.1.pub"), "utf8").trim();
-  const realSig = readFileSync(join(FIXTURES, "real-tauri-cli-2.11.1.sig"), "utf8").trim();
-  const realInst = join(FIXTURES, "real-tauri-cli-2.11.1.installer.bin");
-  let r = runHarness(realPub, realSig, realInst, workdir);
-  // The verdict FILE is authoritative: the harness writes it via --output,
-  // and on Windows the PowerShell wrapper's own exit code is always 0 even
-  // when the native process rejects.
-  check(
-    "real tauri-cli signature verifies through the client's minisign-verify",
-    r.verdict === "VERIFIED",
-    `verdict=${r.verdict || "(none)"} ${r.error || ""}`.trim()
-  );
+  if (harnessReady) {
+    const realPub = readFileSync(join(FIXTURES, "real-tauri-cli-2.11.1.pub"), "utf8").trim();
+    const realSig = readFileSync(join(FIXTURES, "real-tauri-cli-2.11.1.sig"), "utf8").trim();
+    const realInst = join(FIXTURES, "real-tauri-cli-2.11.1.installer.bin");
+    const r1 = runHarness(realPub, realSig, realInst, workdir);
+    // The verdict FILE is authoritative: the harness writes it via --output,
+    // and on Windows the PowerShell wrapper's own exit code is always 0 even
+    // when the native process rejects.
+    check(
+      "real tauri-cli signature verifies through the client's minisign-verify",
+      r1.verdict === "VERIFIED",
+      `verdict=${r1.verdict || "(none)"} ${r1.error || ""}`.trim()
+    );
+  } else {
+    console.log("  (skip)  needs the Rust harness — the bare run grades this phase");
+  }
 
   // 3. GENERATE SCRIPTS: fresh keypair + generate-latest-json.mjs → harness accepts.
   console.log("\n[2/4] scripts/generate-latest-json.mjs output → real client verifier");
@@ -225,16 +259,24 @@ try {
     const entry = manifest.platforms?.[platform];
     check("manifest has platform entry + signature", Boolean(entry?.signature));
     if (entry?.signature) {
-      // Feed the generated signature through the REAL client verifier.
-      r = runHarness(testPubkeyB64, entry.signature, dummyInstaller, workdir);
-      check(
-        "generated signature accepted by real client code path",
-        r.verdict === "VERIFIED",
-        `verdict=${r.verdict || "(none)"} ${r.error || ""}`.trim()
-      );
-      // The Node verifier must agree with the harness (cross-consistency).
+      if (harnessReady) {
+        // Feed the generated signature through the REAL client verifier.
+        const r2 = runHarness(testPubkeyB64, entry.signature, dummyInstaller, workdir);
+        check(
+          "generated signature accepted by real client code path",
+          r2.verdict === "VERIFIED",
+          `verdict=${r2.verdict || "(none)"} ${r2.error || ""}`.trim()
+        );
+      }
+      // The Node verifier must agree with the harness when the harness ran; without
+      // it the check degrades honestly to Node-side acceptance and says so.
       const okNode = verifyMinisignSignature(raw, readFileSync(dummyInstaller), entry.signature);
-      check("Node verifier agrees with the Rust harness", okNode === true);
+      check(
+        harnessReady
+          ? "Node verifier agrees with the Rust harness"
+          : "Node verifier accepts the generated signature (harness absent)",
+        okNode === true
+      );
       // Keyid in the signature must equal the pubkey keyid.
       const sigParts = decodeMinisignSignature(entry.signature);
       check("signature keyid matches pubkey keyid", sigParts.keyid.equals(keyid));
@@ -254,21 +296,25 @@ try {
 
   // 4. TAMPER REJECTION: flip a byte → harness must reject.
   console.log("\n[3/4] Tamper rejection");
-  const tampered = join(workdir, "tampered.bin");
-  const original = readFileSync(dummyInstaller);
-  const tamperedBytes = Buffer.from(original);
-  tamperedBytes[0] ^= 0xff;
-  writeFileSync(tampered, tamperedBytes);
-  // Re-sign the ORIGINAL bytes, then verify against TAMPERED bytes.
-  const sigForOriginal = buildMinisignSignature(seed, original, "dummy-installer.bin", keyid);
-  r = runHarness(testPubkeyB64, sigForOriginal, tampered, workdir);
-  // Rejection verdicts carry a reason suffix (e.g. "REJECTED: verify: ..."),
-  // so match the prefix. Verification writes exactly "VERIFIED".
-  check(
-    "tampered installer rejected by real client code path",
-    (r.verdict || "").startsWith("REJECTED"),
-    `verdict=${r.verdict || "(none)"} ${r.error || ""}`.trim()
-  );
+  if (harnessReady) {
+    const tampered = join(workdir, "tampered.bin");
+    const original = readFileSync(dummyInstaller);
+    const tamperedBytes = Buffer.from(original);
+    tamperedBytes[0] ^= 0xff;
+    writeFileSync(tampered, tamperedBytes);
+    // Re-sign the ORIGINAL bytes, then verify against TAMPERED bytes.
+    const sigForOriginal = buildMinisignSignature(seed, original, "dummy-installer.bin", keyid);
+    const r3 = runHarness(testPubkeyB64, sigForOriginal, tampered, workdir);
+    // Rejection verdicts carry a reason suffix (e.g. "REJECTED: verify: ..."),
+    // so match the prefix. Verification writes exactly "VERIFIED".
+    check(
+      "tampered installer rejected by real client code path",
+      (r3.verdict || "").startsWith("REJECTED"),
+      `verdict=${r3.verdict || "(none)"} ${r3.error || ""}`.trim()
+    );
+  } else {
+    console.log("  (skip)  needs the Rust harness — the bare run grades this phase");
+  }
 
   // 5. Self-tests of the Node scripts themselves.
   console.log("\n[4/4] Node script self-tests");
@@ -290,7 +336,13 @@ try {
     console.error("FLOOR UNMET: no check ran — a harness that asserts nothing proves nothing.");
   }
   if (failures === 0) {
-    console.log("ALL CHECKS PASSED — generated updater signatures are accepted by the real Tauri client verifier.");
+    if (selfTestMode) {
+      console.log(harnessReady
+        ? `SELF-TEST OK (${checksRun} checks, full run incl. Rust harness)`
+        : `SELF-TEST OK (${checksRun} checks, toolchain-free subset) — the Rust-harness phases are skipped here by design, not passed; the bare run refuses (exit 2) without them.`);
+    } else {
+      console.log("ALL CHECKS PASSED — generated updater signatures are accepted by the real Tauri client verifier.");
+    }
   } else {
     console.error(`${failures} check(s) FAILED.`);
   }
