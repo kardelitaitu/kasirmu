@@ -41,13 +41,17 @@ NC = "\033[0m"
 def get_python():
     return sys.executable or "python3"
 
+def bash_candidates():
+    """Where Git's bash lives on Windows, most-likely first. Pure: no disk."""
+    return [
+        Path("C:/Program Files/Git/bin/bash.exe"),
+        Path("C:/Program Files/Git/usr/bin/bash.exe"),
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Git" / "bin" / "bash.exe",
+    ]
+
 def get_bash():
     if os.name == "nt":
-        for candidate in [
-            Path("C:/Program Files/Git/bin/bash.exe"),
-            Path("C:/Program Files/Git/usr/bin/bash.exe"),
-            Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Git" / "bin" / "bash.exe",
-        ]:
+        for candidate in bash_candidates():
             if candidate.exists():
                 return str(candidate)
     return shutil.which("bash") or "bash"
@@ -247,7 +251,7 @@ def read_rust_file_list(argv):
 
 
 def self_test():
-    """--self-test: pure assertions on the planner. No subprocess, no disk.
+    """--self-test: pure assertions on the planner. No subprocess.
 
     Guards the guard. Three things must never regress: a missing dependency
     yields at least one NAMED skip; a routed-off area is not a skip; and a
@@ -344,6 +348,17 @@ def self_test():
            "a by-hand run with no --rust-files owes no diff-scoped verdict")
     expect(read_rust_file_list(["--rust-files", listing + ".missing"]) == [],
            "an unreadable list is empty, never a guessed range")
+
+    print("  run-pre-push self-test / the bash resolver resolves or names its list")
+    cands = bash_candidates()
+    expect(len(cands) >= 1, f"at least one bash candidate exists (got {len(cands)})")
+    expect(all(Path(c).name == "bash.exe" for c in cands), "every candidate names bash.exe")
+    expect(all(Path(c).is_absolute() for c in cands[:2]),
+           "the two Program Files candidates are always absolute; only the LOCALAPPDATA one may be relative (unset env)")
+    found = get_bash()
+    expect(isinstance(found, str) and found != "", f"get_bash resolves to a non-empty string (got {found!r})")
+    if os.name == "nt":
+        expect(found.endswith("bash.exe"), f"on Windows the resolved bash is bash.exe (got {found!r})")
 
     if failures:
         print(f"\nself-test: {len(failures)} FAILURE(S)")
