@@ -5049,3 +5049,45 @@ keeping, but the harness's silent-scope-shrink protection predates this round. T
 partner had no such guard: its collided-audited case partially guarded one directory
 (the one holding the collision member), while the website dir, the runners' existence,
 and checker readability had none until these cases.
+
+### Round 100 (2026-11-07) — the text mutator's string edges and the attic filter
+
+The round-99 card's next candidate — grade the partner's exit contract inside the
+harness — turned out to be mostly ALREADY LANDED: r86 grades alliance_grade's fire
+directions, r94 grades both gates' OK-line counts against their own want_inventory
+derivations, and a partner crash reds through ok_line_count reading None against the
+derived count. Declared as a candidate without verification — the round-97 defect,
+caught by this round's recon before anything was written. The verified seams instead:
+
+- **An attic asymmetry that was a CODE defect, not just ungraded cases.**
+  runner_text() skipped retired workflows under .github/workflows/attic/ (measured
+  2026-11-07: eleven .bak files); runner_files() — the round-93 full-path collision
+  cases' file source — had NO such filter, so a retired workflow that kept a .y*ml
+  suffix would count as a live caller there, the exact false-negative that once made
+  verify-flaky-quarantine.py look wired. Latent today (every retired file is .bak,
+  which the .y*ml glob never matches), real the day one is renamed. Fixed by
+  extracting in_attic() (case-insensitive) and sharing it between both walkers.
+- **The text mutator's string edges were graded only transitively.** braces_span is
+  a RAW brace counter (its docstring says so); the stripper's whole job is feeding it
+  brace-free text. Now graded as a pair: a quoted closing brace does not close the
+  span early (raw returns 11, stripped 15 — both values pinned so the rawness and the
+  stripper's reason are each visible); a hash inside quotes is content, not a comment
+  that eats the span; unbalanced spans read None in both directions; regex and
+  template contents never leak braces into the counter (the _strip_js disease that
+  dropped every candidate in verify-deploy.mjs).
+- **run_self_test_out's vanished-SCRIPT branch was ungraded** (r96 graded the
+  missing-INTERPRETER branch): a census script that vanishes between enumeration and
+  execution reads as rc 2 with a "can't open file" cause — a named row, not a crash.
+
+`b57d90e49`: +5 harness cases (117→122, derived), +1 partner case with the shared
+in_attic() fix (17→18, derived). Kill directions: an attic filter that sleeps is
+CAUGHT; a string stripper that sleeps is CAUGHT (the quoted brace closes early); a
+JS stripper that sleeps is CAUGHT (the regex phantom-quote swallows the function);
+a vanished script reading green is CAUGHT; controls green. Full survey 109/0/109/0/0/0,
+exit 0.
+
+Honest limits: run_self_test_out's 300-second timeout branch remains graded only
+through the pure alliance_grade(None, ...) arithmetic — simulating a real timeout in
+a self-test case would cost the timeout itself. The runner_files attic case is
+vacuously clean today (no .y*ml under attic/); its value is the guard on the rename
+direction, not a current catch.
