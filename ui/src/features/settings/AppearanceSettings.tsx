@@ -5,7 +5,6 @@ import {
   setBrandPrimaryColour,
   setBrandLogoPath,
   setBrandStoreName,
-  pickLogoFile,
   pickLogoFileScoped,
 } from '@/api/branding';
 import { useBrand } from '@/contexts/BrandContext';
@@ -172,21 +171,20 @@ export function AppearanceSettings({
       });
       return;
     } else {
-    try {
-      // ADR #7 conditional scoping, matching setBrandLogoPath on the very next line, which
-      // already passes this same sessionToken. pick_logo_file_scoped enforces SETTINGS_EDIT;
-      // the unscoped command opens a native dialog and checks no permission whatsoever.
-      const path = sessionToken
-        ? await pickLogoFileScoped(sessionToken)
-        : await pickLogoFile();
-      if (path) {
-        setLogoPath(path);
-        await setBrandLogoPath(sessionToken, path);
-        refreshBrandSettings();
+      if (!sessionToken) {
+        return;
       }
-    } catch {
-      // File picker dialog was dismissed or failed — no action needed.
-    }
+      try {
+        // BR-S5: enforce SETTINGS_EDIT permission via pickLogoFileScoped.
+        const path = await pickLogoFileScoped(sessionToken);
+        if (path) {
+          setLogoPath(path);
+          await setBrandLogoPath(sessionToken, path);
+          refreshBrandSettings();
+        }
+      } catch {
+        // File picker dialog was dismissed or failed — no action needed.
+      }
     }
   }, [refreshBrandSettings, sessionToken, l10n, addToast]);
 

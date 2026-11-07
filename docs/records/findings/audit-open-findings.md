@@ -254,10 +254,11 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
   `ctx.require_session_permission(&session, permissions::PRODUCTS_READ)` after session resolution
   and before accessing the store DB. Pinned by `product_image_search_url_refuses_session_lacking_products_read`
   and `product_image_search_url_accepts_session_with_products_read` in `browser_tests.rs`.
-- **BR-S5** — **[PBD]** `pick_logo_file` has no gate (`apps/desktop-tauri/src/commands/branding.rs:102`)
-  where `pick_logo_file_scoped` holds `SETTINGS_EDIT`
-  (`apps/desktop-tauri/src/commands/branding.rs:164`, gate at `:171`). Both keep their bodies
-  desktop-side (no seam for `tauri::dialog` — ADR #49 §What was NOT extracted).
+- ~~**BR-S5** — `pick_logo_file` has no gate where `pick_logo_file_scoped` holds `SETTINGS_EDIT`~~ —
+  **CLOSED 2026-11-07** (`fix(branding): enforce SETTINGS_EDIT via pickLogoFileScoped (BR-S5)`).
+  `AppearanceSettings.tsx` now strictly requires `sessionToken` and uses `pickLogoFileScoped` (`SETTINGS_EDIT`),
+  removing the unauthenticated fallback to `pick_logo_file`. `pick_logo_file` in `apps/desktop-tauri/src/commands/branding.rs:58`
+  marked deprecated. Pinned by `AppearanceSettings.test.tsx` (34 passed).
 - ~~**BR-S6** — `set_setting` authorises a caller-supplied identity~~ —
   **CLOSED 2026-11-07** (`fix(settings): verify active session for caller-supplied identity in set_setting (BR-S6)`).
   `set_setting` in `crates/kasirmu-bridge/src/settings.rs:747` now verifies that the supplied `user_id` has an active,
@@ -418,12 +419,11 @@ data::` -> **50 passed, 0 failed**.
 
 ### Consistency across modules — **a PATTERN, three independent instances**
 
-- **BR-X1** — **[PBD]** store-open asymmetry inside one module:
-  `crates/kasirmu-bridge/src/terminals.rs` reaches the store db through `db_manager.open_store` in
-  **9** commands (`:436`, `:474`, `:525`, `:556`, `:591`, `:664`, `:700`, `:758`, `:810`) and
-  through `ctx.resolve_store` in **7** (`:187`, `:217`, `:240`, `:265`, `:285`, `:308`, `:332`)
-  — two session-resolution paths with different failure text and different re-entry
-  behaviour, in the same file.
+- ~~**BR-X1** — store-open asymmetry inside terminals.rs~~ —
+  **CLOSED 2026-11-07** (`refactor(terminals): unify store opening via db_manager.open_store (BR-X1)`).
+  All 16 scoped terminal commands in `crates/kasirmu-bridge/src/terminals.rs` now consistently open the store DB
+  via `ctx.db_manager.open_store(&session.store_id)`, eliminating redundant second `resolve_session` lookups
+  in the 6 read commands. Pinned by `cargo test -p kasirmu-bridge --lib terminals` (37 passed, 0 failed).
 - **BR-X2** — **[PBD]** same split as a *db-selection* asymmetry in features:
   `list_all_features` reads the **global** db (`crates/kasirmu-bridge/src/features.rs:53-54`) while
   `list_all_features_scoped` reads the scope's **store** db
