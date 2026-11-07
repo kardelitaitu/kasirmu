@@ -322,6 +322,13 @@ def survey(limit: int | None, skip: int = 0) -> list[tuple[str, str, int, int, s
             after = run_self_test(rel_target)
             verdict = "KILLED" if after not in (0, None) else "SURVIVED"
             rows.append((p.name, name, 0, after if after is not None else -1, verdict))
+            # Restore the staged bytes: a mutant's residue must not leak into the
+            # shared tree. Measured 2026-11-07: check-updater-compat's staged control
+            # spawned the PREVIOUS checker's still-gutted verify-updater-signature.mjs
+            # ("verifyUpdaterSignature rejected a valid signature") and scored
+            # RELOCATION-SENSITIVE from cross-checker contamination, not from anything
+            # in the checker under test. The control ran against a sabotaged tree.
+            rel_target.write_text(src, encoding="utf-8")
     return rows
 
 
