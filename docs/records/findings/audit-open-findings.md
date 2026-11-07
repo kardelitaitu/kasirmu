@@ -4530,3 +4530,44 @@ partner being red-on-red by its own gate -- the partner's exit contract is its o
 self-test's subject, and the alliance case runs the real partner file every round.
 The timeout direction is graded as arithmetic ([None] != [0]); the 300-second wall
 itself is run_self_test_out's contract, unchanged since round 76.
+
+### Round 87 (2026-11-07) — the census denominator is walked, not curated
+
+Round 85 closed the last KNOWN gap; this round asks the harder question the r85 card
+named: can an UNKNOWN checker be invisible? Measured: census_files() unions the
+convention (CONVENTION_RE) with CENSUS_NAMED, so a NEW flag-carrying checker named
+outside the convention (say orchestrate-x.py) and wired into a runner enters neither
+ledger — the survey never grades it, and neither gate can see it. Silent, the round-66
+disease in a new key: the enumeration is curated, and curation only answers for the
+files someone thought to list. Walking the partner's three audit dirs and counting
+quoted-flag carriers found 112: 102 convention + 7 named + 3 excluded + the meter
+(sabotage-selftests.py itself — flagged, runner-wired via check.sh, and deliberately
+not a subject of its own survey; until now that exclusion lived only in a comment).
+
+`f754d67a1`: CENSUS_DIRS extracted to one constant (census_files and the new walk
+share it — the r66 note's own rule against copied globs, applied to the harness);
+flag_carriers() walks the dirs for quoted-flag .py/.mjs/.sh; account_carriers()
+is the PURE four-ledger classifier (convention by basename, CENSUS_NAMED basenames,
+CENSUS_EXCLUDED paths, the meter) whose empty result IS the completeness claim.
+Seven new cases (73 -> 80): the live walk accounts everything; the walk actually
+sees known carriers (a blind enumeration lies silently — pinned); a synthetic
+non-convention carrier reddens; a convention carrier, a named basename, an excluded
+path, and the meter are each accounted; the meter is graded as NOT a survey subject.
+
+The live case fired on the first landing — with the WRONG set: the classifier's first
+draft did not honor the convention ledger and listed 102 convention carriers as
+unaccounted. The SELF-TEST caught its own draft before any commit, which is the
+system working; the fix made the four ledgers explicit in one signature.
+
+Kill directions: an always-accounted classifier lie is CAUGHT (the synthetic
+new-carrier case reddens); a blind-walk lie (sees nothing) is CAUGHT by the
+sees-known-carriers pin; control 80/80 green. Both gates green: harness 80 cases
+exit 0, partner 6 cases, full survey 109 checker(s), 0 SURVIVED, 109 killed, 0
+RELOCATION-SENSITIVE, 0 NO MUTATABLE FUNCTION, 0 PATH ALREADY RED, exit 0.
+
+Honest limits: the walk covers the three dirs the PARTNER audits (they are the same
+three today; the partner's CHECKER_DIRS remains its own constant, and dir drift
+between the two gates is ungraded — widening it would mean parsing a parenthesized
+ROOT / piece expression, which the r82 parse style could do but this round did not).
+The flag search is the same quoted-literal rule as SELF_TEST_FLAG, so unquoted
+invocation prose stays out, as intended since round 80.
