@@ -595,6 +595,20 @@ def wiring_runner_gaps() -> list[str]:
     return gaps
 
 
+#: The checker-name convention, one vocabulary with verify-selftests-wired.py's
+#: SCRIPT_RE (round-75). Until r75 this convention trailed the other gate's by
+#: one widening: classify-finding-reachability.py and census-orphan-modules.py
+#: sat in the named list below because their prefixes matched no glob here
+#: (the other gate widened to classify-|census- in its r157 for the same two
+#: files). Matching the prefixes STRUCTURALLY means the next classify- or
+#: census- checker joins the census by convention instead of by a red round,
+#: and wiring_runner_gaps()'s sibling case holds the two prefix sets equal in
+#: both directions.
+CONVENTION_PREFIXES = ("verify", "check", "classify", "census")
+CONVENTION_RE = re.compile(
+    r"^(?:" + "|".join(CONVENTION_PREFIXES) + r")-[A-Za-z0-9_-]+\.(?:py|mjs|sh)$")
+
+
 def census_files() -> list[Path]:
     """Every self-tested, pipeline-wired script the sabotage survey grades.
 
@@ -611,37 +625,31 @@ def census_files() -> list[Path]:
     self_test().
     """
     files = []
-    for base, pattern in (
-        ("scripts", "verify-*.py"), ("scripts", "check-*.py"),
-        ("scripts", "verify-*.sh"), ("scripts", "check-*.sh"),
-        ("scripts", "verify-*.mjs"), ("scripts", "check-*.mjs"),
-        # Outside scripts/ but self-tested and wired into check.sh (round-51 census):
-        # the docs-auditor checkers via scripts/check-auditor-selftests.sh, the website
-        # deploy prober via its own step. backup-db.sh / restore-db.sh are named
-        # outright: their names predate the verify-*/check-* convention.
-        (".agents/skills/docs-auditor/scripts", "check-*.py"),
-        ("website/scripts", "verify-*.mjs"),
-        # Round-51 census missed the website check-* convention entirely: five more
-        # self-tested checkers wired into check.sh, dev-ci.yml, and the website
-        # package.json precheck ran unmeasured under every verify-*-* glob.
-        ("website/scripts", "check-*.py"),
-        ("website/scripts", "check-*.mjs"),
-    ):
-        files.extend(sorted((ROOT / base).glob(pattern)))
+    for base in ("scripts", ".agents/skills/docs-auditor/scripts", "website/scripts"):
+        d = ROOT / base
+        if d.is_dir():
+            # The convention as a per-file match, not a matrix of glob pairs:
+            # every prefix x suffix combination in every census dir, so a new
+            # docs-auditor verify-*.mjs or website classify-*.sh cannot fall
+            # between a pair that was never written down.
+            files.extend(sorted(p for p in d.iterdir()
+                                if p.is_file() and CONVENTION_RE.match(p.name)))
     # Named outright, round-66 census: self-tested scripts whose verdicts gates
-    # depend on but whose names match no convention above -- two check.sh steps
-    # each, one dev-ci step, one release-workflow signer, and the pre-push
-    # orchestrator itself. allowlist-schema.py joins in round-69: both gates
-    # that consume it (verify-ipc-parity.py, verify-scoped-reads.py) load it by
+    # depend on but whose names match NO convention prefix -- backup/restore
+    # (names predate the convention), the pre-push orchestrator itself, one
+    # dev-ci step, one release-workflow signer, the unwrap scanner, and the
+    # shared schema. allowlist-schema.py joins in round-69: both gates that
+    # consume it (verify-ipc-parity.py, verify-scoped-reads.py) load it by
     # path, so it is wired TRANSITIVELY -- and a schema the survey refuses to
     # grade is a schema its two gates can silently disagree about, the disease
-    # the module exists to cure. Deliberately NOT censused: the three scripts
-    # in CENSUS_EXCLUDED carry --self-test but nothing depends on them (the
+    # the module exists to cure. census-orphan-modules.py and
+    # classify-finding-reachability.py left this list in r75: their prefixes
+    # joined the convention. Deliberately NOT censused: the three scripts in
+    # CENSUS_EXCLUDED carry --self-test but nothing depends on them (the
     # harness self-test holds that list to the criterion), and
     # sabotage-selftests.py is this harness.
     files.extend(ROOT / "scripts" / name for name in (
         "backup-db.sh", "restore-db.sh",
-        "census-orphan-modules.py", "classify-finding-reachability.py",
         "scan-unwrap-panic.py", "generate-pg-migration.py",
         "generate-latest-json.mjs", "run-pre-push.py",
         "allowlist-schema.py",
@@ -897,6 +905,13 @@ def self_test() -> int:
          all((ROOT / rel).exists() for rel in RUNNER_FILES), True)
     want("the census's runner list agrees with verify-selftests-wired's",
          wiring_runner_gaps(), [])
+    # ── one checker-NAME vocabulary across both wiring gates ──────────────────
+    other = re.search(
+        r'SCRIPT_RE = re\.compile\(r"\^\(\?:(.*?)\)-',
+        (ROOT / "scripts/verify-selftests-wired.py").read_text(encoding="utf-8", errors="replace"))
+    want("the census's name convention matches verify-selftests-wired's SCRIPT_RE",
+         sorted((other.group(1) if other else "?").split("|")),
+         sorted(CONVENTION_PREFIXES))
     for rel in CENSUS_EXCLUDED:
         refs = pipeline_references(Path(rel).name)
         if refs:
@@ -956,7 +971,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (42 cases, no checker is run)")
+    print("SELF-TEST OK (43 cases, no checker is run)")
     return 0
 
 
