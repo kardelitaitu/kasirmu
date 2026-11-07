@@ -5030,3 +5030,22 @@ Kill directions: a vanished census directory is CAUGHT; an unreadable checker
 simulated as `True` is CAUGHT; a missing checker dir or missing runner is CAUGHT;
 controls green. Both gates green (117 harness, 17 partner); full survey clean.
 
+
+### Register annotation (2026-11-07) — the round-99 cases were this session's measurements, landed by a concurrent lane
+
+The round-99 note above is accurate; this annotation records the sweep and one
+nuance it omits. The five cases in `404cece4f` were written, verified (117 harness /
+17 partner, both derived), kill-probed (an unreadable checker simulated as declaring:
+CAUGHT by the fallback case; a vanished census dir: CAUGHT), and survey-proven
+(109/0/109/0/0/0, exit 0) by the session that annotates here — and were committed by
+a concurrent lane's pathspec commit sweeping the in-flight edits, the round-96
+precedent: verify with `git show --stat` before concluding anything was lost, then
+record the sweep instead of re-committing.
+
+The nuance: the note's "a vanished census directory is CAUGHT" kill direction reds
+through the round-85 census-completeness case, which names the MISSING SCRIPTS; the
+round-99 case names the missing DIRECTORY instead — belt over braces, both worth
+keeping, but the harness's silent-scope-shrink protection predates this round. The
+partner had no such guard: its collided-audited case partially guarded one directory
+(the one holding the collision member), while the website dir, the runners' existence,
+and checker readability had none until these cases.
