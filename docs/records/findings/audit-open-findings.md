@@ -425,10 +425,9 @@ data::` -> **50 passed, 0 failed**.
   `list_all_features` reads the **global** db (`crates/kasirmu-bridge/src/features.rs:53-54`) while
   `list_all_features_scoped` reads the scope's **store** db
   (`crates/kasirmu-bridge/src/features.rs:629-633`) — the pair can answer differently for one user.
-- **BR-X3** — **[PBD]** and in prose: `apps/desktop-tauri/src/commands/settings.rs:9-11`
-  still promises that store name / currency / features "may be exposed here in the future",
-  while the generic key-value (`:274` `set_setting`), hardware (`:178`, `:351`) and batch
-  (`:311` `set_settings_scoped`) commands are already exposed in that same file.
+- ~~**BR-X3** — `apps/desktop-tauri/src/commands/settings.rs` promises settings "may be exposed here in the future"~~ —
+  **CLOSED 2026-11-07** (`docs(desktop-tauri): update settings module doc reflecting exposed commands (BR-X3)`).
+  Module doc rewritten to document store-scoped, hardware, and receipt settings delegation to `kasirmu_bridge::settings`.
 - **BR-X4** — **[PBD]** and as a **two-shell fork** in `customers`, which is why five of its
   seven doors are *not* delegated. The tablet opens the store db **before** the permission
   gate (`resolve_scope` → `require_customer_permission`) at

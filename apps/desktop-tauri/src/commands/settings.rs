@@ -1,14 +1,8 @@
-//! Settings Tauri commands: get and persist receipt display options.
-/*
-last audited 25-07-26 by RSA-Agent (desktop-tauri UI-1 investigation + fix)
-crate: desktop-tauri | status: SAFE | lint: CLEAN
-findings: UI-1 FIXED 25-07-26 — SECRET_KEY_DENY_LIST extended with stripe.api_key, square.api_key, midtrans.server_key (payment credentials never reach the renderer); gateway_status computes configured/online booleans server-side; deny-list test extended with the three keys. MOVED since (Wave E): the deny list, the key guards, run_get_setting and the extended test now live in crates/kasirmu-bridge/src/settings.rs (tests in crates/kasirmu-bridge/src/settings_tests.rs); every command in this file is a shim over that module
-next: none | perf: N/A
-*/
+//! Settings Tauri commands: get and persist settings (receipts, store settings,
+//! hardware profiles, credit rules, and key-value pairs).
 //!
-//! This module exposes the receipt-related subset of the `settings` table
-//! to the front-end. Other settings (store name, currency, features) are
-//! managed by the setup wizard and may be exposed here in the future.
+//! Exposes store-scoped, hardware, and receipt settings to the front-end,
+//! delegating to `kasirmu_bridge::settings`.
 
 use tauri::State;
 
