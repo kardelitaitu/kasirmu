@@ -23,7 +23,7 @@ use platform_kernel::ModuleStatus;
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
 /// A single feature with its current state and metadata.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FeatureDto {
     /// Kebab-case key (e.g. "simple-retail").
     pub key: String,
@@ -40,7 +40,7 @@ pub struct FeatureDto {
 }
 
 /// Response from `list_all_features`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ListAllFeaturesResult {
     /// Every feature with metadata and enabled status.
     pub features: Vec<FeatureDto>,
@@ -633,10 +633,8 @@ pub async fn list_all_features_scoped(
     session_token: &str,
 ) -> Result<ListAllFeaturesResult, BridgeError> {
     // ungated-ok: enumerates the compiled feature registry; discloses no tenant data
-    let (_session, conn) = ctx.resolve_scope(session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+    let _session = ctx.resolve_session(session_token)?;
+    let db = ctx.lock_global().await;
     let store = Store::new(&db);
     let reg = store.load_features()?;
     let features = build_feature_list(&reg);

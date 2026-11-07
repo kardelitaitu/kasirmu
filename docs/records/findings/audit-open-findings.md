@@ -424,10 +424,11 @@ data::` -> **50 passed, 0 failed**.
   All 16 scoped terminal commands in `crates/kasirmu-bridge/src/terminals.rs` now consistently open the store DB
   via `ctx.db_manager.open_store(&session.store_id)`, eliminating redundant second `resolve_session` lookups
   in the 6 read commands. Pinned by `cargo test -p kasirmu-bridge --lib terminals` (37 passed, 0 failed).
-- **BR-X2** — **[PBD]** same split as a *db-selection* asymmetry in features:
-  `list_all_features` reads the **global** db (`crates/kasirmu-bridge/src/features.rs:53-54`) while
-  `list_all_features_scoped` reads the scope's **store** db
-  (`crates/kasirmu-bridge/src/features.rs:629-633`) — the pair can answer differently for one user.
+- ~~**BR-X2** — db-selection asymmetry in features~~ —
+  **CLOSED 2026-11-07** (`fix(features): read global db in list_all_features_scoped matching set_feature (BR-X2)`).
+  `list_all_features_scoped` in `crates/kasirmu-bridge/src/features.rs:631` now resolves the session and reads from
+  the global DB (`ctx.lock_global()`), matching `set_feature`, `set_features_bulk`, and `list_all_features`.
+  Pinned by `list_all_features_scoped_agrees_with_global_toggle` in `features_tests.rs` (27 passed, 0 failed).
 - ~~**BR-X3** — `apps/desktop-tauri/src/commands/settings.rs` promises settings "may be exposed here in the future"~~ —
   **CLOSED 2026-11-07** (`docs(desktop-tauri): update settings module doc reflecting exposed commands (BR-X3)`).
   Module doc rewritten to document store-scoped, hardware, and receipt settings delegation to `kasirmu_bridge::settings`.

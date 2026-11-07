@@ -327,3 +327,55 @@ fn all_feature_metadata_no_duplicate_keys() {
     sorted.dedup();
     assert_eq!(sorted.len(), keys.len(), "feature keys must be unique");
 }
+
+// ── BR-X2: list_all_features_scoped DB agreement tests ─────────────
+
+#[tokio::test]
+async fn list_all_features_scoped_rejects_invalid_token() {
+    let tb = crate::testing::TestBridge::new();
+    let ctx = tb.ctx();
+
+    let err = list_all_features_scoped(&ctx, "bad-token")
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, BridgeError::InvalidSession),
+        "expected InvalidSession, got {err:?}",
+    );
+}
+
+#[tokio::test]
+async fn list_all_features_scoped_agrees_with_global_toggle() {
+    let tb = crate::testing::TestBridge::new();
+    let token = tb
+        .token_granting(kasirmu_core::permissions::SETTINGS_EDIT)
+        .await;
+    let ctx = tb.ctx();
+
+    let initial_scoped = list_all_features_scoped(&ctx, &token).await.unwrap();
+    let initial_ambient = list_all_features(&ctx).await.unwrap();
+    assert_eq!(initial_scoped, initial_ambient);
+
+    // Toggle a feature on global DB
+    set_feature(
+        &ctx,
+        &token,
+        SetFeatureArgs {
+            key: "kitchen-display".into(),
+            enabled: true,
+        },
+    )
+    .await
+    .unwrap();
+
+    let after_scoped = list_all_features_scoped(&ctx, &token).await.unwrap();
+    let after_ambient = list_all_features(&ctx).await.unwrap();
+    assert_eq!(after_scoped, after_ambient);
+
+    let kds_scoped = after_scoped
+        .features
+        .iter()
+        .find(|f| f.key == "kitchen-display")
+        .expect("kds feature exists");
+    assert!(kds_scoped.enabled);
+}
