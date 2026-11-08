@@ -36,12 +36,15 @@ For every gate declaring runners, each declared step name must resolve:
   - REVERSE direction on the ci axis: every CI step that RUNS a checker script
     must resolve to the roster or check.sh -- a step invoking scripts/<x> with
     no row naming it, no gates.json mention of <x>, and no check.sh presence is
-    a finding. Wired 2026-11-08, measured first: 135 of 182 steps invoke
-    scripts, zero unrecorded; the one prose mention (a website prebuild script
-    named inside the Route step's comment) is removed by whole-line comment
-    stripping. Both drift and this checker iterate gates, so only a step-first
-    walk can see a step with no row -- the founding blind spot, closed on its
-    last open axis.
+    a finding, across EVERY file in .github/workflows (the axis is CI, not one
+    file). Wired 2026-11-08, measured first: 146 distinct (step,
+    script) invocations across 5 files, zero unrecorded; the one prose mention
+    (a website prebuild script named inside the Route step's comment) is
+    removed by whole-line comment stripping, and website.yml's deploy step
+    (wrangler-deploy.sh) is exempt via the explicit TOOLING_SCRIPTS allowlist
+    -- deploy scripts are not gates. Both drift and this checker iterate
+    gates, so only a step-first walk can see a step with no row -- the
+    founding blind spot, closed on its last open axis.
   - check.sh runners against `step "<name>"`, PREFIX-matched, because several steps
     carry a decorator (`step "clippy workspace"`, `step "no-raw-params (ADR #7 Phase 4)"`)
     and exact matching over-reports on those.
@@ -267,6 +270,13 @@ def non_devci_workflows(gates) -> list[tuple[str, str]]:
             and g["ci"]["workflow"] != "dev-ci.yml"]
 
 
+# Deploy/build tooling that CI runs but which is not a gate. EXPLICIT and dated:
+# an addition must name the script's reader and why it is not a checker. Measured
+# 2026-11-08: one member -- website.yml#Deploy runs wrangler-deploy.sh, which
+# reads CLOUDFLARE_API_TOKEN and exits 1 without it (scripts/wrangler-deploy.sh:52-70).
+TOOLING_SCRIPTS = {"wrangler-deploy.sh"}
+
+
 def unclaimed_ci_invocations(runs, declared_steps, roster_text, sh_text):
     """CI steps invoking a checker script that NOTHING records.
 
@@ -276,9 +286,10 @@ def unclaimed_ci_invocations(runs, declared_steps, roster_text, sh_text):
     any one of these holds: a row names the step in ci.steps, the script name
     appears anywhere in gates.json (a needle or self-test resolves to it), or
     the script runs in check.sh (where verify-gate-completeness enforces the
-    claim). Whole-line comments are stripped first -- prose mentions of other
-    scripts are not invocations. Measured 2026-11-08: 135 of 182 steps invoke
-    scripts, zero genuinely unrecorded."""
+    claim), or the script is in TOOLING_SCRIPTS (deploy/build helpers are not
+    gates). Whole-line comments are stripped first -- prose mentions of other
+    scripts are not invocations. Measured 2026-11-08 across ALL workflow files:
+    146 distinct (step, script) invocations, zero genuinely unrecorded."""
     out = []
     for job, steps in sorted(runs.items()):
         for name, run in steps:
@@ -290,7 +301,7 @@ def unclaimed_ci_invocations(runs, declared_steps, roster_text, sh_text):
                     r"((?:scripts/|.agents/skills/[a-z0-9-]+/scripts/)"
                     r"[A-Za-z0-9_./-]+\.(?:py|mjs|sh|ps1))", body):
                 script = m.group(1).split("/")[-1]
-                if script in roster_text or script in sh_text:
+                if script in TOOLING_SCRIPTS or script in roster_text or script in sh_text:
                     continue
                 out.append((job, name, script))
     return out
@@ -432,6 +443,11 @@ def _self_test() -> int:
          unclaimed_ci_invocations(
              {"a": [("C", "# runs scripts/ghost-check.py\n")]}, set(), "", ""),
          []),
+        ("a tooling script is exempt",
+         unclaimed_ci_invocations(
+             {"a": [("Deploy", "bash scripts/wrangler-deploy.sh\n")]},
+             set(), "", ""),
+         []),
         ("a step named by a row is skipped",
          unclaimed_ci_invocations(
              {"a": [("Named", "python3 scripts/ghost-check.py\n")]},
@@ -553,8 +569,16 @@ def main() -> int:
 
     declared_ci = {s for g in gates
                    for s in ((g.get("ci") or {}).get("steps") or [])}
-    unclaimed = unclaimed_ci_invocations(
-        workflow_steps_with_runs(ci_text), declared_ci, roster_text, sh_text)
+    wf_dir = root / ".github/workflows"
+    wf_files = sorted(wf_dir.glob("*.yml")) + sorted(wf_dir.glob("*.yaml"))
+    unclaimed = []
+    for wf_path in wf_files:
+        wf_text = wf_path.read_text(encoding="utf-8", errors="replace")
+        unclaimed.extend(
+            (wf_path.name,) + hit
+            for hit in unclaimed_ci_invocations(
+                workflow_steps_with_runs(wf_text), declared_ci, roster_text,
+                sh_text))
 
     rc = 0
     if findings:
@@ -569,8 +593,8 @@ def main() -> int:
 
     if unclaimed:
         print("%d CI checker invocation(s) recorded nowhere:" % len(unclaimed))
-        for job, name, script in unclaimed:
-            print("  [%s] %r :: %s" % (job, name, script))
+        for wf, job, name, script in unclaimed:
+            print("  [%s/%s] %r :: %s" % (wf, job, name, script))
         print("")
         print("A checker CI runs that no row names and check.sh never runs is invisible")
         print("to every gate-iterating checker -- the founding blind spot, ci edition.")
@@ -581,7 +605,8 @@ def main() -> int:
         return rc
 
     if not args.quiet:
-        print("every declared runner resolves")
+        print("every declared runner resolves; %d workflow file(s) walked with"
+              " %d tooling exemption(s)" % (len(wf_files), len(TOOLING_SCRIPTS)))
     return 0
 
 
