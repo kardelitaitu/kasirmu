@@ -619,21 +619,87 @@ def self_test() -> int:
                   not is_citation("scripts/verify-runner-claims.py")))
 
     bad = [name for name, ok in cases if not ok]
+
+    # r183: main()'s shell -- argv and root graded against throwaway fixture
+    # REPOS, the r166..r182 pattern. Each fixture is its own git repository
+    # (git init + add; ls-files reads the index). The default ROOTS do not
+    # exist in a fixture, so every case names its roots explicitly -- which
+    # also exercises the --roots path the live run never passes.
+    shell = 0
+    import io as _io  # self_test's cases are pure strings; the shell block needs streams
+    import tempfile  # ...and fixture directories
+    def _mkrepo(files):
+        d = Path(tempfile.mkdtemp())
+        subprocess.run(["git", "init", "-q"], cwd=d, check=True)
+        for rel, content in files.items():
+            dst = d / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            _io.open(dst, "w", encoding="utf-8").write(content)
+        subprocess.run(["git", "add", "."], cwd=d, check=True)
+        return d
+    def _shell(files, argv=None):
+        d = _mkrepo(files)
+        import contextlib as _c
+        buf_out, buf_err = _io.StringIO(), _io.StringIO()
+        with _c.redirect_stdout(buf_out), _c.redirect_stderr(buf_err):
+            try:
+                rc = main(argv=[] if argv is None else argv, root=d)
+            except SystemExit as se:
+                # refusal strings live in se.code in-process, never on stderr
+                rc = se.code
+        return rc, buf_out.getvalue() + buf_err.getvalue()
+    PLAN = "### 2a. enrich sale lines\n"
+    MARK = "// wire the fanout (TODO 2a).\n"
+    shell += 1
+    rc, text = _shell({"fixture-plan/p.md": PLAN, "fixture-src/a.rs": MARK},
+                      argv=["--roots", "fixture-src", "fixture-plan"])
+    if rc != 0 or "0 unresolvable debt ID(s)" not in text:
+        bad.append(f"a resolved marker must exit 0 (rc={rc} text={text[-90:]!r})")
+    shell += 1
+    rc, text = _shell({"fixture-src/a.rs": MARK},
+                      argv=["--roots", "fixture-src"])
+    if rc != 1 or "DEBT IDS THAT RESOLVE TO NOTHING" not in text:
+        bad.append(f"an orphan marker must exit 1 (rc={rc} text={text[-90:]!r})")
+    shell += 1
+    rc, text = _shell({"fixture-src/readme.png": "not source"},
+                      argv=["--roots", "fixture-src"])
+    if rc != 2 or "REFUSED" not in text:
+        bad.append(f"a corpus with no scannable file must refuse rc 2 (rc={rc} text={text[-90:]!r})")
+    shell += 1
+    rc, text = _shell({"fixture-src/a.rs": MARK},
+                      argv=["--roots", "fixture-src", "fixture-nope"])
+    if rc != 2 or "named root(s) not present" not in text:
+        bad.append(f"a missing named root must refuse rc 2 (rc={rc} text={text[-90:]!r})")
+    shell += 1
+    d = _mkrepo({"fixture-plan/p.md": PLAN, "fixture-src/a.rs": MARK})
+    # a tracked file absent from the working tree is skipped and counted,
+    # not raised -- the parallel-session case the live run hits routinely.
+    (d / "fixture-src" / "a.rs").unlink()
+    import contextlib as _c2
+    buf_out, buf_err = _io.StringIO(), _io.StringIO()
+    with _c2.redirect_stdout(buf_out), _c2.redirect_stderr(buf_err):
+        rc = main(argv=["--roots", "fixture-src", "fixture-plan"], root=d)
+    text = buf_out.getvalue() + buf_err.getvalue()
+    if rc != 0 or "absent from the working tree" not in text:
+        bad.append(f"an index-ahead file is skipped, exit 0 (rc={rc} text={text[-90:]!r})")
+
     if bad:
-        print("SELF-TEST WRONG: " + ", ".join(bad), file=sys.stderr)
+        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (%d cases, no files touched)" % len(cases))
+    print("SELF-TEST OK (%d corpus cases + %d shell cases)" % (len(cases), shell))
     return 0
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r183: argv and root parameterized, the r166..r182 contract -- root
+    redirects the ls-files corpus AND every document read, together."""
     ap = build_parser()
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     if args.self_test:
         return self_test()
 
-    repo = Path(__file__).resolve().parent.parent
+    repo = Path(root).resolve() if root is not None else Path(__file__).resolve().parent.parent
     named = args.roots if args.roots is not None else ROOTS
     starved = refuse_starved_roots(repo, named)
     if starved is not None:
