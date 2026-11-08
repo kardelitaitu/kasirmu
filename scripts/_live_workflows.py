@@ -41,25 +41,35 @@ ROOT = Path(__file__).resolve().parent.parent
 WORKFLOWS = ROOT / ".github" / "workflows"
 
 
-def live_workflow_files() -> list[Path]:
-    """Every workflow GitHub will execute, sorted. Empty if the directory is absent."""
-    if not WORKFLOWS.is_dir():
+def live_workflow_files(workflows: Path | None = None) -> list[Path]:
+    """Every workflow GitHub will execute, sorted. Empty if the directory is absent.
+
+    `workflows` defaults to this repository's own .github/workflows; passing a
+    directory redirects the rule at a fixture root. r166: drift's main() now
+    takes root= and MUST redirect -- without it a root-overridden run silently
+    counted the real repository's workflows while checking the fixture's docs.
+    The module header used to say this contract had "no parameter to redirect";
+    verify-agents-mirrors.py's live_workflows(root) was always the better
+    design, and this module now matches it.
+    """
+    wf = WORKFLOWS if workflows is None else Path(workflows)
+    if not wf.is_dir():
         return []
     return sorted(
-        p for p in (list(WORKFLOWS.glob("*.yml")) + list(WORKFLOWS.glob("*.yaml")))
+        p for p in (list(wf.glob("*.yml")) + list(wf.glob("*.yaml")))
         if p.is_file()
     )
 
 
-def live_workflow_names() -> set[str]:
+def live_workflow_names(workflows: Path | None = None) -> set[str]:
     """Basenames of the live workflows -- the form a doc or a claim refers to."""
-    return {p.name for p in live_workflow_files()}
+    return {p.name for p in live_workflow_files(workflows)}
 
 
-def live_workflow_texts() -> list[tuple[Path, str]]:
+def live_workflow_texts(workflows: Path | None = None) -> list[tuple[Path, str]]:
     """(path, text) for each live workflow, for callers that read rather than list."""
     out: list[tuple[Path, str]] = []
-    for p in live_workflow_files():
+    for p in live_workflow_files(workflows):
         try:
             out.append((p, p.read_text(encoding="utf-8", errors="replace")))
         except OSError:

@@ -91,16 +91,10 @@ ROOT = Path(__file__).resolve().parent.parent
 # CICD-05 fix: the canonical CI dashboard lives under docs/operations/ —
 # the old docs/ci-pipeline.md path made this gate exit 2 ("docs not found")
 # on every run after the doc was moved.
-DOCS = ROOT / "docs" / "operations" / "ci-pipeline.md"
 # The release checklist hand-maintains its own list of dev-ci.yml job names. That
 # list went stale the moment this session added `static-gates` -- the same drift
 # class this checker exists to catch, in the one document a release manager
 # actually reads at ship time, and outside this script's scope until now.
-RELEASE_CHECKLIST = (
-    ROOT / "docs" / "records" / "releases" / "checklist.md"
-    if (ROOT / "docs" / "records" / "releases" / "checklist.md").is_file()
-    else ROOT / "docs" / "releases" / "checklist.md"
-)
 # The live-workflow RULE is shared; see scripts/_live_workflows.py. Six checkers
 # had their own copy of this question and three disagreed about .yaml, so half the suite
 # would have gone quiet on a .yaml workflow while the other half still checked it. The
@@ -110,16 +104,37 @@ RELEASE_CHECKLIST = (
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _live_workflows import live_workflow_files as _live_workflows  # noqa: E402
 
-WORKFLOWS_DIR = ROOT / ".github" / "workflows"
 # Where retired (`.yml.bak`) workflows live. P4 of the folder restructure moved
 # them from the workflows directory itself into this subdirectory, so the
 # retirement set is enumerated from here; `.bak` files sitting directly in the
 # workflows directory are no longer part of the expected layout.
-RETIREMENT_DIR = WORKFLOWS_DIR / "attic"
-GATES_MANIFEST = ROOT / "scripts" / "gates.json"
-CHECK_SH = ROOT / "scripts" / "check.sh"
-PRE_COMMIT_HOOK = ROOT / ".githooks" / "pre-commit"
-CHECK_UI = ROOT / "scripts" / "check-ui.mjs"
+def drift_paths(root: Path) -> dict[str, Path]:
+    """Every path constant this checker reads, derived from one root.
+
+    r166: ONE definition, applied to the module globals just below and
+    re-applied by main() when a caller passes root= -- the two can no longer
+    diverge. The checklist keeps its two-layout fallback (records/releases
+    first, then the pre-restructure docs/releases) exactly as the original
+    assignment had it.
+    """
+    return {
+        "DOCS": root / "docs" / "operations" / "ci-pipeline.md",
+        "RELEASE_CHECKLIST": (
+            root / "docs" / "records" / "releases" / "checklist.md"
+            if (root / "docs" / "records" / "releases" / "checklist.md").is_file()
+            else root / "docs" / "releases" / "checklist.md"
+        ),
+        "WORKFLOWS_DIR": root / ".github" / "workflows",
+        "RETIREMENT_DIR": root / ".github" / "workflows" / "attic",
+        "GATES_MANIFEST": root / "scripts" / "gates.json",
+        "CHECK_SH": root / "scripts" / "check.sh",
+        "PRE_COMMIT_HOOK": root / ".githooks" / "pre-commit",
+        "CHECK_UI": root / "scripts" / "check-ui.mjs",
+    }
+
+
+for _name, _path in drift_paths(ROOT).items():
+    globals()[_name] = _path
 
 # Docs headings this checker parses. "Job Matrix" was literally
 # "Job Matrix (ci.yml)", which stopped being true once ci.yml was retired: the
@@ -302,7 +317,7 @@ def dangling_ci_refs(
     if live is None:
         live = {}
         if WORKFLOWS_DIR.is_dir():
-            for wf in _live_workflows():
+            for wf in _live_workflows(WORKFLOWS_DIR):
                 live[wf.name] = workflow_jobs(wf)
     if baks is None:
         baks = set()
@@ -488,7 +503,7 @@ def hook_workflow_pointers() -> list[str]:
     """Real-path wrapper over hook_workflow_pointers_from_text()."""
     if not PRE_COMMIT_HOOK.is_file():
         return []
-    live = {p.name for p in _live_workflows()}
+    live = {p.name for p in _live_workflows(WORKFLOWS_DIR)}
     return hook_workflow_pointers_from_text(
         PRE_COMMIT_HOOK.read_text(encoding="utf-8", errors="replace"), live)
 
@@ -924,6 +939,82 @@ def self_test() -> int:
     finally:
         globals()["GATES_MANIFEST"] = _saved_manifest
 
+    # r166: main()'s shell -- argv= and root= graded end to end against a
+    # coherent mini-corpus in a tempdir. The module constants are saved and
+    # restored around every run: main(root=...) rebinds them, and nothing may
+    # leak into the cases after. sys.argv is not patched; the argv parameter
+    # carries the flags.
+    _PATH_NAMES = ["DOCS", "RELEASE_CHECKLIST", "WORKFLOWS_DIR", "RETIREMENT_DIR",
+                   "GATES_MANIFEST", "CHECK_SH", "PRE_COMMIT_HOOK", "CHECK_UI"]
+
+    def _shell_drift(gates_text, docs_text, extra=(), omit_docs=False):
+        import contextlib
+        import io as _io
+        def run():
+            saved = {n: globals()[n] for n in _PATH_NAMES}
+            try:
+                with tempfile.TemporaryDirectory() as td:
+                    root = Path(td)
+                    (root / "scripts").mkdir()
+                    (root / ".github" / "workflows" / "attic").mkdir(parents=True)
+                    (root / ".githooks").mkdir()
+                    (root / "docs" / "operations").mkdir(parents=True)
+                    (root / "docs" / "records" / "releases").mkdir(parents=True)
+                    (root / "scripts" / "gates.json").write_text(gates_text, encoding="utf-8")
+                    (root / "scripts" / "check.sh").write_text(
+                        'step "alpha" "echo hi"' + chr(10), encoding="utf-8")
+                    (root / "scripts" / "check-ui.mjs").write_text("", encoding="utf-8")
+                    (root / ".githooks" / "pre-commit").write_text(
+                        "# pre-commit" + chr(10) + "step alpha something" + chr(10),
+                        encoding="utf-8")
+                    (root / "docs" / "records" / "releases" / "checklist.md").write_text(
+                        "- [ ] All CI jobs pass " + chr(8212) + " " + _BT + "dev-ci.yml" + _BT
+                        + " jobs are " + _BT + "alpha" + _BT + "." + chr(10), encoding="utf-8")
+                    (root / ".github" / "workflows" / "dev-ci.yml").write_text(
+                        "on: push" + chr(10) + "jobs:" + chr(10) + "  alpha:" + chr(10)
+                        + "    runs-on: ubuntu-latest" + chr(10), encoding="utf-8")
+                    if not omit_docs:
+                        (root / "docs" / "operations" / "ci-pipeline.md").write_text(
+                            docs_text, encoding="utf-8")
+                    out, err = _io.StringIO(), _io.StringIO()
+                    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                        rc = main(argv=list(extra), root=root)
+                    return rc, out.getvalue() + err.getvalue()
+            finally:
+                globals().update(saved)
+        return run
+
+    _BT = chr(96)
+    _GATES = json.dumps({"gates": [
+        {"id": "alpha", "label": "Alpha", "status": "required",
+         "runners": {"check.sh": ["alpha"]},
+         "ci": {"workflow": "dev-ci.yml", "job": "alpha"}}]})
+    _DOCS = chr(10).join([
+        "## Job Matrix", "", "| Job | Notes |", "|---|---|",
+        "| " + _BT + "alpha" + _BT + " | ok | dev-ci.yml |", "",
+        "## Pre-Merge Validation Gates", "", "| Gate | Runners |", "|---|---|",
+        "| alpha | " + _BT + "alpha" + _BT + " |", "",
+        "## Workflow inventory", "", "- .github/workflows/" + _BT + "dev-ci.yml" + _BT, "",
+    ])
+    _DOCS_GHOST = _DOCS.replace("- .github/workflows/" + _BT + "dev-ci.yml" + _BT,
+                                "- .github/workflows/" + _BT + "ghost.yml" + _BT)
+
+    def _sh(gates_text, docs_text, extra=(), omit_docs=False, needle=""):
+        rc, text = _shell_drift(gates_text, docs_text, extra, omit_docs)()
+        return rc, needle in text
+
+    check("the shell grades a coherent mini-corpus clean",
+          _sh(_GATES, _DOCS, needle="0 drift item(s)"), (0, True))
+    check("the shell grades a dangling workflow inventory red",
+          _sh(_GATES, _DOCS_GHOST, needle="2 drift item(s)"), (1, True))
+    check("report-only prints the item and exits zero",
+          _sh(_GATES, _DOCS_GHOST, extra=["--report-only"],
+              needle="2 drift item(s)"), (0, True))
+    check("the shell refuses a missing ci-pipeline.md",
+          _sh(_GATES, _DOCS, omit_docs=True, needle="docs not found"), (2, True))
+    check("the shell refuses an unparseable manifest",
+          _sh("{not json", _DOCS, needle="gate manifest invalid JSON"), (2, True))
+
     print()
     if failed:
         print(f"  {len(failed)} self-test case(s) FAILED:")
@@ -934,7 +1025,7 @@ def self_test() -> int:
     return 0
 
 
-def main() -> int:
+def main(argv: list[str] | None = None, root: str | Path | None = None) -> int:
     # Drift reports carry doc markers (✅/⚠️) — a cp1252 Windows console
     # must never crash with UnicodeEncodeError instead of failing the gate.
     try:
@@ -942,6 +1033,11 @@ def main() -> int:
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     except (AttributeError, ValueError):
         pass  # non-reconfigurable stream (e.g. some embedded runners)
+
+    if root is not None:
+        # r166: re-derive every path constant from the caller's root -- the same
+        # globals()-rebind pattern the self-test already uses for GATES_MANIFEST.
+        globals().update(drift_paths(Path(root).resolve()))
 
     parser = argparse.ArgumentParser(
         description=(
@@ -966,7 +1062,7 @@ def main() -> int:
         dest="self_test",
         help="Mutation-test the classifiers this gate depends on and exit.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.self_test:
         return self_test()
@@ -982,7 +1078,7 @@ def main() -> int:
         return 2
 
     docs_lines = DOCS.read_text(encoding="utf-8").splitlines()
-    workflow_files = _live_workflows()
+    workflow_files = _live_workflows(WORKFLOWS_DIR)
     workflows_by_name = {wf.name: wf for wf in workflow_files}
     # Workflows that exist only as `<name>.yml.bak`. 23c96330 retired every
     # non-dev CI workflow this way; GitHub never executes a .bak file, so a doc
