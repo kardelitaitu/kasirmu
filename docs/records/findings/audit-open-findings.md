@@ -7717,3 +7717,40 @@ remains RED on the foreign todo.md (r174): untouched, owned by its authoring
 session, still the only red in the chain. Docker daemon still down (probed
 r159): the E2E / llvm-cov / nextest-junit receipts remain the standing
 PG-gated gap.
+
+### Round 177 (2026-11-09) -- replay-fork joins the arc, and its own test file turns out to have recorded the r176 lesson first
+
+check-replay-fork.py takes main(argv, root). Until this change main() parsed
+sys.argv itself -- and the checker's own self-test file (test-replay-fork.py)
+had documented WHY it therefore drove main by subprocess since 2026-10-24: the
+in-process form re-reads the test runner's argv and answers the wrong question.
+That is the r176 lesson, recorded in this repository five months of rounds
+before the arc re-derived it. The r176 entry named the pattern "the recursion
+trap's third disguise"; the honest correction is that the repo already knew
+the underlying fact -- the arc's contribution was the CONTRACT (main(argv,
+root)) that makes the subprocess workaround unnecessary, not the discovery.
+Three in-process cases now drive the verdicts directly (approve the pair,
+fail one-sided, refuse a starved root), the subprocess leg is kept as a belt
+on the CLI wiring, and the test file's history comment is rewritten to tell
+both halves truthfully. One harness quirk surfaced: the case table compares
+bool(got) == want, so an exit code of 2 cannot be a want (bool(2) is True);
+the refusal case asserts an equality instead.
+
+The kill run has its own lesson: the first attempt patched the checker module
+and then ran _self_test() -- and the mutant SURVIVED, because _self_test()
+calls load_checker(), which loads a FRESH module instance the patch never
+touches. The test file's isolation is a feature (its cases cannot be
+influenced by whoever imports it), but it means the kill must drive the
+patched module directly with its own fixture. Second attempt: the root-dropping
+mutant grades the real tree on a broken fixture -- rc 0 against a want of 1.
+
+Honest limits: the in-process broken-fixture case mutates the fixture the same
+way the subprocess leg does (dropping the DEFINITION marker), so both legs
+share a blind spot if that replacement string stops matching -- guarded by the
+pre-existing "the fixture could be broken" case. The refusal case pins exit 2
+for a missing corpus but not the stderr wording; the checker's REFUSED message
+is asserted nowhere. The CONTROLS list has exactly one entry, so "every
+control one-sided" and "the control one-sided" are the same case here. Docker
+daemon still down (probed r159): the E2E / llvm-cov / nextest-junit receipts
+remain the standing PG-gated gap. The root-policy gate remains RED on the
+foreign todo.md (r174).
