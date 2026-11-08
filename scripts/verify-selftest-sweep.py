@@ -53,13 +53,23 @@ CHECKER_DIRS = (
     ROOT / "website" / "scripts",
     ROOT / ".agents" / "skills" / "docs-auditor" / "scripts",
 )
+#: The same three directories, relative -- r189: the contract root re-derives
+#: the roster from these instead of the module-constant absolute paths.
+REL_CHECKER_DIRS = ("scripts", "website/scripts", ".agents/skills/docs-auditor/scripts")
 CHECKER_RE = re.compile(r"^(?:verify|check)-[A-Za-z0-9_-]+\.(?:py|mjs|sh)$")
 DECLARES_RE = re.compile(r"""["']--self-test["']""")
 
 
-def checkers() -> list[Path]:
+def checkers(root=None) -> list[Path]:
+    """r189: the roster follows the contract root -- all three directories
+    re-derived together, never half (the r172 half-redirect class)."""
+    if root is None:
+        bases = CHECKER_DIRS
+    else:
+        base_root = Path(root).resolve()
+        bases = tuple(base_root / d for d in REL_CHECKER_DIRS)
     out: list[Path] = []
-    for base in CHECKER_DIRS:
+    for base in bases:
         if not base.is_dir():
             continue
         out.extend(p for p in base.iterdir()
@@ -89,11 +99,12 @@ def _interpreter(path: Path) -> list[str]:
     return [GIT_BASH, str(path)]
 
 
-def run(path: Path) -> tuple[int, str]:
+def run(path: Path, cwd: Path | None = None) -> tuple[int, str]:
     cmd = _interpreter(path)
     cmd.append("--self-test")
     try:
-        r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True,
+        r = subprocess.run(cmd, cwd=ROOT if cwd is None else cwd,
+                           capture_output=True, text=True,
                            errors="replace", timeout=600)
     except subprocess.TimeoutExpired:
         return 3, "timed out after 600s"
@@ -173,22 +184,76 @@ def self_test() -> int:
         bad.append("live tree: no checker in scripts/ declares a --self-test, so this "
                    "sweep would report a clean tree while running nothing")
 
+    # r189: main()'s shell -- argv and root graded against tempdir fixtures
+    # carrying TINY real checkers, the r166..r188 pattern. The subprocesses
+    # are genuine: the sweep runs python3 against a fixture script, so the
+    # graded path is the whole pipeline (roster -> flag -> subprocess ->
+    # verdict), not a stub. A refused sweep and a failed case both kill a
+    # root-dropping roster: the real tree has 103 checkers, so the refusal
+    # case would run them (rc 0) and the failing case would pass.
+    shell = 0
+    def _fixture(checkers):
+        import contextlib as _ctx
+        import io as _io
+        import tempfile as _tempfile
+        with _tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            for name, body in checkers:
+                # the roster reads root/scripts, so the fixture nests there
+                dst = base / "scripts"
+                dst.mkdir(exist_ok=True)
+                (dst / name).write_text(body, encoding="utf-8")
+            out, err = _io.StringIO(), _io.StringIO()
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                rc = main(argv=[], root=base)
+            return rc, out.getvalue() + err.getvalue()
+    HEADER = "import sys" + chr(10) + 'if "--self-test" in sys.argv[1:]:' + chr(10)
+    OKC = HEADER + "    print('fixture ok')" + chr(10) + "    sys.exit(0)" + chr(10) + "print('no')" + chr(10) + "sys.exit(1)" + chr(10)
+    BADC = HEADER + "    sys.exit(3)" + chr(10) + "sys.exit(0)" + chr(10)
+    USEC = "import argparse" + chr(10) + '# "--self-test" in prose only' + chr(10) + "argparse.ArgumentParser().parse_args()" + chr(10) + "print('ran')" + chr(10)
+    shell += 1
+    rc, text = _fixture([("check-fixture-ok.py", OKC), ("check-fixture-noflag.py", "print(1)")])
+    if rc != 0 or "1 self-test(s)" not in text or "1 declare none" not in text:
+        print("  x one passing self-test and one skip must read OK (rc=%r text=%r)" % (rc, text[-100:]),
+              file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _fixture([("check-fixture-bad.py", BADC)])
+    if rc != 1 or "0 passed, 1 FAILED" not in text or "rc=3" not in text:
+        print("  x a failed self-test must fail the sweep (rc=%r text=%r)" % (rc, text[-100:]),
+              file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _fixture([("check-fixture-usage.py", USEC)])
+    if rc != 1 or "FLAG REJECTED" not in text:
+        print("  x argparse rejection is a failure carrying its reason (rc=%r text=%r)" % (rc, text[-100:]),
+              file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _fixture([])
+    if rc != 2 or "no checker declares" not in text:
+        print("  x a sweep over nothing must refuse rc 2 (rc=%r text=%r)" % (rc, text[-100:]),
+              file=sys.stderr)
+        return 1
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print(f"SELF-TEST OK (5 cases, {len(found)} checker(s) would be swept)")
+    print(f"SELF-TEST OK (5 cases + {shell} shell cases, {len(found)} checker(s) would be swept)")
     return 0
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r189: argv and root parameterized, the r166..r188 contract -- root
+    redirects the roster AND every subprocess's cwd together."""
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--self-test", action="store_true",
                     help="Run this checker's cases and exit. Runs no other checker.")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     if args.self_test:
         return self_test()
+    base = ROOT if root is None else Path(root).resolve()
 
-    todo = [p for p in checkers() if declares_selftest(p)]
+    todo = [p for p in checkers(root) if declares_selftest(p)]
     if not todo:
         print("verify-selftest-sweep: no checker declares a --self-test. Refusing to "
               "report clean -- a sweep that ran nothing is not a passing sweep.",
@@ -211,7 +276,7 @@ def main() -> int:
     # in kasirmu-core.
     workers = 8
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        results = list(pool.map(run, todo))
+        results = list(pool.map(lambda p: run(p, cwd=base), todo))
 
     passed, failed = [], []
     for p, (rc, tail) in zip(todo, results):
@@ -229,7 +294,7 @@ def main() -> int:
               f"failure; there is no other reading.")
         return 1
     print(f"verify-selftest-sweep: OK — {len(passed)} self-test(s) across "
-          f"{len(checkers())} checker(s); {len(checkers()) - len(todo)} declare none "
+          f"{len(checkers(root))} checker(s); {len(checkers(root)) - len(todo)} declare none "
           f"and were skipped.")
     return 0
 
