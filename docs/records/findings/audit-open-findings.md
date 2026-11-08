@@ -5922,3 +5922,35 @@ table is in this entry if a later round wants to finish it. The pre-push fix is
 untested end-to-end because an end-to-end test is a push, and no push is
 authorized. llvm-cov remains unrun; its blocker changed from "toolchain missing" to
 "build budget not spent" — which the honest-limits paragraph now says.
+
+### Round 126 (2026-11-08) — the llvm-cov lane ran, and its 12 failures are the design working
+
+The r125 honest-limit said llvm-cov's blocker was "build budget not spent". Budget
+was spent: bash scripts/coverage.sh rust finished its compile in 59 SECONDS —
+target/llvm-cov-target was already warm, meaning an earlier session had paid the
+instrumented build and this session's belief about the blocker was wrong twice over.
+The RUN executed: kasirmu-api's 388 lib tests under --all-features, 376 passed —
+the api crate's first test receipt of this session — and 12 FAILED, every one a
+pg_* or pg_integration_* name.
+
+The failures are not regressions and not a missing guard: pg_tests.rs's
+throwaway_test_pool is R17's owner ruling (2026-09-20) made code — when the
+pg-tests feature is OFF an unreachable PG skips with a reason; when the feature is
+ON (which --all-features turns on, exactly as coverage.sh and the CI rust job do)
+it PANICS with "PG test enabled but the resource is unreachable". Fail-loud by
+design: coverage that silently skipped the pg code paths would report coverage of
+code that did not run. So the rust coverage lane requires a live Postgres the way
+the E2E lane requires Docker — and on this checkout, with the daemon down, it stops
+at kasirmu-api and writes no report. The script's Requirements block now says so,
+with the measured numbers (commit 0e7ac21dc).
+
+Receipts banked along the way: the instrumented toolchain compiles clean through the
+sourced helper (r125's fix exercised for its exact purpose), kasirmu-api 376/376
+non-PG tests green at tip, and the 12-failure list is 100% pg_-names — verified
+individually, not inferred.
+
+Honest limits: no coverage/rust/ report exists yet — it needs Docker+PG up, which is
+the same blocker as E2E, now stated in the right place. The remaining crates of the
+--workspace coverage run never executed (cargo stops at the first failing crate);
+their receipts would need the same live PG or a feature-off run that the CI-matching
+flags forbid.
