@@ -8019,3 +8019,47 @@ llvm-cov / nextest-junit receipts remain the standing PG-gated gap. The
 root-policy gate remains RED on the foreign todo.md (r174) and
 verify-core-size RED on the ADR-59 +64 (r181), both awaiting their owning
 lanes.
+
+### Round 185 (2026-11-09) -- status-fallbacks joins the arc; the empty-corpus OK is retired, and a closed vocabulary shapes its own fixtures
+
+The r166..r184 contract applied to the dishonest-fallback gate. _sources()
+now takes root -- the sweep, the exclusion filter, AND the finding's
+reported relative path all redirect together -- and main(argv, root) passes
+it through grade(root).
+
+Behavior change, the round's real find: grade() over an empty corpus
+printed OK. A ui/src that does not exist (a worktree without the UI
+checkout, a path typo in a future refactor) would have graded clean over
+nothing -- the same starve r180 and r181 closed for their gates, living
+here unnoticed because the live tree always has ui/src. The census floor
+is the docstring's own exit-2 law applied consistently: the scope did not
+open, so REFUSED, not OK.
+
+Three shell cases: a dishonest fallback rc 1 naming file:line (the finding
+text carries the rel path and the mirrored case), the unknown-convention
+fallback rc 0, and the empty-corpus REFUSED rc 2. The fixture taught the
+round's constraint: the checker's CONCRETE_STATES is a deliberately closed
+vocabulary, so a fixture must borrow REAL state words (failed, pending)
+for its finding arm while keeping the family name synthetic
+(fixture-status-*) -- a family that is synthetic end to end cannot be a
+finding no matter what the mutant grades, which is exactly why the
+root-dropping mutant dies on the file:line case: sweeping the real tree
+finds no fixture-status family and returns 0 against want 1.
+
+The round's defect was editorial, not mechanical: the shell block's first
+draft asserted on a needle from an earlier fixture draft (fixture-status-
+queued, a word the closed vocabulary does not even contain) and printed
+its OK line before the shell cases ran. Both caught by running the cases;
+the OK-now-check-later order is fixed -- the summary prints only after
+every case has had its chance to fail.
+
+Honest limits: the ?? / || fallback shape, cross-module fallbacks, and
+object-keyed maps remain invisible by the docstring's own TEXT-check
+declaration; the self-test's string cases cover the regex grammar but the
+three shell cases carry only the switch shape through main. The EXCLUDES
+filter (__tests__, dev-mock) is asserted nowhere in a fixture -- a mutant
+that stopped excluding would survive every current case. Docker daemon
+still down (probed r159): the E2E / llvm-cov / nextest-junit receipts
+remain the standing PG-gated gap. The root-policy gate remains RED on the
+foreign todo.md (r174) and verify-core-size RED on the ADR-59 +64 (r181),
+both awaiting their owning lanes.
