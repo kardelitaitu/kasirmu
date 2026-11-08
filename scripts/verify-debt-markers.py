@@ -549,7 +549,7 @@ def self_test() -> int:
 
     # 3. A list item assigns just as a heading does. Headings alone would leave every
     #    todo list item in the tree looking unresolvable.
-    listed = {"docs/plans/_done/done-todo.md": "1. first\n2a. second\n",
+    listed = {"docs/plans/_done/done-plan-todo.md": "1. first\n2a. second\n",
               "src/a.rs": "// TODO 2a\n"}
     cases.append(("a numbered list item assigns too",
                   analyse(listed)["unresolvable"] == []))

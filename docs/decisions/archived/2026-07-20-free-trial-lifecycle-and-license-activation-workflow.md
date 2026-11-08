@@ -26,7 +26,7 @@ Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · A
 > sales history), and paid trials are **segmented by signup vertical** —
 > 14-day Plus trial for general signups, 14-day Pro trial for
 > restaurant/cafe signups, 30-day Pro trial for enterprise referrals.
-> `docs/plans/_done/done-todo.md` C2.1 tracked the implementation (archived in `_done/`) (license-server `trial_vertical`
+> `docs/plans/_done/done-plan-todo.md` C2.1 tracked the implementation (archived in `_done/`) (license-server `trial_vertical`
 > field + segmented minting, shipped 2026-08-18).
 >
 > **Deviation 1 (shipped 2026-08-18, then SUPERSEDED):** an earlier version
