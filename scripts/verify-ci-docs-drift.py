@@ -141,10 +141,14 @@ VALID_STATUS = {"required", "advisory", "required-on-push", "retired"}
 # silently pointing at a dead file should not.
 
 # ── Docs parsing ──────────────────────────────────────────────────────
-# Backticked kebab-case token (job IDs / workflow filenames).
-KUBE_TOKEN = re.compile(r"`([a-z][a-z0-9-]*)`")
+# Backticked JOB-ID token (Job Matrix rows / gate Job cells). The grammar
+# was widened 2026-11-08 (r155) to match the workflow side: a capitalized
+# or underscored job ID must be recordable in docs, or the doc half
+# false-positives against a truthful manifest. Workflow FILENAMES keep
+# WORKFLOW_TOKEN below (the .yml convention stays lowercase).
+KUBE_TOKEN = re.compile(r"`([A-Za-z0-9][A-Za-z0-9_-]*)`")
 # Job Matrix table row: first cell is a backticked job ID.
-JOB_MATRIX_ROW = re.compile(r"^\|\s*`([a-z][a-z0-9-]*)`\s*\|")
+JOB_MATRIX_ROW = re.compile(r"^\|\s*`([A-Za-z0-9][A-Za-z0-9_-]*)`\s*\|")
 # Gate table row: capture the Job cell (second cell) for token extraction.
 GATE_TABLE_ROW = re.compile(r"^\|\s*[^|]+\|\s*(.+?)\s*\|")
 # Any backticked `*.yml` token — used across the WHOLE Workflow inventory
@@ -157,7 +161,7 @@ WORKFLOW_TOKEN = re.compile(r"`([a-z0-9][a-z0-9-]*\.yml)`")
 # a row that merely omits the workflow from CI is the failure being guarded.
 RETIRED_MARKER = re.compile(r"retired|inert|not executed|no longer runs|\.bak\b", re.I)
 # Job Matrix table row: job ID (first cell) + Blocks marker (last cell).
-JOB_MATRIX_FULL_ROW = re.compile(r"^\|\s*`([a-z][a-z0-9-]*)`\s*\|.*\|\s*([^|]+?)\s*\|$")
+JOB_MATRIX_FULL_ROW = re.compile(r"^\|\s*`([A-Za-z0-9][A-Za-z0-9_-]*)`\s*\|.*\|\s*([^|]+?)\s*\|$")
 
 # Job-level `continue-on-error:` (4-space indent under a job key).
 JOB_COE = re.compile(r"^ {4}continue-on-error:\s*(.+?)\s*$")
@@ -529,6 +533,13 @@ def workflow_jobs(path: Path) -> set[str]:
     indented exactly 2 spaces under `jobs:`; the `on:` trigger keys (also
     2-space indented) appear BEFORE `jobs:`, so we only start collecting
     after the `jobs:` line and stop at the next 0-indent top-level key.
+
+    The job grammar is check-gate-runners.py's parse grammar verbatim
+    (r155 alignment): that gate decides whether a gates.json ci.job claim
+    resolves, and this gate decides whether the docs record the job -- two
+    answers from one grammar, or a capitalized job is visible to one and
+    invisible to the other (the old lowercase-only pattern false-positived
+    the dangling ci.job check against a truthful manifest).
     """
     jobs: set[str] = set()
     in_jobs = False
@@ -540,7 +551,7 @@ def workflow_jobs(path: Path) -> set[str]:
             if re.match(r"^jobs:\s*(#.*)?$", stripped):
                 in_jobs = True
             continue
-        if re.match(r"^  [a-z0-9][a-z0-9_-]*:\s*$", line):
+        if re.match(r"^  ([A-Za-z0-9_-]+):\s*$", line):
             jobs.add(line.strip()[:-1].strip())
         elif not line.startswith("  "):
             in_jobs = False  # 0-indent top-level key — jobs block ended
@@ -575,7 +586,7 @@ def job_coe_from_text(text: str, job: str) -> tuple[str | None, bool]:
                 in_jobs = True
             continue
         # 2-space indent → job header.
-        if re.match(r"^  [a-z0-9][a-z0-9_-]*:\s*$", line):
+        if re.match(r"^  ([A-Za-z0-9_-]+):\s*$", line):
             in_job = line.strip()[:-1].strip() == job
             continue
         if not in_job:
@@ -708,6 +719,27 @@ def self_test() -> int:
         cj = workflow_jobs(w(circleci))
         check("a CircleCI file yields its `jobs:` names, not `workflows:`",
               cj, {"static-gates"})
+        # r155: the grammar is check-gate-runners.py's verbatim. The old
+        # lowercase-only pattern made a capitalized job invisible HERE while
+        # the containment gate saw it -- the dangling ci.job check would
+        # false-positive against a truthful manifest.
+        caps = ("name: x\non:\n  push:\njobs:\n"
+                "  DeploySite:\n    runs-on: ubuntu-latest\n"
+                "  static_gates-2:\n    runs-on: ubuntu-latest\n")
+        check("job IDs with capitals and underscores are found",
+              workflow_jobs(w(caps)), {"DeploySite", "static_gates-2"})
+        check("  ... and the docs-side grammar can record them",
+              KUBE_TOKEN.findall("`DeploySite` (`static_gates-2`)"),
+              ["DeploySite", "static_gates-2"])
+        check("a capitalized Job Matrix row parses",
+              JOB_MATRIX_ROW.match("| `DeploySite` | docs |").group(1),
+              "DeploySite")
+        check("a full matrix row keeps its Blocks cell",
+              JOB_MATRIX_FULL_ROW.match("| `static_gates-2` | docs | ci | yes |").group(2),
+              "yes")
+        check("a dotted filename is not a job token (the dot breaks the class)",
+              KUBE_TOKEN.findall("`dev-ci.yml`"),
+              [])
 
         print("\n  hook_step_orphans")
         full = json.loads(
