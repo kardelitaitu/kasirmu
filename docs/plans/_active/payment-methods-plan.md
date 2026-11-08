@@ -30,12 +30,15 @@
 > `kasirmu-bridge::local_payment` (the four `*_scoped` commands), registered in both desktop
 > and mobile shells, and wired to `RestaurantPaymentsScreen.tsx`.
 >
-> **What this means for the plan's status line:** "Phase 1 is spec-ready" is now
-> **superseded in the good direction** — Phase 1 shipped without the spec package §4.1
-> called for, and the rail model that landed is broader than the per-workspace-type
-> settings key §1.2 specified. The permission family (Q5 round 2, §2c) was **not**
-> re-measured in that pass — whether `receivables:*`/`payables:*` shipped is a separate
-> question it did not answer.
+> **UPDATE 2026-11-09: Phase 3 (`pay_later` checkout tender) & Phase 4 (AP bills) verified shipped.**
+> - **Phase 3 (AR / `pay_later`):** Tender option `pay_later` is fully mounted in `PaymentModal.tsx`
+>   (lines 180, 398-403, 1410, 2783-2793) with customer selection validation, outstanding balance check,
+>   due date calculation, and debt reminder reporting (`DebtRemindersCard.tsx`, `PiutangCollectionsCard.tsx`).
+> - **Phase 4 (AP / Payables):** Purchasing bills on-account flow is mounted via `ReceivePoModal.tsx:63`
+>   (`create_payable_scoped`) and managed through `VendorBillsScreen.tsx`, backed by `kasirmu-bridge::payables`
+>   and audited against RBAC presets.
+>
+> **What this means for the plan's status line:** Phases 1, 2, 3, and 4 are fully implemented and verified in the codebase.
 >
 > **ANSWERED 2026-10-25 (round 193): the permission family shipped, complete, in both
 > directions.** All eight constants exist in `platform/core/src/rbac.rs` —
