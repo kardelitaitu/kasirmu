@@ -6712,3 +6712,45 @@ load_gates probe mutated the real manifest in place rather than a sandbox copy,
 because drift exposes no --root; that is only defensible with the count-guarded
 anchor, try/finally restore, and byte-exact restore check that all ran. Docker
 daemon still down (r136): E2E / llvm-cov / nextest-junit receipts remain PG-gated.
+
+### Round 148 (2026-11-08) -- the ci axis's third loose direction: step-job containment
+
+Premise-audit arc, measured first. (1) Probed whether job names are verified for the
+68 rows that declare a workflow+job with no steps: MOOTED -- drift's dangling_ci_refs
+already resolves every active row's ci.job against the parsed workflow
+(verify-ci-docs-drift.py:326); an honest negative. (2) Classified the six live
+duplicate pairs by birth via git archaeology at the batch rows' creation commits
+(0d8e90286, 326a44c7d, 94de1fcb3, all 2026-09-30): NONE were born-duplicative. Four
+became duplicates when r145's exact re-spells brought the dedicated rows up to
+spellings the batch rows had held all along; two when a later needle addition landed
+on both rows at once. The batch claims are truthful inventories -- no pruning; the
+r146 census stands as designed. (3) The real find: drift verifies job EXISTENCE,
+cgr matched declared steps against the WHOLE workflow file -- so a step present in
+dev-ci.yml but under a DIFFERENT job than the row declares passed both checkers. The
+promise "this gate runs in job X via step Y" had no reader. Measured before wiring:
+63 declared steps across 18 parsed jobs, ZERO misfiled -- latent, not live. Fixed
+(662d663f6): workflow_job_steps() parses per-job step names (list items only; a
+job-level `name:` is metadata, not a step); gate_findings resolves each row's ci
+steps against ITS OWN job and reports an unparsed job as a ci-job finding; a row
+naming any workflow other than dev-ci.yml is REFUSED (exit 2) rather than silently
+resolved against the wrong file (all 116 ci-bearing rows name dev-ci.yml today).
+Self-test 25 -> 25 cases (2 fixtures reworked, 7 added); four-mutation probe killed
+4/4 after one survivor exposed that the parser fixture never exercised the cur
+guard -- a stray `- name:` between `jobs:` and the first job key is now the
+fixture.
+
+Honest limits: two tooling facts recorded because they were mine. The mutation
+probe's text-mode restore converted the checker file to CRLF on disk (the §7.3
+benign pattern -- git normalized at commit and post-commit hashes match,
+c67de54f...), but the CAUSE is my probe tooling using text-mode open for the
+restore path; binary mode is the fix and is not yet applied to the scratch
+scripts. The parser is regex-shaped to this workflow's layout (two-space job keys,
+list-item names): block scalars or YAML anchors would mis-parse, and the evidence
+that the shape holds is 18/18 jobs and 182/182 step names parsed from the ONE file
+the checker reads -- not a general YAML parser claim. The ci-job finding overlaps
+drift's dangling_ci_refs deliberately (same defect class from two checkers; both
+were green, neither covered containment). The refusal for non-devci workflows is
+latent with zero live instances. Historical tables listing `core-size` (r147) and
+the six-pair census notes remain dated records, untouched. Docker daemon still
+down (r136): E2E / llvm-cov / nextest-junit receipts remain the standing PG-gated
+gap.
