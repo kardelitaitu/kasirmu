@@ -6058,3 +6058,35 @@ docs-portal files), not on a CI log; the failures could also predate the guard's
 commit in exactly this local shape. The two stale skills from detect.sh are
 recorded, not audited. check-seo #12/#13 remain the outline authority and were not
 re-run this round beyond the build they anchor.
+
+### Round 131 (2026-11-08) — the meta-skill flagged its own corpus, and then caught its own auditor
+
+r130's detect.sh run named two skills 39/42 days stale. This round audited both.
+Anchors held: 16 check names in detect.sh match the stamp's "Checks 1–16";
+.githooks/post-commit:271 still passes --name "kasirmu"; all scripts and tests
+present. The guard's own bats suite ran green at tip BEFORE any prose edit: 40
+cases, 0 failed, 130s. Two real drifts found and fixed in skill-drift-guard's
+SKILL.md: §CI said four active workflows while .github/workflows/ holds five — and
+the fifth is NOT new (docker-digest-drift.yml, created 2026-08-03), so the 24-09-26
+recount simply missed it; and the tests table said nine scenarios while tests/ held
+ten (check1-dead-path-note.bats had no row; written from the test's own header).
+Both footers refreshed to 08-11-26; full detect.sh then printed "No drift detected"
+(RC=0, 45s).
+
+Two self-inflicted findings, both the guard catching ME, both worth recording. (1)
+My first draft stamp claimed docker-digest-drift "postdates the 24-09-26 recount" —
+git log falsified that within one call; measured 2026-08-03, so the recount MISSED
+it. A plan-shaped assumption met a birth date and lost. (2) My first §CI clause
+wrote "no push trigger" — the literal phrasing Check 14 matches — and the guard
+fired against its own skill on the same round, exactly the F3 failure the file's
+row 15 documents and warns against ("worded to describe the drift rather than quote
+it... so the next editor does not restore the quote"). I restored the quote; the
+detector works; the warning was in the row I had just read. Both reworded; rerun
+green.
+
+Honest limits: codebase-memory's graph statistics (node/edge counts, latency table)
+remain on their 2026-09-08 measurements — no MCP client was attached to this
+session, so they were neither re-measured nor re-quoted; its footer refresh covers
+the static anchors only, and the header stamp's "re-measure before quoting" caveat
+stands. The 40-case suite receipt predates the prose edits by minutes and the
+edits touch no check body, but the two facts are not the same measurement.
