@@ -37,6 +37,13 @@ For every gate declaring runners, each declared step name must resolve:
     (gates.json: "feature registry parity", "windows config drift",
     "no-raw-params (ADR #7 Phase 4)"), so the live census is now EMPTY and the
     decorator rule remains purely defensive.
+  - a CENSUS of duplicate runner declarations: labels named by more than one gate
+    are printed with the declaring ids, on both the check.sh and ci axes. One step
+    can legitimately back several rows -- a 2026-09-29 batch row alongside a
+    dedicated row -- so this is visibility, not a finding (2026-11-08: seven on
+    check.sh, zero on ci; four involve the local-matrix batch rows, two the
+    checker-selftest-companions row, and "core size ratchet" is declared by both
+    core-size and core-size-ratchet).
 
 KNOWN FALSE POSITIVE, deliberately not "fixed":
 
@@ -113,6 +120,26 @@ def prefix_resolutions(declared_labels: list[str],
                 out.append((lab, n, "space-ambiguous"))
                 break
     return out
+
+
+def duplicate_declarations(gates, axis: str) -> list[tuple[str, list[str]]]:
+    """Runner labels declared by MORE THAN ONE gate, with the declaring ids.
+
+    One step can legitimately back several rows -- a 2026-09-29 batch row
+    (added to close unrowed steps) alongside the step's own dedicated row -- so
+    this is a CENSUS, not a finding: the population should be visible without
+    grepping the roster by hand. Repeats WITHIN one row's list are not
+    represented here (measured zero 2026-11-08; a repeat says nothing new)."""
+    owners: dict[str, set[str]] = {}
+    for g in gates:
+        gid = g.get("id", "?")
+        if axis == "ci":
+            needles = (g.get("ci") or {}).get("steps") or []
+        else:
+            needles = (g.get("runners") or {}).get("check.sh") or []
+        for n in needles:
+            owners.setdefault(n, set()).add(gid)
+    return sorted((n, sorted(gs)) for n, gs in owners.items() if len(gs) > 1)
 
 
 def gate_findings(gates, ci_steps: list[str], sh_steps: list[str], inline_markers=None):
@@ -193,6 +220,21 @@ def _self_test() -> int:
         ("a comment-mentioned step is not counted",
          SH_STEP_RE.findall('# step "ghost" x' + chr(10) + 'step "real" c c' + chr(10)),
          ["real"]),
+        ("a cross-row duplicate is listed",
+         duplicate_declarations(
+             [{"id": "a", "runners": {"check.sh": ["x"]}},
+              {"id": "b", "runners": {"check.sh": ["x", "y"]}}], "check.sh"),
+         [("x", ["a", "b"])]),
+        ("a unique needle is not listed",
+         duplicate_declarations(
+             [{"id": "a", "runners": {"check.sh": ["x"]}}], "check.sh"), []),
+        ("the ci axis is inspected separately",
+         duplicate_declarations(
+             [{"id": "a", "ci": {"steps": ["s"]}},
+              {"id": "b", "ci": {"steps": ["s"]}}], "ci"),
+         [("s", ["a", "b"])]),
+        ("an empty roster lists nothing",
+         duplicate_declarations([], "check.sh"), []),
     ]
     bad = 0
     for name, fn, want in cases:
@@ -247,6 +289,14 @@ def main() -> int:
               % len(prefixes))
         for lab, act, kind in prefixes:
             print("    %r -> %r (%s)" % (lab, act, kind))
+
+    for axis in ("check.sh", "ci"):
+        dups = duplicate_declarations(gates, axis)
+        if dups:
+            print("  note: %d runner label(s) declared by more than one gate (%s axis):"
+                  % (len(dups), axis))
+            for lab, gs in dups:
+                print("    %r <- %s" % (lab, ", ".join(gs)))
 
     if findings:
         print("%d declared runner(s) do not resolve:" % len(findings))
