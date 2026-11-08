@@ -67,6 +67,7 @@ async function coveredControls(page: Page): Promise<{ text: string; hit: string 
 
     const out: { text: string; hit: string }[] = [];
     for (const el of Array.from(document.querySelectorAll(sel)) as HTMLElement[]) {
+      if (el.classList.contains('sr-only') || el.closest('.sr-only')) continue;
       const b = el.getBoundingClientRect();
       if (b.width < 2 || b.height < 2) continue;
       if (b.top < 0 || b.bottom > window.innerHeight) continue;

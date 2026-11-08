@@ -76,14 +76,15 @@ export function useFocusTrap(
         // Escape dismissed BOTH overlays and threw the cashier back to the list.
         // Measured: 2 dialogs open, Escape, 0 dialogs left.
         //
-        // The check is containment of the focused element, which is exactly the
-        // condition under which this trap is the one the operator is looking at.
-        // When focus is NOT inside (an overlay click or a programmatic focus
-        // elsewhere) the Tab branch below already recovers it; here, ignoring
-        // the key lets the trap that does contain focus answer instead.
+        // If focus is inside a different active dialog, yield to that dialog.
+        // If focus is inside this panel, or if focus is outside all dialogs (e.g.
+        // on body or an overlay backdrop), this trap handles the Escape.
         const focused = document.activeElement as HTMLElement | null;
         if (focused && panelRef.current && !panelRef.current.contains(focused)) {
-          return;
+          const otherDialog = focused.closest?.('[role="dialog"], [aria-modal="true"]');
+          if (otherDialog && otherDialog !== panelRef.current) {
+            return;
+          }
         }
         onEscapeRef.current();
         return;
