@@ -6090,3 +6090,22 @@ session, so they were neither re-measured nor re-quoted; its footer refresh cove
 the static anchors only, and the header stamp's "re-measure before quoting" caveat
 stands. The 40-case suite receipt predates the prose edits by minutes and the
 edits touch no check body, but the two facts are not the same measurement.
+
+### Round 132 (2026-11-08) — three small receipts, two lanes' builds and one doc-sync
+
+(1) The §5.2 advisory cargo fmt --all -- --check ran at tip for the first time this
+session: exit 0 in 4s (through the msvc helper — no .rs has changed since r117's
+green, and the receipt now says so at this tip). (2) The ui production BUILD
+(vite) — never run this session; lint/typecheck/i18n and vitest were — ran green:
+UI-RC=0 in 38s, vite built in 7.44s with only the chunk-size advisory (no dist
+claim made; the receipt is the build's exit, not a deploy). (3) The tdd skill's
+core-loop section now documents --test FILTER — the r129 flag — with the filter
+recommended as the Red-phase habit, because without it the loop compiles and runs
+the whole crate; the doc line cites the r129 receipt (62/62, 28s) instead of
+asserting unmeasured speed.
+
+Honest limits: the tdd skill's audit stamp is still 2026-09-22 and was NOT refreshed
+— this round synced one section the r129 feature made stale; a full re-audit of
+that skill (16 paths, phase tables, timings) is a separate round. The ui chunk-size
+warning is informational and was not tuned. fmt's 4s run rides a warm target dir;
+a cold checkout would take longer but check the same bytes.
