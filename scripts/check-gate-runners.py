@@ -45,6 +45,10 @@ For every gate declaring runners, each declared step name must resolve:
     -- deploy scripts are not gates. Both drift and this checker iterate
     gates, so only a step-first walk can see a step with no row -- the
     founding blind spot, closed on its last open axis.
+  - PARITY guard on the reverse walk (2026-11-08): per file, the raw `- name:`
+    list-item count must equal the parsed step count or the checker REFUSES --
+    a shape change that made the parser miss steps would otherwise silently
+    under-report the very findings this walk exists to catch.
   - check.sh runners against `step "<name>"`, PREFIX-matched, because several steps
     carry a decorator (`step "clippy workspace"`, `step "no-raw-params (ADR #7 Phase 4)"`)
     and exact matching over-reports on those.
@@ -176,6 +180,17 @@ def cross_job_step_names(job_steps: dict[str, list[str]]) -> list[tuple[str, lis
         for st in steps:
             owners.setdefault(st, []).append(job)
     return sorted((st, js) for st, js in owners.items() if len(js) > 1)
+
+
+def parse_parity(text: str, parsed_count: int) -> bool:
+    """True when the parser collected every `- name:` list item the file shows.
+
+    The reverse walk is only as honest as the step parse: a workflow whose
+    step items sit at an indent the parser does not visit would be SILENTLY
+    under-reported (a blind spot rebuilt by a shape change). Parity compares
+    the raw list-item count against the parsed step count and lets main()
+    refuse on mismatch -- a loud refusal beats a quiet partial walk."""
+    return len(re.findall(r"^\s+- name:\s", text, re.M)) == parsed_count
 
 
 def workflow_steps_with_runs(text: str) -> dict[str, list[tuple[str, str]]]:
@@ -448,6 +463,14 @@ def _self_test() -> int:
              {"a": [("Deploy", "bash scripts/wrangler-deploy.sh\n")]},
              set(), "", ""),
          []),
+        ("parity holds when every list item is collected",
+         parse_parity("jobs:" + chr(10) + "  a:" + chr(10) + "    steps:"
+                      + chr(10) + "      - name: X" + chr(10), 1), True),
+        ("a missed list item fails parity",
+         parse_parity("jobs:" + chr(10) + "  a:" + chr(10) + "    steps:"
+                      + chr(10) + "      - name: X" + chr(10), 2), False),
+        ("a commented mention is not a list item",
+         parse_parity("# - name: prose" + chr(10), 0), True),
         ("a step named by a row is skipped",
          unclaimed_ci_invocations(
              {"a": [("Named", "python3 scripts/ghost-check.py\n")]},
@@ -574,6 +597,14 @@ def main() -> int:
     unclaimed = []
     for wf_path in wf_files:
         wf_text = wf_path.read_text(encoding="utf-8", errors="replace")
+        runs = workflow_steps_with_runs(wf_text)
+        if not parse_parity(wf_text, sum(len(v) for v in runs.values())):
+            print("REFUSED: %s shows more `- name:` list items than the step"
+                  " parser collected -- the file outgrew the parser's shape."
+                  % wf_path.name, file=sys.stderr)
+            print("A partial walk would under-report unrecorded invocations -- "
+                  "extend the parser rather than trust it here.", file=sys.stderr)
+            return 2
         unclaimed.extend(
             (wf_path.name,) + hit
             for hit in unclaimed_ci_invocations(
