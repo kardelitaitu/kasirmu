@@ -6864,3 +6864,40 @@ against raw `- name:` counts was verified per file this round by probe but is
 not enforced -- that guard is the recorded candidate. Docker daemon still down
 (r136): E2E / llvm-cov / nextest-junit receipts remain the standing PG-gated
 gap.
+
+### Round 152 (2026-11-08) -- parity enforced: a shape change can no longer silently shrink the walk
+
+The r151 candidate is now a guard (d73fd22e1): per workflow file, the raw
+`- name:` list-item count must equal the parsed step count, or check-gate-
+runners REFUSES (exit 2, stderr, before any unclaimed walk runs). The threat
+it closes: a workflow whose step items move to an indent the parser does not
+visit would silently under-report the reverse walk -- re-arming the exact
+founding blind spot the walk exists to catch. Proven end-to-end with a scratch
+malformed workflow (a stray `- name:` under a 0-indent key): REFUSED with the
+shape message, rc 2; scratch removed, tree clean. Self-test 33 -> 36 cases;
+six-mutant probe 6/6 KILLED; live walk green on all five real files.
+
+Three tooling incidents, all mine, all recorded because two of them touched
+the working tree. (1) The parity patch itself authored an unterminated string
+literal -- caught by py_compile before any test ran; a one-anchor repair. The
+r147 lesson (inspect data edits, not just parse-validate) now has a code-side
+sibling: compile after structural patches. (2) The first mutation probe died
+MID-MUTATION with a transient Windows OSError (Errno 22) and its finally-
+restore died the same way, leaving the checker MUTATED on disk (the
+tooling-exemption mutant live). Caught on the next call by line counts,
+reversed by inverse patch, verified by self-test + diff-vs-HEAD (exactly the
+31 parity insertions). The probe now retries writes with backoff and verifies
+every write by read-back. This is the most dangerous probe failure mode: the
+next round would have inherited a subtly wrong checker as its baseline. (3) An
+apostrophe in a commit subject broke the bash -c quoting (rc 2, nothing
+committed); retried apostrophe-free.
+
+Honest limits: parity proves COVERAGE of the walk, not correctness of capture
+-- a step the parser visits but mis-parses (trailing YAML on a name) passes
+parity; the refusal message points at extending the parser, the resolution is
+manual. The wiring on the REFUSAL path is proven by the scratch run; the
+passing direction is exercised by every live run (five real files), so both
+directions have live evidence. Inline tail comments still count as invocations
+(conservative, r150); TOOLING_SCRIPTS remains manual policy (r151). Docker
+daemon still down (r136): E2E / llvm-cov / nextest-junit receipts remain the
+standing PG-gated gap.
