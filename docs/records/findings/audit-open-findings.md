@@ -7170,3 +7170,31 @@ precondition -- its working-tree copy is what r161 edited, and the round kept
 the edit-to-commit window tight (one call, porcelain inspected in the same
 chain) per the section-7.3 lesson. Docker daemon still down (probed r159): the
 E2E / llvm-cov / nextest-junit receipts remain the standing PG-gated gap.
+
+### Round 162 (2026-11-09) -- three fresh mutation receipts, and the survey's one-target rule named
+
+R161 predicted the next survey run would mutation-grade gate_exit. Ran the slices
+that would do it -- cgr (skip 11), register-hygiene (skip 23, first graded r157),
+drift (skip 38) -- and all three came back KILLED with zero survivors, zero
+RELOCATION-SENSITIVE, zero PATH ALREADY RED, trees restored clean. But the
+prediction was WRONG in mechanism, and the correction is the finding: the survey
+mutates only the FIRST candidate function per checker ("enough to answer can this
+self-test fail", the r67-era budget decision) -- cgr's first candidate is
+resolves, not gate_exit; drift's is load_gates; register-hygiene's is
+register_findings. So gate_exit, duplicate_report and cli_shell_cases are NOT
+mutation-graded and never will be under the first-candidate rule, however many
+slices run -- they are graded by their self-test CASE lists (44; 12+4; 41+6)
+behaviorally, which is a different and weaker guarantee.
+
+Honest limits: the receipts are slices, not the full 110-row census (the other
+107 rows carry their last-measured grades). The one-target rule means "mutation-
+graded" is a per-CHECKER property, not a per-function one -- r157's entry
+"register_findings, the pure classifier" was the first candidate too, which the
+entry did not say; the correction lives here, not by editing r157. A function
+EARLIER in a file than the current first candidate would change who gets graded
+-- nothing polices candidate order, so a refactor that hoists a trivial function
+above gate_exit would silently demote what the survey grades. Whether every
+checker's FIRST candidate is also its MOST IMPORTANT pure function is a
+coincidence the census does not audit; today it happens to hold for all three
+graded checkers. Docker daemon still down (probed r159): the E2E / llvm-cov /
+nextest-junit receipts remain the standing PG-gated gap.
