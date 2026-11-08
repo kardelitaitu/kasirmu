@@ -7484,3 +7484,41 @@ multiple files is live-covered, not case-covered (the real repo has 5
 workflows; a corpus of 5 broken ones is a fixture nobody has needed yet).
 Docker daemon still down (probed r159): the E2E / llvm-cov / nextest-junit
 receipts remain the standing PG-gated gap.
+
+### Round 171 (2026-11-09) -- release-workflow joins the shell arc: one clean corpus that pins the redirect, six exits, and a self-inflicted rc clobber
+
+The r166/r169/r170 contract applied to the release workflow's validator, the
+checker born from the R36-11 silent-rename. validate(text, root) now threads
+its root into ALL THREE evidence sources at once -- the cross-reference scan
+(.github/workflows incl. attic/), the git-log dependabot evidence, and the
+referenced-path existence checks -- and main(argv, root) derives release.yml's
+location from the same root. The clean fixture is the round's real work: it
+must satisfy every family simultaneously (v* trigger, least privilege, the
+release-validate -> release-build -> release-publish needs chain, a literal
+inventory loop covered by the matrix, a fatal signing guard, privilege split),
+and it references scripts/fixture-only-tool.mjs -- a path that exists ONLY
+under the fixture root, because a referenced path that also exists in the real
+repository would not pin the redirect at all. Six shell cases: clean rc 0,
+missing file rc 1 (this gate's missing-file is a FINDING, not a refusal --
+unlike workflow-syntax's rc 2, a deliberate asymmetry: release.yml absent is
+the R36-11 incident itself), unparseable rc 1, non-v* trigger rc 1, unbuildable
+inventory ext rc 1, signing guard without exit 1 rc 1.
+
+Measured kill: validate rebound to drop its root (read the real repository)
+fails the CLEAN case -- the fixture-only path is reported missing -- and the
+self-test returns 2. The mutant that half-runs against the real repo cannot
+survive a corpus designed so that its cleanliness is fixture-local.
+
+Honest limits: the round's OWN mistakes are the limits. First, a leaked loop
+variable: the shell cases initially assigned to the mutation loop's rc, so the
+expected rc 1 of the last case leaked into the summary and the gate reported
+"a mutation slipped through" while eight CAUGHT lines and a SHELL-none line
+said otherwise -- the checker graded me before I graded it. Second, an
+overbroad text-rename during the repair touched validate's own
+UPDATER_PRIVATE_KEY check; both were caught by the self-test's own output
+contradicting its rc, fixed before commit, but they happened. The git-log
+evidence arm under a fixture root is graded only as "runs and contributes
+nothing" (a fixture has no history) -- the dependabot-notice path itself is
+live-covered only. MONKEYPATCH kill, file-sed remains r162's machinery.
+Docker daemon still down (probed r159): the E2E / llvm-cov / nextest-junit
+receipts remain the standing PG-gated gap.
