@@ -76,9 +76,23 @@ COMMAND_RE = re.compile(
 )
 
 
-def live_runner_files() -> list[Path]:
+#: The same four runners, relative -- r191: the contract root re-derives the
+#: runner set from these instead of the module-constant absolute paths.
+REL_RUNNERS = (".github/workflows", "scripts/check.sh", "scripts/check.ps1",
+               ".githooks/pre-commit")
+
+
+def live_runner_files(root=None) -> list[Path]:
+    """r191: all four runners re-derived together from the contract root --
+    never half (a root redirecting the workflows but not the hook would grade
+    a tree that exists nowhere)."""
+    if root is None:
+        runners = RUNNERS
+    else:
+        base_root = Path(root).resolve()
+        runners = tuple(base_root / rel for rel in REL_RUNNERS)
     out: list[Path] = []
-    for r in RUNNERS:
+    for r in runners:
         if r.is_dir():
             for p in sorted(r.rglob("*.yml")) + sorted(r.rglob("*.yaml")):
                 if "attic" in {q.lower() for q in p.parts}:
@@ -112,7 +126,9 @@ def references(text: str) -> list[str]:
             if not _in_shell_comment(text, m.start())]
 
 
-def dangling(files: list[Path]) -> tuple[list[tuple[str, str]], int]:
+def dangling(files: list[Path], base=None) -> tuple[list[tuple[str, str]], int]:
+    """r191: resolution happens against the same root the runners came from."""
+    base_root = ROOT if base is None else Path(base).resolve()
     bad: list[tuple[str, str]] = []
     seen = 0
     for p in files:
@@ -123,7 +139,7 @@ def dangling(files: list[Path]) -> tuple[list[tuple[str, str]], int]:
             continue
         for ref in references(text):
             seen += 1
-            if not (ROOT / ref).exists():
+            if not (base_root / ref).exists():
                 bad.append((p.name, ref))
     return bad, seen
 
@@ -211,23 +227,78 @@ def self_test() -> int:
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 
+    # r191: main()'s shell -- argv and root graded against a tempdir fixture,
+    # the r166..r190 pattern. No git repository needed: the runner set is
+    # globbed and the resolution is an exists() check. The refusal and the
+    # dangling case both kill a root-dropping main: the real tree has runners
+    # with 504 resolving references, so the refusal case grades them (rc 0)
+    # and the dangling case never sees the fixture's missing file (rc 0).
+    import contextlib as _ctx
+    import io as _io
+    shell = 0
+    def _fixture(files):
+        import tempfile as _tempfile
+        with _tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            for rel, content in files.items():
+                dst = base / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_text(content, encoding="utf-8")
+            (base / "scripts").mkdir(exist_ok=True)
+            out, err = _io.StringIO(), _io.StringIO()
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                rc = main(argv=[], root=base)
+            return rc, out.getvalue() + err.getvalue()
+    shell += 1
+    rc, text = _fixture({".github/workflows/a.yml": "run: python3 scripts/ok.py\n",
+                          "scripts/ok.py": "# the target exists\n"})
+    if rc != 0 or "1 script reference(s) across 1 runner file(s)" not in text:
+        print("  x a resolving reference must read OK with the census (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _fixture({".github/workflows/a.yml": "run: python3 scripts/gone.py\n"})
+    if rc != 1 or "a.yml names scripts/gone.py" not in text:
+        print("  x a dangling reference must fail naming runner and path (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _fixture({".github/workflows/a.yml": "run: echo hi\n"})
+    if rc != 2 or "found NO script references" not in text:
+        print("  x a runner corpus without commands must refuse rc 2 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    # a command quoted in a comment is documentation; the real step still counts
+    rc, text = _fixture({
+        ".github/workflows/a.yml": "run: python3 scripts/ok.py\n",
+        "scripts/ok.py": "# the target exists\n",
+        ".githooks/pre-commit": "# CI runs node scripts/doc-only.py here\n",
+    })
+    if rc != 0 or "1 script reference(s) across 2 runner file(s)" not in text:
+        print("  x a comment-only runner adds no reference (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (9 cases, one scratch tree removed)")
+    print("SELF-TEST OK (9 cases + %d shell cases, one scratch tree removed)" % shell)
     return 0
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r191: argv and root parameterized, the r166..r190 contract -- root
+    redirects the runner set AND every resolution target together."""
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--self-test", action="store_true",
                     help="Run this checker's cases and exit.")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     if args.self_test:
         return self_test()
+    base = ROOT if root is None else Path(root).resolve()
 
-    files = live_runner_files()
-    bad, seen = dangling(files)
+    files = live_runner_files(root)
+    bad, seen = dangling(files, base=base)
 
     if seen == 0:
         # A gate that found nothing must never read as a gate that found nothing --
