@@ -190,12 +190,13 @@ The workspace ships a dedicated TDD profile and scripts so Red→Green→Refacto
 
 ```bash
 bash scripts/test-tdd.sh -p crates/kasirmu-core   # compile + test one crate via nextest
+bash scripts/test-tdd.sh --test migration    # only tests matching FILTER (r129)
 bash scripts/test-tdd.sh                 # auto-detect the crate from cwd
 bash scripts/test-tdd.sh --watch         # re-run on every .rs change (recommended)
 bash scripts/test-tdd.sh --vanilla       # fall back to cargo test (no nextest)
 ```
 
-`-p` takes the **crate directory path** (e.g. `crates/kasirmu-core`, `platform/sync`) — not the package name — because the script resolves `--manifest-path <dir>/Cargo.toml` from the workspace root.
+`-p` takes the **crate directory path** (e.g. `crates/kasirmu-core`, `platform/sync`) — not the package name — because the script resolves `--manifest-path <dir>/Cargo.toml` from the workspace root. `--test` takes a nextest substring filter (e.g. `--test migration`) so the loop can run ONE slice of a crate instead of all of it; without a filter the whole crate compiles and runs, which is why the filter is the loop's default habit for Red phase. Added 2026-11-08 with a live receipt (62/62 migration tests, 28s).
 
 It sets `CARGO_PROFILE=tdd`, which uses the `[profile.tdd]` section in the workspace `Cargo.toml` (inherits `dev`, `debug = false`, `incremental = true`) — the fastest possible edit-compile-test cycle. Recommended workflow:
 
