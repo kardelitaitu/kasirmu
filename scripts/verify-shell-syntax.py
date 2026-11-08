@@ -364,7 +364,19 @@ def self_test() -> int:
             _probe_fb = {str(p) for p in targets()}
         finally:
             _sp.run = _real_run
-        if str(_scope_probe) in _probe_git:
+        # The TRACKED assertion is only meaningful where git genuinely works. The
+        # sabotage harness's relocation control measured this on 2026-11-08: its staged
+        # copy has no .git, targets() walks there, and the probe is trivially "seen" --
+        # asserting not-tracked in that world fails the self-test for a reason that has
+        # nothing to do with scope. The two assertions below stay unconditional: they
+        # hold in both worlds and are the ones that pin the VENDORED ban.
+        _git_here = True
+        try:
+            subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z"],
+                           capture_output=True, check=True)
+        except (OSError, subprocess.CalledProcessError):
+            _git_here = False
+        if _git_here and str(_scope_probe) in _probe_git:
             bad.append(".agents probe must not be TRACKED (git saw it) -- fixture broken")
         if str(_scope_probe) not in _probe_fb:
             bad.append("the no-git fallback must still see an untracked .agents shell "
