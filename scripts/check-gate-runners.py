@@ -40,10 +40,11 @@ For every gate declaring runners, each declared step name must resolve:
   - a CENSUS of duplicate runner declarations: labels named by more than one gate
     are printed with the declaring ids, on both the check.sh and ci axes. One step
     can legitimately back several rows -- a 2026-09-29 batch row alongside a
-    dedicated row -- so this is visibility, not a finding (2026-11-08: seven on
+    dedicated row -- so this is visibility, not a finding (2026-11-08: six on
     check.sh, zero on ci; four involve the local-matrix batch rows, two the
-    checker-selftest-companions row, and "core size ratchet" is declared by both
-    core-size and core-size-ratchet).
+    checker-selftest-companions row; a seventh -- "core size ratchet", declared
+    by both core-size and core-size-ratchet -- was two rows for one gate and the
+    rows merged the same day).
 
 KNOWN FALSE POSITIVE, deliberately not "fixed":
 
