@@ -42,89 +42,49 @@ REPO = Path(__file__).resolve().parent.parent
 CHECKER = "scripts/verify-ci-docs-drift.py"
 
 
-def _assignment_statements(src: str):
-    """Yield each top-level `NAME = ...` statement's text, paren-aware.
+def checker_inputs(base: Path | None = None) -> list[str]:
+    """Every tree-relative file the checker reads, found in its own source.
 
-    A statement ends at the first newline whose paren/bracket depth is back to
-    zero, so a parenthesised multi-line expression is returned whole rather than
-    truncated at its first line.
+    Derived rather than listed. History of the shapes this scan had to learn:
+    a hand-maintained copy set omitted docs/releases/checklist.md (the control
+    then reported 27 MISSING JOBS the real repo does not); the RELEASE_CHECKLIST
+    ternary hid both branches from a one-line scan; the _live_workflows import
+    added a sibling module no assignment names; and the r190 lesson -- the
+    live-workflow refactor moved every read into the drift_paths(root) dict
+    INSIDE a function, so a top-level-assignment-only scan lost gates.json,
+    the docs, the hook and check-ui.mjs at once, and every mutation case read
+    "gate manifest not found" (measured 2026-11-09). The scan is therefore
+    WHOLE-SOURCE and catches both spellings -- ROOT (the module constant) and
+    root (the contract parameter) -- wherever they appear. Over-copying is
+    safe by construction: nonexistent sources are skipped, and later writes
+    (the mangled check.sh, the workflow mirrors) overwrite their copies.
+
+    r190: reads the COPY under the given base when given, so a redirected run
+    derives the input set from the redirected checker.
     """
-    lines = src.splitlines()
-    i = 0
-    head = re.compile(r"^([A-Z_]+)\s*=\s*(.*)$")
-    while i < len(lines):
-        m = head.match(lines[i])
-        if not m:
-            i += 1
-            continue
-        stmt = [m.group(2)]
-        depth = m.group(2).count("(") + m.group(2).count("[") - m.group(2).count(")") - m.group(2).count("]")
-        while depth > 0 and i + 1 < len(lines):
-            i += 1
-            stmt.append(lines[i])
-            depth = "".join(stmt).count("(") + "".join(stmt).count("[") - "".join(stmt).count(")") - "".join(stmt).count("]")
-        yield "\n".join(stmt)
-        i += 1
-
-
-def _root_paths_in(stmt: str):
-    """Every `ROOT / "a" / "b" / ...` path inside a statement, as component lists.
-
-    Multiple occurrences are returned in order, so a ternary contributes both of
-    its branches. A statement with no ROOT path yields nothing.
-    """
+    src = io.open((REPO if base is None else base) / CHECKER, encoding="utf-8").read()
     out = []
-    for m in re.finditer(r"ROOT((?:\s*/\s*\"[^\"]+\")+)", stmt):
+    for m in re.finditer(r'(?<![\w.])(?:ROOT|root)\b((?:\s*/\s*"[^"]+")+)', src):
         parts = re.findall(r'"([^"]+)"', m.group(1))
         if parts:
-            out.append(parts)
-    return out
-
-
-def checker_inputs() -> list[str]:
-    """Every ROOT-relative file the checker declares, read from its own source.
-
-    Derived rather than listed. A hand-maintained copy set omitted
-    docs/releases/checklist.md, and the control then reported 27 MISSING JOBS that
-    the real repo does not -- a fixture artifact indistinguishable from a checker
-    defect. If the gate gains an input, this follows it automatically.
-    """
-    src = io.open(REPO / CHECKER, encoding="utf-8").read()
-    out = []
-    # THE ASSIGNMENT SHAPE IS NOT ALWAYS ONE LINE. `RELEASE_CHECKLIST` is a
-    # parenthesised TERNARY -- `= (\n    ROOT / "docs" / "records" / ...\n    if ...\n    else
-    # ROOT / "docs" / "releases" / ...\n)` -- so a single-line
-    # `^X = ROOT / "..."` pattern cannot match it and the checklist was silently
-    # absent from this set. The control then reported 1 drift item the repo does
-    # not have ("release checklist not found"), which is the SAME failure the
-    # hand-maintained list this function replaced produced, arriving through a
-    # different door: the derivation is only as good as the shapes it recognises.
-    #
-    # So the scan is brace-aware instead: from each `^X = ` it walks to the end of
-    # the statement (tracking parentheses) and takes EVERY `ROOT / "..."` path in
-    # it, which covers both the one-line constant and the multi-line ternary, and
-    # copies both of a ternary's branches -- the checker opens whichever exists.
-    for stmt in _assignment_statements(src):
-        paths = _root_paths_in(stmt)
-        for parts in paths:
             out.append("/".join(parts))
-    # SIBLING MODULE IMPORTS, added 2026-09-29. The constant scan above only sees
-    # files named in an X = ROOT / "..." assignment, so when verify-ci-docs-drift.py
-    # started importing scripts/_live_workflows.py it gained a real input the fixture
-    # never copied -- and the control failed with ModuleNotFoundError in a temp
-    # directory, which reads as a checker defect and is not one. Same lesson as the
-    # hand-maintained list this function replaced: derive the set, never curate it.
+    # Sibling imports (2026-09-29): a module the checker imports is an input no
+    # path names. Same lesson as every shape above: derive the set, never curate it.
     for m in re.finditer(r"^from\s+(_[A-Za-z0-9_]+)\s+import\s", src, re.M):
-        sib = f"scripts/{m.group(1)}.py"
+        sib = "scripts/%s.py" % m.group(1)
         if (REPO / sib).is_file():
             out.append(sib)
     return sorted(set(out))
 
 
-def fixture(check_sh_text: str | None = None) -> Path:
+def fixture(check_sh_text: str | None = None, base: Path | None = None) -> Path:
+    """r190: every copy is sourced from the given base (the contract root),
+    never from the module constant -- the fixture mirrors the tree it is
+    told to mirror."""
+    base = REPO if base is None else Path(base).resolve()
     tmp = Path(tempfile.mkdtemp())
-    for rel in [CHECKER] + checker_inputs():
-        src = REPO / rel
+    for rel in [CHECKER] + checker_inputs(base):
+        src = base / rel
         if not src.is_file():
             continue
         dst = tmp / rel
@@ -136,16 +96,17 @@ def fixture(check_sh_text: str | None = None) -> Path:
             check_sh_text)
     wf = tmp / ".github/workflows"
     wf.mkdir(parents=True, exist_ok=True)
+    src_wf = base / ".github/workflows"
     # Both shapes. *.yml is what GitHub runs; *.yml.bak is what marks a documented
     # matrix row as history rather than as a missing guard. Copying only *.yml
     # turned 27 legitimately-retired jobs into MISSING JOBS inside the fixture, so
     # the control disagreed with the repo for reasons unrelated to the test.
     # Since P4 the retired files live in the attic/ subdirectory; mirroring that
     # subdirectory keeps the fixture shaped like the repo the checker really sees.
-    for w in (REPO / ".github/workflows").iterdir():
+    for w in src_wf.iterdir():
         if w.suffix in (".yml", ".bak"):
             (wf / w.name).write_bytes(w.read_bytes())
-    attic = REPO / ".github/workflows/attic"
+    attic = src_wf / "attic"
     if attic.is_dir():
         (wf / "attic").mkdir()
         for w in attic.iterdir():
@@ -166,14 +127,24 @@ def count(out: str) -> int:
     return int(m.group(1)) if m else -1
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r190: argv and root parameterized, the r166..r189 contract. The root
+    redirects the baseline tree, every fixture copy, and the executed checker
+    together; argv is accepted for the contract even though this runner
+    declares no flags."""
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except (AttributeError, ValueError):
         pass
 
-    orig = io.open(REPO / "scripts/check.sh", encoding="utf-8").read()
-    real = run(REPO)
+    tree = REPO if root is None else Path(root).resolve()
+    try:
+        orig = io.open(tree / "scripts/check.sh", encoding="utf-8").read()
+    except OSError:
+        print("  refused: no scripts/check.sh under the given root -- "
+              "a tree without check.sh grades nothing")
+        return 2
+    real = run(tree)
     base = count(real)
     if base < 0:
         print("  cannot read the checker's drift count from the live repo; "
@@ -195,12 +166,12 @@ def main() -> int:
     garbage = (orig.replace('step "ci docs drift"', 'step "ZZZ REMOVED GATE"', 1)
                    .replace('step "ci docs drift self-test"',
                             'step "ZZZ REMOVED SELF-TEST"', 1))
-    out0 = run(fixture(garbage))
+    out0 = run(fixture(garbage, base=tree))
     expect(count(out0) > base,
            "fixture is actually read (a mangled check.sh adds findings)", out0)
 
     # 1. Control: an untouched fixture must match the repo exactly.
-    out1 = run(fixture())
+    out1 = run(fixture(base=tree))
     expect(count(out1) == base,
            f"unmodified fixture matches the repo ({base} item(s))", out1)
 
@@ -208,7 +179,7 @@ def main() -> int:
     kept = [ln for ln in orig.splitlines()
             if 'step "ci docs drift self-test"' not in ln]
     expect(len(kept) < len(orig), "the self-test step was found to delete")
-    out2 = run(fixture("\n".join(kept) + "\n"))
+    out2 = run(fixture("\n".join(kept) + "\n", base=tree))
     expect(count(out2) > base,
            "deleting a declared runner step ADDS a finding", out2)
     expect("ci docs drift self-test" in out2,
@@ -218,7 +189,7 @@ def main() -> int:
     ren = orig.replace('step "agents mirrors self-test"',
                        'step "agents mirrors selftest"', 1)
     expect(ren != orig, "the agents-mirrors self-test step was found")
-    out3 = run(fixture(ren))
+    out3 = run(fixture(ren, base=tree))
     expect(count(out3) > base,
            "renaming a declared runner step ADDS a finding", out3)
 
@@ -226,9 +197,24 @@ def main() -> int:
     #    `echo -n` rather than step(), so this also covers the second label form.
     gone = orig.replace('echo -n "panic-inventory scan', 'echo -n "ZZZ panic scan', 1)
     expect(gone != orig, "the panic-inventory echo label was found")
-    out4 = run(fixture(gone))
+    out4 = run(fixture(gone, base=tree))
     expect(count(out4) > base,
            "removing a single-label gate's only step ADDS a finding", out4)
+
+    # 5. r190: a root without scripts/check.sh must REFUSE rc 2, not crash on
+    #    FileNotFoundError. In-process, and it returns before any subprocess,
+    #    so the case is instant -- and it is the one that kills a root-dropping
+    #    main, which would grade the real tree here instead (rc 0).
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+    with _tempfile.TemporaryDirectory() as td:
+        out5, err5 = _io.StringIO(), _io.StringIO()
+        with _ctx.redirect_stdout(out5), _ctx.redirect_stderr(err5):
+            rc5 = main(argv=[], root=Path(td))
+        expect(rc5 == 2 and "refused" in (out5.getvalue() + err5.getvalue()),
+               "a root without check.sh refuses rc 2",
+               out5.getvalue() + err5.getvalue())
 
     print()
     if bad:
