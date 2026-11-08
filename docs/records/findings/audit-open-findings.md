@@ -7859,3 +7859,44 @@ deletion cannot hide in an aggregate. Docker daemon still down (probed
 r159): the E2E / llvm-cov / nextest-junit receipts remain the standing
 PG-gated gap. The root-policy gate remains RED on the foreign todo.md
 (r174).
+
+### Round 181 (2026-11-09) -- core-size joins the arc; the ratchet catches a real cross-lane breach during the round
+
+The r166..r180 contract applied to the size ratchet. main(argv, root) with
+root redirecting the measured tree AND the baseline -- both directions,
+because --emit-baseline WRITES the baseline, making this the second
+writable-evidence gate after r180. Five shell cases through main's exit
+mapping: a tree at its ceiling rc 0, one line over rc 1 naming the delta,
+a db/ rise rc 1 with the cannot-be-extracted message, a missing baseline
+rc 1 with advice, and --emit-baseline writing the fixture's baseline with
+the measured count as its ceiling.
+
+LIVE FINDING, caught mid-round and left red on purpose: the live gate
+reports non-db +64 lines over its 13,139 ceiling (whole-crate ceiling
+40,809, measured 40,873). Proven pre-existing: the committed HEAD checker
+fails identically. The growth is 54c474ddd (feat(core): Southeast Asia
+market presets and statutory tax regimes, ADR-59 Phase 2), which landed
+production lines outside db/ without a ceiling raise -- exactly the
+population Phase 3 P3.4 polices. Not raised here: a ceiling raise is a
+deliberate edit for the owning lane, in a commit that says why; a
+checker-shell round raising another lane's ratchet would be the r159
+batch-remnant mistake in a new costume. The gate stays red until the ADR-59
+lane either extracts or raises deliberately -- same owner's-call rule as the
+root-policy RED on the foreign todo.md.
+
+Measured kill: measure rebound to ignore its root -- NINE arms die at once,
+the most legible being the --emit-baseline case: got 40873, want 2. The
+mutant measured the real tree and wrote a real-sized ceiling into the
+fixture's baseline, so the fixture's own assertion caught a number that
+could not have come from the fixture.
+
+Honest limits: the masker's raw-string and char-literal arms are graded only
+by the shape cases, not through main; the --json payload is asserted
+nowhere; the SKIP test-file walk rules reach main only implicitly. Two
+fixture lessons repeated from r180 -- a placeholder baseline so the fixture
+HAS a scripts/ directory, and post-condition checks run inside the tempdir
+context through a callback -- plus one new arm trap: the db-case fixture
+needs a raised whole-crate ceiling, or the generic over-ceiling branch
+returns before the db branch can. Docker daemon still down (probed r159):
+the E2E / llvm-cov / nextest-junit receipts remain the standing PG-gated
+gap.
