@@ -297,20 +297,37 @@ def called(name: str, text: str) -> bool:
 # protection: deleting the sibling's check.sh and dev-ci invocations could not fail this
 # gate, because the checker never registered as declaring anything. The sibling convention
 # becomes first-class here: a docstring pointer naming an EXISTING sibling declares, and
-# the sibling's bare invocation is its caller signal. A pointer to a vanished sibling
-# declares nothing -- a comment naming a file nobody can run is history, not wiring.
+# the sibling's bare invocation is its caller signal. Two filters keep the declaration
+# honest (both measured 2026-11-08, this gate's own round): a WHOLE-LINE COMMENT cannot
+# declare -- the r84/r95 semantics run both directions, and this gate's own source is
+# full of convention-shaped comments that otherwise self-declared -- and the pointer
+# must share its line with the SELF-TEST: marker, because a bare mention in prose (this
+# file's own case strings included) is not a claim. A pointer to a vanished sibling
+# still declares nothing: a comment naming a file nobody can run is history.
 SIBLING_PTR = re.compile(r"python3\s+(scripts/test-[A-Za-z0-9_-]+\.py)")
 
 
 def sibling_from_text(text: str) -> "str | None":
-    """PURE: the sibling path this checker's text points at, or None.
+    """PURE: the sibling path this checker declares, or None.
 
-    Only the exact invocation spelling declares: the same strictness
-    declares_in applies to the flag -- prose that merely mentions a
-    test- file is not a declaration.
+    A declaration is a LIVE line that carries the SELF-TEST: marker and the
+    exact invocation spelling `python3 scripts/test-<name>.py` on the SAME
+    line, after whole-line comments are stripped -- the r84/r95 semantics
+    (comments cannot wire) run on the declaration side too. Two measured
+    reasons this is not one filter: this gate's own source carries
+    convention-shaped COMMENTS that self-declared under a raw-text scan
+    (2026-11-08, found by the round-138 measurement), and its case strings
+    carry marker+pointer pairs that a raw-text regex cannot tell from a
+    claim. Case strings in this file must therefore point at NONEXISTENT
+    siblings (test-x.py, test-ghost.py) -- a case string naming an existing
+    sibling beside the marker would re-trigger the self-declaration.
     """
-    m = SIBLING_PTR.search(text)
-    return m.group(1) if m else None
+    for ln in strip_full_line_comments(text).split("\n"):
+        if "SELF-TEST:" in ln:
+            m = SIBLING_PTR.search(ln)
+            if m:
+                return m.group(1)
+    return None
 
 
 def sibling_declared(rel: Path) -> "str | None":
@@ -569,6 +586,14 @@ def self_test() -> int:
          "scripts/test-x.py")
     want("prose mentioning a test- file does not declare",
          sibling_from_text("compare with scripts/test-other.py for style"), None)
+    want("a commented pointer does not declare -- r95 runs both directions",
+         sibling_from_text("# SELF-TEST: `python3 scripts/test-ghost.py` (aspirational)"),
+         None)
+    want("the gate's own convention-shaped source does not self-declare",
+         sibling_declared(Path("scripts/verify-selftests-wired.py")), None)
+    want("the live tree has exactly one sibling-declared checker",
+         [rel.as_posix() for rel in checkers() if sibling_declared(rel)],
+         ["scripts/check-replay-fork.py"])
     want("the live sibling pointer resolves to an existing file",
          [sibling_declared(Path("scripts/check-replay-fork.py")),
           (ROOT / "scripts/test-replay-fork.py").is_file()],
