@@ -349,12 +349,30 @@ def sibling_called(sib_rel: str, text: str) -> bool:
     running -- so the caller signal is its basename with extension, on a
     comment-stripped runner line. Same comment-blindness as called(): a
     runner that only DOCUMENTS the sibling is not a caller. The round-106
-    print-form trade-off is accepted here unguarded for now: measured this
-    round, the live runners mention the one live sibling exactly three
-    times, all real invocations (check.sh twice, dev-ci.yml once).
+    print-form trade-off is accepted here and GUARDED beside it: sibling_wired_only_by_print     surfaces a checker whose sibling is only ever echoed (measured this
+    round: the live runners mention the one live sibling on exactly two
+    lines, both real invocations).
     """
     stem = sib_rel.rsplit("/", 1)[-1]
     return any(stem in ln for ln in strip_full_line_comments(text).split("\n"))
+
+def sibling_wired_only_by_print(sib_rel: str, text: str) -> bool:
+    """Whether the sibling's every live mention is a PRINT form, not a call.
+
+    The round-106 guard, ported (2026-11-08, this round): sibling_called() is
+    deliberately unanchored -- a step that pipes, redirects, or even echoes the
+    sibling still counts as a caller -- and that acceptance is latent the same
+    way the flag-side one was: measured this round, the live runners mention the
+    one live sibling on exactly two lines (check.sh:813, dev-ci.yml:1392), both
+    real invocations, zero print-forms. The audit case in self_test GUARDS the
+    direction: a checker whose sibling is only ever echoed must surface, not
+    pass silently. No hits reads False -- nothing wired is nothing to guard.
+    """
+    stem = sib_rel.rsplit("/", 1)[-1]
+    hits = [ln for ln in strip_full_line_comments(text).split("\n") if stem in ln]
+    if not hits:
+        return False
+    return all(PRINT_FORM.match(ln) for ln in hits)
 
 
 def uncalled_from(text: str) -> list[str]:
@@ -608,6 +626,13 @@ def self_test() -> int:
     want("a different file's invocation is not this sibling's caller",
          sibling_called("scripts/test-replay-fork.py",
                         "run: python3 scripts/test-other.py"), False)
+    want("the round-106 guard, ported: an echoed sibling is wired-only-by-print",
+         [sibling_wired_only_by_print("scripts/test-x.py",
+                                      'run: echo "python3 scripts/test-x.py"'),
+          sibling_wired_only_by_print("scripts/test-x.py",
+                                      "run: python3 scripts/test-x.py"),
+          sibling_wired_only_by_print("scripts/test-x.py", "nothing relevant here")],
+         [True, False, False])
     # THE ROT THE EXTENSION CLOSES: with the sibling's runners deleted, the checker
     # must surface as uncalled -- before this round it could not, because it never
     # registered as declaring anything. Synthetic text: no sibling callers at all.
@@ -619,6 +644,10 @@ def self_test() -> int:
          ["scripts/check-replay-fork.py (sibling scripts/test-replay-fork.py uncalled)"])
     want("the live tree has no uncalled self-test under either convention",
          uncalled_from(text_now), [])
+    want("no live sibling is wired only by a runner that merely prints",
+         [rel.as_posix() for rel in checkers()
+          if (sib := sibling_declared(rel))
+          and sibling_wired_only_by_print(sib, text_now)], [])
     want("the sibling remedy names the sibling, not the flag",
          [uncalled_report(["scripts/check-replay-fork.py (sibling scripts/test-replay-fork.py uncalled)"])
           .count("no runner invokes that sibling"),
