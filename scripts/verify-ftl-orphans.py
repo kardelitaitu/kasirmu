@@ -709,19 +709,23 @@ def self_test() -> int:
     # The path formatter -- every finding is prefixed with it, so a gutted one must
     # turn the self-test red. Both branches, both pure string work: a path under ROOT
     # relativises; one outside falls back to an absolute posix path.
-    import tempfile
-    with tempfile.TemporaryDirectory() as td:
-        got = _rel(ROOT / "scripts" / "verify-ftl-orphans.py")
-        if got != "scripts/verify-ftl-orphans.py":
-            failures += 1
-            print("FAIL self-test: a ROOT-relative path must relativise, got %r" % (got,),
-                  file=sys.stderr)
-        got2 = _rel(Path(td) / "nested" / "x.ftl")
-        if (not isinstance(got2, str) or "\\" in got2 or not got2.endswith("x.ftl")
-                or not Path(got2).is_absolute()):
-            failures += 1
-            print("FAIL self-test: a path outside ROOT must fall back to an absolute "
-                  "posix path, got %r" % (got2,), file=sys.stderr)
+    got = _rel(ROOT / "scripts" / "verify-ftl-orphans.py")
+    if got != "scripts/verify-ftl-orphans.py":
+        failures += 1
+        print("FAIL self-test: a ROOT-relative path must relativise, got %r" % (got,),
+              file=sys.stderr)
+    # The outside-ROOT branch is synthesized, not planted: a tempfile fixture sits
+    # wherever TMP points, and check.sh points TMP at target/.tmp-check -- INSIDE
+    # ROOT (7e11b664c) -- so a planted fixture was never outside ROOT under the
+    # matrix and this branch could only fail there (measured 2026-11-08, step 113).
+    # _rel is pure string work; a synthetic absolute path exercises the fallback
+    # with no filesystem coupling at all.
+    got2 = _rel(Path("Z:/elsewhere/nested/x.ftl"))
+    if (not isinstance(got2, str) or "\\" in got2 or not got2.endswith("x.ftl")
+            or not Path(got2).is_absolute()):
+        failures += 1
+        print("FAIL self-test: a path outside ROOT must fall back to an absolute "
+              "posix path, got %r" % (got2,), file=sys.stderr)
 
     if failures:
         print(f"self-test: {failures} FAILURE(S)", file=sys.stderr)
