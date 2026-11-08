@@ -129,25 +129,66 @@ def _self_test() -> int:
             print("  %-52s FAIL (got %d, want %d)" % (name, got, want))
         else:
             print("  %-52s ok" % name)
-    print("SELF-TEST %s (%d cases, no files touched)"
-          % ("FAILED" if bad else "OK", len(cases)))
+    # r179: main()'s shell -- argv and root graded against a tempdir fixture,
+    # the r166..r178 pattern. The REFUSED arm and both verdicts go through
+    # main, which the scan_source cases above never reach.
+    import contextlib as _ctxlib
+    import io as _io
+    import tempfile as _tempfile
+    shell = 0   # the shell cases below count themselves; the OK line must not guess
+    def _shell(files):
+        with _tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            for rel, content in files.items():
+                dst = base / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_text(content, encoding="utf-8")
+            out, err = _io.StringIO(), _io.StringIO()
+            with _ctxlib.redirect_stdout(out), _ctxlib.redirect_stderr(err):
+                rc = main(argv=[], root=base)
+            return rc, out.getvalue() + err.getvalue()
+    shell += 1
+    rc, text = _shell({"ui/src/x/A.tsx": "  const a = useRef(0);  useEffect(() => {\n"})
+    if rc != 1 or "ui/src/x/A.tsx:1" not in text:
+        bad += 1
+        print("  %-52s FAIL (rc=%d text=%r)" % ("a merged line through main() exits 1 naming it", rc, text[-80:]))
+    shell += 1
+    rc, text = _shell({"ui/src/x/Clean.tsx": "  const a = useRef(0);\n  useEffect(() => {\n"})
+    if rc != 0 or "no merged statements found" not in text:
+        bad += 1
+        print("  %-52s FAIL (rc=%d text=%r)" % ("a clean fixture through main() exits 0", rc, text[-80:]))
+    shell += 1
+    with _tempfile.TemporaryDirectory() as td:
+        out, err = _io.StringIO(), _io.StringIO()
+        with _ctxlib.redirect_stdout(out), _ctxlib.redirect_stderr(err):
+            rc = main(argv=[], root=td)
+        if rc != 2 or "REFUSED" not in (out.getvalue() + err.getvalue()):
+            bad += 1
+            print("  %-52s FAIL (rc=%d)" % ("a missing ui/src is REFUSED with exit 2", rc))
+
+    print("SELF-TEST %s (%d matcher cases + %d shell cases, no repo files touched)"
+          % ("FAILED" if bad else "OK", len(cases), shell))
     return 1 if bad else 0
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r179: argv and root parameterized, the r166..r178 contract -- root
+    redirects the sweep AND the reported paths, so a fixture cannot half-run
+    against the real ui tree."""
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--self-test", action="store_true",
                     help="prove the matcher on both directions, touch no files")
     ap.add_argument("--quiet", action="store_true", help="only report findings")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     if args.self_test:
         return _self_test()
 
+    root_path = ROOT if root is None else Path(root).resolve()
     findings = []
     scanned = 0
     for rel in SCAN_ROOTS:
-        base = ROOT / rel
+        base = root_path / rel
         if not base.is_dir():
             print("REFUSED: %s is not a directory" % base, file=sys.stderr)
             return 2
@@ -159,7 +200,7 @@ def main() -> int:
                 scanned += 1
                 p = Path(dp) / f
                 for ln, text in scan_source(p.read_text(encoding="utf-8", errors="replace")):
-                    findings.append((p.relative_to(ROOT).as_posix(), ln, text))
+                    findings.append((p.relative_to(root_path).as_posix(), ln, text))
 
     if not args.quiet:
         print("scanned %d .ts/.tsx file(s) under %s" % (scanned, ", ".join(SCAN_ROOTS)))
