@@ -8,6 +8,7 @@
 # Usage:
 #   bash scripts/test-tdd.sh                     # auto-detect crate from cwd (nextest)
 #   bash scripts/test-tdd.sh -p crates/kasirmu-core   # specific crate (a DIRECTORY, not a package name)
+#   bash scripts/test-tdd.sh --test migration    # run only tests matching FILTER (r129)
 #   bash scripts/test-tdd.sh --vanilla           # use cargo test instead of nextest
 #   bash scripts/test-tdd.sh --watch             # watch mode (needs cargo-watch)
 #
@@ -109,6 +110,8 @@ fi
 USE_NEXTEST=true
 WATCH_MODE=false
 TARGET_CRATE=""
+TEST_FILTER=""
+FILTER_ARGS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -118,6 +121,15 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       TARGET_CRATE="$2"
+      shift 2
+      ;;
+    --test)
+      if [ $# -lt 2 ] || [ -z "${2:-}" ]; then
+        echo "test-tdd: --test takes a filter, e.g. --test migration" >&2
+        exit 1
+      fi
+      TEST_FILTER="$2"
+      FILTER_ARGS=("$2")
       shift 2
       ;;
     --vanilla) USE_NEXTEST=false; shift ;;
@@ -178,18 +190,27 @@ fi
 echo "test-tdd: cargo=$CARGO_BIN"
 echo "test-tdd: profile=tdd (debug=false, incremental=true)"
 echo "test-tdd: crate=$TARGET_CRATE"
+if [ -n "$TEST_FILTER" ]; then echo "test-tdd: filter=$TEST_FILTER"; fi
 
 # ── Run ──────────────────────────────────────────────────────────────────────
 
 if [ "$WATCH_MODE" = "true" ]; then
   echo "test-tdd: watch mode — re-running on .rs changes"
   if [ "$USE_NEXTEST" = "true" ]; then
-    exec "$CARGO_BIN" watch -x "nextest run --manifest-path $MANIFEST"
+    if [ -n "$TEST_FILTER" ]; then
+      exec "$CARGO_BIN" watch -x "nextest run --manifest-path $MANIFEST $TEST_FILTER"
+    else
+      exec "$CARGO_BIN" watch -x "nextest run --manifest-path $MANIFEST"
+    fi
   else
-    exec "$CARGO_BIN" watch -x "test --manifest-path $MANIFEST"
+    if [ -n "$TEST_FILTER" ]; then
+      exec "$CARGO_BIN" watch -x "test --manifest-path $MANIFEST $TEST_FILTER"
+    else
+      exec "$CARGO_BIN" watch -x "test --manifest-path $MANIFEST"
+    fi
   fi
 elif [ "$USE_NEXTEST" = "true" ]; then
-  exec "$CARGO_BIN" nextest run --manifest-path "$MANIFEST"
+  exec "$CARGO_BIN" nextest run --manifest-path "$MANIFEST" "${FILTER_ARGS[@]}"
 else
-  exec "$CARGO_BIN" test --manifest-path "$MANIFEST"
+  exec "$CARGO_BIN" test --manifest-path "$MANIFEST" "${FILTER_ARGS[@]}"
 fi
