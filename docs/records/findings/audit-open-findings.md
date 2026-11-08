@@ -6378,3 +6378,41 @@ YAML block-scalar echo; measured none today) would be under-counted in both dire
 equally. The unanchored acceptance remains: a runner line that both echoes AND pipes
 still counts as a caller. Docker daemon still down (probed r136): the E2E / llvm-cov /
 nextest-junit receipts remain the standing PG-gated gap.
+### Round 140 (2026-11-08) — the sibling census extended past declared siblings: one orphan found and made self-describing
+
+r137-139 closed the DECLARED sibling convention inside verify-selftests-wired.py. This
+round measured the class one level wider: every scripts/test-*.py file, declared or not
+(the gate's SCRIPT_RE deliberately excludes test-* — the generate-* precedent: admitting
+a prefix means judging every future file). The census found exactly three .py siblings:
+test-replay-fork.py (declared and wired: check.sh:813, dev-ci.yml:1392),
+test-runner-labels.py (invoked by check.sh and dev-ci.yml), and test-wal-dirty-shutdown.py
+— invoked by NOTHING in the tracked tree (git grep over scripts, .github, .githooks,
+crates, apps, ui, docs returned zero references).
+
+The investigation: its docstring cites todo-beta-testing-january-2027.md Phase 2.1, and
+the roadmap line is explicit — "[x] Process-Kill Simulation: ... (scripts/test-wal-dirty-
+shutdown.py, b852a47fd, live Android SIGKILL verified)" — a TICKED, one-time roadmap
+acceptance, not a recurring gate and not a checker's self-test. The rot risk was not the
+missing runner (a census or acceptance may claim none) but the file's SILENCE about that
+status: unlike scripts/census-sync-ingest-admits.py, which states its no-runner standing
+in its own docstring, this file said nothing, so every future reader would redo the
+provenance trace.
+
+The fix (8810dea21): a dated status block in the file's docstring — one-time acceptance,
+deliberately runner-less, when to re-run manually, and the measured re-run receipt.
+Measured before writing: the script runs green at 0.0.41 today — 5/5 kill cycles, 0.27s
+wall, integrity_check ok, foreign_key_check empty — so the note records a fresh
+measurement, not the roadmap's 2026-10-08 claim. Compile-checked and re-run green after
+the edit.
+
+Honest limits: the eleven .sh siblings were NOT censused this round — several are
+runners of other things (test-changed.sh, test-tdd.sh, test-ui-changed.sh), and
+classifying eleven shell files is a per-file judgement deferred, not claimed.
+test-runner-labels.py's exact role was verified only as far as its runner invocations,
+not traced to a declaring checker. The decision NOT to wire the simulation into check.sh
+was a judgement, not a measurement: 0.27s is cheap, but it spawns processes and kills
+them, and CI determinism for kill-simulations was not measured; the roadmap's completed
+status stands. The wired-gate remains blind to undeclared test-*.py files by design
+(SCRIPT_RE); this entry's census is the durable record instead. Docker daemon still down
+(probed r136): the E2E / llvm-cov / nextest-junit receipts remain the standing PG-gated
+gap.
