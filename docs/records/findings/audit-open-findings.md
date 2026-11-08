@@ -449,10 +449,13 @@ data::` -> **50 passed, 0 failed**.
   corrected to 39 — a prose count is the drift, and the enum is the source of truth. The
   core module doc is the one every other copy was derived from, which is why the sweep
   started there.
-  STILL OPEN as a separate question: the two core test enumerations carry **33** and **37**
-  (`crates/kasirmu-core/src/features_tests.rs:181`, `:389`). Neither matches 39, but a test
-  that enumerates a subset may be deliberate — pinning it needs a reading of what each case
-  asserts, and this pass did not do that. Do not "fix" the numbers without it.
+  **CLOSED 2026-11-09:** the two core test enumerations and `feature_key_roundtrip`
+  in `crates/kasirmu-core/src/features_tests.rs` were audited against all 39 variants of
+  `Feature`. The omissions were identified (`StockCounting` and `StockTransfers` missing from
+  `enable_all_features_then_disable_all` and `feature_key_roundtrip`; plus `UsbScale`,
+  `QuickReturn`, `StockCounting`, `StockTransfers`, `PurchaseOrders`, `SerialTracking` missing from
+  `all_features_known_dep_or_no_dep`). All three arrays now enumerate all 39 variants exhaustively,
+  with `StockCounting` dependency on `InventoryTracking` asserted in `with_deps`. All 81 tests pass.
 - ~~**BR-D2** — `device_hostname` is undocumented because its doc block is fused into
   `feature_to_module_id`'s comment run, so rustdoc attaches both to `feature_to_module_id`
   and `missing_docs` never fires for the helper.~~ — **CLOSED 2026-11-05**, same commit as
