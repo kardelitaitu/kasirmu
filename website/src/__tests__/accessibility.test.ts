@@ -48,8 +48,17 @@ const PUBLIC = join(WEBSITE, 'public');
 // The generated mirror of prototypes/ — identical bytes, and gitignored, so it
 // is the source directory that is checked rather than its copy.
 const GENERATED = `${sep}public${sep}dev${sep}`;
+// The docs-portal mirror (`public/docs-portal`) is mdBook build output staged
+// from `docs/book` by `scripts/import-portal.mjs` at prebuild. It is
+// gitignored — CI's fresh clone never enumerates it — and every file in it is
+// generated, so check-seo check 13 (the built check) is the authority on its
+// landmarks and names, exactly as for composed pages. Measured 2026-11-08:
+// without this skip the walk swept 10,027 generated files and 2,920 failed
+// this arm on a checkout that had built the docs book, while the same tree
+// stayed green wherever docs/book had not been built.
+const DOCS_PORTAL = `${sep}public${sep}docs-portal${sep}`;
 const MARKUP = /\.(?:astro|tsx|html)$/;
-const SKIPPED = [`${sep}__tests__${sep}`, GENERATED];
+const SKIPPED = [`${sep}__tests__${sep}`, GENERATED, DOCS_PORTAL];
 
 const isMarkup = (path: string) => MARKUP.test(path) && !SKIPPED.some((part) => path.includes(part));
 
