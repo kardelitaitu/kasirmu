@@ -427,6 +427,8 @@ def _self_test() -> int:
                 (root / ".github" / "workflows").mkdir(parents=True)
                 (root / "scripts" / "gates.json").write_text(
                     _json.dumps({"gates": rows}), encoding="utf-8")
+                (root / ".github" / "workflows" / "nightly.yml").write_text(
+                    "", encoding="utf-8")
                 (root / "scripts" / "check.sh").write_text(
                     'step "x" "echo hi"' + chr(10), encoding="utf-8")
                 if not starve:
@@ -634,6 +636,10 @@ def _self_test() -> int:
          _shell_case([{"id": "a", "runners": {"check.sh": ["x"]}}],
                      "REFUSED", starve=True),
          (2, True)),
+        ("the shell refuses a gate naming a non-dev-ci workflow",
+         _shell_case([{"id": "a", "ci": {"workflow": "nightly.yml"}}],
+                     "REFUSED"),
+         (2, True)),
     ]
     bad = 0
     for name, fn, want in cases:
@@ -642,7 +648,7 @@ def _self_test() -> int:
         bad += 0 if ok else 1
         print("  %-48s %s" % (name, "ok" if ok else "FAIL (got %r, want %r)" % (got, want)))
     print("SELF-TEST %s (%d cases, incl. %d shell cases; no repo files touched)"
-          % ("FAILED" if bad else "OK", len(cases), 4))
+          % ("FAILED" if bad else "OK", len(cases), 5))
     return 1 if bad else 0
 
 
