@@ -187,15 +187,62 @@ def self_test() -> int:
     if bad:
         sys.stderr.write("SELF-TEST WRONG:\n" + "\n".join(bad) + "\n")
         return 2
-    print("SELF-TEST OK (%d detector cases + 4 verdict cases, no file read)" % len(CASES))
+    # r188: main()'s shell -- argv and root graded against a tempdir fixture,
+    # the r166..r187 pattern. No git repository needed (the sweep rglobs).
+    # The refusal and finding cases both kill a root-dropping main: the real
+    # tree has scripts/ and is clean, so it returns 0 against want 2 and
+    # want 1 alike.
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+    shell = 0
+    def _shell(files):
+        with _tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            for rel, content in files.items():
+                dst = base / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_text(content, encoding='utf-8')
+            out, err = _io.StringIO(), _io.StringIO()
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                rc = main(argv=[], root=base)
+            return rc, out.getvalue() + err.getvalue()
+    # quote-free shell text: the detector reads the tail POSITION, not the words
+    BUG = 'if s=$(myprog | tail -1); then\n  echo hi\nfi\n'
+    shell += 1
+    rc, text = _shell({'scripts/bad.sh': BUG})
+    needle = "conditions on the status of " + chr(96) + "tail" + chr(96)
+    if rc != 1 or "scripts/bad.sh:1" not in text or needle not in text:
+        print('  x a swallower verdict must be a finding naming file:line (rc=%r text=%r)' % (rc, text[-90:]),
+              file=sys.stderr)
+        return 1
+    shell += 1
+    OKSH = chr(39).join(["if [ -n ", "$a", " ]; then"]) + chr(10) + "  echo hi" + chr(10) + "fi"
+    rc, text = _shell({"scripts/ok.sh": OKSH})
+    if rc != 0 or "(1 shell script(s) read)" not in text:
+        print('  x a clean script must read as clean (rc=%r text=%r)' % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _shell({'README.md': 'no shell scripts'})
+    if rc != 2 or "read no .sh file" not in text:
+        print('  x an empty sweep must refuse rc 2 (rc=%r text=%r)' % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    if bad:
+        sys.stderr.write("SELF-TEST WRONG:" + chr(10) + chr(10).join(bad) + chr(10))
+        return 2
+    print("SELF-TEST OK (%d detector cases + 4 verdict cases + %d shell cases)"
+          % (len(CASES), shell))
+    return 0
     return 0
 
 
-def targets() -> list[Path]:
-    """Every tracked shell script under TARGET_DIRS, sorted."""
+def targets(root=None) -> list[Path]:
+    """Every tracked shell script under TARGET_DIRS, sorted. r188: the sweep
+    root follows the contract root, and so do the reported relative paths."""
+    base_root = ROOT if root is None else Path(root).resolve()
     out: list[Path] = []
     for d in TARGET_DIRS:
-        base = ROOT / d
+        base = base_root / d
         if not base.is_dir():
             continue
         for p in sorted(base.rglob("*.sh")):
@@ -221,13 +268,18 @@ def verdict(scanned: int, findings: int) -> int:
     return 1 if findings else 0
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r188: argv and root parameterized, the r166..r187 contract -- root
+    redirects the sweep AND the reported paths together."""
+    if "--self-test" in ([] if argv is None else argv):
+        return self_test()
     bad: list[str] = []
     scanned = 0
-    for p in targets():
+    base = ROOT if root is None else Path(root).resolve()
+    for p in targets(root):
         scanned += 1
         bad.extend(findings_in(p.read_text(encoding="utf-8", errors="replace"),
-                               p.relative_to(ROOT).as_posix()))
+                               p.relative_to(base).as_posix()))
     if scanned == 0:
         sys.stderr.write(
             "error: read no .sh file under %s, so this run graded nothing and its verdict "
