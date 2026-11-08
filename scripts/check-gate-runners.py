@@ -615,6 +615,15 @@ def _self_test() -> int:
          gate_exit(False, False, False, True), 1),
         ("no finding class is the only zero",
          gate_exit(False, False, False, False), 0),
+        ("an unclaimed step alone fails the gate",
+         gate_exit(False, True, False, False), 1),
+        ("a starved step alone fails the gate",
+         gate_exit(False, False, True, False), 1),
+        ("the exit contract is exhaustive: the want side is the spec, not the function",
+         [gate_exit(u, c, m, d) for u in (False, True) for c in (False, True)
+          for m in (False, True) for d in (False, True)],
+         [1 if (u or c or m or d) else 0 for u in (False, True)
+          for c in (False, True) for m in (False, True) for d in (False, True)]),
         ("the ci axis stays a note",
          duplicate_report("ci", [("s", ["a", "b"])]),
          (False, ["  note: 1 runner label(s) declared by more than one gate (ci axis):",
