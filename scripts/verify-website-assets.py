@@ -91,10 +91,14 @@ def read(path: Path) -> str:
     return io.open(path, encoding="utf-8", errors="replace").read()
 
 
-def find_dynamic_resolvers() -> list[str]:
-    """Return 'file:line' for anything that could resolve an asset at runtime."""
+def find_dynamic_resolvers(src=None) -> list[str]:
+    """Return 'file:line' for anything that could resolve an asset at runtime.
+
+    r172: `src` redirects the walk at a fixture (the r166 parameter); None
+    keeps this repository's own website/src."""
+    src = SRC if src is None else Path(src).resolve()
     hits = []
-    for dirpath, dirnames, filenames in os.walk(SRC):
+    for dirpath, dirnames, filenames in os.walk(src):
         dirnames[:] = [d for d in dirnames if d not in ("node_modules", "dist", ".astro")]
         for fn in filenames:
             if not fn.endswith((".astro", ".ts", ".tsx", ".js", ".jsx", ".mjs")):
@@ -102,14 +106,17 @@ def find_dynamic_resolvers() -> list[str]:
             p = Path(dirpath) / fn
             for i, line in enumerate(read(p).splitlines(), 1):
                 if any(rx.search(line) for rx in DYNAMIC):
-                    hits.append(f"{p.relative_to(ROOT)}:{i}")
+                    hits.append(f"{p.relative_to(src)}:{i}")
     return hits
 
 
-def collect_referenced() -> set[str]:
-    """Filenames imported by literal path anywhere under website/src."""
+def collect_referenced(src=None) -> set[str]:
+    """Filenames imported by literal path anywhere under website/src.
+
+    r172: `src` redirects the walk at a fixture; None keeps this repository's."""
+    src = SRC if src is None else Path(src).resolve()
     refs: set[str] = set()
-    for dirpath, dirnames, filenames in os.walk(SRC):
+    for dirpath, dirnames, filenames in os.walk(src):
         dirnames[:] = [d for d in dirnames if d not in ("node_modules", "dist", ".astro")]
         for fn in filenames:
             if not fn.endswith((".astro", ".ts", ".tsx", ".js", ".jsx", ".mjs")):
@@ -133,24 +140,30 @@ def list_graded(items: list[str]) -> str:
     return ", ".join(items[:-1]) + ", or " + items[-1]
 
 
-def main() -> int:
+def main(argv: list[str] | None = None, root: str | Path | None = None) -> int:
+    """r172: argv and root parameterized, the r166..r171 contract -- root
+    redirects BOTH the asset listing and both reference scans, so a fixture
+    cannot half-run against the real website tree."""
+    root_path = ROOT if root is None else Path(root).resolve()
+    assets = root_path / "website" / "src" / "assets"
+    src_dir = root_path / "website" / "src"
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--max-bytes", type=int, default=100 * 1024,
                     help="size budget per asset (default 102400)")
     ap.add_argument("--allow-raster-svg", default="",
                     help="comma-separated filenames exempt from the base64 check")
     ap.add_argument("--quiet", action="store_true")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
-    if not ASSETS.is_dir():
-        print(f"verify-website-assets: {ASSETS.relative_to(ROOT)} not found", file=sys.stderr)
+    if not assets.is_dir():
+        print(f"verify-website-assets: {assets.relative_to(root_path)} not found", file=sys.stderr)
         return 2
 
     allow = {a.strip() for a in args.allow_raster_svg.split(",") if a.strip()}
     problems: list[str] = []
     notes: list[str] = []
 
-    files = sorted(p for p in ASSETS.iterdir() if p.is_file())
+    files = sorted(p for p in assets.iterdir() if p.is_file())
 
     # 1 + 2: content and size, independent of reference analysis.
     for p in files:
@@ -171,7 +184,7 @@ def main() -> int:
                     "raster out of assets/ deliberately.")
 
     # 3: orphans, but only while the reference style is provably static.
-    dyn = find_dynamic_resolvers()
+    dyn = find_dynamic_resolvers(src_dir)
     orphan_graded = not dyn
     if dyn:
         notes.append(
@@ -179,7 +192,7 @@ def main() -> int:
             f"({'; '.join(dyn[:3])}{' …' if len(dyn) > 3 else ''}) -- a zero filename "
             "grep no longer proves 'unused' here")
     else:
-        refs = collect_referenced()
+        refs = collect_referenced(src_dir)
         for p in files:
             if p.name not in refs:
                 problems.append(
@@ -254,10 +267,63 @@ def self_test() -> int:
     want("three rules use the oxford comma",
          list_graded(["a", "b", "c"]), "a, b, or c")
 
+    # r172: main()'s shell -- argv and root graded against a tempdir fixture,
+    # the r166..r171 pattern. The downgrade case is the checker's most subtle
+    # behavior: a dynamic resolver must DISABLE the orphan rule and say so,
+    # not silently grade a zero-grep as "unused".
+    import contextlib
+    import io as _io
+    import tempfile
+    def _shell(args, files):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "website" / "src" / "assets").mkdir(parents=True)
+            for rel, content in files.items():
+                f = root / rel
+                f.parent.mkdir(parents=True, exist_ok=True)
+                f.write_text(content, encoding="utf-8")
+            out, err = _io.StringIO(), _io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = main(argv=args, root=root)
+            return rc, out.getvalue() + err.getvalue()
+    LOGO = {"website/src/assets/logo.svg": "<svg><path d=\"M0 0\"/></svg>\n",
+            "website/src/page.astro": "import logo from '../assets/logo.svg'\n"}
+    rc, text = _shell([], LOGO)
+    if rc != 0 or "no oversized, raster-in-svg, or orphaned assets" not in text:
+        bad.append("a clean fixture must exit 0 grading all three rules "
+                   "(rc=%d text=%r)" % (rc, text[-160:]))
+    rc, text = _shell([], {**LOGO,
+        "website/src/assets/unused.svg": "<svg/>\n"})
+    if rc != 1 or "ORPHAN" not in text or "unused.svg" not in text:
+        bad.append("an unimported asset must be reported ORPHAN with rc 1 "
+                   "(rc=%d text=%r)" % (rc, text[-160:]))
+    rc, text = _shell(["--max-bytes", "10"], {**LOGO,
+        "website/src/assets/big.png": "x" * 40})
+    if rc != 1 or "OVER BUDGET" not in text:
+        bad.append("an over-budget asset must be reported with rc 1 "
+                   "(rc=%d text=%r)" % (rc, text[-160:]))
+    rc, text = _shell([], {**LOGO,
+        "website/src/assets/bad.svg": "<svg><image href=\"data:image/png;base64,AAAA\"/></svg>\n"})
+    if rc != 1 or "RASTER IN SVG" not in text:
+        bad.append("a base64-bearing svg must be reported with rc 1 "
+                   "(rc=%d text=%r)" % (rc, text[-160:]))
+    rc, text = _shell([], {**LOGO,
+        "website/src/dyn.ts": "const m = import.meta.glob('../assets/*')\n"})
+    if rc != 0 or "orphan check SKIPPED" not in text or "orphans NOT assessed" not in text:
+        bad.append("a dynamic resolver must downgrade the orphan rule, not red the run "
+                   "(rc=%d text=%r)" % (rc, text[-200:]))
+    with tempfile.TemporaryDirectory() as td:
+        out, err = _io.StringIO(), _io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = main(argv=[], root=td)
+        if rc != 2 or "not found" not in (out.getvalue() + err.getvalue()):
+            bad.append("a missing assets dir must exit 2 (rc=%d)" % rc)
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (13 cases, reads the live tree read-only)")
+    print("SELF-TEST OK (%d cases, incl. 6 shell cases; fixtures are tempdirs)"
+          % (13 + 6))
     return 0
 
 
