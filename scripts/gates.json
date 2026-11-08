@@ -603,6 +603,27 @@
       }
     },
     {
+      "id": "register-hygiene",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Register hygiene",
+          "Register hygiene self-test"
+        ]
+      },
+      "label": "Register hygiene (the audit's own record)",
+      "status": "required",
+      "_note": "Added 2026-11-08 (round 154). The round log in docs/records/findings/audit-open-findings.md is the audit's own durable record and its shape was policed by nothing: a malformed heading, a gap in the numbering, or a lost honest-limits paragraph would be invisible. Measured before wiring: 103 entries (rounds 51-153, zero gaps), an em-dash separator through r143 and ' -- ' after (both accepted -- the glyph is style, not an invariant), one dateless 'Round 123, addendum' appendix (exempt by name), and the honest-limits convention has a measured floor at 114 (51, 53-60, 99, 113 predate it; history is recorded, not rewritten). Enforces: heading shape, consecutiveness, non-empty bodies, the limits marker from the floor on, trailing newline.",
+      "runners": {
+        "check.sh": [
+          "register hygiene",
+          "register hygiene self-test"
+        ]
+      },
+      "self_test": "python3 scripts/check-register-hygiene.py --self-test"
+    },
+    {
       "id": "gate-completeness",
       "ci": {
         "workflow": "dev-ci.yml",

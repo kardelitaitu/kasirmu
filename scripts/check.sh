@@ -1302,6 +1302,11 @@ step "sabotage mutator self-test" "python3 scripts/sabotage-selftests.py --self-
 
 step "runner commands" "python3 scripts/verify-runner-commands.py" python3 scripts/verify-runner-commands.py
 step "runner commands self-test" "python3 scripts/verify-runner-commands.py --self-test" python3 scripts/verify-runner-commands.py --self-test
+# The round log is the audit's own durable record; its shape is policed like any
+# other gate. Wired 2026-11-08; entries append per round, so consecutiveness and
+# the honest-limits marker are checked on every run.
+step "register hygiene" "python3 scripts/check-register-hygiene.py" python3 scripts/check-register-hygiene.py
+step "register hygiene self-test" "python3 scripts/check-register-hygiene.py --self-test" python3 scripts/check-register-hygiene.py --self-test
 
 step "self-tests wired" "python3 scripts/verify-selftests-wired.py" python3 scripts/verify-selftests-wired.py
 step "self-tests wired self-test" "python3 scripts/verify-selftests-wired.py --self-test" python3 scripts/verify-selftests-wired.py --self-test
