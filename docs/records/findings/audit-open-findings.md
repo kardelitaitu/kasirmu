@@ -7112,3 +7112,34 @@ gates.json -- a row could in principle have carried a label under different
 spelling that the exact-string walk misses. Docker daemon still down (probed
 this round): the E2E / llvm-cov / nextest-junit receipts remain the standing
 PG-gated gap.
+
+### Round 160 (2026-11-09) -- the duplicate census goes fail-closed; and a shared-index sweep, measured
+
+r159 left the census as visibility and named the gap: nothing prevented a future
+re-claim. The check.sh axis now FAILS CLOSED: duplicate_report(axis, dups) is a
+pure (is_finding, lines) helper -- check.sh duplicates are a finding with exit 1,
+the ci axis stays a note (shared setup repeats across jobs by design) -- and main
+blocks with the core-size-shaped guidance. The r146 hesitation ("known overlaps
+would fail-closed falsely") is dead: r159 audited the batch premise with dates and
+pruned all six, so zero is the measured steady state and any duplicate is a NEW
+ownership ambiguity. Grading: self-test 39 -> 41 (the helper is graded pure: one
+case pins the fail-closed report shape, one pins the ci note), live rc=0 with the
+OK line, and a red-side probe on the working tree -- a duplicate label injected
+into windows-config, cgr live -> exit 1 with the finding block, then restored
+byte-identical (git hash-object equal to HEAD) -- so the exit path is proven both
+ways, not just compiled.
+
+Honest limits: cgr's main() remains unparameterized, so the rc wiring itself is
+exit-proven only by the injection probe, not by a graded case -- the same limit
+r158 closed for the register-hygiene shell, here still open. THE INCIDENT WORTH
+NAMING: the checker edit was committed as 5fe61631b by a CONCURRENT session that
+swept the working-tree copy under its own pathspec -- the section-7.3 hazard
+verbatim. Verified before recording: the commit contains exactly one file,
++40/-5, byte-for-byte the intended change (self-test 41 green against the
+committed tree, subject and content coherent), so no revert is needed; but the
+commit is NOT this session's line, and a sweep that had caught a HALF-finished
+edit would have committed a broken checker silently. The defense the protocol
+already prescribes -- inspect paths immediately before naming them, and read
+git show --stat after every commit -- is what caught this one. Docker daemon
+still down (probed r159): the E2E / llvm-cov / nextest-junit receipts remain
+the standing PG-gated gap.
