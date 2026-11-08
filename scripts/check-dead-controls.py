@@ -156,7 +156,15 @@ def sweep_verdict(scanned, candidates):
     return 1 if candidates else 0
 
 
+_IN_SHELL = False   # r175: main() runs self_test() as a preflight before EVERY
+                    # sweep, and the shell cases below call main(); without this
+                    # guard that pair recurses until the stack dies. The nested
+                    # preflight runs the detector cases only -- exactly what the
+                    # preflight needs.
+
+
 def self_test():
+    global _IN_SHELL
     """Run SELF_TEST_CASES over scan_text; report every failure, not just the first."""
     bad = []
     for name, src, expected in SELF_TEST_CASES:
@@ -171,16 +179,69 @@ def self_test():
         if got != expected:
             bad.append("  verdict(%d file(s), %d candidate(s)): expected %d, got %d"
                        % (scanned, candidates, expected, got))
+    # r175: main()'s shell -- argv and root graded against a tempdir fixture,
+    # the r166..r174 pattern. The design/ exemption and the empty-corpus
+    # refusal are graded THROUGH main, not reimplemented in the cases.
+    import contextlib as _ctxlib
+    import io as _io
+    import tempfile
+    from pathlib import Path
+    if _IN_SHELL:
+        pass   # nested preflight: detector cases above suffice
+    else:
+      def _shell(files):
+        global _IN_SHELL
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for rel, content in files.items():
+                f = root / rel
+                f.parent.mkdir(parents=True, exist_ok=True)
+                f.write_text(content, encoding="utf-8")
+            out, err = _io.StringIO(), _io.StringIO()
+            with _ctxlib.redirect_stdout(out), _ctxlib.redirect_stderr(err):
+                _IN_SHELL = True
+                try:
+                    rc = main(argv=[], root=root)
+                finally:
+                    _IN_SHELL = False
+            return rc, out.getvalue() + err.getvalue()
+      GOOD = "export const A = () => <Button onClick={go()}>ok</Button>\n"
+      rc, text = _shell({"ui/src/features/x/Screen.tsx": GOOD})
+      if rc != 0 or "0 candidate(s)" not in text or "1 file(s) read" not in text:
+        bad.append("a handled button must sweep clean (rc=%d text=%r)" % (rc, text[-120:]))
+      rc, text = _shell({"ui/src/features/x/Screen.tsx":
+                       "export const A = () => <Button>Details</Button>\n"})
+      if rc != 1 or "x/Screen.tsx:1" not in text:
+        bad.append("an inert button must exit 1 naming file:line (rc=%d text=%r)"
+                   % (rc, text[-120:]))
+      rc, text = _shell({"ui/src/features/x/DesignSystem.tsx":
+                       "export const D = () => <Button>show</Button>\n"})
+      if rc != 0 or "0 candidate(s)" not in text:
+        bad.append("a design showcase button must be exempt, not reported (rc=%d text=%r)"
+                   % (rc, text[-120:]))
+      with tempfile.TemporaryDirectory() as td:
+        out, err = _io.StringIO(), _io.StringIO()
+        with _ctxlib.redirect_stdout(out), _ctxlib.redirect_stderr(err):
+            _IN_SHELL = True
+            try:
+                rc = main(argv=[], root=td)
+            finally:
+                _IN_SHELL = False
+        if rc != 2 or "read no .tsx" not in (out.getvalue() + err.getvalue()):
+            bad.append("an empty corpus must refuse with exit 2 (rc=%d)" % rc)
+
     if bad:
         sys.stderr.write("SELF-TEST WRONG:\n" + "\n".join(bad) + "\n")
         return 2
-    print("SELF-TEST OK (%d detector cases + 4 verdict cases, no file read)"
+    print("SELF-TEST OK (%d detector cases + 4 verdict cases + 4 shell cases)"
           % len(SELF_TEST_CASES))
     return 0
 
 
-def main():
-    if "--self-test" in sys.argv[1:]:
+def main(argv=None, root=None):
+    """r175: argv and root parameterized, the r166..r174 contract -- root
+    redirects the sweep, so a fixture cannot half-run against the real ui tree."""
+    if "--self-test" in (sys.argv[1:] if argv is None else argv):
         return self_test()
     # Grade the detector before the tree: a BTN_RE or full_tag regression would make
     # every file report zero and this script would print a clean sweep over a deaf scan.
@@ -189,13 +250,17 @@ def main():
         sys.stderr.write("DETECTOR WENT DEAF: not trusting the tree scan below.\n")
         return rc
 
+    scan_root = SCAN_ROOT if root is None else os.path.join(os.path.abspath(root), "ui", "src", "features")
     inert = []
     scanned = 0
-    for path in iter_sources(SCAN_ROOT):
+    for path in iter_sources(scan_root):
         # Counted BEFORE the noise filter: this number measures the CORPUS, and a tree that
         # holds nothing but design/ showcases is a corpus this gate read, not an empty one.
         scanned += 1
-        rel = os.path.relpath(path, ROOT).replace(os.sep, "/")
+        # rel stays ROOT-relative (fixture root when redirected): the design/
+        # exemption below matches "/design/" IN the rel path, so a features-dir-
+        # relative base would strip the prefix and report showcase buttons.
+        rel = os.path.relpath(path, ROOT if root is None else os.path.abspath(root)).replace(os.sep, "/")
         if "/design/" in rel or rel.endswith("DesignSystem.tsx"):
             continue
         with open(path, encoding="utf-8", errors="replace") as handle:
@@ -206,7 +271,7 @@ def main():
         sys.stderr.write(
             "error: swept %s and read no .tsx source file, so this run graded nothing and "
             "its verdict would be about an empty corpus rather than about the screens. "
-            "The live tree reads 317.\n" % SCAN_ROOT)
+            "The live tree reads 317.\n" % scan_root)
         return 2
     print("dead-controls: %d candidate(s) with no handler, ancestor check not automated "
           "(%d file(s) read)" % (len(inert), scanned))
