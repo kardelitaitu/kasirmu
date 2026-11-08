@@ -6972,3 +6972,33 @@ appendix, or a new entry styled like the pre-floor ones, would need those
 exemptions widened by hand. The checker grades the register at HEAD; it cannot
 prove CI actually ran the new dev-ci steps -- that claim rests on the same
 step-name wiring every other row rests on.
+
+### Round 155 (2026-11-08) -- one job grammar across the two CI gates: drift aligned to the containment gate
+
+check-gate-runners.py parses workflow job IDs case-insensitively; verify-ci-docs-drift.py
+parsed them lowercase-only. The divergence was inert on the current tree (every job
+ID is kebab-case lowercase) but was a loaded trap in the false-positive direction:
+a future job like DeploySite would be visible to the containment gate, invisible to
+drift's workflow extraction (workflow_jobs AND job_coe_from_text -- both sites
+shared the lowercase pattern), and unrecordable in the docs (KUBE_TOKEN and both
+Job Matrix row regexes also rejected capitals) -- so the truthful manifest would
+have failed the dangling ci.job check and the docs could not have satisfied the
+checker by any edit. Aligned 2026-11-08: the two workflow-side extractors now use
+check-gate-runners.py's grammar verbatim, and the three doc-side job-token regexes
+accept capitals and underscores; workflow FILENAMES keep their lowercase .yml
+vocabulary (WORKFLOW_TOKEN unchanged). Proven neutral on the live tree: drift
+self-test grew six cases (caps/underscore job found, doc tokens record them, full
+matrix row keeps its Blocks cell, dotted filename stays invisible) and all pass;
+drift live still reports 0 items; the containment gate is untouched.
+
+Honest limits: neutrality is proven only for the CURRENT tree -- the widened
+regexes extract more from docs in principle, and a doc cell containing a backticked
+capitalized token that is NOT a job ID would now be picked up as one (none exists
+today; measured by the 0-item live run). The alignment is by source-code identity
+of the character class, not by a shared constant: the two gates still carry two
+copies of the grammar, so a future grammar change can rot one side silently -- the
+r75/r76 vocabulary lesson argues for a shared definition no round has yet spent.
+The CircleCI and on:-trigger negative controls still pass, but no case pins the
+underscore-leading edge of the new class, and drift's self-test remains scoped to
+the classifiers it names -- the full scan() is still untested, as its docstring has
+said since it was written.
