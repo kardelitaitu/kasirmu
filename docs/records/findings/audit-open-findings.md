@@ -7900,3 +7900,42 @@ needs a raised whole-crate ceiling, or the generic over-ceiling branch
 returns before the db branch can. Docker daemon still down (probed r159):
 the E2E / llvm-cov / nextest-junit receipts remain the standing PG-gated
 gap.
+
+### Round 182 (2026-11-09) -- doc-uniqueness joins the arc; the tracked-file list becomes evidence, and a swallowed refusal is the round's defect
+
+The r166..r181 contract applied to the duplicate-authority gate. The new
+evidence source is not a file but a COMMAND: tracked_files() runs git
+ls-files, and root now redirects its cwd together with every document read.
+The self-test's ROOT-rebinding idiom -- the pre-arc way of pointing the
+checker at a fixture -- is retired; root threads through scan() to
+tracked_files() explicitly, so no module global is mutated by any test.
+
+Four shell cases: two claiming duplicates rc 1 naming CONFLICTING AUTHORITY,
+a disclaiming copy rc 0, identical duplicates rc 1, and a root that is not a
+git repository refusing with the ls-files message. The fixture is its own
+git repository (git init + add; ls-files reads the index, so no commit is
+needed).
+
+The round's defect, found by the case failing rather than by reading: my
+first non-repo case coerced SystemExit's code with "isinstance(se.code,
+int) else 1" -- which THREW AWAY the refusal message (in-process SystemExit
+does not print; the string lives in se.code) and graded the coercion's int 1
+against a refusal assertion. A test that flattens a checker's discriminating
+message before asserting on it tests its own flattening, not the checker.
+The refusal is now asserted as the string it is.
+
+Measured kill: tracked_files rebound to ignore its root and list the real
+repository -- the conflicting-authority case dies first (real tree clean, rc
+0 vs want 1) and the non-repo refusal dies with it (the real repo answers,
+so nothing is refused).
+
+Honest limits: the identical-duplicate and disclaimer paths are graded by
+one shell case each with no multi-archive combinations; the ARCHIVE_PREFIXES
+exemption pairing (archived + live both claiming) is graded nowhere through
+main -- its comment records the 2026-10-02 widening but no case exercises
+the second branch. The BASELINE remains empty, so the baselined-report arm
+is dead code by design and tested nowhere. Docker daemon still down (probed
+r159): the E2E / llvm-cov / nextest-junit receipts remain the standing
+PG-gated gap. The root-policy gate remains RED on the foreign todo.md
+(r174), and verify-core-size remains RED on the ADR-59 +64 (r181), both
+awaiting their owning lanes.
