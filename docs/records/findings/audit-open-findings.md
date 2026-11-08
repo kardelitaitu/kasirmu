@@ -5720,3 +5720,32 @@ the Windows profile supplies them and needs nothing. Committed: 082f348f8 (the
 addendum above). Honest limits: unchanged — llvm-cov report, nextest junit receipt,
 and all docker-dependent legs remain unverified this session; this round changed no
 production file, so its value is the census completion, not a repair.
+
+### Round 119 (2026-11-08) — the differential that fired on my own scratch, hardened
+
+The r117 false red (this session's .agents/nextest-run.sh tripping
+verify-shell-syntax.py's git-vs-no-git scope differential) was traced to design, not
+to a one-off: the checker's own comment (:330-331) calls an untracked-probe
+divergence "a reason that is not a scope bug" and dodges it for target/ by probe
+placement — but .agents/ scratch is untracked and only PARTLY gitignored, so
+placement cannot dodge it. Measured before editing: .agents holds 144 TRACKED files
+(3 of them .sh), so the VENDORED-name fix that worked for scratch/ was WRONG here —
+it would make the no-git fallback skip real files on a git-less checkout, the exact
+degradation the VENDORED comment forbids. The fix lands in the differential itself:
+file SETS instead of counts; MISSING (fallback skips a tracked file) stays a hard
+failure; EXTRA (fallback lists a file the git path does not) is untracked debris BY
+CONSTRUCTION of the git path (it is "every tracked shell file") and becomes a printed
+note, keeping visibility, dropping the false red. A new case pins the r117 event:
+an untracked .sh planted under .agents/ must appear as an extra, never as missing,
+and must leave the self-test green — the middle assertion also pins that .agents
+must NOT enter VENDORED. Proven by mutation (the repo's own discipline): adding
+".agents" to VENDORED turns the self-test red with all three tracked files named
+(.agents/scripts/verify-lane.sh, .agents/skills/skill-drift-guard/scripts/detect.sh,
+run-tests.sh); reverted byte-identical, green again.
+
+Verification: self-test OK (15 cases, was 14), full checker OK (63 entry points
+parse), selftest-sweep OK (100 self-tests, 102 checkers), probe removed in finally,
+other agents' untracked scratch untouched. Honest limits: the extras note prints to
+stderr, so a reader who silences stderr loses the visibility the downgrade bought —
+the alternative (failing) was the measured false positive; the differential still
+cannot run where git is absent (fallback_count None), unchanged.
