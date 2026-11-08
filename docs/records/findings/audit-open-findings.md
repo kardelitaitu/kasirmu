@@ -7792,3 +7792,33 @@ latent until a doc names a multi-word command, and that holds. Docker daemon
 still down (probed r159): the E2E / llvm-cov / nextest-junit receipts remain
 the standing PG-gated gap. The root-policy gate remains RED on the foreign
 todo.md (r174).
+
+### Round 179 (2026-11-09) -- merged-lines joins the shell arc; a miscounted OK line is the round's small defect
+
+The r166..r178 contract applied to the two-statements-on-one-line detector.
+main(argv, root) with root redirecting the sweep base AND the reported
+relative paths together. Three shell cases through main's exit mapping: a
+merged line rc 1 naming file:line, a clean fixture rc 0, a missing ui/src
+REFUSED rc 2. The scan_source matcher keeps its seven pre-existing cases.
+
+The round's defect is small and worth recording because it is a reporting
+defect, not a grading one: my first OK line printed "len(cases) + 1" --
+a guess at the shell count that undercounted three cases as one. A summary
+line that invents its number is the same trust failure as a gate that
+invents its verdict, just quieter. The count now comes from a counter the
+shell cases increment themselves.
+
+Measured kill: main rebound to drop its root (sweep the real repository) --
+the merged-line case dies (rc 0, the real tree is clean) and the REFUSED
+case dies with it (the mutant grades the real tree, which HAS a ui/src, so
+nothing is refused). Two arms killed by one mutant.
+
+Honest limits: the SKIP_DIRS pruning and the .ts/.tsx suffix filter are
+graded only implicitly (a fixture under ui/src/x/ passes through them);
+a fixture with a node_modules directory proving the pruning through MAIN is
+absent -- scan_source-level coverage does not reach the walk. The 40-finding
+truncation arm ("... and N more") is untested. The history this gate records
+(three real merges, e51512cf4 and 3e352058b) is unchanged and still true.
+Docker daemon still down (probed r159): the E2E / llvm-cov / nextest-junit
+receipts remain the standing PG-gated gap. The root-policy gate remains RED
+on the foreign todo.md (r174).
