@@ -5954,3 +5954,25 @@ the same blocker as E2E, now stated in the right place. The remaining crates of 
 --workspace coverage run never executed (cargo stops at the first failing crate);
 their receipts would need the same live PG or a feature-off run that the CI-matching
 flags forbid.
+
+### Round 127 (2026-11-08) — the UI coverage lane, first receipt of the family
+
+The coverage family's other half needed no Docker and no PG: bash scripts/coverage.sh
+ui runs vitest --coverage over the full ui suite and wrote coverage/ui/index.html +
+lcov.info + coverage-final.json in 188 seconds. Headline (summed from the lcov
+records, not quoted from a percentage anyone wrote): 698 instrumented files, 29,770
+of 33,934 lines covered — 87.7% line coverage at tip. coverage/ is gitignored
+(verified with check-ignore), so the receipt is local by design and the tree stays
+clean.
+
+This closes the UI half of a receipt line that has read "unverified" since r117 and
+now reads: ui DONE (this round), rust requires a live Postgres (r126, R17 fail-loud,
+stated in the script's Requirements block). The vitest suite itself passed inside
+the coverage run — the same tests that were green in r115's dedicated unit-lane
+round, now re-proven under instrumentation.
+
+Honest limits: 87.7% is a LINE number over the instrumented set (698 files — the
+coverage tool's file set, not a hand-listed inventory); branch and function numbers
+live in the HTML report and were not summarized here. The rust half stays blocked on
+Docker+PG. No file changed in the repo this round; the product is the receipt and
+the corrected honest-limits line.
