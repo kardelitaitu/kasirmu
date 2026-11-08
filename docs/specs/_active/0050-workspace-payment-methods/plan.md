@@ -4,7 +4,7 @@
 
 Accept as the spec of record for the payment-methods programme the shape that
 actually shipped, and keep the four safety rules from
-[`../../plans/_active/payment-methods-plan.md`](../../plans/_active/payment-methods-plan.md)
+[`../../plans/_done/done-payment-methods-plan.md`](../../plans/_done/done-payment-methods-plan.md)
 §1.2 as its contract.
 
 The programme ran in three phases and each one changed what the previous phase

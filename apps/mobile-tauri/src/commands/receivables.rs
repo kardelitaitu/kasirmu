@@ -1,5 +1,5 @@
 //! Tauri commands for Accounts Receivable (Piutang / Jual Tempo / Kasbon — Phase 3 of
-//! `docs/plans/_active/payment-methods-plan.md`) — tablet shell twin.
+//! `docs/plans/_done/done-payment-methods-plan.md`) — tablet shell twin.
 
 pub use kasirmu_bridge::receivables::{
     CreateReceivableArgs, CustomerReceivablesSummaryDto, MoneyDto, ReceivableDto,

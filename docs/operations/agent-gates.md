@@ -1294,7 +1294,7 @@ the drift guard re-run: `1 differing lines` before, `ok` after, with the table c
 129 so only the comment moved.
 
 **And the same staleness had spread to the plan that spawned it.**
-`docs/plans/_active/payment-methods-plan.md` §1.3 still sketches `qris = false` / `ewallet = false`
+`docs/plans/_done/done-payment-methods-plan.md` §1.3 still sketches `qris = false` / `ewallet = false`
 against a `settings` blob that was superseded by a `local_payment_methods` table keyed by
 `(scope_type, rail_code, is_enabled, parameters)`. Its §1.4 "Midtrans (Phase 2)" now describes
 work that has largely shipped. Both got a dated note at the point of confusion rather than a

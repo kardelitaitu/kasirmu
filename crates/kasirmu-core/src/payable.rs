@@ -2,7 +2,7 @@
 //!
 //! A [`Payable`](crate::payable::Payable) is money the store owes a supplier for stock received but
 //! not yet paid — the "add product, haven't paid yet" flow (Phase 4 of
-//! `docs/plans/_active/payment-methods-plan.md` §2b). It mirrors the planned
+//! `docs/plans/_done/done-payment-methods-plan.md` §2b). It mirrors the planned
 //! receivables (AR) shape so both sides share one settlement pattern.
 //!
 //! [`PayableStatus`](crate::payable::PayableStatus) is the single source of truth for the `payables.status`

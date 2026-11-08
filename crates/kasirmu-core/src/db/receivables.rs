@@ -1,5 +1,5 @@
 //! Accounts Receivable (Piutang / Jual Tempo / Kasbon) repository — the persistence
-//! behind customer debts and deferred payments (Phase 3 of `docs/plans/_active/payment-methods-plan.md`).
+//! behind customer debts and deferred payments (Phase 3 of `docs/plans/_done/done-payment-methods-plan.md`).
 //!
 //! Owns the `receivables` and `receivable_payments` tables. Every read/write is
 //! tenant-scoped (`WHERE tenant_id = ?`). The repository enforces DATA

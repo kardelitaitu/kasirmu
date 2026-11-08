@@ -1,6 +1,6 @@
 //! Accounts Payable (Hutang) repository — the persistence behind the
 //! "received stock, not yet paid the supplier" ledger (Phase 4 of
-//! `docs/plans/_active/payment-methods-plan.md`).
+//! `docs/plans/_done/done-payment-methods-plan.md`).
 //!
 //! Owns the `payables` and `payable_payments` tables. Every read/write is
 //! tenant-scoped (`WHERE tenant_id = ?`). The repository enforces DATA

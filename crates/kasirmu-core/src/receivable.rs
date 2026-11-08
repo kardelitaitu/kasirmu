@@ -2,7 +2,7 @@
 //!
 //! A [`Receivable`](crate::receivable::Receivable) represents debt owed by a customer to the store
 //! for goods or services delivered but not yet paid — the "sell now, pay
-//! later" (Kasbon / Jual Tempo) flow (Phase 3 of `docs/plans/_active/payment-methods-plan.md` §1.5 & §2c).
+//! later" (Kasbon / Jual Tempo) flow (Phase 3 of `docs/plans/_done/done-payment-methods-plan.md` §1.5 & §2c).
 //! It mirrors the [`Payable`](crate::payable::Payable) (AP) shape so both sides share one
 //! settlement pattern.
 //!
