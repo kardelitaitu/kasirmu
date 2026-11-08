@@ -6552,3 +6552,53 @@ proved byte-identical (nothing to commit). The top-level key is validated by
 completeness alone: no other gates.json parser rejects unknown top-level keys
 (probed), GATE_FIELDS -- the per-gate vocabulary -- is unaffected, and any second
 reader should re-read the manifest rather than trust the key blindly.
+
+### Round 144 (2026-11-08) -- the runner label/step triangle's last loose direction measured and made visible
+
+r143 closed the exactness axis in verify-gate-completeness.py; the triangle's remaining
+loose direction was check-gate-runners.py's decorator-prefix acceptance ("accepts a
+prefix because some steps are spelled with a decorator"). Measured before touching
+(target/probe-prefix-only.py): of 223 unique declared check.sh labels, 215 resolve
+exactly, 3 ONLY by decorator prefix, and 5 run as inline blocks (downgraded by the
+checker's inline note). The three: "no-raw-params" -> "no-raw-params (ADR #7 Phase 4)"
+-- a true decorator -- and "feature registry" -> "feature registry parity"
+and "windows config" -> "windows config drift", which are NOT decorators at all but
+the matcher's own documented word-boundary ambiguity (a space is both a decorator
+separator and a word boundary), visible for the first time. Each exact spelling is
+already declared by a local-matrix row, so the loose needles are redundant -- but
+deleting them is a roster decision, not taken by stealth here.
+
+The improvement (a7df8031b), in the checker only. (1) SH_STEP_RE is line-anchored to
+the same shape as verify-gate-completeness.py's STEP_RE: one canonical extraction of
+what a step IS. The unanchored form matched `step "..."` anywhere, so a COMMENT
+mentioning a step name would have counted as a step and let a stale needle resolve
+against a phantom -- measured 2026-11-08 both forms yield identical 226-match sets on
+the live tree, so the fix starts green and closes a shape that has not happened yet.
+(2) prefix_resolutions(): the prefix population is printed on every run with its
+resolution kind (decorated vs space-ambiguous), turning the matcher docstring's
+"prompt to read the two lists" into a measured census. (3) The stale "other 141 steps"
+figure in the KNOWN FALSE POSITIVE section is date-stamped (226 step lines,
+2026-11-08).
+
+Self-test grew 10 -> 15 cases, and the first run FAILED against my own helper: the
+canonical decorated spelling carries a space before the paren, so a lab+"(" test
+missed it -- the case caught the bug before any commit, and the census now measures
+1 decorated / 2 space-ambiguous. A three-mutation probe (un-anchor the extractor,
+empty the census, collapse the decorated kind) killed all three. Receipts:
+check-gate-runners live RC=0 with the census printed; completeness live unchanged
+OK; drift 0 items; wired census unchanged at 103 of 105.
+
+Honest limits: the census is visibility, not enforcement -- a word-boundary
+false-resolve ("feature registry" -> "feature registry parity") still resolves green,
+because the decorator rule exists for real decorators and tightening it means
+deleting two loose needles, which would empty two rows' check.sh runner lists --
+whether load_gates accepts a runnerless gate is unmeasured, so the tightening is
+recorded as a candidate, not done. The comment-phantom shape is closed by
+construction but had zero live instances; its value is that it cannot happen, not
+that it did. Docker daemon still down (probed r136): the E2E / llvm-cov /
+nextest-junit receipts remain the standing PG-gated gap. One tooling lesson recorded
+mid-round: a JS String.replace whose replacement text contains `$'` expands to the
+rest of the file -- the first patch attempt corrupted its own in-memory buffer and
+was caught by the occurrence-count assertion before any write; the fix is the
+replacement-function form. The alliance (132 cases) grades the wired gate; the census
+line itself is graded only by this checker's own self-test.
