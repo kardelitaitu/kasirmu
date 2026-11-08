@@ -149,6 +149,32 @@
 - Audited all 57 command modules in `apps/mobile-tauri/src/commands/` verifying identical domain interfaces delegating to `kasirmu-bridge` and `kasirmu-core`.
 - Cross-toolchain preflight verified via `scripts/android-preflight.sh` and wireless adb daemon operational.
 
+### 11. Replay-Fork Test Modernization & In-Process Verdicts — ✅
+- Parameterized `main(argv, root)` in `scripts/check-replay-fork.py` to prevent argument leakage from test runners.
+- Expanded `scripts/test-replay-fork.py` with in-process approval, definition check, and refusal tests (15/15 passed).
+- Committed `b2d50d120`.
+
+### 12. Playwright Upgrade Trigger Flow E2E Spec — ✅
+- Added `ui/src/dev-mock/handlers/sales.ts` seam for `window.__MOCK_SALES_CAPPED`.
+- Implemented `ui/e2e/e2e-upgrade-trigger-flow.spec.ts` covering the full Free-tier 3-month sales history cap workflow:
+  - Capped response triggers blurred `.sales-history-cap-teaser` with localized text.
+  - Clicking Upgrade CTA button asserts navigation intent targeting `/#plus`.
+  - Uncapped state cleanly hides the teaser.
+- Verified: `npm run typecheck` (0 errors), `npm run lint` (0 errors).
+- Committed `2252d8150`.
+
+### 13. July 31 Improvement Plan Archival (`done-plan-todo.md`) — ✅
+- Ran acceptance runbook for July 31 plan:
+  - Core Subscription Engine: `cargo test -p kasirmu-core subscription::` (138/138 passed).
+  - License Server: `go test ./...` (PASS ok, 21.8s).
+  - UI Typecheck & Lint: `npm run typecheck && npm run lint` (0 errors).
+  - Parity & Dedupe: `verify-bundle-parity.py` (0 missing), `dedupe-ftl.py` (0 duplicates).
+  - Debt Markers: `verify-debt-markers.py` (0 unresolvable debt IDs).
+  - Docs Portal: `mdbook build docs` (HTML book written).
+- Moved `docs/plans/_active/todo.md` to `docs/plans/_done/done-plan-todo.md` with earned `done-` header per `AGENTS.md` §7.4.
+- Updated all cross-references across ADRs and docs.
+- Committed `95675e0f4` and `43c0432a9`.
+
 ---
 
 ## Reference — Gate Commands Cheatsheet
