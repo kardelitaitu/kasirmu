@@ -60,32 +60,12 @@
 
 ---
 
-## Day 6–7 · Website Carousel — §7.0 Mount-Box Decision
+## ~~Day 6–7 · Website Carousel — §7.0 Mount-Box Decision~~ ✅ RESOLVED 2026-11-09
 
-**Verified state:**
-- `website_carousel.md` is blocked on **two things**: (1) the §7.0 mount-box viewport decision, (2) the video assets themselves.
-- **Blocker (1) can be resolved now** — it is a design choice, not a hardware wait.
-- The carousel component migrated from `HeroCarousel.tsx` (React island, retired) to
-  `HeroCarousel.astro` + `website/src/lib/hero-carousel.ts` (128 lines).
-- The slide markup is now in an Astro component, not a React island — the §7 integration
-  approach in the plan must account for this.
-
-### §7.0 — the three options (read `website_carousel.md §7.0` for full context)
-
-The video mounts inside `SlideWindow`'s `content` slot. The box is **~1280×693 px**, not 1280×720.
-
-| | Option | Description |
-|---|---|---|
-| **A** | Encode at 1280×693 | Pixel-perfect fit; non-standard aspect ratio, slightly unusual encoder flags |
-| **B** | Encode at 1280×720, let CSS crop | No re-capture if the box changes slightly; wastes ~4% of pixels |
-| **C** | Replace `SlideWindow` chrome | Most invasive; removes the chrome bar entirely for slide pages |
-
-- [ ] Read `mockups/SlideWindow.tsx:6-10` and `HeroCarousel.astro:92` — confirm current box dimensions.
-- [ ] Pick A, B, or C and record the ruling in `website_carousel.md §7.0`.
-- [ ] Update the plan's status block to unblock blocker (1).
-- [ ] Commit: `git commit -m "docs(plans): record §7.0 mount-box ruling in website_carousel plan" -- docs/plans/_active/website_carousel.md`
-- [ ] **Blocker (2) — video assets**: these require owner-supplied footage. Confirm whether a placeholder
-  or synthetic clip is acceptable to unblock §6 (encode) and §7 (integrate) testing.
+**Decision & Execution:**
+- **Adopted Option B (`object-fit: cover`):** Standard 16:9 recordings (`1280×720` desktop, `960×540` mobile), framed with ~15px safe margin clear of critical UI at top and bottom. The video element mounts inside `<SlideWindow>`'s content slot with `class="h-full w-full object-cover"`.
+- Updated `docs/plans/_active/website_carousel.md`: status block and §7.0 updated to mark Blocker 1 fully resolved.
+- Only Blocker 2 (owner-supplied 10s video clips) remains pending when assets arrive.
 
 ---
 
