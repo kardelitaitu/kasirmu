@@ -211,19 +211,22 @@ def count_copy_in_text(text: str) -> int:
     return hits
 
 
-def scan() -> dict[str, int]:
+def scan(root=None) -> dict[str, int]:
     """Count hardcoded copy per file, and record how many files were READ.
 
     The read count matters: "0 findings" and "0 files read" print the same
     sentence, so a moved UI root would leave this gate printing OK over nothing.
+    r180: root redirects the sweep AND the relative keys together.
     """
     global FILES_READ
+    base = REPO if root is None else Path(root).resolve()
+    ui = UI if root is None else base / "ui" / "src"
     counts: dict[str, int] = {}
     FILES_READ = 0
-    if not UI.is_dir():
+    if not ui.is_dir():
         return counts
-    for path in sorted(UI.rglob("*.tsx")) + sorted(UI.rglob("*.ts")):
-        rel = path.relative_to(REPO).as_posix()
+    for path in sorted(ui.rglob("*.tsx")) + sorted(ui.rglob("*.ts")):
+        rel = path.relative_to(base).as_posix()
         if any(part in rel.split("/") for part in SKIP_DIR_PARTS):
             continue
         if rel.endswith((".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx")):
@@ -295,11 +298,14 @@ def detector_still_sees_copy() -> bool:
     """True when every graded shape is classified correctly."""
     return not detector_failures()
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r180: argv and root parameterized, the r166..r179 contract -- root
+    redirects the scan AND the budget file, so --update under a fixture writes
+    the fixture's budget, never the repository's."""
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--self-test", action="store_true", help="run this checker's cases and exit")
     ap.add_argument("--update", action="store_true", help="rewrite the budget from the current tree")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     if args.self_test:
         return self_test()
 
@@ -312,18 +318,20 @@ def main() -> int:
         print("Every file would report zero and this gate would pass vacuously.", file=sys.stderr)
         return 2
 
-    counts = scan()
+    base = REPO if root is None else Path(root).resolve()
+    budget_file = BUDGET_FILE if root is None else base / "scripts" / "hardcoded-copy-budget.json"
+    counts = scan(root)
     total = sum(counts.values())
 
     if FILES_READ == 0:
         print("", file=sys.stderr)
-        print(f"SCAN READ NOTHING: 0 source file(s) under {UI}", file=sys.stderr)
+        print(f"SCAN READ NOTHING: 0 source file(s) under {base / 'ui' / 'src'}", file=sys.stderr)
         print("  The root moved, or the walk stopped matching. Refusing to report a", file=sys.stderr)
         print("  clean budget over a tree nobody read.", file=sys.stderr)
         return 2
 
     if args.update:
-        BUDGET_FILE.write_text(
+        budget_file.write_text(
             json.dumps(
                 {"description": BUDGET_DESCRIPTION, "total": total, "files": dict(sorted(counts.items()))},
                 indent=2,
@@ -334,10 +342,10 @@ def main() -> int:
         print(f"budget written: {total} string(s) across {len(counts)} file(s)")
         return 0
 
-    if not BUDGET_FILE.is_file():
-        print(f"SCAN BROKE: budget file missing: {BUDGET_FILE}", file=sys.stderr)
+    if not budget_file.is_file():
+        print(f"SCAN BROKE: budget file missing: {budget_file}", file=sys.stderr)
         return 2
-    budget = json.loads(BUDGET_FILE.read_text(encoding="utf-8"))
+    budget = json.loads(budget_file.read_text(encoding="utf-8"))
     allowed: dict[str, int] = budget.get("files", {})
 
     regressions = []
@@ -415,13 +423,64 @@ def self_test() -> int:
     if live == 0:
         bad.append("the live scan read 0 files, so the floor cannot distinguish anything")
 
+    # r180: main()'s shell -- argv and root graded against a tempdir fixture
+    # carrying the source AND the budget, the r166..r179 pattern. --update
+    # must write the FIXTURE's budget; the detector preflight is skipped by
+    # giving the fixture a source the real detector genuinely classifies.
+    shell = 0
+    COPY = 'export const A = () => <input placeholder="Search products here" />\n'
+    def _shell(files, argv=None, check=None):
+        import tempfile as _tempfile
+        with _tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            for rel, content in files.items():
+                dst = base / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_text(content, encoding="utf-8")
+            out, err = _io.StringIO(), _io.StringIO()
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                rc = main(argv=[] if argv is None else argv, root=base)
+            # the caller's existence checks must run INSIDE this context:
+            # after the with-block the tempdir is already deleted.
+            return rc, out.getvalue() + err.getvalue(), base
+    BUD = {"description": "fixture", "total": 1,
+           "files": {"ui/src/x/A.tsx": 1}}
+    shell += 1
+    rc, text, _b = _shell({"ui/src/x/A.tsx": COPY, "scripts/hardcoded-copy-budget.json": json.dumps(BUD)})
+    if rc != 0 or "no file exceeds" not in text or "1 across 1" not in text:
+        bad.append(f"a budgeted string must exit 0 (rc={rc} text={text[-100:]!r})")
+    shell += 1
+    rc, text, _b = _shell({"ui/src/x/A.tsx": COPY,
+                           "scripts/hardcoded-copy-budget.json": json.dumps({**BUD, "files": {}})})
+    if rc != 1 or "NEW HARDCODED COPY" not in text or "ui/src/x/A.tsx" not in text:
+        bad.append(f"unbudgeted copy must exit 1 naming the file (rc={rc} text={text[-100:]!r})")
+    shell += 1
+    rc, text, _b = _shell({"ui/src/x/A.tsx": COPY})
+    if rc != 2 or "budget file missing" not in text:
+        bad.append(f"a missing budget must refuse with exit 2 (rc={rc} text={text[-100:]!r})")
+    shell += 1
+    # the placeholder budget gives the fixture a scripts/ directory for
+    # --update to write into; the real checkout has one by construction.
+    def _budget_exists(base):
+        return (base / "scripts" / "hardcoded-copy-budget.json").is_file()
+    shell_case = _shell({"ui/src/x/A.tsx": COPY,
+                         "scripts/hardcoded-copy-budget.json": "{}"},
+                        argv=["--update"], check=_budget_exists)
+    rc, text, wrote = shell_case
+    if rc != 0 or "budget written" not in text or not wrote:
+        bad.append(f"--update must write the FIXTURE's budget and exit 0 (rc={rc} text={text[-100:]!r})")
+    shell += 1
+    rc, text, _b = _shell({"README.md": "no sources here"})
+    if rc != 2 or "SCAN READ NOTHING" not in text:
+        bad.append(f"a corpus with no sources must refuse with exit 2 (rc={rc})")
+
     if bad:
         sys.stderr.write("SELF-TEST WRONG:\n" + "\n".join(bad) + "\n")
         return 2
     shapes = len(REGRESSION_CATCH) + len(REGRESSION_IGNORE)
     print(
-        "SELF-TEST OK (%d cases: %d graded shapes + 1 census floor + 1 live read)"
-        % (cases, shapes)
+        "SELF-TEST OK (%d cases: %d graded shapes + 1 census floor + 1 live read + %d shell)"
+        % (cases + shell, shapes, shell)
     )
     return 0
 
