@@ -5654,3 +5654,40 @@ gates.json's gate-completeness entry; the numbers are consistent under that poli
 The website-assets self-test itself was not RUN this round (claiming it in the
 roster makes it visible to drift analysis; running it is the runner's job and it is
 scheduled inside the full matrix).
+
+### Round 117 (2026-11-08) — every static gate live: the census finds one real ratchet red
+
+The r116 lesson (a checker red at HEAD that nobody had run live) was generalized:
+ALL 44 verify-*.py checkers were executed in one batch, live, on this checkout.
+Result: 41 green, 2 red for real reasons, 1 spurious.
+
+REAL: (1) verify-core-size.py — kasirmu-core measured 40809 against the 40805
+ceiling, split db 27670 (+0, at its ceiling exactly) + non-db 13139 (+4). Attributed
+with numstat against the baseline-setting commit 6035d629: ONE contributing file,
+migrations.rs +7 raw — the registry entry for 20261107_payments_gift_card_method.sql
+(1778d92f2, the payments.method CHECK widening that unblocked the gift-card tender);
+3 of the 7 are masked comments, netting the measured +4, and those 4 are the
+irreducible Migration { id: sql: }, registry pattern. ba3a6df7f raises both the
+whole-crate ceiling (40805->40809) and non_db_ceiling (13135->13139) with the full
+attribution appended to the baseline's history, including a structural note for
+ADR-67: every NEW migration costs exactly +4 on the non-db budget by construction,
+so a future drift signal should be read net of the migration count. (2)
+verify-shell-syntax.py --self-test — the git-vs-no-git scope differential failed:
+git sees 63 shell files, the fallback walk sees 64. The 64th was MY OWN r114 scratch
+(.agents/nextest-run.sh, untracked and NOT gitignored — .agents is only partly
+ignored). The fallback cannot consult gitignore by design ("safety net, not a second
+scope"), so the differential screamed exactly as built; the scratch was redundant
+after 5e5702aad (check.sh derives the MSVC env itself) and was removed — no code
+change, differential restored to 63=63, self-test green, and the 100-checker
+selftest-sweep back to OK.
+
+SPURIOUS/ENVIRONMENTAL: verify-commit-subjects.py requires --range (its step
+invocation passes origin/main..HEAD; bare invocation is usage rc=1 — with the range
+it is green); verify-coverage-floors.py needs the cargo llvm-cov report and
+verify-pg-tests-ran.py needs the nextest junit receipt — both build-heavy,
+environmentally out of window here (Docker down; the r114 slices covered the tests
+themselves).
+
+Honest limits: the llvm-cov and junit receipts remain unverified this session; the
+batch proves the static-gate family (41 of 44 green at HEAD after this round's two
+fixes, the other two receipt-blocked) but not the compile/test/docker legs.
