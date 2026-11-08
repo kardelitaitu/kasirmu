@@ -8111,3 +8111,43 @@ passthrough of main is graded only implicitly. Docker daemon still down
 standing PG-gated gap. The root-policy gate remains RED on the foreign
 todo.md (r174) and verify-core-size RED on the ADR-59 +64 (r181), both
 awaiting their owning lanes.
+
+### Round 187 (2026-11-09) -- ftl-attrs joins the arc; the cheapest fixture in the arc, and a kill that needed no fixture name at all
+
+The r166..r186 contract applied to the Fluent-attribute gate. load_en()
+takes the bundle directory, scan_tree() anchors its reported relative paths
+at the same base it scans, and main(argv, root) derives both inputs from
+one root -- the pair-redirect of r184, applied to (locales, scan tree)
+instead of (summary, floors).
+
+Four shell cases: an undefined attribute rc 1 naming file:line and message,
+a defined attribute rc 0, a missing bundle directory REFUSED rc 2, and the
+unresolvable-id case -- an id built from a JS variable is COUNTED in the
+summary ("1 attr site(s) unresolvable") while the run stays rc 0, graded
+through main after living only in the string cases.
+
+This fixture is the arc's cheapest: no git repository at all. Every
+previous shell fixture paid git init + add because its gate reads the
+index via ls-files; this one rglobs the tree, so a plain TemporaryDirectory
+with two written files is the whole fixture. The refusal case doubles as
+the redirect kill: a main that ignored root would find the REAL shared-ui/
+locales and ui/src (both exist) and return 0 where the fixture demands 2 --
+and the finding case kills the same mutant from the other side (the real
+tree is clean, rc 0 against want 1). No fixture-name discipline was even
+needed: the real tree contains no ui/src/App.tsx with a bare k-bare
+message, so the mutant's verdict differs on content alone.
+
+Editorial continuity from r185: the first draft again printed its OK line
+before the shell cases could fail; caught this time before the first run
+and fixed the same way -- the summary prints only after every case has had
+its chance to fail.
+
+Honest limits: the resolver's coverage stops at string literals and
+ternary/|| branches (the docstring's declared shape); object-keyed ids and
+attribute requests spread across multiline tags with > inside are invisible.
+The .id.ftl exclusion and the missing-key pass-through (verify-bundle-
+parity's class) are graded nowhere through main. Docker daemon still down
+(probed r159): the E2E / llvm-cov / nextest-junit receipts remain the
+standing PG-gated gap. The root-policy gate remains RED on the foreign
+todo.md (r174) and verify-core-size RED on the ADR-59 +64 (r181), both
+awaiting their owning lanes.
