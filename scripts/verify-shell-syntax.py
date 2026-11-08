@@ -291,32 +291,91 @@ def self_test() -> int:
     """
     bad: list[str] = []
 
-    # BOTH SCOPE PATHS MUST AGREE, and this is here because of what happened on
-    # 2026-09-29: the no-git fallback went unexercised for its whole life and held two
-    # bugs -- an undefined VENDORED that raised NameError, and a startswith(".git")
-    # filter that swallowed all four git hooks, so it found 56 where the git path found
-    # 60. Both surfaced only by forcing the branch with a throwaway probe, and deleting
-    # that probe put the branch back to unexercised. So the branch is exercised HERE, on
-    # every run, as a DIFFERENTIAL: force the fallback and assert it returns exactly what
-    # the git path returns. A divergence between the two is the signature of a scope
-    # bug, and this is the only check in the file able to see one.
+    # BOTH SCOPE PATHS MUST AGREE ON TRACKED FILES, and this is here because of what
+    # happened on 2026-09-29: the no-git fallback went unexercised for its whole life
+    # and held two bugs -- an undefined VENDORED that raised NameError, and a
+    # startswith(".git") filter that swallowed all four git hooks, so it found 56 where
+    # the git path found 60. Both surfaced only by forcing the branch with a throwaway
+    # probe, and deleting that probe put the branch back to unexercised. So the branch
+    # is exercised HERE, on every run, as a DIFFERENTIAL against the FULL FILE SETS,
+    # not just the counts.
+    #
+    # The asymmetry below is measured semantics, not a softening, and both halves were
+    # earned in the field:
+    #
+    #   * MISSING (the fallback skips a file the git path checks) is ALWAYS a failure:
+    #     that is the historical scope bug, twice over -- the hooks swallow above, and
+    #     the *.sh glob that missed seven shebang-only scripts before the shebang rule.
+    #   * EXTRA (the fallback lists a file the git path does not) is a NOTE, not a
+    #     failure. The git path is "every TRACKED shell file", so by construction every
+    #     extra is UNTRACKED -- scratch debris, never a scope bug. Failing here was
+    #     measured 2026-11-08: this session's own .agents/nextest-run.sh (untracked,
+    #     and .agents is only PARTLY gitignored) failed this self-test while the tree
+    #     was fine -- the same false-positive class the probe block two cases down
+    #     documents for target/, defeated there by probe placement and not by any
+    #     scope property. .agents cannot take the VENDORED-name fix that scratch/ took,
+    #     because it holds 144 TRACKED files (3 of them .sh) and name-listing it would
+    #     make the no-git fallback skip real files on a git-less checkout -- exactly
+    #     the degradation the comment at the VENDORED tuple forbids. So the note keeps
+    #     the visibility and drops the false red, and the case below pins the class.
     import subprocess as _sp
     _real_run = _sp.run
-    _git_count = len(targets())
+    _git_set = {str(p) for p in targets()}
     try:
         def _no_git(*a, **k):
             raise OSError("self-test: pretend git is absent")
         _sp.run = _no_git
-        _fallback_count = len(targets())
+        _fb_set = {str(p) for p in targets()}
     except OSError as exc:
-        _fallback_count = None
+        _fb_set = None
         bad.append("the no-git fallback raised instead of falling back: " + str(exc))
     finally:
         _sp.run = _real_run
-    if _fallback_count is not None and _fallback_count != _git_count:
-        bad.append(f"scope paths disagree: git sees {_git_count} shell file(s), "
-                   f"the no-git fallback sees {_fallback_count} -- one of them is "
-                   f"skipping something the other checks")
+    if _fb_set is not None:
+        _missing = sorted(_git_set - _fb_set)
+        _extra = sorted(_fb_set - _git_set)
+        if _missing:
+            bad.append("the no-git fallback SKIPS " + str(len(_missing)) + " tracked shell "
+                       "file(s) the git path checks: " + ", ".join(
+                           Path(m).relative_to(ROOT).as_posix() for m in _missing[:6]))
+        if _extra:
+            print("self-test note: the no-git fallback also sees " + str(len(_extra)) +
+                  " untracked shell file(s) the git path does not -- untracked debris, "
+                  "not a scope bug (e.g. " + ", ".join(
+                      Path(m).relative_to(ROOT).as_posix() for m in _extra[:3]) + ")",
+                  file=sys.stderr)
+
+    # THE 2026-11-08 EVENT, PINNED AS A CASE: an untracked .sh planted under .agents/
+    # (the directory this repo designates as live agent scratch -- AGENTS.md's
+    # clean -x measurement names it) must show up as an EXTRA of the differential,
+    # never as a MISSING file, and must leave this self-test green. Before the extras
+    # downgrade above this case could not exist: the plant itself failed the
+    # differential, which is exactly how the r117 scratch was found. The middle
+    # assertion also pins that .agents must NOT enter VENDORED: the fallback has to
+    # keep seeing shell files there, tracked or not.
+    _agents = ROOT / ".agents"
+    _agents.mkdir(parents=True, exist_ok=True)
+    _scope_probe = _agents / "_syntax_scope_probe.sh"
+    try:
+        _scope_probe.write_text("#!/usr/bin/env sh\necho ok\n", encoding="utf-8", newline="\n")
+        _probe_git = {str(p) for p in targets()}
+        try:
+            _sp.run = _no_git
+            _probe_fb = {str(p) for p in targets()}
+        finally:
+            _sp.run = _real_run
+        if str(_scope_probe) in _probe_git:
+            bad.append(".agents probe must not be TRACKED (git saw it) -- fixture broken")
+        if str(_scope_probe) not in _probe_fb:
+            bad.append("the no-git fallback must still see an untracked .agents shell "
+                       "file -- a VENDORED-style skip here would hide tracked files on "
+                       "git-less checkouts")
+        if _probe_git - _probe_fb:
+            bad.append("planting an untracked probe must not make the fallback SKIP any "
+                       "tracked file")
+    finally:
+        if _scope_probe.exists():
+            _scope_probe.unlink()
 
     # THE PROBE MUST NOT LAND IN THE TREE THIS GATE SCANS. It used to be
     # ROOT / "scripts" / "_syntax_selftest_tmp.sh" -- inside scripts/, which is exactly
@@ -485,7 +544,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (14 cases, no files left behind)")
+    print("SELF-TEST OK (15 cases, no files left behind)")
     return 0
 
 
