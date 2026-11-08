@@ -6252,3 +6252,50 @@ receipt is quoted with its own date and a re-run costs a full nextest compile fo
 that carries its measurement inline. The two superseded stamps' content was treated as
 history, not re-audited. Docker daemon still down (probed this round), so the E2E /
 llvm-cov / nextest-junit receipts remain the standing PG-gated gap.
+### Round 137 (2026-11-08) — verify-selftests-wired: the "102 of 105" gap was a classification artifact, and the gate now says so
+
+r135's honest-limits line — "three checkers declare none and were closed by reading
+alone" — was wrong in two of its three parts, and the correction reshaped the gate.
+scripts/check-replay-fork.py's self-test is a SIBLING, scripts/test-replay-fork.py
+(check.sh:813, dev-ci.yml:1392, the checker's own docstring :44): fully wired under a
+convention declares_in() cannot see, and worse, the checker sat entirely outside the
+gate's protection — deleting both sibling invocations could not fail anything.
+scripts/check-auditor-selftests.sh is itself a runner of the eight docs-auditor
+self-tests (check.sh:322, dev-ci.yml:1038) and has been in the gate's own RUNNERS list
+since 2026-10-23; declaring no self-test of its own is a runner's nature, not a gap.
+Only scripts/census-sync-ingest-admits.py remains what r135 said: a deliberate census
+that claims no runner authority by its own docstring.
+
+The fix makes the sibling convention first-class in scripts/verify-selftests-wired.py
+(9480cbb9e): a docstring pointer naming an EXISTING scripts/test-*.py declares, and the
+sibling's bare invocation on a comment-stripped live runner line is the caller signal
+(the sibling takes no flag, so CALL_RE could never see it). The OK line now NAMES the
+non-declarers instead of absorbing them — "103 of 105 checker(s) in scope declare a
+self-test and every one is invoked by a runner. Declaring none of their own:
+scripts/census-sync-ingest-admits.py, scripts/check-auditor-selftests.sh." — so the next
+reader cannot repeat the r135 misreading from the count alone. Uncalled reports carry
+as_posix() spellings so a quoted name reads the same on any OS.
+
+Measured: the gate's self-test is green at 33 cases (nine new: a docstring pointer
+declares; prose mentioning a test- file does not; the live pointer resolves to an
+existing file; the live sibling is invoked; a comment-only mention is not a caller; a
+different file's invocation is not a caller; THE ROT CASE — synthetic runner text with
+the sibling's callers deleted surfaces scripts/check-replay-fork.py as uncalled, the
+exact blindness this round closes; the live tree censuses empty; the OK line's
+non-declarer clause). One case went red on first run — the rot case expected forward
+slashes while the census emitted str(rel) backslashes on Windows — fixed at the source
+with as_posix(), red on assertion exactly as the discipline demands. The live gate runs
+exit 0 with the new line, and the alliance partner sabotage-selftests.py's self-test
+stays green at 132 cases (RUNNERS/SCRIPT_RE mirrors untouched).
+
+Honest limits: sibling_called() accepts any live-line mention of the sibling's basename
+— the round-106 print-form trade-off accepted unguarded for siblings; measured today the
+live runners mention test-replay-fork.py exactly three times, all real invocations, but
+a future runner that merely echoes the name would read as a caller (the gate's own
+docstring says so). The pointer must be the exact "python3 scripts/test-*.py" spelling —
+a python/py -3 prefix or a path variant does not declare; one convention exists in the
+tree today. The two remaining non-declarers are named but not classified by the gate —
+"a runner of others'" and "deliberate census" stay per-checker judgements, as the
+docstring's WHAT-IT-DOES-NOT-COVER paragraph now records. The rot proof is synthetic,
+not a mutation of the live runners (never touched). Docker daemon still down (probed
+r136): the E2E / llvm-cov / nextest-junit receipts remain the standing PG-gated gap.
