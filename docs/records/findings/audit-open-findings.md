@@ -6001,3 +6001,27 @@ tools, not gates). The tdd-profile build cost was not spent; the TDD loop's
 end-to-end receipt is therefore pending the same kind of budget decision the
 llvm-cov build was — and the difference is that test-tdd.sh cannot be pointed at a
 subset until a filter argument exists.
+
+### Round 129 (2026-11-08) — the TDD loop learns to run one test
+
+The r128 finding ("a TDD LOOP script that cannot run ONE test sends agents to bare
+cargo test") is fixed: test-tdd.sh gains --test FILTER, threaded through nextest
+(positional), cargo test (positional), and watch mode (into the -x string), with the
+filter carried as a proper bash array rather than an unquoted append, an
+empty-argument guard shaped like -p's, a filter line in the banner, and a usage
+header row. Verified THREE ways: bash -n + the syntax gate; the --help render; and
+the functional receipt — bash scripts/test-tdd.sh -p crates/kasirmu-core --test
+migration ran the 62 migration tests through nextest under profile.tdd in 28
+seconds, 62 passed / 4199 skipped, with the msvc helper's banner firing inside the
+script (r128's source line exercised in the same run). The tdd-profile build turned
+out to be warm as well — the budget the r128 register declined was already spent by
+an earlier session, the same surprise as the llvm-cov build in r126.
+
+The filter's absence had a second cost worth recording: with no filter, the only
+sub-crate-scoped run an agent could do was bare cargo test --lib <name> — the
+invocation with no environment. The loop now covers that case itself.
+
+Honest limits: --test is a substring filter (nextest semantics), not a module path;
+the multi-word filter quoting was tested only through the array path with a single
+token, which is the documented shape. The 15 remaining bare-cargo dev scripts stay
+as filed in r125.
