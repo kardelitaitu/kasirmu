@@ -283,7 +283,10 @@ def _rel(path: Path, root: Path) -> str:
         return str(path)
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r181: argv and root parameterized, the r166..r180 contract. root
+    redirects the measured tree AND the baseline (both read and written),
+    so --emit-baseline under a fixture writes the fixture's baseline."""
     configure_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, help="Repository root (defaults to the script parent).")
@@ -292,12 +295,13 @@ def main() -> int:
     parser.add_argument("--emit-baseline", action="store_true", help="Rewrite the baseline from the current count.")
     parser.add_argument("--self-test", action="store_true", help="Run the built-in classifier tests and exit.")
     parser.add_argument("--files", action="store_true", help="List per-file counts (report-only).")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.self_test:
         return self_test()
 
-    root = args.root or Path(__file__).resolve().parent.parent
+    root = Path(root).resolve() if root is not None else (
+        args.root or Path(__file__).resolve().parent.parent)
     baseline_path = args.baseline_file or (root / "scripts" / BASELINE_NAME)
     total, file_count, per_file, db_total, non_db_total = measure(root)
 
@@ -500,6 +504,60 @@ def self_test() -> int:
         answer = fail("planted violation")
     check("fail() reports to stderr", "planted violation" in sink.getvalue(), True)
     check("fail() answers exit 1", answer, 1)
+
+    # r181: main()'s shell -- argv and root graded against a tempdir fixture
+    # carrying the measured tree AND the baseline, the r166..r180 pattern.
+    # --emit-baseline must write the FIXTURE's baseline; --root is left None
+    # in every case on purpose (the explicit argv rule), so the root
+    # PARAMETER is the redirect under test.
+    def _shell(files, argv=None, check=None):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            for rel, content in files.items():
+                dst = base / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_text(content, encoding="utf-8")
+            out, err = io.StringIO(), io.StringIO()
+            with redirect_stderr(err), redirect_stdout(out):
+                rc = main(argv=[] if argv is None else argv, root=base)
+            # the caller's post-condition checks must run INSIDE this context:
+            # after the with-block the tempdir is already deleted (the r180
+            # lesson, learned twice now).
+            extra = check(base) if check is not None else None
+            return rc, out.getvalue() + err.getvalue(), extra
+    from contextlib import redirect_stdout
+    PROD = "crates/kasirmu-core/src/prod.rs"
+    BUD = {"schema_version": 1, "ceiling": 3, "db_ceiling": 0,
+           "non_db_ceiling": 3, "measured_files": 1}
+    rc, text, _b = _shell({PROD: "pub fn a() {}\npub fn b() {}\npub fn c() {}\n",
+                           "scripts/core-size-baseline.json": json.dumps(BUD)})
+    check("a tree at its ceiling exits 0", rc, 0)
+    check("the ceiling report mentions headroom", "headroom 0" in text, True)
+    rc, text, _b = _shell({PROD: "pub fn a() {}\npub fn b() {}\npub fn c() {}\npub fn d() {}\n",
+                           "scripts/core-size-baseline.json": json.dumps(BUD)})
+    check("one line over the ceiling exits 1", rc, 1)
+    check("the over-ceiling report names the delta", "+1 lines" in text, True)
+    # whole-crate ceiling raised to 4 so ONLY the db arm can fire -- with
+    # BUD (ceiling 3) the generic over-ceiling branch returns first.
+    BUD_DB = {**BUD, "ceiling": 4}
+    rc, text, _b = _shell({"crates/kasirmu-core/src/db/store.rs": "pub fn a() {}\npub fn b() {}\npub fn c() {}\npub fn d() {}\n",
+                           "scripts/core-size-baseline.json": json.dumps(BUD_DB)})
+    check("a db/ rise is SQL debt, exit 1", rc, 1)
+    check("the db report says it cannot be extracted", "cannot be extracted" in text, True)
+    rc, text, _b = _shell({PROD: "pub fn a() {}\n"})
+    check("a missing baseline fails with advice", rc, 1)
+    check("the missing-baseline report names the fix", "run --emit-baseline" in text, True)
+    def _emit_wrote_fixture(base):
+        dst = base / "scripts" / "core-size-baseline.json"
+        if not dst.is_file():
+            return None
+        return json.loads(dst.read_text(encoding="utf-8"))["ceiling"]
+    rc, text, ceiling = _shell({PROD: "pub fn a() {}\npub fn b() {}\n",
+                                "scripts/core-size-baseline.json": "{}"},
+                               argv=["--emit-baseline"],
+                               check=_emit_wrote_fixture)
+    check("--emit-baseline exits 0", rc, 0)
+    check("--emit-baseline writes the FIXTURE's baseline", ceiling, 2)
 
     if failures:
         print(f"verify-core-size --self-test: {failures}/{cases} FAILED", file=sys.stderr)
