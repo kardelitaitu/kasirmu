@@ -29,7 +29,9 @@ while the `migration` row declared the bare label "migration", the resolver repo
 `migration smoke test` as claimed by prefix while `migration idempotency` was claimed by
 nothing at all. Demanding an exact claim is what makes the omission visible.
 
-The tree satisfies that today — 120 of 120 steps claimed exactly, 0 by prefix alone —
+The tree satisfies that today (re-measured 2026-11-08: 188 of 188 steps
+claimed exactly, 0 by prefix alone; the count grows as check.sh grows, so read it
+as a date-stamped measurement, not a constant) —
 so this gate starts green, which is the property round 109 established a new gate needs.
 
 WHAT ELSE THE ROSTER CLAIMS, and where each is checked (audited 2026-10-05, round 153).

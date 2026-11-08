@@ -83,7 +83,7 @@ step() {
     local retry_cmd=$1; shift
     local step_str; step_str=$(printf "%02d" "${step_counter}")
 
-    # CHECK_FROM: skip everything before step N without paying for it. The matrix has 120
+    # CHECK_FROM: skip everything before step N without paying for it. The matrix has 188
     # steps and the first 36 take about 20 minutes, so re-running it from the top to reach
     # step 37 is how a late leg stays unverified for a hundred rounds. The comparison is
     # against this step's OWN number, before the increment, and the counter still advances
