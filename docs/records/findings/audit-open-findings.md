@@ -7030,3 +7030,28 @@ and importing across gates is a structural change this round deliberately did
 not make. The witness also hardcodes the file paths; a rename of either gate
 reddens the self-test until the witness is updated, which is a cost accepted
 knowingly (a renamed gate should touch its alliance, per r74).
+
+### Round 157 (2026-11-09) -- the register-hygiene gate's fire direction, mutation-graded
+
+R154 wired check-register-hygiene.py into the census but never ran the LIVE
+mutation survey against it -- the graded cases in check.sh are not the survey, and
+a new checker whose cases never exercise its guard's live shape would sail through
+self-tests while dying against real input (the r148 lesson, checker-shaped). The
+survey was run as a bounded slice, --skip 23 --limit 1 of 110 censused, and the
+census's chosen mutable target -- register_findings, the pure classifier -- was
+gutted via the AST mechanism and the staged self-test re-run. Receipt: KILLED,
+exit 0 -> 1, 0 SURVIVED, 0 RELOCATION-SENSITIVE, 0 NO MUTATABLE, 0 PATH ALREADY
+RED. The tree came back clean (the survey's own writethrough banner reports no
+leak). The kill means the 12 inline fixtures genuinely pin the classifier's
+contract: the finding list IS the behavior, not decoration.
+
+Honest limits: the census mutates the pure classifier ONLY -- main()'s CLI
+behavior (the REFUSED exit 2 on a missing register, the --quiet form) and
+build_cases()'s fixture table are not mutation-graded, so a regression that
+breaks only the CLI shell would pass the survey and surface only through a real
+run. The kill proves the fixture set notices a GUTTED detector; it does not prove
+the detector catches every malformation class a future register could invent --
+that remains the shape-checker limit recorded in r154. The slice summary itself
+discloses its boundedness (skip=23 limit=1 of 110), so this receipt must not be
+read as a full-census verdict; the other 109 rows carry whatever grades they
+carried at their last measurement.
