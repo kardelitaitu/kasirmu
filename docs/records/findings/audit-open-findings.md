@@ -8063,3 +8063,51 @@ still down (probed r159): the E2E / llvm-cov / nextest-junit receipts
 remain the standing PG-gated gap. The root-policy gate remains RED on the
 foreign todo.md (r174) and verify-core-size RED on the ADR-59 +64 (r181),
 both awaiting their owning lanes.
+
+### Round 186 (2026-11-09) -- orphan-prototype joins the arc; the recursion trap fires at last, and the corpus reads its own grader
+
+The r166..r185 contract applied to the deployed-prototypes orphan gate.
+all_tracked_text(root) now redirects the ls-files listing AND every file
+read together; main(argv, root) derives root_path once and hands it to both
+tracked_files (already parameterized since r35) and the corpus read.
+
+Two fixtures of the arc's own history bit this round. First, the r174
+recursion-trap rule fired for real: this main() unconditionally pre-flights
+self_test() to prove the detector is not deaf, and self_test's new shell
+cases call main() -- infinite re-entry, RecursionError on the first run.
+The pre-flight is now gated to live mode (root is None): a redirected run
+is BY CONSTRUCTION reached from the self-test that already grades the
+detector, so pre-flighting there grades nothing and recurses. Second, the
+census expectation: my first draft asserted "0 orphan(s) among 2" for a
+fixture with a reader.html -- but the census counts only DEPLOYED
+prototypes/ files; the reader is corpus, not census. The checker was
+right; the test was wrong, and says so in a comment.
+
+Three shell cases: a named file reads as referenced (text-asserted -- the
+non-strict run is report-only and exits 0 regardless), an unnamed file is
+an orphan under --strict rc 1, and a checkout without prototypes/ REFUSES
+rc 2 (the measured 2026-11-06 nothing-to-check branch, now graded through
+main).
+
+Measured kill with a mechanism this arc has not seen: the corpus mutant
+(all_tracked_text ignoring root, reading the REAL tree) died on the
+--strict case because the real corpus CONTAINS the checker's own source --
+which names the synthetic fixture proto-fixture-a.js in its shell cases.
+Self-reference: a text-corpus gate necessarily counts its own code as
+evidence, so a mutant that grades reality sees the fixture name and calls
+the file referenced. The name stays synthetic so this cannot mask a REAL
+orphan, but the kill's direction is worth recording: for this checker the
+mutant's corpus is polluted by the grader itself, and the strict case is
+what catches the pollution.
+
+Honest limits: a file whose name appears only in PROSE is counted as
+referenced -- the report's own stated LIMIT, with
+prototypes/kds-prototype-server.bat named in the output as the live
+example; a file that names ITSELF is likewise counted as referenced (the
+corpus is contents, and self-naming is a hit) -- asserted by no case, a
+known weak-evidence boundary the docstring declares. The --self-test
+passthrough of main is graded only implicitly. Docker daemon still down
+(probed r159): the E2E / llvm-cov / nextest-junit receipts remain the
+standing PG-gated gap. The root-policy gate remains RED on the foreign
+todo.md (r174) and verify-core-size RED on the ADR-59 +64 (r181), both
+awaiting their owning lanes.
