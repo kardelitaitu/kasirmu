@@ -6025,3 +6025,36 @@ Honest limits: --test is a substring filter (nextest semantics), not a module pa
 the multi-word filter quoting was tested only through the array path with a single
 token, which is the documented shape. The 15 remaining bare-cargo dev scripts stay
 as filed in r125.
+
+### Round 130 (2026-11-08) — the never-run lane was red, and the red was the guards' own scope
+
+Two first-receipts this round. The skill-drift-guard's detect.sh ran live for the
+first time (exit 0, advisory): it names two skills whose audit stamps are 39 and 42
+days old — filed for a future audit round. Then the website astro build — never run
+at tip this session, dist stale since Oct 26 — failed for real: prebuild's vitest
+phase, 2,920 tests failed in 2 files.
+
+Root cause, measured not guessed: every failure sat in the two source-level guards
+(heading-outline, accessibility) whose "ships verbatim" arm walks ALL of
+website/public/**/*.html. That walk swept website/public/docs-portal — 10,027 files
+that are mdBook build output staged from docs/book by import-portal.mjs at
+prebuild, GITIGNORED, so CI's fresh clone never enumerates them. Locally they fail
+the hand-authored rule (no <h1> in the TOC frame, skipped levels in generated
+chrome, landmarks absent from frames). The guards' own doc comment states the
+principle this fix applies: the built check (check-seo #12/#13) is the authority on
+generated/composed pages, and "a guard that cries wolf is worse than the build it
+saves." Both walkers now skip public/docs-portal next to the already-skipped
+public/dev mirror, with the measured numbers in the comment.
+
+After the fix: the guard files alone 89/89 and their accessibility twin green; then
+the full npm run build — prebuild gates, 21,622 vitest tests, astro build,
+postbuild — BUILD-RC=0 in 28 seconds. The website deploy lane has a green receipt
+at tip for the first time in this session's ledger, and the pipe-rc trap from r122
+almost bit again: the first "passing" website rc was tail's exit code.
+
+Honest limits: the 2,920 failures were never reproduced at 6b837556a4 (the guard's
+commit) — the claim "green in CI" rests on the gitignore arithmetic (0 tracked
+docs-portal files), not on a CI log; the failures could also predate the guard's
+commit in exactly this local shape. The two stale skills from detect.sh are
+recorded, not audited. check-seo #12/#13 remain the outline authority and were not
+re-run this round beyond the build they anchor.
