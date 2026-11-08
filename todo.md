@@ -69,14 +69,10 @@
 
 ---
 
-## Ongoing · Documentation Portal Health
+## ~~Ongoing · Documentation Portal Health~~ ✅ VERIFIED 2026-11-09
 
-- [ ] Re-run after the plan archive moves:
-  ```powershell
-  mdbook build docs
-  ```
-  Must exit 0. If red: check `docs/book.toml` for stale `_active/` paths; `scripts/build-docs.sh`
-  and `scripts/build-docs.ps1` were updated in commit `772e3f6d0` to point to `_done/`.
+- `mdbook build docs` ran and exited **0** (`HTML book written to docs\book`).
+- All book structure and references build cleanly following plan archival moves.
 
 ---
 
