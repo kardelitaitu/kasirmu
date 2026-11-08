@@ -740,8 +740,14 @@ export function createSalesHandlers(deps: SalesDeps): Record<string, MockHandler
     return null;
   },
 
-  'list_sales': () => ({ sales: [...completedSales], salesHistoryCapped: false }),
-  'list_sales_scoped': () => ({ sales: [...completedSales], salesHistoryCapped: false }),
+  'list_sales': () => ({
+    sales: [...completedSales],
+    salesHistoryCapped: typeof window !== 'undefined' && Boolean((window as unknown as { __MOCK_SALES_CAPPED?: boolean }).__MOCK_SALES_CAPPED),
+  }),
+  'list_sales_scoped': () => ({
+    sales: [...completedSales],
+    salesHistoryCapped: typeof window !== 'undefined' && Boolean((window as unknown as { __MOCK_SALES_CAPPED?: boolean }).__MOCK_SALES_CAPPED),
+  }),
   'void_sale': () => ({ id: 'voided-sale', status: 'voided', total: { minor_units: 0, currency: 'IDR' }, line_count: 0, created_at: new Date().toISOString() }),
   'void_sale_scoped': () => ({ id: 'voided-sale', status: 'voided', total: { minor_units: 0, currency: 'IDR' }, line_count: 0, created_at: new Date().toISOString() }),
 
