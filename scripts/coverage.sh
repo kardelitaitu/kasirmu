@@ -20,6 +20,11 @@
 #         # On macOS:        brew install llvm  (then add to PATH: export PATH="$(brew --prefix llvm)/bin:$PATH")
 #         # On Windows:      choco install llvm  (llvm-cov ships in the llvm package)
 #   ui:   npm ci --no-audit --no-fund --ignore-scripts (handled by the test:coverage npm script)
+#   rust: a REACHABLE Postgres when the pg-tests feature is on — --all-features
+#         turns it on, and R17's ruling (pg_tests.rs) makes an unreachable PG
+#         panic fail-loud there, not skip. Without Docker/PG up, the run stops at
+#         kasirmu-api with 12 pg_* FAILED and writes no report (measured
+#         2026-11-08: 376 passed / 12 failed, all pg_* names).
 #
 # Why llvm-cov and not tarpaulin:
 #   - tarpaulin is Linux-only (uses ptrace); llvm-cov works on every OS the project targets.
