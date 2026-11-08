@@ -7594,3 +7594,44 @@ arrival; a history where the hook arrives twice is untested. MONKEYPATCH
 kill, file-sed remains r162's machinery. Docker daemon still down (probed
 r159): the E2E / llvm-cov / nextest-junit receipts remain the standing
 PG-gated gap.
+
+### Round 174 (2026-11-09) -- root-policy joins the shell arc, and the gate catches a fresh root violation while being tested
+
+The r166..r173 contract applied to the root-junk gate. main(argv, root) only --
+check(root) was already pure and fixture-graded, which is why this is the
+smallest refactor of the arc. Four shell cases pin the exit mapping: a stray
+root file rc 1 naming it, a clean fixture rc 0, a missing root rc 2, and the
+--self-test passthrough. The passthrough case needed a re-entry guard: main's
+--self-test branch calls self_test(), which contains the shell case that calls
+main("--self-test") -- infinite recursion, caught by the first run's
+RecursionError before any commit. The guard is a module-level _SHELL_ACTIVE
+flag; the nested invocation runs the six check-fixture cases only, which is
+exactly what the passthrough case needs to prove.
+
+The round's live observation: while verifying, the gate went RED on a real
+root file -- todo.md, a TRACKED plan document committed earlier the same day
+(e0fecd3f1, another session) without the allowlist extension the gate's own
+docstring demands ("extend the list in the same commit that adds the file").
+The gate script predates the file by weeks (last touched 2026-10-23), so this
+is a fresh, pre-existing violation of exactly the class the gate exists for --
+and per the shared-checkout rules it belongs to its authoring session, not to
+this one: left in place, reported here, not "fixed" by a policy decision made
+on someone else's file.
+
+Measured kill: check rebound to drop its root (grade the real repository)
+fails the stray-file case -- the real root is allowlist-clean apart from the
+foreign todo.md, so a clean-fixture want of 0 would survive only by the
+foreign file's grace; the stray case (want rc 1, fixture-named file) kills it
+at rc 0.
+
+Honest limits: the gate's live state is RED through no fault of this round's
+code, and this round deliberately does not resolve it -- the correction (move
+the file or extend ROOT_FILE_ALLOWLIST) is a decision for the session that
+authored todo.md. The UnicodeEncodeError-hardened report path (the
+backslashreplace fallback, measured 2026-10-23) is NOT re-graded by a shell
+case -- it needs a stdout encoding hostile to the finding's name, which the
+in-process capture does not reproduce. The gitignored_dirs(root) arm under a
+fixture runs git in a non-repo (returns empty) and is graded only as "does not
+crash". MONKEYPATCH kill, file-sed remains r162's machinery. Docker daemon
+still down (probed r159): the E2E / llvm-cov / nextest-junit receipts remain
+the standing PG-gated gap.
