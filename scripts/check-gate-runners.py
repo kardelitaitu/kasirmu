@@ -411,6 +411,7 @@ def _self_test() -> int:
                                   + chr(10) + "        run: |" + chr(10)
                                   + "          python3 scripts/y.py" + chr(10)
                                   + "          # see scripts/z.py" + chr(10)
+                                  + "        working-directory: ui" + chr(10)
                                   + "  b:" + chr(10) + "    runs-on: z"
                                   + chr(10)),
          {"a": [("One", "python3 scripts/x.py\n"),
