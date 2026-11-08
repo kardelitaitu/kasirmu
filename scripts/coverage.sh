@@ -31,6 +31,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
 
+# Derive the MSVC env on a checkout whose VS registration is broken (r115 block,
+# extracted 2026-11-08): cargo llvm-cov builds test binaries, which link. Inert on
+# a healthy machine -- derives only when vswhere finds no instance.
+. "${ROOT}/scripts/msvc-env.sh"
+
 target="${1:-all}"
 
 step() {

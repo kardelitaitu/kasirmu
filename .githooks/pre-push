@@ -22,6 +22,15 @@ set -uo pipefail
 
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
+# MSVC toolset fallback (r115 derivation, extracted to scripts/msvc-env.sh): Tier 1
+# runs cargo check --workspace, which links build scripts. On a checkout whose VS
+# registration is broken the derivation must happen HERE so the environment reaches
+# run-pre-push.py and every cargo child it spawns. Inert on a healthy machine --
+# derives only when vswhere finds no instance. Measured 2026-11-08 (r121/r122):
+# bare cargo check fails with kernel32.lib-class errors; through this source line it
+# compiles the whole workspace.
+. "${PWD}/scripts/msvc-env.sh"
+
 # ── Portable toolchain resolution ────────────────────────────────────────
 PYTHON=""
 for p in python3 python; do
