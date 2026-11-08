@@ -228,7 +228,24 @@ def self_test() -> int:
         else:
             tl("_git_toplevel returns the scratch repo's root", scratch_root, scratch_root)
             tl("_git_toplevel ascends from a nested cwd", nested, scratch_root)
-        plain = Path(tempfile.mkdtemp(prefix="flakyq-nogit-"))
+        # The non-repo fixture must sit OUTSIDE any work tree for the refusal to be
+        # testable at all. tempfile's default no longer guarantees that: 7e11b664c
+        # pointed TMP at target/.tmp-check, INSIDE this repo, and rev-parse from there
+        # answers with this very root, so the refusal case read the repo as "not a
+        # work tree" and went red under the matrix (measured 2026-11-08, step 133 --
+        # the third tool tripped by that one TMP move, after verify-ftl-orphans.py
+        # and check-chokepoints.py the same morning). Fall back to the repo's own
+        # parent when the temp dir is inside the tree; the finally below removes it.
+        tmp_base = tempfile.gettempdir()
+        here_root = _git_toplevel(Path(__file__).resolve().parent)
+        if here_root is not None:
+            try:
+                if os.path.commonpath([os.path.abspath(tmp_base),
+                                       str(here_root)]) == str(here_root):
+                    tmp_base = str(here_root.parent)
+            except ValueError:
+                pass  # different drives: the temp dir cannot be inside the repo
+        plain = Path(tempfile.mkdtemp(prefix="flakyq-nogit-", dir=tmp_base))
         try:
             tl("_git_toplevel refuses a directory that is not a work tree", plain, None)
         finally:
