@@ -5867,3 +5867,29 @@ paragraph (source scripts/msvc-env.sh; what it sets; inert on healthy machines) 
 every claim is that run; the citation gate re-ran green after the +9-line shift.
 Commit fc4de7030. Lesson repeated, not new: a deferred edit keeps until its receipt
 arrives, and the receipt is usually one command away.
+
+### Round 124 (2026-11-08) — the gift-card migration's tests, and a reflex the doc should have prevented
+
+Lane-change probes since this session's receipts: ui/, platform/ (go) and website/
+have ZERO commits from other sessions since the bases the receipts were taken at
+(140efea97 / 54727e48d) — ui vitest r115, go r117, and the website assets self-test
+stand without re-runs. scripts/ changes since the r117 census are all this session's
+(verify-shell-syntax twice, check.sh, msvc-env.sh). The one other-session artifact
+whose TEST receipt was missing at tip: the gift-card method migration (6035d629 +
+registry, landed this window). cargo check proved it compiles (r121, whole
+workspace); its tests had never run this session. They run now: 62 passed, 0 failed
+(kasirmu-core --lib migration filter, 26.6s warm), including the
+cosmetic-edit-reapplies and ticket-prefix-backfill cases.
+
+The round's second finding is against myself: the FIRST attempt ran bare
+cargo test and died on the exact MSVCRT.lib/OLDNAMES.lib/uuid.lib shape the r121
+register and the r123 agent-gates.md paragraph document — written one hour earlier,
+by me, and still not reflexive. The sourced-helper invocation passes immediately.
+The doc's advice is one source-line; a scripted session that touches cargo more than
+once per script should source it at the top, not per invocation.
+
+Honest limits: the full kasirmu-core lib suite (3704 tests) remains slice-run only
+(r114 pattern); the migrations filter was chosen because the migration is the only
+untested-at-tip artifact found by the probes. nextest junit and llvm-cov receipts
+remain unverified — they belong to the push flow, and no push is authorized this
+session.
