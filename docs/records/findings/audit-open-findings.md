@@ -8239,3 +8239,51 @@ down (probed r159): the E2E / llvm-cov / nextest-junit receipts remain the
 standing PG-gated gap. The root-policy gate remains RED on the foreign
 todo.md (r174) and verify-core-size RED on the ADR-59 +64 (r181), both
 awaiting their owning lanes.
+
+### Round 190 (2026-11-09) -- runner-labels joins the arc, and catches a cross-lane break the moment it was finally run
+
+The r166..r189 contract applied to the runner-labels regression suite,
+whose main() is itself a subprocess-fixture runner (outside the
+verify-|check- roster, so no --self-test). main(argv, root) derives tree
+once; checker_inputs(base) and fixture(check_sh_text, base) source every
+copy from the redirected tree; the baseline run executes the tree's own
+checker. And a real defect closed on the way in: a root without
+scripts/check.sh used to crash on FileNotFoundError -- it now REFUSES rc 2,
+graded in-process as case 5 ("a root without check.sh refuses rc 2"),
+which returns before any subprocess.
+
+THE LIVE FINDING: the suite had not been run since another lane
+parameterized verify-ci-docs-drift.py (live-workflow module extraction,
+commits bb8849076/d117d0a94). The checker's reads moved into the
+drift_paths(root) dict INSIDE a function, and test-runner-labels'
+derivation -- a top-level-assignment ROOT-path scan -- lost gates.json,
+the docs, the hook and check-ui.mjs AT ONCE: every mutation case read
+"gate manifest not found". Six failures on the first run of the round,
+none of them my edits. The suite is not on the wired roster, so nothing
+else grades it; its own docstring's promise ("if the gate gains an input,
+this follows it automatically") held only for shapes the scan recognised.
+Fixed by replacing the assignment-scan with a WHOLE-SOURCE scan catching
+both spellings -- ROOT (module constant) and root (contract parameter) --
+wherever they appear; over-copying is safe by construction (nonexistent
+sources skipped; later writes overwrite their copies). The two
+assignment-walking helpers died with the shape they served.
+
+The kill-proof carries a new lesson: the refusal case is graded
+IN-PROCESS (main calls itself with an empty root), so a root-dropping
+wrapper does not merely mis-grade it -- the mutant CANNOT TERMINATE: every
+attempt to grade the refusal re-grades the real tree, whose case 5
+re-enters. Non-termination is a death, and the probe grades it as one
+(RecursionError caught = killed), but it is the first kill in the arc
+whose mode is divergence rather than verdict mismatch. The unmutated
+checker terminates: one level deep, refusal returns immediately.
+
+Honest limits: the suite's own six mutation cases remain the graded
+subprocess suite; case 5 grades the refusal path only in-process (a
+subprocess-isolated refusal would need a CLI selector this runner does
+not have); the whole-source scan inherits over-copy risk by design and no
+fixture pins its exact set; the baseline-count refusal (rc 2 on an
+unreadable drift count) is graded by no case. Docker daemon still down
+(probed r159): the E2E / llvm-cov / nextest-junit receipts remain the
+standing PG-gated gap. The root-policy gate remains RED on the foreign
+todo.md (r174) and verify-core-size RED on the ADR-59 +64 (r181), both
+awaiting their owning lanes.
