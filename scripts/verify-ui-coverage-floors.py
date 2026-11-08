@@ -165,32 +165,86 @@ def self_test() -> int:
     print("self-test: OK (8 cases -- real measurement passes, one shortfall fires, an exact"
           " floor passes, an absent metric refuses, and load_floors() reads a real manifest"
           " while refusing one that declares no ui_floors)")
+
+    # r184: main()'s shell -- argv and root graded against a tempdir fixture
+    # carrying BOTH inputs, the r166..r183 pattern. The missing-summary case
+    # is the redirect kill: a main that ignored root would grade the REAL
+    # summary (which exists) and return 0 where the fixture demands 2.
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+    shell = 0
+    def _shell(files, argv=None):
+        with _tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            for rel, content in files.items():
+                dst = base / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_text(content, encoding="utf-8")
+            out, err = _io.StringIO(), _io.StringIO()
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                rc = main(argv=[] if argv is None else argv, root=base)
+            return rc, out.getvalue() + err.getvalue()
+    FL = json.dumps({"ui_floors": {"lines": 50, "statements": 50,
+                                   "functions": 50, "branches": 50}})
+    SUM_OK = json.dumps({"total": {m: {"pct": 60.0} for m in METRICS}})
+    SUM_LOW = json.dumps({"total": {m: {"pct": 40.0 if m == "branches" else 60.0}
+                                    for m in METRICS}})
+    shell += 1
+    rc, text = _shell({"scripts/coverage-floors.json": FL,
+                       "coverage/ui/coverage-summary.json": SUM_OK})
+    if rc != 0 or "OK (every metric" not in text:
+        print(f"  x a fixture at its floors must exit 0 (rc={rc} text={text[-80:]!r})", file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _shell({"scripts/coverage-floors.json": FL,
+                       "coverage/ui/coverage-summary.json": SUM_LOW})
+    if rc != 1 or "branches" not in text:
+        print(f"  x a shortfall must exit 1 naming the metric (rc={rc} text={text[-80:]!r})", file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _shell({"scripts/coverage-floors.json": FL})
+    if rc != 2 or "cannot read the coverage summary" not in text:
+        print(f"  x a missing summary must refuse with exit 2 (rc={rc} text={text[-80:]!r})", file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _shell({"coverage/ui/coverage-summary.json": SUM_OK,
+                       "scripts/coverage-floors.json": json.dumps({})})
+    if rc != 2 or "cannot read the floors manifest" not in text:
+        print(f"  x floors without a ui_floors map must refuse rc 2 (rc={rc})", file=sys.stderr)
+        return 1
+    print(f"  shell: {shell} case(s) behave through main()")
     return 0
 
-def main() -> int:
-    """Grade the report against the floors."""
+def main(argv=None, root=None) -> int:
+    """Grade the report against the floors. r184: argv and root parameterized,
+    the r166..r183 contract -- root redirects BOTH default inputs (the summary
+    and the floors) together; an explicit --summary/--floors still wins."""
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--summary", type=Path, default=DEFAULT_SUMMARY)
-    ap.add_argument("--floors", type=Path, default=DEFAULT_FLOORS)
+    ap.add_argument("--summary", type=Path, default=None)
+    ap.add_argument("--floors", type=Path, default=None)
     ap.add_argument("--self-test", action="store_true")
-    ns = ap.parse_args()
+    ns = ap.parse_args(argv)
     if ns.self_test:
         return self_test()
+    base = ROOT if root is None else Path(root).resolve()
+    summary_path = ns.summary if ns.summary is not None else base / "coverage" / "ui" / "coverage-summary.json"
+    floors_path = ns.floors if ns.floors is not None else base / "scripts" / "coverage-floors.json"
     try:
-        floors = load_floors(ns.floors)
+        floors = load_floors(floors_path)
     except (OSError, ValueError, json.JSONDecodeError) as e:
-        print(f"FAIL  cannot read the floors manifest {ns.floors}: {e}", file=sys.stderr)
+        print(f"FAIL  cannot read the floors manifest {floors_path}: {e}", file=sys.stderr)
         return 2
     try:
-        summary = json.loads(ns.summary.read_text(encoding="utf-8"))
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as e:
-        print(f"FAIL  cannot read the coverage summary {ns.summary}: {e}", file=sys.stderr)
+        print(f"FAIL  cannot read the coverage summary {summary_path}: {e}", file=sys.stderr)
         print("  Generate one with: cd ui && npm run test:coverage", file=sys.stderr)
         return 2
     try:
         code, findings = grade(summary, floors)
     except ValueError as e:
-        print(f"FAIL  {ns.summary} is not a usable coverage summary: {e}", file=sys.stderr)
+        print(f"FAIL  {summary_path} is not a usable coverage summary: {e}", file=sys.stderr)
         return 2
     got = measured(summary)
     for m in METRICS:
