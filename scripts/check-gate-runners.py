@@ -173,6 +173,22 @@ def duplicate_declarations(gates, axis: str) -> list[tuple[str, list[str]]]:
     return sorted((n, sorted(gs)) for n, gs in owners.items() if len(gs) > 1)
 
 
+def duplicate_report(axis: str,
+                     dups: list[tuple[str, list[str]]]) -> tuple[bool, list[str]]:
+    """(is_finding, lines) for one axis's duplicate census.
+
+    The check.sh axis is FAIL-CLOSED since r160: the only overlaps it ever
+    showed were the 2026-09-30 batch claims, audited batch-first and pruned
+    2026-11-09 (register r159), so zero is the measured steady state and any
+    duplicate is a new ownership ambiguity, the core-size shape. The ci axis
+    stays a note: shared setup steps repeat across jobs by design."""
+    head = "%d runner label(s) declared by more than one gate (%s axis):" % (len(dups), axis)
+    body = ["    %r <- %s" % (lab, ", ".join(gs)) for lab, gs in dups]
+    if axis == "check.sh":
+        return True, [head] + body
+    return False, ["  note: " + head] + body
+
+
 def cross_job_step_names(job_steps: dict[str, list[str]]) -> list[tuple[str, list[str]]]:
     """Step names that appear under MORE THAN ONE job, with the jobs.
 
@@ -545,6 +561,14 @@ def _self_test() -> int:
          [("s", ["a", "b"])]),
         ("an empty roster lists nothing",
          duplicate_declarations([], "check.sh"), []),
+        ("the check.sh duplicate census is fail-closed",
+         duplicate_report("check.sh", [("x", ["a", "b"])]),
+         (True, ["1 runner label(s) declared by more than one gate (check.sh axis):",
+                 "    'x' <- a, b"])),
+        ("the ci axis stays a note",
+         duplicate_report("ci", [("s", ["a", "b"])]),
+         (False, ["  note: 1 runner label(s) declared by more than one gate (ci axis):",
+                  "    's' <- a, b"])),
     ]
     bad = 0
     for name, fn, want in cases:
@@ -611,13 +635,16 @@ def main() -> int:
         for lab, act, kind in prefixes:
             print("    %r -> %r (%s)" % (lab, act, kind))
 
+    dup_finding: list[str] = []
     for axis in ("check.sh", "ci"):
         dups = duplicate_declarations(gates, axis)
-        if dups:
-            print("  note: %d runner label(s) declared by more than one gate (%s axis):"
-                  % (len(dups), axis))
-            for lab, gs in dups:
-                print("    %r <- %s" % (lab, ", ".join(gs)))
+        if not dups:
+            continue
+        is_finding, lines = duplicate_report(axis, dups)
+        for line in lines:
+            print(line)
+        if is_finding:
+            dup_finding = lines
 
     collisions = cross_job_step_names(job_steps)
     if collisions and not args.quiet:
@@ -674,6 +701,14 @@ def main() -> int:
         print("%d self_test command(s) name a missing script:" % len(st_missing))
         for gid, st, tok in st_missing:
             print("  [%s] %r -- missing %s" % (gid, st, tok))
+        rc = 1
+    if dup_finding:
+        print("")
+        print("A check.sh label named by two gates has no single owner -- the same")
+        print("shape as core-size/core-size-ratchet (merged 2026-11-08, register")
+        print("r147). The batch overlaps that made this a census were audited")
+        print("batch-first and pruned (register r159), so zero is the steady state:")
+        print("resolve which row owns the label, then prune the other claim.")
         rc = 1
     if rc:
         return rc
