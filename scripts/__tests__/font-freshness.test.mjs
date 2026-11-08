@@ -25,13 +25,33 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, utimesSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname, relative, isAbsolute } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import {
   fontSurfaceSheets, buildTimeOf, surfaceCommitsSince, dirtyPathsUnder, stylesheetsNewerThan, ageHours,
 } from '../font-freshness.mjs';
 
 const sh = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+
+// The "git cannot answer" fixtures must sit OUTSIDE any work tree. The OS temp
+// dir stopped guaranteeing that when check.sh pointed TMP at target/.tmp-check
+// (7e11b664c): a fixture inside this checkout made git answer from the real
+// repo, so "throws where git cannot answer" and "returns null" became
+// unreachable and both went red under the matrix (measured 2026-11-08, step
+// 193 -- the sixth and seventh tools tripped by that one TMP move, after five
+// python fixtures the same morning). Fall back to the repo's parent when the
+// temp dir is inside the tree; the finally blocks already remove the fixture.
+const nogitBase = (() => {
+  const base = tmpdir();
+  try {
+    const top = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: import.meta.dirname, encoding: 'utf8',
+    }).trim();
+    const rel = relative(top, base);
+    if (rel && !rel.startsWith('..') && !isAbsolute(rel)) return dirname(top);
+  } catch { /* no git here, or the temp dir is already outside: default is fine */ }
+  return base;
+})();
 
 /** A real git repo with the font-surface paths the module's FONT_SURFACE names. */
 function makeRepo() {
@@ -83,7 +103,7 @@ describe('fontSurfaceSheets() — derived from HEAD, and never silently empty', 
     // An empty list means "no sheet can change a font number", which the callers
     // read as "the artifact is current" -- the one answer a freshness check must
     // never give by accident.
-    const root = mkdtempSync(join(tmpdir(), 'font-nogit-'));
+    const root = mkdtempSync(join(nogitBase, 'font-nogit-'));
     try {
       assert.throws(() => fontSurfaceSheets(root), /git ls-files failed/);
     } finally {
@@ -134,7 +154,7 @@ describe('dirtyPathsUnder() — says "could not ask" instead of "nothing dirty"'
   });
 
   it('returns null where git cannot answer', () => {
-    const root = mkdtempSync(join(tmpdir(), 'font-nogit2-'));
+    const root = mkdtempSync(join(nogitBase, 'font-nogit2-'));
     try {
       assert.strictEqual(dirtyPathsUnder(root, 'ui'), null);
     } finally {
