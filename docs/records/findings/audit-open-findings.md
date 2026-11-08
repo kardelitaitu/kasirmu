@@ -5826,3 +5826,31 @@ Honest limits: unchanged — nextest junit, llvm-cov, docker legs. The helper ke
 the r115 semantics exactly (derive only when vswhere finds no instance); its
 binaries were not re-probed beyond kasirmu-cli's build-script link, which is the
 shape that failed bare.
+
+### Round 123 (2026-11-08) — the docs-auditor's own citation gate, live, and one drift
+
+The r122 extraction's doc fallout was measured and is ZERO for graded citations:
+check-cite-lines.py (the docs-auditor skill's gate, which polices every backticked
+symbol+line citation across 48 live docs — 300 citations, 227 graded, 73 suppressed
+by explicit dead-ref decisions) runs GREEN after the -35 line shift below the
+extracted block. The one DRIFT it did name is unrelated to this session's edits but
+real: docs/guides/developer/api-reference.md:1047 cited the settings_changed_sink
+helper at sync.rs:210, wired at :366, with the _scoped command at :811 — all three
+had drifted (measured by grep: the definition is at :66, the wiring call at :139,
+pub async fn settings_changed_sink_scoped at :459). All three re-pointed in one
+line-edit, following the checker's own repair rule (re-derive with
+grep -n '\bfn <name>\b'); re-run: 0 DRIFTED, exit 0, "no graded citation is on the
+wrong line".
+
+Also surveyed for r122 fallout and found clean: docs/operations/agent-gates.md's
+MSVC section (:3519) describes the env-var symptom, not the block's location, so it
+needs no re-point — though a reader following it should now be told about
+scripts/msvc-env.sh; the check.sh:NNN citations in docs/decisions are dated ADR
+stamps (historical, left alone per the r116 ruling).
+
+Honest limits: agent-gates.md:3519 could name the new helper and does not yet —
+left for the next docs-auditor pass rather than edited mid-round, because the
+section's acceptance command (wrangler/env verification) was not run this session
+and the pass would be a claim without its receipt. The citation gate's own caveat
+stands: UNGRADED 0 here, but "a floor, not a certificate" — 73 suppressed citations
+are decisions, not verifications.
