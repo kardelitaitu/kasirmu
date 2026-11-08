@@ -125,14 +125,18 @@ def audit(repo: str, table: dict) -> list:
     return problems
 
 
-def main(argv=None) -> int:
+def main(argv=None, root=None) -> int:
+    """r176: argv and root parameterized, the r166..r175 contract -- root
+    redirects BOTH shell sources and the divergence table, so a fixture cannot
+    half-run against the real shells."""
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "--self-test":
         return self_test()
     if argv:
         print("usage: verify-shell-registration.py [--self-test]", file=sys.stderr)
         return 2
-    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    repo = os.path.abspath(root) if root is not None else \
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     table_path = os.path.join(repo, "scripts", "shell-divergence.json")
     try:
         table = load_divergence_table(table_path)
@@ -219,6 +223,52 @@ def self_test() -> int:
          len(build(d_only, both, {"desktop_only": {"reason": "  "}})), 1)
     case("an entry that both shells now register is STALE",
          len(build(both, both, {"shared": {"reason": "was divergent"}})), 1)
+
+    # r176: main()'s shell -- argv and root graded against a tempdir fixture,
+    # the r166..r175 pattern. The table refusal and both verdicts go through
+    # main's own exit mapping, which the audit() cases above do not reach.
+    import contextlib as _ctxlib
+    def _shell(files, argv=None):
+        import tempfile
+        root = tempfile.mkdtemp(prefix="oz-shellreg-shell-")
+        for rel, content in files.items():
+            dst = os.path.join(root, rel)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            with io.open(dst, "w", encoding="utf-8") as fh:
+                fh.write(content)
+        out, err = io.StringIO(), io.StringIO()
+        with _ctxlib.redirect_stdout(out), _ctxlib.redirect_stderr(err):
+            # an EXPLICIT argv, never None: under a --self-test run the
+            # None fallback reads sys.argv[1:] == ["--self-test"] and
+            # re-enters this self_test until the stack dies.
+            rc = main(argv=[] if argv is None else argv, root=root)
+        return rc, out.getvalue() + err.getvalue()
+    DESK = "tauri::generate_handler![\ncommands::a::shared,\ncommands::a::desktop_only,\n]\n"
+    TABL = "tauri::generate_handler![\ncommands::a::shared,\n]\n"
+    TABLE = os.path.join("scripts", "shell-divergence.json")
+    rc, text = _shell({SHELLS["desktop"]: DESK, SHELLS["tablet"]: TABL})
+    if rc != 2 or "divergence table not found" not in text:
+        failures += 1
+        print(f"    FAIL a missing table must refuse with exit 2 (rc={rc} text={text[-90:]!r})")
+    rc, text = _shell({SHELLS["desktop"]: DESK, SHELLS["tablet"]: TABL,
+                       TABLE: '{"shell_divergence": {}}'})
+    if rc != 1 or "desktop_only" not in text or "1 unexplained" not in text:
+        failures += 1
+        print(f"    FAIL an unexplained divergence must exit 1 naming it (rc={rc} text={text[-90:]!r})")
+    rc, text = _shell({SHELLS["desktop"]: DESK, SHELLS["tablet"]: TABL,
+                       TABLE: '{"shell_divergence": {"desktop_only": {"reason": "desktop-only surface"}}}'})
+    if rc != 0 or "1 documented divergence(s)" not in text:
+        failures += 1
+        print(f"    FAIL an explained divergence must exit 0 (rc={rc} text={text[-90:]!r})")
+    rc, text = _shell({SHELLS["desktop"]: DESK, SHELLS["tablet"]: TABL,
+                       TABLE: '{"shell_divergence": {"desktop_only": {"reason": "x"}, "shared": {"reason": "was divergent"}}}'})
+    if rc != 1 or "stale" not in text:
+        failures += 1
+        print(f"    FAIL a stale entry must exit 1 (rc={rc} text={text[-90:]!r})")
+    rc, text = _shell({}, argv=["--what"])
+    if rc != 2 or "usage" not in text:
+        failures += 1
+        print(f"    FAIL an unknown argument must exit 2 with usage (rc={rc} text={text[-60:]!r})")
 
     print(f"  self-test: {'PASS' if failures == 0 else f'FAIL ({failures})'}")
     return 0 if failures == 0 else 1
