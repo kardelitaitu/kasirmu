@@ -8191,3 +8191,51 @@ r159): the E2E / llvm-cov / nextest-junit receipts remain the standing
 PG-gated gap. The root-policy gate remains RED on the foreign todo.md
 (r174) and verify-core-size RED on the ADR-59 +64 (r181), both awaiting
 their owning lanes.
+
+### Round 189 (2026-11-09) -- selftest-sweep joins the arc; the sweep grades itself, and once graded its own in-progress edit
+
+The r166..r188 contract applied to the roster sweep. checkers(root)
+re-derives all THREE directories from the contract root together (the r172
+half-redirect class is armed here: root redirecting scripts/ but not
+website/scripts would silently shrink the roster), and run(path, cwd) gives
+every subprocess the redirected cwd. The default CHECKER_DIRS constants
+remain as the root=None derivation.
+
+Four shell cases, and this round's fixture is the arc's first to carry
+LIVE subprocesses: tiny real checkers written into root/scripts, run by
+genuine python3 --self-test invocations. One passing + one flag-less skip
+read OK with the census; a self-test exiting 3 fails the sweep with the rc
+in the FAILED line; a checker that mentions "--self-test" only in prose
+but lets argparse reject the flag fails with FLAG REJECTED -- the
+distinction the 2026-09-29 sweep could not make, now graded through main;
+and a roster over nothing REFUSES rc 2. The fixture must nest under
+root/scripts (the roster's relative directory), not at the root -- my
+first draft learned that from the refusal case firing on the OK case.
+
+The round's live incident, resolved and recorded: between two live runs
+the sweep reported 1 FAILED where it had reported OK. The failing checker
+was the sweep itself -- it is a member of its own roster, and the run
+happened while MY in-progress shell block (a missing colon in a fixture
+header) failed its self-test. The sweep grades its own source in real
+time; a mid-edit sweep is red about itself. Self-inflicted,
+self-healing, no other lane involved -- but the lesson is real: this
+gate's verdict about the tree includes this round's edits to it, so an
+edit and its live run are not independent measurements.
+
+Measured kill: the roster mutant (checkers ignoring root) plus a stubbed
+run for speed -- the graded contract is the ROSTER redirect, and the
+refusal case dies immediately (the real roster's 103 checkers make the
+sweep print OK across the real tree where the fixture demands rc 2) and
+the failing case dies with it (stubbed runs cannot fail). The kill's
+captured text carries the real census line: OK -- 101 self-test(s) across
+103 checker(s) -- in a fixture's report.
+
+Honest limits: the ThreadPoolExecutor ordering and the timeout=600 arm are
+graded by no fixture (a 600-second fixture would be its own defect);
+.git-hosted .sh checkers in the real tree are exercised only by the live
+run, not by a fixture; the FLAG REJECTED bucket is graded through one
+argparse-shaped fixture and no other rejection shape. Docker daemon still
+down (probed r159): the E2E / llvm-cov / nextest-junit receipts remain the
+standing PG-gated gap. The root-policy gate remains RED on the foreign
+todo.md (r174) and verify-core-size RED on the ADR-59 +64 (r181), both
+awaiting their owning lanes.
