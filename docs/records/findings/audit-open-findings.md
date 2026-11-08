@@ -5749,3 +5749,27 @@ other agents' untracked scratch untouched. Honest limits: the extras note prints
 stderr, so a reader who silences stderr loses the visibility the downgrade bought —
 the alternative (failing) was the measured false positive; the differential still
 cannot run where git is absent (fallback_count None), unchanged.
+
+### Round 120 (2026-11-08) — the mutation harness graded the mutator's own author
+
+The full sabotage-selftests.py matrix was run live for the first time this session —
+all 109 checkers, in two chunks. Chunk 1: 55/55 KILLED. Chunk 2: 53 killed and ONE
+RELOCATION-SENSITIVE — and the row was verify-shell-syntax.py, i.e. the harness
+caught the r119 case written THIS SESSION. The relocation control (unmutated checker
+run from the harness's staged, git-less copy) failed with "self-test: .agents probe
+must not be TRACKED (git saw it) — fixture broken": in a no-git world targets()
+walks, the untracked probe is trivially seen, and my assertion read "tracked" into a
+world that has no such concept. The fix gates that one assertion on genuine git
+availability; the two assertions that actually pin the VENDORED ban (the fallback
+must still see the probe; planting it must not make the fallback skip anything) stay
+unconditional because they hold in both worlds. Verified in both worlds: real-repo
+self-test OK (15 cases), and a hand-built git-less staged copy also OK — then the
+harness re-run converted the row to "is_shell KILLED exit 0 -> 2" and the survey
+exits 0: 109/109 killed, 0 survived, 0 relocation-sensitive, 0 unmeasured.
+
+Honest limits: the harness mutates only the FIRST candidate function per checker, so
+"a self-test that can fail at all" is what 109 KILLED rows prove — not that every
+detector is individually graded; the tool's own docstring says the same. Chunk 1 was
+run before the r120 edit and does not exercise the new probe case, but the case is in
+chunk 2's file set and the hand-built no-git run covers the relocation control's
+question directly.
