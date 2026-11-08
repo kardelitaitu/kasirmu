@@ -115,8 +115,12 @@ CONVENTIONAL = {
 BASELINE: dict[tuple[str, ...], str] = {}
 
 
-def tracked_files() -> list[str]:
-    out = subprocess.run(["git", "ls-files"], cwd=str(ROOT),
+def tracked_files(root=None) -> list[str]:
+    # r182: the file list is an evidence source like any other -- root
+    # redirects it, so a fixture repo's ls-files cannot silently become the
+    # real repository's (the r172 half-redirect class).
+    base = ROOT if root is None else Path(root).resolve()
+    out = subprocess.run(["git", "ls-files"], cwd=str(base),
                          shell=(sys.platform == "win32"),
                          capture_output=True, text=True)
     if out.returncode != 0:
@@ -162,7 +166,7 @@ def scan(root: Path) -> list[str]:
     problems: list[str] = []
     baselined: list[str] = []
     by_name: dict[str, list[str]] = defaultdict(list)
-    for f in tracked_files():
+    for f in tracked_files(root):
         # Test the RAW path from `git ls-files`, which is always forward-slash.
         # `str(Path(f))` rewrites it to backslashes on Windows, so
         # startswith("docs/") silently returned False for every file and the
@@ -285,13 +289,7 @@ def self_test() -> int:
         subprocess.run(["git", "add", "."], cwd=tmp, shell=(sys.platform == "win32"),
                        check=True)
 
-        global ROOT  # noqa: PLW0603
-        saved = ROOT
-        try:
-            ROOT = tmp
-            found = scan(tmp)
-        finally:
-            ROOT = saved
+        found = scan(tmp)
 
         hits = [p for p in found if p.startswith("CONFLICTING AUTHORITY")]
         if not hits:
@@ -307,24 +305,93 @@ def self_test() -> int:
             "Historical copy. Not maintained.\n| white-label | no | yes |\n")
         subprocess.run(["git", "add", "."], cwd=tmp, shell=(sys.platform == "win32"),
                        check=True)
-        ROOT = tmp
-        try:
-            found2 = scan(tmp)
-        finally:
-            ROOT = saved
+        found2 = scan(tmp)
         if [p for p in found2 if p.startswith("CONFLICTING AUTHORITY")]:
             print("  MISSED! still fires when one copy disclaims authority "
                   "-- too noisy to be a blocking gate")
             return 1
         print("  CORRECT does not fire once one copy disclaims authority")
     print("  self-test: both directions behave")
+
+    # r182: main()'s shell -- argv and root graded against throwaway fixture
+    # REPOS, the r166..r181 pattern. tracked_files() runs git ls-files under
+    # the fixture root, so each fixture is its own git repository; `git add`
+    # alone is enough because ls-files reads the index. Verdicts 0/1 and the
+    # non-repo refusal go through main, which the detector cases above never
+    # reach.
+    shell = 0
+    def _mkrepo(files):
+        d = Path(tempfile.mkdtemp())
+        subprocess.run(["git", "init", "-q"], cwd=d, shell=(sys.platform == "win32"),
+                       check=True)
+        for rel, content in files.items():
+            dst = d / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            io.open(dst, "w", encoding="utf-8").write(content)
+        subprocess.run(["git", "add", "."], cwd=d, shell=(sys.platform == "win32"),
+                       check=True)
+        return d
+    def _shell(files, argv=None):
+        d = _mkrepo(files)
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            try:
+                rc = main(argv=[] if argv is None else argv, root=d)
+            except SystemExit as se:
+                # in-process SystemExit does NOT print its message -- the
+                # string lives in se.code, so the caller inspects it there.
+                rc = se.code
+        return rc, out.getvalue() + err.getvalue()
+    from contextlib import redirect_stdout, redirect_stderr
+    CLAIM = "# Tiers\n\n> Status: FINAL. Single source of truth for pricing.\n"
+    DISC = "# Tiers (archived snapshot)\nHistorical copy. Not maintained.\n"
+    shell += 1
+    rc, text = _shell({"docs/guides/tiers.md": CLAIM + "| a | yes |\n",
+                       "docs/records/tiers.md": CLAIM + "| a | no |\n"})
+    if rc != 1 or "CONFLICTING AUTHORITY" not in text:
+        print("  x two claiming duplicates through main() must exit 1 (rc=%d)" % rc)
+        return 1
+    shell += 1
+    rc, text = _shell({"docs/guides/tiers.md": CLAIM,
+                       "docs/records/tiers.md": DISC})
+    if rc != 0 or "no duplicate authoritative documents" not in text:
+        print("  x a disclaiming copy through main() must exit 0 (rc=%d)" % rc)
+        return 1
+    shell += 1
+    same = CLAIM + "| a | yes |\n"
+    rc, text = _shell({"docs/guides/tiers.md": same,
+                       "docs/records/tiers.md": same})
+    if rc != 1 or "DUPLICATE (identical)" not in text:
+        print("  x identical duplicates through main() must exit 1 (rc=%d)" % rc)
+        return 1
+    shell += 1
+    d = Path(tempfile.mkdtemp())   # a directory that is NOT a git repository
+    out, err = io.StringIO(), io.StringIO()
+    with redirect_stdout(out), redirect_stderr(err):
+        try:
+            rc = main(argv=[], root=d)
+        except SystemExit as se:
+            # in-process SystemExit does NOT print its message: the string
+            # lives in se.code. Coercing it to an int here threw the refusal
+            # away and graded the shell instead of the checker.
+            rc = se.code
+    refused = isinstance(rc, str) and rc.startswith("git ls-files failed")
+    if not refused:
+        print("  x a non-repo root must refuse naming ls-files (got %r)" % (rc,))
+        return 1
+
+    print("  shell: %d case(s) behave through main()" % shell)
     return 0
 
 
-def main() -> int:
-    if "--self-test" in sys.argv[1:]:
+def main(argv=None, root=None) -> int:
+    """r182: argv and root parameterized, the r166..r181 contract -- root
+    redirects the tracked-file list AND every document read, together."""
+    args = argv if argv is not None else sys.argv[1:]
+    if "--self-test" in args:
         return self_test()
-    problems = scan(ROOT)
+    root_path = ROOT if root is None else Path(root).resolve()
+    problems = scan(root_path)
     bl = getattr(scan, "baselined", [])
     if bl:
         print(f"  {len(bl)} baselined duplicate(s) -- known, unresolved, "
