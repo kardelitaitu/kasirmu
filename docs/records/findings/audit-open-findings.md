@@ -7002,3 +7002,31 @@ The CircleCI and on:-trigger negative controls still pass, but no case pins the
 underscore-leading edge of the new class, and drift's self-test remains scoped to
 the classifiers it names -- the full scan() is still untested, as its docstring has
 said since it was written.
+
+### Round 156 (2026-11-09) -- the shared job grammar is now a graded fact, not two quiet copies
+
+R155 aligned the two CI gates' job grammars by editing both, and its honest-limits
+paragraph named the residue: identity of character class is not identity of
+definition, so a future grammar change could rot one side silently -- the exact
+failure r75/r76 closed for checker NAMES. That lesson's mechanism is now applied
+to the job grammar: verify-ci-docs-drift.py's self-test carries a source witness
+that reads scripts/check-gate-runners.py and its own file and pins the counts of
+the shared literal -- declared exactly once on the containment side, applied at
+exactly both of drift's job extractors (workflow_jobs and job_coe_from_text).
+Either side changing alone reddens the self-test; a consistent change to both
+forces editing the witness too, which is the single-deliberate-edit shape the
+checker's own header has demanded since the staged-tree rewrite. The witness
+literal carries a doubled backslash so it cannot count itself. Self-test all
+green, drift live still 0 items, the containment gate untouched.
+
+Honest limits: the witness pins EXISTENCE and COUNT of the literal, not its
+position -- reordering the two extractors or duplicating the pattern inside a
+comment on a counted line would move the count and be caught, but a THIRD
+extractor added without the grammar would not (the count stays 2 and the new
+site stays lowercase-only, the r155 trap in miniature). The grammar itself is
+still two copies rather than one shared constant: the witness makes silent rot
+impossible, but the DRY version -- one imported definition -- remains unspent,
+and importing across gates is a structural change this round deliberately did
+not make. The witness also hardcodes the file paths; a rename of either gate
+reddens the self-test until the witness is updated, which is a cost accepted
+knowingly (a renamed gate should touch its alliance, per r74).
