@@ -553,6 +553,91 @@ fn pick(
     RegionalValue::new(default, ConfigScope::BuiltIn)
 }
 
+/// Regional market preset metadata (ADR-59 / Phase 2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegionalMarketPreset {
+    /// ISO-3166 alpha-2 country code (uppercase).
+    pub country_code: &'static str,
+    /// Default ISO-4217 currency code.
+    pub currency: &'static str,
+    /// Default primary BCP-47 locale tag.
+    pub default_locale: &'static str,
+    /// Canonical representative IANA timezone for the market.
+    pub default_timezone: &'static str,
+    /// Statutory tax regime descriptor (e.g. "PB1", "GST", "SST", "VAT").
+    pub tax_regime: &'static str,
+}
+
+/// Authoritative Southeast Asia market presets (ADR-59 Phase 2).
+pub const SEA_MARKET_PRESETS: &[RegionalMarketPreset] = &[
+    RegionalMarketPreset {
+        country_code: "ID",
+        currency: "IDR",
+        default_locale: "id-ID",
+        default_timezone: "Asia/Jakarta",
+        tax_regime: "PB1",
+    },
+    RegionalMarketPreset {
+        country_code: "SG",
+        currency: "SGD",
+        default_locale: "en-SG",
+        default_timezone: "Asia/Singapore",
+        tax_regime: "GST",
+    },
+    RegionalMarketPreset {
+        country_code: "MY",
+        currency: "MYR",
+        default_locale: "ms-MY",
+        default_timezone: "Asia/Kuala_Lumpur",
+        tax_regime: "SST",
+    },
+    RegionalMarketPreset {
+        country_code: "TH",
+        currency: "THB",
+        default_locale: "th-TH",
+        default_timezone: "Asia/Bangkok",
+        tax_regime: "VAT",
+    },
+    RegionalMarketPreset {
+        country_code: "PH",
+        currency: "PHP",
+        default_locale: "en-PH",
+        default_timezone: "Asia/Manila",
+        tax_regime: "VAT",
+    },
+    RegionalMarketPreset {
+        country_code: "VN",
+        currency: "VND",
+        default_locale: "vi-VN",
+        default_timezone: "Asia/Ho_Chi_Minh",
+        tax_regime: "VAT",
+    },
+];
+
+/// Look up a regional market preset by ISO-3166 alpha-2 country code.
+#[must_use]
+pub fn regional_preset_for_country(country_code: &str) -> Option<&'static RegionalMarketPreset> {
+    let cc = country_code.trim();
+    SEA_MARKET_PRESETS
+        .iter()
+        .find(|p| p.country_code.eq_ignore_ascii_case(cc))
+}
+
+/// Canonical statutory tax regime name for supported regional markets (ADR-59 / Phase 2).
+///
+/// Falls back to `"NONE"` for empty country codes, or `"LOCAL/<CC>"` for unmapped markets.
+#[must_use]
+pub fn regional_tax_regime_for_country(country_code: &str) -> String {
+    let cc = country_code.trim();
+    if cc.is_empty() {
+        return "NONE".to_owned();
+    }
+    if let Some(preset) = regional_preset_for_country(cc) {
+        return preset.tax_regime.to_owned();
+    }
+    format!("LOCAL/{}", cc.to_ascii_uppercase())
+}
+
 /// The compiled, locked market profile governing local checkout.
 ///
 /// Initialized once from SQLite on cold boot; zero runtime database reads
@@ -625,15 +710,9 @@ pub fn load_active_market_profile(
 
     // ── 2. Tax regime (name only; rounding from tax-rate row) ────────────
     // Derive a human-readable regime tag from the country_code convention.
-    // This is intentionally a lightweight label, not a fiscal engine — the
-    // implementation plan (ADR-64) introduces the full fiscal engine later.
-    let tax_regime = if country_code.eq_ignore_ascii_case("ID") {
-        "PB1".to_owned()
-    } else if country_code.is_empty() {
-        "NONE".to_owned()
-    } else {
-        format!("LOCAL/{country_code}")
-    };
+    // This uses regional_tax_regime_for_country to map known regional presets
+    // (ADR-59 / Phase 2) or falls back to "LOCAL/<CC>" for unmapped markets.
+    let tax_regime = regional_tax_regime_for_country(&country_code);
 
     // ── 3. Statutory rounding from the active tax rate ────────────────────
     // Query the first active rate covering this location (location-scoped

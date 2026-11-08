@@ -730,3 +730,33 @@ fn active_market_profile_serializes_as_snake_case_json() {
     assert!(json.contains("\"enabled_payment_rails\""));
     assert!(json.contains("\"statutory_rounding\""));
 }
+
+#[test]
+fn sea_regional_presets_cover_all_six_phase_two_markets() {
+    assert_eq!(SEA_MARKET_PRESETS.len(), 6);
+    let expected = ["ID", "SG", "MY", "TH", "PH", "VN"];
+    for code in expected {
+        let preset = regional_preset_for_country(code)
+            .unwrap_or_else(|| panic!("preset for {code} must exist"));
+        assert_eq!(preset.country_code, code);
+        assert!(!preset.currency.is_empty());
+        assert!(!preset.default_locale.is_empty());
+        assert!(!preset.default_timezone.is_empty());
+        assert!(!preset.tax_regime.is_empty());
+    }
+}
+
+#[test]
+fn regional_tax_regime_resolution_rules() {
+    assert_eq!(regional_tax_regime_for_country("ID"), "PB1");
+    assert_eq!(regional_tax_regime_for_country("id"), "PB1");
+    assert_eq!(regional_tax_regime_for_country("SG"), "GST");
+    assert_eq!(regional_tax_regime_for_country("my"), "SST");
+    assert_eq!(regional_tax_regime_for_country("TH"), "VAT");
+    assert_eq!(regional_tax_regime_for_country("PH"), "VAT");
+    assert_eq!(regional_tax_regime_for_country("VN"), "VAT");
+    assert_eq!(regional_tax_regime_for_country(""), "NONE");
+    assert_eq!(regional_tax_regime_for_country("   "), "NONE");
+    assert_eq!(regional_tax_regime_for_country("DE"), "LOCAL/DE");
+    assert_eq!(regional_tax_regime_for_country("us"), "LOCAL/US");
+}
