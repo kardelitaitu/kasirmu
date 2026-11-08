@@ -5773,3 +5773,25 @@ detector is individually graded; the tool's own docstring says the same. Chunk 1
 run before the r120 edit and does not exercise the new probe case, but the case is in
 chunk 2's file set and the hand-built no-git run covers the relocation control's
 question directly.
+
+### Round 121 (2026-11-08) — the npm trio and the workspace compile, live at tip
+
+Two lanes that had not been re-measured since other sessions' commits landed. The
+npm static trio is green at tip: ui lint (eslint .) exit 0, ui typecheck (tsc
+--noEmit) exit 0, bash scripts/lint-i18n.sh "no issues detected". The workspace
+compile was measured both ways and the delta is the finding: BARE
+`cargo check --workspace` fails on this checkout with 18 "could not open
+'kernel32.lib'"-class linker errors across kasirmu-cli and kasirmu-cloud BUILD
+SCRIPTS — the stripped-env failure the r115 fallback exists for, which until now had
+only been proven for the throwaway link probe and the nextest run. Sourcing
+check.sh's own derivation block (sed -n '33,72p', the committed fallback) before the
+same command compiles the whole workspace: exit 0, banner "VS registration unusable;
+derived MSVC env from disk (toolset 14.44.35207, SDK 10.0.26100.0)". So the
+fallback's proven scope now covers cargo check too — meaning every compile-shaped
+step in the matrix inherits it, and any scripted session that needs a bare cargo
+invocation outside check.sh must source the same block or hit the same 18 errors.
+
+Honest limits: this round changed no file; its product is receipts. The check ran
+--quiet with no -D warnings (that is clippy's lane, pre-push only per AGENTS.md §5.2
+and not part of check.sh's matrix); the nextest junit and llvm-cov receipts remain
+unverified, unchanged since r117.
