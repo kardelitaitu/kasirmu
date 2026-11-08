@@ -6416,3 +6416,42 @@ status stands. The wired-gate remains blind to undeclared test-*.py files by des
 (SCRIPT_RE); this entry's census is the durable record instead. Docker daemon still down
 (probed r136): the E2E / llvm-cov / nextest-junit receipts remain the standing PG-gated
 gap.
+### Round 141 (2026-11-08) — the .sh sibling census: eight wired, three manual tools made self-describing
+
+r140 deferred the eleven .sh siblings ("a per-file judgement deferred"). This round
+measured all of them the same way: runner-mention grep across check.sh, check.ps1, both
+githooks, every workflow, both package.json runners, and check-auditor-selftests.sh.
+Eight are wired gate-adjacent test-runners (test-cbm-hook, test-ci-routing — the one
+wired in THREE places: check.sh, pre-push, dev-ci.yml — test-eol-guard, test-lint-i18n,
+test-no-raw-params, test-records-index-escaping, test-typecheck-gate,
+test-typecheck-tripwire; each in check.sh AND dev-ci.yml). Three have no runner
+mentions: test-changed.sh, test-tdd.sh, test-ui-changed.sh — classified differently from
+r140's wal case: these are the fast TDD LOOP TOOLING, invoked manually, all three named
+by .agents/skills/tdd/SKILL.md (test-tdd.sh also by onboarding-guide and pr-repair),
+each with its own usage header. Documented tooling, not orphaned acceptance and not a
+self-test.
+
+The fix (1a00ec08e): the same self-describing note as r140, one per file — "developer
+tooling, invoked MANUALLY -- no gate runner by design; documented in
+.agents/skills/tdd/SKILL.md". Verified: bash -n green on all three after the edit; the
+note is a comment, so no checker that grades shell verdicts (check-shell-syntax.py
+grades check.sh and check-auditor-selftests.sh only) or line endings cares.
+
+Measured classification of the full sibling class (scripts/test-*), closing the r137/
+r140 thread: 14 files — 3 .py + 11 .sh. Eight .sh wired gate-adjacent test-runners; one
+.py declared+wired self-test (test-replay-fork.py); one .py wired (test-runner-labels.py);
+three manual tools (self-describing since this round); one one-time acceptance
+(self-describing since r140). Every file in the class now carries its own status or a
+live runner.
+
+Honest limits: the "wired" verdicts are runner-MENTION greps, not execution receipts —
+the eight .sh files' green runs are attributed to check.sh's step log, not re-run this
+round (each executed green at some commit previously; re-running all eight exceeds one
+round). test-runner-labels.py's owning checker remains untraced (invocation verified,
+declaration not — if its checker declares via the embedded flag the gate already polices
+it, and if not, the OK line's non-declarer census would name that checker, and it names
+only the census and the runner-script). The manual-tool notes are comments, so nothing
+machine-grades them — a future reader who moves the tdd skill leaves the notes pointing
+at a name, not a line number, which is why they name the skill only. Docker daemon still
+down (probed r136): the E2E / llvm-cov / nextest-junit receipts remain the standing
+PG-gated gap.
