@@ -357,7 +357,21 @@ def self_test():
                 failures += 1
             if not _root_case("repo_root ascends from a nested cwd", scratch, cwd=sub):
                 failures += 1
-        plain = tempfile.mkdtemp(prefix="chokepoints-nogit-")
+        # The non-repo fixture must sit OUTSIDE the work tree for the refusal to be
+        # testable at all. tempfile's default no longer guarantees that: 7e11b664c
+        # pointed TMP at target/.tmp-check, INSIDE this repo, and rev-parse from there
+        # answers with this very root, so the refusal branch was unreachable and the
+        # self-test went red under the matrix (measured 2026-11-08, step 131). Fall
+        # back to the repo's own parent when the temp dir is inside the tree; mkdtemp
+        # still makes a unique directory there and the finally below removes it.
+        tmp_base = tempfile.gettempdir()
+        try:
+            if os.path.commonpath([os.path.abspath(tmp_base),
+                                   os.path.abspath(repo_root())]) == os.path.abspath(repo_root()):
+                tmp_base = os.path.dirname(os.path.abspath(repo_root()))
+        except ValueError:
+            pass  # different drives: the temp dir cannot be inside the repo
+        plain = tempfile.mkdtemp(prefix="chokepoints-nogit-", dir=tmp_base)
         try:
             try:
                 repo_root(cwd=plain)
