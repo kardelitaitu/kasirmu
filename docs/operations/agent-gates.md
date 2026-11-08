@@ -3530,6 +3530,15 @@ recording. Run the gate from an **x64 Native Tools Command Prompt for VS 2022** 
 all three together), and the same gate reports `27 probed queries, none reads a LARGE
 table in full`.
 
+On a checkout whose VS registration is broken while the toolset files are intact,
+there is a third option: `source scripts/msvc-env.sh` before the gate. That is the
+derivation `scripts/check.sh` performs at load time (extracted 2026-11-08), setting
+`LIB`, `INCLUDE` and `PATH` from disk — newest toolset and SDK win — and it is
+measured on THIS gate (2026-11-08: derivation banner + `check-query-plans: OK —
+27 probed queries`, exit 0, in a session that would otherwise hit the kernel32.lib
+shape). On a healthy machine it is inert: it derives only when vswhere finds no
+instance.
+
 Since 2026-11-05 `scripts/check-query-plans.py` diagnoses both shapes itself and says
 which one it saw, so the next reader does not have to infer it from a linker command
 line; its self-test grades the diagnosis on synthetic output for both.
