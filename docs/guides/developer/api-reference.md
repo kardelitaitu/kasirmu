@@ -1044,7 +1044,7 @@ are real code at the wrong layer, kept because callers exist for them.
 | `get_kds_queue` | Service method in `kasirmu_core::db`; the command is `get_kds_queue_scoped` |
 | `list_kds_orders` | Service method in `kasirmu_core::db`; the command is `list_kds_orders_scoped` |
 | `update_kds_status` | Service method in `kasirmu_core::db`; the command is `update_kds_status_scoped` |
-| `settings_changed_sink` | A plain helper at `apps/desktop-tauri/src/commands/sync.rs:210`, wired at `:366`; the command is `settings_changed_sink_scoped` at `:811` |
+| `settings_changed_sink` | A plain helper at `apps/desktop-tauri/src/commands/sync.rs:66`, wired at `:139`; the command is `settings_changed_sink_scoped` at `:459` |
 | `rotate_encryption_key` | Retired by `a32b13aaa` ("drop the ungated rotate_encryption_key command"); the command is `rotate_encryption_key_scoped` at `apps/desktop-tauri/src/commands/security.rs:105` |
 | `recover_pending_topology_apply_at_startup` | An internal startup routine, not a `#[command]`, and it has no `_scoped` twin either |
 
