@@ -2903,7 +2903,10 @@ retryCurrencyLoad,
                       setTendered(String(amount));
                       setGiftCardApplied({ cardNumber: code, amountMinor: amount });
                     }}
-                    onError={(msg) => addToast({ message: msg, type: 'error' })}
+                    // GiftCardPayment resolves the failure copy at source (Fluent
+                    // lookup or l10nErrorMessage, backend cause logged there), so the
+                    // toast forwards the already-classified message untouched.
+                    onError={(classified) => addToast({ message: classified.message, type: 'error' })}
                     onCancel={() => setMethod('cash')}
                     onComplete={() => {}}
                   />

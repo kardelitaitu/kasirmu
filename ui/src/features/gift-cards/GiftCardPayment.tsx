@@ -23,8 +23,11 @@ export interface GiftCardPaymentProps {
   saleId?: string;
   /** Called with the amount that the gift card should cover (minor units). */
   onApplied: (amountMinor: number, cardNumber: string) => void;
-  /** Called to show an error / toast message. */
-  onError: (message: string) => void;
+  /** Called with the user-facing failure message, ALREADY LOCALIZED: this
+   * component resolves the copy itself (l10n.getString / l10nErrorMessage) and
+   * logs the backend cause here rather than showing it. The parent must not
+   * re-localize -- it forwards the message untouched. */
+  onError: (classified: { message: string }) => void;
   /** Called to close / cancel the gift card flow. */
   onCancel: () => void;
   /** Called when redemption is complete. */
@@ -103,7 +106,7 @@ export default function GiftCardPayment({
 
     const amountToRedeem = Math.min(totalMinor, cardBalance.minor);
     if (amountToRedeem <= 0) {
-      onError(l10n.getString('gift-cards-payment-insufficient'));
+      onError({ message: l10n.getString('gift-cards-payment-insufficient') });
       return;
     }
 
@@ -123,7 +126,7 @@ export default function GiftCardPayment({
       onApplied(amountToRedeem, code);
       onComplete();
     } catch (err) {
-      onError(l10nErrorMessage(err, l10n, 'gift-cards-payment-redemption-failed'));
+      onError({ message: l10nErrorMessage(err, l10n, 'gift-cards-payment-redemption-failed') });
     } finally {
       loadingRef.current = false;
       setLoading(false);

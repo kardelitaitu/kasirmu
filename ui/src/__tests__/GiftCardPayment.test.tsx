@@ -236,7 +236,7 @@ describe('GiftCardPayment', () => {
     await userEvent.click(screen.getByRole('button', { name: /apply gift card/i }));
 
     await vi.waitFor(() => {
-      expect(onError).toHaveBeenCalledWith('Redemption failed');
+      expect(onError).toHaveBeenCalledWith({ message: 'Redemption failed' });
     });
   });
   it('REFUSES a card denominated in another currency (no cross-currency tender)', async () => {
