@@ -5893,3 +5893,32 @@ Honest limits: the full kasirmu-core lib suite (3704 tests) remains slice-run on
 untested-at-tip artifact found by the probes. nextest junit and llvm-cov receipts
 remain unverified — they belong to the push flow, and no push is authorized this
 session.
+
+### Round 125 (2026-11-08) — the bare-cargo audit: the hook family inherits the fallback
+
+The r124 reflex finding generalized into an audit: 18 scripts and both git hooks
+invoke cargo; only check.sh sourced the r115 derivation. Two carry user-facing
+weight and are fixed. (1) .githooks/pre-push delegates Tier 1 to
+scripts/run-pre-push.py, whose cargo check --workspace links build scripts — on this
+checkout it would have died on the kernel32.lib shape at the moment of an authorized
+push. The hook now sources scripts/msvc-env.sh right after cd to toplevel, and the
+derivation was proven to fire from the hook's exact context (cd-to-toplevel +
+source -> banner, LIB set). (2) scripts/coverage.sh runs cargo llvm-cov --workspace
+bare — the reason the llvm-cov receipt family never produced a run this session;
+it now sources the helper too, and the toolchain probe answered a standing question:
+cargo-llvm-cov 0.8.5 IS installed, so the coverage lane is attemptable the moment
+its instrumented full-workspace build is budgeted (the first instrumented build
+recompiles all deps — 20-40 minutes, not attempted today).
+
+Verification: bash -n parses both files; verify-shell-syntax 64 entry points parse;
+the derivation banner + LIB-set receipt came from the hook's own cd-and-source
+sequence. No checker self-test touches either file (the sweep's 100 self-tests are
+python-pair files).
+
+Honest limits: the remaining 16 cargo-invoking scripts (dev loop, tablet rebuilds,
+flamegraph, profiling) were left bare — they are interactive developer tools, not
+gates, and a mass-edit of interactive scripts is not this session's step; the audit
+table is in this entry if a later round wants to finish it. The pre-push fix is
+untested end-to-end because an end-to-end test is a push, and no push is
+authorized. llvm-cov remains unrun; its blocker changed from "toolchain missing" to
+"build budget not spent" — which the honest-limits paragraph now says.
