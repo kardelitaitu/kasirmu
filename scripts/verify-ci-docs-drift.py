@@ -58,6 +58,17 @@ USAGE
     python3 scripts/verify-ci-docs-drift.py --report-only   # always exit 0
     python3 scripts/verify-ci-docs-drift.py --verbose       # show OK rows
 
+REGRESSION TEST
+===============
+
+The missing_needles() label check (item 3 above) is guarded by
+scripts/test-runner-labels.py -- the whole-checker fixture written against the
+has_needle() ANY-of bug, where one matching label of three excused a gate whose
+other labels had been deleted. It is wired as check.sh step "runner labels" and
+recorded in gates.json's "runner-labels" row: the manifest is the owner-of-record
+for this pairing, not a checker-declared sibling pointer, so deleting the step
+fails here (label matches nothing) and deleting the file fails the step itself.
+
 EXIT CODES
 ==========
 
