@@ -42,6 +42,10 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+# The repo root, captured once: later blocks cd into ui/ and website/ and a
+# guard that assumes it is still here silently degrades instead (measured
+# 2026-11-08: the UI coverage-floors guard below never ran its steps).
+repo_root_dir=$PWD
 
 # ── MSVC toolset fallback (sourced helper) ───────────────────────────────────
 # The derivation lives in scripts/msvc-env.sh (round 122 extraction of the r115
@@ -65,7 +69,7 @@ step() {
     local retry_cmd=$1; shift
     local step_str; step_str=$(printf "%02d" "${step_counter}")
 
-    # CHECK_FROM: skip everything before step N without paying for it. The matrix has 188
+    # CHECK_FROM: skip everything before step N without paying for it. The matrix has 216
     # steps and the first 36 take about 20 minutes, so re-running it from the top to reach
     # step 37 is how a late leg stays unverified for a hundred rounds. The comparison is
     # against this step's OWN number, before the increment, and the counter still advances
@@ -1013,7 +1017,20 @@ if command -v npm &>/dev/null && [ -f ui/package-lock.json ]; then
 # points. Replaced by a ratchet 2 points below the 2026-10-28 measurement.
 #
 # Gate: scripts/gates.json -> "ui-coverage-floors".
-if ( cd ui && npm run test:coverage >/dev/null 2>&1 ); then
+# THREE-WAY, and the three ways are not cosmetic. Measured 2026-11-08: this
+# block sits after the raw `cd ui` above, so the old guard's `( cd ui ... )`
+# ran from ui/ itself, looked for ui/ui, and failed EVERY run -- the two floors
+# steps below had never executed in any local matrix run, full or resumed, and
+# the else-branch warning blamed "a failing test" for what was a wrong
+# directory. The condition is also a multi-minute vitest run, so a CHECK_FROM
+# resume must not pay for it just to skip both steps: the first branch
+# announces the skips exactly as step() would and advances the counter, the
+# second runs the real measurement only when the grading step itself will run,
+# and the third is now a truthful "could not complete".
+if [ -n "${CHECK_FROM:-}" ] && [ "${step_counter}" -lt "${CHECK_FROM}" ]; then
+    step "ui coverage floors" "scripts/coverage-floors.json ui_floors (ratchet)" true
+    step "ui coverage floors self-test" "python3 scripts/verify-ui-coverage-floors.py --self-test" true
+elif ( cd "$repo_root_dir/ui" && npm run test:coverage >/dev/null 2>&1 ); then
     step "ui coverage floors" "scripts/coverage-floors.json ui_floors (ratchet)" python3 scripts/verify-ui-coverage-floors.py
     step "ui coverage floors self-test" "python3 scripts/verify-ui-coverage-floors.py --self-test" python3 scripts/verify-ui-coverage-floors.py --self-test
 else
