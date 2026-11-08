@@ -67,8 +67,13 @@ ROOT = Path(__file__).resolve().parent.parent
 WF = ROOT / ".github" / "workflows" / "release.yml"
 
 
-def validate(text: str) -> list[str]:
-    """Return a list of human-readable problems. Empty means the workflow is sound."""
+def validate(text: str, root=None) -> list[str]:
+    """Return a list of human-readable problems. Empty means the workflow is sound.
+
+    r171: `root` redirects the cross-reference scan, the git-log evidence and the
+    referenced-path existence checks together (the r166 contract); None keeps
+    this repository's own ROOT."""
+    root = ROOT if root is None else Path(root).resolve()
     problems: list[str] = []
 
     try:
@@ -97,7 +102,7 @@ def validate(text: str) -> list[str]:
     # Retired workflows moved to attic/ (P4) still count as cross-references:
     # a pin appearing only in a retired copy is weak evidence but not a typo
     # invented out of thin air, which is what this check exists to catch.
-    workflow_dir = ROOT / ".github" / "workflows"
+    workflow_dir = root / ".github" / "workflows"
     for p in sorted(workflow_dir.glob("*")) + sorted(workflow_dir.glob("attic/*")):
         if p == WF or not p.is_file():
             continue
@@ -113,7 +118,7 @@ def validate(text: str) -> list[str]:
             ["git", "log", "--grep=dependabot", "--grep=chore(deps)", "-n", "5", "-p", "--", ".github/workflows"],
             capture_output=True,
             text=True,
-            cwd=str(ROOT),
+            cwd=str(root),
         ).stdout
         known.update(re.findall(r"([A-Za-z0-9_.\-/]+)@([0-9a-f]{40})", log_out))
     except Exception:
@@ -138,7 +143,7 @@ def validate(text: str) -> list[str]:
                 r"(?<![\w./-])(?:ops/)?install/[A-Za-z0-9_./\-]+",
                 r"(?<![\w./-])apps/[A-Za-z0-9_.\-/]+\.json"):
         for ref in sorted(set(re.findall(pat, text))):
-            if not (ROOT / ref).exists():
+            if not (root / ref).exists():
                 problems.append(f"referenced path missing: {ref}")
 
     # ── Docker residue ────────────────────────────────────────────────
@@ -296,20 +301,122 @@ def self_test() -> int:
               f"{(found[0][:60] if found else '')}")
         if not ok:
             rc = 1
+
+    # r171: main()'s shell -- argv and root graded against a tempdir fixture,
+    # the r166/r169/r170 pattern. The clean corpus must satisfy ALL of
+    # validate()'s families at once: v* trigger, least privilege, the
+    # release-validate -> release-build -> release-publish chain, a literal
+    # inventory loop covered by the matrix, a fatal signing guard, and a
+    # scripts/ reference that exists ONLY under the fixture root (a path that
+    # also exists in the real repo would not pin the redirect).
+    import contextlib
+    import tempfile
+    shell_bad: list[str] = []
+    def _fixture(over_text, with_missing_script=False):
+        td = tempfile.mkdtemp()
+        root = Path(td)
+        (root / ".github" / "workflows").mkdir(parents=True)
+        (root / "scripts").mkdir()
+        if not with_missing_script:
+            (root / "scripts" / "fixture-only-tool.mjs").write_text("ok\n",
+                                                                   encoding="utf-8")
+        if over_text is not None:
+            (root / ".github" / "workflows" / "release.yml").write_text(
+                over_text, encoding="utf-8")
+        return root
+    def _shell(over_text, with_missing_script=False):
+        root = _fixture(over_text, with_missing_script)
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = main(argv=[], root=root)
+        return rc, out.getvalue() + err.getvalue()
+    CLEAN = (
+        "name: release\n"
+        "on:\n"
+        "  push:\n"
+        "    tags: ['v*']\n"
+        "permissions:\n"
+        "  contents: read\n"
+        "jobs:\n"
+        "  release-validate:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - run: echo validate\n"
+        "  release-build:\n"
+        "    needs: release-validate\n"
+        "    runs-on: ubuntu-latest\n"
+        "    strategy:\n"
+        "      matrix:\n"
+        "        include:\n"
+        "          - bundle_ext: 'AppImage exe'\n"
+        "    steps:\n"
+        "      - name: sign\n"
+        "        run: |\n"
+        "          if [ -z \"$UPDATER_PRIVATE_KEY\" ]; then\n"
+        "            echo \"UPDATER_PRIVATE_KEY secret is not set -- cannot sign\"\n"
+        "            exit 1\n"
+        "          fi\n"
+        "          node scripts/fixture-only-tool.mjs\n"
+        "  release-publish:\n"
+        "    needs: release-build\n"
+        "    runs-on: ubuntu-latest\n"
+        "    permissions:\n"
+        "      contents: write\n"
+        "      id-token: write\n"
+        "      attestations: write\n"
+        "    steps:\n"
+        "      - run: |\n"
+        "          for ext in AppImage exe; do\n"
+        "            echo \"$ext\"\n"
+        "          done\n")
+    src, stext = _shell(CLEAN)
+    if src != 0 or "release.yml validates" not in stext:
+        shell_bad.append("a clean fixture must exit 0 (src=%d text=%r)" % (src, stext[:200]))
+    src, stext = _shell(None)
+    if src != 1 or "not found" not in stext:
+        shell_bad.append("a missing release.yml must exit 1 (src=%d text=%r)"
+                         % (src, stext[:80]))
+    src, stext = _shell("on:\n  push:\njobs:\n  a: {\n")
+    if src != 1 or "does not parse as YAML" not in stext:
+        shell_bad.append("unparseable YAML must exit 1 (src=%d text=%r)"
+                         % (src, stext[:80]))
+    src, stext = _shell(CLEAN.replace("tags: ['v*']", "tags: ['v1']"))
+    if src != 1 or "does not include a v* pattern" not in stext:
+        shell_bad.append("a non-v* tag trigger must exit 1 (src=%d text=%r)"
+                         % (src, stext[:80]))
+    src, stext = _shell(CLEAN.replace("for ext in AppImage exe; do",
+                                    "for ext in AppImage exe apk; do"))
+    if src != 1 or "no matrix target builds" not in stext:
+        shell_bad.append("an inventory demanding an unbuildable ext must exit 1 "
+                         "(src=%d text=%r)" % (src, stext[:100]))
+    src, stext = _shell(CLEAN.replace("            exit 1\n", "            exit 0\n", 1))
+    if src != 1 or "UNSIGNED" not in stext:
+        shell_bad.append("a signing guard that does not exit 1 must fail "
+                         "(src=%d text=%r)" % (src, stext[:100]))
+    if shell_bad:
+        rc = 2
+        print("  SHELL    " + "; ".join(shell_bad))
     if rc == 0:
-        print(f"\n  self-test: all {len(MUTATIONS)} mutations caught")
+        print(f"\n  self-test: all {len(MUTATIONS)} mutations caught; "
+              "6 shell cases green")
     else:
         print("\n  self-test: a mutation slipped through -- the gate is weaker than claimed")
     return rc
 
 
-def main() -> int:
-    if "--self-test" in sys.argv[1:]:
+def main(argv: list[str] | None = None, root: str | Path | None = None) -> int:
+    """r171: argv and root parameterized, the r166/r169/r170 contract -- root
+    redirects BOTH the release.yml read and every evidence source inside
+    validate(), so a fixture cannot half-run against the real repository."""
+    root_path = None if root is None else Path(root).resolve()
+    wf = WF if root_path is None else root_path / ".github" / "workflows" / "release.yml"
+    args = sys.argv[1:] if argv is None else argv
+    if "--self-test" in args:
         return self_test()
-    if not WF.is_file():
-        print(f"FAIL: {WF} not found")
+    if not wf.is_file():
+        print(f"FAIL: {wf} not found")
         return 1
-    problems = validate(io.open(WF, encoding="utf-8").read())
+    problems = validate(io.open(wf, encoding="utf-8").read(), root=root_path)
     if problems:
         print(f"verify-release-workflow: {len(problems)} problem(s) in release.yml:")
         for p in problems:
