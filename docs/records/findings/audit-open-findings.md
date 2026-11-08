@@ -7227,3 +7227,28 @@ unparameterized, the r160/r161 entries said so from not having read main's
 head -- the register records the correction, it does not edit them. Docker
 daemon still down (probed r159): the E2E / llvm-cov / nextest-junit receipts
 remain the standing PG-gated gap.
+
+### Round 164 (2026-11-09) -- the last read-only REFUSED branch is graded
+
+R163 left the wrong-workflow REFUSED branch as read-only: a gate naming a
+non-dev-ci workflow would hit "this checker resolves CI claims against
+dev-ci.yml only" and exit 2, but no case reached it. The fixture builder now
+stages a nightly.yml beside dev-ci.yml, and a fifth shell case runs main() with
+a row whose ci.workflow names it -- exit 2, REFUSED in the captured streams.
+Self-test 48 -> 49 (5 shell cases), live rc=0, completeness and drift unchanged.
+Also read ahead for the next shell-grading candidate: verify-ci-docs-drift.py's
+main has --report-only / --verbose / --self-test but NO --root -- its paths
+(GATES_MANIFEST, DOCS, WORKFLOWS_DIR) are module constants, so grading its shell
+end to end needs real parameterization first, a round of its own.
+
+Honest limits: the case grades the BRANCH's exit and refusal line, not the
+downstream shape (a gate naming nightly.yml with steps would still refuse
+before any resolution -- the branch fires on the workflow NAME alone, by
+design, and the case pins exactly that). The fixture builder now writes a
+nightly.yml unconditionally, so every shell case runs with two workflow files
+present -- harmless (the empty nightly parses to zero jobs) but worth saying:
+the "walked" count in the mini-repo summary is 2, not 1. The drift
+parameterization noted above is the remaining named debt in the shell-grading
+arc (register-hygiene r158, cgr r163-r164, drift unspent). Docker daemon still
+down (probed r159): the E2E / llvm-cov / nextest-junit receipts remain the
+standing PG-gated gap.
