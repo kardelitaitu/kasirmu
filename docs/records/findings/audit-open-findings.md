@@ -7143,3 +7143,30 @@ already prescribes -- inspect paths immediately before naming them, and read
 git show --stat after every commit -- is what caught this one. Docker daemon
 still down (probed r159): the E2E / llvm-cov / nextest-junit receipts remain
 the standing PG-gated gap.
+
+### Round 161 (2026-11-09) -- the gate-runners exit contract is one named, graded function
+
+R160 proved the rc wiring by injection probe and named the residue: no case
+graded it. The four scattered `rc = 1` assignments are now one pure function,
+gate_exit(has_unresolved, has_unclaimed, has_st_missing, has_dup_labels) -- any
+one finding class alone fails the gate, all empty is the only zero -- and main
+computes its rc from the four booleans after the (unchanged) report blocks.
+Three cases grade the contract directly (unresolved alone -> 1, duplicate-label
+alone -> 1, none -> 0), self-test 41 -> 44, live rc=0 with the OK line. A side
+benefit the census makes concrete: gate_exit is pure and censused, so the next
+survey run will mutation-grade it -- gutting it to return 0 always or 1 always
+both redden, which the four scattered assignments could never offer.
+
+Honest limits: the helper grades the CONTRACT (the boolean map), not main()'s
+application of it -- a regression that computed the booleans wrong (say, passing
+findings where dup_finding belongs) would still need the injection probe, since
+main() remains unparameterized; parameterizing it is the bigger change this
+round again did not spend (cgr reads the manifest, the roster, five workflow
+files and the tooling-script set, so a faithful main(argv, paths) signature is a
+round of its own). The case list pins three of the eight boolean combinations;
+the remaining five are covered by the contract's symmetry but not individually
+asserted. Also recorded: the r160 sweep commit (5fe61631b) was this change's
+precondition -- its working-tree copy is what r161 edited, and the round kept
+the edit-to-commit window tight (one call, porcelain inspected in the same
+chain) per the section-7.3 lesson. Docker daemon still down (probed r159): the
+E2E / llvm-cov / nextest-junit receipts remain the standing PG-gated gap.
