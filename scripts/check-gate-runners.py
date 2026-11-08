@@ -49,6 +49,11 @@ For every gate declaring runners, each declared step name must resolve:
     list-item count must equal the parsed step count or the checker REFUSES --
     a shape change that made the parser miss steps would otherwise silently
     under-report the very findings this walk exists to catch.
+  - SELF-TEST COMMANDS RESOLVE (2026-11-08): a row's self_test names its
+    policing command; every script token in it must exist as a file, else a
+    finding -- a renamed script would otherwise leave the roster pointing at a
+    ghost. Measured first: 9 rows carry self_test, one script token each,
+    zero missing.
   - check.sh runners against `step "<name>"`, PREFIX-matched, because several steps
     carry a decorator (`step "clippy workspace"`, `step "no-raw-params (ADR #7 Phase 4)"`)
     and exact matching over-reports on those.
@@ -191,6 +196,24 @@ def parse_parity(text: str, parsed_count: int) -> bool:
     the raw list-item count against the parsed step count and lets main()
     refuse on mismatch -- a loud refusal beats a quiet partial walk."""
     return len(re.findall(r"^\s+- name:\s", text, re.M)) == parsed_count
+
+
+def self_test_findings(gates, exists):
+    """A row's self_test names the command that polices it. If that command's
+    script is renamed or deleted, nothing else fails loudly -- the roster keeps
+    pointing at a ghost. Every script token in the command must resolve as a
+    file; the existence predicate is injected so the self-test stays pure.
+    Measured 2026-11-08: 9 rows carry self_test, one script token each,
+    zero missing."""
+    out = []
+    for g in gates:
+        st = g.get("self_test")
+        if not st:
+            continue
+        for tok in re.findall(r"[A-Za-z0-9_./\\-]+\.(?:py|mjs|sh|ps1)", st):
+            if not exists(tok):
+                out.append((g.get("id", "?"), st, tok))
+    return out
 
 
 def workflow_steps_with_runs(text: str) -> dict[str, list[tuple[str, str]]]:
@@ -471,6 +494,19 @@ def _self_test() -> int:
                       + chr(10) + "      - name: X" + chr(10), 2), False),
         ("a commented mention is not a list item",
          parse_parity("# - name: prose" + chr(10), 0), True),
+        ("a missing self-test script is a finding",
+         self_test_findings(
+             [{"id": "x", "self_test": "python3 scripts/ghost.py --self-test"}],
+             lambda p: False),
+         [("x", "python3 scripts/ghost.py --self-test", "scripts/ghost.py")]),
+        ("an existing self-test script passes",
+         self_test_findings(
+             [{"id": "x", "self_test": "python3 scripts/real.py --self-test"}],
+             lambda p: True),
+         []),
+        ("rows without self_test are skipped",
+         self_test_findings([{"id": "y"}], lambda p: False),
+         []),
         ("a step named by a row is skipped",
          unclaimed_ci_invocations(
              {"a": [("Named", "python3 scripts/ghost-check.py\n")]},
@@ -594,6 +630,8 @@ def main() -> int:
                    for s in ((g.get("ci") or {}).get("steps") or [])}
     wf_dir = root / ".github/workflows"
     wf_files = sorted(wf_dir.glob("*.yml")) + sorted(wf_dir.glob("*.yaml"))
+    st_missing = self_test_findings(
+        gates, lambda t: (root / t).is_file())
     unclaimed = []
     for wf_path in wf_files:
         wf_text = wf_path.read_text(encoding="utf-8", errors="replace")
@@ -632,12 +670,19 @@ def main() -> int:
         print("Add a row, name the step in one, or move the checker under check.sh.")
         rc = 1
 
+    if st_missing:
+        print("%d self_test command(s) name a missing script:" % len(st_missing))
+        for gid, st, tok in st_missing:
+            print("  [%s] %r -- missing %s" % (gid, st, tok))
+        rc = 1
     if rc:
         return rc
 
     if not args.quiet:
         print("every declared runner resolves; %d workflow file(s) walked with"
-              " %d tooling exemption(s)" % (len(wf_files), len(TOOLING_SCRIPTS)))
+              " %d tooling exemption(s); %d self_test command(s) resolve"
+              % (len(wf_files), len(TOOLING_SCRIPTS),
+                 sum(1 for g in gates if g.get("self_test"))))
     return 0
 
 
