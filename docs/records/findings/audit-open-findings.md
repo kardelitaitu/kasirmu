@@ -5854,3 +5854,16 @@ section's acceptance command (wrangler/env verification) was not run this sessio
 and the pass would be a claim without its receipt. The citation gate's own caveat
 stands: UNGRADED 0 here, but "a floor, not a certificate" — 73 suppressed citations
 are decisions, not verifications.
+
+### Round 123, addendum — the deferred agent-gates.md pointer, now with its receipt
+
+The r123 register deferred one edit: "agent-gates.md:3519 could name the new helper
+and does not yet — left because the section's acceptance command was not run this
+session". The receipt now exists: check-query-plans.py — the very gate that section
+documents as unbuildable in a plain shell (the kernel32.lib and sccache shapes) —
+runs GREEN through the sourced helper: banner + "check-query-plans: OK - 27 probed
+queries, none reads a LARGE table in full", exit 0. The section gains a third-option
+paragraph (source scripts/msvc-env.sh; what it sets; inert on healthy machines) whose
+every claim is that run; the citation gate re-ran green after the +9-line shift.
+Commit fc4de7030. Lesson repeated, not new: a deferred edit keeps until its receipt
+arrives, and the receipt is usually one command away.
