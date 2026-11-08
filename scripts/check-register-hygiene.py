@@ -68,26 +68,74 @@ def register_findings(text: str) -> list[tuple[str, str]]:
     return out
 
 
-def main() -> int:
-    if "--self-test" in sys.argv:
+def cli_shell_cases() -> list[str]:
+    """The exit contract of main(), graded against temp files (r158 -- the
+    limit r157 named). The mutation survey grades the pure classifier only;
+    these cases are the CLI shell's graded surface. Temp files live outside
+    the repo tree, so the tree stays untouched. Returns failure descriptions;
+    [] = every case held."""
+    import contextlib
+    import io
+    import tempfile
+    fails: list[str] = []
+    with tempfile.TemporaryDirectory() as td:
+        def run(argv, text):
+            p = Path(td) / "missing.md" if text is None else Path(td) / "reg.md"
+            if text is not None:
+                p.write_text(text, encoding="utf-8")
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = main(argv, p)
+            return rc, out.getvalue(), err.getvalue()
+        E = "### Round %d (2026-11-08) -- t\n%s"
+        body = "Work done.\n\nHonest limits: none.\n"
+        clean = (E % (144, body)) + "\n"
+        dirty = (E % (144, body)) + "\n" + (E % (146, body)) + "\n"
+        rc, out, err = run(["prog"], None)
+        if rc != 2 or "REFUSED" not in err:
+            fails.append("a missing register must exit 2 with a REFUSED line (got rc=%d)" % rc)
+        rc, out, err = run(["prog"], dirty)
+        if rc != 1 or "1 register hygiene finding(s)" not in out or "round 146 follows 144" not in out:
+            fails.append("findings must exit 1 and name themselves (got rc=%d)" % rc)
+        rc, out, err = run(["prog"], clean)
+        if rc != 0 or "register hygiene OK" not in out:
+            fails.append("a clean register must exit 0 with the OK line (got rc=%d)" % rc)
+        rc, out, err = run(["prog", "--quiet"], clean)
+        if rc != 0 or out != "":
+            fails.append("--quiet must stay exit 0 and print nothing (got rc=%d out=%r)" % (rc, out))
+    return fails
+
+
+def main(argv: list[str] | None = None, register_path: Path = REGISTER) -> int:
+    """The gate's CLI shell, parameterized for the self-test (r158): argv
+    defaults to sys.argv, register_path to the real register. The exit
+    contract: 0 clean, 1 findings, 2 REFUSED (register missing)."""
+    argv = sys.argv if argv is None else argv
+    if "--self-test" in argv:
+        cli_fails = cli_shell_cases()
+        for line in cli_fails:
+            print("FAIL %s" % line)
         cases = build_cases()
         for name, got, want in cases:
             if got != want:
                 print("FAIL %s: got %r want %r" % (name, got, want))
                 return 1
-        print("SELF-TEST OK (%d cases, no files touched)" % len(cases))
+        if cli_fails:
+            return 1
+        print("SELF-TEST OK (%d classifier cases + %d CLI-shell cases;"
+              " the repo tree is untouched)" % (len(cases), 4))
         return 0
-    if not REGISTER.is_file():
-        print("REFUSED: register missing at %s" % REGISTER, file=sys.stderr)
+    if not register_path.is_file():
+        print("REFUSED: register missing at %s" % register_path, file=sys.stderr)
         return 2
-    text = REGISTER.read_text(encoding="utf-8")
+    text = register_path.read_text(encoding="utf-8")
     findings = register_findings(text)
     if findings:
         print("%d register hygiene finding(s):" % len(findings))
         for tag, msg in findings:
             print("  [%s] %s" % (tag, msg))
         return 1
-    if not any(a == "--quiet" for a in sys.argv):
+    if not any(a == "--quiet" for a in argv):
         entries = HEAD.findall(text)
         addenda = len(ADDENDUM.findall(text))
         print("register hygiene OK: %d round-log entries (%s-%s), consecutive,"
