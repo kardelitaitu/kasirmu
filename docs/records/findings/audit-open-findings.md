@@ -7556,3 +7556,41 @@ are asserted around, not through (needles avoid colored spans), so a broken
 color code would not redden any case. MONKEYPATCH kill, file-sed remains
 r162's machinery. Docker daemon still down (probed r159): the E2E / llvm-cov /
 nextest-junit receipts remain the standing PG-gated gap.
+
+### Round 173 (2026-11-09) -- commit-subjects joins the shell arc: a throwaway history grades the exits, and the failure reporter itself was broken-in-waiting
+
+The r166..r172 contract applied to the CI-side mirror of .githooks/commit-msg.
+git(), hook_intro() and check_range() take the root parameter; main(argv,
+root) derives both the hook read and every git read from it. The fixture is a
+throwaway git repository whose commit 0 introduces the REAL hook (copied in,
+so the extracted pattern is the one CI enforces) and whose later commits are
+the corpus -- which makes the grandfathering floor a graded fact, not an
+assumption: the floor commit is skipped as pre-rule, exactly the derivation
+the docstring claims. Six shell cases: all-conforming rc 0 with the count
+line, one offender rc 1 naming the subject, unknown revision REFUSED rc 2,
+missing --range rc 2, empty range refusing via SystemExit("resolved to 0
+commits"), and a merge commit exempt yet counted. Self-test grows six cases
+plus the plumbing block.
+
+The round's found defect is in the self-test's own failure path: bad started
+as int 0 (want() incremented it) while the git-plumbing branches called
+bad.append() -- an AttributeError that would have replaced the FIRST real
+plumbing failure's report with a traceback, converting a diagnosable gate
+failure into noise. Fixed to a list; the kill run then exercised the repaired
+path for real (the mutant's failures were counted and printed, not crashed).
+
+Measured kill: git() rebound to drop its root (read the real repository) --
+every fixture sha is unknown there, so the conforming range REFUSES at rc 2
+against a want of 0.
+
+Honest limits: two fixture bugs of my own, both caught before commit: the
+empty-range case first reused the PREVIOUS fixture's floor sha inside a NEW
+repo (unknown revision -- the checker correctly refused, grading my case, not
+itself), and the _shell helper returned an unbound rc whenever main raised
+SystemExit. The SystemExit string exit is pinned as raised-message only --
+the CLI's exit-code mapping (1 for a SystemExit string) is interpreter
+behavior, not asserted here. The floor derivation is graded against ONE hook
+arrival; a history where the hook arrives twice is untested. MONKEYPATCH
+kill, file-sed remains r162's machinery. Docker daemon still down (probed
+r159): the E2E / llvm-cov / nextest-junit receipts remain the standing
+PG-gated gap.
