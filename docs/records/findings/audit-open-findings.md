@@ -5601,3 +5601,22 @@ unit, lint and typecheck only; Docker is down so an E2E run would fail on its
 backend precondition. Line numbers inside the register and the loyalty comment WILL
 drift again; the pins exist to force the re-check, and the drift this round was
 partly self-inflicted (edit order), which the comment's own warning anticipates.
+
+**Addendum (same round, second task): the linker bypass became a gate.** The r114
+manual MSVC environment lived only in untracked scratch (.agents/nextest-run.sh);
+this session generalizes it into scripts/check.sh itself (5e5702aad, +41 lines right
+after the cd): when vswhere returns no instance but the toolset and SDK exist on
+disk, the gate derives LIB/INCLUDE/PATH from the newest toolset and newest SDK the
+way vcvars would, and says so on stderr. On a healthy machine the block is inert
+(rustc resolves the toolset itself; vswhere returning an instance short-circuits
+it), and on a machine with no VS at all the derivation finds nothing, so the steps
+fail exactly as before. Proven end-to-end on this machine: the block sourced from
+check.sh exported env byte-identical to the known-good scratch and linked a
+throwaway crate to "link-ok" — the exact capability r113 found missing. One real
+bug caught by the proof: the first cut globbed edition/*/VC (one level), which
+misses the edition/instance layout (2022/BuildTools) and silently derived nothing —
+the probe exposed it before any commit. verify-shell-syntax (63 entry points) and
+verify-runner-commands (496 references) green after the edit. Honest limits: a full
+"test workspace (nextest)" step through the gate is still not run here (window
+size), but its precondition — link.exe resolvable — is now proven, and the r114
+slices passed under the identical env values.
