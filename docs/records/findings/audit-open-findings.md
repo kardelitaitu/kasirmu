@@ -7445,3 +7445,39 @@ still happens only in the live run, as in cgr and drift: fixtures grade the
 plumbing, the live run grades the corpus. Docker daemon still down (probed
 r159): the E2E / llvm-cov / nextest-junit receipts remain the standing
 PG-gated gap.
+
+### Round 170 (2026-11-09) -- the shell-grading arc reaches workflow-syntax: the checker whose whole subject is "never trust a parse" gets its own shell graded
+
+The r166/r169 contract applied to the last bare main() among the shared-rule
+importers. verify-workflow-syntax' main() took no argv and fed from a
+hardwired live_workflows(); now main(argv, root) with the feed redirected
+(live_workflows(workflows) -> the r166-parameterized shared module) and the
+finding message's relative path computed against the redirected root. Five
+shell cases pin the exits: a parseable workflow exits 0 ("1 live workflow(s)
+parse"); an unclosed brace exits 1 naming the file with the RUNS NOTHING
+post-mortem; a jobs-less workflow exits 1 on the parsed-but-unusable shape
+(this gate's actual subject -- "it parsed" is the most misleading possible
+green); an EMPTY workflow file exits 1; an absent live set refuses with
+exit 2. Self-test 6 -> 11 cases. One needle was pinned from the measured
+message after a first guess missed: an empty file loads as NoneType, so the
+complaint is "the top level is NoneType, not a mapping" -- the case now
+asserts the message the checker actually prints, not the one I expected it
+to.
+
+Measured kill: the drift bug (live_workflows rebound to drop its redirect and
+read the real repository) fails TWO cases -- the clean fixture reports "5
+live workflow(s)" (the real repo's count) against a want of 1, and the
+refusal case reports rc 0 because the real live set is never empty. The
+mutant cannot half-run.
+
+Honest limits: MONKEYPATCH kill again, file-sed remains r162's machinery. The
+PyYAML-unavailable arm (check() raising SystemExit when the import fails) is
+pinned NOWHERE -- the gate refuses to run rather than lying, but no case
+proves that refusal, and the self-test's own skip path (return 2 when PyYAML
+is absent) is equally unproven; both are import-environment-dependent and the
+survey's staging always has PyYAML. The shell cases also never exercise TWO
+broken workflows in one run -- the aggregate "failed = True" loop over
+multiple files is live-covered, not case-covered (the real repo has 5
+workflows; a corpus of 5 broken ones is a fixture nobody has needed yet).
+Docker daemon still down (probed r159): the E2E / llvm-cov / nextest-junit
+receipts remain the standing PG-gated gap.
