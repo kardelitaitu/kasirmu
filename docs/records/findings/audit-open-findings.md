@@ -7822,3 +7822,40 @@ truncation arm ("... and N more") is untested. The history this gate records
 Docker daemon still down (probed r159): the E2E / llvm-cov / nextest-junit
 receipts remain the standing PG-gated gap. The root-policy gate remains RED
 on the foreign todo.md (r174).
+
+### Round 180 (2026-11-09) -- hardcoded-copy joins the arc; --update learns to write the fixture's budget, not the repository's
+
+The r166..r179 contract applied to the hardest redirect so far: the copy
+detector's evidence is a SOURCE TREE plus a WRITABLE BUDGET FILE. scan(root)
+and main(argv, root) now derive both from one base, so --update under a
+fixture writes the fixture's budget -- a redirect that matters doubly,
+because this is the first gate in the arc whose mutation arm WRITES. Five
+shell cases: budgeted string rc 0, unbudgeted copy rc 1 naming the file,
+missing budget rc 2, --update writing the fixture budget rc 0, a corpus with
+no sources rc 2 (the census floor through the shell path). The self-test
+census-floor case keeps its UI-rebinding shape for the root=None default.
+
+Two fixture lessons, both mine: (1) the --update case needed a placeholder
+budget file so the fixture HAS a scripts/ directory to write into -- the
+real checkout has one by construction, a fixture does not; (2) the first
+version asserted the written file's existence AFTER the tempdir context had
+closed and deleted it -- the check now runs inside the context through a
+callback. A test that inspects post-conditions must live where its
+preconditions still exist.
+
+Measured kill: scan rebound to ignore its root -- the budgeted case dies
+first (the real tree's files are not in the fixture's budget, rc 1 vs want
+0) and the "a corpus with no sources" case dies with it. The budget-file
+redirect is graded behaviorally rather than by mutation: the missing-budget
+case returns 2 only if main consults the FIXTURE's budget path -- a mutant
+consulting the real budget would find one and proceed to rc 1. It never
+reaches --update, so no probe ever writes the repository's budget.
+
+Honest limits: the _is_copy word-classification and the two regexes' generic
+window are graded only by the shape tables (REGRESSION_CATCH/IGNORE), not by
+any shell case; the SKIP_DIR_PARTS and .test.ts skips are graded implicitly
+only. The 19-case summary line now splits shapes from shell cases so a later
+deletion cannot hide in an aggregate. Docker daemon still down (probed
+r159): the E2E / llvm-cov / nextest-junit receipts remain the standing
+PG-gated gap. The root-policy gate remains RED on the foreign todo.md
+(r174).
