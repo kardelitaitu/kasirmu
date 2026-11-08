@@ -5620,3 +5620,37 @@ verify-runner-commands (496 references) green after the edit. Honest limits: a f
 "test workspace (nextest)" step through the gate is still not run here (window
 size), but its precondition — link.exe resolvable — is now proven, and the r114
 slices passed under the identical env values.
+
+### Round 116 (2026-11-08) — the roster gate caught its own prey: one unclaimed self-test
+
+verify-gate-completeness.py — the round-150 checker whose entire purpose is "every
+step in check.sh is claimed by a gates.json row" — was run LIVE for the first time
+this session and was RED at HEAD: \`website assets self-test\` (the
+scripts/verify-website-assets.py self-test step, added with the website-assets gate)
+had no roster row, invisible to verify-ci-docs-drift.py exactly as the tool's doc
+warns. Fixed in 5b59817e0 by claiming it under the website-assets gate, following
+the sibling pattern (website seo self-test is claimed the same way). One direction
+mattered before editing: check-gate-runners.py's SH_STEP_RE is unanchored
+(\`step "([^"]+)"\`) while the completeness gate's is column-0 — they DISAGREE by the
+34 indented step() calls inside check.sh's if/else branches (nextest-vs-cargo legs,
+npm ci installs). gates.json's own note (round 149) says those are DELIBERATELY
+unrostered — install and test-runner invocations are not gates, and a blanket rule
+would fire on 13 correct entries and get muted — so the column-0 anchor is recorded
+policy, not an oversight, and the regex was left alone. 29721049a dates and refreshes
+the two undated count claims the census exposed: check.sh's CHECK_FROM comment said
+"the matrix has 120 steps" (real column-0 count: 188) and
+verify-gate-completeness.py's header said "today — 120 of 120" (now
+"re-measured 2026-11-08: 188 of 188", explicitly stamped as a measurement rather
+than a constant). gates.json:616's "118 of 118" was left alone: it is a dated
+historical note ("Added 2026-10-05 (round 150)") describing that round's start
+state, not a live claim.
+
+Verification: verify-gate-completeness OK (188 of 188), its self-test OK (26
+cases), check-gate-runners "every declared runner resolves" (222 steps seen from
+that side), verify-ci-docs-drift 0 items. Honest limits: the runner-side count (222)
+and the completeness-side count (188) still differ by the 34 indented legs BY
+DESIGN — anyone reading both outputs must know the roster policy note at
+gates.json's gate-completeness entry; the numbers are consistent under that policy.
+The website-assets self-test itself was not RUN this round (claiming it in the
+roster makes it visible to drift analysis; running it is the runner's job and it is
+scheduled inside the full matrix).
