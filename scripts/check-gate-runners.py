@@ -411,6 +411,38 @@ def gate_findings(gates, job_steps: dict[str, list[str]], sh_steps: list[str],
 def _self_test() -> int:
     """Prove the matcher on both directions. A checker that cannot fail is worse than
     none, so each case states what must NOT match as well as what must."""
+    def _shell_case(rows, needle, starve=False):
+        # r163: the shell was parameterized all along (--root); these cases
+        # grade it end to end against a mini-repo OUTSIDE the tree. sys.argv
+        # is patched, stdout captured, and the tree stays untouched.
+        import contextlib
+        import io as _io
+        import json as _json
+        import sys
+        import tempfile
+        def run():
+            with tempfile.TemporaryDirectory() as td:
+                root = Path(td)
+                (root / "scripts").mkdir()
+                (root / ".github" / "workflows").mkdir(parents=True)
+                (root / "scripts" / "gates.json").write_text(
+                    _json.dumps({"gates": rows}), encoding="utf-8")
+                (root / "scripts" / "check.sh").write_text(
+                    'step "x" "echo hi"' + chr(10), encoding="utf-8")
+                if not starve:
+                    (root / ".github" / "workflows" / "dev-ci.yml").write_text(
+                        "", encoding="utf-8")
+                old_argv = sys.argv
+                sys.argv = ["check-gate-runners.py", "--root", str(root)]
+                try:
+                    out, err = _io.StringIO(), _io.StringIO()
+                    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                        rc = main()
+                finally:
+                    sys.argv = old_argv
+                return rc, needle in (out.getvalue() + err.getvalue())
+        return run
+
     cases = [
         ("exact name resolves",
          resolves("Coverage report", ["Coverage report"]), True),
@@ -585,6 +617,23 @@ def _self_test() -> int:
          duplicate_report("ci", [("s", ["a", "b"])]),
          (False, ["  note: 1 runner label(s) declared by more than one gate (ci axis):",
                   "    's' <- a, b"])),
+        ("the shell grades a clean mini-repo end to end",
+         _shell_case([{"id": "a", "runners": {"check.sh": ["x"]}}],
+                     "every declared runner resolves"),
+         (0, True)),
+        ("the shell grades an unresolved label fail-closed",
+         _shell_case([{"id": "a", "runners": {"check.sh": ["ghost"]}}],
+                     "do not resolve"),
+         (1, True)),
+        ("the shell grades a duplicate label fail-closed",
+         _shell_case([{"id": "a", "runners": {"check.sh": ["x"]}},
+                      {"id": "b", "runners": {"check.sh": ["x"]}}],
+                     "declared by more than one gate"),
+         (1, True)),
+        ("the shell refuses a starved corpus",
+         _shell_case([{"id": "a", "runners": {"check.sh": ["x"]}}],
+                     "REFUSED", starve=True),
+         (2, True)),
     ]
     bad = 0
     for name, fn, want in cases:
@@ -592,8 +641,8 @@ def _self_test() -> int:
         ok = got == want
         bad += 0 if ok else 1
         print("  %-48s %s" % (name, "ok" if ok else "FAIL (got %r, want %r)" % (got, want)))
-    print("SELF-TEST %s (%d cases, no files touched)"
-          % ("FAILED" if bad else "OK", len(cases)))
+    print("SELF-TEST %s (%d cases, incl. %d shell cases; no repo files touched)"
+          % ("FAILED" if bad else "OK", len(cases), 4))
     return 1 if bad else 0
 
 
