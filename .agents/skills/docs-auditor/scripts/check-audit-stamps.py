@@ -80,6 +80,7 @@ import datetime as _dt
 import json
 import pathlib
 import re
+import os
 import subprocess
 import sys
 
@@ -296,7 +297,24 @@ def self_test() -> int:
             got = _git_ignored(g, ["tracked.md", "ignored/x.md"])
             if got != {"ignored/x.md"}:
                 bad.append("  git check-ignore: expected {'ignored/x.md'}, got %r" % (got,))
-        with tempfile.TemporaryDirectory() as td:
+        # The non-repo fixture must sit OUTSIDE any work tree: with 7e11b664c's TMP
+        # at target/.tmp-check, the default temp dir is INSIDE this checkout and
+        # check-ignore answers with the real repo's rules instead of failing
+        # (measured 2026-11-08, sweep step 151). Fall back to the repo's parent.
+        tmp_base = tempfile.gettempdir()
+        try:
+            _top = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                                  cwd=os.path.dirname(os.path.abspath(__file__)),
+                                  capture_output=True)
+            if _top.returncode == 0:
+                # normcase+abspath on BOTH sides: git prints forward slashes,
+                # commonpath answers backslashes, an unnormalized == never fires.
+                _root = os.path.normcase(os.path.abspath(_top.stdout.decode("utf-8", "replace").strip()))
+                if os.path.normcase(os.path.commonpath([os.path.abspath(tmp_base), _root])) == _root:
+                    tmp_base = os.path.dirname(_root)
+        except (ValueError, OSError):
+            pass  # different drives or no git: the temp dir cannot be inside a repo
+        with tempfile.TemporaryDirectory(dir=tmp_base) as td:
             norepo = pathlib.Path(td)
             (norepo / "a.md").write_text("x", encoding="utf-8")
             extra += 1

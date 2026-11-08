@@ -62,6 +62,7 @@ fence and re-run.
 
 import argparse
 import os
+import subprocess
 import re
 import sys
 
@@ -356,7 +357,26 @@ def self_test() -> int:
     # the three detectors ever get to see, so a gutted one must turn the self-test red
     # instead of silently feeding them nothing.
     import tempfile
-    with tempfile.TemporaryDirectory() as td:
+    # The throwaway tree must sit OUTSIDE any work tree: md_files() prefers
+    # `git ls-files`, and a fixture under this checkout -- which is what the OS
+    # temp dir became once 7e11b664c pointed TMP at target/.tmp-check -- made
+    # ls-files answer from the real repo's index, so untracked a.md/b.md vanished
+    # and the walk graded empty (measured 2026-11-08, sweep step 151). Fall back
+    # to the repo's parent when the temp dir is inside the tree.
+    tmp_base = tempfile.gettempdir()
+    try:
+        _top = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                              cwd=os.path.dirname(os.path.abspath(__file__)),
+                              capture_output=True)
+        if _top.returncode == 0:
+            # normcase+abspath on BOTH sides: git prints forward slashes, commonpath
+            # answers backslashes, and an unnormalized == never fires (measured).
+            _root = os.path.normcase(os.path.abspath(_top.stdout.decode("utf-8", "replace").strip()))
+            if os.path.normcase(os.path.commonpath([os.path.abspath(tmp_base), _root])) == _root:
+                tmp_base = os.path.dirname(_root)
+    except (ValueError, OSError):
+        pass  # different drives or no git: the temp dir cannot be inside a repo
+    with tempfile.TemporaryDirectory(dir=tmp_base) as td:
         for fname in ("a.md", "b.md"):
             with open(os.path.join(td, fname), "w", encoding="utf-8") as fh:
                 fh.write("# x\n")
