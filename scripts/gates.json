@@ -401,7 +401,7 @@
       },
       "runners": {
         "check.sh": [
-          "no-raw-params",
+          "no-raw-params (ADR #7 Phase 4)",
           "no-raw-params falsification",
           "no-raw-params self-test"
         ]
@@ -726,7 +726,7 @@
       },
       "runners": {
         "check.sh": [
-          "feature registry"
+          "feature registry parity"
         ]
       }
     },
@@ -785,7 +785,7 @@
       "status": "required",
       "runners": {
         "check.sh": [
-          "windows config"
+          "windows config drift"
         ]
       },
       "_note": "Was ci.yml#windows-config. Runs in dev-ci.yml#static-gates, verified green locally.",

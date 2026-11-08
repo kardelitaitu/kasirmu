@@ -33,7 +33,10 @@ For every gate declaring runners, each declared step name must resolve:
     (2026-11-08: three -- one decorated, two space-ambiguous; "feature registry" ->
     "feature registry parity" and "windows config" -> "windows config drift" are
     word-boundary shapes, not decorators, and the exact spellings are already declared
-    by the local-matrix rows).
+    by the local-matrix rows). Spelled exactly in the dedicated rows the same day
+    (gates.json: "feature registry parity", "windows config drift",
+    "no-raw-params (ADR #7 Phase 4)"), so the live census is now EMPTY and the
+    decorator rule remains purely defensive.
 
 KNOWN FALSE POSITIVE, deliberately not "fixed":
 
