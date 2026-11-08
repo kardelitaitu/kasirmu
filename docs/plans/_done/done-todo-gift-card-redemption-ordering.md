@@ -1,9 +1,11 @@
 # Gift card redemption: the ledger is finished, the TENDER VOCABULARY is not
 
-> **RESOLVED 2026-11-07 — tender vocabulary, RBAC presets, and checkout mount shipped.**
-> - Migration `20261107_payments_gift_card_method.sql` rebuilds `payments` with `'gift_card'` in CHECK constraint and regenerates `init.pg.sql`.
+> **Status: RESOLVED & ARCHIVED (2026-11-09).** All blockers resolved:
+> - Migration `20261107_payments_gift_card_method.sql` rebuilt `payments` with `'gift_card'` in CHECK constraint and regenerated `init.pg.sql`.
 > - `GIFTCARDS_REDEEM` granted to `STAFF`, `MANAGER`, and `ADMIN` in `platform/core/src/rbac_presets.rs`.
 > - Post-commit redemption with warning toast on failure wired into `ui/src/features/sales/PaymentModal.tsx` and `GiftCardPayment.tsx` mounted.
+> - Acceptance verification passed: `cargo test -p kasirmu-core --lib payments_method_check` and `cd ui && npx vitest run src/__tests__/PaymentModalSaleFlow.test.tsx`.
+> - Earned `done-` prefix per AGENTS.md §7.4.
 
 > **CORRECTED 2026-10-25 (round 160), same day it was filed.** The first version of this file
 > said the backend was complete and only the UI wiring was missing. A follow-up audit found
