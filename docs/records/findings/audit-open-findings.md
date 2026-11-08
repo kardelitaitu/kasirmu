@@ -5795,3 +5795,34 @@ Honest limits: this round changed no file; its product is receipts. The check ra
 --quiet with no -D warnings (that is clippy's lane, pre-push only per AGENTS.md §5.2
 and not part of check.sh's matrix); the nextest junit and llvm-cov receipts remain
 unverified, unchanged since r117.
+
+### Round 122 (2026-11-08) — the r115 fallback becomes a first-class sourced helper
+
+The r121 finding ("a scripted session needing bare cargo must source check.sh's
+lines 33-72") hardcoded a line range as an API — so the block was extracted:
+scripts/msvc-env.sh now owns the derivation verbatim (banner reworded to the helper's
+name), and check.sh sources it with . "$(dirname -- "$0")/msvc-env.sh" at the same
+load-time position. The matrix needs no roster change (the helper has no step calls;
+verify-gate-completeness green) and no registration change (verify-shell-registration
+green). Measured end to end: CHECK_FROM=999 load-through prints the derivation banner
+and skips all steps (the r115 fallback still fires on this machine — the registration
+is still broken, so the helper earns its keep on every matrix run); source +
+cargo check -p kasirmu-cli exits 0 (the crate whose build script produced 18
+kernel32.lib-class errors bare); bash -n parses both files; verify-shell-syntax reads
+64 tracked entry points (the helper is the 64th); self-test, selftest-sweep,
+completeness, runners all green.
+
+Process note, recorded because it is the round's second finding: the FIRST splice
+attempt mangled check.sh — src.indexOf("fi") to find the block's closing line matched
+an "fi" inside a header-comment word, not the line-72 fi, and the sourced path became
+"msvc-env.shve..." while bash -n still PASSED (the quotes happened to balance). The
+gate that caught it was the load-through, not the parser: a check.sh that sources a
+nonexistent file dies at line 37 before any step prints. Repair was from git HEAD
+with line-number bounds (slice(0,32) + insertion + slice(72)) — the indexOf trap is
+the same class the register has recorded twice before (grep counts, template
+literals): anchors must be anchored.
+
+Honest limits: unchanged — nextest junit, llvm-cov, docker legs. The helper keeps
+the r115 semantics exactly (derive only when vswhere finds no instance); its
+binaries were not re-probed beyond kasirmu-cli's build-script link, which is the
+shape that failed bare.
