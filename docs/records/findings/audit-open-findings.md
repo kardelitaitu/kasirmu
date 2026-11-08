@@ -7345,3 +7345,34 @@ decision; sibling imports are now known to exist as vocabulary, so the
 witness-vs-import argument will be argued on coupling alone. Docker daemon
 still down (probed r159): the E2E / llvm-cov / nextest-junit receipts remain
 the standing PG-gated gap.
+
+### Round 167 (2026-11-09) -- gate_exit's truth table pinned exhaustively, and the mutant was killed by the spec side, not the function side
+
+The last named debt from r161-r162 closes: gate_exit had three of sixteen
+boolean combos pinned (TFFF, FFFT, FFFF) and thirteen unpinned -- including
+every multi-true combo, where an AND-instead-of-OR regression would hide (an
+AND-mutant passes all three original pins: FFFF stays 0, the single-true pins
+stayed 0 under AND too... measured correction: TFFF under AND is 0, which the
+old pin EXPECTED to be 1, so the two single-true pins did have teeth against
+AND; the unpinned surface was the multi-true half, where neither pin bites).
+Now: two named single-flag cases (unclaimed alone, starved alone) plus one
+exhaustive case whose got side is gate_exit applied to all sixteen combos and
+whose want side is the SPEC -- the any() comprehension computed independently
+of the function, not a second call of it. Measured kill: monkeypatching
+gate_exit to AND-semantics and re-running _self_test() fails exactly the
+exhaustive case, got [0 x 15, 1] vs want [0, 1 x 15] -- the 16-value diff IS
+the diagnosis. Case count 49 -> 52.
+
+Honest limits: the kill was proven by MONKEYPATCH (rebinding the module
+attribute before _self_test runs), not by sed-editing the file -- legitimate
+because the case list resolves gate_exit from module globals at call time,
+the same binding production uses, but the file-level mutation path (compile,
+import, survey candidate blanking) is exercised by r162's machinery, not
+re-proven here. The exhaustive case SUBSUMES the three original pins and the
+two new singles -- the named cases are kept for failure readability, and one
+could argue they are now redundant; the redundancy is the point (a named case
+says what broke in its label, the table says everything at once). The
+spec-side expression and gate_exit's body are still the same comparison
+written twice in one file -- the r165 witness critique applies: this detects
+divergence, it prevents nothing. Docker daemon still down (probed r159): the
+E2E / llvm-cov / nextest-junit receipts remain the standing PG-gated gap.
