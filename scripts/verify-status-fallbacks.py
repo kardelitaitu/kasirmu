@@ -82,11 +82,14 @@ def _read(path: Path) -> str:
         raise SystemExit(f"error: cannot read {path}: {exc}") from None
 
 
-def _sources() -> list[Path]:
-    """Every production UI source file, tests excluded."""
+def _sources(root=None) -> list[Path]:
+    """Every production UI source file, tests excluded. r185: root redirects
+    the sweep AND the reported relative paths together."""
+    base = ROOT if root is None else Path(root).resolve()
+    ui = UI if root is None else base / "ui" / "src"
     out = []
-    for p in sorted(UI.rglob("*.ts*")):
-        rel = p.relative_to(ROOT).as_posix()
+    for p in sorted(ui.rglob("*.ts*")):
+        rel = p.relative_to(base).as_posix()
         if any(x in rel for x in EXCLUDES):
             continue
         out.append(p)
@@ -151,12 +154,20 @@ def findings_in(text: str) -> list[tuple[int, str, str]]:
     return out
 
 
-def grade() -> int:
-    """Report every dishonest status fallback. 0 clean, 1 findings."""
+def grade(root=None) -> int:
+    """Report every dishonest status fallback. 0 clean, 1 findings, 2 the
+    scope did not open -- an empty corpus must not print OK (the census-floor
+    pattern the arc's r180/r181 gates already carry)."""
+    files = _sources(root)
+    if not files:
+        base = ROOT if root is None else Path(root).resolve()
+        print(f"status-fallbacks: REFUSED -- no production UI file under {base / 'ui' / 'src'}.", file=sys.stderr)
+        print("  A clean run over nothing is indistinguishable from a clean run.", file=sys.stderr)
+        return 2
     total = 0
-    for path in _sources():
+    for path in files:
         for line, val, cv in findings_in(_read(path)):
-            rel = path.relative_to(ROOT).as_posix()
+            rel = path.relative_to(ROOT if root is None else Path(root).resolve()).as_posix()
             print(f"  {rel}:{line}  default returns {val!r}, mirroring case {cv!r}")
             total += 1
     if total:
@@ -227,19 +238,70 @@ def self_test() -> int:
     if failures:
         print(f"self-test: {failures} FAILURE(S)", file=sys.stderr)
         return 1
+    # r185: main()'s shell -- argv and root graded against a tempdir fixture,
+    # the r166..r184 pattern. The census-floor refusal and the finding's
+    # file:line report go through main, which the string cases above never
+    # reach. The fixture's status family is synthetic (fixture-status-*), so
+    # a mutant that grades the real tree cannot find the names.
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+    shell = 0
+    def _shell(files, argv=None):
+        with _tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            for rel, content in files.items():
+                dst = base / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_text(content, encoding="utf-8")
+            out, err = _io.StringIO(), _io.StringIO()
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                try:
+                    rc = main(argv=[] if argv is None else argv, root=base)
+                except SystemExit as se:
+                    rc = se.code  # refusal strings live here in-process
+            return rc, out.getvalue() + err.getvalue()
+    # the vocabulary is deliberately closed: the fixture must borrow REAL
+    # state words (failed/pending) for the finding arm, while the honest arm
+    # uses the unknown convention.
+    BAD = ("export function f(s: string) {\n"
+           "  switch (s) {\n"
+           "    case 'failed': return 'fixture-status-failed';\n"
+           "    case 'pending': return 'fixture-status-pending';\n"
+           "    default: return 'fixture-status-pending';\n"
+           "  }\n"
+           "}\n")
+    OKC = BAD.replace("default: return 'fixture-status-pending';",
+                      "default: return 'fixture-status-unknown';")
+    shell += 1
+    rc, text = _shell({"ui/src/x/A.tsx": BAD})
+    if rc != 1 or "ui/src/x/A.tsx:5" not in text or "fixture-status-pending" not in text:
+        print(f"  x a dishonest fallback must exit 1 naming file:line (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _shell({"ui/src/x/A.tsx": OKC})
+    if rc != 0 or "no default names a concrete status" not in text:
+        print(f"  x an unknown fallback must exit 0 (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _shell({"README.md": "no sources"})
+    if rc != 2 or "REFUSED" not in text:
+        print(f"  x an empty corpus must refuse with exit 2 (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+        return 1
     print(f"self-test: OK ({len(bad)} defects detected, {len(good)} honest shapes accepted,"
-          f" 3 _read cases)")
+          f" 3 _read cases, {shell} shell cases)")
     return 0
 
 
-def main() -> int:
-    """Pick the mode."""
+def main(argv=None, root=None) -> int:
+    """Pick the mode. r185: argv and root parameterized, the r166..r184
+    contract -- root redirects the sweep and its reported paths together."""
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--self-test", action="store_true", help="prove the check can fail")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     if args.self_test:
         return self_test()
-    return grade()
+    return grade(root)
 
 
 if __name__ == "__main__":
