@@ -23,7 +23,14 @@ WHAT IT CHECKS
 
 For every gate declaring runners, each declared step name must resolve:
 
-  - CI steps against `- name: <step>` in the declared workflow/job.
+  - CI steps against `- name: <step>` IN THE DECLARED JOB. Whole-file matching
+    was replaced 2026-11-08: a step present in the workflow but under a
+    DIFFERENT job passed the old matcher, and drift's dangling_ci_refs checks
+    job EXISTENCE only (verify-ci-docs-drift.py:326), so the containment
+    promise was unchecked. Measured before wiring: 63 declared steps across 18
+    jobs in dev-ci.yml, zero misfiled. A row naming any workflow other than
+    dev-ci.yml is REFUSED rather than resolved against the wrong file (all 116
+    ci-bearing rows name dev-ci.yml today, so the refusal is latent).
   - check.sh runners against `step "<name>"`, PREFIX-matched, because several steps
     carry a decorator (`step "clippy workspace"`, `step "no-raw-params (ADR #7 Phase 4)"`)
     and exact matching over-reports on those.
@@ -143,7 +150,53 @@ def duplicate_declarations(gates, axis: str) -> list[tuple[str, list[str]]]:
     return sorted((n, sorted(gs)) for n, gs in owners.items() if len(gs) > 1)
 
 
-def gate_findings(gates, ci_steps: list[str], sh_steps: list[str], inline_markers=None):
+def workflow_job_steps(text: str) -> dict[str, list[str]]:
+    """Parse the workflow into {job: [step names]}, list items only.
+
+    GitHub Actions job keys sit at two-space indent under the top-level `jobs:`
+    key; a step name is a `- name:` LIST ITEM inside the job. A bare `name:`
+    (job-level metadata) is not a list item and is not collected -- the old
+    whole-file extraction could not tell the two apart."""
+    jobs: dict[str, list[str]] = {}
+    in_jobs = False
+    cur = None
+    for line in text.splitlines():
+        if re.match(r"^jobs:\s*$", line):
+            in_jobs = True
+            cur = None
+            continue
+        if not in_jobs:
+            continue
+        m = re.match(r"^  ([A-Za-z0-9_-]+):\s*$", line)
+        if m:
+            cur = m.group(1)
+            jobs[cur] = []
+            continue
+        if line and not line[0].isspace():
+            in_jobs = False
+            cur = None
+            continue
+        m = re.match(r"^\s+- name:\s*(.*?)\s*$", line)
+        if m and cur is not None:
+            jobs[cur].append(m.group(1).strip().strip('"'))
+    return jobs
+
+
+def non_devci_workflows(gates) -> list[tuple[str, str]]:
+    """Rows declaring a workflow this checker does not parse.
+
+    CI resolution reads dev-ci.yml only; a row naming another workflow would
+    otherwise have its steps resolved against the WRONG file's names. Measured
+    2026-11-08: all 116 ci-bearing rows name dev-ci.yml, so the refusal in main()
+    is latent, not live."""
+    return [(g.get("id", "?"), g["ci"]["workflow"])
+            for g in gates
+            if isinstance((g.get("ci") or {}).get("workflow"), str)
+            and g["ci"]["workflow"] != "dev-ci.yml"]
+
+
+def gate_findings(gates, job_steps: dict[str, list[str]], sh_steps: list[str],
+                  inline_markers=None):
     """Every declared runner label that does not resolve.
 
     Skips a gate carrying `_runner_note`: the roster has already recorded why that
@@ -158,9 +211,16 @@ def gate_findings(gates, ci_steps: list[str], sh_steps: list[str], inline_marker
         gid = g.get("id", "?")
         if "_runner_note" in g:
             continue
-        for step in ((g.get("ci") or {}).get("steps") or []):
-            if step not in ci_steps:
-                out.append((gid, "ci", step))
+        ci = g.get("ci") or {}
+        steps = ci.get("steps") or []
+        if steps:
+            allowed = job_steps.get(ci.get("job"))
+            if allowed is None:
+                out.append((gid, "ci-job", ci.get("job")))
+            else:
+                for step in steps:
+                    if step not in allowed:
+                        out.append((gid, "ci", step))
         for step in (g.get("runners", {}).get("check.sh") or []):
             if resolves(step, sh_steps):
                 continue
@@ -202,12 +262,45 @@ def _self_test() -> int:
          []),
         ("a stale CI step is reported",
          [x[2] for x in gate_findings(
-             [{"id": "cov", "ci": {"steps": ["Nope"]}}], ["Real"], [])],
+             [{"id": "cov", "ci": {"workflow": "dev-ci.yml", "job": "a",
+                                  "steps": ["Nope"]}}],
+             {"a": ["Real"]}, [])],
          ["Nope"]),
         ("a stale check.sh runner is reported",
          [x[2] for x in gate_findings(
-             [{"id": "cov", "runners": {"check.sh": ["Nope"]}}], [], ["Real"])],
+             [{"id": "cov", "runners": {"check.sh": ["Nope"]}}], {}, ["Real"])],
          ["Nope"]),
+        ("a step in the declared job resolves",
+         gate_findings(
+             [{"id": "g", "ci": {"workflow": "dev-ci.yml", "job": "a",
+                                  "steps": ["X"]}}], {"a": ["X"]}, []),
+         []),
+        ("a step in the file but a DIFFERENT job does NOT resolve",
+         [x[2] for x in gate_findings(
+             [{"id": "g", "ci": {"workflow": "dev-ci.yml", "job": "a",
+                                  "steps": ["X"]}}], {"a": ["Y"], "b": ["X"]}, [])],
+         ["X"]),
+        ("a declared job missing from the workflow is a finding",
+         [x[1:] for x in gate_findings(
+             [{"id": "g", "ci": {"workflow": "dev-ci.yml", "job": "ghost",
+                                  "steps": ["X"]}}], {"a": ["X"]}, [])],
+         [("ci-job", "ghost")]),
+        ("rows without ci steps are not job-checked",
+         gate_findings(
+             [{"id": "g", "ci": {"workflow": "dev-ci.yml", "job": "a"}}], {}, []),
+         []),
+        ("workflow_job_steps collects list items only, drops strays",
+         workflow_job_steps("jobs:" + chr(10) + '  - name: Stray' + chr(10)
+                            + "  a:" + chr(10)
+                            + "    steps:" + chr(10) + '      - name: "X"'
+                            + chr(10) + "    name: NotAStep" + chr(10) + "  b:"
+                            + chr(10) + "    runs-on: z" + chr(10)),
+         {"a": ["X"], "b": []}),
+        ("a non-devci workflow is refused",
+         non_devci_workflows(
+             [{"id": "a", "ci": {"workflow": "dev-ci.yml"}},
+              {"id": "b", "ci": {"workflow": "website.yml"}}]),
+         [("b", "website.yml")]),
         ("a decorator-only resolution is listed",
          prefix_resolutions(["no-raw-params"], ["no-raw-params (ADR #7 Phase 4)"]),
          [("no-raw-params", "no-raw-params (ADR #7 Phase 4)", "decorated")]),
@@ -272,18 +365,28 @@ def main() -> int:
     ci_text = workflow.read_text(encoding="utf-8", errors="replace")
     sh_text = check_sh.read_text(encoding="utf-8", errors="replace")
 
-    ci_steps = [m.strip().strip('"') for m in STEP_RE.findall(ci_text)]
+    wrong_wf = non_devci_workflows(gates)
+    if wrong_wf:
+        for gid, wf in wrong_wf:
+            print("REFUSED: gate '%s' names workflow '%s'; this checker resolves"
+                  " CI claims against dev-ci.yml only -- extend the reader before"
+                  " trusting any resolution here." % (gid, wf), file=sys.stderr)
+        return 2
+
+    job_steps = workflow_job_steps(ci_text)
     sh_steps = SH_STEP_RE.findall(sh_text)
 
-    findings = gate_findings(gates, ci_steps, sh_steps, inline_markers=sh_text)
+    findings = gate_findings(gates, job_steps, sh_steps, inline_markers=sh_text)
 
     declared_sh = [s for g in gates
                    for s in (g.get("runners", {}).get("check.sh") or [])]
     prefixes = prefix_resolutions(declared_sh, sh_steps)
 
     if not args.quiet:
-        print("checked %d gate(s) against %d CI step(s) and %d check.sh step(s)"
-              % (len(gates), len(ci_steps), len(sh_steps)))
+        print("checked %d gate(s) against %d CI step(s) in %d job(s) and"
+              " %d check.sh step(s)"
+              % (len(gates), sum(len(v) for v in job_steps.values()),
+                 len(job_steps), len(sh_steps)))
 
     if prefixes:
         print("  note: %d declared label(s) resolve by decorator prefix only:"
