@@ -6343,3 +6343,38 @@ measured today. sibling_called() still accepts any live-line mention of the sibl
 basename (the r137 print-form trade-off, unguarded). The rot proof remains synthetic;
 live runners were never mutated. Docker daemon still down (probed r136): the E2E /
 llvm-cov / nextest-junit receipts remain the standing PG-gated gap.
+### Round 139 (2026-11-08) — the round-106 print-form guard, ported to the sibling convention
+
+r137 and r138's register entries carried the same honest limit: sibling_called() accepts
+any live-line mention of the sibling's basename, so a runner that merely ECHOES the name
+would read as a caller — the exact acceptance round-106 documented for the flag side and
+guarded with wired_only_by_print. This round ports the guard: sibling_wired_only_by_print()
+(d5ba3444c) grades a sibling's live mentions — every mention print-form
+(echo/printf/Write-Host/Write-Output) reads wired-only-by-print, a real invocation does
+not, no mentions read False (nothing wired is nothing to guard). The flag-side design is
+preserved exactly: sibling_called() still counts an echo as a caller (the unanchored
+trade-off, unchanged), and the new audit case in the gate's self-test SURFACES the state
+instead of letting it pass silently.
+
+Measured: gate self-test green at 38 cases (two new: the synthetic triple — echoed
+sibling True, real invocation False, no mention False; and the live audit — no live
+sibling is wired only by a runner that merely prints; measured, the live runners mention
+test-replay-fork.py on exactly two live lines, check.sh:813 and dev-ci.yml:1392, both
+real invocations). Live run exit 0 with the census line unchanged (103 of 105,
+non-declarers named); alliance sabotage-selftests.py stays green at 132 cases. One
+ordering stumble was caught before any commit — the new live-audit case was first
+inserted before text_now = runner_text() is assigned, and the UnboundLocalError reddened
+the gate's self-test AND the alliance's partner-stays-green mirror simultaneously; the
+case was relocated below the assignment and everything went green. That is the second
+consecutive round where the alliance caught a defect the round introduced while fixing
+the previous one — the alliance's value is not hypothetical.
+
+Honest limits: the guard is a live AUDIT in the gate's self-test, not part of
+uncalled_from's census — a checker whose sibling is only ever echoed passes the gate run
+and fails the self-test, the same two-layer shape as the flag side (deliberate: the
+census's job is wiring truth, the audit's job is surfacing latent acceptance). The
+print-form regex is shared with the flag side, so a runner form PRINT_FORM misses (a
+YAML block-scalar echo; measured none today) would be under-counted in both directions
+equally. The unanchored acceptance remains: a runner line that both echoes AND pipes
+still counts as a caller. Docker daemon still down (probed r136): the E2E / llvm-cov /
+nextest-junit receipts remain the standing PG-gated gap.
