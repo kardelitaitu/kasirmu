@@ -6491,3 +6491,64 @@ r136): the E2E / llvm-cov / nextest-junit receipts remain the standing PG-gated 
 One mechanics repeat: a bash-c heredoc was attempted again for the chain probe and
 mangled the call (the documented third-strike trap) — the direct
 "python3 scripts/verify-ci-docs-drift.py" invocation is the standing fix.
+
+### Round 143 (2026-11-08) — verify-gate-completeness.py was blind to 38 indented steps; the deliberate exceptions classified and one overlooked gate rowed
+
+r142's drift note (five runner labels informational-uncovered) had an allowlist designed
+for the drift checker -- until the census read verify-gate-completeness.py's own
+docstring first: "every step is claimed by a label, exact not prefix, 188 of 188". The
+probe of its extractor measured the premise, not the conclusion: STEP_RE anchored
+`(?m)^step` at column 0 while check.sh holds 226 step lines, 38 of them indented inside
+conditional blocks, including real gates (ui lint, ui typecheck, ui test). The 188/188
+measurement was true but scoped to the steps the extractor could see; the inverse
+check's own WHY -- nothing checked that every step is DECLARED -- was not being
+delivered for a sixth of the file.
+
+The widening (0ffeb554f) lets STEP_RE see leading whitespace, and the probe
+(target/probe-indented-steps.py) measured the post-widening sets exactly: seven
+exact-unclaimed steps, four duplicate-pair labels. Each classified by reading what it
+runs, not its name. Five labels plus "updater manifest generator" are deliberately
+unrowed per the manifest notes of 2026-09-29 (installs, test-runner invocations, one
+checker-selftest companion): recorded in a new top-level gates.json key
+`classified_check_sh_steps` (label -> reason), read fail-closed by the checker
+(non-empty string -> non-empty reason, else exit 2), so a NEW unrowed step surfaces
+red instead of inheriting the older excuses. "test workspace flake receipt (junit)" is
+the real catch: a gate-grade check (verify-pg-tests-ran.py --nextest-junit grades the
+nextest JUnit report for bought-back flakes) with NO row at all -- invisible to
+completeness by the indentation and prefix-hidden in drift behind the "test workspace"
+needle, the exact migration-idempotency shape the exactness rule exists to catch. Its
+same-branch sibling "test doctests" was rowed; this one was an oversight, and is rowed
+now (flake-receipt-junit, required) with a _note carrying the local-only reason: the
+cargo-test fallback emits no JUnit report by design. The four duplicate pairs
+("coverage floors" and its self-test, ui twins) are measured mutual-exclusion branch
+alternates (the CHECK_FROM resume stub whose command is true vs the real llvm-cov
+run) -- classified in the same key, which duplicate_steps consults.
+
+Mechanism: stale_classifications() reds a classification naming a step that no longer
+exists -- an excuse for a vanished step would inherit its reason onto whatever is next
+added under that name. Self-test grew 26 -> 34 cases and a four-mutation probe
+(column-0 restore, classification ignored in unclaimed, stale always-clean, duplicates
+ignoring classification) killed all four. Receipts: completeness live RC=0 at 226
+steps / 10 classified / 239 labels; check-gate-runners resolves every declared runner
+against 226 steps and 150 gates; drift 0 items with its informational note correctly
+still at five (the needle axis is unchanged); wired census unchanged at 103 of 105;
+sabotage 132 cases; ipc-parity OK; debt-markers 0 unresolvable.
+
+Honest limits: the classification reasons are the 2026-09-29 prose judgements now
+machine-graded for existence and shape only -- a wrong reason reads exactly like a
+right one, and the manifest notes remain the human record. The two checkers still
+measure different axes (exact claim vs needle containment) and neither is a subset of
+the other; the drift note's five labels are correct on their own axis. The docstring's
+new numbers are date-stamped and go stale as check.sh grows, by its own wording.
+Docker daemon still down (probed r136): the flake-receipt step itself was not
+exercised end-to-end (PG-gated); its row is verified textually -- the needle resolves,
+the field vocabulary is clean -- and the checker behind it carries its own wired
+self-test row (pg-receipt-selftest). Two mid-round stumbles, both caught before
+commit: an insertion placed stale_classifications between duplicate_steps' docstring
+and its body, orphaning the body so duplicate_steps returned None -- both the
+self-test and the live run reddened with TypeError; and the mutation-probe roundtrip
+left a phantom ` M` on the checker, which the hash comparison named in the agents file
+proved byte-identical (nothing to commit). The top-level key is validated by
+completeness alone: no other gates.json parser rejects unknown top-level keys
+(probed), GATE_FIELDS -- the per-gate vocabulary -- is unaffected, and any second
+reader should re-read the manifest rather than trust the key blindly.
