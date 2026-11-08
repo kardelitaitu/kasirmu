@@ -6193,3 +6193,34 @@ and every tail command's green receipt is from today's legs under the shifted nu
 the commands are unchanged, but the two facts are not the same run. No NEW receipt was
 taken for the rust elif: with PG down it can only produce the else branch, which the
 sweep exercised.
+
+### Round 135 (2026-11-08) — the temp-fixture class is closed proactively: a census of every temp dir in the tree
+
+Rounds 133–134 closed the TMP-inside-the-tree class reactively, one red matrix step at a
+time. This round asked the question the reactive way never answers: how many members does
+the class STILL have? A census of every file under scripts/, .agents/skills, ui/e2e,
+tools/ and crates/ that touches a temp dir (119 files) classified each hit by whether its
+fixture consults git at all — the class's necessary condition, since a fixture that never
+asks git cannot be betrayed by git answering from the parent checkout.
+
+The verdict, by reading not by grep-widening: the class is closed. The seven known
+members carry the guard or synthesize their paths. verify-root-policy.py is immune by
+flag semantics — its `ls-files --others --ignored` lists only IGNORED entries, an
+untracked empty fixture directory is not one, and git failure returns the same empty set,
+so both regimes pass for reasons that hold. verify-feature-registry.py is immune by
+construction — its fixture runs git init and commits inside itself, so `git show
+HEAD:` answers from the fixture's own repo; its None-with-notice convention degrades
+honestly besides. generate-pg-migration.py self-inits the same way; sabotage-selftests.py
+runs git only against the real tree; the four scripts/__tests__ node fixtures never
+invoke git and their green ran under the matrix env at 0f4131cc4. The Rust side solved
+this class centrally long ago — kasirmu_test_support roots every tempdir under target/
+test-scratch, and the bridge's comments record the Windows TEMP history that forced it.
+
+Honest limits: the census is read-level for the immunities (root-policy and
+feature-registry were verified by reading their code paths, not by mutation-testing
+them), and run-level only for the fixtures a runner actually reaches — verify-selftests-
+wired reports 102 of 105 checkers declare a self-test and every declared one is invoked,
+but three checkers declare none and were closed by reading alone. The genui card for this
+round is undelivered: the dsh-ui fence pipeline rejected four provably valid JSON
+encodings in a row (machine-serialized among them), and no schema reference is reachable
+from this session's tools; the register entry is the durable record.
