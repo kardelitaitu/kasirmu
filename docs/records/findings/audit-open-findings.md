@@ -7939,3 +7939,47 @@ r159): the E2E / llvm-cov / nextest-junit receipts remain the standing
 PG-gated gap. The root-policy gate remains RED on the foreign todo.md
 (r174), and verify-core-size remains RED on the ADR-59 +64 (r181), both
 awaiting their owning lanes.
+
+### Round 183 (2026-11-09) -- debt-markers joins the arc; a fixture needs its own root names, not the repository's
+
+The r166..r182 contract applied to the largest checker the arc has touched
+(670 lines). The refactor is small because the design was already right --
+tracked_files(repo) and load_corpus(repo, roots) were parameterized from
+birth -- and only main derived the repo from __file__. main(argv, root)
+redirects the ls-files corpus and every document read together.
+
+Five shell cases, each against its own git repository (init + add; ls-files
+reads the index, no commit): a resolved marker rc 0, an orphan marker rc 1
+naming the report, a corpus with no scannable file REFUSED rc 2, a missing
+named root REFUSED rc 2, and the index-ahead case -- a tracked file deleted
+from the working tree is skipped and counted, exit 0 with the gap named,
+exactly the parallel-session shape the live run hits. Every case passes
+--roots explicitly: the default ROOTS do not exist in a fixture, so a shell
+case that relied on them would refuse before reaching the behavior it
+grades. That constraint also exercises the --roots path the live run never
+passes -- the first fixture in this arc forced to name its own scope.
+
+Fixture naming rule, this round's addition to the r178 lesson: the fixture's
+root names must be synthetic (fixture-src, fixture-plan), not merely its
+file contents. A mutant that ignores its repo and lists the REAL repository
+was killed by the index-ahead case only because no real top-level directory
+is named fixture-src -- the corpus filter found nothing and refused. Had the
+fixture reused a real name (docs, scripts), the mutant's corpus would have
+overlapped reality and the case could have survived by accident.
+
+Measured kill: tracked_files rebound to ls the real repository -- the mutant
+grade shows the refusal text leaking INTO the shell case's captured output
+(an index-ahead file is skipped, exit 0 (rc=2 ...)): two of five arms died
+at once, and the live run stays clean (0 unresolvable, 6 live markers, 4648
+files).
+
+Honest limits: the three marker shapes and the DEF_LABEL/DEF_ENUM grammar
+are graded by the eleven string cases, not through main; the --json payload
+is asserted nowhere; CITATION_DIRS coverage through main is exercised only
+incidentally (no fixture plants a journal or a superseded copy). The
+remaining bare-main population is down to the largest files in the deferred
+list (check-hardcoded-copy is done; verify-doc-uniqueness done). Docker
+daemon still down (probed r159): the E2E / llvm-cov / nextest-junit receipts
+remain the standing PG-gated gap. The root-policy gate remains RED on the
+foreign todo.md (r174) and verify-core-size RED on the ADR-59 +64 (r181),
+both awaiting their owning lanes.
