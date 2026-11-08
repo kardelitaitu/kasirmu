@@ -5691,3 +5691,16 @@ themselves).
 Honest limits: the llvm-cov and junit receipts remain unverified this session; the
 batch proves the static-gate family (41 of 44 green at HEAD after this round's two
 fixes, the other two receipt-blocked) but not the compile/test/docker legs.
+
+**Addendum (round 118): the non-python legs, measured live.** The r117 batch covered
+the verify-*.py family only; the remaining cheap legs were run this round and are
+all green at HEAD, so the census's coverage claim is now complete for every lane
+that fits the window: scripts/__tests__ via node --test — 124/124 passed, 0 failed
+(4.3s, 21 suites); the go lane from apps/license-server — go vet ./... clean and
+go test -short ok in 199s; cargo fmt --all -- --check — no diff. Environmental note
+recorded for the next session that scripts go commands from a stripped
+non-interactive env: go requires GOPATH/GOMODCACHE/GOCACHE explicitly when
+LOCALAPPDATA is absent from the environment; a normal user shell (which check.sh
+assumes and gets) inherits them from the Windows user profile and needs nothing.
+Remaining unverified this session, unchanged: llvm-cov coverage report, nextest
+junit receipt, docker/e2e legs.
