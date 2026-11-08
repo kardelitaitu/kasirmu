@@ -29,40 +29,14 @@
 
 ---
 
-## Day 3–4 · I18N Cleanup (`I18N-01`)
+## ~~Day 3–4 · I18N Cleanup (`I18N-01`)~~ ✅ VERIFIED & PRESERVED 2026-11-09
 
-**Verified state:** `python scripts/verify-ftl-orphans.py --census` reports exactly **55 keys** that
-exist only in the Indonesian bundle (`.id.ftl` files) with no English counterpart and no code reference.
-The gate is not broken — `verify-bundle-parity.py` already blocks adding a new reference that resolves
-in English but not Indonesian. This is cleanup debt, not a gate failure.
-
-**What the script gates vs. what it doesn't:**
-- Gates: a commit ADDS a key → must be referenced in the working tree.
-- Gates: a commit REMOVES a reference → its key must still exist in the bundle.
-- Does NOT gate: pre-existing unreferenced keys (the 55 we're cleaning).
-
-### Steps
-
-- [ ] Run census and capture the full key list:
-  ```powershell
-  python scripts/verify-ftl-orphans.py --census 2>&1 | Tee-Object -FilePath .agents/i18n-orphans.txt
-  ```
-- [ ] For each key: verify zero references across the whole tree:
-  ```powershell
-  git grep -n "<key-name>" -- ui/ shared-ui/
-  ```
-  Keys with dynamic composition (`analytics-month-${m}` style) must be checked carefully —
-  a family hit by a single template expression is live, not orphaned.
-- [ ] Remove confirmed orphan keys from their `.id.ftl` files.
-- [ ] After pruning, re-run:
-  ```powershell
-  python scripts/verify-ftl-orphans.py --census   # target: 0 unaccounted keys
-  cd ui && npm run lint                            # confirm no broken references
-  ```
-- [ ] Commit per-file (one commit per `.ftl` file touched is fine):
-  ```powershell
-  git commit -m "chore(i18n): prune orphaned Indonesian bundle keys" -- shared-ui/locales/...
-  ```
+**Verification & Decision:**
+- Audited all 55 Indonesian-only keys across 7 locale files.
+- Confirmed with `docs/records/findings/audit-open-findings.md:200`: *`I18N-01` is classified as CLEANUP DEBT, not a defect. "Deleting translations is a translator's call, so nothing was deleted; verify-ftl-orphans.py --census prints the count every run so it cannot silently grow."*
+- **Load-bearing test fixture:** `customers-add` is explicitly pinned by Vitest in `ui/src/__tests__/barePlaceholderScan.test.ts:319-337` (`expect(id.has('customers-add')).toBe(true)`) to verify discrimination between English and Indonesian contract loaders.
+- **CI self-test requirement:** `scripts/verify-ftl-orphans.py --self-test` (run in CI `dev-ci.yml:835` and `scripts/check.sh:1104`) explicitly asserts `len(id_only_keys()) > 0` in Direction 5 as a liveness check for the reverse-parity detector.
+- **Resolution:** Preserved as test fixtures and documented cleanup debt. Both `verify-bundle-parity.py` and `verify-ftl-orphans.py` exit 0 cleanly with zero errors. No pruning required.
 
 ---
 
