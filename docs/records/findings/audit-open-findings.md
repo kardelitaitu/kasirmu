@@ -7081,3 +7081,34 @@ as the default, so a test that forgot to pass register_path would grade the real
 register -- none does, and the OK line reports the case split (12 + 4) so the
 surface cannot silently shrink. Temp files are outside the tree; the tree-clean
 claim in the OK line is about the repo, not the filesystem at large.
+
+### Round 159 (2026-11-09) -- the census premise audited with dates: batch-first, re-claimed later, pruned
+
+R146 classified the six batch-vs-dedicated overlaps as "the batch shape working as
+designed" from a MEASUREMENT, and its honest limits called the premise untested --
+"the batch rows were added precisely to give unrowed steps a row" was asserted, not
+read. Read it per pair, with git as the witness: every batch claim (2026-09-30:
+326a44c7db, 0d8e902866, 8bc0c5d505) was the FIRST claim on its label -- the steps
+were genuinely unrowed at batch time, so the premise HOLDS for all six -- and every
+dedicated row RE-CLAIMED its label later, deliberately: rust-clippy on 2026-10-18
+(ca463447d6, runner-name match), release-version and updater-signature on
+2026-10-24 (07c5724b4b, the scoped-reads repoint), feature-registry, no-raw-params
+and windows-config on 2026-11-08 (af63f36e48, exact decorator-run names). Each
+re-claim made the batch-side claim a provable duplicate: two rows for one label,
+the core-size shape, minus the false premise. Pruned all six from the three batch
+rows (158 -> 152 declared labels), each batch note carrying the dated audit; the
+dedicated rows keep sole ownership, completeness still names every step, and the
+census now reads ZERO labels declared by more than one gate.
+
+Honest limits: the premise-audit is a register fact, not a checker-graded one --
+nothing prevents a future re-claim from recreating a duplicate (the census would
+make it VISIBLE again, which is all r146 promised). The pruning removes labels,
+not rows; whether a batch row's IDENTITY survives is still not a script-checkable
+property (r146's limit stands) -- the three rows keep their notes and their
+remaining labels, but if a future round finds one of them empty, the note-only
+remnant is a judgment call this audit does not model. The first-claim evidence is
+membership in git blob history, walked over all 198 commits that touched
+gates.json -- a row could in principle have carried a label under different
+spelling that the exact-string walk misses. Docker daemon still down (probed
+this round): the E2E / llvm-cov / nextest-junit receipts remain the standing
+PG-gated gap.
