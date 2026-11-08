@@ -109,11 +109,14 @@ SUPERSEDED = re.compile(
     r"\b(?:SUPERSEDED|HISTORICAL RECORD|DO NOT TRUST THIS FOR CURRENT)\b", re.I)
 
 
-def live_ci_scripts() -> set[str]:
-    """Basenames a LIVE workflow invokes. attic/ excluded: never executed."""
+def live_ci_scripts(workflows=None) -> set[str]:
+    """Basenames a LIVE workflow invokes. attic/ excluded: never executed.
+
+    r169: `workflows` redirects the feed at a fixture (the parameter r166 gave
+    the shared module); None keeps this repository's own .github/workflows."""
     out: set[str] = set()
     # Shared rule -- see scripts/_live_workflows.py for why it is written once.
-    for p in _live_workflow_files():
+    for p in _live_workflow_files(workflows):
         try:
             text = p.read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -123,14 +126,14 @@ def live_ci_scripts() -> set[str]:
     return out
 
 
-def scanned_files() -> list[Path]:
+def scanned_files(root=None) -> list[Path]:
     out: list[Path] = []
     # This file is excluded because its own self-test fixtures are CLAIM-SHAPED BY
     # DESIGN -- they are the strings the cases assert on, and they name verify-x.py, a
     # script that does not exist. A checker that reads its own fixtures will always find
     # claims that are not claims, and the fix for that is exclusion, not a weaker
     # pattern that would also stop matching real ones.
-    for dirpath, dirnames, filenames in __import__("os").walk(ROOT):
+    for dirpath, dirnames, filenames in __import__("os").walk(ROOT if root is None else root):
         # docs/records/ must be ENTERED, not pruned: its dated files are evidence and its
         # undated files are live prose. Skipping the directory wholesale made a filter on
         # the collected paths dead code -- it ran over a list that could not contain them.
@@ -256,29 +259,70 @@ def self_test() -> int:
             wf.write_text("      run: python scripts/alpha.py\n"
                           "      run: bash scripts/beta.sh\n"
                           "      run: node scripts/gamma.mjs\n", encoding="utf-8")
-            _live_workflow_files = lambda: [wf, Path(td) / "gone.yml"]
+            _live_workflow_files = lambda workflows=None: [wf, Path(td) / "gone.yml"]
             got = live_ci_scripts()
             if got != {"alpha.py", "beta.sh", "gamma.mjs"}:
                 bad.append(f"live_ci_scripts: expected the three basenames, got {got!r}")
     finally:
         _live_workflow_files = _saved_feed
 
+    # r169: main()'s shell -- argv and root graded against a tempdir fixture,
+    # the r166 drift pattern: capture stdout AND stderr, patch nothing global.
+    # root redirects the scan walk AND the live-workflow feed together, so no
+    # case can half-run against the real repository.
+    import contextlib
+    import io as _io
+    def _shell(claim_text, runs_line):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".github" / "workflows").mkdir(parents=True)
+            (root / "docs").mkdir()
+            (root / ".github" / "workflows" / "a.yml").write_text(
+                "on: push" + chr(10) + "jobs:" + chr(10) + "  j:" + chr(10)
+                + "    steps:" + chr(10) + "      - run: " + runs_line + chr(10),
+                encoding="utf-8")
+            (root / "docs" / "claim.md").write_text(claim_text, encoding="utf-8")
+            out, err = _io.StringIO(), _io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = main(argv=[], root=root)
+            return rc, out.getvalue() + err.getvalue()
+    rc, text = _shell("alpha is enforced by scripts/ghost.py in CI.",
+                      "python scripts/real.py")
+    if rc != 1 or "ghost.py" not in text:
+        bad.append("a false claim must exit 1 naming the script (rc=%d text=%r)"
+                   % (rc, text[:80]))
+    rc, text = _shell("alpha is enforced by scripts/real.py in CI.",
+                      "python scripts/real.py")
+    if rc != 0 or "all hold" not in text:
+        bad.append("a satisfied claim must exit 0 with the OK line (rc=%d text=%r)"
+                   % (rc, text[:80]))
+    rc, text = _shell("alpha is enforced by scripts/real.py in CI.", "echo hi")
+    if rc != 2 or "Refusing" not in text:
+        bad.append("an empty live set must refuse with exit 2 (rc=%d text=%r)"
+                   % (rc, text[:80]))
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (%d cases, no files touched)" % (12 + 1))
+    print("SELF-TEST OK (%d cases, incl. 3 shell cases; no repo files touched)"
+          % (12 + 1 + 3))
     return 0
 
 
-def main() -> int:
+def main(argv: list[str] | None = None, root: str | Path | None = None) -> int:
+    """r169: argv and root parameterized, the r166 drift contract -- root
+    redirects BOTH the scan walk and the live-workflow feed, so a fixture
+    cannot half-run against the real repository."""
+    root_path = None if root is None else Path(root).resolve()
+    wf_dir = None if root_path is None else root_path / ".github" / "workflows"
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--self-test", action="store_true",
                     help="Run this checker's cases and exit.")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     if args.self_test:
         return self_test()
 
-    live = live_ci_scripts()
+    live = live_ci_scripts(wf_dir)
     if not live:
         print("verify-runner-claims: no live workflow scripts found. Refusing to report"
               " clean -- a claim checker with an empty live set would call every claim"
@@ -287,8 +331,8 @@ def main() -> int:
 
     false_claims: list[str] = []
     seen = 0
-    for p in scanned_files():
-        if p.suffix in (".yml", ".yaml") and p.name in {w.name for w in _live_workflow_files()}:
+    for p in scanned_files(root_path):
+        if p.suffix in (".yml", ".yaml") and p.name in {w.name for w in _live_workflow_files(wf_dir)}:
             continue          # a workflow does not claim about itself
         try:
             text = p.read_text(encoding="utf-8", errors="replace")
@@ -297,7 +341,7 @@ def main() -> int:
         for script, sentence in claims_in(text):
             seen += 1
             if script not in live:
-                rel = p.relative_to(ROOT).as_posix()
+                rel = p.relative_to(root_path if root_path is not None else ROOT).as_posix()
                 false_claims.append(f"{rel}: {script} is claimed to run in CI but no"
                                     f" live workflow invokes it\n    {sentence[:150]}")
     if false_claims:
