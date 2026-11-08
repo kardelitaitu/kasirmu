@@ -7679,3 +7679,41 @@ from outside instead. The Windows-only backslashreplace report path of
 verify-root-policy has no analogue here. MONKEYPATCH kill, file-sed remains
 r162's machinery. Docker daemon still down (probed r159): the E2E / llvm-cov /
 nextest-junit receipts remain the standing PG-gated gap.
+
+### Round 176 (2026-11-09) -- shell-registration joins the shell arc; the argv fallback is the recursion trap's third disguise
+
+The r166..r175 contract applied to the shell-divergence gate. main(argv, root)
+with root redirecting BOTH shell sources and the divergence table together --
+audit(repo, table) was already pure and fixture-graded; what was ungraded was
+main's own exit mapping, which the audit cases never reach. Five shell cases
+through that mapping: a missing table refusing rc 2, an unexplained divergence
+rc 1 naming the command, an explained divergence rc 0 with the count line, a
+stale entry rc 1, and an unknown argument rc 2 with usage.
+
+The round's defect, mine, is the recursion trap's THIRD disguise in three
+rounds: r174 was the --self-test passthrough re-entering self_test, r175 was
+main's preflight calling self_test from inside a shell case, and r176 is the
+argv=None fallback itself -- the shell cases passed no argv, main fell back to
+sys.argv[1:], which under a --self-test run IS ["--self-test"], so main
+re-entered self_test until the stack died. The general form, now stated in the
+code where the next author will read it: a shell case must pass an EXPLICIT
+argv, because the None fallback is not inert under in-process invocation -- it
+inherits the very flag that started the run. Three rounds of the same class
+means the class, not any one fix, is the finding.
+
+Measured kill: audit rebound to drop its root (grade the real shells) -- the
+fixture tables meet 107 real documented divergences, and eight case wants die
+at once (the explained-divergence want of 0 lands on the real tree's
+unexplained fixture entries; the stale want lands on real names).
+
+Honest limits: the handler-list parser's bracket-depth walk is graded by the
+pre-existing cases, not re-graded here; the shell cases exercise main only
+with well-formed lib.rs fixtures -- a malformed fixture through MAIN (rather
+than through handler_names directly, which the old cases cover) is untested.
+check-replay-fork.py was surveyed and deferred: its self-test lives in a
+separate file (scripts/test-replay-fork.py), a shape this arc has not yet
+touched, and it already takes --root as a CLI flag. The root-policy gate
+remains RED on the foreign todo.md (r174): untouched, owned by its authoring
+session, still the only red in the chain. Docker daemon still down (probed
+r159): the E2E / llvm-cov / nextest-junit receipts remain the standing
+PG-gated gap.
