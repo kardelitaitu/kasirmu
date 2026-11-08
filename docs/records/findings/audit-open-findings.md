@@ -5548,3 +5548,56 @@ contract, measured in the r113 span). The kasirmu-api --all-features build with
 pg-tests exceeds the execution window. The VS BuildTools registration itself remains
 broken; every run above went through the manual env. UI lanes (vitest) were not
 touched this session.
+
+### Round 115 (2026-11-08) — the UI unit lane: four real reds, all one gift-card family
+
+The vitest lane was the one test surface untouched all session (r113 check.sh 04-11,
+r114 the sliced Rust workspace). First full run: 4 failing files out of 832 — and all
+four failures trace to the SAME landing: the gift-card tender method was added to
+PaymentModal without updating the screen's own integrity pins or its CSS contract.
+
+The four, each verified before touching anything: (1) the screenExtraction CSS walker
+found \`payment-method-label--gift_card\` used at PaymentModal.tsx:2680 with NO rule —
+every sibling method carries an order declaration, so the unstyled button sorted to
+order 0, i.e. visually FIRST in the 2-column grid, ahead of Cash; fixed in
+\`fc8aae9cc\` with order 5 (DOM-faithful slot between the quick-pay methods and
+Other) and the layout comment updated to four rows. (2) the toast-localization guard
+flagged PaymentModal.tsx:2906 forwarding GiftCardPayment's onError string raw — the
+component ALREADY localizes at source (l10n.getString / l10nErrorMessage, backend
+cause logged there), but the string-shape contract made the modal look like a raw
+interpolation; \`54727e48d\` changes the prop to deliver the pre-classified envelope
+{ message } — the exact shape the guard's own doc exempts ("arrived
+already-classified") — and the modal forwards classified.message; GiftCardPayment's
+own test asserts the envelope. (3) the featureCommentPaths cross-file citation at
+LoyaltyTenderPanel.tsx:48 pointed at PaymentModal.tsx:2847, which the gift-card
+growth had turned into a blank line; the real caller moved twice during this fix (my
+own toast edit shifted it +3), settled at :2937, also rewording the stale prose
+"PaymentModalLoyalty's L14" (the file no longer exists; the characterization test
+PaymentModalLoyalty.test.tsx and its child() helper are what mount the panel). (4)
+the mock-factory surface test showed setSetting leaving the REACHABLE map — no
+production caller remains (every call site migrated to setSettingScoped/
+setSettingsScoped); the name STAYS on the KNOWN_GAPS list (the module still exports
+it, the factory still does not mock it) and left only the reachable map, with a note
+recording the distinction; committed as \`73c863d2e\`.
+
+Method note worth keeping: the mock-surface file asserts TWO different things with
+two different maps — KNOWN_GAPS is the factory's coverage gap list (module exports
+the factory lacks) while REACHABLE records which gap names production code actually
+calls. My first edit inverted them (removed setSetting from the coverage list the
+measured-gap assertion :398 still required) and the failing diff corrected me within
+one run. Lesson repeated from the file's own header: read both assertions before
+editing either map.
+
+Verification: the five touched test files 375/375; then the FULL vitest suite — 828
+files, 13,130 passed, 3 skipped, 3 todo (176.8s) — plus \`npm run typecheck\` and
+\`npm run lint\` clean; bundle-parity hook green on every commit.
+
+Honest limits: the toast commit (54727e48d) spans THREE paths (component, modal,
+component test) — the AGENTS.md one-line form documents "one path/two"; the three
+files are one atomic change and a 2-path split would have left a non-compiling
+middle commit, so the explicit-pathspec rule was stretched deliberately and is
+recorded here. The E2E / Playwright lane and check:all's full chain were not run —
+unit, lint and typecheck only; Docker is down so an E2E run would fail on its
+backend precondition. Line numbers inside the register and the loyalty comment WILL
+drift again; the pins exist to force the re-check, and the drift this round was
+partly self-inflicted (edit order), which the comment's own warning anticipates.
