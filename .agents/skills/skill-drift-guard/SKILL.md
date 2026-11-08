@@ -1,3 +1,24 @@
+<!-- Audit stamp: 2026-11-08 · DSH · status: EXTENDED — §CI and the tests table re-counted at tip ·
+     Triggered by this skill's own detect.sh: both skills carrying `last audited` footers had crossed
+     the 30-day threshold (39/42 days), i.e. the meta-skill flagged its own corpus and the other
+     oldest skill. Anchors verified this pass: 16 check names in detect.sh's should_run call sites
+     match the stamp's "Checks 1–16"; .githooks/post-commit:271 still passes --name "kasirmu";
+     scripts/{detect.sh,run-tests.sh} and all ten tests/*.bats present. TWO DRIFTS FIXED: (1) §CI said
+     the repo had four active workflows while .github/workflows/ holds five — and the fifth is not
+     new: docker-digest-drift.yml was created 2026-08-03 (weekly cron + workflow_dispatch,
+     never started by a push), so the 24-09-26 recount counted four and MISSED it; triggers read
+     off the file's own on: block, and the clause is worded to describe them rather than quote the
+     phrasing Check 14 matches — the file's own row-15 caveat, which the first draft of this edit
+     violated and the guard caught on the same round. (2) the tests table said nine scenarios while tests/ holds ten —
+     check1-dead-path-note.bats (landed 2026-10-13 with the Check 1 dead-path-note fix) had no row;
+     the row was written from the test's own header comment, not invented. RECEIPT: the full bats
+     suite ran green at tip BEFORE the prose edits — 40 cases, 0 failed, 130s via run-tests.sh —
+     so the pinning suite and the document were verified independently and the edits touch prose
+     only (no --check= behaviour, no AUDIT_RE/FOOTER_RE, no check body). NOT re-measured: the full
+     detect.sh run after stamping was run and its exit recorded in the round register; the
+     codebase-memory graph statistics (node/edge counts, latency table) remain on their 2026-09-08
+     measurements — no MCP client was attached to this session, so they were neither re-measured
+     nor re-quoted. -->
 ---
 name: skill-drift-guard
 description: Meta-skill that detects and patches drift in the other kasir.mu skills. Use when a code change is made that touches a path, type, trait, or convention referenced in a skill; when onboarding a new contributor who might have added a crate or module; or as a periodic CI check. Always run before merging a change that touches `kasirmu-*` crates, `apps/desktop-tauri/`, or `ui/`.
@@ -386,7 +407,7 @@ Open a `fix(docs): sync skills with code drift report <DD-MM-YY>` PR for everyth
 
 ## CI integration
 
-The repo has **four active workflows** (re-counted 24-09-26; this said "three" until `website.yml` was restored, and "two" before that until `android.yml` was): `.github/workflows/dev-ci.yml` (the one drift detection belongs in), `.github/workflows/release.yml` (`v*` tags only), `.github/workflows/android.yml` (restored 2026-09-22 from the attic copy; `v*` tags and `workflow_dispatch`, one job `android-build`, no PR trigger), and `.github/workflows/website.yml` (restored 2026-09-24 from `attic/website.yml.bak`; push to `main` path-filtered to `website/**` and `prototypes/**` plus `workflow_dispatch`, one job `deploy`, no PR trigger). The retired references are dormant one level down, under `.github/workflows/attic/`. To enforce drift detection in CI, add a job to `dev-ci.yml` that runs the mechanical checks on changes to `.agents/skills/**`:
+The repo has **five active workflows** (re-counted 08-11-26; this said "four" until `docker-digest-drift.yml` landed, "three" until `website.yml` was restored, and "two" before that until `android.yml` was): `.github/workflows/dev-ci.yml` (the one drift detection belongs in), `.github/workflows/release.yml` (`v*` tags only), `.github/workflows/android.yml` (restored 2026-09-22 from the attic copy; `v*` tags and `workflow_dispatch`, one job `android-build`, no PR trigger), `.github/workflows/website.yml` (restored 2026-09-24 from `attic/website.yml.bak`; push to `main` path-filtered to `website/**` and `prototypes/**` plus `workflow_dispatch`, one job `deploy`, no PR trigger), and `.github/workflows/docker-digest-drift.yml` (created 2026-08-03; weekly cron Monday 05:00 UTC plus `workflow_dispatch` — scheduled Docker image-digest maintenance, never started by a push). The retired references are dormant one level down, under `.github/workflows/attic/`. To enforce drift detection in CI, add a job to `dev-ci.yml` that runs the mechanical checks on changes to `.agents/skills/**`:
 
 ```yaml
 skill-drift:
@@ -430,7 +451,7 @@ The detection script has an integration test suite under `tests/` that pins the 
 
 #### What's covered
 
-Nine scenarios under `tests/`:
+Ten scenarios under `tests/`:
 
 | File | Pins |
 |------|------|
@@ -441,6 +462,7 @@ Nine scenarios under `tests/`:
 | `dead-check-regression.bats` | The **silent-death** guard. Behavioural half: injects one piece of drift per category into a probe skill and asserts Checks 1, 3, 4, 6, 7 each FIRE (they had been reporting "No drift detected" forever because their `FINDINGS[cat]+=…` ran in a pipeline subshell and the write was discarded). Structural half: an awk pass over `detect.sh` that fails if ANY `while read` loop whose body writes `FINDINGS[` is fed by a pipeline — so the class cannot come back via a check added later. Also asserts every declared category still has a `should_run` block. *Perf:* pins Check 10's corpus prefilter (`md_footer_files` and the exact `find -exec … +` form) and asserts the prefilter and the per-file scan share the single `$FOOTER_RE` definition — a prefilter that drifts narrower than its scan skips files and loses findings exactly as quietly as a swallowed write did. |
 | `crate-prefix-allowlist.bats` | Check 12's `PREFIX_ALLOWLIST` semantics. A synthetic retired `oz-`-prefixed name in the fixture must still FIRE; the allow-listed prefixes must be silent — including the `oz-pos`-prefixed tag, the regression canary, which the old matcher silenced and a naive two-entry list un-silenced. Also asserts the probe yields exactly **one** finding, so no allow-listed token contributes its own. Pins the loop form: `case "$tok" in ${PREFIX_ALLOWLIST}*)` is not word-split, so the list was effectively single-entry and only `oz-*` matched — which silently disabled the check. *(The fixture's literal token is deliberately **not** reproduced here: this file is itself scanned by Check 12.)* |
 | `check1-vendored-path.bats` | Both directions of Check 1 for a cargo-registry citation: the versioned token (`wry-0.55.1/src/android/main_pipe.rs`, extracted truncated as `src/…`) must be SILENCED, while a genuinely missing path must still FIRE — alone, beside a versioned one on the same line, at depth, and under `ui/src/features/`. The depth cases are the point: an earlier revision of the fix used an unconditional deep-path arm that also swallowed real 4+-slash repo paths, and cases 1-4 all passed while the check was weakened. |
+| `check1-dead-path-note.bats` | Check 1's **dead-path-in-prose** case, both directions. A skill documenting a correction must be able to NAME the path it corrected from: "the true old path was `X`", "`X` is untracked", and a dated note about an untracked path are citations of something GONE, not claims that it exists. Three live examples had been reported on 2026-10-13 and carried as accepted noise — `figma-bridge` even recorded the finding as a false positive, which is how a gate stops being read. Decided on LINE CONTEXT in awk (the vendored-path precedent): a path is a citation when the text before it says so. Both directions are pinned because silencing `old/gone/untracked` near a path is one adjective away from silencing a real finding; the probe lives in its own skill directory and touches no tracked file. |
 | `rs-audit-stamp.bats` | Check 16, both directions. A probe carrying the literal `DD-MM-YY` template must FIRE, naming `file:line`; a probe carrying the sanctioned `(date unknown)` marker must be SILENT — the marker is the honest repair for a date nobody recorded, and forbidding it would force a fabricated date, which is the worse defect. The probe lives under `.agents/` rather than `.agents/skills/` so no skill-inventory check ever sees it, and it touches no tracked file. |
 | `skip-control.bats` | The `SKIP` control, which the script's usage block advertised and never read — and which this file's own §CI paragraph described as working, so the claim was recorded twice and implemented nowhere. Four cases, and the observable is deliberately STRONG: "No drift detected" is a weak assertion, because a check that runs and finds nothing prints exactly that, so cases 2 and 3 seed a probe carrying the literal `DD-MM-YY` template — known to FIRE — and prove the skip by its silence. Case 1 is the control (the probe fires when its check is not skipped); case 2 skips all sixteen and requires silence; case 3 asserts an unknown name exits 1 and lists the real names; case 4 pins the precedence rule, that `--check=rs-audit-stamp` still runs with `SKIP=rs-audit-stamp` set, because a name passed to both would otherwise print a clean report and the caller would believe it had passed. |
 
@@ -525,4 +547,4 @@ The drift guard should be self-extending: every discovery becomes a new check, s
 
 ---
 
-> last audited 30-09-26 by Budak-Korporat
+> last audited 08-11-26 by DSH
