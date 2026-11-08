@@ -173,6 +173,16 @@ def duplicate_declarations(gates, axis: str) -> list[tuple[str, list[str]]]:
     return sorted((n, sorted(gs)) for n, gs in owners.items() if len(gs) > 1)
 
 
+def gate_exit(has_unresolved: bool, has_unclaimed: bool, has_st_missing: bool,
+              has_dup_labels: bool) -> int:
+    """The gate's exit contract, as ONE named function (r161 -- the limit r160
+    named: the rc wiring was probe-proven but no case graded it). The four
+    finding classes are independent; any one alone fails the gate, and all
+    empty is the only zero."""
+    return 1 if (has_unresolved or has_unclaimed
+                 or has_st_missing or has_dup_labels) else 0
+
+
 def duplicate_report(axis: str,
                      dups: list[tuple[str, list[str]]]) -> tuple[bool, list[str]]:
     """(is_finding, lines) for one axis's duplicate census.
@@ -565,6 +575,12 @@ def _self_test() -> int:
          duplicate_report("check.sh", [("x", ["a", "b"])]),
          (True, ["1 runner label(s) declared by more than one gate (check.sh axis):",
                  "    'x' <- a, b"])),
+        ("an unresolved runner alone fails the gate",
+         gate_exit(True, False, False, False), 1),
+        ("a duplicate-label finding alone fails the gate",
+         gate_exit(False, False, False, True), 1),
+        ("no finding class is the only zero",
+         gate_exit(False, False, False, False), 0),
         ("the ci axis stays a note",
          duplicate_report("ci", [("s", ["a", "b"])]),
          (False, ["  note: 1 runner label(s) declared by more than one gate (ci axis):",
@@ -676,7 +692,6 @@ def main() -> int:
                 workflow_steps_with_runs(wf_text), declared_ci, roster_text,
                 sh_text))
 
-    rc = 0
     if findings:
         print("%d declared runner(s) do not resolve:" % len(findings))
         for gid, runner, step in findings:
@@ -685,7 +700,6 @@ def main() -> int:
         print("A runner label that names no step is a claim nothing checks. Either the")
         print("runner was renamed, or the roster is stale -- resolve which before trusting")
         print("the roster as the source of truth for gate names.")
-        rc = 1
 
     if unclaimed:
         print("%d CI checker invocation(s) recorded nowhere:" % len(unclaimed))
@@ -695,13 +709,11 @@ def main() -> int:
         print("A checker CI runs that no row names and check.sh never runs is invisible")
         print("to every gate-iterating checker -- the founding blind spot, ci edition.")
         print("Add a row, name the step in one, or move the checker under check.sh.")
-        rc = 1
 
     if st_missing:
         print("%d self_test command(s) name a missing script:" % len(st_missing))
         for gid, st, tok in st_missing:
             print("  [%s] %r -- missing %s" % (gid, st, tok))
-        rc = 1
     if dup_finding:
         print("")
         print("A check.sh label named by two gates has no single owner -- the same")
@@ -709,7 +721,8 @@ def main() -> int:
         print("r147). The batch overlaps that made this a census were audited")
         print("batch-first and pruned (register r159), so zero is the steady state:")
         print("resolve which row owns the label, then prune the other claim.")
-        rc = 1
+    rc = gate_exit(bool(findings), bool(unclaimed), bool(st_missing),
+                   bool(dup_finding))
     if rc:
         return rc
 
