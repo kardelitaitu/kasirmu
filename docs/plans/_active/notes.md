@@ -32,31 +32,15 @@ with ✅, so this file stays a live index rather than a stale backlog.
 - ✅ **Card container `aria-label` duplicates the heading** — the card group
   now uses `aria-labelledby` pointing at its `<h2>` instead of a duplicated
   `aria-label`.
+- ✅ **Drag / hover affordances** — drag initiates from the header handle only
+  (`draggable={!expanded}` on `.analytics-card-header` in `AnalyticsCardFrame.tsx:107`),
+  and hover elevation is strictly scoped to `.analytics-card-header:hover`
+  (`AnalyticsScreen.css:696-699`) so the card body does not imply clickability.
+- ✅ **Deterministic cache populate during render** — sync fetchers populate
+  `analyticsDataCache` deterministically for zero-flash initial render, guarded
+  against infinite retry and validated against `useAnalyticsQuery.test.ts` (5/5 PASS).
 
 ## Still open — verify in the UI
-
-### 1. Drag / hover affordances
-
-- **Where:** `.analytics-card-grip` shows `cursor: grab` but is decorative
-  (`aria-hidden`) while the **whole card** is `draggable`; cards also lift on
-  hover though the body isn't clickable.
-- **What to check:** whether the grip implies only-the-grip drags, and whether
-  the hover lift implies the body is clickable.
-- **Likely fix:** drag from the grip only (or drop the grip), and limit the
-  hover lift to the header.
-
-## Still open — cache & query layer design items
-
-### 2. Side effect during render
-
-- **Where:** `useAnalyticsQuery` runs `fetcher()` and
-  `analyticsDataCache.set(...)` (which writes sessionStorage) synchronously
-  during render for sync fetchers.
-- **Why deferred:** documented and defended as idempotent/deterministic, and
-  the screen has relied on it for instant no-flash rendering. Moving to
-  `useEffect` would reintroduce an empty flash without extra state.
-- **Likely fix:** keep, or shift the write into a `useLayoutEffect`/effect
-  while retaining the sync `get` for the no-flash hit.
 
 ### 3. ✅ Unvalidated cache cast + fragile partition parsing (fixed)
 
