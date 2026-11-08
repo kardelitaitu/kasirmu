@@ -127,6 +127,28 @@
 - Ran `cargo check --workspace`: all 22 workspace crates compiled cleanly with 0 errors and 0 warnings in 32s.
 - `cargo test -p kasirmu-core features::` → 81 passed.
 
+### 8. SEA Market Expansion Presets & Statutory Tax Regimes (`ADR-59` Phase 2) — ✅
+- Extended `crates/kasirmu-core/src/regional.rs` with `RegionalMarketPreset` struct and `SEA_MARKET_PRESETS` covering 6 Phase 2 markets (`ID`, `SG`, `MY`, `TH`, `PH`, `VN`).
+- Added `regional_preset_for_country(country_code)` and statutory tax regime resolution (`ID` -> `PB1`, `SG` -> `GST`, `MY` -> `SST`, `TH`/`PH`/`VN` -> `VAT`, unmapped -> `LOCAL/<CC>`).
+- Added unit test cases in `crates/kasirmu-core/src/regional_tests.rs` (`sea_regional_presets_cover_all_six_phase_two_markets`, `regional_tax_regime_resolution_rules`).
+- Verified: `cargo check -p kasirmu-core && cargo test -p kasirmu-core regional::` (53/53 passed).
+- Committed `54c474ddd`.
+
+### 9. Analytics Dashboard Cards & Interaction Debt (`notes.md`) — ✅
+- Audited `docs/plans/_active/notes.md` items 1 and 2:
+  - Item 1 (drag/hover affordances): Confirmed drag interaction is bounded strictly to `.analytics-card-header` via HTML5 DnD, with `.analytics-card-grip` affordance and keyboard reordering in `AnalyticsCardFrame.tsx`. Hover elevation in `AnalyticsScreen.css` is restricted to `.analytics-card-header:hover`, eliminating false card-body click affordances.
+  - Item 2 (query cache populating during render): Verified deterministic synchronous cache hits in `useAnalyticsQuery.ts` (Vitest: 5/5 passed).
+- Updated `docs/plans/_active/notes.md` to mark Items 1 & 2 as completed and verified against code anchors.
+- Committed `9f4f41374`.
+
+### 10. Mobile (`apps/mobile-tauri`) & Desktop Command IPC Parity Audit — ✅
+- Verified full command surface and IPC allowlist parity via `python scripts/verify-ipc-parity.py`:
+  - Desktop shell: 503 UI commands, 510 registered, 15 allowlisted.
+  - Tablet shell: 503 UI commands, 437 registered, 78 allowlisted.
+  - IPC Parity: OK.
+- Audited all 57 command modules in `apps/mobile-tauri/src/commands/` verifying identical domain interfaces delegating to `kasirmu-bridge` and `kasirmu-core`.
+- Cross-toolchain preflight verified via `scripts/android-preflight.sh` and wireless adb daemon operational.
+
 ---
 
 ## Reference — Gate Commands Cheatsheet
