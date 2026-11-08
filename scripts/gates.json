@@ -2300,6 +2300,25 @@
           "UI coverage floors self-test"
         ]
       }
+    },
+    {
+      "id": "flake-receipt-junit",
+      "label": "test workspace flake receipt (junit)",
+      "status": "required",
+      "runners": { "check.sh": [ "test workspace flake receipt (junit)" ] },
+      "_note": "Added 2026-11-08: the step grades the nextest JUnit report for bought-back flakes (verify-pg-tests-ran.py --nextest-junit) and had no row -- invisible to verify-gate-completeness.py because STEP_RE anchored at column 0 while the step sits inside the nextest branch, and prefix-hidden in verify-ci-docs-drift.py behind the 'test workspace' needle: the exact omission shape these checks exist to close. Local-runner-only by design: the cargo-test fallback emits no JUnit report, so the step cannot run there; the checker's own proof is the pg-receipt-selftest row."
     }
-  ]
+  ],
+  "classified_check_sh_steps": {
+    "npm ci": "install, not a gate -- the ui dependency install (node_modules conditional); manifest note 2026-09-29",
+    "website npm ci": "install, not a gate -- the website dependency install",
+    "test application shells": "test-runner invocation (cargo test), not a gate; manifest note 2026-09-29",
+    "test application shells (nextest)": "test-runner invocation (cargo nextest), not a gate; manifest note 2026-09-29",
+    "test workspace (nextest)": "test-runner invocation (cargo nextest, workspace), not a gate; manifest note 2026-09-29",
+    "updater manifest generator": "checker-selftest companion -- runs generate-latest-json.mjs --self-test; rowed under checker-selftest-companions, manifest note 2026-09-29",
+    "coverage floors": "branch alternates, not duplicates: the CHECK_FROM resume-skip stub (command true) and the real llvm-cov run share the label across mutually exclusive branches (if/elif/else, measured 2026-11-08)",
+    "coverage floors self-test": "branch alternates, same shape as coverage floors",
+    "ui coverage floors": "branch alternates, same shape as coverage floors (ui guard)",
+    "ui coverage floors self-test": "branch alternates, same shape as coverage floors (ui guard)"
+  }
 }

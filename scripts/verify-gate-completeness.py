@@ -29,9 +29,12 @@ while the `migration` row declared the bare label "migration", the resolver repo
 `migration smoke test` as claimed by prefix while `migration idempotency` was claimed by
 nothing at all. Demanding an exact claim is what makes the omission visible.
 
-The tree satisfies that today (re-measured 2026-11-08: 188 of 188 steps
-claimed exactly, 0 by prefix alone; the count grows as check.sh grows, so read it
-as a date-stamped measurement, not a constant) —
+The tree satisfies that today (re-measured 2026-11-08 after this file's widening:
+226 steps seen including the 38 indented ones the old column-0 anchor never saw,
+216 unique labels claimed exactly, 6 labels classified without a row and 4
+alternate-pair labels classified for the uniqueness rule through gates.json's
+classified_check_sh_steps key, 0 by prefix alone; the count grows as check.sh
+grows, so read it as a date-stamped measurement, not a constant) —
 so this gate starts green, which is the property round 109 established a new gate needs.
 
 WHAT ELSE THE ROSTER CLAIMS, and where each is checked (audited 2026-10-05, round 153).
@@ -78,8 +81,14 @@ ROOT = Path(__file__).resolve().parent.parent
 CHECK_SH = ROOT / "scripts" / "check.sh"
 GATES_JSON = ROOT / "scripts" / "gates.json"
 
-# `step "<name>" <retry-cmd> <cmd>` — the name is the first quoted field.
-STEP_RE = re.compile(r'(?m)^step\s+"([^"]+)"')
+# `step "<name>" <retry-cmd> <cmd>` — the name is the first quoted field. The anchor
+# allows leading whitespace: until 2026-11-08 it was column-0 only, which made every
+# step inside a conditional block invisible to this checker -- 38 of check.sh's 226
+# steps, including real gates (ui lint, ui typecheck, ui test), measured by the
+# round-143 probe (target/probe-indented-steps.py). The deliberately unrowed labels
+# and the deliberate branch-alternate labels this exposes are excused through
+# gates.json's classified_check_sh_steps key, not by restoring the blindness.
+STEP_RE = re.compile(r'(?m)^\s*step\s+"([^"]+)"')
 
 
 def check_steps(text: str) -> list[str]:
@@ -204,13 +213,21 @@ def declared_labels(manifest: dict) -> list[str]:
     return out
 
 
-def unclaimed(steps: list[str], labels: list[str]) -> list[str]:
-    """Steps no label names EXACTLY. Prefix matching is deliberately NOT used."""
+def unclaimed(steps: list[str], labels: list[str],
+              classified: dict[str, str] | None = None) -> list[str]:
+    """Steps no label names EXACTLY. Prefix matching is deliberately NOT used.
+
+    `classified` excuses steps the manifest explicitly records as deliberately
+    without a row (installs, test-runner invocations) -- the excuse is per-label
+    and lives beside the gate rows it qualifies, so a NEW unrowed step surfaces
+    instead of silently inheriting the older excuses."""
     known = set(labels)
-    return [s for s in steps if s not in known]
+    excused = classified or {}
+    return [s for s in steps if s not in known and s not in excused]
 
 
-def duplicate_steps(steps: list[str]) -> list[str]:
+def duplicate_steps(steps: list[str],
+                    classified: dict[str, str] | None = None) -> list[str]:
     """Labels declared more than once in check.sh.
 
     Uniqueness is NOT implied by the coverage rule above and was missing until
@@ -221,12 +238,29 @@ def duplicate_steps(steps: list[str]) -> list[str]:
     have (one command, described as two).
 
     Measured the day it was found: `scoped coverage self-test` appeared at two line
-    numbers with two different explanatory comments, and every gate was green.
+    numbers with two different explanatory comments, and every gate was green. A
+    label recorded in gates.json's classified_check_sh_steps key -- deliberate
+    branch alternates, two mutually exclusive branches sharing one label -- is
+    exempt, so ONE manifest classification carries one reason for both axes.
     """
     seen: dict[str, int] = {}
+    excused = classified or {}
     for one in steps:
         seen[one] = seen.get(one, 0) + 1
-    return sorted(name for name, count in seen.items() if count > 1)
+    return sorted(name for name, count in seen.items()
+                  if count > 1 and name not in excused)
+
+
+def stale_classifications(steps: list[str], classified: dict[str, str]) -> list[str]:
+    """Classified labels that no longer name any check.sh step.
+
+    The classification is an EXCUSE, and an excuse for a step that is gone is not
+    documentation, it is residue: the next genuinely unrowed step added under the
+    same name would inherit a reason written for a different decision. Fail the
+    gate instead, so a renamed or deleted step forces the classification to be
+    re-read at the moment it stops being true."""
+    known = set(steps)
+    return sorted(k for k in classified if k not in known)
 
 
 # A miniature workflow used by the ci-block cases above. Two jobs, and the step that
@@ -385,6 +419,53 @@ def _self_test() -> int:
             print("  %-52s FAIL want=%d got=%d" % (name, want, got))
         else:
             print("  %-52s ok" % name)
+    # The INDENTED-step widening, on the measured blind spot: the column-0 anchor
+    # made every conditional-block step invisible to this checker (38 steps,
+    # measured 2026-11-08), including real gates.
+    re_cases = [
+        ("a column-0 step is seen", 'step "x" c c' + chr(10), ["x"]),
+        ("an indented step is seen",
+         'if true; then' + chr(10) + '    step "nested" c c' + chr(10) + 'fi' + chr(10),
+         ["nested"]),
+    ]
+    for name, text, want in re_cases:
+        got = check_steps(text)
+        if got != want:
+            bad += 1
+            print("  %-52s FAIL want=%r got=%r" % (name, want, got))
+        else:
+            print("  %-52s ok" % name)
+    # The classification axis: a deliberately unrowed step, and a deliberate pair
+    # of branch alternates, are excused ONLY through the manifest key -- and a
+    # classification naming a vanished step is itself a finding.
+    cls_cases = [
+        ("a classified step is excused from the claim check",
+         ["a", "b"], ["a"], {"b": "install"}, 0),
+        ("an unclassified step is still unclaimed",
+         ["a", "b"], ["a"], {}, 1),
+        ("an excused alternate pair reads clean",
+         ["a", "a"], ["a"], {"a": "branch alternates"}, 0),
+        ("an unexcused duplicate is still a finding",
+         ["a", "a"], ["a"], {}, 1),
+    ]
+    for name, st, lb, cl, want in cls_cases:
+        got = len(unclaimed(st, lb, cl)) + len(duplicate_steps(st, cl))
+        if got != want:
+            bad += 1
+            print("  %-52s FAIL want=%d got=%d" % (name, want, got))
+        else:
+            print("  %-52s ok" % name)
+    stale_cases = [
+        ("a live classification is not stale", ["a"], {"a": "why"}, 0),
+        ("a classification for a vanished step is stale", [], {"ghost": "why"}, 1),
+    ]
+    for name, st, cl, want in stale_cases:
+        got = len(stale_classifications(st, cl))
+        if got != want:
+            bad += 1
+            print("  %-52s FAIL want=%d got=%d" % (name, want, got))
+        else:
+            print("  %-52s ok" % name)
     for name, labels, want in cases:
         got = len(unclaimed(steps, labels))
         if got != want:
@@ -421,7 +502,8 @@ def _self_test() -> int:
             print("  %-52s ok" % name)
     print("SELF-TEST %s (%d cases, no files touched)"
           % ("FAILED" if bad else "OK",
-             len(cases) + len(ci_cases) + len(st_cases) + len(schema_cases) + len(dup_cases)))
+             len(cases) + len(ci_cases) + len(st_cases) + len(schema_cases)
+             + len(dup_cases) + len(re_cases) + len(cls_cases) + len(stale_cases)))
     return 1 if bad else 0
 
 
@@ -441,12 +523,23 @@ def main() -> int:
     steps = check_steps(CHECK_SH.read_text(encoding="utf-8", errors="replace"))
     manifest = json.loads(GATES_JSON.read_text(encoding="utf-8"))
     labels = declared_labels(manifest)
-    missing = unclaimed(steps, labels)
-    dupes = duplicate_steps(steps)
+    classified = manifest.get("classified_check_sh_steps") or {}
+    if not isinstance(classified, dict) or not all(
+            isinstance(k, str) and k.strip()
+            and isinstance(v, str) and v.strip()
+            for k, v in classified.items()):
+        print("refused: classified_check_sh_steps must map non-empty step labels "
+              "to non-empty reasons")
+        return 2
+    stale = stale_classifications(steps, classified)
+    missing = unclaimed(steps, labels, classified)
+    dupes = duplicate_steps(steps, classified)
     ci_bad = ci_claim_findings(manifest)
     st_bad = selftest_findings(manifest)
     schema_bad = schema_findings(manifest)
 
+    for name in stale:
+        print("  stale classification: %r -- names no check.sh step any more" % name)
     for name in missing:
         print("  unclaimed step: %r -- no gates.json row names it" % name)
     for name in dupes:
@@ -459,6 +552,8 @@ def main() -> int:
         print("  unknown field: %s" % line)
     print("checked %d check.sh step(s) against %d declared runner label(s)"
           % (len(steps), len(labels)))
+    print("checked %d classified step(s): unrowed-by-decision or branch alternates"
+          % len(classified))
     print("checked the ci block of %d gate(s) against the workflow files"
           % sum(1 for g in manifest.get("gates", []) if (g.get("ci") or {}).get("job")))
     print("checked the self_test command of %d gate(s)"
@@ -468,6 +563,12 @@ def main() -> int:
     if dupes:
         print("FAIL: %d step label(s) declared more than once. A duplicate runs its command"
               " twice and makes the file claim a coverage it does not have." % len(dupes))
+        return 1
+
+    if stale:
+        print("FAIL: %d classified step(s) name no step any more. A stale excuse "
+              "inherits its reason onto whatever is next added under that name."
+              % len(stale))
         return 1
 
     if ci_bad or st_bad or schema_bad:
@@ -483,7 +584,8 @@ def main() -> int:
               "manifest -- so it can never be reported as required-but-unenforced."
               % len(missing))
         return 1
-    print("OK: every check.sh step is named by a gates.json runner label")
+    print("OK: every check.sh step is named by a gates.json runner label, "
+          "or classified without one")
     return 0
 
 
