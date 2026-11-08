@@ -10,7 +10,32 @@ description: Test-driven development workflow for kasir.mu — the 7-phase loop 
      with it. `scripts/verify-agents-mirrors.py` grades this
      file's count against the committed hook, so the two must move together. -->
 
-<!-- Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Re-measured this pass: `grep -c '^# ──' .githooks/pre-commit` returns **7**, matching the "seven gates" claim and the enumerated list (LF normalization, staged bundle parity, FTL dedupe, migration column-type lint, PG drift guard, Go, FTL orphan lint). The version-lock claim reads `0.0.39`, which matches `Cargo.toml:37`. All 16 paths the file cites exist, including `scripts/{check.sh,test-tdd.sh,test-changed.sh,test-ui-changed.sh,run-pre-push.py,scan-unwrap-panic.py,verify-agents-mirrors.py,wtree-guard.sh}`, `docs/{guides/api-reference.md,guides/user-guide.md,records/JOURNAL.md,specs/_active/}`, `.github/workflows/attic/ci.yml.bak`, `crates/kasirmu-hal/src/drivers/mock.rs` and `platform/sync`. The `oz-*` naming drift the 18-09-26 audit found in the description and Phase 1 is confirmed repaired. · NOT re-measured: the TDD loop timings and the gate-by-gate runtime. -->
+
+<!-- Audit stamp: 2026-11-08 · docs-auditor · status: ACCURATE — 1 finding, corrected in this pass
+     · Audited against branch 0.0.41, working tree clean. Re-measured: grep -c '^# ──'
+     .githooks/pre-commit returns **8** and the section names match the Phase-7 enumeration
+     verbatim (LF normalization, staged bundle parity, FTL dedupe, migration column-type lint,
+     PG drift guard, Go gate, FTL orphan lint, Rust format: staged files only);
+     scripts/verify-agents-mirrors.py → exit 0; the skill drift guard → "No drift detected".
+     [profile.tdd] stands at workspace Cargo.toml:322-325 exactly as Phase "fast TDD loop"
+     states (inherits dev, debug=false, incremental=true); scripts/test-tdd.sh carries
+     --test / --watch / --vanilla, sets CARGO_PROFILE=tdd (:33) and resolves the crate via
+     --manifest-path (:201). .githooks/pre-push references run-pre-push.py 7 times and
+     check.sh 0 times, as does the runner — "run by hand, never by push" holds. Every path
+     the BODY cites resolves: the eight scripts/, docs/guides/developer/api-reference.md,
+     docs/guides/user/user-guide.md, docs/records/journal/JOURNAL.md + JOURNAL-part-N.md,
+     docs/specs/_active/, .github/workflows/attic/ci.yml.bak (retired at 23c96330) with the
+     live dev-ci.yml + release.yml pair, crates/kasirmu-hal/src/drivers/mock.rs,
+     platform/sync, skill-drift-guard detect.sh, and all five See-also SKILL.md links
+     resolved relative to this file's own directory. THE FINDING: Phase 5 taught the
+     journal entry format as "### <date> — <title>" while the journal itself uses
+     "## YYYY-MM-DD — Title" with bolded Problem/Solution/Commits/Test-counts/
+     Remaining-risks blocks (JOURNAL-part-5 sampled); the line now teaches the real shape.
+     · NOT re-measured: the fast-loop timing receipts (the 2026-11-08 62/62-in-28s r129
+     receipt is quoted, not re-run; a re-run costs a full nextest compile and the claim
+     carries its own date) and the two superseded stamps below, which are history. -->
+
+<!-- Superseded audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE at audit time — 0 findings · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Re-measured this pass: `grep -c '^# ──' .githooks/pre-commit` returns **7**, matching the "seven gates" claim and the enumerated list (LF normalization, staged bundle parity, FTL dedupe, migration column-type lint, PG drift guard, Go, FTL orphan lint). The version-lock claim reads `0.0.39`, which matches `Cargo.toml:37`. All 16 paths the file cites exist, including `scripts/{check.sh,test-tdd.sh,test-changed.sh,test-ui-changed.sh,run-pre-push.py,scan-unwrap-panic.py,verify-agents-mirrors.py,wtree-guard.sh}`, `docs/{guides/api-reference.md,guides/user-guide.md,records/JOURNAL.md,specs/_active/}`, `.github/workflows/attic/ci.yml.bak`, `crates/kasirmu-hal/src/drivers/mock.rs` and `platform/sync`. The `oz-*` naming drift the 18-09-26 audit found in the description and Phase 1 is confirmed repaired. · NOT re-measured: the TDD loop timings and the gate-by-gate runtime. -->
 
 <!-- Superseded audit stamp: 2026-09-03 · DSH · status: ACCURATE at audit time (0 findings on 22-09-26) (rev 2 — Rust test convention corrected in Phase 3 and the per-layer table: unit tests live in sibling *_tests.rs files wired via #[cfg(test)] #[path = ...] mod tests (never inline in the production file — AGENTS.md rule); UI bundle names corrected en.ftl/id.ftl → per-feature <feature>.ftl/<feature>.id.ftl; push rule softened to match AGENTS.md (never push without an explicit direct user order — not "refuse even then"); 'audit/ numbered findings' reference removed (no such dir); pre-commit gate list updated to the six core gates + Go gate) · verified this pass: [profile.tdd] in workspace Cargo.toml, scripts/{test-tdd,test-changed,test-ui-changed,wtree-guard}.sh + scan-unwrap-panic.py, docs/guides/{api-reference,user-guide}.md, JOURNAL.md all exist -->
 
@@ -136,7 +161,7 @@ bash scripts/check.sh          # mirrors CI (fmt, clippy, nextest, migrations, U
 ### Phase 5 — Journal
 
 Record the why, decisions, and remaining risks — while fresh.
-- `docs/records/journal/JOURNAL.md` (the index — append to the matching `JOURNAL-part-N.md`, never the index itself): append a dated entry. Follow the existing format — ### <date> — <title>, then Problem: / Solution: / Commits: / test counts. (Was at the repo root until `f3d9cca6`; an agent following the old instruction creates a second journal at the root rather than appending to the real one.)
+- `docs/records/journal/JOURNAL.md` (the index — append to the matching `JOURNAL-part-N.md`, never the index itself): append a dated entry. Follow the existing format, corrected 2026-11-08 against JOURNAL-part-5 (the old `### <date>` spelling here taught a heading level the journal does not use): `## YYYY-MM-DD — Title`, then bolded blocks in order — `**Problem:**`, `**Solution:**`, `**Commits:**`, `**Test counts:**`, `**Remaining risks / follow-ups:`**. (Was at the repo root until `f3d9cca6`; an agent following the old instruction creates a second journal at the root rather than appending to the real one.)
 - Note remaining risks and follow-ups explicitly — a known limitation written down is a future TDD slice.
 - Do not put CHANGELOG entries here (that belongs in Phase 6).
 
@@ -274,4 +299,4 @@ npm run check:all            # lint → typecheck → test → i18n → E2E (Doc
 
 ---
 
-> last audited 23-10-26 by Budak-Korporat
+> last audited 08-11-26 by docs-auditor
