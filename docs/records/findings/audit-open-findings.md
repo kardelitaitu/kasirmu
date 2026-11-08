@@ -6224,3 +6224,31 @@ but three checkers declare none and were closed by reading alone. The genui card
 round is undelivered: the dsh-ui fence pipeline rejected four provably valid JSON
 encodings in a row (machine-serialized among them), and no schema reference is reachable
 from this session's tools; the register entry is the durable record.
+
+### Round 136 (2026-11-08) — the tdd skill's full re-audit (the r132 honest limit), one real finding
+
+The 2026-09-22 stamp had ridden through ten versions of the tree; this pass re-measured
+every traceable claim it and the body make, at branch 0.0.41 with a clean tree. What
+held: the eight pre-commit gates with names matching the Phase-7 enumeration verbatim;
+[profile.tdd] at Cargo.toml:322-325 with the exact three fields the fast-loop section
+states; test-tdd.sh's --test/--watch/--vanilla, CARGO_PROFILE=tdd (:33) and
+--manifest-path crate resolution (:201); pre-push referencing run-pre-push.py 7 times and
+check.sh 0 times in both hook and runner; every body-cited path resolving, including the
+retired ci.yml.bak at 23c96330 with the live dev-ci.yml + release.yml pair; all five
+See-also links resolving relative to the skill's own directory; mirrors and the skill
+drift guard both green before and after the edit.
+
+The finding: Phase 5 taught the journal entry format as `### <date> — <title>, then
+Problem: / Solution: / Commits: / test counts` — the journal itself uses `## YYYY-MM-DD —
+Title` with bolded Problem / Solution / Commits / Test counts / Remaining-risks blocks
+(JOURNAL-part-5 sampled, 155 block matches on part 5 alone). An agent following the taught
+shape writes H3 entries into an H2 journal. The line now teaches the real shape, dated;
+the 09-22 stamp is superseded per the file's own convention; footer re-dated 08-11-26;
+check-dead-refs classifies the two path spellings inside the superseded stamp as kept
+records, not live claims.
+
+Honest limits: the fast-loop timing receipts were NOT re-run — the r129 62/62-in-28s
+receipt is quoted with its own date and a re-run costs a full nextest compile for a claim
+that carries its measurement inline. The two superseded stamps' content was treated as
+history, not re-audited. Docker daemon still down (probed this round), so the E2E /
+llvm-cov / nextest-junit receipts remain the standing PG-gated gap.
