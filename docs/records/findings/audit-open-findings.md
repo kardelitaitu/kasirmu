@@ -6109,3 +6109,57 @@ Honest limits: the tdd skill's audit stamp is still 2026-09-22 and was NOT refre
 that skill (16 paths, phase tables, timings) is a separate round. The ui chunk-size
 warning is informational and was not tuned. fmt's 4s run rides a warm target dir;
 a cold checkout would take longer but check the same bytes.
+
+### Round 133 (2026-11-08) — the full check.sh matrix ran end to end for the first time this session; nine findings, all root-caused and repaired
+
+The run: steps 1–51 PASS; 52 fails loud exactly as R17's ruling demands (670/671 run
+tests green before the fail-fast; 10,020 not run — PG down); 53 PASS (14 doctests, 24s);
+54 red only through the stale junit 52 left behind; 55 onward PASS across CHECK_FROM
+resumes; the final leg closed RC=0. The matrix is 216 steps today — the count itself
+was one of the findings.
+
+The reds, in step order. **62** — the font-claims pin still said 14 local-only gates; the
+true tip count is 5 and the pin's three copies (pin, message lead, tree) disagreed with
+each other; re-measured commit by commit (b76c7d563 five gates + 70ec6adab four, zero
+joiners; shell-registration joined and left inside the window without moving the count)
+→ 0ae45d40c. **103** — `go vet` died with "neither GOMODCACHE nor GOPATH is set": the
+runner strips LOCALAPPDATA and USERPROFILE, go's only derivation inputs; scripts/go-env.sh
+now mirrors msvc-env.sh (inert when the env is healthy, derived from disk when it is not)
+and vet passed under `env -u` of both → eba2c8dbe. **113, 131, 133, 151, 193** — five
+reds, seven fixtures, one root cause: 7e11b664c (2026-10-19) pointed TMP at
+target/.tmp-check, inside the checkout, and every "git cannot answer here" fixture planted
+via the default temp dir silently became "inside a repo", making its fallback branch
+unreachable under the matrix while green standalone (where TEMP still points outside).
+The seven: verify-ftl-orphans.py (synthesized the outside-ROOT path → 2ac45adb5),
+check-chokepoints.py (56d3575a3), verify-flaky-quarantine.py (9168c5698),
+check-audit-stamps.py + check-orphans.py via the sweep (58e08eb87), and
+font-freshness.test.mjs (0f4131cc4). Every fix verified under BOTH regimes — TEMP+TMP
+inside the tree (true matrix env) and a clean env outside. **189** — check-cite-lines.py
+named four stale line cites, all shifted by my own go-env wiring the same day:
+module-boot-sequence.md :819→:845 and :842→:868, ci-pipeline.md :102→:125 → da17d473b.
+The gate grading its own editor's commits is the receipt.
+
+The ninth finding was not red but dormant, and it is the round's worst: the UI
+coverage-floors guard ran its multi-minute `cd ui && vitest --coverage` condition from a
+cwd the raw `cd ui` above it had ALREADY entered, looked for ui/ui, failed every run,
+and printed a warning blaming "a failing test" — so the two floors steps had never
+executed in any local matrix run, full or resumed (measured: the warning fires in all 8
+ledger segments, zero floors runs, and every later step number rode two lower than its
+author intended). The guard is now three-way — a CHECK_FROM resume announces the skips
+without paying for the measurement, a real run executes from the captured repo root, and
+the else branch is finally truthful — and the grading leg executed for the first time:
+lines 87.74% / statements 85.12% / functions 82.69% / branches 78.04%, every metric at or
+above its ratchet floor, self-test green → 8234c1fe1.
+
+Honest limits: no single invocation ran 1→216; each red was repaired mid-run, so legs ran
+at different commits near tip, and every CHECK_FROM resume prints its skipped steps as
+SKIPPED — the script's own words say that trusts you and proves nothing. What is proven:
+every step number executed and passed at some commit today except 52/54, which fail loud
+by design while PG is down; a continuous all-green run is impossible in this environment
+until Docker/PG return, and the header note says so where the next runner will read it.
+Steps' 111–214 receipts were earned under the old numbering and the dormant guard; the
+guard fix changes no command those steps run (a CHECK_FROM=215 sweep re-flowed the whole
+file, RC=0, and the floors leg is proven component by component), but the two facts are
+not the same run. The go-env disk scan takes the first populated /c/Users/*/go — untested
+on a machine whose caches live elsewhere. The ui coverage receipt rides vitest's
+chunk-size advisory, untouched.
