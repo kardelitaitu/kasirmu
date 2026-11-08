@@ -117,11 +117,14 @@ def _self_test():
         import shutil
         import tempfile
 
-        # A SUBPROCESS, not mod.main() in-process. The in-process form was tried first
-        # and returned 0 for a fixture the subprocess correctly fails on: main() parses
-        # sys.argv itself, so driving it in-process silently re-reads the test runner's own
-        # argv and answers the wrong question. Measured 2026-10-24 -- a case that passes
-        # for the wrong reason is worse than a missing case.
+        # HISTORY OF THIS BLOCK. The in-process form was tried first and returned 0
+        # for a fixture the subprocess correctly fails on: main() parsed sys.argv
+        # itself, so driving it in-process silently re-reads the test runner's own
+        # argv and answers the wrong question (measured 2026-10-24; the same trap
+        # re-derived as the r176 lesson in audit-open-findings.md). Since the
+        # r166..r177 main(argv, root) contract the in-process form is EXACT, and the
+        # cases below drive it directly; the subprocess leg is kept as a belt on the
+        # CLI wiring (--root through a real process), not as a workaround.
         def run_main(root_dir):
             cp = subprocess.run(
                 [sys.executable, str(REPO / "scripts" / "check-replay-fork.py"),
@@ -149,6 +152,37 @@ def _self_test():
             else:
                 fork.write_text(gone, encoding="utf-8", newline="")
                 cases.append(("main() FAILS when a control is one-sided", run_main(fixture), 1))
+
+        # The same two directions, IN-PROCESS, now that main(argv, root) exists.
+        def run_inproc(root_dir, broken=False):
+            if broken:
+                fork = root_dir / TABLET
+                text = fork.read_text(encoding="utf-8")
+                fork.write_text(text.replace("fn normalized_attempt_id(", "fn normalized_attempt_id_x(", 1),
+                                encoding="utf-8", newline="")
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                return mod.main(argv=["--quiet"], root=str(root_dir))
+
+        with tempfile.TemporaryDirectory() as td:
+            fixture = Path(td)
+            for rel in (BRIDGE, TABLET):
+                dest = fixture / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(REPO / rel, dest)
+            cases.append(("in-process main() approves the pair", run_inproc(fixture), 0))
+        with tempfile.TemporaryDirectory() as td2:
+            fixture2 = Path(td2)
+            for rel in (BRIDGE, TABLET):
+                dest = fixture2 / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(REPO / rel, dest)
+            cases.append(("in-process main() FAILS one-sided", run_inproc(fixture2, broken=True), 1))
+        with tempfile.TemporaryDirectory() as td3:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                # the harness compares bool(got) == want, so the refusal's exit
+                # code is asserted as an equality, not passed as the want.
+                cases.append(("a named root with no corpus is REFUSED",
+                              mod.main(argv=[], root=str(Path(td3) / "absent")) == 2, True))
     except SystemExit as exc:
         cases.append(("main() verdict cases ran", exc.code, 0))
     except Exception as exc:
