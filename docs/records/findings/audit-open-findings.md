@@ -6786,3 +6786,44 @@ is itself the visible signal. The four collision names were verified as genuinel
 shared setup by reading their job placement, not by running the jobs. Docker
 daemon still down (r136): E2E / llvm-cov / nextest-junit receipts remain the
 standing PG-gated gap.
+
+### Round 150 (2026-11-08) -- the founding blind spot, closed on its last open axis
+
+Premise audit, measured first. The label-step-job triangle had one uncovered
+direction left: every existing checker iterates GATES (drift, completeness,
+check-gate-runners all resolve declared -> actual), so a CI step that RUNS a
+checker but belongs to no row is invisible to all of them. The audit had to be
+multi-line-aware before it meant anything: a single-line `run:` parser buckets
+`run: |` blocks as setup, and dev-ci.yml has 23 such blocks, 7 of them invoking
+scripts. Full walk: 182 steps, 135 invoke scripts/, linkage test = a row names
+the step in ci.steps, OR the script basename appears anywhere in gates.json, OR
+the script runs in check.sh (where completeness enforces the claim). Result:
+ZERO blind spots -- the founding sin (a runner nothing records) has no ci-edition
+recurrence. The one candidate (changes/Route naming sync-dev-files.mjs) is a
+COMMENT mentioning a website prebuild script in prose -- whole-line comment
+stripping removes it, and is part of the enforced check, not a special case.
+
+Then enforced, not just noted (d6f51fa7a): workflow_steps_with_runs() parses
+steps WITH their run payloads (single-line and `|` blocks, dedent-terminated,
+blank lines passing through; job-key reset intercepts most dedents),
+unclaimed_ci_invocations() walks actual -> declared, and main() reports such
+steps as findings alongside the declared-side ones (dual rc). Self-test 27 ->
+32 cases; a five-mutation probe. One mutant SURVIVED and earned its keep:
+"block capture leaks dedent" (-20 on the threshold) is intercepted on the
+original fixture because a job key at 2-space resets collecting BEFORE the
+block branch runs, and the live tree has no `run: |` block followed by more
+8-indent step keys -- the fixture now carries a post-block `working-directory:`
+key (3dea28ddb), killing it. Third fixture-strengthening of the arc (r148 F1,
+r150); the pattern is stable: a mutant survives when the fixture never
+exercises the guard's live shape.
+
+Honest limits: the linkage test is by SCRIPT BASENAME -- a name collision
+between a CI-invoked script and an unrelated same-named file elsewhere would
+false-negative; measured 0 collisions in this tree (135 scripts all distinct)
+but the checker does not prove uniqueness. Inline shell comments (`cmd #
+scripts/x.py`) are NOT stripped -- only whole-line comments -- so a commented
+tail on a real command line still counts as an invocation, the conservative
+direction. The `uses:`-driven actions (4 steps) are outside the check entirely:
+third-party actions are a supply-chain decision the Route job's own comment
+documents, not a roster concern. Docker daemon still down (r136): E2E /
+llvm-cov / nextest-junit receipts remain the standing PG-gated gap.
