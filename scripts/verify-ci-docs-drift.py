@@ -740,6 +740,19 @@ def self_test() -> int:
         check("a dotted filename is not a job token (the dot breaks the class)",
               KUBE_TOKEN.findall("`dev-ci.yml`"),
               [])
+        # r156: one job grammar across the two CI gates, pinned as a SOURCE
+        # witness. Either gate changing its grammar alone reddens this; a
+        # consistent change to both forces editing this witness too, which is
+        # the single-deliberate-edit shape this checker's header demands.
+        # (The literal below carries a doubled backslash, so it does not
+        # count itself.)
+        grammar = "^  ([A-Za-z0-9_-]+):\\s*$"
+        check("the job grammar is declared once in check-gate-runners.py",
+              (ROOT / "scripts" / "check-gate-runners.py").read_text(
+                  encoding="utf-8", errors="replace").count(grammar), 1)
+        check("... and applied at both of drift's job extractors",
+              Path(__file__).read_text(
+                  encoding="utf-8", errors="replace").count(grammar), 2)
 
         print("\n  hook_step_orphans")
         full = json.loads(
