@@ -50,29 +50,13 @@
 
 ---
 
-## Day 5–6 · Owner Question Follow-up
+## ~~Day 5–6 · Owner Question Follow-up~~ ✅ VERIFIED 2026-11-09
 
-**Verified state:** `docs/plans/_active/owner-question-2026-09-28-r4-r6-r7.md` has recorded answers:
-
-| Q | Topic | Status |
-|---|---|---|
-| **Q1 (R4)** | EDC terminal binding | ✅ **RESOLVED** — Option (a) implemented and verified end-to-end. No further action. |
-| **Q2 (R6)** | MIDTRANS sandbox credential | ⚠️ **Declined** — owner accepted 4 acquirer behaviours as unproven. No code action. |
-| **Q3 (R7)** | R7 terminal model | ⚠️ **"None yet"** — loopback simulator is the only funded work. Vendor protocol stubs return `HalError::Unsupported`. |
-
-**Revised action** (Q1 is done — focus on Q2 and Q3):
-
-- [ ] **Q2**: If a MIDTRANS sandbox key is ever supplied, the re-verification checklist is in the plan file.
-  Until then, confirm `MIDTRANS_SERVER_KEY` is NOT hardcoded anywhere:
-  ```powershell
-  git grep -n "MIDTRANS_SERVER_KEY" -- crates/ apps/
-  ```
-  It should only appear at `crates/kasirmu-payment/src/drivers/qris.rs:306` (env read) — nowhere else.
-- [ ] **Q3**: Read `crates/kasirmu-hal/src/drivers/wired.rs`, `wireless.rs`, and
-  `protocol/{pax,ingenico,verifone}.rs` — confirm all still return `HalError::Unsupported`.
-  If a model is ever named, do NOT implement against a guessed framing; request a protocol capture first.
-- [ ] **Consider archiving**: if Q2 and Q3 are accepted as indefinitely blocked, the plan file is
-  ready to move to `docs/plans/_done/` with an `ARCHIVED, NOT EARNED` note (per AGENTS.md §7.4).
+**Verification & Status:**
+- **Q1 (R4 — EDC binding):** Fully implemented and shipped via Option (a) (`terminal_id: Option<String>` with loopback fallback).
+- **Q2 (R6 — MIDTRANS credential):** Verified that `MIDTRANS_SERVER_KEY` is nowhere hardcoded in production code; dynamically read from environment. Wiremock integration tests (`tests/qris_integration.rs`) run cleanly offline.
+- **Q3 (R7 — Terminal model):** Verified that `wired.rs`, `wireless.rs`, and vendor protocol stubs (`protocol/{pax,ingenico,verifone}.rs`) all fail closed with `HalError::Unsupported`. Loopback simulator is the active, verified implementation.
+- **Retention ruling:** The plan file stays in `docs/plans/_active/` because several active tests (`ui/src/__tests__/writtenSettingHasReader.test.ts:260`, `ui/src/__tests__/edcDefaultLoss.test.ts:31`) and active specs (`0050-workspace-payment-methods`) cite it directly.
 
 ---
 
