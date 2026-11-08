@@ -6936,3 +6936,39 @@ fixture-proven and the passing direction is live-proven every run (9 resolve).
 self_test exists on 9 rows by design; the other 140 rows carry no self_test
 field, and the checker-level self-test census is wired's job (103 of 105 in
 scope), not this one's.
+
+### Round 154 (2026-11-08) -- the register itself is now policed: register-hygiene joins the census
+
+The round log in this file -- the campaign's durable record, one entry per round --
+was validated by nothing. A malformed heading, a numbering gap, or a lost
+honest-limits paragraph would have been invisible forever: every other artifact in
+the repo gained a gate, and the audit's own memory was the artifact none of them
+covered. New scripts/check-register-hygiene.py (12 self-test cases, pure): every
+`### Round` heading must be a full entry (number, ISO date, either separator,
+non-empty title) or the named `Round N, addendum` appendix; numbers strictly
+consecutive with no duplicates; bodies non-empty; the limits marker required from
+a measured floor on; the file ends with a newline. Wired with two check.sh steps,
+a required gates.json row (ci.steps claims the two dev-ci.yml#static-gates steps,
+which were added alongside it), and a self_test field -- 150 gates.
+Measuring before wiring changed the design: the log is far older and stranger than
+the planned checker assumed. It runs 51-153 (103 entries, zero gaps), not 144-153,
+because the first full-shape scan was regex-blind to the em-dash separator used
+through r143 -- the exact undercount shape r153 closed elsewhere. Both separators
+are accepted (the glyph is style, not an invariant); one dateless addendum is
+exempt by name; the limits convention has a measured floor at 114 (51, 53-60, 99,
+113 predate it; history is recorded, not rewritten). One integration surprise,
+measured rather than guessed: census_carriers() derives from git ls-files, so an
+untracked new checker reads as a census non-carrier until committed -- the
+sabotage self-test reddened exactly so and went green at commit 13b09af86 with no
+code change.
+
+Honest limits: this is a SHAPE checker, not a content checker -- a well-shaped lie
+passes: an entry can be perfectly consecutive, dated, and limits-carrying while
+its body misstates what its commit actually did; nothing here proves entries
+correspond to reality. The pre-51 consolidated register is exempt by design, so
+its sector headings are unpoliced. The addendum exemption and the r114 limits
+floor are measured facts, not proven boundaries: a future dateless non-addendum
+appendix, or a new entry styled like the pre-floor ones, would need those
+exemptions widened by hand. The checker grades the register at HEAD; it cannot
+prove CI actually ran the new dev-ci steps -- that claim rests on the same
+step-name wiring every other row rests on.
