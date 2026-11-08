@@ -7055,3 +7055,29 @@ that remains the shape-checker limit recorded in r154. The slice summary itself
 discloses its boundedness (skip=23 limit=1 of 110), so this receipt must not be
 read as a full-census verdict; the other 109 rows carry whatever grades they
 carried at their last measurement.
+
+### Round 158 (2026-11-09) -- the register-hygiene CLI shell is graded, not just its classifier
+
+R157 recorded that only the pure classifier was mutation-graded; main()'s shell --
+the REFUSED exit 2 on a missing register, exit 1 with named findings, the OK line,
+the --quiet form -- was graded by nothing. main() is now parameterized (argv and
+register_path default to the real values) and the self-test runs four CLI-shell
+cases against temp files OUTSIDE the repo tree: missing register must exit 2 with
+a REFUSED line on stderr; a gapped register must exit 1 naming the finding; a
+clean one must exit 0 with the OK line; --quiet must stay exit 0 and print
+nothing. The graded surface grew from 12 classifier cases to 12 + 4, and the
+cases earned their keep immediately: the first fixture draft carried doubled
+backslash-n escapes (no real newlines -- the shell cases caught their own author)
+and one expected-count was wrong before it was ever committed. Self-test green,
+live grade unchanged (107 entries), sabotage self-test 132, containment gate 10
+self_test commands resolve.
+
+Honest limits: these are SELF-TEST cases, not mutation grades -- the census's
+Python mutator still picks the pure classifier only, so a regression that breaks
+ONLY the shell (say, swallowing the exit code) would be caught by these cases
+running in check.sh but not by the survey. The parameterization is the smallest
+defaults-preserving change; the REGISTER constant is still a module global used
+as the default, so a test that forgot to pass register_path would grade the real
+register -- none does, and the OK line reports the case split (12 + 4) so the
+surface cannot silently shrink. Temp files are outside the tree; the tree-clean
+claim in the OK line is about the repo, not the filesystem at large.
