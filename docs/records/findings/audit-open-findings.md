@@ -8151,3 +8151,43 @@ parity's class) are graded nowhere through main. Docker daemon still down
 standing PG-gated gap. The root-policy gate remains RED on the foreign
 todo.md (r174) and verify-core-size RED on the ADR-59 +64 (r181), both
 awaiting their owning lanes.
+
+### Round 188 (2026-11-09) -- pipeline-verdicts joins the arc; the sweep and its path anchor are one redirect, and a crash is a kill but not the graded one
+
+The r166..r187 contract applied to the wrong-status-condition gate.
+targets(root) follows the contract root, main(argv, root) derives the base
+once, and the finding's reported relative path anchors at the SAME base the
+sweep read -- which turns out to be load-bearing: a mutant that swept the
+real tree while reporting against the fixture base does not merely return a
+wrong verdict, it RAISES (relative_to refuses paths outside the anchor).
+The first kill probe died with a ValueError instead of a graded mismatch.
+A crash is a dead mutant, but it is not the graded path -- the honest kill
+re-runs with main itself dropping the root, and the finding case then dies
+cleanly: the real sweep reads 73 scripts, finds nothing, and returns 0
+against want 1, with the real corpus's OK line in the captured text.
+
+Three shell cases: a swallower verdict rc 1 naming file:line and the
+tail-backticked command, a clean script rc 0 with the census in the OK
+line, and an empty sweep REFUSED rc 2 -- the 2026-11-06 nothing-read
+branch, graded through main. No git repository: the sweep rglobs, so a
+plain tempdir carries the fixture, and the fixture's shell text is
+deliberately quote-free -- the detector reads the tail POSITION, not the
+words, so the minimal shape is the honest shape.
+
+Editorial continuity: the embedded-Python quoting broke V8 lexing twice
+(the r182 lesson recurring with worse syntax), and the block went in as an
+array of single-quoted strings spliced at a marker -- the mechanical
+workaround is now older than some of the gates it edits. The summary
+prints only after every shell case has had its chance to fail (the r185
+order, held this time before the first run).
+
+Honest limits: the detector's grammar stops at $() substitution -- $( )
+nesting, backtick substitution, and process substitution are invisible by
+declaration; SKIP_NAMES (.bak) and the attic exclusion are asserted by no
+fixture (the retired-copy rule is comment-only evidence); the __main__
+block's direct self_test() dispatch predates the contract and is graded
+only through main(argv=["--self-test"]). Docker daemon still down (probed
+r159): the E2E / llvm-cov / nextest-junit receipts remain the standing
+PG-gated gap. The root-policy gate remains RED on the foreign todo.md
+(r174) and verify-core-size RED on the ADR-59 +64 (r181), both awaiting
+their owning lanes.
