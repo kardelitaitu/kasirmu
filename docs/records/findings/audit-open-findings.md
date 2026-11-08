@@ -6901,3 +6901,38 @@ directions have live evidence. Inline tail comments still count as invocations
 (conservative, r150); TOOLING_SCRIPTS remains manual policy (r151). Docker
 daemon still down (r136): E2E / llvm-cov / nextest-junit receipts remain the
 standing PG-gated gap.
+
+### Round 153 (2026-11-08) -- self_test commands must resolve; probe anchors extracted, never re-typed
+
+Measured first: 9 of 149 rows carry a self_test field, each naming exactly one
+script token, and ZERO of the 9 paths are missing today -- but nothing
+enforced it: a renamed or deleted script would leave the roster pointing at a
+ghost command that polices nothing. Enforced (04374c8a1): every script token
+in a row's self_test must resolve as a file, else a finding and rc 1; the
+existence predicate is injected, so the self-test stays pure (no tree
+touching); the OK line gains a census (9 resolve). Self-test 36 -> 39 cases;
+seven mutants killed across two probe runs; live green; the Docker daemon was
+re-probed and is still down, so the r136 PG-gated receipt gap stands.
+
+Two patch-lesson incidents, both caught by the guards built for exactly this.
+(1) The main-tail anchor assumed `if rc: return rc` on one line; the count
+assertion refused to fire the patch and the file was left untouched -- the
+assert-then-abort discipline means a wrong anchor costs nothing but a retry.
+(2) The mutation probe crashed on a hand-escaped regex anchor (0 matches,
+backslash escaping wrong) -- the finally-restore held, but five mutants went
+unproven until a second run with anchors EXTRACTED from the target file
+itself. That is the rule now, after two failures with the same shape: probe
+anchors are read from the file under test, never re-typed from memory -- a
+probe whose anchor is a guess tests a fantasy. The probe debt was settled
+post-commit (7/7 total); the committed file was verified byte-identical to
+HEAD after restore.
+
+Honest limits: the resolver checks the script PATH, not the command's
+semantics -- wrong flags or a renamed subcommand still pass (flag-level truth
+is the runner's problem; wiring is verified by completeness and wired). The
+failing-path rc wiring is inspection-verified -- a live demo would need a
+missing tracked script, deliberately not staged; the function level is
+fixture-proven and the passing direction is live-proven every run (9 resolve).
+self_test exists on 9 rows by design; the other 140 rows carry no self_test
+field, and the checker-level self-test census is wired's job (103 of 105 in
+scope), not this one's.
