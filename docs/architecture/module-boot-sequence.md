@@ -5,8 +5,8 @@
 
 
 <!-- Historical scope: written at Phase 2, and the body below still describes that state. Phase 4 has
-     since landed (namespace governance runs `--strict` in `scripts/check.sh:819`; capability parity at
-     `:842`), so read the Phase-2 markers as the snapshot they are. Corrected 2026-10-08: the `raw()`
+     since landed (namespace governance runs `--strict` in `scripts/check.sh:845`; capability parity at
+     `:868`), so read the Phase-2 markers as the snapshot they are. Corrected 2026-10-08: the `raw()`
      bullet is now past tense, matching the removal the next paragraph already recorded.
      RE-MEASURED 2026-10-25 (round 224): both coordinates had drifted. `:777` is a comment above the
      gate-completeness step and `:768` is a comment above the gate-roster self-test, so the sentence
