@@ -25,10 +25,16 @@ one invoked only by CI. Being invoked SOMEWHERE is the property that stops the r
 
 WHAT IT DOES NOT COVER
 ======================
-A checker with no --self-test at all. That is the gap this file cannot close,
-because "should this gate have a self-test" is a judgement per checker; the sweep
-that found the nine is recorded in the docstring above so the next one to be added
-knows the convention exists.
+A checker that declares NO self-test of its own, under either convention. The
+sibling convention (a docstring pointer to an existing scripts/test-*.py whose
+bare invocation a live runner carries) was recognized 2026-11-08 -- before that,
+scripts/check-replay-fork.py sat outside this gate's protection entirely, and
+deleting its sibling's two runner invocations could not fail anything here.
+What remains outside is a per-checker judgement: scripts/census-sync-ingest-admits.py
+(a census that deliberately claims no runner authority) and
+scripts/check-auditor-selftests.sh (itself a runner of other checkers' self-tests).
+The OK line names them instead of absorbing them silently -- the count-prose gap
+that a round-135 register entry then misread as three unwired checkers.
 
 AND a checker whose FILE NAME falls outside the pattern. SCRIPT_RE matches
 `^(?:verify|check)-NAME` with a suffix of `py`, `mjs` or `sh`, and one qualifying script is
@@ -282,9 +288,60 @@ def called(name: str, text: str) -> bool:
     stem = name.rsplit(".", 1)[0]
     return any(m.group(1) == stem for m in CALL_RE.finditer(strip_full_line_comments(text)))
 
+# ── the sibling convention (2026-11-08) ─────────────────────────────────────
+# One checker declares its self-test OUTSIDE its own body: scripts/check-replay-fork.py
+# points at `python3 scripts/test-replay-fork.py` from its docstring, and that sibling IS
+# the self-test (10 cases; it takes no flag, so CALL_RE can never see its caller). The
+# embedded-only census therefore counted it among the "not declaring", which read as a
+# coverage gap that was not one -- and worse, it put the checker OUT of this gate's
+# protection: deleting the sibling's check.sh and dev-ci invocations could not fail this
+# gate, because the checker never registered as declaring anything. The sibling convention
+# becomes first-class here: a docstring pointer naming an EXISTING sibling declares, and
+# the sibling's bare invocation is its caller signal. A pointer to a vanished sibling
+# declares nothing -- a comment naming a file nobody can run is history, not wiring.
+SIBLING_PTR = re.compile(r"python3\s+(scripts/test-[A-Za-z0-9_-]+\.py)")
 
-def uncalled_selftests() -> list[str]:
-    """Checkers that declare a --self-test no runner invokes, as relative paths.
+
+def sibling_from_text(text: str) -> "str | None":
+    """PURE: the sibling path this checker's text points at, or None.
+
+    Only the exact invocation spelling declares: the same strictness
+    declares_in applies to the flag -- prose that merely mentions a
+    test- file is not a declaration.
+    """
+    m = SIBLING_PTR.search(text)
+    return m.group(1) if m else None
+
+
+def sibling_declared(rel: Path) -> "str | None":
+    """The sibling this checker declares, when that sibling EXISTS on disk."""
+    try:
+        text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    sib = sibling_from_text(text)
+    if sib is None or not (ROOT / sib).is_file():
+        return None
+    return sib
+
+
+def sibling_called(sib_rel: str, text: str) -> bool:
+    """Whether a LIVE runner line invokes the sibling.
+
+    The sibling takes no flag -- the file being executed IS the self-test
+    running -- so the caller signal is its basename with extension, on a
+    comment-stripped runner line. Same comment-blindness as called(): a
+    runner that only DOCUMENTS the sibling is not a caller. The round-106
+    print-form trade-off is accepted here unguarded for now: measured this
+    round, the live runners mention the one live sibling exactly three
+    times, all real invocations (check.sh twice, dev-ci.yml once).
+    """
+    stem = sib_rel.rsplit("/", 1)[-1]
+    return any(stem in ln for ln in strip_full_line_comments(text).split("\n"))
+
+
+def uncalled_from(text: str) -> list[str]:
+    """The census core: entries whose declared self-test no runner invokes.
 
     `called()` still matches on the BASENAME because that is what CALL_RE extracts from a
     runner line -- `python3 .agents/skills/.../check-cite-lines.py --self-test` yields
@@ -295,10 +352,29 @@ def uncalled_selftests() -> list[str]:
     shared basename -- one copy's flag-invocation satisfies called() for both. The
     collided pair's flag-invocations are therefore graded by FULL path in self_test
     (round-93 cases), because called() cannot tell the copies apart.
+
+    2026-11-08: a checker that declares a WIRED SIBLING instead of an embedded flag
+    is censused by the sibling's bare invocation. Extracted from
+    uncalled_selftests() so the sibling rot -- deleting a sibling's runners -- is
+    gradable from synthetic text without the live tree. Entries carry as_posix()
+    spellings: the report is read by humans and quoted by register entries, and a
+    report whose separators flip with the OS quotes inconsistently.
     """
-    text = runner_text()
-    return [str(rel) for rel in checkers()
-            if declares_selftest(rel) and not called(rel.name, text)]
+    out: list[str] = []
+    for rel in checkers():
+        if declares_selftest(rel):
+            if not called(rel.name, text):
+                out.append(rel.as_posix())
+            continue
+        sib = sibling_declared(rel)
+        if sib is not None and not sibling_called(sib, text):
+            out.append(rel.as_posix() + " (sibling " + sib + " uncalled)")
+    return out
+
+
+def uncalled_selftests() -> list[str]:
+    """Checkers that declare a self-test no runner invokes, as relative paths."""
+    return uncalled_from(runner_text())
 
 
 def harness_census_dirs(text: str) -> list[str]:
@@ -487,6 +563,49 @@ def self_test() -> int:
           wired_only_by_print("verify-x.py",
                               'run: echo "x --self-test"\nrun: python3 scripts/verify-x.py --self-test')],
          [True, False, False, False])
+    # ── the sibling declaration convention (2026-11-08) ────────────────────────
+    want("a docstring pointer declares its sibling",
+         sibling_from_text("SELF-TEST: `python3 scripts/test-x.py` (10 cases)."),
+         "scripts/test-x.py")
+    want("prose mentioning a test- file does not declare",
+         sibling_from_text("compare with scripts/test-other.py for style"), None)
+    want("the live sibling pointer resolves to an existing file",
+         [sibling_declared(Path("scripts/check-replay-fork.py")),
+          (ROOT / "scripts/test-replay-fork.py").is_file()],
+         ["scripts/test-replay-fork.py", True])
+    text_now = runner_text()
+    want("the live sibling is invoked by a runner",
+         sibling_called("scripts/test-replay-fork.py", text_now), True)
+    want("a comment-only mention of the sibling is not a caller",
+         sibling_called("scripts/test-replay-fork.py",
+                        "# python3 scripts/test-replay-fork.py (documented, uncalled)"),
+         False)
+    want("a different file's invocation is not this sibling's caller",
+         sibling_called("scripts/test-replay-fork.py",
+                        "run: python3 scripts/test-other.py"), False)
+    # THE ROT THE EXTENSION CLOSES: with the sibling's runners deleted, the checker
+    # must surface as uncalled -- before this round it could not, because it never
+    # registered as declaring anything. Synthetic text: no sibling callers at all.
+    want("deleting a sibling's runners surfaces the checker",
+         [n for n in uncalled_from(
+             "run: python3 scripts/check-replay-fork.py\\n"
+             "run: python3 scripts/verify-x.py --self-test\\n")
+          if n.startswith("scripts/check-replay-fork.py")],
+         ["scripts/check-replay-fork.py (sibling scripts/test-replay-fork.py uncalled)"])
+    want("the live tree has no uncalled self-test under either convention",
+         uncalled_from(text_now), [])
+    want("the sibling remedy names the sibling, not the flag",
+         [uncalled_report(["scripts/check-replay-fork.py (sibling scripts/test-replay-fork.py uncalled)"])
+          .count("no runner invokes that sibling"),
+          uncalled_report(["scripts/verify-x.py"])
+          .count("-- declares --self-test, but no runner passes the flag")],
+         [1, 1])
+    want("the OK line names the non-declarers and the empty case",
+         [wired_ok_line(103, 105, ["scripts/census-x.py", "scripts/check-auditor-selftests.sh"])
+          .count("Declaring none of their own: scripts/census-x.py"),
+          wired_ok_line(105, 105, []).count("Every checker in scope declares a self-test of its own."),
+          wired_ok_line(17, 100).count("17 of 100 checker(s)")],
+         [1, 1, 1])
     live = uncalled_selftests()
     if live:
         bad.append("live tree has " + str(len(live)) + " uncalled self-test(s): "
@@ -509,22 +628,40 @@ def uncalled_report(live: list[str]) -> str:
     is GRADED, not assumed.
     """
     head = f"verify-selftests-wired: {len(live)} self-test(s) invoked by no runner:"
-    body = "".join(
-        f"\n    {n} -- declares --self-test, but no runner passes the flag. "
-        f"Add a step beside its gate in .github/workflows/dev-ci.yml and "
-        f"scripts/check.sh, or delete the flag if it was never meant to run."
-        for n in live)
+    body = ""
+    for n in live:
+        if " (sibling " in n:
+            body += (
+                f"\n    {n} -- the checker declares its self-test as a sibling script, "
+                f"and no runner invokes that sibling. Restore a step beside its gate in "
+                f".github/workflows/dev-ci.yml and scripts/check.sh, or fold the "
+                f"sibling's cases into the checker itself.")
+        else:
+            body += (
+                f"\n    {n} -- declares --self-test, but no runner passes the flag. "
+                f"Add a step beside its gate in .github/workflows/dev-ci.yml and "
+                f"scripts/check.sh, or delete the flag if it was never meant to run.")
     return head + body
 
 
-def wired_ok_line(declared: int, total: int) -> str:
+def wired_ok_line(declared: int, total: int, rest: "list[str] | None" = None) -> str:
     """The clean-audit line, derived from the census the same way the verdict is.
 
     Round-102: "17 of 100" must be COUNTED, not typed -- a hardcoded N of M
     would keep reading as green after the census changed under it.
+
+    2026-11-08: the checkers that declare nothing of their own are NAMED in
+    the OK line. An OK line that silently absorbs them is where the round-135
+    register misread came from: two of the three "not declaring" were fully
+    wired under their own conventions, and only this prose hid that.
     """
-    return (f"verify-selftests-wired: OK — {declared} of {total} checker(s) in scope "
-            f"declare a --self-test and every one is invoked by a runner.")
+    line = (f"verify-selftests-wired: OK — {declared} of {total} checker(s) in scope "
+            f"declare a self-test and every one is invoked by a runner.")
+    if rest is None:
+        return line
+    if rest:
+        return line + " Declaring none of their own: " + ", ".join(rest) + "."
+    return line + " Every checker in scope declares a self-test of its own."
 
 
 def main() -> int:
@@ -536,12 +673,16 @@ def main() -> int:
         return self_test()
 
     live = uncalled_selftests()
-    total = len(checkers())
-    declared = sum(1 for n in checkers() if declares_selftest(n))
+    all_checkers = checkers()
+    total = len(all_checkers)
+    declared = sum(1 for n in all_checkers
+                   if declares_selftest(n) or sibling_declared(n) is not None)
+    rest = [n.as_posix() for n in all_checkers
+            if not declares_selftest(n) and sibling_declared(n) is None]
     if live:
         print(uncalled_report(live))
         return 1
-    print(wired_ok_line(declared, total))
+    print(wired_ok_line(declared, total, rest))
     return 0
 
 
