@@ -7376,3 +7376,39 @@ spec-side expression and gate_exit's body are still the same comparison
 written twice in one file -- the r165 witness critique applies: this detects
 divergence, it prevents nothing. Docker daemon still down (probed r159): the
 E2E / llvm-cov / nextest-junit receipts remain the standing PG-gated gap.
+
+### Round 168 (2026-11-09) -- the shared rule grades itself: _live_workflows carries its own self-test, invoked by a host, not a runner
+
+r166's parameterization made _live_workflows directly testable; this round
+spent it. The module now carries self_test() -- the rule graded against a
+tempdir fixture that pins BOTH extensions (the original 2026-09-29 defect was
+three of six implementations globbing *.yml alone), the attic exclusion (a
+.yml AND a .yml.bak under attic/ are both non-live), a subdirectory .yml
+(non-live -- "not a subdirectory" is half the rule), a top-level .yml.bak
+(non-live), a DIRECTORY named *.yaml (the is_file filter), and the two
+empty-contract arms (empty dir, absent dir). Measured kill: monkeypatching
+live_workflow_files to the historical .yml-only glob fails the self-test on
+THREE findings (live set, names, texts) -- the mutant the module was written
+to prevent is the mutant it now catches on its own surface.
+
+Wiring, decided deliberately: _live_workflows.py is underscore-led and
+outside verify-selftests-wired's checker scope (measured: the gate still
+reads 104 of 106, unchanged), so a self-test there is invocable by no runner
+-- and an uninvoked self-test is exactly the rot the wired census exists to
+catch, applied to a data module. The invocation lives in drift's self-test
+(one check case: the module's self_test() must return []), the same
+importer-host pattern r166 used for the redirect. The other two importers
+verify the rule through their own self-tests; one host is enough.
+
+Honest limits: the kill was MONKEYPATCH-proven (module-attribute rebinding),
+not file-sed-proven -- same binding the callers resolve, but the
+compile/import path is r162's machinery, not re-run here. The self-test does
+NOT grade the default-root arm (live_workflow_files() with no argument reads
+the real repository) -- that arm is exercised by every importer's live run
+but no case asserts its value, because asserting the real repo's workflow
+count in the shared module would couple the rule to repo state the rule does
+not own. The attic fixture tests the exclusion by GLOB POSITION only -- the
+module never verifies that attic/ is where retired workflows actually go
+(that contract lives in drift's retirement checks). Docker daemon still down
+(probed r159): the E2E / llvm-cov / nextest-junit receipts remain the
+standing PG-gated gap.
