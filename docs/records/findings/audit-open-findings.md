@@ -6754,3 +6754,35 @@ latent with zero live instances. Historical tables listing `core-size` (r147) an
 the six-pair census notes remain dated records, untouched. Docker daemon still
 down (r136): E2E / llvm-cov / nextest-junit receipts remain the standing PG-gated
 gap.
+
+### Round 149 (2026-11-08) -- the collision census: the ambiguity job-scoping removes, measured
+
+Three measurements closed out r148's loose ends. (1) The recorded candidate: parse
+dev-ci.yml per job and count step names spanning jobs -- FOUR of 171 distinct names
+("Install system dependencies (Linux)" and "Prepare frontend dist stubs for Tauri
+macro" in five jobs each, "Install cargo-nextest" in three, "Install UI
+dependencies" in two). Shared setup, all legitimate -- but these are exactly the
+names under which the old whole-file matcher could resolve a misfiled step, so the
+r148 rationale is now a measured fact, date-stamped in the checker docstring, and
+the population is a live census line in check-gate-runners.py (505e0c833, self-test
+25 -> 27 cases, two-mutation probe killed 2/2). (2) Parser cross-check: drift's
+workflow_jobs() and the new workflow_job_steps() agree 18/18 on dev-ci.yml -- with
+one latent divergence recorded, not fixed: drift's job regex is lowercase-only
+([a-z0-9][a-z0-9_-]*), mine case-insensitive. GitHub accepts uppercase job ids, so
+a future uppercase job would be invisible to drift (false "job not defined") while
+cgr parses it -- the disagreement would itself be visible, which is why no fix was
+forced. (3) The r148 CRLF incident self-healed: git's commit-time normalization
+rewrote the working file to LF (measured: 0 CRLF, 380 bare LF post-commit), and
+the new probe (target/mutprobe5.py) opens with newline='' binary mode -- the fix
+r148 recorded as "not yet applied" is applied for every probe written from here
+on.
+
+Honest limits: the collision census is informational and counts only the ONE
+workflow cgr reads; a second workflow would need the reader extended (the refusal
+guards this). The lowercase-only divergence in drift's parser is recorded, not
+fixed -- forcing cgr's spelling onto drift would be an unrequested semantic change
+to a file another checker owns, and the failure mode it guards (uppercase job id)
+is itself the visible signal. The four collision names were verified as genuinely
+shared setup by reading their job placement, not by running the jobs. Docker
+daemon still down (r136): E2E / llvm-cov / nextest-junit receipts remain the
+standing PG-gated gap.
