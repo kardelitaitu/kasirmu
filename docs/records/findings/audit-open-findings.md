@@ -7286,3 +7286,62 @@ OVERLAY_ROOTS, not from running a staged import -- the mechanism is unambiguous
 (the whole scripts tree is copied) but the claim has not been executed. Docker
 daemon still down (probed r159): the E2E / llvm-cov / nextest-junit receipts
 remain the standing PG-gated gap.
+
+### Round 166 (2026-11-09) -- the shell cases caught a real bug before a fixture ever graded red: root= was silently half-applied
+
+Spent the drift parameterization round. refactor: the nine path constants
+collapsed into one drift_paths(root) dict, applied to the module globals below
+the import block and re-applied by main(argv, root) when a caller passes root=
+-- one definition, two applications, the r163/r164 cgr pattern finally
+available to drift. Then the shell cases went in, and the building of a
+coherent mini-corpus caught what parameterization had been hiding: with
+root= pointed at a fixture, drift STILL counted the real repository's
+workflows. Three call sites bypassed the rebind -- the _live_workflows
+sibling derived its root from __file__, and dangling_ci_refs' defaults plus
+hook_workflow_pointers called it bare. Measured before the fix: a fixture
+dev-ci.yml defining one job (alpha) had its ci.job check report "(that
+workflow defines: cargo-check, cargo-clippy, cargo-nextest, changes, ...)" --
+the real repo's 17 jobs. After: the fixture's 1 job. The fix is the design
+_live_workflows' own header already named the better one: live_workflow_files
+(now names/texts too) takes a workflows parameter, defaulting to this
+repository's own .github/workflows; verify-agents-mirrors.py's
+live_workflows(root) was the precedent and the header said so in so many
+words. All three drift call sites now follow the rebound WORKFLOWS_DIR.
+
+Correction owed to r165: "No checker imports a sibling today (grep over
+scripts/*.py: zero)" was wrong -- the grep pattern anchored on checker-name
+prefixes and missed underscore-led module names; scripts/_live_workflows.py
+is imported by three gates (drift, verify-runner-claims,
+verify-workflow-syntax) and its header counts six aligned implementations.
+The r165 decision (two grammar copies + witness) stands on the coupling
+argument, which the discovery does not touch; but the factual claim is
+withdrawn, and a grep for sibling imports must match ^(from|import)
+-- underscore-led module names included.
+
+Measured shell receipts, all in one self-test run (drift, 5 callable cases):
+coherent mini-corpus (1 gate alpha required/labelled with a ci mapping, 1
+workflow dev-ci.yml with an on: trigger and one job, 3 doc sections, real
+checklist item, hook step, empty attic/check-ui) exits 0 with "0 drift
+item(s)"; inventory naming ghost.yml exits 1 with 2 items (missing workflow
+file + undocumented live workflow); the same corpus under --report-only
+prints both items and exits 0; omitting ci-pipeline.md exits 2 "docs not
+found"; an unparseable manifest exits 2 "gate manifest invalid JSON".
+Process note that belongs in the record: two of the five wants were first
+pinned from a misread probe output (rc 2 where the probe printed rc 1); the
+self-test's own got print caught the mispin within one run. The harness
+graded its author.
+
+Honest limits: the mini-corpus is the SMALLEST corpus that clears every
+structural fail-open guard (empty gates list, empty Job Matrix, no matrix
+rows, no backticked inventory tokens each exit 2 before any finding prints) --
+it grades the argv/root plumbing and five exits, not the full rule surface;
+the scan() composition under a large corpus is still only live-covered, the
+debt r163 named for cgr's corpus scale now has the same shape here. The
+survey's first-candidate-only rule (r162) is unchanged by this round: main()
+itself is never a candidate, and the new cases extend main()'s shell
+coverage, not any candidate's mutation surface. The r165 reopen trigger is
+restated with its correction applied: a third grammar consumer still tips the
+decision; sibling imports are now known to exist as vocabulary, so the
+witness-vs-import argument will be argued on coupling alone. Docker daemon
+still down (probed r159): the E2E / llvm-cov / nextest-junit receipts remain
+the standing PG-gated gap.
