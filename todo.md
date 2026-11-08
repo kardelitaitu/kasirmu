@@ -40,40 +40,13 @@
 
 ---
 
-## Day 4–5 · Terminal Profile Dead Surfaces
+## ~~Day 4–5 · Terminal Profile Dead Surfaces~~ ✅ DOCUMENTED & PRESERVED 2026-11-09
 
-**Verified state:** The three IPC commands exist in Rust and are wired in `lib.rs`:
-
-| Command | Rust file | `lib.rs` line |
-|---|---|---|
-| `list_terminal_profiles_scoped` | `apps/desktop-tauri/src/commands/terminals.rs:83` | `:1666` |
-| `set_terminal_profile_scoped` | `:200` | `:1665` |
-| `delete_terminal_profile_scoped` | `:213` | `:1667` |
-
-**Also verified:** The commands ARE wired in `ui/src/api/terminals.ts` (lines 140, 147, 154) and
-have dev-mock handlers in `ui/src/dev-mock/handlers/payment.ts` (lines 399, 401, 403).
-
-**What's missing:** `git grep` over `ui/src/features/` returns **zero hits** — no React component
-calls these API wrappers.
-
-### Decision required (choose A or B):
-
-**Option A — Document as headless admin-only surfaces** *(lower risk)*
-- Add `//! Admin-only: no current UI caller — intentionally exposed for external tooling.`
-  doc comment to each command in `terminals.rs`.
-- No IPC parity changes needed.
-
-**Option B — Retire the commands** *(cleaner, higher effort)*
-1. Remove the three `pub async fn` commands from `apps/desktop-tauri/src/commands/terminals.rs`.
-2. Remove their entries from `generate_handler!` in `apps/desktop-tauri/src/lib.rs` (lines 1665–1667).
-3. Remove from `ui/src/api/terminals.ts` (lines 140, 147, 154).
-4. Remove mock handlers from `ui/src/dev-mock/handlers/payment.ts` (lines 399, 401, 403).
-5. Remove from `ipc-parity-allowlist.json` (desktop section).
-6. Run: `python scripts/verify-ipc-parity.py` → must exit 0.
-7. Run: `cargo check -p kasirmu-app --lib` → must pass.
-8. Run: `cd ui && npm run typecheck` → must pass.
-
-- [ ] Make the decision, execute the chosen option, commit.
+**Decision & Execution:**
+- Chose **Option A**: Document as headless back-office admin surfaces.
+- Updated `apps/desktop-tauri/src/commands/terminals.rs` doc comments for `list_terminal_profiles_scoped`, `get_terminal_profile_scoped`, `set_terminal_profile_scoped`, and `delete_terminal_profile_scoped` to clearly document that these are exposed on desktop for headless terminal profile provisioning and multi-register setup with no end-user POS UI view by design.
+- Preserves full backward compatibility with ADR #7, `docs/guides/developer/api-reference.md:949`, `scripts/ipc-parity-allowlist.json`, and contract tests.
+- Verified: `cargo check -p kasirmu-app --lib` (PASS), `python scripts/verify-ipc-parity.py` (PASS), `npx vitest run src/__tests__/api-terminals-contract.test.ts` (12/12 PASS), `cargo test -p kasirmu-bridge terminals` (37/37 PASS).
 
 ---
 
