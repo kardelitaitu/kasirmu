@@ -1659,7 +1659,7 @@
       "id": "checker-selftest-companions",
       "label": "checker self-test companions",
       "status": "required",
-      "_note": "Added 2026-09-29. Each step here is the LIVENESS PROOF for a gate named in the same row: the cases that prove the gate can still FAIL, which no bare run of the gate can see. The convention, stated at 'IPC command parity self-test' in dev-ci.yml, is that a checker's self-test lives beside the checker it proves. This row exists because gates.json had no reverse-direction check -- test-runner-labels.py grades gates.json -> check.sh and never asks whether a step that EXISTS has a row -- so wiring them was silent, and an inventory that understates the matrix is the same quiet-drift problem as a gate that cannot see half its input. These were each mutation-proven: a regex or pattern pointed at something that cannot match, which must turn the case red rather than reporting zero. Two of the seventeen (doc uniqueness self-test, release workflow self-test) pre-date this row and were ALREADY unlisted when it was written -- the drift was not introduced by the 2026-09 work, only measured by it.",
+      "_note": "Added 2026-09-29. Each step here is the LIVENESS PROOF for a gate named in the same row: the cases that prove the gate can still FAIL, which no bare run of the gate can see. The convention, stated at 'IPC command parity self-test' in dev-ci.yml, is that a checker's self-test lives beside the checker it proves. This row exists because gates.json had no reverse-direction check -- test-runner-labels.py grades gates.json -> check.sh and never asks whether a step that EXISTS has a row -- so wiring them was silent, and an inventory that understates the matrix is the same quiet-drift problem as a gate that cannot see half its input. These were each mutation-proven: a regex or pattern pointed at something that cannot match, which must turn the case red rather than reporting zero. Two of the seventeen (doc uniqueness self-test, release workflow self-test) pre-date this row and were ALREADY unlisted when it was written -- the drift was not introduced by the 2026-09 work, only measured by it. Premise-audit 2026-11-09 (register r159): \"release version self-test\" and \"updater signature self-test\" were first claimed here; release-version and updater-signature re-claimed them on 2026-10-24 (07c5724b4b, the scoped-reads label repoint), so both were pruned as redundant.",
       "runners": {
         "check.sh": [
           "bundle parity self-test",
@@ -1683,9 +1683,7 @@
           "runner commands self-test",
           "runner claims self-test",
           "testid self-test",
-          "release version self-test",
           "updater compat self-test",
-          "updater signature self-test",
           "quota coverage self-test",
           "selftest sweep self-test"
         ]
@@ -1695,12 +1693,10 @@
       "id": "local-matrix-checkers",
       "label": "local matrix checkers",
       "status": "required",
-      "_note": "Added 2026-09-29 to close the 7 gate steps that ran in check.sh with no row. These are checkers, not setup: npm ci, website npm ci, test workspace (nextest), test application shells and their siblings are deliberately NOT listed here, and that is the reason no blanket reverse check exists. check.sh mixes gates with INSTALLS and TEST-RUNNER invocations, and deciding which is which is a judgement per step, not a rule -- so a naive 'every step needs a row' check would fire on 13 correct entries and get muted on its first run. Which is the shape of the mistake this campaign has made repeatedly: a check broad enough to be easy is narrow enough to be useless. Each step listed here runs a scripts/*.py checker with a --self-test beside it, and verify-selftests-wired.py is what keeps that pairing true from now on.",
+      "_note": "Added 2026-09-29 to close the 7 gate steps that ran in check.sh with no row. These are checkers, not setup: npm ci, website npm ci, test workspace (nextest), test application shells and their siblings are deliberately NOT listed here, and that is the reason no blanket reverse check exists. check.sh mixes gates with INSTALLS and TEST-RUNNER invocations, and deciding which is which is a judgement per step, not a rule -- so a naive 'every step needs a row' check would fire on 13 correct entries and get muted on its first run. Which is the shape of the mistake this campaign has made repeatedly: a check broad enough to be easy is narrow enough to be useless. Each step listed here runs a scripts/*.py checker with a --self-test beside it, and verify-selftests-wired.py is what keeps that pairing true from now on. Premise-audit 2026-11-09 (register r159): \"feature registry parity\" and \"windows config drift\" were first claimed here -- the steps were unrowed at batch time -- and re-claimed by their dedicated rows on 2026-11-08 (af63f36e48), so both were pruned as redundant.",
       "runners": {
         "check.sh": [
           "ipc invoke payload parity",
-          "windows config drift",
-          "feature registry parity",
           "no-hardcoded-money-format",
           "flaky quarantine",
           "deployment verification",
@@ -1725,11 +1721,9 @@
       "id": "local-matrix-unlisted-gates",
       "label": "local-matrix unlisted gates",
       "status": "required",
-      "_note": "Added 2026-09-29. Pre-existing drift, NOT introduced by the 2026-09 work: four steps that run a real check had no row, so the inventory understated the matrix. Classified by reading what each step actually runs rather than by its name, because the names are not reliable here -- 'updater manifest generator' runs a --self-test, and 'script tests' runs a test runner, so neither is a gate and neither belongs in a gate row -- 'updater manifest generator' is listed under checker-selftest-companions instead, because it invokes generate-latest-json.mjs --self-test. Also deliberately NOT here: for the same reason npm ci and test workspace (nextest) are not: 'migration smoke test' and 'migration idempotency' both invoke the SAME cargo run, so they are two EXERCISES of one command rather than two gates, and listing them would imply two independent checks where there is one. Re-verified 2026-09-29 against the live tree: check.sh declares 119 steps, gates.json accounts for all but those same TEN, and no gate step has lost its row. The reasoning above still holds FOR THAT 2026-09-29 CENSUS. One sentence in it has since gone stale rather than wrong: it says 'script tests' runs a test runner 'so neither is a gate and neither belongs in a gate row'. A `script-tests` gate row was added on 2026-10-05 (round 149), six days later, after check.sh wired the glob and the suite was repaired -- so today that step IS a gate and DOES have a row, and this note is describing the census as it stood before it did. Wired into CI 2026-10-26 (static-gates, 'Checker script tests').",
+      "_note": "Added 2026-09-29. Pre-existing drift, NOT introduced by the 2026-09 work: four steps that run a real check had no row, so the inventory understated the matrix. Classified by reading what each step actually runs rather than by its name, because the names are not reliable here -- 'updater manifest generator' runs a --self-test, and 'script tests' runs a test runner, so neither is a gate and neither belongs in a gate row -- 'updater manifest generator' is listed under checker-selftest-companions instead, because it invokes generate-latest-json.mjs --self-test. Also deliberately NOT here: for the same reason npm ci and test workspace (nextest) are not: 'migration smoke test' and 'migration idempotency' both invoke the SAME cargo run, so they are two EXERCISES of one command rather than two gates, and listing them would imply two independent checks where there is one. Re-verified 2026-09-29 against the live tree: check.sh declares 119 steps, gates.json accounts for all but those same TEN, and no gate step has lost its row. The reasoning above still holds FOR THAT 2026-09-29 CENSUS. One sentence in it has since gone stale rather than wrong: it says 'script tests' runs a test runner 'so neither is a gate and neither belongs in a gate row'. A `script-tests` gate row was added on 2026-10-05 (round 149), six days later, after check.sh wired the glob and the suite was repaired -- so today that step IS a gate and DOES have a row, and this note is describing the census as it stood before it did. Wired into CI 2026-10-26 (static-gates, 'Checker script tests'). Premise-audit 2026-11-09 (register r159): the \"clippy workspace\" and \"no-raw-params (ADR #7 Phase 4)\" claims made here were the FIRST claims on those labels -- the steps were unrowed at batch time. rust-clippy re-claimed the first on 2026-10-18 (ca463447d6) and no-raw-params the second on 2026-11-08 (af63f36e48), so both were pruned here as redundant; the row keeps \"skill-drift-guard\", still claimed nowhere else.",
       "runners": {
         "check.sh": [
-          "clippy workspace",
-          "no-raw-params (ADR #7 Phase 4)",
           "skill-drift-guard"
         ]
       }
