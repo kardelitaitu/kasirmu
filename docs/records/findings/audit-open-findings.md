@@ -7522,3 +7522,37 @@ nothing" (a fixture has no history) -- the dependabot-notice path itself is
 live-covered only. MONKEYPATCH kill, file-sed remains r162's machinery.
 Docker daemon still down (probed r159): the E2E / llvm-cov / nextest-junit
 receipts remain the standing PG-gated gap.
+
+### Round 172 (2026-11-09) -- website-assets joins the shell arc: the self-disabling downgrade graded, and the drift bug caught in the refactor itself
+
+The r166..r171 contract applied to the smallest checker in the census.
+find_dynamic_resolvers(src) and collect_referenced(src) take the r166
+parameter; main(argv, root) derives assets/ and src/ from one root. Six shell
+cases pin: a clean fixture exits 0 with the three-rule verdict line; an
+unimported asset is ORPHAN at rc 1; an over-budget asset (via --max-bytes 10,
+so no real 100 KB fixture is written) is OVER BUDGET at rc 1; a
+base64-bearing svg is RASTER IN SVG at rc 1; a missing assets dir refuses at
+rc 2; and -- the checker's most subtle behavior, previously only ever measured
+by hand -- a dynamic asset resolver DOWNGRADES the orphan rule (rc 0, "orphan
+check SKIPPED", verdict says "orphans NOT assessed") instead of reding the
+run. Self-test 13 -> 19 cases.
+
+The round's defect is the best evidence the pattern works: the FIRST version
+of the refactor redirected the dir-existence check and both scans but left
+the asset listing on the ASSETS module constant -- precisely a half-redirect,
+the drift bug in miniature -- and the clean shell case caught it BEFORE
+commit: the fixture graded the real website tree and reported its 8 real
+violations. The kill is then measured the standard way: the scans rebound to
+drop their redirect fail the clean case (fixture logo.svg orphaned against the
+real reference set), rc 2.
+
+Honest limits: the caught-in-refactor bug happened; the shell cases are why it
+never became a commit. The ratchet-baseline arm (KNOWN_RASTER_SVGS
+grandfathering) is graded only as a set-contents case, not through main()'s
+note path -- a grandfathered file walking the shell fixture would need the
+real 52 KB brand export copied into a tempdir, which nobody has needed. The
+--allow-raster-svg flag is graded nowhere. The ANSI color codes in the output
+are asserted around, not through (needles avoid colored spans), so a broken
+color code would not redden any case. MONKEYPATCH kill, file-sed remains
+r162's machinery. Docker daemon still down (probed r159): the E2E / llvm-cov /
+nextest-junit receipts remain the standing PG-gated gap.
