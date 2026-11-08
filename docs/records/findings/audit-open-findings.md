@@ -6640,3 +6640,37 @@ load_gates' acceptance of an empty check.sh list remains unmeasured -- the quest
 mooted for these rows, not answered in general. Docker daemon still down (r136
 probe): the E2E / llvm-cov / nextest-junit receipts remain the standing PG-gated
 gap.
+
+### Round 146 (2026-11-08) -- duplicate runner declarations measured (7) and made visible
+
+r145 recorded that nothing counts two gates declaring the same runner and left the
+population unmeasured. Measured (target/probe-r146-dups.py): seven cross-row
+duplicates on the check.sh axis, zero on the ci axis, zero repeats within a single
+row. Six of the seven pair a dedicated row with a 2026-09-29 batch row
+(local-matrix-checkers x2, local-matrix-unlisted-gates x2,
+checker-selftest-companions x2) -- the batch rows were added precisely to give
+unrowed steps a row, so the overlap is the batch shape working as designed; the
+seventh ("core size ratchet" <- core-size + core-size-ratchet) is
+dedicated-vs-dedicated, plausibly one step enforcing two gates. The census now
+prints all seven with their declaring ids on every live run (1dcf2b46d, self-test
+15 -> 19 cases, three-mutation probe killed 3/3), and the docstring date-stamps the
+population. Also closed the unknown r145 registered: load_gates REJECTS an empty
+needles list ("must be a non-empty list of non-empty strings",
+verify-ci-docs-drift.py load_gates), so r145's rejected deletion shape would have
+been fail-closed rejected anyway -- the re-spelling was the only viable fix, now
+proven rather than assumed.
+
+Honest limits: the census is visibility, not enforcement -- a future duplicate
+remains green, and the batch-vs-dedicated overlaps are left in place because
+removing them would be a semantic judgment the checkers cannot verify (whether a
+batch row's identity survives pruning is not a property any script can test). The
+dedicated-vs-dedicated pair (core size ratchet) is classified plausible, not
+proven: confirming it would mean reading what the step actually enforces against
+what each gate claims, which no checker models -- recorded as a candidate for a
+round that can spend its budget on reading. The intra-row repeat shape is
+unrepresented by the census (measured zero; a repeat says nothing new). load_gates
+' rejection of an empty list was read from the validation branch, not probed with
+a live mutation of the manifest -- the code path is unambiguous (`not needles`),
+but the honest evidence is one grep, not an execution. Docker daemon still down
+(r136 probe): the E2E / llvm-cov / nextest-junit receipts remain the standing
+PG-gated gap.
