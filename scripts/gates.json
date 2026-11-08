@@ -171,7 +171,8 @@
       "status": "required",
       "runners": {
         "check.sh": [
-          "website assets"
+          "website assets",
+          "website assets self-test"
         ]
       },
       "ci": {
