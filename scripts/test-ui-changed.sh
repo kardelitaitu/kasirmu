@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # scripts/test-ui-changed.sh — Run vitest only for changed UI files
+# Status (2026-11-08): developer tooling, invoked MANUALLY -- no gate runner by
+# design; documented in .agents/skills/tdd/SKILL.md, which names this file.
 #
 # Uses `vitest --changed` which compares against the git base branch
 # (origin/main by default) and only runs tests for files that changed

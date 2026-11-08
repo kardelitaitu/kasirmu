@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # scripts/test-changed.sh — Run tests only for crates affected by changes
+# Status (2026-11-08): developer tooling, invoked MANUALLY -- no gate runner by
+# design; documented in .agents/skills/tdd/SKILL.md, which names this file.
 #
 # Compares against origin/main (or the branch specified by BASE_BRANCH)
 # and runs `cargo nextest run -p <crate>` only for crates whose source files

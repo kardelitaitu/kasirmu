@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # scripts/test-tdd.sh — Fast TDD loop: compile+test the current crate only
+# Status (2026-11-08): developer tooling, invoked MANUALLY -- no gate runner by
+# design; documented in .agents/skills/tdd/SKILL.md, which names this file.
 #
 # Uses the `[profile.tdd]` from workspace Cargo.toml which inherits from
 # `dev` but sets `debug = false` and `incremental = true` for the fastest
