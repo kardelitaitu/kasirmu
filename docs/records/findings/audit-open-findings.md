@@ -5976,3 +5976,28 @@ coverage tool's file set, not a hand-listed inventory); branch and function numb
 live in the HTML report and were not summarized here. The rust half stays blocked on
 Docker+PG. No file changed in the repo this round; the product is the receipt and
 the corrected honest-limits line.
+
+### Round 128 (2026-11-08) — the gift-card service receipts, and the TDD loop inherits the helper
+
+The other-session verification arc closes: r124 ran the gift-card migration's 62
+tests; this round ran the service side at tip — kasirmu-core 34/34 and
+kasirmu-bridge 5/5 gift_card tests, 0 failed (2.2s combined, warm). The feature is
+now receipted at every layer this session can reach: compile (r121, workspace),
+migration (r124), service+bridge (here), ui tender row (r115).
+
+The r125 audit gains its agent-facing entry: scripts/test-tdd.sh — the fast loop the
+tdd skill tells every agent to use — now sources scripts/msvc-env.sh after cd to
+PROJECT_ROOT. Verified statically (bash -n, syntax gate 64) plus a live invocation
+that proved the helper banner fires inside the script's own context. A full
+functional run was declined on budget: the script has NO test-filter argument (grep
+for TEST_FILTER/filter/--test returns nothing), so any invocation compiles the whole
+named crate under the tdd profile — profile.tdd is per-crate-profile-cold, and the
+first build pays every dependency. That absence is itself a finding worth a later
+round: a TDD LOOP script that cannot run ONE test sends agents to bare cargo test,
+which is exactly the invocation that forgot its environment in r124.
+
+Honest limits: the remaining 15 bare-cargo scripts stay as r125 left them (dev
+tools, not gates). The tdd-profile build cost was not spent; the TDD loop's
+end-to-end receipt is therefore pending the same kind of budget decision the
+llvm-cov build was — and the difference is that test-tdd.sh cannot be pointed at a
+subset until a filter argument exists.
