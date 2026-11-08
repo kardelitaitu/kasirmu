@@ -7412,3 +7412,36 @@ module never verifies that attic/ is where retired workflows actually go
 (that contract lives in drift's retirement checks). Docker daemon still down
 (probed r159): the E2E / llvm-cov / nextest-junit receipts remain the
 standing PG-gated gap.
+
+### Round 169 (2026-11-09) -- the shell-grading arc reaches runner-claims: root redirects the scan AND the feed, or it does not redirect at all
+
+The r166 drift contract applied to the next arc member. verify-runner-claims'
+main() took no argv and scanned a hardwired ROOT; its self-test graded the
+pure classifiers (claims_in, SUPERSEDED, the feed) and never the shell. Now
+main(argv, root): root redirects BOTH the scan walk (scanned_files(root)) and
+the live-workflow feed (live_ci_scripts(workflows) -> the r166-parameterized
+shared module), with the false-claim message's relative path computed against
+the redirected root -- the one place a half-redirect would crash rather than
+lie, which is why the rel line is in the diff. Three shell cases pin the exit
+contract: a false claim exits 1 naming the script, a satisfied claim exits 0
+with the OK line, an empty live set refuses with exit 2 (the arm whose
+docstring calls an empty live set the checker's own failure mode). Self-test
+13 -> 16 cases.
+
+Measured kill: the drift bug reconstructed on this checker -- live_ci_scripts
+ rebound to ignore its workflows argument and read the real repository --
+fails the self-test on TWO cases (the satisfied claim reds because the
+fixture's real.py is in no real workflow; the refusal case reds because the
+real repository's live set is never empty). The mutant that r166 actually
+found in drift cannot survive this checker's shell cases.
+
+Honest limits: the kill is MONKEYPATCH-proven (attribute rebinding), the
+file-sed path remains r162's machinery. The scanned walk's EXCLUSION table is
+not re-graded by the shell cases -- the fixture is too small to have
+node_modules or .git subtrees worth pruning, so SKIP_DIRS behavior is still
+only covered by the live run (and one measured incident, the .tmp_ scratch
+exclusion, is pinned nowhere). The claims-scan walk of the REAL repository
+still happens only in the live run, as in cgr and drift: fixtures grade the
+plumbing, the live run grades the corpus. Docker daemon still down (probed
+r159): the E2E / llvm-cov / nextest-junit receipts remain the standing
+PG-gated gap.
