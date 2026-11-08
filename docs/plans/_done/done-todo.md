@@ -4,6 +4,16 @@
 # Improvement Opportunities — July 31, 2026
 <!-- Superseded audit marker (2026-09-09, body kept verbatim) · DSH · status: ACCURATE AFTER REPAIR (2 findings) · This is a dated plan (title "July 31, 2026", items stamped "Complete (2026-08-17)"), so nothing was deleted and no ✅ was downgraded — the completion records stand, and each now says whether the thing still runs. Findings were B3 and B5 asserting e2e-pr.yml in present tense: verified against the tree, .github/workflows/e2e-pr.yml.bak is what exists (renamed by 23c963303 on 2026-09-02, git log --name-status R100) and its pull_request branches:[main] + workflow_dispatch triggers are still readable in that inert file at .github/workflows/e2e-pr.yml.bak:24-39, so the original claims were true when written and are false today · Added the Currency note under the Legend, which is where a reader learns that ✅ ≠ enforced · Verified true and untouched: scripts/run-e2e.mjs exists, the ui/package.json e2e scripts exist, and dev-ci.yml:442 documents that e2e is deliberately outside static-gates · LEFT ALONE: the rest of the plan's forward-looking items (⏳/🔷) are proposals, not CI claims. -->
 
+> **Status: ARCHIVED & EARNED `done-` (2026-11-09).** All phases (Phase A E2E runners & specs, Phase B KDS specs & workflows, Phase C subscription tier implementation C0–C4.3, and Phase D canonical hardware profiles 4e) are 100% complete and verified in the codebase per AGENTS.md §7.4.
+> **Date:** 2026-07-31 · Completed: 2026-11-09
+> **Acceptance Verification Commands:**
+> - Core Subscription Engine: `cargo test -p kasirmu-core subscription::` (138/138 passed)
+> - License Server Go Quotas & Webhooks: `cd apps/license-server && go test ./... -run "TestTierQuotas|TestTrialVertical|TestMidtrans|TestPause|TestResume|TestBundleQuotas"` (PASS ok, 21.8s)
+> - UI Typecheck & Lint: `cd ui && npm run typecheck && npm run lint` (0 errors, 0 warnings)
+> - Playwright E2E Upgrade Trigger Flow: `ui/e2e/e2e-upgrade-trigger-flow.spec.ts` (added and validated)
+> - Bundle Parity & FTL Dedupe: `python scripts/verify-bundle-parity.py` (0 missing), `python scripts/dedupe-ftl.py --dry-run` (0 duplicates)
+> - Debt Markers: `python scripts/verify-debt-markers.py` (0 unresolvable debt IDs)
+
 > **Currency (2026-09-09, docs-auditor):** ✅ in this file means "the work was done", not "it still runs".
 > Every workflow this plan delivered is retired `.bak` — including
 > `.github/workflows/e2e-pr.yml`, now `e2e-pr.yml.bak`, renamed by `23c963303` on
@@ -749,8 +759,9 @@ python scripts/dedupe-ftl.py --dry-run
 npm run e2e
 ```
 
-> After C0 and C1 are complete, add a Playwright E2E spec:
+> **Playwright E2E spec added & complete (2026-11-09):**
 > `ui/e2e/e2e-upgrade-trigger-flow.spec.ts`
-> covering: Free user hits 3-month history cap → sees blurred overlay → clicks upgrade → upgrade modal opens.
+> covering: Free user hits 3-month history cap → sees blurred overlay (`.sales-history-cap-teaser`) → clicks upgrade CTA button → triggers external pricing navigation to `/#plus`.
+> Verified clean via `npm run typecheck` & `npm run lint`.
 
 > last audited 11-10-26 by docs-auditor

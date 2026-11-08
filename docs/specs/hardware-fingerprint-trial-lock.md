@@ -19,7 +19,7 @@
 > anti-abuse mechanism (one trial per physical device) still applies to the
 > segmented trials to prevent reset abuse; the expiry/lock wording should be
 > read against the trial types in `subscription-tiers.md` §4 rather than a
-> single 90-day window. Tracked by `docs/plans/_active/todo.md` C2.1.
+> single 90-day window. Tracked by `docs/plans/_done/done-todo.md` C2.1.
 
 > **Audit note (2026-10-11): the mechanism SHIPPED, at different coordinates than this spec
 > names.** The 2026-09-29 stamp read "the central function is not implemented", and for the

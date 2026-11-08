@@ -247,7 +247,7 @@ assert a dead handler is live are exactly the 'aspirational structure' §13 of t
 
 1. In `todo-modular-scaffolding.md`, do **not** delete the sentence in §15 — annotate it. The plan is the
    document that was wrong; a reader must be able to see the correction. House style is a dated
-   supersession marker in place (see the `docs/plans/_active/todo.md` header for the pattern).
+   supersession marker in place (see the `docs/plans/_done/done-todo.md` header for the pattern).
 2. §14 item 1 and §10 Phase 0: change 'confirm it is active' to 'confirm its status against the census',
    so the instruction no longer presumes the answer.
 3. `docs/records/superseded/MODULAR_APP_PLAN.md:77`: annotate the diagram node, pointing at
