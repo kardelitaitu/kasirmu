@@ -6602,3 +6602,41 @@ rest of the file -- the first patch attempt corrupted its own in-memory buffer a
 was caught by the occurrence-count assertion before any write; the fix is the
 replacement-function form. The alliance (132 cases) grades the wired gate; the census
 line itself is graded only by this checker's own self-test.
+
+### Round 145 (2026-11-08) -- the loose needles spelled exactly; the decorator census measured to empty
+
+r144 recorded a candidate and named its blocker: the two word-boundary needles
+("feature registry" -> "feature registry parity", "windows config" -> "windows config
+drift") and the true decorator ("no-raw-params" -> "no-raw-params (ADR #7 Phase 4)")
+are redundant loose spellings, but deleting them would empty two rows' check.sh
+runner lists and whether load_gates accepts a runnerless gate was unmeasured. The
+probe answered the question differently: deleting was the wrong shape altogether --
+the dedicated rows each carry a ci declaration (dev-ci.yml#static-gates) and the
+roster's own founding sin was UNDER-claiming ("a reader checking the roster
+concludes the gate has no CI runner"), so removing the only check.sh claim of a
+required gate would re-commit that sin. The correct fix is re-spelling: each row
+now names the exact step that runs it (af63f36e4; gates.json textual edits at the
+multi-line anchors, never re-serialized). The no-raw-params row keeps its two exact
+siblings ("no-raw-params falsification", "no-raw-params self-test") and gains the
+exact decorated spelling; the cross-row duplication with the 2026-09-29
+local-matrix catch-all rows is honest -- one step really does back two rows.
+
+The census r144 added now prints EMPTY on the live tree (checked 150 gates against
+182 CI steps and 226 check.sh steps; every declared runner resolves; the
+decorator-prefix note line is gone). The decorator rule in resolves() is retained
+purely defensively and the checker docstring says so, dated. Self-test unchanged
+at 15 cases (it tests the matcher, not the data); completeness OK; drift 0 items;
+wired census unchanged at 103 of 105. The drift note's informational-5 is
+unaffected -- all five remain classified in classified_check_sh_steps (r143).
+
+Honest limits: the fix is data, not enforcement -- nothing in the checkers FORBIDS
+a future loose needle; a new row spelling a step loosely will re-populate the
+census and that is the designed outcome (visibility first, roster hygiene as a
+follow-up decision each time). The cross-row duplicate declarations are counted by
+nothing: no checker today reds on two rows declaring the same runner, and whether
+that deserves a finding class is unmeasured and unrecorded as a candidate until
+someone measures how many duplicates exist (this round made three, all defensible).
+load_gates' acceptance of an empty check.sh list remains unmeasured -- the question
+mooted for these rows, not answered in general. Docker daemon still down (r136
+probe): the E2E / llvm-cov / nextest-junit receipts remain the standing PG-gated
+gap.
