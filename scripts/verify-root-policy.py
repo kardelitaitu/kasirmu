@@ -249,8 +249,14 @@ def check(root: Path) -> list[str]:
     return findings
 
 
+_SHELL_ACTIVE = False   # r174: the --self-test passthrough case re-enters
+                        # self_test() through main(); without this guard that
+                        # recurses until the stack dies.
+
+
 def self_test() -> int:
     """Prove the two checks bite, over synthetic trees."""
+    global _SHELL_ACTIVE
     failures: list[str] = []
 
     def tree(build) -> Path:
@@ -282,16 +288,51 @@ def self_test() -> int:
     if any(".wrangler" in f for f in check(tool_owned)):
         failures.append("the sweep walked into tool-owned .wrangler state")
 
+    # r174: main()'s shell -- argv and root graded against tempdir fixtures,
+    # the r166..r173 pattern. check() itself is already fixture-graded above;
+    # these pin the exit mapping (0/1/2) and the argv passthrough.
+    import contextlib as _ctxlib
+    import io as _io
+    def _shell(argv, build):
+        tmp = Path(tempfile.mkdtemp())
+        build(tmp)
+        out, err = _io.StringIO(), _io.StringIO()
+        with _ctxlib.redirect_stdout(out), _ctxlib.redirect_stderr(err):
+            rc = main(argv=argv, root=tmp)
+        return rc, out.getvalue() + err.getvalue()
+    rc, text = _shell([], lambda t: (t / "pr_body.md").write_text("scratch"))
+    if rc != 1 or "pr_body.md" not in text or "1 finding(s)" not in text:
+        failures.append(f"a stray root file must exit 1 naming it (rc={rc} text={text[-100:]!r})")
+    rc, text = _shell([], lambda t: None)
+    if rc != 0 or "clean" not in text:
+        failures.append(f"a clean fixture must exit 0 (rc={rc} text={text[-100:]!r})")
+    out, err = _io.StringIO(), _io.StringIO()
+    with _ctxlib.redirect_stdout(out), _ctxlib.redirect_stderr(err):
+        rc = main(argv=[], root=Path(tempfile.mkdtemp()) / "absent")
+    if rc != 2 or "repo root not found" not in (out.getvalue() + err.getvalue()):
+        failures.append(f"a missing root must exit 2 (rc={rc})")
+    if not _SHELL_ACTIVE:
+        _SHELL_ACTIVE = True
+        try:
+            rc, text = _shell(["--self-test"], lambda t: None)
+            if rc != 0 or "self-test: all cases passed" not in text:
+                failures.append(f"--self-test must passthrough to the checker's own cases (rc={rc} text={text[-80:]!r})")
+        finally:
+            _SHELL_ACTIVE = False
+
     if failures:
         print("self-test FAILED:")
         for f in failures:
             print(f"  - {f}")
         return 1
-    print("  self-test: all 6 cases passed")
+    print("  self-test: all cases passed")
     return 0
 
 
-def main() -> int:
+def main(argv: list[str] | None = None, root: str | Path | None = None) -> int:
+    """r174: argv and root parameterized, the r166..r173 contract -- root
+    redirects the graded tree, so a fixture cannot half-run against the real
+    repository root."""
     # A REPORT MUST NOT CRASH ON WHAT IT REPORTS. Measured 2026-10-23 in a full matrix
     # run: a stray root file whose name ended in U+F00A (private-use codepoint) made
     # `print` raise UnicodeEncodeError on a cp1252 stdout, so step 01 died with a
@@ -306,14 +347,15 @@ def main() -> int:
         except (AttributeError, ValueError):
             pass  # a wrapped or already-configured stream; carry on with what we have
 
-    if "--self-test" in sys.argv[1:]:
+    if "--self-test" in (sys.argv[1:] if argv is None else argv):
         return self_test()
 
-    if not ROOT.is_dir():
-        print(f"error: repo root not found: {ROOT}", file=sys.stderr)
+    root_path = ROOT if root is None else Path(root).resolve()
+    if not root_path.is_dir():
+        print(f"error: repo root not found: {root_path}", file=sys.stderr)
         return 2
 
-    findings = check(ROOT)
+    findings = check(root_path)
     if findings:
         # NEVER let the REPORT crash on a finding. This loop printed a stray root file
         # whose name ended in U+F00A (a private-use codepoint), and on a cp1252 stdout
