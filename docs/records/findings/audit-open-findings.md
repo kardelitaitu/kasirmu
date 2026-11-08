@@ -7754,3 +7754,41 @@ control one-sided" and "the control one-sided" are the same case here. Docker
 daemon still down (probed r159): the E2E / llvm-cov / nextest-junit receipts
 remain the standing PG-gated gap. The root-policy gate remains RED on the
 foreign todo.md (r174).
+
+### Round 178 (2026-11-09) -- plugin-guide-parity joins the arc; five constants become one redirect, and the fixture learns not to mirror reality
+
+The r166..r177 contract applied to the plugin-guide drift gate -- the widest
+redirect surface in the arc: FIVE evidence sources (guide, manager.rs, lua
+lib.rs, cli.rs, cli README) used to be module constants. They are now derived
+from one _paths(root) function, and root threads through all four evidence
+helpers, so a new source joins the redirect by construction instead of by
+remembering. Five shell cases through main's exit mapping: full parity rc 0,
+documented-but-missing rc 1 naming the binding, a phantom command rc 1, a
+missing guide rc 2, and --report-only reporting drift yet exiting 0.
+
+The round's design lesson, caught while tracing the kill BEFORE running it:
+the first fixture mirrored the real plugin API (discount_apply, migrate) --
+and a mutant that drops its root would have found the same names in the real
+tree and SURVIVED every case, because the fixture's corpus was a subset of
+reality. The fixture was rebuilt on synthetic names (fixture_binding,
+fixture_legacy_hook, fixture-cmd) that exist nowhere in the real tree. The
+arc's fixture rule, now stated where the next author reads it: a fixture's
+corpus must contain nothing the real tree contains, or the redirect is
+unfalsifiable.
+
+Measured kill: implemented_bindings AND implemented_cli both rebound to drop
+their root -- the clean case dies (real-tree bindings do not include
+fixture_binding), and the mutant's own report betrays it: the --report-only
+case's captured text is full of real binding names (oz.log, oz.off, oz.on)
+that no fixture wrote.
+
+Honest limits: the "implemented but not documented" leg is informational by
+design and is pinned only as a count, not as a named case; the LEGACY_HEAD
+multi-line list walk (strings across several lines up to the closing
+bracket) is graded by the planted one-line case only -- a genuinely
+multi-line list is untested. The _kebab() multi-word conversion
+(InitDb -> init-db) is tested nowhere; its docstring says the mismatch is
+latent until a doc names a multi-word command, and that holds. Docker daemon
+still down (probed r159): the E2E / llvm-cov / nextest-junit receipts remain
+the standing PG-gated gap. The root-policy gate remains RED on the foreign
+todo.md (r174).
