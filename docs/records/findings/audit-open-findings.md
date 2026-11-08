@@ -6674,3 +6674,41 @@ a live mutation of the manifest -- the code path is unambiguous (`not needles`),
 but the honest evidence is one grep, not an execution. Docker daemon still down
 (r136 probe): the E2E / llvm-cov / nextest-junit receipts remain the standing
 PG-gated gap.
+
+### Round 147 (2026-11-08) -- two rows for one gate: the core-size merge
+
+r146 classified the core-size/core-size-ratchet duplicate "plausible, not proven" and
+recorded that proving it needed a round that reads. Read: they were TWO ROWS FOR ONE
+GATE. core-size-ratchet (2026-10-03, Phase 3 P3.4) is the real ratchet row -- both
+check.sh needles, the full ADR-67 two-budget rationale. core-size (2026-10-05,
+706d328e4) was added with the premise "this step has been in check.sh with a full
+rationale and NO gates.json record" -- false on its face, this row predates it by two
+days; notes.md:1719 gives the real trigger, a CI-coverage census counting rostered
+gates without ci coverage, so the row split one gate across two records by axis
+accident. Merged (516e3ba30): the surviving core-size-ratchet row now carries the ci
+step claim "Core size ratchet" and the enforced self_test field (verify-gate-
+completeness.py:283 validates that field, so the move keeps a checked claim, not
+prose); the deleted row's false premise is refuted in the survivor's _note. Roster
+150 -> 149. The r146 census now reads six pairs, and its docstring bullet was
+re-written the same day rather than left describing a tree that no longer exists.
+Also upgraded the r146 limits entry: the load_gates empty-needles rejection is now
+execution-proven (a live single-needle probe produced the exact "must be a non-empty
+list of non-empty strings" error and exit != 0), not merely read off the branch.
+
+Honest limits: two tooling incidents in this round's own editing, both caught and
+corrected before commit but worth recording. (1) A scoped-replace helper rebased
+every call on the ORIGINAL slice, so only the last of three row edits landed; the
+bug was invisible to JSON validation (the file stayed valid) and was caught by
+INSPECTING the merged row, which is why inspection, not just parse-validate, is the
+check for data edits. (2) Merge note text with raw double quotes was written before
+validation ran, so one invalid-JSON write reached disk for the span of one tool
+call; the repair was immediate and byte-verified, but the guard order was wrong --
+validate the in-memory string, THEN write. The four local-matrix and two
+checker-selftest-companions overlaps remain by design and are not defects (one step
+legitimately backs a batch row and its own row). The historical tables in
+agent-gates.md and plans/_active/notes.md that list `core-size` are dated
+measurement snapshots and were left as records, not updated to the new shape. The
+load_gates probe mutated the real manifest in place rather than a sandbox copy,
+because drift exposes no --root; that is only defensible with the count-guarded
+anchor, try/finally restore, and byte-exact restore check that all ran. Docker
+daemon still down (r136): E2E / llvm-cov / nextest-junit receipts remain PG-gated.
