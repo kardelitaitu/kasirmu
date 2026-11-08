@@ -36,10 +36,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _live_workflows import live_workflow_files as _live  # noqa: E402
 
 
-def live_workflows() -> list[Path]:
+def live_workflows(workflows=None) -> list[Path]:
     """Every workflow GitHub will execute. The rule itself is shared; see
-    scripts/_live_workflows.py for why it is not written out a sixth time."""
-    return _live()
+    scripts/_live_workflows.py for why it is not written out a sixth time.
+    r170: `workflows` redirects the feed at a fixture (the r166 parameter);
+    None keeps this repository's own .github/workflows."""
+    return _live(workflows)
 
 
 def check(path: Path) -> str:
@@ -122,29 +124,70 @@ def self_test() -> int:
     _saved_live = _live
     _sentinel = [Path("a.yml"), Path("b.yml")]
     try:
-        _live = lambda: _sentinel
+        _live = lambda workflows=None: _sentinel
         got = live_workflows()
         if got != _sentinel or not all(isinstance(p, Path) for p in got):
             bad.append(f"live_workflows must hand main() the live set unchanged, got {got!r}")
     finally:
         _live = _saved_live
 
+    # r170: main()'s shell -- argv and root graded against a tempdir fixture,
+    # the r166/r169 pattern: capture stdout AND stderr, patch nothing global.
+    import contextlib
+    import io as _io
+    import tempfile
+    def _shell(text):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".github" / "workflows").mkdir(parents=True)
+            (root / ".github" / "workflows" / "dev-ci.yml").write_text(
+                text, encoding="utf-8")
+            out, err = _io.StringIO(), _io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = main(argv=[], root=root)
+            return rc, out.getvalue() + err.getvalue()
+    GOOD = "name: ci\non:\n  push:\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
+    rc, text = _shell(GOOD)
+    if rc != 0 or "1 live workflow(s) parse" not in text:
+        bad.append("a parseable workflow must exit 0 (rc=%d text=%r)" % (rc, text[:80]))
+    rc, text = _shell("on:\n  push:\njobs:\n  a: {\n")
+    if rc != 1 or "RUNS NOTHING" not in text or "dev-ci.yml" not in text:
+        bad.append("unparseable YAML must exit 1 naming the file (rc=%d text=%r)"
+                   % (rc, text[:100]))
+    rc, text = _shell("on:\n  push:\nname: ci\n")
+    if rc != 1 or "declares no jobs" not in text:
+        bad.append("a jobs-less workflow must exit 1 (rc=%d text=%r)" % (rc, text[:80]))
+    rc, text = _shell("")
+    if rc != 1 or "not a mapping" not in text:
+        bad.append("an empty workflow file must exit 1 (rc=%d text=%r)" % (rc, text[:80]))
+    with tempfile.TemporaryDirectory() as td:
+        out, err = _io.StringIO(), _io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = main(argv=[], root=td)
+        if rc != 2 or "refusing" not in (out.getvalue() + err.getvalue()):
+            bad.append("an absent live set must refuse with exit 2 (rc=%d)" % rc)
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (%d cases, no files touched)" % (5 + 1))
+    print("SELF-TEST OK (%d cases, incl. 5 shell cases; no repo files touched)"
+          % (5 + 1 + 5))
     return 0
 
 
-def main() -> int:
+def main(argv: list[str] | None = None, root: str | Path | None = None) -> int:
+    """r170: argv and root parameterized, the r166/r169 contract -- root
+    redirects the live-workflow feed, so a fixture cannot half-run against
+    the real repository's workflows."""
+    wf_dir = None if root is None else Path(root).resolve() / ".github" / "workflows"
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--self-test", action="store_true",
                     help="Run this checker's cases and exit.")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     if args.self_test:
         return self_test()
 
-    wfs = live_workflows()
+    wfs = live_workflows(wf_dir)
     if not wfs:
         print("verify-workflow-syntax: no live workflow found under .github/workflows --"
               " refusing to report clean, because a gate that sees nothing must never"
@@ -156,7 +199,7 @@ def main() -> int:
         why = check(p)
         if why:
             failed = True
-            print(f"verify-workflow-syntax: {p.relative_to(ROOT).as_posix()}: {why}")
+            print(f"verify-workflow-syntax: {p.relative_to(ROOT if root is None else Path(root).resolve()).as_posix()}: {why}")
     if failed:
         print("verify-workflow-syntax: a workflow that does not parse RUNS NOTHING."
               " GitHub reports it errored and executes none of its jobs, so the failure"
