@@ -103,6 +103,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # for free.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _live_workflows import live_workflow_files as _live_workflows  # noqa: E402
+import _live_workflows as _live_workflows_module  # noqa: E402
 
 # Where retired (`.yml.bak`) workflows live. P4 of the folder restructure moved
 # them from the workflows directory itself into this subdirectory, so the
@@ -938,6 +939,9 @@ def self_test() -> int:
                 failed.append("load_gates: a missing manifest must fail closed")
     finally:
         globals()["GATES_MANIFEST"] = _saved_manifest
+
+    check("the shared live-workflow rule grades its own module",
+          _live_workflows_module.self_test(), [])
 
     # r166: main()'s shell -- argv= and root= graded end to end against a
     # coherent mini-corpus in a tempdir. The module constants are saved and

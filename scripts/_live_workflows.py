@@ -75,3 +75,39 @@ def live_workflow_texts(workflows: Path | None = None) -> list[tuple[Path, str]]
         except OSError:
             continue
     return out
+
+
+def self_test() -> list[str]:
+    """The rule, graded directly against a tempdir (r168 -- until now the module
+    was graded only through its importers). The original 2026-09-29 defect was
+    the .yaml half-disagreement, so the table pins BOTH extensions, the attic
+    exclusion, the top-level rule, and the is_file filter. Returns failure
+    descriptions; [] = every case held. Invoked by verify-ci-docs-drift's
+    self-test -- a data module has no runner of its own, and an uninvoked
+    self-test is exactly the rot the wired census exists to catch."""
+    import tempfile
+    fails: list[str] = []
+    with tempfile.TemporaryDirectory() as td:
+        wf = Path(td) / "workflows"
+        (wf / "attic").mkdir(parents=True)
+        (wf / "subdir").mkdir()
+        for name in ("a.yml", "b.yaml", "c.yml.bak", "attic/d.yml",
+                     "attic/e.yml.bak", "subdir/f.yml"):
+            (wf / name).write_text("on: push\n", encoding="utf-8")
+        (wf / "g.yaml").mkdir()  # a DIRECTORY named *.yaml is not a workflow
+        got = [p.name for p in live_workflow_files(wf)]
+        if got != ["a.yml", "b.yaml"]:
+            fails.append("live set wrong: %r" % (got,))
+        if live_workflow_names(wf) != {"a.yml", "b.yaml"}:
+            fails.append("names wrong: %r" % (sorted(live_workflow_names(wf)),))
+        texts = live_workflow_texts(wf)
+        if sorted(p.name for p, _ in texts) != ["a.yml", "b.yaml"] or any(
+                "on: push" not in t for _, t in texts):
+            fails.append("texts wrong: %r" % ([(p.name, len(t)) for p, t in texts],))
+        empty = Path(td) / "empty"
+        empty.mkdir()
+        if live_workflow_files(empty) != []:
+            fails.append("an empty dir must yield []")
+        if live_workflow_files(Path(td) / "absent") != []:
+            fails.append("an absent dir must yield []")
+    return fails
