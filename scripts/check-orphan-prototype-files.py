@@ -78,11 +78,13 @@ def tracked_files(root: Path = REPO_ROOT) -> list[str]:
     ).stdout
     return [line for line in out.splitlines() if line.strip()]
 
-def all_tracked_text() -> str:
-    """Every tracked file's text, so a reference from ANY path counts."""
+def all_tracked_text(root=None) -> str:
+    """Every tracked file's text, so a reference from ANY path counts.
+    r186: root redirects the ls-files listing AND every file read together."""
+    base = REPO_ROOT if root is None else Path(root).resolve()
     out = subprocess.run(
         ["git", "ls-files"],
-        cwd=REPO_ROOT,
+        cwd=base,
         capture_output=True,
         text=True,
         check=True,
@@ -91,7 +93,7 @@ def all_tracked_text() -> str:
     for rel in out:
         if not rel.strip():
             continue
-        path = REPO_ROOT / rel
+        path = base / rel
         try:
             blob.append(path.read_text(encoding="utf-8", errors="ignore"))
         except (OSError, UnicodeDecodeError):
@@ -176,42 +178,91 @@ def self_test() -> int:
         if got != [f"{TREE}/a.js"]:
             bad.append(f"  tracked_files() over a scratch repository: expected "
                        f"['{TREE}/a.js'], got {got!r}")
-    if bad:
-        print("SELF-TEST WRONG:", file=sys.stderr)
-        print("\n".join(bad), file=sys.stderr)
-        return 2
-    print(f"SELF-TEST OK ({len(SELF_TEST_CASES)} detector cases + 1 corpus case)")
+    # r186: main()'s shell -- argv and root graded against scratch git
+    # repositories, the r166..r185 pattern. The name is synthetic end to end
+    # (proto-fixture-a.js): a root-dropping mutant that reads the REAL corpus
+    # cannot find it, which is what the first case grades. Note the non-strict
+    # run always exits 0 (report-only), so the text carries the verdict.
+    import io as _io
+    import contextlib as _ctx
+    shell = 0
+    def _shell(files, argv=None):
+        with tempfile.TemporaryDirectory() as tmp:
+            scratch = Path(tmp)
+            for rel, content in files.items():
+                dst = scratch / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_text(content, encoding="utf-8")
+            subprocess.run(["git", "init", "-q"], cwd=scratch, check=True)
+            subprocess.run(["git", "add", "."], cwd=scratch, check=True)
+            out, err = _io.StringIO(), _io.StringIO()
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                try:
+                    rc = main(argv=[] if argv is None else argv, root=scratch)
+                except SystemExit as se:
+                    rc = se.code
+            return rc, out.getvalue() + err.getvalue()
+    shell += 1
+    rc, text = _shell({
+        "prototypes/proto-fixture-a.js": "console.log(1);\n",
+        "reader.html": '<script src="proto-fixture-a.js"></script>\n',
+    })
+    # among 1: the census counts only deployed prototypes/ files; reader.html
+    # is corpus (it names the file) but is not itself a deployed file.
+    if rc != 0 or "0 orphan(s) among 1" not in text:
+        print(f"  x a named file must read as referenced (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _shell({"prototypes/proto-fixture-a.js": "console.log(1);\n"},
+                      argv=["--strict"])
+    if rc != 1 or "1 orphan(s) among 1" not in text:
+        print(f"  x an unnamed file must be an orphan under --strict (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _shell({"loose.js": "outside the tree\n"})
+    if rc != 2 or "git lists no tracked file" not in text:
+        print(f"  x a checkout without {TREE}/ must refuse rc 2 (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+        return 1
+    print(f"SELF-TEST OK ({len(SELF_TEST_CASES)} detector cases + 1 corpus case"
+          f" + {shell} shell cases)")
     return 0
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r186: argv and root parameterized, the r166..r185 contract -- root
+    redirects the deployed-file listing AND the reference corpus together."""
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--strict", action="store_true", help="exit 1 when any orphan is found")
     ap.add_argument("--self-test", action="store_true", help="run this checker's cases and exit")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     if args.self_test:
         return self_test()
+    root_path = REPO_ROOT if root is None else Path(root).resolve()
 
     # Grade the detector before grading the tree: a corpus read that silently returned
     # "" would make every file look referenced, and this gate would print 0 orphans
     # with full confidence. The cases above are what that reads as.
-    rc = self_test()
-    if rc:
-        print("DETECTOR WENT DEAF: not trusting the tree scan below.", file=sys.stderr)
-        return rc
+    # Live mode only: a redirected run (root=...) is reached FROM self_test's
+    # shell cases, and pre-flighting here again would recurse forever -- the
+    # r174 recursion-trap rule, learned the hard way by this checker.
+    if root is None:
+        rc = self_test()
+        if rc:
+            print("DETECTOR WENT DEAF: not trusting the tree scan below.", file=sys.stderr)
+            return rc
 
-    files = tracked_files()
+    files = tracked_files(root_path)
     if not files:
         # Not a clean tree: a tree that was not read. Measured 2026-11-06 -- this branch
         # printed "nothing to check" and exited 0, so a copy of the script outside the
         # checkout reported the prototypes clean while looking at no file at all.
-        print(f"error: git lists no tracked file under {TREE}/ in {REPO_ROOT}, so this run "
+        print(f"error: git lists no tracked file under {TREE}/ in {root_path}, so this run "
               f"graded nothing and its 'nothing to check' would be about an empty corpus. "
               f"Pass a checkout with {TREE}/ populated.", file=sys.stderr)
         return 2
 
-    corpus = all_tracked_text()
+    corpus = all_tracked_text(root_path)
     found = orphans(files, corpus)
 
     if not found:
