@@ -5704,3 +5704,19 @@ LOCALAPPDATA is absent from the environment; a normal user shell (which check.sh
 assumes and gets) inherits them from the Windows user profile and needs nothing.
 Remaining unverified this session, unchanged: llvm-cov coverage report, nextest
 junit receipt, docker/e2e legs.
+
+### Round 118 (2026-11-08) — the non-python legs, live: 124/124 script tests, green go lane
+
+A verification round with no code change and no defect found — recorded because the
+r117 census's coverage claim was honest but partial, and the missing legs are now
+measured: scripts/__tests__ under node --test is 124/124 passed across 21 suites
+(4.3s, 0 failed); the go lane (apps/license-server) is clean — go vet ./... exit 0
+and go test -short ok in 199s; cargo fmt --all -- --check produces no diff. The
+round's one environmental finding, recorded so the next scripted session does not
+burn a roundtrip on it: go commands fail with "GOMODCACHE/GOCACHE not defined" when
+the environment is stripped (LOCALAPPDATA absent) — export GOPATH/GOMODCACHE/
+GOCACHE explicitly, or note that check.sh's own step runs from a user shell where
+the Windows profile supplies them and needs nothing. Committed: 082f348f8 (the
+addendum above). Honest limits: unchanged — llvm-cov report, nextest junit receipt,
+and all docker-dependent legs remain unverified this session; this round changed no
+production file, so its value is the census completion, not a repair.
