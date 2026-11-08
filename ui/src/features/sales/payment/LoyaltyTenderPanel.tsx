@@ -45,12 +45,12 @@
  * (it also performs the narrowing that lets `points` arrive as a plain number).
  *
  * WHAT THAT DOES AND DOES NOT GUARANTEE, precisely. There is exactly ONE
- * production caller today, the JSX at PaymentModal.tsx:2847, and it passes
+ * production caller today, the JSX at PaymentModal.tsx:2937, and it passes
  * `loyaltyOffered={loyaltyLicensed && !!loyaltyAccount}` - a literal restatement
  * of its own enclosing condition - so on today's paths the `!loyaltyOffered`
  * return below is UNREACHABLE from the modal. It stays because it is the default
- * a second caller gets for free, and PaymentModalLoyalty's L14 mounts the panel
- * directly to prove the branch works rather than merely exists. The compile-time
+ * a second caller gets for free, and PaymentModalLoyalty.test mounts the panel
+ * directly (its child() helper) to prove the branch works rather than merely exists. The compile-time
  * half is narrower than the sentence it replaces: `loyaltyOffered` is required
  * with no default, so a new caller must answer the LICENSING question, but
  * TypeScript was never what carried the ACCOUNT condition - `points` is required

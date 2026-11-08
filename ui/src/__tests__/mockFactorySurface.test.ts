@@ -290,6 +290,10 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // PosScreenCoreFlow that error was uncaught during a DOM event dispatch, putting the
   // screen into its error boundary. Removing it here is the deletion direction this map
   // forces a visible edit for.
+  // `setSetting` STAYS on this gap list (the module still exports it, the factory
+  // still does not mock it) but left the REACHABLE map below after the gift-card
+  // span: every production call site migrated to setSettingScoped/setSettingsScoped,
+  // so the plain name is now an unreachable gap -- coverage debt, not a live call.
   '@/api/settings <- createSettingsApiMock': [
     'getDeploymentInfo', 'getHardwareSettingsScoped',
     'getSetting', 'onSettingsUpdated', 'seedDefaultRolesScoped',
@@ -429,7 +433,7 @@ describe('mock factory surface conforms to the module it replaces', () => {
       ],
       '@/api/settings <- createSettingsApiMock': [
         'getDeploymentInfo', 'getHardwareSettingsScoped', 'getSetting',
-        'onSettingsUpdated', 'setSetting', 'setSettingsScoped',
+        'onSettingsUpdated', 'setSettingsScoped',
       ],
       '@/api/products <- createProductsApiMock': [
         'createCategoryScoped', 'deleteCategoryScoped', 'listWarehouseProductsAtLocation',
