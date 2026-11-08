@@ -7198,3 +7198,32 @@ checker's FIRST candidate is also its MOST IMPORTANT pure function is a
 coincidence the census does not audit; today it happens to hold for all three
 graded checkers. Docker daemon still down (probed r159): the E2E / llvm-cov /
 nextest-junit receipts remain the standing PG-gated gap.
+
+### Round 163 (2026-11-09) -- the gate-runners shell is graded end to end, and a limit re-read
+
+R160 and r161 both recorded "main() remains unparameterized" as cgr's residue.
+Re-read for this round's spend: that was WRONG -- main has taken --root since
+before r146 (argparse, default "."), so the shell was parameterized all along;
+what was missing was any case exercising it. Four callable self-test cases now
+run main() end to end against a mini-repo OUTSIDE the tree (gates.json, check.sh,
+an empty dev-ci.yml; sys.argv patched, stdout AND stderr captured): a clean
+fixture exits 0 with the OK line; an unresolved label exits 1; a duplicate
+check.sh label exits 1 with the fail-closed block (r160's wiring, now graded by
+a case instead of only by the injection probe); a starved corpus (no dev-ci.yml)
+exits 2 with the REFUSED line on stderr. Self-test 44 -> 48, the OK line now
+says "incl. 4 shell cases; no repo files touched", live rc=0, completeness and
+drift unchanged.
+
+Honest limits: the fixture is MINIMAL -- one row, one step, an empty workflow --
+so the shell is graded on the four exits, not on every report block (the ci-axis
+note, the decorator-prefix note and the collision note run only against the real
+tree, which the live step covers). The argv patch is save/restore in a finally,
+but a case that raised INSIDE main() before the finally would leak -- none does,
+and the eager case runner would surface it as a FAIL. The wrong-workflow REFUSED
+branch (a gate naming a non-dev-ci workflow) is still only read, not graded --
+the fixture builder would need a second workflow file to reach it; recorded
+rather than pretended. The r162 correction stands: main() was never
+unparameterized, the r160/r161 entries said so from not having read main's
+head -- the register records the correction, it does not edit them. Docker
+daemon still down (probed r159): the E2E / llvm-cov / nextest-junit receipts
+remain the standing PG-gated gap.
