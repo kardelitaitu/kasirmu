@@ -95,6 +95,38 @@
 - **Device Probe:** `android-adb-connect` wait-loop probe confirms adb daemon operational.
 - **Architecture:** Verified command wiring parity where mobile shell delegates directly to `kasirmu-bridge` and `kasirmu-core`.
 
+### 4. Feature Flag Test Enumeration Coverage (BR-D1 Debt) — ✅
+- Reconciled all 39 feature variants in `crates/kasirmu-core/src/features_tests.rs`:
+  - Added `Feature::StockCounting` to `with_deps`.
+  - Added missing variants (`UsbScale`, `QuickReturn`, `StockCounting`, `StockTransfers`, `PurchaseOrders`, `SerialTracking`) to `all_features_known_dep_or_no_dep` (39/39).
+  - Added `StockCounting` and `StockTransfers` to `enable_all_features_then_disable_all` and `feature_key_roundtrip`.
+- Closed BR-D1 open question in `docs/records/findings/audit-open-findings.md:452`.
+- Verified: `cargo check -p kasirmu-core && cargo test -p kasirmu-core features::` (81/81 passed).
+- Committed `828a954fd`.
+
+### 5. Gate-Integrity Checker Audit (`GI-1`–`GI-7`) — ✅
+- `scripts/check-gate-runners.py` → 150 gates checked against 184 CI steps and 228 check.sh steps, all resolve cleanly.
+- `scripts/verify-selftests-wired.py` → 104 of 106 checkers in scope declare a self-test and every one is invoked by a runner.
+- `scripts/verify-selftest-sweep.py` → 101 self-tests across 103 checkers executed and passed.
+- `scripts/verify-agents-mirrors.py` → every policed mirror agrees.
+- `scripts/verify-ipc-parity.py` → IPC parity: OK.
+- `scripts/validate-env.mjs` → 10/10 tests passed.
+- `scripts/verify-doc-uniqueness.py` → clean.
+
+### 6. UI & Playwright Test Suite Verification & Repairs — ✅
+- Ran browser-rendered UI test suite across Chromium desktop and tablet targets (638 tests).
+- Resolved keyboard shortcut and focus-trap conflict in `ui/src/hooks/useFocusTrap.ts` (yields to active dialogs without dropping Escape when focus sits on body/neutral elements).
+- Fixed `ui/src/features/restaurant/components/MenuSearchBar.tsx` to stand down from shortcut chords (e.g. `Shift+B`) and while any ARIA modal is open.
+- Fixed `ui/src/features/sales/CartPanelLineItem.css` tablet touch-target overlap on `.pos-cart-line-edit-modifiers-btn` (`z-index: 1`).
+- Fixed `ui/src/features/settings/SettingsSelect.css` and `ui/e2e/memo-overlay.spec.ts` handling of screen-reader-only `.sr-only` select elements.
+- Fixed `ui/e2e/restaurant-order-lifecycle.spec.ts` for order-type dropdown menu trigger.
+- Verified: `npm run lint` (0 errors), `npm run typecheck` (0 errors), all Playwright specs passing.
+- Committed `5ae22a1fa`.
+
+### 7. Full Workspace Integrity & Compilation Audit — ✅
+- Ran `cargo check --workspace`: all 22 workspace crates compiled cleanly with 0 errors and 0 warnings in 32s.
+- `cargo test -p kasirmu-core features::` → 81 passed.
+
 ---
 
 ## Reference — Gate Commands Cheatsheet
