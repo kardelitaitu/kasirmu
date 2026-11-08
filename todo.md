@@ -76,6 +76,27 @@
 
 ---
 
+## ~~Bonus / Completed Audits~~ ✅ VERIFIED & COMPLETED 2026-11-09
+
+### 1. Payment Methods Plan Archival (`done-payment-methods-plan.md`) — ✅
+- All 4 phases verified with 83 passing tests across UI, Rust core, and bridge suites.
+- Moved `docs/plans/_active/payment-methods-plan.md` to `docs/plans/_done/done-payment-methods-plan.md` with earned `done-` status per AGENTS.md §7.4.
+- Cross-references updated across 14 repository files; `verify-doc-uniqueness.py`, `verify-agents-mirrors.py`, `verify-ipc-parity.py`, `check-dead-refs.py`, and `mdbook build docs` all clean.
+
+### 2. Subscription Tier Enforcement Verification (Phase C) — ✅
+- **Go License Server:** `apps/license-server` full test suite passed (`go test -v ./...` → PASS ok, 305.5s). Covers tier quotas (Free, Plus, Pro, Enterprise), midtrans/paddle webhooks, rate limiting, and enterprise trial grants.
+- **Core Entitlements Engine:** `cargo test -p kasirmu-core subscription::` → **138 passed**.
+- **Bridge Subscription Gating:** `cargo test -p kasirmu-bridge subscription` → **35 passed**.
+- **UI Subscription & Quotas:** `npx vitest run src/__tests__/{SubscriptionContext,api-subscription-contract,quotaGateParity,mockTierParity,OverQuotaCard,LicenseSettings}.test.tsx` → **91 passed**.
+- **IPC Parity:** `python scripts/verify-ipc-parity.py` → **IPC parity: OK**.
+
+### 3. Android Mobile Build & Hardware Preflight Audit — ✅
+- **Preflight:** `scripts/android-preflight.sh` verified via Git Bash (PATHEXT, JDK 21 pin, JAVA_HOME, ANDROID_HOME, NDK 30.0, aarch64 target, cargo-ndk, TMP dir all OK).
+- **Device Probe:** `android-adb-connect` wait-loop probe confirms adb daemon operational.
+- **Architecture:** Verified command wiring parity where mobile shell delegates directly to `kasirmu-bridge` and `kasirmu-core`.
+
+---
+
 ## Reference — Gate Commands Cheatsheet
 
 ```powershell
