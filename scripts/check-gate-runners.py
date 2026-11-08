@@ -28,9 +28,11 @@ For every gate declaring runners, each declared step name must resolve:
     DIFFERENT job passed the old matcher, and drift's dangling_ci_refs checks
     job EXISTENCE only (verify-ci-docs-drift.py:326), so the containment
     promise was unchecked. Measured before wiring: 63 declared steps across 18
-    jobs in dev-ci.yml, zero misfiled. A row naming any workflow other than
-    dev-ci.yml is REFUSED rather than resolved against the wrong file (all 116
-    ci-bearing rows name dev-ci.yml today, so the refusal is latent).
+    jobs in dev-ci.yml, zero misfiled -- but four of 171 distinct step names
+    span 2-5 jobs (shared setup like "Install cargo-nextest"), so whole-file
+    matching had real ambiguity to misresolve. A row naming any workflow other
+    than dev-ci.yml is REFUSED rather than resolved against the wrong file (all
+    116 ci-bearing rows name dev-ci.yml today, so the refusal is latent).
   - check.sh runners against `step "<name>"`, PREFIX-matched, because several steps
     carry a decorator (`step "clippy workspace"`, `step "no-raw-params (ADR #7 Phase 4)"`)
     and exact matching over-reports on those.
@@ -148,6 +150,20 @@ def duplicate_declarations(gates, axis: str) -> list[tuple[str, list[str]]]:
         for n in needles:
             owners.setdefault(n, set()).add(gid)
     return sorted((n, sorted(gs)) for n, gs in owners.items() if len(gs) > 1)
+
+
+def cross_job_step_names(job_steps: dict[str, list[str]]) -> list[tuple[str, list[str]]]:
+    """Step names that appear under MORE THAN ONE job, with the jobs.
+
+    Shared setup steps are legitimate -- these are exactly the names the old
+    whole-file matcher could resolve from the wrong job, which is why
+    job-scoped resolution exists. Census, not a finding (2026-11-08: four of
+    171 distinct names, e.g. "Install cargo-nextest" in three jobs)."""
+    owners: dict[str, list[str]] = {}
+    for job, steps in job_steps.items():
+        for st in steps:
+            owners.setdefault(st, []).append(job)
+    return sorted((st, js) for st, js in owners.items() if len(js) > 1)
 
 
 def workflow_job_steps(text: str) -> dict[str, list[str]]:
@@ -301,6 +317,11 @@ def _self_test() -> int:
              [{"id": "a", "ci": {"workflow": "dev-ci.yml"}},
               {"id": "b", "ci": {"workflow": "website.yml"}}]),
          [("b", "website.yml")]),
+        ("a shared step name is listed with its jobs",
+         cross_job_step_names({"a": ["X"], "b": ["X", "Y"]}),
+         [("X", ["a", "b"])]),
+        ("disjoint job steps are not listed",
+         cross_job_step_names({"a": ["X"], "b": ["Y"]}), []),
         ("a decorator-only resolution is listed",
          prefix_resolutions(["no-raw-params"], ["no-raw-params (ADR #7 Phase 4)"]),
          [("no-raw-params", "no-raw-params (ADR #7 Phase 4)", "decorated")]),
@@ -401,6 +422,13 @@ def main() -> int:
                   % (len(dups), axis))
             for lab, gs in dups:
                 print("    %r <- %s" % (lab, ", ".join(gs)))
+
+    collisions = cross_job_step_names(job_steps)
+    if collisions and not args.quiet:
+        print("  note: %d CI step name(s) appear under more than one job (shared"
+              " setup; the ambiguity job-scoped resolution removes):" % len(collisions))
+        for name, js in collisions:
+            print("    %r <- %s" % (name, ", ".join(js)))
 
     if findings:
         print("%d declared runner(s) do not resolve:" % len(findings))
