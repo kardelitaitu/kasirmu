@@ -27,12 +27,19 @@ For every gate declaring runners, each declared step name must resolve:
   - check.sh runners against `step "<name>"`, PREFIX-matched, because several steps
     carry a decorator (`step "clippy workspace"`, `step "no-raw-params (ADR #7 Phase 4)"`)
     and exact matching over-reports on those.
+  - a CENSUS of the prefix population: labels resolving ONLY through the decorator
+    rule are printed with their resolution kind, so the ambiguity the matcher itself
+    flags is measured on every run instead of left as a prompt to read two lists
+    (2026-11-08: three -- one decorated, two space-ambiguous; "feature registry" ->
+    "feature registry parity" and "windows config" -> "windows config drift" are
+    word-boundary shapes, not decorators, and the exact spellings are already declared
+    by the local-matrix rows).
 
 KNOWN FALSE POSITIVE, deliberately not "fixed":
 
   `panic-inventory` declares the runner label "panic-inventory", but check.sh runs it as
-  an INLINE block (check.sh:373-390) rather than through `step "..."` like the other 141
-  steps. It is required and it runs; the label names no step. The roster carries a
+  an INLINE block (check.sh:373-390) rather than through `step "..."` like the other 225
+  steps (226 step lines measured 2026-11-08). It is required and it runs; the label names no step. The roster carries a
   `_runner_note` saying so, and this script honours that note rather than reporting it --
   otherwise every run would flag a gate that is working.
 
@@ -50,7 +57,13 @@ import sys
 from pathlib import Path
 
 STEP_RE = re.compile(r'^\s*-\s+name:s*(.+?)\s*$', re.M)
-SH_STEP_RE = re.compile(r'step "([^"]+)"')
+# Line-anchored, the same shape as verify-gate-completeness.py's STEP_RE: one
+# canonical extraction of what a step IS. The old unanchored form matched
+# `step "..."` anywhere in the text, so a COMMENT mentioning a step name would
+# have counted as a step and let a stale needle resolve against a phantom --
+# none today (measured 2026-11-08: both forms yield identical 226-match sets on
+# the live check.sh), and now it cannot happen.
+SH_STEP_RE = re.compile(r'(?m)^\s*step\s+"([^"]+)"')
 
 
 def resolves(declared: str, actual: list[str]) -> bool:
@@ -72,6 +85,31 @@ def resolves(declared: str, actual: list[str]) -> bool:
             if n.startswith(declared + sep):
                 return True
     return False
+
+
+def prefix_resolutions(declared_labels: list[str],
+                       sh_steps: list[str]) -> list[tuple[str, str, str]]:
+    """Declared labels that resolve ONLY through the decorator rule, with how.
+
+    Returns (declared, actual, kind) triples: kind "decorated" for a
+    parenthesised suffix -- with or without an intervening space, which is how
+    the canonical case is actually spelled: "no-raw-params (ADR #7 Phase 4)" --
+    and "space-ambiguous" for any other space suffix, the shape resolves()'s
+    own docstring flags as unresolvable from text alone. Exact matches are not
+    listed: the point is to make the prefix population VISIBLE on every run
+    instead of leaving it as a prompt to read two lists by hand."""
+    out = []
+    for lab in sorted(set(declared_labels)):
+        if lab in sh_steps:
+            continue
+        for n in sh_steps:
+            if n.startswith(lab + "(") or n.startswith(lab + " ("):
+                out.append((lab, n, "decorated"))
+                break
+            if n.startswith(lab + " "):
+                out.append((lab, n, "space-ambiguous"))
+                break
+    return out
 
 
 def gate_findings(gates, ci_steps: list[str], sh_steps: list[str], inline_markers=None):
@@ -139,6 +177,19 @@ def _self_test() -> int:
          [x[2] for x in gate_findings(
              [{"id": "cov", "runners": {"check.sh": ["Nope"]}}], [], ["Real"])],
          ["Nope"]),
+        ("a decorator-only resolution is listed",
+         prefix_resolutions(["no-raw-params"], ["no-raw-params (ADR #7 Phase 4)"]),
+         [("no-raw-params", "no-raw-params (ADR #7 Phase 4)", "decorated")]),
+        ("an exact match is not listed",
+         prefix_resolutions(["Coverage report"], ["Coverage report"]), []),
+        ("a space suffix is listed as ambiguous",
+         prefix_resolutions(["Coverage"], ["Coverage report"]),
+         [("Coverage", "Coverage report", "space-ambiguous")]),
+        ("a non-matching label is not listed",
+         prefix_resolutions(["Nope"], ["Real"]), []),
+        ("a comment-mentioned step is not counted",
+         SH_STEP_RE.findall('# step "ghost" x' + chr(10) + 'step "real" c c' + chr(10)),
+         ["real"]),
     ]
     bad = 0
     for name, fn, want in cases:
@@ -180,9 +231,19 @@ def main() -> int:
 
     findings = gate_findings(gates, ci_steps, sh_steps, inline_markers=sh_text)
 
+    declared_sh = [s for g in gates
+                   for s in (g.get("runners", {}).get("check.sh") or [])]
+    prefixes = prefix_resolutions(declared_sh, sh_steps)
+
     if not args.quiet:
         print("checked %d gate(s) against %d CI step(s) and %d check.sh step(s)"
               % (len(gates), len(ci_steps), len(sh_steps)))
+
+    if prefixes:
+        print("  note: %d declared label(s) resolve by decorator prefix only:"
+              % len(prefixes))
+        for lab, act, kind in prefixes:
+            print("    %r -> %r (%s)" % (lab, act, kind))
 
     if findings:
         print("%d declared runner(s) do not resolve:" % len(findings))
