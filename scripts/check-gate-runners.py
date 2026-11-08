@@ -33,6 +33,15 @@ For every gate declaring runners, each declared step name must resolve:
     matching had real ambiguity to misresolve. A row naming any workflow other
     than dev-ci.yml is REFUSED rather than resolved against the wrong file (all
     116 ci-bearing rows name dev-ci.yml today, so the refusal is latent).
+  - REVERSE direction on the ci axis: every CI step that RUNS a checker script
+    must resolve to the roster or check.sh -- a step invoking scripts/<x> with
+    no row naming it, no gates.json mention of <x>, and no check.sh presence is
+    a finding. Wired 2026-11-08, measured first: 135 of 182 steps invoke
+    scripts, zero unrecorded; the one prose mention (a website prebuild script
+    named inside the Route step's comment) is removed by whole-line comment
+    stripping. Both drift and this checker iterate gates, so only a step-first
+    walk can see a step with no row -- the founding blind spot, closed on its
+    last open axis.
   - check.sh runners against `step "<name>"`, PREFIX-matched, because several steps
     carry a decorator (`step "clippy workspace"`, `step "no-raw-params (ADR #7 Phase 4)"`)
     and exact matching over-reports on those.
@@ -166,20 +175,28 @@ def cross_job_step_names(job_steps: dict[str, list[str]]) -> list[tuple[str, lis
     return sorted((st, js) for st, js in owners.items() if len(js) > 1)
 
 
-def workflow_job_steps(text: str) -> dict[str, list[str]]:
-    """Parse the workflow into {job: [step names]}, list items only.
+def workflow_steps_with_runs(text: str) -> dict[str, list[tuple[str, str]]]:
+    """Parse the workflow into {job: [(step name, run text)]}.
 
-    GitHub Actions job keys sit at two-space indent under the top-level `jobs:`
-    key; a step name is a `- name:` LIST ITEM inside the job. A bare `name:`
-    (job-level metadata) is not a list item and is not collected -- the old
-    whole-file extraction could not tell the two apart."""
-    jobs: dict[str, list[str]] = {}
+    Same walk as the step-name parser, but also captures each step's `run:`
+    payload -- a single-line `run: cmd`, or a `run: |` block's lines collected
+    while more-indented than the `run:` key (blank lines pass through). Steps
+    driven by `uses:` carry an empty run. Comment lines are kept verbatim here;
+    unclaimed_ci_invocations strips them, because dev-ci.yml's Route step
+    MENTIONS a website prebuild script in prose (the one measured false
+    positive, 2026-11-08)."""
+    jobs: dict[str, list[tuple[str, str]]] = {}
     in_jobs = False
     cur = None
+    step = None
+    collecting = False
+    run_indent = 0
     for line in text.splitlines():
         if re.match(r"^jobs:\s*$", line):
             in_jobs = True
             cur = None
+            step = None
+            collecting = False
             continue
         if not in_jobs:
             continue
@@ -187,15 +204,54 @@ def workflow_job_steps(text: str) -> dict[str, list[str]]:
         if m:
             cur = m.group(1)
             jobs[cur] = []
+            step = None
+            collecting = False
             continue
         if line and not line[0].isspace():
             in_jobs = False
             cur = None
+            step = None
+            collecting = False
             continue
         m = re.match(r"^\s+- name:\s*(.*?)\s*$", line)
         if m and cur is not None:
-            jobs[cur].append(m.group(1).strip().strip('"'))
-    return jobs
+            step = [m.group(1).strip().strip('"'), ""]
+            jobs[cur].append(step)
+            collecting = False
+            continue
+        if step is None:
+            continue
+        if collecting:
+            if line.strip() == "":
+                step[1] += "\n"
+                continue
+            indent = len(line) - len(line.lstrip())
+            if indent < run_indent:
+                collecting = False
+            else:
+                step[1] += line.strip() + "\n"
+            continue
+        m = re.match(r"^(\s+)run:\s*(.*?)\s*$", line)
+        if m and not step[1]:
+            rest = m.group(2)
+            if rest and not rest.startswith(("|", ">")):
+                step[1] = rest + "\n"
+            else:
+                run_indent = len(m.group(1)) + 2
+                collecting = True
+    return {job: [(nm, r) for nm, r in steps]
+            for job, steps in jobs.items()}
+
+
+def workflow_job_steps(text: str) -> dict[str, list[str]]:
+    """Parse the workflow into {job: [step names]}, list items only.
+
+    GitHub Actions job keys sit at two-space indent under the top-level `jobs:`
+    key; a step name is a `- name:` LIST ITEM inside the job. A bare `name:`
+    (job-level metadata) is not a list item and is not collected -- the old
+    whole-file extraction could not tell the two apart."""
+    return {job: [name for name, _ in steps]
+            for job, steps in workflow_steps_with_runs(text).items()}
 
 
 def non_devci_workflows(gates) -> list[tuple[str, str]]:
@@ -209,6 +265,35 @@ def non_devci_workflows(gates) -> list[tuple[str, str]]:
             for g in gates
             if isinstance((g.get("ci") or {}).get("workflow"), str)
             and g["ci"]["workflow"] != "dev-ci.yml"]
+
+
+def unclaimed_ci_invocations(runs, declared_steps, roster_text, sh_text):
+    """CI steps invoking a checker script that NOTHING records.
+
+    The reverse direction on the ci axis: gate_findings resolves declared ->
+    actual; this walks ACTUAL -> declared, so a checker CI runs can no longer
+    escape every gate-iterating checker. An invocation is blind-spot-free when
+    any one of these holds: a row names the step in ci.steps, the script name
+    appears anywhere in gates.json (a needle or self-test resolves to it), or
+    the script runs in check.sh (where verify-gate-completeness enforces the
+    claim). Whole-line comments are stripped first -- prose mentions of other
+    scripts are not invocations. Measured 2026-11-08: 135 of 182 steps invoke
+    scripts, zero genuinely unrecorded."""
+    out = []
+    for job, steps in sorted(runs.items()):
+        for name, run in steps:
+            if not run or name in declared_steps:
+                continue
+            body = "\n".join(l for l in run.splitlines()
+                             if not l.lstrip().startswith("#"))
+            for m in re.finditer(
+                    r"((?:scripts/|.agents/skills/[a-z0-9-]+/scripts/)"
+                    r"[A-Za-z0-9_./-]+\.(?:py|mjs|sh|ps1))", body):
+                script = m.group(1).split("/")[-1]
+                if script in roster_text or script in sh_text:
+                    continue
+                out.append((job, name, script))
+    return out
 
 
 def gate_findings(gates, job_steps: dict[str, list[str]], sh_steps: list[str],
@@ -317,6 +402,40 @@ def _self_test() -> int:
              [{"id": "a", "ci": {"workflow": "dev-ci.yml"}},
               {"id": "b", "ci": {"workflow": "website.yml"}}]),
          [("b", "website.yml")]),
+        ("workflow_steps_with_runs captures runs",
+         workflow_steps_with_runs("jobs:" + chr(10) + "  a:" + chr(10)
+                                  + "    steps:" + chr(10) + "      - name: One"
+                                  + chr(10) + "        run: python3 scripts/x.py"
+                                  + chr(10) + "      - name: Two" + chr(10)
+                                  + "        env:" + chr(10) + "          E: v"
+                                  + chr(10) + "        run: |" + chr(10)
+                                  + "          python3 scripts/y.py" + chr(10)
+                                  + "          # see scripts/z.py" + chr(10)
+                                  + "  b:" + chr(10) + "    runs-on: z"
+                                  + chr(10)),
+         {"a": [("One", "python3 scripts/x.py\n"),
+                ("Two", "python3 scripts/y.py\n# see scripts/z.py\n")],
+          "b": []}),
+        ("an unrecorded CI invocation is a finding",
+         unclaimed_ci_invocations(
+             {"a": [("Ghost", "python3 scripts/ghost-check.py\n")]}, set(),
+             "", ""),
+         [("a", "Ghost", "ghost-check.py")]),
+        ("a script known to the roster or check.sh is not a finding",
+         unclaimed_ci_invocations(
+             {"a": [("A", "python3 scripts/known.py\n"),
+                    ("B", "python3 scripts/other.py\n")]}, set(),
+             '"known.py"', "other.py --flag"),
+         []),
+        ("a comment-only mention is not an invocation",
+         unclaimed_ci_invocations(
+             {"a": [("C", "# runs scripts/ghost-check.py\n")]}, set(), "", ""),
+         []),
+        ("a step named by a row is skipped",
+         unclaimed_ci_invocations(
+             {"a": [("Named", "python3 scripts/ghost-check.py\n")]},
+             {"Named"}, "", ""),
+         []),
         ("a shared step name is listed with its jobs",
          cross_job_step_names({"a": ["X"], "b": ["X", "Y"]}),
          [("X", ["a", "b"])]),
@@ -382,7 +501,8 @@ def main() -> int:
                   file=sys.stderr)
             return 2
 
-    gates = json.loads(roster.read_text(encoding="utf-8"))["gates"]
+    roster_text = roster.read_text(encoding="utf-8")
+    gates = json.loads(roster_text)["gates"]
     ci_text = workflow.read_text(encoding="utf-8", errors="replace")
     sh_text = check_sh.read_text(encoding="utf-8", errors="replace")
 
@@ -430,6 +550,12 @@ def main() -> int:
         for name, js in collisions:
             print("    %r <- %s" % (name, ", ".join(js)))
 
+    declared_ci = {s for g in gates
+                   for s in ((g.get("ci") or {}).get("steps") or [])}
+    unclaimed = unclaimed_ci_invocations(
+        workflow_steps_with_runs(ci_text), declared_ci, roster_text, sh_text)
+
+    rc = 0
     if findings:
         print("%d declared runner(s) do not resolve:" % len(findings))
         for gid, runner, step in findings:
@@ -438,7 +564,20 @@ def main() -> int:
         print("A runner label that names no step is a claim nothing checks. Either the")
         print("runner was renamed, or the roster is stale -- resolve which before trusting")
         print("the roster as the source of truth for gate names.")
-        return 1
+        rc = 1
+
+    if unclaimed:
+        print("%d CI checker invocation(s) recorded nowhere:" % len(unclaimed))
+        for job, name, script in unclaimed:
+            print("  [%s] %r :: %s" % (job, name, script))
+        print("")
+        print("A checker CI runs that no row names and check.sh never runs is invisible")
+        print("to every gate-iterating checker -- the founding blind spot, ci edition.")
+        print("Add a row, name the step in one, or move the checker under check.sh.")
+        rc = 1
+
+    if rc:
+        return rc
 
     if not args.quiet:
         print("every declared runner resolves")
