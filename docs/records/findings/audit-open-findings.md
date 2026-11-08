@@ -6299,3 +6299,47 @@ tree today. The two remaining non-declarers are named but not classified by the 
 docstring's WHAT-IT-DOES-NOT-COVER paragraph now records. The rot proof is synthetic,
 not a mutation of the live runners (never touched). Docker daemon still down (probed
 r136): the E2E / llvm-cov / nextest-junit receipts remain the standing PG-gated gap.
+### Round 138 (2026-11-08) — the sibling gate's own source self-declared, found by measuring r137's "one convention" claim
+
+r137's honest limits said "a python/py -3 prefix or a path variant does not declare; one
+convention exists in the tree today" — a claim asserted, not pinned. Measuring it caught
+a defect in r137's own commit (9480cbb9e): the grep for sibling-pointer spellings across
+all 105 checkers found exactly one real pointer (check-replay-fork.py:44, inside its
+module docstring), but it ALSO found the gate's own source — comments at :293-:300 and
+case strings at :568-:594 — carrying the exact "python3 scripts/test-replay-fork.py"
+spelling, and sibling_from_text scanned raw text. Probed before fixing:
+sibling_declared("scripts/verify-selftests-wired.py") returned "scripts/test-replay-fork.py"
+— the gate declared its own comment as a wired sibling. Harmless while the embedded-flag
+branch wins the census, but a false declaration of precisely the class the gate exists to
+police, and it would have reddened any census-pin case on sight.
+
+The fix (ad6603457) sharpens the declaration predicate instead of patching strings —
+whack-a-mole, since every future self-test case reintroduces pointer-shaped text: a
+declaration is now a LIVE line (whole-line comments stripped — the r84/r95 semantics run
+on the declaration side too) that carries the SELF-TEST: marker with the exact
+"python3 scripts/test-*.py" pointer on the SAME line. Both filters are measured, not
+invented: the comment filter was forced by the gate's own source, the marker filter by
+its own case strings. Case strings in the gate must point at NONEXISTENT siblings
+(test-x.py, test-ghost.py) — documented in sibling_from_text's docstring so the next case
+author knows the constraint.
+
+Measured: the probe (target/probe-sibling-declare.py, gitignored) shows the
+self-declaration before and None after; the live sibling-declared set is exactly
+["scripts/check-replay-fork.py"], now PINNED by a case — the one-convention claim is
+graded, not asserted. Gate self-test green at 36 cases (three new: a commented pointer
+does not declare; the gate's own convention-shaped source does not self-declare; the
+live tree has exactly one sibling-declared checker). Live run exit 0 with the r137 OK
+line unchanged (103 of 105, non-declarers named); alliance sabotage-selftests.py stays
+green at 132 cases. One patch-mechanics stumble was caught by the gates before any
+commit: a string-concatenation slip glued two source lines and the SyntaxError reddened
+the gate's self-test, the live run AND the alliance's "partner stays green" mirror in
+one shot — the alliance caught it exactly as designed.
+
+Honest limits: the marker requirement narrows the convention — a future sibling-declaring
+checker that phrases its docstring without SELF-TEST: on the pointer line reads as
+not-declaring, surfacing (visibly) in the OK line's non-declarer clause rather than
+silently mis-wiring; only one sibling convention exists, so the narrowing costs nothing
+measured today. sibling_called() still accepts any live-line mention of the sibling
+basename (the r137 print-form trade-off, unguarded). The rot proof remains synthetic;
+live runners were never mutated. Docker daemon still down (probed r136): the E2E /
+llvm-cov / nextest-junit receipts remain the standing PG-gated gap.
