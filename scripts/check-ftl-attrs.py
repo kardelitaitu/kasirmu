@@ -101,9 +101,11 @@ def parse_bundle(path: Path) -> dict[str, set[str]]:
     return messages
 
 
-def load_en() -> dict[str, set[str]]:
+def load_en(locales=None) -> dict[str, set[str]]:
+    """r187: the bundle directory follows root (the r166..r186 contract)."""
+    locale_dir = LOCALES if locales is None else Path(locales)
     merged: dict[str, set[str]] = {}
-    for path in sorted(LOCALES.glob('*.ftl')):
+    for path in sorted(locale_dir.glob('*.ftl')):
         if path.name.endswith('.id.ftl'):
             continue
         for key, attrs in parse_bundle(path).items():
@@ -154,10 +156,13 @@ def scan_file(path: Path, en: dict[str, set[str]]) -> tuple[list[tuple[int, str,
     return findings, unresolved
 
 
-def scan_tree(root: Path, en: dict[str, set[str]]) -> tuple[list[str], int, int]:
+def scan_tree(root: Path, en: dict[str, set[str]], base=None) -> tuple[list[str], int, int]:
     findings: list[str] = []
     unresolved = 0
     scanned = 0
+    # r187: base is where the reported relative paths anchor -- it follows the
+    # same root as the scan, so a redirected run reports fixture-relative paths.
+    base = REPO if base is None else Path(base)
     for path in sorted(root.rglob('*')):
         if path.suffix not in ('.tsx', '.ts') or not path.is_file():
             continue
@@ -166,7 +171,7 @@ def scan_tree(root: Path, en: dict[str, set[str]]) -> tuple[list[str], int, int]
         scanned += 1
         hits, unres = scan_file(path, en)
         unresolved += unres
-        rel = path.relative_to(REPO).as_posix()
+        rel = path.relative_to(base).as_posix()
         for line, key, name in hits:
             findings.append(
                 "%s:%d  message '%s' defines no attribute '%s' -- the call site will"
@@ -214,25 +219,78 @@ def _self_test() -> int:
                       % (name, want_hits, want_unres, len(hits), unres))
             else:
                 print('  %-46s ok' % name)
-    print('SELF-TEST %s (%d cases, no files touched)'
-          % ('FAILED' if bad else 'OK', len(cases)))
+    # r187: main()'s shell -- argv and root graded against a tempdir fixture
+    # carrying BOTH inputs, the r166..r186 pattern. This gate needs no git
+    # repository (it rglobs, it does not ls-files), so a plain directory is
+    # the whole fixture. The refusal case is the redirect kill: a main that
+    # ignored root would scan the REAL tree (which exists) and return 0
+    # where the fixture demands 2.
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+    shell = 0
+    def _shell(files):
+        with _tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            for rel, content in files.items():
+                dst = base / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_text(content, encoding='utf-8')
+            out, err = _io.StringIO(), _io.StringIO()
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                rc = main(argv=[], root=base)
+            return rc, out.getvalue() + err.getvalue()
+    BARE_FTL = 'k-bare = Enter a key\n'
+    ATTR_FTL = 'k-attr = Enter a key\n    .placeholder = API key\n'
+    SITE = '<Localized id="k-bare" attrs={{ placeholder: true }}><input /></Localized>\n'
+    shell += 1
+    rc, text = _shell({'shared-ui/locales/en.ftl': BARE_FTL, 'ui/src/App.tsx': SITE})
+    if rc != 1 or "ui/src/App.tsx:1" not in text or "k-bare" not in text:
+        print(f'  x an undefined attribute must be a finding naming file:line (rc={rc} text={text[-90:]!r})',
+              file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _shell({'shared-ui/locales/en.ftl': ATTR_FTL,
+                       'ui/src/App.tsx': SITE.replace('k-bare', 'k-attr')})
+    if rc != 0 or 'OK: every resolvable' not in text:
+        print(f'  x a defined attribute must be clean (rc={rc} text={text[-90:]!r})', file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _shell({'ui/src/App.tsx': SITE})
+    if rc != 2 or 'refused: expected' not in text:
+        print(f'  x a missing bundle directory must refuse rc 2 (rc={rc} text={text[-90:]!r})', file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _shell({'shared-ui/locales/en.ftl': ATTR_FTL,
+                       'ui/src/App.tsx': SITE.replace('id="k-bare"', 'id={SOME_KEY}')})
+    if rc != 0 or '1 attr site(s) unresolvable' not in text:
+        print(f'  x an unresolvable id must be counted, not skipped (rc={rc} text={text[-90:]!r})',
+              file=sys.stderr)
+        return 1
+    print('SELF-TEST %s (%d cases + %d shell cases)'
+          % ('FAILED' if bad else 'OK', len(cases), shell))
     return 1 if bad else 0
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r187: argv and root parameterized, the r166..r186 contract -- root
+    redirects the bundle directory AND the scan tree together."""
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--self-test', action='store_true',
                     help='run the extractor cases and exit; touches no files')
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     if args.self_test:
         return _self_test()
 
-    if not LOCALES.is_dir() or not SCAN_ROOT.is_dir():
-        print('refused: expected %s and %s to exist' % (LOCALES, SCAN_ROOT))
+    base = REPO if root is None else Path(root).resolve()
+    locales = base / 'shared-ui' / 'locales'
+    scan_root = base / 'ui' / 'src'
+    if not locales.is_dir() or not scan_root.is_dir():
+        print('refused: expected %s and %s to exist' % (locales, scan_root))
         return 2
 
-    en = load_en()
-    findings, unresolved, scanned = scan_tree(SCAN_ROOT, en)
+    en = load_en(locales)
+    findings, unresolved, scanned = scan_tree(scan_root, en, base)
     for line in findings:
         print(line)
     print('scanned %d file(s) against %d EN message(s); %d attr site(s) unresolvable'
