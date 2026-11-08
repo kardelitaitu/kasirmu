@@ -69,7 +69,7 @@ step() {
     local retry_cmd=$1; shift
     local step_str; step_str=$(printf "%02d" "${step_counter}")
 
-    # CHECK_FROM: skip everything before step N without paying for it. The matrix has 216
+    # CHECK_FROM: skip everything before step N without paying for it. The matrix has 218
     # steps and the first 36 take about 20 minutes, so re-running it from the top to reach
     # step 37 is how a late leg stays unverified for a hundred rounds. The comparison is
     # against this step's OWN number, before the increment, and the counter still advances
@@ -524,7 +524,16 @@ if command -v cargo-llvm-cov >/dev/null 2>&1 && command -v llvm-cov >/dev/null 2
     # 16 threads over 15 minutes is ordinary for a suite that needs 960s under nextest. I
     # killed a run that was still working. The reason to use nextest stands on the measured
     # race, not on a hang that never happened.
-    if cargo llvm-cov nextest \
+    # THREE-WAY, same shape as the ui floors guard below (measured 2026-11-08: this
+# multi-minute llvm-cov condition ran and its verdict was discarded on every
+# CHECK_FROM resume that only wanted to print SKIPPED here). A resume past BOTH
+# floors steps announces the skips and pays nothing; the real measurement runs
+# only when the grading step itself will run; the else branch is the honest
+# "could not complete" (today: PG down aborts the workspace suite, per R17).
+if [ -n "${CHECK_FROM:-}" ] && [ "${CHECK_FROM}" -gt "$((step_counter + 1))" ]; then
+        step "coverage floors" "scripts/coverage-floors.json (ratchet)" true
+        step "coverage floors self-test" "python3 scripts/verify-coverage-floors.py --self-test" true
+    elif cargo llvm-cov nextest \
         --workspace --all-features \
         --exclude kasirmu-app --exclude kasirmu-mobile \
         --json --output-path coverage-probe.json >/dev/null 2>&1; then
@@ -1027,7 +1036,9 @@ if command -v npm &>/dev/null && [ -f ui/package-lock.json ]; then
 # announces the skips exactly as step() would and advances the counter, the
 # second runs the real measurement only when the grading step itself will run,
 # and the third is now a truthful "could not complete".
-if [ -n "${CHECK_FROM:-}" ] && [ "${step_counter}" -lt "${CHECK_FROM}" ]; then
+# -gt step_counter+1, not -gt step_counter: a resume landing exactly ON the
+# self-test must fall through to the real branch and run it, not over-skip it.
+if [ -n "${CHECK_FROM:-}" ] && [ "${CHECK_FROM}" -gt "$((step_counter + 1))" ]; then
     step "ui coverage floors" "scripts/coverage-floors.json ui_floors (ratchet)" true
     step "ui coverage floors self-test" "python3 scripts/verify-ui-coverage-floors.py --self-test" true
 elif ( cd "$repo_root_dir/ui" && npm run test:coverage >/dev/null 2>&1 ); then
