@@ -7252,3 +7252,37 @@ parameterization noted above is the remaining named debt in the shell-grading
 arc (register-hygiene r158, cgr r163-r164, drift unspent). Docker daemon still
 down (probed r159): the E2E / llvm-cov / nextest-junit receipts remain the
 standing PG-gated gap.
+
+### Round 165 (2026-11-09) -- the DRY-grammar debt closed by decision: two copies and a witness, deliberately
+
+R155 and r156 both named the same unspent debt: the job grammar exists as two
+copies plus a source witness, and "the DRY version -- one imported definition --
+remains deliberately unspent." Spent the reading this debt deserved, measured
+three facts, and decided to KEEP the two copies. (1) The relocation hazard I
+assumed is wrong: build_temp_root junctions every top-level entry and makes REAL
+copies of the scripts/ overlay, so a sibling import WOULD survive the survey's
+staging -- imports are viable here. (2) No checker imports a sibling today
+(grep over scripts/*.py: zero) -- the repo's established cross-checker
+vocabulary is source witnesses, the r76 name-convention case and the r156
+grammar witness, both relocation-safe by construction. (3) The difference that
+decides it: a witness DETECTS divergence after the fact; an import PREVENTS it
+-- but a shared module couples two REQUIRED gates' failure modes (one syntax
+error in the shared file reds both, in check.sh and dev-ci at once), and moves
+the grammar outside every mutation target (ci_grammar.py would carry no
+self-test; the survey grades checkers, not data modules).
+
+Decision: two copies + the r156 witness stays. Revisit only on a THIRD consumer
+-- three copies of one grammar tip the scales from redundancy to rot risk, and
+a shared module would then earn its coupling. If that round comes, it must also
+re-pin drift's witness as an IMPORT witness (assert the from-line in both
+files) or retire it knowingly.
+
+Honest limits: this is a decision entry -- no code changed, and the decision is
+enforced by nothing (a future round can re-litigate it; the three-consumer
+trigger is a judgment line, not a checker). The coupling argument is a design
+judgment, not a measured failure -- no shared-module incident has ever occurred
+here to measure. The staging fact came from reading build_temp_root and
+OVERLAY_ROOTS, not from running a staged import -- the mechanism is unambiguous
+(the whole scripts tree is copied) but the claim has not been executed. Docker
+daemon still down (probed r159): the E2E / llvm-cov / nextest-junit receipts
+remain the standing PG-gated gap.
