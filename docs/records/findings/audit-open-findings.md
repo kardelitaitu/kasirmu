@@ -7635,3 +7635,47 @@ fixture runs git in a non-repo (returns empty) and is graded only as "does not
 crash". MONKEYPATCH kill, file-sed remains r162's machinery. Docker daemon
 still down (probed r159): the E2E / llvm-cov / nextest-junit receipts remain
 the standing PG-gated gap.
+
+### Round 175 (2026-11-09) -- dead-controls joins the shell arc; the live run catches a half-redirect the fixtures could not
+
+The r166..r174 contract applied to the inert-button detector. main(argv, root)
+with root redirecting the sweep root and the rel-path base; the design/
+exemption and the empty-corpus refusal are graded THROUGH main, not
+reimplemented in the cases. Four shell cases: handled button rc 0 with the
+corpus count, inert button rc 1 naming file:line, design showcase exempt rc 0,
+empty corpus rc 2.
+
+Two defects this round, both mine, both caught before the commit:
+
+1. The recursion I should have predicted from r174: this main() runs
+   self_test() as a PREFLIGHT before every sweep ("grade the detector before
+   the tree"), so the shell cases calling main() recursed until the stack
+   died. My first guard read the flag but nothing set it -- a lock with no
+   key. The fix sets _IN_SHELL around each main() call so the nested preflight
+   grades the detector cases only, which is all the preflight needs. Recorded
+   honestly: the r174 lesson transferred as a pattern name, not as its
+   mechanism, and the mechanism is what matters.
+2. The half-redirect, r172's class again, in the refactor itself: I rebased
+   rel on the SWEEP root, which strips the live paths' prefix and silently
+   broke the design/ exemption's "/design/" in rel match -- the live run
+   reported design/TooltipPreview.tsx:526, an intentional showcase button, as
+   a finding. The fixture cases passed because their rel paths kept the
+   ui/src/features prefix; only the live tree had the shape that broke. Fixed
+   by rebasing rel on ROOT (live) / fixture root (shell). The lesson repeats
+   with a sharpening: a redirect that changes a PATH BASE must be checked
+   against every CONSUMER of that base, and the exemption was a consumer the
+   fixtures could not see.
+
+Measured kill: iter_sources rebound to drop its root (sweep the real ui tree)
+-- the empty-corpus case grades a fixture with no .tsx files, whose want of
+rc 2 dies at the mutant's real-tree rc 0.
+
+Honest limits: the ancestor-rescue classification remains not automated
+(the report's own wording, unchanged); the preflight's detector liveness is
+graded inside the shell cases only as "does not refuse", not as a distinct
+DETECTOR WENT DEAF case -- manufacturing a deaf detector through the public
+entry would require monkeypatching BTN_RE mid-call, which the kill run does
+from outside instead. The Windows-only backslashreplace report path of
+verify-root-policy has no analogue here. MONKEYPATCH kill, file-sed remains
+r162's machinery. Docker daemon still down (probed r159): the E2E / llvm-cov /
+nextest-junit receipts remain the standing PG-gated gap.
