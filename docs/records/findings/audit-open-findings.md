@@ -6163,3 +6163,33 @@ file, RC=0, and the floors leg is proven component by component), but the two fa
 not the same run. The go-env disk scan takes the first populated /c/Users/*/go — untested
 on a machine whose caches live elsewhere. The ui coverage receipt rides vitest's
 chunk-size advisory, untouched.
+
+### Round 134 (2026-11-08) — the rust floors guard gets the ui guard's economy, and the step count settles at 218
+
+The ui guard fix (8234c1fe1) left a twin behind: the RUST floors guard at :527 ran its
+multi-minute `cargo llvm-cov nextest --workspace --all-features` condition on every
+CHECK_FROM resume whose only business was printing SKIPPED — the verdict was computed and
+discarded, eight segments running (its cwd was correct, unlike the ui twin; its failure
+today is the honest PG-down abort, so the defect was pure waste, not silence). Both
+guards now share the three-way shape, with one boundary refinement over yesterday's ui
+version: the skip branch fires on `CHECK_FROM > step_counter + 1`, not
+`step_counter < CHECK_FROM` — a resume landing exactly ON a floors self-test must fall
+through to the real branch and run it, not over-skip it (the r133 ui guard had that
+edge). Sweep-verified at CHECK_FROM=215: zero "floors NOT checked" warnings (eight of
+eight segments before), rust floors at 58/59 and ui floors at 111/112 all printing
+SKIPPED through the new branches, RC=0 → ec404ea5d.
+
+The numbering consequence, stated plainly: each guard fix un-shifts two step numbers, so
+the r133 entry's "216 steps" — measured while the rust guard still discarded its two —
+is superseded; the matrix is 218 steps under fully-accounted numbering, and the step()
+comment now says 218. The elif legs themselves were proven component-wise earlier today
+(VIT-RC=0 through the corrected cwd; grading 87.74/85.12/82.69/78.04 all above floor;
+self-test green), and the rust elif cannot run green in this environment until PG
+returns — its else branch is the designed, truthful degradation.
+
+Honest limits: the 218-step tail beyond the guards has not been re-run in one invocation
+under the final numbering — a CHECK_FROM=215 sweep proves the flow and the skip branches,
+and every tail command's green receipt is from today's legs under the shifted numbers;
+the commands are unchanged, but the two facts are not the same run. No NEW receipt was
+taken for the rust elif: with PG down it can only produce the else branch, which the
+sweep exercised.
