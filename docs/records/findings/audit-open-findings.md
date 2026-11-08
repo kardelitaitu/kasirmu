@@ -6827,3 +6827,40 @@ direction. The `uses:`-driven actions (4 steps) are outside the check entirely:
 third-party actions are a supply-chain decision the Route job's own comment
 documents, not a roster concern. Docker daemon still down (r136): E2E /
 llvm-cov / nextest-junit receipts remain the standing PG-gated gap.
+
+### Round 151 (2026-11-08) -- the reverse walk is now directory-wide; a probe oracle inverted
+
+The r150 reverse walk covered dev-ci.yml only -- but the axis is CI, not one
+file. Measured across all five workflow files: 146 distinct (step, script)
+invocations (dev-ci 135, release 8, docker-digest-drift 2, website 1, android
+0), ZERO unrecorded -- with one legitimate exemption: website.yml#Deploy runs
+scripts/wrangler-deploy.sh, which is deploy tooling, not a gate (it reads
+CLOUDFLARE_API_TOKEN and exits 1 without it, wrangler-deploy.sh:52-70). Enforced
+(cab4b5a30): main() now walks every .yml/.yaml in .github/workflows (non-
+recursive, so attic/ is out -- GitHub does not run nested workflows), findings
+carry the file name, and TOOLING_SCRIPTS holds the exemptions as an EXPLICIT
+dated constant whose comment must name the script's reader. Self-test 32 -> 33
+cases (the exemption case), six-mutant probe 6/6 KILLED, live OK line reports
+both the file count and the exemption count so a narrowed walk is visible.
+
+The incident is probe tooling, and it cut both ways: the first live-oracle
+mutation probe reported walk-restriction and file-count mutants as SURVIVED
+when a manual run proved both instantly detectable -- the oracle treated an
+UNCHANGED live contract as a kill, inverting the meaning of the survivor list.
+Corrected in the same round (kill = expected contract ABSENT under mutation);
+6/6. Recorded because a probe that can false-survive also, on another day,
+false-kills: the oracle's direction is part of the result, and this round's
+SURVIVED lines were wrong in the reassuring direction, which is the worst one.
+
+Honest limits: TOOLING_SCRIPTS is manual policy -- nothing prevents a lazy add
+that silences a real checker by name; the defenses are the dated reader-naming
+comment and the exemption count in the OK line, neither of which judges
+WHETHER an addition is honest. Linkage is by script basename, so a same-named
+non-checker file elsewhere would false-negative (uniqueness measured across
+the 146, not enforced). Inline tail comments on real command lines still count
+as invocations -- the conservative direction. A workflow whose step items the
+parser misses (nonstandard indent) would silently under-report; parse parity
+against raw `- name:` counts was verified per file this round by probe but is
+not enforced -- that guard is the recorded candidate. Docker daemon still down
+(r136): E2E / llvm-cov / nextest-junit receipts remain the standing PG-gated
+gap.
