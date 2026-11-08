@@ -1,13 +1,14 @@
 # Owner question — gift card redemption: three questions that block the last third
 
-> **RESOLVED 2026-11-07 — all three questions answered and shipped.**
+> **Status: RESOLVED & ARCHIVED (2026-11-09).** All three questions answered and shipped:
 > - **Q1:** Option A (gift split covers total). Rebuild migration `20261107_payments_gift_card_method.sql`
->   widens `payments.method` CHECK to include `'gift_card'`, re-creates both indexes, and updates `init.pg.sql`.
+>   widened `payments.method` CHECK to include `'gift_card'`, re-created both indexes, and updated `init.pg.sql`.
 > - **Q2:** Option B (post-commit redemption with warning toast on failure, matching loyalty precedent)
 >   wired in `ui/src/features/sales/PaymentModal.tsx`.
 > - **Q3:** Option A (grant `GIFTCARDS_REDEEM` to checkout roles: `STAFF`, `MANAGER`, `ADMIN`) in
 >   `platform/core/src/rbac_presets.rs`.
 > - **Mount:** `GiftCardPayment.tsx` mounted in `PaymentModal.tsx` under `FEATURES.GIFT_CARDS`.
+> - Earned `done-` prefix per AGENTS.md §7.4.
 
 **Why this file exists.** `todo-gift-card-redemption-ordering.md` (241 lines) records the
 gift-card tender as complete except for three parts that must be decided together. Those
