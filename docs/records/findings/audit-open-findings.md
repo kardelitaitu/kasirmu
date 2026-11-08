@@ -7983,3 +7983,39 @@ daemon still down (probed r159): the E2E / llvm-cov / nextest-junit receipts
 remain the standing PG-gated gap. The root-policy gate remains RED on the
 foreign todo.md (r174) and verify-core-size RED on the ADR-59 +64 (r181),
 both awaiting their owning lanes.
+
+### Round 184 (2026-11-09) -- ui-coverage-floors joins the arc; a two-default gate learns the paired redirect
+
+The r166..r183 contract applied to the vitest coverage floor gate. This one
+has TWO default inputs -- the coverage summary and the floors manifest --
+derived from two module constants. main(argv, root) derives both from the
+root base TOGETHER, with an explicit --summary/--floors still winning over
+the root redirect; the constants remain only as the root=None defaults.
+
+Four shell cases: a fixture at its floors rc 0, a branches shortfall rc 1
+naming the metric, a missing summary REFUSED rc 2, and floors declaring no
+ui_floors map REFUSED rc 2 -- the last exercising the load_floors() refusal
+that the sabotage sweep of 2026-11-06 already fought for at function level,
+now graded through main too.
+
+Measured kill, the most legible text of the arc: main rebound to ignore its
+root -- the shortfall case (want 1) returned 0 because the mutant graded the
+REAL summary, and the captured output carries the evidence of where the
+number came from: "branches 78.04% (floor 76.0%)" -- a real measurement in a
+fixture's report, floors the fixture never declared. The mutant was killed
+BECAUSE the real coverage/ui/coverage-summary.json exists; a repo without a
+generated summary would have refused (rc 2 = want) and survived that arm --
+the missing-summary kill depends on the live tree being in its normal,
+report-having state.
+
+Honest limits: per-file floors are out of scope by the docstring's own
+argument (no measured per-file baseline exists to enforce), so the shell
+cases grade aggregates only; the e2e-only flows excluded from the numerator
+by construction are invisible here and remain the docstring's declared
+blind spot. The --summary/--floors explicit-override path is not exercised
+by a shell case (root redirect is the graded behavior; the override is
+argparse plumbing). Docker daemon still down (probed r159): the E2E /
+llvm-cov / nextest-junit receipts remain the standing PG-gated gap. The
+root-policy gate remains RED on the foreign todo.md (r174) and
+verify-core-size RED on the ADR-59 +64 (r181), both awaiting their owning
+lanes.
