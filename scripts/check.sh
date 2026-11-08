@@ -25,6 +25,19 @@
 #
 # Usage:  bash scripts/check.sh
 #         (run from the workspace root)
+#
+# Requirement: step 52 runs the workspace nextest pass with --all-features to
+# mirror dev-ci.yml, which turns the pg-tests feature on — and with pg-tests on,
+# an unreachable Postgres FAILS LOUD (crates/kasirmu-api/src/pg_tests.rs, the
+# R17 owner ruling: "PG test enabled but the resource is unreachable"), it does
+# not skip. So a full green run of this matrix needs Docker+Postgres up on
+# localhost:15432. Measured 2026-11-08 with PG down: steps 1-51 PASS, step 52
+# FAILs on one pg_* test with 670/671 run tests green before fail-fast, and the
+# failure PROPAGATES: step 54 grades target/nextest/default/junit.xml, which now
+# holds that failed run, so 54 reads FAIL too. A resume therefore cannot stop at
+# 53: CHECK_FROM=55 is the first trust-point past the PG lane (resumed runs print
+# the skipped steps as SKIPPED and prove nothing about them). The same
+# precondition is documented in scripts/coverage.sh for its rust lane.
 
 set -euo pipefail
 
@@ -35,6 +48,10 @@ cd "$(dirname "$0")/.."
 # block) so scripts outside this matrix can source the same environment:
 # `source scripts/msvc-env.sh` before any cargo invocation that links.
 . "$(dirname -- "$0")/msvc-env.sh"
+# The go lane needs the same treatment from the other direction: go derives its
+# caches from LOCALAPPDATA/USERPROFILE, which stripped runners also remove
+# (measured 2026-11-08, step 103). Inert when the env is healthy.
+. "$(dirname -- "$0")/go-env.sh"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
