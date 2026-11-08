@@ -6455,3 +6455,39 @@ machine-grades them — a future reader who moves the tdd skill leaves the notes
 at a name, not a line number, which is why they name the skill only. Docker daemon still
 down (probed r136): the E2E / llvm-cov / nextest-junit receipts remain the standing
 PG-gated gap.
+### Round 142 (2026-11-08) — test-runner-labels.py's owner traced: the manifest, not a checker declaration
+
+r141's honest limits left one sibling-class file unattributed: "test-runner-labels.py's
+owning checker remains untraced (invocation verified, declaration not)." This round
+traced it and the trace RESOLVES the limit into a measured fact, with no rot underneath:
+scripts/test-runner-labels.py is the whole-checker fixture guarding
+verify-ci-docs-drift.py's missing_needles() fix (the has_needle() ANY-of bug, where one
+matching label of three excused a gate whose other labels had been deleted). Its owner
+is not a checker declaration but the MANIFEST mechanism: gates.json's "runner-labels"
+row (id at :1377, runner label "runner labels" at :1383) declares the step, check.sh:1513
+provides it, and verify-ci-docs-drift.py's own item-3 check polices label-vs-step —
+deleting the step fails the drift checker (label matches nothing); deleting the file
+fails the step itself at runtime. The drift checker ran green at HEAD: 0 drift item(s),
+149 gates, self-test all cases passed (the three leading "error:" lines in its output
+are the self-test's own negative-fixture stderr, not failures).
+
+The improvement (48eb6bb63): a REGRESSION TEST section in verify-ci-docs-drift.py's
+module docstring naming the fixture file, the bug it guards, and the owner-of-record
+pairing — the same bidirectional self-description r140/r141 gave the sibling class,
+applied to the manifest-owned pairing. The pointer is deliberately spelled WITHOUT the
+python3 prefix and without a SELF-TEST: marker, so even a future marker on that line
+could not trigger the wired gate's SIBLING_PTR; verified after the edit: wired census
+unchanged (103 of 105, exactly one sibling-declared checker), drift self-test and live
+both green, alliance green at 132 cases.
+
+Honest limits: the ownership claim rests on the manifest row plus the drift checker's
+label policing, both verified live this round — but the E2E-side invocation of
+test-runner-labels.py (dev-ci.yml) was not separately mutation-tested (nothing deletes
+the check.sh step in a live CI run here). The three-gate green sweep this round is
+exactly that: verify-ci-docs-drift, verify-selftests-wired, sabotage-selftests — the
+remaining seven docs checkers were not re-run (their inputs were untouched; the last
+full sweep predates this round only in receipt form). Docker daemon still down (probed
+r136): the E2E / llvm-cov / nextest-junit receipts remain the standing PG-gated gap.
+One mechanics repeat: a bash-c heredoc was attempted again for the chain probe and
+mangled the call (the documented third-strike trap) — the direct
+"python3 scripts/verify-ci-docs-drift.py" invocation is the standing fix.
