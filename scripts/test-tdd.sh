@@ -24,6 +24,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 
+# MSVC toolset fallback (r115 derivation, extracted to scripts/msvc-env.sh): the
+# TDD loop compiles and links test binaries. Inert on a healthy machine -- derives
+# only when vswhere finds no instance (r125 audit).
+. "${PROJECT_ROOT}/scripts/msvc-env.sh"
+
 export CARGO_PROFILE=tdd
 
 # ── Toolchain resolution ─────────────────────────────────────────────────────
