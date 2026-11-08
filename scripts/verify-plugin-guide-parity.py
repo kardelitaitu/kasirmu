@@ -65,18 +65,32 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-# CICD-04 lineage: the guide lives under docs/guides/ (mdBook layout) —
-# the historical docs/plugin-guide.md path made this gate fail-closed
-# with "guide not found" on every run after the doc tree was reorganized.
-GUIDE = ROOT / "docs" / "guides" / "developer" / "plugin-guide.md"
-MANAGER = ROOT / "crates" / "kasirmu-plugin" / "src" / "manager.rs"
-OZ_LUA_LIB = ROOT / "crates" / "kasirmu-lua" / "src" / "lib.rs"
-OZ_CLI = ROOT / "crates" / "kasirmu-cli" / "src" / "cli.rs"
-# The CLI's own README is the second place a subcommand name is written down.
-# It is the more load-bearing of the two: it carries a table of every command
-# and its arguments, so a row naming a command that does not exist sends a
-# reader straight to a clap error.
-CLI_README = ROOT / "crates" / "kasirmu-cli" / "README.md"
+
+
+def _paths(root=None) -> dict:
+    """Every evidence source, all five derived from ONE base (r178).
+
+    The five used to be module constants. That made a partial redirect easy
+    in exactly the r172 way: a helper left on a constant grades the real
+    tree while its siblings grade the fixture, and no single look catches
+    it. One function returning all five means a new source joins the
+    redirect by construction.
+    """
+    base = ROOT if root is None else Path(root).resolve()
+    # CICD-04 lineage: the guide lives under docs/guides/ (mdBook layout) —
+    # the historical docs/plugin-guide.md path made this gate fail-closed
+    # with "guide not found" on every run after the doc tree was reorganized.
+    return {
+        "guide": base / "docs" / "guides" / "developer" / "plugin-guide.md",
+        "manager": base / "crates" / "kasirmu-plugin" / "src" / "manager.rs",
+        "lua": base / "crates" / "kasirmu-lua" / "src" / "lib.rs",
+        "cli": base / "crates" / "kasirmu-cli" / "src" / "cli.rs",
+        # The CLI's own README is the second place a subcommand name is written
+        # down. It is the more load-bearing of the two: it carries a table of
+        # every command and its arguments, so a row naming a command that does
+        # not exist sends a reader straight to a clap error.
+        "readme": base / "crates" / "kasirmu-cli" / "README.md",
+    }
 
 # `oz.<name>` tokens anywhere in the guide (over-detection is safe).
 OZ_TOKEN = re.compile(r"\boz\.([a-z][a-z0-9_]*)\b")
@@ -118,7 +132,8 @@ def self_test() -> int:
     perfectly-matched regex against an empty file still measures nothing.
 
     Proven by mutation: pointing OZ_SET at a pattern that cannot match turns case 2
-    red. Pure except for that one floor; no file is created, written or modified.
+    red. The parser cases are pure; the r178 shell cases write only under a
+    tempdir, never a repo file.
     """
     bad: list[str] = []
 
@@ -146,14 +161,69 @@ def self_test() -> int:
     if not documented_bindings():
         bad.append("live floor: documented_bindings() found nothing in the guide")
 
+    # r178: main()'s shell -- argv and root graded against a tempdir fixture
+    # carrying all five evidence sources, the r166..r177 pattern. main's exit
+    # mapping (0 / 1 / 2 and --report-only) is what the parser cases above
+    # never reach.
+    import contextlib as _ctxlib
+    import io as _io
+    import tempfile as _tempfile
+    def _shell(files, argv=None):
+        with _tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            for rel, content in files.items():
+                dst = base / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_text(content, encoding="utf-8")
+            out, err = _io.StringIO(), _io.StringIO()
+            with _ctxlib.redirect_stdout(out), _ctxlib.redirect_stderr(err):
+                rc = main(argv=[] if argv is None else argv, root=base)
+            return rc, out.getvalue() + err.getvalue()
+    GUIDE_REL = str(Path("docs") / "guides" / "developer" / "plugin-guide.md")
+    MANAGER_REL = str(Path("crates") / "kasirmu-plugin" / "src" / "manager.rs")
+    LUA_REL = str(Path("crates") / "kasirmu-lua" / "src" / "lib.rs")
+    CLI_REL = str(Path("crates") / "kasirmu-cli" / "src" / "cli.rs")
+    README_REL = str(Path("crates") / "kasirmu-cli" / "README.md")
+    # SYNTHETIC names throughout: a fixture that mirrors the real bindings
+    # would survive a root-dropping mutant, which would find the same names
+    # in the real tree. The corpus must contain nothing the real tree has.
+    FULL = {
+        GUIDE_REL: "oz.fixture_binding is documented.\n"
+                   "fixture_legacy_hook runs on checkout.\n"
+                   "cargo run -p kasirmu-cli -- fixture-cmd\n",
+        MANAGER_REL: 'oz.set("fixture_binding", "k");\n',
+        LUA_REL: 'const LEGACY_HOOK_NAMES: &[&str] = &["fixture_legacy_hook"];\n',
+        CLI_REL: "enum Command {\n    FixtureCmd,\n}\n",
+        README_REL: "| kasir fixture-cmd | run it |\n",
+    }
+    rc, text = _shell(FULL)
+    if rc != 0 or "0 drift item(s)" not in text:
+        bad.append(f"full parity must exit 0 (rc={rc} text={text[-120:]!r})")
+    rc, text = _shell({**FULL, GUIDE_REL: FULL[GUIDE_REL] + "oz.never_impl\n"})
+    if rc != 1 or "MISSING" not in text or "oz.never_impl" not in text:
+        bad.append(f"a documented-but-missing binding must exit 1 naming it (rc={rc} text={text[-120:]!r})")
+    rc, text = _shell({**FULL, GUIDE_REL: FULL[GUIDE_REL] + "cargo run -p kasirmu-cli -- run-script\n"})
+    if rc != 1 or "PHANTOM" not in text:
+        bad.append(f"a phantom command must exit 1 (rc={rc} text={text[-120:]!r})")
+    with _tempfile.TemporaryDirectory() as td:
+        out, err = _io.StringIO(), _io.StringIO()
+        with _ctxlib.redirect_stdout(out), _ctxlib.redirect_stderr(err):
+            rc = main(argv=[], root=td)
+        if rc != 2 or "guide not found" not in (out.getvalue() + err.getvalue()):
+            bad.append(f"a missing guide must refuse with exit 2 (rc={rc})")
+    rc, text = _shell({**FULL, GUIDE_REL: FULL[GUIDE_REL] + "oz.never_impl\n"},
+                      argv=["--report-only"])
+    if rc != 0 or "1 drift item(s)" not in text:
+        bad.append(f"--report-only must report drift yet exit 0 (rc={rc} text={text[-120:]!r})")
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (6 cases, read-only)")
+    print("SELF-TEST OK (6 parser cases + 5 shell cases, no repo files touched)")
     return 0
 
 
-def documented_bindings() -> set[str]:
+def documented_bindings(root=None) -> set[str]:
     """Return every binding named in the guide.
 
     The `oz` Global Table rows are `oz.<name>` tokens; the legacy-hook
@@ -161,24 +231,25 @@ def documented_bindings() -> set[str]:
     documented so the informational "implemented but not documented" leg
     does not false-positive on the legacy table.
     """
-    text = GUIDE.read_text(encoding="utf-8")
+    text = _paths(root)["guide"].read_text(encoding="utf-8")
     oz_tokens = {m.group(1) for m in OZ_TOKEN.finditer(text)}
     # Legacy hooks are documented as bare names — accept them if they are
     # one of the names the source declares (they live under "Legacy
     # top-level hooks" in the guide).
-    _, legacy = implemented_bindings()
+    _, legacy = implemented_bindings(root)
     legacy_mentioned = {name for name in legacy if re.search(rf"\b{re.escape(name)}\b", text)}
     return oz_tokens | legacy_mentioned
 
 
-def implemented_bindings() -> tuple[set[str], set[str]]:
+def implemented_bindings(root=None) -> tuple[set[str], set[str]]:
     """Return (oz-table bindings, legacy hook names) actually registered."""
+    paths = _paths(root)
     oz = set()
-    if MANAGER.exists():
-        oz.update(m.group(1) for m in OZ_SET.finditer(MANAGER.read_text(encoding="utf-8")))
+    if paths["manager"].exists():
+        oz.update(m.group(1) for m in OZ_SET.finditer(paths["manager"].read_text(encoding="utf-8")))
     legacy: set[str] = set()
-    if OZ_LUA_LIB.exists():
-        text = OZ_LUA_LIB.read_text(encoding="utf-8")
+    if paths["lua"].exists():
+        text = paths["lua"].read_text(encoding="utf-8")
         # Walk past `LEGACY_HOOK_NAMES ... &[` and collect strings until `]`.
         for head in LEGACY_HEAD.finditer(text):
             tail = text[head.end():]
@@ -204,25 +275,27 @@ def _kebab(name: str) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", "-", name).lower()
 
 
-def documented_cli() -> set[str]:
+def documented_cli(root=None) -> set[str]:
+    paths = _paths(root)
     found = set()
-    if GUIDE.exists():
-        text = GUIDE.read_text(encoding="utf-8")
+    if paths["guide"].exists():
+        text = paths["guide"].read_text(encoding="utf-8")
         found |= {m.group(1).lower() for m in CLI_DOC.finditer(text)}
-    if CLI_README.exists():
-        text = CLI_README.read_text(encoding="utf-8")
+    if paths["readme"].exists():
+        text = paths["readme"].read_text(encoding="utf-8")
         found |= {m.group(1).lower() for m in CLI_README_DOC.finditer(text)}
     return found
 
 
-def implemented_cli() -> set[str]:
-    if not OZ_CLI.exists():
+def implemented_cli(root=None) -> set[str]:
+    cli = _paths(root)["cli"]
+    if not cli.exists():
         return set()
-    text = OZ_CLI.read_text(encoding="utf-8")
+    text = cli.read_text(encoding="utf-8")
     return {_kebab(m.group(1)) for m in re.finditer(r"^\s{4}([A-Z][A-Za-z0-9]*)\s*,?", text, re.M)}
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
     parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument(
         "--report-only",
@@ -235,20 +308,21 @@ def main() -> int:
         action="store_true",
         help="Run this checker's parser cases and exit.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.self_test:
         return self_test()
 
-    if not GUIDE.exists():
-        print(f"error: guide not found: {GUIDE}", file=sys.stderr)
+    paths = _paths(root)
+    if not paths["guide"].exists():
+        print(f"error: guide not found: {paths['guide']}", file=sys.stderr)
         return 2
 
-    documented = documented_bindings()
-    oz_impl, legacy_impl = implemented_bindings()
+    documented = documented_bindings(root)
+    oz_impl, legacy_impl = implemented_bindings(root)
     implemented = oz_impl | legacy_impl
-    cli_documented = documented_cli()
-    cli_impl = implemented_cli()
+    cli_documented = documented_cli(root)
+    cli_impl = implemented_cli(root)
 
     # 1. Documented → implemented (the gate direction).
     missing = sorted(documented - implemented)
