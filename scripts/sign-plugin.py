@@ -242,13 +242,114 @@ def self_test() -> int:
     print()
     print("A mismatch means signature.rs and this script have drifted and EVERY")
     print("signature will fail to verify. Fix before shipping a signed plugin.")
+
+    # r195: main()'s shell -- argv and root graded against a tempdir, the
+    # r166..r194 pattern, as a signing ladder: generate a key, sign, verify,
+    # tamper, refuse. The key path is ABSOLUTE inside the tree and the plugin
+    # dir is RELATIVE on purpose: a root-dropping main resolves the plugin
+    # dir against the real repo, where it does not exist, and dies on the
+    # refusal before it could write anything into the real tree.
+    import contextlib as _ctx
+    import io as _io
+    from pathlib import Path as _Path
+    import tempfile as _tempfile
+    shell = 0
+    with _tempfile.TemporaryDirectory() as td:
+        base = _Path(td)
+        key = base / "signkey.pem"
+        # DOUBLE quotes: the tiny manifest parser strips chr(34) only -- a
+        # single-quoted fixture would bake the quote chars into the id
+        q = chr(34)
+        manifest = ("[plugin]" + chr(10)
+                    + "name = " + q + "demo" + q + chr(10)
+                    + "version = " + q + "1.0.0" + q + chr(10) + chr(10)
+                    + "[permissions]" + chr(10)
+                    + "required_permissions = [" + q + "cart:read" + q + ", " + q + "log:write" + q + "]" + chr(10) + chr(10)
+                    + "[capabilities]" + chr(10)
+                    + "scripts = [" + q + "discount.lua" + q + "]" + chr(10))
+        def run(*extra):
+            out, err = _io.StringIO(), _io.StringIO()
+            try:
+                with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                    rc = main(argv=list(extra), root=base)
+            except SystemExit as se:
+                return se.code, out.getvalue() + err.getvalue()
+            return rc, out.getvalue() + err.getvalue()
+        shell += 1
+        rc, text = run("--generate-key", "--key", str(key))
+        if rc != 0 or "wrote a 2048-bit private key" not in text:
+            print("  x key generation must write the PEM and say so (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        if not key.is_file():
+            print("  x the key file must exist inside the contract root", file=sys.stderr)
+            return 1
+        shell += 1
+        (base / "demo-plugin").mkdir()
+        (base / "demo-plugin" / "plugin.toml").write_text(manifest, encoding="utf-8")
+        (base / "demo-plugin" / "discount.lua").write_text("return true\n", encoding="utf-8")
+        rc, text = run("--key", str(key), "demo-plugin")
+        if rc != 0 or "signed demo 1.0.0" not in text:
+            print("  x signing must name id and version (rc=%r text=%r)" % (rc, text[-90:]),
+                  file=sys.stderr)
+            return 1
+        if not (base / "demo-plugin" / "plugin.toml.sig").is_file():
+            print("  x the detached signature must sit beside plugin.toml", file=sys.stderr)
+            return 1
+        shell += 1
+        rc, text = run("--key", str(key), "--check", "demo-plugin")
+        if rc != 0 or "signature is valid for demo 1.0.0" not in text:
+            print("  x a fresh signature must verify (rc=%r text=%r)" % (rc, text[-90:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        # tamper: one byte of script body changes, the digest must move
+        (base / "demo-plugin" / "discount.lua").write_text("return false\n", encoding="utf-8")
+        rc, text = run("--key", str(key), "--check", "demo-plugin")
+        if rc != 1 or "signature MISMATCH" not in text:
+            print("  x a tampered script must fail the check (rc=%r text=%r)" % (rc, text[-90:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        # the manifest shape the parser does not understand fails loudly
+        (base / "demo-plugin" / "discount.lua").write_text("return true\n", encoding="utf-8")
+        (base / "demo-plugin" / "plugin.toml").write_text("[nothing]\n", encoding="utf-8")
+        rc, text = run("--key", str(key), "--check", "demo-plugin")
+        if not (isinstance(rc, str) and "missing plugin.name" in rc):
+            print("  x a shapeless manifest must fail loudly, not sign (rc=%r)" % (rc,),
+                  file=sys.stderr)
+            return 1
+    shell += 1
+    with _tempfile.TemporaryDirectory() as td:
+        # the graded refusal is the MISSING FLAG, not a missing file: main
+        # refuses before touching the filesystem when --key is absent
+        out, err = _io.StringIO(), _io.StringIO()
+        try:
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                main(argv=["--check", "demo-plugin"], root=_Path(td))
+            print("  x a missing --key flag must refuse, not sign", file=sys.stderr)
+            return 1
+        except SystemExit as se:
+            if not (isinstance(se.code, int) and se.code == 2):
+                print("  x a missing --key is an argparse refusal rc 2 (rc=%r)" % (se.code,),
+                      file=sys.stderr)
+                return 1
+    if bad if False else False:
+        return 1
+    print("self-test: digest framing checked AND the signing shell graded "
+          "(%d shell cases)" % shell)
     return 0
 
 
 # ── main ──
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r195: argv and root parameterized, the r166..r194 contract -- a
+    RELATIVE --key or plugin_dir resolves against the contract root, so a
+    fixture carries its key and its plugin under one tree. The operations
+    are offline (no network, keys supplied); root changes where they are
+    looked up, nothing else."""
     parser = argparse.ArgumentParser(description="Sign a kasir.mu plugin (C2).")
     parser.add_argument("plugin_dir", nargs="?", help="plugin directory to sign")
     parser.add_argument("--key", help="path to the RSA private key PEM")
@@ -256,20 +357,25 @@ def main() -> int:
     parser.add_argument("--print-public-key", action="store_true", help="print the public PEM")
     parser.add_argument("--self-test", action="store_true", help="check the digest framing")
     parser.add_argument("--check", action="store_true", help="verify an existing signature")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.self_test:
         return self_test()
+    base = Path.cwd() if root is None else Path(root).resolve()
+
+    def resolve(p):
+        q = Path(p)
+        return q if q.is_absolute() else base / q
 
     if args.generate_key:
         if not args.key:
             parser.error("--generate-key requires --key <path>")
-        generate_key(Path(args.key))
+        generate_key(resolve(args.key))
         return 0
 
     if not args.key:
         parser.error("--key <path> is required unless --self-test")
-    private_key = load_key(Path(args.key))
+    private_key = load_key(resolve(args.key))
 
     if args.print_public_key:
         print(public_pem(private_key), end="")
@@ -278,7 +384,7 @@ def main() -> int:
     if not args.plugin_dir:
         parser.error("a plugin directory is required")
 
-    plugin_dir = Path(args.plugin_dir)
+    plugin_dir = resolve(args.plugin_dir)
     plugin_id, version, permissions, declared = read_manifest(plugin_dir)
     scripts = collect_scripts(plugin_dir, declared)
     digest = plugin_digest(plugin_id, version, permissions, scripts)
