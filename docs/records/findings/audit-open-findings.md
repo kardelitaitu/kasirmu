@@ -9380,3 +9380,51 @@ still down (probed r159): E2E / llvm-cov / nextest-junit receipts
 remain PG-gated. Root-policy RED on the foreign todo.md (r174);
 core-size RED on the ADR-59 +64 (r181) -- both await their owning
 lanes.
+
+### Round 216 (2026-11-09) -- state-closure joins the root contract; --json severity is --strict's job
+
+check-state-closure-after-await.py's main() grew the r166 contract --
+main(argv=None, root=None) -- and the parameter moves the walk base and
+the printed file paths together: run_scan(root) walks the fixture,
+scan_file(path, root) names findings fixture-relative, and the
+empty-corpus refusal names the root it actually swept. The corpus floor
+itself is r-era work (2026-11-06, measured alongside settled-read-copies
+and scoped-reads); what it lacked was the seam -- run_scan read the
+module-level SCAN_ROOT no matter what the caller passed, so a fixture
+could only be graded by monkey-patching the module.
+
+The ladder is 4 rungs through main(argv, root): the killing rung puts
+the exact round-201 split-form defect in a fixture-only PosScreen.tsx
+(--strict, rc 1, named "app/PosScreen.tsx"; the root-dropping main
+scans this checkout, reads clean, rc 0 -- probe216 re-proven live,
+"KILL CONFIRMED"); the awaited-value shape stays 0 candidates under
+--strict; --json --strict carries the finding machine-readably; and
+the DEFAULT run reports the candidate and exits 0 -- a candidate is a
+candidate, not a gate failure, and that contract rides the root too.
+
+A MEASURED SURPRISE, pinned in rung 3's comment: --json ALONE exits 0
+even on a finding. The json branch prints and falls through to
+verdict(), which without --strict returns 0 -- unlike
+verify-settled-read-copies.py, whose json branch returns 1 on findings
+itself. The first draft of rung 3 asserted the settled-read-copies
+behavior and the fixture measured it wrong. The two tools' json
+severity contracts differ, and now the difference is written where the
+next reader will trip over it.
+
+Live run unchanged: "0 candidates in ui/src (730 file(s) read)" at
+exit 0. Self-test now reads "all 5 detector cases + 6 verdict cases
+pass" plus the 4-rung ladder.
+
+Honest limits: the ladder grades the split form (c) and the single-line
+form (a) only through rung 1's fixture, which uses the split form -- no
+rung puts a single-line defect in a fixture and expects the same rc 1
+(the detector cases in the pre-existing self-test grade (a) on source
+text, not through the root seam); the custom-hook destructure collector
+is graded only by the live tree's silence, not by a fixture naming
+usePosHeldCarts; and the empty-corpus refusal is graded here only at
+scanned == 0 via the verdict table, not through a root whose walk finds
+nothing. The scoped-reads (r213) and retire (r214) limits stand. Docker
+daemon still down (probed r159): E2E / llvm-cov / nextest-junit
+receipts remain PG-gated. Root-policy RED on the foreign todo.md
+(r174); core-size RED on the ADR-59 +64 (r181) -- both await their
+owning lanes.
