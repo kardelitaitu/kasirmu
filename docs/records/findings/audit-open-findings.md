@@ -11628,7 +11628,7 @@ the kill above is a hand proof that will not regress-detect. The subagent also
 reported that --self-test run from BELOW the repo root fails because REPO
 resolves relative to __file__; that is pre-existing and I did not reproduce it.
 
-### Round 262 (2026-11-09) -- the harness covered a third of what it claimed, and a new row lied
+### Round 261 (2026-11-09) -- the harness covered a third of what it claimed, and a new row lied
 
 Swept prove-ladder-kills.py over all 70 checkers instead of one at a time. The
 result had been known only piecemeal: 21 provable, 76 NO APPLICABLE MUTATION. A
