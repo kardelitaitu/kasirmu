@@ -8885,3 +8885,44 @@ picked up. Docker daemon still down (probed r159): the E2E / llvm-cov /
 nextest-junit receipts remain the standing PG-gated gap. The root-policy
 gate remains RED on the foreign todo.md (r174) and verify-core-size RED
 on the ADR-59 +64 (r181), both awaiting their owning lanes.
+
+### Round 205 (2026-11-09) -- token-fallback stripper joins the arc; the write path graded on a fixture
+
+The r166..r204 contract applied to the CSS token stripper, a mutating
+tool with a --check arm: main(argv, root) resolves
+NodeTopologyEditor.css under the contract root (absolute-through, like
+r203's _res), so both the --check verdict and the WRITE path are graded
+against a throwaway tree instead of this checkout's stylesheet -- which
+has been clean since ADR #45's strip landed, meaning every live run
+today answers "no stale token fallbacks remain" and could never
+exercise the drop path.
+
+Four shell cases over a scratch stylesheet: --check over a stale
+fallback reports "2 stale token fallback(s) remain" rc 1 (a literal
+hex arm AND a nested var() arm both counted); a clean file passes rc 0;
+APPLY mode drops both arms and the post-condition is read back INSIDE
+the fixture -- the hex fallback gone, the nested call stripped to a
+bare var(), and the RUNTIME cursor tokens' 50% default SURVIVING (the
+docstring's only-legitimate-fallback rule, pinned); and a missing
+stylesheet refuses rc 1 naming the file.
+
+The last case found a live gap the live tree cannot show (same shape as
+r199's): main crashed with FileNotFoundError on a missing stylesheet
+instead of refusing -- fixed with an OSError guard, the checker now
+reports "cannot read <path>" rc 1.
+
+Measured kill: the root-dropping main strips the REAL stylesheet
+(clean) and answers clean on the first rung, which demands the
+fixture's 2-change report -- killed immediately; the probe is
+read-only. Capture: ui\src\features\locations\NodeTopologyEditor.css:
+no stale token fallbacks remain, live.
+
+Honest limits: the NESTED list's four spelled-out arms are graded by
+one representative; the KEEP set is graded only for --mouse-x (the
+50% default), not --mouse-y; the ladder's fixture carries exactly one
+literal and one nested fallback, so change-count arithmetic beyond 2 is
+unexercised. Docker daemon still down (probed r159): the E2E / llvm-cov
+/ nextest-junit receipts remain the standing PG-gated gap. The
+root-policy gate remains RED on the foreign todo.md (r174) and
+verify-core-size RED on the ADR-59 +64 (r181), both awaiting their
+owning lanes.
