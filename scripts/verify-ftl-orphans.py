@@ -728,7 +728,12 @@ def self_test() -> int:
     # matrix and this branch could only fail there (measured 2026-11-08, step 113).
     # _rel is pure string work; a synthetic absolute path exercises the fallback
     # with no filesystem coupling at all.
-    got2 = _rel(Path("Z:/elsewhere/nested/x.ftl"))
+    synthetic_outside = (
+        Path("Z:/elsewhere/nested/x.ftl")
+        if sys.platform == "win32"
+        else Path("/elsewhere/nested/x.ftl")
+    )
+    got2 = _rel(synthetic_outside)
     if (not isinstance(got2, str) or "\\" in got2 or not got2.endswith("x.ftl")
             or not Path(got2).is_absolute()):
         failures += 1

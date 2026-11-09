@@ -80,7 +80,7 @@
 
 ### 1. Payment Methods Plan Archival (`done-payment-methods-plan.md`) — ✅
 - All 4 phases verified with 83 passing tests across UI, Rust core, and bridge suites.
-- Moved `docs/plans/_active/payment-methods-plan.md` to `docs/plans/_done/done-payment-methods-plan.md` with earned `done-` status per AGENTS.md §7.4.
+- Moved `docs/plans/_active/payment-methods-plan.md` <!-- dead-ref: ok: archival record --> to `docs/plans/_done/done-payment-methods-plan.md` with earned `done-` status per AGENTS.md §7.4.
 - Cross-references updated across 14 repository files; `verify-doc-uniqueness.py`, `verify-agents-mirrors.py`, `verify-ipc-parity.py`, `check-dead-refs.py`, and `mdbook build docs` all clean.
 
 ### 2. Subscription Tier Enforcement Verification (Phase C) — ✅
