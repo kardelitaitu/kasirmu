@@ -11829,3 +11829,45 @@ mutant was clean (mtime ordering), and re-measured before believing it.
 
 Census unchanged at 38 of 70.
 
+### Round 265 (2026-11-09) -- the kill that was really a grep failure
+
+verify-unsafe-safety gained a 5-rung ladder and is contracted (census 38 -> 39 of
+70). The subagent reported that rung 1 dies on a SCOPE REFUSAL rather than a
+verdict, and blamed a pre-existing checker defect. Both claims were checked
+independently; both were right, and the defect is now fixed, which changes what
+the mutation row proves.
+
+THE DEFECT, measured: scan() ran
+    git grep -l -E unsafe -- "*.rs"   with check=True
+  and git grep exits 1 when it matches NOTHING. A tree whose .rs files never
+  mention unsafe therefore raised CalledProcessError, and main() printed
+  "FAIL could not list sources" -- indistinguishable from a broken scan, at rc 1
+  where a scope refusal should be rc 2. Reproduced directly: rc 1 with empty
+  stderr in a one-file repo lacking the word; rc 0 in any populated one.
+
+Fixed so that only a return code OTHER THAN 0 or 1 is raised. The empty-population
+branch below it is unchanged and still refuses, deliberately: an empty population
+is not a pass, and that judgement is the file's own.
+
+WHY IT MATTERED FOR THE PROOF. Before the fix, both applicable mutants reported
+KILLED, but the mutant output contained the refusal and the mutation was "proven"
+by a git invocation failing rather than by the ladder grading anything -- the r260
+lesson in a new shape, and the fifth instance this arc of an execution failure
+being read as a verdict. A CONTROL settled it: a harmless mutant (anchor unchanged,
+a comment appended) ran all 5 rungs to rc 0 with no refusal, so the refusal was
+specific to the root-blind mutant rather than to the fixtures.
+
+After the fix the same mutant dies differently and honestly: rc 1 on the VERDICT
+('must read "unsafe-safety FAIL: 1 of 2 unsafe construct(s)"'), with no grep
+refusal in the output. That is the rung grading what it claims to grade.
+
+Both rows still kill after the change; the live verdict is unchanged
+("OK (43 construct(s), every one justified)").
+
+Honest limits: the subagent also flagged that prove-ladder-kills applies TWO
+identical-anchor rows to this file ("scan base" and "inline base"), so the "2 of 2
+killed" is one shape counted twice, not two independent mutations -- the result is
+sound but the count flatters itself, and that is an artefact of the table, not of
+the checker. I verified the grep defect and the control, and did not review the 5
+rungs line by line. Census 39 of 70; 31 un-contracted checkers remain.
+
