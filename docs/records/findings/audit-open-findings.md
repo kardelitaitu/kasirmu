@@ -10367,3 +10367,66 @@ scoped-reads (r213) through selftests-wired (r231) stand. Docker daemon still
 down (probed r159): E2E / llvm-cov / nextest-junit receipts remain PG-gated.
 Root-policy RED on the foreign todo.md (r174); core-size RED on the ADR-59 +64
 (r181) -- both await their owning lanes.
+### Round 233 (2026-11-09) -- register-hygiene: the ladder on fixture registers, and a rung that caught a copied assertion
+
+`python scripts/census-checker-contracts.py` named the target: "next target:
+scripts/check-register-hygiene.py (195 lines)". This round contracts it --
+ladder, root_param, and one new refusal arm -- and records a rung that failed
+into a real finding about how these ladders get written.
+
+The gate's own shape made the threading cheap and the ladder's assertion
+subtle. `main()` already took `register_path` as a parameter (r158's
+self-test needed it), so the ladder never has to fabricate a repository
+shape: every rung writes one register into a throwaway directory and names it.
+No prefix of the checkout is read, so the real 182-entry log cannot green a
+fixture by accident. Rung 1 is the killing rung -- a fixture with rounds 233
+and 235 must exit 1 naming the gap, which a main() that ignored its path and
+graded this checkout's clean register would never do.
+
+The parameter the census grades is `run_root`, not a decorative token: it is
+the ladder's own OFF SWITCH. `--self-test` runs the ladder; the ladder drives a
+nested `--self-test` through argv in rung 8; that nested call passes
+`run_root=False` so it returns before reaching `shell_ladder()`. Naming the
+switch after the census token was a deliberate choice with an honest caveat --
+the census reads parameter lists by substring, so the flag means "the word
+appears", and this file at least makes the word mean something executable.
+
+Rung 8 then failed, and it was the rung that was wrong. It asserted the
+nested self-test would print "ladder re-entry" -- the string a guard prints
+when it stops a recursion -- but with the switch in place the nested call never
+reaches the guard, so the guard is correctly silent. The assertion had been
+copied from `check-api-drift-table.py`, whose rung 7 runs WITHOUT an off switch
+and therefore does need the guard. The reference is right for its file and
+wrong for this one: a copied assertion is a claim about a different file's
+control flow. The rung now requires the re-entry line to be ABSENT, which is
+the stronger claim -- the switch demonstrably reached the nested call rather
+than the guard incidentally catching a re-entry.
+
+One new arm, found while threading: an undecodable register. Before this round
+a register whose bytes were not UTF-8 escaped `read_text` as a traceback and
+Python settled it at exit 1 -- indistinguishable from "1 finding", a lie about
+which of the three outcomes happened. It is now REFUSED, exit 2, naming the
+decode error. The three outcomes the docstring has always claimed (0 clean,
+1 findings, 2 REFUSED) are now three outcomes the code can actually produce.
+
+Measured after the change: `census-checker-contracts.py` reports 19 of 70
+contracted (was 18), and the file no longer appears in the un-contracted list;
+the next target becomes verify-workflow-syntax.py at 213 lines. Live gate
+unchanged at exit 0: "register hygiene OK: 182 round-log entries (51-232),
+consecutive, honest-limits from r114 on, 1 addendum(s)". Self-test: 12
+classifier cases + 4 CLI-shell cases + 8 ladder rungs, exit 0. Dependents
+unmoved: verify-selftests-wired 105 of 107; verify-gate-completeness OK.
+
+Honest limits: the ladder was exercised by hand through `register_path` for
+rungs 1-7 before the guard existed, and end to end as one run afterwards --
+both on a host whose confinement, at the time, DENIED creating files inside
+Python's default temp directory. That denial is why the fixture root honours
+TMPDIR/TMP/TEMP and why cleanup is best-effort; it is also why the same
+denial made every OTHER laddered checker unrunnable on that host during rounds
+1-3, which this round did not fix and does not claim to. `root_param` remains
+a substring test -- documented above rather than papered over. The ladder
+grades the CLI shell and the exit contract, not the classifier's twelve
+cases, which the self-test owns. LIMITS_FLOOR is still 114 by measurement, not
+by policy: this entry is above the floor and carries a limits paragraph
+because the convention requires it, not because a checker can tell the
+difference between an honest one and a present one.
