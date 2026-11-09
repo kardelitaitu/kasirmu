@@ -8926,3 +8926,46 @@ unexercised. Docker daemon still down (probed r159): the E2E / llvm-cov
 root-policy gate remains RED on the foreign todo.md (r174) and
 verify-core-size RED on the ADR-59 +64 (r181), both awaiting their
 owning lanes.
+
+### Round 206 (2026-11-09) -- deployment prober joins the arc in its no-checkout form
+
+The r166..r205 contract applied to the ADR #54 prober with one honest
+difference, stated in main()'s own docstring: this tool's evidence
+source is the --base URL it probes, not any checkout path -- CHECKS are
+fixed route names appended to the caller's base and the tool reads no
+repository file -- so there is no root to redirect; root is accepted by
+signature and ignored, and the contract's load-bearing half HERE is
+explicit argv (parse_args(argv) instead of the sys.argv read): an
+in-process call must not inherit the caller's command line.
+
+Four shell cases grade main() over a LOOPBACK http.server that answers
+every CHECKS path with a status that path EXPECTS -- real HTTP, real
+sockets, no DNS, no TLS, no external network, with the module's real
+1.5s pacing kept: all-configured reads "deployment COMPLETE" rc 0; one
+route 404 reads "INCOMPLETE: 1 route(s) absent" rc 1; a 503 health is
+named as a rollout rather than reported broken; an unexpected 500 reads
+"deployment BROKEN" rc 1. The verdict chain (ok / MISSING / UNEXPECTED /
+TRANSPORT -> complete/incomplete/broken) is now graded END to END
+through main, where before only probe()/classify() were pinned.
+
+Measured kill, captured honestly: the predicted parse_args recursion
+did NOT fire -- the probe process's own argv holds no --self-test, so
+the argv-dropping main probed the REAL deployment on S1 (paced
+1.5s-per-probe read-only HTTP, exactly what a live run does) and passed,
+then was killed at S2, which demands the fixture's single 404 against
+the real tree's COMPLETE. The probe is read-only HTTP against the
+production deployment; the S2 kill is the fixture-vs-world mismatch,
+the same arithmetic every other round's kill uses.
+
+Honest limits: the THROTTLE arm (403 with a 200 expectation, the 8s
+retry, the INCONCLUSIVE verdict) is pure-pinned in classify/probe but
+has no loopback main() case -- adding one costs a real 8s sleep per
+rung; the multi-base repeatable --base arm (both compiled origins) is
+graded only in the default path live, not on the loopback; the 302
+oauth probes are graded as one status inside the all-configured
+fixture, not per-redirect-code. Live capture this round: deployment
+COMPLETE: every ADR #54 route answers, sync is reachable. Docker daemon
+still down (probed r159): the E2E / llvm-cov / nextest-junit receipts
+remain the standing PG-gated gap. The root-policy gate remains RED on
+the foreign todo.md (r174) and verify-core-size RED on the ADR-59 +64
+(r181), both awaiting their owning lanes.
