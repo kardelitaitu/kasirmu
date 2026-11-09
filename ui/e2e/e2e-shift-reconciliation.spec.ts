@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loginAs, selectWorkspace, navigateTo, WORKSPACES } from './helpers';
+import { loginAs, selectWorkspace, openToolCard, WORKSPACES } from './helpers';
 
 /**
  * E2E Critical Path #2: Shift Open/Close → Reconciliation
@@ -34,9 +34,11 @@ test.describe('Critical Path: Shift Reconciliation', () => {
   test('open shift → complete sale → close shift → verify reconciliation', async ({ page }) => {
     test.setTimeout(45_000); // tablet viewport needs more time for multi-step flow
     // ── Step 1: Open shift ──────────────────────────────────────────
-    await selectWorkspace(page, WORKSPACES.ADMIN);
-
-    await navigateTo(page, 'shifts');
+    // OPEN THE TOOL, NOT A HASH. `navigateTo("shifts")` writes the route but establishes no
+    // workspace, and `shifts` is not fullscreen — so `AppShell:708` gated it on an active
+    // workspace and rendered the picker, leaving `.shift-mgmt` unmounted. Measured
+    // 2026-10-18; the tool card is the user path and sets the workspace with the navigation.
+    await openToolCard(page, /shifts/i);
     await page.waitForTimeout(2_000);
 
     await expect(page.locator('.shift-mgmt')).toBeVisible({ timeout: 10_000 });
@@ -139,11 +141,14 @@ test.describe('Critical Path: Shift Reconciliation', () => {
     await expect(page.locator('.retail-cart-empty')).toBeVisible({ timeout: 5_000 });
 
     // ── Step 3: Return to shifts and close shift ────────────────────
+    // Same reason as step 1: the tool card establishes the workspace the route needs.
+    // `selectWorkspace(ADMIN)` lands on `#/settings` (fullscreen, renders without a
+    // workspace), so the subsequent hash write to the NON-fullscreen `shifts` route
+    // falls through to the picker and `.shift-mgmt` never mounts.
     await selectWorkspace(page, WORKSPACES.ADMIN);
-    // navigateTo dispatches hashchange even when the hash is unchanged
-    // (already '#/shifts' from step 1), so the route re-syncs instead of
-    // staying on the admin default 'settings' page.
-    await navigateTo(page, 'shifts');
+    await page.evaluate(() => { window.location.hash = ''; });
+    await page.waitForTimeout(1_200);
+    await openToolCard(page, /shifts/i);
     await page.waitForTimeout(2_000);
 
     await expect(page.locator('.shift-mgmt')).toBeVisible({ timeout: 10_000 });

@@ -182,6 +182,8 @@ fn copy_reference_data(main_db_path: &str, store_conn: &Connection) -> Result<()
         "suppliers",
     ];
 
+    let tx = store_conn.unchecked_transaction()?;
+
     for table in tables {
         // Read schema columns from main DB
         // The `filter_map(|r| r.ok())` that stood here was swept for in the
@@ -223,10 +225,10 @@ fn copy_reference_data(main_db_path: &str, store_conn: &Connection) -> Result<()
             continue;
         }
 
-        // Insert into store DB
+        // Insert into store DB (O-L18: wrapped in tx for atomic batch insertion)
         let insert_sql =
             format!("INSERT OR IGNORE INTO {table} ({cols_str}) VALUES ({placeholders})");
-        let mut istmt = store_conn.prepare(&insert_sql)?;
+        let mut istmt = tx.prepare(&insert_sql)?;
         for row in &rows {
             let params: Vec<&dyn rusqlite::types::ToSql> = row
                 .iter()
@@ -236,6 +238,7 @@ fn copy_reference_data(main_db_path: &str, store_conn: &Connection) -> Result<()
         }
     }
 
+    tx.commit()?;
     Ok(())
 }
 

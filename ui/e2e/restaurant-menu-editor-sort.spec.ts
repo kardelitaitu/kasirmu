@@ -36,7 +36,15 @@ async function openMenuEditor(page: Page): Promise<void> {
 /** The visible item names, in the order the operator reads them. */
 async function itemOrder(page: Page): Promise<string[]> {
   return page.evaluate(() => {
-    const names = document.querySelectorAll('.restaurant-menu-editor-item-name, .restaurant-menu-editor-card-name');
+    // RETARGETED 2026-10-18. This selector listed two classes; the FIRST,
+    // `.restaurant-menu-editor-item-name`, exists nowhere in ui/src — the span it once named
+    // is `.restaurant-menu-editor-card-name` (`RestaurantMenuEditorScreen.tsx:1674`), so the
+    // leading alternative had been dead since a rename. A comma selector survives that
+    // silently, which is exactly why it sat here: the case kept passing on the second half.
+    // A whole-tree sweep of all 292 e2e locator selectors found this as the ONLY dead part,
+    // and the only one inside a multi-part fallback. Removed so the next reader is not told
+    // about a class the editor does not render.
+    const names = document.querySelectorAll('.restaurant-menu-editor-card-name');
     return Array.from(names).map((n) => (n.textContent || '').trim());
   });
 }

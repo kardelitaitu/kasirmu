@@ -418,7 +418,7 @@ pub struct SignedSubscriptionPayload {
 
 pub mod crl;
 pub use crl::{
-    CrlEntry, CrlPayload, CrlResponse, apply_crl_to_cache, fetch_license_crl,
+    CrlEntry, CrlPayload, CrlResponse, ParsedCrlSets, apply_crl_to_cache, fetch_license_crl,
     is_revoked_in_cached_crl, is_revoked_in_crl_payload, verify_crl_signature,
     verify_crl_signature_with_pem, verify_license_signature,
 };

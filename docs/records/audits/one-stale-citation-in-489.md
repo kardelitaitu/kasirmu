@@ -65,3 +65,5 @@ here, which is why the diff was the instrument.
 | `LicenseSettings.test.tsx` | **57 passed** |
 | `tsc` / `eslint` | 0 / 0 |
 | Full UI suite | 12,693 passed |
+
+> last audited 14-10-26 by docs-auditor

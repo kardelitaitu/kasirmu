@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import { ToastProvider } from '@/components/Toast';
@@ -330,6 +330,55 @@ describe('ShiftManagementScreen', () => {
     expect(mockListShifts.mock.calls.length).toBe(1); // no reload after failure
   });
 
+  // A double submit on Record Payout must not record the safe drop TWICE.
+  //
+  // The server does NOT protect this. core `create_cash_payout` compare-and-sets
+  // only against a CLOSED shift (crates/kasirmu-core/src/db/cash_payouts.rs:60-73,
+  // `WHERE EXISTS (SELECT 1 FROM shifts WHERE id = ?2 AND status = 'open')`), so two
+  // concurrent payouts against an OPEN shift BOTH succeed. `CashPayout::new` mints a
+  // fresh `uuid::Uuid::now_v7()` per call (crates/kasirmu-core/src/cash_payout.rs:35)
+  // and the unique index covers only the id, so nothing collapses them. Two submits
+  // therefore store two identical safe drops, the drawer is short by double the
+  // removal, and no later reconciliation can tell which row was the duplicate.
+  //
+  // The only guard is `loading={saving}` on the confirm button, and the handler has no
+  // in-flight check of its own. Compare rounds 136-137: there core refused the replay,
+  // so the worst outcome was a false toast. Here the write lands twice.
+  it('records a safe drop once for a double submit while the first is in flight', async () => {
+    let releasePayout: ((v: unknown) => void) | undefined;
+    const heldPayout = new Promise((resolve) => { releasePayout = resolve; });
+    mockCreateCashPayout.mockImplementation(() => heldPayout as never);
+    const user = await renderWithActiveShiftAndOpenPayout();
+
+    await user.type(screen.getByLabelText('Payout amount'), '20000');
+
+    // BOTH clicks inside ONE act() batch -- the part that matters, after two earlier
+    // rounds got this wrong twice. A plain sequential `fireEvent.click` already wraps
+    // each dispatch in its own act(), so React COMMITS `setSaving(true)` between them
+    // and the second lands on a disabled button: measured, that yields 1 call and
+    // reads as a guard that does not exist. A genuine double tap is two dispatches in
+    // ONE task, before React can re-render. That is the shape below, and it yields 2.
+    // `removeAttribute` is not a hack -- it is the point: without it the second
+    // dispatch is refused by a DOM flag React has not yet made authoritative.
+    const confirmBtn = screen.getByRole('button', { name: 'Record Payout' });
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+      confirmBtn.removeAttribute('disabled');
+      fireEvent.click(confirmBtn);
+    });
+
+    expect(
+      mockCreateCashPayout.mock.calls.length,
+      'a second submit re-sent the payout while the first was in flight; core has no ' +
+        'dedupe, so this records TWO safe drops and the drawer is short by double',
+    ).toBe(1);
+
+    releasePayout?.(undefined);
+    await waitFor(() => {
+      expect(mockCreateCashPayout).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('disables the confirm button until the amount is a positive whole number', async () => {
     const user = await renderWithActiveShiftAndOpenPayout();
     const confirm = () => screen.getByRole('button', { name: 'Record Payout' });
@@ -373,6 +422,59 @@ describe('ShiftManagementScreen', () => {
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
     // The history table still renders: only the active-shift read was unanswered.
     expect(screen.getByText('Shift History')).toBeInTheDocument();
+  });
+
+  // ── The OTHER read in the same Promise.all ────────────────────────
+  //
+  // `load` (:92-115) wraps getActiveShiftScoped in settleRead and listShiftsScoped as a bare
+  // await, in ONE Promise.all. The test above deliberately resolves listShifts, so the
+  // active-shift failure is the only thing in play -- and the suite is green with the list
+  // read unprotected.
+  //
+  // When the LIST read rejects, the Promise.all rejects and the whole try block aborts
+  // BEFORE `active.ok` is evaluated. `activeShiftUnknown` is never set, so the screen falls
+  // through to the plain no-active banner at :485 -- the one whose only affordance is Open
+  // Shift. That is the exact wrong action this screen's own guard exists to prevent:
+  // opening a second shift against one the database still holds open.
+  it('does not offer Open Shift when the SHIFT LIST read failed', async () => {
+    // The active-shift read ANSWERS -- the LIST is the one that could not be asked.
+    // Resolving it is what isolates the defect: any other arrangement tests the existing
+    // guard rather than this one.
+    mockGetActiveShift.mockResolvedValue(activeShift);
+    mockListShifts.mockRejectedValue(new Error('invoke failed'));
+
+    renderWithFluentSync(<ToastProvider><ShiftManagementScreen /></ToastProvider>, shiftsFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Failed to load shifts');
+    });
+
+    // The list read says nothing about the drawer, so the screen must not claim there is
+    // no active shift -- and must not offer the action that opens a second one.
+    expect(screen.queryByText('No active shift')).not.toBeInTheDocument();
+    expect(screen.queryByText('Open Shift')).not.toBeInTheDocument();
+    // The only action offered re-asks the question.
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+
+  it('recovers the no-active banner once the list read is answered', async () => {
+    const user = userEvent.setup();
+    mockGetActiveShift.mockResolvedValue(null);
+    mockListShifts.mockRejectedValueOnce(new Error('invoke failed'));
+    renderWithFluentSync(<ToastProvider><ShiftManagementScreen /></ToastProvider>, shiftsFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Failed to load shifts');
+    });
+
+    mockListShifts.mockResolvedValue(closedShifts);
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('No active shift')).toBeInTheDocument();
+      expect(screen.getByText('Open Shift')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('recovers the no-active banner once the retry answers', async () => {
@@ -438,6 +540,29 @@ describe('ShiftManagementScreen', () => {
     });
     return user;
   }
+
+  it('does not stack a stale active-shift card under the failure card', async () => {
+    // The active-shift card is gated on \`activeShift\` and the unknown card on
+    // \`activeShiftUnknown\` — independent gates. Setting only the flag after a failed read
+    // left the PREVIOUS shift's opening balance, sales and cash on screen above a
+    // "Failed to load shifts" card, reading as current at the moment the screen admits it
+    // cannot read them.
+    //
+    // A SUCCESSFUL payout awaits load() (:317), which re-issues the active-shift read.
+    // Making only that second read fail reproduces the stacked cards.
+    const user = await renderWithActiveShiftAndOpenPayout();
+
+    // Every read from here on fails — including the one the payout's load() issues.
+    mockGetActiveShift.mockRejectedValue(new Error('store busy'));
+    await user.type(screen.getByLabelText('Payout amount'), '20000');
+    await user.click(screen.getByRole('button', { name: 'Record Payout' }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Failed to load shifts/)).toBeInTheDocument();
+    });
+    // The stale figures are gone rather than stacked under the error.
+    expect(screen.queryByText('Active Shift')).toBeNull();
+  });
 
   it('does not show an empty report when the read failed', async () => {
     mockListShifts.mockResolvedValue(closedShifts);

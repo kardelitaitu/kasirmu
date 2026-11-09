@@ -1,5 +1,6 @@
 use super::*;
 use kasirmu_core::session::SessionContext;
+use kasirmu_test_support::tempdir;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
 
@@ -97,7 +98,7 @@ async fn scoped_category_command_denies_user_without_permission() {
     )
     .unwrap();
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);

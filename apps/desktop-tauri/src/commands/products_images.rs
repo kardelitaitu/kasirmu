@@ -128,18 +128,6 @@ pub async fn products_list_images_scoped(
         .map_err(Into::into)
 }
 
-// ── Pipeline adapter (test-compat) ─────────────────────────────────────
-
-/// Transcode `input_bytes` to 512 px WebP at quality 40 with adaptive fallback.
-///
-/// Thin adapter over `kasirmu_bridge::products_images::transcode_to_webp`: the
-/// name, parameter list and `Result<_, AppError>` type are unchanged so the
-/// sibling test module keeps matching on `AppError::Invalid`.
-#[allow(dead_code)] // retained by the Wave-A S8 extraction contract for sibling tests
-fn transcode_to_webp(input_bytes: &[u8]) -> Result<Vec<u8>, AppError> {
-    kasirmu_bridge::products_images::transcode_to_webp(input_bytes).map_err(AppError::from)
-}
-
 /// Resolve the filesystem path for the content-addressed image file.
 ///
 /// The tauri seam of the ingest pipeline (S8): `app_cache_dir()` can only be

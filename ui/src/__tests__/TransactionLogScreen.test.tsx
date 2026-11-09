@@ -93,7 +93,7 @@ function mockDefaultSuccess() {
 // ── Render helper ──────────────────────────────────────────────────
 
 async function renderPage() {
-  await renderInAct(<ToastProvider><TransactionLogScreen /></ToastProvider>);
+  return renderInAct(<ToastProvider><TransactionLogScreen /></ToastProvider>);
 }
 
 // ── Tests ──────────────────────────────────────────────────────────
@@ -101,6 +101,25 @@ async function renderPage() {
 describe('TransactionLogScreen', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  // ── Page heading ────────────────────────────────────────────────
+
+  // WHY A DOM ASSERTION AND NOT AN AXE RUN: axe's `page-has-heading-one` cannot
+  // reach a verdict under jsdom (both a document with an <h1> and one without
+  // return `incomplete` / `error-occurred`), measured 2026-10-27. The title was
+  // an <h2> while the screen had no <h1>; reverting it left this file green.
+  it('exposes the screen title as the page heading', async () => {
+    mockListTransactions.mockResolvedValue([]);
+    mockListLocations.mockResolvedValue([]);
+
+    const { container } = await renderPage();
+
+    const h1s = Array.from(container.querySelectorAll('h1'));
+    expect(h1s, 'the transaction log must carry exactly one level-one heading').toHaveLength(1);
+    // @fluent/react is mocked above to a passthrough with getString -> id, so the
+    // Localized child falls through as its own text.
+    expect(h1s[0]!.textContent?.trim()).toBe('Inventory Transaction Log');
   });
 
   // ── Loading state ───────────────────────────────────────────────
@@ -191,6 +210,51 @@ describe('TransactionLogScreen', () => {
     });
   });
 
+  // The Details BUTTON, as an element, must toggle the row.
+  //
+  // The two cases above click the TEXT and pass -- but they never click the button.
+  // `getAllByText('Details')[0]` resolves to the <span> inside
+  // TransactionLogScreen.tsx:273-277, and a userEvent.click on it BUBBLES to the <tr>'s
+  // onClick at :256. So the existing suite exercises the ROW control and leaves the
+  // BUTTON completely untested -- which is exactly how it came to ship with no onClick at
+  // all.
+  //
+  // Two defects follow from that one missing attribute:
+  //   1. a control that renders, reads as actionable, and does nothing;
+  //   2. a NESTED interactive -- a <button> inside a row that already carries
+  //      role="button" (:250) -- which axe reports as aria-nested-interactive, and which
+  //      a screen reader announces as a button inside a button.
+  // The rest of the machinery is all present and wired: `expandedTxId` (:33),
+  // `handleRowClick` (:70-90), the detail block at :280. Only the button's onClick is
+  // absent, so the whole affordance is dead in one attribute.
+  it('keeps the Details button actionable on its own, not via the row', async () => {
+    mockDefaultSuccess();
+    await renderPage();
+
+    await waitFor(() => {
+      expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+    });
+
+    const detailsBtn = document.querySelector('button.log-detail-btn') as HTMLButtonElement | null;
+    expect(detailsBtn, 'the Details button element is not rendered').not.toBeNull();
+
+    // Clicking the button must expand the row EXACTLY once. Before the fix this was 2:
+    // the button had no handler and only worked because the click bubbled to the row, so
+    // the 'expansion' was the row's, and any real handler added without stopPropagation
+    // would double-toggle (open-then-closed = a visible no-op).
+    mockGetTransaction.mockClear();
+    await userEvent.click(detailsBtn!);
+    await waitFor(() => {
+      expect(
+        mockGetTransaction.mock.calls.length,
+        'one click on Details must expand the row exactly once -- the button fires AND ' +
+          'the bubble to the row fires, so without stopPropagation it toggles twice',
+      ).toBe(1);
+    });
+    await waitFor(() => {
+      expect(screen.getByText('SKU-001')).toBeInTheDocument();
+    });
+  });
   it('collapses expanded row when clicked again', async () => {
     mockDefaultSuccess();
     await renderPage();

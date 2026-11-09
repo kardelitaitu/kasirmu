@@ -71,3 +71,32 @@ fn rejects_invalid_input() {
     let result = auto_crop(b"not-an-image", CropMode::TrimBorders, None);
     assert!(matches!(result, Err(MediaError::InvalidImage(_))));
 }
+
+#[test]
+fn trim_borders_solid_image_returns_original() {
+    let img = RgbImage::from_pixel(50, 50, Rgb([100, 100, 100]));
+    let mut buf = Vec::new();
+    img.write_to(&mut Cursor::new(&mut buf), image::ImageFormat::Png)
+        .unwrap();
+    let (out, dims) = auto_crop(&buf, CropMode::TrimBorders, None).unwrap();
+    assert_eq!(dims.width, 50);
+    assert_eq!(dims.height, 50);
+    assert!(!out.is_empty());
+}
+
+#[test]
+fn trim_borders_asymmetric_border() {
+    let mut img = RgbImage::from_pixel(100, 100, Rgb([0, 0, 0]));
+    // Top 5, bottom 15, left 10, right 20 -> centre 70x80
+    for x in 10..80 {
+        for y in 5..85 {
+            img.put_pixel(x, y, Rgb([200, 200, 200]));
+        }
+    }
+    let mut buf = Vec::new();
+    img.write_to(&mut Cursor::new(&mut buf), image::ImageFormat::Png)
+        .unwrap();
+    let (_, dims) = auto_crop(&buf, CropMode::TrimBorders, None).unwrap();
+    assert_eq!(dims.width, 70);
+    assert_eq!(dims.height, 80);
+}

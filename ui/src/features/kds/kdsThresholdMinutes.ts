@@ -1,9 +1,11 @@
 /**
  * KDS SLA threshold clamping, in MINUTES — the settings-slider domain.
  *
- * Moved verbatim out of KdsScreen.tsx:913-923, where all three expressions
- * lived inline inside the onChangeYellowThreshold / onChangeRedThreshold
- * props. The constants live here now; the screen calls these and keeps no
+ * Moved verbatim out of KdsScreen.tsx, where all three expressions lived inline
+ * inside the onChangeYellowThreshold / onChangeRedThreshold props. No line range
+ * is cited: the screen has been cut down since, so any range here would point
+ * past the end of the file it names.
+ * The constants live here now; the screen calls these and keeps no
  * bound of its own. __tests__/KdsThresholdClamp.test.ts imports them, which
  * is what makes that suite load-bearing: a bound changed here fails a test,
  * instead of silently diverging from a copy of the expression.

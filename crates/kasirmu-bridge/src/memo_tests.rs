@@ -1,7 +1,7 @@
 //! Unit tests for the memo command surface (DTO wire shapes and the
 //! 2026-09-07 stop-gate ruling).
 //!
-//! Relocated from `apps/desktop-tauri/src/commands/memo_tests.rs`
+//! Relocated from `apps/desktop-client/src/commands/memo_tests.rs`, since renamed to desktop-tauri
 //! (Wave F); the tauri `test_state` mock becomes `TestBridge::with_conn`
 //! over the seeded global identity DB.
 
@@ -917,7 +917,7 @@ async fn publish_resolves_the_store_terminals_when_the_store_db_is_not_open_yet(
 
     // The store manager of the SAME install: a directory that already exists
     // (as `app_data_dir()` does) but holds no store database yet.
-    let store_dir = crate::testing::unique_store_dir();
+    let (store_dir, scratch) = crate::testing::unique_store_dir();
     std::fs::create_dir_all(&store_dir).unwrap();
     let manager = StoreDatabaseManager::new(store_dir, migrations::ALL);
     let store_db = manager.store_db_path("store-a");
@@ -926,7 +926,9 @@ async fn publish_resolves_the_store_terminals_when_the_store_db_is_not_open_yet(
         "the premise: nothing has opened this store yet"
     );
 
-    let tb = TestBridge::new().with_conn(conn).with_db_manager(manager);
+    let tb = TestBridge::new()
+        .with_conn(conn)
+        .with_db_manager_scratch(manager, scratch);
     tb.sessions().write().unwrap().insert(
         "author-tok".into(),
         session_for_device("user-manager", "role-manager", "DESKTOP-AUTHOR"),
@@ -986,9 +988,11 @@ async fn publishing_from_a_store_whose_db_is_absent_still_reaches_global_termina
     seed_user(&conn, "user-manager", "role-manager");
     seed_terminal(&conn, "term-global-1", "DESKTOP-AUTHOR");
 
-    let store_dir = crate::testing::unique_store_dir();
+    let (store_dir, scratch) = crate::testing::unique_store_dir();
     let manager = StoreDatabaseManager::new(store_dir, migrations::ALL);
-    let tb = TestBridge::new().with_conn(conn).with_db_manager(manager);
+    let tb = TestBridge::new()
+        .with_conn(conn)
+        .with_db_manager_scratch(manager, scratch);
     tb.sessions().write().unwrap().insert(
         "author-tok".into(),
         session_for_device("user-manager", "role-manager", "DESKTOP-AUTHOR"),

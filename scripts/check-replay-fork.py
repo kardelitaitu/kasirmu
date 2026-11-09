@@ -78,13 +78,17 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r177: argv and root parameterized, the r166..r176 contract. Until this
+    change main() parsed sys.argv itself, which is why this checker's own
+    self-test drove it by subprocess -- the in-process form re-read the test
+    runner's argv and answered the wrong question (measured there 2026-10-24)."""
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--root", default=".", help="repository root")
     ap.add_argument("--quiet", action="store_true", help="only report findings")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
-    root = Path(args.root).resolve()
+    root = Path(root).resolve() if root is not None else Path(args.root).resolve()
     bridge_path = root / BRIDGE_REL
     tablet_path = root / TABLET_REL
 

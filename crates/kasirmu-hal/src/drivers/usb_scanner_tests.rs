@@ -39,26 +39,36 @@ fn hid_report_space() {
     assert_eq!(hid_report_to_char(&report), Some(' '));
 }
 
-/// The three copies of `MAX_BARCODE_LEN` must keep the SAME unit in their prose.
+/// `MAX_BARCODE_LEN`'s doc must keep stating BYTES, in every copy that survives.
 ///
-/// WHY THIS EXISTS. The constant is defined independently in three driver modules --
+/// WHY THIS EXISTS. The constant WAS defined independently in three driver modules --
 /// `usb_scanner`, `bt_scanner` and `serial_scanner` -- with no shared source, so their
 /// docs could drift while the VALUE agreed. They had: `usb_scanner` said "1024 chars"
 /// where the other two said "1024 bytes", and the check in all three is a byte length
 /// (`String::len()` for the HID path, `Vec<u8>::len()` for the two byte-buffer paths).
 ///
-/// Harmless today -- every entry in the HID table is ASCII, so the counts coincide -- but
-/// the doc is what a reader trusts, and a non-ASCII key added to that table would make
+/// Harmless at the time -- every entry in the HID table is ASCII, so the counts coincide --
+/// but the doc is what a reader trusts, and a non-ASCII key added to that table would make
 /// the two diverge under a comment denying it.
+///
+/// AMENDED for O-M42. The serial and Bluetooth scanners no longer keep their own copy:
+/// their one-byte-per-read loops were replaced by the shared, buffered
+/// `transport::barcode_reader` loop, which now OWNS `MAX_BARCODE_LEN` (the drivers
+/// re-export it, so the public path `drivers::*_scanner::MAX_BARCODE_LEN` still resolves
+/// and still equals 1024). The list below therefore names the shared home in place of the
+/// two retired copies. The rule is unchanged: any module that DEFINES the constant must
+/// state bytes, and must define it as 1024.
 ///
 /// Pinned as a SOURCE assertion because the defect was in the prose, not the behaviour:
 /// a byte count cannot observe a wrong unit while the inputs happen to be ASCII.
 #[test]
-fn max_barcode_len_docs_agree_on_the_unit_across_all_three_copies() {
+fn max_barcode_len_docs_agree_on_the_unit_across_all_copies() {
     let copies = [
         ("usb_scanner.rs", include_str!("usb_scanner.rs")),
-        ("bt_scanner.rs", include_str!("bt_scanner.rs")),
-        ("serial_scanner.rs", include_str!("serial_scanner.rs")),
+        (
+            "transport/barcode_reader.rs",
+            include_str!("../transport/barcode_reader.rs"),
+        ),
     ];
 
     for (name, source) in copies {
@@ -73,7 +83,7 @@ fn max_barcode_len_docs_agree_on_the_unit_across_all_three_copies() {
         assert!(doc.contains("bytes") && !doc.contains("chars"), "{msg}");
         assert!(
             source.contains("MAX_BARCODE_LEN: usize = 1024;"),
-            "{name} must define MAX_BARCODE_LEN = 1024 like its two siblings"
+            "{name} must define MAX_BARCODE_LEN = 1024"
         );
     }
 }

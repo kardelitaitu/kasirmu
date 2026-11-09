@@ -16,14 +16,16 @@ Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (1 finding) · I
 
 Terminal — register yang Anda lihat di topologi — adalah perangkat yang
 menjalankan kasir.mu: register kasir, tablet, atau layar dapur. Setiap terminal
-punya nama dan pengenal perangkat (hostname atau alamat MAC) yang dilaporkan
-otomatis oleh aplikasi. Mengelola terminal memerlukan peran manajer.
+punya nama dan pengenal perangkat (hostname atau alamat MAC) yang **Anda isi
+sendiri** — tidak terdeteksi otomatis, dan pendaftaran ditolak tanpanya.
+Mengelola terminal memerlukan peran manajer.
 
 ## Mendaftarkan terminal
 
 Buka layar Terminal dari bagian Alat pada navigasi utama, lalu daftarkan
 perangkat. Beri nama yang mudah dibaca
-("Kasir Depan") dan pengenal perangkat, serta opsional kunci rahasia bersama
+("Kasir Depan") dan pengenal perangkat (wajib — formulir ditolak sampai Anda
+mengisinya), serta opsional kunci rahasia bersama
 untuk autentikasi sinkron dan metadata JSON. Terminal dapat dinonaktifkan
 atau dihapus kemudian; penghapusan bersifat permanen.
 

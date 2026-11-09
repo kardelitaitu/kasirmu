@@ -1157,8 +1157,6 @@ pub fn run() {
                 commands::pos::override_cart_deduction_location_scoped,
                 commands::pos::get_cart_deduction_location,
                 commands::pos::get_cart_deduction_location_scoped,
-                commands::pos::list_active_carts_scoped,
-                commands::pos::get_active_cart_scoped,
                 commands::pos::hold_cart_scoped,
                 commands::pos::list_held_carts_scoped,
                 commands::pos::list_open_bills_scoped,
@@ -1216,6 +1214,13 @@ pub fn run() {
                 // and the sorted block below). Only set_device_binding_scoped remains
                 // here, and it is scoped; the L-1 finding in
                 // docs/archived/tauri-security-audit.md:162 is satisfied.
+                // The read and clear were MISSING here until 2026-10-25: the shell
+                // registered only the writer, so `TerminalManagementScreen` called two
+                // commands it never exposed. `getDeviceBindingScoped` loads the binding
+                // panel and also refreshes AFTER a successful set, so a tablet wrote the
+                // binding and still showed an error.
+                commands::terminals::get_device_binding_scoped,
+                commands::terminals::clear_device_binding_scoped,
                 commands::terminals::set_device_binding_scoped,
                 commands::workspaces::list_workspaces,
                 commands::workspaces::list_workspace_screens,
@@ -1238,6 +1243,7 @@ pub fn run() {
                 commands::reports::get_low_stock_alerts_scoped,
                 commands::reports::get_category_breakdown_scoped,
                 commands::reports::get_payment_method_breakdown_scoped,
+        commands::reports::get_piutang_collections_scoped,
                 commands::reports::get_voided_sales_summary_scoped,
                 commands::reports::get_voided_items_scoped,
                 commands::reports::get_basket_size_scoped,
@@ -1277,6 +1283,7 @@ pub fn run() {
                 commands::hardware::print_receipt_scoped,
                 commands::hardware::print_sales_receipt_scoped,
                 commands::hardware::print_edc_settlement_slip_scoped,
+                commands::hardware::print_kasbon_settlement_slip_scoped,
                 commands::hardware::start_scanner_scoped,
                 commands::hardware::stop_scanner_scoped,
                 commands::hardware::list_displays_scoped,
@@ -1340,6 +1347,15 @@ pub fn run() {
                 commands::receipt_format::get_receipt_format_scoped,
                 commands::receipt_format::set_receipt_layout_scoped,
                 commands::receipt_format::set_receipt_content_scoped,
+                // Accounts Receivable (Piutang / Kasbon — Phase 3).
+                commands::receivables::list_receivables_scoped,
+                commands::receivables::list_customer_receivables_scoped,
+                commands::receivables::get_receivable_scoped,
+                commands::receivables::get_customer_receivables_summary_scoped,
+                commands::receivables::create_receivable_scoped,
+                commands::receivables::record_receivable_payment_scoped,
+                commands::receivables::write_off_receivable_scoped,
+                commands::receivables::get_ar_aging_report_scoped,
                 commands::offline::delete_offline_item_scoped,
                 commands::offline::enqueue_offline_scoped,
                 commands::offline::list_all_offline_scoped,
@@ -1416,7 +1432,6 @@ pub fn run() {
                 commands::sync::get_sync_plan_scoped,
                 commands::sync::get_sync_settings_scoped,
                 commands::sync::list_sync_conflicts_scoped,
-                commands::sync::pending_sync_count_scoped,
                 commands::sync::request_sync_token_scoped,
                 commands::sync::resolve_sync_conflict_scoped,
                 commands::sync::sync_pull_scoped,

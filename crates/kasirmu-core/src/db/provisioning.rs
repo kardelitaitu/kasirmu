@@ -433,6 +433,11 @@ pub fn provision_device(
     }
 }
 
+/// One seeded sample product: `(sku, name, price_minor, qty, category, notes)`.
+/// Named because the six-field tuple trips `clippy::type_complexity` under
+/// `-D warnings`, and the name says which `i64` is price and which is quantity.
+type SampleItem<'a> = (&'a str, &'a str, i64, i64, &'a str, Option<&'a str>);
+
 /// The transactional body, split out so the commit/rollback pairing above
 /// stays in one place and every early return here rolls back.
 fn provision_device_inner(
@@ -531,18 +536,22 @@ fn provision_device_inner(
     // All client quota readers load tenant "default" (see license.rs:143-154),
     // so "default" MUST be populated even when args.tenant_id is a server-assigned ID.
     if args.mode == ProvisioningMode::Local {
+        let allowed_types = match args.location_kind {
+            LocationKind::Restaurant => r#"["store-pos", "restaurant-pos", "admin", "kds"]"#,
+            _ => r#"["store-pos", "restaurant-pos", "admin"]"#,
+        };
         tx.execute(
             "INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature)
-             VALUES ('default', 'free', 'active', NULL, 1, 1, '[\"store-pos\", \"restaurant-pos\", \"admin\"]', 'BOOTSTRAP_FREE')",
-            [],
+             VALUES ('default', 'free', 'active', NULL, 1, 1, ?1, 'BOOTSTRAP_FREE')",
+            params![allowed_types],
         )?;
         if let Some(tenant_id) = args.tenant_id.as_deref()
             && tenant_id != "default"
         {
             tx.execute(
                 "INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature)
-                 VALUES (?1, 'free', 'active', NULL, 1, 1, '[\"store-pos\", \"restaurant-pos\", \"admin\"]', 'BOOTSTRAP_FREE')",
-                params![tenant_id],
+                 VALUES (?1, 'free', 'active', NULL, 1, 1, ?2, 'BOOTSTRAP_FREE')",
+                params![tenant_id, allowed_types],
             )?;
         }
     }
@@ -590,7 +599,7 @@ fn provision_device_inner(
         let is_restaurant = args.location_kind == LocationKind::Restaurant
             || args.preset == "restaurant"
             || args.preset == "cafe";
-        let sample_items: &[(&str, &str, i64, i64, &str)] = if is_restaurant {
+        let sample_items: &[SampleItem<'_>] = if is_restaurant {
             &[
                 (
                     "SMPL-REST-01",
@@ -598,6 +607,7 @@ fn provision_device_inner(
                     2_500_000,
                     100,
                     "restaurant",
+                    None,
                 ),
                 (
                     "SMPL-REST-02",
@@ -605,6 +615,7 @@ fn provision_device_inner(
                     2_800_000,
                     50,
                     "restaurant",
+                    None,
                 ),
                 (
                     "SMPL-REST-03",
@@ -612,6 +623,7 @@ fn provision_device_inner(
                     800_000,
                     120,
                     "restaurant",
+                    None,
                 ),
                 (
                     "SMPL-REST-04",
@@ -619,25 +631,72 @@ fn provision_device_inner(
                     3_500_000,
                     80,
                     "restaurant",
+                    Some(
+                        r#"[{"id":"grp-pedas","name":"Level Pedas","minSelections":1,"maxSelections":1,"sortOrder":1,"modifiers":[{"id":"opt-p1","name":"Pedas Sedang","priceMinor":0,"sortOrder":1,"isDefault":true},{"id":"opt-p2","name":"Extra Pedas","priceMinor":300000,"sortOrder":2,"isDefault":false},{"id":"opt-p3","name":"Tidak Pedas","priceMinor":0,"sortOrder":3,"isDefault":false}]},{"id":"grp-topping","name":"Topping Tambahan","minSelections":0,"maxSelections":3,"sortOrder":2,"modifiers":[{"id":"opt-t1","name":"Telur Mata Sapi","priceMinor":500000,"sortOrder":1,"isDefault":false},{"id":"opt-t2","name":"Tambah Kerupuk","priceMinor":200000,"sortOrder":2,"isDefault":false},{"id":"opt-t3","name":"Tambah Sambal","priceMinor":0,"sortOrder":3,"isDefault":false}]}]"#,
+                    ),
                 ),
-                ("SMPL-REST-05", "Es Teh Manis", 1_000_000, 150, "restaurant"),
+                (
+                    "SMPL-REST-05",
+                    "Es Teh Manis",
+                    1_000_000,
+                    150,
+                    "restaurant",
+                    Some(
+                        r#"[{"id":"grp-manis","name":"Level Manis","minSelections":1,"maxSelections":1,"sortOrder":1,"modifiers":[{"id":"opt-m1","name":"Manis Normal","priceMinor":0,"sortOrder":1,"isDefault":true},{"id":"opt-m2","name":"Less Sugar","priceMinor":0,"sortOrder":2,"isDefault":false},{"id":"opt-m3","name":"Tanpa Gula","priceMinor":0,"sortOrder":3,"isDefault":false}]},{"id":"grp-es","name":"Es Batu","minSelections":1,"maxSelections":1,"sortOrder":2,"modifiers":[{"id":"opt-e1","name":"Es Normal","priceMinor":0,"sortOrder":1,"isDefault":true},{"id":"opt-e2","name":"Tanpa Es","priceMinor":0,"sortOrder":2,"isDefault":false}]}]"#,
+                    ),
+                ),
             ]
         } else {
             &[
-                ("SMPL-RTL-01", "Air Mineral 600ml", 500_000, 100, "retail"),
-                ("SMPL-RTL-02", "Kopi Susu Kemasan", 1_200_000, 60, "retail"),
-                ("SMPL-RTL-03", "Keripik Singkong", 1_500_000, 45, "retail"),
-                ("SMPL-RTL-04", "Buku Catatan A5", 2_200_000, 30, "retail"),
-                ("SMPL-RTL-05", "Kantong Belanja Eco", 500_000, 200, "retail"),
+                (
+                    "SMPL-RTL-01",
+                    "Air Mineral 600ml",
+                    500_000,
+                    100,
+                    "retail",
+                    None,
+                ),
+                (
+                    "SMPL-RTL-02",
+                    "Kopi Susu Kemasan",
+                    1_200_000,
+                    60,
+                    "retail",
+                    None,
+                ),
+                (
+                    "SMPL-RTL-03",
+                    "Keripik Singkong",
+                    1_500_000,
+                    45,
+                    "retail",
+                    None,
+                ),
+                (
+                    "SMPL-RTL-04",
+                    "Buku Catatan A5",
+                    2_200_000,
+                    30,
+                    "retail",
+                    None,
+                ),
+                (
+                    "SMPL-RTL-05",
+                    "Kantong Belanja Eco",
+                    500_000,
+                    200,
+                    "retail",
+                    None,
+                ),
             ]
         };
 
-        for (sku, name, price_minor, initial_stock, ptype) in sample_items {
+        for (sku, name, price_minor, initial_stock, ptype, notes) in sample_items {
             let id = uuid::Uuid::now_v7().to_string();
             tx.execute(
-                "INSERT INTO products (id, sku, name, price_minor, currency, is_active, product_type, version, created_at, updated_at, price_updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, 1, ?7, ?7, ?7)",
-                params![id, sku, name, price_minor, cur, ptype, now],
+                "INSERT INTO products (id, sku, name, price_minor, currency, is_active, product_type, notes, version, created_at, updated_at, price_updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?7, 1, ?8, ?8, ?8)",
+                params![id, sku, name, price_minor, cur, ptype, notes, now],
             )?;
             tx.execute(
                 "INSERT OR REPLACE INTO inventory (product_id, qty, updated_at)

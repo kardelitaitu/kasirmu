@@ -58,3 +58,5 @@ CartPanel, and with a CartPanel there is still no bar. Any repair must either
 
 All probes deleted; `git status` on both files clean; the file passes in declaration order
 (30 passed, 1 skipped) and the full suite is green.
+
+> last audited 14-10-26 by docs-auditor

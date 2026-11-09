@@ -64,3 +64,5 @@ implementation, AND the once-queue.** Any `beforeEach` that used `clear` on a mo
 replaces is a latent order-dependence, and `--sequence.shuffle.tests` is how it is found.
 
 See also: `mock-implementation-leak.md` (round 92), `once-queue-survives-clear.md` (round 99).
+
+> last audited 14-10-26 by docs-auditor

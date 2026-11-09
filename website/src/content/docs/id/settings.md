@@ -42,10 +42,12 @@ nota mengontrol lebar kertas, tampilan mata uang dan pajak, pembulatan,
 footer, serta printer — per ruang kerja, sehingga setiap layar mencetak
 dengan caranya sendiri.
 
-## Tampilan & perangkat
+## Preferensi perangkat
 
-**Tampilan** mengatur tema (mode gelap) yang dipakai perangkat saat boot.
-Preferensi per perangkat seperti volume suara ada di terminal; lihat
+**Tidak ada layar Tampilan** di Pengaturan. Tema adalah preferensi per
+perangkat, bukan per pengguna: tema mengikuti perangkat tempat kasir berjalan,
+bukan orang yang sedang masuk. Preferensi per perangkat seperti volume suara
+diatur di terminal; lihat
 [Terminal](../terminals/) untuk apa yang mengikuti perangkat alih-alih
 pengguna.
 

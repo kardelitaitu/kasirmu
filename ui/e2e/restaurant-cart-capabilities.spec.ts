@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { openRestaurantPosWithItem as openRestaurantPosWithItemShared } from './helpers';
 
 /**
@@ -41,7 +42,7 @@ const TIMEOUT = 15_000;
 // cart controls that need no `settings:edit`, so the least-privileged account that can reach
 // the till is the one that should exercise them. Round 161 parameterised the shared helper
 // rather than quietly promoting this spec to owner.
-async function openRestaurantPosWithItem(page: import('@playwright/test').Page) {
+async function openRestaurantPosWithItem(page: Page) {
   await openRestaurantPosWithItemShared(page, 'staff');
 }
 
@@ -50,6 +51,19 @@ test.describe('Restaurant POS — cart footer capabilities', () => {
     page,
   }) => {
     await openRestaurantPosWithItem(page);
+
+    // The discount controls live in the collapsible options section, which the till
+    // starts COLLAPSED and which is MOUNTED ONLY WHILE OPEN. While shut the
+    // subtree does not exist in the DOM at all, so expanding it is not a test
+    // nicety - it is the cashier's own first action. Measured 2026-10-17: before
+    // it was mounted-but-clipped, this section put its buttons at y 1252-1296 on a
+    // 1024x1366 tablet, entirely past the bottom of its own options section
+    // (ends y 1242) and underneath `.pos-cart-actions-row`, so
+    // `elementFromPoint` at the button's centre returned
+    // `pos-cart-open-bill-btn` and the click was intercepted. Only on desktop was
+    // the button's 22px close enough to pass, which is why the desktop project
+    // alone ever went green here.
+    await page.locator('.pos-cart-options-toggle').click();
 
     // The form is INLINE, not a modal: `restaurant-pos-cart-footer-live-controls.md`
     // (2026-10-12) records that scanning `[role=dialog]` for its inputs finds nothing.
@@ -70,6 +84,10 @@ test.describe('Restaurant POS — cart footer capabilities', () => {
   test('the promotions button opens the promotions modal', async ({ page }) => {
     await openRestaurantPosWithItem(page);
 
+    // Same collapsible section as the discount test above: it must be expanded
+    // before the controls inside it exist. See the note there for the measured
+    // reason this is not optional.
+    await page.locator('.pos-cart-options-toggle').click();
     // `.pos-cart-promotion-btn` — NOT `.pos-cart-discount-btn`, which both buttons share.
     await page.locator('.pos-cart-promotion-btn').first().click();
     await expect(page.locator('[role="dialog"]').first()).toBeVisible({ timeout: 5_000 });

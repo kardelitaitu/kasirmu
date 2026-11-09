@@ -12,6 +12,9 @@
 
 // `base64::Engine` is the TRAIT providing `.decode()`; importing only the value
 // types gives `E0599: no method named 'decode'`.
+use std::collections::HashSet;
+use std::sync::{Arc, RwLock};
+
 use base64::Engine;
 use rsa::RsaPublicKey;
 use rsa::pkcs1v15::VerifyingKey;
@@ -23,6 +26,87 @@ use sha2::Sha256;
 use crate::error::CoreError;
 
 use super::{LICENSE_PUBLIC_KEY_PEM, license_server_url, refresh_subscription_status_from_server};
+
+// ── In-Memory Parsed CRL Cache ──────────────────────────────────────
+
+/// Pre-indexed sets for O(1) CRL membership checks without repeated deserialization.
+#[derive(Debug, Clone, Default)]
+pub struct ParsedCrlSets {
+    /// Set of revoked tenant identifiers.
+    pub revoked_tenants: HashSet<String>,
+    /// Set of revoked machine/device identifiers.
+    pub revoked_devices: HashSet<String>,
+    /// Set of revoked license keys (cleartext).
+    pub revoked_keys: HashSet<String>,
+    /// Set of revoked license key SHA-256 hex digests.
+    pub revoked_key_hashes: HashSet<String>,
+}
+
+impl From<&CrlPayload> for ParsedCrlSets {
+    fn from(crl: &CrlPayload) -> Self {
+        let revoked_tenants = crl.revoked_tenants.iter().cloned().collect();
+        let revoked_devices = crl.revoked_devices.iter().cloned().collect();
+        let mut revoked_keys = HashSet::with_capacity(crl.entries.len());
+        let mut revoked_key_hashes = HashSet::with_capacity(crl.entries.len());
+        for entry in &crl.entries {
+            if !entry.key.is_empty() {
+                revoked_keys.insert(entry.key.clone());
+            }
+            if !entry.key_hash.is_empty() {
+                revoked_key_hashes.insert(entry.key_hash.clone());
+            }
+        }
+        Self {
+            revoked_tenants,
+            revoked_devices,
+            revoked_keys,
+            revoked_key_hashes,
+        }
+    }
+}
+
+impl ParsedCrlSets {
+    /// Query revocation status against pre-indexed sets in O(1) time.
+    pub fn is_revoked(
+        &self,
+        license_key: Option<&str>,
+        tenant_id: Option<&str>,
+        machine_id: Option<&str>,
+    ) -> bool {
+        // 1. Check tenant ID
+        if let Some(tid) = tenant_id
+            && self.revoked_tenants.contains(tid)
+        {
+            return true;
+        }
+
+        // 2. Check machine ID
+        if let Some(mid) = machine_id
+            && self.revoked_devices.contains(mid)
+        {
+            return true;
+        }
+
+        // 3. Check license key (exact or SHA-256 hex digest)
+        if let Some(key) = license_key {
+            if self.revoked_keys.contains(key) {
+                return true;
+            }
+            use sha2::Digest;
+            let mut hasher = Sha256::new();
+            hasher.update(key.as_bytes());
+            let key_hash = hex::encode(hasher.finalize());
+            if self.revoked_key_hashes.contains(&key_hash) {
+                return true;
+            }
+        }
+
+        false
+    }
+}
+
+/// Global cache holding the raw JSON string and pre-indexed sets of the latest cached CRL.
+static PARSED_CRL_CACHE: RwLock<Option<(String, Arc<ParsedCrlSets>)>> = RwLock::new(None);
 
 // ── Certificate / Licence Revocation List (CRL) ───────────────────────
 
@@ -277,19 +361,19 @@ pub fn apply_crl_to_cache(
         &chrono::Utc::now().to_rfc3339(),
     )?;
 
-    let is_revoked = is_revoked_in_crl_payload(
-        crl,
-        current_license_key,
-        current_tenant_id,
-        current_machine_id,
-    );
+    let sets = Arc::new(ParsedCrlSets::from(crl));
+    if let Ok(mut write_guard) = PARSED_CRL_CACHE.write() {
+        *write_guard = Some((json_str, Arc::clone(&sets)));
+    }
+
+    let is_revoked = sets.is_revoked(current_license_key, current_tenant_id, current_machine_id);
     if is_revoked {
         let tid = current_tenant_id.unwrap_or("default");
         if let Err(e) = refresh_subscription_status_from_server(conn, tid, "revoked", None) {
             tracing::warn!("failed to set subscription status to revoked from CRL: {e}");
         }
         if let Some(mid) = current_machine_id
-            && crl.revoked_devices.iter().any(|d| d == mid)
+            && sets.revoked_devices.contains(mid)
             && let Err(e) =
                 crate::settings::Settings::set(conn, crate::settings::keys::DEVICE_REVOKED, "true")
         {
@@ -307,39 +391,8 @@ pub fn is_revoked_in_crl_payload(
     tenant_id: Option<&str>,
     machine_id: Option<&str>,
 ) -> bool {
-    // 1. Check tenant ID
-    if let Some(tid) = tenant_id
-        && crl.revoked_tenants.iter().any(|t| t == tid)
-    {
-        return true;
-    }
-
-    // 2. Check machine ID
-    if let Some(mid) = machine_id
-        && crl.revoked_devices.iter().any(|d| d == mid)
-    {
-        return true;
-    }
-
-    // 3. Check license key (exact or SHA-256 hex digest)
-    if let Some(key) = license_key {
-        let key_hash = {
-            use sha2::Digest;
-            let mut hasher = Sha256::new();
-            hasher.update(key.as_bytes());
-            hex::encode(hasher.finalize())
-        };
-
-        if crl
-            .entries
-            .iter()
-            .any(|e| e.key == key || e.key_hash == key_hash)
-        {
-            return true;
-        }
-    }
-
-    false
+    let sets = ParsedCrlSets::from(crl);
+    sets.is_revoked(license_key, tenant_id, machine_id)
 }
 
 /// Check whether a given license key, tenant, or machine is revoked according to the local cached CRL.
@@ -355,18 +408,38 @@ pub fn is_revoked_in_cached_crl(
         return Ok(false);
     };
 
-    let crl: CrlPayload = match serde_json::from_str(&crl_json) {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::warn!("failed to deserialize cached CRL, ignoring: {e}");
-            return Ok(false);
+    let parsed = {
+        if let Ok(read_guard) = PARSED_CRL_CACHE.read() {
+            if let Some((ref cached_raw, ref sets)) = *read_guard {
+                if cached_raw == &crl_json {
+                    Some(Arc::clone(sets))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
         }
     };
 
-    Ok(is_revoked_in_crl_payload(
-        &crl,
-        license_key,
-        tenant_id,
-        machine_id,
-    ))
+    let sets = if let Some(p) = parsed {
+        p
+    } else {
+        let crl: CrlPayload = match serde_json::from_str(&crl_json) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("failed to deserialize cached CRL, ignoring: {e}");
+                return Ok(false);
+            }
+        };
+        let sets = Arc::new(ParsedCrlSets::from(&crl));
+        if let Ok(mut write_guard) = PARSED_CRL_CACHE.write() {
+            *write_guard = Some((crl_json, Arc::clone(&sets)));
+        }
+        sets
+    };
+
+    Ok(sets.is_revoked(license_key, tenant_id, machine_id))
 }

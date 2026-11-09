@@ -55,3 +55,5 @@ component's opening line.
 | Hook placement | `:1504-1539`, before the first sub-screen return at `:1542` |
 | Retail effect | handler object empty — no keys bound outside `restaurant-pos` |
 | Diff | `PosScreen.tsx` +38, `CartActionBar.tsx` +48/-14, comments included |
+
+> last audited 14-10-26 by docs-auditor

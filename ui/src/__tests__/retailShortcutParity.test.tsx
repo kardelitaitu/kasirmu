@@ -7,8 +7,13 @@
 //      (KEY-01) is pinned: the retail manifest owns F11 = Quick Return.
 //   3. Every manifest label id must exist in both FTL bundles (KEY-10).
 //   4. Editable-target suppression works from a textarea (KEY-03).
+//   5. The function keys are CONDITIONAL on the sale view. A sub-view replaces the screen,
+//      and an unconditional handler is live behind it — F1 opened the payment dialog for a
+//      cart the cashier could not see. The static checks above pass either way.
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import fs from 'node:fs';
+import { resolve } from 'node:path';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
@@ -187,6 +192,50 @@ describe('rendered shortcut parity (KEY-09)', () => {
       expect(fnBar.textContent).toContain(entry!.key);
     }
   });
+
+  // ── `close` (Esc) — the advertised key that did nothing ─────────────
+  //
+  // The manifest declares `Esc → close` and the overlay renders it with the label
+  // "Close modal / Options", but nothing in RetailPosScreen consumed it: the only
+  // `case 'close':` in the tree is WarehouseConsole's. The suite above could not
+  // catch that because it checks the overlay LISTS every key and the function bar
+  // derives F-key labels — the label rendered, the behaviour was never exercised.
+  //
+  // These cases drive the key, which is what a cashier on a keyboard till does, and
+  // Esc is the only way out of a sub-view without the mouse.
+
+  it('Esc closes the sub-view it is pressed in (the advertised `close` action)', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+
+    // Reachability: F6 opens Sales History, and Esc must put the SALE view back.
+    await user.keyboard('{F6}');
+    await waitFor(() => expect(screen.getByTestId('sales-history-screen')).toBeInTheDocument());
+
+    await user.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByTestId('sales-history-screen')).not.toBeInTheDocument(),
+    );
+  });
+
+  it('Esc closes the shortcut overlay itself (the `Options` half of its label)', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+
+    // `?` opens the help overlay, and Esc must close it. Chosen over customer search
+    // because that modal is `aria-modal`, so `isAnyModalOpen()` already returned and
+    // useFocusTrap's own Escape handling owns it — asserting on it here would pin the
+    // trap, not this manifest entry.
+    await user.keyboard('?');
+    await waitFor(() => expect(screen.getByText('Keyboard Shortcuts')).toBeInTheDocument());
+
+    await user.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByText('Keyboard Shortcuts')).not.toBeInTheDocument(),
+    );
+  });
 });
 
 // ── Editable-target suppression (KEY-03) ───────────────────────────
@@ -218,5 +267,50 @@ describe('editable-target suppression (KEY-03)', () => {
 
     await user.keyboard('{F2}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  // ── The function keys are CONDITIONAL on the sale view ─────────────────
+  //
+  // The retail twin of restaurantShortcutParity's claim 6. This suite checks the
+  // manifest against the code, but the handler was UNCONDITIONAL for the whole
+  // existence of this file: isAnyOverlayOpen() covers the local DIALOGS, and the
+  // sub-views — Sales History, Table Management, Stock Inquiry, plus the payment
+  // modal — are early returns that REPLACE the screen, which no guard here read. So
+  // F1 opened the payment dialog for a cart the cashier could not see, and F12
+  // navigated away from a sub-view mid-task.
+  //
+  // A static read of the handler passes either way, which is why this is a separate
+});
+
+
+// ── The function keys are conditional on the sale view ───────────────────
+
+describe('hotkey scoping (sub-view guard)', () => {
+  // claim rather than part of the parity checks above.
+  it('supplies no function-key handler while a sub-view owns the view', () => {
+    const src = fs.readFileSync(
+      resolve(process.cwd(), 'src/features/retail/RetailPosScreen.tsx'),
+      'utf-8',
+    );
+
+    const deriv = /const saleViewVisible =([^;]*);/.exec(src);
+    expect(
+      deriv,
+      'saleViewVisible is gone — the function keys are probably unguarded again',
+    ).not.toBeNull();
+    for (const flag of ['showPayment', 'showSalesHistory', 'showTables', 'showStockInquiry']) {
+      expect(
+        deriv![1]!,
+        deriv![1]!.includes(flag)
+          ? 'ok'
+          : `saleViewVisible no longer consults ${flag} — that view's keys are live behind it`,
+      ).toContain(flag);
+    }
+
+    // The handler must READ it, not merely have it derived somewhere above.
+    expect(
+      /if \(!saleViewVisible\) return;/.test(src),
+      'the keydown handler ignores saleViewVisible — F1 can open payment for a cart behind a sub-view',
+    ).toBe(true);
   });
 });

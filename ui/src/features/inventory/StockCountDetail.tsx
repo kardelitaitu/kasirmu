@@ -20,7 +20,8 @@ import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
 import './StockCountDetail.css';
-// The sc-badge family this screen paints at :243 lives in its own sheet, not in the
+// The sc-badge family this screen paints (the status badge in the detail meta
+// row below) lives in its own sheet, not in the
 // list screen's -- import it here so the styling no longer depends on the flow's static import.
 import './StockCountBadge.css';
 
@@ -37,7 +38,13 @@ export default function StockCountDetail({ countId, onBack }: Props) {
   const [saving, setSaving] = useState(false);
 
   // Product search
-  const [products, setProducts] = useState<ProductDto[]>([]);
+  // `null` = UNKNOWN (the catalogue read never answered); `[]` = the ANSWER that there
+  // are no products. They rendered identically before: a failed read left an empty
+  // catalogue, and the add-line search reported "no products match" for every query —
+  // a claim about the store's catalogue made from a read that never came back. The
+  // warehouse sibling (`WarehouseCountFlow`) has drawn this distinction for the same
+  // reason since it was written; this screen had only a toast, which auto-dismisses.
+  const [products, setProducts] = useState<ProductDto[] | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSku, setSelectedSku] = useState('');
   const [selectedName, setSelectedName] = useState('');
@@ -75,17 +82,33 @@ export default function StockCountDetail({ countId, onBack }: Props) {
 
   useEffect(() => {
     load();
-    if (sessionToken) {
-      listProductsScoped(sessionToken).then(setProducts).catch(() => {
+    if (!sessionToken) return;
+    // Cancelled on teardown, so a response that lands after the screen unmounted (or
+    // after the token changed) cannot write state — the .then used to have no guard.
+    let cancelled = false;
+    listProductsScoped(sessionToken)
+      .then((list) => {
+        if (!cancelled) setProducts(list);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // UNKNOWN, not "empty": the durable alert below is what tells the operator the
+        // catalogue could not be read. The toast is kept as the immediate signal.
+        setProducts(null);
         addToast({ message: requiredLocalized(l10nRef.current, 'sc-error-products'), type: 'error' });
       });
-    }
+    return () => {
+      cancelled = true;
+    };
   }, [load, sessionToken, addToast]);
 
   const isEditable = count?.status === 'draft' || count?.status === 'in_progress';
 
   const filteredProducts = useMemo(() => {
     if (!searchQuery.trim()) return [];
+    // An UNKNOWN catalogue cannot match anything, and saying so per-query would be a
+    // claim the read never supported. The alert above the field carries the failure.
+    if (products === null) return [];
     const q = searchQuery.trim().toLowerCase();
     return products.filter(
       (p) =>
@@ -154,7 +177,22 @@ export default function StockCountDetail({ countId, onBack }: Props) {
     }
   }, [countId, load, sessionToken]);
 
+  // Re-entry guard for the complete write. `setSaving(true)` is STATE -- React commits it
+  // on its next render, after the second tap of a real double tap -- so the button's
+  // `loading={saving}` is not authoritative in the same task. MEASURED: two taps in one
+  // act() batch both reach the handler
+  // (StockCountDetail.test.tsx 'sends one complete call for a double tap').
+  //
+  // core refuses the replay by compare-and-set (`UPDATE stock_counts SET status =
+  // 'completed' ... WHERE id = ?3 AND status IN ('draft','in_progress')`,
+  // crates/kasirmu-core/src/db/stock_counts.rs:529-539), so no second inventory adjustment
+  // is applied -- but its rejection lands in the catch that also serves the genuine
+  // failure case, so the operator sees 'Failed to complete count' for a count that DID
+  // complete. A ref, not the state, for the reason every sibling guard records.
+  const completePendingRef = useRef(false);
   const handleComplete = useCallback(async () => {
+    if (completePendingRef.current) return;
+    completePendingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -167,6 +205,7 @@ export default function StockCountDetail({ countId, onBack }: Props) {
     } catch (err) {
       setError(l10nErrorMessage(err, l10nRef.current, 'sc-error-complete'));
     } finally {
+      completePendingRef.current = false;
       setSaving(false);
     }
   }, [countId, load, sessionToken]);
@@ -273,6 +312,16 @@ export default function StockCountDetail({ countId, onBack }: Props) {
       {isEditable && (
         <Card shadow="sm" className="sc-detail-add-line">
           <h3><Localized id="sc-add-line"><span>Add Product to Count</span></Localized></h3>
+          {products === null && (
+            // DURABLE, not a toast. The catalogue read never answered, so every search
+            // below would answer "no products match" from an empty list — a claim about
+            // the store's catalogue that nothing supports.
+            <div className="sc-detail-products-error" role="alert">
+              <Localized id="sc-error-products">
+                <span>Could not load the product catalogue</span>
+              </Localized>
+            </div>
+          )}
           <div className="sc-add-line-search">
             <input
               type="search"

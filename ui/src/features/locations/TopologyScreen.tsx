@@ -65,12 +65,33 @@ import { applyTopologyWithDiagram } from './topologyApply';
 function TopologyTabletNotice() {
   return (
     <section className="topology-tablet-unavailable" data-testid="topology-tablet-unavailable">
-      <h2 className="topology-tablet-unavailable__title">
+      {/* This branch is the WHOLE screen on a tablet, so its heading is the page
+          title. It was an <h2> while the screen had no <h1> (round 35). */}
+      <h1 className="topology-tablet-unavailable__title">
         <Localized id="topology-tablet-unavailable-title">Topology authoring needs the desktop</Localized>
-      </h2>
+      </h1>
       <p className="topology-tablet-unavailable__body">
         <Localized id="topology-tablet-unavailable-body">
           Store layout editing runs on the desktop app. This tablet keeps read-only Locations and every checkout surface.
+        </Localized>
+      </p>
+    </section>
+  );
+}
+
+/**
+ * ADR-66 D3 / Phase 6: on tablet for multi-store web-managed tenants,
+ * inform that topology is managed centrally via Web Dashboard.
+ */
+function TopologyTabletWebManagedNotice() {
+  return (
+    <section className="topology-tablet-unavailable" data-testid="topology-tablet-web-managed">
+      <h1 className="topology-tablet-unavailable__title">
+        <Localized id="topology-tablet-web-managed-title">Centralized Topology Authoring</Localized>
+      </h1>
+      <p className="topology-tablet-unavailable__body">
+        <Localized id="topology-tablet-web-managed-body">
+          Store layout is managed remotely via the Web Dashboard. This tablet runs on the latest synchronized revision.
         </Localized>
       </p>
     </section>
@@ -139,8 +160,21 @@ function parseTopologyHash(): { branchId: string | null; create: boolean } {
  */
 export default function TopologyScreen({ initialBranchId, openCreateOnMount }: TopologyScreenProps = {}) {
   const { locked } = useAdminGate();
+  const { caps } = useSubscription();
+  const licenseTier = caps?.tier?.toLowerCase() ?? 'free';
+  const isMultiStoreEligible = ['pro', 'premium', 'enterprise'].includes(licenseTier);
+  const isWebManaged = isMultiStoreEligible && (caps?.features?.['web_topology_authoring'] ?? false);
+
   if (locked) return <AdminLockedFeature />;
-  if (isTabletShell()) return <TopologyTabletNotice />;
+  // IF/ELSE, not an early return. The whole desktop editor below -- load_topology,
+  // list_workspaces_scoped, update_workspace_instance_scoped, apply_topology_diff,
+  // pin/list topology revisions -- is desktop-only, and `verify-scoped-reads.py` reads a
+  // shell guard as in force only INSIDE the block the `if` opened. An early-return arm
+  // closes that block, so every call below it graded as reachable on the tablet. The
+  // else arm is the same statement, so both this screen and that gate see the guard.
+  if (isTabletShell()) {
+    return isWebManaged ? <TopologyTabletWebManagedNotice /> : <TopologyTabletNotice />;
+  } else {
 
   const hashHints = parseTopologyHash();
   const effectiveBranchId = initialBranchId ?? hashHints.branchId ?? undefined;
@@ -172,10 +206,10 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
   }, []);
   // Determine save permission client-side, on the SAME key the write commands
   // authorize with: `topology:write` (platform/core/src/rbac.rs TOPOLOGY_WRITE)
-  // — every topology mutation gate checks it (`kasirmu-bridge` topology
-  // commands.rs:45 capability probe, :79 authorize_topology_write, :255
-  // pin_topology_revision, :479 apply path). This block used to test
-  // `staff:update`, a key the Manager preset carries (rbac_presets.rs:75) and
+  // — every topology mutation gate checks it: `can_save_topology` (the
+  // capability probe), `authorize_topology_write`, and the pin/apply paths, all in
+  // apps/desktop-tauri/src/commands/topology/commands.rs. This block used to test
+  // `staff:update`, a key the Manager preset carries and
   // the topology commands do NOT accept — so a manager got an enabled Apply
   // the kernel always refused (the reachable path: `#/settings/topology` is
   // gated by role, `settings/register.tsx:10` requiredRole 'manager', and
@@ -183,7 +217,7 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
   //
   // `hasGrantedPermission` mirrors the backend matcher (exact / `*` /
   // `<domain>:*`), which is what keeps Owner — whose preset grants only
-  // `["*"]` (rbac_presets.rs:46) — enabled. A raw
+  // the `["*"]` wildcard in rbac_presets.rs — enabled. A raw
   // `perms.includes('topology:write')` would lock Owner out of their own
   // screen, which is why the helper is mandatory here.
   //
@@ -304,6 +338,12 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
   );
   const [addingBranch, setAddingBranch] = useState(false);
   const [newBranchName, setNewBranchName] = useState('');
+  /** In-flight guard for branch creation, the twin of `deleteBranchSaving`
+   *  below. `createLocationProfileScoped` is a round-trip, and BOTH the confirm
+   *  button and the input's Enter key call this handler — so a second click or
+   *  a second Enter before the first resolves created TWO location profiles
+   *  under the same name. Deleting is idempotent by id; creating is not. */
+  const [addBranchSaving, setAddBranchSaving] = useState(false);
   /** Two-step branch deletion: armed state + in-flight guard. The target
    *  id is captured at arm time so a mid-confirm branch switch can neither
    *  change what the confirm message names nor what the button deletes. */
@@ -419,8 +459,11 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
     const otherId = stores.find((s) => s.id !== selectedBranchId)?.id ?? null;
     setCompareOtherBranchId(otherId);
     setCompareOpen(true);
-    if (otherId !== null) void loadCompare(otherId);
-  }, [stores, selectedBranchId, loadCompare]);
+    // NO FETCH HERE. The re-derive effect below watches exactly these two pieces of
+    // state and issues the read; calling loadCompare here as well made every Compare
+    // click run the comparison TWICE for the same inputs. Setting the state is the
+    // whole job of this handler.
+  }, [stores, selectedBranchId]);
 
   const closeCompare = useCallback(() => {
     setCompareOpen(false);
@@ -577,6 +620,8 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
   // instead of duplicating it. `null` before first load stays conservatively
   // FREE rather than advertising a tier nothing has confirmed.
   const licenseTier = caps?.tier?.toLowerCase() ?? 'free';
+  const isMultiStoreEligible = ['pro', 'premium', 'enterprise'].includes(licenseTier);
+  const isWebManaged = isMultiStoreEligible && (caps?.features?.['web_topology_authoring'] ?? false);
   const locale = useContext(LocaleContext)?.locale ?? 'en';
   const atLocationLimit =
     caps !== null && caps.maxLocations !== null && caps.locationCount >= caps.maxLocations;
@@ -584,6 +629,7 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
   const handleAddBranch = async () => {
     const name = newBranchName.trim();
     if (!name) return;
+    if (addBranchSaving) return;
     if (atLocationLimit) return; // the inline banner explains why
     if (!sessionToken) {
       // Session not minted yet (admin-shell fallback race) — fail honestly
@@ -594,6 +640,7 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
       });
       return;
     }
+    setAddBranchSaving(true);
     try {
       const created = await createLocationProfileScoped(sessionToken, { id: `store-${crypto.randomUUID()}`, name });
       setStores((prev) => [...prev, created]);
@@ -607,6 +654,8 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
         message: `${l10n.getString('topology-branch-add-error')}: ${l10nErrorMessage(err, l10n)}`,
         type: 'error',
       });
+    } finally {
+      setAddBranchSaving(false);
     }
   };
 
@@ -625,6 +674,13 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
       });
       return;
     }
+    // No sync ref here, on purpose: `deleteBranchSaving` is rendered as the confirm
+    // button's `disabled` (:971), and React flushes a discrete click's state update to the
+    // DOM before the next click, so the second tap of a double press is on a really
+    // disabled button and never reaches this handler. Measured (round 186): the handler
+    // logs one invocation for two fireEvent.click()s, and a ref added above it changed
+    // nothing -- a mutation that disabled the ref left the case green, which is how the
+    // redundancy showed itself.
     const remaining = stores.filter((s) => s.id !== id);
     setDeleteBranchSaving(true);
     try {
@@ -785,6 +841,22 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
     [sessionToken, workspaceInstances, stores, addToast, l10n, licenseTier, selectedBranchId],
   );
 
+  // THE TABLET NEVER MOUNTS THIS BODY. The wrapper at :173 already returns the notice
+  // before rendering it, so this states the same decision where the commands live: the
+  // editor's useCallbacks, its effect deps and its JSX all reference commands the tablet
+  // shell does not register. The hooks above have run by now, so this is a RENDER branch
+  // and not a conditional hook.
+  //
+  // This does NOT retire the topology entries in `ipc-parity-allowlist.json`, and the
+  // reason is worth keeping: that leg reads brace-delimited regions and the flagged
+  // sites are inside `useCallback(...)` bodies and hook argument lists, which lie
+  // outside the rendered arm it can see. Making it pass would mean moving every
+  // callback inside the JSX branch, which the Rules of Hooks forbid. The entries stay
+  // for the shape the gate cannot read, not because the gap is real.
+  if (isTabletShell()) {
+    return isWebManaged ? <TopologyTabletWebManagedNotice /> : <TopologyTabletNotice />;
+  }
+
   return (
     <div
       className="settings-topology-container"
@@ -808,6 +880,7 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
         onSave={handleTopologySave}
         restoreSeed={restoreDraft}
         canSave={canSaveTopology && !storesUnavailable && !instancesUnavailable && !topologyUnavailable}
+        webAuthoringManaged={isWebManaged}
         onDirtyChange={handleEditorDirtyChange}
         onLoadError={handleTopologyLoadError}
         onLoadSuccess={handleTopologyLoadSuccess}
@@ -874,11 +947,11 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
                   className="topology-branch-add-input"
                   value={newBranchName}
                   onChange={(e) => setNewBranchName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') void handleAddBranch(); if (e.key === 'Escape') { setAddingBranch(false); setNewBranchName(''); } }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { if (addBranchSaving) return; void handleAddBranch(); } if (e.key === 'Escape') { setAddingBranch(false); setNewBranchName(''); } }}
                   aria-label={l10n.getString('topology-branch-add-name-placeholder')}
                   placeholder={l10n.getString('topology-branch-add-name-placeholder')}
                 />
-                <Button variant="primary" onClick={() => void handleAddBranch()} disabled={!newBranchName.trim()}>
+                <Button variant="primary" onClick={() => void handleAddBranch()} disabled={!newBranchName.trim()} state={addBranchSaving ? 'processing' : 'ready'}>
                   {l10n.getString('topology-branch-add-confirm')}
                 </Button>
                 <Button variant="secondary" onClick={() => { setAddingBranch(false); setNewBranchName(''); }}>
@@ -1078,4 +1151,5 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
       />
     </div>
   );
+  }
 }

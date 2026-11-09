@@ -12,6 +12,48 @@
 
 use super::*;
 
+// ── Hoisted SQL ───────────────────────────────────────────────────────
+//
+// `stock_movements` is the immutable delta ledger: it grows with every sale and
+// every adjustment and is never pruned except by the archive sweeper, so a
+// lost index seek here is paid for the life of the install on the movement
+// history and on the ledger sum behind every stock read. The static text of
+// the two readers below is hoisted to `pub` constants for the same reason as
+// `DAILY_REVENUE_SQL` (`db/reports/revenue.rs`): the query-plan probe
+// (`tests/integration/query_plan_probe.rs`) is a SEPARATE crate, so it can
+// only import `pub` items, and a probe that holds its own COPY of a query
+// stays green when the real one is reshaped back into the scanning form.
+//
+// Purely textual: each method prepares exactly the string it did before, and
+// the continuation indentation inside each literal is the original one - the
+// text is relocated, not re-indented. Each literal spans lines, so each
+// constant carries `#[rustfmt::skip]`: rustfmt re-indents a multi-line
+// literal's continuation lines, which would silently rewrite the text under
+// test (see the note on `LIST_AUDIT_ENTRIES_SQL` in `db/audit.rs`).
+
+/// `Store::list_stock_movements`: one product's ledger, newest first, paged.
+///
+/// `#[rustfmt::skip]` is load-bearing: rustfmt would re-indent the literal's
+/// continuation lines and change the text the product prepares.
+#[rustfmt::skip]
+pub const LIST_STOCK_MOVEMENTS_SQL: &str = "SELECT id, item_id, delta, reason, source_terminal_id, source_user_id,
+                    store_id, created_at
+             FROM stock_movements
+             WHERE item_id = ?1
+             ORDER BY created_at DESC
+             LIMIT ?2 OFFSET ?3";
+
+/// `Store::archive_stock_movements`: the item groups the sweeper may archive,
+/// excluding rows an earlier sweep already rolled up.
+///
+/// `#[rustfmt::skip]` for the same reason as [`LIST_STOCK_MOVEMENTS_SQL`].
+#[rustfmt::skip]
+pub const STOCK_MOVEMENTS_ARCHIVABLE_ITEMS_SQL: &str = "SELECT DISTINCT item_id
+             FROM stock_movements
+             WHERE created_at < ?1
+               AND reason != 'archive-rollup'
+             LIMIT ?2";
+
 impl Store<'_> {
     /// List all stock movement rows for a product, ordered by time (ADR #6).
     ///
@@ -22,14 +64,7 @@ impl Store<'_> {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<StockMovement>, CoreError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, item_id, delta, reason, source_terminal_id, source_user_id,
-                    store_id, created_at
-             FROM stock_movements
-             WHERE item_id = ?1
-             ORDER BY created_at DESC
-             LIMIT ?2 OFFSET ?3",
-        )?;
+        let mut stmt = self.conn.prepare(LIST_STOCK_MOVEMENTS_SQL)?;
         let rows = stmt.query_map(params![product_id, limit, offset], |row| {
             Ok(StockMovement {
                 id: row.get(0)?,
@@ -88,13 +123,7 @@ impl Store<'_> {
         let cutoff_str = cutoff.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
         // Find item_ids that have archivable rows (excluding rollup rows).
-        let mut stmt = self.conn.prepare(
-            "SELECT DISTINCT item_id
-             FROM stock_movements
-             WHERE created_at < ?1
-               AND reason != 'archive-rollup'
-             LIMIT ?2",
-        )?;
+        let mut stmt = self.conn.prepare(STOCK_MOVEMENTS_ARCHIVABLE_ITEMS_SQL)?;
         let item_ids: Vec<String> = stmt
             .query_map(
                 params![
@@ -115,65 +144,74 @@ impl Store<'_> {
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let mut groups_archived = 0usize;
 
-        for item_id in &item_ids {
+        const ARCHIVE_BATCH_SIZE: usize = 50;
+        for chunk in item_ids.chunks(ARCHIVE_BATCH_SIZE) {
             let tx = self.conn.unchecked_transaction()?;
 
-            // 1. Copy old rows to archive (skip previous rollup rows). Post
-            //    ADR-18 §2b + migration 080 stock_movements_archive gained
-            //    a `location_id` column (NOT NULL DEFAULT canonical UUID);
-            //    post ADR-18 §9c + migration 085 it also gained a nullable
-            //    `inventory_transaction_id` FK column. The select-list below
-            //    must enumerate ALL 10 columns in the same order as the
-            //    CREATE TABLE from migration 072 + ALTERs from 080/085,
-            //    otherwise SQLite rejects with "X columns but Y values
-            //    were supplied" and the archive transaction rolls back.
-            tx.execute(
-                "INSERT INTO stock_movements_archive
-                 SELECT id, item_id, delta, reason,
-                        source_terminal_id, source_user_id,
-                        store_id, created_at,
-                        location_id, inventory_transaction_id
-                 FROM stock_movements
-                 WHERE item_id = ?1
-                   AND created_at < ?2
-                   AND reason != 'archive-rollup'",
-                params![item_id, cutoff_str],
-            )?;
+            {
+                let mut insert_archive = tx.prepare_cached(
+                    "INSERT INTO stock_movements_archive
+                     SELECT id, item_id, delta, reason,
+                            source_terminal_id, source_user_id,
+                            store_id, created_at,
+                            location_id, inventory_transaction_id
+                     FROM stock_movements
+                     WHERE item_id = ?1
+                       AND created_at < ?2
+                       AND reason != 'archive-rollup'",
+                )?;
 
-            // 2. Insert a rollup row consolidating all archived deltas.
-            //    Post migration 080 location_id is NOT NULL DEFAULT canonical
-            //    UUID on stock_movements, so we anchor the rollup to the
-            //    canonical default explicitly (the COALESCE would otherwise
-            //    surface a NULL on pre-080 stock_movements rows). Post
-            //    migration 085 inventory_transaction_id is NULLABLE; the
-            //    rollup row has no original inventory_transaction session
-            //    because it consolidates multiple sessions — NULL is correct.
-            let rollup_id = uuid::Uuid::now_v7().to_string();
-            tx.execute(
-                "INSERT INTO stock_movements
-                     (id, item_id, delta, reason, store_id, created_at,
-                      location_id, inventory_transaction_id)
-                 SELECT ?1, ?2, COALESCE(SUM(delta), 0), 'archive-rollup',
-                        '', ?3,
-                        '01926b3a-0000-7000-8000-000000000001', NULL
-                 FROM stock_movements
-                 WHERE item_id = ?2
-                   AND created_at < ?4
-                   AND reason != 'archive-rollup'",
-                params![rollup_id, item_id, now, cutoff_str],
-            )?;
+                let mut insert_rollup = tx.prepare_cached(
+                    "INSERT INTO stock_movements
+                         (id, item_id, delta, reason, store_id, created_at,
+                          location_id, inventory_transaction_id)
+                     SELECT ?1, ?2, COALESCE(SUM(delta), 0), 'archive-rollup',
+                            '', ?3,
+                            '01926b3a-0000-7000-8000-000000000001', NULL
+                     FROM stock_movements
+                     WHERE item_id = ?2
+                       AND created_at < ?4
+                       AND reason != 'archive-rollup'",
+                )?;
 
-            // 3. Delete old rows from the live table.
-            tx.execute(
-                "DELETE FROM stock_movements
-                 WHERE item_id = ?1
-                   AND created_at < ?2
-                   AND reason != 'archive-rollup'",
-                params![item_id, cutoff_str],
-            )?;
+                let mut delete_movements = tx.prepare_cached(
+                    "DELETE FROM stock_movements
+                     WHERE item_id = ?1
+                       AND created_at < ?2
+                       AND reason != 'archive-rollup'",
+                )?;
+
+                for item_id in chunk {
+                    // 1. Copy old rows to archive (skip previous rollup rows). Post
+                    //    ADR-18 §2b + migration 080 stock_movements_archive gained
+                    //    a `location_id` column (NOT NULL DEFAULT canonical UUID);
+                    //    post ADR-18 §9c + migration 085 it also gained a nullable
+                    //    `inventory_transaction_id` FK column. The select-list below
+                    //    must enumerate ALL 10 columns in the same order as the
+                    //    CREATE TABLE from migration 072 + ALTERs from 080/085,
+                    //    otherwise SQLite rejects with "X columns but Y values
+                    //    were supplied" and the archive transaction rolls back.
+                    insert_archive.execute(params![item_id, cutoff_str])?;
+
+                    // 2. Insert a rollup row consolidating all archived deltas.
+                    //    Post migration 080 location_id is NOT NULL DEFAULT canonical
+                    //    UUID on stock_movements, so we anchor the rollup to the
+                    //    canonical default explicitly (the COALESCE would otherwise
+                    //    surface a NULL on pre-080 stock_movements rows). Post
+                    //    migration 085 inventory_transaction_id is NULLABLE; the
+                    //    rollup row has no original inventory_transaction session
+                    //    because it consolidates multiple sessions — NULL is correct.
+                    let rollup_id = uuid::Uuid::now_v7().to_string();
+                    insert_rollup.execute(params![rollup_id, item_id, now, cutoff_str])?;
+
+                    // 3. Delete old rows from the live table.
+                    delete_movements.execute(params![item_id, cutoff_str])?;
+
+                    groups_archived += 1;
+                }
+            }
 
             tx.commit()?;
-            groups_archived += 1;
         }
 
         // Run incremental vacuum once after all groups to reclaim disk space.

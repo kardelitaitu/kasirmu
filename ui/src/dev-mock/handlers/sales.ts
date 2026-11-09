@@ -326,7 +326,7 @@ function seedMockSalesStore(): { sales: MockCompletedSale[]; details: Record<str
     id: 'seed-sale-001',
     total: { minor_units: subtotalMinor, currency },
     lineCount: 2,
-    status: 'Completed',
+    status: 'completed',
     paymentMethod: 'cash',
     userId: 'admin-1',
     createdAt,
@@ -495,6 +495,19 @@ export function createSalesHandlers(deps: SalesDeps): Record<string, MockHandler
     return { lineId: `mock-line-${Date.now()}`, lineTotal };
   },
 
+  // Coursing persistence. The device-local assignment is what the UI renders; this
+  // mirrors it onto the mock cart so a browser-mode reload keeps the course, which
+  // is the property the real backend provides and the reason this command exists.
+  'set_line_course_scoped': (args) => {
+    const raw = (args as { args?: { lineId?: string; course?: string | null } })?.args
+      ?? (args as { lineId?: string; course?: string | null });
+    const line = cartState.lines.find((l) => (l as { lineId?: string }).lineId === raw?.lineId);
+    if (line) {
+      (line as { course?: string | null }).course = raw?.course ?? null;
+      saveMockCart();
+    }
+    return null;
+  },
   'complete_sale': () => {
     const minorTotal = cartState.lines.reduce((sum, l) => sum + l.price.minor_units * l.qty, 0);
     const lineCount = cartState.lines.length;
@@ -506,12 +519,12 @@ export function createSalesHandlers(deps: SalesDeps): Record<string, MockHandler
     const now = new Date().toISOString();
     completedSales.push({
       id: saleId, total: { minor_units: minorTotal, currency }, lineCount,
-      status: 'Completed', paymentMethod: 'cash', userId: 'admin-1', createdAt: now,
+      status: 'completed', paymentMethod: 'cash', userId: 'admin-1', createdAt: now,
     });
     saleDetails[saleId] = {
       id: saleId, total: { minor_units: minorTotal, currency },
       subtotal: { minor_units: minorTotal, currency },
-      taxTotal: { minor_units: 0, currency }, lineCount, status: 'Completed',
+      taxTotal: { minor_units: 0, currency }, lineCount, status: 'completed',
       paymentMethod: 'cash', tenderedMinor: minorTotal + 500, userId: 'admin-1', createdAt: now,
       lines: cartState.lines.map((l, i) => ({
         id: `mock-line-${i}-${saleId}`, sku: l.sku, name: l.name, qty: l.qty,
@@ -550,12 +563,12 @@ export function createSalesHandlers(deps: SalesDeps): Record<string, MockHandler
     const now = new Date().toISOString();
     completedSales.push({
       id: saleId, total: { minor_units: minorTotal, currency }, lineCount,
-      status: 'Completed', paymentMethod: 'cash', userId: 'admin-1', createdAt: now,
+      status: 'completed', paymentMethod: 'cash', userId: 'admin-1', createdAt: now,
     });
     saleDetails[saleId] = {
       id: saleId, total: { minor_units: minorTotal, currency },
       subtotal: { minor_units: baseTotal, currency },
-      taxTotal: { minor_units: 0, currency }, lineCount, status: 'Completed',
+      taxTotal: { minor_units: 0, currency }, lineCount, status: 'completed',
       paymentMethod: 'cash', tenderedMinor: minorTotal + 500, userId: 'admin-1', createdAt: now,
       lines: cartState.lines.map((l, i) => ({
         id: `mock-line-${i}-${saleId}`, sku: l.sku, name: l.name, qty: l.qty,
@@ -584,12 +597,12 @@ export function createSalesHandlers(deps: SalesDeps): Record<string, MockHandler
     const now = new Date().toISOString();
     completedSales.push({
       id: saleId, total: { minor_units: minorTotal, currency }, lineCount,
-      status: 'Completed', paymentMethod: 'cash', userId: 'admin-1', createdAt: now,
+      status: 'completed', paymentMethod: 'cash', userId: 'admin-1', createdAt: now,
     });
     saleDetails[saleId] = {
       id: saleId, total: { minor_units: minorTotal, currency },
       subtotal: { minor_units: minorTotal, currency },
-      taxTotal: { minor_units: 0, currency }, lineCount, status: 'Completed',
+      taxTotal: { minor_units: 0, currency }, lineCount, status: 'completed',
       paymentMethod: 'cash', tenderedMinor: minorTotal + 500, userId: 'admin-1', createdAt: now,
       lines: cartState.lines.map((l, i) => ({
         id: `mock-line-${i}-${saleId}`, sku: l.sku, name: l.name, qty: l.qty,
@@ -696,8 +709,6 @@ export function createSalesHandlers(deps: SalesDeps): Record<string, MockHandler
 
   'hold_cart': (args) => holdMockCart(unwrapArgs, args),
   'hold_cart_scoped': (args) => holdMockCart(unwrapArgs, args),
-  'list_active_carts': () => ({ carts: [] }),
-  'get_active_cart': () => null,
   'list_held_carts': () => mockHeldCarts.map(heldCartSummary),
   'list_held_carts_scoped': () => mockHeldCarts.map(heldCartSummary),
   'list_open_bills': () => mockHeldCarts.filter((cart) => cart.bill_type === 'open_bill').map(heldCartSummary),
@@ -729,8 +740,14 @@ export function createSalesHandlers(deps: SalesDeps): Record<string, MockHandler
     return null;
   },
 
-  'list_sales': () => ({ sales: [...completedSales], salesHistoryCapped: false }),
-  'list_sales_scoped': () => ({ sales: [...completedSales], salesHistoryCapped: false }),
+  'list_sales': () => ({
+    sales: [...completedSales],
+    salesHistoryCapped: typeof window !== 'undefined' && Boolean((window as unknown as { __MOCK_SALES_CAPPED?: boolean }).__MOCK_SALES_CAPPED),
+  }),
+  'list_sales_scoped': () => ({
+    sales: [...completedSales],
+    salesHistoryCapped: typeof window !== 'undefined' && Boolean((window as unknown as { __MOCK_SALES_CAPPED?: boolean }).__MOCK_SALES_CAPPED),
+  }),
   'void_sale': () => ({ id: 'voided-sale', status: 'voided', total: { minor_units: 0, currency: 'IDR' }, line_count: 0, created_at: new Date().toISOString() }),
   'void_sale_scoped': () => ({ id: 'voided-sale', status: 'voided', total: { minor_units: 0, currency: 'IDR' }, line_count: 0, created_at: new Date().toISOString() }),
 

@@ -8,7 +8,7 @@
 use super::*;
 
 fn temp_dir() -> tempfile::TempDir {
-    tempfile::tempdir().unwrap()
+    kasirmu_test_support::tempdir()
 }
 
 #[test]

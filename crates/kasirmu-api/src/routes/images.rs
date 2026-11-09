@@ -84,20 +84,37 @@ fn image_path(image_dir: &FsPath, hash16: &str) -> PathBuf {
 /// Atomically write `bytes` to `image_dir/{hash16}.webp` via temp+rename
 /// on the same volume. Returns `true` when the file already existed
 /// (duplicate upload).
-fn store_image_atomic(image_dir: &FsPath, hash16: &str, bytes: &[u8]) -> std::io::Result<bool> {
+///
+/// **Async on purpose (debt O-H13).** Every filesystem call here used to be the
+/// blocking `std::fs` form, called from `process_image`, which is an `async fn`
+/// driven by the axum runtime. A blocking write parks the worker thread for the
+/// whole disk I/O, so one slow or contended volume stalls every other request
+/// multiplexed onto that thread — and the image path is where that bites, because
+/// it writes on every upload. `tokio::fs` moves the syscall to the blocking pool.
+///
+/// `try_exists` rather than `exists`: the blocking `Path::exists` swallows the
+/// error and reports `false`, which would turn a permission fault into a second
+/// write attempt against a path we cannot actually see. `try_exists` propagates
+/// it, so a real fault still reaches the caller's `Err(_) => Rejected` arm
+/// instead of being quietly retried.
+async fn store_image_atomic(
+    image_dir: &FsPath,
+    hash16: &str,
+    bytes: &[u8],
+) -> std::io::Result<bool> {
     let final_path = image_path(image_dir, hash16);
-    if final_path.exists() {
+    if tokio::fs::try_exists(&final_path).await? {
         return Ok(true); // duplicate — content-addressed identity
     }
     let tmp_path = image_dir.join(format!(".{hash16}.{}.tmp", std::process::id()));
-    std::fs::write(&tmp_path, bytes)?;
-    match std::fs::rename(&tmp_path, &final_path) {
+    tokio::fs::write(&tmp_path, bytes).await?;
+    match tokio::fs::rename(&tmp_path, &final_path).await {
         Ok(()) => Ok(false),
         Err(_) => {
             // A concurrent writer may have won the rename — the file now
             // exists; treat as a duplicate (idempotent success).
-            let _ = std::fs::remove_file(&tmp_path);
-            if final_path.exists() {
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+            if tokio::fs::try_exists(&final_path).await? {
                 Ok(true)
             } else {
                 Err(std::io::Error::other("atomic rename failed"))
@@ -114,6 +131,7 @@ enum ImageOutcome {
     Stored(String),
     Duplicate(String),
     Rejected,
+    StorageError(String),
 }
 
 /// Validate + store one image body, maintaining the refcount.
@@ -131,18 +149,19 @@ async fn process_image(state: &AppState, claims: &ApiTokenClaims, bytes: &[u8]) 
     }
     let hash16 = sha256_hex16(bytes);
     // Atomic write; `duplicate` = the file already existed.
-    let duplicate = match store_image_atomic(&state.image_dir, &hash16, bytes) {
+    let duplicate = match store_image_atomic(&state.image_dir, &hash16, bytes).await {
         Ok(d) => d,
-        Err(_) => return ImageOutcome::Rejected,
+        Err(e) => {
+            tracing::error!(hash = %hash16, error = %e, "image atomic file storage failed");
+            return ImageOutcome::StorageError(format!("image storage failed: {e}"));
+        }
     };
     let tenant_id = claims.tenant_id.as_deref().unwrap_or("default");
     let db = state.db.lock().await;
     let store = Store::new(&db);
-    if store
-        .ref_image(tenant_id, &hash16, bytes.len() as i64)
-        .is_err()
-    {
-        return ImageOutcome::Rejected;
+    if let Err(e) = store.ref_image(tenant_id, &hash16, bytes.len() as i64) {
+        tracing::error!(tenant_id, hash = %hash16, error = %e, "image refcount write failed");
+        return ImageOutcome::StorageError(format!("image refcount write failed: {e}"));
     }
     drop(db);
     if duplicate {
@@ -248,6 +267,11 @@ pub async fn put_image(
             Json(serde_json::json!({"error": "image rejected: must be a WebP ≤ 32 KB"})),
         )
             .into_response(),
+        ImageOutcome::StorageError(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": err})),
+        )
+            .into_response(),
     }
 }
 
@@ -294,10 +318,12 @@ pub async fn put_image_batch(
                 hash: Some(h),
                 status: "duplicate",
             }),
-            ImageOutcome::Rejected => results.push(BatchImageResult {
-                hash: None,
-                status: "rejected",
-            }),
+            ImageOutcome::Rejected | ImageOutcome::StorageError(_) => {
+                results.push(BatchImageResult {
+                    hash: None,
+                    status: "rejected",
+                })
+            }
         }
     }
     (StatusCode::CREATED, Json(BatchPutResponse { results })).into_response()
@@ -348,7 +374,8 @@ pub async fn get_image(
         }
     }
     let path = image_path(&state.image_dir, &hash16);
-    match std::fs::read(&path) {
+    // O-H13: async read, so serving a cached image does not park a worker thread.
+    match tokio::fs::read(&path).await {
         Ok(bytes) => {
             let mut response = bytes.into_response();
             let headers = response.headers_mut();
@@ -383,6 +410,9 @@ pub async fn get_image(
 /// Up to 64 files / 2 MB, length-prefixed frames `[u32 be len][bytes]`.
 /// Missing/unreferenced hashes are silently skipped (the puller treats a
 /// missing frame as 404 for that hash and keeps it in the missing set).
+///
+/// One `image_refs` lookup for the whole request (see the body), then the
+/// frames are read and appended in REQUEST ORDER.
 pub async fn get_image_pack(
     State(state): State<AppState>,
     axum::Extension(claims): axum::Extension<ApiTokenClaims>,
@@ -409,36 +439,51 @@ pub async fn get_image_pack(
             .into_response();
     }
 
-    let mut out: Vec<u8> = Vec::with_capacity(PACK_MAX_BYTES.min(1024));
-    for h in &hashes {
-        // Content-spine gate per hash.
-        let referenced = {
-            let db = state.db.lock().await;
-            let store = Store::new(&db);
-            // Fail-CLOSED by decision, not by accident: this is the content-spine
-            // tenancy gate, so an error must read as "not referenced" and skip the
-            // frame — never as "referenced". Skipping is recoverable (the puller
-            // treats a missing frame as a 404 for that hash and retries), but it
-            // is otherwise silent, so name it.
-            match store.image_ref_exists(tenant_id, h) {
-                Ok(referenced) => referenced,
-                Err(e) => {
-                    tracing::warn!(
-                        tenant_id,
-                        hash = h,
-                        operation = "Store::image_ref_exists",
-                        error = %e,
-                        "images:pack spine lookup failed, treating the hash as unreferenced (fail-closed, frame skipped)"
-                    );
-                    false
-                }
+    // Content-spine gate for the WHOLE request: ONE lock acquisition and ONE
+    // batched statement over the hash set (chunked inside the Store), not one
+    // lock and one query per hash. Debt O-M24: `AppState.db` is a single
+    // process-wide `Arc<Mutex<Connection>>`, so the old per-hash loop acquired
+    // the same global mutex up to 64 times per pack and ran 64 separate
+    // statements — every one of them a chance to queue behind, and block, every
+    // other writer in the server.
+    //
+    // Fail-CLOSED by decision, not by accident: this is the content-spine
+    // tenancy gate, so an error must read as "referenced by nobody" and skip
+    // every frame — never as "referenced". Skipping is recoverable (the puller
+    // treats a missing frame as a 404 for that hash and retries), but it is
+    // otherwise silent, so name it. The blast radius is deliberately wider than
+    // the old per-hash form: one failed batched read now skips the whole pack
+    // instead of only the hash whose individual query failed. That is the same
+    // fail direction, and a database that cannot answer one chunked lookup
+    // cannot answer the other 63 either.
+    let referenced: Vec<bool> = {
+        let db = state.db.lock().await;
+        let store = Store::new(&db);
+        match store.image_refs_present(tenant_id, &hashes) {
+            Ok(flags) => flags,
+            Err(e) => {
+                tracing::warn!(
+                    tenant_id,
+                    hashes = hashes.len(),
+                    operation = "Store::image_refs_present",
+                    error = %e,
+                    "images:pack spine lookup failed, treating every hash as unreferenced (fail-closed, all frames skipped)"
+                );
+                vec![false; hashes.len()]
             }
-        };
-        if !referenced {
+        }
+        // The lock is held for exactly this lookup and released before the first
+        // file is opened — the same discipline the per-hash version claimed by
+        // construction.
+    };
+    let mut out: Vec<u8> = Vec::with_capacity(PACK_MAX_BYTES.min(1024));
+    for (h, &is_referenced) in hashes.iter().zip(&referenced) {
+        if !is_referenced {
             continue;
         }
         let path = image_path(&state.image_dir, h);
-        match std::fs::read(&path) {
+        // O-H13: async read, as above.
+        match tokio::fs::read(&path).await {
             Ok(bytes) => {
                 if out.len() + 4 + bytes.len() > PACK_MAX_BYTES {
                     break;

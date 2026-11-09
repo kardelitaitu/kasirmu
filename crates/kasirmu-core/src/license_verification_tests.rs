@@ -947,3 +947,189 @@ fn test_verify_signature_with_crl_denies_revoked_tenant() {
         "verify_signature_with_crl must reject a tenant in CRL"
     );
 }
+
+#[test]
+fn test_parsed_crl_sets_fast_membership_and_cache_coherence() {
+    use crate::license_verification::ParsedCrlSets;
+    use crate::migrations;
+
+    let conn = migrations::fresh_db();
+
+    let crl = CrlPayload {
+        issuer: "kasir.mu".into(),
+        issued_at: "2026-10-21T00:00:00Z".into(),
+        entries: vec![CrlEntry {
+            key: "OZ-EXP-999".into(),
+            key_hash: {
+                use sha2::Digest;
+                let mut hasher = Sha256::new();
+                hasher.update(b"OZ-EXP-999");
+                hex::encode(hasher.finalize())
+            },
+            tenant_id: Some("tenant-999".into()),
+            revoked_at: "2026-10-21T00:00:00Z".into(),
+            reason: Some("fraud".into()),
+        }],
+        revoked_tenants: vec!["tenant-999".into()],
+        revoked_devices: vec!["terminal-pos-99".into()],
+    };
+
+    let sets = ParsedCrlSets::from(&crl);
+    assert!(sets.is_revoked(Some("OZ-EXP-999"), None, None));
+    assert!(sets.is_revoked(None, Some("tenant-999"), None));
+    assert!(sets.is_revoked(None, None, Some("terminal-pos-99")));
+    assert!(!sets.is_revoked(Some("OZ-VALID"), Some("tenant-clean"), Some("pos-01")));
+
+    apply_crl_to_cache(&conn, &crl, None, None, None).unwrap();
+
+    // Verify fast path in is_revoked_in_cached_crl hits memory cache
+    assert!(is_revoked_in_cached_crl(&conn, Some("OZ-EXP-999"), None, None).unwrap());
+    assert!(is_revoked_in_cached_crl(&conn, None, Some("tenant-999"), None).unwrap());
+    assert!(is_revoked_in_cached_crl(&conn, None, None, Some("terminal-pos-99")).unwrap());
+    assert!(
+        !is_revoked_in_cached_crl(
+            &conn,
+            Some("OZ-VALID"),
+            Some("tenant-clean"),
+            Some("pos-01")
+        )
+        .unwrap()
+    );
+}
+
+#[test]
+fn offline_rsa_license_renewal_and_token_verification_against_cloud_spec() {
+    use crate::migrations;
+    use crate::subscription::{SubscriptionTier, TenantSubscription};
+
+    let conn = migrations::fresh_db();
+    let (server_private_key, server_public_pem) = generate_test_keypair();
+    let tenant_id = "tenant-offline-spec";
+
+    // 1. Initial State: Expired subscription within 14-day offline grace period.
+    // Expired 2 days ago, grace period lasts until 12 days in the future.
+    let now = chrono::Utc::now();
+    let starts_at = (now - chrono::Duration::days(365)).to_rfc3339();
+    let expires_at = (now - chrono::Duration::days(2)).to_rfc3339();
+    let grace_until = (now + chrono::Duration::days(12)).to_rfc3339();
+    let issued_at = (now - chrono::Duration::days(365)).to_rfc3339();
+
+    let initial_payload = format!(
+        r#"{{
+            "tenant_id": "{tenant_id}",
+            "tier_key": "pro",
+            "status": "active",
+            "max_locations": 2,
+            "max_pos_instances": 5,
+            "allowed_types": ["store-pos", "restaurant-pos", "kds"],
+            "starts_at": "{starts_at}",
+            "expires_at": "{expires_at}",
+            "grace_until": "{grace_until}",
+            "issued_at": "{issued_at}",
+            "is_trial": false
+        }}"#
+    );
+    let initial_signature = sign_test_payload(&server_private_key, &initial_payload);
+
+    store_subscription(&conn, tenant_id, &initial_payload, &initial_signature).unwrap();
+
+    let sub = TenantSubscription::load(&conn, tenant_id).unwrap().unwrap();
+    assert_eq!(sub.tier, SubscriptionTier::Pro);
+    assert_eq!(sub.max_locations, 2);
+    assert_eq!(sub.max_pos_instances, 5);
+
+    // Cryptographic verification with server's public key
+    let public_key = RsaPublicKey::from_public_key_pem(&server_public_pem).unwrap();
+    let sig_bytes = base64::engine::general_purpose::STANDARD
+        .decode(&sub.signature)
+        .unwrap();
+    let rsa_signature = rsa::pkcs1v15::Signature::try_from(sig_bytes.as_slice()).unwrap();
+    let verifying_key = VerifyingKey::<Sha256>::new(public_key);
+    assert!(
+        verifying_key
+            .verify(sub.signed_payload.as_bytes(), &rsa_signature)
+            .is_ok(),
+        "initial offline payload must verify against cloud server RSA public key"
+    );
+
+    // Offline grace evaluation:
+    assert!(
+        sub.is_within_grace_period(),
+        "subscription is past expires_at but within grace_until: must remain valid for offline sales"
+    );
+
+    // 2. Anti-Clock-Tampering Guard (validate_clock_rollback):
+    // If a cashier rolls back OS clock after creating sales, monotonic ledger detects it.
+    let future_sale_time = (now + chrono::Duration::hours(5)).to_rfc3339();
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at) \
+         VALUES ('sale-tamper-01', 10000, 'IDR', 1, 'completed', ?1, ?1)",
+        [&future_sale_time],
+    )
+    .unwrap();
+
+    let rollback_err = TenantSubscription::validate_clock_rollback(&conn).unwrap_err();
+    assert!(
+        matches!(rollback_err, CoreError::SystemClockTampered(_)),
+        "monotonic ledger ahead of system clock must trigger SystemClockTampered: {rollback_err:?}"
+    );
+
+    // Clean up future sale to continue test
+    conn.execute("DELETE FROM sales WHERE id = 'sale-tamper-01'", [])
+        .unwrap();
+    assert!(TenantSubscription::validate_clock_rollback(&conn).is_ok());
+
+    // 3. Online Renewal via Cloud License Server:
+    // Server issues renewed subscription valid for another full year.
+    let renewed_starts_at = now.to_rfc3339();
+    let renewed_expires_at = (now + chrono::Duration::days(365)).to_rfc3339();
+    let renewed_grace_until = (now + chrono::Duration::days(379)).to_rfc3339();
+    let renewed_issued_at = now.to_rfc3339();
+
+    let renewed_payload = format!(
+        r#"{{
+            "tenant_id": "{tenant_id}",
+            "tier_key": "pro",
+            "status": "active",
+            "max_locations": 2,
+            "max_pos_instances": 5,
+            "allowed_types": ["store-pos", "restaurant-pos", "kds"],
+            "starts_at": "{renewed_starts_at}",
+            "expires_at": "{renewed_expires_at}",
+            "grace_until": "{renewed_grace_until}",
+            "issued_at": "{renewed_issued_at}",
+            "is_trial": false
+        }}"#
+    );
+    let renewed_signature = sign_test_payload(&server_private_key, &renewed_payload);
+
+    store_subscription(&conn, tenant_id, &renewed_payload, &renewed_signature).unwrap();
+
+    let renewed_sub = TenantSubscription::load(&conn, tenant_id).unwrap().unwrap();
+    assert_eq!(renewed_sub.tier, SubscriptionTier::Pro);
+    assert!(renewed_sub.is_within_grace_period());
+
+    // 4. Instant Revocation via CRL (ADR #58):
+    let crl = CrlPayload {
+        issuer: "kasir.mu".into(),
+        issued_at: now.to_rfc3339(),
+        entries: vec![CrlEntry {
+            key: "OZ-KEY-SPEC".into(),
+            key_hash: "hash-001".into(),
+            tenant_id: Some(tenant_id.into()),
+            revoked_at: now.to_rfc3339(),
+            reason: Some("payment_default".into()),
+        }],
+        revoked_tenants: vec![tenant_id.into()],
+        revoked_devices: vec![],
+    };
+    apply_crl_to_cache(&conn, &crl, Some(tenant_id), None, None).unwrap();
+
+    let revoked_err = renewed_sub
+        .verify_signature_with_crl(&conn, None)
+        .unwrap_err();
+    assert!(
+        matches!(revoked_err, CoreError::LicenseRevoked(_)),
+        "CRL revocation must immediately refuse token verification: {revoked_err:?}"
+    );
+}

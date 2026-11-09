@@ -23,25 +23,6 @@ pub use kasirmu_bridge::offline::{
     RequeueRemoteFailureArgs, SyncResult,
 };
 
-#[allow(dead_code)] // offline_tests.rs calls this helper directly and matches AppError::Core
-fn run_list_pending_offline(
-    conn: &rusqlite::Connection,
-) -> Result<Vec<OfflineQueueItemDto>, AppError> {
-    kasirmu_bridge::offline::run_list_pending_offline(conn).map_err(Into::into)
-}
-
-#[allow(dead_code)] // offline_tests.rs calls this helper directly and matches AppError::Core
-fn run_requeue_remote_failure(conn: &rusqlite::Connection, item_id: &str) -> Result<(), AppError> {
-    kasirmu_bridge::offline::run_requeue_remote_failure(conn, item_id).map_err(Into::into)
-}
-
-#[allow(dead_code)] // offline_tests.rs calls this helper directly and matches AppError::Core
-fn run_list_remote_failures(
-    conn: &rusqlite::Connection,
-) -> Result<Vec<RemoteSyncFailureDto>, AppError> {
-    kasirmu_bridge::offline::run_list_remote_failures(conn).map_err(Into::into)
-}
-
 /// Enqueue a transaction for later sync (scoped).
 #[tauri::command]
 pub async fn enqueue_offline_scoped(
@@ -158,7 +139,7 @@ pub async fn list_remote_failures_scoped(
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
-    let failures = run_list_remote_failures(db)?;
+    let failures = kasirmu_bridge::offline::run_list_remote_failures(db).map_err(AppError::from)?;
     let _ = db;
     Ok(failures)
 }

@@ -192,6 +192,15 @@ BEGIN
         EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'products_new', 'products');
     END IF;
 
+    -- 'payments_new' -> 'payments'   (20261107_payments_gift_card_method.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'payments_new')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'payments')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'payments_new', 'payments');
+    END IF;
+
     -- 'user_location_access'.'store_id' -> 'location_id'   (20260906_rename_store_to_location.sql)
     IF EXISTS (SELECT 1 FROM information_schema.columns
                 WHERE table_schema = 'public' AND table_name = 'user_location_access'
@@ -354,6 +363,7 @@ BEGIN
             ('offline_queue', 'tenant_id', 'TEXT', '''default''', true),
             ('offline_queue', 'priority', 'BIGINT', '1', true),
             ('offline_queue', 'origin_terminal_id', 'TEXT', NULL::text, false),
+            ('offline_queue', 'sale_id', 'TEXT', NULL::text, false),
             ('processed_webhooks', 'event_id', 'TEXT', NULL::text, true),
             ('processed_webhooks', 'provider', 'TEXT', NULL::text, true),
             ('processed_webhooks', 'received_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD HH24:MI:SS'')', true),
@@ -596,6 +606,11 @@ BEGIN
             ('topology_revisions', 'published_at', 'TEXT', NULL::text, true),
             ('topology_revisions', 'published_by', 'TEXT', NULL::text, true),
             ('topology_revisions', 'tenant_id', 'TEXT', '''default''', true),
+            ('topology_revisions', 'org_id', 'TEXT', '''''', true),
+            ('topology_revisions', 'actor', 'TEXT', '''''', true),
+            ('topology_revisions', 'key_id', 'TEXT', '''''', true),
+            ('topology_revisions', 'signature', 'TEXT', '''''', true),
+            ('topology_revisions', 'base_revision', 'BIGINT', NULL::text, false),
             ('over_quota_markers', 'id', 'BIGINT', NULL::text, true),
             ('over_quota_markers', 'resource_id', 'TEXT', NULL::text, true),
             ('over_quota_markers', 'resource_type', 'TEXT', NULL::text, true),
@@ -891,6 +906,7 @@ BEGIN
             ('customers', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
             ('customers', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
             ('customers', 'store_id', 'TEXT', NULL::text, false),
+            ('customers', 'credit_limit_minor', 'BIGINT', NULL::text, false),
             ('terminals', 'id', 'TEXT', NULL::text, true),
             ('terminals', 'name', 'TEXT', NULL::text, true),
             ('terminals', 'device_id', 'TEXT', NULL::text, true),
@@ -1271,6 +1287,22 @@ BEGIN
             ('tables', 'sort_order', 'BIGINT', '0', true),
             ('tables', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
             ('tables', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('receivables', 'id', 'TEXT', NULL::text, true),
+            ('receivables', 'tenant_id', 'TEXT', NULL::text, true),
+            ('receivables', 'customer_id', 'TEXT', NULL::text, true),
+            ('receivables', 'sale_id', 'TEXT', NULL::text, false),
+            ('receivables', 'source', 'TEXT', '''pos''', true),
+            ('receivables', 'reference', 'TEXT', '''''', true),
+            ('receivables', 'amount_minor', 'BIGINT', NULL::text, true),
+            ('receivables', 'paid_minor', 'BIGINT', '0', true),
+            ('receivables', 'currency', 'TEXT', '''IDR''', true),
+            ('receivables', 'due_date', 'TEXT', NULL::text, false),
+            ('receivables', 'status', 'TEXT', '''open''', true),
+            ('receivables', 'note', 'TEXT', '''''', true),
+            ('receivables', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('receivables', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('receivables', 'settled_at', 'TEXT', NULL::text, false),
+            ('receivables', 'written_off_at', 'TEXT', NULL::text, false),
             ('payments', 'id', 'TEXT', NULL::text, true),
             ('payments', 'sale_id', 'TEXT', NULL::text, true),
             ('payments', 'method', 'TEXT', NULL::text, true),
@@ -1342,6 +1374,15 @@ BEGIN
             ('refund_lines', 'line_minor', 'BIGINT', NULL::text, true),
             ('refund_lines', 'currency', 'TEXT', NULL::text, true),
             ('refund_lines', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('receivable_payments', 'id', 'TEXT', NULL::text, true),
+            ('receivable_payments', 'tenant_id', 'TEXT', NULL::text, true),
+            ('receivable_payments', 'receivable_id', 'TEXT', NULL::text, true),
+            ('receivable_payments', 'amount_minor', 'BIGINT', NULL::text, true),
+            ('receivable_payments', 'currency', 'TEXT', '''IDR''', true),
+            ('receivable_payments', 'method', 'TEXT', '''cash''', true),
+            ('receivable_payments', 'paid_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('receivable_payments', 'recorded_by', 'TEXT', NULL::text, false),
+            ('receivable_payments', 'note', 'TEXT', '''''', true),
             ('inventory_transaction_lines', 'id', 'TEXT', NULL::text, true),
             ('inventory_transaction_lines', 'transaction_id', 'TEXT', NULL::text, true),
             ('inventory_transaction_lines', 'sku', 'TEXT', NULL::text, true),
@@ -1531,7 +1572,7 @@ CREATE TABLE IF NOT EXISTS offline_queue (
     last_error      TEXT,
     created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     synced_at       TEXT
-, tenant_id TEXT NOT NULL DEFAULT 'default', priority BIGINT NOT NULL DEFAULT 1, origin_terminal_id TEXT);
+, tenant_id TEXT NOT NULL DEFAULT 'default', priority BIGINT NOT NULL DEFAULT 1, origin_terminal_id TEXT, sale_id TEXT);
 
 CREATE TABLE IF NOT EXISTS processed_webhooks (
     event_id TEXT PRIMARY KEY,
@@ -1933,7 +1974,7 @@ CREATE TABLE IF NOT EXISTS topology_revisions (
     -- enabling RLS is a policy decision the repo keeps separate from schema, and
     -- the generator surfaces uncovered tenant_id tables as a visible comment
     -- rather than failing (ADR #46 §9).
-    tenant_id               TEXT NOT NULL DEFAULT 'default',
+    tenant_id               TEXT NOT NULL DEFAULT 'default', org_id TEXT NOT NULL DEFAULT '', actor TEXT NOT NULL DEFAULT '', key_id TEXT NOT NULL DEFAULT '', signature TEXT NOT NULL DEFAULT '', base_revision BIGINT,
 
     UNIQUE (branch_id, revision)
 );
@@ -2375,7 +2416,7 @@ CREATE TABLE IF NOT EXISTS "customers" (
     created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     store_id        TEXT REFERENCES "locations"(id) ON DELETE SET NULL ON UPDATE CASCADE
-);
+, credit_limit_minor BIGINT);
 
 CREATE TABLE IF NOT EXISTS terminals (
     id              TEXT PRIMARY KEY,
@@ -2984,13 +3025,40 @@ CREATE TABLE IF NOT EXISTS tables (
     updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
 );
 
+CREATE TABLE IF NOT EXISTS receivables (
+    id              TEXT PRIMARY KEY,
+    tenant_id       TEXT NOT NULL,
+    customer_id     TEXT NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
+    -- Optional link to the originating sale. NULL for a receivable
+    -- raised outside a POS sale (e.g. manual balance adjustment).
+    sale_id         TEXT REFERENCES sales(id) ON DELETE SET NULL,
+    -- Free-text origin tag ('pos', 'manual', …). Not an enum: entry points
+    -- are expected to grow, and this is a display/audit label, not a state
+    -- machine.
+    source          TEXT NOT NULL DEFAULT 'pos',
+    reference       TEXT NOT NULL DEFAULT '',   -- invoice / receipt number
+    amount_minor    BIGINT NOT NULL CHECK (amount_minor >= 0),
+    paid_minor      BIGINT NOT NULL DEFAULT 0 CHECK (paid_minor >= 0),
+    currency        TEXT NOT NULL DEFAULT 'IDR',
+    due_date        TEXT,                        -- ISO date (YYYY-MM-DD); NULL = open-ended
+    status          TEXT NOT NULL DEFAULT 'open'
+                    CHECK (status IN ('open','partial','paid','written_off')),
+    note            TEXT NOT NULL DEFAULT '',
+    created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    settled_at      TEXT,
+    written_off_at  TEXT,
+    -- Never pay more than owed; the store rejects over-payment before here.
+    CHECK (paid_minor <= amount_minor)
+);
+
 CREATE TABLE IF NOT EXISTS "payments" (
     id                TEXT PRIMARY KEY,
     sale_id           TEXT NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
     method            TEXT NOT NULL CHECK (method IN (
         'cash', 'card', 'card_debit', 'card_credit',
         'qris_manual', 'qris', 'bank_transfer', 'ewallet',
-        'open_bill', 'credit', 'pay_later', 'other'
+        'open_bill', 'credit', 'pay_later', 'gift_card', 'other'
     )),
     amount_minor      BIGINT NOT NULL,
     currency          TEXT NOT NULL,
@@ -3101,6 +3169,18 @@ CREATE TABLE IF NOT EXISTS refund_lines (
     line_minor      BIGINT NOT NULL CHECK (line_minor >= 0),
     currency        TEXT NOT NULL,
     created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+);
+
+CREATE TABLE IF NOT EXISTS receivable_payments (
+    id              TEXT PRIMARY KEY,
+    tenant_id       TEXT NOT NULL,
+    receivable_id   TEXT NOT NULL REFERENCES receivables(id) ON DELETE CASCADE,
+    amount_minor    BIGINT NOT NULL CHECK (amount_minor > 0),
+    currency        TEXT NOT NULL DEFAULT 'IDR',
+    method          TEXT NOT NULL DEFAULT 'cash',
+    paid_at         TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    recorded_by     TEXT,
+    note            TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS inventory_transaction_lines (
@@ -3275,6 +3355,9 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at);
 
+CREATE INDEX IF NOT EXISTS idx_audit_log_outcome_created
+    ON audit_log(outcome, created_at DESC, id DESC);
+
 CREATE INDEX IF NOT EXISTS idx_audit_log_target ON audit_log(target_type, target_id);
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_user_id ON audit_log(user_id);
@@ -3433,7 +3516,17 @@ CREATE INDEX IF NOT EXISTS idx_midtrans_transactions_tenant
 
 CREATE INDEX IF NOT EXISTS idx_modifiers_group_id ON modifiers(group_id);
 
+CREATE INDEX IF NOT EXISTS idx_offline_queue_legacy_sale_probe
+    ON offline_queue(action, status, payload) WHERE sale_id IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_offline_queue_sale_pending
+    ON offline_queue(sale_id, status, action)
+    WHERE sale_id IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_offline_queue_status ON offline_queue(status);
+
+CREATE INDEX IF NOT EXISTS idx_offline_queue_status_action
+    ON offline_queue(status, action);
 
 CREATE INDEX IF NOT EXISTS idx_offline_queue_synced_at ON offline_queue(synced_at);
 
@@ -3482,6 +3575,9 @@ CREATE INDEX IF NOT EXISTS idx_payments_sale_id ON payments(sale_id);
 
 CREATE INDEX IF NOT EXISTS idx_po_lines_po_id ON purchase_order_lines(po_id);
 
+CREATE INDEX IF NOT EXISTS idx_product_activity_created_at
+    ON product_activity(created_at, sku, event_type);
+
 CREATE INDEX IF NOT EXISTS idx_product_activity_sku ON product_activity(sku);
 
 CREATE INDEX IF NOT EXISTS idx_product_images_hash ON product_images(hash);
@@ -3512,6 +3608,24 @@ CREATE INDEX IF NOT EXISTS idx_receipt_barcodes_sale_id ON receipt_barcodes(sale
 
 CREATE INDEX IF NOT EXISTS idx_receipt_formats_scope
     ON receipt_formats(scope_type, scope_id);
+
+CREATE INDEX IF NOT EXISTS idx_receivable_payments_receivable
+    ON receivable_payments(receivable_id);
+
+CREATE INDEX IF NOT EXISTS idx_receivable_payments_tenant
+    ON receivable_payments(tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_receivables_customer
+    ON receivables(customer_id);
+
+CREATE INDEX IF NOT EXISTS idx_receivables_due
+    ON receivables(due_date) WHERE status IN ('open','partial');
+
+CREATE INDEX IF NOT EXISTS idx_receivables_tenant_status
+    ON receivables(tenant_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_refunds_processed_by_created_at
+    ON refunds(processed_by, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_refunds_sale_id ON refunds(sale_id);
 
@@ -3785,10 +3899,12 @@ ON CONFLICT DO NOTHING;
 --   over_quota_markers — tenant_id added schema-side ahead of multi-tenant writes; no PG write path audited yet -- cover when cloud sync lands
 --   payable_payments — no PG write path yet; desktop-local AP settlement history — cover when payables cloud sync lands
 --   payables — no PG write path yet; desktop-local AP ledger (Hutang) — cover when payables cloud sync lands
---   payment_gateways — no writer anywhere in the repo — no INSERT/UPDATE exists outside the CREATE TABLE in 20260825_payment_infra.sql; db/payment_gateways.rs is a fail-fast stub (upsert_gateway returns PLANNED) and the copier's DEFAULT_TABLES excludes it. Nothing to gate until gateway config CRUD lands
+--   payment_gateways — local SQLite write path EXISTS and is wired end to end — Store::upsert_payment_gateway / get_payment_gateway / list_payment_gateways / delete_payment_gateway in db/payment_gateways.rs, reached through the scoped commands in kasirmu-bridge/src/local_payment.rs and registered on the desktop shell. It is still exempt from RLS for the original reason plus one correction: the earlier note here called this file a fail-fast stub (upsert_gateway returns PLANNED), and that stopped being true when the CRUD landed — upsert_gateway is now a deprecated shim returning CoreError::Internal and has ZERO callers. What remains true is that no PG write path exists: every writer is device-local, tenant_id is the schema DEFAULT 'default' as it is for the other local-only tables, and the copier never selects this table, so there is no PG insert for a policy to gate. Cover when gateway config gains a cloud-sync path.
 --   payment_settlements — no writer anywhere in the repo — no INSERT/UPDATE exists outside the CREATE TABLE in 20260825_payment_infra.sql; db/payment_settlements.rs is a fail-fast stub (record_settlement returns PLANNED) and the copier's DEFAULT_TABLES excludes it. Nothing to gate until the reconciliation job writes it
 --   provisioning — ADR #56 first-run record; written only by the desktop/tablet provision_device transaction against the LOCAL store DB, and never synced to PG. It records which server holds this tenant's data, so replicating it into the shared cloud schema would put one install's routing fact in every other tenant's reach for no read that exists. Cover if provisioning ever moves cloud-side
 --   receipt_formats — regional receipt-format axis; desktop-local write paths only (Store CRUD via the scoped commands) — tenant_id stamped schema-side from birth, cover when its PG write path lands; parent legal_entities is itself exempt pending the cloud-sync decision
+--   receivable_payments — no PG write path yet; local AR settlement history — cover when receivables cloud sync lands
+--   receivables — no PG write path yet; local AR ledger (Piutang) — cover when receivables cloud sync lands
 --   snapshot_versions — no PG write path audited; cover when snapshot sync reaches PG
 --   terminals — tenant_id added schema-side (56653839) ahead of multi-tenant writes; cover when create_terminal-class PG writes arrive
 --   topology_revisions — ADR #46 desktop-side table; no PG write path yet

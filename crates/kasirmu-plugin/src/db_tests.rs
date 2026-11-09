@@ -26,6 +26,84 @@ fn sql_validation_regexes_compile() {
     }
 }
 
+// ── O-M47: the cached keyword regexes keep the WORD-BOUNDARY rule ──
+
+/// The keyword set is now compiled once into a `OnceLock` instead of once per
+/// call. This pins the property that a cache keyed on the keyword TEXT could
+/// most easily break: `contains_word` matches a WHOLE WORD (`\b{kw}\b`), so a
+/// blocked keyword appearing only as a SUBSTRING of a longer identifier must
+/// stay allowed, while the bare word must stay rejected.
+///
+/// Both directions matter and for different reasons. A too-loose matcher
+/// rejects legitimate plugin SQL (a column called `pragma_notes`, a table called
+/// `tableau`), which is a false positive a user cannot work around. A
+/// too-strict one lets `ATTACH` reach the engine, which is the security hole
+/// the whole function exists to close.
+#[test]
+fn cached_keyword_regexes_preserve_word_boundary_semantics() {
+    // (keyword, a statement that must be ACCEPTED because the keyword is only a
+    //  substring of a longer identifier, and one that must be REJECTED bare)
+    let cases: [(&str, &str); 3] = [
+        ("PRAGMA", "SELECT * FROM test_pragma_notes"),
+        ("TABLE", "SELECT * FROM test_tableau"),
+        ("ATTACH", "SELECT * FROM test_attached_items"),
+    ];
+    for (keyword, allowed) in cases {
+        assert!(
+            !contains_word(&allowed.to_uppercase(), keyword),
+            "{keyword} as a substring of a longer identifier must not match: {allowed}"
+        );
+    }
+
+    // And the bare word, in each surrounding form a statement can present it,
+    // is still caught. This is the direction that fails OPEN if it regresses.
+    for keyword in ["PRAGMA", "TABLE", "ATTACH"] {
+        for statement in [
+            format!("{keyword} foo"),
+            format!("  {keyword}  "),
+            format!("SELECT 1; {keyword}"),
+            format!("({keyword})"),
+        ] {
+            assert!(
+                contains_word(&statement.to_uppercase(), keyword),
+                "a bare {keyword} must still match: {statement}"
+            );
+        }
+    }
+}
+
+/// Every keyword the cache answers for compiles, and each one MATCHES itself.
+///
+/// The sibling of `sql_validation_regexes_compile` for the O-M47 cache: a
+/// pattern typo, or a keyword added to `validate_sql` but missed by
+/// `build_keyword_regexes`, fails here rather than at the first plugin call in
+/// a live process.
+#[test]
+fn keyword_regex_cache_compiles_and_matches_every_keyword() {
+    let cached = keyword_regexes();
+    assert!(
+        !cached.blocked.is_empty(),
+        "the blocked-keyword cache must not be empty"
+    );
+    for (keyword, regex) in &cached.blocked {
+        assert!(
+            regex.is_match(keyword),
+            "the cached regex for {keyword} must match its own keyword"
+        );
+    }
+    // The three keywords `validate_sql` matches outside BLOCKED_KEYWORDS.
+    for (keyword, regex) in [
+        ("PRAGMA", &cached.pragma),
+        ("ALTER", &cached.alter),
+        ("TABLE", &cached.table),
+    ] {
+        assert!(
+            regex.is_match(keyword),
+            "the cached regex for {keyword} must match its own keyword"
+        );
+    }
+}
+
 // ── PLG-A: comments cannot hide a table reference ───────────────────
 
 /// Every comment form that used to defeat the extraction regexes must now be
@@ -517,6 +595,177 @@ fn extract_tables_from_delete() {
 fn extract_tables_from_update() {
     let tables = extract_table_references("UPDATE plugin_test_items SET name = 'x'");
     assert_eq!(tables, vec!["plugin_test_items"]);
+}
+
+// ── O-M48: row ceiling on plugin queries ───────────────────────────
+
+/// Insert `n` rows into `plugin_test_items` in ONE statement.
+///
+/// One `INSERT ... VALUES (..),(..),...` keeps the fixture cost in the
+/// engine rather than in N Rust calls; at the 10 000-row boundary a
+/// per-row `exec` loop would dominate the test's runtime.
+fn seed_rows(db: &PluginDb, n: usize) {
+    db.execute("CREATE TABLE plugin_test_items (id INTEGER PRIMARY KEY, name TEXT)")
+        .unwrap();
+    let mut values: Vec<String> = Vec::with_capacity(n);
+    for i in 0..n {
+        values.push(format!("({i}, 'row{i}')"));
+    }
+    let sql = format!("INSERT INTO plugin_test_items VALUES {}", values.join(", "));
+    let inserted = db.exec(&sql).unwrap();
+    assert_eq!(inserted, n, "fixture must insert exactly {n} rows");
+}
+
+/// One row BELOW the cap is returned whole — the ceiling must not trim a
+/// legitimate result.
+#[test]
+fn query_cap_returns_every_row_one_below_the_ceiling() {
+    let db = make_db("test");
+    seed_rows(&db, MAX_QUERY_ROWS - 1);
+    let result = db.query("SELECT * FROM plugin_test_items").unwrap();
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&result).unwrap();
+    assert_eq!(parsed.len(), MAX_QUERY_ROWS - 1);
+    // First and last row intact — no rows dropped from either end.
+    assert_eq!(parsed[0]["id"], 0);
+    assert_eq!(parsed[MAX_QUERY_ROWS - 2]["id"], MAX_QUERY_ROWS - 2);
+}
+
+/// Exactly at the cap succeeds. The boundary is inclusive, which is what the
+/// error message's `LIMIT {MAX_QUERY_ROWS}` hint promises the plugin author:
+/// the LIMIT they are told to add must not itself trip the ceiling.
+#[test]
+fn query_cap_allows_exactly_the_ceiling() {
+    let db = make_db("test");
+    seed_rows(&db, MAX_QUERY_ROWS);
+    let result = db.query("SELECT * FROM plugin_test_items").unwrap();
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&result).unwrap();
+    assert_eq!(parsed.len(), MAX_QUERY_ROWS);
+}
+
+/// One row ABOVE the cap is an ERROR, not a truncated prefix. This is the
+/// case that proves the ceiling is enforced rather than aspirational: if the
+/// check regressed to a `LIMIT`-style truncation the call would still return
+/// `Ok` with 10 000 rows and every other test would still pass.
+#[test]
+fn query_cap_rejects_one_row_above_the_ceiling() {
+    let db = make_db("test");
+    seed_rows(&db, MAX_QUERY_ROWS + 1);
+    let err = db.query("SELECT * FROM plugin_test_items").unwrap_err();
+    assert!(
+        matches!(err, PluginError::PermissionDenied(_)),
+        "over-cap query must be a permission error, got: {err:?}"
+    );
+    let msg = err.to_string();
+    assert!(
+        msg.contains(&MAX_QUERY_ROWS.to_string()),
+        "the error must name the ceiling: {msg}"
+    );
+    assert!(
+        msg.contains("LIMIT"),
+        "the error must tell the plugin author to add a LIMIT: {msg}"
+    );
+}
+
+/// The cap counts rows the ENGINE produced, so a plugin `LIMIT` above the
+/// ceiling cannot buy a larger result, and the limit the error message
+/// recommends is itself accepted (see `validate_sql` note on MAX_QUERY_ROWS).
+#[test]
+fn query_cap_counts_engine_rows_not_the_plugins_limit_clause() {
+    let db = make_db("test");
+    seed_rows(&db, MAX_QUERY_ROWS + 5);
+    // A plugin LIMIT larger than the cap still errors: the ceiling is
+    // enforced while reading, not by trusting the statement.
+    let err = db
+        .query("SELECT * FROM plugin_test_items LIMIT 999999")
+        .unwrap_err();
+    assert!(err.to_string().contains("LIMIT"), "got: {err}");
+    // And the recommended shape — LIMIT exactly the ceiling — succeeds.
+    let ok = db
+        .query(&format!(
+            "SELECT * FROM plugin_test_items ORDER BY id LIMIT {MAX_QUERY_ROWS}"
+        ))
+        .unwrap();
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&ok).unwrap();
+    assert_eq!(parsed.len(), MAX_QUERY_ROWS);
+}
+
+/// The names half of O-M48 changes HOW the row maps are built, so this pins
+/// that the OUTPUT is unchanged: every row carries every column exactly once,
+/// with its name spelled as SQLite reports it, and the original `SELECT *`,
+/// aliased and expression-column forms all still produce identical JSON.
+#[test]
+fn query_output_is_unchanged_by_name_sharing() {
+    let db = make_db("test");
+    db.execute(
+        "CREATE TABLE plugin_test_items (id INTEGER PRIMARY KEY, name TEXT, price INTEGER, \
+         ratio REAL, blob_col BLOB, missing TEXT)",
+    )
+    .unwrap();
+    db.exec(
+        "INSERT INTO plugin_test_items VALUES (1, 'a', 100, 0.5, X'0001FF', NULL), \
+         (2, NULL, -7, 2.25, NULL, 'set')",
+    )
+    .unwrap();
+
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(
+        &db.query("SELECT * FROM plugin_test_items ORDER BY id")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        parsed,
+        vec![
+            serde_json::json!({
+                "id": 1,
+                "name": "a",
+                "price": 100,
+                "ratio": 0.5,
+                "blob_col": "AAH/",
+                "missing": serde_json::Value::Null,
+            }),
+            serde_json::json!({
+                "id": 2,
+                "name": serde_json::Value::Null,
+                "price": -7,
+                "ratio": 2.25,
+                "blob_col": serde_json::Value::Null,
+                "missing": "set",
+            }),
+        ]
+    );
+}
+
+/// Expression columns are still named by SQLite's own label, and duplicate
+/// labels still collapse into ONE key (the map insert overwrites), which is
+/// the behaviour the pre-O-M48 `Map::insert` had.
+#[test]
+fn query_expression_and_duplicate_column_names_are_unchanged() {
+    let db = make_db("test");
+    db.execute("CREATE TABLE plugin_test_items (id INTEGER)")
+        .unwrap();
+    db.exec("INSERT INTO plugin_test_items VALUES (3)").unwrap();
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(
+        &db.query("SELECT id AS n, id + 1 AS n FROM plugin_test_items")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(parsed, vec![serde_json::json!({ "n": 4 })]);
+}
+
+/// An ordinary small query is untouched by the ceiling or the key buffer,
+/// including the empty-result case and a query with no rows to seed the
+/// buffer from.
+#[test]
+fn query_small_result_is_unaffected() {
+    let db = make_db("test");
+    db.execute("CREATE TABLE plugin_test_items (id INTEGER PRIMARY KEY, name TEXT)")
+        .unwrap();
+    assert_eq!(db.query("SELECT * FROM plugin_test_items").unwrap(), "[]");
+    db.exec("INSERT INTO plugin_test_items VALUES (1, 'one')")
+        .unwrap();
+    let one: Vec<serde_json::Value> =
+        serde_json::from_str(&db.query("SELECT * FROM plugin_test_items").unwrap()).unwrap();
+    assert_eq!(one, vec![serde_json::json!({ "id": 1, "name": "one" })]);
 }
 
 // ── SQLite value conversion tests ──────────────────────────────────

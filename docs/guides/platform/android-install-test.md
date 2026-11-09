@@ -387,7 +387,7 @@ is not implemented.
 | 7.1 | Tap **Pay** / **Checkout** | Payment screen opens | ☐ |
 | 7.2 | **Swipe left** on cart panel | Payment modal opens (gesture shortcut) | ☐ |
 | 7.3 | **Swipe right** on payment modal | Returns to cart (gesture shortcut) | ☐ |
-| 7.4 | Select payment method | Cash / Card / Split options — the split entry is "Split Payments" (`payment-split-title`, `shared-ui/locales/sales.ftl:155`); there is no "Mixed" label. Each easy to tap | ☐ |
+| 7.4 | Select payment method | Cash / Card / Split options — the split entry is "Split Payments" (`payment-split-title`, `shared-ui/locales/sales.ftl:164`); there is no "Mixed" label. Each easy to tap | ☐ |
 | 7.5 | Cash: enter amount tendered | Numeric keypad is large enough to tap reliably | ☐ |
 | 7.6 | Complete payment | Sale completes. Success message. | ☐ |
 | 7.7 | Receipt preview | Receipt displays full details on screen | ☐ |

@@ -89,7 +89,23 @@ function renderWith(l10n: ReactLocalization) {
 
 import { render } from '@testing-library/react';
 
-describe('SecurityTrailScreen', () => {
+describe('SecurityTrailScreen', () => {  // WHY THIS IS A DOM ASSERTION AND NOT AN AXE RUN.
+  //
+  // axe's `page-has-heading-one` cannot reach a verdict under jsdom: a document
+  // WITH an <h1> and one WITHOUT both come back `incomplete` / `error-occurred`
+  // (`document.elementFromPoint is not a function`). Measured 2026-10-27. So the
+  // structure is pinned directly.
+  //
+  // The page title was an <h2> while the screen had no <h1>, so the outline
+  // started at level two. Confirmed by mutation: reverting to <h2> left all 30
+  // cases in this file and its two siblings green.
+  it('exposes the screen title as the page heading', () => {
+    const { container } = renderWith(makeL10n('en-US', sharedFtl));
+    const h1s = Array.from(container.querySelectorAll('h1'));
+    expect(h1s, 'the security trail must carry exactly one level-one heading').toHaveLength(1);
+    expect(h1s[0]!.textContent?.trim()).toBe('Security Trail');
+  });
+
   it('labels every action the trail emits, using the real shared bundle', async () => {
     // The weld this slice exists to close: SECURITY_ACTION_LOGOUT and the two
     // impersonate actions were emitted by the backend with no catalog entry and

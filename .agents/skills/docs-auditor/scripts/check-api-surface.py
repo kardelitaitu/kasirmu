@@ -30,6 +30,8 @@ SELF-TEST
   filesystem and cannot rot when a crate is renamed - which is what took this checker out
   of scripts/check-auditor-selftests.sh before: it read live paths, and reading live
   paths is exactly what breaks when the tree moves.
+  The three parsers (registered, defined, documented) are graded the same way:
+  synthetic fixtures in a tempdir, never a live path.
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ import argparse
 import json
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 DOC_REL = "docs/guides/developer/api-reference.md"
@@ -167,20 +170,53 @@ SELF = [
 
 def self_test():
     bad = 0
+    total = 0
     for name, reg, dfn, doc, want in SELF:
         c = classify(reg, dfn, doc)
         got = {"wrong": len(c["wrong"]), "unwired": len(c["unwired"]),
                "absent": len(c["absent"]), "missing": len(c["missing"])}
         got = {k: v for k, v in got.items() if v}
+        total += 1
         if got != want:
             bad += 1
             print("  FAIL " + name + ": expected " + str(want) + ", got " + str(got))
         else:
             print("  ok   " + name)
+    # The three parsers, graded against synthetic fixtures in a tempdir -- no live
+    # paths, the same rule that keeps classify testable. A parser that stopped
+    # matching makes every real run exit 2 (no parse, no drift); the self-test must
+    # go red for that same breakage instead of staying green.
+    with tempfile.TemporaryDirectory() as td:
+        troot = Path(td)
+        lib = troot / "app" / "src" / "lib.rs"
+        lib.parent.mkdir(parents=True, exist_ok=True)
+        lib.write_text(
+            "generate_handler![\n            cmd_a,\n            // comment_cmd,\n            cmd_b,\n        ]",
+            encoding="utf-8")
+        fixtures = [("registered parses the handler list",
+                     registered(troot, "app") == {"cmd_a", "cmd_b"})]
+        cmd = troot / "app" / "src" / "commands" / "x.rs"
+        cmd.parent.mkdir(parents=True, exist_ok=True)
+        cmd.write_text("#[tauri::command]\npub async fn cmd_c() -> String { String::new() }",
+                       encoding="utf-8")
+        fixtures.append(("defined maps the command fn to its file",
+                         defined(troot, "app") == {"cmd_c": "x.rs"}))
+        doc = troot / "docs" / "guides" / "developer" / "api-reference.md"
+        doc.parent.mkdir(parents=True, exist_ok=True)
+        doc.write_text("- **`cmd_a`** [D] -- alpha\n- **`ghost`** [D] -- beta\n", encoding="utf-8")
+        fixtures.append(("documented parses entry lines",
+                         documented(troot) == [("cmd_a", "D"), ("ghost", "D")]))
+    for name, ok in fixtures:
+        total += 1
+        if ok:
+            print("  ok   " + name)
+        else:
+            bad += 1
+            print("  FAIL " + name + ": parser fixture disagrees")
     if bad:
-        print("SELF-TEST FAILED (" + str(bad) + " of " + str(len(SELF)) + ")")
+        print("SELF-TEST FAILED (" + str(bad) + " of " + str(total) + ")")
         return 1
-    print("SELF-TEST OK (" + str(len(SELF)) + " cases, no files touched)")
+    print("SELF-TEST OK (" + str(total) + " cases, live tree untouched)")
     return 0
 
 

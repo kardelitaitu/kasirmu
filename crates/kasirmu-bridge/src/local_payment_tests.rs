@@ -1,6 +1,6 @@
 //! Tests for the local payment method commands (slice 6).
 //!
-//! Relocated from `apps/desktop-tauri/src/commands/local_payment_tests.rs`
+//! Relocated from `apps/desktop-client/src/commands/local_payment_tests.rs`, since renamed to desktop-tauri
 //! (Wave F); the tauri `flow_state`/`mock_app` pair becomes `TestBridge`
 //! with an isolated store-db manager over a unique temp directory.
 
@@ -23,33 +23,30 @@ fn seed_owner(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
-static STORE_DIR_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
-/// Unique store-db directory per test - the mechanical twin of the desktop
-/// `flow_state`'s `tempfile::tempdir().unwrap().keep()`.
-fn unique_store_dir() -> std::path::PathBuf {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    std::env::temp_dir().join(format!(
-        "kasirmu-bridge-local-payment-{}-{}-{}",
-        std::process::id(),
-        nanos,
-        STORE_DIR_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    ))
+/// Unique store-db directory per test, under `target/test-scratch`.
+///
+/// The mechanical twin of the desktop `flow_state`'s
+/// `tempfile::tempdir().unwrap().keep()`. It used to be
+/// `std::env::temp_dir()`, which on this project's Windows machines resolves to
+/// the MACHINE-level `C:\WINDOWS\TEMP` -- a directory an ordinary user can
+/// create in but not delete from, so a stale entry made the create itself fail
+/// with `os error 5` and read as a product bug. `scratch_dir` gives the
+/// same per-call uniqueness (a UUID suffix replaces the pid/nanos/counter)
+/// under a writable, gitignored root.
+fn unique_store_dir() -> (std::path::PathBuf, kasirmu_test_support::ScratchDir) {
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-local-payment");
+    (scratch.path().to_path_buf(), scratch)
 }
 
 /// `TestBridge` with a fresh migrated global DB and an isolated store-db
 /// manager over a unique directory - the bridge twin of the desktop
 /// `flow_state` + `mock_app` pair.
 fn flow_bridge(conn: rusqlite::Connection) -> TestBridge {
-    TestBridge::new()
-        .with_conn(conn)
-        .with_db_manager(TestBridge::seed_store_manager(StoreDatabaseManager::new(
-            unique_store_dir(),
-            migrations::ALL,
-        )))
+    let (dir, scratch) = unique_store_dir();
+    TestBridge::new().with_conn(conn).with_db_manager_scratch(
+        TestBridge::seed_store_manager(StoreDatabaseManager::new(dir, migrations::ALL)),
+        scratch,
+    )
 }
 
 fn owner_session(tb: &TestBridge, token: &str) {

@@ -24,6 +24,7 @@
 //   immediately appear on the restaurant POS selling grid.
 
 import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties } from 'react';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { Localized, useLocalization } from '@fluent/react';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { asArray } from '@/utils/ipc-payload';
@@ -280,6 +281,8 @@ export default function RestaurantMenuEditorScreen({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [categorySaving, setCategorySaving] = useState(false);
+  /** Synchronous mirror of `categorySaving` — see the re-entry guard in `handleSaveCategory`. */
+  const categorySavingRef = useRef(false);
   const [dirty, setDirty] = useState(false);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
 
@@ -288,11 +291,26 @@ export default function RestaurantMenuEditorScreen({
 
   const iconRadioRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const formRef = useRef<HTMLFormElement>(null);
+  // Focus management for the category modal. It declared aria-modal="true" with no trap,
+  // so focus stayed on the page behind it and Tab left the dialog on the FIRST press —
+  // measured. Every sibling POS dialog uses this hook (ItemModifierModal:253,
+  // SplitBillModal:37, PromotionsModal:66, RefundModal:176, PriceOverrideModal:176,
+  // StockShortfallDialog:115, RestaurantCartSheet, OpenBillModals). Escape is NOT
+  // handled here: the screen's own document-level listener already closes the modal
+  // (and stops the back-navigation), so a second handler would double-fire.
+  const categoryModalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(categoryModalRef, categoryModal !== null, () => setCategoryModal(null));
 
   const currencyCtx = useOptionalCurrency();
   const currency = currencyCtx?.currency || 'IDR';
 
   const loadSeqRef = useRef(0);
+  // `allSettled` correctly keeps the last-known items when a read fails, but
+  // nothing recorded that the load FAILED — so on a first load the grid fell
+  // through to "No items in this category yet." with a "New Item" call to
+  // action, and the rail counts read 0. A manager on a busy service read that
+  // as "my menu was wiped". Flag it so the empty state is not a claim.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   // Load menu products and categories
   const reloadData = useCallback(async () => {
@@ -301,6 +319,7 @@ export default function RestaurantMenuEditorScreen({
       return;
     }
     const seq = ++loadSeqRef.current;
+    setLoadFailed(false);
     try {
       const [prodsRes, catsRes] = await Promise.allSettled([
         listProductsScoped(sessionToken),
@@ -311,6 +330,7 @@ export default function RestaurantMenuEditorScreen({
       if (prodsRes.status === 'fulfilled') {
         setItems(asArray<ProductDto>(prodsRes.value));
       } else {
+        setLoadFailed(true);
         addToast({
           message: l10nErrorMessage(prodsRes.reason, l10n, 'restaurant-menu-editor-error-load'),
           type: 'error',
@@ -321,6 +341,7 @@ export default function RestaurantMenuEditorScreen({
         const fetchedCats = asArray<CategoryDto>(catsRes.value);
         setCategories(fetchedCats);
       } else {
+        setLoadFailed(true);
         addToast({
           message: l10nErrorMessage(catsRes.reason, l10n, 'restaurant-menu-editor-error-load'),
           type: 'error',
@@ -338,8 +359,15 @@ export default function RestaurantMenuEditorScreen({
   }, [reloadData]);
 
   // Keep menu editor focused on restaurant products (or items created here)
+  //
+  // `'standard'` was a dead variant: migration 20261020_product_type_check.sql closes
+  // `products.product_type` to ('retail','restaurant','service') and backfills every
+  // legacy / NULL / 'both' row to 'retail'. The comparison matched nothing a real read
+  // can return. The `!p.product_type` arm STAYS, unlike its twin in RestaurantMenu.tsx —
+  // this screen creates items in memory before they are persisted, and an item that has
+  // not round-tripped yet has no type.
   const restaurantItems = useMemo(
-    () => items.filter((p) => p.product_type === 'restaurant' || !p.product_type || p.product_type === 'standard'),
+    () => items.filter((p) => p.product_type === 'restaurant' || !p.product_type),
     [items],
   );
 
@@ -514,12 +542,25 @@ export default function RestaurantMenuEditorScreen({
           type: 'success',
         });
       } catch (err) {
-        const freshProds = await listProductsScoped(sessionToken);
-        setItems(freshProds);
+        // REPORT FIRST, then resync. The failure toast was queued AFTER an `await` inside
+        // this same catch block, so a second rejection (the resync read) escaped as an
+        // unhandled rejection and the operator saw NOTHING — while the optimistic bulk
+        // update stayed on screen as if it had been saved.
         addToast({
           message: l10nErrorMessage(err, l10n, 'restaurant-menu-editor-error-save'),
           type: 'error',
         });
+        // The resync is its own attempt: if it fails too, keep the last known items
+        // rather than blanking the menu, and say so instead of silently reverting.
+        try {
+          const freshProds = await listProductsScoped(sessionToken);
+          setItems(freshProds);
+        } catch (rereadErr) {
+          addToast({
+            message: l10nErrorMessage(rereadErr, l10n, 'restaurant-menu-editor-error-save'),
+            type: 'error',
+          });
+        }
       } finally {
         setBulkUpdating(false);
       }
@@ -637,8 +678,19 @@ export default function RestaurantMenuEditorScreen({
     [],
   );
 
+  // Re-entry guard. `saving` is React state and commits on the NEXT render, so the second
+  // dispatch of a real double tap still enters this handler. The CREATE arm mints a fresh SKU
+  // on every call -- `generateMenuSku` mixes a monotonic counter with `Math.random()`
+  // (menuEditorLogic.ts:39-48) -- and `products.sku` is UNIQUE, so the replay is REFUSED and
+  // the catch reports `restaurant-menu-editor-error-save`: "could not save" over a dish that
+  // WAS created. The draft then stays on screen with the error, so the operator's reasonable
+  // next move is to press Save again, producing a third refusal.
+  const savePendingRef = useRef(false);
+
   const handleSaveDraft = useCallback(async () => {
     if (!draft || !sessionToken || !draft.name.trim()) return;
+    if (savePendingRef.current) return;
+    savePendingRef.current = true;
     setSaving(true);
     const resolvedPriceMinor =
       draft.priceInput !== undefined
@@ -696,6 +748,7 @@ export default function RestaurantMenuEditorScreen({
         type: 'error',
       });
     } finally {
+      savePendingRef.current = false;
       setSaving(false);
     }
   }, [draft, sessionToken, categoryIdFor, addToast, l10n, currency, reloadData]);
@@ -762,13 +815,20 @@ export default function RestaurantMenuEditorScreen({
     if (isDuplicate) {
       addToast({
         message:
-          l10n.getString('restaurant-menu-editor-category-name-exists') ||
-          'A category with this name already exists.',
+          requiredLocalized(l10n, 'restaurant-menu-editor-category-name-exists'),
         type: 'error',
       });
       return;
     }
 
+    // Re-entry guard, after the duplicate-name check. Edit is a same-row UPDATE, but
+    // CREATE mints a fresh id and inserts -- and the only thing standing between a replay
+    // and a second category row is `categories.name UNIQUE`, which REFUSES the second
+    // insert and lands in the catch as restaurant-menu-editor-error-save, an error over a
+    // category that was created. This screen's already-saved categories are in
+    // `categories`, so the duplicate check above cannot see the one still in flight.
+    if (categorySavingRef.current) return;
+    categorySavingRef.current = true;
     setCategorySaving(true);
     try {
       if (categoryModal.id) {
@@ -817,6 +877,7 @@ export default function RestaurantMenuEditorScreen({
         type: 'error',
       });
     } finally {
+      categorySavingRef.current = false;
       setCategorySaving(false);
     }
   }, [categoryModal, categories, selectedCategoryName, sessionToken, addToast, l10n, reloadData]);
@@ -863,22 +924,64 @@ export default function RestaurantMenuEditorScreen({
     }
   }, [dirty, onBack]);
 
+  // ⚠️ CAPTURE PHASE, and that is load-bearing — not a style choice.
+  //
+  // This handler owns Escape for the editor, but for a long time it never got the
+  // chance to run. `PosScreen` mounts its OWN Escape cascade for the restaurant
+  // workspace (`PosScreen.tsx:2069`, re-measured 2026-10-19; the note said :1996), which
+  // treats the menu editor as a sub-screen
+  // and closes the whole thing. Both listeners were on the same bubble phase, so
+  // whichever was registered first on `document` won, and that was PosScreen — this
+  // editor unmounted before its handler was ever called. Measured 2026-10-17
+  // (round 177) with an instrumented handler: `handler log=[]`.
+  //
+  // The consequence was a real defect on an UNTOUCHED item form: Escape threw the
+  // operator out of the editor and back onto the sales grid, losing the form. With a
+  // DIRTY form the unsaved-changes dialog happened to catch it, so the hole showed
+  // exactly when someone pressed Escape to abandon a form they had decided not to
+  // fill in — the common case.
+  //
+  // Capture fixes it at the right layer: this component is INSIDE PosScreen, so its
+  // handler is by definition closer to the focused element and must get the key
+  // first. The round-177 note proposed asking the editor whether it consumed the
+  // key; capture is the same ordering expressed by the DOM rather than by a
+  // hand-rolled handshake, and it needs no new prop.
   useEffect(() => {
     if (!onBack) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       if (categoryModal) {
+        // ⚠️ THE CLAIM IS THE STOP, NOT THE `return`. Capture runs first, so this
+        // handler sees the key BEFORE PosScreen — but the event then continues to
+        // PosScreen's own Escape cascade (`PosScreen.tsx:2027`, re-measured 2026-10-19;
+        // the note said `:2000`), which closes the
+        // whole editor. Returning without stopping means the layer below acts on a
+        // key this layer already used. Measured 2026-10-17: the handler ran with
+        // `onBack=true draft=true`, called `cancelDraft()`, and the editor STILL
+        // disappeared — because nothing prevented the bubble phase.
+        e.preventDefault();
+        e.stopPropagation();
         setCategoryModal(null);
         return;
       }
       if ((e.target as HTMLElement)?.closest('[role="dialog"]')) return;
+      // The open ITEM FORM is a plain <form>, not a dialog, so the guard above
+      // cannot see it. Abandoning the form is the correct response to Escape here —
+      // the operator is one layer in, and dropping the whole editor would discard
+      // the list they were working on too.
+      if (draft) {
+        e.preventDefault();
+        e.stopPropagation();
+        cancelDraft();
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
       handleRequestBack();
     };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [onBack, categoryModal, handleRequestBack]);
+    document.addEventListener('keydown', handler, true);
+    return () => document.removeEventListener('keydown', handler, true);
+  }, [onBack, categoryModal, handleRequestBack, draft, cancelDraft]);
 
   // Total counts for status pills
   const totalInCategory = useMemo(
@@ -910,14 +1013,14 @@ export default function RestaurantMenuEditorScreen({
   return (
     <div className="restaurant-settings-screen">
       {/* ── Page Header ────────────────────────────────────────── */}
-      <div className="restaurant-settings-header" data-testid="restaurant-menu-editor-header">
+      <header className="restaurant-settings-header" data-testid="restaurant-menu-editor-header">
         <div className="restaurant-settings-header-lead">
           {onBack && (
             <button
               type="button"
               className="restaurant-settings-back-btn"
               onClick={handleRequestBack}
-              aria-label={l10n.getString('back') || 'Back'}
+              aria-label={requiredLocalized(l10n, 'back')}
               data-testid="restaurant-menu-editor-back-btn"
             >
               <svg
@@ -981,11 +1084,11 @@ export default function RestaurantMenuEditorScreen({
             type="button"
             className="btn btn--primary btn--md"
             // ⚠️ The name is part of the gate because `handleSaveDraft` RETURNS SILENTLY on a
-            // blank one (`:641` — `if (!draft || !sessionToken || !draft.name.trim()) return;`).
+            // blank one (`handleSaveDraft`’s own `!draft || !sessionToken || !draft.name.trim()` return).
             // Measured 2026-10-14 before this fix: New Item opens the form with `name: ''`
-            // (`EMPTY_DRAFT`, `:246`), Save rendered ENABLED, and clicking it produced no
-            // request, no toast and no state change — the operator taps Save and the till does
-            // nothing without saying why.
+            // (`EMPTY_DRAFT`, spread by `beginCreate`) and Save rendered ENABLED, and
+            // clicking it produced no request, no toast and no state change — the operator
+            // taps Save and the till does nothing without saying why.
             //
             // Disabled rather than validated-on-click: the field is the first thing in the form
             // and the ONLY required one, so an enabled button beside an empty required field is
@@ -999,7 +1102,7 @@ export default function RestaurantMenuEditorScreen({
             <Localized id="save">Save Changes</Localized>
           </button>
         </div>
-      </div>
+      </header>
 
       {/* ── Main Layout: Category Rail + Items View ─────────────── */}
       <div className="restaurant-settings-main">
@@ -1608,7 +1711,17 @@ export default function RestaurantMenuEditorScreen({
                 )}
 
                 {/* ── Item Cards List ── */}
-                {processedItems.length === 0 && !draft ? (
+                {processedItems.length === 0 && loadFailed && !draft ? (
+                  // The list is empty because the read failed, not because the
+                  // category is empty. Say so, and never offer "New Item" here.
+                  <div className="restaurant-menu-editor-empty-state">
+                    <p className="restaurant-menu-editor-empty" role="alert">
+                      <Localized id="restaurant-menu-editor-load-failed">
+                        <span>Menu could not be loaded.</span>
+                      </Localized>
+                    </p>
+                  </div>
+                ) : processedItems.length === 0 && !draft ? (
                   <div className="restaurant-menu-editor-empty-state">
                     {searchQuery ? (
                       <>
@@ -1756,6 +1869,7 @@ export default function RestaurantMenuEditorScreen({
       {/* ── Category Modal (Create / Edit) ────────────────────── */}
       {categoryModal && (
         <div
+          ref={categoryModalRef}
           className="restaurant-menu-editor-modal-overlay"
           role="dialog"
           aria-modal="true"
@@ -1896,12 +2010,11 @@ export default function RestaurantMenuEditorScreen({
       {/* ── Delete Item Confirmation Dialog ───────────────────── */}
       <ConfirmDialog
         open={Boolean(deleteItemTarget)}
-        title={l10n.getString('restaurant-menu-editor-delete-item-title') || 'Delete Menu Item'}
-        confirmLabel={l10n.getString('delete') || 'Delete'}
+        title={requiredLocalized(l10n, 'restaurant-menu-editor-delete-item-title')}
+        confirmLabel={requiredLocalized(l10n, 'delete')}
         message={
           deleteItemTarget
-            ? l10n.getString('restaurant-menu-editor-delete-item-confirm', { name: deleteItemTarget.name }) ||
-              `Are you sure you want to delete "${deleteItemTarget.name}"?`
+            ? requiredLocalized(l10n, 'restaurant-menu-editor-delete-item-confirm', { name: deleteItemTarget.name })
             : ''
         }
         variant="danger"
@@ -1918,12 +2031,11 @@ export default function RestaurantMenuEditorScreen({
       {/* ── Delete Category Confirmation Dialog ───────────────── */}
       <ConfirmDialog
         open={Boolean(deleteCategoryTarget)}
-        title={l10n.getString('restaurant-menu-editor-delete-category-title') || 'Delete Category'}
-        confirmLabel={l10n.getString('delete') || 'Delete'}
+        title={requiredLocalized(l10n, 'restaurant-menu-editor-delete-category-title')}
+        confirmLabel={requiredLocalized(l10n, 'delete')}
         message={
           deleteCategoryTarget
-            ? l10n.getString('restaurant-menu-editor-delete-category-confirm', { name: deleteCategoryTarget.name }) ||
-              `Are you sure you want to delete category "${deleteCategoryTarget.name}"?`
+            ? requiredLocalized(l10n, 'restaurant-menu-editor-delete-category-confirm', { name: deleteCategoryTarget.name })
             : ''
         }
         variant="danger"

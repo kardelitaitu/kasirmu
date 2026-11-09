@@ -129,7 +129,7 @@ export function SegmentedTabs<T extends string>({
     // segment, then scroll it into the viewport. Nearest, horizontal only —
     // never vertical, so the strip cannot yank the page. jsdom has no
     // scrollIntoView; the optional-call is the repo's established guard
-    // (StoreSwitcher.tsx:96).
+    // (ui/src/components/StoreSwitcher.tsx:117).
     tabs[nextIdx]?.focus();
     tabs[nextIdx]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
     onSelect(nextItem.value);

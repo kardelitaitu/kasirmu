@@ -57,3 +57,5 @@ reported result rather than the exit code.
 | Payments + switch unit suites | 49 passed |
 | Full UI suite | 12,698 passed |
 | Remaining inline copies | 11, each with its own owner |
+
+> last audited 14-10-26 by docs-auditor

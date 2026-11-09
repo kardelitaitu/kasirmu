@@ -15,6 +15,7 @@
 //! the LAST statement — a `?` on any row aborts and rolls back the whole batch.
 
 use kasirmu_core::subscription::SubscriptionTier;
+use kasirmu_core::workspace_type::{KDS, is_pos_type};
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -150,7 +151,11 @@ pub(super) fn apply_workspace_crud(
     // blocked by the quota — the user is reorganizing existing workspaces,
     // not adding new ones. This prevents a tier downgrade from locking
     // the user out of editing their existing topology.
-    if !workspace_creations.is_empty()
+    let new_pos = workspace_creations
+        .iter()
+        .filter(|c| is_pos_type(&c.type_key))
+        .count() as i64;
+    if new_pos > 0
         && let Some(limit) = effective_tier.max_pos_instances()
     {
         // Only POS registers (store-pos/restaurant-pos) consume the
@@ -159,24 +164,58 @@ pub(super) fn apply_workspace_crud(
         let current = store.count_active_pos_instances(effective_store_id)?;
         let archived_ids: std::collections::HashSet<&str> =
             workspace_archives.iter().map(String::as_str).collect();
-        let archived_active = archived_ids
+        let archived_active_pos = archived_ids
             .iter()
             .filter(|id| {
                 store
                     .conn()
                     .query_row(
-                        "SELECT status = 'active' FROM workspace_instances WHERE id = ?1",
+                        "SELECT status NOT IN ('archived', 'quota_suspended') \
+                                AND type_key IN ('store-pos', 'restaurant-pos') \
+                         FROM workspace_instances WHERE id = ?1",
                         rusqlite::params![id],
                         |row| row.get::<_, bool>(0),
                     )
                     .unwrap_or(false)
             })
             .count() as i64;
-        let projected = current - archived_active + workspace_creations.len() as i64;
+        let projected = current - archived_active_pos + new_pos;
         if projected > limit {
             return Err(BridgeError::PermissionDenied(format!(
-                "workspace instance quota exceeded: limit {limit}, current {current}, archived {archived_active}, requested {}, projected {projected}",
-                workspace_creations.len()
+                "workspace instance quota exceeded: limit {limit}, current {current}, archived {archived_active_pos}, requested {new_pos}, projected {projected}"
+            )));
+        }
+    }
+
+    let new_kds = workspace_creations
+        .iter()
+        .filter(|c| c.type_key == KDS)
+        .count() as i64;
+    if new_kds > 0
+        && let Some(limit) = effective_tier.max_kds_screens()
+    {
+        let current_kds = store.count_active_kds_instances(effective_store_id)?;
+        let archived_ids: std::collections::HashSet<&str> =
+            workspace_archives.iter().map(String::as_str).collect();
+        let archived_active_kds = archived_ids
+            .iter()
+            .filter(|id| {
+                store
+                    .conn()
+                    .query_row(
+                        "SELECT status NOT IN ('archived', 'quota_suspended') \
+                                AND type_key = 'kds' \
+                         FROM workspace_instances WHERE id = ?1",
+                        rusqlite::params![id],
+                        |row| row.get::<_, bool>(0),
+                    )
+                    .unwrap_or(false)
+            })
+            .count() as i64;
+        let projected_kds = current_kds - archived_active_kds + new_kds;
+        if projected_kds > limit {
+            return Err(BridgeError::PermissionDenied(format!(
+                "KDS screen quota exceeded: limit {limit}, current {current_kds}, archived {archived_active_kds}, requested {new_kds}, projected {projected_kds}"
             )));
         }
     }
@@ -266,3 +305,7 @@ pub(super) fn apply_workspace_crud(
 
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "crud_tests.rs"]
+mod tests;

@@ -13,6 +13,8 @@ import kdsFtl from '@/locales/kds.ftl?raw';
 import PosScreen from '@/features/sales/PosScreen';
 import RestaurantReceiptsScreen from '@/features/restaurant/screens/RestaurantReceiptsScreen';
 import type { Product } from '@/types/domain';
+import type * as SettingsApi from '@/api/settings';
+import type * as HardwareApi from '@/api/hardware';
 
 const mockProducts = [
   {
@@ -98,7 +100,7 @@ vi.mock('@/features/sales/useBarcodeScanner', async () => {
 });
 
 vi.mock('@/api/settings', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/api/settings')>();
+  const actual = await importOriginal<typeof SettingsApi>();
   return {
     ...actual,
     getReceiptSettingsScoped: vi.fn().mockResolvedValue({ showTableNumber: false }),
@@ -116,7 +118,7 @@ vi.mock('@/api/shifts', () => ({
 }));
 
 vi.mock('@/api/hardware', async () => {
-  const actual = await vi.importActual<typeof import('@/api/hardware')>('@/api/hardware');
+  const actual = await vi.importActual<typeof HardwareApi>('@/api/hardware');
   return {
     ...actual,
     listDisplays: vi.fn(() => Promise.resolve([])),
@@ -248,7 +250,25 @@ describe('RestaurantPosSidebar', () => {
     expect(mockGoToWorkspacePicker).toHaveBeenCalledTimes(1);
   });
 
-  it('Exit Terminal prompts to close shift when an active shift exists', async () => {
+  // ⚠️ THIS CASE USED TO ASSERT THE OPPOSITE, and it was asserting a defect.
+  //
+  // Its previous form was named 'Exit Terminal prompts to close shift when an active shift
+  // exists' and asserted `queryByText('Exit Workspace')` is NULL and the Close shift dialog
+  // opens — i.e. the exit control must be DIVERTED into the shift flow. That is exactly the
+  // dead end fixed in round 297: close-shift refuses when the cart is not empty and when a
+  // tab is outstanding, so the diversion left the operator unable to exit and unable to close,
+  // with no second route (setShowExitConfirm was only reachable with `activeShift === null`).
+  //
+  // Measured in a browser before the fix, with an open tab:
+  //   PROBE RESULT homescreen=false closeshift=false opentab=true
+  //
+  // The two actions are genuinely different, so they are no longer merged:
+  //   · Exit Workspace — navigation, always available, warns that a shift is open
+  //   · Close Shift    — cash reconciliation, stays guarded
+  //
+  // The Close Shift row keeps its own coverage in `usePosShifts.openTabGuard.test.tsx` and
+  // `restaurant-shift-close-open-tab.spec.ts`; this case now grades the exit.
+  it('Exit Terminal offers the exit — it does not divert into the shift flow', async () => {
     mockGetActiveShift.mockResolvedValue({
       id: 'shift-1',
       cashier_id: 'user-1',
@@ -274,10 +294,13 @@ describe('RestaurantPosSidebar', () => {
       expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
     });
 
-    // Close Shift modal opens instead of exit dialog or direct exit
+    // The EXIT dialog appears. This is the assertion the old form inverted.
+    expect(screen.getByText('Exit Workspace')).toBeInTheDocument();
+    // The Close shift dialog must NOT — the exit is not a shift close.
+    expect(screen.queryByRole('dialog', { name: 'Close shift' })).toBeNull();
+    // And nothing navigates until the operator confirms: the dialog is a confirmation,
+    // not a formality that already left.
     expect(mockGoToWorkspacePicker).not.toHaveBeenCalled();
-    expect(screen.queryByText('Exit Workspace')).toBeNull();
-    expect(screen.getByRole('dialog', { name: 'Close shift' })).toBeInTheDocument();
   });
 
   it('removes the back button from header and exposes sidebar and hamburger buttons', async () => {

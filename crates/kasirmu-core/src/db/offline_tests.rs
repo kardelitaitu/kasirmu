@@ -1735,6 +1735,102 @@ fn rolled_back_settlement_enqueues_nothing() {
             .unwrap()
     );
 }
+
+#[test]
+fn has_pending_outbox_row_uses_sale_id_index_and_falls_back_for_legacy_rows() {
+    let conn = fresh();
+    seed_item(&conn, "OUTBOX-OM04", 10);
+    let s = store(&conn);
+
+    // 1. Check query plan uses the covering index idx_offline_queue_sale_pending
+    let mut stmt = conn
+        .prepare("EXPLAIN QUERY PLAN SELECT 1 FROM offline_queue WHERE sale_id = ?1 AND status = 'pending' AND action = ?2")
+        .unwrap();
+    let plan: String = stmt
+        .query_map(params!["sale-plan-test", "complete_sale"], |r| {
+            r.get::<_, String>(3)
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+        .join("\n");
+    assert!(
+        plan.contains("idx_offline_queue_sale_pending"),
+        "expected query to use idx_offline_queue_sale_pending, got:\n{plan}"
+    );
+
+    // 2. Wired sale populates sale_id and is found via point probe
+    let sale = sale_with_one_line("OUTBOX-OM04", 1, 100);
+    let id = sale.id.clone();
+    s.complete_sale_deduction(&sale, None, &[split(100, None)], "user-om04", None)
+        .unwrap();
+
+    let recorded_sale_id: Option<String> = conn
+        .query_row(
+            "SELECT sale_id FROM offline_queue WHERE action = 'complete_sale' AND sale_id = ?1",
+            params![&id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(recorded_sale_id, Some(id.clone()));
+    assert!(
+        s.has_pending_outbox_row_for_sale("complete_sale", &id)
+            .unwrap()
+    );
+
+    // 2b. The legacy branch must SEEK, not scan. `20261023` added `sale_id` WITHOUT
+    //     backfilling, so every pre-migration row is NULL forever and reachable only
+    //     through this branch. Before `20261028` it planned `SCAN offline_queue`,
+    //     which meant the O-M04 win applied to new rows while the historical backlog
+    //     kept its full scan. Measured over 3,000 rows (95% new, 5% legacy) + ANALYZE.
+    //     The seed order matters: this must run against a database large enough for
+    //     the planner to weigh a scan at all.
+    let legacy_plan = {
+        let mut stmt = conn
+            .prepare(
+                "EXPLAIN QUERY PLAN
+                 SELECT EXISTS(SELECT 1 FROM offline_queue
+                   WHERE sale_id IS NULL AND status = 'pending' AND action = ?1
+                     AND instr(payload, ?2) > 0)",
+            )
+            .unwrap();
+        stmt.query_map(params!["complete_sale", "\"sale_id\":\"legacy\""], |r| {
+            r.get::<_, String>(3)
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+        .join("\n")
+    };
+    assert!(
+        legacy_plan.contains("idx_offline_queue_legacy_sale_probe"),
+        "the legacy `sale_id IS NULL` branch must seek via idx_offline_queue_legacy_sale_probe; \
+         without it every pre-20261023 row is reachable only by scanning the whole queue. \
+         plan:\n{legacy_plan}"
+    );
+    assert!(
+        !legacy_plan
+            .lines()
+            .any(|l| l.trim() == "SCAN offline_queue"),
+        "the legacy branch must not scan offline_queue; plan:\n{legacy_plan}"
+    );
+    // 3. Backward compatibility: legacy row with sale_id NULL is found via fallback
+    let legacy_id = "legacy-sale-999";
+    conn.execute(
+        "INSERT INTO offline_queue (id, action, payload, status, retry_count, tenant_id, priority, sale_id)
+         VALUES (?1, 'complete_sale', ?2, 'pending', 0, 'default', 1, NULL)",
+        params!["queue-legacy-1", format!("{{\"sale_id\":\"{legacy_id}\"}}")],
+    )
+    .unwrap();
+    assert!(
+        s.has_pending_outbox_row_for_sale("complete_sale", legacy_id)
+            .unwrap()
+    );
+    assert!(
+        !s.has_pending_outbox_row_for_sale("complete_sale", "non-existent-sale")
+            .unwrap()
+    );
+}
 // ── C3 S2: the origin terminal and the effect key ───────────────
 
 /// The origin must survive the local round trip: enqueued into the row and
@@ -2002,4 +2098,71 @@ fn applied_receipt_records_the_effect_key() {
         null_rows, 2,
         "NULL effects must not collide with each other"
     );
+}
+
+/// `20261029` backfills `sale_id` for rows that predate the column, and must never
+/// write a WRONG id while doing it.
+///
+/// `20261023` added the column without populating it, so every pre-migration row kept
+/// `sale_id = NULL` forever and could only ever reach the legacy substring branch.
+/// The naive backfill was measured to write GARBAGE for a payload whose first
+/// `sale_id` is empty and which nests another one. A wrong id is worse than a NULL,
+/// because the fast branch then compares for equality and silently never matches.
+/// This test pins BOTH directions.
+#[test]
+fn the_sale_id_backfill_fills_only_well_formed_ids_and_never_garbage() {
+    let conn = fresh();
+    let cases: [(&str, &str); 6] = [
+        (
+            "well-formed",
+            "{\"sale_id\":\"0190a4b2-7c1e-7a33-9df2-9f2f1b2c3d4e\",\"total_minor\":100}",
+        ),
+        ("key absent", "{\"total_minor\":100}"),
+        ("truncated value", "{\"sale_id\":\"abc"),
+        ("JSON null", "{\"sale_id\":null}"),
+        (
+            "empty then nested",
+            "{\"sale_id\":\"\",\"inner\":{\"sale_id\":\"NOT-THIS-ONE-AT-ALL-000000000000\"}}",
+        ),
+        (
+            "space after colon",
+            "{\"sale_id\": \"0190a4b2-7c1e-7a33-9df2-9f2f1b2c3d4e\"}",
+        ),
+    ];
+    for (i, (_, payload)) in cases.iter().enumerate() {
+        conn.execute(
+            "INSERT INTO offline_queue (id, action, payload, status, tenant_id, priority, sale_id) VALUES (?1, 'complete_sale', ?2, 'pending', 'default', 1, NULL)",
+            params![format!("backfill-{i}"), payload],
+        )
+        .unwrap();
+    }
+
+    // The statement from 20261029, re-run here so the assertion is about the shipped SQL.
+    conn.execute(
+        "UPDATE offline_queue SET sale_id = substr(payload, instr(payload, '\"sale_id\":\"') + 11, 36) WHERE sale_id IS NULL AND instr(payload, '\"sale_id\":\"') > 0 AND substr(payload, instr(payload, '\"sale_id\":\"') + 47, 1) = '\"'",
+        [],
+    )
+    .unwrap();
+
+    let read = |i: usize| -> Option<String> {
+        conn.query_row(
+            "SELECT sale_id FROM offline_queue WHERE id = ?1",
+            params![format!("backfill-{i}")],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+
+    assert_eq!(
+        read(0),
+        Some("0190a4b2-7c1e-7a33-9df2-9f2f1b2c3d4e".to_owned()),
+        "the well-formed payload must be backfilled"
+    );
+    for (i, (name, _)) in cases.iter().enumerate().skip(1) {
+        assert_eq!(
+            read(i),
+            None,
+            "{name}: a value that is not a clean quoted 36-char id must stay NULL -- a WRONG id is worse than a NULL, because the fast branch then compares for equality and silently never matches"
+        );
+    }
 }

@@ -102,6 +102,18 @@ pub struct PrintSalesReceiptArgs {
     #[serde(default)]
     /// Optional printer target instance ID (e.g. "kitchen", "default").
     pub printer_target: Option<String>,
+    #[serde(default)]
+    /// Optional customer display name.
+    pub customer_name: Option<String>,
+    #[serde(default)]
+    /// Optional customer phone number.
+    pub customer_phone: Option<String>,
+    #[serde(default)]
+    /// Optional due date for credit/kasbon sale.
+    pub due_date: Option<String>,
+    #[serde(default)]
+    /// Optional total outstanding debt balance after this sale.
+    pub outstanding_balance: Option<MoneyDto>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -428,11 +440,31 @@ pub async fn print_sales_receipt_scoped(
         store_info.tax_id_label = Some(label.clone());
     }
 
+    let credit_terms = if let Some(cust_name) = args.customer_name.clone() {
+        let has_pay_later = args
+            .payments
+            .iter()
+            .any(|p| p.method.eq_ignore_ascii_case("pay_later"));
+        if has_pay_later || args.due_date.is_some() || args.outstanding_balance.is_some() {
+            Some(receipt::CreditTermsInfo {
+                customer_name: cust_name,
+                customer_phone: args.customer_phone,
+                due_date: args.due_date,
+                outstanding_balance: args.outstanding_balance.map(|b| b.to_money()).transpose()?,
+            })
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let receipt = receipt::SalesReceipt {
         store: store_info,
         date: args.date,
         receipt_number: args.receipt_number,
         table_number: args.table_number,
+        customer_name: args.customer_name,
         items: args
             .items
             .into_iter()
@@ -467,6 +499,7 @@ pub async fn print_sales_receipt_scoped(
                 })
             })
             .collect::<Result<Vec<_>, _>>()?,
+        credit_terms,
         faktur_pajak: args.faktur_pajak,
     };
 
@@ -507,6 +540,23 @@ pub async fn print_edc_settlement_slip_scoped(
     let ctx = state.bridge_ctx();
     let res =
         kasirmu_bridge::hardware::print_edc_settlement_slip_scoped(&ctx, args, &session_token)
+            .await
+            .map_err(AppError::from)?;
+    Ok(PrintSalesReceiptResult {
+        printed: res.printed,
+    })
+}
+
+/// Print a Kasbon (receivable) settlement slip (scoped — requires valid session).
+#[command]
+pub async fn print_kasbon_settlement_slip_scoped(
+    session_token: String,
+    args: kasirmu_bridge::hardware::PrintKasbonSettlementArgs,
+    state: State<'_, AppState>,
+) -> Result<PrintSalesReceiptResult, AppError> {
+    let ctx = state.bridge_ctx();
+    let res =
+        kasirmu_bridge::hardware::print_kasbon_settlement_slip_scoped(&ctx, args, &session_token)
             .await
             .map_err(AppError::from)?;
     Ok(PrintSalesReceiptResult {

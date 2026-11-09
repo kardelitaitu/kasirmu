@@ -38,6 +38,7 @@ restaurant-menu-editor-category-deleted-moved = Kategori dihapus; { $count } ite
 restaurant-menu-editor-save-success = Menu diperbarui
 restaurant-menu-editor-delete-success = Item dihapus
 restaurant-menu-editor-error-load = Gagal memuat menu
+restaurant-menu-editor-load-failed = Menu tidak dapat dimuat.
 restaurant-menu-editor-error-save = Gagal menyimpan menu
 restaurant-menu-editor-error-delete = Gagal menghapus
 restaurant-menu-editor-search-placeholder = Cari menu berdasarkan nama, SKU, atau catatan…
@@ -149,6 +150,20 @@ restaurant-preview-tab-customer = Struk Kasir
 restaurant-preview-tab-kitchen = Chit Dapur (KOT)
 restaurant-preview-kot-title = TIKET PESANAN DAPUR (KOT)
 restaurant-preview-kot-end = AKHIR TIKET DAPUR
+restaurant-preview-kot-pax = Jumlah tamu: { $count }
+restaurant-preview-course-appetizer = -- PEMBUKA --
+restaurant-preview-course-main = -- HIDANGAN UTAMA --
+restaurant-preview-course-beverage = -- MINUMAN --
+restaurant-preview-item-lumpia = Lumpia Goreng
+restaurant-preview-item-nasgor = Nasi Goreng Spesial
+restaurant-preview-item-esteh = Es Teh Manis
+restaurant-preview-table-pill = MEJA 4
+restaurant-preview-tabs-aria = Tab pratinjau struk
+subtotal = Subtotal
+total = TOTAL
+restaurant-tender-cash = Tunai
+restaurant-tender-change = Kembalian
+restaurant-preview-tax-line = PB1/PAJAK ({ $rate }%)
 restaurant-preview-subtitle = Simulasi struk termal waktu-nyata
 restaurant-preview-paper-width-standard = 80 mm (Standar)
 restaurant-preview-paper-width-narrow = 58 mm (Ringkas)
@@ -316,6 +331,7 @@ restaurant-lock-terminal = Kunci Terminal
 restaurant-exit-terminal = Keluar Terminal
 restaurant-exit-confirm-title = Keluar Ruang Kerja
 restaurant-exit-confirm-desc = Apakah Anda yakin ingin keluar ke layar utama?
+restaurant-exit-confirm-open-shift-desc = Masih ada shift yang terbuka. Keluar akan meninggalkannya tanpa rekonsiliasi — tutup dulu shift-nya dari bilah samping jika Anda perlu menghitung uang di laci.
 restaurant-exit-confirm-btn = Keluar
 restaurant-toggle-fullscreen = Aktifkan/nonaktifkan layar penuh
 restaurant-clear-color-aria = Hapus warna
@@ -388,133 +404,6 @@ product-lookup-uncategorised = Tanpa Kategori
 product-lookup-error-load = Gagal memuat produk
 
 # POS Cart (remaining)
-product-mgmt-title = Produk
-product-mgmt-add = Tambah Produk
-product-mgmt-empty = Belum ada produk.
-product-mgmt-empty-cta = Tambah produk pertama
-product-mgmt-col-sku = SKU
-product-mgmt-col-name = Nama
-product-mgmt-col-category = Kategori
-product-mgmt-col-price = Harga
-product-mgmt-col-barcode = Barcode
-product-mgmt-col-stock = Stok
-product-mgmt-stock-in = Tersedia
-product-mgmt-stock-out = Stok Habis
-product-mgmt-edit = Ubah
-product-mgmt-edit-aria = Ubah { $name }
-product-mgmt-delete = Hapus
-product-mgmt-delete-aria = Hapus { $name }
-product-mgmt-delete-confirm-title = Hapus produk?
-product-mgmt-delete-confirm-message = Hapus { $name } ({ $sku })? Tindakan ini tidak dapat dibatalkan.
-product-mgmt-delete-confirm-btn = Hapus
-product-mgmt-error-delete = Gagal menghapus produk
-product-mgmt-error-load = Gagal memuat produk
-product-mgmt-error-retry = Coba lagi
-product-mgmt-alert-error = Tidak dapat memuat peringatan stok. Menampilkan jumlah terakhir.
-product-mgmt-alert-error-retry = Muat ulang peringatan
-product-mgmt-error-invalid-stock = Stok harus berupa bilangan bulat non-negatif
-product-mgmt-modal-add-title = Tambah Produk
-product-mgmt-modal-edit-title = Ubah Produk
-product-mgmt-modal-close = Tutup
-product-mgmt-field-name-required = Nama *
-product-mgmt-field-sku-required = SKU *
-product-mgmt-field-price = Harga
-product-mgmt-field-currency = Mata Uang
-product-mgmt-field-category = Kategori
-product-mgmt-field-barcode = Barcode
-product-mgmt-field-tax-rates = Tarif Pajak
-product-mgmt-field-stock = Stok awal
-product-mgmt-btn-cancel = Batal
-product-mgmt-btn-create = Buat
-product-mgmt-btn-update = Perbarui
-product-mgmt-error-save = Gagal menyimpan produk
-product-mgmt-error-invalid-price = Harga harus berupa angka non-negatif yang valid
-product-mgmt-table-aria = Katalog produk
-product-mgmt-actions-aria =
-    .aria-label = Tindakan
-product-mgmt-variants = Varian
-product-mgmt-variants-aria = Varian untuk { $name }
-product-mgmt-modal-aria = { $mode ->
-        [add] Tambah produk
-       *[edit] Ubah produk
-    }
-product-mgmt-modal-close-aria =
-    .aria-label = Tutup
-product-mgmt-sku-placeholder =
-    .placeholder = mis. LATTE
-product-mgmt-name-placeholder =
-    .placeholder = mis. Caffè Latte
-product-mgmt-price-placeholder =
-    .placeholder = 450
-product-mgmt-barcode-placeholder =
-    .placeholder = 4901234567890
-product-mgmt-stock-placeholder =
-    .placeholder = 0
-product-mgmt-no-category = — Tanpa Kategori —
-product-mgmt-col-type = Tipe
-product-mgmt-field-type = Tipe
-product-mgmt-alerts-title = Notifikasi Stok
-product-mgmt-alert-close = Tutup
-
-# ── Product Variants ──
-variant-mgmt-title = Varian — { $product }
-variant-mgmt-empty = Belum ada varian.
-variant-mgmt-empty-cta = Tambah varian
-variant-mgmt-add = Tambah Varian
-variant-mgmt-col-name = Nama
-variant-mgmt-col-sku = SKU
-variant-mgmt-col-price = Harga
-variant-mgmt-col-barcode = Barcode
-variant-mgmt-col-status = Status
-variant-mgmt-price-parent = Menggunakan harga induk
-variant-mgmt-status-active = Aktif
-variant-mgmt-status-inactive = Tidak Aktif
-variant-mgmt-edit = Ubah
-variant-mgmt-edit-aria =
-    .aria-label = Ubah { $name }
-variant-mgmt-delete = Hapus
-variant-mgmt-delete-aria =
-    .aria-label = Hapus { $name }
-variant-mgmt-delete-confirm-title = Hapus Varian
-variant-mgmt-delete-confirm-body = Apakah Anda yakin ingin menghapus varian "{ $name }" ({ $sku })? Tindakan ini tidak dapat dibatalkan.
-variant-mgmt-delete-confirm-cancel = Batal
-variant-mgmt-delete-confirm-confirm = Hapus
-variant-mgmt-modal-add-title = Tambah Varian
-variant-mgmt-modal-edit-title = Ubah Varian
-variant-mgmt-close-aria =
-    .aria-label = Tutup
-variant-mgmt-field-name-required = Nama *
-variant-mgmt-field-sku-required = SKU *
-variant-mgmt-field-price = Harga
-variant-mgmt-field-currency = Mata Uang
-variant-mgmt-field-barcode = Barcode
-variant-mgmt-field-sort-order = Urutan
-variant-mgmt-field-active = Aktif
-variant-mgmt-btn-cancel = Batal
-variant-mgmt-error-retry = Coba lagi
-variant-mgmt-btn-create = Buat
-variant-mgmt-btn-update = Perbarui
-variant-mgmt-overlay-aria = Varian untuk { $name }
-variant-mgmt-table-aria = Varian produk
-variant-mgmt-actions-aria =
-    .aria-label = Tindakan
-variant-mgmt-name-placeholder =
-    .placeholder = mis. Besar
-variant-mgmt-sku-placeholder =
-    .placeholder = mis. TEA-LARGE
-variant-mgmt-price-placeholder =
-    .placeholder = 450
-variant-mgmt-currency-placeholder =
-    .placeholder = USD
-variant-mgmt-barcode-placeholder =
-    .placeholder = 4901234567890
-variant-mgmt-sort-placeholder =
-    .placeholder = 0
-variant-mgmt-error-load = Gagal memuat varian
-variant-mgmt-error-save = Gagal menyimpan varian
-variant-mgmt-error-delete = Gagal menghapus varian
-variant-mgmt-error-invalid-price = Harga varian harus berupa bilangan bulat non-negatif
-variant-mgmt-error-invalid-sort = Urutan harus berupa bilangan bulat non-negatif
 
 # ── Category Management ──
 categories-title = Kategori
@@ -560,18 +449,8 @@ categories-icon-generic-3 = Generik ···
 category-mgmt-edit-aria = Edit kategori { $name }
 
 # Product type labels
-product-type-retail = Ritel
-product-type-restaurant = Restoran
-product-type-service = Layanan
 
 # Stock Alert Panel
-product-mgmt-stock-alert-open = Buka peringatan stok
-product-mgmt-stock-alert-close = Tutup peringatan stok
-product-mgmt-alert-count =
-    { $count ->
-        [one] Buka peringatan stok ({ $count } aktif)
-       *[other] Buka peringatan stok ({ $count } aktif)
-    }
 
 # ── Customer Management (remaining) ──
 
@@ -604,6 +483,30 @@ restaurant-payment-midtrans-env = Lingkungan Midtrans
 restaurant-payment-midtrans-keys-valid = Format kunci Midtrans valid ({ $env })
 restaurant-payment-midtrans-keys-missing = Masukkan Client Key dan Server Key
 restaurant-payment-stripe-mode = Mode Stripe
+# Label tombol segmen dan kolom kredensial pada layar pembayaran (round 209).
+# Semua label di layar ini sudah lewat l10n atau <Localized>; yang ini masih
+# berupa teks JSX, termasuk empat placeholder yang diketik oleh pedagang.
+restaurant-payment-qr-static = Statis
+restaurant-payment-qr-dynamic = Dinamis
+restaurant-payment-qr-payload-placeholder = 00020101021126580014ID.LINKAJA.WWW0118936009110022201389...
+restaurant-payment-midtrans-nmid = NMID Pedagang
+restaurant-payment-midtrans-nmid-placeholder = ID1020030040050
+restaurant-payment-midtrans-mdr = Biaya MDR (%)
+restaurant-payment-midtrans-sandbox = Sandbox
+restaurant-payment-midtrans-production = Produksi
+restaurant-payment-midtrans-merchant-id = ID Pedagang
+restaurant-payment-midtrans-merchant-id-placeholder = G123456789
+restaurant-payment-midtrans-client-key = Client Key
+restaurant-payment-midtrans-client-key-placeholder = SB-Mid-client-XXXXX
+restaurant-payment-midtrans-server-key = Server Key
+restaurant-payment-midtrans-server-key-placeholder = SB-Mid-server-XXXXX
+restaurant-payment-midtrans-test-keys = Uji Kunci API
+restaurant-payment-stripe-test = Uji
+restaurant-payment-stripe-live = Langsung
+restaurant-payment-stripe-pub-key = Publishable Key
+restaurant-payment-stripe-sec-key = Secret Key
+restaurant-payment-stripe-reader = Pembaca Kartu
+restaurant-payment-custom-rail-hint = Metode pembayaran aktif siap untuk checkout kasir dan pencatatan struk.
 restaurant-payment-custom-code = Kode metode pembayaran wajib diisi
 restaurant-payment-custom-code-example = mis. ovo, shopeepay, voucher
 restaurant-payment-custom-label-example = mis. Dompet OVO
@@ -630,3 +533,9 @@ recipe-editor-validation-empty-sku = Silakan pilih bahan baku untuk semua baris
 recipe-editor-validation-invalid-qty = Jumlah bahan harus lebih besar dari 0
 recipe-editor-manage-recipe = Resep (BOM)
 recipe-editor-manage-recipe-aria = Kelola resep untuk { $name }
+
+# Round 212 — sisa literal pada editor topologi, editor resep, dan kartu
+# pengaturan ruang kerja.
+topology-node-actions = Aksi simpul
+topology-tool-locked-premium = Premium
+recipe-editor-remove-ingredient = Hapus bahan

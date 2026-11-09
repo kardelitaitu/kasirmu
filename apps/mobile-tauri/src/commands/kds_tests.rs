@@ -1,6 +1,7 @@
 use super::*;
 use kasirmu_core::migrations;
 use kasirmu_core::session::SessionContext;
+use kasirmu_test_support::tempdir;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
 
@@ -21,7 +22,7 @@ fn seed_owner(conn: &rusqlite::Connection) {
 fn kds_state() -> (AppState, tempfile::TempDir) {
     let conn = migrations::fresh_db();
     seed_owner(&conn);
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
     seed_restaurant_sale(&state);
@@ -265,7 +266,7 @@ async fn role_without_permissions_cannot_update_kds_status() {
             ('user-none', 'none', 'hash', 'None', 'role-none', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
     )
     .unwrap();
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
 

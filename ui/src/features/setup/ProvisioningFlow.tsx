@@ -336,6 +336,22 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             ...(terminalDto ? { terminal: terminalDto } : {}),
           };
           setLinkedAccount(linked);
+          // Re-read entitlements the moment the link claims. Until 2026-10-15 this
+          // branch set `linkedAccount` and toasted success WITHOUT refreshing the
+          // subscription, so a paired device kept whatever capability state it had
+          // before pairing -- and because pairing writes no `tenant_subscription`
+          // row of its own, that state was the fail-closed `unavailable` default.
+          // The operator saw three symptoms from one cause: 'This terminal has no
+          // active licence' on home, the raw `invalid subscription signature` on
+          // restaurant-pos, and 'Could not start the session for this workspace'
+          // when the blocked login left the picker ticket unusable.
+          //
+          // A fresh read is the honest fix: ask the backend what this device is
+          // entitled to NOW rather than trusting a value cached before the link
+          // existed. `refresh()` is idempotent and fail-closed, so a read that
+          // still finds no row leaves the operator in the same honest locked
+          // state instead of appearing activated.
+          refreshSubscription();
           addToast({ type: 'success', message: l10n.getString('auth-pair-success') });
         }
       } catch (err: unknown) {
@@ -344,7 +360,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [provisionMode, tabletTab, pairingSession, pairingExpired, linkedAccount, addToast, l10n, loadPairingSession]);
+  }, [provisionMode, tabletTab, pairingSession, pairingExpired, linkedAccount, addToast, l10n, loadPairingSession, refreshSubscription]);
 
   const linkingBusy =
     link.kind === 'linking' || emailState === 'sending' || emailState === 'verifying';
@@ -548,6 +564,16 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
+      // RE-ENTRY GUARD. The submit button is disabled while busy, but this
+      // handler is also the form's `onSubmit` — pressing Enter in a field submits
+      // it directly and never consults the button. Without this, two submits ran
+      // `provisionDevice` twice, which CREATES the device, the location and the OWNER
+      // ACCOUNT in one call (:592-608). This is the one-shot first-run operation, so a
+      // duplicate either creates two of each or fails on the owner's uniqueness — and the
+      // merchant is at the first-run screen either way.
+      //
+      // Fourth instance of the round-60 mechanism (table Save, Reserve, EDC terminal).
+      if (busy) return;
       setErrorMsg(null);
       setSubmitError(null);
       if (provisionMode === 'linked' && !isLinked) {
@@ -573,7 +599,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
         const features = await getPresetFeatures(storeType)
           .then((r) => r.features)
           .catch(() => []);
-        const result = await provisionDevice({
+        await provisionDevice({
           terminal_id: terminalId,
           location_name: locationName.trim(),
           currency: PROVISION_CURRENCY,
@@ -594,7 +620,13 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
           type: 'success',
           message: l10n.getString('setup-provision-success'),
         });
-        void result;
+        try {
+          const u = ownerUsername.trim();
+          if (u) {
+            const entry = { username: u, displayName: ownerName.trim() || u };
+            localStorage.setItem('kasirmu-recent-cashiers', JSON.stringify([entry]));
+          }
+        } catch { /* ignore */ }
         refreshSubscription();
         onProvisioned();
       } catch (err: unknown) {
@@ -605,6 +637,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
       }
     },
     [
+      busy,
       addToast,
       canSubmit,
       isLinked,
@@ -664,6 +697,16 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
                   </li>
                 );
               })}
+              {/* Connectors ride between the items, not inside them: an <li> may
+                  not hold sibling content that belongs to no list item, and the
+                  line's state is derived from the PREVIOUS step being done.
+                  aria-hidden because "a line" is not a fact worth announcing —
+                  the "Step N of M" paragraph below already says it in words. */}
+              {STEPS.slice(0, -1).map((step, i) => (
+                <li key={`${step.id}-connector`} aria-hidden="true" className="provisioning-step-connector-item">
+                  <span className={`provisioning-step-connector${stepDone[i] ? ' is-complete' : ''}`} />
+                </li>
+              ))}
             </ol>
             <p className="provisioning-step-progress">
               <Localized
@@ -693,6 +736,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
 
         {/* Step 1: Mode Selection (ADR #56 §2.3) */}
         {activeStep === 0 && (
+        <div className="provisioning-step-enter" key="step-0">
         <section className="provisioning-mode-box" aria-labelledby="provision-mode-heading">
           <h2 id="provision-mode-heading" style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-weight-medium)', margin: 0 }}>
             <Localized id="setup-provision-mode-section">Setup Mode</Localized>
@@ -730,6 +774,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             </button>
           </div>
         </section>
+        </div>
         )}
 
         {/* Step 2: Account Linking (Shown only for Mode 2: Linked) */}
@@ -1074,7 +1119,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
         )}
 
         {activeStep === 1 && (
-        <>
+        <div className="provisioning-step-enter" key="step-1">
         <fieldset className="provisioning-fieldset">
           <legend>
             <Localized id="setup-provision-store-type">
@@ -1147,11 +1192,11 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             </Localized>
           </label>
         </div>
-        </>
+        </div>
         )}
 
         {activeStep === 2 && (
-        <>
+        <div className="provisioning-step-enter" key="step-2">
         <div className="provisioning-field">
           {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- text via Localized span */}
           <label htmlFor="provision-location-name">
@@ -1240,7 +1285,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             </p>
           )}
         </div>
-        </>
+        </div>
         )}
 
         {/* Above the button, in the same gap the user is already looking at.

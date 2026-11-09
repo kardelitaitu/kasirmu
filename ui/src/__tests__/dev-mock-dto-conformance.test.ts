@@ -22,7 +22,7 @@
 //     declared interface (round 27).
 //
 // The ~50 `api-*-contract` suites do NOT cover this: they assert the correct IPC command
-// NAME is called, never the payload's shape. `api-license-contract.test.ts:38`
+// NAME is called, never the payload's shape. `api-license-contract.test.ts:48-51`
 // hand-writes a `check_license_status` fixture missing `deviceRevoked` and nothing
 // complains, because `mockResolvedValue` accepts any object.
 //

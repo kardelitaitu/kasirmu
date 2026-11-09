@@ -92,6 +92,51 @@ describe('distributeEvenly', () => {
     }
   });
 
+  // ⚠️ THE NEGATIVE DOMAIN, pinned as a KNOWN LIMIT rather than a silent one.
+  //
+  // The sweep above starts at `total = 1`, so it never sees this. Measured (round
+  // 301): `-1` over 2 rows comes back `['-1','-2']` — a sum of -3, short by
+  // (count - 1) — because `Math.floor` rounds negatives toward -infinity and `%`
+  // keeps the dividend's sign, so the residual is subtracted instead of added.
+  //
+  // The function is NOT changed, because no caller can reach it: the total is
+  // clamped at zero in `useTenderMath.ts:96` and cashier-typed amounts are floored
+  // at zero in `:170`. Changing money arithmetic nobody exercises would be the
+  // riskier edit. Pinning it means a future caller that CAN go negative goes red
+  // here and reads why, instead of over-splitting a sale by (count - 1) units.
+  //
+  // If a negative-total caller ever becomes real, fix the arithmetic — the correct
+  // form puts the residual on the last row in the direction of the sign, or
+  // distributes `Math.trunc` shares — and flip this case.
+  it('KNOWN LIMIT: is not total-preserving for negative totals (unreachable today)', () => {
+    // Positive behaviour, for contrast: exact.
+    expect(sumLiterals(distributeEvenly(10001, 3, 2), 2)).toBe(10001);
+
+    // Negative: exactness does NOT hold, and the size of the error is (count - 1).
+    // Asserted as a KNOWN, sized error rather than merely "not equal" — so if the
+    // arithmetic is ever fixed, the number here changes and says so.
+    for (const [total, count] of [
+      [-1, 2],
+      [-1, 3],
+      [-100, 3],
+      [-10001, 5],
+    ] as Array<[number, number]>) {
+      const lits = distributeEvenly(total, count, 0);
+      const sum = sumLiterals(lits, 0);
+      expect(
+        sum,
+        `negative totals are outside the documented domain (${total} over ${count}): ` +
+          'the residual is subtracted instead of added, so the sum is short by a whole ' +
+          'count. If this now passes as exact, a fix landed — re-read the module doc ' +
+          'and flip this case to assert preservation.',
+      ).toBe(total - count);
+    }
+
+    // The smallest reproducible example, written out so the shape is unmistakable.
+    expect(distributeEvenly(-1, 2, 0)).toEqual(['-1', '-2']);
+    expect(sumLiterals(['-1', '-2'], 0)).toBe(-3);
+  });
+
   it('never spreads the residual over the first rows', () => {
     // A plausible-but-wrong alternative distributes the odd units across the
     // leading rows. Assert the first count-1 rows are all the floor.

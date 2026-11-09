@@ -1,7 +1,7 @@
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: at 786 lines it is the largest document audited in this campaign, and it had no audit stamp, no footer and no docs-auditor marker of any kind. It is a per-page Fluent localisation journal — the record of walking each screen and inventorying its strings — and that format has a property this campaign has not yet encountered: the deliverable IS the inventory, and it is a dated snapshot of a moving surface. · THE HONEST SCOPE, stated before the result so the coverage claim is not overread: a page-by-page string inventory cannot be re-derived by a documentation audit. Re-running it means walking every screen, cataloguing every `getString` call and every `<Localized>` id, and diffing against what the bundles now contain. That is the original work. What a documentation audit CAN establish, and what this pass establishes, is whether the journal's SUBJECT is still a live localisation surface and whether the machinery it was written against still behaves as it describes. The shared-ui locale tree it inventories is not a historical artifact: it is where 27 `.id.ftl` bundles live today, including the four whose absence drove the `i18n-todo.md` repair in round 4, so the surface has grown rather than been retired. · THE MECHANISM STILL HOLDS, and it is the part that decays fastest. The audit's premise is that every user-visible string resolves through Fluent with `en` and `id` bundles at parity. That is not an aspiration in this repository: `scripts/verify-bundle-parity.py` exists and runs as a pre-commit gate, and this campaign has repeatedly seen the enforced form of this exact rule in action — the workspace-settings phase docs record parity checks as gate results, and the RBAC spec series records FTL key additions in both bundles as acceptance criteria. A journal written to enforce a rule the project now enforces by tooling has been overtaken in the best possible way: the manual sweep it represents is now partly redundant with a gate. · NOT re-measured: the per-page string counts and untranslated-string tallies, which are the journal's own content and belong to whoever re-runs the sweep. · No stamp existed; this is the first, and the footer is new rather than bumped. -->
 # Fluent Page Audit — Full Journal
 
-<!-- Path currency note, added 08-09-26: paths in this journal are as-of each dated entry. Two that recur are not live pointers. `ui/locales/` appears six times as a FINDING — an orphan directory that held no bundle; the real locale path has always been `ui/src/locales/`, and the finding was that the stray dir existed. `scripts/tmp-split-spec.ps1` was a throwaway helper and has been deleted. Read either as history, not as a file to open. -->
+<!-- Path currency note, added 08-09-26: paths in this journal are as-of each dated entry. Two that recur are not live pointers. `ui/locales/` appears six times as a FINDING — an orphan directory that held no bundle; the real locale path has always been `shared-ui/locales/`, and the finding was that the stray dir existed. `scripts/tmp-split-spec.ps1` was a throwaway helper and has been deleted. Read either as history, not as a file to open. -->
 
 > **Provenance.** This is the working journal of the 2026-09-03 Fluent/i18n
 > page audit: an inventory of every registered page in `ui/src`, followed by
@@ -64,8 +64,8 @@ Artifacts: this directory (`scan_fluent.py`, `rollup.py`, `fluent_scan.json`,
 
 **Handling rule adopted for every phase commit:** never `git add -A`. Stage only my
 own hunks with `git apply --cached <patch>` so the in-flight work stays unstaged in
-the working tree. Files where this matters: `ui/src/locales/shared.ftl`,
-`ui/src/locales/shared.id.ftl`, `ui/src/features/auth/StaffLoginScreen.tsx`,
+the working tree. Files where this matters: `shared-ui/locales/shared.ftl`,
+`shared-ui/locales/shared.id.ftl`, `ui/src/features/auth/StaffLoginScreen.tsx`,
 `ui/src/features/auth/LicenseActivationScreen.tsx`,
 `ui/src/features/design/TooltipPreview.tsx`.
 
@@ -121,7 +121,7 @@ Verification:
 
 ### ⚠️ Concurrent writer active in this checkout
 
-Discovered mid-P1: `ui/src/locales/shared.ftl` mtime moved from before my
+Discovered mid-P1: `shared-ui/locales/shared.ftl` mtime moved from before my
 baseline read to `06:54:43`, adding `workspace-home-staff-empty{,-desc}` and
 bumping `statusbar-version` to v0.0.35 — en key count went 4290 → 4292 under me.
 Files touched in the last 30 min include `crates/oz-api/src/{spec,lib}.rs`, <!-- dead-ref: ok: snapshot of files touched at audit time; oz-api later renamed kasirmu-api -->
@@ -207,7 +207,7 @@ text. Re-ran the 10 affected files: 163/163 pass.
 ### ⚠️ The concurrent writer swept my work into their commit
 
 `f93879b7 fix(workspaces): remove KDS entry from home-screen Tools section`
-committed `ui/src/locales/shared.ftl` + `shared.id.ftl` — including my
+committed `shared-ui/locales/shared.ftl` + `shared.id.ftl` — including my
 uncommitted `ctx-menu-*` keys — alongside its own `WorkspaceHome.tsx` change.
 Nothing lost (keys verified in HEAD, both locales), but P3's locale half shipped
 under someone else's message.

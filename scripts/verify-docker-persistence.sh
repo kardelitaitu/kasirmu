@@ -22,6 +22,155 @@
 #   OZ_PERSIST_LICENSE_PORT (default 8380)
 
 set -euo pipefail
+
+# ── Verdict vocabulary ───────────────────────────────────────────────
+# Defined ABOVE the self-test block (moved 2026-11-06) so the cases grade the real
+# functions. Before the move, case 3 called fail() before it existed: bash answered
+# "command not found", which is ALSO a non-zero exit, so the case passed while proving
+# that fail() exits nothing at all.
+GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
+pass() { printf "${GREEN}✔ %s${NC}\n" "$1"; }
+fail() { printf "${RED}✘ %s${NC}\n" "$1"; exit 1; }
+
+# Cleanup runs on EXIT of a real run. It is defined here so the self-test can grade it with
+# a docker stub; the sabotage sweep reported a gutted cleanup() SURVIVING because no case
+# ever called it.
+cleanup() {
+    docker rm -f "$CLOUD_CONTAINER" "$LICENSE_CONTAINER" >/dev/null 2>&1 || true
+    docker volume rm "$CLOUD_VOL" "$LICENSE_VOL" >/dev/null 2>&1 || true
+}
+
+# ── SELF-TEST ────────────────────────────────────────────────────────
+# This gate had NO proof form of any kind until 2026-10-24: no --self-test, no companion
+# test, no measured mutation, and no note explaining an absence. It was also invoked by no
+# live gate -- its only caller was verify-docker-all.sh, and every check.sh/CI path into
+# that wrapper reaches only the log-rotation self-test, never the persistence stages. So a
+# "Persistence verified" line here has never been produced by CI at all.
+#
+# The full run needs a Docker daemon and two image builds, which is why it cannot be a
+# plain self-test. What CAN be proven without a daemon is the part every run depends on
+# and no run has ever checked: the verdicts themselves. Under "set -e" an assertion that
+# fails and a script that crashes are indistinguishable -- both exit non-zero -- so a
+# gate whose only observable is its exit code is proved by its MESSAGES, and those are
+# graded here.
+if [ "${1:-}" = "--self-test" ]; then
+    st_fails=0
+    st_total=0
+    st_case() { st_total=$((st_total + 1)); }
+    st_ok() {
+        st_case
+        if ! "$@" >/dev/null 2>&1; then
+            printf 'SELF-TEST WRONG: %s\n' "$1 $2 ... exited non-zero" >&2
+            st_fails=$((st_fails + 1))
+        fi
+    }
+
+    # Every check the gate performs is one of three shapes. Grade the shape, not Docker.
+    #
+    # 1. The "survived" predicate. Both stages assert a substring is still served after
+    #    container replacement (the product name, the license key). If this predicate were
+    #    inverted or always-true, the gate would report success over a LOST record -- the
+    #    worst possible direction for a persistence gate.
+    survived() { printf '%s' "$1" | grep -q -- "$2"; }
+    st_case
+    if ! survived '{"name":"Persistence Probe","id":7}' 'Persistence Probe'; then
+        printf 'SELF-TEST WRONG: survived() missed a present record\n' >&2
+        st_fails=$((st_fails + 1))
+    fi
+    st_case
+    if survived '{"error":"not found"}' 'Persistence Probe'; then
+        printf 'SELF-TEST WRONG: survived() reported a LOST record as present\n' >&2
+        st_fails=$((st_fails + 1))
+    fi
+
+    # 2. The collection-completeness verdict at the license stage. "OK" only when EVERY
+    #    required collection exists; anything else names the missing ones. A checker that
+    #    accepted a partial set would pass a first boot with the schema half-provisioned.
+    colls() {
+        printf '%s' "$1" | python -c "
+import sys, json
+names = {c['name'] for c in json.load(sys.stdin)['items']}
+need = {'license_keys','tenants','subscriptions','tenant_machines'}
+print('OK' if need <= names else 'MISSING:' + ','.join(sorted(need - names)))
+"
+    }
+    all_four='{"items":[{"name":"license_keys"},{"name":"tenants"},{"name":"subscriptions"},{"name":"tenant_machines"},{"name":"extra"}]}'
+    st_case
+    if [ "$(colls "$all_four")" != "OK" ]; then
+        printf 'SELF-TEST WRONG: a complete collection set was not accepted\n' >&2
+        st_fails=$((st_fails + 1))
+    fi
+    three='{"items":[{"name":"license_keys"},{"name":"tenants"},{"name":"subscriptions"}]}'
+    st_case
+    if [ "$(colls "$three")" = "OK" ]; then
+        printf 'SELF-TEST WRONG: a set missing tenant_machines was called OK\n' >&2
+        st_fails=$((st_fails + 1))
+    fi
+    st_case
+    case "$(colls "$three")" in
+        MISSING:*tenant_machines*) ;;
+        *) printf 'SELF-TEST WRONG: the refusal does not name the missing collection\n' >&2
+           st_fails=$((st_fails + 1)) ;;
+    esac
+
+    # 3. fail() must EXIT, not merely print. A fail() that returned would let the script
+    #    run on to the next stage after a lost record and still reach the final green line.
+    #    THIS CASE WAS VACUOUS until 2026-11-06: fail() was defined 100 lines BELOW the block,
+    #    so the subshell died of "command not found" (exit 127) instead of running fail().
+    #    It passed even when fail()'s body was blanked. The vocabulary above fixes that.
+    st_case
+    if ( fail "planted" ) >/dev/null 2>&1; then
+        printf 'SELF-TEST WRONG: fail() returned instead of exiting\n' >&2
+        st_fails=$((st_fails + 1))
+    fi
+
+    # 3b. cleanup() -- the only function that touches the daemon, and it had no case at all,
+    #     which is why the sabotage sweep scored it SURVIVED: nothing called it. No daemon is
+    #     needed to grade it: a shell FUNCTION named docker shadows the binary, so the recorder
+    #     sees exactly the argv cleanup() builds from the four name variables. A future edit
+    #     that hardcodes a container name, drops a volume, or returns early fails here.
+    st_case
+    _rec="$(mktemp)"
+    CLOUD_CONTAINER=probe-cloud-1; LICENSE_CONTAINER=probe-license-1
+    CLOUD_VOL=probe-cloud-vol; LICENSE_VOL=probe-license-vol
+    docker() { printf '%s\n' "$*" >> "$_rec"; }
+    cleanup
+    unset -f docker
+    if ! grep -qxF 'rm -f probe-cloud-1 probe-license-1' "$_rec" ||
+       ! grep -qxF 'volume rm probe-cloud-vol probe-license-vol' "$_rec" ||
+       [ "$(grep -c . "$_rec")" -ne 2 ]; then
+        printf 'SELF-TEST WRONG: cleanup() did not remove both containers and both volumes (recorder: %s)\n' \
+            "$(tr '\n' '|' < "$_rec")" >&2
+        st_fails=$((st_fails + 1))
+    fi
+    rm -f "$_rec"
+
+    # 4. NO DAEMON, BY CONSTRUCTION. The first draft of this case called a function that
+    #    does not exist and fell back to "|| echo absent": it asserted nothing and would have
+    #    passed even if --self-test had gone on to build images. The second re-ran this script
+    #    under "sh $0 --self-test", which is RECURSION -- and it hung until killed. The third
+    #    grepped for the first docker line, which stopped meaning anything on 2026-11-06 when
+    #    cleanup()'s body (docker rm / docker volume rm) moved above this block: a DEFINITION
+    #    executes nothing. Grade the invariant that actually matters: --self-test exits before
+    #    the script's first executable statement and before the EXIT trap arms cleanup.
+    st_case
+    first_stmt=$(grep -n -m1 -E '^cd "\$\(dirname "\$0"\)/\.\."' "$0" | cut -d: -f1)
+    trap_line=$(grep -n -m1 -E '^trap cleanup EXIT' "$0" | cut -d: -f1)
+    self_case_line=$(grep -n -m1 -E 'st_fails=0' "$0" | cut -d: -f1)
+    if [ -z "$first_stmt" ] || [ -z "$trap_line" ] || [ -z "$self_case_line" ] ||
+       [ "$self_case_line" -gt "$first_stmt" ] || [ "$self_case_line" -gt "$trap_line" ]; then
+        printf 'SELF-TEST WRONG: the self-test block does not exit before the script starts\n' >&2
+        st_fails=$((st_fails + 1))
+    fi
+
+    if [ "$st_fails" -ne 0 ]; then
+        printf 'SELF-TEST FAILED (%d of %d cases)\n' "$st_fails" "$st_total" >&2
+        exit 2
+    fi
+    printf 'SELF-TEST OK (%d cases, no daemon)\n' "$st_total"
+    exit 0
+fi
+
 cd "$(dirname "$0")/.."
 
 CLOUD_PORT="${OZ_PERSIST_CLOUD_PORT:-3210}"
@@ -33,14 +182,6 @@ LICENSE_VOL="oz-persist-verify-license"
 CLOUD_CONTAINER="oz-persist-verify-cloud-1"
 LICENSE_CONTAINER="oz-persist-verify-license-1"
 
-GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
-pass() { printf "${GREEN}✔ %s${NC}\n" "$1"; }
-fail() { printf "${RED}✘ %s${NC}\n" "$1"; exit 1; }
-
-cleanup() {
-    docker rm -f "$CLOUD_CONTAINER" "$LICENSE_CONTAINER" >/dev/null 2>&1 || true
-    docker volume rm "$CLOUD_VOL" "$LICENSE_VOL" >/dev/null 2>&1 || true
-}
 trap cleanup EXIT
 cleanup
 

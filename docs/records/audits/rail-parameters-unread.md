@@ -155,3 +155,5 @@ axis, encrypted at rest.
 The error was mine: I matched `updateRailParams` calls and never followed the value to the
 wire. See `rail-credential-sanitizer.md` (round 125). The CONSUMPTION finding in this file
 stands; only the security framing is retracted.
+
+> last audited 14-10-26 by docs-auditor

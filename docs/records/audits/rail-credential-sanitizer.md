@@ -89,3 +89,5 @@ function that actually performs the side effect.
 | Backend guard | `payment_methods.rs:40-82`, applied `:137` |
 | Credential reaching the rail write | **none** |
 | Tree | no source changed this round |
+
+> last audited 14-10-26 by docs-auditor

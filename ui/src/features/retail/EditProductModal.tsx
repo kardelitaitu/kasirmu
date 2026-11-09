@@ -424,7 +424,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
                 className="retail-edit-input"
                 value={unit}
                 onChange={(e) => setUnit(e.target.value)}
-                placeholder="pcs / kg / box"
+                placeholder={l10n.getString('retail-edit-unit-placeholder')}
               />
             </div>
           </div>
@@ -457,7 +457,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
                 className="retail-edit-input"
                 value={rackLocation}
                 onChange={(e) => setRackLocation(e.target.value)}
-                placeholder="A-01"
+                placeholder={l10n.getString('retail-edit-rack-placeholder')}
               />
             </div>
           </div>

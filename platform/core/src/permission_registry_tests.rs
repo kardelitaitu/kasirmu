@@ -29,6 +29,8 @@ fn is_expected_sensitive(key: &str) -> bool {
                 // AP write-off forgives a vendor debt (money destruction),
                 // so it is never wildcard-eligible — mirrors giftcards:issue.
                 | permissions::PAYABLES_WRITEOFF
+                // AR write-off forgives an uncollectible customer debt (money destruction).
+                | permissions::RECEIVABLES_WRITEOFF
                 | permissions::OPERATOR_IMPERSONATE
     )
 }
@@ -664,6 +666,135 @@ fn registry_error_is_send_and_sync() {
     assert_send_sync::<RegistryError>();
 }
 
+//
+/// Only the Owner preset may carry the global wildcard `"*"`.
+///
+/// This is the single highest-leverage grant in the system: `grant_matches`
+/// returns true when `grant == "*"` for ANY required key, so a preset holding it
+/// is a full-access role regardless of which individual keys it also lists. The
+/// Owner preset is exactly that -- `permissions: &["*"]` at rbac_presets.rs:75,
+/// with no other key -- and `validate_grant("*", allow_global)` exists to make
+/// the OTHER direction refusable (rbac.rs:682 returns GlobalWildcardDenied).
+///
+/// Nothing checked the direction that matters at seed time. `seed_default_roles`
+/// (crates/kasirmu-core/src/db/staff.rs:72-95) writes every preset's permission
+/// JSON straight to the roles table, and the only preset-wide test
+/// (`every_preset_permission_is_registered_and_enforced`) SKIPS `"*"` as
+/// "special token, not a registered key" -- so a wildcard added to the Staff
+/// preset would have passed every check in this file while giving every cashier
+/// the whole permission space.
+///
+/// Both halves are asserted. The positive half keeps the Owner preset honest:
+/// if a refactor dropped its wildcard, Owner would silently become a role with
+/// whatever individual keys happened to remain, and nobody would notice until a
+/// real owner could not edit settings.
+#[test]
+fn only_the_owner_preset_carries_the_global_wildcard() {
+    for preset in crate::rbac::ROLE_PRESETS {
+        let holds_wildcard = preset.permissions.contains(&"*");
+        if preset.id == crate::rbac::builtin_roles::OWNER {
+            assert!(
+                holds_wildcard,
+                "the Owner preset must carry \"*\" -- without it the role is not full access"
+            );
+        } else {
+            assert!(
+                !holds_wildcard,
+                "preset '{}' carries the global wildcard, which makes it a full-access role",
+                preset.id
+            );
+        }
+    }
+}
+
+/// The Owner preset's wildcard is the ONLY thing it grants: it lists no
+/// individual keys. Stated as a test because a mixed preset (`["*", "x"]`) hides
+/// an intent -- a reader cannot tell whether `x` is deliberate or left over, and
+/// deleting `*` would leave `x` behind looking like a considered grant.
+#[test]
+fn the_owner_preset_grants_the_wildcard_and_nothing_else() {
+    for preset in crate::rbac::ROLE_PRESETS {
+        if preset.id == crate::rbac::builtin_roles::OWNER {
+            assert_eq!(
+                preset.permissions.len(),
+                1,
+                "Owner must grant exactly the wildcard, found {:?}",
+                preset.permissions
+            );
+            assert_eq!(preset.permissions[0], "*");
+        }
+    }
+}
+// ── Tier boundary: the gift-card family is owner-only ────────────
+
+/// No built-in preset may grant a `giftcards:*` key.
+///
+/// The cashier tier is the one that matters. A frontline member takes payment,
+/// and a gift card is payment — so if `giftcards:redeem` ever joins the Staff
+/// preset, every cashier silently gains the ability to drain a card balance back
+/// out of the till. That is a security boundary, not a feature flag.
+///
+/// Until this test existed the boundary was held by TWO weaker things, and neither
+/// would have failed if it were crossed:
+///
+///   * `every_enforced_key_is_granted_by_at_least_one_preset` lists all three
+///     gift-card keys in its `unpreseted_exceptions`, so it SKIPS them. The
+///     exception is what makes them owner-only, and it is also what silences the
+///     only test that reads the presets.
+///   * `sensitive_family_wildcard_rejected` stops `giftcards:*`, but an explicit
+///     single-key grant is not a wildcard and passes it.
+///
+/// Gift-card issue and manage remain owner-only (or custom roles). No built-in
+/// preset grants GIFTCARDS_ISSUE or GIFTCARDS_MANAGE.
+/// GIFTCARDS_REDEEM is granted to the checkout presets (Staff, Manager, Admin)
+/// per Q3 Option A (owner-question-gift-card-tender.md).
+#[test]
+fn no_builtin_preset_grants_giftcard_issue_or_manage() {
+    let unpreseted_giftcard_keys: &[&str] =
+        &[permissions::GIFTCARDS_ISSUE, permissions::GIFTCARDS_MANAGE];
+    for preset in crate::rbac::ROLE_PRESETS {
+        for &perm in preset.permissions {
+            assert!(
+                !unpreseted_giftcard_keys.contains(&perm),
+                "preset {} grants {} — issue and manage are owner-only",
+                preset.name,
+                perm
+            );
+        }
+    }
+
+    for preset_id in [
+        crate::rbac::builtin_roles::STAFF,
+        crate::rbac::builtin_roles::MANAGER,
+        crate::rbac::builtin_roles::ADMIN,
+    ] {
+        let preset = crate::rbac::ROLE_PRESETS
+            .iter()
+            .find(|p| p.id == preset_id)
+            .expect("preset exists");
+        assert!(
+            preset.permissions.contains(&permissions::GIFTCARDS_REDEEM),
+            "preset {} must grant GIFTCARDS_REDEEM",
+            preset.name
+        );
+    }
+}
+
+/// And the keys must stay declared, so the test above cannot pass by naming
+/// constants that no longer exist.
+#[test]
+fn giftcard_keys_are_declared_in_the_inventory() {
+    for key in [
+        permissions::GIFTCARDS_ISSUE,
+        permissions::GIFTCARDS_REDEEM,
+        permissions::GIFTCARDS_MANAGE,
+    ] {
+        assert!(
+            ALL_ENFORCED.contains(&key),
+            "{key} is not in ALL_ENFORCED — the inventory drifted from the constants"
+        );
+    }
+}
 // ── Drift-prevention hardening tests ─────────────────────────────
 
 /// Every permission granted by every built-in preset must be registered
@@ -710,7 +841,6 @@ fn every_enforced_key_is_granted_by_at_least_one_preset() {
         permissions::PURCHASING_VIEW,
         permissions::PURCHASING_MANAGE,
         permissions::GIFTCARDS_ISSUE,
-        permissions::GIFTCARDS_REDEEM,
         permissions::GIFTCARDS_MANAGE,
         permissions::SECURITY_MANAGE,
         permissions::SYNC_MANAGE,

@@ -13,6 +13,8 @@
 //! and the encoding rules, the NotFound message and the lock scope are
 //! byte-identical to the original body.
 
+use kasirmu_core::permissions;
+
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
 
@@ -50,16 +52,21 @@ pub fn urlencoding(input: &str) -> String {
 ///
 /// # Errors
 ///
-/// Returns BridgeError::InvalidSession for a bad token, BridgeError::Core
-/// (NotFound) when the SKU is unknown, and BridgeError::Internal for a poisoned
-/// store lock or a database read failure.
+/// Returns BridgeError::InvalidSession for a bad token,
+/// BridgeError::PermissionDenied when the session lacks `PRODUCTS_READ`,
+/// BridgeError::Core (NotFound) when the SKU is unknown, and
+/// BridgeError::Internal for a poisoned store lock or a database read failure.
 pub async fn product_image_search_url(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
     sku: &str,
 ) -> Result<String, BridgeError> {
-    // Resolve the session so only signed-in store sessions can trigger
-    // browser opening, and read the product's name/brand from the DB
+    // Resolve the session and require PRODUCTS_READ permission (BR-S4).
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, permissions::PRODUCTS_READ)
+        .await?;
+
+    // Read the product's name/brand from the session's store DB
     // (never trust the frontend with the query text).
     let conn = ctx.resolve_store(session_token)?;
     // Scope the DB borrow so `Store` (!Send) is dropped before the await

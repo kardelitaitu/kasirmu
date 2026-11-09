@@ -374,7 +374,7 @@
  * footer y=458 either way, stack y=500-709 either way.
  *
  * Why: the footer is a flex SIBLING of .settings-body inside .settings-page
- * (SettingsPage.tsx:434; the body closes at :431), and it is `flex: 0 0 auto` at the
+ * (SettingsPage.tsx:516; the body opens at :490 and closes at :510), and it is `flex: 0 0 auto` at the
  * bottom of that column. Padding it cannot move it. The clearance that does lift the
  * footer off the stack is the .settings-body band in SettingsNavTree.css, which
  * shrinks the region above it and lets the column re-lay out.
@@ -980,67 +980,17 @@ body:has(.settings-footer) {
   margin: 0;
 }
 
-.settings-size-controls {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
 
-.settings-size-btn {
-  width: 2.75rem;
-  height: 2.75rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--text-lg);
-  font-weight: var(--font-weight-bold);
-  color: var(--color-fg);
-  background: var(--color-bg-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  cursor: pointer;
-}
+/* The .settings-license-value family was defined here as well as in LicenseSettings.css.
+   That sheet owns the whole family (14 rules, including the --tier-* variants and the
+   ghost-button rules this partial copy never had) and every consumer is its own component:
+   LicenseSettings.tsx, which screenExtraction registers under its own entry.
 
-.settings-size-btn:hover:not(:disabled) {
-  background: var(--color-bg-hover);
-  border-color: var(--color-border-hover);
-}
-
-.settings-size-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.settings-size-value {
-  min-width: 1.5rem;
-  text-align: center;
-  font-size: var(--text-base);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-fg);
-}
-
-.settings-license-value {
-  font-weight: 600;
-  font-size: var(--text-base);
-  line-height: 1.4;
-  color: var(--color-fg);
-}
-
-.settings-license-value--mono {
-  font-family: monospace;
-}
-
-.settings-license-value--warning {
-  color: var(--color-warning);
-}
-
-.settings-license-value--active {
-  color: var(--color-accent);
-}
-
-.settings-license-value--inactive {
-  color: var(--color-fg-tertiary);
-}
+   The copies here survived because AboutSection.tsx rendered them too. Round 157 deleted
+   AboutSection (labelled DEAD on 2026-09-15 by 13348f9aec), which left five rules in this
+   sheet with no renderer in this file's corpus -- and screenExtraction said so by name.
+   Removing them is not a loss of styling: LicenseSettings.css still defines all five.
+*/
 
 
 
@@ -1303,9 +1253,6 @@ body:has(.settings-footer) {
   .settings-input {
     transition: border-color var(--duration-150) var(--ease-out), box-shadow var(--duration-150) var(--ease-out);
   }
-  .settings-size-btn {
-    transition: border-color var(--duration-150) var(--ease-out), background var(--duration-150) var(--ease-out);
-  }
 }
 
 /* ── Accessibility ────────────────────────────────────── */
@@ -1372,8 +1319,7 @@ html[data-shell='tablet'] .settings-content {
    already animates on change, and a press-scale on top of that transition
    reads as a double-move. Filled buttons scale. */
 .settings-topbar-menu-btn:not(:disabled):active,
-.settings-btn-revert:not(:disabled):active,
-.settings-size-btn:not(:disabled):active {
+.settings-btn-revert:not(:disabled):active {
   transform: scale(0.97);
 }
 
@@ -1386,8 +1332,7 @@ html[data-shell='tablet'] .settings-content {
 
 @media (prefers-reduced-motion: reduce) {
   .settings-topbar-menu-btn:not(:disabled):active,
-  .settings-btn-revert:not(:disabled):active,
-  .settings-size-btn:not(:disabled):active {
+  .settings-btn-revert:not(:disabled):active {
     transform: none;
     opacity: 0.75;
   }

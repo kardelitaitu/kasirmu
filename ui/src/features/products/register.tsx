@@ -17,9 +17,16 @@ export function registerProductsFeature() {
 
   // ── ARCHIVED: 'inventory' route ────────────────────────────────
   // ProductManagementScreen was the old global inventory page.
-  // Replaced by WarehouseScreen (features/warehouse/) which provides
-  // location-scoped stock management. Files kept in features/products/
-  // for reference but no longer registered as a navigable route.
+  // Replaced by WarehouseConsole (features/warehouse/), registered at
+  // route 'warehouse'. Files kept in features/products/ for reference but no
+  // longer registered as a navigable route.
+  //
+  // CORRECTED 2026-10-25 (round 162): this note and the banner in
+  // ProductManagementScreen.tsx:2 both named `WarehouseScreen`, which DOES NOT
+  // EXIST -- `git ls-files 'ui/src/features/**/WarehouseScreen*'` is empty. The
+  // successor is WarehouseConsole.tsx, registered by warehouse/register.tsx:8.
+  // A dead note pointing at a phantom file is worse than no note: it reads as a
+  // resolved question.
 
   registerPage({ route: 'bundles', component: BundleManagementScreen, label: 'Bundles', requiredRole: 'manager' });
   registerNavItem({

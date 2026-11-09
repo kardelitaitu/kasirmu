@@ -49,6 +49,7 @@ import {
   type SyncPlanResult,
 } from '@/api/offline';
 import type { OfflineQueueSummaryDto } from '@/api/offline';
+import type * as AuthContextModule from '@/contexts/AuthContext';
 import {
   setReceiptSettingsScoped,
   setStoreSettingsScoped,
@@ -98,7 +99,7 @@ const { authValue } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/contexts/AuthContext', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/contexts/AuthContext')>()),
+  ...(await importOriginal<typeof AuthContextModule>()),
   useAuth: () => authValue,
 }));
 

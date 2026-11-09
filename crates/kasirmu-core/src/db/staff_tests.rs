@@ -620,7 +620,8 @@ fn create_user_empty_username() {
 ///
 /// WHY THIS EXISTS. The refusal message has always read "must not exceed 100
 /// characters", but the check and the number it reported both used the byte length.
-/// MEASURED: swapping the check to a character count left all 96 tests in this file
+/// MEASURED at the commit that wrote this note, against the population THEN (the file
+/// has grown since, so read 96 as history): swapping the check to a character count left all 96 tests in this file
 /// GREEN, so the unit was never pinned. The visible failure is self-contradicting: a
 /// 100-character accented username was refused with a message saying it exceeded 100
 /// characters and reporting 200.

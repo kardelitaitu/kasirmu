@@ -5,7 +5,7 @@ import { KdsTicketCard } from '@/features/kds/components/KdsTicketCard';
 import kdsFtl from '@/locales/kds.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
 import { withFluent } from '@/i18n/test-utils';
-import type { KdsOrder } from '@/api/kds';
+import type { KdsOrder, KdsLineItem } from '@/api/kds';
 
 const mockPlayAlert = vi.fn();
 const mockGetKdsOrderLines = vi.fn().mockResolvedValue([]);
@@ -158,11 +158,102 @@ describe('KdsTicketCard', () => {
     expect(mockPlayAlert).not.toHaveBeenCalled();
   });
 
+  it('does not play alert when order is served or cancelled even if level transitions to red', () => {
+    const { rerender } = renderCard({ status: 'served' });
+    expect(mockPlayAlert).not.toHaveBeenCalled();
+
+    mockSlaResult.level = 'red';
+    rerender(
+      withFluent(
+        <KdsTicketCard order={{ ...baseOrder, status: 'served', notes: 'trigger' }} onAdvance={onAdvance} sessionToken="test-token" />,
+        sharedFtl, kdsFtl,
+      ),
+    );
+
+    expect(mockPlayAlert).not.toHaveBeenCalled();
+  });
+
   it('sets aria-label on the Advance button with SLA info', () => {
     mockSlaResult.level = 'yellow';
     mockSlaResult.display = '12m 0s';
     renderCard();
     const advance = document.querySelector('[data-testid="kds-order-card-42-status-advance"]');
     expect(advance?.getAttribute('aria-label')).toContain('42');
+  });
+
+  it('calls onAdvanceItem and optimistically advances line item and course progress', async () => {
+    const onAdvanceItem = vi.fn();
+    const mockItems: KdsLineItem[] = [
+      {
+        id: 'li-1',
+        kds_order_id: 'order-1',
+        sku: 'SKU-BURGER',
+        display_name: 'Cheeseburger',
+        qty: 1,
+        course: 'main',
+        modifiers: [],
+        line_position: 1,
+        item_status: 'pending',
+        started_at: null,
+        ready_at: null,
+        served_at: null,
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: 'li-2',
+        kds_order_id: 'order-1',
+        sku: 'SKU-FRIES',
+        display_name: 'French Fries',
+        qty: 1,
+        course: 'main',
+        modifiers: [],
+        line_position: 2,
+        item_status: 'ready',
+        started_at: null,
+        ready_at: null,
+        served_at: null,
+        created_at: new Date().toISOString(),
+      },
+    ];
+    mockGetKdsOrderLines.mockResolvedValueOnce(mockItems);
+
+    const { container } = renderWithFluentSync(
+      <KdsTicketCard
+        order={baseOrder}
+        onAdvance={onAdvance}
+        onAdvanceItem={onAdvanceItem}
+        sessionToken="test-token"
+      />,
+      sharedFtl,
+      kdsFtl,
+    );
+
+    // Wait for items to be fetched and rendered
+    await vi.waitFor(() => {
+      expect(container.querySelector('[data-testid="kds-order-card-42-item-li-1"]')).not.toBeNull();
+    });
+
+    // Check category header: 0 done out of 2 (pending and ready are not done)
+    const catHeader = container.querySelector('[data-testid="kds-order-card-42-cat-main"]')!;
+    expect(catHeader.textContent).toContain('0/2');
+    expect(catHeader.className).not.toContain('done');
+
+    // Click item 2 (status: ready -> served)
+    const item2Btn = container.querySelector('[data-testid="kds-order-card-42-item-li-2"]')!;
+    fireEvent.click(item2Btn);
+    expect(onAdvanceItem).toHaveBeenCalledWith(expect.objectContaining({ id: 'li-2' }));
+
+    // Optimistic advancement: li-2 is now served, doneCount should be 1/2
+    expect(catHeader.textContent).toContain('1/2');
+    expect(catHeader.className).not.toContain('done');
+
+    // Click item 1 (status: pending -> preparing)
+    const item1Btn = container.querySelector('[data-testid="kds-order-card-42-item-li-1"]')!;
+    fireEvent.click(item1Btn);
+    expect(onAdvanceItem).toHaveBeenCalledWith(expect.objectContaining({ id: 'li-1' }));
+
+    // li-1 dot should now be preparing
+    const dot = container.querySelector('.kds-ticket-item-status-dot--preparing');
+    expect(dot).not.toBeNull();
   });
 });

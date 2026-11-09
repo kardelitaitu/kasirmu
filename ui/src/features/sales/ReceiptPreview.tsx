@@ -63,8 +63,8 @@ export default function ReceiptPreview({
     : null;
 
   return (
-    <div className="receipt-preview" role="region" aria-label={l10n.getString('receipt-preview-aria', null, 'Receipt Preview')}>
-      <div className="receipt-preview-paper">
+    <section className="receipt-preview" aria-label={l10n.getString('receipt-preview-aria', null, 'Receipt Preview')}>
+      <article className="receipt-preview-paper">
         {/* ── Tax Invoice Banner ── */}
         {(receipt.isInvoice || receipt.documentKind === 'invoice') && (
           <div className="receipt-preview-invoice-banner" style={{
@@ -82,7 +82,7 @@ export default function ReceiptPreview({
         )}
 
         {/* ── Store Header ── */}
-        <div className="receipt-preview-header">
+        <header className="receipt-preview-header">
           <div className="receipt-preview-store-name">
             {receipt.storeName || l10n.getString('receipt-preview-store-name', null, 'kasir.mu Store')}
           </div>
@@ -95,6 +95,11 @@ export default function ReceiptPreview({
             <span className="receipt-preview-date">{receipt.date}</span>
             <span className="receipt-preview-receipt-number">{receipt.receiptNumber}</span>
           </div>
+          {receipt.tableNumber && (
+            <div className="receipt-preview-table-info" style={{ marginTop: '0.25rem', fontWeight: 600, fontSize: '0.85rem' }} data-testid="receipt-preview-table">
+              Table: {receipt.tableNumber}
+            </div>
+          )}
           {receipt.statutoryNumber && receipt.statutoryNumber !== receipt.receiptNumber && (
             <div className="receipt-preview-statutory-number" style={{ fontWeight: 600, fontSize: '0.85rem' }}>
               Invoice No: {receipt.statutoryNumber}
@@ -106,7 +111,7 @@ export default function ReceiptPreview({
               {receipt.customerTaxId && <div>Tax ID: {receipt.customerTaxId}</div>}
             </div>
           )}
-        </div>
+        </header>
 
         <div className="receipt-preview-separator">{separator}</div>
 
@@ -239,13 +244,13 @@ export default function ReceiptPreview({
         )}
 
         {/* ── Footer ── */}
-        <div className="receipt-preview-footer">
+        <footer className="receipt-preview-footer">
           {l10n.getString('receipt-preview-thanks', null, 'Thank you for your purchase!')}
-        </div>
-      </div>
+        </footer>
+      </article>
 
       {/* ── Action Buttons ── */}
-      <div className="receipt-preview-actions">
+      <footer className="receipt-preview-actions">
         <Button variant="ghost" onClick={onSkip} disabled={loading || issuingTaxInvoice}>
           {l10n.getString('receipt-preview-skip', null, 'Skip')}
         </Button>
@@ -257,8 +262,8 @@ export default function ReceiptPreview({
         <Button variant="primary" onClick={onPrint} loading={loading} disabled={issuingTaxInvoice}>
           {l10n.getString('receipt-preview-print', null, 'Print Receipt')}
         </Button>
-      </div>
-    </div>
+      </footer>
+    </section>
   );
 }
 

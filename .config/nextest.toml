@@ -11,6 +11,35 @@
 # Fail-fast: stop after first failure in CI, keep going locally
 fail-fast = { max-fail = 1 }
 
+# ── Test threads: 4, and this is a MEASURED ceiling, not a spare core ──────
+# kasirmu-bridge full suite, 1542 tests, same machine (Ryzen 9 7950X, 16C/32T):
+#   libtest default (32 threads) -> 1395-1471 s
+#   --test-threads=4             -> 355.95 s   (1542 passed, 0 failed)
+#   --test-threads=8             -> 50.80 s for kds:: alone, vs 26.37 s at 4
+#   --test-threads=32            -> 92.90 s for kds:: alone, vs 26.37 s at 4
+# Adding threads makes it SLOWER. The cause is already documented in
+# crates/kasirmu-core/src/migrations.rs: clones of the migrated test-db
+# snapshot (fresh_db) degrade past two threads -- 1.15 s at 1, 0.76 s at 2,
+# 2.18 s at 8, 3.75 s at 32 for 384 clones -- most likely SQLite's global
+# allocation mutex. Every TestBridge::new() takes that path, which is why the
+# modules that build many bridges (kds, auth, reports, pos, staff) are the slow
+# ones and the 332-test topology module, which mostly does not, finishes in 9.7 s.
+#
+# AND IT HOLDS FOR THE BIGGEST CRATE TOO, re-measured 2026-10-23 so this is not a
+# one-crate anecdote. kasirmu-core --lib, 3674 tests, same machine:
+#   1 thread     -> 107.04 s
+#   2 threads    ->  77.35 s
+#   4 threads    ->  65.10 s   <- the same optimum
+#   8 threads    -> 114.43 s
+#   default (32) -> 179.96 s    (2.8x slower than 4)
+# 3674 passed, 0 failed at every point on that curve, so the setting costs no
+# coverage -- it only stops the runner from racing itself. Two crates, two
+# independently measured curves, the same minimum at 4.
+#
+# So 4 is not a compromise between speed and safety: it is the fastest measured
+# point, and it is what [profile.quick] already used.
+test-threads = 4
+
 # Retry flaky tests up to 2 times with exponential backoff
 retries = { backoff = "exponential", count = 2, delay = "1s" }
 

@@ -46,8 +46,20 @@ DOC_GLOBS = ['apps/license-server/DEPLOY.md', 'docs/operations/go-live-checklist
              '.env.example']
 
 def repo_root():
-    o = subprocess.run(['git', 'rev-parse', '--show-toplevel'],
-                       stdout=subprocess.PIPE, text=True, errors='replace')
+    # This script lives at <root>/.agents/skills/docs-auditor/scripts/, so the root is
+    # four parents up. Resolving it from __file__ FIRST matters on Windows: under a
+    # restricted sandbox `subprocess.PIPE` cannot create its pipe (WinError 5), and the
+    # git call then dies with PermissionError -- which reads as a broken checker rather
+    # than a confinement artefact. The git call is kept as a fallback only, and an OSError
+    # is reported instead of escaping as a traceback.
+    guess = Path(__file__).resolve().parents[4]
+    if (guess / '.git').exists() or (guess / 'Cargo.toml').is_file():
+        return guess
+    try:
+        o = subprocess.run(['git', 'rev-parse', '--show-toplevel'],
+                           stdout=subprocess.PIPE, text=True, errors='replace')
+    except OSError as exc:
+        raise SystemExit('cannot resolve repo root: %s' % exc)
     if o.returncode != 0:
         raise SystemExit(2)
     return Path(o.stdout.strip())

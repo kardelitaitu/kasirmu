@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import userEvent from '@testing-library/user-event';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
 import RestaurantMenuEditorScreen from '@/features/restaurant/screens/RestaurantMenuEditorScreen';
 import * as productsApi from '@/api/products';
@@ -84,6 +84,23 @@ describe('RestaurantMenuEditorScreen', () => {
     vi.mocked(productsApi.createCategoryScoped).mockResolvedValue({ id: 'cat-new' });
     vi.mocked(productsApi.updateCategoryScoped).mockResolvedValue({ id: 'cat-mains' });
     vi.mocked(productsApi.deleteCategoryScoped).mockResolvedValue({ affected_products: 1 });
+  });
+
+  // A rejected listProductsScoped used to be reported only by an auto-dismissing
+  // toast. `allSettled` correctly kept the previous items, but on a FIRST load
+  // there were none, so the grid fell through to "No items in this category
+  // yet." with a "New Item" call to action — a failed read presented as a fact
+  // about the menu.
+  it('reports a failed menu read instead of claiming the category is empty', async () => {
+    vi.mocked(productsApi.listProductsScoped).mockRejectedValue(new Error('Server offline'));
+
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText(l10nOf('restaurant-menu-editor-load-failed'))).toBeInTheDocument();
+    });
+    // The empty-category claim must not be made on behalf of a failed read.
+    expect(screen.queryByText(l10nOf('restaurant-menu-editor-empty'))).toBeNull();
   });
 
   it('renders categories and items successfully', async () => {
@@ -209,6 +226,31 @@ describe('RestaurantMenuEditorScreen', () => {
     });
   });
 
+  it('saves only once when the save button is double-tapped', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-new-item')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('restaurant-menu-editor-new-item'));
+
+    const form = screen.getByTestId('restaurant-menu-editor-form');
+    await user.type(screen.getByTestId('restaurant-menu-editor-name'), 'Sate Ayam');
+    await user.type(screen.getByTestId('restaurant-menu-editor-price'), '25000');
+
+    const saveBtn = within(form).getByRole('button', { name: /save/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => {
+      expect(productsApi.createProductScoped).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('labels the add-category action so it reads as a create button', async () => {
     await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
 
@@ -224,6 +266,50 @@ describe('RestaurantMenuEditorScreen', () => {
     const addItem = screen.getByTestId('restaurant-menu-editor-new-item');
     expect(addCat).toHaveAccessibleName(l10nOf('restaurant-menu-editor-add-category'));
     expect(addItem).toHaveAccessibleName('Add item');
+  });
+
+  // ── Category modal focus management ──────────────────────────────
+  //
+  // The modal declares aria-modal="true" but installed no trap: focus stayed on the
+  // page behind it and Tab walked into the menu grid the dialog is covering. Every
+  // sibling POS dialog uses useFocusTrap (ItemModifierModal:253, SplitBillModal:37,
+  // PromotionsModal:66, RefundModal:176, PriceOverrideModal:176, StockShortfallDialog
+  // :115, RestaurantCartSheet, OpenBillModals).
+
+  it('moves focus into the category modal when it opens', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-btn-add-cat')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('restaurant-menu-editor-btn-add-cat'));
+    const dialog = screen.getByRole('dialog');
+    expect(
+      dialog.contains(document.activeElement),
+      'focus must land inside the dialog on open, not stay on the page behind it',
+    ).toBe(true);
+  });
+
+  it('keeps Tab inside the category modal', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-btn-add-cat')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('restaurant-menu-editor-btn-add-cat'));
+    const dialog = screen.getByRole('dialog');
+
+    // Tab well past the number of controls inside the dialog: focus must cycle
+    // inside, never land on an element outside it.
+    for (let i = 0; i < 12; i += 1) {
+      await user.tab();
+      expect(
+        dialog.contains(document.activeElement),
+        `Tab left the dialog on press ${i + 1} and reached the page it covers`,
+      ).toBe(true);
+    }
   });
 
   it('opens category modal to create a new category', async () => {
@@ -250,6 +336,28 @@ describe('RestaurantMenuEditorScreen', () => {
         }),
       );
     });
+  });
+
+  it('creates the category once when the save button is double-tapped', async () => {
+    // The create path mints an id per call, so a replay is refused only by
+    // categories.name UNIQUE -- and that refusal lands in the catch as
+    // restaurant-menu-editor-error-save, an error over a category that WAS created. The
+    // client-side duplicate check cannot see it: the first category is still in flight.
+    const user = userEvent.setup();
+    await renderWithProviders(<RestaurantMenuEditorScreen />, productsFtl);
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-menu-editor-btn-add-cat')).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId('restaurant-menu-editor-btn-add-cat'));
+    await user.type(screen.getByTestId('restaurant-menu-editor-cat-input-name'), 'Desserts');
+
+    const saveBtn = screen.getByTestId('restaurant-menu-editor-cat-save');
+    await act(async () => {
+      fireEvent.click(saveBtn);
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => expect(productsApi.createCategoryScoped).toHaveBeenCalledTimes(1));
   });
 
   it('prevents creating a category with duplicate name client-side', async () => {

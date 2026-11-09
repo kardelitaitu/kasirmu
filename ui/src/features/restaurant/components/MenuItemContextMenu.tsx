@@ -14,8 +14,19 @@
 //
 // Invariants: Escape must stopImmediatePropagation so the global type-to-
 // search Escape handler cannot clear the query while this menu is open;
-// the restaurant-context-* class names and role="menu"/menuitem semantics
-// are pinned by RestaurantMenu.test.tsx.
+// the restaurant-context-* class names are pinned by RestaurantMenu.test.tsx.
+//
+// ⚠️ CORRECTED 2026-10-18. This line used to read "...class names and
+// role="menu"/menuitem semantics are pinned by RestaurantMenu.test.tsx", and the
+// second half was FALSE in two ways. The menuitem role is GONE — the container is
+// role="dialog" on the popup element, because a menu may only hold menuitem-family
+// children while this popup also holds the colour strip (axe aria-required-children); see
+// the dated NOTE in this file. So there is no
+// menu/menuitem semantics left for a test to pin, and
+// `RestaurantMenu.test.tsx` contains no role="menu" assertion. What IS pinned there
+// is the CLASS NAME (.restaurant-context-menu, :783) and the keyboard behaviour after
+// the role change — Shift+F10 focus, ArrowUp/ArrowDown roving, and the walk from the
+// last action into the colour swatches (:871-936).
 
 import { useCallback, useEffect, useRef } from 'react';
 import { Localized } from '@/components/Localized';

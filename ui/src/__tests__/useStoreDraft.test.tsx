@@ -127,6 +127,25 @@ describe('useStoreDraft', () => {
     );
   });
 
+  it('writes once when save is called twice in the same tick', async () => {
+    // set_store_settings is idempotent (same keys, same values), so a replay cannot
+    // corrupt the row. What it can do is toast TWICE: two in-flight saves each report
+    // their own outcome, so a save that lands can be followed by a "settings-save-error"
+    // from the tap that raced it.
+    const { result } = renderHook(() => useStoreDraft(), { wrapper });
+    await waitFor(() => expect(result.current.store.name).toBe('Test Store'));
+
+    await act(async () => {
+      const first = result.current.save();
+      const second = result.current.save();
+      await Promise.all([first, second]);
+    });
+
+    const calls = invokeMock.mock.calls.filter((c) => String(c[0]).includes('set_store_settings'));
+    expect(calls).toHaveLength(1);
+    expect(addToast).toHaveBeenCalledTimes(1);
+  });
+
   it('re-seeds when the context reports a different store (a store switch)', async () => {
     const { result, rerender } = renderHook(() => useStoreDraft(), { wrapper });
     await waitFor(() => expect(result.current.store.name).toBe('Test Store'));

@@ -189,8 +189,8 @@ interface MockProductArgs extends Record<string, unknown> {
   isActive?: boolean;
   costMinor?: number;
   // `null` clears, a string sets, ABSENT keeps — matching `UpdateProductScopedArgs.notes`
-  // (`kasirmu-bridge/src/products.rs:695`). Optional rather than `string | null` because
-  // the absent case is a distinct PATCH meaning, not a third value.
+// `null` clears, a string sets, ABSENT keeps — matching `UpdateProductScopedArgs.notes`
+// (its `notes` field in `crates/kasirmu-bridge/src/products.rs`). Optional rather than `string | null` because
   notes?: string | null;
 }
 
@@ -265,8 +265,8 @@ function updateMockProduct(unwrapArgs: UnwrapArgs, args: unknown): { sku: string
   // `SAVE_DISABLED_AFTER=true`, `GROUP_BACK=0`, `NOTES=`.
   //
   // The core has always accepted it — `UpdateProductScopedArgs.notes` is
-  // `Option<Option<String>>` (kasirmu-bridge/src/products.rs:695) with the documented
-  // PATCH semantics: `null` clears, a string sets, ABSENT keeps. So the real till saves
+// The core has always accepted it — `UpdateProductScopedArgs.notes` is
+// `Option<Option<String>>` (the `notes` field in kasirmu-bridge/src/products.rs) with the documented
   // what this mock discarded, which is the worst kind of divergence.
   if (a.notes !== undefined) target.notes = a.notes;
   return { sku: String(target.sku) };
@@ -514,6 +514,12 @@ const catalogHandlers: Record<string, MockHandler> = {
   // ADR #38 D3: browser opening — dev-mock keeps window.open fallback
   // client-side; the real backend performs the open in production.
   'open_product_images_scoped': () => null,
+  // The tablet door (apps/mobile-tauri registers this, not the scoped twin).
+  // Both are answered here because the browser dev preview has no shell to
+  // switch on -- applyScopedAliases() only mirrors UNSCOPED -> _scoped, so this
+  // direction needs an explicit key (the same reason the scanner trio keeps its
+  // unscoped entries: see the T21 note in scripts/ipc-parity-allowlist.json).
+  'open_product_images': () => null,
 
   'lookup_product_by_sku': (args) => {
     const { sku } = args as { sku: string };

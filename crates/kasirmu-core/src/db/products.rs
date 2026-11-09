@@ -45,6 +45,13 @@ mod products_stock_adjust;
 mod products_images;
 
 pub use products_images::ProductImage;
+// Hoisted SQL (see the notes in `products_stock_adjust/movements.rs` and
+// `products_stock_adjust/ledger.rs`): re-exported at the `db::products` facade,
+// where `Store`'s product/stock methods live, so the query-plan probe
+// (`tests/integration/query_plan_probe.rs`) imports them from one public path.
+pub use products_stock_adjust::{
+    LIST_STOCK_MOVEMENTS_SQL, STOCK_LEDGER_SUM_SQL, STOCK_MOVEMENTS_ARCHIVABLE_ITEMS_SQL,
+};
 
 // ── Enriched product type ────────────────────────────────────────────
 

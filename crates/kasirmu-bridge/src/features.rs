@@ -23,7 +23,7 @@ use platform_kernel::ModuleStatus;
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
 /// A single feature with its current state and metadata.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FeatureDto {
     /// Kebab-case key (e.g. "simple-retail").
     pub key: String,
@@ -40,9 +40,9 @@ pub struct FeatureDto {
 }
 
 /// Response from `list_all_features`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ListAllFeaturesResult {
-    /// All 32 features with metadata and enabled status.
+    /// Every feature with metadata and enabled status.
     pub features: Vec<FeatureDto>,
 }
 
@@ -345,11 +345,6 @@ pub async fn set_feature(
     })
 }
 
-/// Return a stable device identifier for this machine.
-///
-/// Uses `COMPUTERNAME` (Windows) or `HOSTNAME` (Unix) if available,
-/// falling back to `"unknown-device"`. This identifier is used to
-/// auto-register the terminal when multi-terminal mode is enabled.
 /// Map a [`Feature`] to its corresponding kernel module ID, if any.
 ///
 /// Not all features have a dedicated kernel module — many are simple
@@ -372,6 +367,11 @@ pub fn feature_to_module_id(feature: Feature) -> Option<&'static str> {
     }
 }
 
+/// Return a stable device identifier for this machine.
+///
+/// Uses `COMPUTERNAME` (Windows) or `HOSTNAME` (Unix) if available,
+/// falling back to `"unknown-device"`. This identifier is used to
+/// auto-register the terminal when multi-terminal mode is enabled.
 fn device_hostname() -> String {
     std::env::var("COMPUTERNAME")
         .or_else(|_| std::env::var("HOSTNAME"))
@@ -380,8 +380,14 @@ fn device_hostname() -> String {
 
 // ── Feature metadata ────────────────────────────────────────────────
 
-/// Returns all 32 features with their human-readable name, description,
-/// and logical group.
+/// Returns every [`Feature`] with its human-readable name, description, and
+/// logical group.
+///
+/// The count is deliberately NOT stated here: this doc said "all 32 features"
+/// while [`Feature`] carried 39, and the same stale number was copied into all
+/// three shell modules. A doc that restates a count the enum already answers is
+/// drift waiting to happen; the enum is the source of truth and the length of
+/// this table is the mechanical check.
 pub fn all_feature_metadata() -> Vec<(Feature, &'static str, &'static str, &'static str)> {
     vec![
         (
@@ -627,10 +633,8 @@ pub async fn list_all_features_scoped(
     session_token: &str,
 ) -> Result<ListAllFeaturesResult, BridgeError> {
     // ungated-ok: enumerates the compiled feature registry; discloses no tenant data
-    let (_session, conn) = ctx.resolve_scope(session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+    let _session = ctx.resolve_session(session_token)?;
+    let db = ctx.lock_global().await;
     let store = Store::new(&db);
     let reg = store.load_features()?;
     let features = build_feature_list(&reg);

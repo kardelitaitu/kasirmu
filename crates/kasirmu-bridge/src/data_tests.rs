@@ -1,5 +1,5 @@
 //! Relocated data-command tests (Wave-F test relocation: moved out of
-//! `apps/desktop-tauri/src/commands/data_tests.rs`).
+//! `apps/desktop-client/src/commands/data_tests.rs`, since renamed to desktop-tauri).
 //!
 //! Mounted at the foot of `data.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the eight wire DTOs, `exportable_settings_rows`
@@ -111,23 +111,27 @@ impl tracing::Subscriber for Capture {
     fn exit(&self, _i: &tracing::span::Id) {}
 }
 
-fn temp_store_path(tag: &str) -> std::path::PathBuf {
+fn temp_store_path(tag: &str) -> (std::path::PathBuf, kasirmu_test_support::ScratchDir) {
     // Unique per CALL, not just per process: `tag + pid` gave every
     // `ungated`-tagged test in one binary the same `store.db`, so a second one
     // would have read the first one's backup file (precedent: `unique_store_dir`
-    // in inventory_tests.rs, which carries nanos for the same reason).
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir = std::env::temp_dir().join(format!(
-        "kasirmu-bridge-{}-{}-{}",
-        tag,
-        std::process::id(),
-        nanos
-    ));
-    std::fs::create_dir_all(&dir).expect("create temp dir");
-    dir.join("store.db")
+    // in inventory_tests.rs, which carries a UUID for the same reason).
+    //
+    // Rooted under `target/test-scratch` rather than `std::env::temp_dir()`,
+    // which on this project's Windows machines resolves to the MACHINE-level
+    // `C:\WINDOWS\TEMP` -- a directory an ordinary user can create in but not
+    // delete from, so a stale fixture made `create_dir_all` fail with
+    // `os error 5` and reported it as a product defect.
+    //
+    // The path is returned TOGETHER WITH its `ScratchDir` guard, the shape
+    // `testing.rs::unique_store_dir` established. A guard bound here and
+    // dropped on return would delete the directory while the test is still
+    // writing and reading `store.db` through `get_backup_status`; the caller
+    // binds it instead, so the directory lives for the whole body and is
+    // removed at the end. Every call used to leak one
+    // `kasirmu-bridge-{tag}-*` directory forever.
+    let scratch = kasirmu_test_support::ScratchDir::new(&format!("kasirmu-bridge-{tag}"));
+    (scratch.path().join("store.db"), scratch)
 }
 
 fn assert_event_shape(ev: &Fields, expected_operation: &str, dir: &std::path::Path) {
@@ -166,7 +170,7 @@ fn assert_event_shape(ev: &Fields, expected_operation: &str, dir: &std::path::Pa
 
 #[tokio::test]
 async fn ungated_get_backup_status_emits_exactly_one_event() {
-    let db = temp_store_path("ungated");
+    let (db, _scratch) = temp_store_path("ungated");
     let capture = Capture::default();
     {
         let _guard = capture.install();
@@ -199,7 +203,7 @@ async fn ungated_get_backup_status_emits_exactly_one_event() {
 #[tokio::test]
 async fn scoped_get_backup_status_emits_zero_events_after_passing_the_check() {
     use crate::testing::TestBridge;
-    let db = temp_store_path("scoped");
+    let (db, _scratch) = temp_store_path("scoped");
     let bridge = TestBridge::new();
     let token = bridge.token_granting(permissions::DATA_EXPORT).await;
     let capture = Capture::default();
@@ -476,9 +480,13 @@ fn import_data_result_serialize() {
 async fn export_without_session_produces_a_package_and_no_session_is_needed() {
     use crate::testing::TestBridge;
     let bridge = TestBridge::new();
-    let dir = tempfile::tempdir().unwrap();
+    // A `ScratchDir` guard: the archive is written and asserted inside this
+    // one test body, so Drop removes the directory when the test ends. It used
+    // to be `tempfile::tempdir()`, which resolves to `C:\WINDOWS\TEMP` on
+    // this project's Windows machines and left the fixture behind (an ordinary
+    // user cannot delete from there).
+    let dir = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-export-twin");
     let out = dir.path().join("orphan.oze");
-
     let result = export_data_without_session(
         &bridge.ctx(),
         ExportDataArgs {
@@ -796,24 +804,33 @@ fn import_gate_users_rejects_at_cap_and_writes_nothing() {
 /// The restore surface is filesystem-shaped — generations, a request file — so
 /// unlike the rest of this module its cases cannot run over an in-memory
 /// connection. Same shape as `recovery.rs`'s `Scratch`.
-struct RestoreScratch(std::path::PathBuf);
+struct RestoreScratch(kasirmu_test_support::ScratchDir);
 
 impl RestoreScratch {
     fn new(label: &str) -> Self {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let dir = std::env::temp_dir().join(format!(
-            "kasirmu-bridge-restore-{label}-{}-{nanos}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&dir).expect("create scratch dir");
-        Self(dir)
+        // `std::env::temp_dir()` is `C:\WINDOWS\TEMP` on this project's
+        // Windows machines, where an ordinary user can create but not delete:
+        // the pid/nanos suffix made every run leak a directory and a stale one
+        // made the create itself fail with `os error 5`. `target/test-scratch`
+        // is writable, so the guard shape is unchanged -- only the root moves.
+        //
+        // The directory is held as a `ScratchDir` rather than a bare
+        // `PathBuf` plus a hand-written `Drop`: the bare `scratch_dir` path
+        // leaked one directory per case, and that `Drop` is now the shared
+        // guard's. It lives as long as this struct, which the tests keep bound
+        // for the whole restore flow (`prepared_request` hands it back to its
+        // caller for exactly that reason).
+        Self(kasirmu_test_support::ScratchDir::new(&format!(
+            "kasirmu-bridge-restore-{label}"
+        )))
+    }
+
+    fn path(&self) -> &std::path::Path {
+        self.0.path()
     }
 
     fn live(&self) -> std::path::PathBuf {
-        self.0.join("store.db")
+        self.path().join("store.db")
     }
 
     /// A migrated, file-backed database at `path` carrying `store.name`.
@@ -830,12 +847,6 @@ impl RestoreScratch {
         let mut path = self.live();
         path.set_extension("backup.db");
         path
-    }
-}
-
-impl Drop for RestoreScratch {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 
@@ -1131,11 +1142,11 @@ async fn restore_prepare_writes_the_exact_file_name_the_boot_consumer_reads() {
         expected.is_file(),
         "restore_prepare must write exactly '{}'; the directory holds {:?}",
         expected.display(),
-        dir_entries(&scratch.0)
+        dir_entries(scratch.path())
     );
     // Exactly one file under the consumer's suffix: a second derivation in the
     // writer would leave the consumer reading the wrong one of the two.
-    let requests: Vec<String> = dir_entries(&scratch.0)
+    let requests: Vec<String> = dir_entries(scratch.path())
         .into_iter()
         .filter(|name| name.ends_with(CONSUMER_REQUEST_SUFFIX))
         .collect();
@@ -1330,5 +1341,200 @@ fn import_gate_users_proceeds_under_cap_and_pins_the_boundary() {
     assert!(
         gate_import_user_batch(&store, &over).is_err(),
         "1 + 1 over the Free staff cap must refuse"
+    );
+}
+
+// ── BR-C3: the export's date window is HONOURED, not silently ignored ──────
+
+/*
+ * `ExportDataArgs` carried `date_from` / `date_to` over IPC with zero read
+ * sites: an operator asking for "January only" received the whole database in a
+ * package that looked filtered. These cases pin the two halves of the repair —
+ * the window is applied where it can be honoured, and REFUSED where it cannot —
+ * plus the day-boundary semantics that a naive string compare gets wrong.
+ */
+
+use super::helpers::ExportDateWindow;
+
+fn window(from: Option<&str>, to: Option<&str>) -> ExportDateWindow {
+    export_date_window(from, to)
+        .expect("a well-formed window must parse")
+        .expect("both bounds given, so a window must be returned")
+}
+
+#[test]
+fn export_window_is_absent_when_neither_bound_is_given() {
+    assert!(
+        export_date_window(None, None).unwrap().is_none(),
+        "an ordinary export must take exactly the unbounded path it always did"
+    );
+}
+
+#[test]
+fn export_window_accepts_an_open_ended_bound() {
+    let start_only = window(Some("2026-01-01"), None);
+    assert!(start_only.from.is_some() && start_only.to.is_none());
+    let end_only = window(None, Some("2026-01-31"));
+    assert!(end_only.from.is_none() && end_only.to.is_some());
+}
+
+#[test]
+fn export_window_refuses_a_bound_it_cannot_read() {
+    for bad in [
+        "2026-13-01",
+        "31-01-2026",
+        "January 2026",
+        "2026-01-01T00:00:00Z",
+        "",
+    ] {
+        match export_date_window(Some(bad), None) {
+            Err(BridgeError::Invalid(message)) => assert!(
+                message.contains("date_from"),
+                "the refusal must name the offending field: {message}"
+            ),
+            other => panic!("{bad:?} must be an Invalid refusal, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn export_window_refuses_an_inverted_range() {
+    match export_date_window(Some("2026-02-01"), Some("2026-01-01")) {
+        Err(BridgeError::Invalid(message)) => assert!(
+            message.contains("after date_to"),
+            "an empty window must say why: {message}"
+        ),
+        other => panic!("an inverted window must be refused, got {other:?}"),
+    }
+}
+
+#[test]
+fn created_at_in_window_keeps_both_end_days() {
+    let w = window(Some("2026-01-01"), Some("2026-01-31"));
+    // The last day is the case a lexicographic compare of the WHOLE timestamp
+    // against the bare date gets wrong: "2026-01-31T09:00:00Z" > "2026-01-31".
+    for kept in [
+        "2026-01-01T00:00:00Z",
+        "2026-01-01T23:59:59Z",
+        "2026-01-31T09:00:00Z",
+        "2026-01-15T12:00:00Z",
+    ] {
+        assert!(
+            created_at_in_window(kept, &w),
+            "{kept} is inside 2026-01-01..=2026-01-31 and must be exported"
+        );
+    }
+}
+
+#[test]
+fn created_at_in_window_drops_the_days_outside_it() {
+    let w = window(Some("2026-01-01"), Some("2026-01-31"));
+    for dropped in ["2025-12-31T23:59:59Z", "2026-02-01T00:00:00Z"] {
+        assert!(
+            !created_at_in_window(dropped, &w),
+            "{dropped} is outside the window and must not be exported"
+        );
+    }
+}
+
+#[test]
+fn created_at_in_window_leaves_the_missing_end_unbounded() {
+    let start_only = window(Some("2026-01-01"), None);
+    assert!(created_at_in_window("2030-06-01T00:00:00Z", &start_only));
+    assert!(!created_at_in_window("2025-12-31T00:00:00Z", &start_only));
+    let end_only = window(None, Some("2026-01-31"));
+    assert!(created_at_in_window("2020-01-01T00:00:00Z", &end_only));
+    assert!(!created_at_in_window("2026-02-01T00:00:00Z", &end_only));
+}
+
+#[test]
+fn created_at_in_window_keeps_a_timestamp_it_cannot_read() {
+    // Conservative by design: this filter's failure mode is an export that
+    // quietly omits rows, so an unreadable row stays visible in the package.
+    let w = window(Some("2026-01-01"), Some("2026-01-31"));
+    assert!(created_at_in_window("not-a-timestamp", &w));
+    assert!(created_at_in_window("", &w));
+}
+
+#[tokio::test]
+async fn export_refuses_a_window_when_sales_is_not_exported() {
+    use crate::testing::TestBridge;
+    let bridge = TestBridge::new();
+    let dir = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-export-window-refused");
+    let err = export_data_without_session(
+        &bridge.ctx(),
+        ExportDataArgs {
+            output_path: dir
+                .path()
+                .join("unfiltered.oze")
+                .to_string_lossy()
+                .into_owned(),
+            password: "pw".into(),
+            types: vec!["products".into()],
+            date_from: Some("2026-01-01".into()),
+            date_to: Some("2026-01-31".into()),
+        },
+    )
+    .await
+    .expect_err("a window the package cannot honour must be refused, not ignored");
+    match err {
+        BridgeError::Invalid(message) => assert!(
+            message.contains("sales"),
+            "the refusal must name the type that carries the window: {message}"
+        ),
+        other => panic!("expected an Invalid refusal, got {other:?}"),
+    }
+    assert!(
+        !dir.path().join("unfiltered.oze").exists(),
+        "a refused export must write no package at all"
+    );
+}
+
+#[tokio::test]
+async fn export_with_a_valid_window_writes_a_sales_package() {
+    use crate::testing::TestBridge;
+    let bridge = TestBridge::new();
+    let dir = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-export-window-ok");
+    let out = dir.path().join("windowed.oze");
+    let result = export_data_without_session(
+        &bridge.ctx(),
+        ExportDataArgs {
+            output_path: out.to_string_lossy().into_owned(),
+            password: "pw".into(),
+            types: vec!["sales".into()],
+            date_from: Some("2026-01-01".into()),
+            date_to: Some("2026-01-31".into()),
+        },
+    )
+    .await
+    .expect("a well-formed window over an export that carries sales must succeed");
+    assert_eq!(result.types, vec!["sales".to_string()]);
+    assert!(out.exists(), "the package must be written");
+}
+
+// ── BR-C6: a failed feature read is an ERROR, not an empty flag set ────────
+
+/*
+ * The export used to read the feature registry with `unwrap_or_default()`, so a
+ * failed read produced a package with every flag off and a success result beside
+ * it — a restored store would silently run with the merchant's features disabled.
+ *
+ * A source scan rather than a driven test, and deliberately: provoking a
+ * `load_features` failure needs a corrupt settings row whose parse behaviour is
+ * a property of `Settings::load_features`, not of this command, so a fixture here
+ * would pin the wrong layer. What must not regress is THIS body's choice to
+ * propagate, and that is exactly what the scan reads — the same shape the two
+ * neighbouring source scans in this file already use.
+ */
+#[test]
+fn export_data_propagates_a_failed_feature_read() {
+    let source = include_str!("data.rs");
+    assert!(
+        !source.contains("load_features()\n        .map(|reg| reg.to_settings_rows()"),
+        "the export must not swallow a feature-read failure again"
+    );
+    assert!(
+        source.contains("load_features()?\n        .to_settings_rows()"),
+        "the export must propagate the feature read with `?`, as every sibling site does"
     );
 }

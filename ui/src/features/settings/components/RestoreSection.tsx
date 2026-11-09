@@ -14,8 +14,9 @@
  *
  * 2. THE BACKUP'S STORE NAME IS NEVER SHOWN, SUGGESTED OR PRE-FILLED. The
  *    operator must type it, and the bridge refuses to echo it back precisely so
- *    that it is a real confirmation (crates/kasirmu-bridge/src/data/restore.rs
- *    :209-210). The field starts empty and the dialog says why it is not shown.
+ *    that it is a real confirmation (crates/kasirmu-bridge/src/data/restore.rs,
+ *    the "deliberately NOT echoed back" note in `restore_prepare`). The field
+ *    starts empty and the dialog says why it is not shown.
  *    Do not add a hint, a default, or an autocomplete.
  */
 import { Localized, useLocalization } from '@fluent/react';
@@ -132,6 +133,15 @@ export function RestoreSection({
           {loading ? (
             <Localized id="data-mgmt-restore-loading">
               <p className="data-mgmt-section-desc">Reading backup generations…</p>
+            </Localized>
+          ) : candidates === undefined ? (
+            // UNKNOWN is not EMPTY. The list read never answered, so the flat "none were
+            // found" claim below would be a statement about the disk rather than about
+            // the read. The status read beside it already distinguishes the two.
+            <Localized id="data-mgmt-restore-unreadable">
+              <p className="data-mgmt-section-desc" role="alert">
+                Could not read the backup generations beside the database.
+              </p>
             </Localized>
           ) : candidates.length === 0 ? (
             <Localized id="data-mgmt-restore-empty">

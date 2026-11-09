@@ -4,7 +4,6 @@ use axum::{
     http::{Request, StatusCode},
 };
 use http_body_util::BodyExt;
-use std::collections::HashMap;
 use tower::ServiceExt;
 
 fn fresh_db() -> Connection {
@@ -45,7 +44,7 @@ fn authed_post(uri: &str, body: &str, tenant_id: Option<&str>) -> Request<Body> 
 fn test_router() -> Router {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -63,13 +62,130 @@ fn test_router_with_state(state: SyncState) -> Router {
 fn test_router_with_plan_enforcement(enforce: bool) -> Router {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
         tenant_count_cache: TenantCountCache::default(),
     };
-    sync_router_with_plan_enforcement(state, enforce)
+    // O-H09: the plan cache is per-router, so a caller may install a zero-TTL
+    // one to observe a plan change made AFTER the router was built (see
+    // `lifecycle_free_tenant_upgraded_via_webhook_can_sync`).
+    sync_router_with_plan_enforcement_with_cache(state, enforce, None)
+}
+
+/// **O-H09 acceptance at the gate itself.** Two `/api/sync/status` requests for
+/// the same pro tenant, through the real router and the real middleware stack,
+/// must pass the gate — and the SECOND one must be answered without the plan
+/// lookup reaching the store.
+///
+/// A read is deliberately observable here rather than inferred: the router is
+/// given a store whose SQLite connection WILL FAIL any plan read, and the
+/// tenant's plan is then put into the cache by a first, successfully-gated
+/// request against a healthy connection. The second request therefore passes
+/// only if the gate is serving the cached answer — a direct read would return
+/// the store's error and the middleware would answer 500. That is the
+/// fail-closed direction asserted in the same breath: the control below sends
+/// the same request to the SAME broken connection with an empty cache and
+/// requires the 500.
+#[tokio::test]
+async fn plan_gate_second_request_is_served_without_reading_the_store() {
+    let plan_cache = Arc::new(crate::sync_store::PlanCache::default());
+    let warm = SyncState {
+        db: Arc::new(Mutex::new(fresh_db())),
+        snapshot_cache: SnapshotCache::new(),
+        rate_limiter: RateLimiterState::new(),
+        pg: None,
+        skip_push_validation: false,
+        tenant_count_cache: TenantCountCache::default(),
+    };
+    {
+        let conn = warm.db.lock().await;
+        kasirmu_core::Store::new(&conn)
+            .set_tenant_plan("tenant-pro", kasirmu_core::TenantPlan::Pro)
+            .unwrap();
+    }
+    let warm_app =
+        sync_router_with_plan_enforcement_with_cache(warm, true, Some(plan_cache.clone()));
+    let first = warm_app
+        .oneshot(authed(
+            axum::http::Method::GET,
+            "/api/sync/status",
+            Some("tenant-pro"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        first.status(),
+        StatusCode::OK,
+        "the first request reads the store and must pass"
+    );
+
+    // Same claims, same cache, a store whose read CANNOT succeed.
+    let cold = SyncState {
+        db: unreadable_plan_db(),
+        snapshot_cache: SnapshotCache::new(),
+        rate_limiter: RateLimiterState::new(),
+        pg: None,
+        skip_push_validation: false,
+        tenant_count_cache: TenantCountCache::default(),
+    };
+    let cold_app =
+        sync_router_with_plan_enforcement_with_cache(cold.clone(), true, Some(plan_cache));
+    let second = cold_app
+        .oneshot(authed(
+            axum::http::Method::GET,
+            "/api/sync/status",
+            Some("tenant-pro"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        second.status(),
+        StatusCode::OK,
+        "a cached plan must answer the gate without touching the store"
+    );
+
+    // Control: the SAME unreadable store with an empty cache must 500, so the
+    // pass above is the cache's doing and the gate has not gone fail-open.
+    let control_app = sync_router_with_plan_enforcement_with_cache(
+        cold,
+        true,
+        Some(Arc::new(crate::sync_store::PlanCache::default())),
+    );
+    let control = control_app
+        .oneshot(authed(
+            axum::http::Method::GET,
+            "/api/sync/status",
+            Some("tenant-pro"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        control.status(),
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "a failed plan read must stay a 500, never a pass or a 403"
+    );
+    let body = control.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        json["error"], "internal",
+        "the error body the gate has always returned"
+    );
+}
+
+/// A SQLite handle whose PLAN READS always fail, so a test can tell "the
+/// gate read the store" from "the gate served the cache" by the status code
+/// alone.
+///
+/// The connection itself is healthy (status/snapshot read fine); the failure is
+/// injected by dropping the table the plan query selects from. That is a real
+/// database error, not a mock: `get_tenant_plan` returns `Err`, which is
+/// exactly the shape a pool outage produces.
+fn unreadable_plan_db() -> Arc<Mutex<Connection>> {
+    let conn = fresh_db();
+    conn.execute("DROP TABLE tenant_plans", []).unwrap();
+    Arc::new(Mutex::new(conn))
 }
 
 /// Seed a tenant plan in the test DB shared by the given router.
@@ -82,7 +198,7 @@ fn test_router_with_plan_enforcement(enforce: bool) -> Router {
 async fn test_router_with_plan(tenant: &str, plan: &str, enforce: bool) -> Router {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -174,7 +290,7 @@ async fn snapshot_omits_pin_hash_entirely() {
     // the serialised snapshot bytes must not contain the field.
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -233,7 +349,7 @@ async fn snapshot_query_failure_returns_500_not_empty_success() {
     // status with an error envelope.
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -266,7 +382,7 @@ async fn snapshot_serves_store_id_when_present() {
     // the global catalog.
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -433,7 +549,7 @@ async fn snapshot_returns_etag_and_handles_if_none_match_304() {
 async fn snapshot_cache_hit_serves_without_db_access() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -508,7 +624,7 @@ async fn snapshot_cache_hit_serves_without_db_access() {
 async fn snapshot_cache_evicts_expired_entries_on_insert() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -516,20 +632,23 @@ async fn snapshot_cache_evicts_expired_entries_on_insert() {
     };
 
     // Seed 5 stale entries directly into the cache (expired past the
-    // 900s TTL).
+    // 900s TTL). O-M25: the map is sharded, so the entries are written one
+    // shard lock at a time through the per-tenant key (which picks the shard).
     {
-        let mut cache = state.snapshot_cache.lock().await;
         for i in 0..5 {
-            cache.insert(
-                format!("stale-tenant-{i}"),
-                Arc::new(tokio::sync::RwLock::new(Some(super::SnapshotData {
-                    generated_at: std::time::Instant::now() - std::time::Duration::from_secs(1800),
-                    version: String::new(),
-                    bytes: b"{}".to_vec(),
-                }))),
-            );
+            let tenant = format!("stale-tenant-{i}");
+            let entry = state.snapshot_cache.entry(&tenant);
+            *entry.write().await = Some(super::SnapshotData {
+                generated_at: std::time::Instant::now() - std::time::Duration::from_secs(1800),
+                version: String::new(),
+                bytes: bytes::Bytes::from_static(b"{}"),
+            });
         }
-        assert_eq!(cache.len(), 5, "precondition: 5 stale entries");
+        assert_eq!(
+            state.snapshot_cache.len(),
+            5,
+            "precondition: 5 stale entries"
+        );
     }
 
     // Seed a product so the miss path produces a real snapshot.
@@ -559,15 +678,14 @@ async fn snapshot_cache_evicts_expired_entries_on_insert() {
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    let cache = state.snapshot_cache.lock().await;
     assert_eq!(
-        cache.len(),
+        state.snapshot_cache.len(),
         1,
         "stale entries must be evicted; only the fresh tenant's entry should remain, got {} entries",
-        cache.len()
+        state.snapshot_cache.len()
     );
     assert!(
-        cache.contains_key("fresh-tenant"),
+        state.snapshot_cache.contains_key("fresh-tenant"),
         "the fresh tenant's entry must be present"
     );
 }
@@ -580,7 +698,7 @@ async fn snapshot_cache_evicts_expired_entries_on_insert() {
 async fn snapshot_cache_refetches_after_expiry() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -617,8 +735,8 @@ async fn snapshot_cache_refetches_after_expiry() {
         .unwrap();
     }
     {
-        let cache = state.snapshot_cache.lock().await;
-        let entry = cache
+        let entry = state
+            .snapshot_cache
             .get("tenant-a")
             .expect("cache must be warm after the first request");
         let mut guard = entry.write().await;
@@ -660,7 +778,7 @@ async fn snapshot_cache_refetches_after_expiry() {
 async fn snapshot_cache_version_revalidation_skips_recompute_when_unchanged() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -707,8 +825,8 @@ async fn snapshot_cache_version_revalidation_skips_recompute_when_unchanged() {
 
     // Backdate the cached entry beyond the 900s TTL.
     {
-        let cache = state.snapshot_cache.lock().await;
-        let entry = cache
+        let entry = state
+            .snapshot_cache
             .get("tenant-a")
             .expect("cache must be warm after the first request");
         let mut guard = entry.write().await;
@@ -758,8 +876,8 @@ async fn snapshot_cache_version_revalidation_skips_recompute_when_unchanged() {
         .unwrap();
     }
     {
-        let cache = state.snapshot_cache.lock().await;
-        let entry = cache
+        let entry = state
+            .snapshot_cache
             .get("tenant-a")
             .expect("cache must still have the entry");
         let mut guard = entry.write().await;
@@ -796,7 +914,7 @@ async fn snapshot_cache_version_revalidation_skips_recompute_when_unchanged() {
 async fn snapshot_cache_single_flight_under_concurrency() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -849,14 +967,13 @@ async fn snapshot_cache_single_flight_under_concurrency() {
             "all single-flight responses must be identical"
         );
     }
-    let cache = state.snapshot_cache.lock().await;
     assert_eq!(
-        cache.len(),
+        state.snapshot_cache.len(),
         1,
         "single-flight must converge on one cache entry, got {}",
-        cache.len()
+        state.snapshot_cache.len()
     );
-    assert!(cache.contains_key("tenant-a"));
+    assert!(state.snapshot_cache.contains_key("tenant-a"));
 }
 
 /// Snapshot caching must be per-tenant: after tenant A warms its cache,
@@ -865,7 +982,7 @@ async fn snapshot_cache_single_flight_under_concurrency() {
 async fn snapshot_cache_tenant_isolation() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -917,6 +1034,376 @@ async fn snapshot_cache_tenant_isolation() {
     );
 }
 
+// ── O-M25: sharded cache, `Bytes` handles, per-shard sweep ─────────
+
+/// **O-M25 acceptance: a hit serves the EXACT bytes the miss serialised.**
+///
+/// The cache used to hold a `Vec<u8>` and clone it on every hit; it now holds
+/// a `bytes::Bytes` handle. That is a performance change only if the served
+/// bytes are identical — so this pins them byte-for-byte, not merely as equal
+/// JSON: the hit's body must equal the miss's body, byte for byte, and both
+/// must equal the ETag the server computed from them (an ETag mismatch would
+/// be the first visible symptom of a changed payload).
+///
+/// The hit is forced to go through the cache by deleting the product between
+/// the two requests: a hit that recomputed would produce a different body and
+/// a different ETag.
+#[tokio::test]
+async fn snapshot_cache_hit_serves_byte_identical_payload() {
+    let state = SyncState {
+        db: Arc::new(Mutex::new(fresh_db())),
+        snapshot_cache: SnapshotCache::new(),
+        rate_limiter: RateLimiterState::new(),
+        pg: None,
+        skip_push_validation: false,
+        tenant_count_cache: TenantCountCache::default(),
+    };
+    {
+        let conn = state.db.lock().await;
+        conn.execute(
+            "INSERT INTO roles (id, name, permissions) VALUES ('r-bytes', 'Owner', '[]')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO products (id, sku, name, price_minor, currency, tenant_id)
+             VALUES ('prod-bytes', 'SKU-BYTES', 'ByteIdentical', 1250, 'MUR', 'tenant-a')",
+            [],
+        )
+        .unwrap();
+    }
+    let app = test_router_with_state(state.clone());
+
+    let miss = app
+        .clone()
+        .oneshot(authed(
+            axum::http::Method::GET,
+            "/api/sync/snapshot",
+            Some("tenant-a"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(miss.status(), StatusCode::OK);
+    let miss_etag = miss
+        .headers()
+        .get("etag")
+        .expect("snapshot must carry an ETag")
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let miss_bytes = miss.into_body().collect().await.unwrap().to_bytes();
+
+    // Remove the row so a recompute would be visibly different.
+    {
+        let conn = state.db.lock().await;
+        conn.execute("DELETE FROM products", []).unwrap();
+    }
+
+    let hit = app
+        .oneshot(authed(
+            axum::http::Method::GET,
+            "/api/sync/snapshot",
+            Some("tenant-a"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(hit.status(), StatusCode::OK);
+    let hit_etag = hit
+        .headers()
+        .get("etag")
+        .expect("the cached response must carry an ETag")
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let hit_bytes = hit.into_body().collect().await.unwrap().to_bytes();
+
+    assert_eq!(
+        hit_bytes.as_ref(),
+        miss_bytes.as_ref(),
+        "the cached (Bytes) hit must serve byte-for-byte the payload the miss serialised"
+    );
+    assert_eq!(
+        hit_etag, miss_etag,
+        "an identical payload must produce an identical ETag"
+    );
+    assert_eq!(
+        miss_etag,
+        format!(
+            "\"{}\"",
+            hex::encode(sha2::Sha256::digest(miss_bytes.as_ref()))
+        ),
+        "the ETag must be the SHA-256 of the served bytes"
+    );
+
+    // And the cached handle really is served: the miss's payload is still in
+    // the shard, with the product the DB no longer has.
+    let entry = state
+        .snapshot_cache
+        .get("tenant-a")
+        .expect("cache must hold tenant-a after the miss");
+    let guard = entry.read().await;
+    let cached = guard.as_ref().expect("entry must be populated");
+    assert_eq!(
+        cached.bytes.as_ref(),
+        miss_bytes.as_ref(),
+        "the cached Bytes must be the served payload"
+    );
+}
+
+/// **O-M25: a miss still populates**, and the shard that owns the tenant is
+/// the one that holds the entry — a lookup through `SnapshotCache::get` and
+/// the handler's own `entry()` must agree, or the hit path would miss.
+#[tokio::test]
+async fn snapshot_cache_miss_populates_the_owning_shard() {
+    let state = SyncState {
+        db: Arc::new(Mutex::new(fresh_db())),
+        snapshot_cache: SnapshotCache::new(),
+        rate_limiter: RateLimiterState::new(),
+        pg: None,
+        skip_push_validation: false,
+        tenant_count_cache: TenantCountCache::default(),
+    };
+    let app = test_router_with_state(state.clone());
+
+    assert_eq!(
+        state.snapshot_cache.len(),
+        0,
+        "precondition: the cache starts empty"
+    );
+
+    let resp = app
+        .oneshot(authed(
+            axum::http::Method::GET,
+            "/api/sync/snapshot",
+            Some("tenant-pop"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    assert_eq!(state.snapshot_cache.len(), 1, "the miss must populate");
+    let entry = state
+        .snapshot_cache
+        .get("tenant-pop")
+        .expect("the owning shard must hold the entry");
+    let guard = entry.read().await;
+    let data = guard.as_ref().expect("the entry must hold a value");
+    assert!(
+        !data.bytes.is_empty(),
+        "the populated entry must carry the serialised snapshot"
+    );
+    assert!(
+        !data.version.is_empty() || data.bytes.starts_with(b"{"),
+        "the populated entry must carry a version stamp and JSON bytes"
+    );
+}
+
+/// **O-M25: expiry still expires, and the expired entry is evicted** — the
+/// sharded sweep must keep the exact staleness rule the global sweep had.
+///
+/// Backdates the entry past the 900s TTL, runs a request that recomputes it
+/// (so the sweep runs), and then requires the entry's timestamp to have been
+/// REFRESHED — a sweep that dropped live entries, or a hit path that still
+/// served stale bytes, fails here.
+#[tokio::test]
+async fn snapshot_cache_sharded_sweep_keeps_fresh_and_evicts_stale() {
+    let state = SyncState {
+        db: Arc::new(Mutex::new(fresh_db())),
+        snapshot_cache: SnapshotCache::new(),
+        rate_limiter: RateLimiterState::new(),
+        pg: None,
+        skip_push_validation: false,
+        tenant_count_cache: TenantCountCache::default(),
+    };
+    let app = test_router_with_state(state.clone());
+
+    // Warm tenant-a and tenant-b on DIFFERENT shard keys would be ideal, but
+    // the proof does not need it: both are live, and both must survive.
+    for tenant in ["tenant-a", "tenant-b"] {
+        let resp = app
+            .clone()
+            .oneshot(authed(
+                axum::http::Method::GET,
+                "/api/sync/snapshot",
+                Some(tenant),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+    assert_eq!(state.snapshot_cache.len(), 2);
+
+    // Backdate tenant-a past the TTL. tenant-b stays fresh.
+    {
+        let entry = state.snapshot_cache.get("tenant-a").unwrap();
+        let mut guard = entry.write().await;
+        let data = guard.as_mut().unwrap();
+        data.generated_at = std::time::Instant::now() - std::time::Duration::from_secs(1800);
+    }
+
+    // A request for tenant-b is a HIT: it must not run the sweep, so it must
+    // not drop or resurrect tenant-a either way.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            axum::http::Method::GET,
+            "/api/sync/snapshot",
+            Some("tenant-b"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        state.snapshot_cache.len(),
+        2,
+        "a hit must not evict anything"
+    );
+
+    // A MISS for a third tenant runs the sweep: tenant-a is expired and must
+    // be evicted; tenant-b is fresh and must survive.
+    let resp = app
+        .oneshot(authed(
+            axum::http::Method::GET,
+            "/api/sync/snapshot",
+            Some("tenant-c"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(
+        !state.snapshot_cache.contains_key("tenant-a"),
+        "the expired entry must be evicted by the sharded sweep"
+    );
+    assert!(
+        state.snapshot_cache.contains_key("tenant-b"),
+        "a live entry on another shard must survive the sweep"
+    );
+    assert!(
+        state.snapshot_cache.contains_key("tenant-c"),
+        "the tenant that triggered the sweep must keep its entry"
+    );
+}
+
+/// **O-M25 — the test that matters: cross-tenant isolation under sharding.**
+///
+/// A sharded cache that hands back another tenant's snapshot is a data leak,
+/// not a performance bug. Warm MANY tenants whose names all collide into the
+/// same 16-shard space, then assert every tenant's hit still returns only its
+/// own product — including tenants deliberately placed on the same shard as
+/// a neighbour, which is the only way a shard-key bug could show.
+#[tokio::test]
+async fn snapshot_cache_shards_never_cross_tenants() {
+    let state = SyncState {
+        db: Arc::new(Mutex::new(fresh_db())),
+        snapshot_cache: SnapshotCache::new(),
+        rate_limiter: RateLimiterState::new(),
+        pg: None,
+        skip_push_validation: false,
+        tenant_count_cache: TenantCountCache::default(),
+    };
+    {
+        let conn = state.db.lock().await;
+        conn.execute(
+            "INSERT INTO roles (id, name, permissions) VALUES ('r-shard', 'Owner', '[]')",
+            [],
+        )
+        .unwrap();
+        // 32 tenants: with 16 shards, collisions are certain (pigeonhole).
+        for i in 0..32 {
+            conn.execute(
+                "INSERT INTO products (id, sku, name, price_minor, currency, tenant_id)
+                 VALUES (?1, ?2, ?3, 100, 'MUR', ?4)",
+                rusqlite::params![
+                    format!("prod-shard-{i}"),
+                    format!("SKU-SHARD-{i}"),
+                    format!("Shard{i}"),
+                    format!("tenant-shard-{i}")
+                ],
+            )
+            .unwrap();
+        }
+    }
+    let app = test_router_with_state(state.clone());
+
+    // Warm every tenant (each miss inserts into the shard that owns it).
+    for i in 0..32 {
+        let resp = app
+            .clone()
+            .oneshot(authed(
+                axum::http::Method::GET,
+                "/api/sync/snapshot",
+                Some(&format!("tenant-shard-{i}")),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+    assert_eq!(
+        state.snapshot_cache.len(),
+        32,
+        "every tenant must own exactly one entry"
+    );
+
+    // Every HIT must return ONLY its own tenant's product — never a
+    // neighbour on the same shard.
+    for i in 0..32 {
+        let resp = app
+            .clone()
+            .oneshot(authed(
+                axum::http::Method::GET,
+                "/api/sync/snapshot",
+                Some(&format!("tenant-shard-{i}")),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let products = json["products"].as_array().unwrap();
+        assert_eq!(
+            products.len(),
+            1,
+            "tenant-shard-{i} must see exactly its own product, got {products:?}"
+        );
+        assert_eq!(
+            products[0]["sku"],
+            format!("SKU-SHARD-{i}"),
+            "tenant-shard-{i} received another tenant's product"
+        );
+    }
+
+    // Nothing leaked into any other tenant's cache handle either.
+    for i in 0..32 {
+        let entry = state
+            .snapshot_cache
+            .get(&format!("tenant-shard-{i}"))
+            .expect("each tenant owns an entry");
+        let guard = entry.read().await;
+        let text = String::from_utf8(guard.as_ref().unwrap().bytes.to_vec()).unwrap();
+        // Match the QUOTED sku, not a bare prefix: `SKU-SHARD-1` is a substring
+        // of `SKU-SHARD-10`, so a prefix check false-fails on a neighbour AND
+        // false-passes a leak of that neighbour.
+        assert!(
+            text.contains(&format!("\"SKU-SHARD-{i}\"")),
+            "tenant-shard-{i}'s cached payload lost its own product"
+        );
+        let cached: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(
+            cached["products"].as_array().unwrap().len(),
+            1,
+            "tenant-shard-{i}'s cached payload must hold exactly one product"
+        );
+        for other in 0..32 {
+            if other != i {
+                assert!(
+                    !text.contains(&format!("\"SKU-SHARD-{other}\"")),
+                    "tenant-shard-{i}'s cached payload contains tenant-shard-{other}'s product"
+                );
+            }
+        }
+    }
+}
+
 /// The raw-bytes snapshot cache must behave identically against live
 /// PostgreSQL: first request queries + caches, second request is a hit
 /// serving identical JSON with the same content-type.
@@ -939,7 +1426,7 @@ async fn pg_integration_snapshot_cache_roundtrip() {
     let tenant = format!("pg-snap-{}", uuid::Uuid::now_v7());
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: Some(pool.clone()),
         skip_push_validation: false,
@@ -1019,7 +1506,7 @@ async fn pull_returns_500_on_malformed_row() {
     // INTEGER affinity) so the SQLite row decoder's `get::<_, i64>` fails.
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -1050,7 +1537,7 @@ async fn pull_returns_500_on_malformed_row() {
 async fn snapshot_tenant_isolation() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -1155,7 +1642,7 @@ async fn push_empty_array_returns_ok() {
 async fn push_inserts_items_with_existing_ids() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -1197,7 +1684,7 @@ async fn push_inserts_items_with_existing_ids() {
 async fn push_duplicate_id_returns_rejected() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -1241,7 +1728,7 @@ async fn push_duplicate_id_returns_rejected() {
 async fn push_rejects_invalid_non_uuid_id() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -1320,7 +1807,7 @@ async fn push_rejects_invalid_non_uuid_id() {
 async fn handler_mixed_batch_invalid_uuid_valid_duplicate() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -1408,7 +1895,7 @@ async fn handler_mixed_batch_invalid_uuid_valid_duplicate() {
 async fn push_outcomes_preserve_request_order_with_mixed_batch() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -1462,7 +1949,7 @@ async fn push_outcomes_preserve_request_order_with_mixed_batch() {
 async fn push_batch_skip_validation_flag_accepts_non_uuid() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: true,
@@ -1505,7 +1992,7 @@ async fn push_batch_skip_validation_flag_accepts_non_uuid() {
 async fn pull_returns_items_for_tenant() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -1541,7 +2028,7 @@ async fn pull_returns_items_for_tenant() {
 async fn pull_tenant_isolation() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -1581,7 +2068,7 @@ async fn pull_tenant_isolation() {
 async fn pull_filters_by_since_and_tenant() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -1643,7 +2130,7 @@ async fn status_returns_json() {
 async fn status_counts_only_current_tenant() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -1689,7 +2176,7 @@ async fn status_counts_only_current_tenant() {
 async fn status_counts_zero_for_empty_tenant() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -1726,7 +2213,7 @@ async fn status_counts_zero_for_empty_tenant() {
 async fn tenant_count_cache_serves_stale_value_within_ttl() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -1771,7 +2258,7 @@ async fn tenant_count_cache_serves_stale_value_within_ttl() {
 async fn tenant_count_cache_refreshes_after_expiry() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -1885,7 +2372,7 @@ async fn pg_integration_tenant_count_cache() {
 
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: Some(pool.clone()),
         skip_push_validation: false,
@@ -1957,7 +2444,7 @@ async fn pg_integration_tenant_count_cache() {
 async fn tenant_count_cache_concurrent_first_reads() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -2116,7 +2603,7 @@ async fn push_rejects_malformed_json() {
 async fn pull_returns_410_when_anchor_expired() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -2156,7 +2643,7 @@ async fn pull_returns_410_when_anchor_expired() {
 async fn pull_succeeds_when_anchor_is_fresh() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -2194,7 +2681,7 @@ async fn pull_succeeds_when_anchor_is_fresh() {
 async fn pull_null_since_never_expired() {
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -2249,7 +2736,7 @@ async fn send_n_push_requests(app: &Router, tenant: Option<&str>, n: usize) -> V
 fn shared_state() -> SyncState {
     SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: None,
         skip_push_validation: false,
@@ -2300,15 +2787,37 @@ async fn rate_limit_429_includes_retry_after_header() {
     assert!(json["retry_after_seconds"].as_u64().unwrap() > 0);
 }
 
+/// Bucket isolation, asserted from ONE exhausted bucket — O-T11.
+///
+/// Formerly two tests, `rate_limit_tenant_isolation` and
+/// `rate_limit_endpoint_isolation`, each of which burned a full 100-request
+/// burst purely as SETUP: they differed only in which neighbour they then
+/// checked was unaffected. Bringing a bucket to its cap costs
+/// `capacity + 1` HTTP round trips through auth + plan gate + body parse +
+/// handler (`rate_limit.rs` push `capacity: 100`), and requests past the
+/// cap prove nothing the cap-crossing request did not. Both neighbours can be
+/// probed against the SAME exhausted bucket, because the bucket key is
+/// `"{tenant_id}|{prefix}"` — tenant-a is not tenant-b, and push is not pull —
+/// so the two isolation axes never interfere. One 100-request setup, four
+/// assertions that together contain every assertion the two originals made:
+///
+/// | # | request | expected | was asserted by |
+/// |---|---|---|---|
+/// | 1 | tenant-a / push (101st) | 429 | both originals |
+/// | 2 | tenant-b / push | 200 OK | `rate_limit_tenant_isolation` |
+/// | 3 | tenant-a / pull | 200 OK | `rate_limit_endpoint_isolation` |
+///
+/// (Row 1 was asserted by both originals, on separate tenants; here it is one
+/// request on one tenant, which is the whole point of the fold.)
 #[tokio::test]
-async fn rate_limit_tenant_isolation() {
+async fn rate_limit_buckets_are_isolated_per_tenant_and_per_endpoint() {
     let state = shared_state();
     let app = test_router_with_state(state);
 
-    // Exhaust tenant A's push limit.
+    // Exhaust tenant A's push limit (the only 100-request burst in this test).
     let _ = send_n_push_requests(&app, Some("tenant-a"), 100).await;
 
-    // Tenant A's 101st request should be 429.
+    // 1. Tenant A's 101st PUSH request must be 429.
     let token_a = test_token(Some("tenant-a"));
     let req_a = Request::builder()
         .method("POST")
@@ -2318,9 +2827,14 @@ async fn rate_limit_tenant_isolation() {
         .body(Body::from("[]"))
         .unwrap();
     let resp_a = app.clone().oneshot(req_a).await.unwrap();
-    assert_eq!(resp_a.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        resp_a.status(),
+        StatusCode::TOO_MANY_REQUESTS,
+        "tenant A's push bucket is exhausted"
+    );
 
-    // Tenant B should still succeed (independent bucket).
+    // 2. Tenant isolation: a DIFFERENT TENANT on the SAME endpoint still
+    //    succeeds — its bucket is keyed separately.
     let token_b = test_token(Some("tenant-b"));
     let req_b = Request::builder()
         .method("POST")
@@ -2329,39 +2843,19 @@ async fn rate_limit_tenant_isolation() {
         .header("Content-Type", "application/json")
         .body(Body::from("[]"))
         .unwrap();
-    let resp_b = app.oneshot(req_b).await.unwrap();
+    let resp_b = app.clone().oneshot(req_b).await.unwrap();
     assert_eq!(
         resp_b.status(),
         StatusCode::OK,
         "tenant B should not be rate-limited when tenant A is exhausted"
     );
-}
 
-#[tokio::test]
-async fn rate_limit_endpoint_isolation() {
-    let state = shared_state();
-    let app = test_router_with_state(state);
-
-    // Exhaust push endpoint for a tenant.
-    let _ = send_n_push_requests(&app, Some("tenant-ep"), 100).await;
-
-    // Push should now be 429.
-    let token = test_token(Some("tenant-ep"));
-    let req_push = Request::builder()
-        .method("POST")
-        .uri("/api/sync/push")
-        .header("Authorization", format!("Bearer {token}"))
-        .header("Content-Type", "application/json")
-        .body(Body::from("[]"))
-        .unwrap();
-    let resp_push = app.clone().oneshot(req_push).await.unwrap();
-    assert_eq!(resp_push.status(), StatusCode::TOO_MANY_REQUESTS);
-
-    // Pull should still work (separate 300/min limit).
+    // 3. Endpoint isolation: the SAME TENANT on a DIFFERENT endpoint still
+    //    succeeds — pull has its own 300/min bucket.
     let req_pull = Request::builder()
         .method("POST")
         .uri("/api/sync/pull")
-        .header("Authorization", format!("Bearer {token}"))
+        .header("Authorization", format!("Bearer {token_a}"))
         .header("Content-Type", "application/json")
         .body(Body::from(r#"{"since":null}"#))
         .unwrap();
@@ -2440,7 +2934,7 @@ async fn pg_router_with_pool_size(
     };
     let state = SyncState {
         db: Arc::new(Mutex::new(fresh_db())),
-        snapshot_cache: Arc::new(Mutex::new(HashMap::new())),
+        snapshot_cache: SnapshotCache::new(),
         rate_limiter: RateLimiterState::new(),
         pg: Some(pool.clone()),
         skip_push_validation: false,

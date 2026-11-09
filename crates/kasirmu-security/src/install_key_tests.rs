@@ -506,7 +506,7 @@ fn resume_refuses_a_malformed_parked_key() {
 /// parsed may still decrypt existing rows, so it is never regenerated), so losing the
 /// trim would turn a one-character formatting difference into an unbootable store with
 /// rows the operator cannot re-enter. MEASURED: deleting `.trim()` from the decode left
-/// all 17 tests in this file GREEN, so nothing was watching it.
+/// all 17 tests in this file GREEN at the time, so nothing was watching it.
 ///
 /// This is the TOLERANT direction of the same function that refuses malformed input --
 /// both halves matter, which is why the refusal test above and this one sit together.

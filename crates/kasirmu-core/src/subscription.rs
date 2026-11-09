@@ -516,7 +516,7 @@ impl TenantSubscription {
             max_locations: 1,
             max_pos_instances: 1,
             allowed_types_json: "[]".into(),
-            signature: String::new(),
+            signature: BOOTSTRAP_FREE_SIGNATURE.into(),
             signed_payload: String::new(),
             api_key: String::new(),
             updated_at: String::new(),
@@ -535,7 +535,11 @@ impl TenantSubscription {
         if !self.is_within_grace_period() {
             return SubscriptionTier::Free.allows_workspace_type(type_key);
         }
-        match serde_json::from_str::<Vec<String>>(&self.allowed_types_json) {
+        let trimmed = self.allowed_types_json.trim();
+        if trimmed.is_empty() || trimmed == "[]" {
+            return self.tier.allows_workspace_type(type_key);
+        }
+        match serde_json::from_str::<Vec<std::borrow::Cow<'_, str>>>(&self.allowed_types_json) {
             Ok(types) if !types.is_empty() => types.iter().any(|t| t == type_key),
             _ => self.tier.allows_workspace_type(type_key),
         }
@@ -553,11 +557,14 @@ impl TenantSubscription {
         if self.signed_payload.is_empty() {
             return Vec::new();
         }
-        // The signed payload is a JSON object; extract the "addons" array.
-        serde_json::from_str::<serde_json::Value>(&self.signed_payload)
+        // Direct deserialization extracting the "addons" array (O-M15).
+        #[derive(serde::Deserialize)]
+        struct AddonsOnly {
+            addons: Option<Vec<String>>,
+        }
+        serde_json::from_str::<AddonsOnly>(&self.signed_payload)
             .ok()
-            .and_then(|v| v.get("addons").cloned())
-            .and_then(|v| serde_json::from_value::<Vec<String>>(v).ok())
+            .and_then(|a| a.addons)
             .unwrap_or_default()
     }
 
@@ -566,8 +573,7 @@ impl TenantSubscription {
     /// Case-insensitive comparison against the `addons` list in the signed
     /// payload. Returns `false` for empty/unparseable payloads.
     pub fn has_addon(&self, addon: &str) -> bool {
-        let lower = addon.to_lowercase();
-        self.addons().iter().any(|a| a.to_lowercase() == lower)
+        self.addons().iter().any(|a| a.eq_ignore_ascii_case(addon))
     }
 
     /// Trial state carried by the signed payload (Phase C), parsed in one
@@ -587,19 +593,20 @@ impl TenantSubscription {
         if self.signed_payload.is_empty() {
             return (false, None);
         }
-        let Ok(value) = serde_json::from_str::<serde_json::Value>(&self.signed_payload) else {
+        #[derive(serde::Deserialize)]
+        struct TrialOnly {
+            is_trial: Option<serde_json::Value>,
+            trial_ends_at: Option<serde_json::Value>,
+        }
+        let Ok(trial) = serde_json::from_str::<TrialOnly>(&self.signed_payload) else {
             return (false, None);
         };
-        let is_trial = value
-            .get("is_trial")
-            .and_then(serde_json::Value::as_bool)
-            .unwrap_or(false);
-        let ends_at = value
-            .get("trial_ends_at")
-            .and_then(serde_json::Value::as_str)
+        let is_trial = trial.is_trial.and_then(|v| v.as_bool()).unwrap_or(false);
+        let ends_at = trial
+            .trial_ends_at
+            .and_then(|v| v.as_str().map(str::to_string))
             .filter(|s| !s.is_empty())
-            .filter(|s| chrono::DateTime::parse_from_rfc3339(s).is_ok())
-            .map(str::to_string);
+            .filter(|s| chrono::DateTime::parse_from_rfc3339(s).is_ok());
         (is_trial, ends_at)
     }
 
@@ -659,10 +666,13 @@ impl TenantSubscription {
         if self.signed_payload.is_empty() {
             return std::collections::HashMap::new();
         }
-        serde_json::from_str::<serde_json::Value>(&self.signed_payload)
+        #[derive(serde::Deserialize)]
+        struct FeaturesOnly {
+            features: Option<std::collections::HashMap<String, bool>>,
+        }
+        serde_json::from_str::<FeaturesOnly>(&self.signed_payload)
             .ok()
-            .and_then(|v| v.get("features").cloned())
-            .and_then(|v| serde_json::from_value::<std::collections::HashMap<String, bool>>(v).ok())
+            .and_then(|f| f.features)
             .unwrap_or_default()
     }
 

@@ -13,11 +13,63 @@
 //! Violations are logged to the console with the axe-core report format.
 //! Tests fail on any violation (critical, serious, moderate, or minor)
 //! to ensure maximum coverage.
+//!
+//! PAGE-LEVEL RULES NEED `checkA11yDocument`, NOT `checkA11y`.
+//!
+//! Three axe rules only evaluate when their target IS the page root, and they
+//! are silent — not skipped-with-a-warning, silent — when handed a container
+//! element:
+//!
+//!   * `landmark-one-main`    selector 'html:not(html *)'
+//!   * `page-has-heading-one` selector 'html:not(html *)'
+//!   * `region`               selector 'body *'
+//!
+//! `checkA11y(container, {...})` therefore cannot fail on ANY of them, however
+//! the rules are configured — the options are honoured, the rule simply never
+//! matches the container. Measured 2026-10-26 by converting the only `<main>`
+//! in AppLayout to a `<div>`: `checkA11y(container, SHELL_GLOBAL_RULES)` still
+//! passed 3/3, and axe reported a `main` count of 0 with zero violations. The
+//! same render checked against `document` listed `region` among its PASSES,
+//! which is how a reader can tell the rule actually ran.
+//!
+//! RETARGETING TO THE PAGE ROOT FIXES ONLY ONE OF THE THREE. The earlier claim
+//! here -- that passing `document.documentElement` makes all three evaluate -- is
+//! false, corrected 2026-10-27 (round 34) with this bare probe on a clean tree:
+//!
+//!     passes=["region"] violations=[] incomplete=["landmark-one-main","page-has-heading-one"]
+//!
+//! Both land in `incomplete` with `none: ["error-occurred"]` and
+//! `TypeError: document.elementFromPoint is not a function` -- jsdom does not
+//! implement it, axe's `isModalOpen` calls it, and the throw lands in
+//! `method: "page-has-main#evaluate"`, the shared check behind both rules. They
+//! abort on every page in every suite, so NOTHING IN THE MARKUP can move them
+//! out of `incomplete`: an assertion about them is not weak evidence, it is no
+//! evidence. A document WITH an `<h1>` and one WITHOUT return the identical
+//! bucket (control run, same round).
+//!
+//! CONSEQUENCE FOR PAGE STRUCTURE: `region` is the only page-level rule this
+//! helper can grade. "One `<h1>` per page" MUST be asserted directly on the DOM --
+//! see the structural cases in `WorkspaceHome.a11y.test.tsx`, and
+//! `ShellLayout.a11y.test.tsx` for the `<main>` equivalent.
+//!
+//! Contrast is NOT one of these: `color-contrast` is element-scoped and works
+//! on a container. It is disabled here only because jsdom cannot compute
+//! colours; see colorContrastCompliance.test.ts.
 
 import { type ReactElement } from 'react';
 import { render, type RenderResult } from '@testing-library/react';
 import { expect, vi } from 'vitest';
-import { axe, toHaveNoViolations } from 'jest-axe';
+import { toHaveNoViolations } from 'jest-axe';
+import axeCore from 'axe-core';
+
+/** Run axe-core directly against an element, mutating no DOM. */
+async function runAxe(
+  element: Element,
+  options: Record<string, unknown>,
+): Promise<{ violations: axeCore.Result[]; passes: axeCore.Result[] }> {
+  const results = await axeCore.run(element, options);
+  return { violations: results.violations, passes: results.passes };
+}
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { LocalizationProvider, ReactLocalization } from '@fluent/react';
 import { BrandProvider } from '@/contexts/BrandContext';
@@ -95,8 +147,11 @@ settings-nav-category-expanded = { $category } expanded, { $count } items
 `;
 
 /// Disabled rules for consistent unit-test a11y testing.
-/// Color contrast is tested in E2E; landmark/heading rules are tested
-/// in AppShell integration tests, not isolated component tests.
+/// Color contrast is graded by colorContrastCompliance.test.ts, which measures the
+/// token pairs for all three themes directly (jsdom cannot compute colours).
+/// Landmark/heading rules are graded with the global rules re-enabled in
+/// ShellLayout.a11y.test.tsx against the real desktop and tablet shells,
+/// not in isolated component tests.
 const DISABLED_RULES = {
   'color-contrast': { enabled: false },
   'landmark-one-main': { enabled: false },
@@ -145,13 +200,33 @@ export function renderWithProviders(children: ReactElement, ...extraFtl: string[
 ///
 /// Violations are reported via vitest's assertion error with the full
 /// axe-core report (rule ID, impact, description, and failing nodes).
+///
+/// HISTORICAL HAZARD, NOW CLOSED HERE. This helper USED jest-axe's `axe()` wrapper, whose
+/// `mount()` REWRITES `document.body.innerHTML` whenever the element it is handed is
+/// not inside `document.body` -- and that assignment detaches React's root, so the
+/// global `afterEach(cleanup())` in test-setup.ts then finds nothing to unmount and the
+/// rendered tree survives into the next test. The exception: the tree's own cases then
+/// reported `landmark-no-duplicate-main` against a component that had one <main>
+/// (measured 2026-10-26: counts rose 1 -> 2 -> 3 across one file). The two safe shapes,
+/// both verified this round: the `container` from a render (70 of 74 call sites) and
+/// `document.body` itself (the 4 portal-era call sites, which `body.contains(body)`
+/// short-circuits). A DETACHED element -- `document.documentElement` is the one that
+/// bit -- takes the rewriting path. `checkA11yDocument` exists for that case and calls
+/// axe-core directly for exactly this reason. Both helpers now call axe-core's own
+/// `run()`, so NO call site can take the rewriting path; the rule below is kept because
+/// jest-axe's matcher is still in use and a future helper could reintroduce it.
 export async function checkA11y(
   container: HTMLElement,
   options?: Record<string, unknown>,
 ): Promise<void> {
   const callerRules = (options?.['rules'] as Record<string, unknown>) || {};
   const mergedOptions = { ...options, rules: { ...DISABLED_RULES, ...callerRules } };
-  const results = await axe(container, mergedOptions);
+  // axe-core directly, NOT jest-axe's axe() wrapper: mount() rewrites
+  // document.body.innerHTML for any target outside the body, which detaches React's
+  // root and defeats the global afterEach(cleanup()). Container targets are safe today
+  // (see the doc comment above), and this removes the hazard for every future caller
+  // rather than relying on each one passing an attached element.
+  const results = await runAxe(container, mergedOptions);
 
   // Log violations for debugging before the assertion fails.
   if (results.violations.length > 0) {
@@ -166,5 +241,66 @@ export async function checkA11y(
 
   // Use type assertion — vitest's expect.extend() adds the matcher
   // at runtime, but TypeScript can't see it without module augmentation.
+  (expect(results) as unknown as { toHaveNoViolations(): void }).toHaveNoViolations();
+}
+
+/// Run axe against the WHOLE DOCUMENT and assert no a11y violations.
+///
+/// Use this for shell/page suites that want page-level rules to mean anything.
+/// Those rules select `html:not(html *)` / `body *` and never match a container
+/// element, so passing one to `checkA11y` disables them silently. See the module
+/// header for the measurement that established this.
+///
+/// WHAT IT ACTUALLY GRADES: `region` only. `landmark-one-main` and
+/// `page-has-heading-one` are selected by `documentElement`, but their shared
+/// check aborts under jsdom (`document.elementFromPoint is not a function`) and
+/// they return in `incomplete` on every page. Measured 2026-10-27, round 34;
+/// the probe and the control are in the module header. Do not read a green here
+/// as "the page has a heading" -- it is not a statement about the markup.
+///
+/// `options.rules` still overrides `DISABLED_RULES`, so a shell suite typically
+/// passes `{ rules: { 'landmark-one-main': { enabled: true }, ... } }`.
+///
+/// Caveat: the document target includes whatever the test runner put outside the
+/// component under test. In jsdom the root `<html>` has no `lang` attribute, so
+/// `html-has-lang` fires on every document-scoped run unless it is muted. Set it
+/// once per suite (`document.documentElement.lang = 'en'`) rather than muting the
+/// rule, so a real regression in the component is still reported.
+export async function checkA11yDocument(
+  options?: Record<string, unknown>,
+): Promise<void> {
+  const callerRules = (options?.['rules'] as Record<string, unknown>) || {};
+  const mergedOptions = { ...options, rules: { ...DISABLED_RULES, ...callerRules } };
+  // TARGET IS `document.documentElement` (the <html> element), NOT `document.body`. `landmark-one-main` and
+  // `page-has-heading-one` carry the selector `html:not(html *)`, so they only
+  // evaluate when the CONTEXT is the <html> element itself. `document.body` is a
+  // child of it, so those two rules matched nothing and appeared in neither
+  // `violations` nor `passes` -- the round-239 fix was partial for exactly this
+  // reason (measured 2026-10-26, round 251: `region` passed on body, the two
+  // landmark/heading rules did not run at all).
+  //
+  // WHY axe-core DIRECTLY, NOT the jest-axe `axe()` WRAPPER (round 251): the wrapper's
+  // mount() does `document.body.innerHTML = originalHTML` to restore itself whenever the
+  // element it is given is not inside document.body -- and `documentElement` never is.
+  // That assignment DETACHES React's root node, so the global `afterEach(cleanup())` in
+  // test-setup.ts finds nothing to unmount and the rendered tree stays in the DOM. The
+  // observable consequence was a rising landmark count across one file's cases
+  // (1 -> 2 -> 3 mains, measured) which axe then reported as
+  // `landmark-no-duplicate-main` -- a REAL failure, caused by the MEASURING TOOL rather
+  // than by the component. axe-core's own `run()` accepts any element and mutates nothing.
+  //
+  // `document` itself cannot be passed: axe requires an ElementNode.
+  const results = await runAxe(document.documentElement, mergedOptions);
+
+  if (results.violations.length > 0) {
+    for (const v of results.violations) {
+      console.error(
+        `[a11y:document] ${v.impact}: ${v.id} — ${v.help}\n` +
+        `  ${v.helpUrl}\n` +
+        `  Nodes: ${v.nodes.map((n) => n.html).join(', ')}`,
+      );
+    }
+  }
+
   (expect(results) as unknown as { toHaveNoViolations(): void }).toHaveNoViolations();
 }

@@ -58,6 +58,24 @@
   white-space: nowrap;
 }
 
+/* ADR-66 D3: Web-managed notice shown when centralized topology authoring is active.
+   Indicates that mutations are disabled on the local terminal because desired-state
+   authoring happens via the web dashboard. */
+.topology-web-managed-badge {
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  /* `-fg` and `-border` do not exist in ui/src/theme/tokens.css (only
+     `--color-info`, `-bg` and `-subtle` do), so those two rendered their
+     FALLBACK forever and topologyThemeParity flagged them as phantom tokens.
+     Use the tokens the design system actually defines. */
+  background: var(--color-info-subtle);
+  color: var(--color-info);
+  border: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
 .node-topology-header-actions {
   display: flex;
   flex-wrap: wrap;

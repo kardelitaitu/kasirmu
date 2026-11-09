@@ -117,11 +117,6 @@ vi.mock('@/api/products', () => ({
   updateProduct: vi.fn(),
   deleteProduct: vi.fn(),
   adjustStock: vi.fn(),
-  listProductVariants: vi.fn(() => Promise.resolve([])),
-  getProductVariant: vi.fn(() => Promise.resolve(null)),
-  createProductVariant: vi.fn(),
-  updateProductVariant: vi.fn(),
-  deleteProductVariant: vi.fn(),
   createCategory: vi.fn(),
   deleteCategory: vi.fn(),
 }));
@@ -245,6 +240,41 @@ const FAST_WAIT = { interval: 5, timeout: 500 } as const;
 describe('PosScreen – bundle scanning toast', () => {
   beforeEach(() => {
     mockedBarcode.reset();
+  });
+
+  // WHY A DOM ASSERTION AND NOT AN AXE RUN: axe's `page-has-heading-one` cannot
+  // reach a verdict under jsdom (both a document with an <h1> and one without
+  // return `incomplete` / `error-occurred`), measured 2026-10-27. The no-session
+  // branch IS the whole screen, and its "Login Required" heading was an <h2> on a
+  // screen that has no <h1> at all -- so the page title started at level two.
+  // Confirmed by mutation: reverting to <h2> left all 154 cases in this file and
+  // its three PosScreen siblings green.
+  it('names the no-session page with a level-one heading', async () => {
+    // The module-level AuthContext mock returns a signed-in cashier, which is what
+    // every other case here needs; this one needs the ABSENCE of a session, so the
+    // hook is stubbed for the duration of this case only and restored after.
+    const authMod = await import('@/contexts/AuthContext');
+    const spy = vi.spyOn(authMod, 'useAuth').mockReturnValue({
+      session: null,
+      loading: false,
+      error: null,
+      login: vi.fn(),
+      logout: vi.fn(),
+      clearError: vi.fn(),
+      swapSession: vi.fn(),
+      isManager: false,
+      isOwner: false,
+      hasPermission: () => false,
+    } as unknown as ReturnType<typeof authMod.useAuth>);
+    try {
+      const { container } = await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
+      await screen.findByText('Login Required');
+      const h1s = Array.from(container.querySelectorAll('h1'));
+      expect(h1s, 'the login-required screen must carry exactly one level-one heading').toHaveLength(1);
+      expect(h1s[0]!.textContent?.trim()).toBe('Login Required');
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('shows a success toast when a bundle barcode is scanned', async () => {

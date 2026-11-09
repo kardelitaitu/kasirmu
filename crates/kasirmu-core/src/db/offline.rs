@@ -140,13 +140,56 @@ pub struct RemoteSyncFailure {
 pub mod enqueue;
 pub mod remote;
 
+// ── Hoisted SQL ───────────────────────────────────────────────────────
+//
+// The queue listers below are the highest-traffic readers of
+// `offline_queue`, a table that grows without bound until sync drains it, so
+// a plan regression here (a lost index seek) is paid on every sync cycle.
+// Their SQL is hoisted to `pub` constants for the same reason as
+// `DAILY_REVENUE_SQL` (`db/reports/revenue.rs`): the query-plan probe
+// (`tests/integration/query_plan_probe.rs`) is a SEPARATE crate, so it can
+// only import `pub` items, and a probe that holds its own COPY of a query
+// stays green when the real one is reshaped back into the scanning form.
+// The enclosing `offline` module is already public; these constants add no
+// new module surface. A test cannot drift from a query it does not own.
+//
+// Purely textual: each method prepares exactly the string it did before.
+
+/// `Store::list_pending_offline`: the whole pending queue, oldest first.
+pub const LIST_PENDING_OFFLINE_SQL: &str = "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id, sale_id
+             FROM offline_queue WHERE status = 'pending' ORDER BY created_at ASC";
+
+/// `Store::list_pending_offline_for_push_bounded`: the pending queue in the
+/// push order of ADR #59 / O-M03, bounded by `?1`.
+pub const LIST_PENDING_OFFLINE_FOR_PUSH_BOUNDED_SQL: &str = "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id, sale_id
+             FROM offline_queue WHERE status = 'pending' ORDER BY priority ASC, created_at ASC, id ASC LIMIT ?1";
+
+/// `Store::get_last_synced_at`: the newest `synced_at`, computed by SQL MAX
+/// so the historical queue is never loaded to answer it (O-M36).
+pub const OFFLINE_LAST_SYNCED_AT_SQL: &str =
+    "SELECT MAX(synced_at) FROM offline_queue WHERE status = 'synced'";
+
+/// `Store::list_pending_offline_for_tenant`: the pending queue of one
+/// tenant (`?1`), oldest first.
+pub const LIST_PENDING_OFFLINE_FOR_TENANT_SQL: &str = "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id, sale_id
+             FROM offline_queue WHERE status = 'pending' AND tenant_id = ?1 ORDER BY created_at ASC";
+
+/// `Store::list_pending_offline_for_tenant_for_push_bounded`: one tenant's
+/// (`?1`) pending queue in push order, bounded by `?2`.
+pub const LIST_PENDING_OFFLINE_FOR_TENANT_FOR_PUSH_BOUNDED_SQL: &str = "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id, sale_id
+             FROM offline_queue WHERE status = 'pending' AND tenant_id = ?1 ORDER BY priority ASC, created_at ASC, id ASC LIMIT ?2";
+
+// The two idempotency probes live with their writers in `offline::enqueue`;
+// they are re-exported here so every `offline_queue` reader is imported from
+// one path - the queue listers above and the outbox probes below.
+pub use enqueue::{
+    OFFLINE_ENQUEUE_DEDUP_PROBE_SQL, OFFLINE_OUTBOX_LEGACY_FALLBACK_SQL, OFFLINE_OUTBOX_PROBE_SQL,
+};
+
 impl Store<'_> {
     /// List all pending (unsynced) offline queue items, oldest first.
     pub fn list_pending_offline(&self) -> Result<Vec<OfflineQueueItem>, CoreError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
-             FROM offline_queue WHERE status = 'pending' ORDER BY created_at ASC",
-        )?;
+        let mut stmt = self.conn.prepare(LIST_PENDING_OFFLINE_SQL)?;
         let rows = stmt.query_map([], Self::row_to_offline_queue_item)?;
         rows.map(|r| Ok(r?)).collect()
     }
@@ -157,17 +200,35 @@ impl Store<'_> {
         limit: usize,
     ) -> Result<Vec<OfflineQueueItem>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
+            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id, sale_id
              FROM offline_queue WHERE status = 'pending' ORDER BY created_at ASC LIMIT ?1",
         )?;
         let rows = stmt.query_map(params![limit as i64], Self::row_to_offline_queue_item)?;
         rows.map(|r| Ok(r?)).collect()
     }
 
+    /// List pending (unsynced) offline queue items bounded for sync push,
+    /// ordered by priority ASC, created_at ASC, and id ASC (ADR #59 / O-M03).
+    pub fn list_pending_offline_for_push_bounded(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<OfflineQueueItem>, CoreError> {
+        let mut stmt = self
+            .conn
+            .prepare(LIST_PENDING_OFFLINE_FOR_PUSH_BOUNDED_SQL)?;
+        let rows = stmt.query_map(params![limit as i64], Self::row_to_offline_queue_item)?;
+        let mut items = Vec::with_capacity(limit);
+        for row in rows {
+            items.push(row?);
+        }
+        crate::offline::order_for_push(&mut items);
+        Ok(items)
+    }
+
     /// List all offline queue items.
     pub fn list_all_offline(&self) -> Result<Vec<OfflineQueueItem>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
+            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id, sale_id
              FROM offline_queue ORDER BY created_at DESC",
         )?;
         let rows = stmt.query_map([], Self::row_to_offline_queue_item)?;
@@ -178,9 +239,7 @@ impl Store<'_> {
     ///
     /// Avoids loading the entire historical offline queue into memory.
     pub fn get_last_synced_at(&self) -> Result<Option<String>, CoreError> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT MAX(synced_at) FROM offline_queue WHERE status = 'synced'")?;
+        let mut stmt = self.conn.prepare(OFFLINE_LAST_SYNCED_AT_SQL)?;
         let res: Option<String> = stmt.query_row([], |row| row.get(0))?;
         Ok(res)
     }
@@ -190,10 +249,7 @@ impl Store<'_> {
         &self,
         tenant_id: &str,
     ) -> Result<Vec<OfflineQueueItem>, CoreError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
-             FROM offline_queue WHERE status = 'pending' AND tenant_id = ?1 ORDER BY created_at ASC",
-        )?;
+        let mut stmt = self.conn.prepare(LIST_PENDING_OFFLINE_FOR_TENANT_SQL)?;
         let rows = stmt.query_map(params![tenant_id], Self::row_to_offline_queue_item)?;
         rows.map(|r| Ok(r?)).collect()
     }
@@ -205,7 +261,7 @@ impl Store<'_> {
         limit: usize,
     ) -> Result<Vec<OfflineQueueItem>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
+            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id, sale_id
              FROM offline_queue WHERE status = 'pending' AND tenant_id = ?1 ORDER BY created_at ASC LIMIT ?2",
         )?;
         let rows = stmt.query_map(
@@ -213,6 +269,28 @@ impl Store<'_> {
             Self::row_to_offline_queue_item,
         )?;
         rows.map(|r| Ok(r?)).collect()
+    }
+
+    /// List pending offline items scoped to a tenant bounded for sync push,
+    /// ordered by priority ASC, created_at ASC, and id ASC (ADR #59 / O-M03).
+    pub fn list_pending_offline_for_tenant_for_push_bounded(
+        &self,
+        tenant_id: &str,
+        limit: usize,
+    ) -> Result<Vec<OfflineQueueItem>, CoreError> {
+        let mut stmt = self
+            .conn
+            .prepare(LIST_PENDING_OFFLINE_FOR_TENANT_FOR_PUSH_BOUNDED_SQL)?;
+        let rows = stmt.query_map(
+            params![tenant_id, limit as i64],
+            Self::row_to_offline_queue_item,
+        )?;
+        let mut items = Vec::with_capacity(limit);
+        for row in rows {
+            items.push(row?);
+        }
+        crate::offline::order_for_push(&mut items);
+        Ok(items)
     }
 
     /// Mark an offline queue item as synced.
@@ -673,6 +751,7 @@ impl Store<'_> {
             ),
             // NULL stays NULL: "unknown origin", never a default.
             origin_terminal_id: row.get("origin_terminal_id")?,
+            sale_id: row.get("sale_id")?,
         })
     }
 }

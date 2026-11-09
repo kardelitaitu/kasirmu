@@ -23,6 +23,7 @@ gift-cards-topup-invalid = Top-up amount must be positive
 gift-cards-payment-enter-number = Enter a gift card number
 gift-cards-payment-not-found = Gift card not found
 gift-cards-payment-not-active = Gift card is not active
+gift-cards-payment-currency-mismatch = This card is in { $cardCurrency } and cannot be applied to a { $saleCurrency } sale
 gift-cards-payment-insufficient = Insufficient balance on gift card
 gift-cards-payment-title = Gift Card
 gift-cards-payment-total-due = Total due: { $amount }
@@ -44,7 +45,8 @@ gift-cards-error-topup = Top-up failed
 gift-cards-error-issue = Failed to issue gift card
 
 # Gift Cards — placeholders & aria
-gift-cards-topup-placeholder = Amount
+gift-cards-issue-amount-placeholder = Amount in { $currency }
+gift-cards-topup-placeholder = Amount in { $currency }
 gift-cards-topup-aria = Top-up amount
 gift-cards-issue-to-placeholder = Customer name
 

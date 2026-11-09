@@ -90,3 +90,5 @@ summary rather than the count.
 | Sale-derived ids | `kds-order-e2e-*`, distinct from `kds-order-auto-*` (`:527`) |
 | Round 141's new ticket | `#111` |
 | Tree | no source changed this round |
+
+> last audited 14-10-26 by docs-auditor

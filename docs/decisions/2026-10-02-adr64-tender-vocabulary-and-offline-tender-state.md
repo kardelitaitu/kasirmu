@@ -47,7 +47,7 @@ TypeScript union that uses neither spelling for QR. **A tender name is a closed 
 and the two TypeScript unions are byte-identical duplicates — a second place to edit.
 
 **1.2 The method vocabulary was DECIDED and is now SHIPPED as a closed set — re-measured 2026-10-11.**
-`docs/plans/_active/payment-methods-plan.md` §3 closes with eleven decided values: `cash`, `card`,
+`docs/plans/_done/done-payment-methods-plan.md` §3 closes with eleven decided values: `cash`, `card`,
 `card_debit`, `card_credit`, `qris_manual`, `qris`, `bank_transfer`, `ewallet`, `open_bill`,
 `credit`, `pay_later` — plus `other`, which D1's vocabulary adds for the backfill, making the
 enforced set **twelve**. (This paragraph, written 2026-10-02, recorded the hardcoded UI array as
@@ -243,7 +243,7 @@ binds.
 **D5 — Reconciliation owns the `confirmed` → `settled` edge; its scheduler is not decided here.**
 `payment_settlements` exists with four guarded states and `expected_minor` / `actual_minor`
 (`20260825_payment_infra.sql:24-37`); a daily sweep against it is the natural promoter. **Who
-schedules it** is owned by `docs/plans/_active/payment-resilience-design.md` §6, which already
+schedules it** is owned by `docs/plans/_done/done-plan-payment-resilience-design.md` §6, which already
 lists the scheduler among the six things it does not decide (§9 item 2).
 
 **D6 — Model A: software-only.** kasir.mu never holds a merchant's funds. Money goes customer →
@@ -329,9 +329,9 @@ so the acceptance cannot be met as written.)* the D1 and D4 migrations run
   the rail axis, its three separations, and the `rail_code` column D1 joins to
 - `crates/kasirmu-core/migrations/20260928_document_kind_check.sql:31-55` — the rebuild precedent
 - `crates/kasirmu-core/src/db/reports/sales_summary.rs` — the `payment_method` reader D1 defers
-- `docs/plans/_active/payment-methods-plan.md` §1.1 (fact #1), §1.3, §3 — the decided vocabulary
+- `docs/plans/_done/done-payment-methods-plan.md` §1.1 (fact #1), §1.3, §3 — the decided vocabulary
   and the line D4 contradicts
-- `docs/plans/_active/payment-resilience-design.md` §1.3 (two different `idempotency_key`), §2,
+- `docs/plans/_done/done-plan-payment-resilience-design.md` §1.3 (two different `idempotency_key`), §2,
   §6, §9 — the sibling owning reconciliation, keying and the scheduler
 - ADR-59 §1.6, §2.3, §2.4, §4 — market profiles as data; ADR-39 — our own subscription billing;
   ADR-65 — whether a fiscal chain ships

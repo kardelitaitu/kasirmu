@@ -142,8 +142,9 @@ export const getHardwareSettings = (): Promise<HardwareSettingsDto> =>
  * This is the only variant that works on desktop: get_hardware_settings is not registered in
  * apps/desktop-tauri/src/lib.rs (it sits in the desktop section of
  * scripts/ipc-parity-allowlist.json as a known F-008/F-050 gap), so the unscoped call rejects there
- * and callers fall back to defaults. get_hardware_settings_scoped is registered (lib.rs:933) on
- * both shells and enforces permissions::SETTINGS_READ (settings.rs:1166).
+ * and callers fall back to defaults. get_hardware_settings_scoped is registered on
+ * both shells and enforces permissions::SETTINGS_READ (its own guard in
+ * crates/kasirmu-bridge/src/settings.rs).
  */
 export const getHardwareSettingsScoped = (sessionToken: string): Promise<HardwareSettingsDto> =>
   loggedInvoke<HardwareSettingsDto>('get_hardware_settings_scoped', { sessionToken });

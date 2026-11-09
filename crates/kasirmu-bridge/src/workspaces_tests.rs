@@ -258,20 +258,23 @@ async fn list_workspaces_for_store_scoped_uses_session_role() {
 /// non-empty path. Nothing exercised the repair itself, which is this test's whole point:
 /// the fallback is the reason the change exists, and it was the one branch without a test.
 ///
-/// # Measured: the repair returns the row but does NOT persist it
+/// # This used to be `#[ignore]`d, and why
 ///
-/// `#[ignore]`d because the second assertion FAILS today: the call returns the global rows
-/// (the picker is fixed) while the store DB stays empty, so the repair re-runs against the
-/// same empty file on every boot. The INSERT's `location_id` is `REFERENCES locations(id)`
-/// and the fixture leaves no such row, so the FK rejects it — and the repair's `let _ =`
-/// discards the error, which is why this needed a fixture rather than a reading.
+/// The repair returned the global rows (so the picker looked fixed) while the store DB
+/// stayed EMPTY, re-running against the same file on every boot. Two causes, both fixed
+/// in `workspaces.rs`:
+/// 1. the repair discarded its `execute` result, so a rejected write was invisible;
+/// 2. the write used GLOBAL column names against a STORE database — `store_profiles` and
+///    `workspace_instances.store_id` were renamed to `locations` and `location_id` by
+///    `20260906_rename_store_to_location.sql`, so the INSERT failed with
+///    "no such table: store_profiles" and the FK then rejected the instance.
+/// The repair now resolves the names the target DB actually has.
 ///
 /// The repair lives in `list_workspaces` (the picker path, `workspaces.rs:109`); its sibling
 /// `list_workspaces_for_store_scoped` has none, so the terminal-management screen's
 /// cross-store picker still shows an empty grid. UN-IGNORE once the write both lands and is
 /// checked, and consider the sibling.
 #[tokio::test]
-#[ignore = "measured: the read-repair returns rows but its FK-rejected write is swallowed, so nothing persists"]
 async fn list_workspaces_repairs_from_global_when_the_store_db_is_empty() {
     // `picker_state` always seeds the store DB, so seed the GLOBAL db by hand. Raw SQL
     // because the two schemas differ: the global db has `workspace_instances` keyed on
@@ -341,7 +344,7 @@ async fn list_workspaces_repairs_from_global_when_the_store_db_is_empty() {
     );
 }
 
-/// The asymmetry: the sibling entry point has NO read-repair.
+/// The asymmetry is CLOSED: the sibling entry point now repairs too.
 ///
 /// The repair was added to `list_workspaces` (the picker path) and not to
 /// `list_workspaces_for_store_scoped` — the terminal-management screen's cross-store picker,
@@ -354,7 +357,7 @@ async fn list_workspaces_repairs_from_global_when_the_store_db_is_empty() {
 /// A terminal opened through this path therefore still shows the empty grid this whole
 /// defect is about.
 #[tokio::test]
-async fn list_workspaces_for_store_scoped_has_no_read_repair() {
+async fn list_workspaces_for_store_scoped_repairs_from_global_when_the_store_db_is_empty() {
     let tb = picker_state(|conn| {
         conn.execute_batch(
             "INSERT INTO locations (id, name) VALUES ('store-a', 'Store A');\
@@ -377,12 +380,34 @@ async fn list_workspaces_for_store_scoped_has_no_read_repair() {
         return;
     }
     let rows = listed.unwrap();
-    assert!(
-        rows.is_empty(),
-        "the sibling has no repair, so an empty store db lists nothing; got {rows:?}. \
-         If this ever returns the global row, the repair was extended here too — good, and \
-         this test should then assert the repair instead."
+    // The sibling now repairs. This test previously asserted `rows.is_empty()` and told
+    // whoever extended the repair to flip this assertion -- which is exactly what
+    // happened (O-M77): the store db is seeded from the global rows, and the picker
+    // shows them instead of the empty grid.
+    assert_eq!(
+        rows.len(),
+        1,
+        "the sibling must repair an empty store db from the global rows; got {rows:?}"
     );
+    assert_eq!(rows[0].instance_id, "ws-global-a");
+    assert_eq!(rows[0].type_key, "store-pos");
+    // ...and the repair PERSISTS, which is the half that failed in round 26: a repair
+    // that only returns the rows re-runs on every boot. Read the store db directly.
+    {
+        let conn = tb.db_manager().open_store("store-a").unwrap();
+        let db = conn.lock().unwrap();
+        let cached: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM workspace_instances WHERE id = 'ws-global-a'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            cached, 1,
+            "the repair must persist the row into the store db, not only return it"
+        );
+    }
 }
 
 /// The SAME repair, with the FK target present: it persists.

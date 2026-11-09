@@ -50,6 +50,16 @@ const STABLE_L10N = {
       'feature-toggle-requires': 'Requires: {deps}',
       'feature-toggle-auto-enabled': 'Also enabled: {list}',
       'feature-toggle-search-placeholder': 'Search features\u2026',
+      // Keys the screen renders that this stub map never carried. Values from
+      // shared-ui/locales/settings.ftl, curly holes written in the brace form
+      // this stub's replace(`{${key}}`) actually substitutes.
+      'feature-toggle-title': 'Feature Toggles',
+      'feature-toggle-subtitle': '{enabled} / {total} enabled',
+      'feature-toggle-retry': 'Retry',
+      'feature-toggle-empty': 'No features found.',
+      'feature-toggle-empty-search': 'No features match your search.',
+      'feature-toggle-bulk-enable': 'Enable All',
+      'feature-toggle-bulk-disable': 'Disable All',
     };
     let result = map[id] ?? id;
     if (vars) {

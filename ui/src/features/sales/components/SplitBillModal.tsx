@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { requiredLocalized } from '@/components/requiredLocalized';
 import { useLocalization } from '@fluent/react';
 import { Localized } from '@/components/Localized';
 import { Button } from '@/components/Button';
@@ -15,12 +16,26 @@ export interface SplitBillModalProps {
   /**
    * The order's type. The header names the table, and a table only identifies a
    * DINE-IN order — the Table field renders on restaurant POS unconditionally
-   * (CartPanel.tsx:864), so a takeaway with a stray number announced a table on
+   * (the context-row gate in CartPanel: `showTableNumberSetting || activeWorkspace ===
+   * 'restaurant-pos'`), so a takeaway with a stray number announced a table on
    * the split dialog. Optional with a dine-in default so existing renders are
    * unchanged.
    */
   orderType?: 'dine_in' | 'takeaway' | 'delivery' | undefined;
-  onConfirmSplit: (selectedLines: CartLine[], remainingLines: CartLine[]) => Promise<void> | void;
+  /**
+   * Commit the split. Resolve with `false` to say the split did NOT commit —
+   * the parent has already reported why — and the modal will stay OPEN with
+   * the selection intact so the cashier can retry or cancel.
+   *
+   * This exists because resolving with nothing was ambiguous: the parent's
+   * balance-the-remaining-tab failure path `return`s (the `return false;` in
+   * `handleConfirmSplitBill`, the round-65 fix that stopped a double charge), and a
+   * plain `return` resolves
+   * the promise. The modal's `finally` then closed it, so the recovery the
+   * parent promised — "keeps the cart intact and the split modal open" —
+   * never happened. The toast flashed and the dialog vanished.
+   */
+  onConfirmSplit: (selectedLines: CartLine[], remainingLines: CartLine[]) => Promise<boolean | void> | boolean | void;
 }
 
 export function SplitBillModal({
@@ -39,6 +54,8 @@ export function SplitBillModal({
   // Map each line ID to the quantity selected to pay now (0 .. line.qty)
   const [selectedQtys, setSelectedQtys] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState(false);
+  /** Synchronous mirror of `submitting` — see the re-entry guard in `handleConfirm`. */
+  const submittingRef = useRef(false);
 
   // Initialize or reset selections when modal opens or lines change
   useEffect(() => {
@@ -64,11 +81,33 @@ export function SplitBillModal({
     });
   }, []);
 
+  /**
+   * Tap a line to take it all, tap it again to drop it back to nothing.
+   *
+   * ⚠️ THE PARTIAL CASE USED TO FALL THROUGH TO "NONE". The rule was
+   * `current === 0 ? maxQty : 0`, so a line with ANY units chosen went to zero on
+   * the next tap. That combined badly with the auto-selection above: the modal
+   * opens with the first line set to 1, so the FIRST tap on it — the one a waiter
+   * makes to take the whole item — emptied it. Measured: [1, 3] -> tap -> [0, 3].
+   *
+   * The rule that matches the gesture is a two-state toggle between the CEILING and
+   * zero, so a partially-chosen line goes to full rather than to none:
+   *
+   *   current === 0  -> maxQty   (nothing chosen: take it all)
+   *   0 < current < maxQty -> maxQty   (PARTIAL: take it to the ceiling — this is
+   *     the case the old rule got wrong, because a partially-chosen line fell
+   *     through to "take it back" and emptied it)
+   *   current >= maxQty -> 0        (already full: take it back)
+   *
+ * The auto-selection stays — it is what shows the operator how the dialog works,
+ * `initial[lines[0].id] = 1` in the seeding effect — and this change is what makes it harmless.
+   */
   const toggleLineFull = useCallback((lineId: LineId, maxQty: number) => {
     setSelectedQtys((prev) => {
       const current = prev[lineId] ?? 0;
-      const next = current === 0 ? maxQty : 0;
-      return { ...prev, [lineId]: next };
+      const resolved =
+        current === 0 || current < maxQty ? maxQty : 0;
+      return { ...prev, [lineId]: resolved };
     });
   }, []);
 
@@ -87,6 +126,7 @@ export function SplitBillModal({
         selected.push({
           ...l,
           qty: chosenQty,
+          ...(typeof l.dispatchedQty === 'number' ? { dispatchedQty: Math.min(chosenQty, l.dispatchedQty) } : {}),
         });
         selMinor += l.unit_price.minor_units * chosenQty;
       }
@@ -95,6 +135,7 @@ export function SplitBillModal({
         remaining.push({
           ...l,
           qty: remainingQty,
+          ...(typeof l.dispatchedQty === 'number' ? { dispatchedQty: Math.min(remainingQty, l.dispatchedQty) } : {}),
         });
         remMinor += l.unit_price.minor_units * remainingQty;
       }
@@ -109,15 +150,28 @@ export function SplitBillModal({
   }, [lines, selectedQtys]);
 
   const handleConfirm = useCallback(async () => {
-    if (selectedLines.length === 0 || submitting) return;
+    if (selectedLines.length === 0) return;
+    // Synchronous re-entry guard. The confirm button renders `state={submitting ?
+    // 'processing' : 'ready'}`, and Button derives `disabled` from that state -- but React
+    // commits state on the NEXT render, so two clicks inside one tick both read `ready`
+    // here. Replaying this callback bills the SAME items twice: the caller creates the
+    // selected partition as its own sale.
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setSubmitting(true);
     try {
-      await onConfirmSplit(selectedLines, remainingLines);
+      // Only an EXPLICIT `false` keeps the modal open. Every other resolution —
+      // including `undefined`, which is what a parent that merely has no return
+      // value produces — closes it, so this stays backward-compatible with the
+      // success paths and with callers that never opted in.
+      const committed = await onConfirmSplit(selectedLines, remainingLines);
+      if (committed === false) return;
       onClose();
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
-  }, [selectedLines, remainingLines, submitting, onConfirmSplit, onClose]);
+  }, [selectedLines, remainingLines, onConfirmSplit, onClose]);
 
   if (!isOpen) return null;
 
@@ -131,10 +185,10 @@ export function SplitBillModal({
         ref={modalRef}
         role="dialog"
         aria-modal="true"
-        aria-label={l10n.getString('pos-split-modal-title') || 'Split Bill by Item'}
+        aria-label={requiredLocalized(l10n, 'pos-split-modal-title')}
         data-testid="pos-split-bill-modal"
       >
-        <div className="pos-split-modal-header">
+        <header className="pos-split-modal-header">
           <h2 className="pos-split-modal-title">
             <Localized id="pos-split-modal-title">
               <span>Split Bill by Item</span>
@@ -148,11 +202,11 @@ export function SplitBillModal({
             type="button"
             className="pos-split-modal-close-btn"
             onClick={onClose}
-            aria-label={l10n.getString('close') || 'Close'}
+            aria-label={requiredLocalized(l10n, 'close')}
           >
             ✕
           </button>
-        </div>
+        </header>
 
         <div className="pos-split-modal-list">
           {lines.map((line) => {
@@ -239,7 +293,7 @@ export function SplitBillModal({
           </div>
         </div>
 
-        <div className="pos-split-modal-actions">
+        <footer className="pos-split-modal-actions">
           <Button variant="ghost" size="sm" onClick={onClose}>
             <Localized id="pos-split-modal-cancel">
               <span>Cancel</span>
@@ -260,7 +314,7 @@ export function SplitBillModal({
               <span>Pay Selected ({formatMoney(selMoney)})</span>
             </Localized>
           </Button>
-        </div>
+        </footer>
       </div>
     </div>
   );

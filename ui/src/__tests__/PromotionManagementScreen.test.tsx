@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import { ToastProvider } from '@/components/Toast';
@@ -61,6 +61,21 @@ describe('PromotionManagementScreen', () => {
     mockCreatePromotion.mockReset();
     mockUpdatePromotion.mockReset();
     mockDeletePromotion.mockReset();
+  });
+
+  // A rejected listPromotions used to be reported only by an auto-dismissing
+  // toast, so the render fell through to the empty state and claimed there are
+  // no promotions — which reads as "nothing is discounted right now" on the
+  // screen that decides what customers are charged.
+  it('reports a failed promotion read instead of claiming there are none', async () => {
+    mockListPromotions.mockRejectedValue(new Error('Server offline'));
+    renderScreen();
+
+    await waitFor(() => {
+      expect(document.querySelector('.promo-mgmt-load-error')).toBeTruthy();
+    });
+    expect(screen.queryByText(/no promotions/i)).toBeNull();
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
   });
 
   it('renders the title', async () => {
@@ -315,6 +330,66 @@ describe('PromotionManagementScreen', () => {
 
     await waitFor(() => {
       expect(mockCreatePromotion).toHaveBeenCalled();
+    });
+  });
+
+  // A second Save while the create is in flight must not create a SECOND promotion.
+  //
+  // WHY THIS IS A TEST AND NOT A FIX: the server here is DEFENCELESS, unlike the
+  // ShiftBar pair (rounds 136-137), where core refused the replay. Bridge
+  // `create_promotion_scoped` mints a FRESH `uuid::Uuid::now_v7()` on every call
+  // (crates/kasirmu-bridge/src/promotions.rs:128) and core INSERTs unconditionally
+  // (crates/kasirmu-core/src/db/promotions.rs:133) -- there is NO unique constraint on
+  // `name`, so two calls store TWO live promotions, both applied at the till. The only
+  // thing preventing that is the `loading={saving}` prop on one Button
+  // (PromotionManagementScreen.tsx:430), which makes Button compute isDisabled.
+  //
+  // MEASURED that it holds, and KILL-TESTED that it is load-bearing: removing
+  // `loading={saving}` makes this case red with `expected 2 to be 1`. So the defect is
+  // NOT present -- what was missing is anything that would notice its absence. A guard
+  // that exists only as a prop, with no test naming it, is one edit from gone.
+  it('creates only one promotion for a double Save while the first is in flight', async () => {
+    mockListPromotions.mockResolvedValue([]);
+    let releaseCreate: ((v: unknown) => void) | undefined;
+    const heldCreate = new Promise((resolve) => { releaseCreate = resolve; });
+    mockCreatePromotion.mockImplementation(() => heldCreate as never);
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByText('No promotions yet.')).toBeTruthy();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByText('Add Promotion'));
+    await waitFor(() => {
+      expect(screen.getByText('Save')).toBeTruthy();
+    });
+
+    const nameInput = document.querySelector('input[aria-label="Name"]') as HTMLInputElement | null;
+    await user.type(nameInput!, 'Double Promo');
+
+    // fireEvent, NOT user.click: userEvent awaits its own act(), which flushes the
+    // pending promise chain, so the first create would already have settled and the two
+    // saves would never overlap. The false green this cost rounds 136 and 137.
+    const saveBtn = screen.getByText('Save').closest('button')!;
+    fireEvent.click(saveBtn);
+    // The guard is the BUTTON, not the handler: `loading={saving}` makes Button compute
+    // isDisabled (components/Button.tsx:72), so the second click is refused by the DOM.
+    // KILL-TESTED: removing that one prop re-sends the create and this case goes red.
+    // Assert the mechanism explicitly so a future edit that drops the prop fails HERE
+    // rather than silently shipping two identical discounts.
+    expect(saveBtn).toBeDisabled();
+    fireEvent.click(saveBtn);
+
+    expect(
+      mockCreatePromotion.mock.calls.length,
+      'a second Save re-sent the create while the first was in flight; the bridge mints ' +
+        'a new UUID per call, so this stores TWO promotions with the same name',
+    ).toBe(1);
+
+    releaseCreate?.(makePromo({ name: 'Double Promo' }));
+    await waitFor(() => {
+      expect(mockCreatePromotion).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -91,6 +91,285 @@ fn build_batches_minimum_one_item_per_batch() {
     assert_eq!(batches[0].len(), 1);
 }
 
+// ── O-M34: the size estimate must never under-count ──────────────
+//
+// `build_batches` used to serialise every item with `serde_json::to_vec` just
+// to measure it. It now charges a conservative estimate, which is only safe if
+// the estimate is an UPPER bound: an under-count silently pushes a batch past
+// MAX_BATCH_BYTES, which defeats the body limit the batching exists for. The
+// tests below pin that bound (measured, printing the margin on failure) and
+// the request-level consequence of it.
+
+/// A worst-case corpus for the estimate: every shape that can make the JSON
+/// LARGER than the payload bytes, plus the shapes that only inflate the
+/// envelope.
+///
+/// `serde_json` escapes `"`, `\\`, `\b`, `\f`, `\n`, `\r`, `\t` and every
+/// other control character to two bytes each, while non-ASCII UTF-8 passes
+/// through unescaped — so quotes and control characters are the payloads that
+/// break a naive `payload.len() + constant` estimate, and they are here.
+fn estimate_corpus() -> Vec<(&'static str, OfflineQueueItem)> {
+    let mut corpus: Vec<(&'static str, OfflineQueueItem)> = vec![
+        ("empty payload", OfflineQueueItem::new("a", "")),
+        (
+            "small json",
+            OfflineQueueItem::new("complete_sale", r#"{"total":150000}"#),
+        ),
+        (
+            "small json multi-field",
+            OfflineQueueItem::new(
+                "void_sale",
+                r#"{"sale_id":"0190f5c0-0000-7000-8000-000000000000","reason":"customer changed mind","total":1234}"#,
+            ),
+        ),
+        ("4096 quotes", OfflineQueueItem::new("a", "\"".repeat(4096))),
+        (
+            "4096 backslashes",
+            OfflineQueueItem::new("a", "\\".repeat(4096)),
+        ),
+        ("4096 tabs", OfflineQueueItem::new("a", "\t".repeat(4096))),
+        (
+            "4480 control chars",
+            OfflineQueueItem::new(
+                "a",
+                (0u8..32).map(|b| b as char).collect::<String>().repeat(140),
+            ),
+        ),
+        (
+            "4096 bytes accented",
+            OfflineQueueItem::new("a", "é".repeat(2048)),
+        ),
+        (
+            "4096 bytes CJK",
+            OfflineQueueItem::new("a", "亜".repeat(1365)),
+        ),
+        (
+            "4096 bytes emoji",
+            OfflineQueueItem::new("a", "😀".repeat(1024)),
+        ),
+        (
+            "lone surrogate escapes",
+            OfflineQueueItem::new("a", "\\ud800".repeat(600)),
+        ),
+        (
+            "33 KB payload",
+            OfflineQueueItem::new("b", "x".repeat(33 * 1024)),
+        ),
+        (
+            "128 KB payload",
+            OfflineQueueItem::new("huge", "x".repeat(128 * 1024)),
+        ),
+        (
+            "24 KB ascii + 4 KB accents",
+            OfflineQueueItem::new("a", format!("{}{}", "x".repeat(24000), "é".repeat(2048))),
+        ),
+    ];
+
+    // A long ACTION — it rides the wire beside the payload.
+    corpus.push(("long action", OfflineQueueItem::new("a".repeat(200), "{}")));
+
+    // A long `last_error` — an envelope field a failed item carries.
+    let mut with_error = OfflineQueueItem::new("complete_sale", "{}");
+    with_error.last_error = Some("e".repeat(500));
+    corpus.push(("long last_error", with_error));
+
+    // Several long string fields at once: the measured worst envelope.
+    let mut many_strings = OfflineQueueItem::new("c".repeat(200), "{}");
+    many_strings.last_error = Some("e".repeat(500));
+    many_strings.origin_terminal_id = Some("t".repeat(64));
+    many_strings.tenant_id = "u".repeat(64);
+    corpus.push(("long action + last_error + ids", many_strings));
+
+    corpus
+}
+
+/// THE invariant the whole change rests on: the estimate is never smaller than
+/// the real serialised length. An under-count here means `build_batches` fills
+/// a request past MAX_BATCH_BYTES, which is exactly what the 30 s transport
+/// ceiling and the server body limit exist to prevent.
+///
+/// The failure message prints the measured margin for every case, so a future
+/// change that erodes it (a shorter constant, a dropped term) fails with the
+/// number rather than a bare inequality.
+#[test]
+fn build_batches_estimate_never_under_estimates_the_wire() {
+    let mut failures: Vec<String> = Vec::new();
+    let mut margins: Vec<String> = Vec::new();
+
+    for (label, item) in estimate_corpus() {
+        let actual = serde_json::to_vec(&item)
+            .expect("a queue item always serialises")
+            .len();
+        let estimate = estimate_item_bytes(&item);
+        if estimate < actual {
+            failures.push(format!(
+                "{label}: estimate {estimate} < actual {actual} (payload {} bytes)",
+                item.payload.len()
+            ));
+        }
+        margins.push(format!(
+            "{label}: estimate {estimate} / actual {actual} (+{})",
+            estimate.saturating_sub(actual)
+        ));
+    }
+
+    assert!(
+        failures.is_empty(),
+        "the estimate must NEVER under-count the serialised item:\n  {}\nfull margins:\n  {}",
+        failures.join("\n  "),
+        margins.join("\n  ")
+    );
+}
+
+/// The escaping term is what covers payloads JSON must escape. This pins the
+/// two measured shapes where `payload.len() + constant` alone under-counts,
+/// so a future edit that "simplifies" the estimate back to the naive form
+/// fails here instead of on a live queue: 4096 quotes serialise to 8441 bytes
+/// and 4480 control characters to 24329, both more than a flat
+/// `payload.len() + envelope`.
+#[test]
+fn build_batches_estimate_covers_json_escaping_a_flat_constant_would_miss() {
+    for (label, payload) in [
+        ("quotes", "\"".repeat(4096)),
+        ("backslashes", "\\".repeat(4096)),
+        (
+            "control characters",
+            (0u8..32).map(|b| b as char).collect::<String>().repeat(140),
+        ),
+    ] {
+        let item = OfflineQueueItem::new("a", &payload);
+        let actual = serde_json::to_vec(&item).unwrap().len();
+        let flat = payload.len() + BATCH_ITEM_ENVELOPE_BYTES;
+        assert!(
+            actual > flat,
+            "{label}: this case is meant to DEFEAT a flat estimate; it did not (actual {actual}, flat {flat})"
+        );
+        assert!(
+            estimate_item_bytes(&item) >= actual,
+            "{label}: the shipped estimate must still cover it (actual {actual}, estimate {})",
+            estimate_item_bytes(&item)
+        );
+    }
+}
+
+/// The REQUEST bound, end to end: after batching with the real transport
+/// margins subtracted, every batch's serialised body — as
+/// `SyncTransport::push_items` sends it — fits in one MAX_BATCH_BYTES request.
+///
+/// Both arms are checked because a stamped push regrows every payload with
+/// `_terminal`/`_vector` before it goes on the wire, and the body is a bare
+/// JSON array the per-item estimate never charged for.
+#[test]
+fn build_batches_wire_body_respects_the_transport_budget() {
+    use kasirmu_core::offline::SyncPriority;
+
+    // A mix: many tiny items (envelope-dominated), a few large ones
+    // (payload-dominated), an escaping-heavy one, and a non-ASCII one.
+    let mut items: Vec<OfflineQueueItem> = Vec::new();
+    for i in 0..200 {
+        items.push(OfflineQueueItem::with_priority(
+            "complete_sale",
+            format!(r#"{{"seq":{i},"total":{}}}"#, i * 100),
+            SyncPriority::Critical,
+        ));
+    }
+    for i in 0..12 {
+        items.push(OfflineQueueItem::new(
+            "complete_sale",
+            format!(r#"{{"seq":{i},"pad":"{}"}}"#, "x".repeat(6000)),
+        ));
+    }
+    items.push(OfflineQueueItem::new("void_sale", "\"".repeat(4096)));
+    items.push(OfflineQueueItem::new("void_sale", "é".repeat(4096)));
+
+    for stamps in [false, true] {
+        let budget = MAX_BATCH_BYTES
+            .saturating_sub(transport_margin_per_item(stamps) * items.len())
+            .saturating_sub(TRANSPORT_MARGIN_BASE_BYTES);
+        let batches = build_batches(&items, budget);
+
+        // Every item accounted for, exactly once.
+        assert_eq!(
+            batches.iter().map(Vec::len).sum::<usize>(),
+            items.len(),
+            "every item must land in exactly one batch (stamps={stamps})"
+        );
+
+        for (i, batch) in batches.iter().enumerate() {
+            let wire: Vec<OfflineQueueItem> = if stamps {
+                batch
+                    .iter()
+                    .map(|item| {
+                        let mut copy = item.clone();
+                        copy.payload = crate::crdt::stamp_payload(
+                            &item.payload,
+                            "0123456789abcdef0123456789abcdef",
+                            7,
+                        );
+                        copy
+                    })
+                    .collect()
+            } else {
+                batch.clone()
+            };
+            let body = serde_json::to_vec(&wire)
+                .expect("a batch always serialises")
+                .len();
+            assert!(
+                body <= MAX_BATCH_BYTES,
+                "batch {i} body {body} bytes exceeds MAX_BATCH_BYTES {MAX_BATCH_BYTES} (stamps={stamps}, {} items)",
+                batch.len()
+            );
+        }
+    }
+}
+
+/// The order `build_batches` produces is still THE shared rule — computed, as
+/// of O-M34, without copying the backlog. Pinned here because the clone that
+/// used to carry the order is gone: a lift that dropped the `id` tie-break
+/// would look right on tier-sorted input and reshuffle same-millisecond items.
+#[test]
+fn build_batches_order_uses_the_shared_rule_without_cloning_the_backlog() {
+    use kasirmu_core::offline::SyncPriority;
+
+    const AT: &str = "2026-01-01T00:00:00.000Z";
+    let mk = |action: &str, priority: SyncPriority, at: &str| {
+        let mut item = OfflineQueueItem::with_priority(action, "{}", priority);
+        item.created_at = at.to_owned();
+        item
+    };
+    // Low first, and two Criticals sharing one millisecond.
+    let items = vec![
+        mk("bulk", SyncPriority::Low, "2025-12-31T00:00:00.000Z"),
+        mk("crit-a", SyncPriority::Critical, AT),
+        mk("catalog", SyncPriority::Normal, AT),
+        mk("crit-b", SyncPriority::Critical, AT),
+    ];
+
+    let batches = build_batches(&items, MAX_BATCH_BYTES);
+    assert_eq!(
+        batches.len(),
+        1,
+        "all four are tiny and belong in one batch"
+    );
+    let got: Vec<&str> = batches[0].iter().map(|i| i.action.as_str()).collect();
+
+    let mut expected: Vec<OfflineQueueItem> = items.clone();
+    kasirmu_core::offline::order_for_push(&mut expected);
+    let expected: Vec<&str> = expected.iter().map(|i| i.action.as_str()).collect();
+
+    assert_eq!(
+        got, expected,
+        "batch order must be the order_for_push order"
+    );
+    assert_eq!(got[0], "crit-a");
+    assert_eq!(
+        got[1], "crit-b",
+        "same millisecond is broken by id, ascending"
+    );
+    assert_eq!(got[3], "bulk", "Low transmits last");
+}
+
 // ── SyncError ────────────────────────────────────────────────
 
 #[test]
@@ -1812,9 +2091,12 @@ fn apply_push_outcomes_conflict_uses_shared_resolver() {
     );
 }
 
-/// A batch longer than the results is not misaligned: `zip` stops at the
-/// shorter side, so a truncated server response leaves the trailing items
-/// PENDING rather than marking them from a neighbour's outcome.
+/// A truncated server response (fewer outcomes than items sent) must:
+/// 1. Apply the outcomes it has — item A gets the server's Accepted verdict.
+/// 2. Leave the trailing items PENDING — item B has no outcome and must NOT
+///    inherit A's verdict.
+/// 3. Return `Err` so the caller knows the batch was not fully acknowledged,
+///    rather than letting the cycle appear successful with a silent tail.
 #[test]
 fn apply_push_outcomes_truncated_results_leave_trailing_items_pending() {
     let conn = kasirmu_core::migrations::fresh_db();
@@ -1824,14 +2106,22 @@ fn apply_push_outcomes_truncated_results_leave_trailing_items_pending() {
     let b = store.enqueue_offline("sale.create", "{\"n\":2}").unwrap();
 
     let results = vec![transport::PushOutcome::Accepted];
-    apply_push_outcomes(&queue, &store, &[a.clone(), b.clone()], &results).unwrap();
+    // The truncated response is an error — the cycle must not appear successful.
+    let err = apply_push_outcomes(&queue, &store, &[a.clone(), b.clone()], &results)
+        .expect_err("a truncated response must be reported as an error");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("1 item(s) left unacknowledged"),
+        "error message must name how many items were unacknowledged, got: {msg}"
+    );
 
     let all = store.list_all_offline().unwrap();
     // OfflineQueueStatus is Copy, so the closure returns it by value.
     let got = |id: &str| all.iter().find(|i| i.id == id).unwrap().status;
     assert_eq!(
         got(&a.id),
-        kasirmu_core::offline::OfflineQueueStatus::Synced
+        kasirmu_core::offline::OfflineQueueStatus::Synced,
+        "items that DID get a server outcome must still be applied"
     );
     assert_eq!(
         got(&b.id),

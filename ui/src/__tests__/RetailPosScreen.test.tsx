@@ -6,7 +6,7 @@
 // the payment modal or long-press timers. 24 tests.
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders, renderWithProvidersSync, rerenderWithProviders } from '@/__tests__/test-utils/render';
 import { createUsePosStateMock } from '@/__tests__/test-utils/mocks/usePosState';
@@ -43,7 +43,11 @@ vi.mock('@/api/products', async () => {
 vi.mock('@/api/shifts', async () => {
   const { createShiftsApiMock } = await import('@/__tests__/test-utils/mocks/api');
   return createShiftsApiMock({
-    getActiveShiftScoped: vi.fn(() => Promise.reject(new Error('no shift'))),
+    // The bridge returns Ok(None) when no shift is open (crates/kasirmu-bridge/
+    // src/shifts.rs:346), and ui/src/api/shifts.ts types it ShiftDto | null. A
+    // REJECTION therefore means the read failed, not "no shift" — modelling it
+    // as a rejection is what made a failed read render as "No shift".
+    getActiveShiftScoped: vi.fn(() => Promise.resolve(null)),
   });
 });
 
@@ -292,6 +296,19 @@ describe('RetailPosScreen — rendering', () => {
     await waitFor(() => expect(screen.getByText(/No shift/)).toBeInTheDocument());
   });
 
+  // A REJECTED active-shift read is not "no shift open" — the bridge answers
+  // Ok(None) for that. Collapsing the failure to null made the header assert
+  // "No shift" and made Pay tell the cashier to open a shift first, for a read
+  // that never answered at all.
+  it('says the shift is unknown when the read fails, not "No shift"', async () => {
+    const shifts = await import('@/api/shifts');
+    vi.mocked(shifts.getActiveShiftScoped).mockRejectedValueOnce(new Error('Server offline'));
+
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(screen.getByText(/Shift unknown/)).toBeInTheDocument());
+    expect(screen.queryByText(/^No shift$/)).toBeNull();
+  });
+
   it('loads and displays products', async () => {
     await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
     await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
@@ -299,6 +316,21 @@ describe('RetailPosScreen — rendering', () => {
     expect(screen.getByText('Teh Botol Sosro')).toBeInTheDocument();
     expect(screen.getByText('Nasi Goreng Spesial')).toBeInTheDocument();
     expect(screen.getByText('Aqua 600ml')).toBeInTheDocument();
+  });
+
+  // ── SERVICE items are sellable here, not just creatable ──────────────
+  //
+  // `'service'` is the third value of the closed `product_type` set
+  // (migration 20261020_product_type_check.sql:41) and is backend-supported:
+  // `products_stock_query.rs:403` reads `is_service` and SKIPS stock deduction. But
+  // this grid filtered on `'retail'` alone and the restaurant grid on `'restaurant'`
+  // alone, so a service item — an installation fee, an hourly rate — could be created
+  // from ProductManagementScreen and then never added to a sale in EITHER workspace.
+  // A type the UI can write but no grid can sell is the write-only shape.
+  it('shows a service item on the grid, not just in the catalog', async () => {
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await showAllProducts();
+    expect(screen.getByText('Installation Fee')).toBeInTheDocument();
   });
 
   it('shows low-stock badge for products with stock_qty <= 5', async () => {
@@ -582,6 +614,72 @@ describe('RetailPosScreen — rendering', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: /credit reminders/i })).toBeInTheDocument());
   });
 
+  it('settles a credit sale once for a double tap while the first is in flight', async () => {
+    // The credit list is a real write surface that had never been exercised: before this
+    // case no test in the suite named `settleCreditScoped` at all, so a double tap here was
+    // invisible.
+    //
+    // `RetailModals.tsx:387` disables the row button on `settlingId === c.saleId` -- a
+    // STATE guard, so React commits it on its next render, after the second dispatch of a
+    // real double tap. Unlike the batch handlers, this one is per-row: a different row can
+    // legitimately settle concurrently, which is why the guard is per-sale rather than global
+    // and why the same-task case is the one that matters.
+    //
+    // The backend does not refuse the replay either:
+    //   UPDATE payments SET settled_at = ?1 WHERE sale_id = ?2 AND method = 'credit'
+    // (crates/kasirmu-bridge/src/settings.rs:657) -- no status predicate, no idempotency key,
+    // and it writes on ZERO matched rows without checking `rows`, so it reports success even
+    // for a sale that was already settled or was never a credit sale. A double tap therefore
+    // moves `settled_at` to a LATER timestamp: the payment record now claims the credit was
+    // cleared a second time, and the first timestamp is gone -- the round-143 last-write-wins
+    // shape, on a payment.
+    const sp = await import('@/features/sales/usePosState');
+    vi.mocked(sp.usePosState).mockReturnValue(createUsePosStateMock({
+      lines: [{ id: 'line-1' as LineId, sku: 'SKU-001' as Sku, name: 'Indomie Goreng', category: 'cat-food', qty: 1, unit_price: { minor_units: 3500, currency: 'IDR' } }],
+      total: { minor_units: 3500, currency: 'IDR' },
+      subtotal: { minor_units: 3500, currency: 'IDR' },
+    }));
+    const { createSettingsApiMock } = await import('@/__tests__/test-utils/mocks/api');
+    const settingsMock = createSettingsApiMock({
+      getStoreSettingsScoped: vi.fn(() =>
+        Promise.resolve({ name: 'TOKO TEST', address: '', taxId: '', currency: 'IDR', branch: '', logo: '' })),
+      listCreditSalesScoped: vi.fn(() => Promise.resolve([
+        { saleId: 'sale-c1', total: { minor_units: 35000, currency: 'IDR' },
+          createdAt: '2026-07-01T10:00:00Z', settledAt: null },
+      ])),
+    });
+    const settle = settingsMock.settleCreditScoped as ReturnType<typeof vi.fn>;
+    let releaseSettle: ((v: unknown) => void) | undefined;
+    const held = new Promise((resolve) => { releaseSettle = resolve; });
+    settle.mockImplementation(() => held as never);
+
+    // Re-point the module mock at this instance so the handler calls the spy we read.
+    const settingsMod = await import('@/api/settings');
+    Object.assign(settingsMod, { listCreditSalesScoped: settingsMock.listCreditSalesScoped, settleCreditScoped: settle });
+
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(screen.getByText('F1')).toBeInTheDocument());
+    await userEvent.keyboard('{Control>}k{/Control}');
+    await waitFor(() => expect(screen.getByRole('heading', { name: /credit reminders/i })).toBeInTheDocument());
+
+    const settleBtn = screen.getByRole('button', { name: /settle/i });
+    // Both taps in ONE batch: a real double tap dispatches twice before React can commit
+    // `settlingId` and disable the row (round 148's shape).
+    await act(async () => {
+      fireEvent.click(settleBtn);
+      settleBtn.removeAttribute('disabled');
+      fireEvent.click(settleBtn);
+    });
+
+    expect(
+      settle.mock.calls.length,
+      'a second tap re-settled the credit sale; the UPDATE has no status predicate, so ' +
+        'settled_at moves to a later time and the first timestamp is lost',
+    ).toBe(1);
+
+    releaseSettle?.(undefined);
+    await act(async () => { await held; });
+  });
   it('F11 key badge is present in the function bar', async () => {
     await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
     await waitFor(() => expect(screen.getByText('F1')).toBeInTheDocument());

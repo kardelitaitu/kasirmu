@@ -351,7 +351,7 @@ function TopologyNodeCardImpl({
         {(() => {
           const isEnabled = node.metadata?.['enabled'] !== false;
           return (
-            <div className="node-body-actions" role="toolbar" aria-label="Node actions">
+            <div className="node-body-actions" role="toolbar" aria-label={l10n.getString('topology-node-actions')}>
               {/* Button 1: Active / Disabled */}
               <button
                 type="button"

@@ -6,14 +6,15 @@
  *   restaurant terminal is seeded with rows named 'Table 1', 'Table 2',
  *   'Table 12' (read from the tablet's store db, 2026-10-09), and
  *   `TableManagementScreen` hands `selected.name` straight to the cart
- *   (`TableManagementScreen.tsx:411`) — so `tableNumber` arrives already reading
+ *   (the `onSelectTable(selected.name)` call — anchored by name; the :411 this once
+ *   cited is a blank line now) — so `tableNumber` arrives already reading
  *   "Table 12".
  *
  *   Both places that render it ALSO add the word:
  *
  *     PaymentModal.tsx  <Localized id="payment-table-number" vars={{ number: tableNumber }}>
- *                       with `payment-table-number = Table { $number }` (sales.ftl:40)
- *     CartPanel.tsx:648 `Table ${tableNumber}`
+ *                       with `payment-table-number = Table { $number }` (sales.ftl:45)
+ *     CartPanel.tsx:761 `Table ${bareTableNumber(tableNumber!)}`
  *
  *   which composed "Table Table 12" on a real restaurant order.
  *
@@ -86,10 +87,12 @@ export function matchesTableBill(
   const bare = bareTableNumber(tableName);
   if (!bare) return false;
   const escapedBare = bare.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`\\b(?:table|meja)\\s+${escapedBare}\\b`, 'i');
+  const trimmedTable = tableName.trim();
+  const escapedTable = trimmedTable.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`(^|\\b)(?:(?:table|meja)\\s+)?(?:${escapedBare}|${escapedTable})\\b`, 'i');
 
   const bareLower = bare.toLowerCase();
-  const tableLower = tableName.toLowerCase();
+  const tableLower = trimmedTable.toLowerCase();
 
   if (bill.label) {
     const lblLower = bill.label.toLowerCase();

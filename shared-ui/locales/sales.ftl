@@ -27,10 +27,15 @@ pos-bundle-expanded =
     }
 pos-no-barcode-match = No product or bundle matches this barcode
 pos-close-shift-cart-error = Complete or clear the current sale before closing the shift.
+pos-close-shift-open-tab-error = A customer still has an open tab on this terminal. Complete or move it before closing the shift.
 pos-close-shift-failed = Failed to close shift
 
 # Scanner
 pos-scanner-error = Scanner error: { $detail }
+# The barcode lookup itself failed (IPC/network), as opposed to `pos-no-barcode-match`,
+# which is a clean miss. The two need different wording: a miss means "this code is not
+# ours", a failed lookup means "we could not check" — and every retry fails too.
+pos-barcode-lookup-failed = Could not check this barcode — please try again
 pos-toast-receipt-settings-failed = Failed to load receipt settings
 
 # Payment Modal
@@ -73,6 +78,12 @@ payment-method-bank-transfer = Bank Transfer
 payment-method-ewallet = E-Wallet
 payment-method-pay-later = PayLater
 payment-method-credit = Credit
+payment-method-gift-card = Gift Card
+payment-method-card-giro = Card / Giro
+payment-method-qris-ewallet = QRIS / E-Wallet
+# Kasbon (receivable) settlement's note field (round 211).
+kasbon-pay-note = Note
+kasbon-pay-note-placeholder = Optional note
 payment-method-other =
     .aria-label = Other payment method
 payment-other-placeholder =
@@ -90,6 +101,7 @@ payment-customer-name-aria =
     .aria-label = Customer name for open bill
 payment-change = Change
 payment-insufficient = Insufficient amount
+payment-tender-unreadable = Check the amount — use the store's usual thousands and decimal separators
 payment-qris-description = Generate a QRIS QR code for the customer to scan with their payment app.
 payment-qris-pay = Pay with QR
 payment-qris-dynamic-pay = Pay with dynamic QR
@@ -177,6 +189,7 @@ payment-open-bill = Open Bill
 payment-credit-sale = Credit Sale
 payment-credit-disabled = Store credit facility is currently disabled in Settings.
 payment-credit-limit-exceeded = Sale total exceeds maximum credit ceiling.
+payment-credit-settings-unavailable = Credit settings could not be loaded — the store's credit limit could not be checked.
 payment-customer-name = Customer Name
 payment-customer-change = Change
 payment-customer-select = Select Customer
@@ -206,6 +219,7 @@ payment-toast-kds-failed = Payment succeeded, but the kitchen ticket could not b
 payment-toast-loyalty-redeem-failed = Payment succeeded, but the loyalty points were NOT deducted — fix the customer's points manually
 payment-toast-print-failed = Nothing was printed — check that a printer is set up and reachable
 payment-toast-receipt-unavailable = Payment succeeded, but the receipt could not be prepared — the sale is saved, check the sale history to reprint
+payment-toast-stock-warning = Stock warning: { $product } (ordered { $requested }, available { $available })
 payment-toast-invoice-issued = Tax invoice issued successfully
 payment-toast-invoice-failed = Failed to issue tax invoice
 # Money-path failures. These two are written as INSTRUCTIONS rather than diagnoses:
@@ -213,6 +227,17 @@ payment-toast-invoice-failed = Failed to issue tax invoice
 # (which arrives in English and cannot be localized here) is logged, not shown.
 payment-toast-finalize-failed = The sale could not be finalised — check the sale history and settle it manually
 payment-toast-void-failed = The pending sale could NOT be voided — it is still open and must be cleared manually
+payment-toast-receivable-failed = Payment succeeded, but the receivable entry could not be created — record it manually
+payment-toast-gift-card-redeem-failed = Payment succeeded, but the gift card balance was NOT deducted — deduct the card balance manually
+payment-pay-later-select-customer = Select Customer for Kasbon
+payment-pay-later-customer-desc = Kasbon records a receivable against an identified customer account.
+payment-pay-later-open-search = Select Customer
+payment-pay-later-loading = Loading kasbon balance...
+payment-pay-later-outstanding = Current Kasbon Debt
+payment-pay-later-invoices = Open Bills
+payment-pay-later-overdue = Has Overdue Kasbon
+payment-pay-later-projected = New Total Debt
+payment-pay-later-limit-warning = Warning: Total kasbon exceeds customer credit limit.
 payment-customer-placeholder = e.g. John Doe
 payment-loyalty-points-aria = Points
 payment-search-customers-aria = Search customers
@@ -239,7 +264,6 @@ payment-shortfall-cancelled = Sale cancelled due to insufficient stock.
 
 # Sales History
 sales-history-title = Sales History
-sales-history-loading = Loading sales…
 sales-history-error-load = Failed to load sales history
 sales-history-empty = No sales recorded yet
 sales-history-empty-filtered = No sales match your filters
@@ -302,6 +326,10 @@ sales-history-refund-lines-aria =
     .aria-label = Refund line items
 sales-history-detail-title = Sale Detail
 sales-history-detail-close = Close
+# The open sale's PRIMARY read did not answer. The detail modal cannot render without a
+# sale, so this is the only surface that can report it — without it the cashier taps a
+# row and nothing happens at all.
+sales-history-detail-load-failed = Could not open this sale — tap it again to retry
 sales-history-detail-print = Reprint Receipt
 sales-history-detail-id = ID
 sales-history-detail-receipt = Receipt
@@ -339,9 +367,10 @@ sales-history-line-tax = Tax
 sales-history-tax-estimated-badge = Estimated
 sales-history-status-all = All
 sales-history-status-completed = Completed
+sales-history-status-active = In progress
 sales-history-status-pending = Pending
-sales-history-status-cancelled = Cancelled
 sales-history-status-voided = Voided
+sales-history-status-unknown = Unknown status
 sales-history-export-csv = Export CSV
 sales-history-search-label = Search
 sales-history-status-label = Status
@@ -368,6 +397,18 @@ sales-history-void-error = Failed to void order
 # Shown inside the e-Faktur stamp modal when the NSFP write fails (ERR-10: the
 # raw backend message used to be rendered here instead).
 sales-history-stamp-error = Failed to stamp the e-Faktur NSFP
+# The stamp dialog's chrome (round 211). Its BODY was already Indonesian —
+# "Masukkan 13-digit Nomor Seri Faktur Pajak ... diterbitkan oleh DJP Coretax",
+# and the ten Kode Transaksi options below it — while the header, close button,
+# placeholder, preview label and both actions were English literals in the same
+# dialog. A merchant reading Indonesian copy with an English "Stamp e-Faktur"
+# button is the asymmetry these keys close.
+sales-history-efaktur = e-Faktur
+sales-history-stamp-modal-aria = Stamp e-Faktur NSFP
+sales-history-stamp-title = Input e-Faktur NSFP (DJP Coretax)
+sales-history-stamp-nsfp-placeholder = e.g. 2600000000123
+sales-history-stamp-preview = Format Faktur Pajak:
+sales-history-stamp-confirm = Stamp e-Faktur
 # Toast shown when creating a Faktur Pengganti fails.
 sales-history-pengganti-error = Failed to create the Faktur Pengganti
 
@@ -426,7 +467,7 @@ void-orders-status-active = Active
 void-orders-status-completed = Completed
 void-orders-status-voided = Voided
 void-orders-status-pending = Pending
-void-orders-loading = Loading orders…
+void-orders-status-unknown = Unknown status
 void-orders-retry = Retry
 void-orders-empty-filtered = No orders match the current filters.
 void-orders-empty-none = No orders recorded yet.
@@ -642,6 +683,9 @@ eod-summary-voided-sales = Voided Sales
 eod-summary-voided-value = Voided Value
 eod-summary-discounts = Sales with Discounts
 eod-summary-payment-methods = Payment Methods Used
+eod-summary-piutang-collections = Piutang Collections
+eod-payment-piutang-collections = Piutang Collections
+eod-payment-pay-later = Pay Later (Piutang)
 # CSV export labels. The export wrote these as raw English literals while the screen
 # beside it rendered the same facts through eod-summary-* keys; the row VALUES reuse
 # those keys, and only these four have no screen equivalent.
@@ -801,6 +845,7 @@ retail-load-error-retry-aria = Retry loading products
 retail-store-name-fallback = TOKO
 retail-shift-label = Shift
 retail-no-shift = No shift
+retail-shift-unknown = Shift unknown
 retail-search-placeholder = Cari produk…
 retail-search-clear-aria = Clear search
 retail-no-products = No products
@@ -894,9 +939,9 @@ restaurant-shortcut-print-bill = Print bill
 restaurant-shortcut-split-bill = Split bill
 restaurant-shortcut-save-tab = Save tab
 restaurant-shortcut-open-tables = Open tables
+restaurant-shortcuts-help-title = Keyboard shortcuts
 retail-shortcut-list = This shortcut list
 retail-shortcut-close = Close modal / Options
-retail-shortcut-fullscreen = Toggle Fullscreen
 retail-shortcut-credit = Credit reminders
 retail-shortcut-low-stock = Filter low-stock products
 retail-toast-failed-settings = Failed to load store settings
@@ -1060,7 +1105,6 @@ retail-row-menu-view-images = View product images
 product-lookup-rack-title = Rack position
 
 # ── Gift Cards ─────────────────────────────────────────────────────
-gift-cards-loading = Loading...
 gift-cards-status-all = All Statuses
 gift-cards-status-active = Active
 gift-cards-status-frozen = Frozen
@@ -1124,7 +1168,6 @@ pos-promotions-applied = Promotions applied: { $name }
 pos-promotions-toggle-aria = Toggle promotion { $name }
 pos-promotions-selected-count = { $count } selected
 pos-promotions-apply-selected = Apply promotions
-pos-promotions-apply-aria = Apply promotion { $name }
 pos-promotions-unavailable-aria = Promotion { $name } is not applicable
 
 # ── Product image editor (spec 0046b §3.2–3.3) ──
@@ -1159,13 +1202,13 @@ pos-cart-customer-label = Customer
 pos-cart-customer-placeholder = Name (optional)...
 pos-cart-customer-aria = Customer name (optional)
 pos-cart-new-tab = New Tab
-pos-cart-new-tab-title = Clear active cart to start a new tab
 pos-cart-guest-count-label = Guests
 pos-cart-order-type-dine-in = Dine In
 pos-cart-order-type-takeaway = Takeaway
 pos-cart-order-type-delivery = Delivery
 pos-cart-guest-placeholder = Guests
 edit-modifiers = Edit
+pos-cart-line-customize-aria = Customize item
 pos-cart-print-bill = Print Bill
 pos-cart-print-bill-aria = Print preliminary bill for customer review
 pos-cart-split-bill = Split Bill
@@ -1181,6 +1224,9 @@ pos-cart-send-kitchen = Send to Kitchen
 pos-cart-send-kitchen-aria = Send new items to kitchen printer and KDS
 pos-toast-kitchen-dispatched = Order sent to kitchen for { $table }
 pos-toast-kitchen-dispatch-failed = Failed to send order to kitchen
+pos-toast-kitchen-print-failed = The order was sent, but the kitchen ticket did not print — check the printer
+pos-toast-bar-print-failed = The order was sent, but the bar ticket did not print — check the printer
+payment-toast-table-assign-failed = The sale went through, but the table was not marked occupied — re-assign it on the floor plan
 pos-toast-held-cart-delete-failed = Failed to delete the held cart
 pos-toast-auth-required = Please sign in again to continue
 pos-toast-tab-balance-failed = Failed to update the remaining tab balance
@@ -1201,6 +1247,16 @@ pos-toast-no-active-cart = No active sale to price
 pos-toast-open-bills-failed = Failed to load open bills
 pos-toast-bill-save-failed = Failed to save the tab
 pos-toast-bill-resume-failed = Failed to reopen the tab
+# Resumed a tab another terminal currently holds. Names them, so the operator can ask.
+# Refusing is what leaves the lease intact — see usePosHeldCarts.handleResumeOpenBill.
+pos-toast-tab-held-by-other = { $terminal } is working on this tab. Ask them to finish, or use Take Over on the tab.
+# Resuming a DIFFERENT tab over a cart that already holds one. The first tab's
+# order must not be discarded by a mis-tap, so the resume is refused and says so.
+pos-toast-resume-cart-not-empty = Finish or hold the current tab before opening another
+# A price write refused because its currency differs from the cart's. The cart runs
+# single-currency (MONEY-AUDIT-F1), so a line left in another currency cannot be repriced.
+retail-toast-override-failed = Could not apply the price override
+pos-toast-line-price-currency-mismatch = Cannot change this item's price while the cart holds another currency
 pos-toast-bill-saved = Tab for { $label } saved
 pos-toast-bill-updated = Tab for { $label } updated
 # POS hardware checks on the store settings card.
@@ -1208,3 +1264,14 @@ pos-toast-printer-unconfirmed = The printer did not confirm the print — check 
 pos-toast-test-receipt-sent = Test receipt sent
 pos-toast-drawer-kick-sent = Cash drawer signal sent
 pos-toast-drawer-unconfirmed-short = The cash drawer did not confirm it opened — check the device
+
+# Round 212 - round 211's follow-through: the course-firing section label, the
+# two debt-panel failure badges, and the shortcuts-help close button.
+pos-cart-course-firing = Course Firing
+dashboard-debt-receivables-failed = Could not load receivables
+dashboard-debt-payables-failed = Could not load payables
+restaurant-shortcuts-help-close-aria = Close keyboard shortcuts
+# Placeholders for the product modals' two free-text fields (round 212).
+# "pcs / kg / box" is a unit HINT the operator types over, so it is copy.
+retail-edit-unit-placeholder = pcs / kg / box
+retail-edit-rack-placeholder = A-01

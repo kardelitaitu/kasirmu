@@ -1,5 +1,5 @@
 //! Unit tests for the table command bodies (Wave-F test relocation:
-//! moved out of `apps/desktop-tauri/src/commands/tables_tests.rs`).
+//! moved out of `apps/desktop-client/src/commands/tables_tests.rs`, since renamed to desktop-tauri).
 //!
 //! Mounted at the foot of `tables.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the nine bridge command bodies and the
@@ -11,7 +11,6 @@
 
 use super::*;
 use crate::testing::TestBridge;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use kasirmu_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
@@ -38,32 +37,32 @@ fn seed_staff(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
-/// Instance counter disambiguating store-db directories within one process.
-static STORE_DIR_SEQ: AtomicU64 = AtomicU64::new(0);
-
 /// Unique per-test directory for the isolated store-db manager. The manager
-/// creates the directory lazily on first `open_store`; leftovers are left
-/// for the OS temp cleaner, exactly like the harness's own store roots (the
-/// desktop file used `tempfile::tempdir()`, which is not a dev-dependency
-/// of this crate).
-fn unique_store_dir() -> std::path::PathBuf {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    std::env::temp_dir().join(format!(
-        "kasirmu-bridge-tables-{}-{}-{}",
-        std::process::id(),
-        nanos,
-        STORE_DIR_SEQ.fetch_add(1, Ordering::Relaxed)
-    ))
+/// creates the directory lazily on first `open_store`; rooted under
+/// `target/test-scratch` rather than `std::env::temp_dir()`, which on this
+/// project's Windows machines is the MACHINE-level `C:\WINDOWS\TEMP` -- a
+/// directory an ordinary user can create in but not delete from, so a stale
+/// entry made the create itself fail with `os error 5`. `scratch_dir`'s
+/// per-call UUID replaces the pid/nanos/counter triple.
+fn unique_store_dir() -> (std::path::PathBuf, kasirmu_test_support::ScratchDir) {
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-tables");
+    (scratch.path().to_path_buf(), scratch)
 }
 
 /// Isolated store-db manager over a fresh directory — the direct twin of the
 /// desktop `scoped_state` harness's
 /// `StoreDatabaseManager::new(temp_dir, migrations::ALL)`.
-fn store_manager() -> StoreDatabaseManager {
-    StoreDatabaseManager::new(unique_store_dir(), kasirmu_core::migrations::ALL)
+///
+/// Returns the `ScratchDir` guard alongside: `scratch_dir()` hands back a bare
+/// `PathBuf` that nothing deletes, and this module was one of six that leaked a
+/// directory per test because of it (706 measured). The guard must ride on the
+/// bridge — see `TestBridge::with_db_manager_scratch`.
+fn store_manager() -> (StoreDatabaseManager, kasirmu_test_support::ScratchDir) {
+    let (dir, scratch) = unique_store_dir();
+    (
+        StoreDatabaseManager::new(dir, kasirmu_core::migrations::ALL),
+        scratch,
+    )
 }
 
 /// `TestBridge` with a fresh migrated global DB, an isolated store-db dir
@@ -76,9 +75,10 @@ fn scoped_bridge(
     role_id: &str,
     store_id: &str,
 ) -> TestBridge {
+    let (manager, scratch) = store_manager();
     let bridge = TestBridge::new()
         .with_conn(conn)
-        .with_db_manager(store_manager());
+        .with_db_manager_scratch(manager, scratch);
     bridge.sessions().write().unwrap().insert(
         token.into(),
         SessionContext::new(

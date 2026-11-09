@@ -74,3 +74,5 @@ sentinel was that the file after the mutation did not look like the intended mut
 The check that caught it is the one used every time a kill-test *passes*: read the mutated
 line back and confirm the file says what the mutation claims. Restored, re-applied as a
 distinct replacement, and killed for real.
+
+> last audited 14-10-26 by docs-auditor

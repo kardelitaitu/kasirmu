@@ -145,4 +145,29 @@ Nothing automated. The compensation is that every repair in this campaign re-ver
 numbers against source by **reading the target line**, and said so in the commit. That is
 manual, and this page exists so the next agent does not re-derive the measurement.
 
+## Addendum 2026-10-27: plan documents are a documented blind spot, and it bites
+
+The measurement above covers source comments in `ui/src`. It does not cover **plan documents**,
+and `check-dead-refs.py` cannot: `:377-394` exempts any file whose name contains `todo-`,
+`plan-` or `prd-`, so a live plan's paths are graded by nothing. The exemption is deliberate and
+its comment states the trade-off exactly — *"over-exempting a live doc can only hide findings,
+while under-exempting a historical one invents them, and invented ones are what trained people to
+ignore this tool"* — and it even predicts this cost: *"so is a genuinely live plan whose name
+happens to contain one of these words"*.
+
+**A real instance, found 2026-10-27.** `docs/plans/_active/website-plan.md` opened with a
+grounding claim — *"everything in this plan maps to code that already exists"* — and cited
+`crates/oz-core/src/subscription.rs` **four times**. That path has not existed since the rebrand;
+the crate is `crates/kasirmu-core`, and `kasirmu-core/src/subscription.rs:97` does hold what the
+plan says it holds ("The subscription tier (Free, Plus, Pro, Premium, Enterprise)"). Both gates that
+could have caught it were silent, for two different reasons: `check-dead-refs.py` exempts the
+filename, and `check-cite-lines.py` grades `file:line` pairs whose *file* resolves — a dead
+DIRECTORY is outside both.
+
+**The lesson is narrower than "build a guard".** A plan's grounding claim is the one sentence that
+must be true when the plan is read as an instruction, and it is the sentence no checker grades.
+The cheap discipline that would have caught this is the same one this page already recommends for
+line numbers — re-derive by search rather than trusting the text: `ls crates/` takes a second, and
+the pre-rebrand/during-rebrand split is visible immediately. Recorded because the next agent will
+read a plan, believe its grounding line, and lose an hour to a crate that is not there.
 > last audited 11-10-26 by docs-auditor

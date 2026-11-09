@@ -10,7 +10,13 @@
  * it will fail with "document is not defined" rather than silently degrade.
  */
 import { describe, expect, it } from 'vitest';
-import { buildCompletedSaleReceipt, buildKitchenChitReceipt, isBeverageItem } from '@/features/sales/payment/completedSale';
+import {
+  buildCompletedSaleReceipt,
+  buildKitchenChitReceipt,
+  buildPreCheckoutBillReceipt,
+  formatReceiptLineNote,
+  isBeverageItem,
+} from '@/features/sales/payment/completedSale';
 import type { CartLine, Money } from '@/types/domain';
 import type { SaleDetail, PaymentDto } from '@/api/sales';
 import type { ActiveMarketProfile } from '@/api/regional';
@@ -236,6 +242,78 @@ describe('buildCompletedSaleReceipt', () => {
     expect(receipt.customerName).toBe('Acme Corp');
     expect(receipt.customerTaxId).toBe('01.234.567.8-901.000');
   });
+
+  it('preserves modifiers and customer notes on completed sale receipt items', () => {
+    const lines: CartLine[] = [
+      {
+        ...makeCartLine('Wagyu Burger', 1, 95000),
+        modifiers: [
+          { groupId: 'g1', groupName: 'Cheese', modifierId: 'm1', modifierName: 'Extra Cheddar', priceMinor: 10000 },
+          { groupId: 'g2', groupName: 'Cook', modifierId: 'm2', modifierName: 'Medium Rare', priceMinor: 0 },
+        ],
+        note: 'No pickles',
+      },
+      {
+        ...makeCartLine('Iced Latte', 2, 35000),
+        modifiers: [
+          { groupId: 'g3', groupName: 'Milk', modifierId: 'm3', modifierName: 'Oat Milk', priceMinor: 5000 },
+        ],
+      },
+    ];
+
+    const receipt = buildCompletedSaleReceipt({
+      saleId: 's-mod-1',
+      saleTotal: makeMoney(165000),
+      completedSale: null,
+      cartLines: lines,
+      cartCurrency: 'IDR',
+      fallbackTotalMinor: 165000,
+      payments: [makePayment('cash', 165000)],
+    });
+
+    expect(receipt.items).toHaveLength(2);
+    expect(receipt.items?.[0]?.note).toBe('Extra Cheddar, Medium Rare | No pickles');
+    expect(receipt.items?.[1]?.note).toBe('Oat Milk');
+  });
+});
+
+describe('buildPreCheckoutBillReceipt', () => {
+  it('formats pre-checkout bill receipt with table number, modifiers, and notes', () => {
+    const lines: CartLine[] = [
+      {
+        ...makeCartLine('Grilled Salmon', 1, 120000),
+        modifiers: [
+          { groupId: 'g1', groupName: 'Side', modifierId: 'm1', modifierName: 'Mashed Potatoes', priceMinor: 0 },
+        ],
+        note: 'Sauce on side',
+      },
+    ];
+
+    const bill = buildPreCheckoutBillReceipt({
+      billNumber: 'BILL-007',
+      cartLines: lines,
+      cartCurrency: 'IDR',
+      subtotal: makeMoney(120000),
+      total: makeMoney(132000),
+      taxAmount: makeMoney(12000),
+      tableNumber: 'Table 4',
+      customerName: 'Alice',
+    });
+
+    expect(bill.receiptNumber).toBe('BILL-007');
+    expect(bill.tableNumber).toBe('Table 4');
+    expect(bill.customerName).toBe('Alice');
+    expect(bill.items?.[0]?.note).toBe('Mashed Potatoes | Sauce on side');
+  });
+});
+
+describe('formatReceiptLineNote', () => {
+  it('combines modifier names and note with pipe separator', () => {
+    expect(formatReceiptLineNote([{ modifierName: 'Extra Cheese' }], 'Less salt')).toBe('Extra Cheese | Less salt');
+    expect(formatReceiptLineNote([{ modifierName: 'Extra Cheese' }, { modifierName: 'Bacon' }], '')).toBe('Extra Cheese, Bacon');
+    expect(formatReceiptLineNote([], 'Vegetarian')).toBe('Vegetarian');
+    expect(formatReceiptLineNote(null, null)).toBeUndefined();
+  });
 });
 
 describe('buildKitchenChitReceipt', () => {
@@ -303,6 +381,48 @@ describe('buildKitchenChitReceipt', () => {
 
     expect(chit.printerTarget).toBe('bar');
     expect(chit.documentKind).toBe('bar');
+  });
+
+  it('sorts line items by course order and tags held items with [HOLD]', () => {
+    const lines: CartLine[] = [
+      {
+        ...makeCartLine('Lava Cake', 1, 30000),
+        courseId: 'dessert',
+        coursingStatus: 'hold',
+      },
+      {
+        ...makeCartLine('Spring Rolls', 2, 20000),
+        courseId: 'appetizer',
+        coursingStatus: 'fired',
+      },
+      {
+        ...makeCartLine('Beef Steak', 1, 75000),
+        courseId: 'main',
+        coursingStatus: 'fired',
+      },
+    ];
+
+    const chit = buildKitchenChitReceipt({
+      cartLines: lines,
+      cartCurrency: 'IDR',
+      tableNumber: '7',
+    });
+
+    expect(chit.items).toHaveLength(3);
+    expect(chit.items?.[0]?.name).toBe('[Appetizer] Spring Rolls');
+    expect(chit.items?.[1]?.name).toBe('[Main Course] Beef Steak');
+    expect(chit.items?.[2]?.name).toBe('[HOLD] [Dessert] Lava Cake');
+  });
+
+  it('uses customerName when tableNumber is absent for takeaway chit numbering', () => {
+    const lines: CartLine[] = [makeCartLine('Paket Hemat', 1, 25000)];
+    const chit = buildKitchenChitReceipt({
+      cartLines: lines,
+      cartCurrency: 'IDR',
+      customerName: 'Bpk. Ahmad',
+    });
+
+    expect(chit.receiptNumber).toMatch(/^KOT-BPKAHMAD-\d+$/);
   });
 });
 

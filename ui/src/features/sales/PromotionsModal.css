@@ -174,9 +174,11 @@
 }
 
 /* Footer row (markup :193): a count and one control at opposite ends. Three
-   declarations, copied from .stock-alert-footer at
-   inventory/StockAlertPanel.css:147-151, the nearest sheet solving the same
-   count+action seam. align-items:center is load-bearing: the count is bare text and
+   declarations, copied from .stock-alert-footer at inventory/StockAlertPanel.css:147-151,
+   the nearest sheet solving the same count+action seam. THAT SHEET WAS DELETED in round
+   196 (the panel lost its only mount in round 192); the cite is kept as the provenance of
+   these three declarations, not as a live reference -- there is nothing left to read.
+   align-items:center is load-bearing: the count is bare text and
    the apply control below is a filled box, so the default stretch would make the
    text item as tall as the button.
    REFUSED: the sibling's gap: var(--space-2) (two children pushed apart by

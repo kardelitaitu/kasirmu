@@ -17,7 +17,6 @@ staff-add-button = Tambah Staf
 staff-empty = Belum ada anggota staf.
 staff-empty-cta = Tambah anggota staf pertama
 staff-col-name = Nama
-staff-col-username = Nama Pengguna
 staff-col-role = Peran
 staff-col-workspace = Ruang Kerja
 staff-col-phone = Telepon
@@ -55,6 +54,13 @@ staff-pin-placeholder =
     .placeholder = Masukkan PIN
 staff-field-role-label = Peran *
 staff-role-permissions-label = Izin peran
+# Empat judul kartu pada laci detail (round 211). Semua kolom di dalam kartu
+# sudah memakai kunci; hanya judul yang menamai kartunya yang masih literal di
+# StaffDetailDrawer.tsx:852, :927, :1131, dan :1219.
+staff-drawer-account-credentials = Kredensial Akun
+staff-drawer-role-permissions = Peran & Izin
+staff-drawer-employment = Kepegawaian & Detail
+staff-drawer-emergency-contact = Kontak Darurat
 staff-role-select-default = Pilih peran…
 staff-btn-cancel = Batal
 staff-btn-update = Perbarui
@@ -145,6 +151,8 @@ fastpin-active-user = Aktif: { $name }
 fastpin-enter-pin = Masukkan PIN untuk { $user }
 
 # ── Session Lock Screen (i18n parity fix) ────────────────────────────────
+staff-login-title = kasir.mu
+session-lock-title = Sesi terkunci
 session-lock-expired = Sesi telah berakhir. Silakan login kembali.
 session-lock-invalid-pin = PIN tidak valid
 session-lock-pin-aria = PIN: { $length } dari { $max } digit dimasukkan
@@ -152,9 +160,6 @@ session-lock-pad-aria = Papan PIN
 session-lock-lockout = Tunggu { $seconds } dtk.
 
 # ── Connection Status (shared between StaffLoginScreen + SessionLockScreen) ──
-staff-login-connection-checking = Memeriksa…
-staff-login-connection-connected = Terhubung
-staff-login-connection-disconnected = Terputus
 staff-login-connection-auth = Auth
 staff-login-connection-sync = Sinkron
 

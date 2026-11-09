@@ -26,27 +26,22 @@ fn fresh_db() -> Connection {
  * "this path must not exist" then flickers red once and green on the retry.
  * Removing in Drop, which unwinding does run, closes the class.
  */
-struct TempDir(PathBuf);
+struct TempDir(kasirmu_test_support::ScratchDir);
 
 impl TempDir {
     fn new(tag: &str) -> Self {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        // pid alone is not unique across runs; the clock makes it per-run.
-        let path = std::env::temp_dir().join(format!("oz-sv-{tag}-{}-{nanos}", std::process::id()));
-        std::fs::create_dir_all(&path).expect("create the per-run temp dir");
-        Self(path)
+        // Delegated for the reason above AND for the one this fixture did not
+        // name: `std::env::temp_dir()` resolves the machine-level TEMP
+        // (`C:\WINDOWS\TEMP`), where an ordinary user can create but not delete,
+        // so a stale directory there breaks the CREATE too. ScratchDir lives
+        // under the gitignored `target/test-scratch/` and is UUID-unique per call,
+        // so both the cleanup and the pid-reuse hazard are gone.
+        Self(kasirmu_test_support::ScratchDir::new(&format!(
+            "oz-sv-{tag}"
+        )))
     }
     fn file(&self, name: &str) -> PathBuf {
-        self.0.join(name)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        self.0.path().join(name)
     }
 }
 

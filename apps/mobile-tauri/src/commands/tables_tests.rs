@@ -7,7 +7,7 @@
 //! nothing in the repository noticed. Not from the Rust side — no test resolves
 //! command arguments (the `mock_ipc` / `handle_invoke` idioms match no file in
 //! either shell) — and not from the JS side either, where the suite that *does*
-//! pin this payload, `ui/src/__tests__/api-tables-contract.test.ts:47`, asserts
+//! pin this payload, `ui/src/__tests__/api-tables-contract.test.ts:46`, asserts
 //! `{ sessionToken, table }` and stayed green the whole time the signature these
 //! cases exercise refused it. A contract test written in the caller's language
 //! cannot see the callee's requirements; that asymmetry is T9 in the plan file.
@@ -32,6 +32,7 @@ use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
 
 use super::*;
+use kasirmu_test_support::tempdir;
 
 /// Seed the GLOBAL identity DB: default roles, an owner, and a cashier on
 /// `role-staff`.
@@ -57,7 +58,7 @@ fn tables_app(
 ) -> (tauri::App<tauri::test::MockRuntime>, tempfile::TempDir) {
     let conn = kasirmu_core::migrations::fresh_db();
     seed_identity(&conn);
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp.path().to_path_buf(), kasirmu_core::migrations::ALL);

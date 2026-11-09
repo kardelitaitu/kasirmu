@@ -359,6 +359,53 @@ impl Namespace<'_, '_> {
         }
         Ok(out)
     }
+    /// Validate a statement against the ownership map, then execute it from the
+    /// connection's **prepared-statement cache**.
+    ///
+    /// This is the cached form of [`execute`](Self::execute), and it exists so a
+    /// caller does not have to choose between the ownership check and the cache.
+    /// Before this method the two could not be combined: every checking entry
+    /// point took an SQL string and executed immediately, so a caller that
+    /// wanted to prepare once outside a loop had to reach past the namespace API
+    /// onto the raw `Connection` -- dropping `check_statement` with it. That is
+    /// exactly what was attempted and reverted under O-L22 in
+    /// `todo-optimize-crates.md`.
+    ///
+    /// The check runs on **every call**, not once per SQL string: the cache is
+    /// keyed by SQL text alone, so a cache hit must not be read as "already
+    /// validated" (the same text can be handed to a different owner or posture).
+    /// `check_statement` is a cheap in-memory parse against the ownership map;
+    /// what the cache saves is the compile, which is the expensive half.
+    ///
+    /// # Errors
+    /// Returns a [`NamespaceError`] if the statement is rejected by the check or
+    /// the database.
+    pub fn execute_cached<P: rusqlite::Params>(
+        &self,
+        sql: &str,
+        params: P,
+    ) -> Result<usize, NamespaceError> {
+        let mut stmt = self.prepare_cached(sql)?;
+        stmt.execute(params).map_err(NamespaceError::from)
+    }
+
+    /// Validate a statement, then prepare it from the connection's cache.
+    ///
+    /// The returned statement has **already passed** `check_statement`, so a
+    /// caller looping over rows can prepare once and execute per row without
+    /// losing the guard. Prefer this over [`execute_cached`](Self::execute_cached)
+    /// when the same SQL runs more than once.
+    ///
+    /// # Errors
+    /// Returns a [`NamespaceError`] if the statement is rejected by the check or
+    /// fails to prepare.
+    pub fn prepare_cached(
+        &self,
+        sql: &str,
+    ) -> Result<rusqlite::CachedStatement<'_>, NamespaceError> {
+        check_statement(self.owner, &Grants::none(), sql, self.posture)?;
+        self.conn.prepare_cached(sql).map_err(NamespaceError::from)
+    }
 }
 
 /// The pure core of the namespace check: what tables does `sql` name, and may

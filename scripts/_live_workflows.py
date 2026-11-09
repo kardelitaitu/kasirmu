@@ -41,27 +41,73 @@ ROOT = Path(__file__).resolve().parent.parent
 WORKFLOWS = ROOT / ".github" / "workflows"
 
 
-def live_workflow_files() -> list[Path]:
-    """Every workflow GitHub will execute, sorted. Empty if the directory is absent."""
-    if not WORKFLOWS.is_dir():
+def live_workflow_files(workflows: Path | None = None) -> list[Path]:
+    """Every workflow GitHub will execute, sorted. Empty if the directory is absent.
+
+    `workflows` defaults to this repository's own .github/workflows; passing a
+    directory redirects the rule at a fixture root. r166: drift's main() now
+    takes root= and MUST redirect -- without it a root-overridden run silently
+    counted the real repository's workflows while checking the fixture's docs.
+    The module header used to say this contract had "no parameter to redirect";
+    verify-agents-mirrors.py's live_workflows(root) was always the better
+    design, and this module now matches it.
+    """
+    wf = WORKFLOWS if workflows is None else Path(workflows)
+    if not wf.is_dir():
         return []
     return sorted(
-        p for p in (list(WORKFLOWS.glob("*.yml")) + list(WORKFLOWS.glob("*.yaml")))
+        p for p in (list(wf.glob("*.yml")) + list(wf.glob("*.yaml")))
         if p.is_file()
     )
 
 
-def live_workflow_names() -> set[str]:
+def live_workflow_names(workflows: Path | None = None) -> set[str]:
     """Basenames of the live workflows -- the form a doc or a claim refers to."""
-    return {p.name for p in live_workflow_files()}
+    return {p.name for p in live_workflow_files(workflows)}
 
 
-def live_workflow_texts() -> list[tuple[Path, str]]:
+def live_workflow_texts(workflows: Path | None = None) -> list[tuple[Path, str]]:
     """(path, text) for each live workflow, for callers that read rather than list."""
     out: list[tuple[Path, str]] = []
-    for p in live_workflow_files():
+    for p in live_workflow_files(workflows):
         try:
             out.append((p, p.read_text(encoding="utf-8", errors="replace")))
         except OSError:
             continue
     return out
+
+
+def self_test() -> list[str]:
+    """The rule, graded directly against a tempdir (r168 -- until now the module
+    was graded only through its importers). The original 2026-09-29 defect was
+    the .yaml half-disagreement, so the table pins BOTH extensions, the attic
+    exclusion, the top-level rule, and the is_file filter. Returns failure
+    descriptions; [] = every case held. Invoked by verify-ci-docs-drift's
+    self-test -- a data module has no runner of its own, and an uninvoked
+    self-test is exactly the rot the wired census exists to catch."""
+    import tempfile
+    fails: list[str] = []
+    with tempfile.TemporaryDirectory() as td:
+        wf = Path(td) / "workflows"
+        (wf / "attic").mkdir(parents=True)
+        (wf / "subdir").mkdir()
+        for name in ("a.yml", "b.yaml", "c.yml.bak", "attic/d.yml",
+                     "attic/e.yml.bak", "subdir/f.yml"):
+            (wf / name).write_text("on: push\n", encoding="utf-8")
+        (wf / "g.yaml").mkdir()  # a DIRECTORY named *.yaml is not a workflow
+        got = [p.name for p in live_workflow_files(wf)]
+        if got != ["a.yml", "b.yaml"]:
+            fails.append("live set wrong: %r" % (got,))
+        if live_workflow_names(wf) != {"a.yml", "b.yaml"}:
+            fails.append("names wrong: %r" % (sorted(live_workflow_names(wf)),))
+        texts = live_workflow_texts(wf)
+        if sorted(p.name for p, _ in texts) != ["a.yml", "b.yaml"] or any(
+                "on: push" not in t for _, t in texts):
+            fails.append("texts wrong: %r" % ([(p.name, len(t)) for p, t in texts],))
+        empty = Path(td) / "empty"
+        empty.mkdir()
+        if live_workflow_files(empty) != []:
+            fails.append("an empty dir must yield []")
+        if live_workflow_files(Path(td) / "absent") != []:
+            fails.append("an absent dir must yield []")
+    return fails

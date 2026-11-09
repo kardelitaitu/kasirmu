@@ -71,8 +71,9 @@ class GitUnreadable(Exception):
     """
 
 
-def git(*args: str) -> str | None:
-    """The stdout of a git command run in ROOT, or None when git could not produce it.
+def git(*args: str, root=None) -> str | None:
+    """The stdout of a git command run in ROOT (or `root`, the r173 parameter
+    that redirects every read at a fixture), or None when git could not produce it.
 
     None is a REFUSAL condition, not an empty string. `git log` writes its complaint to
     stderr and NOTHING to stdout when a revision is unknown or the checkout is not a
@@ -85,15 +86,16 @@ def git(*args: str) -> str | None:
     scripts/verify-migration-column-types.py:204-222 and the `staged_diff()` fix in
     scripts/verify-ftl-orphans.py.
     """
+    root_path = ROOT if root is None else Path(root).resolve()
     cmd = ["git", *args]
     try:
-        proc = subprocess.run(cmd, cwd=str(ROOT), capture_output=True,
+        proc = subprocess.run(cmd, cwd=str(root_path), capture_output=True,
                               text=True, encoding="utf-8", errors="replace",
                               check=True)
     except Exception as exc:  # no git on PATH, no repository at ROOT, or a non-zero exit
         # The words below are git's own, quoted from its stderr -- a complaint about the
         # command or the checkout, not this gate's verdict on anyone's subject.
-        print(f"error: cannot read the commit corpus (`{' '.join(cmd)}` in {ROOT}): {exc}",
+        print(f"error: cannot read the commit corpus (`{' '.join(cmd)}` in {root_path}): {exc}",
               file=sys.stderr)
         raw = getattr(exc, "stderr", "") or ""
         if isinstance(raw, bytes):
@@ -169,7 +171,7 @@ def matches_exemption(subject: str, patterns: list[str]) -> bool:
 
 # ── The check ───────────────────────────────────────────────────────────────
 
-def hook_intro() -> str | None:
+def hook_intro(root=None) -> str | None:
     """The commit that added .githooks/commit-msg, used as the floor.
 
     Deriving this rather than hardcoding a sha means the exemption set never
@@ -179,7 +181,7 @@ def hook_intro() -> str | None:
     with it, which is the correct answer -- the floor is a fact about the rule's
     age, not a list of excuses.
     """
-    out = git("log", "--diff-filter=A", "--format=%H", "--", HOOK)
+    out = git("log", "--diff-filter=A", "--format=%H", "--", HOOK, root=root)
     if out is None:
         # Distinct from a successful read that named nothing: that reaches the
         # `return sha or None` below as None, meaning "the hook's arrival is not in this
@@ -191,25 +193,26 @@ def hook_intro() -> str | None:
     return sha or None
 
 
-def check_range(rng: str, floor: str | None = "auto") -> tuple[int, int, list[str], list[str]]:
-    hook_text = io.open(ROOT / HOOK, encoding="utf-8", errors="replace").read()
+def check_range(rng: str, floor: str | None = "auto", root=None) -> tuple[int, int, list[str], list[str]]:
+    root_path = ROOT if root is None else Path(root).resolve()
+    hook_text = io.open(root_path / HOOK, encoding="utf-8", errors="replace").read()
     pattern = re.compile(hook_pattern(hook_text))
     exemptions = hook_exemptions(hook_text)
 
     if floor == "auto":
-        floor = hook_intro()
+        floor = hook_intro(root=root)
 
     # `rng` may be `a..b` or `^a b`; simplest correct thing is to intersect the
     # requested range with "descendants of the floor" by walking the range and
     # skipping anything that is not a descendant of the floor commit.
     skip_before = None
     if floor:
-        listing = git("rev-list", floor)
+        listing = git("rev-list", floor, root=root)
         if listing is None:
             raise GitUnreadable(f"the pre-rule commit set (`git rev-list {floor}`)")
         skip_before = {l.strip() for l in listing.splitlines() if l.strip()}
 
-    out = git("log", "--format=%H%x00%s", rng)
+    out = git("log", "--format=%H%x00%s", rng, root=root)
     if out is None:
         raise GitUnreadable(f"the commit corpus in the range `{rng}`")
     total = bad = grandfathered = 0
@@ -248,13 +251,17 @@ def check_range(rng: str, floor: str | None = "auto") -> tuple[int, int, list[st
     return total, bad, [f"{s}: {t!r}" for s, t in offenders], exemptions
 
 
-def main() -> int:
+def main(argv: list[str] | None = None, root: str | Path | None = None) -> int:
+    """r173: argv and root parameterized, the r166..r172 contract -- root
+    redirects BOTH the hook read and every git read, so a fixture cannot
+    half-run against the real repository's history."""
+    root_path = ROOT if root is None else Path(root).resolve()
     ap = argparse.ArgumentParser()
     ap.add_argument("--range", dest="rng", help="git revision range, e.g. origin/main..HEAD")
     ap.add_argument("--base", help="compute <base>..<head>")
     ap.add_argument("--head", default="HEAD")
     ap.add_argument("--self-test", action="store_true")
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
 
     if a.self_test:
         return self_test()
@@ -264,7 +271,7 @@ def main() -> int:
         print("  need --range <a..b> or --base <sha>", file=sys.stderr)
         return 2
 
-    hook_text = io.open(ROOT / HOOK, encoding="utf-8", errors="replace").read()
+    hook_text = io.open(root_path / HOOK, encoding="utf-8", errors="replace").read()
     types = hook_types(hook_text)
     # Three exits, and only two of them are verdicts: 0 when the range was read and every
     # subject in it conformed, 1 when it was read and did not, 2 when it could not be read
@@ -272,7 +279,7 @@ def main() -> int:
     # non-conforming subject prints, and an unreadable corpus has reached no conclusion
     # about anyone's commit message. Same split the sibling gates established.
     try:
-        total, bad, offenders, _ex = check_range(rng)
+        total, bad, offenders, _ex = check_range(rng, root=root_path)
     except GitUnreadable as exc:
         print(f"verify-commit-subjects: REFUSED -- git could not read {exc}, so the corpus "
               f"is unknown, and an unknown corpus is not an empty one. Nothing was graded "
@@ -304,13 +311,15 @@ def self_test() -> int:
     reject is rejected here too.
     """
     hook_text = io.open(ROOT / HOOK, encoding="utf-8", errors="replace").read()
-    bad = 0
+    bad: list[str] = []   # was int -- the plumbing branches below append(), an
+                          # AttributeError that would replace the first real
+                          # plumbing failure's report with a traceback
 
     def want(cond: bool, desc: str) -> None:
         nonlocal bad
         print(f"  {'ok   ' if cond else 'FAIL '} {desc}")
         if not cond:
-            bad += 1
+            bad.append(desc)
 
     types = hook_types(hook_text)
     want(len(types) >= 8, f"type list extracted ({len(types)}: {', '.join(types)})")
@@ -347,7 +356,102 @@ def self_test() -> int:
     # And the pattern must be anchored at the start.
     want(not pat.match("please fix(x): y"), "pattern is anchored at the start")
 
-    print(f"\n  {'self-test: rule extraction and matching both correct' if not bad else f'{bad} failure(s)'}")
+    # The git plumbing -- the corpus comes out of it, and its docstring records why
+    # None (refusal) must stay distinct from '' (empty). Graded against a throwaway
+    # repo; ROOT is rebound through globals() for the duration (self_test reads ROOT
+    # earlier, so a global statement here would not compile) and restored in finally.
+    import shutil as _shutil
+    import tempfile
+    extra = 0
+    if _shutil.which("git"):
+        with tempfile.TemporaryDirectory() as td:
+            g = Path(td)
+            subprocess.run(["git", "init", "-q"], cwd=g, capture_output=True)
+            _saved_root = globals()["ROOT"]
+            try:
+                globals()["ROOT"] = g
+                extra += 1
+                top = (git("rev-parse", "--show-toplevel") or "").strip()
+                if Path(top).resolve() != g.resolve():
+                    bad.append(f"git rev-parse: expected the throwaway repo, got {top!r}")
+                extra += 1
+                if git("log", "-1", "HEAD") is not None:
+                    bad.append("git log in a commit-less repo must refuse with None")
+                extra += 1
+                if git("status", "--porcelain") != "":
+                    bad.append("an empty-but-successful command must return '', not None")
+            finally:
+                globals()["ROOT"] = _saved_root
+    else:
+        print("  (git unavailable: the plumbing cases are skipped)")
+
+    # r173: main()'s shell -- argv and root graded against a throwaway git
+    # repo whose commit 0 introduces the hook (the grandfathering floor) and
+    # whose later commits are the corpus. The rule itself is the REAL hook,
+    # copied in, so the extracted pattern is the one CI enforces.
+    import contextlib as _ctxlib
+    import io as _io
+    if _shutil.which("git"):
+        def _mkrepo(subjects):
+            g = Path(tempfile.mkdtemp())
+            subprocess.run(["git", "init", "-q"], cwd=g, capture_output=True)
+            subprocess.run(["git", "config", "user.email", "t@example.test"],
+                           cwd=g, capture_output=True)
+            subprocess.run(["git", "config", "user.name", "T"],
+                           cwd=g, capture_output=True)
+            (g / ".githooks").mkdir()
+            (g / ".githooks" / "commit-msg").write_text(
+                io.open(ROOT / HOOK, encoding="utf-8").read(), encoding="utf-8")
+            def _c(msg):
+                subprocess.run(["git", "add", "-A"], cwd=g, capture_output=True)
+                subprocess.run(["git", "commit", "-q", "--allow-empty", "-m", msg],
+                               cwd=g, capture_output=True)
+            _c("chore(hooks): add the commit-msg gate")
+            floor = subprocess.run(["git", "rev-parse", "HEAD"], cwd=g,
+                                   capture_output=True, text=True).stdout.strip()
+            for msg in subjects:
+                _c(msg)
+            head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=g,
+                                  capture_output=True, text=True).stdout.strip()
+            return g, floor, head
+        def _shell(subjects, extra_argv=None, empty_range=False):
+            g, floor, head = _mkrepo(subjects)
+            rng = f"{floor}..{floor}" if empty_range else f"{floor}..{head}"
+            argv = list(extra_argv or []) + ["--range", rng]
+            out, err = _io.StringIO(), _io.StringIO()
+            rc = None
+            raised = None
+            with _ctxlib.redirect_stdout(out), _ctxlib.redirect_stderr(err):
+                try:
+                    rc = main(argv=argv, root=g)
+                except SystemExit as exc:
+                    raised = exc
+            return rc, raised, out.getvalue() + err.getvalue()
+        rc, raised, text = _shell(["feat(x): a good subject", "docs: another good one"])
+        if rc != 0 or "2 commit(s) checked" not in text or "0 non-conforming subject(s)" not in text:
+            bad.append(f"an all-conforming range must exit 0 (rc={rc} text={text[-120:]!r})")
+        rc, raised, text = _shell(["feat(x): a good subject", "bad subject here"])
+        if rc != 1 or "1 non-conforming subject(s)" not in text or "bad subject here" not in text:
+            bad.append(f"a non-conforming subject must exit 1 naming it (rc={rc} text={text[-140:]!r})")
+        g, floor, _head = _mkrepo(["feat(x): fine"])
+        out, err = _io.StringIO(), _io.StringIO()
+        with _ctxlib.redirect_stdout(out), _ctxlib.redirect_stderr(err):
+            rc = main(argv=["--range", f"{floor}..does-not-exist"], root=g)
+        if rc != 2 or "REFUSED" not in (out.getvalue() + err.getvalue()):
+            bad.append(f"an unreadable corpus must REFUSE with exit 2 (rc={rc} text={(out.getvalue()+err.getvalue())[-140:]!r})")
+        out, err = _io.StringIO(), _io.StringIO()
+        with _ctxlib.redirect_stdout(out), _ctxlib.redirect_stderr(err):
+            rc = main(argv=[], root=g)
+        if rc != 2 or "need --range" not in (out.getvalue() + err.getvalue()):
+            bad.append(f"no range argument must exit 2 (rc={rc})")
+        rc, raised, text = _shell(["feat(x): fine"], empty_range=True)
+        if raised is None or "resolved to 0 commits" not in str(raised):
+            bad.append(f"an empty range must refuse, not pass (raised={raised!r} rc={rc})")
+        rc, raised, text = _shell(["Merge branch 'main' into x", "feat(y): fine"])
+        if rc != 0 or "2 commit(s) checked, 0 non-conforming" not in text:
+            bad.append(f"a merge commit must be exempt yet counted (rc={rc} text={text[-120:]!r})")
+
+    print(f"\n  {'self-test: rule extraction, matching, plumbing and shell all correct' if not bad else str(len(bad)) + ' failure(s): ' + '; '.join(bad)}")
     return 1 if bad else 0
 
 

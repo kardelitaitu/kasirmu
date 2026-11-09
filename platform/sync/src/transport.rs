@@ -350,6 +350,18 @@ impl SyncTransport {
         })
     }
 
+    /// Whether this transport rewrites each item's payload before sending it.
+    ///
+    /// A stamping transport does not put the queue item on the wire as-is:
+    /// [`SyncTransport::push_items`] adds `_terminal` and `_vector` to the
+    /// payload, which grows the JSON slightly. A caller sizing a request body
+    /// must allow for that growth — see
+    /// [`crate::transport_margin_per_item`].
+    #[must_use]
+    pub fn stamps_payloads(&self) -> bool {
+        self.stamp.is_some()
+    }
+
     /// Highest counter stamped so far, or `None` when stamping is disabled.
     ///
     /// The caller must persist this after a successful push. If it does not,

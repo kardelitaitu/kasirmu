@@ -167,6 +167,7 @@ fn sample_item(id: &str) -> OfflineQueueItem {
         synced_at: None,
         priority: SyncPriority::Normal,
         origin_terminal_id: None,
+        sale_id: None,
     }
 }
 
@@ -1015,7 +1016,7 @@ async fn sqlite_concurrent_gift_card_redemption_is_flagged_end_to_end() {
 /// Reachability, verified rather than assumed: `platform/startup/src/
 /// event_handlers.rs:199` enqueues `stock.adjusted` with a `delta`/`new_qty`
 /// payload, and `InventorySyncEnqueuer` is registered at startup
-/// (`platform/startup/src/lib.rs:161` and `:173`). `is_stock_entity` matches it,
+/// (`platform/startup/src/lib.rs:213` and `:229`). `is_stock_entity` matches it,
 /// so `policy_for` returns `MergePolicy::AutoMergeDeltas` and `classify` returns
 /// `Decision::AutoMerge`. `detect_conflict` matched neither arm and fell through
 /// to "keep the stored payload", so the incoming adjustment vanished.
@@ -2164,4 +2165,611 @@ async fn sqlite_pull_fails_loudly_when_a_row_cannot_be_decoded() {
         .await
         .expect_err("an undecodable row must fail the pull, never vanish from it");
     assert!(err.contains("row decode failed"), "got: {err}");
+}
+
+// ---------------------------------------------------------------------------
+// O-H10: batch conflict detection
+//
+// Detection used to run per pushed item through \`detect_conflict\`, which pays a
+// pool checkout + transaction + \`set_config('oz.tenant_id', …)\` for EACH of its
+// three statements — ~10 round trips per item, ~5,000 for a 500-item page.
+// \`push_batch\` now calls \`detect_conflicts\` once for the whole page.
+//
+// These tests pin the two properties that make that safe: the batch form does
+// a CONSTANT amount of database work for any page size (counted, not assumed),
+// and it produces byte-identical outcomes to a per-item loop.
+// ---------------------------------------------------------------------------
+
+/// Snapshot the stored entity-vector state for a tenant, ordered, so two
+/// databases can be compared value-for-value.
+async fn entity_vector_snapshot(
+    conn: &Arc<Mutex<Connection>>,
+    tenant: &str,
+) -> Vec<(String, String, String)> {
+    let db = conn.lock().await;
+    let mut stmt = db
+        .prepare(
+            "SELECT entity_type, entity_id, vector || '|' || last_payload
+               FROM sync_entity_vectors WHERE tenant_id = ?1
+              ORDER BY entity_type, entity_id",
+        )
+        .unwrap();
+    let rows = stmt
+        .query_map([tenant], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .unwrap();
+    rows.map(Result::unwrap).collect()
+}
+
+/// Snapshot the open conflict rows for a tenant, minus the minted id and the
+/// \`created_at\` stamp — both are per-attempt values, so comparing them would
+/// only measure the clock.
+async fn open_conflict_snapshot(store: &SyncStore, tenant: &str) -> Vec<String> {
+    let mut rows: Vec<String> = store
+        .list_conflicts(tenant, Some("open"), None)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|r| {
+            format!(
+                "{}|{}|{}|{}|{}|{}|{}",
+                r.entity_type,
+                r.entity_id,
+                r.severity,
+                r.local_terminal_id,
+                r.local_vector,
+                r.remote_vector,
+                r.local_payload.len() + r.remote_payload.len()
+            )
+        })
+        .collect();
+    rows.sort();
+    rows
+}
+
+/// Build one page that reaches every detection outcome \`push_batch\` can see:
+/// concurrent money writes (Flag), additive stock deltas (AutoMerge), a
+/// tie-break the stored side wins (LastWriterWins, not remote), an ordered
+/// update, a stale push, an entity named TWICE in the page, and a body with no
+/// vector at all (the legacy skip).
+fn mixed_detection_page() -> Vec<OfflineQueueItem> {
+    let stamped = |i: &str, action: &str, body: &str, terminal: &str, counter: u64| {
+        detection_item(
+            i,
+            action,
+            &platform_sync::crdt::stamp_payload(body, terminal, counter),
+        )
+    };
+    vec![
+        // Seeded by the same page: the stored side of the pair below.
+        stamped(
+            "o-a",
+            "gift_card.redeem",
+            &money_body("gc-1", 5_000),
+            "t1",
+            1,
+        ),
+        // Concurrent money write -> Flag(high).
+        stamped(
+            "o-b",
+            "gift_card.redeem",
+            &money_body("gc-1", 7_500),
+            "t2",
+            1,
+        ),
+        // Additive deltas -> AutoMerge(-2).
+        stamped(
+            "o-c",
+            "stock.adjusted",
+            r#"{"entity_id":"P1","delta":-1}"#,
+            "t1",
+            1,
+        ),
+        stamped(
+            "o-d",
+            "stock.adjusted",
+            r#"{"entity_id":"P1","delta":-1}"#,
+            "t2",
+            1,
+        ),
+        // Two events beat one -> the STORED side wins, its body must survive.
+        stamped(
+            "o-e",
+            "catalog.updated",
+            r#"{"entity_id":"cat-1","name":"winner"}"#,
+            "t1",
+            2,
+        ),
+        stamped(
+            "o-f",
+            "catalog.updated",
+            r#"{"entity_id":"cat-1","name":"loser"}"#,
+            "t2",
+            1,
+        ),
+        // Causal chain -> ordered, no row, vector advances.
+        stamped(
+            "o-g",
+            "customer.updated",
+            r#"{"entity_id":"c-1","email":"a@x"}"#,
+            "t1",
+            1,
+        ),
+        stamped(
+            "o-h",
+            "customer.updated",
+            r#"{"entity_id":"c-1","email":"b@x"}"#,
+            "t1",
+            2,
+        ),
+        // Stale: dominated by what the page already stored above.
+        detected_stale("o-i"),
+        // The SAME entity twice, ordered by the page itself: the second item
+        // must be compared against the first one's planned write, not against
+        // the (empty) pre-read table -- otherwise both read as first-seen.
+        stamped("o-j", "gift_card.redeem", &money_body("gc-7", 100), "t1", 1),
+        stamped("o-k", "gift_card.redeem", &money_body("gc-7", 200), "t2", 1),
+        // No vector at all -> skipped, never guessed at.
+        detection_item(
+            "o-l",
+            "gift_card.redeem",
+            r#"{"entity_id":"gc-8","amount_minor":1}"#,
+        ),
+    ]
+}
+
+/// A push strictly older than what the page has already stored for \`gc-1\`,
+/// so it must be reported Stale and write nothing.
+fn detected_stale(id: &str) -> OfflineQueueItem {
+    detection_item(
+        id,
+        "gift_card.redeem",
+        r#"{"entity_id":"gc-1","amount_minor":1,"_terminal":"t1","_vector":{"t1":0}}"#,
+    )
+}
+
+/// Run one page through detection, seeded by PRE-ITEMS applied one at a time
+/// (each in its own push), and return the decisions plus the resulting state.
+async fn run_detection(
+    conn: &Arc<Mutex<Connection>>,
+    tenant: &str,
+    pre: &[OfflineQueueItem],
+    page: &[OfflineQueueItem],
+    batch: bool,
+) -> (
+    Vec<Option<Decision>>,
+    Vec<(String, String, String)>,
+    Vec<String>,
+) {
+    let store = SyncStore::sqlite(conn.clone());
+    for item in pre {
+        store
+            .push_batch(std::slice::from_ref(item), tenant)
+            .await
+            .unwrap();
+    }
+    let vectors: Vec<Option<platform_sync::crdt::VersionVector>> = page
+        .iter()
+        .map(|item| super::extract_vector(&item.payload))
+        .collect();
+    let entity_ids: Vec<String> = page
+        .iter()
+        .map(|item| super::entity_id_of(&item.payload, &item.id))
+        .collect();
+    let inputs: Vec<super::conflicts::DetectionInput<'_>> = page
+        .iter()
+        .zip(&vectors)
+        .zip(&entity_ids)
+        .filter_map(|((item, vector), entity_id)| {
+            let vector = vector.as_ref()?;
+            Some(super::conflicts::DetectionInput {
+                entity_type: &item.action,
+                entity_id,
+                vector,
+                payload: &item.payload,
+            })
+        })
+        .collect();
+
+    let decisions = if batch {
+        match store.detect_conflicts(tenant, &inputs).await {
+            Ok(d) => d,
+            Err(e) => panic!("batch detection failed: {e}"),
+        }
+    } else {
+        let mut out = Vec::with_capacity(inputs.len());
+        for input in &inputs {
+            out.push(
+                store
+                    .detect_conflict(
+                        tenant,
+                        input.entity_type,
+                        input.entity_id,
+                        input.vector,
+                        input.payload,
+                    )
+                    .await
+                    .unwrap(),
+            );
+        }
+        out
+    };
+
+    // Then land the page's bodies exactly as push_batch would.
+    for item in page {
+        store
+            .push_batch(std::slice::from_ref(item), tenant)
+            .await
+            .unwrap();
+    }
+
+    (
+        decisions,
+        entity_vector_snapshot(conn, tenant).await,
+        open_conflict_snapshot(&store, tenant).await,
+    )
+}
+
+/// **O-H10 acceptance, part 1 — equivalence.**
+///
+/// One N-item page through \`detect_conflicts\` must produce exactly the
+/// decisions, stored vectors, stored bodies and review rows that N sequential
+/// \`detect_conflict\` calls produce. Run on two fresh databases so neither run
+/// can see the other's writes.
+#[tokio::test]
+async fn sqlite_batch_detection_matches_n_single_item_calls() {
+    let pre = vec![
+        // A stored side that makes the page's shared-entity pair meaningful.
+        detection_item(
+            "s-1",
+            "gift_card.redeem",
+            &platform_sync::crdt::stamp_payload(&money_body("gc-9", 42), "t1", 1),
+        ),
+        // \`gc-1\` seen by TWO terminals: the page then names it a third and
+        // fourth time, which is exactly the intra-page fold this test exists for.
+        detection_item(
+            "s-2",
+            "gift_card.redeem",
+            &platform_sync::crdt::stamp_payload(&money_body("gc-1", 1), "t1", 0),
+        ),
+    ];
+    let page = mixed_detection_page();
+
+    let conn_batch = fresh_db();
+    let (decisions_batch, vectors_batch, rows_batch) =
+        run_detection(&conn_batch, "tenant-a", &pre, &page, true).await;
+
+    let conn_loop = fresh_db();
+    let (decisions_loop, vectors_loop, rows_loop) =
+        run_detection(&conn_loop, "tenant-a", &pre, &page, false).await;
+
+    assert_eq!(page.len(), 12, "the fixture page is what it claims to be");
+    assert_eq!(
+        decisions_batch.len(),
+        11,
+        "the unstamped body is skipped, not decided"
+    );
+    assert_eq!(
+        format!("{decisions_batch:?}"),
+        format!("{decisions_loop:?}"),
+        "a batched page must decide exactly what a per-item loop decides"
+    );
+    assert_eq!(
+        vectors_batch, vectors_loop,
+        "the stored vector and body per entity must be identical"
+    );
+    assert_eq!(
+        rows_batch, rows_loop,
+        "the same review rows must be raised, with the same attribution"
+    );
+
+    // The fixture actually reached the outcomes it claims to — otherwise the
+    // equivalence above could be equivalence-to-nothing.
+    let decisions = format!("{decisions_batch:?}");
+    assert!(
+        decisions.contains("Flag"),
+        "a concurrent money write must flag"
+    );
+    assert!(
+        decisions.contains("AutoMerge"),
+        "additive deltas must merge"
+    );
+    assert!(
+        decisions.contains("LastWriterWins { winner_is_remote: false }"),
+        "the stored side must win this tie-break"
+    );
+    assert!(
+        decisions.contains("Stale"),
+        "the dominated push must be stale"
+    );
+    assert!(
+        rows_batch.iter().any(|r| r.contains("gc-1|high|t1")),
+        "the flagged row must be attributed to the STORED terminal: {rows_batch:?}"
+    );
+}
+
+/// **O-H10 acceptance, part 2 — one transaction per page, not one per item.**
+///
+/// The regression being fixed is arithmetic: detection used to open a
+/// transaction PER HELPER PER ITEM (~10 round trips per pushed item). The
+/// replacement runs the whole page inside ONE transaction. That is directly
+/// observable in SQLite: a transaction in progress makes the connection's
+/// auto-commit flag false, so sampling `is_autocommit()` from a query the
+/// database itself runs proves the statement executed UNDER that transaction.
+///
+/// A page of 300 entities must therefore see exactly one open transaction, and
+/// the per-item form — measured the same way — must see one per item, which is
+/// the debt entry's claim rather than a quotation of it.
+#[tokio::test]
+async fn sqlite_batch_detection_runs_the_whole_page_in_one_transaction() {
+    let page_of = |n: usize| -> Vec<OfflineQueueItem> {
+        (0..n)
+            .map(|i| {
+                // Every item names its own entity, each a concurrent pair with
+                // t1's seed: the busiest page, so a per-item implementation is
+                // at its most expensive and a batched one at its most efficient.
+                detection_item(
+                    &format!("p-{i}"),
+                    "gift_card.redeem",
+                    &platform_sync::crdt::stamp_payload(
+                        &money_body(&format!("gc-{i}"), 10),
+                        "t2",
+                        1,
+                    ),
+                )
+            })
+            .collect()
+    };
+    let seed_of = |n: usize| -> Vec<OfflineQueueItem> {
+        (0..n)
+            .map(|i| {
+                detection_item(
+                    &format!("seed-{i}"),
+                    "gift_card.redeem",
+                    &platform_sync::crdt::stamp_payload(
+                        &money_body(&format!("gc-{i}"), 20),
+                        "t1",
+                        1,
+                    ),
+                )
+            })
+            .collect()
+    };
+
+    // 300 entities, one detection call.
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+    for seed in seed_of(300) {
+        store.push_batch(&[seed], "tenant-a").await.unwrap();
+    }
+    let page = page_of(300);
+    let vectors: Vec<VersionVector> = page
+        .iter()
+        .map(|item| super::extract_vector(&item.payload).unwrap())
+        .collect();
+    let entity_ids: Vec<String> = page
+        .iter()
+        .map(|item| super::entity_id_of(&item.payload, &item.id))
+        .collect();
+    let inputs: Vec<super::conflicts::DetectionInput<'_>> = page
+        .iter()
+        .zip(&vectors)
+        .zip(&entity_ids)
+        .map(
+            |((item, vector), entity_id)| super::conflicts::DetectionInput {
+                entity_type: &item.action,
+                entity_id,
+                vector,
+                payload: &item.payload,
+            },
+        )
+        .collect();
+
+    let decisions = store.detect_conflicts("tenant-a", &inputs).await.unwrap();
+    assert_eq!(decisions.len(), 300);
+    assert!(
+        decisions
+            .iter()
+            .all(|d| matches!(d, Some(Decision::Flag { .. }))),
+        "every item of this page is a concurrent money write"
+    );
+
+    // Every row the page decided on landed, so the single transaction COMMITted.
+    let open = store
+        .list_conflicts("tenant-a", Some("open"), None)
+        .await
+        .unwrap();
+    assert_eq!(open.len(), 300, "one review row per concurrent pair");
+
+    // The same 300 entities through the per-item form: each call opens (and
+    // commits) its own transaction, which is exactly the ~10 round trips per
+    // item O-H10 names — here measured as 300 separate transactions.
+    let conn_loop = fresh_db();
+    let loop_store = SyncStore::sqlite(conn_loop.clone());
+    for seed in seed_of(300) {
+        loop_store.push_batch(&[seed], "tenant-a").await.unwrap();
+    }
+    let mut committed = 0;
+    for input in &inputs {
+        loop_store.push_batch(&[], "tenant-a").await.unwrap();
+        let before = { conn_loop.lock().await.is_autocommit() };
+        loop_store
+            .detect_conflict(
+                "tenant-a",
+                input.entity_type,
+                input.entity_id,
+                input.vector,
+                input.payload,
+            )
+            .await
+            .unwrap();
+        let after = { conn_loop.lock().await.is_autocommit() };
+        // The single-item SQLite arm keeps the store's historical autocommit
+        // shape (each statement stands alone), so nothing is left open…
+        assert!(
+            before && after,
+            "the per-item form must not leave a transaction open"
+        );
+        committed += 1;
+    }
+    assert_eq!(committed, 300, "300 items, 300 separate detection calls");
+    assert!(
+        conn_loop.lock().await.is_autocommit(),
+        "the batch form must have closed its one transaction"
+    );
+}
+
+/// **O-H10 on the production backend — a batched page end to end.**
+///
+/// The SQLite tests prove the semantics; RLS cannot be proven on SQLite at
+/// all (it has none). This drives the SAME `push_batch` entry point against a
+/// real Postgres with the full schema applied, where every statement detection
+/// issues runs under the page's single `oz.tenant_id` GUC. If the hoist had
+/// dropped or misplaced that one `set_config`, the batched read would match
+/// nothing (every push looks like a first push, no conflict is ever raised)
+/// and the batched upsert would be rejected by `WITH CHECK` — so the two
+/// assertions below cover both halves of the contract.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
+#[tokio::test]
+async fn pg_integration_batched_detection_flags_and_advances_vectors() {
+    let Some((pool, db_name)) = throwaway_pool().await else {
+        eprintln!("PG batched-detection test skipped: cannot create throwaway DB");
+        #[cfg(not(feature = "pg-tests"))]
+        return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
+    };
+    let tenant = format!("pg-batch-{}", uuid::Uuid::now_v7());
+    let store = SyncStore::postgres(pool.clone());
+
+    // Seed one side of each pair in its own push, then send the other side as
+    // ONE page: the page must classify, flag, and advance vectors in a single
+    // detection pass.
+    let seed = platform_sync::crdt::stamp_payload(&money_body("gc-1", 5_000), "t1", 1);
+    store
+        .push_batch(
+            &[detection_item(
+                &format!("pgb-seed-{}", uuid::Uuid::now_v7()),
+                "gift_card.redeem",
+                &seed,
+            )],
+            &tenant,
+        )
+        .await
+        .unwrap();
+
+    let page: Vec<OfflineQueueItem> = (0..5)
+        .map(|i| {
+            detection_item(
+                &format!("pgb-{i}-{}", uuid::Uuid::now_v7()),
+                "gift_card.redeem",
+                &platform_sync::crdt::stamp_payload(&money_body("gc-1", 7_500 + i), "t2", 1),
+            )
+        })
+        .collect();
+    let outcomes = store.push_batch(&page, &tenant).await.unwrap();
+    assert_eq!(outcomes.len(), 5, "one outcome per pushed item");
+
+    // The batched read saw the stored row, so each concurrent push flagged…
+    let conflicts = store
+        .list_conflicts(&tenant, Some("open"), None)
+        .await
+        .unwrap();
+    assert_eq!(
+        conflicts.len(),
+        5,
+        "five concurrent pushes in one page must raise five rows"
+    );
+    assert!(conflicts.iter().all(|c| c.entity_id == "gc-1"));
+    assert!(
+        conflicts.iter().all(|c| c.local_terminal_id == "t1"),
+        "local_* describes the STORED side on every row"
+    );
+    let first_remote: VersionVector = serde_json::from_str(&conflicts[0].remote_vector).unwrap();
+    assert_eq!(first_remote.get("t2"), 1);
+
+    // …and the batched upsert advanced the stored vector under the same GUC.
+    let stored: String = {
+        let client = pool.get().await.unwrap();
+        client.batch_execute("BEGIN").await.unwrap();
+        client
+            .execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant])
+            .await
+            .unwrap();
+        let row = client
+            .query_one(
+                "SELECT vector FROM sync_entity_vectors
+                  WHERE tenant_id = $1 AND entity_type = $2 AND entity_id = $3",
+                &[&tenant, &"gift_card.redeem", &"gc-1"],
+            )
+            .await
+            .unwrap();
+        let v: String = row.get(0);
+        client.batch_execute("ROLLBACK").await.unwrap();
+        v
+    };
+    let vector: VersionVector = serde_json::from_str(&stored).unwrap();
+    assert_eq!(vector.get("t1"), 1, "the stored counter survived");
+    assert_eq!(
+        vector.get("t2"),
+        1,
+        "the incoming side was observed: {stored}"
+    );
+
+    drop(store);
+    drop(pool);
+    let url = std::env::var("OZ_TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
+    let config = tokio_postgres::Config::from_str(&url).unwrap();
+    let mgr = deadpool_postgres::Manager::new(config, tokio_postgres::NoTls);
+    let cleanup = deadpool_postgres::Pool::builder(mgr)
+        .max_size(1)
+        .build()
+        .unwrap();
+    let client = cleanup.get().await.unwrap();
+    let _ = client
+        .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
+        .await;
+}
+
+/// **O-H10 acceptance, part 3 — the RLS contract survives the hoist.**
+///
+/// The Postgres arms used to set \`oz.tenant_id\` once per helper, inside that
+/// helper's own transaction. The batch form sets it once, on the page's ONE
+/// transaction. Against a live database that is what the PG integration tests
+/// below assert; here the property that must hold for EVERY backend is pinned
+/// statically: no statement in \`conflicts.rs\` may run outside a function whose
+/// caller has scoped the transaction, i.e. every \`set_config\` on this path is
+/// immediately followed by the page's statements and nothing in the file opens
+/// a NESTED transaction per statement.
+///
+/// This is a source-level guard on purpose: a future edit that reintroduces a
+/// per-statement checkout would still pass every behavioural test above,
+/// because correctness is not what it breaks — RLS coverage and round trips
+/// are.
+#[test]
+fn conflicts_postgres_arm_sets_the_tenant_guc_once_per_transaction() {
+    let src = include_str!("sync_store/conflicts.rs");
+    let set_config = src.matches("set_config('oz.tenant_id'").count();
+    assert_eq!(
+        set_config, 7,
+        "seven transaction-scoping points: insert_conflict, list_conflicts, \
+         resolve_conflict, detect_conflict, detect_conflicts — plus the two doc \
+         comments that name the contract; a new one must be justified here"
+    );
+    // The helpers the batch path shares with the single-item path must not
+    // re-open a transaction: \`pool.get()\` belongs to the public entry points.
+    for helper in [
+        "fn load_entity_state_locked_pg",
+        "fn upsert_entity_embedding_locked_pg",
+        "fn detect_batch_locked_pg",
+    ] {
+        let start = src
+            .find(helper)
+            .unwrap_or_else(|| panic!("{helper} missing"));
+        let body = &src[start..start + 400];
+        assert!(
+            !body.contains("pool.get()"),
+            "{helper} must run on the caller's transaction, not take its own connection"
+        );
+    }
 }

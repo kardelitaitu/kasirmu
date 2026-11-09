@@ -13,10 +13,15 @@ use std::process::Command;
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
-fn fresh_db_path(label: &str) -> String {
-    let dir = std::env::temp_dir();
-    let path = dir.join(format!("oz-pos-test-{}-{}.db", label, uuid::Uuid::now_v7()));
-    path.to_string_lossy().to_string()
+/// A fresh db path plus the guard owning its directory.
+///
+/// The guard is returned so the caller holds it for the test's lifetime:
+/// returning only the path would delete the directory on return, and every
+/// later open would fail with CannotOpen.
+fn fresh_db_path(label: &str) -> (String, kasirmu_test_support::ScratchDir) {
+    let scratch = kasirmu_test_support::ScratchDir::new(&format!("oz-pos-test-{label}"));
+    let path = scratch.path().join(format!("{label}.db"));
+    (path.to_string_lossy().to_string(), scratch)
 }
 
 fn open_db(path: &str) -> Connection {
@@ -88,8 +93,8 @@ fn sqlite3_backup(source_path: &str, backup_path: &str) -> Result<(), String> {
 /// Backup a fresh (zero tables with data) DB and verify integrity.
 #[test]
 fn backup_restore_zero_tables_db() {
-    let db_path = fresh_db_path("backup-zero");
-    let backup_path = fresh_db_path("backup-zero-bak");
+    let (db_path, _g) = fresh_db_path("backup-zero");
+    let (backup_path, _g) = fresh_db_path("backup-zero-bak");
 
     // Create a fresh DB with migrations but zero user data.
     {
@@ -138,8 +143,8 @@ fn backup_restore_zero_tables_db() {
 
 #[test]
 fn backup_restore_preserves_products() {
-    let db_path = fresh_db_path("backup-products");
-    let backup_path = fresh_db_path("backup-products-bak");
+    let (db_path, _g) = fresh_db_path("backup-products");
+    let (backup_path, _g) = fresh_db_path("backup-products-bak");
 
     // ── Create and seed DB ────────────────────────────────────────
     {
@@ -219,8 +224,8 @@ fn backup_restore_preserves_products() {
 
 #[test]
 fn backup_restore_preserves_sales() {
-    let db_path = fresh_db_path("backup-sales");
-    let backup_path = fresh_db_path("backup-sales-bak");
+    let (db_path, _g) = fresh_db_path("backup-sales");
+    let (backup_path, _g) = fresh_db_path("backup-sales-bak");
 
     // ── Create, seed, and complete a sale ─────────────────────────
     {
@@ -307,8 +312,8 @@ fn backup_restore_preserves_sales() {
 
 #[test]
 fn backup_restore_preserves_inventory_adjustments() {
-    let db_path = fresh_db_path("backup-inv");
-    let backup_path = fresh_db_path("backup-inv-bak");
+    let (db_path, _g) = fresh_db_path("backup-inv");
+    let (backup_path, _g) = fresh_db_path("backup-inv-bak");
 
     // ── Seed products and adjust stock ────────────────────────────
     {
@@ -366,9 +371,9 @@ fn backup_restore_preserves_inventory_adjustments() {
 
 #[test]
 fn corrupt_backup_is_detected() {
-    let db_path = fresh_db_path("backup-corrupt");
-    let backup_path = fresh_db_path("backup-corrupt-bak");
-    let corrupt_path = fresh_db_path("backup-corrupt-bad");
+    let (db_path, _g) = fresh_db_path("backup-corrupt");
+    let (backup_path, _g) = fresh_db_path("backup-corrupt-bak");
+    let (corrupt_path, _g) = fresh_db_path("backup-corrupt-bad");
 
     // Create valid DB with data.
     {
@@ -412,8 +417,8 @@ fn corrupt_backup_is_detected() {
 
 #[test]
 fn backup_restore_integrity_check_passes() {
-    let db_path = fresh_db_path("backup-integrity");
-    let backup_path = fresh_db_path("backup-integrity-bak");
+    let (db_path, _g) = fresh_db_path("backup-integrity");
+    let (backup_path, _g) = fresh_db_path("backup-integrity-bak");
 
     // ── Create seeded DB ──────────────────────────────────────────
     {
@@ -460,8 +465,8 @@ fn backup_restore_integrity_check_passes() {
 
 #[test]
 fn restore_onto_nonempty_db_overwrites() {
-    let db_path = fresh_db_path("backup-overwrite");
-    let backup_path = fresh_db_path("backup-overwrite-bak");
+    let (db_path, _g) = fresh_db_path("backup-overwrite");
+    let (backup_path, _g) = fresh_db_path("backup-overwrite-bak");
 
     // ── Create source DB with 3 products ──────────────────────────
     {
@@ -512,7 +517,7 @@ fn restore_onto_nonempty_db_overwrites() {
 
 #[test]
 fn check_integrity_passes_on_healthy_db() {
-    let db_path = fresh_db_path("integrity-healthy");
+    let (db_path, _g) = fresh_db_path("integrity-healthy");
     {
         let mut conn = open_db(&db_path);
         run_migrations(&mut conn);
@@ -528,7 +533,7 @@ fn check_integrity_passes_on_healthy_db() {
 
 #[test]
 fn check_integrity_detects_corrupt_file() {
-    let p = fresh_db_path("integrity-corrupt");
+    let (p, _g) = fresh_db_path("integrity-corrupt");
     fs::write(&p, "not valid sqlite!!!").unwrap();
     let conn = Connection::open(&p).unwrap();
     let s = store(&conn);
@@ -538,8 +543,8 @@ fn check_integrity_detects_corrupt_file() {
 
 #[test]
 fn repair_to_creates_readable_copy() {
-    let src = fresh_db_path("repair-src");
-    let dst = fresh_db_path("repair-dst");
+    let (src, _g) = fresh_db_path("repair-src");
+    let (dst, _g) = fresh_db_path("repair-dst");
     {
         let mut c = open_db(&src);
         run_migrations(&mut c);
@@ -563,8 +568,8 @@ fn repair_to_creates_readable_copy() {
 
 #[test]
 fn repair_workflow_detect_and_rebuild() {
-    let src = fresh_db_path("workflow-src");
-    let dst = fresh_db_path("workflow-dst");
+    let (src, _g) = fresh_db_path("workflow-src");
+    let (dst, _g) = fresh_db_path("workflow-dst");
     {
         let mut c = open_db(&src);
         run_migrations(&mut c);
@@ -594,8 +599,8 @@ fn repair_workflow_detect_and_rebuild() {
 
 #[test]
 fn repair_overwrites_existing_file() {
-    let src = fresh_db_path("repair-ow-src");
-    let dst = fresh_db_path("repair-ow-dst");
+    let (src, _g) = fresh_db_path("repair-ow-src");
+    let (dst, _g) = fresh_db_path("repair-ow-dst");
     {
         let mut c = open_db(&src);
         run_migrations(&mut c);
@@ -625,7 +630,7 @@ fn repair_overwrites_existing_file() {
 
 #[test]
 fn check_integrity_on_empty_healthy_db() {
-    let p = fresh_db_path("integrity-empty");
+    let (p, _g) = fresh_db_path("integrity-empty");
     {
         let mut c = open_db(&p);
         run_migrations(&mut c);
@@ -642,7 +647,7 @@ fn check_integrity_on_empty_healthy_db() {
 /// so `check_tenant_integrity` must return `Ok` without any data.
 #[test]
 fn check_tenant_integrity_passes_on_clean_db() {
-    let p = fresh_db_path("tenant-clean");
+    let (p, _g) = fresh_db_path("tenant-clean");
     {
         let mut c = open_db(&p);
         run_migrations(&mut c);
@@ -660,7 +665,7 @@ fn check_tenant_integrity_passes_on_clean_db() {
 /// A single foreign-tenant product row must fail loud and name `products`.
 #[test]
 fn check_tenant_integrity_rejects_foreign_product() {
-    let p = fresh_db_path("tenant-foreign-product");
+    let (p, _g) = fresh_db_path("tenant-foreign-product");
     {
         let mut c = open_db(&p);
         run_migrations(&mut c);
@@ -683,7 +688,7 @@ fn check_tenant_integrity_rejects_foreign_product() {
 /// A single foreign-tenant user row must fail loud and name `users`.
 #[test]
 fn check_tenant_integrity_rejects_foreign_user() {
-    let p = fresh_db_path("tenant-foreign-user");
+    let (p, _g) = fresh_db_path("tenant-foreign-user");
     {
         let mut c = open_db(&p);
         run_migrations(&mut c);
@@ -713,7 +718,7 @@ fn check_tenant_integrity_rejects_foreign_user() {
 /// Both foreign tables at once are reported together, not one at a time.
 #[test]
 fn check_tenant_integrity_reports_both_violations() {
-    let p = fresh_db_path("tenant-both");
+    let (p, _g) = fresh_db_path("tenant-both");
     {
         let mut c = open_db(&p);
         run_migrations(&mut c);
@@ -748,8 +753,9 @@ fn check_tenant_integrity_reports_both_violations() {
 /// the path goes through rusqlite's typed online backup API untouched.
 #[test]
 fn backup_to_quote_unicode_path_succeeds() {
-    let db_path = fresh_db_path("quote-src");
-    let dir = std::env::temp_dir().join(format!("oz-pos-test-quote-{}", uuid::Uuid::now_v7()));
+    let (db_path, _g) = fresh_db_path("quote-src");
+    let scratch = kasirmu_test_support::ScratchDir::new("oz-pos-test-quote");
+    let dir = scratch.path().to_path_buf();
     std::fs::create_dir_all(&dir).unwrap();
     let backup_path = dir
         .join("o'neil store — 商店.db")
@@ -775,7 +781,6 @@ fn backup_to_quote_unicode_path_succeeds() {
 
     fs::remove_file(&db_path).ok();
     fs::remove_file(&backup_path).ok();
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 /// Backup to an unwritable destination directory must return a typed
@@ -783,8 +788,9 @@ fn backup_to_quote_unicode_path_succeeds() {
 /// validation at the application boundary).
 #[test]
 fn backup_to_unwritable_destination_errors() {
-    let db_path = fresh_db_path("unwritable-src");
-    let dir = std::env::temp_dir().join(format!("oz-pos-test-unwritable-{}", uuid::Uuid::now_v7()));
+    let (db_path, _g) = fresh_db_path("unwritable-src");
+    let scratch = kasirmu_test_support::ScratchDir::new("oz-pos-test-unwritable");
+    let dir = scratch.path().to_path_buf();
     std::fs::create_dir_all(&dir).unwrap();
     // Target is a directory — not a file — so the backup must fail.
     let target = dir.join("is-a-directory").to_string_lossy().to_string();
@@ -808,8 +814,9 @@ fn backup_to_unwritable_destination_errors() {
 /// swallowed `let _ =` remove failure).
 #[test]
 fn repair_to_directory_target_errors() {
-    let src = fresh_db_path("repair-dir-src");
-    let dir = std::env::temp_dir().join(format!("oz-pos-test-repair-dir-{}", uuid::Uuid::now_v7()));
+    let (src, _g) = fresh_db_path("repair-dir-src");
+    let scratch = kasirmu_test_support::ScratchDir::new("oz-pos-test-repair-dir");
+    let dir = scratch.path().to_path_buf();
     std::fs::create_dir_all(&dir).unwrap();
     let dst_dir = dir.join("dst-dir").to_string_lossy().to_string();
     std::fs::create_dir_all(&dst_dir).unwrap();
@@ -840,9 +847,15 @@ fn repair_to_directory_target_errors() {
 /// with a typed error rather than being reported as a SQL failure.
 #[test]
 fn repair_to_missing_parent_dir_errors() {
-    let src = fresh_db_path("repair-parent-src");
-    let missing = std::env::temp_dir()
-        .join(format!("oz-pos-no-such-dir-{}", uuid::Uuid::now_v7()))
+    let (src, _g) = fresh_db_path("repair-parent-src");
+    // A path whose parent does not exist, under a guard so the fixture
+    // directory itself is still removed. The guarantee this test needs is that
+    // `no-such-dir` is absent -- it is never created -- which holds whichever
+    // root the guard uses.
+    let scratch = kasirmu_test_support::ScratchDir::new("oz-pos-no-such-dir");
+    let missing = scratch
+        .path()
+        .join("no-such-dir")
         .join("out.db")
         .to_string_lossy()
         .to_string();

@@ -67,3 +67,5 @@ why: the class is a locator target, not a status statement.
 | `screenExtraction` gate | 323 passed after restoring the column locators |
 | Full UI suite | 12,665 passed, 0 failed |
 | `tsc` | 0 |
+
+> last audited 14-10-26 by docs-auditor

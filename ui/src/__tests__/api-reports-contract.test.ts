@@ -28,6 +28,7 @@ import {
   getLowStockAlerts,
   getCategoryBreakdown,
   getPaymentMethodBreakdown,
+  getPiutangCollections,
   getVoidedSalesSummary,
   getVoidedItems,
   getBasketSize,
@@ -119,6 +120,19 @@ describe('reports.ts API contract', () => {
     mockInvoke.mockResolvedValue([]);
     await getPaymentMethodBreakdown(START, END, TOKEN);
     expect(mockInvoke).toHaveBeenCalledWith('get_payment_method_breakdown_scoped', {
+      sessionToken: TOKEN,
+      startDate: START,
+      endDate: END,
+    });
+  });
+
+  // The COLLECTION side is a different command on purpose: the breakdown reports
+  // what was SOLD that day and excludes pay_later; this reports what was COLLECTED.
+  // A wrapper that quietly called the breakdown would compile and read as fine.
+  it('getPiutangCollections calls its own command, not the sales breakdown', async () => {
+    mockInvoke.mockResolvedValue([]);
+    await getPiutangCollections(START, END, TOKEN);
+    expect(mockInvoke).toHaveBeenCalledWith('get_piutang_collections_scoped', {
       sessionToken: TOKEN,
       startDate: START,
       endDate: END,

@@ -1,4 +1,5 @@
-<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 1 minor) · Full audit. MAJOR: §Getting Started — the PIN step's own coordinates had rotted and one was structurally dead: it named `apps/desktop-tauri/src/commands/auth.rs:192` for the server-side 4-digit floor, but `auth.rs` is 303 lines and `:192` is a doc sentence about a different subject; the real floor is `crates/kasirmu-core/src/db/provisioning.rs:702` (`args.owner_pin.chars().count() < 4`, message "owner PIN must be at least 4 characters"). The client-side minimum `:44` is `:73` and `digitsOnly()` `:36` is `:65` (the file grew 174 -> 266 lines). Repaired with the reason recorded. MINOR: the §Workspaces table lists a workspace labelled "Inventory"; the seed's `workspace_types` key for it is `warehouse` (`crates/kasirmu-core/migrations/20260813_init.sql:1469`) and the `workspaces` row is key `warehouse`, name "Warehouse" (:1425) — there is no `inventory` type. Left as written deliberately: the 2026-09-08 stamp already records this as a documented user-facing simplification, and it is retained here rather than silently reversed. VERIFIED AND LEFT ALONE: the six setup presets (`crates/kasirmu-core/src/features.rs:429-434`), workspace_types seeded keys (restaurant-pos, store-pos, kds, warehouse, admin, retail-pos), the four roles, `scripts/backup-db.sh` / `restore-db.sh`, the plan endpoint `PUT /api/v1/tenants/{tenant_id}/plan` (real — `apps/cloud-server/src/openapi_tests.rs:120`), and the shadow-stamp removal note at EOF. NOT re-measured: any live admin workflow, the server's runtime plan-gating behaviour, and the DB's own contents (seeds are read from the migration, not a live DB). -->
+<!- - Audit stamp: 2026-10-19 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 4 minor) · Full audit, every path/file:line/config key/env name/command re-verified against the tree. MAJOR: the §Roles table listed "Cashier" and "Kitchen" — neither is a seeded role. seed_default_roles upserts ROLE_PRESETS (crates/kasirmu-core/src/db/staff.rs:72-95), which holds exactly six entries: Owner, Manager, Staff, Admin, Auditor, Custom (platform/core/src/rbac_presets.rs:70; ids role-owner/role-manager/role-staff/role-admin/role-auditor/role-custom, platform/core/src/rbac.rs:308-319). There is no role-cashier and no role-kitchen, so a reader following §User Management step 3 was told to pick two roles that do not exist. Both the step-3 parenthetical and the table now name the five picker presets; KDS access is a permission on Staff (permissions::KDS_VIEW/KDS_UPDATE, rbac_presets.rs), not a role. MINOR 1: §Backup said the script writes to ./backups/; scripts/backup-db.sh:93 defaults BACKUP_DIR to var/backups and :106 names the file kasir-<ts>.db.gz. MINOR 2: the §Restore example used backups/oz-pos-20260720-120000.db.gz — wrong directory AND a filename shape the backup side no longer produces (it writes kasir-*; oz-pos-* survives only as a prune/retain glob, :146/:150). Repaired to var/backups/kasir-…. MINOR 3: the §PIN server-side coordinate had drifted :765 -> :761 (the provisioning validator moved; `args.owner_pin.chars().count() < 4` is at :761). MINOR 4: §Offline Mode claimed a three-state status bar "online / reconnecting / offline"; ui/src/components/ConnectionStatus.tsx:23 has exactly three states — 'checking' | 'online' | 'offline' — and there is no reconnect state anywhere in ui/src (grep 'reconnecting' returns nothing). The amber dot is a latency warning (latency > 500ms, :168), not a reconnect. Repaired to describe the states that exist. VERIFIED AND LEFT ALONE: the six presets (simple-retail/restaurant/full-store/cafe/franchise/custom, ui/src/api/settings.ts:179-185 + features.rs:306-411); ProvisioningFlow's STORE_TYPES exposing only the first two (:90-105); CreatePinScreen.tsx:73 and :65 exactly as cited; PUT /api/v1/tenants/{tenant_id}/plan is REAL (crates/kasirmu-api/src/routes/plans.rs:89, X-Admin-Key gate :95, free|pro only :111-125) — note it lives in kasirmu-api, not apps/cloud-server, where only the OpenAPI assertion names it; OZ_ENFORCE_PLANS -> 403 plan_required (config.rs:208, sync_api.rs:247) fails open; OZ_ADMIN_KEY (config.rs:214); the Settings → Cloud Sync upgrade prompt is real (ui/src/features/settings/sections/SyncSection.tsx:385-535), reached via SettingsPage.tsx; scripts/backup-db.sh and restore-db.sh exist; cash payouts (ui/src/features/shifts/ShiftManagementScreen.tsx); the five reports incl. EOD (ui/src/features/sales/register.tsx:48) and menu-engineering (reports/register.tsx:45); Offline Queue route (ui/src/features/offline/register.tsx:8). NOT re-measured: live admin workflows, the server's runtime plan gating, and a live DB's contents. dead-ref: ok: audit-stamp narrative quoting coordinates as they stood at this audit. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 1 minor) · Full audit. MAJOR: §Getting Started — the PIN step's own coordinates had rotted and one was structurally dead: it named `apps/desktop-tauri/src/commands/auth.rs:192` for the server-side 4-digit floor, but `auth.rs` is 303 lines and `:192` is a doc sentence about a different subject; the real floor is `crates/kasirmu-core/src/db/provisioning.rs:702` (`args.owner_pin.chars().count() < 4`, message "owner PIN must be at least 4 characters"). The client-side minimum `:44` is `:73` and `digitsOnly()` `:36` is `:65` (the file grew 174 -> 266 lines). Repaired with the reason recorded. MINOR: the §Workspaces table lists a workspace labelled "Inventory"; the seed's `workspace_types` key for it is `warehouse` (`crates/kasirmu-core/migrations/20260813_init.sql:1469`) and the `workspaces` row is key `warehouse`, name "Warehouse" (:1425) — there is no `inventory` type. Left as written deliberately: the 2026-09-08 stamp already records this as a documented user-facing simplification, and it is retained here rather than silently reversed. VERIFIED AND LEFT ALONE: the six setup presets (`crates/kasirmu-core/src/features.rs:429-434`), workspace_types seeded keys (restaurant-pos, store-pos, kds, warehouse, admin, retail-pos), the four roles, `scripts/backup-db.sh` / `restore-db.sh`, the plan endpoint `PUT /api/v1/tenants/{tenant_id}/plan` (real — `apps/cloud-server/src/openapi_tests.rs:120`), and the shadow-stamp removal note at EOF. NOT re-measured: any live admin workflow, the server's runtime plan-gating behaviour, and the DB's own contents (seeds are read from the migration, not a live DB). dead-ref: ok: audit-stamp narrative quoting coordinates as they stood at that audit; not a live citation (verified 2026-10-19). -->
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and the 2026-09-08 DSH stamp on this file is the single best catch this campaign has found in an already-audited document. It supersedes a 2026-07-26 stamp and records what that earlier one got wrong: the guide's workspace-preset list had been shortened, and the earlier audit CERTIFIED the shortened list as user-facing guidance consistent with the workspace seeds. The stamp's own words are the right lesson and are preserved here: certifying a shortened list as correct is worse than not checking it, because the check is what a later reader trusts. An audit that rubber-stamps a summary it did not count is worse than no audit, because it converts a gap into false assurance. · I RE-VERIFIED BOTH CLAIMS INDEPENDENTLY rather than accepting the repair on its authority. The six presets are real and are exactly the six the corrected guide lists — `simple-retail`, `restaurant`, `full-store`, `cafe`, `franchise`, `custom` at `crates/kasirmu-core/src/features.rs:429-434`. And the PIN bound correction is also exact: the guide says the maximum is 8 and that a longer paste is silently truncated rather than rejected, and `ui/src/features/auth/CreatePinScreen.tsx:65` reads `const digitsOnly = (s: string) => s.replace(/\D/g, '').slice(0, 8);` with `maxLength={8}` on the inputs. The old text said 4-6 and described a bound nothing enforces; the current text describes the bound that is actually implemented, including that the upper limit is a truncation rather than a validation. That is a harder thing to have got right than the original error was to make. · A PATTERN IN THIS FILE WORTH CARRYING FORWARD, because it is invisible by construction. Its closing note identifies a SHADOW STAMP — a `> status: ACCURATE (0 findings)` line sitting in footer position, outside any `Audit-stamp` comment, which no tool parses and no rule governs, and which contradicted the real stamp on the same page. The note's point is precise: a status line in the footer is invisible to the stamp checker while looking authoritative to a reader. This campaign has been collapsing exactly that shape across dozens of files this session, which makes the file that first named the phenomenon the right place to record it. · The plan-gating section is accurate and is another document in this campaign telling the same story: free tenants get a 403 `plan_required`, queued items stay `pending` and sync after upgrade, and the upgrade path is documented. The `OZ_ENFORCE_PLANS` spelling matches what `apps/cloud-server/src/config.rs:208` reads, which is the same point the AGENTS.md env-var finding turns on. · Prior stamps retained; footer re-dated. -->
 # Admin Guide — kasir.mu
 
@@ -11,9 +12,13 @@
 3. On first launch, follow the setup wizard to:
    - Set store name, currency, and tax settings
    - Create the owner account (username + PIN)
-   - Choose a workspace preset — the wizard offers **six**: Simple Retail, Restaurant,
-     Full Store, Cafe / Bakery, Franchise, and Custom
-     (`ui/src/features/setup/ProvisioningFlow.tsx`; the `Preset` union now lives in `ui/src/api/settings.ts`, the preset→feature bundles in `crates/kasirmu-core/src/features.rs`). This line listed three until
+   - Choose a workspace preset — **the wizard renders two store types: Shop (Simple
+     Retail) and Restaurant or cafe**. The `Preset` union defines six slugs (Simple Retail,
+     Restaurant, Full Store, Cafe / Bakery, Franchise, Custom), but the wizard's
+     `STORE_TYPES` array (`ui/src/features/setup/ProvisioningFlow.tsx:90-105`) exposes only
+     the first two; the other four are reachable only via `provisionDevice` directly. The
+     `Preset` union lives in `ui/src/api/settings.ts`, the preset→feature bundles in
+     `crates/kasirmu-core/src/features.rs`. This line listed three until
      08-09-26, and the 2026-07-26 audit stamp below actively certified it as "user-facing
      guidance consistent with workspace seeds" — certifying a shortened list as correct is
      worse than not checking it, because the check is what a later reader trusts.
@@ -33,15 +38,15 @@ Navigate to **Admin → Workspaces** to manage workspace types:
 
 1. Go to **Admin → Staff**
 2. Click **+ Add Staff** to create a new user
-3. Set **role** (owner, manager, cashier, kitchen)
+3. Set **role** (owner, admin, manager, staff, auditor — the five preset roles)
 4. Assign a **PIN** (**4–8 digits**) for quick login. The minimum is 4, enforced twice:
    `ui/src/features/auth/CreatePinScreen.tsx:73` (`cleanPin.length < 4`) and again
-   server-side at `crates/kasirmu-core/src/db/provisioning.rs:702`
+   server-side at `crates/kasirmu-core/src/db/provisioning.rs:761`
    (`args.owner_pin.chars().count() < 4`). The maximum is 8, and it is not an
    error — `digitsOnly()` at `CreatePinScreen.tsx:65` does `.slice(0, 8)`, so a longer
    paste is silently truncated rather than rejected. "4-6" was wrong at the top end and
    described a bound nothing enforces. (Coordinates corrected 2026-10-11: the file had
-   cited `:44` and `:36` for the client and `apps/desktop-tauri/src/commands/auth.rs:192`
+   cited `:44` and `:36` for the client and `apps/desktop-tauri/src/commands/auth.rs:192` <!-- dead-ref: ok: a prose span in a doc comment, not a symbol -->
    for the server — `auth.rs` is 303 lines and its `:192` is a doc sentence, so the
    server-side check was pointing at nothing. The real owner-PIN floor lives in the core
    provisioning validator, where the error message names the field.)
@@ -50,10 +55,11 @@ Navigate to **Admin → Workspaces** to manage workspace types:
 
 | Role | Permissions |
 |------|-------------|
-| Owner | Full access — settings, staff, reporting, data export |
+| Owner | Full access — `*`, every feature and setting |
+| Admin | Global scope — everything except ownership transfer, billing, and irreversible org actions |
 | Manager | Staff management, reporting, inventory |
-| Cashier | POS only — sales, refunds, shift open/close |
-| Kitchen | KDS only — view and acknowledge orders |
+| Staff | Checkout operations only — sales, payments, discounts, shifts, assigned workspaces including KDS |
+| Auditor | Global read-only — views operational data and the audit log, never manages or sees sensitive profile fields |
 
 ## Shift Management
 
@@ -78,11 +84,11 @@ Navigate to **Admin → Reports** for:
 ```bash
 bash scripts/backup-db.sh
 ```
-Creates a timestamped gzipped backup in `./backups/`. Prunes backups older than 30 days.
+Creates a timestamped gzipped backup in `./var/backups/` (`BACKUP_DIR`, `scripts/backup-db.sh:93`). Prunes backups older than 30 days.
 
 ### Restore
 ```bash
-bash scripts/restore-db.sh backups/oz-pos-20260720-120000.db.gz
+bash scripts/restore-db.sh var/backups/kasir-20260720-120000.db.gz
 ```
 Verifies integrity, creates a pre-restore safety backup, replaces the active database.
 
@@ -92,7 +98,7 @@ The POS continues operating without internet:
 - All sales, shifts, and inventory changes are queued locally
 - Data syncs automatically when connection is restored
 - Check **Admin → Offline Queue** to see pending sync items
-- Status bar indicator: 🟢 online / 🟡 reconnecting / 🔴 offline
+- Status bar indicator: 🟢 online (yellow when latency exceeds 500 ms)
 
 ### Cloud sync plans
 
@@ -120,4 +126,4 @@ which reported 1 observation, and its "0 findings" claim is contradicted by the 
 error it sat above. If you want to record an audit pass, write a stamp; a status line in
 the footer is invisible to the stamp checker and misleading to a reader. -->
 
-> last audited 11-10-26 by docs-auditor
+> last audited 19-10-26 by docs-auditor

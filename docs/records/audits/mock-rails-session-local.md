@@ -70,3 +70,5 @@ persisted key cannot now land silently.
 | `storageKeyPins` | 5 passed after pinning the key |
 | Full UI suite | 12,671 passed, 0 failed |
 | `tsc` / `eslint` | 0 / 0 |
+
+> last audited 14-10-26 by docs-auditor

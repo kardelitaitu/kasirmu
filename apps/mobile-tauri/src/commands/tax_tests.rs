@@ -1,5 +1,6 @@
 use super::*;
 use kasirmu_core::session::SessionContext;
+use kasirmu_test_support::tempdir;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
 
@@ -479,7 +480,7 @@ async fn scoped_tax_command_denies_user_without_permission() {
     )
     .unwrap();
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
@@ -510,7 +511,7 @@ async fn scoped_tax_command_reads_only_the_session_store() {
     let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
@@ -564,7 +565,7 @@ async fn scoped_tax_write_command_targets_only_the_session_store() {
     let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);

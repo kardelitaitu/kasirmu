@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { useVersionStatus } from '@/hooks/useVersionStatus';
 import { createBackup } from '@/api/data';
 import { openExternalUrl } from '@/api/browser';
-import { getSetting, setSetting } from '@/api/settings';
+import { getSetting } from '@/api/settings';
 import { plainErrorMessage } from '@/utils/app-error';
 import './UpdateBanner.css';
 
@@ -83,6 +83,8 @@ export default function UpdateBanner() {
   // ── State ─────────────────────────────────────────────────────
   const [dismissed, setDismissed] = useState(false);
   const [installing, setInstalling] = useState(false);
+  /** Synchronous mirror of `installing` — see the re-entry guard in `handleInstall`. */
+  const installingRef = useRef(false);
   const [backingUp, setBackingUp] = useState(false);
   const [backupError, setBackupError] = useState<string | null>(null);
   const [versionBlocked, setVersionBlocked] = useState(false);
@@ -103,9 +105,15 @@ export default function UpdateBanner() {
 
     (async () => {
       try {
-        // A stored previous version that differs from the running one means
-        // an update landed — offer the old release in case it went wrong.
-        const prev = await getSetting(PREVIOUS_VERSION_KEY);
+        // Check localStorage first (persisted pre-login without session token),
+        // falling back to getSetting for legacy persisted values.
+        let prev: string | null = null;
+        if (typeof window !== 'undefined' && window.localStorage) {
+          prev = window.localStorage.getItem(PREVIOUS_VERSION_KEY);
+        }
+        if (!prev) {
+          prev = await getSetting(PREVIOUS_VERSION_KEY).catch(() => null);
+        }
         if (!cancelled && prev && prev !== currentVersion) {
           setPreviousVersion(prev);
           setShowRollback(true);
@@ -148,6 +156,13 @@ export default function UpdateBanner() {
     // 1. Version compatibility gate
     if (versionBlocked) return;
 
+    // 2. Re-entry guard. updateInstance.downloadAndInstall() downloads, installs AND
+    // RESTARTS the app, and it is preceded by a full database backup -- so a replay takes
+    // two backups of the same store, writes LAST_BACKUP_KEY twice (the second path wins,
+    // which is fine) and then races two installers over one download directory. The two
+    // state flags are committed on the next render, after the second tap.
+    if (installingRef.current) return;
+    installingRef.current = true;
     setInstalling(true);
     setBackingUp(true);
     setBackupError(null);
@@ -167,6 +182,7 @@ export default function UpdateBanner() {
       await updateInstance.downloadAndInstall();
     } catch (err) {
       // Installation failed — banner stays visible.
+      installingRef.current = false;
       setInstalling(false);
       setBackingUp(false);
       setBackupError(plainErrorMessage(err, 'Update failed'));
@@ -174,14 +190,16 @@ export default function UpdateBanner() {
   }, [updateInstance, versionBlocked, currentVersion]);// ── Helpers (module-level, no component state dependency) ─────────
 
 /**
- * Persist an updater setting through the settings API layer (F-007).
- * The unscoped command is used deliberately: the scoped variant requires
- * a session token which isn't available in this context (the banner
- * renders before login in some routes).
+ * Persist an updater setting through localStorage (F-007 / T11b).
+ * The scoped settings command requires a session token which isn't
+ * available in this context (the banner renders before login in some routes).
+ * LocalStorage reliably survives app restarts and update binaries.
  */
-async function persistUpdaterSetting(key: string, value: string): Promise<void> {
+function persistUpdaterSetting(key: string, value: string): void {
   try {
-    await setSetting(key, value, 'system_updater');
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(key, value);
+    }
   } catch {
     // Non-critical — backup already done; settings persistence is best-effort.
   }

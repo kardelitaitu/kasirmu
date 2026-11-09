@@ -118,6 +118,22 @@ vi.mock('@fluent/react', () => ({
           'auth-ip-local': 'Local : {ip}',
           'auth-ip-public': 'Public : {ip}',
           'auth-copyright': 'kasir.mu © {year} All rights reserved.',
+          // Keys the live screen renders that this map never spelled out. Values
+          // are the shared.ftl copy verbatim; the assertions below still compare
+          // the file's own wording, so these exist to keep getString off the id.
+          'license-activation-logo-alt': 'kasir.mu Logo',
+          'auth-clipboard-error': 'Clipboard error: { $message }',
+          'auth-pair-code-label': 'Pairing Code',
+          'auth-pair-expired': 'Pairing code expired. Click to refresh.',
+          'auth-pair-refresh': 'Refresh Code',
+          'auth-pair-scan-qr': 'Scan this QR code with your phone or visit { $url }',
+          'auth-pair-success': 'Device paired successfully!',
+          'auth-pair-waiting': 'Waiting for you to claim on your phone…',
+          'auth-setup-recommended-tablet': 'Recommended for Tablets',
+          'auth-tab-license-key': 'License Key',
+          'auth-tab-pair-device': 'Pair with Phone',
+          'auth-trial-hint-pro': 'You came from a restaurant/cafe page — your trial key unlocks a 14-day Pro trial.',
+          'auth-trial-hint-enterprise': 'Your referral trial key unlocks a 30-day Pro trial.',
           'staff-login-connection-auth': 'Auth Server',
           'staff-login-connection-sync': 'Sync Server',
         };
@@ -243,6 +259,29 @@ describe('LicenseActivationScreen', () => {
       expect(mockActivateLicense).toHaveBeenCalled();
       expect(onActivated).toHaveBeenCalled();
     });
+  });
+
+  it('activates ONCE when the Activate button is double-tapped', async () => {
+    // activate_license records the licence against the device fingerprint. The replay is
+    // refused by the one-licence-per-device rule and that refusal is reported as an
+    // activation failure over an activation that succeeded.
+    let release: (() => void) | undefined;
+    mockActivateLicense.mockReturnValue(new Promise((res) => { release = () => res(true); }));
+
+    const user = userEvent.setup();
+    renderOnForm();
+    await user.type(screen.getByLabelText('Email Address'), 'test@example.com');
+    await user.type(screen.getByLabelText('Phone Number'), '+6281234567890');
+    await user.type(screen.getByLabelText('License Key'), 'TEST-KEY-1234');
+
+    const submit = screen.getByRole('button', { name: 'Activate License' });
+    await act(async () => {
+      fireEvent.click(submit);
+      fireEvent.click(submit);
+    });
+
+    release?.();
+    await waitFor(() => expect(mockActivateLicense).toHaveBeenCalledTimes(1));
   });
 
   it('shows error when activation returns false', async () => {
@@ -391,6 +430,25 @@ describe('LicenseActivationScreen — email login', () => {
     await waitFor(() => expect(mockRequestEmailLoginCode).toHaveBeenCalledWith('owner@kasir.mu'));
     expect(screen.getByTestId('email-login-code-input')).toBeInTheDocument();
     expect(screen.queryByTestId('email-login-address-input')).not.toBeInTheDocument();
+  });
+
+  it('sends ONE sign-in code when Send code is double-tapped', async () => {
+    // A second send delivers a SECOND code, so the one the operator is reading stops
+    // matching -- and both steps then call onActivated against a linked device.
+    let release: (() => void) | undefined;
+    mockRequestEmailLoginCode.mockReturnValue(new Promise<void>((res) => { release = res; }));
+
+    renderEmailFlow();
+    await userEvent.setup().type(screen.getByTestId('email-login-address-input'), 'owner@kasir.mu');
+
+    const sendBtn = screen.getByTestId('email-login-send-code');
+    await act(async () => {
+      fireEvent.click(sendBtn);
+      fireEvent.click(sendBtn);
+    });
+
+    release?.();
+    await waitFor(() => expect(mockRequestEmailLoginCode).toHaveBeenCalledTimes(1));
   });
 
   it('spends the code and reports the device linked', async () => {

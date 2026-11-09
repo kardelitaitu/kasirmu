@@ -6,7 +6,6 @@ import { NoPurchaseOrdersIcon } from '@/components/EmptyStateIllustrations';
 import {
   listPurchaseOrdersScoped,
   updatePoStatusScoped,
-  receivePurchaseOrderScoped,
   type PurchaseOrderDto,
 } from '@/api/purchasing';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
@@ -16,6 +15,7 @@ import { Skeleton } from '@/components/Skeleton';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { minorUnitExponent } from '@/types/domain';
 import PurchaseOrderForm from './PurchaseOrderForm';
+import ReceivePoModal from './ReceivePoModal';
 import './PurchaseOrdersScreen.css';
 import { asArray } from '@/utils/ipc-payload';
 
@@ -43,10 +43,17 @@ export default function PurchaseOrdersScreen() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [receivingPo, setReceivingPo] = useState<PurchaseOrderDto | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  // The load error used to live only in a transient toast, so a rejected read
+  // fell through to the empty state and claimed "No purchase orders yet." — or,
+  // with a status chip selected, "No purchase orders with status X", which is
+  // an assertion about what the backend answered. Keep it on screen instead.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       // asArray: the command declares an array but nothing enforces it, and the
       // render filters `orders` below (and the empty state reads its length).
@@ -55,6 +62,9 @@ export default function PurchaseOrdersScreen() {
       setOrders(asArray<typeof data[number]>(data));
     } catch {
       addToast({ message: requiredLocalized(l10nRef.current, 'po-error-load'), type: 'error' });
+      // Keep the rows already on screen: a failed refresh should not delete
+      // the list the operator was reading.
+      setLoadError(requiredLocalized(l10nRef.current, 'po-error-load'));
     } finally {
       setLoading(false);
     }
@@ -74,18 +84,6 @@ export default function PurchaseOrdersScreen() {
       await load();
     } catch {
       addToast({ message: requiredLocalized(l10nRef.current, 'po-error-update'), type: 'error' });
-    } finally {
-      setActionLoading(null);
-    }
-  }, [load, addToast, sessionToken]);
-
-  const handleReceive = useCallback(async (id: string) => {
-    setActionLoading(id);
-    try {
-      await receivePurchaseOrderScoped(sessionToken, id);
-      await load();
-    } catch {
-      addToast({ message: requiredLocalized(l10nRef.current, 'po-error-receive'), type: 'error' });
     } finally {
       setActionLoading(null);
     }
@@ -132,6 +130,15 @@ export default function PurchaseOrdersScreen() {
         ))}
       </div>
 
+      {loadError && (
+        <div className="po-load-error" role="alert">
+          <span>{loadError}</span>
+          <button type="button" className="po-load-retry" onClick={load}>
+            <Localized id="retry"><span>Retry</span></Localized>
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="po-loading-skeleton" aria-hidden="true">
           <div className="po-header">
@@ -171,7 +178,7 @@ export default function PurchaseOrdersScreen() {
             </table>
           </div>
         </div>
-      ) : filtered.length === 0 ? (
+      ) : filtered.length === 0 && loadError ? null : filtered.length === 0 ? (
         <Card shadow="sm">
           <EmptyState
             region="table"
@@ -248,7 +255,7 @@ export default function PurchaseOrdersScreen() {
                           type="button"
                           className="po-action-btn po-action-btn--primary"
                           disabled={actionLoading === po.id}
-                          onClick={() => handleReceive(po.id)}
+                          onClick={() => setReceivingPo(po)}
                         >
                           Receive
                         </button>
@@ -276,6 +283,15 @@ export default function PurchaseOrdersScreen() {
 
       {showForm && (
         <PurchaseOrderForm editingId={editingId} onClose={closeForm} onSaved={onSaved} />
+      )}
+
+      {receivingPo && (
+        <ReceivePoModal
+          po={receivingPo}
+          sessionToken={sessionToken}
+          onClose={() => setReceivingPo(null)}
+          onReceived={load}
+        />
       )}
     </div>
   );

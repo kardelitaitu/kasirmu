@@ -82,19 +82,13 @@ fn require_permission_for_user(
         .map_err(map_gate_error)
 }
 
-/// Build the wire DTO for one staff member from its role list, profile and
-/// assignment. Exposed for the shell re-export and the sibling test modules.
-pub fn to_staff_dto(
+/// Build the wire DTO for one staff member with a pre-resolved role name.
+pub fn to_staff_dto_with_role_name(
     user: &User,
-    roles: &[Role],
+    role_name: String,
     profile: Option<&UserProfile>,
     assignment: Option<&Assignment>,
 ) -> StaffMemberDto {
-    let role_name = roles
-        .iter()
-        .find(|r| r.id == user.role_id)
-        .map(|r| r.name.clone())
-        .unwrap_or_default();
     StaffMemberDto {
         id: user.id.clone(),
         staff_code: None,
@@ -120,6 +114,22 @@ pub fn to_staff_dto(
             Some(user.created_at.clone())
         },
     }
+}
+
+/// Build the wire DTO for one staff member from its role list, profile and
+/// assignment. Exposed for the shell re-export and the sibling test modules.
+pub fn to_staff_dto(
+    user: &User,
+    roles: &[Role],
+    profile: Option<&UserProfile>,
+    assignment: Option<&Assignment>,
+) -> StaffMemberDto {
+    let role_name = roles
+        .iter()
+        .find(|r| r.id == user.role_id)
+        .map(|r| r.name.clone())
+        .unwrap_or_default();
+    to_staff_dto_with_role_name(user, role_name, profile, assignment)
 }
 
 /// Render an assignment for the wire. Legacy users without an assignment
@@ -278,11 +288,7 @@ pub fn enforce_role_assignment_policy(
             && target.role_id == kasirmu_core::builtin_roles::OWNER
             && (target_role_id != kasirmu_core::builtin_roles::OWNER || !target_is_active)
         {
-            let active_owners = store
-                .list_users()?
-                .iter()
-                .filter(|u| u.role_id == kasirmu_core::builtin_roles::OWNER && u.is_active)
-                .count();
+            let active_owners = store.count_active_owners()?;
             if active_owners <= 1 {
                 return Err(BridgeError::PermissionDenied(
                     "cannot deactivate or demote the last active Owner".into(),
@@ -349,6 +355,10 @@ pub async fn list_staff_scoped(
     require_permission_for_user(&store, &session.user_id, permissions::STAFF_READ)?;
     let users = store.list_users()?;
     let roles = store.list_roles()?;
+    let role_map: std::collections::HashMap<&str, &str> = roles
+        .iter()
+        .map(|r| (r.id.as_str(), r.name.as_str()))
+        .collect();
     // O-H05: load all profiles, assignments, and badge codes in three batched queries
     // instead of 3N queries in a per-user loop while holding the global lock.
     let mut profiles = store.list_user_profiles_map()?;
@@ -359,7 +369,13 @@ pub async fn list_staff_scoped(
     for u in &users {
         let profile = profiles.remove(&u.id);
         let assignment = assignments.remove(&u.id);
-        let mut dto = to_staff_dto(u, &roles, profile.as_ref(), assignment.as_ref());
+        let role_name = role_map
+            .get(u.role_id.as_str())
+            .copied()
+            .unwrap_or_default()
+            .to_string();
+        let mut dto =
+            to_staff_dto_with_role_name(u, role_name, profile.as_ref(), assignment.as_ref());
         dto.staff_code = staff_codes.remove(&u.id);
         dtos.push(dto);
     }
@@ -412,10 +428,34 @@ pub async fn list_roles_scoped(
     let store = Store::new(&db);
     require_permission_for_user(&store, &session.user_id, permissions::STAFF_READ)?;
     let roles = store.list_roles()?;
+    let (refs_map, holders_map) = store.all_role_counts_map()?;
+    let empty_refs = Vec::new();
     let dtos = roles
         .into_iter()
-        .map(|r| role_dto(&store, r))
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(|r| {
+            let permissions = r.permission_keys();
+            let is_builtin = kasirmu_core::db::roles::is_builtin_role_id(&r.id);
+            let refs = refs_map.get(&r.id).unwrap_or(&empty_refs);
+            let reference_count = refs.iter().map(|(_, count)| count).sum();
+            let grant_count = refs
+                .iter()
+                .filter(|(table, _)| matches!(*table, "role_workspace_types" | "role_workspaces"))
+                .map(|(_, count)| count)
+                .sum();
+            let holder_count = holders_map.get(&r.id).copied().unwrap_or(0);
+            RoleDto {
+                id: r.id,
+                name: r.name,
+                description: r.description,
+                permissions,
+                deleted_at: None,
+                is_builtin,
+                reference_count,
+                grant_count,
+                holder_count,
+            }
+        })
+        .collect();
     drop(db);
     Ok(dtos)
 }

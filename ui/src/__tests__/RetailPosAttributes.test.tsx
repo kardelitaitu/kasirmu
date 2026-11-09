@@ -118,6 +118,21 @@ const catFtl = `
 `;
 
 /** Products with ADR #36/#37 fields for the attribute tests. */
+// Scores are keyed on the SKU, NOT the array index. Round 81 appended a service
+// item (SKU-SVC) to `retailProducts`; an `index`-derived score silently gave it the
+// score previously reserved for the last retail row, which moved the ordering these
+// two cases assert. A score keyed on the SKU cannot shift when a fixture grows.
+const ATTR_POPULARITY: Record<string, number> = {
+  'SKU-001': 100, // Indomie Goreng - most popular
+  'SKU-002': 90,
+  'SKU-003': 80,
+  'SKU-004': 70, // Aqua 600ml - least popular retail row (also retired below)
+  'SKU-SVC': 60, // Installation Fee - least popular overall
+};
+
+// Index-derived rack locations are kept DISTINCT per row: a shared value makes
+// `getByText('R-01')` in the column-toggle case ambiguous ("found multiple elements").
+// Only the SCORE is keyed on the SKU — that is the one that must not drift with the array.
 const attrProducts = retailProducts.map((p, i) => ({
   ...p,
   cost_minor: 1000 + i * 100,
@@ -127,7 +142,7 @@ const attrProducts = retailProducts.map((p, i) => ({
   unit: 'pcs',
   is_active: p.sku !== 'SKU-004', // Aqua is retired in these fixtures
   default_supplier_id: null,
-  popularity_score: 100 - i * 10, // descending: SKU-001 most popular
+  popularity_score: ATTR_POPULARITY[p.sku] ?? 0,
 }));
 
 describe('RetailPosScreen — ADR #36/#37/#38', () => {
@@ -144,19 +159,29 @@ describe('RetailPosScreen — ADR #36/#37/#38', () => {
     await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
     await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
 
-    // Most popular (SKU-001, score 100) must render before the least
-    // popular (SKU-004, score 70) in the default sort.
+    // Most popular (SKU-001, score 100) first, least popular last. The LAST row
+    // is the service item (SKU-SVC, score 60), NOT Aqua — Aqua is SKU-004 at 70 and is
+    // also retired, so the floor of the list moved when round 81 added the service row.
+    // Asserting the whole order, rather than only both ends, so a middle row silently
+    // reordering cannot pass.
     const grid = screen.getByTestId('product-grid-scroll');
     const names = Array.from(grid.querySelectorAll('.retail-col-name .retail-product-btn span:first-child'))
       .map((el) => el.textContent);
-    expect(names[0]).toBe('Indomie Goreng');
-    expect(names[names.length - 1]).toBe('Aqua 600ml');
+    expect(names).toEqual([
+      'Indomie Goreng',
+      'Teh Botol Sosro',
+      'Nasi Goreng Spesial',
+      'Aqua 600ml',
+      'Installation Fee',
+    ]);
 
     // The popularity chip is active (aria-pressed) on load.
     expect(screen.getByRole('button', { name: /popularity/i })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('default sort ties break deterministically on SKU (ADR #37 D5)', async () => {
+    // 50 for EVERY entry including SKU-SVC, so the tiebreak is the only thing
+    // ordering the list.
     const tied = attrProducts.map((p) => ({ ...p, popularity_score: 50 }));
     const productsApi = vi.mocked(await import('@/api/products'));
     productsApi.listProductsScoped.mockResolvedValue(tied);
@@ -166,8 +191,15 @@ describe('RetailPosScreen — ADR #36/#37/#38', () => {
     const grid = screen.getByTestId('product-grid-scroll');
     const names = Array.from(grid.querySelectorAll('.retail-col-name .retail-product-btn span:first-child'))
       .map((el) => el.textContent);
-    // SKU tiebreak ascending: SKU-001, SKU-002, SKU-003, SKU-004.
-    expect(names).toEqual(['Indomie Goreng', 'Teh Botol Sosro', 'Nasi Goreng Spesial', 'Aqua 600ml']);
+    // SKU tiebreak ascending over EVERY row, the service item included: 'SKU-SVC'
+    // sorts after 'SKU-004' because 'S' > '0' in the ASCII the comparison uses.
+    expect(names).toEqual([
+      'Indomie Goreng',
+      'Teh Botol Sosro',
+      'Nasi Goreng Spesial',
+      'Aqua 600ml',
+      'Installation Fee',
+    ]);
   });
 
   it('column toggle shows/hides the Rack column and never offers Cost (ADR #36 D4)', async () => {
@@ -209,6 +241,10 @@ describe('RetailPosScreen — ADR #36/#37/#38', () => {
 
   it('right-click opens the row context menu; images action fires the opener (ADR #38)', async () => {
     const browserApi = await import('@/api/browser');
+    // The screen guards the site on isTabletShell() and calls one of two wrappers
+    // (see productImagesDoorPerShell.test.ts). This suite runs as the desktop, so
+    // the scoped door is the one that fires; spying on the tablet door would pass
+    // while the desktop path broke.
     const openSpy = vi.spyOn(browserApi, 'openProductImagesScoped').mockResolvedValue(true);
 
     await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);

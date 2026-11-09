@@ -96,3 +96,5 @@ The observation stands (seven clickable, permanently empty rows; a rail twice th
 menu). The attribution and the priority do not: this is dev-only fidelity, not a merchant-facing
 defect. See `menu-editor-categories-deferred.md` (round 127) for the least-blast-radius option —
 scoping `MOCK_CATEGORIES` by workspace in the router rather than in the editor.
+
+> last audited 14-10-26 by docs-auditor

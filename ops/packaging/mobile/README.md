@@ -276,9 +276,10 @@ apps/mobile-tauri/         # Rust + Tauri configuration
 │   ├── commands/           # Tauri commands (same pattern as desktop)
 │   ├── state.rs            # App state
 │   └── error.rs            # Error types
-└── gen/                    # Generated (do not commit) — created by `cargo tauri {android,ios} init`
-    ├── android/            # Gradle project
-    └── apple/              # Xcode project
+└── gen/                    # COMMITTED (see root .gitignore:182-191) — CI builds without the Tauri CLI
+    └── android/            # Gradle project, 50 tracked files (scaffold created by `cargo tauri android init`;
+                            #   57 today counts gen/ as a whole — schemas/ adds 7, re-measured 2026-10-19)
+                            #   gen/apple/ does NOT exist: iOS has no scaffold in this tree
 
 ops/packaging/mobile/README.md  # This file
 ```
@@ -403,9 +404,9 @@ the APK/AAB builds unsigned.
 |---------|-------------|-----|
 | `Android SDK not found` | `ANDROID_HOME` not set | Set env var to SDK path |
 | `NDK not found` | `ANDROID_NDK_HOME` not set | Set env var to NDK path |
-| `Could not find tools.jar` | Wrong JDK version | Install JDK 17+ |
+| `Could not find tools.jar` | Wrong JDK version | Install JDK 21 (`.github/workflows/android.yml:79` pins temurin 21) |
 | `Rust cross-compile error` | Missing Rust target | `rustup target add aarch64-linux-android` |
-| `Unsupported class file major version` | JDK version mismatch | Use JDK 17 (not 21+) |
+| `Unsupported class file major version` | JDK version mismatch | Use JDK 21 — 17 is the retired pin; a JBR's JDK 25 is what breaks Gradle |
 | `FAILURE: Build failed with an exception` | Check Gradle console | Run with `--stacktrace` flag |
 | `cargo tauri android init fails` | Already initialized | Delete `gen/android/` and re-init |
 | APK size > 100 MB | Debug symbols included | Build `--release` to strip |

@@ -73,6 +73,14 @@ vi.mock('@fluent/react', () => ({
         'auth-ip-local': 'Local : ' + (args ? args['ip'] : ''),
         'auth-ip-public': 'Public : ' + (args ? args['ip'] : ''),
         'auth-copyright': 'kasir.mu © ' + (args ? args['year'] : '') + ' All rights reserved.',
+        'auth-clear-email': 'Clear email address',
+        'auth-clear-phone': 'Clear phone number',
+        'auth-clear-key': 'Clear license key',
+        // The hero logo's alt. This map is a hand-maintained mirror of shared.ftl
+        // (shared-ui/locales/shared.ftl) and no test ever pinned the alt, so
+        // when the image moved onto l10n.getString the key simply fell through to
+        // the raw id and case 49 failed on alt text nobody had spelled out here.
+        'license-activation-logo-alt': 'kasir.mu Logo',
         'auth-email-placeholder': 'store@example.com',
         'auth-phone-placeholder': '08123456789',
         'auth-license-placeholder': 'OZ-PRO-XXXX-XXXX-XXXX',
@@ -95,6 +103,33 @@ vi.mock('@fluent/react', () => ({
         'auth-pair-waiting': 'Waiting for you to claim on your phone…',
         'auth-pair-expired': 'Pairing code expired. Click to refresh.',
         'auth-pair-refresh': 'Refresh Code',
+        'auth-pair-scan-qr': 'Scan this QR code with your phone or visit { $url }',
+        'auth-tab-license-key': 'License Key',
+        'auth-tab-pair-device': 'Pair with Phone',
+        'auth-setup-back': 'Back',
+        'auth-setup-title': 'How would you like to get started?',
+        'auth-setup-google': 'Sign in with Google',
+        'auth-setup-google-desc': 'Sign in, or create an account automatically if you are new.',
+        'auth-setup-google-failed': 'Could not sign in with Google. Please try again.',
+        'auth-setup-email': 'Sign in with email',
+        'auth-setup-email-desc': 'We email a one-time code, or you can use your password.',
+        'auth-setup-pair': 'Pair this device to your organization',
+        'auth-setup-pair-desc': 'Scan a code from a phone or another terminal that is already set up.',
+        'auth-setup-recommended-tablet': 'Recommended for Tablets',
+        'auth-setup-waiting-browser': 'Waiting for your browser to finish signing in…',
+        // Desktop-link email login (ADR #54 §2.6): address -> code, or
+        // address -> password when the account has one.
+        'auth-email-step-title': 'Sign in with your email',
+        'auth-email-send-code': 'Send code',
+        'auth-email-use-password': 'Use a password instead',
+        'auth-email-code-title': 'Enter the code we emailed you',
+        'auth-email-code-label': 'Login code',
+        'auth-email-code-placeholder': '6-digit code',
+        'auth-email-verify': 'Verify code',
+        'auth-email-back': 'Use a different email address',
+        'auth-email-password-title': 'Enter your password',
+        'auth-email-password-label': 'Password',
+        'auth-email-password-submit': 'Sign in',
       };
       return (map as Record<string, string>)[id] || id;
     }
@@ -113,9 +148,9 @@ vi.mock('@/app/ThemeToggle', () => ({
 
 /** Fill all 3 form fields with fireEvent.change (sync, no per-char overhead). */
 function fillForm(email = 'test@test.com', phone = '08123456789', key = 'KEY123') {
-  fireEvent.change(screen.getByLabelText(/Email Address/i), { target: { value: email } });
-  fireEvent.change(screen.getByLabelText(/Phone Number/i), { target: { value: phone } });
-  fireEvent.change(screen.getByLabelText(/License Key/i), { target: { value: key } });
+  fireEvent.change(screen.getByLabelText(/^Email Address$/i), { target: { value: email } });
+  fireEvent.change(screen.getByLabelText(/^Phone Number$/i), { target: { value: phone } });
+  fireEvent.change(screen.getByLabelText(/^License Key$/i), { target: { value: key } });
 }
 
 /** Click the Activate License submit button via fireEvent.click (sync). */
@@ -172,10 +207,10 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
       clickSubmit();
 
       await waitFor(() => {
-        expect(screen.getByLabelText(/Email Address/i)).toHaveAttribute('aria-invalid', 'true');
+        expect(screen.getByLabelText(/^Email Address$/i)).toHaveAttribute('aria-invalid', 'true');
       }, FAST_WAIT);
       // The field that was fine must not be accused.
-      expect(screen.getByLabelText(/Phone Number/i)).not.toHaveAttribute('aria-invalid');
+      expect(screen.getByLabelText(/^Phone Number$/i)).not.toHaveAttribute('aria-invalid');
     });
     it('marks only the phone field when the phone is too short', async () => {
       renderOnForm();
@@ -183,9 +218,9 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
       clickSubmit();
 
       await waitFor(() => {
-        expect(screen.getByLabelText(/Phone Number/i)).toHaveAttribute('aria-invalid', 'true');
+        expect(screen.getByLabelText(/^Phone Number$/i)).toHaveAttribute('aria-invalid', 'true');
       }, FAST_WAIT);
-      expect(screen.getByLabelText(/Email Address/i)).not.toHaveAttribute('aria-invalid');
+      expect(screen.getByLabelText(/^Email Address$/i)).not.toHaveAttribute('aria-invalid');
     });
 
     it('disables submit rather than marking a whitespace-only phone', () => {
@@ -196,12 +231,12 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
       fillForm('test@test.com', '   ', 'KEY123');
 
       expect(screen.getByRole('button', { name: /Activate License/i })).toBeDisabled();
-      expect(screen.getByLabelText(/Phone Number/i)).not.toHaveAttribute('aria-invalid');
+      expect(screen.getByLabelText(/^Phone Number$/i)).not.toHaveAttribute('aria-invalid');
     });
 
     it('clears the mark as soon as the user edits that field', async () => {
       renderOnForm();
-      const email = screen.getByLabelText(/Email Address/i);
+      const email = screen.getByLabelText(/^Email Address$/i);
       fillForm('not-an-email', '08123456789', 'KEY123');
       clickSubmit();
       await waitFor(() => {
@@ -278,7 +313,7 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
   describe('2. Form Rendering & Input Validation', () => {
     it('7. Email input is present, enabled, and accepts typing', () => {
       renderOnForm();
-      const emailInput = screen.getByLabelText(/Email Address/i);
+      const emailInput = screen.getByLabelText(/^Email Address$/i);
       expect(emailInput).toBeEnabled();
       fireEvent.change(emailInput, { target: { value: 'test@example.com' } });
       expect(emailInput).toHaveValue('test@example.com');
@@ -286,7 +321,7 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
 
     it('8. Phone input is present, enabled, and accepts typing', () => {
       renderOnForm();
-      const phoneInput = screen.getByLabelText(/Phone Number/i);
+      const phoneInput = screen.getByLabelText(/^Phone Number$/i);
       expect(phoneInput).toBeEnabled();
       fireEvent.change(phoneInput, { target: { value: '1234' } });
       expect(phoneInput).toHaveValue('1234');
@@ -294,7 +329,7 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
 
     it('9. License Key input is present, enabled, and accepts typing', () => {
       renderOnForm();
-      const keyInput = screen.getByLabelText(/License Key/i);
+      const keyInput = screen.getByLabelText(/^License Key$/i);
       expect(keyInput).toBeEnabled();
       fireEvent.change(keyInput, { target: { value: '1234' } });
       expect(keyInput).toHaveValue('1234');
@@ -302,7 +337,7 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
 
     it('10. License Key strictly forces characters to uppercase', () => {
       renderOnForm();
-      const keyInput = screen.getByLabelText(/License Key/i);
+      const keyInput = screen.getByLabelText(/^License Key$/i);
       fireEvent.change(keyInput, { target: { value: 'aBcDeFg' } });
       expect(keyInput).toHaveValue('ABCDEFG');
     });
@@ -314,27 +349,27 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
 
     it('12. Activate License button is disabled if email is filled but key is empty', () => {
       renderOnForm();
-      fireEvent.change(screen.getByLabelText(/Email Address/i), { target: { value: 'test@test.com' } });
+      fireEvent.change(screen.getByLabelText(/^Email Address$/i), { target: { value: 'test@test.com' } });
       expect(screen.getByRole('button', { name: /Activate License/i })).toBeDisabled();
     });
 
     it('13. Activate License button is disabled if key is filled but email is empty', () => {
       renderOnForm();
-      fireEvent.change(screen.getByLabelText(/License Key/i), { target: { value: 'KEY123' } });
+      fireEvent.change(screen.getByLabelText(/^License Key$/i), { target: { value: 'KEY123' } });
       expect(screen.getByRole('button', { name: /Activate License/i })).toBeDisabled();
     });
 
     it('14. Activate License button is enabled only when email, phone, and key have text', () => {
       renderOnForm();
-      fireEvent.change(screen.getByLabelText(/Email Address/i), { target: { value: 'test@test.com' } });
-      fireEvent.change(screen.getByLabelText(/Phone Number/i), { target: { value: '08123456789' } });
-      fireEvent.change(screen.getByLabelText(/License Key/i), { target: { value: 'KEY123' } });
+      fireEvent.change(screen.getByLabelText(/^Email Address$/i), { target: { value: 'test@test.com' } });
+      fireEvent.change(screen.getByLabelText(/^Phone Number$/i), { target: { value: '08123456789' } });
+      fireEvent.change(screen.getByLabelText(/^License Key$/i), { target: { value: 'KEY123' } });
       expect(screen.getByRole('button', { name: /Activate License/i })).toBeEnabled();
     });
 
     it('15. Inline Clear button correctly clears the Email field', () => {
       renderOnForm();
-      const emailInput = screen.getByLabelText(/Email Address/i);
+      const emailInput = screen.getByLabelText(/^Email Address$/i);
       fireEvent.change(emailInput, { target: { value: 'test@test.com' } });
       const clearBtn = screen.getAllByRole('button').find(b => b.className === 'license-input-clear')!;
       fireEvent.click(clearBtn);
@@ -343,7 +378,7 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
 
     it('16. Inline Clear button correctly clears the Phone field', () => {
       renderOnForm();
-      const phoneInput = screen.getByLabelText(/Phone Number/i);
+      const phoneInput = screen.getByLabelText(/^Phone Number$/i);
       fireEvent.change(phoneInput, { target: { value: '1234' } });
       const clearBtn = screen.getAllByRole('button').find(b => b.className === 'license-input-clear')!;
       fireEvent.click(clearBtn);
@@ -352,7 +387,7 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
 
     it('17. Inline Clear button correctly clears the License Key field', () => {
       renderOnForm();
-      const keyInput = screen.getByLabelText(/License Key/i);
+      const keyInput = screen.getByLabelText(/^License Key$/i);
       fireEvent.change(keyInput, { target: { value: 'KEY123' } });
       const clearBtn = screen.getAllByRole('button').find(b => b.className === 'license-input-clear')!;
       fireEvent.click(clearBtn);
@@ -370,9 +405,9 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
       fillForm();
       clickSubmit();
       
-      expect(screen.getByLabelText(/Email Address/i)).toBeDisabled();
-      expect(screen.getByLabelText(/Phone Number/i)).toBeDisabled();
-      expect(screen.getByLabelText(/License Key/i)).toBeDisabled();
+      expect(screen.getByLabelText(/^Email Address$/i)).toBeDisabled();
+      expect(screen.getByLabelText(/^Phone Number$/i)).toBeDisabled();
+      expect(screen.getByLabelText(/^License Key$/i)).toBeDisabled();
       
       resolveActivate(true);
     });
@@ -444,9 +479,9 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
 
     it('24. Submitting with whitespace-only Key shows validation error', () => {
       renderOnForm();
-      fireEvent.change(screen.getByLabelText(/Email Address/i), { target: { value: 'test@example.com' } });
-      fireEvent.change(screen.getByLabelText(/Phone Number/i), { target: { value: '08123456789' } });
-      fireEvent.change(screen.getByLabelText(/License Key/i), { target: { value: '   ' } });
+      fireEvent.change(screen.getByLabelText(/^Email Address$/i), { target: { value: 'test@example.com' } });
+      fireEvent.change(screen.getByLabelText(/^Phone Number$/i), { target: { value: '08123456789' } });
+      fireEvent.change(screen.getByLabelText(/^License Key$/i), { target: { value: '   ' } });
       
       clickSubmit();
       expect(screen.getByText('License key and Email are required.')).toBeInTheDocument();
@@ -502,9 +537,9 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
     it('30. Form handles extremely long input strings without UI crashing', () => {
       renderOnForm();
       const longStr = 'a'.repeat(500);
-      fireEvent.change(screen.getByLabelText(/Email Address/i), { target: { value: longStr } });
-      fireEvent.change(screen.getByLabelText(/License Key/i), { target: { value: 'KEY' } });
-      expect(screen.getByLabelText(/Email Address/i)).toHaveValue(longStr);
+      fireEvent.change(screen.getByLabelText(/^Email Address$/i), { target: { value: longStr } });
+      fireEvent.change(screen.getByLabelText(/^License Key$/i), { target: { value: 'KEY' } });
+      expect(screen.getByLabelText(/^Email Address$/i)).toHaveValue(longStr);
     });
 
     it('31. Multiple rapid submission attempts are blocked', async () => {
@@ -567,7 +602,7 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
   describe('6. Custom Context Menu & Pasting', () => {
     it('36. Right-clicking an input opens the context menu exactly at the mouse coordinates', () => {
       renderOnForm();
-      const emailInput = screen.getByLabelText(/Email Address/i);
+      const emailInput = screen.getByLabelText(/^Email Address$/i);
       fireEvent.contextMenu(emailInput, { clientX: 150, clientY: 250 });
       
       const menu = screen.getByText('Paste');
@@ -589,7 +624,7 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
 
     it('38. Clicking the container (global click) closes an open context menu', () => {
       renderOnForm();
-      const emailInput = screen.getByLabelText(/Email Address/i);
+      const emailInput = screen.getByLabelText(/^Email Address$/i);
       fireEvent.contextMenu(emailInput, { clientX: 150, clientY: 250 });
       
       expect(screen.getByText('Paste')).toBeInTheDocument();
@@ -602,7 +637,7 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
 
     it('39. Right-clicking an input while context menu is already open relocates the menu', () => {
       renderOnForm();
-      const emailInput = screen.getByLabelText(/Email Address/i);
+      const emailInput = screen.getByLabelText(/^Email Address$/i);
       
       fireEvent.contextMenu(emailInput, { clientX: 100, clientY: 100 });
       expect(screen.getByText('Paste')).toHaveStyle('top: 100px');
@@ -614,43 +649,43 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
     it('40. Pasting into the Email field updates ONLY the email field', async () => {
       mockClipboardReadText.mockResolvedValue('test@paste.com');
       renderOnForm();
-      const emailInput = screen.getByLabelText(/Email Address/i);
+      const emailInput = screen.getByLabelText(/^Email Address$/i);
       
       fireEvent.contextMenu(emailInput, { clientX: 100, clientY: 100 });
       fireEvent.click(screen.getByText('Paste'));
       
       await waitFor(() => expect(emailInput).toHaveValue('test@paste.com'), FAST_WAIT);
-      expect(screen.getByLabelText(/Phone Number/i)).toHaveValue('');
+      expect(screen.getByLabelText(/^Phone Number$/i)).toHaveValue('');
     });
 
     it('41. Pasting into the Phone field updates ONLY the phone field', async () => {
       mockClipboardReadText.mockResolvedValue('0899999');
       renderOnForm();
-      const phoneInput = screen.getByLabelText(/Phone Number/i);
+      const phoneInput = screen.getByLabelText(/^Phone Number$/i);
       
       fireEvent.contextMenu(phoneInput, { clientX: 100, clientY: 100 });
       fireEvent.click(screen.getByText('Paste'));
       
       await waitFor(() => expect(phoneInput).toHaveValue('0899999'), FAST_WAIT);
-      expect(screen.getByLabelText(/Email Address/i)).toHaveValue('');
+      expect(screen.getByLabelText(/^Email Address$/i)).toHaveValue('');
     });
 
     it('42. Pasting into the License Key field updates ONLY the key field, and forces to uppercase', async () => {
       mockClipboardReadText.mockResolvedValue('oz-key-abc');
       renderOnForm();
-      const keyInput = screen.getByLabelText(/License Key/i);
+      const keyInput = screen.getByLabelText(/^License Key$/i);
       
       fireEvent.contextMenu(keyInput, { clientX: 100, clientY: 100 });
       fireEvent.click(screen.getByText('Paste'));
       
       await waitFor(() => expect(keyInput).toHaveValue('OZ-KEY-ABC'), FAST_WAIT);
-      expect(screen.getByLabelText(/Email Address/i)).toHaveValue('');
+      expect(screen.getByLabelText(/^Email Address$/i)).toHaveValue('');
     });
 
     it('43. Clipboard returning empty text does nothing', async () => {
       mockClipboardReadText.mockResolvedValue('');
       renderOnForm();
-      const emailInput = screen.getByLabelText(/Email Address/i);
+      const emailInput = screen.getByLabelText(/^Email Address$/i);
       fireEvent.change(emailInput, { target: { value: 'existing@email.com' } });
       
       fireEvent.contextMenu(emailInput, { clientX: 100, clientY: 100 });
@@ -663,7 +698,7 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
     it('44. Clipboard throwing an OS permission error is caught, fires an error toast', async () => {
       mockClipboardReadText.mockRejectedValue(new Error('Permission denied'));
       renderOnForm();
-      const emailInput = screen.getByLabelText(/Email Address/i);
+      const emailInput = screen.getByLabelText(/^Email Address$/i);
       
       fireEvent.contextMenu(emailInput, { clientX: 100, clientY: 100 });
       fireEvent.click(screen.getByText('Paste'));
@@ -680,7 +715,7 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
       
       const { unmount } = render(<LicenseActivationScreen onActivated={mockOnActivated} />);
       openLicenseKeyForm();
-      const emailInput = screen.getByLabelText(/Email Address/i);
+      const emailInput = screen.getByLabelText(/^Email Address$/i);
       
       fireEvent.contextMenu(emailInput, { clientX: 100, clientY: 100 });
       fireEvent.click(screen.getByText('Paste'));
@@ -873,7 +908,7 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
   // ── C47: the tablet must not call commands it does not register ───────
   //
   // activate_license / get_machine_id / get_hardware_fingerprint are DESKTOP-registered
-  // only (apps/desktop-tauri/src/lib.rs:1261, :1267, :1269). The tablet's commands::license
+  // only (registered in apps/desktop-tauri/src/lib.rs). The tablet's commands::license
   // surface is get_license_status / check_license_status alone — its activation path is
   // device pairing. Before this fix the key form was reachable on the tablet and a submit
   // hit three unknown commands, so the catch reported a generic activation failure the
@@ -934,7 +969,7 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
       // tab strip behind it.
       expect(screen.queryByTestId('setup-license-key')).not.toBeInTheDocument();
       fireEvent.click(screen.getByTestId('setup-pair'));
-      expect(screen.queryByRole('tab', { name: /License Key/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab', { name: /^License Key$/i })).not.toBeInTheDocument();
       // The pairing tab — the tablet's real activation surface — is still offered.
       expect(screen.getByRole('tab', { name: /Pair with Phone/i })).toBeInTheDocument();
     });
@@ -975,7 +1010,7 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
 
       // The guard must not have narrowed the desktop: pinned in both directions, because a
       // fix that disabled activation everywhere would satisfy case 62 alone.
-      expect(screen.getByRole('tab', { name: /License Key/i })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /^License Key$/i })).toBeInTheDocument();
       fillForm();
       clickSubmit();
 

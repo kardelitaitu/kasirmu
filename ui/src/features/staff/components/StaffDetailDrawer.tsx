@@ -568,6 +568,15 @@ export function StaffDetailDrawer({
 
   // ── Save / Update ──────────────────────────────────────────────
 
+  // Re-entry guard. `saving` is React state and commits on the NEXT render, so the second
+  // dispatch of a real double tap still enters this handler. On the CREATE path the replay is
+  // refused by `users.username` UNIQUE (20260813_init.sql:974), and the catch reports
+  // `staff-error-save-failed` — so the operator is told the staff account was not created while
+  // the first tap created it, and is left looking at a drawer for an account that exists.
+  // Taken AFTER validation: every refusal above returns before the `try`, so a guard placed
+  // there would be set with no `finally` to clear it (the trap recorded in the gate doc).
+  const savePendingRef = useRef(false);
+
   // handleSave reads form state directly on every invocation — no useCallback
   // needed since it's only used as an onClick handler on a single button.
   //
@@ -594,6 +603,9 @@ export function StaffDetailDrawer({
       setError(first ?? null);
       return;
     }
+
+    if (savePendingRef.current) return;
+    savePendingRef.current = true;
 
     setFieldErrors({});
     setSaving(true);
@@ -657,6 +669,7 @@ export function StaffDetailDrawer({
         setError(l10nErrorMessage(err, l10n, 'staff-error-save-failed'));
       }
     } finally {
+      savePendingRef.current = false;
       setSaving(false);
     }
   };
@@ -836,7 +849,9 @@ export function StaffDetailDrawer({
           <div className="staff-drawer-card">
             <div className="staff-drawer-card-header">
               <UserIcon />
-              <span className="staff-drawer-card-title">Account Credentials</span>
+              <Localized id="staff-drawer-account-credentials">
+                <span className="staff-drawer-card-title">Account Credentials</span>
+              </Localized>
             </div>
             <div className="staff-drawer-card-body">
               {/* Username */}
@@ -911,7 +926,9 @@ export function StaffDetailDrawer({
           <div className="staff-drawer-card">
             <div className="staff-drawer-card-header">
               <ShieldIcon />
-              <span className="staff-drawer-card-title">Role & Permissions</span>
+              <Localized id="staff-drawer-role-permissions">
+                <span className="staff-drawer-card-title">Role &amp; Permissions</span>
+              </Localized>
             </div>
             <div className="staff-drawer-card-body">
               {editingIncomplete && (
@@ -1115,7 +1132,9 @@ export function StaffDetailDrawer({
           <div className="staff-drawer-card">
             <div className="staff-drawer-card-header">
               <BriefcaseIcon />
-              <span className="staff-drawer-card-title">Employment & Details</span>
+              <Localized id="staff-drawer-employment">
+                <span className="staff-drawer-card-title">Employment &amp; Details</span>
+              </Localized>
             </div>
             <div className="staff-drawer-card-body">
               {/* Monthly Take-Home Pay (Create only) */}
@@ -1203,7 +1222,9 @@ export function StaffDetailDrawer({
           <div className="staff-drawer-card">
             <div className="staff-drawer-card-header">
               <HeartIcon />
-              <span className="staff-drawer-card-title">Emergency Contact</span>
+              <Localized id="staff-drawer-emergency-contact">
+                <span className="staff-drawer-card-title">Emergency Contact</span>
+              </Localized>
             </div>
             <div className="staff-drawer-card-body">
               <label className="staff-mgmt-field" htmlFor="staff-field-emergency-name" aria-label={l10n.getString('staff-field-emergency-name-aria')}>

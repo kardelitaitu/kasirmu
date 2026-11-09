@@ -1,6 +1,7 @@
 use super::*;
 use foundation::Currency;
 use kasirmu_core::{Money, SaleLine};
+use kasirmu_test_support::tempdir;
 
 fn usd() -> Currency {
     "USD".parse().unwrap()
@@ -340,7 +341,7 @@ fn history_state() -> (AppState, tempfile::TempDir) {
             ('user-full', 'full', 'hash-not-a-real-pin', 'Full', 'role-full', 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');"#
     )
     .unwrap();
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
     let conn = state.db_manager.open_store("store-a").unwrap();
@@ -525,7 +526,7 @@ async fn export_eod_report_scoped_requires_reports_export() {
 /// builder both unscoped (commands/history.rs:205) and scoped (:413), and
 /// the desktop bridge path (crates/kasirmu-bridge/src/history.rs:199) which
 /// feeds the same daily rows into total_sales and total_revenue at :284 and
-/// :330-331. `void_sale` (crates/kasirmu-core/src/db/sales_lifecycle.rs:769-773)
+/// :330-331. `void_sale` (crates/kasirmu-core/src/db/sales_lifecycle.rs:890-894)
 /// sets status to voided and never touches total_minor, so the money of a
 /// cancelled sale stays inside the daily total.
 ///
@@ -667,7 +668,7 @@ async fn known_hazard_daily_totals_count_voided_sales_as_revenue() {
 /// `chrono::Utc::now()`, and a now-created row satisfies the offset predicate
 /// and the bare predicate at once because both sides of each shift together:
 /// structurally blind, in whichever door runs it. The second blindness is
-/// `tz_modifier` (crates/kasirmu-core/src/db/reports.rs:420 to :432), which
+/// `tz_modifier` (crates/kasirmu-core/src/db/reports/datetime.rs:138 to :156), which
 /// reads the offset from the `locations` table of whichever database it is
 /// handed and falls back to `+00:00` for anything unparseable, IANA names
 /// included — so a misconfigured store makes the halves AGREE and turns this

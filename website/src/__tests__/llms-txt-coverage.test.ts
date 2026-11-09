@@ -44,9 +44,8 @@ function pageSlugsOnDisk(): string[] {
       if (statSync(p).isDirectory()) {
         // `docs` and `[guideSegment]` are both collection-driven: the URLs under
         // them come from content files, not from a page on disk, so they are not
-        // marketing slugs this list can account for. Guides are not yet listed
-        // in llms.txt (SEO plan track A4) — that is a gap in the summary, not a
-        // page being hidden.
+        // marketing slugs this list can account for. Both are listed in llms.txt
+        // via their content collections.
         if (name === 'docs' || name === '[guideSegment]') continue;
         walk(p, `${prefix}${name}/`);
         continue;
@@ -95,9 +94,13 @@ describe('llms.txt page coverage', () => {
     }
   });
 
-  it('does not list docs pages — those come from the content collection', () => {
+  it('does not list docs or guides pages — those come from content collections', () => {
     const docs = LLMS_PAGE_SLUGS.filter((s) => s === 'docs' || s.startsWith('docs/'));
     expect(docs).toEqual([]);
+    const guides = LLMS_PAGE_SLUGS.filter(
+      (s) => s === 'panduan' || s.startsWith('panduan/') || s === 'guides' || s.startsWith('guides/'),
+    );
+    expect(guides).toEqual([]);
   });
 
   it('maps only listed slugs in the label and i18n tables', () => {

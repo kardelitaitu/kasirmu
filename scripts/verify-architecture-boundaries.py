@@ -87,6 +87,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -108,7 +109,21 @@ BRIDGE_TOOLKIT_SECTIONS = ("[dependencies]", "[dev-dependencies]", "[build-depen
 BRIDGE_TOOLKIT_PATTERN = re.compile(r"tauri|webkit|gtk", re.IGNORECASE)
 ALLOWED_PLATFORM_COMPOSER = "platform-startup"
 UI_API_PREFIX = "ui/src/api/"
-UI_INFRASTRUCTURE_ADAPTERS = {"ui/src/utils/logged-invoke.ts"}
+# The three shapes that bring the UPSTREAM `invoke` into a file. Hoisted so the
+# api-directory arm and the general arm below cannot drift apart: both must ask
+# the same question, and the answer is what makes a bypass a bypass.
+UPSTREAM_INVOKE_IMPORT = re.compile(
+    r"(?:import\s*\{[^}]*\binvoke\b[^}]*\}\s*from\s*['\"]@tauri-apps/api/core['\"]|"
+    r"import\s*\*\s*as\s+\w+\s*from\s*['\"]@tauri-apps/api/core['\"]|"
+    r"\{[^}]*\binvoke\b[^}]*\}\s*=\s*await\s+import\s*\(\s*['\"]@tauri-apps/api/core['\"]\s*\))",
+    re.DOTALL,
+)
+UI_INFRASTRUCTURE_ADAPTERS = {
+    "ui/src/utils/logged-invoke.ts",
+    # The deadline wrapper ITSELF. It is the one file whose job is to bind the
+    # upstream `invoke`, so an import of it here is the seam rather than a bypass.
+    "ui/src/api/tauri.ts",
+}
 # ADR #53: a Rust char literal, as opposed to a lifetime (`&'a str`). Needed so the
 # comment-preserving mask does not open a fake string at a lifetime's apostrophe.
 CHAR_LITERAL_PATTERN = re.compile(r"'(?:\\.|[^\\'])'")
@@ -655,6 +670,54 @@ def find_invoke_calls(raw: str) -> list[tuple[int, str]]:
     return calls
 
 
+def api_module_imports_upstream_invoke(rel: str, path: Path) -> bool:
+    """True when a file under `ui/src/api/` binds the UPSTREAM `invoke`.
+
+    `ui/src/api/` is the sanctioned home for IPC wrappers, and this rule skips the
+    directory so a wrapper's own `invoke` CALL is not reported. Skipping the whole
+    directory also skipped its IMPORTS, which is the half that matters: `@/api/tauri`
+    (re-exported by `@/utils/logged-invoke`) is what gives every call a deadline
+    (C23), and a module that binds the upstream `invoke` instead has no bound at all.
+
+    That is not a style point. Tauri 2.11.3 compiles an async command onto a spawned
+    task with no `catch_unwind`, so a panicking body never writes a response and the
+    promise never settles -- the caller waits forever behind a spinner. Measured
+    2026-10-26: `ui/src/api/payables.ts` imported the upstream `invoke` in four call
+    sites, and this checker reported exit 0 over them because the directory arm
+    returned before the import was read. All four are now routed through
+    `loggedInvoke`, and this predicate is what keeps the next one from slipping in.
+
+    The seam adapter itself is exempt via UI_INFRASTRUCTURE_ADAPTERS: importing the
+    upstream `invoke` is that file's entire job.
+    """
+    if rel in UI_INFRASTRUCTURE_ADAPTERS:
+        return False
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ValueError(f"cannot read UI source: {path}: {exc}") from exc
+    return bool(invoke_callable_names(raw))
+
+
+def _first_upstream_import_line(path: Path) -> int:
+    """1-based line of the first statement importing the upstream `invoke`.
+
+    Comments are masked first, so a docstring that merely NAMES the import (as
+    api/tauri.ts does at length) does not report itself. Returns 0 when the file
+    cannot be read or no import survives the mask; the caller only invokes this
+    after the predicate has already answered True.
+    """
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        return 0
+    code = strip_comments_preserving_strings(raw)
+    match = UPSTREAM_INVOKE_IMPORT.search(code)
+    if not match:
+        return 0
+    return code.count(chr(10), 0, match.start()) + 1
+
+
 def ui_findings(root: Path, scope: dict[str, int]) -> list[dict[str, Any]]:
     ui_root = root / "ui" / "src"
     if not ui_root.is_dir():
@@ -662,7 +725,21 @@ def ui_findings(root: Path, scope: dict[str, int]) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
     for path in sorted(ui_root.rglob("*.ts")) + sorted(ui_root.rglob("*.tsx")):
         rel = relative_path(path, root)
-        if rel.startswith(UI_API_PREFIX) or rel in UI_INFRASTRUCTURE_ADAPTERS:
+        if rel in UI_INFRASTRUCTURE_ADAPTERS:
+            continue
+        if rel.startswith(UI_API_PREFIX):
+            # `ui/src/api/` is the sanctioned home for IPC wrappers, so a CALL made here
+            # is not a boundary violation and is not graded. An IMPORT of the upstream
+            # `invoke` is graded, because it bypasses the `@/api/tauri` deadline wrapper
+            # (C23): a panicking command then never settles, and the UI spins forever.
+            #
+            # That import arm did not exist until 2026-10-26. This skip ran before the
+            # file was ever read, so `ui/src/api/payables.ts` bound the upstream
+            # `invoke` in four call sites while the checker printed exit 0 over them.
+            # Measured, then fixed, then pinned by four cases in the --self-test.
+            if api_module_imports_upstream_invoke(rel, path):
+                findings.append(make_finding('ui-direct-invoke', rel, '<import>',
+                                             _first_upstream_import_line(path)))
             continue
         if {"__tests__", "__mocks__", "dev-mock"} & set(path.parts) or ".test." in path.name or ".spec." in path.name:
             continue
@@ -1092,13 +1169,66 @@ def new_scope() -> dict[str, int]:
     }
 
 
+# The smallest population a REAL tree can have. Every crate in this workspace has at
+# least one dependency edge, and 40+ crates are known. The floor is deliberately far
+# below the measured 41/603 so it never trips on legitimate growth or pruning -- it
+# exists to catch a ZERO, not to police a number.
+MIN_CRATES_FOR_A_REAL_TREE = 5
+MIN_DEP_EDGES_FOR_A_REAL_TREE = 10
+
+
+def population_floor_violation(scope: dict[str, int]) -> str:
+    """Why this census cannot describe a real tree, or '' when it can.
+
+    **Printing the population is not a guard, and this file said it was.** The comment
+    on `population_clause` used to end "... Printing the population is what makes that
+    visible without this tool taking an exit code away from a mode (fixtures) that
+    legitimately has nothing to find." But `cargo_findings`'s own note already stated
+    the real problem -- "An empty graph and a graph with no violation produce the same
+    '0 blocking' without this" -- and no code ever checked it. Measured 2026-10-23 with
+    `--metadata-file` carrying `{"packages": []}`: the gate printed "0 tracked
+    transitional, 0 blocking" with "0 crate(s) in the Cargo graph, 0 dependency edge(s)
+    followed" and **exited 0**. Any real failure that empties the graph -- a cargo
+    metadata failure, a wrong --root, a broken workspace -- produces the identical
+    green.
+
+    The fixture mode is a real concern rather than an excuse, so the two cases are
+    separated instead of traded off: a caller running against a SYNTHETIC root already
+    passes `--metadata-file`, and a floor is only applied when the census is expected
+    to be real. See `main`, which skips this check for a metadata fixture and for
+    `--report-only`, and enforces it otherwise.
+
+    HOW MUCH THIS ACTUALLY ADDS, measured rather than assumed. Against an empty or
+    incomplete `--root`, cargo metadata already fails first (exit 2, "no Cargo graph is
+    available and this checker does not substitute a cached one"), and a root missing
+    `ui/src` or a manifest fails before the graph is even read. So on TODAY'S code the
+    empty graph is not reachable through the real-run path: this floor is defence in
+    depth against a future change -- a cached metadata fallback, an --offline mode, a
+    partial root -- rather than a repair of a live hole. It is stated that way because
+    the alternative (claiming a fix) would be a false account of what was wrong.
+    """
+    if scope["crates"] < MIN_CRATES_FOR_A_REAL_TREE:
+        return (
+            f"the Cargo graph names only {scope['crates']} crate(s); a real tree has at "
+            f"least {MIN_CRATES_FOR_A_REAL_TREE}. A gate that walked nothing must not "
+            "report clean -- this is the empty-graph shape, not a passing scan"
+        )
+    if scope["dep_edges"] < MIN_DEP_EDGES_FOR_A_REAL_TREE:
+        return (
+            f"only {scope['dep_edges']} dependency edge(s) were followed; a real tree has "
+            f"at least {MIN_DEP_EDGES_FOR_A_REAL_TREE}. The graph was read but the edges "
+            "were not, so no boundary could have been tested"
+        )
+    return ""
+
+
 def population_clause(scope: dict[str, int]) -> str:
     """The denominator half of the green line.
 
     All three finding counts can be zero while the scope is zero too, which is
-    what --root on an empty directory produces. Printing the population is what
-    makes that visible without this tool taking an exit code away from a mode
-    (fixtures) that legitimately has nothing to find.
+    what --root on an empty directory produces. Printing the population makes that
+    VISIBLE; `population_floor_violation` is what makes it FAIL. The two are not
+    substitutes: a number in a log is read by nobody when the exit code says pass.
     """
     return (
         f" [population examined: {scope['crates']} crate(s) in the Cargo graph, "
@@ -1110,6 +1240,24 @@ def population_clause(scope: dict[str, int]) -> str:
         f"{scope['shell_files']} shell .rs file(s) scanned for the event seam, "
         f"{scope['baseline_entries']} baseline entry(ies)]"
     )
+
+
+def should_enforce_floor(metadata_is_fixture: bool, report_only: bool) -> bool:
+    """Whether this run must refuse a census too small to describe the tree.
+
+    Extracted from `main` so the self-test can pin the CALL, not only the rule. The first
+    version of the self-test proved `population_floor_violation` was correct and never
+    proved anyone called it -- and a planted break that made `main` ignore its result left
+    the self-test 7/7 green, which is precisely the "guard written, never called" failure
+    the floor itself was added to prevent. Measured 2026-10-23.
+
+    Two exemptions, both legitimate and both narrow:
+      * a METADATA FIXTURE is a synthetic graph on purpose, which is how the self-test and
+        any fixture harness supply a tree;
+      * `--report-only` already refuses to judge and says NOT JUDGING on its own line, so
+        its exit code is not a verdict to protect.
+    """
+    return not metadata_is_fixture and not report_only
 
 
 def report_human(
@@ -1154,7 +1302,254 @@ def report_human(
         print(f"\nExpired baseline findings: {len(expired)}")
 
 
-def main() -> int:
+def self_test() -> int:
+    """Pin the census floor, which is the half that cannot be seen from a green line.
+
+    The floor's whole job is to FAIL where the tool would otherwise print zeros and exit
+    zero, so every case here asserts a verdict rather than a number. A self-test that
+    only checked the arithmetic could pass while main() ignored the result -- the exact
+    shape this project keeps finding (a guard written, never called).
+    """
+    cases: list[str] = []
+
+    def want(name: str, got, expect) -> None:
+        if got != expect:
+            cases.append(f"{name}: expected {expect!r}, got {got!r}")
+
+    real = {"crates": 41, "dep_edges": 603}
+    want("a real census passes", population_floor_violation(real), "")
+
+    # The empty graph: cargo metadata succeeded and returned nothing. This is the shape
+    # that used to print "0 blocked" with no crates and exit 0.
+    # Anchored on the CRATE clause specifically, not merely "some violation came back":
+    # with both floors present, a graph that also has 0 edges is rejected by the edge
+    # branch too, so a weaker assertion stays green with the crate floor deleted -- which
+    # is exactly what the planted-break run showed (1 failure, not 2).
+    want("an empty graph is refused",
+         "0 crate(s)" in population_floor_violation({"crates": 0, "dep_edges": 0}), True)
+    want("the refusal names the crate count",
+         "0 crate(s)" in population_floor_violation({"crates": 0, "dep_edges": 0}), True)
+
+    # A graph that names crates but follows no edges: the boundary rules live on the
+    # EDGES, so a scan that read the nodes and not their dependencies tested nothing.
+    edge_case = population_floor_violation({"crates": 41, "dep_edges": 0})
+    want("crates without edges is refused", edge_case != "", True)
+    want("the refusal names the edge count", "0 dependency edge(s)" in edge_case, True)
+
+    # The floor must never fire on real growth or pruning: five is far below the measured
+    # 41, and the workspace has never been near it.
+    want("a small but real tree still passes",
+         population_floor_violation({"crates": 5, "dep_edges": 10}), "")
+
+    # THE CALL, not only the rule. A break that makes main() ignore the floor's answer
+    # left this self-test 7/7 green before these two cases existed -- the rule was proven
+    # and its use was not. Measured 2026-10-23 with a planted `if False`.
+    want("a real run enforces the floor", should_enforce_floor(False, False), True)
+    want("a metadata fixture is exempt", should_enforce_floor(True, False), False)
+    want("report-only is exempt", should_enforce_floor(False, True), False)
+
+    # normalize_path's own contract. Found by MUTATION, not by reading: replacing its
+    # body with the OLD ".lstrip('./')" left this self-test 7/7 green, because no case
+    # ever called it -- the docstring at :151 describes the bug it fixed and nothing
+    # checked the fix. Measured 2026-10-23 with scripts/sabotage-selftests.py, which
+    # reported this file SURVIVED. The three cases below are the three spellings the
+    # docstring names: "./x" (trimmed), "../x" (kept) and "/abs/x" (kept).
+    want("./ prefix is trimmed", normalize_path("./crates/a/src/lib.rs"), "crates/a/src/lib.rs")
+    want("a run of ./ is trimmed", normalize_path("./././x.rs"), "x.rs")
+    want("../../ is preserved", normalize_path("../../other-checkout/Cargo.toml"), "../../other-checkout/Cargo.toml")
+    want("a leading slash is preserved", normalize_path("/abs/x.rs"), "/abs/x.rs")
+    want("backslashes become slashes", normalize_path(Path("./a").joinpath("b.rs")), "a/b.rs")
+
+    # And the CALL: relative_path is the only canonical form for a baseline key, so a
+    # normalize_path that lies is caught there too. Below the root must be repo-relative,
+    # above it must keep its "../" so foreign-worktree debt stays distinguishable.
+    want("under the root is repo-relative",
+         relative_path(Path("crates/a/src/lib.rs"), Path(".")), "crates/a/src/lib.rs")
+    want("above the root keeps its ../",
+         relative_path(Path("../sibling/x.rs"), Path(".")), "../sibling/x.rs")
+
+    # The api-directory arm, added 2026-10-26 after ui/src/api/payables.ts was found
+    # importing the upstream `invoke` while this checker printed exit 0 over it. The
+    # predicate is the ONLY part of that fix a case can reach without touching disk:
+    # the directory walk needs a real tree, and this self-test's contract is "no files
+    # touched". So each case drives api_module_imports_upstream_invoke against a
+    # throwaway temp file, and asserts both directions -- a case that only checked the
+    # True direction would stay green if the predicate returned True for everything.
+    with tempfile.TemporaryDirectory() as probe_dir:
+        probe = Path(probe_dir) / "payables.ts"
+        probe.write_text(
+            "import { loggedInvoke } from '@/utils/logged-invoke';\n"
+            "export const x = () => loggedInvoke<number>('a_scoped', {});\n",
+            encoding="utf-8",
+        )
+        want("an api module using the wrapper is not a finding",
+             api_module_imports_upstream_invoke("ui/src/api/payables.ts", probe), False)
+
+        probe.write_text(
+            "import { invoke } from '@tauri-apps/api/core';\n"
+            "export const x = () => invoke<number>('a_scoped', {});\n",
+            encoding="utf-8",
+        )
+        want("an api module binding the upstream invoke IS a finding",
+             api_module_imports_upstream_invoke("ui/src/api/payables.ts", probe), True)
+        want("the reported line is the import",
+             _first_upstream_import_line(probe), 1)
+
+        # A docstring that merely NAMES the import must not report itself; the seam
+        # adapter (api/tauri.ts) is legitimately full of such prose.
+        probe.write_text(
+            "/**\n"
+            " * This wrapper exists because '@tauri-apps/api/core' has no deadline.\n"
+            " * import { invoke } from '@tauri-apps/api/core';  <- mentioned, not done\n"
+            " */\n"
+            "export const y = 1;\n",
+            encoding="utf-8",
+        )
+        want("a comment naming the import is not a finding",
+             api_module_imports_upstream_invoke("ui/src/api/other.ts", probe), False)
+
+        # The seam adapter imports the upstream invoke by design.
+        probe.write_text(
+            "import { invoke as rawInvoke } from '@tauri-apps/api/core';\n",
+            encoding="utf-8",
+        )
+        want("the seam adapter is exempt",
+             api_module_imports_upstream_invoke("ui/src/api/tauri.ts", probe), False)
+
+    if cases:
+        print("SELF-TEST WRONG: " + "; ".join(cases), file=sys.stderr)
+        return 2
+    print("SELF-TEST OK (18 cases, no files touched)")
+    return shell_ladder()
+
+
+
+def shell_ladder() -> int:
+    """r226: the root contract, graded on fixture trees through main(argv, root).
+
+    This tool already had --root (the node fixture suite drives it that way),
+    so the seam added here is callability, and the ladder's job is to prove
+    the kwarg moves every walker together. Fixtures supply a metadata JSON --
+    the tool's own fixture route, which also exempts them from the census
+    floor; rung 6 is the exception that proves the floor: a REAL one-crate
+    cargo workspace with no --metadata-file is refused rc 2. Rung 1 is the
+    killing rung: a root-dropping main grades THIS checkout, which measures
+    its tracked transitional debt at exit 0.
+    """
+    import contextlib
+    import io
+    import json as _json
+
+    DEMO_CODE = ("import { invoke } from '@tauri-apps/api/core';\n"
+                 "export const x = () => invoke<number>('a_scoped', {});\n")
+
+    def run(root_dir, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root_dir))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    def build(tmp, *, ui_code=None, baseline=None, cargo=False, label=None):
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix=(label or ("mini%d_" % next(rung_n)))))
+        (base / "scripts").mkdir(parents=True)
+        (base / "ui" / "src").mkdir(parents=True)
+        (base / "scripts" / "architecture-boundaries-baseline.json").write_text(
+            _json.dumps({"entries": baseline or []}), encoding="utf-8", newline="\n")
+        (base / "meta.json").write_text(
+            _json.dumps({"packages": [], "workspace_root": str(base)}),
+            encoding="utf-8", newline="\n")
+        if ui_code is not None:
+            demo = base / "ui" / "src" / "features" / "demo.ts"
+            demo.parent.mkdir(parents=True, exist_ok=True)
+            demo.write_text(ui_code, encoding="utf-8", newline="\n")
+        if cargo:
+            (base / "Cargo.toml").write_text(
+                '[workspace]\nmembers = ["demo"]\nresolver = "2"\n',
+                encoding="utf-8", newline="\n")
+            demo = base / "demo"
+            (demo / "src").mkdir(parents=True)
+            (demo / "Cargo.toml").write_text(
+                '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n',
+                encoding="utf-8", newline="\n")
+            (demo / "src" / "lib.rs").write_text("pub fn one() {}\n",
+                                                 encoding="utf-8", newline="\n")
+        return base
+
+    rung_n = iter(range(1000))
+    shell = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: a direct invoke in a fixture feature file
+        root = build(tmp, ui_code=DEMO_CODE)
+        rc, said = run(root, "--metadata-file", str(root / "meta.json"), "--json")
+        if rc != 1 or '"rule": "ui-direct-invoke"' not in said \
+                or '"judging": true' not in said:
+            print("  x rung 1: a fixture invoke bypass must fail rc 1 in json "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: the clean fixture is a REAL green that names its zero population
+        root = build(tmp)
+        rc, said = run(root, "--metadata-file", str(root / "meta.json"))
+        if rc != 0 or "0 new/expired blocking finding(s)" not in said \
+                or "[population examined: 0 crate(s)" not in said:
+            print("  x rung 2: a clean fixture must green with its population "
+                  "named (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: --report-only on the violating fixture says NOT JUDGING
+        root = build(tmp, ui_code=DEMO_CODE)
+        rc, said = run(root, "--metadata-file", str(root / "meta.json"), "--report-only")
+        if rc != 0 or "NOT JUDGING" not in said:
+            print("  x rung 3: --report-only must print NOT JUDGING at rc 0 "
+                  "(rc=%r said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: a baseline entry whose target the SAME extractor computes
+        # tracks the finding -- recorded debt and fresh finding share one key
+        calls = find_invoke_calls(DEMO_CODE)
+        if not calls:
+            print("  x rung 4: extractor found no call in its own demo code",
+                  file=sys.stderr)
+            return 1
+        entry = {"rule": "ui-direct-invoke", "path": "ui/src/features/demo.ts",
+                 "target": calls[0][1], "reason": "ladder fixture",
+                 "owner": "ladder", "introduced": "2026-11-01",
+                 "expires": "2026-12-01"}
+        root = build(tmp, ui_code=DEMO_CODE, baseline=[entry])
+        rc, said = run(root, "--metadata-file", str(root / "meta.json"), "--json")
+        if rc != 0 or '"tracked": 1' not in said or '"blocking": 0' not in said:
+            print("  x rung 4: a matching baseline entry must track rc 0 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: the same entry over a tree with NO finding reads stale rc 1
+        root = build(tmp, baseline=[entry])
+        rc, said = run(root, "--metadata-file", str(root / "meta.json"), "--json")
+        if rc != 1 or '"stale": 1' not in said:
+            print("  x rung 5: an unmatched baseline entry must read stale rc 1 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 6: a REAL one-crate cargo workspace, no --metadata-file, hits
+        # the census floor -- the tool refuses to call one crate a real tree
+        root = build(tmp, cargo=True)
+        rc, said = run(root)
+        if rc != 2 or "names only 1 crate(s)" not in said:
+            print("  x rung 6: a one-crate real workspace must be refused by "
+                  "the floor rc 2 (rc=%r said=%r)" % (rc, said[-240:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("ARCH-BOUNDARIES SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
+    return 0
+
+
+def main(argv=None, root=None) -> int:
     configure_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report-only", action="store_true", help="Report findings but do not fail for policy violations. The printed line then says NOT JUDGING, because its exit 0 is not a pass.")
@@ -1163,8 +1558,20 @@ def main() -> int:
     parser.add_argument("--root", type=Path, help="Repository root (defaults to the script's repository root).")
     parser.add_argument("--metadata-file", type=Path, help="Cargo metadata JSON fixture instead of running cargo metadata.")
     parser.add_argument("--baseline-file", type=Path, help="Baseline JSON path (defaults to <root>/scripts/architecture-boundaries-baseline.json).")
-    args = parser.parse_args()
-    root = (args.root or Path(__file__).resolve().parent.parent).resolve()
+    parser.add_argument("--self-test", action="store_true",
+                        help="Run the census-floor cases and exit. Pure: no file is read, none is written.")
+    args = parser.parse_args(argv)
+    if args.self_test:
+        return self_test()
+    # r226: the r166 contract. argv is explicit; a root kwarg names the tree to
+    # grade from code and overrides --root exactly as --root overrides the
+    # default. None keeps today's behavior byte-for-byte. This tool ALREADY had
+    # --root and root-parameterized walkers -- the seam added here is
+    # callability, and the ladder proves the kwarg moves every walker together.
+    if root is not None:
+        root = Path(root).resolve()
+    else:
+        root = (args.root or Path(__file__).resolve().parent.parent).resolve()
     baseline_path = (args.baseline_file or root / "scripts" / "architecture-boundaries-baseline.json").resolve()
     metadata_path = args.metadata_file.resolve() if args.metadata_file else None
     try:
@@ -1180,6 +1587,16 @@ def main() -> int:
             + event_sink_findings(root, scope)
         )
         scope["baseline_entries"] = len(baseline)
+        # THE POPULATION FLOOR. Skipped only where an empty census is legitimate:
+        #   * --metadata-file, which is how the self-test (and any fixture) supplies a
+        #     synthetic graph on purpose;
+        #   * --report-only, which already refuses to judge and says so on its line.
+        # Every other run is claiming to describe THIS repository, and a census too small
+        # to be this repository has proved nothing -- see population_floor_violation.
+        if should_enforce_floor(metadata_path is not None, args.report_only):
+            census_problem = population_floor_violation(scope)
+            if census_problem:
+                return fail(census_problem)
         tracked, blocking, stale, expired = apply_baseline(findings, baseline)
     except (ValueError, OSError) as exc:
         return fail(str(exc))

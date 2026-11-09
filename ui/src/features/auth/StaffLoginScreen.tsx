@@ -210,9 +210,16 @@ export default function StaffLoginScreen() {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          setRecentCashiers(parsed.map(normalizeCashier).filter((c): c is RecentCashier => c !== null));
+          const list = parsed.map(normalizeCashier).filter((c): c is RecentCashier => c !== null);
+          if (list.length > 0) {
+            setRecentCashiers(list);
+            return;
+          }
         }
       }
+      // On provisioned terminals where localStorage was empty or cleared,
+      // fallback to the default 'owner' account so users are never stranded with an empty prompt.
+      setRecentCashiers([{ username: 'owner', displayName: 'Owner' }]);
     } catch { /* ignore */ }
   }, []);
 
@@ -388,6 +395,9 @@ export default function StaffLoginScreen() {
     const trimmed = username.trim();
     if (!trimmed) return;
 
+    // Explicitly blur input to dismiss Android software keyboard before PIN step
+    usernameInputRef.current?.blur();
+
     setUsernameChecking(true);
     clearError();
 
@@ -421,6 +431,10 @@ export default function StaffLoginScreen() {
 
   const handleSelectRecentCashier = useCallback(
     async (selectedUser: string) => {
+      // Dismiss any active virtual keyboard
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
       setUsername(selectedUser);
       setUsernameChecking(true);
       clearError();
@@ -608,6 +622,18 @@ export default function StaffLoginScreen() {
           (keyboardAvoidRef as React.MutableRefObject<HTMLDivElement | null>).current = (el?.parentElement ?? null) as HTMLDivElement | null;
         }}
       >
+        {/* The page's level-one heading. The login screen had NONE: the store
+            name renders as an <img alt> on the username step and as a badge on
+            the PIN step, so a screen reader arriving at the app's front door got
+            no page name. Visually hidden because the logo and the store badge
+            already carry the identity visually; the heading is for the outline.
+            `staff-login-title` is the id the suites' fixtures have always used
+            for the store name -- it exists in no bundle, so it is declared here
+            with the app name as its value. */}
+        <Localized id="staff-login-title">
+          <h1 className="sr-only">kasir.mu</h1>
+        </Localized>
+
         {step === 'pin' && (
           <button
             type="button"
@@ -627,6 +653,9 @@ export default function StaffLoginScreen() {
           {step === 'username' && <StaffLoginLogo />}
           {step === 'pin' && (
             <div className="staff-login-pin-top">
+              <div className="staff-login-pin-user-badge">
+                <span className="staff-login-pin-user-label">{username}</span>
+              </div>
               {renderPinDots()}
             </div>
           )}
@@ -652,6 +681,7 @@ export default function StaffLoginScreen() {
                         onKeyDown={handleUsernameKeyDown}
                         autoComplete="off"
                         autoCorrect="off"
+                        autoCapitalize="none"
                         spellCheck={false}
                         data-1p-ignore="true"
                         aria-label={l10n.getString('username-aria')}
@@ -685,7 +715,7 @@ export default function StaffLoginScreen() {
                 <div
                   className="staff-login-recent"
                   role="region"
-                  aria-label={l10n.getString('staff-login-recent-aria') || 'Recent staff accounts'}
+                  aria-label={requiredLocalized(l10n, 'staff-login-recent-aria')}
                 >
                   <span className="staff-login-recent-label">
                     <Localized id="staff-login-recent-label">Quick Login</Localized>
@@ -710,7 +740,7 @@ export default function StaffLoginScreen() {
                           type="button"
                           className="staff-login-chip-remove"
                           onClick={(e) => handleRemoveRecentCashier(e, c.username)}
-                          aria-label={l10n.getString('staff-login-recent-remove-aria', { user: c.username }) || `Remove ${c.username}`}
+                          aria-label={requiredLocalized(l10n, 'staff-login-recent-remove-aria', { user: c.username })}
                         >
                           &times;
                         </button>

@@ -60,3 +60,5 @@ separators, so the fix was to assert with the harness's own locale.
 | `CashTenderPanelQuickTender` | 12 passed (was 10; the 2 new cases failed first on my locale error) |
 | Full suite | 12,662 passed, 0 failed |
 | `tsc` | 0 |
+
+> last audited 14-10-26 by docs-auditor

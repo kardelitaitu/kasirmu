@@ -39,10 +39,91 @@ FILES=(
     "ops/docker/docker-compose.yml"
     "ops/docker/docker-compose.pg.yml"
     "ops/docker/docker-compose.e2e.yml"
+    # The E2E pre-pull pins the SAME redis digest as docker-compose.e2e.yml (its
+    # own comment says "Keep in sync"). It was NOT in this list, so refreshing the
+    # compose pin alone left prePullRedis() pulling the OLD digest while compose
+    # started the NEW one -- two different images in one e2e run. Measured
+    # 2026-10-24 while auditing the drifted-pin finding.
+    "scripts/run-e2e.mjs"
 )
 
+# The pin pattern, named once so the self-test grades the SAME regex the live scan
+# uses instead of a copy of it.
+PIN_RE='[A-Za-z0-9._/-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}'
+
+# The live drift decision, named once: the self-test below grades the SAME
+# comparison the scan uses instead of a copy of it (the principle PIN_RE already
+# follows). "unresolvable" stays in the scan loop -- it needs the per-file drift
+# bookkeeping and is graded by the fail-closed branch, not by fixtures.
+pin_verdict() {
+    local pinned="$1" current="$2"
+    if [ "$current" = "$pinned" ]; then
+        echo same
+    else
+        echo diff
+    fi
+}
+
 drift=0
+pins_seen=0
 declare -a drift_lines=()
+
+# ── Self-test ─────────────────────────────────────────────────────────────────
+#
+# This gate's whole answer is "every pin still resolves to what we pinned". Its
+# SILENT failure is the same sentence printed over a scan that read NOTHING: if the
+# pin pattern stops matching (a pin format change, a file moved, a grep narrowed),
+# the loop below runs zero times, drift stays 0, and the gate reports
+# "All pinned image digests are current." -- a clean bill of health on the supply
+# chain, which is the worst place to be wrong.
+#
+# MEASURED 2026-10-23: pointing the pattern at nothing produced exactly that, exit 0.
+self_test() {
+    local fails=0 total=0
+
+    n_pins() { printf '%s\n' "$1" | grep -oE "$PIN_RE" | wc -l | tr -d ' '; }
+
+    chk() {
+        local label="$1" want="$2" got="$3"
+        total=$((total + 1))
+        if [ "$got" != "$want" ]; then
+            printf '  FAIL %s: expected %s, got %s\n' "$label" "$want" "$got" >&2
+            fails=$((fails + 1))
+        fi
+    }
+
+    local d64="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+    chk "a registry-hosted pin is found" 1 "$(n_pins "FROM docker.io/library/node:22@sha256:$d64")"
+    chk "a bare pin is found" 1 "$(n_pins "image: nginx:1.27@sha256:$d64")"
+    chk "two pins on one line" 2 "$(n_pins "a:1@sha256:$d64 b:2@sha256:$d64")"
+
+    # A TAG WITHOUT A DIGEST is not a pin. Counting it would let an unpinned image
+    # read as pinned, which is the opposite of this gate's job.
+    chk "a tag without a digest is not a pin" 0 "$(n_pins "image: nginx:latest")"
+    # A TRUNCATED digest is not a pin: 64 hex chars are required.
+    chk "a truncated digest is not a pin" 0 "$(n_pins "image: nginx:1.27@sha256:0123456789abcdef")"
+    # Digest-only (no tag) does not match, and that is stated rather than hidden.
+    chk "a digest-only reference is not matched" 0 "$(n_pins "image: nginx@sha256:$d64")"
+
+    local other="ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    chk "identical digests agree" same "$(pin_verdict "$d64" "$d64")"
+    chk "different digests are drift" diff "$(pin_verdict "$d64" "$other")"
+
+    if [ "$fails" -gt 0 ]; then
+        printf 'SELF-TEST FAILED (%d of %d cases)\n' "$fails" "$total" >&2
+        return 2
+    fi
+    printf 'SELF-TEST OK (%d cases, no daemon)\n' "$total"
+    return 0
+}
+
+if [ "${1:-}" = "--self-test" ]; then
+    self_test
+    exit $?
+fi
+
+self_test || { echo "DETECTOR WENT DEAF: not trusting the digest scan below." >&2; exit 2; }
 
 echo "── Resolving pinned image digests ──"
 for f in "${FILES[@]}"; do
@@ -50,6 +131,7 @@ for f in "${FILES[@]}"; do
     # Match `repo:tag@sha256:hex` (also handles registry-hosted repos).
     while IFS= read -r ref; do
         [ -n "$ref" ] || continue
+        pins_seen=$((pins_seen + 1))
         tag="${ref%@*}"
         pinned="${ref#*@sha256:}"
         # Resolve the CURRENT multi-arch index digest for the mutable tag.
@@ -72,17 +154,28 @@ for f in "${FILES[@]}"; do
             drift_lines+=("$f: $tag  UNRESOLVABLE (network/registry error)")
             continue
         fi
-        if [ "$current" = "$pinned" ]; then
+        if [ "$(pin_verdict "$pinned" "$current")" = "same" ]; then
             echo "  ✔ $tag → $pinned"
         else
             echo "  ✘ $tag DRIFT: pinned $pinned, now $current"
             drift=1
             drift_lines+=("$f: $tag  pinned=$pinned  current=$current")
         fi
-    done < <(grep -oE '[A-Za-z0-9._/-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}' "$f")
+    done < <(grep -oE "$PIN_RE" "$f")
 done
 
 echo
+
+# THE FLOOR. "no drift" and "no pins" both print a clean line and exit 0. Measured
+# 2026-10-23: killing the pin pattern left this gate reporting "All pinned image
+# digests are current." over zero pins. A supply-chain gate must never do that.
+if [ "$pins_seen" -eq 0 ]; then
+    echo "✘ NO pinned image reference was found in any listed file."
+    echo "  The pin pattern is broken, or the files moved -- not that every pin is current."
+    echo "  Refusing to report a clean supply chain over an empty scan."
+    exit 2
+fi
+
 if [ "$drift" -ne 0 ]; then
     echo "✘ DIGEST DRIFT DETECTED — refresh the pins deliberately (DOCKER-02 policy):"
     printf '   %s\n' "${drift_lines[@]}"

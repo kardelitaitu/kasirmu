@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Localized } from '@fluent/react';
 import { requiredLocalized } from '@/components';
 import type { ReactLocalization } from '@fluent/react';
@@ -155,8 +155,15 @@ export default function SyncSection({
   // app's designed ConfirmDialog — this used to be window.confirm(), which
   // raised an off-design, unlocalized OS dialog and blocked the event loop.
   const [confirmPullOpen, setConfirmPullOpen] = useState(false);
+  /** Synchronous mirror of the `pulling` prop — see the re-entry guard in `runPull`. */
+  const pullingRef = useRef(false);
 
   const runPull = async () => {
+    // Re-entry guard. A destructive pull is not something to run twice: the confirm
+    // dialog's own button is the only gate, and the two taps of a double press both
+    // dispatch before `pulling` is re-read. The ref is taken BEFORE the busy flag.
+    if (pullingRef.current) return;
+    pullingRef.current = true;
     setPulling(true);
     setPullResult(null);
     try {
@@ -180,6 +187,7 @@ export default function SyncSection({
       setPullResult({ productsPulled: 0, taxRatesPulled: 0, usersPulled: 0, error: errMsg });
       addToast({ message: errMsg, type: 'error' });
     } finally {
+      pullingRef.current = false;
       setPulling(false);
     }
   };

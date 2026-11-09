@@ -17,6 +17,34 @@
 # cases need no filesystem and survive the crate renames that silenced it once.
 set -e
 cd "$(git rev-parse --show-toplevel)"
-for t in check-env-docs check-ci-claims check-nav-paths check-dead-refs check-adr-status check-site-links check-api-surface; do
-  python3 ".agents/skills/docs-auditor/scripts/$t.py" --self-test
-done
+
+# EXPLICIT CALLS, not a `for t in ...; do python3 ".../$t.py" --self-test; done` loop.
+# The loop was correct and unreadable to every tool that audits wiring: a checker looking
+# for "<name>.py --self-test" sees only the literal "$t.py", so verify-selftests-wired.py
+# reported six of these eight as UNCALLED once its scope was widened to this directory.
+# That was a false finding, and the fix could have been either side -- teach the auditor
+# to read shell loops, or stop using one. This side is better: the list of self-tests is
+# now greppable by a human and by any tool, and adding a checker means adding a line that
+# names it, instead of editing a semicolon-separated string where a typo silently drops a
+# case. Verified 2026-10-23: the same eight run, and the auditor now sees all eight.
+python3 .agents/skills/docs-auditor/scripts/check-env-docs.py --self-test
+python3 .agents/skills/docs-auditor/scripts/check-ci-claims.py --self-test
+python3 .agents/skills/docs-auditor/scripts/check-nav-paths.py --self-test
+python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py --self-test
+python3 .agents/skills/docs-auditor/scripts/check-adr-status.py --self-test
+python3 .agents/skills/docs-auditor/scripts/check-site-links.py --self-test
+python3 .agents/skills/docs-auditor/scripts/check-api-surface.py --self-test
+python3 .agents/skills/docs-auditor/scripts/check-cite-lines.py --self-test
+python3 .agents/skills/docs-auditor/scripts/check-orphans.py --self-test
+# check-audit-stamps.py joined 2026-10-23: its whole decision is a three-branch date
+# comparison, and flipping it moves every under-reporting doc into the INFORMATIONAL
+# class -- the gate then exits 0 with the dangerous class empty. Its census floor counts
+# rows and cannot see a misclassified pair; the cases can, and all four mutations of the
+# comparison redden them.
+python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py --self-test
+# check-gate-runners.py joined 2026-10-23. It is the only checker that asks whether a
+# gate CAN BE RUN, and both of its rules fail silently in opposite ways: a dead YAML
+# reader reports every ci block as unparseable (noise, and people stop reading), while a
+# reachability rule that always said True reports a clean tree. main() now DELEGATES to
+# the same reachability() the cases grade, so the cases cannot drift from the gate.
+python3 .agents/skills/docs-auditor/scripts/check-gate-runners.py --self-test

@@ -18,6 +18,7 @@ mod offline;
 mod payment_failure;
 mod pilot_merchant_stress;
 mod purchase_order;
+mod query_plan_probe;
 mod refund_tax;
 mod settings;
 mod shift;

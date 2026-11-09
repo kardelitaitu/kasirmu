@@ -82,3 +82,5 @@ kill-test re-run against the re-applied version before anything was committed.
 | `RestaurantPosSidebar` | 21 passed after the setup update |
 | Full suite | 12,663 passed, 0 failed |
 | `tsc` / `eslint` | 0 / 0 |
+
+> last audited 14-10-26 by docs-auditor

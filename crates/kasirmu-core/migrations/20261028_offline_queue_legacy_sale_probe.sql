@@ -1,0 +1,32 @@
+-- 20261028_offline_queue_legacy_sale_probe.sql
+-- Partial index for the LEGACY branch of the outbox idempotency probe (O-M04 follow-up).
+--
+-- `Store::has_pending_outbox_row_for_sale` (crates/kasirmu-core/src/db/offline/enqueue.rs)
+-- has two branches:
+--
+--   fast   : WHERE sale_id = ?1 AND status = 'pending' AND action = ?2
+--            -> SEARCH offline_queue USING COVERING INDEX idx_offline_queue_sale_pending
+--   legacy : WHERE sale_id IS NULL AND status = 'pending' AND action = ?1 AND instr(payload, ?2) > 0
+--            -> SCAN offline_queue                              <-- this migration
+--
+-- `20261023_offline_queue_sale_id.sql` ADDED the column but deliberately did NOT
+-- backfill it, so every row written before that migration carries `sale_id = NULL`
+-- forever and is only ever reachable through the legacy branch. `idx_offline_queue_
+-- sale_pending` is partial on `sale_id IS NOT NULL`, so it cannot serve that branch
+-- at all — the O-M04 win applied to NEW rows while the historical backlog kept its
+-- full scan. Measured with EXPLAIN QUERY PLAN over 3,000 rows (95% new, 5% legacy)
+-- plus ANALYZE, before and after this index:
+--
+--   before -> SCAN offline_queue
+--   after  -> SEARCH offline_queue USING INDEX idx_offline_queue_legacy_sale_probe
+--             (action=? AND status=?)
+--
+-- The index is PARTIAL on `sale_id IS NULL`, so it is exactly as small as the legacy
+-- set and adds nothing for rows the fast path already serves. `payload` is included
+-- so the `instr` is evaluated from the index entry without fetching the table row.
+--
+-- A partial index cannot be `IF NOT EXISTS`-ed any more than a column can, but
+-- `CREATE INDEX IF NOT EXISTS` is valid here and matches the neighbouring
+-- 20261023 migration's shape.
+CREATE INDEX IF NOT EXISTS idx_offline_queue_legacy_sale_probe
+    ON offline_queue(action, status, payload) WHERE sale_id IS NULL;

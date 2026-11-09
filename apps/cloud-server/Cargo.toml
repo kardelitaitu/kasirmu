@@ -69,6 +69,7 @@ embed-resource = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+kasirmu-test-support = { path = "../../crates/kasirmu-test-support" }
 http-body-util = { workspace = true }
 serial_test = { workspace = true }
 wiremock = { workspace = true }

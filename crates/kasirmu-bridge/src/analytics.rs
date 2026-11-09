@@ -61,28 +61,28 @@ pub async fn get_staff_analytics_scoped(
     ctx.require_session_permission(&session, permissions::ANALYTICS_VIEW)
         .await?;
 
-    // Staff display names live in the GLOBAL identity DB; the aggregates in
-    // the store-scoped DB. Resolve the name map before opening the store.
-    let display_names: HashMap<String, String> = {
-        let db = ctx.lock_global().await;
+    let rows = {
+        let conn = ctx
+            .db_manager
+            .open_store(&session.store_id)
+            .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
+        let db = conn
+            .lock()
+            .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
         let store = Store::new(&db);
-        store
-            .list_users()?
-            .into_iter()
-            .map(|u| (u.id, u.display_name))
-            .collect()
+        store.staff_analytics_summary(&from, &to)?
     };
 
-    let conn = ctx
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let rows = store.staff_analytics_summary(&from, &to)?;
-    drop(db);
+    // O-M19: Resolve staff display names for ONLY the user IDs present in the summary
+    // instead of loading the full global user table into memory.
+    let user_ids: Vec<&str> = rows.iter().map(|r| r.user_id.as_str()).collect();
+    let display_names: HashMap<String, String> = if user_ids.is_empty() {
+        HashMap::new()
+    } else {
+        let global_db = ctx.lock_global().await;
+        let global_store = Store::new(&global_db);
+        global_store.get_user_display_names_batch(&user_ids)?
+    };
 
     Ok(rows
         .into_iter()

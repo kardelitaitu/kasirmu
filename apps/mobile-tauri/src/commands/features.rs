@@ -1,6 +1,6 @@
 //! Feature flag management Tauri commands.
 //!
-//! Exposes `list_all_features` (returns all 32 features with enabled
+//! Exposes `list_all_features` (returns every feature with enabled
 //! status and metadata) and `set_feature` (toggle a single feature on
 //! or off with automatic dependency resolution).
 //!
@@ -37,7 +37,7 @@ pub struct FeatureDto {
 /// Response from `list_all_features`.
 #[derive(Debug, Serialize)]
 pub struct ListAllFeaturesResult {
-    /// All 32 features with metadata and enabled status.
+    /// Every feature with metadata and enabled status.
     pub features: Vec<FeatureDto>,
 }
 
@@ -58,7 +58,7 @@ pub async fn list_all_features(
 /// Extracted so the two cannot drift, matching this file's peers and `desktop-tauri`, which already
 /// factors the same work into `build_feature_list`. Note the scoped variant below authenticates but
 /// performs no permission check -- deliberately matching `desktop-tauri`'s
-/// `list_all_features_scoped` (commands/features.rs:631), which also only calls `resolve_scope`.
+/// `list_all_features_scoped` (desktop-tauri/src/commands/features.rs:107), which also only calls `resolve_scope`.
 /// Adding `SETTINGS_EDIT` here would make the two shells reject different callers.
 fn run_list_all_features(db: &rusqlite::Connection) -> Result<ListAllFeaturesResult, AppError> {
     let store = Store::new(db);
@@ -155,8 +155,9 @@ pub async fn set_feature(
         let mut auto_enabled: Vec<String> = Vec::new();
 
         if args.enabled {
-            // Before enabling, track what was already enabled.
-            let before_enable: Vec<Feature> = reg.enabled_features().collect();
+            // Before enabling, track what was already enabled (O-L08: HashSet avoids quadratic scan).
+            let before_enable: std::collections::HashSet<Feature> =
+                reg.enabled_features().collect();
 
             // Enable the feature (this auto-enables dependencies).
             reg.enable(feature);
@@ -341,8 +342,8 @@ fn device_hostname() -> String {
 
 // ── Feature metadata ────────────────────────────────────────────────
 
-/// Returns all 32 features with their human-readable name, description,
-/// and logical group.
+/// Returns every feature with its human-readable name, description, and
+/// logical group.
 fn all_feature_metadata() -> Vec<(Feature, &'static str, &'static str, &'static str)> {
     vec![
         (

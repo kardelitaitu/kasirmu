@@ -44,7 +44,7 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 | 36 | products | [ADR #36: Retail POS Product Attributes — Cost, Brand, Rack, Notes + Configurable Columns](../decisions/2026-08-11-adr36-retail-product-attributes.md) | Implemented (2026-08-12) |
 | 37 | products | [ADR #37: Product Popularity Index — Weighted Activity Score for Retail Sorting](../decisions/2026-08-11-adr37-product-popularity-index.md) | Implemented (2026-08-12) |
 | 38 | products | [ADR #38: Retail POS Row Context Menu — View Product Images in Browser](../decisions/2026-08-11-adr38-retail-row-context-menu-browser-images.md) | Implemented (2026-08-12) |
-| 39 | subscription | [ADR #39: Midtrans QRIS Subscription Payments (Phase 2)](../decisions/2026-08-18-adr39-midtrans-subscription-payments.md) | Implemented (2026-08-18) — docs/plans/_active/todo.md C3.1; Phase C complete (C0-C4.3 shipped) |
+| 39 | subscription | [ADR #39: Midtrans QRIS Subscription Payments (Phase 2)](../decisions/2026-08-18-adr39-midtrans-subscription-payments.md) | Implemented (2026-08-18) — docs/plans/_done/done-plan-todo.md C3.1; Phase C complete (C0-C4.3 shipped) |
 | 40 | topology | [ADR #40: Multi-Terminal Peer Model](../decisions/2026-08-20-adr40-multi-terminal-peer-model.md) | Implemented (2026-08-20) |
 | 41 | topology | [ADR #41: App Lifecycle, Device Onboarding, Dynamic Topology Workspaces, and Two-Layer Gated Home Experience (Tier & RBA…](../decisions/2026-08-28-adr41-app-lifecycle-device-onboarding-topology-home-gating.md) | Accepted (2026-08-28) |
 | 42 | website | [ADR #42: Website Admin Dashboard & User Dashboard (Subdomain Architecture)](../decisions/2026-08-28-adr42-website-admin-and-user-dashboard.md) | Partially Implemented — subdomain routing + auth gate + password rotation + dashboard/admin SPAs complete (2026-08-28); invoice history and webhook delivery log remain future work (see §5 Open Questions) |
@@ -72,6 +72,8 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 | 63 | architecture | [ADR-63: The EventSink Seam — grading R10 #3 with a rule that arrived at zero](../decisions/2026-10-01-adr63-event-sink-seam.md) | Implemented (2026-10-04) — rule event-sink-seam landed in scripts/verify-architecture-boundaries.py at zero findings with no baseline; the four remaining raw-handle broadcasts were routed through BridgeCtx::emitter; R10's other three invariants are disposed of by measurement (D6 — #1 a written convention, #2/#4 struck) |
 | 64 | payments | [ADR-64: The Tender Vocabulary and the Offline Tender State — one classification per payment, and no electronic tender s…](../decisions/2026-10-02-adr64-tender-vocabulary-and-offline-tender-state.md) | Proposed (2026-10-02) — MOSTLY LANDED. D1's method vocabulary, D2's union unification, D3's two-phase PaymentResult and D4's gateway_status vocabulary have SHIPPED (migrations 20261017_payments_method_check.sql and 20261018_gateway_status_adr64_vocabulary.sql; the UI side landed in 4de069c47, the payment types in e2a323dfa). STILL TO BUILD: D1's method_kind/method_mode classification columns do NOT exist anywhere (0 hits tree-wide), and D4's RULES 1–4 (who may write settled, what sets settled_at/settled_by) are not enforced by anything. Read this record as: the vocabulary and the presentation types shipped; the classification axis and the state machine did not. Amended 2026-10-07 and re-measured 2026-10-11 — see §2.2. |
 | 65 | compliance | [ADR-65: The Compliance Chain — where fiscal integrity attaches, and the three seams a second market will exercise](../decisions/2026-10-02-adr65-compliance-chain.md) | Proposed (2026-10-02) — the anchor point is decided; no chain, no certification module and no second locale is built |
+| 66 | topology | [ADR-66: Centralized Topology Authoring — Desired-State Authority Model, Signed-Revision Contract, and Multi-Store Eligi…](../decisions/2026-10-22-adr66-centralized-topology-authoring-authority-model.md) | Ratified (2026-10-22) — ratifies D1–D5 and establishes the architectural contract for done-plan-topology-web-authoring.md |
+| 67 | architecture | [ADR-67: The core-size ratchet — what it can and cannot measure, and the ruling it needs](../decisions/2026-10-24-adr67-core-size-ratchet-measurement.md) | D2 Implemented (2026-10-24, 4054871f9) — the two-budget split is live and graded on both halves; D1 and D3 await an owner ruling |
 
 ### Research Notes
 
@@ -105,6 +107,7 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 
 **general:**
 - [Global Kernel and Region Packs — strategy note](../decisions/2026-10-02-global-kernel-and-region-pack-strategy.md)
+- [BRIDGE-7 — the hardware commands take a session but name no permission](../decisions/2026-10-23-bridge7-hardware-permission-gap.md)
 
 ## Engineering Records (`docs/records/`)
 
@@ -123,16 +126,172 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [docs/ Folder Audit — 2026-09-28](audits/2026-09-28-docs-audit.md) | — |
 | general | [Desktop launch failure — root cause: a Low Mandatory Level ACL on the checkout](audits/2026-09-29-desktop-launch-integrity-label.md) | — |
 | general | [Documentation-Code Audit — 2026-10-08](audits/2026-10-08-docs-audit.md) | — |
+| general | [E2E admin navigation: the sidebar is the in-workspace path, and the feature gate is a second gate](audits/2026-10-16-admin-navigation-sidebar-vs-feature-gate.md) | — |
+| reporting | [Analytics crashed on open: a mock returned an object where the contract declares an array](audits/2026-10-16-analytics-voided-summary-shape.md) | — |
+| general | [The course chip spec was asserting a state the till never produces](audits/2026-10-16-course-chip-spec-stale-premise.md) | — |
+| general | [Every disabled E2E case re-checked: 14 of them, 13 justified, 1 already corrected](audits/2026-10-16-disabled-e2e-cases-swept.md) | — |
+| quality | [Full E2E coverage pass: all 104 specs exercised](audits/2026-10-16-e2e-suite-full-coverage-pass.md) | — |
+| general | [The feature gate hides the nav item, not the page — a wrongly disabled kiosk case](audits/2026-10-16-feature-gate-vs-reachability-kiosk.md) | — |
+| money | [Half-committed money-write sweep — 2026-10-16](audits/2026-10-16-half-committed-money-write-sweep.md) | — |
+| reporting | [Closing the mock/contract gap that shipped the Analytics crash](audits/2026-10-16-mock-contract-guard-analytics.md) | — |
+| general | [Objective close-out: UI and restaurant-POS usability and reliability](audits/2026-10-16-objective-closeout-ui-restaurant-pos.md) | — |
+| general | [Reachability, not position: a measurement error in my own layout probes](audits/2026-10-16-reachability-vs-position-probe-correction.md) | — |
+| general | [Restaurant POS reliability: the cart-add invariant holds under rapid input](audits/2026-10-16-restaurant-cart-add-invariant.md) | — |
+| general | [Restaurant POS: all 64 E2E specs exercised in one session](audits/2026-10-16-restaurant-e2e-suite-full-pass.md) | — |
+| general | [Route reachability: 47 pages, 42 nav items, 0 dead links, 0 orphans](audits/2026-10-16-route-reachability-closure.md) | — |
+| general | [Two sale-path specs failed on their own arrangement, not on the till](audits/2026-10-16-sale-path-spec-arrangement.md) | — |
+| general | [Session verification: every spec I touched is green in both projects](audits/2026-10-16-session-verification-restaurant-pos.md) | — |
+| general | [Every reachable screen driven: the sidebar sweep closes the last large surface](audits/2026-10-16-sidebar-sweep-all-destinations.md) | — |
+| ui | [The tablet shell's POS had never been driven past the login screen](audits/2026-10-16-tablet-shell-pos-driven.md) | — |
+| general | [Touch targets: measure under the pointer the device actually reports](audits/2026-10-16-touch-target-pointer-context.md) | — |
+| general | [Two UI guards were red at HEAD: nine stale citations and one uncovered shadow](audits/2026-10-16-two-ui-guards-red-at-head.md) | — |
+| general | [UI writes vs the schema closed sets — 2026-10-16](audits/2026-10-16-ui-closed-set-vocabulary-audit.md) | — |
+| general | [Three more specs navigated past the workspace gate — the same cause, found by sweep](audits/2026-10-16-workspace-gate-three-more-specs.md) | — |
+| release | [166 drifted citations: the population round 173 asked for — 2026-10-18](audits/2026-10-18-166-drifted-citations-measured.md) | — |
+| release | [A button that only worked by accident — 2026-10-18](audits/2026-10-18-a-button-that-worked-by-accident.md) | — |
+| quality | [134 lines of cart keyboard logic, and a comment claiming it was tested — 2026-10-18](audits/2026-10-18-a-comment-that-claimed-its-own-coverage.md) | — |
+| release | [A cross-file citation the line checker cannot see — 2026-10-18](audits/2026-10-18-a-cross-file-citation-with-no-checker.md) | — |
+| general | [A dead button nothing was rescuing — 2026-10-18](audits/2026-10-18-a-dead-button-nothing-rescued.md) | — |
+| general | [A dead-control sweep that had to be made honest first — 2026-10-18](audits/2026-10-18-a-dead-control-sweep-made-honest.md) | — |
+| general | [A guard I mis-scoped, and the orphan it could not see — 2026-10-18](audits/2026-10-18-a-guard-i-mis-scoped-and-the-orphan.md) | — |
+| general | [A component header that contradicted its own body — 2026-10-18](audits/2026-10-18-a-header-that-contradicted-its-body.md) | — |
+| general | [A red order-type checker I had written off as noise — 2026-10-18](audits/2026-10-18-a-red-checker-i-called-noise.md) | — |
+| general | [A spec assumed the till stays up after a sale — 2026-10-18](audits/2026-10-18-a-spec-assumed-the-till-stays-up.md) | — |
+| general | [A suspected data-loss defect, refuted — 2026-10-18](audits/2026-10-18-a-suspected-draft-loss-defect-refuted.md) | — |
+| general | [Admin tool routes drop back to the workspace picker — 2026-10-18](audits/2026-10-18-admin-tool-routes-drop-to-the-picker.md) | — |
+| general | [An attestation, and a false alarm almost reported as a defect — 2026-10-18](audits/2026-10-18-an-attestation.md) | — |
+| general | [An OPEN heading that outlived its fix by 92 rounds — 2026-10-18](audits/2026-10-18-an-open-heading-that-outlived-its-fix.md) | — |
+| general | [A real defect found, and deliberately not fixed — 2026-10-18](audits/2026-10-18-an-untouched-form-loses-the-editor.md) | — |
+| general | [The blind-window sweep: 13 guards, 0 blind, and one false positive of mine — 2026-10-18](audits/2026-10-18-blind-window-sweep-clean.md) | — |
+| release | [The dated-record citation defect, and the sweep that closed it — 2026-10-11](audits/2026-10-18-citation-repair-sweep.md) | — |
+| inventory | [A false "new file" that clobbered 13 tests, and the two defects found around it — 2026-10-18](audits/2026-10-18-clobbered-tests-and-stock-double-move.md) | — |
+| money | [A guard whose result nobody read — and the key that was never written — 2026-10-18](audits/2026-10-18-currency-guard-result-unread.md) | — |
+| general | [The dispatch fix was tested on a copy, not on the component — 2026-10-18](audits/2026-10-18-dispatch-tested-a-copy.md) | — |
+| general | [A passing test that proved nothing, and the defect it hid — 2026-10-18](audits/2026-10-18-double-tap-false-failure.md) | — |
+| general | [The double-tap test that hid the defect — and the one that exposed it — 2026-10-18](audits/2026-10-18-double-tap-shape-that-exposed-it.md) | — |
+| general | [The EDC wait window: a suspected gap that the code does not have](audits/2026-10-18-edc-wait-window-complete-guard.md) | — |
+| general | [Enumerating the schema, and a statutory sequence that advanced twice — 2026-10-18](audits/2026-10-18-enumerating-and-the-statutory-sequence.md) | — |
+| general | [Escape closes the table view, not the panel — 2026-10-18](audits/2026-10-18-escape-closes-the-view-not-the-panel.md) | — |
+| general | [Three wrong mechanisms, then the real one: Escape on the table detail panel — 2026-10-18](audits/2026-10-18-escape-on-the-table-detail-panel.md) | — |
+| general | [Two gates that disagreed about what "fireable" means — 2026-10-18](audits/2026-10-18-fire-all-gate-disagreed.md) | — |
+| release | [Five drifted citations re-pointed, and the checker cannot see the fix — 2026-10-18](audits/2026-10-18-five-citations-repaired-and-a-blind-checker.md) | — |
+| general | [A revision counter that only moves forward - 2026-10-18](audits/2026-10-18-forward-only-counter.md) | — |
+| general | [Four red tests, and what each one actually proved — 2026-10-18](audits/2026-10-18-four-expectations-invalidated.md) | — |
+| general | [Four refutations, one real defect, and a regression my own test caught — 2026-10-18](audits/2026-10-18-four-refutations-and-a-missing-import.md) | — |
+| general | [Four regex bugs in one sweep, and the answer was zero — 2026-10-18](audits/2026-10-18-four-regex-bugs-and-the-answer-was-zero.md) | — |
+| release | [Four stale citations, and a checker that only enforces half its rule — 2026-10-18](audits/2026-10-18-four-stale-citations-and-a-half-enforced-checker.md) | — |
+| general | [A generic truth is worse than a specific one — 2026-10-18](audits/2026-10-18-generic-truth-is-worse.md) | — |
+| general | [The fuzzier class: guards whose fall-through loses data — 2026-10-18](audits/2026-10-18-guards-whose-fall-through-loses-data.md) | — |
+| general | [A recalled held tab validates its qty and unit_price](audits/2026-10-18-held-tab-recall-validates-qty-and-price.md) | — |
+| general | [A hook registered after eight early returns, and a count its two readers disagreed about](audits/2026-10-18-hook-after-early-return-and-count-disagreement.md) | — |
+| general | [I was wrong about categories, and right about stock counts — 2026-10-18](audits/2026-10-18-i-was-wrong-about-categories.md) | — |
+| kds | [The KDS told the cook a queue existed — 2026-10-18](audits/2026-10-18-kds-promised-a-queue.md) | — |
+| payments | [The kiosk said "Payment processed!" and recorded nothing — 2026-10-18](audits/2026-10-18-kiosk-claimed-a-payment.md) | — |
+| general | [The kiosk handed customer A's order to customer B — 2026-10-18](audits/2026-10-18-kiosk-leaked-the-order.md) | — |
+| kds | [The kitchen chord is safe, a comment was stale, and my own test leaked into another file](audits/2026-10-18-kitchen-chord-and-mock-leak.md) | — |
+| payments | [The manual QRIS confirm has no re-entry guard — and that is the DESIGN](audits/2026-10-18-manual-qris-confirm-contract.md) | — |
+| inventory | [The mechanical inventory, and the money arm of the class - 2026-10-18](audits/2026-10-18-mechanical-inventory-and-the-money-arm.md) | — |
+| general | [My own fix overclaimed, one step softer — 2026-10-18](audits/2026-10-18-my-own-overclaim.md) | — |
+| general | [New Tab kept the old tab's discounts — 2026-10-18](audits/2026-10-18-new-tab-kept-promotions.md) | — |
+| release | [Nine cross-file citations no pass could see — 2026-10-18](audits/2026-10-18-nine-cross-file-citations-no-pass-could-see.md) | — |
+| general | [Nine false positives and a control that finally fired — 2026-10-18](audits/2026-10-18-nine-false-positives-and-a-control.md) | — |
+| products | [Not a product defect — a harness one, and three rounds of evidence said otherwise — 2026-10-18](audits/2026-10-18-not-a-product-defect-a-harness-one.md) | — |
+| general | [One control, three ways in, one tested — 2026-10-18](audits/2026-10-18-one-control-three-ways-in-one-tested.md) | — |
+| general | [A double-press on Save created two open bills](audits/2026-10-18-open-bill-save-double-press.md) | — |
+| general | [A paid open bill that failed to delete was never re-read](audits/2026-10-18-paid-tab-delete-not-reread.md) | — |
+| general | [The paid-tab fix now has a load-bearing test — after three wrong assertions](audits/2026-10-18-paid-tab-fix-now-has-a-test.md) | — |
+| payments | [A double-tap on 'Generate a new QR' minted a second Midtrans charge](audits/2026-10-18-qris-auto-reissue-double-charge.md) | — |
+| money | [The refund money path verified across three layers — 2026-10-18](audits/2026-10-18-refund-money-verified.md) | — |
+| general | [Four refutations, then a test harness that found the defect anyway — 2026-10-18](audits/2026-10-18-refused-is-not-harmless.md) | — |
+| general | [Removing the API I added for a fix that did not need it — 2026-10-18](audits/2026-10-18-removing-the-api-a-failed-fix-added.md) | — |
+| general | [Executed, not scanned — and the splice that ate a describe block — 2026-10-18](audits/2026-10-18-restaurant-sale-executed.md) | — |
+| general | [The restaurant shortcut manifest had no renderer — 2026-10-18](audits/2026-10-18-restaurant-shortcuts-unreachable.md) | — |
+| general | [Resuming a held cart left it in the list it was resumed from](audits/2026-10-18-resume-kept-the-held-row.md) | — |
+| general | [Resuming a second tab silently ate the first — 2026-10-18](audits/2026-10-18-resume-over-live-cart.md) | — |
+| general | [Round 99's own comparison, one field further — 2026-10-18](audits/2026-10-18-round-99s-comparison-one-field-short.md) | — |
+| general | [Locked the sales-history scroll to the bar; no single declaration fixes it — 2026-10-18](audits/2026-10-18-sales-history-scroll-isolated-not-fixed.md) | — |
+| general | [Sales history scrolls the page sideways at 480px — 2026-10-18](audits/2026-10-18-sales-history-scrolls-the-page-sideways.md) | — |
+| release | [Sixteen same-file line citations pointed at blank lines, and nothing checked them](audits/2026-10-18-same-file-citations-drift.md) | — |
+| general | [Scoping the cart key closed a leak and opened a stranded ticket — 2026-10-18](audits/2026-10-18-scoped-cart-key-strands-a-ticket.md) | — |
+| general | [Round 139's lesson applied to my own tests, and it found a second duplicate — 2026-10-18](audits/2026-10-18-second-duplicate-and-my-own-weak-tests.md) | — |
+| general | [A checker found what six rounds of reading did not — 2026-10-18](audits/2026-10-18-section-closure-after-await.md) | — |
+| general | [The retail till reconciled the drawer against pre-refund totals — 2026-10-18](audits/2026-10-18-shift-read-once-then-stale.md) | — |
+| general | [The shift-summary is server-supplied in both screens — 2026-10-18](audits/2026-10-18-shift-summary-is-server-supplied.md) | — |
+| general | [The restaurant shortcuts had never been executed — 2026-10-18](audits/2026-10-18-shortcuts-never-executed.md) | — |
+| release | [Six more citations, hidden by a spelling the last pass skipped — 2026-10-18](audits/2026-10-18-six-citations-hidden-by-a-spelling.md) | — |
+| general | [The SKU-keying class is clean, verified against the backend contract — 2026-10-18](audits/2026-10-18-sku-keying-is-clean.md) | — |
+| general | [The split's select-all tap cleared the line — 2026-10-18](audits/2026-10-18-split-tap-cleared-the-line.md) | — |
+| general | [Stale absolute quantity writes — a tree-wide sweep, and one more money defect — 2026-10-18](audits/2026-10-18-stale-absolute-qty-sweep.md) | — |
+| general | [The same lie on the other button, and two guards that fail differently — 2026-10-18](audits/2026-10-18-start-shift-same-lie.md) | — |
+| inventory | [The money arm was a dead end; the stock arm was not - 2026-10-18](audits/2026-10-18-stock-adjust-double-and-checker-self-test.md) | — |
+| general | [A switch onto an occupied store deleted the cart on screen — 2026-10-18](audits/2026-10-18-switch-onto-occupied-store-deleted-the-cart.md) | — |
+| general | [The :303 assertion chases a class that no longer exists — 2026-10-18](audits/2026-10-18-the-303-assertion-chases-a-removed-class.md) | — |
+| sync | [The clearing is synchronous with the hash write — 2026-10-18](audits/2026-10-18-the-clearing-is-synchronous-with-the-hash-write.md) | — |
+| release | [The comment guarding a credentials overwrite cited the wrong line, twice](audits/2026-10-18-the-credential-comment-cited-a-lie.md) | — |
+| general | [The delegation nothing pinned — 2026-10-18](audits/2026-10-18-the-delegation-nothing-pinned.md) | — |
+| general | [A whole-tree sweep of the E2E selectors: one dead half, no breakage — 2026-10-18](audits/2026-10-18-the-e2e-selector-sweep-found-one-dead-half.md) | — |
+| general | [The E2E suite, and a navigation contract I could only describe — 2026-10-18](audits/2026-10-18-the-e2e-suite-and-a-navigation-contract.md) | — |
+| general | [The Escape class I chased does not exist — but its coverage did not either — 2026-10-18](audits/2026-10-18-the-escape-class-refuted.md) | — |
+| general | [The round-177 Escape defect is FIXED, and my first two diagnoses were wrong — 2026-10-18](audits/2026-10-18-the-escape-defect-is-fixed.md) | — |
+| release | [The 156 citations are right and the counter is wrong — 2026-10-18](audits/2026-10-18-the-flagged-citations-are-correct.md) | — |
+| general | [A defect with two call sites, and the one that was left behind - 2026-10-18](audits/2026-10-18-the-half-that-was-left-behind.md) | — |
+| general | [The navigation "defect" was my harness, and the rule is documented — 2026-10-18](audits/2026-10-18-the-navigation-defect-was-my-harness.md) | — |
+| quality | [The overlays were already fixed — their coverage was not — 2026-10-18](audits/2026-10-18-the-overlays-were-fixed-their-coverage-was-not.md) | — |
+| general | [The 197px page scroll is FIXED — the fix had to go on the scroller — 2026-10-18](audits/2026-10-18-the-page-scroll-is-fixed-on-the-scroller.md) | — |
+| reporting | [Round 131's guard claimed a report it never emitted](audits/2026-10-18-the-report-that-never-ran.md) | — |
+| general | [The restore request the last write wins — 2026-10-18](audits/2026-10-18-the-restore-request-last-write-wins.md) | — |
+| general | [The sweep that worked: writes no test ever names - 2026-10-18](audits/2026-10-18-the-sweep-that-worked.md) | — |
+| subscription | [The sales-history tier case was asserting two removed designs — 2026-10-18](audits/2026-10-18-the-tier-case-asserted-two-removed-designs.md) | — |
+| general | [The Void overlay is behind a swipe, which is why the probe missed it — 2026-10-18](audits/2026-10-18-the-void-overlay-is-behind-a-swipe.md) | — |
+| general | [The third defect under the same comment — and a guard that had gone blind — 2026-10-18](audits/2026-10-18-third-defect-and-a-blind-guard.md) | — |
+| general | [Thirteen more specs on the same admin route gate — 2026-10-18](audits/2026-10-18-thirteen-more-specs-on-the-same-gate.md) | — |
+| general | [Three test files for one hook — 2026-10-18](audits/2026-10-18-three-files-for-one-hook.md) | — |
+| general | [Three of my own cases were passing vacuously — 2026-10-18](audits/2026-10-18-three-of-my-own-cases-were-vacuous.md) | — |
+| general | [Three overlays, three cases, and the class is closed — 2026-10-18](audits/2026-10-18-three-overlays-three-opening-mechanics.md) | — |
+| general | [Three POS hypotheses, all refuted — 2026-10-18](audits/2026-10-18-three-pos-hypotheses-all-refuted.md) | — |
+| general | [Three red suites that were never anyone else's — 2026-10-18](audits/2026-10-18-three-red-suites-that-were-mine.md) | — |
+| release | [Twelve more drifted citations — and a commit that swept a lane's work — 2026-10-18](audits/2026-10-18-twelve-citations-and-a-swept-commit.md) | — |
+| general | [Two wrong claims caught by reading the schema before the UI — 2026-10-18](audits/2026-10-18-two-claims-the-schema-refuted.md) | — |
+| general | [Two comment-consistency detectors, built and rejected — 2026-10-18](audits/2026-10-18-two-comment-detectors-built-and-rejected.md) | — |
+| general | [Two findings on the paid-tab path, and why the test still is not written](audits/2026-10-18-two-harness-findings-on-the-paid-tab-path.md) | — |
+| general | [Two hypotheses tested and refuted, one type error fixed — 2026-10-18](audits/2026-10-18-two-hypotheses-refuted-and-a-type-error.md) | — |
+| general | [Two blocked items whose blocker had expired — 2026-10-18](audits/2026-10-18-two-items-whose-blocker-expired.md) | — |
+| general | [Two refuted suspicions, and a guard that nothing would have noticed losing — 2026-10-18](audits/2026-10-18-two-refutations-and-a-thin-guard.md) | — |
+| general | [Two table-numbering defects, one of them mine — 2026-10-18](audits/2026-10-18-two-table-numbering-defects.md) | — |
+| general | [An unbounded quantity field, and an Escape that ate the sidebar — 2026-10-18](audits/2026-10-18-unbounded-qty-and-escape-layering.md) | — |
+| general | [Undo put the line back on top, and a wrong note of my own — 2026-10-18](audits/2026-10-18-undo-position-loss.md) | — |
+| general | [Verifying my own fix found a defect in it — 2026-10-18](audits/2026-10-18-verifying-my-own-fix.md) | — |
+| general | [A suspected defect that did not survive checking — 2026-10-18](audits/2026-10-18-withdrawn-anchor-claim.md) | — |
+| general | [A finding I withdrew, and the rule that decides it — 2026-10-18](audits/2026-10-18-withdrawn-dispatch-claim.md) | — |
+| general | [A test that tested the change, not the mechanism — 2026-10-19](audits/2026-10-19-a-test-that-tested-the-change.md) | — |
+| theming | [Four doc claims that were true of the document, not of the tool](audits/2026-10-19-branding-manifest-inert-and-checker-coverage.md) | — |
+| release | [155 UI comments cite a Rust line number, and no gate checks them (2026-10-19)](audits/2026-10-19-cross-language-citation-gap.md) | — |
+| general | [Three red gates, and the one that was only ever red here — 2026-10-19](audits/2026-10-19-full-matrix-red-gates.md) | — |
+| general | [Round cap request: 512 rounds, not 256 (2026-10-19)](audits/2026-10-19-goal-round-cap-request.md) | — |
+| general | [An IPC door the desktop does not have, reached by an empty-string fallback — 2026-10-19](audits/2026-10-19-ipc-door-missing-and-root-debris.md) | — |
+| general | [A five-year retention nobody implemented, and a TLS version nobody pinned — 2026-10-19](audits/2026-10-19-legal-retention-and-tls-claims.md) | — |
+| release | [Line-number citation drift: measured, partly repaired, and still open — 2026-10-19](audits/2026-10-19-line-number-citation-residual.md) | — |
+| topology | [Seventy NUL-filled files in node_modules, and the gate failures they faked — 2026-10-19](audits/2026-10-19-node-modules-nul-corruption.md) | — |
+| general | [Every required gate now has a runner it can actually reach — 2026-10-19](audits/2026-10-19-required-gates-without-runners.md) | — |
+| release | [Rust line cites in UI comments: a 26-cite sample, 11 repaired — 2026-10-19](audits/2026-10-19-rust-citations-in-ui-comments.md) | — |
+| general | [Four real defects found by reading, three fixed — 2026-10-19](audits/2026-10-19-ui-behavioural-defect-hunt.md) | — |
+| release | [UI comment citations: 223 → 4, and the four that remain are correct — 2026-10-19](audits/2026-10-19-ui-comment-citation-sweep.md) | — |
+| release | [A green citation gate that could not see two dead citations — 2026-10-19](audits/2026-10-19-ungraded-citations-and-a-guard-that-measured-the-wrong-process.md) | — |
+| general | [49 of the 50 "modified" paths are phantoms, and one is real (round 289)](audits/49-of-50-modified-paths-are-phantoms.md) | — |
 | theming | [Shadow Banding Audit — Task List](audits/TODO-shadow-audit.md) | — |
 | general | [The acceptance spec's clip rule, validated against a probe that lacked it (round 271)](audits/acceptance-clip-rule-validated.md) | — |
 | general | [Round 213's conclusion was wrong, and probing the popover is what showed it (round 214)](audits/active-tab-banner-correction.md) | — |
 | general | [The active-tab banner needs an open shift, and the shift control is in the popover (round 213)](audits/active-tab-banner-precondition.md) | — |
+| general | [A double submit on Add Table created two tables with the same name](audits/add-table-double-submit-creates-two-tables.md) | — |
 | products | [An archived screen still graded by 24 unit tests and 5 E2E tests (round 146)](audits/archived-product-screen-still-graded.md) | — |
 | staff | [Thirteen switches, twenty-seven roles, zero missing attributes (round 180)](audits/aria-role-attribute-sweep.md) | — |
 | general | [The surviving-assertion audit extended past the table screen — and came back clean (round 199)](audits/assertion-audit-beyond-tables.md) | — |
 | general | [Audit — Receipt Settings (resto-pos → Receipts) & Settings → Business Defaults](audits/audit-receipt-settings.md) | — |
+| general | [Back controls are navigation, and a variable hides an id from the scan (round 282)](audits/back-controls-are-navigation.md) | — |
+| general | [A failed barcode lookup was silently dropped at the till](audits/barcode-lookup-failure-was-silent.md) | — |
 | general | [The scanner-slot race: why two shuffled seeds fail (round 95)](audits/barcode-scanner-slot-race.md) | — |
 | general | [Following the guard's blind spot by hand found three dead citations (round 154)](audits/bare-path-sweep.md) | — |
+| general | [The bridge suite gets 2.2x SLOWER in parallel, and the cause is a mutex round the](audits/bridge-suite-slows-under-parallelism.md) | — |
 | general | [Cart line badges and the special-request note, plus a validation of round 203's checker (round 204)](audits/cart-line-badges-note.md) | — |
 | general | [The course chip, behind a setting that is off by default (round 205)](audits/cart-line-course-chip.md) | — |
 | general | [The tablet divergence was my spec not opening the cart (round 260)](audits/cart-line-edit-modifiers-corrected.md) | — |
@@ -144,9 +303,12 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | payments | [The cash-preset chips write to a rail parameter nothing reads (round 120)](audits/cash-preset-chips-unread.md) | — |
 | payments | [The cash presets are now read: rounds 120-121's inventory gets its first repair (round 122)](audits/cash-presets-wired.md) | — |
 | general | [Sampling the class-selector pattern across the suite (round 200)](audits/class-selector-pattern-sampled.md) | — |
+| general | [Enter during an in-flight shift close issued a SECOND close](audits/close-shift-enter-during-in-flight-close.md) | — |
 | general | [Hunting round 201's closure-after-await shape across the UI (round 202)](audits/closure-after-await-hunt.md) | — |
 | general | [The checker round 202 said a grep could not be (round 203)](audits/closure-checker-built.md) | — |
 | quality | [Code Quality Audit — 0.0.14](audits/code-quality-2026-07-20.md) | — |
+| general | [The completeness check that was itself incomplete, and the kill-test that caught it (round 304)](audits/completeness-check-was-incomplete.md) | — |
+| general | [A compliance guard with a false negative, found by asking who else re-implements the stripper](audits/compliance-guard-false-negative-crude-stripper.md) | — |
 | general | [Two gates that stop the course bar rendering under test (round 97)](audits/course-bar-render-gates.md) | — |
 | general | [courseFiringEnabled: checked, and NOT a defect (round 98)](audits/course-firing-default-verdict.md) | — |
 | general | [Course firing: the half round 205 left (round 206)](audits/course-firing.md) | — |
@@ -156,6 +318,8 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The credential boundary, proven in the browser (round 228)](audits/credential-boundary-e2e.md) | — |
 | general | [Correcting round 114: the credit guard is UNREACHABLE, and the withdrawal was untested (round 115)](audits/credit-guard-unreachable.md) | — |
 | general | [The credit rail's canComplete guard is unpinned — and unreachable in the suite (round 114)](audits/credit-rail-guard-unpinned.md) | — |
+| general | [A hypothesis I had to downscale, and an assertion that was vacuous](audits/credit-settings-load-failure-and-a-vacuous-assertion.md) | — |
+| general | [My own fix left a warning that could never clear](audits/credit-warning-could-never-clear.md) | — |
 | general | [The custom payment rail form, on the screen with the lowest coverage (round 190)](audits/custom-rail-form-covered.md) | — |
 | database | [Database Optimization Audit — 2026-07-20](audits/database-optimization-2026-07-20.md) | — |
 | general | [Round 107's follow-up: one real gap, and two guards that were not guards (round 108)](audits/dead-hook-follow-up.md) | — |
@@ -163,6 +327,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [A dead hook's tests were covering the live hook's behaviour (round 107)](audits/dead-hook-tests-mask-live-gap.md) | — |
 | general | [The dead hook's LAST masked behaviour: corrupt-draft resilience (round 110)](audits/dead-hook-third-export.md) | — |
 | general | [The deduction badge: reachable, and why it costs a price override (round 242)](audits/deduction-badge-trace.md) | — |
+| general | [The same delete-before-create reached two more sites, both on the hottest path (round 293)](audits/delete-before-create-two-more-sites.md) | — |
 | general | [kasir.mu Design Exceptions Register](audits/design-exceptions.md) | — |
 | quality | [Developer Experience Audit — 2026-07-20](audits/dev-experience-2026-07-20.md) | — |
 | ui | [The mock's feature answer: why it cannot be fixed by pointing at a preset (round 130)](audits/dev-mock-feature-answer-options.md) | — |
@@ -170,28 +335,44 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | ui | [The mock's feature vocabulary is wrong, and the cost is now measured (round 131)](audits/dev-mock-feature-vocabulary.md) | — |
 | products | [The mock dropped the field modifier groups live in (round 210)](audits/dev-mock-product-notes.md) | — |
 | ui | [Dev-Mock Reload-State Audit](audits/dev-mock-state-audit.md) | — |
+| general | [The dine-in rule is complete, the tables screen correctly exempt, and a full-surface](audits/dine-in-rule-complete-and-full-measurement.md) | — |
 | general | [The context menu's Escape guard, unpinned like round 173's (round 174)](audits/docblock-invariant-claims-swept.md) | — |
 | general | [Documentation audit — the docs system itself — 23-09-26](audits/documentation-audit-23-09-26.md) | — |
+| general | [Twelve dialogs close twice per Escape — and it does not matter](audits/duplicate-escape-owners-are-harmless.md) | — |
 | general | [The restaurant cart setup, shared instead of copied four times (round 161)](audits/e2e-cart-setup-shared.md) | — |
 | general | [Round 185's wait rule applied fleet-wide, and proven against a half-loaded screen (round 186)](audits/e2e-data-shaped-waits.md) | — |
 | general | [The two helpers five specs were carrying, consolidated (round 207)](audits/e2e-helper-consolidation-cart-sheet.md) | — |
 | general | [The restaurant sidebar route, shared instead of walked four times (round 162)](audits/e2e-sidebar-route-shared.md) | — |
+| release | [The e2e gap was never Docker — it was my own pipe, and the suite is now run (round 295)](audits/e2e-was-never-docker.md) | — |
+| general | [A double submit on the EDC terminal form configured two terminals](audits/edc-terminal-form-double-submit.md) | — |
 | general | [The EDC terminal picker, which round 224 called unreachable (round 225)](audits/edc-terminal-picker.md) | — |
 | general | [The EDC Test Connection, and a toggle that was not needed (round 257)](audits/edc-test-connection.md) | — |
+| general | [The 8 remaining ids, and why a tag is not a classification (round 283)](audits/eight-id-classification-corrected.md) | — |
 | general | [The 86 list IS shared across terminals; the note said it was not (round 151)](audits/eighty-six-list-is-shared.md) | — |
+| general | [86 persistence silently disarmed for the life of the mount by one failed read](audits/eighty-six-persistence-disarmed-by-one-failed-read.md) | — |
 | general | [The empty-section state, and the exit it offers (round 246)](audits/empty-section-covered.md) | — |
 | general | [The empty-section branch: reachable, and the route is longer than it looked (round 245)](audits/empty-section-route.md) | — |
+| general | [Exit Terminal could not exit, and a round-294 test was asserting that as correct (round 297)](audits/exit-terminal-could-not-exit.md) | — |
 | general | [The F4 sweep now checks reachability, and two more cards were fixed (round 238)](audits/f4-sweep-reachability.md) | — |
 | general | [F40's device-blocked verification is half closeable in the browser (round 155)](audits/f40-browser-half.md) | — |
 | general | [Round 152's deleted guard comes back — the SCOPE was the error, not the idea (round 153)](audits/feature-comment-path-guard.md) | — |
+| general | [A refused floor-plan move left the table where the operator dropped it](audits/floor-plan-drag-move-not-restored-on-refusal.md) | — |
 | general | [The two follow-up guards from round 171, kill-tested and sound (round 172)](audits/followup-guards-kill-tested.md) | — |
+| general | [Four toggles rendered and wired but asserted nowhere, and a count that said ten (round 290)](audits/four-toggles-rendered-and-wired-but-unasserted.md) | — |
 | general | [The fourth F4 guard: narrowed to one question, still unreached (round 233)](audits/fourth-f4-guard-narrowed.md) | — |
 | general | [The fourth F4 latch fires now: a one-line ordering fix (round 235)](audits/fourth-f4-latch-fixed.md) | — |
 | general | [The fourth F4 latch is unreachable, and the mechanism is three lines (round 234)](audits/fourth-f4-latch-unreachable.md) | — |
+| accessibility | [Agent Ops Handbook — Accessibility Coverage](audits/frontend/a11y-coverage.md) | — |
 | release | [Agent Ops Handbook — Source Citation Drift](audits/frontend/citation-drift.md) | — |
 | theming | [Agent Ops Handbook — CSS Verification](audits/frontend/css-verification.md) | — |
 | general | [Fluent Page Audit — Full Journal](audits/frontend/fluent-page-audit.md) | — |
+| general | [l10n stub maps: why a passing test can still be unlabelled](audits/frontend/l10n-stub-maps.md) | — |
+| payments | [The gateway tender path had a second, silent copy of an already-fixed loyalty bug](audits/gateway-loyalty-redeem-silent-copy.md) | — |
 | security | [Writing a guard that can actually fail (2026-10-12)](audits/guard-authoring-practice.md) | — |
+| general | [Auditing the guards themselves: two callers cleared, and one that is safe by design (round 300)](audits/guards-audited-callers-cleared.md) | — |
+| general | [A transient hardware-load failure pinned Save shut for the whole session](audits/hardware-load-failure-pinned-save-shut.md) | — |
+| general | [Held-cart replacement: the whole class, not the sites I visited](audits/held-cart-replacement-whole-class.md) | — |
+| general | [Held carts were invisible after a reload, and F4 silently took one over](audits/held-carts-invisible-after-reload.md) | — |
 | general | [Sweeping for round 217's hit-area class, and finding none (round 218)](audits/hit-area-sweep-round217-class.md) | — |
 | general | [The acceptance instrument detects real occlusion, and the scan's second measure had no floor (round 272)](audits/instrument-guards.md) | — |
 | general | [The interval stop is now observable — by isolating the hook (round 109)](audits/interval-stop-observable.md) | — |
@@ -200,11 +381,13 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | kds | [The KDS advance writes correctly and the board does not repaint (round 144)](audits/kds-advance-does-not-repaint.md) | — |
 | kds | [The KDS had no crash isolation at all (2026-10-12)](audits/kds-crash-isolation.md) | — |
 | kds | [The real backend creates the ticket; the mock only reports them (round 139)](audits/kds-from-sale-production-vs-mock.md) | — |
+| kds | [A failed per-item KDS write was silently dropped, one line from a path that reported it](audits/kds-item-status-failure-was-silent.md) | — |
 | kds | [The KDS lifecycle test is reactivated, and the board is a masonry (round 145)](audits/kds-lifecycle-reactivated.md) | — |
 | kds | [The KDS and Tables rows are feature-gated, and the preview does not enable them (round 262)](audits/kds-row-entitlement.md) | — |
 | kds | [The Kitchen Display row never hid: a predicate that cannot read the gate (round 128)](audits/kds-row-inert-predicate.md) | — |
 | kds | [What makes the POS-to-KDS ticket deterministic, and why the spec is fixme (round 142)](audits/kds-spec-determinism.md) | — |
 | kds | [The kitchen chit is reachable, and the label is not its control (round 265)](audits/kitchen-chit-covered.md) | — |
+| kds | [The kitchen never got the ticket: three silent chit-print failures](audits/kitchen-chit-print-failures-were-silent.md) | — |
 | kds | [The kitchen chit is blocked by a SETTING, not by an entitlement (round 264)](audits/kitchen-chit-setting-gate.md) | — |
 | kds | [A line added during the kitchen send was silently dropped (round 201)](audits/kitchen-send-dropped-line.md) | — |
 | general | [The last latch entry was a false positive, and the allow-list is gone (round 239)](audits/latch-allowlist-removed.md) | — |
@@ -216,6 +399,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The memo stack covers the bottom of the receipts settings screen (round 247)](audits/memo-stack-covers-receipts.md) | — |
 | general | [The bulk 86 controls, and two sweeps that found no third instance of round 183's pattern (round 184)](audits/menu-editor-bulk-controls.md) | — |
 | general | [The empty categories are a recorded deferral, not an oversight (round 127)](audits/menu-editor-categories-deferred.md) | — |
+| products | [The menu editor's category dialog let Tab out on the first press](audits/menu-editor-category-modal-focus.md) | — |
 | products | [The category builder and its duplicate-name rule (round 185)](audits/menu-editor-category-rule.md) | — |
 | quality | [Round 187's coverage claim was wrong, and finishing it found two real fields (round 188)](audits/menu-editor-coverage-claim-corrected.md) | — |
 | general | [The menu editor offers categories that can never contain an item (round 126)](audits/menu-editor-empty-categories.md) | — |
@@ -230,19 +414,26 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [The menu editor rail: a correction to round 249's sweep, and a CSS change that was reverted (250)](audits/menu-rail-reverted.md) | — |
 | general | [The one invariant MenuSearchBar claimed but nobody pinned (round 173)](audits/menu-search-native-setter-pinned.md) | — |
 | inventory | [The menu tile's out-of-stock state is pinned in the UNIT layer, not in E2E (round 150)](audits/menu-tile-out-of-stock-unreachable.md) | — |
+| subscription | [Six Midtrans channels, one asserted, and a template id that hides five (round 291)](audits/midtrans-channels-one-of-six-asserted.md) | — |
 | subscription | [The Midtrans fields were reachable all along, and the deferral's reason was wrong (round 263)](audits/midtrans-credentials.md) | — |
 | general | [The mock-implementation leak: clearAllMocks() keeps implementations (round 92)](audits/mock-implementation-leak.md) | — |
 | general | [The dev mock's rail store lost every save — and the justification for that was stale (round 156)](audits/mock-rails-session-local.md) | — |
+| quality | [KNOWN_GAPS is a coverage map: which of those names a production component actually calls](audits/mockfactory-gap-list-as-coverage-map.md) | — |
 | ui | [Modal & Overlay Audit Checklist](audits/modal-audit-checklist.md) | — |
 | general | [Following an authored modifier group to the till that sells it (round 212)](audits/modifier-group-to-till.md) | — |
 | general | [The end-to-end proof round 210 handed off (round 211)](audits/modifier-groups-persist-e2e.md) | — |
 | general | [Module-scope collections and caches: four more, all sound (round 104)](audits/module-collections-audit.md) | — |
+| general | [Two store actions that failed with no message at all](audits/multistore-set-primary-delete-silent-failure.md) | — |
+| general | [My own round-11 fix was a dead end, and the probe that found it (round 299)](audits/my-own-round-11-fix-was-a-dead-end.md) | — |
 | observability | [Error Handling Audit — 0.0.14](audits/observability/error-handling-2026-07-20.md) | — |
 | observability | [Structured Logging & Observability — 0.0.14](audits/observability/logging-2026-07-20.md) | — |
 | general | [The once-queue survives clearAllMocks() (round 99)](audits/once-queue-survives-clear.md) | — |
 | release | [One stale test citation in the whole tree, and the nineteen that are deliberate (round 176)](audits/one-stale-citation-in-489.md) | — |
+| general | [The <form onSubmit> re-entry guard: the class is closed](audits/onsubmit-reentry-guard-triage-closed.md) | — |
+| general | [Round 294's guard, proven in a browser — and the two states it took to get there (round 296)](audits/open-tab-shift-close-proven-in-browser.md) | — |
 | payments | [The payments F4 latch, and a red suite that was not mine (round 227)](audits/payments-f4-latch.md) | — |
 | payments | [Round 156's third finding was a false alarm, and it is now pinned (round 157)](audits/payments-save-location-race-pinned.md) | — |
+| payments | [RestaurantPaymentsScreen save: partial-batch failure — audited, NO defect, now locked](audits/payments-save-partial-failure-locked.md) | — |
 | general | [A per-case mock value with no reset: the subscription tier (round 101)](audits/per-case-mock-value-leak.md) | — |
 | general | [The plan's last claim verified at HEAD, and its one open item (round 113)](audits/plan-claims-and-f40-blocker.md) | — |
 | general | [The plan-empty state, reached through a seam rather than thirteen lifecycle calls (round 268)](audits/plan-empty-covered.md) | — |
@@ -250,6 +441,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | products | [Product Image Storage Plan - Review Summary](audits/plan-product-images-review.md) | — |
 | payments | [A real Card settlement driven to a receipt, live (round 118)](audits/pos-card-settlement-live.md) | — |
 | general | [PosScreenCoreFlow is order-dependent: what --sequence.shuffle found (round 93)](audits/pos-core-flow-order-dependence.md) | — |
+| general | [Three POS dialogs declared aria-modal and trapped nothing](audits/pos-dialogs-without-focus-trap.md) | — |
 | general | [A POS cart could follow the operator to another store (round 104)](audits/pos-draft-store-scoping.md) | — |
 | general | [The POS family's remaining sequence guards are all pinned (round 117)](audits/pos-family-guards-pinned.md) | — |
 | general | [POS-family shuffle sweep, second pass (round 102)](audits/pos-family-shuffle-sweep-2.md) | — |
@@ -262,15 +454,21 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | payments | [QRIS and split-tender driven live — the last two gaps closed (round 119)](audits/pos-qris-and-split-live.md) | — |
 | general | [POS session-lifecycle: what happens between expiry and re-auth (round 78)](audits/pos-session-recovery.md) | — |
 | general | [The POS localStorage sweep, and a currency-sensitivity gap (round 105)](audits/pos-storage-key-sweep.md) | — |
+| general | [A real double-submit race, and a hypothesis the code disproved](audits/price-override-double-submit-race.md) | — |
 | general | [The printed receipt sample is pinned, and its tax mode documented (round 135)](audits/printed-sample-pinned.md) | — |
+| general | [A double submit on first-run provisioning ran it twice](audits/provisioning-double-submit.md) | — |
 | payments | [The QRIS mode setting and the two buttons beside it (round 124)](audits/qris-mode-and-two-buttons.md) | — |
 | payments | [The QRIS mode control, and the round-183 hazard it now pins (round 191)](audits/qris-mode-persistence.md) | — |
+| payments | [The QRIS field mounts late, and the bisect is solid while the spec still fails (round 285)](audits/qris-mounts-late.md) | — |
+| payments | [The QRIS round trip, and bisecting by removal (round 286)](audits/qris-round-trip-covered.md) | — |
+| payments | [The QRIS static payload is unit-covered, and its e2e card is already open (round 284)](audits/qris-static-payload-verified.md) | — |
 | money | [A USD store was offered a $10,000 quick-tender shortcut on a $7 sale (round 106)](audits/quick-tender-ladder-currency.md) | — |
 | release | [The rail cap is real but insufficient: 6px of arithmetic I could not close (round 253)](audits/rail-cap-insufficient.md) | — |
 | general | [The credential contradiction does not exist: the save path sanitizes (round 125)](audits/rail-credential-sanitizer.md) | — |
 | general | [The rail credential allow-list, extracted from a component body and pinned (round 183)](audits/rail-param-allowlist-pinned.md) | — |
 | general | [14 of 15 rail parameters the operator can edit have no reader (round 121)](audits/rail-parameters-unread.md) | — |
 | general | [Correcting round 121: the parameters ARE read back — but nothing acts on them (round 123)](audits/rail-params-roundtrip-not-consumed.md) | — |
+| general | [Four hypotheses, four negatives — and one untested guarantee worth pinning](audits/receipt-dual-write-contract-pinned.md) | — |
 | general | [Two grouping settings that were never connected (2026-10-13)](audits/receipt-grouping-two-settings.md) | — |
 | general | [The receipts keys are store-scoped, with the migration pinned (round 169)](audits/receipt-keys-migrated.md) | — |
 | general | [The receipt preview now prices each row as a LINE TOTAL (round 133)](audits/receipt-preview-line-totals.md) | — |
@@ -279,6 +477,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | observability | [The receipts diagnostics an operator reaches for mid-service (round 222)](audits/receipts-diagnostics.md) | — |
 | general | [The F4 load failure, and the claim it suppresses (round 223)](audits/receipts-load-failure.md) | — |
 | general | [The receipts Save pushed a task with an empty token, unlike its five siblings (round 164)](audits/receipts-save-token-consistency.md) | — |
+| general | [A double submit on Reserve left two open bills against one table](audits/reserve-table-double-submit-two-open-bills.md) | — |
 | general | [An invisible hit area was eating clicks on a live button (round 217)](audits/resize-handle-click-interception.md) | — |
 | general | [Four restaurant footer capabilities get E2E coverage, by sweeping the specs (round 147)](audits/restaurant-capabilities-e2e.md) | — |
 | general | [Three sweeps, three clean results: the restaurant controls are well-gated (round 167)](audits/restaurant-control-gates-sweep.md) | — |
@@ -299,19 +498,31 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [A takeaway order could claim a table (2026-10-12)](audits/restaurant-pos-takeaway-table-claim.md) | — |
 | general | [A completed restaurant sale, driven live; the KDS half stays open (round 140)](audits/restaurant-sale-live.md) | — |
 | general | [The restaurant settings screen gets E2E coverage, and its toggle is styled-out (round 148)](audits/restaurant-settings-e2e.md) | — |
+| inventory | [The key-ownership inventory named a key nothing writes, and omitted four it does](audits/restaurant-settings-key-inventory-drift.md) | — |
 | general | [The restaurant settings screen, driven live: all thirteen toggles work (round 136)](audits/restaurant-settings-live.md) | — |
 | general | [Restaurant settings surface: state as measured (2026-10-13)](audits/restaurant-settings-surface-state.md) | — |
+| general | [The restaurant shortcut manifest could lie in two ways it was never checked against](audits/restaurant-shortcut-manifest-two-unchecked-claims.md) | — |
 | general | [The restaurant POS gains a keyboard shortcut manifest, and the tree stops it twice (round 158)](audits/restaurant-shortcut-manifest.md) | — |
 | general | [The shortcut manifest is bound to the till, restaurant-only (round 159)](audits/restaurant-shortcuts-bound.md) | — |
 | general | [The shortcuts are proven in a browser, and the guard is one of the three cases (round 160)](audits/restaurant-shortcuts-e2e.md) | — |
 | general | [The restaurant sidebar entries get E2E coverage — and the KDS row must stay hidden (round 149)](audits/restaurant-sidebar-e2e.md) | — |
+| general | [The restaurant suite is stable, and the one-sided assertion hunt found nothing (round 287)](audits/restaurant-suite-stable.md) | — |
+| general | [Resume stole the lease before the warning could be shown (round 298)](audits/resume-stole-the-lease.md) | — |
+| general | [A retail terminal could read and delete a restaurant's open bill by id (round 303)](audits/retail-could-delete-a-restaurant-open-bill.md) | — |
+| general | [A double-click on Hold issued two hold writes for one sale](audits/retail-hold-double-click-two-writes.md) | — |
+| general | [The optimistic EDIT, not rolled back — the third copy of the same defect](audits/retail-optimistic-edit-not-rolled-back.md) | — |
+| general | [Retail: an optimistic add that was never rolled back, and a category that was never saved](audits/retail-optimistic-writes-not-rolled-back.md) | — |
 | general | [Rust-side CI gates, re-verified at HEAD (2026-10-13, round 75)](audits/rust-gates-at-head.md) | — |
+| general | [Round 18's in-flight Rust run: slow, and the first explanation was wrong (round 306)](audits/rust-suite-slow-by-design.md) | — |
+| general | [A failed sale-detail open was a dead tap — the one read settleRead never covered](audits/sale-detail-open-failure-was-silent.md) | — |
 | kds | [The 50 test-file citations in sales + kds, and the regex that invented a defect (round 175)](audits/sales-kds-citation-regex-false-alarm.md) | — |
 | general | [The scan counted mentions as uses, and round 269 was the proof (round 270)](audits/scan-mentions-vs-uses.md) | — |
 | general | [Half the "missing" ids are unit-asserted, and the scan only read e2e (round 275)](audits/scan-unit-layer.md) | — |
 | general | [The scan reported a designed relocation as a coverage gap (round 261)](audits/scan-view-gated.md) | — |
 | general | [ROOT CAUSE: the scanner is disabled on restaurant-pos, so the case only passed on a leak](audits/scanner-disabled-on-restaurant-pos.md) | — |
+| general | [Two scanner regressions: the regex arm ate JSX, and interpolations were discarded](audits/scanner-over-removal-jsx-and-interpolations.md) | — |
 | general | [The missing scoped-storage helper, built and pinned (round 168)](audits/scoped-storage-helper.md) | — |
+| general | [The third handler in the same file had the same defect, and round 292 had left it](audits/seat-guests-deleted-the-reservation.md) | — |
 | general | [The section filter narrowed the counts, not the floor plan (round 244)](audits/section-filter-broken.md) | — |
 | general | [Dependency Audit — 2026-07-20](audits/security/audit-2026-07-20.md) | — |
 | general | [Security Audit: Admin Dashboard Login Flow](audits/security/audit-admin-login-flow.md) | — |
@@ -327,27 +538,40 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Session close: rounds 221-256 on restaurant POS (round 256)](audits/session-close-221-256.md) | — |
 | general | [The third F4 latch, and the strongest of the three (round 230)](audits/settings-f4-latch.md) | — |
 | general | [createSettingsApiMock was missing setSettingScoped (round 94)](audits/settings-mock-missing-setter.md) | — |
+| general | [settleRead had two consumers with a PRIMARY read left bare](audits/settle-read-primary-read-left-bare.md) | — |
 | general | [Setup wizard + login/signup — state-of-the-art working notes](audits/setup/setup-state-of-the-art.md) | — |
 | general | [Setup Wizard — Audit & Review](audits/setup/setup-wizard-audit.md) | — |
 | general | [Setup wizard — decision record and plans](audits/setup/setup-wizard-option-b-plan.md) | — |
 | general | [Wizard retirement — RESOLVED](audits/setup/setup-wizard-retirement-blocker.md) | — |
+| general | [A shift closed with a customer's tab still open, and nothing on screen said so (round 294)](audits/shift-closed-with-open-tab.md) | — |
+| general | [Enter closed the shift: an overlay keydown handler with no target guard](audits/shift-dialog-enter-closed-the-shift.md) | — |
+| general | [The three shift dialogs: no trap, and Escape with two owners waiting to happen](audits/shift-dialogs-focus-and-escape-ownership.md) | — |
 | general | [The silent-save defect class is closed across the tree (round 166)](audits/silent-save-class-closed.md) | — |
 | general | [Skill audit — .agents/skills/ — 18-09-26](audits/skills/skill-audit-18-09-26.md) | — |
 | general | [Skill audit — .agents/skills/ — 22-09-26](audits/skills/skill-audit-22-09-26.md) | — |
+| general | [The shared source scanner read a regex as a comment, and a dead class that was not dead](audits/source-scanner-regex-and-false-dead-class.md) | — |
 | general | [Twenty-eight source-text guards audited; one family was weak, one was exemplary (round 171)](audits/source-text-guard-audit.md) | — |
+| general | [The split arithmetic is exact for every total it can actually receive — and I measured](audits/split-arithmetic-negative-domain.md) | — |
+| payments | [A failed split-bill hold sent the cashier into payment with the tab still open](audits/split-bill-failed-hold-went-to-payment.md) | — |
+| general | [Split tender: an unreadable row was read as zero — and the shortfall blamed the cashier](audits/split-tender-unreadable-row-read-as-zero.md) | — |
 | general | [Round 151's corrected note cited a path that no longer exists (round 152)](audits/stale-path-in-corrected-note.md) | — |
 | general | [Staleness-guard census, restaurant POS (round 85, 2026-10-13)](audits/staleness-guard-census-restaurant-pos.md) | — |
 | general | [Static Gates: every step verified locally (2026-10-13)](audits/static-gates-local-verification.md) | — |
+| general | [A store-pos terminal could list the restaurant's open bills, and only the UI stopped it](audits/store-pos-could-list-open-bills.md) | — |
 | payments | [The Stripe card finished, and a check that had to be given both arms (round 229)](audits/stripe-card-and-verify-keys.md) | — |
 | general | [Round 181's component adopted at the site that motivated it (round 182)](audits/switch-toggle-adopted.md) | — |
 | general | [The shared switch component, and why adoption is left to each owner (round 181)](audits/switch-toggle-component.md) | — |
+| sync | [The four-round "blocked" is now a passing test (round 278)](audits/tab-conflict-covered.md) | — |
+| sync | [The tab-conflict "needs a second terminal" blocker is soft, and half of it is proven (round 277)](audits/tab-conflict-seam-found.md) | — |
 | general | [The tab park cycle, and the defect two rounds misread (round 215)](audits/tab-park-cycle.md) | — |
 | general | [The last surviving table assertion, and the audit closing (round 198)](audits/table-assertion-audit-closed.md) | — |
+| general | [A completed sale that never claimed its table, reported to nobody](audits/table-assignment-failure-was-silent.md) | — |
 | general | [The delete guard that protects a table mid-service (round 194)](audits/table-delete-guard.md) | — |
 | general | [The table EDIT form, which must arrive prefilled (round 220)](audits/table-edit-form.md) | — |
 | general | [The table floor plan, driven live — and a probe that read it too early (round 177)](audits/table-floor-plan-live.md) | — |
 | general | [The same silent-save defect, a third time, on the table form (round 165)](audits/table-form-save-gate.md) | — |
 | general | [Merge Table, and three assertions that survived their own kill-test (round 196)](audits/table-merge-three-surviving-assertions.md) | — |
+| general | [A table move deleted the bill before it existed, and a merge deleted two (round 292)](audits/table-move-deleted-before-it-existed.md) | — |
 | general | [Move Table, driven for the first time (round 195)](audits/table-move-driven.md) | — |
 | release | [Unblocking round 192's unreachable guard — and backing the wrong fix out (round 193)](audits/table-release-spec-seeded.md) | — |
 | release | [The table release confirmation is unreachable in the current fixture (round 192)](audits/table-release-unreachable.md) | — |
@@ -355,12 +579,17 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Seating the party, and where the reservation card actually comes from (round 241)](audits/table-seating-covered.md) | — |
 | general | [Auditing my own assertions for round 196's flaw, and where it did not apply (round 197)](audits/table-spec-assertion-audit.md) | — |
 | general | [Print Bill, and the failure arm the injection seam made testable (round 221)](audits/tables-print-bill.md) | — |
+| sync | [The tables conflict pair, and two rounds lost to a matcher (round 281)](audits/tables-tab-conflict-covered.md) | — |
+| sync | [The tables tab-conflict pair: seam confirmed, route not finished (round 279)](audits/tables-tab-conflict-partial.md) | — |
+| sync | [The tables tab-conflict route: the regex was not the bug (round 280)](audits/tables-tab-conflict-route2.md) | — |
 | general | [The tables toolbar and the verb its state decides (round 219)](audits/tables-toolbar.md) | — |
+| general | [The parser refused 1,234 correctly — and told the cashier the wrong reason](audits/tender-parse-rejection-message.md) | — |
 | general | [Three ways an instrument lied, and the tell for each (round 226)](audits/three-instrument-failures.md) | — |
 | general | [Three more latches set before their reads, and what is proven about them (round 236)](audits/three-more-latches-scanned.md) | — |
 | sync | [The Apply button could be stranded disabled after a revision conflict (2026-10-14)](audits/topology-conflict-apply-stranded.md) | — |
 | general | [The 12-id remainder, verified class by class (round 276)](audits/twelve-id-remainder-classified.md) | — |
 | tax | [The two sample receipts are two tax MODES, not an inconsistency (round 134)](audits/two-samples-two-tax-modes.md) | — |
+| payments | [The two Stripe selects the coverage note called done, and were not (round 288)](audits/two-stripe-selects-were-not-covered.md) | — |
 | general | [UI CI gates, re-verified at HEAD (2026-10-13, round 76)](audits/ui-gates-at-head.md) | — |
 | ui | [UI State Audit — 0.0.14](audits/ui-state-audit-2026-07-20.md) | — |
 | general | [UI test duration: where the 108s actually goes (2026-10-12)](audits/ui-test-duration-analysis.md) | — |
@@ -369,6 +598,8 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Worker cap, happy-dom and merging: three experiments, two refusals (2026-10-12)](audits/ui-test-levers-measured.md) | — |
 | general | [The view-gated exemption is now verified by a spec (round 274)](audits/view-gate-verified.md) | — |
 | general | [The view-gated split CAN hide a gap, and two guards for it do not bind (round 273)](audits/view-gated-split-can-hide.md) | — |
+| general | [The three "unguarded" write handlers are guarded server-side — and one guard was unpinned](audits/void-double-fire-refused-server-side.md) | — |
+| inventory | [A guard that asserted A ⊆ A: dead warehouse shortcut keys, and the test that could not see them](audits/warehouse-shortcut-guard-circular.md) | — |
 | general | [Two cards never read their settings, and one missing prop explains it (round 237)](audits/workspace-cards-missing-token.md) | — |
 | ui | [F10's modal renders again, and one F4 guard stays out of reach (round 232)](audits/workspace-modal-provider-fix.md) | — |
 | ui | [F10 opens a modal that throws: the fourth F4 guard was unreachable, and why (round 231)](audits/workspace-settings-modal-crash.md) | — |
@@ -379,6 +610,11 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | products | [Benchmark Regression Tracking](benchmarks/regression-tracking.md) | — |
 | general | [MANAGER-2 JOURNAL - POS-SCREEN. LIVE STATE BLOCK (authoritative head, READ FIRST)](campaigns/manager-2-journal-posscreen.md) | — |
 | general | [MANAGER-2 CURRENT-STATE LEDGER (condensed; authoritative head - READ THIS FIRST)](campaigns/manager-2-journal.md) | — |
+| general | [The guide hreflang rule accepts a one-sided pair](findings/2026-10-23-guide-pairing-one-sided.md) | — |
+| general | [Seven pinned base-image digests have drifted, unnoticed](findings/2026-10-23-seven-pins-drifted.md) | — |
+| general | [kasirmu-core exceeded its size ceiling, from another lane's committed work](findings/2026-10-24-kasirmu-core-over-size-ceiling.md) | — |
+| general | [Six shipped plans still sit in docs/plans/_active/, and nothing grades it](findings/2026-10-24-shipped-plans-still-active.md) | — |
+| ui | [The tablet shell registers 27 fewer IPC commands than the shared UI calls](findings/2026-10-24-tablet-shell-registers-27-fewer-commands.md) | — |
 | general | [Audit Closed Findings — Archive](findings/audit-closed-findings.md) | — |
 | general | [Audit Open Findings — Consolidated](findings/audit-open-findings.md) | — |
 | general | [Engineering Journal - part 1 of 8](journal/JOURNAL-part-1.md) | — |
@@ -390,6 +626,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [Engineering Journal - part 7 of 8](journal/JOURNAL-part-7.md) | — |
 | general | [Engineering Journal - part 8 of 8](journal/JOURNAL-part-8.md) | — |
 | general | [Engineering Journal - index](journal/JOURNAL.md) | — |
+| general | [Note on b0e7d28a6](notes-2026-10-23-commit-message-discrepancy.md) | — |
 | general | [kasir.mu 0.0.25](releases/CHANGELOG-0.0.25.md) | — |
 | general | [kasir.mu 0.0.31](releases/CHANGELOG-0.0.31.md) | — |
 | general | [Changelog — kasir.mu 0.0.33](releases/CHANGELOG-0.0.33.md) | — |

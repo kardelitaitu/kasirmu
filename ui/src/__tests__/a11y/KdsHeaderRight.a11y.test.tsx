@@ -13,18 +13,20 @@ import { KdsHeaderRight } from '@/features/kds/components/KdsHeaderRight';
 import { DEFAULT_SETTINGS } from '@/features/kds/kdsSettingsModel';
 import kdsFtl from '@/locales/kds.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
+import type * as KdsApi from '@/api/kds';
+import type * as ThemeProviderModule from '@/app/ThemeProvider';
 
 const FTL = [sharedFtl, kdsFtl];
 
 const { mockListDevices } = vi.hoisted(() => ({ mockListDevices: vi.fn() }));
 
 vi.mock('@/api/kds', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/api/kds')>()),
+  ...(await importOriginal<typeof KdsApi>()),
   listKdsDevicesScoped: () => mockListDevices(),
 }));
 
 vi.mock('@/app/ThemeProvider', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/app/ThemeProvider')>()),
+  ...(await importOriginal<typeof ThemeProviderModule>()),
   useOptionalTheme: () => null,
 }));
 vi.mock('@/contexts/HardwareAccelContext', () => ({ useOptionalHardwareAccel: () => null }));

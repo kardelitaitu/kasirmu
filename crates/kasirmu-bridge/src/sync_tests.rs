@@ -107,6 +107,100 @@ async fn sync_run_scoped_pushes_critical_before_an_earlier_low_item() {
     );
 }
 
+/// O-H07: `sync_run_scoped` must drain large offline backlogs in bounded batches
+/// (up to `DEFAULT_MAX_OUTBOX_BATCH_ITEMS` = 100 items per request) rather than
+/// materializing and pushing an unbounded request body in a single HTTP request.
+#[tokio::test]
+async fn sync_run_scoped_drains_large_backlog_in_bounded_batches() {
+    use kasirmu_core::offline::SyncPriority;
+    use kasirmu_core::permissions;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let server_url = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        let mut total_received = 0;
+        let mut batch_sizes = Vec::new();
+
+        while total_received < 105 {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                break;
+            };
+            let mut buffer = vec![0_u8; 128 * 1024];
+            let read = socket.read(&mut buffer).await.unwrap_or(0);
+            let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+            let body_start = request.find("\r\n\r\n").expect("complete HTTP request") + 4;
+            let body = &request[body_start..];
+            let items: Vec<kasirmu_core::offline::OfflineQueueItem> =
+                serde_json::from_str(body).expect("valid json item array");
+            let count = items.len();
+            batch_sizes.push(count);
+            total_received += count;
+
+            let results: Vec<_> = (0..count).map(|_| r#"{"outcome":"accepted"}"#).collect();
+            let resp_body = format!(r#"{{"results":[{}]}}"#, results.join(","));
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                resp_body.len(),
+                resp_body
+            );
+            let _ = socket.write_all(response.as_bytes()).await;
+        }
+        batch_sizes
+    });
+
+    let bridge = crate::testing::TestBridge::new();
+    let token = bridge.token_granting(permissions::SYNC_MANAGE).await;
+    // `token_granting` registers its session against the literal store id
+    // "store-pin" (testing.rs), and `sync_run_scoped` reads through
+    // `resolve_session(token).store_id`. A test that enqueues into a DIFFERENT
+    // store therefore pushes nothing: the queue it filled is never the queue
+    // the command drains, so `synced` comes back 0 and the assertion reads like
+    // a batching defect. It is a fixture defect -- one store id, named once.
+    let store_id = "store-pin";
+
+    {
+        let conn = bridge.db_manager().open_store(store_id).unwrap();
+        let db = conn.lock().unwrap();
+        update_sync_settings_data(
+            &db,
+            &UpdateSyncSettingsArgs {
+                server_url: Some(server_url.clone()),
+                api_key: Some("test-jwt".into()),
+                enabled: true,
+            },
+        )
+        .unwrap();
+        let store = Store::new(&db);
+        for i in 0..105 {
+            store
+                .enqueue_offline_priority(
+                    &format!("item_{i}"),
+                    r#"{"val":1}"#,
+                    SyncPriority::Normal,
+                )
+                .unwrap();
+        }
+    }
+
+    let ctx = bridge.ctx();
+    let result = sync_run_scoped(&ctx, &token)
+        .await
+        .expect("batch drain must succeed");
+    assert_eq!(
+        result.synced, 105,
+        "all 105 items across batches must be synced"
+    );
+
+    let batch_sizes = server.await.expect("fake server must finish");
+    assert_eq!(
+        batch_sizes,
+        vec![100, 5],
+        "O-H07: items must be sent in bounded chunks of max 100 rather than one single unbounded 105-item payload"
+    );
+}
+
 #[test]
 fn sync_settings_serialize() {
     let s = SyncSettingsDto {
@@ -543,22 +637,23 @@ fn update_pg_sync_settings_data_password_preserved_when_none() {
 // ---------------------------------------------------------------------------
 
 /// Unique per-test scratch directory standing in for the app-data dir that
-/// holds the live databases (tempfile is not a dev-dependency here).
-fn unique_backup_dir() -> std::path::PathBuf {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir = std::env::temp_dir().join(format!(
-        "kasirmu-bridge-sync-backup-{}-{}-{}",
-        std::process::id(),
-        nanos,
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+/// holds the live databases, returned WITH the `ScratchDir` guard that owns it.
+///
+/// Rooted under `target/test-scratch` rather than
+/// `std::env::temp_dir()` (`C:\WINDOWS\TEMP` on this project's Windows
+/// machines, where an ordinary user can create but not delete -- so the fixture
+/// both leaked forever and, once stale, failed its own create with
+/// `os error 5`).
+///
+/// The guard is returned alongside the path (the `(PathBuf, ScratchDir)` shape
+/// `testing::unique_store_dir` established) because the backup-rotation tests
+/// below keep writing into the directory for the whole test body: a guard bound
+/// here would drop on return and delete it mid-test, while the bare
+/// `scratch_dir` path this replaced was never deleted at all and leaked one
+/// `kasirmu-bridge-sync-backup-*` directory per case.
+fn unique_backup_dir() -> (std::path::PathBuf, kasirmu_test_support::ScratchDir) {
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-sync-backup");
+    (scratch.path().to_path_buf(), scratch)
 }
 
 /// Create a file in dir and return its path.
@@ -655,7 +750,7 @@ fn backup_name_matching_is_strict_enough_to_scope_by_store() {
 
 #[test]
 fn successful_pull_removes_the_pre_pull_backup() {
-    let dir = unique_backup_dir();
+    let (dir, _scratch) = unique_backup_dir();
     let main_db = touch(&dir, "kasir.db");
     let store = store_db_in(&dir, "7");
     let backup = write_backup(&store, "20260908121212");
@@ -673,7 +768,7 @@ fn successful_pull_removes_the_pre_pull_backup() {
 
 #[test]
 fn failed_pull_retains_the_pre_pull_backup() {
-    let dir = unique_backup_dir();
+    let (dir, _scratch) = unique_backup_dir();
     let main_db = touch(&dir, "kasir.db");
     let store = store_db_in(&dir, "7");
     let backup = write_backup(&store, "20260908121212");
@@ -690,7 +785,7 @@ fn failed_pull_retains_the_pre_pull_backup() {
 
 #[test]
 fn a_pile_of_pre_pull_backups_is_capped_at_the_newest_one() {
-    let dir = unique_backup_dir();
+    let (dir, _scratch) = unique_backup_dir();
     let main_db = touch(&dir, "kasir.db");
     let store = store_db_in(&dir, "7");
     for ts in ["20260101000000", "20260102000000", "20260103000000"] {
@@ -710,7 +805,7 @@ fn a_pile_of_pre_pull_backups_is_capped_at_the_newest_one() {
 
 #[test]
 fn a_successful_pull_also_sweeps_orphans_from_earlier_failures() {
-    let dir = unique_backup_dir();
+    let (dir, _scratch) = unique_backup_dir();
     let main_db = touch(&dir, "kasir.db");
     let store = store_db_in(&dir, "7");
     write_backup(&store, "20260101000000");
@@ -732,7 +827,7 @@ fn a_successful_pull_also_sweeps_orphans_from_earlier_failures() {
 /// failed pull: neither one's next pull may touch the other's.
 #[test]
 fn two_stores_do_not_rotate_each_other_out() {
-    let dir = unique_backup_dir();
+    let (dir, _scratch) = unique_backup_dir();
     let main_db = touch(&dir, "kasir.db");
     let store_a = store_db_in(&dir, "a");
     let store_b = store_db_in(&dir, "b");
@@ -786,7 +881,7 @@ fn two_stores_do_not_rotate_each_other_out() {
 /// recovery point for anything and are swept outright rather than capped.
 #[test]
 fn legacy_main_named_backups_are_swept_by_the_next_pull() {
-    let dir = unique_backup_dir();
+    let (dir, _scratch) = unique_backup_dir();
     let main_db = touch(&dir, "kasir.db");
     let store = store_db_in(&dir, "7");
     let legacy: Vec<std::path::PathBuf> = ["20260101000000", "20260102000000", "20260103000000"]
@@ -821,7 +916,7 @@ fn legacy_main_named_backups_are_swept_by_the_next_pull() {
 /// one copy, not zero.
 #[test]
 fn the_legacy_sweep_stands_down_when_the_stems_coincide() {
-    let dir = unique_backup_dir();
+    let (dir, _scratch) = unique_backup_dir();
     let store = store_db_in(&dir, "7");
     let main_db = store.clone(); // pathological: main DB *is* this store DB
     let retained = write_backup(&store, "20260104000000");
@@ -844,7 +939,7 @@ fn the_legacy_sweep_stands_down_when_the_stems_coincide() {
 
 #[test]
 fn rotation_never_touches_files_that_are_not_pre_pull_backups() {
-    let dir = unique_backup_dir();
+    let (dir, _scratch) = unique_backup_dir();
     let main_db = touch(&dir, "kasir.db");
     let store = store_db_in(&dir, "7");
     let other_db = touch(&dir, "warehouse.db");
@@ -877,7 +972,7 @@ fn disposal_survives_a_missing_or_unlistable_directory() {
     // A backup that was already removed (or never created because the pull
     // failed before Phase 3) must not turn into a second error, and a db path
     // with no readable parent must not panic.
-    let dir = unique_backup_dir();
+    let (dir, _scratch) = unique_backup_dir();
     let main_db = touch(&dir, "kasir.db");
     let store = store_db_in(&dir, "7");
     let gone = pre_pull_backup_path(&store, "20260101000000");

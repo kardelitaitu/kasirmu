@@ -129,6 +129,19 @@ pub struct EodVoidRow {
     pub void_total_minor: i64,
 }
 
+/// One receivable (piutang) collection aggregation for one store-local business day.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct EodReceivableCollectionRow {
+    /// Tender method used for the repayment ('cash', 'card', 'bank_transfer', etc.).
+    pub method: String,
+    /// ISO-4217 currency code.
+    pub currency: String,
+    /// Number of receivable payments collected this way today.
+    pub collection_count: i64,
+    /// Sum of repayment amounts in minor units.
+    pub total_minor: i64,
+}
+
 /// Summary row for a held (parked) cart.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct HeldCartRow {
@@ -431,6 +444,47 @@ impl Store<'_> {
         )?;
         Ok(row)
     }
+
+    /// Today's customer receivable (piutang) collection aggregation, bucketed by
+    /// settlement method and currency — the collections breakdown printed under an EOD header.
+    ///
+    /// Shares the SAME store-local day definition (REP-03) with [`Self::export_daily_summary`]
+    /// and [`Self::export_eod_breakdown`].
+    pub fn export_eod_receivable_collections(
+        &self,
+    ) -> Result<Vec<EodReceivableCollectionRow>, CoreError> {
+        let tz = self.tz_modifier();
+        let has_table: bool = self
+            .conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='receivable_payments')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(false);
+        if !has_table {
+            return Ok(Vec::new());
+        }
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT COALESCE(method, 'cash') AS method,
+                    currency,
+                    COUNT(*) AS collection_count,
+                    COALESCE(SUM(amount_minor), 0) AS total_minor
+             FROM receivable_payments
+             WHERE DATE(paid_at, '{tz}') = DATE('now', '{tz}')
+             GROUP BY method, currency
+             ORDER BY currency, total_minor DESC"
+        ))?;
+        let rows = stmt.query_map([], |row| {
+            Ok(EodReceivableCollectionRow {
+                method: row.get("method")?,
+                currency: row.get("currency")?,
+                collection_count: row.get("collection_count")?,
+                total_minor: row.get("total_minor")?,
+            })
+        })?;
+        rows.map(|r| Ok(r?)).collect()
+    }
 }
 
 // ── Held Carts ──────────────────────────────────────────────────────
@@ -481,6 +535,40 @@ impl Store<'_> {
         let mut stmt = self.conn.prepare(
             "SELECT id, label, item_count, total_minor, currency, created_at, bill_type, customer_name
              FROM held_carts ORDER BY created_at DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(HeldCartRow {
+                id: row.get("id")?,
+                label: row.get("label")?,
+                item_count: row.get("item_count")?,
+                total_minor: row.get("total_minor")?,
+                currency: row.get("currency")?,
+                created_at: row.get("created_at")?,
+                bill_type: row.get("bill_type")?,
+                customer_name: row.get("customer_name")?,
+            })
+        })?;
+        rows.map(|r| Ok(r?)).collect()
+    }
+
+    /// List held carts that are NOT open bills, most recent first.
+    ///
+    /// The complement of [`Self::list_open_bills`], and the shape a non-restaurant
+    /// caller needs: an open bill belongs to the Restaurant POS vertical, so a
+    /// store-pos (or kds, or warehouse) terminal asking for "my held carts" must not
+    /// be served the restaurant's open tabs.
+    ///
+    /// Filtered in SQL rather than by the caller so the exclusion cannot be lost by a
+    /// future caller that reads the full list and forgets to filter. The retail screen
+    /// used to do exactly that in JS (retail POS filters `bill_type ===
+    /// 'hold'`), which is a UI convenience and not a boundary.
+    ///
+    /// NB: rows written before `bill_type` existed default to `'hold'`
+    /// (`20260813_init.sql:158`), so they are correctly included here.
+    pub fn list_held_carts_excluding_open_bills(&self) -> Result<Vec<HeldCartRow>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, label, item_count, total_minor, currency, created_at, bill_type, customer_name
+             FROM held_carts WHERE bill_type != 'open_bill' ORDER BY created_at DESC",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(HeldCartRow {

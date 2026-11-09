@@ -85,7 +85,6 @@ REQUIRED_FOR_SHELL_READER = SHELL_SECTIONS
 REQUIRED_FOR_WRITER = KNOWN_SECTIONS
 
 # Keys that carry prose instead of entries: never required, never censused, never refused.
-COMMENT_PREFIX = "_"
 
 # What a section must be for any name to be readable out of it. A list, and only a list.
 SECTION_MUST_BE = list
@@ -154,11 +153,6 @@ class Read:
 
     def __repr__(self):
         return f"Read({self.kind!r})"
-
-
-def is_comment_key(key):
-    """True for the _-prefixed prose keys the file carries beside its sections."""
-    return str(key).startswith(COMMENT_PREFIX)
 
 
 def stated_empty(payload, section):

@@ -148,9 +148,9 @@ describe('receipt preview/print agreement (IDR)', () => {
     ]);
   });
   it('the staff line exists ONLY in the preview: the printer has no staff field at all', () => {
-    // Sharper than `showStaffName` merely being unswitchable. Grepping
-    // `kasirmu-hal/src/drivers/receipt.rs` for staff/cashier returns NOTHING: the paper has
-    // no concept of a staff name, so the preview's `staffSpan`
+    // Sharper than `showStaffName` merely being unswitchable. The SALE RECEIPT
+    // formatter — `format_sales_receipt`, the only one these toggles govern — has no
+    // concept of a staff name, so the preview's `staffSpan`
     // (RestaurantReceiptsScreen.tsx:1431, fed by `session.display_name`) renders a line that
     // cannot ever appear on a printed receipt — in either toggle position.
     //
@@ -158,8 +158,12 @@ describe('receipt preview/print agreement (IDR)', () => {
     // lines DO print, unconditionally (:467 receipt number, :468 date, :522 item note), so
     // switching them off hides them from the preview while the paper keeps them.
     //
-    // Read from the renderer rather than asserted from memory, so this fails if the printer
-    // ever gains a staff line.
+    // SCOPED 2026-10-21. This used to grep the whole file, and went red when `160734e90`
+    // added `cashier_name` to `KasbonSettlementReceipt` — a DIFFERENT slip, rendered by
+    // `format_kasbon_settlement_slip` (:898), which these toggles do not control. The
+    // whole-file read could not tell the two formatters apart and reported the kasbon
+    // slip's new field as the sale receipt gaining one. The claim below is about the sale
+    // receipt, so the read is scoped to it.
     const printer = fs.readFileSync(
       path.resolve(
         process.cwd(),
@@ -167,8 +171,17 @@ describe('receipt preview/print agreement (IDR)', () => {
       ),
       'utf-8',
     );
+    const salesReceiptStart = printer.indexOf('pub fn format_sales_receipt');
+    const nextFormatter = printer.indexOf('pub fn format_', salesReceiptStart + 1);
+    const salesReceipt =
+      salesReceiptStart === -1
+        ? ''
+        : printer.slice(
+            salesReceiptStart,
+            nextFormatter === -1 ? undefined : nextFormatter,
+          );
     expect(
-      /staff|cashier/i.test(printer),
+      /staff|cashier/i.test(salesReceipt),
       'the ESC/POS renderer now mentions a staff/cashier line. The receipt preview has a ' +
         'Show Staff Name toggle whose preview line previously had NO printed counterpart — ' +
         'if the printer renders one now, that toggle became meaningful and this case (and ' +

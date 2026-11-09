@@ -694,6 +694,15 @@ def self_test() -> int:
             "[me](#no-such-here)\n", True,
         )
 
+        # The display formatter prefixes every finding; a gutted one must turn the
+        # self-test red rather than leave findings starting with None.
+        _write(base_md, "[bad](../ghost/)\n")
+        f_scan, _f = scan(root)
+        disp = _display(base_md)
+        cases.append(("findings carry the display path",
+                      bool(f_scan) and isinstance(disp, str)
+                      and f_scan[0].startswith(disp)))
+
         # run() exit-code parity through the same path main() uses.
         for f in (legal_md, extra_md, stray_md):
             if f.exists():

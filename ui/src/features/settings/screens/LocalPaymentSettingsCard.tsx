@@ -12,7 +12,8 @@
  * Fluent-only copy: `settings-localpay-*` keys in settings.ftl +
  * settings.id.ftl.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { requiredLocalized } from '@/components/requiredLocalized';
 import { Localized, useLocalization } from '@fluent/react';
 import { Card } from '@/components/Card';
 import { SettingsScopeTag } from '@/features/settings/SettingsScopeTag';
@@ -61,6 +62,8 @@ export function LocalPaymentSettingsCard() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  /** Synchronous mirror of `saving` — see the re-entry guard in `handleSave`. */
+  const savingRef = useRef(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [newCode, setNewCode] = useState('');
@@ -155,6 +158,12 @@ export function LocalPaymentSettingsCard() {
 
   const handleSave = useCallback(async () => {
     if (!sessionToken || !locationId) return;
+    // Re-entry guard: the setter rewrites the same rail rows with the same values, so a
+    // replay cannot corrupt them -- but two in-flight saves share one \`saveError\` / \`saved\`
+    // pair and both overwrite \`drafts\` from their own response, so the operator can be
+    // shown the failure or the stale rows of the tap that lost.
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     setSaveError(null);
     setSaved(false);
@@ -171,6 +180,7 @@ export function LocalPaymentSettingsCard() {
     } catch (err) {
       setSaveError(l10nErrorMessage(err, l10n, 'settings-localpay-error-save'));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }, [sessionToken, locationId, drafts, l10n]);
@@ -359,8 +369,8 @@ export function LocalPaymentSettingsCard() {
           type="text"
           value={newCode}
           onChange={(e) => setNewCode(e.target.value)}
-          placeholder={l10n.getString('settings-localpay-code-placeholder') || 'rail code, e.g. qris'}
-          aria-label={l10n.getString('settings-localpay-code-label') || 'Rail code'}
+          placeholder={requiredLocalized(l10n, 'settings-localpay-code-placeholder')}
+          aria-label={requiredLocalized(l10n, 'settings-localpay-code-label')}
           autoComplete="off"
           spellCheck={false}
         />
@@ -368,8 +378,8 @@ export function LocalPaymentSettingsCard() {
           type="text"
           value={newLabel}
           onChange={(e) => setNewLabel(e.target.value)}
-          placeholder={l10n.getString('settings-localpay-label-placeholder') || 'display label, e.g. QRIS'}
-          aria-label={l10n.getString('settings-localpay-label-label') || 'Display label'}
+          placeholder={requiredLocalized(l10n, 'settings-localpay-label-placeholder')}
+          aria-label={requiredLocalized(l10n, 'settings-localpay-label-label')}
           autoComplete="off"
         />
         <button

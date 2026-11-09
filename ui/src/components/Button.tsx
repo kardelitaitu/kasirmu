@@ -125,10 +125,16 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         type={type}
         className={classNames}
+        // Caller props FIRST. Spread last, a caller's own `disabled` OVERRODE the derived
+        // one below -- "the button spins while staying clickable", which the settings popup
+        // shipped with (`disabled={saveDisabled}` beating `loading`). The bug needed BOTH
+        // halves to fix: this ordering AND the popup's own `saving || saveDisabled`.
+        // Reverting either one alone leaves SettingsPopup's case green, which is exactly why
+        // its comment records the two-step mutation.
+        {...rest}
         disabled={isDisabled}
         aria-disabled={isDisabled || undefined}
         aria-busy={isProcessing || undefined}
-        {...rest}
       >
         {spinnerMounted ? (
           <span

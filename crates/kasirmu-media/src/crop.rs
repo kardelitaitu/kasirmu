@@ -166,45 +166,84 @@ fn center_crop(
 }
 
 /// Trim uniform borders by scanning from each edge for the corner colour.
+///
+/// O-M56: Walks raw image byte buffers directly, avoiding repeated bounds-checked
+/// `get_pixel` invocations, and short-circuits on solid-colour images.
 fn trim_borders(img: &image::DynamicImage, w: u32, h: u32) -> image::DynamicImage {
     let rgb = img.to_rgb8();
-    let corner = rgb.get_pixel(0, 0);
+    let raw = rgb.as_raw();
+    if raw.len() < 3 || w == 0 || h == 0 {
+        return image::DynamicImage::ImageRgb8(rgb);
+    }
+    let corner: [u8; 3] = [raw[0], raw[1], raw[2]];
+    let stride = (w as usize) * 3;
 
+    // Scan top rows
     let mut top = 0u32;
-    'outer: for row in 0..h {
-        for col in 0..w {
-            if rgb.get_pixel(col, row) != corner {
-                break 'outer;
-            }
+    for row in 0..h {
+        let offset = (row as usize) * stride;
+        let row_bytes = &raw[offset..offset + stride];
+        // `as_chunks` rather than `chunks_exact` (clippy 1.98's
+        // chunks_exact_to_as_chunks): the row is exactly `w * 3` bytes, so the tail is
+        // empty and the two spellings agree on every pixel. `.0` is the aligned part.
+        if row_bytes
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .any(|pixel| pixel != &corner)
+        {
+            break;
         }
         top += 1;
     }
 
+    // If all rows are the corner colour, image is solid; return without scanning remaining edges.
+    if top >= h {
+        return image::DynamicImage::ImageRgb8(rgb);
+    }
+
+    // Scan bottom rows
     let mut bottom = h;
-    'outer: for row in (0..h).rev() {
-        for col in 0..w {
-            if rgb.get_pixel(col, row) != corner {
-                break 'outer;
-            }
+    for row in (top..h).rev() {
+        let offset = (row as usize) * stride;
+        let row_bytes = &raw[offset..offset + stride];
+        // `as_chunks` rather than `chunks_exact` (clippy 1.98's
+        // chunks_exact_to_as_chunks): the row is exactly `w * 3` bytes, so the tail is
+        // empty and the two spellings agree on every pixel. `.0` is the aligned part.
+        if row_bytes
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .any(|pixel| pixel != &corner)
+        {
+            break;
         }
         bottom -= 1;
     }
 
+    if bottom <= top {
+        return image::DynamicImage::ImageRgb8(rgb);
+    }
+
+    // Scan left columns (only checking between row top and bottom)
     let mut left = 0u32;
-    'outer: for col in 0..w {
-        for row in 0..h {
-            if rgb.get_pixel(col, row) != corner {
-                break 'outer;
+    'left_scan: for col in 0..w {
+        for row in top..bottom {
+            let idx = (row as usize * w as usize + col as usize) * 3;
+            if raw[idx..idx + 3] != corner {
+                break 'left_scan;
             }
         }
         left += 1;
     }
 
+    // Scan right columns (only checking between row top and bottom)
     let mut right = w;
-    'outer: for col in (0..w).rev() {
-        for row in 0..h {
-            if rgb.get_pixel(col, row) != corner {
-                break 'outer;
+    'right_scan: for col in (left..w).rev() {
+        for row in top..bottom {
+            let idx = (row as usize * w as usize + col as usize) * 3;
+            if raw[idx..idx + 3] != corner {
+                break 'right_scan;
             }
         }
         right -= 1;

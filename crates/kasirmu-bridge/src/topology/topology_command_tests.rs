@@ -1,6 +1,6 @@
 //! Command-layer unit tests for the topology bridge (relocated subset).
 //!
-//! From apps/desktop-tauri/src/commands/topology/topology_command_tests.rs:
+//! From apps/desktop-client/src/commands/topology/topology_command_tests.rs (since renamed to desktop-tauri):
 //! the enum-contract, wire-serde, revision/TOCTOU, apply-ledger, envelope-
 //! version, fingerprint, and warehouse quota/capacity subsets. The desktop
 //! original retains the tauri mock-app integration tests, the
@@ -14,7 +14,9 @@ use serde_json::Value;
 
 use kasirmu_core::migrations;
 use kasirmu_core::topology::TOPOLOGY_CONTRACT_SCHEMA_VERSION;
-use tempfile::tempdir;
+// `tempfile::TempDir` is still the type these file-backed topology tests
+// need; `kasirmu_test_support::tempdir_with_prefix` supplies it rooted under
+// the writable `target/test-scratch` instead of the OS temp directory.
 
 use crate::error::BridgeError;
 use crate::topology::persistence::{
@@ -151,7 +153,14 @@ fn in_flight_peer_writer_is_not_silently_overwritten() {
     // both writers succeed, B's data lost. With the read inside an
     // IMMEDIATE transaction A re-reads after B's commit and must be
     // rejected with a revision conflict.
-    let dir = tempdir().unwrap();
+    // `tempdir_with_prefix` keeps the `tempfile::TempDir` type the
+    // blocking-transaction dance below relies on (same Drop, same auto-delete)
+    // but roots it under `target/test-scratch`. Plain `tempdir()`
+    // resolves to `C:\WINDOWS\TEMP` on this project's Windows machines,
+    // where an ordinary user can create but not delete -- so `rev_lock.db`
+    // (and its WAL/SHM siblings) could never be cleaned up, and a stale
+    // leftover failed the create with `os error 5`.
+    let dir = kasirmu_test_support::tempdir_with_prefix("kasirmu-bridge-topo-");
     let db_path = dir.path().join("rev_lock.db");
     {
         let mut setup = Connection::open(&db_path).unwrap();

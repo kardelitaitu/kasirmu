@@ -71,3 +71,5 @@ someone who owns the products surface:
 | `ProductManagementScreen.test.tsx` | 24 passed |
 | restaurant-POS connection | none — 0 grep hits in `features/restaurant` and `features/sales` |
 | Tree | no source changed this round |
+
+> last audited 14-10-26 by docs-auditor

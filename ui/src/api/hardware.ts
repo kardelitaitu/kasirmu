@@ -11,8 +11,8 @@ export interface OpenCashDrawerArgs {
 }
 
 /**
- * Serialize [`OpenCashDrawerArgs`] for the wire. The Rust `OpenCashDrawerArgs`
- * (`crates/kasirmu-bridge/src/hardware.rs:46` and its tablet twin
+ * (`crates/kasirmu-bridge/src/hardware.rs`, struct `OpenCashDrawerArgs`, and its tablet twin
+ * in `apps/mobile-tauri/src/commands/hardware.rs`) carries no
  * `apps/mobile-tauri/src/commands/hardware.rs:30`) carries no
  * `#[serde(rename_all)]`, so its field is `device_id`. It is also
  * `#[serde(default)] Option<String>`, which makes a camelCase `deviceId` key
@@ -76,6 +76,9 @@ export interface PrintSalesReceiptArgs {
   isInvoice?: boolean | undefined;
   statutoryNumber?: string | null | undefined;
   customerName?: string | null | undefined;
+  customerPhone?: string | null | undefined;
+  dueDate?: string | null | undefined;
+  outstandingBalance?: { minorUnits: number; currency: string } | null | undefined;
   customerTaxId?: string | null | undefined;
   printerTarget?: string | null | undefined;
 }
@@ -86,6 +89,29 @@ export const printSalesReceiptScoped = (
   args: PrintSalesReceiptArgs,
 ): Promise<{ printed: boolean }> =>
   loggedInvoke<{ printed: boolean }>('print_sales_receipt_scoped', { sessionToken, args });
+
+/** Arguments for printing a Kasbon / receivable settlement slip. */
+export interface PrintKasbonSettlementArgs {
+  date: string;
+  settlementNumber: string;
+  customerName: string;
+  customerPhone?: string | null | undefined;
+  receivableReference?: string | null | undefined;
+  paymentMethod: string;
+  previousBalance: { minorUnits: number; currency: string };
+  amountPaid: { minorUnits: number; currency: string };
+  remainingBalance: { minorUnits: number; currency: string };
+  cashierName?: string | null | undefined;
+  note?: string | null | undefined;
+  printerTarget?: string | null | undefined;
+}
+
+/** Print a Kasbon / receivable settlement slip (scoped). */
+export const printKasbonSettlementSlipScoped = (
+  sessionToken: string,
+  args: PrintKasbonSettlementArgs,
+): Promise<{ printed: boolean }> =>
+  loggedInvoke<{ printed: boolean }>('print_kasbon_settlement_slip_scoped', { sessionToken, args });
 
 /** Arguments for printing an EDC settlement slip. */
 export interface PrintEdcSettlementArgs {
@@ -173,9 +199,8 @@ export interface DisplayShowArgs {
 }
 
 /**
- * Serialize [`DisplayShowArgs`] for the wire. The Rust `DisplayShowArgs`
- * (`crates/kasirmu-bridge/src/hardware.rs:397` and its tablet twin
- * `apps/mobile-tauri/src/commands/hardware.rs:679`) carries no
+ * (`crates/kasirmu-bridge/src/hardware.rs`, struct `DisplayShowArgs`, and its tablet twin
+ * in `apps/mobile-tauri/src/commands/hardware.rs`) carries no
  * `#[serde(rename_all)]`, so its field is `display_id` — a required
  * `String`, so a camelCase `displayId` key is a hard missing-field error on
  * both shells rather than a silent default.

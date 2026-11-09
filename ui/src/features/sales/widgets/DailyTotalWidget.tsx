@@ -26,7 +26,12 @@ export default function DailyTotalWidget() {
   const { caps } = useSubscription();
   const { sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
+  // `null` = the read never answered; `[]` = the ANSWER that nothing was sold. They used
+  // to be the same value, and this widget renders a money KPI — so a failed export
+  // printed "… 0" as the day's revenue, the single most load-bearing number on the
+  // dashboard. `failed` carries the third state to the render below.
   const [summary, setSummary] = useState<DailySummaryRow[]>([]);
+  const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -34,8 +39,10 @@ export default function DailyTotalWidget() {
     try {
       const s = await exportDailySummaryScoped(sessionToken);
       setSummary(s);
+      setFailed(false);
     } catch {
       setSummary([]);
+      setFailed(true);
     } finally {
       setLoading(false);
     }
@@ -49,6 +56,13 @@ export default function DailyTotalWidget() {
   const currency = summary[0]?.currency ?? 'USD';
 
   // C2.2: Free tier sees a blurred teaser with upgrade CTA (§3, §6).
+  //
+  // DELIBERATELY LITERAL, and a localization sweep should not "fix" it. The
+  // whole preview is aria-hidden (TierLockedFeature.tsx:47) and blurred: it
+  // ILLUSTRATES the widget rather than reporting anything, so its three labels
+  // and its invented figures are sample content, not copy. Keying the labels
+  // would also make the teaser read as this tenant's currency with this
+  // tenant's wording while showing a total for no day that ever happened.
   if (caps && !caps.supportsDailyDashboard) {
     return (
       <TierLockedFeature
@@ -88,6 +102,22 @@ export default function DailyTotalWidget() {
             </div>
           ))}
         </div>
+      </div>
+    );
+  }
+
+  // An UNANSWERED read is not a zero day. Say so rather than printing 0 as revenue.
+  if (failed) {
+    return (
+      <div className="reporting-widget reporting-widget--daily-total">
+        <div className="reporting-widget-header">
+          <Localized id="sales-dashboard-daily-total">
+            <h3 className="reporting-widget-title">Daily Summary</h3>
+          </Localized>
+        </div>
+        <p className="reporting-widget-error" role="alert">
+          Could not load today&apos;s figures.
+        </p>
       </div>
     );
   }

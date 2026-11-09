@@ -5,7 +5,6 @@ import {
   setBrandPrimaryColour,
   setBrandLogoPath,
   setBrandStoreName,
-  pickLogoFile,
   pickLogoFileScoped,
 } from '@/api/branding';
 import { useBrand } from '@/contexts/BrandContext';
@@ -16,6 +15,7 @@ import { useAppZoom } from '@/contexts/ZoomContext';
 import type { ZoomLevel } from '@/contexts/ZoomContext';
 import { useHardwareAccel } from '@/contexts/HardwareAccelContext';
 import { useToast, useContextMenu, ContextMenu, ConfirmDialog, requiredLocalized } from '@/components';
+import { isTabletShell } from '@/utils/shellKind';
 import SettingsSelect from './SettingsSelect';
 import './AppearanceSettings.css';
 
@@ -64,6 +64,8 @@ export function AppearanceSettings({
   const [storeName, setStoreName] = useState('');
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
+  /** Synchronous mirror of `resetting` — see the re-entry guard in `handleConfirmReset`. */
+  const resettingRef = useRef(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const { zoomLevel, setZoomLevel } = useAppZoom();
   const { enabled: hwAccelEnabled, setEnabled: setHwAccelEnabled } = useHardwareAccel();
@@ -153,22 +155,38 @@ export function AppearanceSettings({
   }, [embedded, onStoreNameChange]);
 
   const handlePickLogo = useCallback(async () => {
-    try {
-      // ADR #7 conditional scoping, matching setBrandLogoPath on the very next line, which
-      // already passes this same sessionToken. pick_logo_file_scoped enforces SETTINGS_EDIT;
-      // the unscoped command opens a native dialog and checks no permission whatsoever.
-      const path = sessionToken
-        ? await pickLogoFileScoped(sessionToken)
-        : await pickLogoFile();
-      if (path) {
-        setLogoPath(path);
-        await setBrandLogoPath(sessionToken, path);
-        refreshBrandSettings();
+    // SHELL FIRST, then ADR #7 scoping. Both pickers are registered by
+    // apps/desktop-tauri alone (lib.rs:1389-1390); apps/mobile-tauri registers the three
+    // set_brand_*_scoped writes and the reads but NO picker, because choosing a file needs
+    // a dialog plugin the tablet shell does not carry. Unguarded, the tablet's catch below
+    // swallowed the rejection and the button did nothing at all -- an affordance that
+    // silently fails is worse than one that explains itself.
+    //
+    // Positive/else so verify-scoped-reads.py reads the invoke as guarded; the colour and
+    // store-name controls beside it still work on the tablet, so only this one is gated.
+    if (isTabletShell()) {
+      addToast({
+        message: l10n.getString('settings-appearance-logo-desktop-only'),
+        type: 'info',
+      });
+      return;
+    } else {
+      if (!sessionToken) {
+        return;
       }
-    } catch {
-      // File picker dialog was dismissed or failed — no action needed.
+      try {
+        // BR-S5: enforce SETTINGS_EDIT permission via pickLogoFileScoped.
+        const path = await pickLogoFileScoped(sessionToken);
+        if (path) {
+          setLogoPath(path);
+          await setBrandLogoPath(sessionToken, path);
+          refreshBrandSettings();
+        }
+      } catch {
+        // File picker dialog was dismissed or failed — no action needed.
+      }
     }
-  }, [refreshBrandSettings, sessionToken]);
+  }, [refreshBrandSettings, sessionToken, l10n, addToast]);
 
   const colourRef = useRef(activeColour);
   colourRef.current = activeColour;
@@ -194,6 +212,12 @@ export function AppearanceSettings({
   }, []);
 
   const handleConfirmReset = useCallback(async () => {
+    // Re-entry guard: the reset issues THREE sequential brand writes and then a toast per
+    // outcome. A replay interleaves them, so the operator can be told the reset failed
+    // after it had fully succeeded -- and the second run re-clears state the parent has
+    // already re-rendered from the first.
+    if (resettingRef.current) return;
+    resettingRef.current = true;
     setShowResetConfirm(false);
     setResetting(true);
     try {
@@ -222,6 +246,7 @@ export function AppearanceSettings({
     } catch {
       addToast({ message: l10n.getString('appearance-reset-all-failed'), type: 'error' });
     } finally {
+      resettingRef.current = false;
       setResetting(false);
     }
   }, [embedded, onColourChange, onStoreNameChange, refreshBrandSettings, addToast, l10n, sessionToken]);

@@ -35,7 +35,9 @@ import fnmatch
 import os
 import re
 import subprocess
+import shutil
 import sys
+import tempfile
 
 # ---------------------------------------------------------------------------
 # The chokepoint table. Adding a rule is a data edit, not a code edit.
@@ -113,15 +115,50 @@ RULES = (
 GIT_BASH = "C:/Program Files/Git/bin/bash.exe"
 
 
-def repo_root():
-    out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+def repo_root(cwd=None):
+    """Absolute root of the work tree containing `cwd` (default: this process's cwd).
+
+    ENCODING IS NOT OPTIONAL here either -- see _git() below, which explains the silent
+    CP-1252 mismatch in full. `--show-toplevel` prints the path as UTF-8 bytes; decoded with
+    the locale codec on Windows a non-ASCII checkout path becomes mojibake, `_git` then runs
+    against a directory that does not exist, and the failure surfaces as "git diff failed"
+    naming neither the encoding nor the path. errors="replace" keeps a bad byte visible in the
+    message instead of killing the reader thread.
+    """
+    out = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     if out.returncode != 0:
         raise SystemExit("not a git work tree")
-    return out.stdout.strip()
+    root = out.stdout.strip()
+    if not root:
+        # rev-parse exiting 0 with nothing on stdout is not a root: every _git() call would
+        # then run with -C "" and fail later with a message about the diff, not the cause.
+        raise SystemExit("git rev-parse returned an empty root")
+    return root
 
 
 def _git(root, *args):
-    return subprocess.run(["git", "-C", root] + list(args), capture_output=True, text=True)
+    # ENCODING IS NOT OPTIONAL ON WINDOWS, and its absence is SILENT. With text=True and no
+    # encoding, Python decodes with the locale codec (cp1252 here) and a diff containing a byte
+    # it cannot map — a box-drawing character in a comment, which this tree has many of — makes
+    # the reader thread die. subprocess then returns stdout=None with returncode 0 and an EMPTY
+    # stderr, so the caller crashes on `stdout.splitlines()` with an AttributeError that names
+    # neither the encoding nor the commit. Measured 2026-10-25 (round 198): `--range
+    # 1abbdae32..HEAD` (16 commits, 5,240 diff lines) died this way while the working-tree mode
+    # was fine, because the working tree is small.
+    return subprocess.run(
+        ["git", "-C", root] + list(args),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
 
 
 def collect_diff(root, range_spec):
@@ -283,10 +320,200 @@ def self_test():
             print("         fired=%s (want %s) missing=%s (want %s)"
                   % (fired, expect_fired, missing, expect_missing))
             failures += 1
+
+    # repo_root() -- the one function that decides WHERE every other read happens, and it had
+    # no case: --self-test builds its file dicts in memory and never calls it, so blanking it
+    # (return None / "") was invisible to the sweep (2026-11-06). Graded against a scratch git
+    # repository, so the self-test still needs no checkout: init -> the root IS the scratch dir;
+    # a nested cwd -> the root is the parent (proves it asks git rather than echoing cwd);
+    # a plain temp dir -> SystemExit (proves the refusal, not a silent "").
+    def _root_case(label, expected, **kwargs):
+        try:
+            got = repo_root(**kwargs)
+        except SystemExit:
+            raise
+        except Exception as exc:                     # a mutation that returns a non-path
+            print("    FAIL %s: raised %s: %s" % (label, type(exc).__name__, exc))
+            return False
+        if not isinstance(got, str) or not got:
+            print("    FAIL %s: returned %r, not a non-empty path" % (label, got))
+            return False
+        if os.path.normcase(os.path.realpath(got)) != os.path.normcase(os.path.realpath(expected)):
+            print("    FAIL %s: got %r want %r" % (label, got, expected))
+            return False
+        print("    ok   " + label)
+        return True
+
+    scratch = tempfile.mkdtemp(prefix="chokepoints-root-")
+    try:
+        sub = os.path.join(scratch, "nested", "deeper")
+        os.makedirs(sub)
+        git_init = subprocess.run(["git", "init", "-q", scratch], capture_output=True, text=True)
+        if git_init.returncode != 0:
+            print("    FAIL repo_root cases: git init failed in the scratch dir")
+            failures += 1
+        else:
+            if not _root_case("repo_root returns the scratch root", scratch, cwd=scratch):
+                failures += 1
+            if not _root_case("repo_root ascends from a nested cwd", scratch, cwd=sub):
+                failures += 1
+        # The non-repo fixture must sit OUTSIDE the work tree for the refusal to be
+        # testable at all. tempfile's default no longer guarantees that: 7e11b664c
+        # pointed TMP at target/.tmp-check, INSIDE this repo, and rev-parse from there
+        # answers with this very root, so the refusal branch was unreachable and the
+        # self-test went red under the matrix (measured 2026-11-08, step 131). Fall
+        # back to the repo's own parent when the temp dir is inside the tree; mkdtemp
+        # still makes a unique directory there and the finally below removes it.
+        tmp_base = tempfile.gettempdir()
+        try:
+            if os.path.commonpath([os.path.abspath(tmp_base),
+                                   os.path.abspath(repo_root())]) == os.path.abspath(repo_root()):
+                tmp_base = os.path.dirname(os.path.abspath(repo_root()))
+        except ValueError:
+            pass  # different drives: the temp dir cannot be inside the repo
+        plain = tempfile.mkdtemp(prefix="chokepoints-nogit-", dir=tmp_base)
+        try:
+            try:
+                repo_root(cwd=plain)
+            except SystemExit:
+                print("    ok   repo_root refuses a directory that is not a work tree")
+            except Exception as exc:
+                print("    FAIL repo_root raised %s instead of refusing a non-repo dir"
+                      % type(exc).__name__)
+                failures += 1
+            else:
+                print("    FAIL repo_root accepted a directory that is not a work tree")
+                failures += 1
+        finally:
+            os.rmdir(plain)
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
     return failures
 
 
-def main(argv):
+
+def shell_ladder() -> int:
+    """r220: the root contract, graded on fixture GIT repositories.
+
+    Unlike the rest of the arc's fixtures, these are real work trees -- git init,
+    an empty HEAD commit, then either untracked files (working-tree mode) or
+    committed ones (--range mode). The killing rung is rung 1: an untracked
+    command file with no companions is incomplete, and --strict must exit 1; a
+    root-dropping main grades THIS checkout, which is currently quiet, and exits
+    0. Rung 5 grades --range against the fixture's own history, proving the git
+    base moves with the root and not just the working tree.
+    """
+    import contextlib
+    import io
+
+    def run(root, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    def git(root, *args):
+        res = subprocess.run(["git", "-C", root] + list(args),
+                             capture_output=True, text=True, encoding="utf-8")
+        return res.returncode
+
+    def build(tmp, *, commits=(), untracked=(), label=None):
+        base = tempfile.mkdtemp(dir=tmp, prefix=(label or ("mini%d_" % next(rung_n))))
+        if git(base, "init", "-q") != 0:
+            raise RuntimeError("git init failed in " + base)
+        commit_args = ["-c", "user.email=fx@example", "-c", "user.name=fx",
+                       "commit", "-q", "--allow-empty", "-m", "init"]
+        if git(base, *commit_args) != 0:
+            raise RuntimeError("empty HEAD commit failed in " + base)
+        # fixture values are LINE LISTS, the self-test's own dict shape -- the
+        # rule's trigger_added regexes match per added LINE, so the lines must
+        # land as separate lines, not one blob
+        for rel, lines in commits:
+            path = os.path.join(base, rel)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write("\n".join(lines) + "\n")
+            if git(base, "add", "-A") != 0 or git(
+                    base, "-c", "user.email=fx@example", "-c", "user.name=fx",
+                    "commit", "-q", "-m", "c2") != 0:
+                raise RuntimeError("fixture commit failed in " + base)
+        for rel, lines in untracked:
+            path = os.path.join(base, rel)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write("\n".join(lines) + "\n")
+        return base
+
+    rung_n = iter(range(1000))
+    COMMAND = {"apps/mobile-tauri/src/commands/data.rs":
+               ["#[tauri::command]", "    gate(permissions::X);"]}
+    COMPANIONS = {"apps/mobile-tauri/capabilities/mobile.json": ["{}"],
+                  "apps/desktop-tauri/tests/gate_audit.rs": ["x"],
+                  "scripts/ipc-parity-allowlist.json": ["{}"]}
+
+    shell = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: an unaccompanied IPC command, strict
+        root = build(tmp, untracked=COMMAND.items())
+        rc, said = run(root, "--strict")
+        if rc != 1 or "[ipc-command]" not in said or "[census-pin]" not in said \
+                or "NOT in this diff" not in said \
+                or "2 rule(s) need a companion" not in said:
+            print("  x rung 1: an unaccompanied command must be incomplete rc 1 "
+                  "under --strict (rc=%r said=%r)" % (rc, said[-220:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: the same command WITH its companion files in the same diff
+        root = build(tmp, untracked={**COMMAND, **COMPANIONS}.items())
+        rc, said = run(root, "--strict")
+        if rc != 0 or "all touched chokepoints carry their companions." not in said:
+            print("  x rung 2: an accompanied command must read complete rc 0 "
+                  "(rc=%r said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: --ack census-pin accepts exactly that rule and only that one
+        root = build(tmp, untracked=COMMAND.items())
+        rc, said = run(root, "--strict", "--ack", "census-pin")
+        if rc != 1 or "accepted:  --ack census-pin" not in said \
+                or "1 rule(s) need a companion" not in said:
+            print("  x rung 3: --ack census-pin must accept only census-pin "
+                  "(rc=%r said=%r)" % (rc, said[-220:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: a website file touches no chokepoint surface -- quiet even strict
+        root = build(tmp, untracked={"website/src/components/AccountView.tsx":
+                                     ["const effectiveTier = 'free';"]}.items())
+        rc, said = run(root, "--strict")
+        if rc != 0 or "no chokepoint surface touched" not in said:
+            print("  x rung 4: an off-surface diff must stay quiet rc 0 (rc=%r "
+                  "said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: --range grades the fixture's own history -- the git base moves
+        # with the root, not just the working-tree read
+        root = build(tmp, commits=COMMAND.items())
+        rc, said = run(root, "--range", "HEAD~1..HEAD", "--strict")
+        if rc != 1 or "check-chokepoints: HEAD~1..HEAD" not in said \
+                or "[ipc-command]" not in said:
+            print("  x rung 5: --range must diff the FIXTURE's history rc 1 "
+                  "(rc=%r said=%r)" % (rc, said[-220:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("CHOKEPOINTS SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
+    return 0
+
+
+def main(argv=None, root=None):
+    # r220: the r166 contract. argv is explicit; root names the WORK TREE to
+    # grade from code -- a fixture git repo. None keeps repo_root(), which asks
+    # git for this process's cwd. collect_diff, evaluate and run_gate already
+    # take the root as a parameter, so the seam is one branch wide.
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--range", dest="range_spec", default=None,
                         help="commit range, e.g. HEAD~3..HEAD (default: working tree vs HEAD)")
@@ -301,10 +528,12 @@ def main(argv):
         print("  check-chokepoints self-test")
         failures = self_test()
         print("  self-test: %s" % ("PASS" if not failures else "FAIL (%d)" % failures))
-        return 2 if failures else 0
+        if failures:
+            return 2
+        return shell_ladder()
 
-    root = repo_root()
-    blocks, incomplete = evaluate(root, args.range_spec, set(args.ack))
+    base = repo_root() if root is None else os.path.abspath(root)
+    blocks, incomplete = evaluate(base, args.range_spec, set(args.ack))
     print("check-chokepoints: %s" % (args.range_spec or "working tree vs HEAD"))
     if not blocks:
         print("  no chokepoint surface touched -- nothing to carry.")

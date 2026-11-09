@@ -343,6 +343,37 @@ fn add_line_scoped_allows_user_with_sales_process() {
     assert_eq!(r.line_total.unwrap().minor_units, 900);
 }
 
+#[test]
+fn add_line_scoped_preserves_course_and_modifiers() {
+    let conn = fresh_conn();
+    seed_cashier_without_override_permission(&conn, "user-cashier");
+    let cart_id = seed_active_cart(&conn);
+
+    let args = AddLineArgs {
+        cart_id,
+        sku: Sku::new("NASI-GORENG"),
+        qty: 1,
+        unit_price_minor: 3500000,
+        unit_price_currency: None,
+        course: Some("main".into()),
+        modifiers_json: Some(r#"[{"name":"Spicy","choice":"Medium","price_minor":0}]"#.into()),
+        note: Some("No onions".into()),
+    };
+    let result = run_add_line_scoped(&conn, "user-cashier", &args);
+    assert!(result.is_ok());
+
+    let store = Store::new(&conn);
+    let cart = store.load_active_cart(&cart_id).unwrap().unwrap();
+    assert_eq!(cart.lines().len(), 1);
+    let line = &cart.lines()[0];
+    assert_eq!(line.course.as_deref(), Some("main"));
+    assert_eq!(
+        line.modifiers_json.as_deref(),
+        Some(r#"[{"name":"Spicy","choice":"Medium","price_minor":0}]"#)
+    );
+    assert_eq!(line.note.as_deref(), Some("No onions"));
+}
+
 // ── FRONTEND-03: line currency crosses the IPC boundary ─────────
 
 #[test]

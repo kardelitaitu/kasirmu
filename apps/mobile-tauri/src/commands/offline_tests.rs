@@ -1,6 +1,7 @@
 use super::*;
 use kasirmu_core::OfflineQueueStatus;
 use kasirmu_core::migrations;
+use kasirmu_test_support::tempdir;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {
@@ -378,7 +379,7 @@ async fn retry_offline_sync_scoped_pushes_critical_before_an_earlier_low_item() 
             .id
     };
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
     state.session_store.write().unwrap().insert(
@@ -549,7 +550,7 @@ async fn retry_offline_sync_scoped_records_a_push_failure_without_marking_synced
             .id
     };
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
     state.session_store.write().unwrap().insert(
@@ -674,7 +675,7 @@ async fn offline_queue_status_summary_scoped_reads_the_session_store() {
     use tauri::Manager as _;
     let conn = kasirmu_core::migrations::fresh_db();
     kasirmu_core::migrations::seed_provisioned_baseline(&conn);
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
     state.session_store.write().unwrap().insert(

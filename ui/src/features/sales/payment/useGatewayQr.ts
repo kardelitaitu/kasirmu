@@ -34,17 +34,21 @@ import { useCallback, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { useToast } from '@/components/Toast';
 import type { CompleteSaleResult } from '@/api/sales';
+import type { GatewayStatus } from '@/api/types/payment';
 import { requiredLocalized } from '@/components';
 
 /** Exact addToast signature, taken from the Toast provider's own hook. */
 type AddToast = ReturnType<typeof useToast>['addToast'];
 /** The banner shape the shell's paymentError atom holds. */
 type PaymentErrorState = { message: string; retryable: boolean };
-/** buildGatewaySale's own split argument, restated as the narrow read-only shape. */
+/** buildGatewaySale's own split argument, restated as the narrow read-only shape.
+ *  `gatewayStatus` is the CLOSED union (ADR-64 D4), not `string` — this site wrote
+ *  `'completed'`, a value the `payments.gateway_status` CHECK rejects, so a confirmed
+ *  QRIS payment failed the checkout after the customer had paid. */
 type GatewaySaleSplit = {
   method: string;
   gatewayReference: string;
-  gatewayStatus: string;
+  gatewayStatus: GatewayStatus;
   gatewayResponse: string;
 };
 
@@ -98,7 +102,10 @@ export function useGatewayQr({
       const saleResult = await buildGatewaySale({
         method: 'QRIS',
         gatewayReference: qrReference,
-        gatewayStatus: 'completed',
+        // 'confirmed', not 'completed': the cashier has asserted the QRIS landed.
+        // The old spelling is outside the CHECK's vocabulary, so INSERTing it failed
+        // the whole transaction — a paid QRIS that could not be recorded.
+        gatewayStatus: 'confirmed',
         gatewayResponse: 'QRIS payment confirmed',
       });
       await settleGatewaySale(saleResult, true);

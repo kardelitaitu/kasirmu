@@ -167,6 +167,7 @@ fn all_features_known_dep_or_no_dep() {
         Feature::TableManagement,
         Feature::SelfServiceKiosk,
         Feature::LoyaltyProgram,
+        Feature::StockCounting,
         Feature::SerialTracking,
         Feature::PromotionsEngine,
         Feature::Analytics,
@@ -196,10 +197,16 @@ fn all_features_known_dep_or_no_dep() {
         Feature::CashDrawer,
         Feature::CustomerDisplay,
         Feature::NfcReader,
+        Feature::UsbScale,
         Feature::DiscountEngine,
         Feature::TaxEngine,
         Feature::LoyaltyProgram,
         Feature::GiftCards,
+        Feature::QuickReturn,
+        Feature::StockCounting,
+        Feature::StockTransfers,
+        Feature::PurchaseOrders,
+        Feature::SerialTracking,
         Feature::PromotionsEngine,
         Feature::ProductBundles,
         Feature::KitchenDisplay,
@@ -404,13 +411,18 @@ fn enable_all_features_then_disable_all() {
         Feature::CashDrawer,
         Feature::CustomerDisplay,
         Feature::NfcReader,
+        Feature::UsbScale,
         Feature::DiscountEngine,
         Feature::TaxEngine,
         Feature::LoyaltyProgram,
         Feature::GiftCards,
+        Feature::QuickReturn,
+        Feature::StockCounting,
+        Feature::StockTransfers,
+        Feature::PurchaseOrders,
+        Feature::SerialTracking,
         Feature::PromotionsEngine,
         Feature::ProductBundles,
-        Feature::PurchaseOrders,
         Feature::KitchenDisplay,
         Feature::TableManagement,
         Feature::SelfServiceKiosk,
@@ -421,15 +433,12 @@ fn enable_all_features_then_disable_all() {
         Feature::Analytics,
         Feature::ExportImport,
         Feature::PluginSystem,
-        Feature::SerialTracking,
-        Feature::QuickReturn,
-        Feature::UsbScale,
     ];
 
     for f in all_features {
         reg.enable(f);
     }
-    assert!(reg.count() >= 37);
+    assert_eq!(reg.count(), 39);
 
     for f in all_features {
         reg.disable(f);
@@ -687,13 +696,18 @@ fn feature_key_roundtrip() {
         Feature::CashDrawer,
         Feature::CustomerDisplay,
         Feature::NfcReader,
+        Feature::UsbScale,
         Feature::DiscountEngine,
         Feature::TaxEngine,
         Feature::LoyaltyProgram,
         Feature::GiftCards,
+        Feature::QuickReturn,
+        Feature::StockCounting,
+        Feature::StockTransfers,
+        Feature::PurchaseOrders,
+        Feature::SerialTracking,
         Feature::PromotionsEngine,
         Feature::ProductBundles,
-        Feature::PurchaseOrders,
         Feature::KitchenDisplay,
         Feature::TableManagement,
         Feature::SelfServiceKiosk,
@@ -704,9 +718,6 @@ fn feature_key_roundtrip() {
         Feature::Analytics,
         Feature::ExportImport,
         Feature::PluginSystem,
-        Feature::SerialTracking,
-        Feature::QuickReturn,
-        Feature::UsbScale,
     ];
     for f in features {
         let key = feature_key(f);

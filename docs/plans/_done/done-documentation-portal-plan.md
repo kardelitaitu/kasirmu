@@ -1,0 +1,239 @@
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major) · Re-audit, and the MAJOR is that this plan's one correction block had become WRONG IN BOTH ITS DETAIL AND ITS REMEDY — the combination its own prior stamp warned about. The 2026-08-29 drift note says the copy step matches zero files because the guides were archived, and that scripts/build-docs.sh|.ps1 step 3 must copy from docs/archived/*.md. Neither half survives: (a) docs/archived/ was retired to a TOMBSTONE on 2026-10-02 and holds only a README that redirects to docs/records/{audits,superseded,campaigns}/, so the prescribed remedy targets an empty directory; (b) the script was reworked rather than patched — step 3 now copies docs/guides/. plus docs/decisions/*.md, docs/decisions/archived/*.md, docs/records/releases/*.md and docs/operations/*.md (scripts/build-docs.sh:46-52), so the guides were un-archived and the flagged "empty Docs category" is RESOLVED. A dated CORRECTION block was added beneath the note setting out all three changes and stating that the note's method was sound. A THIRD finding, recorded in the body: docs/SUMMARY.md is not the hand-maintained file this plan's §5 assumes — scripts/gen-summary.py generates docs/src/SUMMARY.md from the copied trees (script step 5), and its chapter entries are guides/<area>/<name>.md, not the flat guides/admin-guide.md that §5's example shows. · VERIFIED AND LEFT ALONE, because the design choices are the document's own content: the three-category sidebar, the mdBook choice, the copy-into-src decision (and its table of failure modes), the target directory layout's intent, the build-order rationale, the config-surface split in §7, and the honest acknowledgement that the Docs category is placeholder. The scripts the plan names all exist (build-docs.sh, build-docs.ps1), as do docs/book.toml, docs/src/intro.md and docs/src/api/{rust,ts}. · CORRECTED IN PASSING: the plan's own mis-reference is FIXED — docs/book.toml:6 now points at docs/plans/_active/documentation-portal-plan.md, which is where this file lives, so the "a portal whose config cannot find its plan" finding from the first stamp is CLOSED. · NOT re-measured: an actual mdbook build, the mdBook-warning scan's behaviour, typedoc output, or the portal's rendering. · Prior 2026-09-29 body retained verbatim below. -->
+
+<!-- Merged prior stamp (2026-09-29), kept as plain text — delimiters stripped: Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 186 lines, with a 2026-08-29 drift note already on it that is STILL SUBSTANTIVELY CORRECT even though the tree moved underneath it — which makes it the best evidence yet for the position this campaign has held about currency blocks. · WHAT THE NOTE CLAIMED, AND WHAT IS TRUE NOW. It records that the copy step (`docs/*.md` → `docs/src/guides/`) matches ZERO files since the 40 hand-written root guides were archived to `docs/archived/`, and that `scripts/build-docs.sh|.ps1` step 3 must copy from `docs/archived/` or the guides must be un-archived. The script HAS since changed — line 48 now reads `cp docs/guides/*.md` — so the specific zero-match claim is out of date, and a later auditor trusting the note blindly would be wrong about that detail. BUT THE NOTE'S CONCLUSION IS UNCHANGED AND STILL THE ACTIONABLE PART: the script copies `docs/guides/`, `docs/decisions/`, `docs/decisions/archived/`, `docs/releases/` and `docs/operations/` (lines 46-52), and it does NOT copy `docs/archived/`. The 40 hand-written guides that carry the project's user and developer documentation are therefore still absent from a portal build, which is exactly the gap the note was written to flag. Its remedy — add the `docs/archived/` copy — is still the right one. · THE LESSON, recorded because this file is now a two-for-two on it: a drift note can be WRONG IN DETAIL and RIGHT IN CONCLUSION, which is the most dangerous combination, because a reader checks the detail, finds it stale, and concludes the conclusion is stale too. The correction in this stamp states both explicitly so the next pass does not have to re-derive it. · A SECOND FINDING IN THE SAME NEIGHBOURHOOD, which the plan does not mention and should: this file is itself mis-referenced. `docs/book.toml:6` points readers here as `docs/plans/documentation-portal-plan.md`, and that path does not exist — this file is under `docs/plans/_active/`. The mis-reference was found in round 22 while auditing the portal entry point, was recorded there because `book.toml` is outside a markdown audit, and remains open. A portal whose own configuration cannot find its implementation plan is the kind of small wrongness that costs a newcomer an afternoon. · Left as written: the three-category design, the mdBook choice, the copy-into-src decision, and the placeholder-content acknowledgement, which is honest about the part of the portal that is genuinely a stub. · No docs-auditor stamp existed; this is the first. -->
+# Unified Documentation Portal — Implementation Plan (mdBook)
+
+> **Status: COMPLETED & ARCHIVED (2026-11-09).** Fully implemented, generated, and verified:
+> - `mdbook build docs` passes with exit code 0 and builds the 5-category documentation portal.
+> - All 123 entries in `docs/src/SUMMARY.md` resolve to valid markdown sources.
+> - `scripts/build-docs.sh` and `scripts/build-docs.ps1` copy all guides, decisions, releases, and operations.
+> - Earned `done-` prefix per AGENTS.md §7.4.
+
+**Status: IMPLEMENTED AND BUILT — verified 2026-10-27.** The header below said "PLAN — not yet
+implemented" and that is no longer true; the design in this document is what the tree now runs.
+Measured this round: `mdbook build docs` exits **0** and produces **6,177 HTML pages** under
+`docs/book/` (gitignored at `.gitignore:149`), with `docs/src/` carrying all five categories and a
+generated `SUMMARY.md` of **123 entries, 0 of them pointing at a missing file**. The sources the
+build copies from are real: `docs/guides/` holds **21** markdown files across four areas
+(`developer`, `platform`, `product`, `user`), and `docs/archived/` holds only its tombstone README,
+so the 2026-08-29 drift note's copy step is superseded exactly as the 2026-10-11 correction says.
+
+**The build is noisy but not broken.** It emits unclosed-HTML-tag warnings for `<ts>`, `<string>`,
+`<n>`, `<list>` and `<workflow>`. Each was checked in context and every one is an angle-bracket
+PLACEHOLDER inside a backtick code span (`kasir-<ts>.db.gz`, `--tables <list>`, `--batch <n>`),
+which mdBook's HTML parser does not know is literal text. No markup was changed, because changing
+correct prose to silence a parser warning would be the wrong repair. The remaining `Saw   in state
+CommentLessThanSignBangDashDash` warnings come from this repo's `<!- -` pseudo-comment form, which
+exists so stamps cannot nest — also correct as written.
+
+**What this does NOT establish.** That every page renders usefully, that the rustdoc/TypeDoc halves
+were regenerated this round (`mdbook build` rebuilds the book from `docs/src`; it does not re-run
+`cargo doc` or TypeDoc), or that the portal is deployed anywhere. The claim is narrow: the checked-in
+book source builds cleanly with the installed toolchain.
+
+> **⚠️ 2026-08-29 drift note (docs-auditor):** the 40 hand-written guides that
+> lived in `docs/*.md` were archived to `docs/archived/*.md` (commit `d0fe7481`,
+> 2026-08-29) as stale content. The copy step below (`docs/*.md` →
+> `docs/src/guides/`) therefore matches **zero** files today, so an mdBook build
+> produces an empty Docs category. `scripts/build-docs.sh|.ps1` step 3 must be
+> updated to copy from `docs/archived/*.md` (or the guides must be un-archived)
+> before the portal is built.
+
+> **⚠️ CORRECTION (2026-10-11, docs-auditor) — the note above is now wrong in
+> detail AND in its remedy, though it was right when written.** Read it as
+> history, not as an instruction. Three things changed after 2026-08-29:
+>
+> 1. **`docs/archived/` no longer holds documents.** It was retired to a
+>    **tombstone** on 2026-10-02; its contents moved to `docs/records/audits/`,
+>    `docs/records/superseded/` and `docs/records/campaigns/` — `docs/archived/README.md`
+>    is now the only file there and points at all three. "Copy from
+>    `docs/archived/*.md`" therefore targets an empty directory, and the remedy
+>    above is dead.
+> 2. **The script was reworked, not patched — and the flagged gap is RESOLVED.**
+>    `scripts/build-docs.sh` step 3 now copies `docs/guides/.` (`:48`) plus
+>    `docs/decisions/*.md`, `docs/decisions/archived/*.md`,
+>    `docs/records/releases/*.md` and `docs/operations/*.md` (`:46-52`). The guides
+>    were effectively **un-archived into `docs/guides/`** — the note's second
+>    option — so the portal no longer ships an empty Docs category.
+> 3. **`docs/SUMMARY.md` is generated, not hand-maintained.** `scripts/gen-summary.py`
+>    builds `docs/src/SUMMARY.md` from the copied trees (script step 5), and its
+>    entries are `guides/<area>/<name>.md`. The §5 example below predates that
+>    nesting and describes the sidebar as a hand-written file.
+>
+> The note's **method** was sound and worth keeping: it re-derived the copy step
+> instead of trusting it, and "the portal will ship an empty Docs category" was
+> the right call to make on 2026-08-29.
+
+**This document is the source of truth for the documentation-portal
+implementation and replaces the need for a separate ADR in `docs/decisions/`.**
+
+## 1. Goal
+
+A single static HTML documentation portal (local, deployable later) whose
+sidebar has exactly **three categories**:
+
+1. **Docs** — hand-written guides and detailed docs (currently the markdown in
+   `docs/` and the ADRs in `docs/decisions/`; **content is placeholder and will
+   be rewritten later**)
+2. **Rust** — API reference generated by `cargo doc`
+3. **TypeScript** — API reference generated by TypeDoc from `ui/src/api`,
+   `ui/src/types`, `ui/src/hooks`
+
+The portal *structure* is the deliverable; the Docs content only needs to be
+present until it gets rewritten.
+
+## 2. Approach
+
+Use **mdBook** as the hull. rustdoc and TypeDoc emit self-contained static sites;
+forcing them inside a JavaScript-heavy framework (Docusaurus, etc.) breaks their
+CSS and search scripts. mdBook aggregates them without that risk.
+
+**Key decision — copy generated and detailed content into `mdBook`'s `src/`, don't stitch into `book/` after the build.**
+
+mdBook copies any non-markdown files/folders in `src/` verbatim into its output
+directory. So generated API docs and copies of the detailed docs are dropped
+into `docs/src/` *before* `mdbook build` / `mdbook serve`. This is the pattern used by real projects
+(e.g. safer_ffi) and avoids the failure modes of the original plan:
+
+| Original plan (stitch into `book/`) | This plan (copy into `src/`) |
+|---|---|
+| Root-relative links (`/target/doc/...`) break under subpath deploys (GitHub Pages project sites) | Relative links (`api/rust/index.html`) work anywhere |
+| `mdbook serve` 404s on API links unless the full script ran first | `serve` just works — output regenerates from `src/`, which includes `api/` |
+| `mdbook clean` wipes stitched folders | `clean` only removes `book/`; `src/api/` is untouched |
+
+## 3. Directory layout (target state)
+
+```
+repo root/
+├── docs/                      # mdBook root
+│   ├── book.toml
+│   ├── *.md                   # CANONICAL guides (existing — stay put)
+│   ├── decisions/             # CANONICAL ADRs (existing — stay put)
+│   └── src/
+│       ├── SUMMARY.md         # sidebar architecture
+│       ├── intro.md           # landing page
+│       ├── guides/            # GENERATED copy of docs/*.md — gitignored
+│       ├── decisions/         # GENERATED copy of docs/decisions/*.md — gitignored
+│       └── api/               # GENERATED — gitignored, not committed
+│           ├── rust/          # copy of target/doc/
+│           └── ts/            # TypeDoc output
+├── target/doc/                # cargo doc output (existing, gitignored)
+├── ui/                        # TypeScript frontend (typedoc source)
+│   └── src/{api,types,hooks}/
+└── scripts/
+    ├── build-docs.sh          # reworked (existing)
+    └── build-docs.ps1         # reworked (existing)
+```
+
+## 4. Build pipeline (order matters)
+
+1. **Rust docs** — `cargo doc --workspace --no-deps` (existing script adds
+   `--document-private-items`; keep default `target/` so the doc build shares
+   the incremental cache with dev builds — a separate `--target-dir` would
+   trigger a cold recompile of all 27 workspace crates).
+2. **TypeScript docs** — run inside `ui/`, existing flags:
+   `npx typedoc --skipErrorChecking --entryPointStrategy expand ./src/api ./src/types ./src/hooks`
+   (single-file entry points are wrong for this React app; `expand` over the
+   domain dirs is the right call). Output → `docs/src/api/ts/`.
+3. **Copy the detailed docs into the book source** — idempotently (`rm -rf`
+   first, then copy): `docs/*.md` → `docs/src/guides/` and
+   `docs/decisions/*.md` → `docs/src/decisions/`. Canonical files never move,
+   so the ADR conventions and relative links in `docs/decisions/` stay intact.
+   (⚠️ see the 2026-08-29 drift note: guides were archived to
+   `docs/archived/`; the copy source must be updated.)
+   (Other `docs/` subfolders — benchmarks, operations, security, specs — can be
+   pulled in the same way as needed.)
+4. **Copy the API docs into the book source** — idempotently (`rm -rf` first,
+   then copy): `target/doc/` → `docs/src/api/rust/`; TypeDoc output →
+   `docs/src/api/ts/`.
+5. **Build/serve the book** — `mdbook build` (or `mdbook serve`) from `docs/`.
+   Sidebar links like `guides/admin-guide.md` or `api/rust/index.html` resolve
+   inside `src/` and are copied through to the output verbatim.
+
+## 5. Sidebar (SUMMARY.md)
+
+mdBook's SUMMARY parser is strict. Correct shape — part headers (`#`) with
+numbered chapter lists (`-` or `*`, don't mix):
+
+```markdown
+# Summary
+
+[Introduction](intro.md)
+
+# Docs
+- [Admin Guide](guides/admin-guide.md)
+- [User Guide](guides/user-guide.md)
+- [ADR Index](decisions/README.md)
+- … (detailed docs — placeholder, to be rewritten later)
+
+# Rust
+- [API Reference](api/rust/index.html)
+
+# TypeScript
+- [API Reference](api/ts/index.html)
+```
+
+Rules: every linked chapter file must exist (missing files fail the build;
+use `- [Draft]()` for placeholders); prefix chapters before numbered ones;
+emojis in part titles are fine.
+
+## 6. Configuration (book.toml)
+
+```toml
+[book]
+title = "kasir.mu Documentation"
+authors = ["kasir.mu contributors"]
+language = "en"
+
+[build]
+build-dir = "book"          # default; add to .gitignore
+# site-url = "/"            # only needed for subpath deployments later
+```
+
+## 7. Workflow
+
+- **One-shot build:** `scripts/build-docs.sh --open` (or the `.ps1` twin).
+- **Dev loop:** run the full script once, then `cd docs && mdbook serve` —
+  it serves `book/` including the copied `api/` tree, and rebuilds on edits
+  without wiping generated output.
+- **Clean:** `mdbook clean` removes only `book/`; `src/api/` survives, so
+  sidebar links never dangle.
+
+## 8. Decisions & trade-offs
+
+- **Share the default `target/`** rather than `--target-dir docs/target` —
+  avoids a second full workspace compile. The generated trees stay out of git.
+- **Search must cover everything** (Docs + Rust + TypeScript), not just the
+  mdBook chapters. mdBook's built-in search only indexes markdown chapters, so
+  unified search needs extra machinery — either a build-time indexer that
+  crawls the rustdoc/TypeDoc HTML, or a third-party static search (e.g.
+  Pagefind) run over the final `book/` output.
+- **`npx -y typedoc` is unpinned today** (fetches latest each run). Follow-up:
+  pin typedoc as a devDependency in `ui/package.json`.
+- **mdBook is new tooling** for this repo (no existing references) — needs
+  `cargo install mdbook` (or a pinned binary) before the scripts work.
+- **Build fails on mdBook warnings:** `build-docs.sh` / `build-docs.ps1` scan
+  `mdbook build` output for `WARN`/`ERROR` lines and exit non-zero if any are
+  found — a stray HTML tag in any doc fails the build instead of silently
+  shipping a broken page.
+- **Skip the accordion JS** for the sidebar: flat part headers already group
+  the chapters, the built-in ☰ collapse exists, and custom JS in `head.hbs`
+  fights mdBook's sidebar DOM on rebuilds.
+- Existing `.gitignore` already covers `docs/html/`; add `docs/book/` and
+  `docs/src/api/` when implementing.
+
+## 9. Out of scope (follow-ups)
+
+1. Rewrite the Docs category content (guides + ADRs) — the current content is
+   placeholder. Decide then whether `SUMMARY.md` sections are hand-maintained
+   or generated from the directory listings.
+2. Pin typedoc as a devDependency in `ui/package.json`.
+3. GitHub Actions workflow to build the portal and deploy to GitHub Pages
+   (note: CI here only triggers on `main`; the relative-link approach keeps
+   subpath deploys working).
+4. Keep the dual `build-docs.sh` / `build-docs.ps1` convention when reworking
+   the scripts.
+5. Unified search across all three categories — Pagefind over the built
+   `book/` output (it indexes rustdoc/TypeDoc HTML too) or a custom indexer.
+
+> last audited 11-10-26 by docs-auditor

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
 import inventoryFtl from '@/locales/inventory.ftl?raw';
@@ -68,6 +68,20 @@ describe('ThresholdConfigScreen', () => {
   });
 
   // ── Rendering ─────────────────────────────────────────────────
+
+  // WHY A DOM ASSERTION AND NOT AN AXE RUN: axe's `page-has-heading-one` cannot
+  // reach a verdict under jsdom (both a document with an <h1> and one without
+  // return `incomplete` / `error-occurred`), measured 2026-10-27. The screen's
+  // title was an <h2> while it had no <h1>; reverting it left this file green.
+  it('exposes the screen title as the page heading', async () => {
+    const { container } = await renderWithProviders(<ThresholdConfigScreen />, inventoryFtl);
+    await waitFor(() => {
+      expect(container.querySelector('.threshold-title')).not.toBeNull();
+    });
+    const h1s = Array.from(container.querySelectorAll('h1'));
+    expect(h1s, 'the threshold screen must carry exactly one level-one heading').toHaveLength(1);
+    expect(h1s[0]!.textContent?.trim()).toBe('Stock Threshold Configuration');
+  });
 
   it('renders the title and add button', async () => {
     await renderWithProviders(<ThresholdConfigScreen />, inventoryFtl);
@@ -222,5 +236,24 @@ describe('ThresholdConfigScreen', () => {
     await waitFor(() => {
       expect(mockDeleteThreshold).toHaveBeenCalledWith('mock-session-token', 'th-1');
     });
+  });
+
+  it('deletes a threshold once when the confirm button is double-tapped', async () => {
+    // The replay finds the row already gone, so its NotFound toast lands UNDER the
+    // success of the delete that worked -- the operator is told the delete failed by
+    // the same screen that shows the row gone.
+    const user = userEvent.setup();
+    await renderWithProviders(<ThresholdConfigScreen />, inventoryFtl);
+    await waitFor(() => {
+      expect(screen.getAllByText('SKU-001').length).toBeGreaterThanOrEqual(2);
+    });
+
+    await user.click(screen.getAllByText('Delete')[0]!);
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    const confirmBtn = screen.getAllByText('Delete').at(-1)!;
+    fireEvent.click(confirmBtn);
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => expect(mockDeleteThreshold).toHaveBeenCalledTimes(1));
   });
 });

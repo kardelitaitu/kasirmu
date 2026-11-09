@@ -80,6 +80,7 @@ fn item(action: String, payload: String, created_at: String) -> OfflineQueueItem
         tenant_id: "default".into(),
         priority: SyncPriority::Normal,
         origin_terminal_id: None,
+        sale_id: None,
     }
 }
 

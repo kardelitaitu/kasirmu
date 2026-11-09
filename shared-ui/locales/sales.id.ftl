@@ -218,7 +218,6 @@ pos-cart-table-placeholder = No.
 pos-shift-close-btn = Tutup
 pos-shift-open-btn = Buka
 sales-history-title = Riwayat Penjualan
-sales-history-loading = Memuat penjualan…
 sales-history-error-load = Gagal memuat riwayat penjualan
 sales-history-empty = Belum ada penjualan tercatat
 sales-history-empty-filtered = Tidak ada penjualan yang cocok dengan filter Anda
@@ -238,6 +237,9 @@ sales-history-view-aria = Lihat { $id }
 sales-history-void-aria = Batalkan pesanan { $id }
 sales-history-detail-title = Detail Penjualan
 sales-history-detail-close = Tutup
+# Lihat `sales-history-detail-load-failed` di sales.ftl: pembacaan penjualan GAGAL, jadi
+# detail tidak bisa dibuka. Tanpa ini kasir mengetuk baris dan tidak terjadi apa pun.
+sales-history-detail-load-failed = Tidak dapat membuka penjualan ini — ketuk lagi untuk mencoba
 sales-history-detail-print = Cetak Ulang Nota
 sales-history-detail-id = ID
 sales-history-detail-receipt = No. Struk
@@ -273,9 +275,10 @@ sales-history-line-tax = Pajak
 sales-history-tax-estimated-badge = Estimasi
 sales-history-status-all = Semua
 sales-history-status-completed = Selesai
+sales-history-status-active = Sedang berjalan
 sales-history-status-pending = Tertunda
-sales-history-status-cancelled = Batal
 sales-history-status-voided = Dibatalkan
+sales-history-status-unknown = Status tidak dikenal
 sales-history-export-csv = Ekspor CSV
 sales-history-search-label = Cari
 sales-history-status-label = Status
@@ -301,6 +304,17 @@ sales-history-void-default-reason = Dibatalkan dari riwayat penjualan
 sales-history-void-error = Gagal membatalkan pesanan
 # Shown inside the e-Faktur stamp modal when the NSFP write fails (ERR-10).
 sales-history-stamp-error = Gagal membubuhkan NSFP e-Faktur
+# Kerangka dialog pembubuhan (round 211). ISINYA sudah berbahasa Indonesia —
+# "Masukkan 13-digit Nomor Seri Faktur Pajak ... diterbitkan oleh DJP Coretax",
+# serta sepuluh opsi Kode Transaksi di bawahnya — sementara judul, tombol tutup,
+# placeholder, label pratinjau, dan kedua aksinya masih literal Inggris di
+# dialog yang sama. Kunci-kunci ini menutup ketidakselarasan tersebut.
+sales-history-efaktur = e-Faktur
+sales-history-stamp-modal-aria = Bubuhkan NSFP e-Faktur
+sales-history-stamp-title = Masukkan NSFP e-Faktur (DJP Coretax)
+sales-history-stamp-nsfp-placeholder = mis. 2600000000123
+sales-history-stamp-preview = Format Faktur Pajak:
+sales-history-stamp-confirm = Bubuhkan e-Faktur
 # Toast shown when creating a Faktur Pengganti fails.
 sales-history-pengganti-error = Gagal membuat Faktur Pengganti
 sales-history-export-id = ID Penjualan
@@ -357,7 +371,7 @@ void-orders-status-active = Aktif
 void-orders-status-completed = Selesai
 void-orders-status-voided = Dibatalkan
 void-orders-status-pending = Tertunda
-void-orders-loading = Memuat pesanan…
+void-orders-status-unknown = Status tidak dikenal
 void-orders-retry = Coba Lagi
 void-orders-empty-filtered = Tidak ada pesanan yang cocok dengan filter saat ini.
 void-orders-empty-none = Belum ada pesanan tercatat.
@@ -554,6 +568,9 @@ eod-summary-voided-sales = Penjualan Dibatalkan
 eod-summary-voided-value = Nilai Pembatalan
 eod-summary-discounts = Penjualan dengan Diskon
 eod-summary-payment-methods = Metode Pembayaran Digunakan
+eod-summary-piutang-collections = Penerimaan Piutang
+eod-payment-piutang-collections = Penerimaan Piutang
+eod-payment-pay-later = Bayar Nanti (Piutang)
 eod-csv-col-metric = Metrik
 eod-csv-col-value = Nilai
 eod-csv-row-date = Tanggal
@@ -575,8 +592,12 @@ pos-bundle-expanded =
     }
 pos-no-barcode-match = Tidak ada produk atau bundel yang cocok dengan barcode ini
 pos-close-shift-cart-error = Selesaikan atau kosongkan penjualan saat ini sebelum menutup shift.
+pos-close-shift-open-tab-error = Masih ada tagihan terbuka pelanggan di terminal ini. Selesaikan atau pindahkan tagihan tersebut sebelum menutup shift.
 pos-close-shift-failed = Gagal menutup shift
 pos-scanner-error = Kesalahan pemindai: { $detail }
+# Lihat `pos-barcode-lookup-failed` di sales.ftl: pencarian barcode GAGAL (IPC/jaringan),
+# berbeda dari `pos-no-barcode-match` yang artinya kode tersebut memang tidak ada.
+pos-barcode-lookup-failed = Tidak dapat memeriksa barcode ini — silakan coba lagi
 pos-toast-receipt-settings-failed = Gagal memuat pengaturan nota
 
 # ── Payment (remaining) ──
@@ -616,6 +637,12 @@ payment-method-bank-transfer = Transfer Bank
 payment-method-ewallet = Dompet Digital
 payment-method-pay-later = PayLater
 payment-method-credit = Kredit
+payment-method-gift-card = Kartu Hadiah
+payment-method-card-giro = Kartu / Giro
+payment-method-qris-ewallet = QRIS / E-Wallet
+# Kolom catatan pada pelunasan kasbon (round 211).
+kasbon-pay-note = Catatan
+kasbon-pay-note-placeholder = Catatan opsional
 payment-method-other =
     .aria-label = Metode pembayaran lain
 payment-other-placeholder =
@@ -630,6 +657,7 @@ payment-tender-exact-aria =
 payment-tender-exact = Tepat
 payment-change = Kembalian
 payment-insufficient = Jumlah tidak mencukupi
+payment-tender-unreadable = Periksa jumlahnya — gunakan pemisah ribuan dan desimal yang biasa dipakai toko
 payment-qris-description = Hasilkan kode QR QRIS untuk dipindai pelanggan dengan aplikasi pembayaran mereka.
 payment-qris-pay = Bayar dengan QR
 payment-qris-dynamic-pay = Bayar dengan QR dinamis
@@ -663,10 +691,22 @@ payment-toast-kds-failed = Pembayaran berhasil, tetapi tiket dapur gagal dibuat 
 payment-toast-loyalty-redeem-failed = Pembayaran berhasil, tetapi poin loyalitas TIDAK dipotong — perbaiki poin pelanggan secara manual
 payment-toast-print-failed = Tidak ada yang tercetak — periksa bahwa printer sudah diatur dan dapat dijangkau
 payment-toast-receipt-unavailable = Pembayaran berhasil, tetapi struk gagal disiapkan — penjualan tersimpan, periksa riwayat penjualan untuk mencetak ulang
+payment-toast-stock-warning = Peringatan stok: { $product } (dipesan { $requested }, tersedia { $available })
 payment-toast-invoice-issued = Faktur pajak berhasil diterbitkan
 payment-toast-invoice-failed = Gagal menerbitkan faktur pajak
 payment-toast-finalize-failed = Penjualan gagal diselesaikan — periksa riwayat penjualan dan selesaikan secara manual
 payment-toast-void-failed = Penjualan tertunda TIDAK bisa dibatalkan — masih terbuka dan harus dibersihkan secara manual
+payment-toast-receivable-failed = Pembayaran berhasil, tetapi catatan piutang gagal dibuat — catat secara manual
+payment-toast-gift-card-redeem-failed = Pembayaran berhasil, tetapi saldo kartu hadiah TIDAK terpotong — potong saldo kartu secara manual
+payment-pay-later-select-customer = Pilih Pelanggan untuk Kasbon
+payment-pay-later-customer-desc = Kasbon mencatat piutang atas nama akun pelanggan.
+payment-pay-later-open-search = Pilih Pelanggan
+payment-pay-later-loading = Memuat saldo kasbon...
+payment-pay-later-outstanding = Saldo Kasbon Saat Ini
+payment-pay-later-invoices = Tagihan Belum Lunas
+payment-pay-later-overdue = Ada Kasbon Jatuh Tempo
+payment-pay-later-projected = Total Kasbon Baru
+payment-pay-later-limit-warning = Peringatan: Total kasbon melebihi batas kredit pelanggan.
 payment-customer-placeholder = mis. John Doe
 payment-loyalty-points-aria = Poin
 payment-search-customers-aria = Cari pelanggan
@@ -693,6 +733,7 @@ payment-open-bill = Tagihan Terbuka
 payment-credit-sale = Penjualan Kredit
 payment-credit-disabled = Fasilitas kredit toko saat ini dinonaktifkan di Pengaturan.
 payment-credit-limit-exceeded = Total penjualan melebihi batas kredit maksimal.
+payment-credit-settings-unavailable = Pengaturan kredit tidak dapat dimuat — batas kredit toko tidak dapat diperiksa.
 payment-customer-name = Nama Pelanggan
 payment-customer-change = Ganti
 payment-customer-select = Pilih Pelanggan
@@ -723,6 +764,7 @@ retail-load-error-retry-aria = Coba lagi memuat produk
 retail-store-name-fallback = TOKO
 retail-shift-label = Shift
 retail-no-shift = Tidak ada shift
+retail-shift-unknown = Shift tidak diketahui
 retail-search-placeholder = Cari produk…
 retail-search-clear-aria = Hapus pencarian
 retail-no-products = Tidak ada produk
@@ -816,9 +858,9 @@ restaurant-shortcut-print-bill = Cetak bill
 restaurant-shortcut-split-bill = Pisah bill
 restaurant-shortcut-save-tab = Simpan tab
 restaurant-shortcut-open-tables = Buka daftar meja
+restaurant-shortcuts-help-title = Pintasan papan tipe
 retail-shortcut-list = Daftar pintasan
 retail-shortcut-close = Tutup modal / Opsi
-retail-shortcut-fullscreen = Aktifkan/nonaktifkan layar penuh
 retail-shortcut-credit = Pengingat kredit
 retail-shortcut-low-stock = Filter produk stok menipis
 retail-toast-failed-settings = Gagal memuat pengaturan toko
@@ -978,7 +1020,6 @@ scale-target-set = { $name } dipilih untuk ditimbang
 scale-clear-aria = Hapus target timbangan
 
 # ── Gift Cards ─────────────────────────────────────────────────────
-gift-cards-loading = Memuat...
 gift-cards-status-all = Semua Status
 gift-cards-status-active = Aktif
 gift-cards-status-frozen = Dibekukan
@@ -1088,7 +1129,6 @@ pos-promotions-applied = Promosi diterapkan: { $name }
 pos-promotions-toggle-aria = Aktif/nonaktifkan promosi { $name }
 pos-promotions-selected-count = { $count } dipilih
 pos-promotions-apply-selected = Terapkan promosi
-pos-promotions-apply-aria = Terapkan promosi { $name }
 pos-promotions-unavailable-aria = Promosi { $name } tidak dapat diterapkan
 
 # ── Product image editor (spec 0046b §3.2–3.3) ──
@@ -1123,13 +1163,13 @@ pos-cart-customer-label = Pelanggan
 pos-cart-customer-placeholder = Nama (opsional)...
 pos-cart-customer-aria = Nama pelanggan (opsional)
 pos-cart-new-tab = Tagihan Baru
-pos-cart-new-tab-title = Bersihkan keranjang untuk memulai tagihan baru
 pos-cart-guest-count-label = Tamu
 pos-cart-order-type-dine-in = Makan di Tempat
 pos-cart-order-type-takeaway = Bawa Pulang
 pos-cart-order-type-delivery = Antar
 pos-cart-guest-placeholder = Tamu
 edit-modifiers = Ubah
+pos-cart-line-customize-aria = Sesuaikan item
 pos-cart-print-bill = Cetak Bill
 pos-cart-print-bill-aria = Cetak bill sementara untuk diperiksa pelanggan
 pos-cart-split-bill = Pisah Bill
@@ -1145,6 +1185,9 @@ pos-cart-send-kitchen = Kirim ke Dapur
 pos-cart-send-kitchen-aria = Kirim item baru ke printer dapur dan KDS
 pos-toast-kitchen-dispatched = Pesanan dikirim ke dapur untuk { $table }
 pos-toast-kitchen-dispatch-failed = Gagal mengirim pesanan ke dapur
+pos-toast-kitchen-print-failed = Pesanan terkirim, tetapi tiket dapur tidak tercetak — periksa printer
+pos-toast-bar-print-failed = Pesanan terkirim, tetapi tiket bar tidak tercetak — periksa printer
+payment-toast-table-assign-failed = Transaksi berhasil, tetapi meja tidak ditandai terisi — tugaskan ulang di denah meja
 pos-toast-held-cart-delete-failed = Gagal menghapus keranjang yang ditahan
 pos-toast-auth-required = Silakan masuk kembali untuk melanjutkan
 pos-toast-tab-balance-failed = Gagal memperbarui sisa saldo tagihan
@@ -1164,6 +1207,15 @@ pos-toast-no-active-cart = Tidak ada penjualan aktif untuk diubah harganya
 pos-toast-open-bills-failed = Gagal memuat tagihan terbuka
 pos-toast-bill-save-failed = Gagal menyimpan tagihan
 pos-toast-bill-resume-failed = Gagal membuka kembali tagihan
+pos-toast-tab-held-by-other = { $terminal } sedang mengerjakan tagihan ini. Minta mereka menyelesaikannya, atau gunakan Take Over pada tagihan.
+# Melanjutkan tagihan LAIN di atas keranjang yang sudah berisi tagihan pertama.
+# Pesanan tagihan pertama tidak boleh hilang karena salah ketuk, jadi dibatalkan.
+pos-toast-resume-cart-not-empty = Selesaikan atau simpan tagihan saat ini sebelum membuka tagihan lain
+# Perubahan harga ditolak karena mata uangnya berbeda dari keranjang. Keranjang
+# hanya mendukung satu mata uang (MONEY-AUDIT-F1), jadi baris yang tersisa di mata
+# uang lain tidak dapat dihargai ulang.
+retail-toast-override-failed = Gagal menerapkan perubahan harga
+pos-toast-line-price-currency-mismatch = Tidak dapat mengubah harga barang ini selama keranjang memuat mata uang lain
 pos-toast-bill-saved = Tagihan untuk { $label } disimpan
 pos-toast-bill-updated = Tagihan untuk { $label } diperbarui
 pos-toast-printer-unconfirmed = Printer tidak mengonfirmasi cetakan — periksa perangkatnya
@@ -1172,3 +1224,14 @@ pos-toast-drawer-kick-sent = Sinyal laci kas terkirim
 pos-toast-drawer-unconfirmed-short = Laci kas tidak mengonfirmasi terbuka — periksa perangkatnya
 
 
+
+# Round 212 - lanjutan round 211: label bagian course firing, dua lencana
+# kegagalan panel utang, dan tombol tutup bantuan pintasan.
+pos-cart-course-firing = Pengiriman Hidangan
+dashboard-debt-receivables-failed = Gagal memuat piutang
+dashboard-debt-payables-failed = Gagal memuat utang
+restaurant-shortcuts-help-close-aria = Tutup pintasan papan tombol
+# Placeholder untuk dua kolom teks bebas pada modal produk (round 212).
+# "pcs / kg / box" adalah petunjuk satuan yang ditimpa operator.
+retail-edit-unit-placeholder = pcs / kg / box
+retail-edit-rack-placeholder = A-01

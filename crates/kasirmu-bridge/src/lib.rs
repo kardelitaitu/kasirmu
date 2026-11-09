@@ -100,6 +100,8 @@ pub mod qris_auto;
 pub mod qris_listener;
 /// Receipt-format template command bodies (Wave D). Not yet extracted.
 pub mod receipt_format;
+/// Accounts-receivable command bodies (Phase 3 of payment-methods-plan.md).
+pub mod receivables;
 /// Refund command bodies (Wave D). Not yet extracted.
 pub mod refunds;
 /// Weight-scale command bodies (Wave D). Not yet extracted.

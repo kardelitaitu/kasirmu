@@ -76,7 +76,7 @@ fn resolve_session_expired_token_is_rejected_and_removed() {
 
 #[test]
 fn resolve_scope_isolates_store_databases() {
-    let test_dir = std::env::temp_dir().join(format!(
+    let test_dir = super::test_scratch_root().join(format!(
         "kasirmu-mobile-scope-test-{}",
         uuid::Uuid::now_v7()
     ));

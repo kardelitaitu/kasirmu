@@ -58,3 +58,10 @@ tempfile = { workspace = true }
 # that case, and turning it on here does not affect any release build.
 [dev-dependencies]
 kasirmu-hal = { workspace = true, features = ["test-support"] }
+# Scratch directories for the harness. `std::env::temp_dir()` resolves to
+# `C:\WINDOWS\TEMP` on this project's Windows machines (machine-level TEMP
+# wins over the correct user-level one), where a stale directory makes the
+# create itself fail with os error 5 — which is how every `TestBridge::new()`
+# call became unrunnable. This crate puts fixtures under `target/test-scratch/`
+# instead; its own `scratch_root_is_never_windows_temp` pins that.
+kasirmu-test-support = { path = "../kasirmu-test-support" }

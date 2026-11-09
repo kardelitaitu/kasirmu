@@ -190,7 +190,7 @@ describe('the dine-in rule is applied at every consumer of cart identity state',
     //   CartActionBar gates the button on `Boolean(tableNumber?.trim()) ||
     //   Boolean(activeOpenBillId)` — the SAME condition that made site 7's whole
     //   open-bill block run. The table field renders on restaurant POS
-    //   unconditionally (CartPanel.tsx:864), so on a takeaway with a stray number
+    //   unconditionally (CartPanel.tsx:898), so on a takeaway with a stray number
     //   the button APPEARS.
     //
     //   handlePrintBill then puts that table into the printed args, and
@@ -227,7 +227,7 @@ describe('the dine-in rule is applied at every consumer of cart identity state',
     // the bottom all service, and the sheet holds the whole sale.
     //
     // Both derived their table chrome from `tableNumber` alone. Combined with the
-    // field rendering unconditionally (CartPanel.tsx:864), a takeaway with a stray
+    // field rendering unconditionally (CartPanel.tsx:898), a takeaway with a stray
     // number advertised a table it does not have on the surface the cashier looks
     // at continuously.
     for (const [label, src] of [

@@ -1,0 +1,172 @@
+<!-- Acceptance verified 2026-10-26: python scripts/verify-ipc-parity.py (exit 0, IPC parity: OK, 0 unregistered/ungated errors, all 9 cross-shell unrequested commands covered in ipc-parity-allowlist.json with dated reasons, pending_sync_count_scoped retired in round 191). Earned done- prefix per AGENTS.md §7.4. -->
+# Five registered commands no client names: what each is, and why the list is not a todo
+> Status: RESOLVED & ARCHIVED (2026-10-26). pending_sync_count_scoped retired; 9 cross-shell unrequested commands verified as documented legitimate backend surfaces or covered by scoped_orphans / _desktop_comment in scripts/ipc-parity-allowlist.json. IPC parity verified green. Earned done- prefix per AGENTS.md §7.4.
+
+
+**Measured 2026-10-25 (round 176) at HEAD `49833e58b`.** `python scripts/verify-ipc-parity.py` prints:
+
+```
+info[cross-shell-unrequested]: 28 per-shell unrequested registration(s) are 5 command(s)
+  named by no shipped UI file on ANY shell (desktop=13, tablet=5) = 5 named by neither side
+  + 18 named by the other shell's UI only
+```
+**RE-MEASURED 2026-11-07 (round 235) at HEAD `2a6e4d2ff`. The count is now 9, not 5.**
+`python scripts/verify-ipc-parity.py` prints:
+
+```
+info[cross-shell-unrequested]: 36 per-shell unrequested registration(s) are 9 command(s)
+  named by no shipped UI file on ANY shell (desktop=13, tablet=5) = 9 named by neither
+  side + 18 named by the other shell's UI only
+```
+
+The live nine are `create_product_variant_scoped`, `delete_product_variant_scoped`,
+`enqueue_offline_scoped`, `get_over_quota_report`, `get_product_variant_scoped`,
+`list_pending_offline_scoped`, `list_product_variants_scoped`,
+`list_scale_devices_scoped`, `update_product_variants_scoped`. Five of them are the
+`*_variant(s)_scoped` family, which grew when the variant IPC wrappers were removed from
+`ui/src/api/products.ts` -- a removal that retired the CALLER, not the command.
+
+**The census line and this file disagree, and the census line is not the whole story.**
+`info[cross-shell-reasons]` reports "8 of 9 ... carry a dated reason ... 1 NOT covered by
+scoped_orphans = get_over_quota_report" and then tells the reader to check
+`_desktop_comment` / `_tablet_comment` before concluding it is unrecorded. Checked: it IS
+recorded, in `scripts/ipc-parity-allowlist.json` `_desktop_comment`, which explains that
+`get_over_quota_report` is the AMBIENT arm of the ADR #7 pair, named by no shipped UI, and
+deliberately in no section because a shell section must stay a list of bare `_scoped` names.
+So the "1 NOT covered" line is a pointer to prose, not a finding. Reading only the census and
+retiring it would delete the ambient half of a live pair.
+
+
+**CORRECTION ADDED THE SAME ROUND, before this file was a day old.** The paragraph that stood
+here said these five had been "acted on by nobody". That was false, and reading
+`scripts/ipc-parity-allowlist.json` would have shown it: all four are in `scoped_orphans` with a
+dated MEASURED reason, two of them naming the exact finding this file re-derives. The reasons were
+written on 2026-10-25 and are the record; this file adds only the comparison nobody had made --
+that these five are the SAME set as the cross-shell intersection the gate now prints. Its value is
+that one read, not the discovery of five commands. Round 167’s lesson again: read the instrument
+before writing the survey.
+Four of the five are BACKEND-ONLY surfaces with bridge implementations, client-facing tests and a
+documented contract; deleting them touches roughly forty files across two shells and a bridge. The
+fifth is different in kind and is the one worth a decision.
+
+## The five
+
+| Command | Registered | Implemented | UI caller | What it is |
+|---|---|---|---|---|
+| `enqueue_offline_scoped` | desktop `offline.rs:47`, tablet `:173` | bridge `offline.rs:209` | none | the WRITE side of the offline queue |
+| `list_pending_offline_scoped` | desktop `:60`, tablet `:220` | bridge `:251` | none | the read behind the same queue |
+| `list_scale_devices_scoped` | desktop `scale.rs:31`, tablet `:51` | bridge `scale.rs:93` | none | configured weight scales, incl. HAL registry |
+| `get_over_quota_report` | desktop `subscription.rs:90` | — | none | the AMBIENT twin of `_scoped`, which IS used |
+| `pending_sync_count_scoped` | desktop `sync.rs:249`, tablet `:284` | bridge `sync.rs:400` | none | see below |
+
+## The four that are not a defect
+
+**`enqueue_offline_scoped` and `list_pending_offline_scoped`** are the two halves of a queue the app
+does populate and does read — through `@/api/offline`, whose `listAllOfflineScoped` and
+`pendingOfflineCountScoped` reach different commands in the same family. The pair has bridge
+implementations, and `apps/mobile-tauri/src/commands/sync_tests.rs` covers the count path. A surface
+the client does not call today is not the same as a surface nothing needs; these are the documented
+API of a feature whose UI happens to use two of its nine doors.
+
+**`list_scale_devices_scoped`** is the read behind the HAL scale registry. `crates/kasirmu-hal/src/registry.rs`
+lists registered drivers and the bridge exposes them; the screens that configure scales use other
+calls. Deleting it would remove the only way to enumerate scales, which the HAL tests exercise.
+
+**`get_over_quota_report`** is the ambient twin of `get_over_quota_report_scoped`. The scoped one
+IS called (`api/subscription.ts:287` by `OverQuotaCard`), so this is the ADR #7 pair where the
+session-less arm has no caller because the product is session-scoped. Removing the ambient arm
+would be a migration decision about pre-session operation, not cleanup.
+
+## The one worth a decision: `pending_sync_count_scoped`
+
+This is the member of the group that is a genuine inconsistency, and `verify-ipc-parity.py`
+already classifies it: `info[scoped-orphans]` lists it under **GATED DEAD SURFACE**
+(`pending_sync_count_scoped=SYNC_MANAGE`) — one of six "permission gates ... wired into
+`generate_handler!` with no reachable caller, which reads as enforced posture while protecting
+nothing."
+
+The reason it sits there is concrete, and it is a duplicate:
+
+- `crates/kasirmu-bridge/src/sync.rs:400` calls `ctx.require_session_permission(&session, SYNC_MANAGE)`
+  then returns `store.pending_offline_count()`.
+- `crates/kasirmu-bridge/src/offline.rs:305` `pending_offline_count_scoped` returns THE SAME VALUE
+  from the same store function, with no permission call, marked `// ungated-ok: documented split`.
+- That split is the module's stated contract (`offline.rs:8-10`): "`SYNC_MANAGE` on the four
+  GATED paths" — and the four are the write paths. A count is a read.
+
+So the tree contains two commands returning one number, where the one nobody calls is the one
+that requires a permission and the one the UI calls is the one that does not. That is worth a
+ruling, and the ruling is a product one — either
+
+1. **`pending_sync_count_scoped` is the intended door** and `OfflineQueueScreen` should route
+   through it, gaining a `SYNC_MANAGE` check on a read; or
+2. **it is the leftover** and should be deregistered from both shells, with the bridge body deleted.
+
+Both are defensible. Option 1 adds an authorisation requirement to a screen a cashier uses today;
+option 2 removes a door that a future sync-status surface might want. **Neither was taken**, because
+choosing which read needs `SYNC_MANAGE` is a policy call, and this lane does not make those.
+
+## RULED 2026-10-25 (round 191): option 2, and the reasoning was already in the tree
+
+**Taken: option 2.** `pending_sync_count_scoped` is retired — the bridge body, both shell
+wrappers, both `generate_handler!` registrations, the dev-mock handler and the allowlist entry.
+`python scripts/verify-ipc-parity.py` now reports **4** commands named by neither shell
+(`desktop=13, tablet=5` registrations), not 5.
+
+The reason it is option 2, stated so the next reader does not have to re-derive it: **a count is
+a read, and the module's own contract says the gate belongs on the writes.** `offline.rs:8` is
+the sentence — "SYNC_MANAGE on the four gated paths" — and the four are enqueue, retry, delete
+and requeue. Option 1 would have ADDED an authorisation requirement to `OfflineQueueScreen` and
+`UpdateSettingsCard`, the two surfaces a cashier uses today, in order to justify a command that
+no client calls and that returns the same number through an already-open door. That is not
+tidying the tree; it is changing what a cashier may do so a dead registration can stay.
+
+Two things this plan got wrong when it was written, both worth keeping:
+
+1. `_active/todo-` in the filename had been read as "parked, awaiting a decision". It was a
+   decision blocker of one kind — a policy call — and the policy answer was written in the
+   module header the whole time. **A plan that says "this needs a product ruling" should name
+   the file that would carry the ruling.**
+2. The allowlist entry's own words already said the answer: "this one has none **and should not
+   get one**, because a UI that needs the count already has a door for it … an F-006 retirement
+   candidate, not a gap to fill." The retirement was recorded as a candidate in the same commit
+   that filed this plan. Reading the instrument and then not acting on what it said is its own
+   failure mode — the round-176 lesson one step further.
+
+`REGISTERED_FLOOR` moved 511 → 510 in the same commit: a retirement is the one change that may
+lower it, and the pin comment now says so.
+
+## What a reader should not conclude
+
+That `info[cross-shell-unrequested]` is a work list. Round 169 wrote down that the per-shell
+lines are not arithmetic; this file records the other half — that the intersection is FIVE and four
+of the five are legitimate. The gate reports a measurement, not a defect, and says so in its own
+summary text.
+
+## What this round actually changed
+
+Three things, none of them a command:
+
+1. **`info[cross-shell-reasons]`** -- a new line in `verify-ipc-parity.py` that prints how many of
+   the cross-shell names already carry a dated reason in `scoped_orphans`, and names the residue.
+   It is the link this file had to be written to discover. It now reads **5 of 5 covered**.
+2. **`get_over_quota_report`** gained the reason it was the only one missing -- the ambient arm of
+   an ADR #7 pair whose scoped twin `OverQuotaCard` uses. **CORRECTION (round 178): the reason went into the
+   WRONG SECTION.** It was appended to `scoped_orphans`, which holds only `_scoped` commands and is
+   policed by self-test case 10 ("every committed scoped_orphans entry is visible to the
+   collector", asserting the suffix). The parity self-test went red and the section read
+   "21 entries allowlisted, 20 orphans measured". A name no UI invokes is not a shell GAP, so
+   it belongs in no shell section either; that is why the round-176 change was reverted and the
+   reason now lives in `_desktop_comment`, where `info[cross-shell-reasons]` points for a
+   non-`_scoped` name. The lesson is the one this file keeps teaching in new places: the
+   section that ACCEPTS a reason and the section whose reason you just derived are not always
+   the same one.
+3. **The allowlist stub for `pending_sync_count_scoped`** cited `crates/kasirmu-bridge/src/pos.rs`,
+   which contains no such function; it lives at `sync.rs:400`. Corrected.
+
+The gate prints the census; the allowlist holds the reasoning; this file connects them. A reader
+who wants the full reasons should open `scripts/ipc-parity-allowlist.json` and search `scoped_orphans`.
+
+## Filed by
+
+The round-176 lane. No production file edited; the two shells and the bridge are untouched.

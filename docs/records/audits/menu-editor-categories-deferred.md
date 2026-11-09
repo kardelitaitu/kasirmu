@@ -64,3 +64,5 @@ what the preview and the E2E specs exercise.
 | An empty restaurant category exists | `cat-snack`, seeded, 0 items |
 | Mock workspace identity available | `workspaces.ts:73`, `mockSeedData.ts:210` |
 | Tree | no source changed this round |
+
+> last audited 14-10-26 by docs-auditor

@@ -55,3 +55,5 @@ value lands in the field either way):
 | `RestaurantMenu.test.tsx` | 60 passed alongside |
 | `tsc` / `eslint` | 0 / 0 |
 | Full UI suite | 12,690 passed |
+
+> last audited 14-10-26 by docs-auditor

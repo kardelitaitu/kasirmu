@@ -9,7 +9,7 @@
  * WITH the JSX that consumes them; the card re-exports both so every
  * pre-existing importer keeps resolving from its original path.
  */
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { useLocalization } from '@fluent/react';
 import { requiredLocalized } from '@/components';
 import type { KdsLineItem } from '@/api/kds';
@@ -56,6 +56,16 @@ export const KdsTicketLineItem = memo(function KdsTicketLineItem({
   const { l10n } = useLocalization();
   const done = itemDone(item);
   const canAdvanceItem = !done;
+  // ONE wrapper per item, not one per tap. `createCooldownWrapper` closes over its own
+  // `lastFired`, so building it inside the onClick minted a fresh instance on every tap
+  // and the 200 ms guard evaluated `now - 0 >= 200` — always true. The double-tap
+  // protection this row is documented to have never once fired. `KdsTicketCard`'s own
+  // card-level advance has always memoised its wrapper; this row was extracted without
+  // that part.
+  const handleAdvance = useMemo(
+    () => createCooldownWrapper(() => onAdvanceItem?.(item), 200),
+    [item, onAdvanceItem],
+  );
   return (
     <div className="kds-item">
       <button
@@ -63,7 +73,7 @@ export const KdsTicketLineItem = memo(function KdsTicketLineItem({
         onClick={(e) => {
           if (canAdvanceItem && onAdvanceItem) {
             e.stopPropagation();
-            createCooldownWrapper(() => onAdvanceItem(item), 200)();
+            handleAdvance();
           }
         }}
         onKeyDown={canAdvanceItem ? (e) => {

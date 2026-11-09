@@ -10,7 +10,7 @@ export interface RestaurantFloatingCartBarProps {
   tableNumber?: string;
   /**
    * The order's type. A table number only identifies a DINE-IN order, and the
-   * Table field renders on restaurant POS unconditionally (CartPanel.tsx:864), so
+   * Table field renders on restaurant POS unconditionally (CartPanel.tsx:898), so
    * a takeaway with a stray number would otherwise advertise a table it does not
    * have on the bar the cashier looks at all service. Optional with a dine-in
    * default so retail and every existing render are unchanged.

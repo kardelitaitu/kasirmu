@@ -82,6 +82,7 @@ COPY crates/kasirmu-media/Cargo.toml crates/kasirmu-media/
 COPY crates/kasirmu-lan/Cargo.toml crates/kasirmu-lan/
 COPY crates/kasirmu-local-api/Cargo.toml crates/kasirmu-local-api/
 COPY crates/kasirmu-bridge/Cargo.toml crates/kasirmu-bridge/
+COPY crates/kasirmu-test-support/Cargo.toml crates/kasirmu-test-support/
 COPY crates/qris-core/Cargo.toml crates/qris-core/
 COPY foundation/Cargo.toml foundation/
 COPY platform/core/Cargo.toml platform/core/
@@ -114,6 +115,7 @@ RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-loggi
              crates/kasirmu-reporting/src crates/kasirmu-cli/src \
              crates/kasirmu-crypto/src crates/kasirmu-media/src crates/kasirmu-lan/src crates/kasirmu-local-api/src \
              crates/kasirmu-bridge/src \
+             crates/kasirmu-test-support/src \
              crates/qris-core/src \
              foundation/src \
              platform/core/src platform/instance-guard/src platform/kernel/src platform/startup/src \
@@ -141,6 +143,7 @@ RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-loggi
     && echo "// dummy" > crates/kasirmu-lan/src/lib.rs \
     && echo "// dummy" > crates/kasirmu-local-api/src/lib.rs \
     && echo "// dummy" > crates/kasirmu-bridge/src/lib.rs \
+    && echo "// dummy" > crates/kasirmu-test-support/src/lib.rs \
     && echo "// dummy" > crates/qris-core/src/lib.rs \
     && echo "// dummy" > foundation/src/lib.rs \
     && echo "// dummy" > platform/core/src/lib.rs \
@@ -183,11 +186,17 @@ COPY apps/ apps/
 RUN cargo build --package kasirmu-cloud --release
 
 # ── Stage 3: caddy binary (copied out of its official image) ─────────
-# DOCKER-02: pinned to an immutable digest (refreshed 2026-08-14).
+# DOCKER-02: pinned to an immutable digest. The comment here said "refreshed
+# 2026-08-14" and that was FALSE PROVENANCE: the digest it pins was created
+# 2026-06-22 (re-measured 2026-10-24 from the registry config), so no refresh
+# happened on 08-14. The pin is simply ~4 months stale. Refresh deliberately.
 FROM caddy:2-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648 AS caddy
 
 # ── Stage 4: Runtime (both functions + caddy + supervisor) ───────────
-# DOCKER-02: base images pinned to immutable digests (refreshed 2026-08-17).
+# DOCKER-02: base images pinned to immutable digests. This said "refreshed
+# 2026-08-17" and that was IMPOSSIBLE: the pinned digest was created 2026-08-24
+# (re-measured 2026-10-24). Dockerfile.server:185 pins the IDENTICAL digest under
+# a different date (2026-09-17), so at most one of the two can be true. Neither is.
 FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 AS runtime
 
 # DOCKER-14: libudev1 is deliberately NOT listed here, and its absence is

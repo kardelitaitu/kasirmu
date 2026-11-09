@@ -143,6 +143,38 @@ export function usePosState() {
   }, []);
 
   /**
+   * Adjust a line's quantity by a DELTA, resolved against the committed state.
+   *
+   * WHY THIS EXISTS RATHER THAN `updateQty(id, n + 1)` AT EVERY TAP SITE.
+   *
+   * `updateQty` takes an ABSOLUTE quantity, so a `+` button has to compute the next
+   * value from whatever `qty` it captured when the row rendered. Two taps inside one
+   * React batch both close over that same snapshot, so both write the same number and
+   * `setLines` — which overwrites rather than accumulates — ends at one increment for
+   * two presses. MEASURED on the retail till: batched taps asked for qty 2 twice.
+   *
+   * On a touch device a double-tap is one gesture, so that is the normal case rather than
+   * an edge, and the stock guard that reads the same snapshot is walked past with it.
+   *
+   * The delta is applied INSIDE the `setLines` updater, which React calls with the real
+   * committed state, so concurrent calls accumulate instead of clobbering.
+   *
+   * A NEGATIVE delta that lands the line at zero or below REMOVES it, which is what makes
+   * `changeQty(id, -1)` the right call for a decrease button: `updateQty(id, 0)` — the
+   * arithmetic a decrease on a qty-1 line produces — is silently REJECTED by `updateQty`,
+   * which returns early on a non-positive qty — so the button did nothing at all. The
+   * filter runs after the map, so a positive delta that cannot go non-positive is
+   * untouched.
+   */
+  const changeQty = useCallback((lineId: LineId, delta: number) => {
+    if (delta === 0) return;
+    setLines((prev) =>
+      prev.map((l) => (l.id === lineId ? { ...l, qty: l.qty + delta } : l))
+        .filter((l) => !(l.id === lineId && l.qty <= 0)),
+    );
+  }, []);
+
+  /**
    * Override the unit price of a line (manager price override).
    *
    * The new price must be in the cart's currency — a cross-currency override
@@ -389,6 +421,7 @@ export function usePosState() {
     addProduct,
     removeLine,
     updateQty,
+    changeQty,
     updateLinePrice,
     updateLineModifiers,
     updateLineNote,

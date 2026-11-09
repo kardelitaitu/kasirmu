@@ -13,6 +13,7 @@
 
 use super::*;
 use kasirmu_core::db::Store;
+use platform_core::StoreDatabaseManager;
 
 use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_reaches_a_paid_tier};
 
@@ -489,5 +490,128 @@ async fn a_failed_location_code_read_refuses_instead_of_returning_a_blank_code()
     assert!(
         matches!(err, BridgeError::Core { .. }),
         "expected the read failure to surface, got {err:?}"
+    );
+}
+
+// -- O-M21: a store database that cannot be created is not a success --
+
+/// A location whose store database could not be created must NOT come back as
+/// a created location.
+///
+/// `create_location_profile_scoped` called `ctx.db_manager.create_store_db`
+/// with a bare `let _ =` (`locations.rs:290`), so the `Result` — and with it
+/// every cause — was dropped on the floor with no log at all. The profile row
+/// was then written to the SESSION's store database and the command answered
+/// `Ok(DTO)`.
+///
+/// # MEASURED on this tree, before the fix, by running this very test
+///
+/// With the fixture below the call returned
+/// `Ok(LocationProfileDto { id: "loc-..-o-m21", .. })`, `list_locations_scoped`
+/// then listed that id alongside `default`, and `store_db_exists` answered
+/// `false`: a branch in the registry whose database was never
+/// written. The merchant could pick it and could not use it, and the failure
+/// only surfaced one command later, in `create_session` — whose
+/// `open_store` error (`auth.rs:673-676`) names the OPEN and says nothing
+/// about the create that dropped the real cause.
+///
+/// # Why this fixture and not an unwritable data dir
+///
+/// A blocked data directory is refused EARLIER, by `resolve_scope`'s
+/// `open_store` (`ctx.rs:389-392`), so it never reaches the swallowed call —
+/// a test built on it goes green against the bug. What reaches line 290 is a
+/// store id the manager REFUSES while the session's own store db is open and
+/// cached: `open_store` fast-paths on the cache (`manager.rs:82-90`) and
+/// never checks the id, then `create_store_db(<new id>)` fails on
+/// `checked_store_db_path` (PC-1). The ids here carry `..`, which no id can
+/// name and which `is_safe_store_id` rejects by construction — the state is
+/// permanent and profile-independent, so the refusal is the same in debug and
+/// release and no subscription row is involved.
+///
+/// The asserted pair is the contract: an `Err`, AND nothing that reads as a
+/// created location (the DTO is not returned, no row was added, and the
+/// product's own `store_db_exists` says the database is not there).
+#[tokio::test]
+async fn create_location_profile_refuses_when_the_store_db_cannot_be_created() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let tb = TestBridge::new().with_conn(conn);
+
+    // A store id that can never name a database file. It carries `..`, which
+    // `StoreDatabaseManager::is_safe_store_id` refuses because the id is
+    // interpolated straight into `store-<id>.sqlite`.
+    let hostile_id = "loc-..-o-m21";
+    assert!(
+        !StoreDatabaseManager::is_safe_store_id(hostile_id),
+        "the premise: this id must be one the manager refuses"
+    );
+    // The premise, checked against the very manager the command will use: the
+    // creation failure is real, so a green test below cannot be a fixture that
+    // quietly worked.
+    let refusal = tb.db_manager().create_store_db(hostile_id);
+    assert!(
+        refusal.is_err(),
+        "the premise: create_store_db must refuse this id, got {refusal:?}"
+    );
+    tb.sessions().write().unwrap().insert(
+        "owner-tok".into(),
+        SessionContext::new(
+            "user-owner".into(),
+            "role-owner".into(),
+            "terminal-1".into(),
+            "default".into(),
+            "instance-1".into(),
+            "pos".into(),
+            None,
+            0,
+        ),
+    );
+
+    // The list BEFORE the create, so the row count below is a comparison
+    // rather than an assumption about the seed.
+    let before = list_locations_scoped(&tb.ctx(), "owner-tok")
+        .await
+        .expect("the owner may list locations");
+
+    let result = create_location_profile_scoped(
+        &tb.ctx(),
+        "owner-tok",
+        &CreateLocationArgs {
+            id: hostile_id.into(),
+            name: "Refused Branch".into(),
+            address: None,
+            tax_id: None,
+            currency: None,
+            timezone: None,
+        },
+    )
+    .await;
+
+    let err = result.expect_err(
+        "a store database that could not be created must not be reported as a created location",
+    );
+    assert!(
+        matches!(err, BridgeError::Internal(_)),
+        "the refusal must be an Internal error carrying the creation failure, got {err:?}"
+    );
+    assert!(
+        !tb.ctx().db_manager.store_db_exists(hostile_id),
+        "no store database was written, so none may be reported as existing: {err:?}"
+    );
+
+    // The location must not exist afterwards either: before the fix this exact
+    // fixture returned `Ok` AND `list_locations_scoped` returned the new id,
+    // so this assertion is the one that failed.
+    let after = list_locations_scoped(&tb.ctx(), "owner-tok")
+        .await
+        .expect("the owner may still list locations");
+    assert_eq!(
+        after.len(),
+        before.len(),
+        "a refused creation must not add a location row: before {before:?}, after {after:?}"
+    );
+    assert!(
+        !after.iter().any(|l| l.id == hostile_id),
+        "the refused id must not appear in the listing: {after:?}"
     );
 }

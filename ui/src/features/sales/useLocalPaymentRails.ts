@@ -86,7 +86,7 @@ export function coreRailWithheld(
  * bag or the key says nothing.
  *
  * `parameters` is a free-form JSON string the settings screen writes through
- * `updateRailParams` (`RestaurantPaymentsScreen.tsx:1006`, `:1057`), so every read has
+ * `updateRailParams` (`RestaurantPaymentsScreen.tsx:605`, called at `:1102`/`:1124`), so every read has
  * to tolerate: no rail row, no `parameters`, unparseable JSON, and a missing key.
  * Each of those means "the operator never expressed a preference" and must return the
  * caller's `fallback` — not `false`. Defaulting a preference to `false` would silently
@@ -96,8 +96,8 @@ export function coreRailWithheld(
 /**
  * The cash quick-tender DENOMINATIONS the operator picked, in MAJOR units.
  *
- * `RestaurantPaymentsScreen.tsx:1114` writes these as
- * `updateRailParams('cash', { presets: next })` from a chip row whose values are STRINGS —
+ * `RestaurantPaymentsScreen` writes these as `updateRailParams('cash', { presets: next })`
+ * (that call, anchored by expression) from a chip row whose values are STRINGS —
  * `'exact'`, `'1000'`, `'2000'`, … — and nothing read them back for the rail's whole life
  * (rounds 120-121). This is the read side.
  *
@@ -174,7 +174,7 @@ export type TenderMethod = 'cash' | 'card' | 'qris' | 'credit';
  *    including its fail-open rule for a null or empty list.
  *  · `credit` carries NO gate HERE, and that is deliberate: the rail is
  *    applied one level up, in `PaymentModal`, which filters this list with
- *    `creditOffered` before rendering the tabs (PaymentModal.tsx:2251). The
+ *    `creditOffered` before rendering the tabs (PaymentModal.tsx:2439). The
  *    owner question that used to block it — is credit a tender tab or a
  *    facility orthogonal to tender (todo-payment.md :887) — was answered by
  *    `abb1c324b`, which wired `coreRailWithheld(paymentRails, 'credit')` into

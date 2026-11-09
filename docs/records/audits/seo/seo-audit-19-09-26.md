@@ -51,14 +51,14 @@ props and the homepage no longer loads React at all, which took `/en/` from 68.2
 
 | # | Finding | Location | Impact | Verification |
 |---|---|---|---|---|
-| **F1** | `Offer.price` emitted display strings (`"$0"`, `"$4.99"`, `"Custom"` / `"Kustom"`) — invalid per schema.org, so the `Product` rich result is discarded | `src/pages/[locale]/pricing.astro`, new `src/lib/schema-price.ts` | **High** | offers now `0 / 4.99 / 9.99 / 39.99` (USD) and `0 / 49000 / 99000 / 399000` (IDR); the quote-only Enterprise tier is omitted rather than emitted as `"Custom"` |
-| **F2** | `Organization.sameAs` was `["https://kasir.mu"]` — a self-reference, the one value that can never be a valid `sameAs` target | `src/layouts/Base.astro` | **Medium** | now `["https://discord.gg/NdWDgEzNxx"]`, the only profile this project actually owns (see **D4**) |
-| **F3** | Pricing page jumped **h1 → h3** (plan names were `h3` with no `h2` above them) | `src/components/PricingGrid.tsx` | **Medium** | heading sequence `h1 h2 h2 h2 h2 h2`; heading-level skips site-wide **2 → 0** |
+| **F1** | `Offer.price` emitted display strings (`"$0"`, `"$4.99"`, `"Custom"` / `"Kustom"`) — invalid per schema.org, so the `Product` rich result is discarded | `src/pages/[locale]/pricing.astro`, new `website/src/lib/schema-price.ts` | **High** | offers now `0 / 4.99 / 9.99 / 39.99` (USD) and `0 / 49000 / 99000 / 399000` (IDR); the quote-only Enterprise tier is omitted rather than emitted as `"Custom"` |
+| **F2** | `Organization.sameAs` was `["https://kasir.mu"]` — a self-reference, the one value that can never be a valid `sameAs` target | `website/src/layouts/Base.astro` | **Medium** | now `["https://discord.gg/NdWDgEzNxx"]`, the only profile this project actually owns (see **D4**) |
+| **F3** | Pricing page jumped **h1 → h3** (plan names were `h3` with no `h2` above them) | `website/src/components/PricingGrid.tsx` | **Medium** | heading sequence `h1 h2 h2 h2 h2 h2`; heading-level skips site-wide **2 → 0** |
 | **F4** | The Features page's comparison section had **no heading at all**; `features.comparisonTitle` existed in both dicts and was rendered nowhere | `src/pages/[locale]/features.astro` | **Medium** | section now leads with `<h2>kasir.mu vs Conventional Cloud POS</h2>` — the exact query the section answers |
-| **F5** | The comparison subtitle (98 chars) carried a no-wrap utility, so on a phone the line overflowed its own box — **722 px of text in a 288 px box at 320 px wide** | `src/pages/[locale]/features.astro` | **Medium** | utility removed; text wraps. **Corrected 2026-09-19 after rendering it in Chromium (§7):** there was never a *scrollbar* — `body` carries `overflow-x: clip` (`src/styles/global.css`, pre-existing, there for the parked carousel slides), so the sentence was **clipped instead**: unreadable, but not scrollable. The fix stands; the original "horizontal scrollbar at every phone width" claim does not |
+| **F5** | The comparison subtitle (98 chars) carried a no-wrap utility, so on a phone the line overflowed its own box — **722 px of text in a 288 px box at 320 px wide** | `src/pages/[locale]/features.astro` | **Medium** | utility removed; text wraps. **Corrected 2026-09-19 after rendering it in Chromium (§7):** there was never a *scrollbar* — `body` carries `overflow-x: clip` (`website/src/styles/global.css`, pre-existing, there for the parked carousel slides), so the sentence was **clipped instead**: unreadable, but not scrollable. The fix stands; the original "horizontal scrollbar at every phone width" claim does not |
 | **F6** | `/en/signup/` + `/id/signup/` were **indexable and in the sitemap** (no `robots` meta; measured live) while `/login/` and `/account/` were excluded and `noindex`ed | `src/pages/[locale]/signup.astro`, `scripts/sitemap-options.mjs` | **Medium** | `<meta name="robots" content="noindex">` present; sitemap **74 → 72** URLs, no `/signup/`; the guard test now asserts the whole gated set |
-| **F7** | `og:image:alt` / `twitter:image:alt` missing on **every** page | `src/layouts/Base.astro`, `src/layouts/DocsLayout.astro` | **Low** | both tags on all pages |
-| **F8** | The `llms.txt` discovery link (`rel="describedby"`) existed on marketing pages but was **missing from the entire `/docs/` subtree** — `DocsLayout.astro` is a separate `<head>` | `src/layouts/DocsLayout.astro` | **Low** | present on docs pages |
+| **F7** | `og:image:alt` / `twitter:image:alt` missing on **every** page | `website/src/layouts/Base.astro`, `website/src/layouts/DocsLayout.astro` | **Low** | both tags on all pages |
+| **F8** | The `llms.txt` discovery link (`rel="describedby"`) existed on marketing pages but was **missing from the entire `/docs/` subtree** — `DocsLayout.astro` is a separate `<head>` | `website/src/layouts/DocsLayout.astro` | **Low** | present on docs pages |
 | **F9** | `Product` had no `url` or `image` (both required for eligible product rich results) | `src/pages/[locale]/pricing.astro` | **Low** | `url` = the page's own URL, `image` = `/og-image.png` |
 
 ### 1.1 Why F1 was worth the most
@@ -71,7 +71,7 @@ rich-result parser either invalidates the individual offer or the whole `Product
 browser and in a naive "does the JSON parse" check — the failure is only visible to a validator.
 
 The fix keeps **one source of truth**: the display string stays what the card renders, and the
-conversion lives in `src/lib/schema-price.ts` with `src/lib/__tests__/schema-price.test.ts` reading
+conversion lives in `website/src/lib/schema-price.ts` with `website/src/lib/__tests__/schema-price.test.ts` reading
 the *real* `content/pricing/{en,id}.ts` — so a future price format that the converter cannot read
 fails a test instead of silently shipping an invalid offer. The currency selects the separator
 convention (IDR uses `.` as the thousands separator, so `Rp 1.000.000` → `1000000`; USD keeps `.` as
@@ -108,7 +108,7 @@ These are load-bearing; several are the kind of thing a refactor quietly drops.
 - **Impact:** was **High** — these are the LCP- and conversion-critical pages.
 - **Location:** `website/src/i18n/index.ts` statically imports `en.json` and `id.json`, so any hydrated island that calls `t()` pulls both dictionaries — the consumers were `website/src/components/PricingGrid.tsx` and its siblings; the renderer cost was `website/src/components/HeroCarousel.tsx`, loaded by `website/src/pages/[locale]/index.astro`. <!-- dead-ref: ok: names the pre-rework renderer, since replaced by HeroCarousel.astro -->
 - **Why it hurts:** 55–90 KB of gzip JS on top of a ~30 KB gzip document is the dominant INP/TBT cost on these pages, and on a mid-range Android phone it is most of the “time to interactive” budget.
-- **Fix (applied 2026-09-19):** every island now receives the strings it reads as a `labels` prop built server-side by `labelMap`, and resolves them through the dictionary-free `website/src/i18n/labels.ts`; each island root exports its own key list (`PRICING_LABELS`, `AUTH_FORM_LABELS`, `ACCOUNT_LABELS`, …) so the keys have one owner, and `src/__tests__/island-label-coverage.test.ts` fails if a call site and its list drift apart or a dictionary creeps back into the client graph. The carousel became static markup (`HeroCarousel.astro`) plus `src/lib/hero-carousel.ts`, a 1.4 KB vanilla module with its own jsdom tests, so the homepage loads **no React at all**.
+- **Fix (applied 2026-09-19):** every island now receives the strings it reads as a `labels` prop built server-side by `labelMap`, and resolves them through the dictionary-free `website/src/i18n/labels.ts`; each island root exports its own key list (`PRICING_LABELS`, `AUTH_FORM_LABELS`, `ACCOUNT_LABELS`, …) so the keys have one owner, and `website/src/__tests__/island-label-coverage.test.ts` fails if a call site and its list drift apart or a dictionary creeps back into the client graph. The carousel became static markup (`HeroCarousel.astro`) plus `website/src/lib/hero-carousel.ts`, a 1.4 KB vanilla module with its own jsdom tests, so the homepage loads **no React at all**.
 - **Measured result:** `/en/` and `/id/` **68.2 → 6.3 KB gzip**; every other island page **−18.7 to −19.0 KB gzip** (pricing 88.8 → 69.9, support 86.3 → 67.4, docs 88.8 → 69.8, login 90.3 → 71.6, signup 90.4 → 71.6, account 96.0 → 77.3); island-free pages unchanged at 6.3 KB. The strings now ride in the document instead — **+0.24 to +1.41 KB gzip** of island props per page.
 
 **Evidence** — total blocking JS per page, gzipped, measured from the actual module graph (`component-url` +
@@ -273,7 +273,7 @@ None of these can be resolved by a low-risk, high-impact code edit; each needs a
 | **D1** | **Title strategy** — keep `kasir.mu — <keyword>` or move to `<keyword> \| kasir.mu`? | Sets whether O1 is fixed by trimming the tail or by moving the brand to the end | 81 titles |
 | **D2** | **Description copy pass** — 63 indexable pages carry a description under 120 chars (36 docs + 27 marketing) | Reclaims the rest of the most valuable free real estate in the SERP | `src/i18n/*.json` `pageDesc.*`, docs front matter |
 | **D3** | **Which support address is canonical** — `support@kasir.mu` or the personal Gmail currently in the Enterprise CTA? | Entity consistency + brand trust (**T8**) | `src/pages/[locale]/pricing.astro` |
-| **D4** | **Real social profile URLs** — the footer's X, Instagram, Facebook and Telegram icons point at *the platforms' own homepages* (`https://x.com`, `https://www.instagram.com`, …), not at kasir.mu accounts. Only the Discord invite is real | Today they are dead ends for users, and they are the reason `sameAs` can only list Discord (**F2**) | `src/components/Footer.astro` |
+| **D4** | **Real social profile URLs** — the footer's X, Instagram, Facebook and Telegram icons point at *the platforms' own homepages* (`https://x.com`, `https://www.instagram.com`, …), not at kasir.mu accounts. Only the Discord invite is real | Today they are dead ends for users, and they are the reason `sameAs` can only list Discord (**F2**) | `website/src/components/Footer.astro` |
 | **D5** | **Diagram accessibility** — add `accTitle:` / `accDescription:` to the mermaid blocks (or accept `alt=""`) | Recovers diagram text for crawlers and screen readers (**T3**) | docs content, `astro.config.mjs` |
 | **D6** | **Hosting behaviour** — a `301` instead of the platform's `307` for trailing slashes; a `www` → apex `301` if a `www` record is ever added | Redirect strength, duplicate-host safety (**T4, T5**) | Cloudflare |
 | **D7** | **`/docs/` hub depth** — 24 words of body copy on a page that is in the sitemap and is the doorway to 17 docs pages | Thin but *indexable* hub; worth 150–250 words of real orientation copy | `src/pages/[locale]/docs/index.astro` |
@@ -305,7 +305,7 @@ content on the site for "vs" queries.
 `x-default` pointing at the `id` variant; the five vertical pages share one layout but carry distinct
 per-vertical copy; no two pages share a title or a description. The one genuinely duplicated block is
 the "Compatible with Standard POS Hardware" panel plus the closing cross-link block, identical on all
-five vertical pages (`src/components/VerticalLanding.astro`) — boilerplate, not a defect, and worth
+five vertical pages (`website/src/components/VerticalLanding.astro`) — boilerplate, not a defect, and worth
 rewording per vertical only if **D8** is picked up anyway.
 
 **Depth is the gap.** The thinnest indexable pages are `/en/docs/` (24 words, **D7**) and the
@@ -328,7 +328,7 @@ prototypes).
 | Production build | `cd website && npm run build` | **exit 0**, 81 HTML files † |
 | Internal links | `cd website && npm run check:links` | `NO BROKEN INTERNAL LINKS` (86 pages checked) |
 | Asset budget / orphan rule | `python3 scripts/verify-website-assets.py` | exit 0, orphan rule active |
-| New unit tests | `npx vitest run src/lib/__tests__/schema-price.test.ts src/__tests__/seo-head-invariants.test.ts src/__tests__/sitemap-options.test.ts src/lib/__tests__/hero-carousel.test.ts src/__tests__/hero-carousel-contract.test.ts src/__tests__/island-label-coverage.test.ts` | 55 passed † |
+| New unit tests | `npx vitest run website/src/lib/__tests__/schema-price.test.ts website/src/__tests__/seo-head-invariants.test.ts website/src/__tests__/sitemap-options.test.ts website/src/lib/__tests__/hero-carousel.test.ts website/src/__tests__/hero-carousel-contract.test.ts website/src/__tests__/island-label-coverage.test.ts` | 55 passed † |
 | Whole suite | `npx vitest run` | **839 passed** (48 files) † |
 | 404 `lang` fix introduced no other page change † | diff of all 81 built documents before/after | 40 `en` + 40 `id` documents and the root stub **byte-identical**; only `404.html` changed |
 | Island refactor changed no visible copy † | visible text of all 86 built pages, before vs after (`scripts` under §7 “how the two refactors were measured”) | **identical on every page**, 0 characters differ |
@@ -356,7 +356,7 @@ because the audit's original F5 claim was made from source alone:
 
 | Claim | What Chromium observed |
 |---|---|
-| **F5 — phones had a horizontal scrollbar** (`/en/features/`, 320 / 360 / 390 px) | `documentElement.scrollWidth == clientWidth` at all three widths: **overflow 0 px, today and before the fix**. The utility really did make the text unreadable — with `white-space: nowrap` restored, the subtitle's own box reports **722 px of text in a 288 px box** (320 px viewport) — but an ancestor clips it: `body { overflow-x: hidden; overflow-x: clip }` in `src/styles/global.css` (pre-existing, documented there for the carousel's parked slides). So the copy was **clipped, never scrollable**. F5's fix stands; its “scrollbar” framing does not |
+| **F5 — phones had a horizontal scrollbar** (`/en/features/`, 320 / 360 / 390 px) | `documentElement.scrollWidth == clientWidth` at all three widths: **overflow 0 px, today and before the fix**. The utility really did make the text unreadable — with `white-space: nowrap` restored, the subtitle's own box reports **722 px of text in a 288 px box** (320 px viewport) — but an ancestor clips it: `body { overflow-x: hidden; overflow-x: clip }` in `website/src/styles/global.css` (pre-existing, documented there for the carousel's parked slides). So the copy was **clipped, never scrollable**. F5's fix stands; its “scrollbar” framing does not |
 | **The carousel still behaves** (`/en/`) | 5 slides, 5 pills, slide 1 current with `translateX(-0%)` and a 700 ms transition; clicking pill 4 → `aria-current` on pill 4, `translateX(-300%)`, 400 ms transition, `aria-hidden` moved to slide 4; hovering the pill bar for 11 s → still slide 1 (paused); leaving it and waiting 11 s → slide 2 (`retail`), i.e. auto-advance resumed |
 
 ### Live verification after the deploy
@@ -413,16 +413,16 @@ Build-output invariants after the fixes (measured over the 81 built pages):
 | `hreflang` targets not present in the build | 0 | **0** |
 
 **New guards** (so the fixed findings cannot regress silently):
-`src/lib/__tests__/schema-price.test.ts` (conversion, read against the real pricing content),
-`src/__tests__/seo-head-invariants.test.ts` (image alts, `sameAs`, docs discovery, heading levels,
+`website/src/lib/__tests__/schema-price.test.ts` (conversion, read against the real pricing content),
+`website/src/__tests__/seo-head-invariants.test.ts` (image alts, `sameAs`, docs discovery, heading levels,
 mobile wrapping, numeric offers, signup `noindex`),
-`src/__tests__/sitemap-options.test.ts` extended to the full gated-page set, and two for the island
-payload: `src/__tests__/island-label-coverage.test.ts` (every key an island reads is declared in its
+`website/src/__tests__/sitemap-options.test.ts` extended to the full gated-page set, and two for the island
+payload: `website/src/__tests__/island-label-coverage.test.ts` (every key an island reads is declared in its
 own list, every declared key resolves in both locales, and no production `.ts`/`.tsx` under
-`components/` or `lib/` imports a dictionary) and `src/__tests__/hero-carousel-contract.test.ts`
+`components/` or `lib/` imports a dictionary) and `website/src/__tests__/hero-carousel-contract.test.ts`
 (the carousel is not a hydrated island, the three React mockups stay deleted, and the Astro markup
 keeps the `data-` hooks the behaviour module queries). The carousel's own behaviour moved with it:
-`src/lib/__tests__/hero-carousel.test.ts` (jsdom) covers advance, wrap, jump, dwell reset, hover-pause
+`website/src/lib/__tests__/hero-carousel.test.ts` (jsdom) covers advance, wrap, jump, dwell reset, hover-pause
 and dispose.
 
 ### To re-measure
@@ -447,14 +447,14 @@ settled and how the carousel was exercised end to end.
 The audit's own DESIGN findings were structural: the `<head>` existed in three hand-synced copies and
 "which pages are de-indexed" in four. Both consolidations are now in place, **proven output-identical**:
 
-- **`src/components/SiteHead.astro`** owns the shared head (canonical, hreflang + x-default, OG/Twitter
+- **`website/src/components/SiteHead.astro`** owns the shared head (canonical, hreflang + x-default, OG/Twitter
   cards, theme script, sitemap/describedby/icon links, runtime-config). `Base.astro` and
   `DocsLayout.astro` now render it; each keeps only its own JSON-LD in a slot. Two latent bugs fixed by
   the move: the docs theme script read only the legacy `oz_theme` key (Base had migrated to
   `kasirmu_theme`), and docs pages now also get the Cloudflare-insights `preconnect` (Base had it, docs
   didn't). Docs pages also stop requesting `/__oz/runtime-config.js` — the one island they hydrate
   (the header search trigger) never imported it, so the request was pure overhead there.
-- **`src/lib/site.ts`** owns `SITE` + `NON_PUBLIC_PAGES`; the sitemap filter, the four gated pages'
+- **`website/src/lib/site.ts`** owns `SITE` + `NON_PUBLIC_PAGES`; the sitemap filter, the four gated pages'
   `noindex` (via `isNonPublic`), and `llms.txt`'s page list (`llms-pages.ts` re-exports it) all derive
   from that one array. This also fixed **real drift**: `llms.txt` advertised `/id/signup/` while the
   sitemap excluded it and the page is `noindex` — the exact self-contradiction class this audit named.

@@ -22,7 +22,7 @@
  *
  * Fluent-only copy: `settings-fiscalnum-*` keys in settings.ftl + settings.id.ftl.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { Card } from '@/components/Card';
 import { SettingsScopeTag } from '@/features/settings/SettingsScopeTag';
@@ -81,6 +81,8 @@ export function StatutoryNumberingCard() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  /** Synchronous mirror of `saving` — see the re-entry guard in `handleSave`. */
+  const savingRef = useRef(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -151,6 +153,12 @@ export function StatutoryNumberingCard() {
 
   const handleSave = useCallback(async () => {
     if (!sessionToken || !entityId) return;
+    // Re-entry guard: the upsert is a same-key ON CONFLICT write, so a replay cannot
+    // corrupt the series -- but two in-flight saves share one \`saveError\` / \`saved\` pair,
+    // and the counter re-read after each write can land out of order, so the operator is
+    // shown the value from the tap that lost.
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     setSaveError(null);
     setSaved(false);
@@ -171,6 +179,7 @@ export function StatutoryNumberingCard() {
     } catch (err) {
       setSaveError(l10nErrorMessage(err, l10n, 'settings-fiscalnum-error-save'));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }, [sessionToken, entityId, documentKind, draft, l10n]);

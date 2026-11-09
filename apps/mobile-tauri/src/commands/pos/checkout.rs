@@ -183,6 +183,7 @@ pub(super) fn replay_receipt(sale: &kasirmu_core::Sale) -> CompleteSaleResult {
         line_count: sale.lines.len(),
         receipt_number: Some(sale.id.clone()),
         statutory_number: None,
+        stock_warnings: Vec::new(),
     }
 }
 
@@ -606,6 +607,7 @@ pub(super) fn run_complete_sale_scoped_store(
         line_count,
         receipt_number: Some(deduct.receipt_number),
         statutory_number,
+        stock_warnings: deduct.stock_warnings,
     };
     tracing::info!(
         sale_id = %result.sale_id,
@@ -658,13 +660,27 @@ pub async fn complete_sale_scoped(
         .await?;
 
     // §B read-only lock: a lapsed grace window rejects new sales.
-    {
+    //
+    // Only the LOAD is under the lock — it needs the connection. The two
+    // checks below are pure CPU: `verify_signature` parses no key (the embedded
+    // key is cached in a `OnceLock`) and takes no lock, and
+    // `enforce_pos_writable` reads only fields already in memory. Running them
+    // outside the guard releases the process-wide DB mutex ~197 us (release
+    // build) sooner on the hottest path. They still verify the EXACT row read
+    // under the lock — the value is moved out, not re-read — and keep their
+    // original order: signature first, writability second.
+    //
+    // Behavioural difference, stated plainly: a revocation (or a grace-window
+    // expiry) landing in the microseconds between the read and the check no
+    // longer pre-empts THIS checkout. The next command sees it. Zero change to
+    // what is accepted from a given row.
+    let sub = {
         let db = state.db.lock().await;
-        let sub = kasirmu_core::TenantSubscription::load(&db, "default")?
-            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
-        sub.verify_signature()?;
-        sub.enforce_pos_writable()?;
-    }
+        kasirmu_core::TenantSubscription::load(&db, "default")?
+            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?
+    };
+    sub.verify_signature()?;
+    sub.enforce_pos_writable()?;
 
     // Resolve primary deduction location from global identity DB where workspace_instances lives.
     let primary_location = {
@@ -697,6 +713,7 @@ pub async fn complete_sale_scoped(
         line_count,
         receipt_number,
         statutory_number,
+        stock_warnings,
     } = settlement.result;
 
     // A replay wrote nothing, so it must publish nothing: the domain event
@@ -709,6 +726,7 @@ pub async fn complete_sale_scoped(
             line_count,
             receipt_number,
             statutory_number,
+            stock_warnings,
         });
     };
 
@@ -766,6 +784,7 @@ pub async fn complete_sale_scoped(
         line_count,
         receipt_number,
         statutory_number,
+        stock_warnings,
     })
 }
 

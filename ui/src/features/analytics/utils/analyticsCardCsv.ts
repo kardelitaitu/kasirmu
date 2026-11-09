@@ -14,6 +14,7 @@ import type {
   DiscountsSummaryRow,
   LowStockAlert,
   PaymentMethodRow,
+  PiutangCollectionRow,
   StaffAnalyticsRow,
   TableOccupancy,
   TopProductRow,
@@ -105,6 +106,32 @@ export function exportPaymentsCsv(
   );
 }
 
+/** Download the receivable-collection lines as CSV. */
+export function exportPiutangCollectionsCsv(
+  rows: PiutangCollectionRow[],
+  from: string,
+  to: string,
+  fmt: (minor: number, code: string) => string,
+  getString: (id: string) => string,
+) {
+  downloadCsv(
+    `piutang-collections-${from}-to-${to}.csv`,
+    [
+      { key: 'method', label: getString('analytics-export-col-method') },
+      { key: 'currency', label: getString('analytics-export-col-currency') },
+      { key: 'collected', label: getString('analytics-export-col-collected') },
+      { key: 'payments', label: getString('analytics-export-col-payments') },
+    ],
+    rows.map((r) => ({
+      method: PAYMENT_NAMES[r.payment_method] ? getString(PAYMENT_NAMES[r.payment_method]!) : r.payment_method,
+      // The CURRENCY column is not optional here: rows are per tender AND currency
+      // (REP-06), so a file without it invites summing minor units across currencies.
+      currency: r.currency,
+      collected: fmt(r.total_minor, r.currency),
+      payments: String(r.payment_count),
+    })),
+  );
+}
 /** Download the sales-by-category breakdown as CSV. */
 export function exportCategoryCsv(
   rows: CategoryBreakdownRow[],

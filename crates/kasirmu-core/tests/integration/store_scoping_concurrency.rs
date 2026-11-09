@@ -32,9 +32,17 @@ use rusqlite::Connection;
 /// Create a temp dir + file DB with the full migration set applied
 /// (schema + seeded baseline cloned from `fresh_db()`), FK enforcement ON.
 /// Returns `(dir, db_path)`; the caller removes `dir` on cleanup.
-fn setup_file_db() -> (std::path::PathBuf, std::path::PathBuf) {
-    let dir = std::env::temp_dir().join(format!("oz_scoping_conc_{}", uuid::Uuid::now_v7()));
-    std::fs::create_dir_all(&dir).unwrap();
+/// Returns (dir, db_path) plus the guard that owns dir.
+///
+/// The guard is returned because the caller uses the directory across several
+/// blocks; binding it here would delete the database on return.
+fn setup_file_db() -> (
+    std::path::PathBuf,
+    std::path::PathBuf,
+    kasirmu_test_support::ScratchDir,
+) {
+    let scratch = kasirmu_test_support::ScratchDir::new("store-scoping-concurrency");
+    let dir = scratch.path().to_path_buf();
     let db_path = dir.join("test.db");
 
     // Clone the schema from a fresh_db() snapshot into the file DB.
@@ -49,7 +57,7 @@ fn setup_file_db() -> (std::path::PathBuf, std::path::PathBuf) {
         }
         file_conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
     }
-    (dir, db_path)
+    (dir, db_path, scratch)
 }
 
 fn make_profile(id: &str, name: &str) -> LocationProfile {
@@ -112,7 +120,7 @@ fn fk_violations(conn: &Connection) -> i64 {
 /// other's — with a clean `foreign_key_check`.
 #[test]
 fn cross_store_parallel_writers_never_leak_across_scopes() {
-    let (dir, db_path) = setup_file_db();
+    let (dir, db_path, _scratch) = setup_file_db();
     seed_locations(&db_path);
 
     let pa = db_path.clone();
@@ -194,7 +202,7 @@ fn cross_store_parallel_writers_never_leak_across_scopes() {
 /// scoped to store-a, and `foreign_key_check` stays clean.
 #[test]
 fn same_store_racing_writers_serialize_exactly_one_wins() {
-    let (dir, db_path) = setup_file_db();
+    let (dir, db_path, _scratch) = setup_file_db();
     seed_locations(&db_path);
 
     // Seed one store-a-owned product row.

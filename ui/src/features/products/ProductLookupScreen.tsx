@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { requiredLocalized } from '@/components/requiredLocalized';
 import { Grid, type CellComponentProps } from 'react-window';
 import { useLocalization } from '@fluent/react';
 import { useToast } from '@/components/Toast';
@@ -211,7 +212,8 @@ export default function ProductLookupScreen({ onAddProduct, onBack, title }: Pro
       // If bundle lookup fails, silently ignore.
     }
     setBarcodeInput('');
-    // sessionToken is read at :176 (bundle) and :182 (product). Because the bundle path's catch
+    // sessionToken is read by `lookupBundleBySku` (bundle path) and
+    // `lookupProductBySkuScoped` (product path). Because the bundle path's catch
     // above ignores failures, a stale token after a hot-swap makes bundled products scan as
     // ordinary single products with no indication anything went wrong.
   }, [barcodeInput, handleAddProduct, products, addToast, l10n, onAddProduct, sessionToken]);
@@ -250,14 +252,14 @@ export default function ProductLookupScreen({ onAddProduct, onBack, title }: Pro
               type="button"
               className="product-lookup-back-btn"
               onClick={onBack}
-              aria-label={l10n.getString('back') || 'Back'}
+              aria-label={requiredLocalized(l10n, 'back')}
               data-testid="product-lookup-back-btn"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
                 <line x1="19" y1="12" x2="5" y2="12" />
                 <polyline points="12 19 5 12 12 5" />
               </svg>
-              <span className="product-lookup-back-text">{l10n.getString('back') || 'Back'}</span>
+              <span className="product-lookup-back-text">{requiredLocalized(l10n, 'back')}</span>
             </button>
             <h1 className="product-lookup-title">
               {title ? (

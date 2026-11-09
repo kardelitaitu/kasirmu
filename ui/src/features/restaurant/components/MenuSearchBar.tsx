@@ -22,6 +22,8 @@
 
 import { useEffect, useRef } from 'react';
 import { useLocalization } from '@fluent/react';
+import { isAnyAriaModalOpen } from '@/utils/modal-guard';
+import { restaurantShortcutActionFor } from '../restaurantShortcuts';
 
 export interface MenuSearchBarProps {
   value: string;
@@ -39,7 +41,7 @@ export function MenuSearchBar({ value, onChange, menuOpen, contextMenuOpenRef, p
   // owns keyboard interaction.
   useEffect(() => {
     const handler = () => {
-      if (menuOpen || contextMenuOpenRef.current || popoverRef.current?.contains(document.activeElement)) return;
+      if (menuOpen || contextMenuOpenRef.current || isAnyAriaModalOpen() || popoverRef.current?.contains(document.activeElement)) return;
       searchInputRef.current?.focus();
     };
     window.addEventListener('app-search', handler);
@@ -50,12 +52,13 @@ export function MenuSearchBar({ value, onChange, menuOpen, contextMenuOpenRef, p
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (menuOpen || contextMenuOpenRef.current) return;
+        if (menuOpen || contextMenuOpenRef.current || isAnyAriaModalOpen()) return;
         onChange('');
         searchInputRef.current?.blur();
         return;
       }
-      if (menuOpen || contextMenuOpenRef.current) return;
+      if (menuOpen || contextMenuOpenRef.current || isAnyAriaModalOpen()) return;
+      if (restaurantShortcutActionFor(e)) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       if (e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1) return;

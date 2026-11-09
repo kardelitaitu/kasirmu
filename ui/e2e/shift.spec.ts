@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
+import { loginAs, openToolCard } from './helpers';
 
 /**
  * E2E: Open/Close Shift — Hard Assertions (E2E-23 through E2E-25)
@@ -35,15 +35,29 @@ import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
 test.describe('Shift Management', () => {
   test.beforeEach(async ({ page }) => {
     await loginAs(page, 'admin', '9999');
-    await selectWorkspace(page, WORKSPACES.ADMIN);
+    // NO selectWorkspace HERE. The tool cards live on the workspace PICKER, and
+    // selectWorkspace(ADMIN) clicks the Settings card — which consumes the picker and
+    // leaves the admin workspace active, so there is no `workspace-tool-card` left to
+    // click. Opening the tool straight from the picker is the user path and the only one
+    // that establishes the workspace `shifts` needs.
 
     // The dev-mock seeds an active shift (required by the POS Pay-button
     // specs), so the screen opens with the active-shift card instead of the
     // "No active shift" banner these tests expect. Close any seeded shift
     // first so every test starts from the deterministic baseline. Mirrors
     // the close-shift block in e2e-shift-reconciliation.spec.ts.
-    await page.evaluate(() => { window.location.hash = '#/shifts'; });
-    // Wait for the shift management container to be fully rendered.
+
+    // OPEN SHIFTS THE WAY A USER DOES. This used to be a raw `window.location.hash =
+    // "#/shifts"` write, which changes the ROUTE but establishes no WORKSPACE — and
+    // `shifts` is NOT a fullscreen page, so `AppShell` gates it on an active workspace
+    // (`:708`) and rendered the workspace PICKER instead. `.shift-mgmt` then never
+    // mounted and all five cases failed on a timeout that read like a stale selector.
+    //
+    // The tool card sets the workspace as part of its navigation, which is both the
+    // user path and the one that works. Measured 2026-10-18: `selectWorkspace(ADMIN)`
+    // lands on `#/settings` (fullscreen, so it renders) and the hash write to `#/shifts`
+    // then dropped straight back to the picker.
+    await openToolCard(page, /shifts/i);
     await expect(page.locator('.shift-mgmt')).toBeVisible({ timeout: 10_000 });
 
     // Ensure we end up in the "No active shift" state.

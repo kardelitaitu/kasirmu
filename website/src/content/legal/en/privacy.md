@@ -3,7 +3,7 @@ title: Privacy Policy
 version: "1.0"
 effective: "August 17, 2026"
 ---
-<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 finding) · §8 Security said passwords are stored as bcrypt hashes. Verified false: the cloud API stores Argon2id ($argon2id$v=19$…, crates/kasirmu-api/src/routes/users.rs:34) and the CLI requires an argon2 PHC string (crates/kasirmu-cli/src/commands/user.rs:91-96). bcrypt is used only for license-server API keys (apps/license-server/api_key.go), not for account passwords. Corrected to Argon2id. The local-storage claim (sign-in + theme) was verified true. · Repaired against branch 0.0.41. -->
+<!- - Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 finding) · §8 Security said passwords are stored as bcrypt hashes. That was HALF right, and the wrong half mattered: account passwords ARE bcrypt (salt + DefaultCost — apps/license-server/web_password.go:106, verified at :420/:530/:748), while the two Argon2id uses in the tree are local staff PINs (platform/core/src/auth.rs:23-37, hash_pin/verify_pin) and encrypted .kasirpkg backups. The 2026-10-08 repair corrected the BODY to that split, but this stamp originally recorded the repair backwards — it claimed the cloud API stores account passwords as Argon2id and cited crates/kasirmu-api/src/routes/users.rs:34, which is the pin_hash field of CreateUserRequest (a PIN, and its own comment at :32-34 says so explicitly), not an account-password mechanism. Corrected 2026-10-19: the body’s “bcrypt for your account password; Argon2id for local staff PINs” is the accurate statement and this stamp no longer contradicts it. The local-storage claim (sign-in + theme) was verified true. Export formats: only CSV writers exist; this page claims none. · Repaired against branch 0.0.41. -->
 
 This Privacy Policy explains what data kasir.mu (the "Company", "we", "us", or "our") collects through the kasir.mu website, desktop application, cloud services, and related services (together, the "Service"), why we collect it, how we use and protect it, and the rights you have over it.
 
@@ -78,7 +78,7 @@ We operate globally and some of the providers listed above (and our own infrastr
 ## 7. Retention
 
 - **Account data** is kept while your account is active and for a short period after you request deletion to allow for recovery and to comply with legal obligations.
-- **Cloud-synced business data** is deleted when you delete your account or cancel your plan, as described in the Terms of Service, except where we are legally required to keep records.
+- **Cloud-synced business data** is deleted on a verified request by operator action, as described in the Terms of Service, except where we are legally required to keep records. Deletion is performed by our operators rather than automatically.
 - **Server logs** are kept for a limited period (typically up to 90 days) and then deleted or anonymized.
 - **Backups** may retain data for a limited additional period for disaster recovery, after which they are purged.
 
@@ -89,7 +89,7 @@ When you ask us to delete your data, we delete or anonymize it within a reasonab
 We apply reasonable technical and organizational measures to protect your data, including:
 
 - Encryption in transit (TLS) for all communication with our servers;
-- Passwords stored only as strong one-way hashes (Argon2id);
+- Passwords stored only as salted one-way hashes (bcrypt for your account password; Argon2id for local staff PINs);
 - Cryptographically signed license keys to prevent tampering;
 - Access controls and logging on production systems;
 - Restricted access to production data for our team and providers.

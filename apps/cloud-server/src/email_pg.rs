@@ -1,6 +1,6 @@
 //! Postgres backend for the scheduled report-sender email loop.
 //!
-//! Phase 1.5 of `docs/archived/2026-08-15-unify-auth-and-sync.md`: the SQLite loop in [`crate::email`]
+//! Phase 1.5 of `docs/records/audits/2026-08-15-unify-auth-and-sync.md`: the SQLite loop in [`crate::email`]
 //! reads its config from the synchronous `rusqlite` `Store`; this module is
 //! the parallel async Postgres implementation used on the cloud branch. It
 //! covers the exact surface the loop touches:
@@ -8,7 +8,7 @@
 //! - the `settings` table (`smtp_config`, `report_schedule`,
 //!   `last_report_sent_at`, `store.name`) — read per tenant via scoped
 //!   `{key}:{tenant}` keys with bare-key fallback (see §11.5 of
-//!   `docs/archived/2026-08-15-unify-auth-and-sync.md`)
+//!   `docs/records/audits/2026-08-15-unify-auth-and-sync.md`)
 //! - the analytics bundle (`export_analytics_bundle_pg`) — the ten report
 //!   queries ported from `kasirmu_core::db::reports` / `kasirmu_core::db::popularity`,
 //!   every one tenant-filtered (`AND s.tenant_id = $n` / `AND p.tenant_id = $n`)

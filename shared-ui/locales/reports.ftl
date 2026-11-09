@@ -60,6 +60,19 @@ dashboard-top-product = Top Product
 dashboard-low-stock-alerts = Low Stock Alerts
 dashboard-no-data = No data yet
 dashboard-stock-ok = All stock levels are healthy.
+dashboard-stock-unknown = Stock levels could not be loaded.
+
+# Dashboard — Debt reminders (AR & AP)
+dashboard-debt-reminders = Debt & Credit Reminders
+dashboard-debt-ok = All credit & bills are up to date.
+dashboard-debt-panel-ok = Up to date
+dashboard-receivables-title = Customer Receivables (Piutang)
+dashboard-payables-title = Vendor Bills (Hutang)
+dashboard-overdue-count = { $count } overdue
+dashboard-due-soon-count = { $count } due soon
+dashboard-outstanding = Outstanding: { $amount }
+dashboard-view-customers = View Customers
+dashboard-view-vendor-bills = View Vendor Bills
 
 # Dashboard — date range
 dashboard-filter-from = From
@@ -182,10 +195,17 @@ custom-report-page-of = Page { $page }
 # Export
 dashboard-export-csv = CSV
 dashboard-export-csv-aria = Export dashboard data as CSV
+dashboard-export-ar-aging = Export AR Aging
+dashboard-export-ap-aging = Export AP Aging
+dashboard-export-aging-failed = Export failed
 dashboard-category-clear-aria = Clear category selection
 dashboard-back = Back
 dashboard-back-aria = Back to home
 dashboard-error-load = Failed to load dashboard data. Please try again.
+sales-report-error-load = Failed to load the sales report. Please try again.
+inventory-report-error-load = Failed to load the inventory report. Please try again.
+custom-report-error-run = The report could not be run. Please try again.
+menu-engineering-error-load = Failed to load menu engineering. Please try again.
 dashboard-refreshing = Refreshing…
 dashboard-delta-new = New
 

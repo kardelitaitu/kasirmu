@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { requiredLocalized } from '@/components';
 import { Button } from '@/components/Button';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Localized, useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { useOptionalSettings } from '@/contexts/SettingsContext';
 import { useOptionalToast, type ToastContextValue } from '@/components/Toast';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { l10nErrorMessage } from '@/utils/app-error';
@@ -16,7 +18,7 @@ import {
   printSalesReceipt,
   type HeldCartRow,
 } from '@/api/sales';
-import { getSettingScoped } from '@/api/settings';
+import { getSettingScoped, setSettingScoped } from '@/api/settings';
 import {
   listTablesScoped,
   listSectionsScoped,
@@ -90,10 +92,27 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const { l10n } = useLocalization();
   const { sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
+  const optionalSettings = useOptionalSettings();
+  const storeCurrency = optionalSettings?.settings?.store?.currency || 'IDR';
   const [tables, setTables] = useState<Table[]>([]);
   const [tablePool, setTablePool] = useState<Table[]>([]);
   const [sections, setSections] = useState<string[]>([]);
+  // Carries the array a `setSections` updater produced out to the awaited
+  // `setSettingScoped` write. See `handleRenameSection` for why a local
+  // `let` cannot do this.
+  const sectionsResultRef = useRef<string[] | null>(null);
   const [openBills, setOpenBills] = useState<HeldCartRow[]>([]);
+  /** The open-bill/tab read failed, so `openBills` is NOT authoritative.
+   *
+   *  `listOpenBillsScoped` was `.catch(() => [])` inside the floor-plan load,
+   *  which reports "no open bills" for a read that merely failed — and
+   *  `openBills` is what marks a table as occupied and what `handleReserveConfirm`
+   *  reads when converting a reservation to a tab. A cashier would therefore see
+   *  a table with a RUNNING TAB rendered as free and could seat a walk-in over
+   *  it. TBL-02 deliberately keeps known-good tables visible on a refresh
+   *  failure; the bills list has no such known-good fallback, so it must say so
+   *  instead of asserting empty. */
+  const [billsUnknown, setBillsUnknown] = useState(false);
   const [selected, setSelected] = useState<Table | null>(null);
   const [section, setSection] = useState<string | null>(null);
   const toastCtx = useOptionalToast();
@@ -109,13 +128,29 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   const [moveTableModal, setMoveTableModal] = useState<Table | null>(null);
   const [selectedDestTableId, setSelectedDestTableId] = useState<string>('');
   const [movingTable, setMovingTable] = useState(false);
+  /** Synchronous mirrors of the modal busy flags — see the re-entry guards on move/merge. */
+  const movingTableRef = useRef(false);
   const [mergeTableModal, setMergeTableModal] = useState<Table | null>(null);
   const [selectedMergeDestTableId, setSelectedMergeDestTableId] = useState<string>('');
   const [mergingTable, setMergingTable] = useState(false);
+  const mergingTableRef = useRef(false);
   const [reserveModal, setReserveModal] = useState<TableReservationModalState | null>(null);
   const [reservingTable, setReservingTable] = useState(false);
   const [arrangeMode, setArrangeMode] = useState(false);
   const [draggingTableId, setDraggingTableId] = useState<string | null>(null);
+  const [showManageSections, setShowManageSections] = useState(false);
+  const [newSectionInput, setNewSectionInput] = useState('');
+  const [editingSectionName, setEditingSectionName] = useState<string | null>(null);
+  const [editSectionInput, setEditSectionInput] = useState('');
+  const [arrangeSelectedTableId, setArrangeSelectedTableId] = useState<string | null>(null);
+  const [resizingTableId, setResizingTableId] = useState<string | null>(null);
+  const resizeStartPos = useRef<{
+    pointerX: number;
+    pointerY: number;
+    startW: number;
+    startH: number;
+  } | null>(null);
+  const resizeOriginDim = useRef<{ width: number; height: number } | null>(null);
   const floorplanRef = useRef<HTMLDivElement | null>(null);
   const dragStartPos = useRef<{
     pointerX: number;
@@ -123,6 +158,18 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     tableX: number;
     tableY: number;
   } | null>(null);
+  /**
+   * The dragged table's position BEFORE the drag began.
+   *
+   * The drag writes optimistically (inside `handlePointerMoveTable`) and persists only at
+   * pointer-up. If that write is refused the toast fires in the handler's `catch` — the
+   * `addToast` with a `type: 'error'`, not the success toast beside it — but the table stayed
+   * VISUALLY at the dropped position, because nothing put it back — and `tablesRef`
+   * (declared beside `dragOriginPos`, read in the drag-apply handler) still holds the
+   * refused coordinates, so a retry re-sent the
+   * payload that was just rejected. The floor plan then disagrees with the server.
+   */
+  const dragOriginPos = useRef<{ pos_x: number; pos_y: number } | null>(null);
   const tablesRef = useRef<Table[]>([]);
   tablesRef.current = tables;
   const [printingBill, setPrintingBill] = useState(false);
@@ -178,6 +225,60 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     [getTableBill],
   );
 
+  const [selectedReservation, setSelectedReservation] = useState<ReservationDetails | null>(null);
+
+  useEffect(() => {
+    if (!selected || selected.status !== 'reserved' || !sessionToken) {
+      setSelectedReservation(null);
+      return;
+    }
+    const bill = getTableBill(selected.name);
+    if (!bill) {
+      setSelectedReservation(null);
+      return;
+    }
+    const initial = getTableReservation(selected.name);
+    setSelectedReservation(initial);
+    let cancelled = false;
+    const resPromise = getHeldCartScoped(sessionToken, bill.id);
+    if (resPromise && typeof resPromise.then === 'function') {
+      resPromise
+        .then((full) => {
+          if (cancelled || !full || !full.cart_data) return;
+          try {
+            const data = JSON.parse(full.cart_data);
+            setSelectedReservation({
+              guestName: data.customerName || initial?.guestName || 'Guest',
+              phone: data.phone || initial?.phone,
+              partySize: typeof data.partySize === 'number' ? data.partySize : initial?.partySize,
+              time: data.reservationTime || initial?.time,
+              notes: data.notes || initial?.notes,
+            });
+          } catch {
+            // keep initial
+          }
+        })
+        .catch(() => {
+          // keep initial
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, sessionToken, getTableBill, getTableReservation]);
+
+  // Match table with active joined table(s) if merged
+  const getTableJoined = useCallback(
+    (tableName: string): string | null => {
+      const bill = getTableBill(tableName);
+      if (!bill) return null;
+      const str = (bill.customer_name || '') + ' ' + (bill.label || '');
+      const match = str.match(/\[\+T([^\]]+)\]/);
+      return match ? match[1] ?? null : null;
+    },
+    [getTableBill],
+  );
+
   // TBL-07: localized label for a raw status value, with unknown fallback.
   const statusLabel = useCallback(
     (status: string) => l10n.getString(STATUS_LABEL_IDS[status] ?? 'tables-status-unknown'),
@@ -188,20 +289,37 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
   // page, so selecting a section never makes the other filters disappear and
   // empty sections stay representable. Non-fatal — the floor plan still works
   // if section loading fails.
-  useEffect(() => {
+  const loadSections = useCallback(async () => {
     if (!sessionToken) return;
-    let cancelled = false;
-    listSectionsScoped(sessionToken)
-      .then((data) => {
-        if (!cancelled) setSections(asArray<typeof data[number]>(data));
-      })
-      .catch(() => {
-        if (!cancelled) setSections([]);
-      });
-    return () => {
-      cancelled = true;
-    };
+    try {
+      const [data, customRaw] = await Promise.all([
+        listSectionsScoped(sessionToken).catch(() => []),
+        getSettingScoped(sessionToken, 'restaurant.table_sections').catch(() => null),
+      ]);
+      const dbSections = asArray<string>(data);
+      let customSections: string[] = [];
+      if (customRaw) {
+        try {
+          const parsed = JSON.parse(customRaw);
+          if (Array.isArray(parsed)) {
+            customSections = parsed.filter(
+              (s): s is string => typeof s === 'string' && s.trim().length > 0,
+            );
+          }
+        } catch {
+          // ignore invalid json in custom sections
+        }
+      }
+      const combined = Array.from(new Set(['Main', ...customSections, ...dbSections]));
+      setSections(combined);
+    } catch {
+      setSections(['Main']);
+    }
   }, [sessionToken]);
+
+  useEffect(() => {
+    void loadSections();
+  }, [loadSections]);
 
   useEffect(() => {
     if (!sessionToken) return;
@@ -223,11 +341,20 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     setLoading(true);
     setError(null);
     try {
+      // The bills read reports its own failure rather than resolving to `[]`:
+      // an empty list is a CLAIM (every table is free), and a failed read is
+      // not entitled to make it. `null` keeps the load itself succeeding so the
+      // floor plan still renders — see `billsUnknown` above.
+      let billsFailed = false;
       const [tableData, billData] = await Promise.all([
         listTablesScoped(sessionToken, section ?? undefined),
-        listOpenBillsScoped(sessionToken).catch(() => []),
+        listOpenBillsScoped(sessionToken).catch(() => {
+          billsFailed = true;
+          return [] as HeldCartRow[];
+        }),
       ]);
       if (seq !== loadSeqRef.current) return;
+      setBillsUnknown(billsFailed);
       // asArray: see utils/ipc-payload — the render maps/finds these.
       const loadedTables = asArray<typeof tableData[number]>(tableData);
       setTables(loadedTables);
@@ -303,8 +430,9 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     // `sessionToken` and `section`. A cashier who switched store and then had any
     // other terminal save a tab got the PREVIOUS store's floor plan written over
     // the one on screen, silently, on the screen they seat people from. The sibling
-    // effect at :204 already lists loadTables for exactly this reason; this one was
-    // the outlier. Same for `section`: the reload used the section it mounted with.
+    // section effect below already lists its loader for exactly this reason; this
+    // one was the outlier. Same for `section`: the reload used the section it
+    // mounted with.
     //
     // Re-subscribing is the point, not a cost: the listeners are cheap, and the
     // cleanup above unregisters the previous generation before the next registers.
@@ -331,6 +459,19 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     triggerRef.current?.focus();
   }, []);
 
+  // Escape closes the panel, not the floor plan.
+  //
+  // It did NOT, until 2026-10-18: the key closed the panel AND the whole table view
+  // behind it, losing the floor plan (measured 12 tiles -> 0). The cause was NOT this
+  // trap — it was `PosScreen`'s Escape cascade running first and closing the sub-screen
+  // the panel lives in. `PosScreen` now stands down when a modal is open
+  // (`isAnyAriaModalOpen()`), which is the fix; pinned by
+  // `e2e/restaurant-tables-toolbar.spec.ts` ('Escape closes the detail panel WITHOUT
+  // taking the floor plan with it').
+  //
+  // Do NOT try to fix this from here by calling `stopPropagation()`: both listeners sit
+  // on `document`, and propagation control does not reach a sibling listener on the SAME
+  // node. That mistake was made and measured in round 189.
   useFocusTrap(detailRef, selected !== null, closeDetail);
 
   const openAddTableModal = useCallback(() => {
@@ -354,14 +495,31 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     setTableModalError(null);
   }, []);
 
+  // Re-entry guard that actually works. The handler below already carried
+  // `if (tableModalSaving) return`, but `tableModalSaving` is React STATE: it holds the
+  // value from the render that created this closure, so on the second dispatch of one
+  // double tap it is still `false` and the guard passes. MEASURED in round 173 — the old
+  // check let both submits through in a single act() batch.
+  //
+  // The cost is a real duplicate: `create_table` (kasirmu-core/src/db/tables.rs:130) is a
+  // plain INSERT minting a fresh UUID, and `tables.name` carries no UNIQUE
+  // (`20260813_init.sql:863`), so two tables with the same name both survive and both get
+  // a floor-plan slot. The button being disabled does not cover it either: this handler is
+  // the form's `onSubmit`, so Enter in the name field submits without consulting the button.
+  const savePendingRef = useRef(false);
+
   const handleSaveTableModal = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
+    if (savePendingRef.current) return;
     if (!sessionToken) {
       // Reported, not dropped: the operator presses Save and nothing happens.
       addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
       return;
     }
     if (!tableModal || !tableModal.name.trim()) return;
+    // Taken AFTER the validation returns above, which never reach the `finally` that
+    // clears it — the ordering trap recorded in docs/operations/agent-gates.md.
+    savePendingRef.current = true;
     setTableModalSaving(true);
     setTableModalError(null);
     try {
@@ -410,6 +568,8 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           section: trimmedSection,
           active: true,
           sort_order: count + 1,
+          created_at: '',
+          updated_at: '',
         });
         setTables((prev) => [...prev, created]);
         setTablePool((prev) => [...prev, created]);
@@ -422,6 +582,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     } catch (err) {
       setTableModalError(l10nErrorMessage(err, l10n, 'tables-action-error'));
     } finally {
+      savePendingRef.current = false;
       setTableModalSaving(false);
     }
   }, [tableModal, sessionToken, tables, sections, l10n, addToast]);
@@ -491,13 +652,21 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
 
   // ⚠️ THE FLOOR PLAN HONOURS THE SECTION FILTER HERE, and until round 244 it did not.
   //
-  // The chips computed their counts from `activeTableList` (`:500`, `:506`) while the grid
-  // rendered the UNFILTERED `tables` (`:1045` before this fix). Measured 2026-10-15: the seeded
-  // plan showed `Indoor 5/6` and the grid still drew all 12 tiles.
+  // The chips computed their counts from `activeTableList`, while the grid rendered the
+  // UNFILTERED `tables` (that render site has since moved; it was line 1045 when this fix
+  // landed). Measured 2026-10-15: the seeded plan showed `Indoor 5/6` and the grid still
+  // drew all 12 tiles.
+  // ⚠️ The count/render pair is named here, not numbered: `activeTableList` for the chips,
+  // `visibleTables` for the grid. Naming the two arrays states the invariant (they must
+  // agree) in a form an insertion cannot break.
+  // (The previous wording cited four line numbers; every one of them now points at
+  // something else — the seated payload literal, a blank line, and two prose lines. They
+  // are deliberately NOT reprinted here: a number written in this comment becomes a live
+  // claim the moment it lands, which is the defect this paragraph replaces.)
   //
   // Two further consequences the raw list hid: `showEmpty` keyed on `tables.length`, so the
-  // "no tables in this section" branch (`:1035`) was unreachable while any table existed, and a
-  // section whose every table was deleted would have shown the wrong empty message.
+  // "no tables in this section" branch was unreachable while any table existed, and a section
+  // whose every table was deleted would have shown the wrong empty message.
   const visibleTables =
     section === null ? tables : tables.filter((t) => (t.section || 'Main') === section);
   const showEmpty = !loading && !error && visibleTables.length === 0;
@@ -533,9 +702,9 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       const receipt = buildPreCheckoutBillReceipt({
         billNumber: `CHECK-${bareTableNumber(t.name) || t.name}-${Date.now().toString().slice(-4)}`,
         cartLines,
-        cartCurrency: full.currency || 'IDR',
-        subtotal: { minor_units: full.total_minor, currency: full.currency || 'IDR' },
-        total: { minor_units: full.total_minor, currency: full.currency || 'IDR' },
+        cartCurrency: full.currency || storeCurrency,
+        subtotal: { minor_units: full.total_minor, currency: full.currency || storeCurrency },
+        total: { minor_units: full.total_minor, currency: full.currency || storeCurrency },
         tableNumber: t.name,
         customerName: full.customer_name ?? undefined,
       });
@@ -552,7 +721,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     } finally {
       setPrintingBill(false);
     }
-  }, [getTableBill, sessionToken, addToast, l10n]);
+  }, [getTableBill, sessionToken, addToast, l10n, storeCurrency]);
 
   const handleOpenMoveTable = useCallback((t: Table) => {
     const available = activeTableList.filter(
@@ -574,6 +743,13 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     const activeBill = getTableBill(moveTableModal.name);
     if (!activeBill) return;
 
+    // Re-entry guard, taken AFTER every refusal above so an ordinary tap still reaches it.
+    // THIS IS THE MOST EXPENSIVE REPLAY ON THE SCREEN: the move is create-first,
+    // delete-second, so a second run holds a SECOND copy of the bill under the
+    // destination name and then deletes the original -- leaving duplicate open bills on
+    // the floor plan, which is exactly the trade the create-first order documents.
+    if (movingTableRef.current) return;
+    movingTableRef.current = true;
     setMovingTable(true);
     try {
       const full = await getHeldCartScoped(sessionToken, activeBill.id);
@@ -587,19 +763,40 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       parsed.tableNumber = destTable.name;
       const newLabel = heldCartLabel(destTable.name, parsed.customerName) ?? `Table ${destTable.name}`;
 
-      await deleteHeldCartScoped(sessionToken, activeBill.id);
+      // CREATE FIRST, DELETE SECOND — the order is the whole fix.
+      //
+      // This read DELETE-then-HOLD, and the delete is what loses the bill: if the
+      // hold then rejected (locked DB, dropped connection, lapsed session), the catch
+      // below toasted "move failed" while the merchant's only copy of that open bill
+      // was already gone. There is no undo for a held cart, so this is unrecoverable.
+      //
+      // `usePosHeldCarts` already resolved the same two-write problem in the safe
+      // direction for the same data (see its "does NOT report a tab as updated when
+      // deleting the previous record FAILS" case), so this matches the established
+      // shape rather than inventing one. A duplicate open bill on a failed move is a
+      // recoverable mess the operator can resolve by hand; a deleted one is not.
       await holdCartScoped(sessionToken, {
         label: newLabel,
         cart_data: JSON.stringify(parsed),
         item_count: full.item_count,
         total_minor: full.total_minor,
-        currency: full.currency,
+        currency: full.currency || storeCurrency,
         bill_type: 'open_bill',
         customer_name: parsed.customerName || (destTable.name ? `Table ${bareTableNumber(destTable.name)}` : ''),
+        ...(full.deduction_location_id ? { deduction_location_id: full.deduction_location_id } : {}),
       });
 
+      // Only now is it safe to remove the old record: the bill exists under the new
+      // table, so a failure here leaves two rows rather than none.
+      await deleteHeldCartScoped(sessionToken, activeBill.id);
+
       await releaseTableScoped(sessionToken, moveTableModal.id);
-      await updateTableStatusScoped(sessionToken, destTable.id, 'occupied');
+      try {
+        await updateTableStatusScoped(sessionToken, destTable.id, 'occupied');
+      } catch {
+        // TBL-01 fallback: backend rejects 'occupied' without an active sale
+        await updateTableStatusScoped(sessionToken, destTable.id, 'available');
+      }
       await loadTables();
 
       addToast({
@@ -609,14 +806,36 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       setMoveTableModal(null);
       closeDetail();
     } catch (err) {
+      // A partial failure is the WORST state to leave the dialog open in.
+      //
+      // The writes are sequential (hold → delete → release → status), so this catch
+      // can fire AFTER the destination bill already exists: the hold succeeded and
+      // only the delete/release/status step failed. `loadTables()` sat on the success
+      // path only, so the floor plan kept rendering the PRE-move state — the
+      // operator was told "move failed" while looking at a plan that no longer
+      // described the data, with the dialog still open over it. Retrying against that
+      // stale plan is what turns one duplicate bill into two.
+      //
+      // Refreshing makes the plan tell the truth even here, and closing the dialog
+      // stops a second attempt being issued from a view the backend has moved on from.
+      // The duplicate itself is the documented, hand-resolvable trade of the
+      // create-first order — this is about not hiding it.
+      try {
+        await loadTables();
+      } catch {
+        // The refresh is best-effort; the toast below already reports the failure.
+      }
+      setMoveTableModal(null);
+      closeDetail();
       addToast({
         message: l10nErrorMessage(err, l10n, 'tables-toast-move-failed'),
         type: 'error',
       });
     } finally {
+      movingTableRef.current = false;
       setMovingTable(false);
     }
-  }, [moveTableModal, selectedDestTableId, sessionToken, activeTableList, getTableBill, loadTables, addToast, l10n, closeDetail]);
+  }, [moveTableModal, selectedDestTableId, sessionToken, activeTableList, getTableBill, loadTables, addToast, l10n, closeDetail, storeCurrency]);
 
   const handleOpenMergeTable = useCallback((t: Table) => {
     const candidates = activeTableList.filter(
@@ -639,6 +858,12 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     const destBill = getTableBill(destTable.name);
     if (!srcBill || !destBill) return;
 
+    // Re-entry guard, AFTER every refusal. Two runs read the same source bill, build the
+    // merged cart twice and hold it twice; the delete of the source is then issued against
+    // an id the first run already removed, so the second reports a failure over a merge
+    // that landed.
+    if (mergingTableRef.current) return;
+    mergingTableRef.current = true;
     setMergingTable(true);
     try {
       const [srcFull, destFull] = await Promise.all([
@@ -647,8 +872,8 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       ]);
       if (!srcFull || !destFull) throw new Error('Held carts not found');
 
-      let srcParsed: { lines?: unknown[]; customerName?: string; tableNumber?: string } = {};
-      let destParsed: { lines?: unknown[]; customerName?: string; tableNumber?: string } = {};
+      let srcParsed: { lines?: unknown[]; customerName?: string; tableNumber?: string; guestCount?: string } = {};
+      let destParsed: { lines?: unknown[]; customerName?: string; tableNumber?: string; guestCount?: string } = {};
       try { srcParsed = JSON.parse(srcFull.cart_data); } catch { srcParsed = {}; }
       try { destParsed = JSON.parse(destFull.cart_data); } catch { destParsed = {}; }
 
@@ -657,28 +882,50 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       const combinedLines = [...destLines, ...srcLines];
 
       const combinedTotalMinor = destFull.total_minor + srcFull.total_minor;
-      const combinedItemCount = destFull.item_count + srcFull.item_count;
+      const combinedItemCount = combinedLines.length;
 
       destParsed.tableNumber = destTable.name;
       destParsed.lines = combinedLines;
 
-      const newLabel = heldCartLabel(destTable.name, destParsed.customerName) ?? `Table ${destTable.name}`;
+      const srcPax = parseInt(srcParsed.guestCount || '', 10);
+      const destPax = parseInt(destParsed.guestCount || '', 10);
+      if (!isNaN(srcPax) && srcPax > 0) {
+        const combinedPax = (isNaN(destPax) || destPax <= 0 ? 0 : destPax) + srcPax;
+        destParsed.guestCount = String(combinedPax);
+      }
 
-      await Promise.all([
-        deleteHeldCartScoped(sessionToken, srcBill.id),
-        deleteHeldCartScoped(sessionToken, destBill.id),
-      ]);
+      const originalCustomer = destParsed.customerName;
+      const joinedTag = `[+T${bareTableNumber(mergeTableModal.name)}]`;
+      const baseCustomer = originalCustomer || (destTable.name ? `Table ${bareTableNumber(destTable.name)}` : '');
+      const mergedCustomer = baseCustomer.includes(joinedTag) ? baseCustomer : `${baseCustomer} ${joinedTag}`.trim();
+      destParsed.customerName = mergedCustomer;
 
+      const newLabel = heldCartLabel(destTable.name, originalCustomer) ?? `Table ${destTable.name}`;
+      const deductionLocationId = destFull.deduction_location_id || srcFull.deduction_location_id;
+      const combinedCurrency = destFull.currency || srcFull.currency || storeCurrency;
+
+      // CREATE FIRST, DELETE SECOND — same fix as handleMoveTable above.
+      //
+      // Here it mattered MORE: the old order deleted BOTH bills before creating the
+      // combined one, so a rejected hold lost two tables' open bills at once instead of
+      // one. The combined cart has to exist before either source is removed.
       await holdCartScoped(sessionToken, {
         label: newLabel,
         cart_data: JSON.stringify(destParsed),
         item_count: combinedItemCount,
         total_minor: combinedTotalMinor,
-        currency: destFull.currency || 'IDR',
+        currency: combinedCurrency,
         bill_type: 'open_bill',
-        customer_name: destParsed.customerName || (destTable.name ? `Table ${bareTableNumber(destTable.name)}` : ''),
-        ...(destFull.deduction_location_id ? { deduction_location_id: destFull.deduction_location_id } : {}),
+        customer_name: mergedCustomer,
+        ...(deductionLocationId ? { deduction_location_id: deductionLocationId } : {}),
       });
+
+      // The combined bill now exists, so removing the two sources is safe: a failure
+      // here leaves duplicate rows an operator can resolve, not lost data.
+      await Promise.all([
+        deleteHeldCartScoped(sessionToken, srcBill.id),
+        deleteHeldCartScoped(sessionToken, destBill.id),
+      ]);
 
       await releaseTableScoped(sessionToken, mergeTableModal.id);
       await loadTables();
@@ -690,18 +937,37 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       setMergeTableModal(null);
       closeDetail();
     } catch (err) {
+      // Same partial-failure reasoning as handleConfirmMoveTable above: the combined
+      // bill can already exist when this fires, so the plan must be re-read and the
+      // dialog closed rather than left showing the pre-merge floor over changed data.
+      try {
+        await loadTables();
+      } catch {
+        // Best-effort; the toast below already reports the failure.
+      }
+      setMergeTableModal(null);
+      closeDetail();
       addToast({
         message: l10nErrorMessage(err, l10n, 'tables-toast-merge-failed'),
         type: 'error',
       });
     } finally {
+      mergingTableRef.current = false;
       setMergingTable(false);
     }
-  }, [mergeTableModal, selectedMergeDestTableId, sessionToken, activeTableList, getTableBill, loadTables, addToast, l10n, closeDetail]);
+  }, [mergeTableModal, selectedMergeDestTableId, sessionToken, activeTableList, getTableBill, loadTables, addToast, l10n, closeDetail, storeCurrency]);
 
   const handleConfirmReservation = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
+      // RE-ENTRY GUARD. The Reserving button is `disabled` while `reservingTable`, but this
+      // handler is also the reserve form's `onSubmit` — pressing Enter in the guest-name
+      // field submits it directly and never consults the button. Without this, a double
+      // submit ran `holdCartScoped` TWICE, leaving two open bills against one table.
+      // (All three numbers this note carried had drifted onto unrelated statements:
+      // a closing `</div>`, the modal backdrop, and a `parseInt` in another handler.)
+      // Same shape and same reason as `handleSaveTableModal` above.
+      if (reservingTable) return;
       if (!sessionToken) {
         addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
         return;
@@ -734,7 +1000,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           cart_data: JSON.stringify(reservationPayload),
           item_count: 0,
           total_minor: 0,
-          currency: 'IDR',
+          currency: storeCurrency,
           bill_type: 'open_bill',
           customer_name: guestName,
         });
@@ -751,6 +1017,25 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         setReserveModal(null);
         await loadTables();
       } catch (err) {
+        // PARTIAL FAILURE — the reservation bill may already exist.
+        //
+        // `holdCartScoped` runs before `updateTableStatusScoped`, so this catch can fire
+        // with the bill written and only the STATUS write failed. Everything that makes
+        // the success visible sits below it: the table never enters the pool, the plan is
+        // never re-read, and `setReserveModal(null)` never runs — so the form stays open
+        // with the guest's name still in it. The operator reads that as "it did not save"
+        // and presses Reserve again, and THAT is how the duplicate reservation bill the
+        // re-entry guard above exists to prevent actually happens — through the failure
+        // branch rather than a double submit.
+        //
+        // Re-reading and closing makes the screen describe what the backend holds, so a
+        // retry is a deliberate act against a truthful plan rather than a blind repeat.
+        try {
+          await loadTables();
+        } catch {
+          // Best-effort; the toast below already reports the failure.
+        }
+        setReserveModal(null);
         addToast({
           message: l10nErrorMessage(err, l10n, 'tables-action-error'),
           type: 'error',
@@ -759,7 +1044,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         setReservingTable(false);
       }
     },
-    [reserveModal, sessionToken, l10n, addToast, loadTables],
+    [reserveModal, reservingTable, sessionToken, l10n, addToast, loadTables, storeCurrency],
   );
 
   const handleSeatReservedGuests = useCallback(
@@ -771,20 +1056,69 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       const reservationBill = openBills.find((b) => matchesTableBill(b, table.name));
       try {
         if (reservationBill) {
+          const resPromise = getHeldCartScoped(sessionToken, reservationBill.id);
+          const resFull = resPromise && typeof resPromise.then === 'function' ? await resPromise.catch(() => null) : null;
+          let resLines: unknown[] = [];
+          let resPartySize: number | undefined;
+          let resGuestCount: string | undefined;
+          let resNotes: string | undefined;
+          let resPhone: string | undefined;
+          if (resFull?.cart_data) {
+            try {
+              const data = JSON.parse(resFull.cart_data);
+              if (Array.isArray(data.lines)) resLines = data.lines;
+              if (typeof data.partySize === 'number') resPartySize = data.partySize;
+              if (typeof data.guestCount === 'string') resGuestCount = data.guestCount;
+              else if (resPartySize) resGuestCount = String(resPartySize);
+              if (typeof data.notes === 'string') resNotes = data.notes;
+              if (typeof data.phone === 'string') resPhone = data.phone;
+            } catch {
+              // fallback
+            }
+          }
           const customerName = reservationBill.customer_name || '';
-          await deleteHeldCartScoped(sessionToken, reservationBill.id);
+          const seatedPayload = {
+            lines: resLines,
+            customerName,
+            tableNumber: table.name,
+            orderType: 'dine_in',
+            ...(resGuestCount ? { guestCount: resGuestCount } : {}),
+            ...(resPartySize ? { partySize: resPartySize } : {}),
+            ...(resNotes ? { notes: resNotes } : {}),
+            ...(resPhone ? { phone: resPhone } : {}),
+          };
+          // CREATE FIRST, DELETE SECOND — the same fix as handleConfirmMoveTable and
+          // handleConfirmMergeTable above, on the third handler in this file that
+          // replaces a held cart.
+          //
+          // This ran DELETE first, so a rejected hold destroyed the reservation with
+          // nothing to recreate it while the catch toasted only "seat failed" — the
+          // party ends up neither booked nor seated, and the operator has no signal.
+          // Round 292 fixed the other two handlers and left this one; it was found by
+          // reading every held-cart write in the file rather than trusting that list.
           await holdCartScoped(sessionToken, {
             label: heldCartLabel(table.name, customerName) ?? `Table ${table.name}`,
-            cart_data: JSON.stringify({ lines: [], customerName, tableNumber: table.name }),
-            item_count: 0,
-            total_minor: 0,
-            currency: 'IDR',
+            cart_data: JSON.stringify(seatedPayload),
+            item_count: resFull?.item_count ?? resLines.length,
+            total_minor: resFull?.total_minor ?? 0,
+            currency: resFull?.currency || storeCurrency,
             bill_type: 'open_bill',
             customer_name: customerName,
+            ...(resFull?.deduction_location_id ? { deduction_location_id: resFull.deduction_location_id } : {}),
           });
+          // The seated bill exists now, so removing the reservation cannot lose data.
+          await deleteHeldCartScoped(sessionToken, reservationBill.id);
         }
 
-        const updated = await updateTableStatusScoped(sessionToken, table.id, 'occupied');
+        let updated: Table = table;
+        try {
+          updated = await updateTableStatusScoped(sessionToken, table.id, 'occupied');
+        } catch {
+          // TBL-01 fallback: backend rejects 'occupied' without an active sale (seating
+          // creates an open bill / held cart, not a completed sale).
+          // Set status to 'available' with the open bill attached.
+          updated = await updateTableStatusScoped(sessionToken, table.id, 'available');
+        }
         setTables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
         setTablePool((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
         setSelected(null);
@@ -799,13 +1133,24 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
         }
         await loadTables();
       } catch (err) {
+        // PARTIAL FAILURE — see handleConfirmReservation above for the full reasoning.
+        // Here the stakes are the same and the window is wider: the hold and the DELETE
+        // of the reservation both precede `updateTableStatusScoped`, so this catch can fire
+        // with the reservation already gone and the seated bill in its place while the
+        // table still reads `reserved` on an unrefreshed plan. The party is then neither
+        // booked nor visibly seated, and the operator has no way to see which.
+        try {
+          await loadTables();
+        } catch {
+          // Best-effort; the toast below already reports the failure.
+        }
         addToast({
           message: l10nErrorMessage(err, l10n, 'tables-action-error'),
           type: 'error',
         });
       }
     },
-    [sessionToken, openBills, onSelectTable, l10n, addToast, loadTables],
+    [sessionToken, openBills, onSelectTable, l10n, addToast, loadTables, storeCurrency],
   );
 
   const handlePointerDownTable = useCallback((e: React.PointerEvent<HTMLButtonElement>, t: Table) => {
@@ -817,7 +1162,9 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
     } catch {
       // ignore
     }
+    setArrangeSelectedTableId(t.id);
     setDraggingTableId(t.id);
+    dragOriginPos.current = { pos_x: t.pos_x, pos_y: t.pos_y };
     dragStartPos.current = {
       pointerX: e.clientX,
       pointerY: e.clientY,
@@ -867,13 +1214,409 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
       try {
         await updateTableScoped(sessionToken, currentTable);
       } catch (err) {
+        // PUT THE TABLE BACK. The move was written optimistically on every pointermove
+        // (`handlePointerMoveTable`) and only persisted here, so a refused write left the
+        // table VISUALLY at the dropped position with the server holding the old one —
+        // and `tablesRef` still carrying the refused coordinates, so a retry re-sent the payload
+        // that was just rejected. Restoring both lists and the ref makes the floor plan
+        // describe reality again and makes a retry send the ORIGINAL position.
+        const origin = dragOriginPos.current;
+        if (origin) {
+          const restored: Table = { ...currentTable, pos_x: origin.pos_x, pos_y: origin.pos_y };
+          setTables((prev) => prev.map((item) => (item.id === restored.id ? restored : item)));
+          setTablePool((prev) => prev.map((item) => (item.id === restored.id ? restored : item)));
+          tablesRef.current = tablesRef.current.map((item) =>
+            item.id === restored.id ? restored : item,
+          );
+        }
         addToast({
           message: l10nErrorMessage(err, l10n, 'tables-action-error'),
           type: 'error',
         });
       }
     }
+    dragOriginPos.current = null;
   }, [arrangeMode, draggingTableId, sessionToken, addToast, l10n]);
+
+  const handlePointerDownResize = useCallback((e: React.PointerEvent, t: Table) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+    setResizingTableId(t.id);
+    resizeOriginDim.current = { width: t.width, height: t.height };
+    resizeStartPos.current = {
+      pointerX: e.clientX,
+      pointerY: e.clientY,
+      startW: t.width,
+      startH: t.height,
+    };
+  }, []);
+
+  const handlePointerMoveResize = useCallback((e: React.PointerEvent, t: Table) => {
+    if (resizingTableId !== t.id || !resizeStartPos.current || !floorplanRef.current) return;
+    e.preventDefault();
+    const rect = floorplanRef.current.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    const deltaXPercent = ((e.clientX - resizeStartPos.current.pointerX) / rect.width) * 100;
+    const deltaYPercent = ((e.clientY - resizeStartPos.current.pointerY) / rect.height) * 100;
+
+    let newW = Math.max(6, Math.min(40, Math.round((resizeStartPos.current.startW + deltaXPercent) / 2) * 2));
+    let newH = Math.max(6, Math.min(40, Math.round((resizeStartPos.current.startH + deltaYPercent) / 2) * 2));
+
+    if (t.shape === 'circle' || t.shape === 'square') {
+      const maxDim = Math.max(newW, newH);
+      newW = maxDim;
+      newH = maxDim;
+    }
+
+    setTables((prev) =>
+      prev.map((item) => (item.id === t.id ? { ...item, width: newW, height: newH } : item)),
+    );
+    setTablePool((prev) =>
+      prev.map((item) => (item.id === t.id ? { ...item, width: newW, height: newH } : item)),
+    );
+  }, [resizingTableId]);
+
+  const handlePointerUpResize = useCallback(async (e: React.PointerEvent, t: Table) => {
+    if (resizingTableId !== t.id) return;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+    setResizingTableId(null);
+    resizeStartPos.current = null;
+
+    const currentTable = tablesRef.current.find((item) => item.id === t.id);
+    if (currentTable && sessionToken) {
+      try {
+        await updateTableScoped(sessionToken, currentTable);
+      } catch (err) {
+        const origin = resizeOriginDim.current;
+        if (origin) {
+          const restored = { ...currentTable, width: origin.width, height: origin.height };
+          setTables((prev) => prev.map((item) => (item.id === restored.id ? restored : item)));
+          setTablePool((prev) => prev.map((item) => (item.id === restored.id ? restored : item)));
+        }
+        addToast({
+          message: l10nErrorMessage(err, l10n, 'tables-action-error'),
+          type: 'error',
+        });
+      }
+    }
+    resizeOriginDim.current = null;
+  }, [resizingTableId, sessionToken, addToast, l10n]);
+
+  const handleUpdateArrangeShape = useCallback(async (newShape: string) => {
+    if (!sessionToken || !arrangeSelectedTableId) return;
+    const currentTable = tablesRef.current.find((item) => item.id === arrangeSelectedTableId);
+    if (!currentTable) return;
+    let w = currentTable.width;
+    let h = currentTable.height;
+    if (newShape === 'rectangle') {
+      w = Math.max(16, w);
+      h = Math.min(12, h);
+    } else if (newShape === 'booth') {
+      w = Math.max(18, w);
+      h = Math.max(14, h);
+    } else if (newShape === 'circle' || newShape === 'square') {
+      const size = Math.max(10, Math.min(18, Math.round((w + h) / 2)));
+      w = size;
+      h = size;
+    }
+    const updated: Table = { ...currentTable, shape: newShape, width: w, height: h };
+    setTables((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    setTablePool((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    try {
+      await updateTableScoped(sessionToken, updated);
+    } catch (err) {
+      addToast({ message: l10nErrorMessage(err, l10n, 'tables-action-error'), type: 'error' });
+    }
+  }, [sessionToken, arrangeSelectedTableId, addToast, l10n]);
+
+  const handleAdjustArrangeSize = useCallback(async (deltaW: number, deltaH: number) => {
+    if (!sessionToken || !arrangeSelectedTableId) return;
+    const currentTable = tablesRef.current.find((item) => item.id === arrangeSelectedTableId);
+    if (!currentTable) return;
+    let newW = Math.max(6, Math.min(40, currentTable.width + deltaW));
+    let newH = Math.max(6, Math.min(40, currentTable.height + deltaH));
+    if (currentTable.shape === 'circle' || currentTable.shape === 'square') {
+      const s = Math.max(6, Math.min(40, currentTable.width + (deltaW !== 0 ? deltaW : deltaH)));
+      newW = s;
+      newH = s;
+    }
+    const updated: Table = { ...currentTable, width: newW, height: newH };
+    setTables((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    setTablePool((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    try {
+      await updateTableScoped(sessionToken, updated);
+    } catch (err) {
+      addToast({ message: l10nErrorMessage(err, l10n, 'tables-action-error'), type: 'error' });
+    }
+  }, [sessionToken, arrangeSelectedTableId, addToast, l10n]);
+
+  const handleQuickMarkCleaned = useCallback(
+    async (table: Table) => {
+      if (!sessionToken) {
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+        return;
+      }
+      try {
+        const updated = await updateTableStatusScoped(sessionToken, table.id, 'available');
+        setTables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        setTablePool((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        setSelected(null);
+        addToast({
+          message: l10n.getString('tables-toast-cleaned', { table: table.name }),
+          type: 'success',
+        });
+        await loadTables();
+      } catch (err) {
+        addToast({
+          message: l10nErrorMessage(err, l10n, 'tables-action-error'),
+          type: 'error',
+        });
+      }
+    },
+    [sessionToken, addToast, l10n, loadTables],
+  );
+
+  const handleQuickSeatWalkin = useCallback(
+    async (table: Table, partySize: number) => {
+      if (!sessionToken) {
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
+        return;
+      }
+      try {
+        const customerName = `Walk-in [${partySize}p]`;
+        await holdCartScoped(sessionToken, {
+          label: heldCartLabel(table.name, customerName) ?? `Table ${table.name}`,
+          cart_data: JSON.stringify({ lines: [], customerName, tableNumber: table.name, partySize }),
+          item_count: 0,
+          total_minor: 0,
+          currency: storeCurrency,
+          bill_type: 'open_bill',
+          customer_name: customerName,
+        });
+
+        let updated: Table = table;
+        try {
+          updated = await updateTableStatusScoped(sessionToken, table.id, 'occupied');
+        } catch {
+          // TBL-01 fallback: table remains 'available' with the open bill attached
+          updated = table;
+        }
+        setTables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        setTablePool((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        setSelected(null);
+
+        addToast({
+          message: l10n.getString('tables-toast-guests-seated', { table: table.name }),
+          type: 'success',
+        });
+
+        if (onSelectTable) {
+          onSelectTable(table.name);
+        }
+        await loadTables();
+      } catch (err) {
+        addToast({
+          message: l10nErrorMessage(err, l10n, 'tables-action-error'),
+          type: 'error',
+        });
+      }
+    },
+    [sessionToken, addToast, l10n, onSelectTable, loadTables, storeCurrency],
+  );
+
+  const handleAddSection = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      const trimmed = newSectionInput.trim();
+      if (!trimmed || !sessionToken) return;
+      if (sections.includes(trimmed)) {
+        setSection(trimmed);
+        setNewSectionInput('');
+        return;
+      }
+      const updated = Array.from(new Set([...sections, trimmed]));
+      setSections(updated);
+      try {
+        await setSettingScoped(sessionToken, 'restaurant.table_sections', JSON.stringify(updated));
+        addToast({
+          message: l10n.getString('tables-toast-section-added', { section: trimmed }),
+          type: 'success',
+        });
+        setSection(trimmed);
+        setNewSectionInput('');
+      } catch (err) {
+        addToast({
+          message: l10nErrorMessage(err, l10n, 'tables-action-error'),
+          type: 'error',
+        });
+      }
+    },
+    [newSectionInput, sessionToken, sections, addToast, l10n],
+  );
+
+  const handleRenameSection = useCallback(
+    async (oldName: string, newName: string) => {
+      const trimmed = newName.trim();
+      if (!trimmed || trimmed === oldName || !sessionToken) {
+        setEditingSectionName(null);
+        return;
+      }
+      try {
+        const tablesInSection = tables.filter((t) => (t.section || 'Main') === oldName);
+        if (tablesInSection.length > 0) {
+          await Promise.all(
+            tablesInSection.map((t) =>
+              updateTableScoped(sessionToken, { ...t, section: trimmed }),
+            ),
+          );
+        }
+        // ⚠️ RESOLVED INSIDE THE UPDATER, not from the render closure. The awaits
+        // above (`updateTableScoped` per table) keep the screen live, and
+        // `handleAddSection` can run inside that window — a separate control on
+        // the same modal that nothing disables while a rename is in flight. `sections`
+        // is the closure captured BEFORE those awaits, and `setSections(updated)`
+        // REPLACES the array, so a section added during the rename was absent from it
+        // and was DROPPED with no message. MEASURED: add 'Teras' mid-rename, release,
+        // and 'Teras' is gone.
+        //
+        // Same shape as the round-201 `handleSendToKitchen` defect that
+        // scripts/check-state-closure-after-await.py exists to flag, and this line is
+        // one of the two it reports.
+        //
+        // The setting write still needs the resulting array, so it is carried out
+        // through `sectionsResultRef`, which the updater fills on the same pass. The
+        // updater stays PURE; the ref only moves the value out for the awaited write.
+        //
+        // A local `let updated` is NOT safe here even though it reads as if it were:
+        // `setSections` runs the updater eagerly ONLY when the fiber has no pending
+        // lanes, and `JSON.stringify(updated)` on the next line is evaluated
+        // regardless. If React defers the updater to the render phase, the local is
+        // still `[]` and the write persists an EMPTY ARRAY, wiping every section --
+        // strictly worse than the defect above. A ref is assigned only by the updater
+        // that actually ran, so the payload is the array that was stored.
+        //
+        // MEASURED: jsdom under `act()` flushes eagerly, so BOTH forms persist the same value
+        // there -- the kill-test that kept only the functional updater and restored the
+        // local `let` still passed. The ref is therefore a defence against the deferred
+        // case that the test suite cannot reproduce, not a behaviour it proves; say so
+        // rather than implying the test covers it.
+        // CLEAR BEFORE, never reuse. The ref is assigned only by the updater that
+        // actually ran, so a DEFERRED updater leaves the PREVIOUS call's array in place —
+        // and `?? []` does not catch that, because a stale array is not null. Without the
+        // reset, a deferred rename persists the earlier rename's list and a deferred
+        // delete persists whatever the last rename wrote.
+        sectionsResultRef.current = null;
+        setSections((prev) => {
+          const next = prev.map((s) => (s === oldName ? trimmed : s));
+          sectionsResultRef.current = next;
+          return next;
+        });
+        const updated = sectionsResultRef.current ?? [];
+        await setSettingScoped(sessionToken, 'restaurant.table_sections', JSON.stringify(updated));
+        if (section === oldName) setSection(trimmed);
+        setEditingSectionName(null);
+        await loadTables();
+        addToast({
+          message: l10n.getString('tables-toast-section-renamed', { section: trimmed }),
+          type: 'success',
+        });
+      } catch (err) {
+        addToast({
+          message: l10nErrorMessage(err, l10n, 'tables-action-error'),
+          type: 'error',
+        });
+      }
+    },
+    // `sections` is deliberately ABSENT: both handlers now read the live array
+    // through the updater, never the render closure, so depending on it would only
+    // re-create the callbacks (and re-arm the very staleness this guards against).
+    [sessionToken, tables, section, loadTables, addToast, l10n],
+  );
+
+  // CONSENT IS THE DESIGNED DIALOG, NOT AN OS ONE.
+  //
+  // This used to be `window.confirm()`, which the native-dialog guard flags for the
+  // reason it states: an OS modal is off-design, unlocalized by the app's own bundles,
+  // and BLOCKS the event loop. On a tablet mid-service that last property is the
+  // operational one -- the whole till freezes behind the dialog.
+  //
+  // Split into a request and the work: `handleDeleteSection` records WHAT to delete and
+  // opens the dialog; `confirmDeleteSection` runs the same body it always did once the
+  // operator agrees. The work is unchanged, including the ref-carried result and the
+  // state-closure reasoning it documents -- only the way consent is asked has moved.
+  const [pendingSectionDelete, setPendingSectionDelete] = useState<string | null>(null);
+  const [deletingSection, setDeletingSection] = useState(false);
+
+  const confirmDeleteSection = useCallback(
+    async (secName: string) => {
+      if (!sessionToken || secName === 'Main') return;
+      const tablesInSection = tables.filter((t) => (t.section || 'Main') === secName);
+      if (tablesInSection.length > 0) {
+        try {
+          await Promise.all(
+            tablesInSection.map((t) =>
+              updateTableScoped(sessionToken, { ...t, section: 'Main' }),
+            ),
+          );
+        } catch (err) {
+          addToast({
+            message: l10nErrorMessage(err, l10n, 'tables-action-error'),
+            type: 'error',
+          });
+          return;
+        }
+      }
+      // ⚠️ RESOLVED INSIDE THE UPDATER — same defect and same reason as
+      // `handleRenameSection` above. The `updateTableScoped` awaits in that rename
+      // leave the screen interactive, so a section added during them was
+      // dropped by this replacement. `check-state-closure-after-await.py` reports this
+      // line as its second candidate. Carried out through the same ref for the same
+      // reason: see the local-`let` hazard noted in handleRenameSection.
+      sectionsResultRef.current = null;
+      setSections((prev) => {
+        const next = prev.filter((s) => s !== secName);
+        sectionsResultRef.current = next;
+        return next;
+      });
+      const updated = sectionsResultRef.current ?? [];
+      try {
+        await setSettingScoped(sessionToken, 'restaurant.table_sections', JSON.stringify(updated));
+        if (section === secName) setSection(null);
+        await loadTables();
+        addToast({
+          message: l10n.getString('tables-toast-section-deleted', { section: secName }),
+          type: 'success',
+        });
+      } catch (err) {
+        addToast({
+          message: l10nErrorMessage(err, l10n, 'tables-action-error'),
+          type: 'error',
+        });
+      }
+    },
+    // `sections` is deliberately ABSENT: both handlers now read the live array
+    // through the updater, never the render closure, so depending on it would only
+    // re-create the callbacks (and re-arm the very staleness this guards against).
+    [sessionToken, tables, section, loadTables, addToast, l10n],
+  );
+
+  // The REQUEST half. It asks; it does not delete. Kept as its own callback so every
+  // existing caller (`onClick={() => void handleDeleteSection(name)}` at the section
+  // chips) keeps working unchanged while the consent step is inserted ahead of the work.
+  const handleDeleteSection = useCallback((secName: string) => {
+    if (secName === 'Main') return;
+    setPendingSectionDelete(secName);
+  }, []);
 
   const [showLegend, setShowLegend] = useState(false);
 
@@ -886,7 +1629,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
               type="button"
               className="tables-back-btn"
               onClick={onBack}
-              aria-label={l10n.getString('back') || 'Back'}
+              aria-label={requiredLocalized(l10n, 'back')}
               data-testid="tables-back-btn"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
@@ -905,7 +1648,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
             data-testid="tables-legend-toggle-btn"
             onClick={() => setShowLegend((v) => !v)}
           >
-            <span>Legend</span>
+            <span>{l10n.getString('tables-legend')}</span>
           </Button>
           <Button
             variant={arrangeMode ? 'primary' : 'ghost'}
@@ -971,6 +1714,16 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
             </Button>
           );
         })}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="tables-manage-sections-btn"
+          data-testid="tables-manage-sections-btn"
+          onClick={() => setShowManageSections(true)}
+          title={l10n.getString('tables-manage-sections')}
+        >
+          <span>⚙️ <Localized id="tables-manage-sections"><span>Manage Sections</span></Localized></span>
+        </Button>
       </div>
 
       {showLegend && (
@@ -1003,6 +1756,23 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           <span className="tables-error-text">
             <Localized id="tables-load-error">Could not load the floor plan.</Localized>
             {error && <span className="tables-error-detail">{error}</span>}
+          </span>
+          <Button variant="primary" size="sm" onClick={retry}>
+            <Localized id="retry">Retry</Localized>
+          </Button>
+        </div>
+      )}
+
+      {/* A bills-only failure: the floor plan loaded, so this must NOT claim the
+          plan failed — but it must stop the empty tab list from reading as
+          "every table is free". Non-blocking: the cashier can still see the
+          plan while choosing to retry. */}
+      {billsUnknown && !error && (
+        <div className="tables-error" role="alert">
+          <span className="tables-error-text">
+            <Localized id="tables-bills-unknown">
+              Could not check which tables have an open tab.
+            </Localized>
           </span>
           <Button variant="primary" size="sm" onClick={retry}>
             <Localized id="retry">Retry</Localized>
@@ -1065,6 +1835,8 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           const isSlaWarn = elapsedMinutes !== null && elapsedMinutes >= 60;
           const isSlaCritical = elapsedMinutes !== null && elapsedMinutes >= 90;
           const reservation = t.status === 'reserved' ? getTableReservation(t.name) : null;
+          const joinedTable = getTableJoined(t.name);
+          const isArrangeSelected = arrangeMode && arrangeSelectedTableId === t.id;
           return (
             // The floor plan is a role="list" (aria-label above), so each table
             // must be wrapped in a list item. It cannot be put ON the button:
@@ -1076,9 +1848,12 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
             <Button
               variant="ghost"
               size="sm"
-              className={`tables-table tables-table--${t.status} tables-table--${shape}${bill ? ' tables-table--has-bill' : ''}${isSlaCritical ? ' tables-table--sla-critical' : isSlaWarn ? ' tables-table--sla-warn' : ''}${arrangeMode ? ' tables-table--arranging' : ''}${draggingTableId === t.id ? ' tables-table--dragging' : ''}`}
+              className={`tables-table tables-table--${t.status} tables-table--${shape}${bill ? ' tables-table--has-bill' : ''}${isSlaCritical ? ' tables-table--sla-critical' : isSlaWarn ? ' tables-table--sla-warn' : ''}${arrangeMode ? ' tables-table--arranging' : ''}${draggingTableId === t.id ? ' tables-table--dragging' : ''}${isArrangeSelected ? ' tables-table--selected-arrange' : ''}`}
               onClick={() => {
-                if (arrangeMode) return;
+                if (arrangeMode) {
+                  setArrangeSelectedTableId(t.id);
+                  return;
+                }
                 openDetail(t);
               }}
               // TBL-05: the context-menu shortcut opens the accessible detail
@@ -1141,15 +1916,116 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                   statusLabel(t.status)
                 )}
               </span>
+              {joinedTable && (
+                <span className="tables-table-joined-tag" data-testid={`tables-joined-tag-${t.name}`}>
+                  <Localized id="tables-table-joined-badge" vars={{ joined: joinedTable }}>
+                    <span>🔗 +T{joinedTable}</span>
+                  </Localized>
+                </span>
+              )}
+              {isArrangeSelected && (
+                <span
+                  className="tables-table-resize-handle"
+                  data-testid={`tables-resize-handle-${t.name}`}
+                  onPointerDown={(e) => handlePointerDownResize(e, t)}
+                  onPointerMove={(e) => handlePointerMoveResize(e, t)}
+                  onPointerUp={(e) => void handlePointerUpResize(e, t)}
+                  onPointerCancel={(e) => void handlePointerUpResize(e, t)}
+                  aria-hidden="true"
+                >
+                  ↘
+                </span>
+              )}
             </Button>
             </div>
           );
         })}
+
+        {arrangeMode && arrangeSelectedTableId && (() => {
+          const arrangeTable = tables.find((t) => t.id === arrangeSelectedTableId);
+          if (!arrangeTable) return null;
+          return (
+            <div className="tables-arrange-inspector" data-testid="tables-arrange-inspector">
+              <div className="tables-arrange-inspector-lead">
+                <span className="tables-arrange-inspector-title">
+                  <Localized id="tables-arrange-selected" vars={{ table: arrangeTable.name }}>
+                    <span>Editing: Table {arrangeTable.name}</span>
+                  </Localized>
+                </span>
+              </div>
+              <div className="tables-arrange-inspector-group">
+                <span className="tables-arrange-inspector-label">
+                  <Localized id="tables-arrange-shape"><span>Shape:</span></Localized>
+                </span>
+                {(['circle', 'square', 'rectangle', 'booth'] as const).map((s) => (
+                  <Button
+                    key={s}
+                    variant="ghost"
+                    size="sm"
+                    className={`tables-arrange-shape-btn ${arrangeTable.shape === s ? 'active' : ''}`}
+                    data-testid={`tables-arrange-shape-${s}`}
+                    onClick={() => void handleUpdateArrangeShape(s)}
+                  >
+                    {s === 'circle' ? '⚪' : s === 'square' ? '⬛' : s === 'rectangle' ? '▬' : '🛋️'}{' '}
+                    <Localized id={`tables-shape-${s}`}><span>{s}</span></Localized>
+                  </Button>
+                ))}
+              </div>
+              <div className="tables-arrange-inspector-group">
+                <span className="tables-arrange-inspector-label">
+                  <Localized id="tables-arrange-size"><span>Size:</span></Localized>
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="tables-arrange-step-btn"
+                  data-testid="tables-arrange-width-dec"
+                  onClick={() => void handleAdjustArrangeSize(-2, 0)}
+                  title={l10n.getString('tables-arrange-decrease-width')}
+                >
+                  <Localized id="tables-arrange-width-short"><span>W -</span></Localized>
+                </Button>
+                <span className="tables-arrange-dim">{arrangeTable.width}%</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="tables-arrange-step-btn"
+                  data-testid="tables-arrange-width-inc"
+                  onClick={() => void handleAdjustArrangeSize(2, 0)}
+                  title={l10n.getString('tables-arrange-increase-width')}
+                >
+                  <Localized id="tables-arrange-width-short"><span>W +</span></Localized>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="tables-arrange-step-btn"
+                  data-testid="tables-arrange-height-dec"
+                  onClick={() => void handleAdjustArrangeSize(0, -2)}
+                  title={l10n.getString('tables-arrange-decrease-height')}
+                >
+                  <Localized id="tables-arrange-height-short"><span>H -</span></Localized>
+                </Button>
+                <span className="tables-arrange-dim">{arrangeTable.height}%</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="tables-arrange-step-btn"
+                  data-testid="tables-arrange-height-inc"
+                  onClick={() => void handleAdjustArrangeSize(0, 2)}
+                  title={l10n.getString('tables-arrange-increase-height')}
+                >
+                  <Localized id="tables-arrange-height-short"><span>H +</span></Localized>
+                </Button>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {selected && (() => {
         const activeBill = getTableBill(selected.name);
-        const reservation = selected.status === 'reserved' ? getTableReservation(selected.name) : null;
+        const reservation = selected.status === 'reserved' ? (selectedReservation ?? getTableReservation(selected.name)) : null;
         return (
           <div className="tables-detail" ref={detailRef} role="dialog" aria-modal="true" aria-label={l10n.getString('tables-detail-label')}>
             <h2>{selected.name}</h2>
@@ -1303,6 +2179,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                 <Button
                   variant="primary"
                   size="sm"
+                  className="tables-primary-action-btn"
                   data-testid="tables-assign-to-order-btn"
                   onClick={() => {
                     onSelectTable(selected.name);
@@ -1320,6 +2197,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                     <Button
                       variant="primary"
                       size="sm"
+                      className="tables-primary-action-btn"
                       data-testid="tables-seat-guests-btn"
                       onClick={() => void handleSeatReservedGuests(selected)}
                     >
@@ -1364,6 +2242,40 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                         <span>Reserve Table</span>
                       </Localized>
                     </Button>
+                  )}
+                  {selected.status === 'cleaning' && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      className="tables-mark-cleaned-btn"
+                      data-testid="tables-mark-cleaned-btn"
+                      onClick={() => void handleQuickMarkCleaned(selected)}
+                    >
+                      <Localized id="tables-mark-cleaned-quick">
+                        <span>Mark Cleaned (Available)</span>
+                      </Localized>
+                    </Button>
+                  )}
+                  {selected.status === 'available' && (
+                    <div className="tables-quick-seat-row" data-testid="tables-quick-seat-row">
+                      <span className="tables-quick-seat-label">
+                        <Localized id="tables-quick-seat-walkin"><span>Quick Seat:</span></Localized>
+                      </span>
+                      <div className="tables-quick-seat-chips">
+                        {[1, 2, 3, 4, 5, 6].map((size) => (
+                          <Button
+                            key={size}
+                            variant="ghost"
+                            size="sm"
+                            className="tables-quick-seat-chip"
+                            data-testid={`tables-quick-seat-${size}`}
+                            onClick={() => void handleQuickSeatWalkin(selected, size)}
+                          >
+                            {size}p
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
                   )}
                   {activeBill && printBillEnabled !== false && (
                     <Button
@@ -1428,13 +2340,153 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                   </Button>
                 </>
               )}
-              <Button variant="ghost" size="sm" onClick={closeDetail}>
+              <Button variant="ghost" size="sm" className="tables-close-btn" onClick={closeDetail}>
                 <Localized id="close">Close</Localized>
               </Button>
             </div>
           </div>
         );
       })()}
+
+      {showManageSections && (
+        <div
+          className="tables-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="tables-manage-sections-title"
+        >
+          <div className="tables-modal-dialog tables-manage-sections-dialog">
+            <div className="tables-modal-header">
+              <h2 id="tables-manage-sections-title">
+                <Localized id="tables-manage-sections-title">
+                  <span>Manage Sections</span>
+                </Localized>
+              </h2>
+              <button
+                type="button"
+                className="tables-modal-close-btn"
+                onClick={() => setShowManageSections(false)}
+                aria-label={requiredLocalized(l10n, 'close')}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="tables-manage-sections-content">
+              <form onSubmit={handleAddSection} className="tables-add-section-form">
+                <input
+                  type="text"
+                  value={newSectionInput}
+                  onChange={(e) => setNewSectionInput(e.target.value)}
+                  placeholder={l10n.getString('tables-new-section-placeholder')}
+                  className="tables-section-input"
+                  data-testid="tables-new-section-input"
+                />
+                <Button
+                  variant="primary"
+                  type="submit"
+                  size="sm"
+                  disabled={!newSectionInput.trim()}
+                  data-testid="tables-add-section-btn"
+                >
+                  <Localized id="tables-add-section-btn">
+                    <span>Add Section</span>
+                  </Localized>
+                </Button>
+              </form>
+              <div className="tables-manage-sections-list">
+                {sections.map((s) => {
+                  const tableCount = tables.filter((t) => (t.section || 'Main') === s).length;
+                  const isEditing = editingSectionName === s;
+                  return (
+                    <div key={s} className="tables-manage-section-item" data-testid={`tables-manage-section-${s}`}>
+                      {isEditing ? (
+                        <div className="tables-manage-section-edit-row">
+                          <input
+                            type="text"
+                            value={editSectionInput}
+                            onChange={(e) => setEditSectionInput(e.target.value)}
+                            className="tables-section-input"
+                          />
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            disabled={!editSectionInput.trim() || editSectionInput.trim() === s}
+                            onClick={() => void handleRenameSection(s, editSectionInput)}
+                          >
+                            <Localized id="save">Save</Localized>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditingSectionName(null)}
+                          >
+                            <Localized id="cancel">Cancel</Localized>
+                          </Button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="tables-manage-section-info">
+                            <span className="tables-manage-section-name">{s}</span>
+                            <span className="tables-manage-section-count">
+                              {tableCount > 0 ? (
+                                <Localized id="tables-section-table-count" vars={{ count: tableCount }}>
+                                  <span>{tableCount} tables</span>
+                                </Localized>
+                              ) : (
+                                <Localized id="tables-section-no-tables">
+                                  <span>0 tables</span>
+                                </Localized>
+                              )}
+                            </span>
+                          </div>
+                          <div className="tables-manage-section-actions">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setEditingSectionName(s);
+                                setEditSectionInput(s);
+                              }}
+                              data-testid={`tables-rename-section-${s}`}
+                            >
+                              <Localized id="tables-rename-section">
+                                <span>Rename</span>
+                              </Localized>
+                            </Button>
+                            {s !== 'Main' && (
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                onClick={() => void handleDeleteSection(s)}
+                                data-testid={`tables-delete-section-${s}`}
+                              >
+                                <Localized id="tables-delete-section">
+                                  <span>Delete</span>
+                                </Localized>
+                              </Button>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="tables-modal-footer">
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={() => setShowManageSections(false)}
+              >
+                <Localized id="close">
+                  <span>Close</span>
+                </Localized>
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {tableModal && (
         <div
@@ -1454,7 +2506,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                 type="button"
                 className="tables-modal-close-btn"
                 onClick={() => setTableModal(null)}
-                aria-label={l10n.getString('close') || 'Close'}
+                aria-label={requiredLocalized(l10n, 'close')}
               >
                 ✕
               </button>
@@ -1545,14 +2597,14 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                   type="submit"
                   state={tableModalSaving ? 'processing' : 'ready'}
                   // ⚠️ The name is part of the gate because `handleSaveTableModal` RETURNS
-                  // SILENTLY on a blank one (`:323` — `if (!tableModal || !tableModal.name.trim())
-                  // return;`). Measured 2026-10-14 before this fix: + Add Table opens the modal
-                  // with `name: ''` (`:296-301`), the Save Table button rendered ENABLED, and
+                  // SILENTLY on a blank one (`if (!tableModal || !tableModal.name.trim()) return;`).
+                  // Measured 2026-10-14 before this fix: + Add Table opens the modal
+                  // with `name: ''`, the Save Table button rendered ENABLED, and
                   // clicking it produced no request, no error and no state change — the operator
                   // taps Save and the till does nothing without saying why. The same shape as
                   // `RestaurantMenuEditorScreen`'s item form, found in round 163.
                   //
-                  // Note the contrast with the token guard twelve lines up (`:318-321`), which
+                  // Note the contrast with the token guard above, which
                   // REPORTS rather than returning silently — consistent with that intent, the
                   // blank-name path is closed by disabling the control rather than by adding a
                   // second toast, since the field is empty and the reason is self-evident.
@@ -1591,7 +2643,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                 type="button"
                 className="tables-modal-close-btn"
                 onClick={() => setMoveTableModal(null)}
-                aria-label={l10n.getString('close') || 'Close'}
+                aria-label={requiredLocalized(l10n, 'close')}
               >
                 ✕
               </button>
@@ -1695,7 +2747,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                 type="button"
                 className="tables-modal-close-btn"
                 onClick={() => setMergeTableModal(null)}
-                aria-label={l10n.getString('close') || 'Close'}
+                aria-label={requiredLocalized(l10n, 'close')}
               >
                 ✕
               </button>
@@ -1802,7 +2854,7 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
                 type="button"
                 className="tables-modal-close-btn"
                 onClick={() => setReserveModal(null)}
-                aria-label={l10n.getString('close') || 'Close'}
+                aria-label={requiredLocalized(l10n, 'close')}
               >
                 ✕
               </button>
@@ -1901,6 +2953,34 @@ export default function TableManagementScreen({ onSelectTable, onBack }: TableMa
           </div>
         </div>
       )}
+
+      {/* Consent for the destructive section delete. Replaces the `window.confirm()`
+          this handler used to raise: themed, localized through the app's own bundles,
+          and NON-BLOCKING, so the till stays responsive while the operator decides.
+          `tables-delete-section-confirm` is the message the OS dialog used to carry,
+          reused verbatim so the wording the operator already knows is unchanged. */}
+      <ConfirmDialog
+        open={pendingSectionDelete !== null}
+        onCancel={() => setPendingSectionDelete(null)}
+        onConfirm={async () => {
+          const target = pendingSectionDelete;
+          setPendingSectionDelete(null);
+          if (target !== null) {
+            setDeletingSection(true);
+            try {
+              await confirmDeleteSection(target);
+            } finally {
+              setDeletingSection(false);
+            }
+          }
+        }}
+        title={requiredLocalized(l10n, 'tables-delete-section')}
+        message={requiredLocalized(l10n, 'tables-delete-section-confirm', {
+          section: pendingSectionDelete ?? '',
+        })}
+        variant="danger"
+        loading={deletingSection}
+      />
     </div>
   );
 }

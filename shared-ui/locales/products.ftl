@@ -41,6 +41,7 @@ restaurant-menu-editor-category-deleted-moved = Category deleted; { $count } ite
 restaurant-menu-editor-save-success = Menu updated
 restaurant-menu-editor-delete-success = Item deleted
 restaurant-menu-editor-error-load = Failed to load the menu
+restaurant-menu-editor-load-failed = Menu could not be loaded.
 restaurant-menu-editor-error-save = Failed to save the menu
 restaurant-menu-editor-error-delete = Failed to delete
 restaurant-menu-editor-search-placeholder = Search dishes by name, SKU, or notes…
@@ -152,6 +153,20 @@ restaurant-preview-tab-customer = Customer Receipt
 restaurant-preview-tab-kitchen = Kitchen Chit (KOT)
 restaurant-preview-kot-title = KITCHEN ORDER TICKET (KOT)
 restaurant-preview-kot-end = END OF KOT
+restaurant-preview-kot-pax = Pax: { $count }
+restaurant-preview-course-appetizer = -- APPETIZER --
+restaurant-preview-course-main = -- MAIN COURSE --
+restaurant-preview-course-beverage = -- BEVERAGE --
+restaurant-preview-item-lumpia = Lumpia Goreng
+restaurant-preview-item-nasgor = Nasi Goreng Spesial
+restaurant-preview-item-esteh = Es Teh Manis
+restaurant-preview-table-pill = TABLE 4
+restaurant-preview-tabs-aria = Receipt preview tabs
+subtotal = Subtotal
+total = TOTAL
+restaurant-tender-cash = Cash
+restaurant-tender-change = Change
+restaurant-preview-tax-line = PB1/TAX ({ $rate }%)
 restaurant-preview-subtitle = Real-time thermal roll simulation
 restaurant-preview-paper-width-standard = 80 mm (Standard)
 restaurant-preview-paper-width-narrow = 58 mm (Compact)
@@ -319,6 +334,9 @@ restaurant-lock-terminal = Lock Terminal
 restaurant-exit-terminal = Exit Terminal
 restaurant-exit-confirm-title = Exit Workspace
 restaurant-exit-confirm-desc = Are you sure you want to exit to the homescreen?
+# Shown instead of the line above while a shift is still open. It says what is being left
+# behind rather than blocking the exit -- close the shift from the sidebar to reconcile it.
+restaurant-exit-confirm-open-shift-desc = A shift is still open. Exiting leaves it unreconciled — close it from the sidebar first if you need to count the drawer.
 restaurant-exit-confirm-btn = Exit
 restaurant-toggle-fullscreen = Toggle Fullscreen
 restaurant-clear-color-aria = Clear color
@@ -397,133 +415,6 @@ product-lookup-uncategorised = Uncategorised
 product-lookup-error-load = Failed to load products
 
 # Product Management
-product-mgmt-title = Products
-product-mgmt-add = Add Product
-product-mgmt-empty = No products yet.
-product-mgmt-empty-cta = Add your first product
-product-mgmt-col-sku = SKU
-product-mgmt-col-name = Name
-product-mgmt-col-category = Category
-product-mgmt-col-price = Price
-product-mgmt-col-barcode = Barcode
-product-mgmt-col-stock = Stock
-product-mgmt-stock-in = In stock
-product-mgmt-stock-out = Out of stock
-product-mgmt-edit = Edit
-product-mgmt-edit-aria = Edit { $name }
-product-mgmt-delete = Delete
-product-mgmt-delete-aria = Delete { $name }
-product-mgmt-delete-confirm-title = Delete product?
-product-mgmt-delete-confirm-message = Delete { $name } ({ $sku })? This cannot be undone.
-product-mgmt-delete-confirm-btn = Delete
-product-mgmt-error-delete = Failed to delete product
-product-mgmt-error-load = Failed to load products
-product-mgmt-error-retry = Retry
-product-mgmt-alert-error = Could not load stock alerts. Showing last known count.
-product-mgmt-alert-error-retry = Reload alerts
-product-mgmt-error-invalid-stock = Stock must be a whole, non-negative number
-product-mgmt-modal-add-title = Add Product
-product-mgmt-modal-edit-title = Edit Product
-product-mgmt-modal-close = Close
-product-mgmt-field-name-required = Name *
-product-mgmt-field-sku-required = SKU *
-product-mgmt-field-price = Price
-product-mgmt-field-currency = Currency
-product-mgmt-field-category = Category
-product-mgmt-field-barcode = Barcode
-product-mgmt-field-tax-rates = Tax Rates
-product-mgmt-field-stock = Initial stock
-product-mgmt-btn-cancel = Cancel
-product-mgmt-btn-create = Create
-product-mgmt-btn-update = Update
-product-mgmt-error-save = Failed to save product
-product-mgmt-error-invalid-price = Price must be a valid non-negative number
-product-mgmt-table-aria = Product catalog
-product-mgmt-actions-aria =
-    .aria-label = Actions
-product-mgmt-variants = Variants
-product-mgmt-variants-aria = Variants for { $name }
-product-mgmt-modal-aria = { $mode ->
-        [add] Add product
-       *[edit] Edit product
-    }
-product-mgmt-modal-close-aria =
-    .aria-label = Close
-product-mgmt-sku-placeholder =
-    .placeholder = e.g. LATTE
-product-mgmt-name-placeholder =
-    .placeholder = e.g. Caffè Latte
-product-mgmt-price-placeholder =
-    .placeholder = 450
-product-mgmt-barcode-placeholder =
-    .placeholder = 4901234567890
-product-mgmt-stock-placeholder =
-    .placeholder = 0
-product-mgmt-no-category = — No category —
-product-mgmt-col-type = Type
-product-mgmt-field-type = Type
-product-mgmt-alerts-title = Stock Alerts
-product-mgmt-alert-close = Close
-
-# Product Variants
-variant-mgmt-title = Variants — { $product }
-variant-mgmt-empty = No variants yet.
-variant-mgmt-empty-cta = Add a variant
-variant-mgmt-add = Add Variant
-variant-mgmt-col-name = Name
-variant-mgmt-col-sku = SKU
-variant-mgmt-col-price = Price
-variant-mgmt-col-barcode = Barcode
-variant-mgmt-col-status = Status
-variant-mgmt-price-parent = Uses parent price
-variant-mgmt-status-active = Active
-variant-mgmt-status-inactive = Inactive
-variant-mgmt-edit = Edit
-variant-mgmt-edit-aria =
-    .aria-label = Edit { $name }
-variant-mgmt-delete = Delete
-variant-mgmt-delete-aria =
-    .aria-label = Delete { $name }
-variant-mgmt-delete-confirm-title = Delete Variant
-variant-mgmt-delete-confirm-body = Are you sure you want to delete variant "{ $name }" ({ $sku })? This action cannot be undone.
-variant-mgmt-delete-confirm-cancel = Cancel
-variant-mgmt-delete-confirm-confirm = Delete
-variant-mgmt-modal-add-title = Add Variant
-variant-mgmt-modal-edit-title = Edit Variant
-variant-mgmt-close-aria =
-    .aria-label = Close
-variant-mgmt-field-name-required = Name *
-variant-mgmt-field-sku-required = SKU *
-variant-mgmt-field-price = Price
-variant-mgmt-field-currency = Currency
-variant-mgmt-field-barcode = Barcode
-variant-mgmt-field-sort-order = Sort order
-variant-mgmt-field-active = Active
-variant-mgmt-btn-cancel = Cancel
-variant-mgmt-error-retry = Retry
-variant-mgmt-btn-create = Create
-variant-mgmt-btn-update = Update
-variant-mgmt-overlay-aria = Variants for { $name }
-variant-mgmt-table-aria = Product variants
-variant-mgmt-actions-aria =
-    .aria-label = Actions
-variant-mgmt-name-placeholder =
-    .placeholder = e.g. Large
-variant-mgmt-sku-placeholder =
-    .placeholder = e.g. TEA-LARGE
-variant-mgmt-price-placeholder =
-    .placeholder = 450
-variant-mgmt-currency-placeholder =
-    .placeholder = USD
-variant-mgmt-barcode-placeholder =
-    .placeholder = 4901234567890
-variant-mgmt-sort-placeholder =
-    .placeholder = 0
-variant-mgmt-error-load = Failed to load variants
-variant-mgmt-error-save = Failed to save variant
-variant-mgmt-error-delete = Failed to delete variant
-variant-mgmt-error-invalid-price = Variant price must be a whole, non-negative number
-variant-mgmt-error-invalid-sort = Sort order must be a whole, non-negative number
 
 # Category Management
 categories-title = Categories
@@ -571,18 +462,8 @@ categories-icon-generic-3 = Generic ···
 category-mgmt-edit-aria = Edit category { $name }
 
 # Product type labels
-product-type-retail = Retail
-product-type-restaurant = Restaurant
-product-type-service = Service
 
 # Stock Alert Panel
-product-mgmt-stock-alert-open = Open stock alerts
-product-mgmt-stock-alert-close = Close stock alerts
-product-mgmt-alert-count =
-    { $count ->
-        [one] Open stock alerts ({ $count } active)
-       *[other] Open stock alerts ({ $count } active)
-    }
 
 # ── Restaurant POS Portrait Cart ──
 restaurant-cart-view-order = View Order
@@ -620,6 +501,31 @@ restaurant-payment-midtrans-env = Midtrans Environment
 restaurant-payment-midtrans-keys-valid = Midtrans keys format valid ({ $env })
 restaurant-payment-midtrans-keys-missing = Please enter Client Key and Server Key
 restaurant-payment-stripe-mode = Stripe Mode
+# The segmented-toggle and credential-label literals of the payments screen
+# (round 209). Every label on this screen already went through l10n or
+# <Localized>; these are the ones that were left as JSX text, including the
+# four placeholders that a merchant types INTO (a placeholder is copy).
+restaurant-payment-qr-static = Static
+restaurant-payment-qr-dynamic = Dynamic
+restaurant-payment-qr-payload-placeholder = 00020101021126580014ID.LINKAJA.WWW0118936009110022201389...
+restaurant-payment-midtrans-nmid = Merchant NMID
+restaurant-payment-midtrans-nmid-placeholder = ID1020030040050
+restaurant-payment-midtrans-mdr = MDR Fee (%)
+restaurant-payment-midtrans-sandbox = Sandbox
+restaurant-payment-midtrans-production = Production
+restaurant-payment-midtrans-merchant-id = Merchant ID
+restaurant-payment-midtrans-merchant-id-placeholder = G123456789
+restaurant-payment-midtrans-client-key = Client Key
+restaurant-payment-midtrans-client-key-placeholder = SB-Mid-client-XXXXX
+restaurant-payment-midtrans-server-key = Server Key
+restaurant-payment-midtrans-server-key-placeholder = SB-Mid-server-XXXXX
+restaurant-payment-midtrans-test-keys = Test API Keys
+restaurant-payment-stripe-test = Test
+restaurant-payment-stripe-live = Live
+restaurant-payment-stripe-pub-key = Publishable Key
+restaurant-payment-stripe-sec-key = Secret Key
+restaurant-payment-stripe-reader = Card Reader
+restaurant-payment-custom-rail-hint = Active tender method ready for cashier checkout and receipt attribution.
 restaurant-payment-custom-code = Payment method code is required
 restaurant-payment-custom-code-example = e.g. ovo, shopeepay, voucher
 restaurant-payment-custom-label-example = e.g. OVO Wallet
@@ -646,3 +552,9 @@ recipe-editor-validation-empty-sku = Please select an ingredient for all rows
 recipe-editor-validation-invalid-qty = Quantities must be greater than 0
 recipe-editor-manage-recipe = Recipe (BOM)
 recipe-editor-manage-recipe-aria = Manage recipe for { $name }
+
+# Round 212 — the last literals on the topology editor, the recipe editor and
+# the workspace settings cards.
+topology-node-actions = Node actions
+topology-tool-locked-premium = Premium
+recipe-editor-remove-ingredient = Remove ingredient

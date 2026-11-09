@@ -42,19 +42,82 @@ vi.mock('@fluent/react', () => ({
       getString: (id: string) => {
         const map: Record<string, string> = {
           'analytics-export-csv': 'Export CSV',
-          'analytics-card-error-load': 'Failed to load',
+          'analytics-card-aov': 'Average Order Value',
+          'analytics-card-basket-items': 'items / order',
+          'analytics-card-basket-orders': 'orders',
+          'analytics-card-category-top': 'Top category',
+          'analytics-card-customers-new': 'New',
+          'analytics-card-customers-new-share': '{pct}% new customers',
+          'analytics-card-customers-returning': 'Returning',
+          'analytics-card-customers-total': 'Total customers',
+          'analytics-card-discounts-redeemed': 'redeemed',
+          'analytics-card-discounts-share': 'of sales from discounts',
+          'analytics-card-inventory-days': 'Days of stock',
+          'analytics-card-inventory-skus': 'Active SKUs',
+          'analytics-card-inventory-turnover': 'Turnover',
+          'analytics-card-low': 'Low: {label} - {value}',
+          'analytics-card-low-stock-critical': 'Critical items',
+          'analytics-card-low-stock-items': 'items flagged',
+          'analytics-card-low-stock-left': 'left',
+          'analytics-card-low-stock-order': 'Order {n}',
+          'analytics-card-low-stock-restock': 'Est. restock cost',
+          'analytics-card-occupancy-hourly': 'Occupancy by hour',
+          'analytics-card-occupancy-occupied': 'occupied',
+          'analytics-card-occupancy-orders': 'table orders',
+          'analytics-card-occupancy-peak': 'Peak hour',
+          'analytics-card-payments-top': 'Top payment method',
+          'analytics-card-peak': 'Peak: {label} - {value}',
+          'analytics-card-piutang-count': '{count} repayment(s)',
+          'analytics-card-refunds-amount': 'Refunded amount',
+          'analytics-card-refunds-avg': 'Average refund',
+          'analytics-card-refunds-count': 'Refund count',
+          'analytics-card-staff-sales': 'Staff sales total',
+          'analytics-card-tables-turn': 'Avg. turn time',
+          'analytics-card-top-product': 'Top product',
+          'analytics-card-total-revenue': 'Total revenue',
+          'analytics-card-voids-count': 'Voided items',
+          'analytics-card-waitstaff-covers': 'covers',
+          'analytics-card-waitstaff-total': 'Total covers',
+          'analytics-category-currency-aria': 'Select currency for the category chart',
+          'analytics-empty-low-stock': 'All items are sufficiently stocked.',
+          'analytics-export-aov-aria': 'Export average order value as CSV',
+          'analytics-export-basket-aria': 'Export basket size as CSV',
+          'analytics-export-category-aria': 'Export categories as CSV',
+          'analytics-export-col-aov': 'Average order value',
+          'analytics-export-col-basket': 'Avg items per order',
+          'analytics-export-col-revenue': 'Revenue',
+          'analytics-export-col-turn': 'Avg turn (min)',
+          'analytics-export-col-units': 'Units sold',
+          'analytics-export-csv-aria': 'Export staff data as CSV',
+          'analytics-export-customers-aria': 'Export customers as CSV',
+          'analytics-export-discounts-aria': 'Export discounts as CSV',
+          'analytics-export-inventory-aria': 'Export inventory as CSV',
+          'analytics-export-low-stock-aria': 'Export low stock as CSV',
+          'analytics-export-occupancy-aria': 'Export occupancy as CSV',
+          'analytics-export-payments-aria': 'Export payments as CSV',
+          'analytics-export-piutang-aria': 'Export piutang collections CSV',
+          'analytics-export-refunds-aria': 'Export refunds as CSV',
+          'analytics-export-revenue-aria': 'Export revenue as CSV',
+          'analytics-export-tables-aria': 'Export table turnover as CSV',
+          'analytics-export-top-items-aria': 'Export top items as CSV',
+          'analytics-export-voids-aria': 'Export voids as CSV',
+          'analytics-export-waitstaff-aria': 'Export waitstaff as CSV',
+          'analytics-unit-days': '{n} day',
+          'analytics-unit-minutes': '{n} min',
+          'analytics-card-error-load': "Couldn't load this chart. Check your connection and refresh.",
           'analytics-card-empty': 'No data',
           'analytics-empty-generic': 'No data available',
+          'analytics-card-payments-cash': 'Cash',
+          'analytics-card-payments-card': 'Card',
+          'analytics-card-payments-qris': 'QRIS',
+          'analytics-card-payments-ewallet': 'E-wallet',
+          'analytics-card-piutang-total': 'Collected from customer credit',
         };
         return map[id] || id;
       },
       bundles: [{ locales: ['en-US'] }],
     },
   }),
-}));
-
-vi.mock('@/utils/app-error', () => ({
-  l10nErrorMessage: () => 'Failed to load',
 }));
 
 vi.mock('@/utils/export-csv', () => ({
@@ -98,10 +161,13 @@ describe('AnalyticsCardContent', () => {
     vi.clearAllMocks();
   });
 
+  // The asserted copy is analytics.ftl's analytics-card-error-load, VERBATIM. This
+  // case used to mock @/utils/app-error so it returned the string it then asserted
+  // -- a loop. The real l10nErrorMessage now runs against the fixture.
   it('shows error state when query fails', () => {
     mockUseAnalyticsQuery.mockReturnValue({ data: undefined, isLoading: false, error: new Error('network') });
     render(<AnalyticsCardContent {...baseProps} cardKey="revenue" />);
-    expect(screen.getByText('Failed to load')).toBeInTheDocument();
+    expect(screen.getByText("Couldn't load this chart. Check your connection and refresh.")).toBeInTheDocument();
   });
 
   it('renders aov card with data', () => {
@@ -114,6 +180,29 @@ describe('AnalyticsCardContent', () => {
     expect(screen.getByTestId('echarts')).toBeInTheDocument();
   });
 
+  // DECISION Q1's collection line, as a card. The `payments` card reports what was
+  // SOLD and excludes `pay_later`; a day whose only takings were repayments is
+  // invisible there and must be visible here. This case renders the collection side
+  // and asserts the tender names AND the money, so a card wired to the wrong
+  // endpoint (the breakdown) would fail on content, not just on the command name.
+  it('renders the piutang collections card with tender rows', () => {
+    mockUseAnalyticsQuery.mockReturnValue({
+      data: [
+        { payment_method: 'cash', currency: 'IDR', total_minor: 12500000, payment_count: 23 },
+        { payment_method: 'bank_transfer', currency: 'IDR', total_minor: 8700000, payment_count: 9 },
+      ],
+      isLoading: false,
+      error: null,
+    });
+    render(<AnalyticsCardContent {...baseProps} cardKey="piutang-collections" />);
+    // The tender names resolve through PAYMENT_NAMES; bank_transfer has no entry
+    // and falls back to its raw code, which is the honest label.
+    expect(screen.getByText('Cash')).toBeInTheDocument();
+    expect(screen.getByText('bank_transfer')).toBeInTheDocument();
+    // REP-06: the total is per currency, and 21,200,000 IDR minor units must appear
+    // as money rather than as a bare number.
+    expect(screen.getByText(/21,200,000|21\.200\.000/)).toBeInTheDocument();
+  });
   it('renders customers card with data', () => {
     mockUseAnalyticsQuery.mockReturnValue({
       data: { new_count: 25, returning_count: 125, total_spend_minor: 50000 },

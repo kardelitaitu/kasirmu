@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import {
   listSuppliers,
@@ -55,19 +55,29 @@ export default function SuppliersScreen() {
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Separate from `error`, which belongs to the create/edit form. A failed
+  // LIST read used to be reported by stuffing `suppliers` with [] and saying
+  // nothing, so the empty-state card below ("No suppliers yet." + "Add your
+  // first supplier") read as an authoritative answer — a permission or
+  // transport failure told the operator their supplier registry was empty and
+  // invited them to re-create suppliers that already existed.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       // asArray: the render filters `suppliers` (see utils/ipc-payload).
       const data = await listSuppliers(sessionToken);
       setSuppliers(asArray<typeof data[number]>(data));
-    } catch {
-      setSuppliers([]);
+    } catch (err) {
+      // Keep whatever was already loaded: a refresh that fails should not
+      // silently delete the rows the operator was reading.
+      setLoadError(l10nErrorMessage(err, l10n, 'suppliers-error-load'));
     } finally {
       setLoading(false);
     }
-  }, [sessionToken]);
+  }, [sessionToken, l10n]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -111,6 +121,19 @@ export default function SuppliersScreen() {
     setError(null);
   }, []);
 
+  // Re-entry guard for the create/update write. The handler awaits an IPC round trip and
+  // the only thing stopping a second tap is the `saving` state, which React commits on
+  // its NEXT render -- after the second dispatch of a real double tap. MEASURED: two
+  // clicks in one act() batch both reach this handler
+  // (SuppliersScreen.test.tsx 'does not report a failure for a supplier saved by a double
+  // tap'), and both are SENT -- the second is not refused locally.
+  //
+  // core does refuse the replay, so no duplicate row is stored (`idx_suppliers_code` + BT + `,
+  // migrations/20260813_init.sql), but the rejection lands in the SAME catch that handles
+  // genuine failures -- so without this guard the double tap raises 'Save failed' while the
+  // supplier WAS created. A ref, not the state, because only the ref is authoritative at
+  // the moment the second submit runs.
+  const savePendingRef = useRef(false);
   const handleSave = useCallback(async () => {
     if (!form.name.trim()) {
       setError(l10n.getString('supplier-name-required'));
@@ -120,6 +143,8 @@ export default function SuppliersScreen() {
       setError(l10n.getString('supplier-code-required'));
       return;
     }
+    if (savePendingRef.current) return;
+    savePendingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -156,6 +181,7 @@ export default function SuppliersScreen() {
     } catch (err) {
       setError(l10nErrorMessage(err, l10n, 'supplier-save-failed'));
     } finally {
+      savePendingRef.current = false;
       setSaving(false);
     }
   }, [form, editingId, closeModal, load, l10n, sessionToken]);
@@ -193,6 +219,15 @@ export default function SuppliersScreen() {
           />
         </Localized>
       </div>
+
+      {loadError && (
+        <div className="suppliers-load-error" role="alert">
+          <span>{loadError}</span>
+          <button type="button" className="suppliers-load-retry" onClick={load}>
+            <Localized id="retry"><span>Retry</span></Localized>
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <div className="suppliers-loading-skeleton" aria-hidden="true">
@@ -233,7 +268,7 @@ export default function SuppliersScreen() {
             </table>
           </div>
         </div>
-      ) : suppliers.length === 0 ? (
+      ) : suppliers.length === 0 && loadError ? null : suppliers.length === 0 ? (
         <Card shadow="sm">
           <EmptyState
             region="table"

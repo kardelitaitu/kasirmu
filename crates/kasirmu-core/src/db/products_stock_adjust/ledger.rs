@@ -13,6 +13,25 @@
 
 use super::*;
 
+// ── Hoisted SQL ───────────────────────────────────────────────────────
+//
+// `stock_movements` is the immutable delta ledger behind every stock read, so
+// this sum runs once per ledger read for the life of the install. Its text is
+// hoisted to a `pub` constant for the same reason as `DAILY_REVENUE_SQL`
+// (`db/reports/revenue.rs`): the query-plan probe
+// (`tests/integration/query_plan_probe.rs`) is a SEPARATE crate, so it can
+// only import `pub` items, and a probe that holds its own COPY of a query
+// stays green when the real one is reshaped back into the scanning form.
+//
+// Purely textual: the method prepares exactly the string it did before.
+
+/// `Store::get_stock_from_ledger`: the per-item ledger sum (ADR #6).
+///
+/// A single-line literal, so no `#[rustfmt::skip]` is needed: rustfmt leaves a
+/// one-line string alone (see the note on `LIST_AUDIT_ENTRIES_SQL` in
+/// `db/audit.rs` for the multi-line case that does need it).
+pub const STOCK_LEDGER_SUM_SQL: &str = "SELECT SUM(delta) FROM stock_movements WHERE item_id = ?1";
+
 impl Store<'_> {
     /// Compute the current stock quantity from the delta ledger (ADR #6).
     ///
@@ -20,11 +39,11 @@ impl Store<'_> {
     /// Falls back to `inventory.qty` if the ledger table has no rows yet
     /// (backward compatibility with pre-migration databases).
     pub fn get_stock_from_ledger(&self, product_id: &str) -> Result<i64, CoreError> {
-        let result = self.conn.query_row(
-            "SELECT SUM(delta) FROM stock_movements WHERE item_id = ?1",
-            params![product_id],
-            |row| row.get::<_, Option<i64>>(0),
-        );
+        let result = self
+            .conn
+            .query_row(STOCK_LEDGER_SUM_SQL, params![product_id], |row| {
+                row.get::<_, Option<i64>>(0)
+            });
 
         match result {
             Ok(Some(sum)) => Ok(sum),
@@ -197,26 +216,27 @@ impl Store<'_> {
             //    (`legacy-backfill:` + product id) so a re-run cannot append a second
             //    copy of the same healing; the row is a derived placeholder, not an
             //    event, so its delta is updated in place if the shortfall moves again.
-            for (product_id, shortfall, sku) in shortfalls {
+            //    (O-L01: prepare_cached statement once above the shortfall loop).
+            if !shortfalls.is_empty() {
                 let insert_sql = "INSERT INTO stock_movements (id, item_id, location_id, delta, reason, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(id) DO UPDATE SET delta = excluded.delta, created_at = excluded.created_at";
-                tx.execute(
-                    insert_sql,
-                    params![
+                let mut insert_stmt = tx.prepare_cached(insert_sql)?;
+                for (product_id, shortfall, sku) in shortfalls {
+                    insert_stmt.execute(params![
                         format!("{LEGACY_BACKFILL_REASON}:{product_id}"),
                         product_id,
                         canonical_default_loc,
                         shortfall,
                         LEGACY_BACKFILL_REASON,
                         now,
-                    ],
-                )?;
-                tracing::info!(
-                    sku = %sku,
-                    product_id = %product_id,
-                    delta = shortfall,
-                    reason = LEGACY_BACKFILL_REASON,
-                    "rebuild_stock_summary: closed a legacy ledger shortfall with one compensating movement — this stock predates the ADR #6 ledger and has no movement behind it, so it is visible in the movement history by design"
-                );
+                    ])?;
+                    tracing::info!(
+                        sku = %sku,
+                        product_id = %product_id,
+                        delta = shortfall,
+                        reason = LEGACY_BACKFILL_REASON,
+                        "rebuild_stock_summary: closed a legacy ledger shortfall with one compensating movement — this stock predates the ADR #6 ledger and has no movement behind it, so it is visible in the movement history by design"
+                    );
+                }
             }
 
             // 3. Clear the materialised cache FOR THE SCOPE ONLY — the scoped form

@@ -401,3 +401,61 @@ fn payment_split_arg_with_idempotency_key() {
         Some("01926b3a-0000-7000-8000-000000000002")
     );
 }
+
+#[test]
+fn payment_split_arg_effective_gateway_status_adr64() {
+    // Explicit status takes precedence
+    let explicit = PaymentSplitArg {
+        method: "card".into(),
+        amount_minor: 1000,
+        gateway_reference: None,
+        gateway_status: Some("authorized".into()),
+        gateway_response: None,
+        idempotency_key: None,
+    };
+    assert_eq!(explicit.effective_gateway_status(), "authorized");
+
+    // Cash settles at record time (Rule 1)
+    let cash = PaymentSplitArg {
+        method: "cash".into(),
+        amount_minor: 5000,
+        gateway_reference: None,
+        gateway_status: None,
+        gateway_response: None,
+        idempotency_key: None,
+    };
+    assert_eq!(cash.effective_gateway_status(), "settled");
+
+    // Uncorroborated card / electronic tender is unconfirmed (Rule 3)
+    let offline_card = PaymentSplitArg {
+        method: "card".into(),
+        amount_minor: 5000,
+        gateway_reference: None,
+        gateway_status: None,
+        gateway_response: None,
+        idempotency_key: None,
+    };
+    assert_eq!(offline_card.effective_gateway_status(), "unconfirmed");
+
+    // Corroborated electronic tender is confirmed
+    let online_card = PaymentSplitArg {
+        method: "card".into(),
+        amount_minor: 5000,
+        gateway_reference: Some("tx_ext_123".into()),
+        gateway_status: None,
+        gateway_response: None,
+        idempotency_key: None,
+    };
+    assert_eq!(online_card.effective_gateway_status(), "confirmed");
+
+    // Deferred tenders start as pending
+    let open_bill = PaymentSplitArg {
+        method: "open_bill".into(),
+        amount_minor: 5000,
+        gateway_reference: None,
+        gateway_status: None,
+        gateway_response: None,
+        idempotency_key: None,
+    };
+    assert_eq!(open_bill.effective_gateway_status(), "pending");
+}

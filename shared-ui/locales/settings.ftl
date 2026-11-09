@@ -230,6 +230,13 @@ settings-nav-offline-queue = Offline Queue
 settings-nav-tax-configuration = Tax Configuration
 settings-nav-exchange-rates = Exchange Rates
 settings-nav-system-diagnostics = System Diagnostics
+# Settings hub nav label for the report-scheduling screen. Desktop-only surface:
+# the four email commands are registered by apps/desktop-tauri alone.
+settings-nav-email-reports = Email Reports
+# Restored in round 158 with the screen: the 15-key rebuild removed this key when it
+# dropped the appearance section, and the section is back.
+settings-nav-appearance = Appearance
+settings-email-desktop-only = Sending and scheduling reports needs the desktop app.
 settings-screen-placeholder = This page is being rebuilt.
 settings-screen-migrating = Existing settings content will move here selectively.
 # The settings page floor gate: roleAtLeast (utils/role.ts) shows this copy to any
@@ -257,8 +264,6 @@ settings-sidebar-pinned-group-aria = Pinned sections
 settings-sidebar-resize-aria = Resize sidebar
 settings-nav-pin-aria = Pin { $name }
 settings-nav-unpin-aria = Unpin { $name }
-settings-nav-pin-title = Pin
-settings-nav-unpin-title = Unpin
 settings-sidebar-no-results = No matching sections
 settings-sidebar-clear-results = Clear search
 
@@ -271,6 +276,13 @@ settings-announce-search-count =
        *[other] { $count } results found
     }
 settings-announce-search-cleared = Search cleared
+
+settings-key-rotation-overdue = Encryption key rotation is overdue. Please rotate keys from Security settings to maintain PCI-DSS compliance.
+settings-key-rotation-due =
+    { $count ->
+        [one] Encryption key rotation due in { $count } day. Please rotate from Security settings.
+       *[other] Encryption key rotation due in { $count } days. Please rotate from Security settings.
+    }
 
 # ── Keyboard shortcut descriptions (popover) ──
 settings-shortcuts-desc-navigate = Navigate items
@@ -285,8 +297,6 @@ settings-load-partial = Some settings could not be loaded. Try again.
 settings-section-store = Store
 settings-section-currency = Currency
 settings-currency-loading = Loading currencies…
-settings-section-display = Display
-settings-section-receipt = Receipt
 settings-field-store-name = Store name
 # Shown under the store-name input when it is left empty on blur. Mirrors the
 # `required` attribute the input already carries.
@@ -295,25 +305,8 @@ settings-field-address = Address
 settings-field-branch = Branch
 settings-field-tax-id = Tax / VAT ID
 settings-field-default-currency = Default currency
-settings-field-decimal-separator = Decimal separator
-settings-field-paper-width = Paper width
-settings-field-footer = Receipt footer
 
 # ── Display sub-section fields ──
-settings-field-card-size = Menu Card Size
-settings-field-font-size = Font Size
-settings-card-size-decrease-aria =
-    .aria-label = Decrease card size
-settings-card-size-increase-aria =
-    .aria-label = Increase card size
-settings-font-size-decrease-aria =
-    .aria-label = Decrease font size
-settings-font-size-increase-aria =
-    .aria-label = Increase font size
-settings-field-font-smoothing = Font Smoothing
-settings-toggle-show-currency = Show currency symbol on amounts
-settings-toggle-show-tax = Show tax line on receipts
-settings-toggle-show-table-number = Show table number on cart and receipts
 settings-btn-save = Save
 settings-close-unsaved-title = Leave with unsaved changes?
 settings-close-unsaved-msg = Your settings changes have not been saved. Closing now discards them.
@@ -330,7 +323,6 @@ settings-sync-server-url = Server URL
 settings-sync-resolved-origin = Server in use: { $origin } ({ $source })
 settings-sync-api-key = API Key
 settings-sync-enabled = Enable Cloud Sync
-settings-sync-enabled-aria = Toggle cloud sync
 settings-sync-sync-now = Sync Now
 settings-sync-syncing = Syncing…
 settings-sync-test-connection = Test Connection
@@ -370,8 +362,6 @@ settings-tax-id-placeholder =
     .placeholder = 12-3456789
 settings-branch-placeholder =
     .placeholder = Main Branch
-settings-footer-placeholder =
-    .placeholder = Thank you for shopping!
 settings-server-url-placeholder =
     .placeholder = https://api.example.com
 settings-api-key-placeholder =
@@ -421,15 +411,8 @@ settings-sync-pull = Pull from Server
 settings-sync-pulling = Pulling…
 settings-sync-pull-empty = Server returned empty snapshot — nothing to pull
 settings-sync-pull-result = Last pull: { $products } products, { $tax_rates } tax rates, { $users } users
-settings-font-smoothing-antialiased = Antialiased (crisp)
-settings-font-smoothing-subpixel = Subpixel (smooth)
 
 # ── System & License ──
-settings-system-license-header = System & License Ownership
-settings-software-edition = Software Edition
-settings-license-type = License Type
-settings-copyright-notice = Copyright Notice
-settings-commercial-contact = Commercial Contact
 settings-app-version = kasir.mu Enterprise v{ $version }
 
 # ── License Info Section ──
@@ -448,7 +431,6 @@ settings-license-server-tier = Server Tier
 settings-license-server-active = Server Active
 settings-license-server-expires = Server Expires
 settings-license-server-results = License Check Results
-settings-license-type-value = Proprietary
 settings-license-unlimited = Unlimited
 settings-license-yes = Yes
 settings-license-no = No
@@ -493,7 +475,6 @@ settings-license-resume-failed = Failed to resume subscription
 settings-license-reauth-banner-title = Subscription Renewal Check Required
 settings-license-reauth-banner-desc = Your subscription expires in { $days } days. Connect to the internet to re-authenticate with the license server.
 settings-license-reauth-action = Verify Online Now
-settings-copyright-notice-value = kasir.mu © 2025–2026. All rights reserved.
 
 # Appearance / Brand settings
 appearance-primary-colour = Primary Colour
@@ -542,14 +523,12 @@ appearance-reset-all-failed = Failed to reset appearance settings
 appearance-save-aria =
     .aria-label = Save appearance
 appearance-save-success = Appearance settings saved
+# The logo picker opens a native file dialog, which only the desktop shell has.
+# The colour and store-name controls beside it work on both shells.
+settings-appearance-logo-desktop-only = Choosing a logo needs the desktop app. Colours and the store name can still be changed here.
 appearance-save-failed = Failed to save appearance settings
 
 # Settings option labels
-settings-decimal-separator-dot = 1.00 (dot)
-settings-decimal-separator-comma = 1,00 (comma)
-settings-decimal-separator-none = 1 (none)
-settings-paper-width-standard = 80 mm (standard)
-settings-paper-width-narrow = 58 mm (narrow)
 
 # Category Management
 category-delete-aria =
@@ -702,7 +681,6 @@ data-mgmt-toast-backup-status-fail = Failed to load backup status
 # Feature Toggles
 feature-toggle-title = Feature Toggles
 feature-toggle-subtitle = { $enabled } / { $total } enabled
-feature-toggle-loading = Loading features…
 feature-toggle-group-core = Core
 feature-toggle-group-payments = Payments
 feature-toggle-group-products = Products
@@ -740,11 +718,6 @@ data-mgmt-password-show-aria = Show password
 data-mgmt-password-hide-aria = Hide password
 
 # ── Settings screen ──
-settings-margins-heading = Paper Margins (mm)
-settings-margin-top = Top
-settings-margin-bottom = Bottom
-settings-margin-left = Left
-settings-margin-right = Right
 
 # Settings receipt preview
 
@@ -770,33 +743,15 @@ settings-margin-right = Right
 settings-sync-token-hint = Stored securely in the database — never in localStorage
 settings-sync-last = Last sync
 settings-sync-pending = Pending changes
-settings-sync-toast-success = Sync completed successfully
-settings-sync-toast-fail = Sync failed — check server URL and token
-settings-sync-toast-test-success = Connection test passed
-settings-sync-toast-test-fail = Could not reach server
 settings-sync-confirm-overwrite = Overwrite local data with the server snapshot?
 settings-sync-confirm-pull-title = Pull from server?
 settings-sync-pull-toast-success = Pulled { $products } products, { $tax_rates } tax rates, { $users } users from server
-settings-sync-pull-toast-empty = Server snapshot was empty — nothing to pull
-settings-sync-pull-toast-fail = Pull failed — check server URL and token
 settings-field-language = Language
 
 # ── Field validation ──
 settings-tax-id-pattern-hint = Letters, numbers, dashes, dots, and slashes only, max 20 characters
 
 # ── Updates ──
-settings-updates-heading = Updates
-settings-current-version = Current Version
-settings-check-for-updates = Check for Updates
-settings-checking-for-updates = Checking…
-settings-up-to-date = ✓ You're up to date
-settings-update-available = { $version } is available
-settings-install-update = Install Now
-settings-installing-update = Installing…
-settings-update-status-label = Status
-settings-update-not-checked = Not checked
-settings-update-check-error = Update check failed
-settings-update-retry = Retry
 
 # ── Email Report Settings ──
 settings-section-email = Email Reports
@@ -976,6 +931,9 @@ addon-hal-desc = Load and use custom hardware abstraction layer drivers for spec
 
 // ── Local API (Settings → Local API) ──────────────────────────────
 settings-section-local-api = Local API
+# Shown instead of the controls on a shell that has no local API server.
+settings-local-api-desktop-only = The Local API server runs on the desktop app.
+settings-nav-local-api = Local API
 settings-local-api-intro = Run your own scripts against this register over HTTP. The server listens only on this machine (127.0.0.1) and is off by default.
 settings-local-api-enabled = Enable Local API
 settings-local-api-port = Port
@@ -1048,6 +1006,7 @@ settings-regional-scope-built-in = Built-in default
 settings-localpay-title = Local payment methods
 settings-localpay-subtitle = Which payment rails this market and site offer.
 settings-localpay-code-placeholder = rail code, e.g. qris
+settings-localpay-code-required = Payment method code is required
 settings-localpay-code-label = Rail code
 settings-localpay-label-placeholder = display label, e.g. QRIS
 settings-localpay-label-label = Display label
@@ -1241,6 +1200,19 @@ settings-edc-field-active = Active for Payment
 settings-edc-conn-wired = Wired
 settings-edc-conn-wireless = Wireless
 settings-edc-default-select = Register Default EDC Terminal
+# Round 210: the literals left in EdcTerminalsCard's render. "Register Default"
+# at :323 was the same phrase this key already carried, minus the words "EDC
+# Terminal" — the badge and the button were never distinguished, so the badge
+# now gets its own key instead of reusing this one with different text.
+settings-edc-default-badge = Register Default
+settings-edc-set-default = Set as Default
+settings-edc-loading = Loading…
+settings-edc-save = Save Terminal
+settings-edc-saving = Saving…
+settings-edc-toggle = Toggle
+settings-edc-detail-address = Address:
+settings-edc-detail-vendor = Vendor:
+settings-edc-detail-model = Model:
 settings-edc-default-auto = Auto (Earliest Created)
 settings-edc-saved = EDC Terminal saved successfully.
 settings-edc-deleted = EDC Terminal deleted.
@@ -1264,6 +1236,14 @@ sync-conflicts-retry-aria = Retry sync for item { $id }
 sync-conflicts-requeue-all = Requeue All
 sync-conflicts-requeueing-all = Requeueing ({ $current }/{ $total })…
 sync-conflicts-requeue-all-aria = Requeue all quarantined sync conflicts
+# Round 220. The panel used to render `String(e)` into a role="alert", so a raw IPC
+# rejection reached the operator. The bulk case additionally ABORTED on the first
+# refusal — and a refusal is normal here: requeue_remote_failure returns
+# CoreError::NotFound for an item that is no longer dead-lettered (remote.rs:192-195),
+# which is exactly what happens when the same item was requeued from its row button.
+sync-conflicts-load-failed = Could not load the quarantined conflicts
+sync-conflicts-requeue-failed = Could not requeue this conflict
+sync-conflicts-requeue-partial = Some conflicts could not be requeued
 sync-conflicts-payload-inspect = Inspect
 sync-conflicts-payload-hide = Hide
 sync-conflicts-payload-inspect-aria = Inspect payload for item { $id }
@@ -1297,5 +1277,14 @@ settings-updater-offline-warning-body = You have { $count } unsynced transaction
 settings-updater-offline-sync-now = Sync Now
 settings-updater-offline-ignore-proceed = Proceed Anyway
 settings-updater-cancel = Cancel
+settings-updater-android-only = In-app updates are available for Android only.
 
 
+
+# Round 212 - the last literals across the settings surfaces, plus the staff
+# footer's refresh button.
+staff-refresh-aria = Refresh staff data
+sync-conflicts-payload-title = JSON Payload
+update-notes-title = Changelog
+data-mgmt-restore-unreadable = Could not read the backup generations beside the database.
+terminal-hardware-error-save-profile = Failed to save hardware profile

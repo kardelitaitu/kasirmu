@@ -61,18 +61,48 @@ def registered_commands(lib_text: str) -> set[str]:
     return set(HANDLER_RE.findall(lib_text[start:end]))
 
 
-def token_requiring_commands(commands_text: str) -> set[str]:
-    """Names of commands whose signature declares `session_token`."""
+def param_requiring_commands(commands_text: str, param: str) -> set[str]:
+    """Names of commands whose signature declares the named parameter."""
     names: set[str] = set()
+    # The parameter must appear as `name:` at a WORD BOUNDARY, not as a substring.
+    # A plain `in` test reads `from_currency: String` as a `currency` parameter --
+    # measured 2026-10-26 (round 249): the first draft of the currency class
+    # flagged get_latest_exchange_rate_scoped, whose signature takes
+    # `from_currency`/`to_currency` and no bare `currency` at all. A gate that
+    # invents findings is worse than none, so the name is matched exactly.
+    param_re = re.compile(r"(?:^|\n)\s*" + re.escape(param) + r"\s*:")
     for m in FN_RE.finditer(commands_text):
         # Signature = everything from '(' to the first `) ->` (commands all
         # return Result<...>; no nested `) ->` inside a signature).
         close = commands_text.find(") ->", m.end())
         if close < 0:
             continue
-        if "session_token" in commands_text[m.end():close]:
+        if param_re.search(commands_text[m.end():close]):
             names.add(m.group(1))
     return names
+
+
+def token_requiring_commands(commands_text: str) -> set[str]:
+    """Names of commands whose signature declares `session_token`."""
+    return param_requiring_commands(commands_text, "session_token")
+
+
+def currency_requiring_commands(commands_text: str) -> set[str]:
+    """Names of commands whose signature declares `currency`.
+
+    THE SECOND GRADED CLASS, added 2026-10-26 (round 249). The token class exists
+    because a payload that omits it dies at Tauri arg deserialization. A currency
+    argument fails the opposite way: it deserializes fine, and the command then
+    credits or debits a balance denominated in a DIFFERENT currency than the number
+    the caller sent. Measured this round: replacing the shell's `&currency` forward
+    with an empty string compiled clean and passed every gate, because nothing
+    compared the Rust signature to the TypeScript payload.
+
+    Only commands whose signature names `currency` are graded, and only the
+    presence of a `currency` key is required -- the VALUE cannot be checked
+    statically (it is a runtime variable in almost every caller).
+    """
+    return param_requiring_commands(commands_text, "currency")
 
 
 def _payload_text(call_text: str, open_brace: int) -> str:
@@ -129,6 +159,7 @@ def run_check(
     receive a `sessionToken` payload from every caller."""
     violations: list[str] = []
     token_cmds: set[str] = set()
+    currency_cmds: set[str] = set()
     for shell, (lib_path, commands_dir) in shells.items():
         if not lib_path.is_file():
             violations.append(f"lib.rs not found for shell '{shell}': {lib_path}")
@@ -141,8 +172,26 @@ def run_check(
             )
             continue
         if commands_dir.is_dir():
-            for rs in sorted(commands_dir.glob("*.rs")):
-                token_cmds |= token_requiring_commands(rs.read_text(encoding="utf-8"))
+            # SKIP *_tests.rs: those files embed FAKE command signatures inside
+            # string literals (settings_tests.rs asserts on doors by reading their
+            # source text), and the signature scanner reads them as real declarations.
+            # Measured 2026-10-26 (round 249): without this filter the currency class
+            # flagged get_setting/get_setting_scoped from the tablet test file alone.
+            #
+            # RECURSIVE since 2026-11-06. This was .glob("*.rs"), so a command declared in
+            # a SUBDIRECTORY of commands/ was never read and never entered token_cmds or
+            # currency_cmds -- 13 of them: the 10 topology commands under
+            # apps/desktop-tauri/src/commands/topology/ plus complete_sale_scoped,
+            # preview_promoted_total_scoped and preview_promoted_total_from_lines_scoped
+            # under the tablet's subdirectories. A caller that dropped sessionToken for
+            # load_topology could not be flagged, because the scanner did not know the
+            # command takes one. Both classes carry the same union semantics below, so
+            # the fix is the glob, not the classifier.
+            for rs in sorted(p for p in commands_dir.rglob("*.rs")
+                             if not p.name.endswith("_tests.rs")):
+                _src = rs.read_text(encoding="utf-8")
+                token_cmds |= token_requiring_commands(_src)
+                currency_cmds |= currency_requiring_commands(_src)
     if not api_dir.is_dir():
         violations.append(f"api dir not found: {api_dir}")
         return sorted(violations), 0
@@ -157,6 +206,13 @@ def run_check(
                     f"{rel}: loggedInvoke('{cmd}') — the Rust command requires a "
                     f"session_token, but the payload carries no sessionToken; "
                     f"the call fails at Tauri arg deserialization"
+                )
+            if cmd in currency_cmds and (payload is None or "currency" not in payload):
+                violations.append(
+                    f"{rel}: loggedInvoke('{cmd}') — the Rust command declares a "
+                    f"currency argument, but the payload carries no currency; "
+                    f"the command then applies a number quoted in the caller's "
+                    f"denomination to a balance stored in another one"
                 )
 
     return sorted(violations), checked
@@ -279,17 +335,172 @@ def self_test() -> int:
     check("tablet-only token requirement is caught (union)",
           any("alpha_scoped" in x and "session_token" in x for x in v), True)
 
+    # ── 8. The currency class, both directions (round 249) ───────────
+    # A command whose signature names `currency` must receive one. This is the
+    # class that let a shell drop `&currency` and still compile and pass every
+    # gate: the number survives, the denomination does not, and the command
+    # credits a balance stored in a different currency.
+    td = Path(tempfile.mkdtemp())
+    (td / "apps" / "desktop-tauri" / "src" / "commands").mkdir(parents=True)
+    (td / "apps" / "mobile-tauri" / "src" / "commands").mkdir(parents=True)
+    cur_lib = "tauri::generate_handler![\n  commands::gamma::gamma_topup,\n]"
+    gamma_rs = (
+        "pub async fn gamma_topup(\n    card: String,\n    amount_minor: i64,\n"
+        "    currency: String,\n    session_token: String,\n) -> Result<(), AppError> { Ok(()) }"
+    )
+    for side in ("desktop-tauri", "mobile-tauri"):
+        (td / "apps" / side / "src" / "lib.rs").write_text(cur_lib, encoding="utf-8")
+        (td / "apps" / side / "src" / "commands" / "gamma.rs").write_text(
+            gamma_rs, encoding="utf-8")
+    cur_shells = {
+        "desktop": (td / "apps" / "desktop-tauri" / "src" / "lib.rs",
+                    td / "apps" / "desktop-tauri" / "src" / "commands"),
+        "tablet": (td / "apps" / "mobile-tauri" / "src" / "lib.rs",
+                   td / "apps" / "mobile-tauri" / "src" / "commands"),
+    }
+
+    def cur_build(api_ts: str):
+        # The api dir must live INSIDE the fixture root: run_check reports
+        # paths with relative_to(root), so a second mkdtemp() raises ValueError
+        # instead of grading anything.
+        api = td / "ui" / "api"
+        api.mkdir(parents=True, exist_ok=True)
+        (api / "g.ts").write_text(api_ts, encoding="utf-8")
+        return api
+
+    api = cur_build(
+        "const g = loggedInvoke('gamma_topup', { card: 'C1', amountMinor: 1, "
+        "currency: 'IDR', sessionToken: 't' });\n")
+    v, _ = run_check(cur_shells, api, td)
+    check("currency command with a currency payload passes", v, [])
+
+    api = cur_build(
+        "const g = loggedInvoke('gamma_topup', { card: 'C1', amountMinor: 1, "
+        "sessionToken: 't' });\n")
+    v, _ = run_check(cur_shells, api, td)
+    check("missing currency detected",
+          any("gamma_topup" in x and "currency" in x for x in v), True)
+    # ── 9. A command declared in a SUBDIRECTORY is scanned ───────────
+    # Measured 2026-11-06: the sweep read commands_dir.glob("*.rs"), so 13 real
+    # commands (10 desktop topology + 3 tablet subdirectory) were invisible to both
+    # classes. Without the rglob this case passes silently, which is exactly the
+    # failure mode: a caller may drop sessionToken for a command the scanner never saw.
+    td = Path(tempfile.mkdtemp())
+    for side in ("desktop-tauri", "mobile-tauri"):
+        nested = td / "apps" / side / "src" / "commands" / "topology"
+        nested.mkdir(parents=True)
+        (td / "apps" / side / "src" / "lib.rs").write_text(
+            "tauri::generate_handler![\n  commands::topology::nested_cmd,\n]",
+            encoding="utf-8")
+        (nested / "deep.rs").write_text(alpha_rs, encoding="utf-8")
+    api = td / "ui" / "api"
+    api.mkdir(parents=True)
+    (api / "n.ts").write_text(
+        "const a = loggedInvoke('alpha_scoped', { amount: 1 });\n", encoding="utf-8")
+    nested_shells = {
+        "desktop": (td / "apps" / "desktop-tauri" / "src" / "lib.rs",
+                    td / "apps" / "desktop-tauri" / "src" / "commands"),
+        "tablet": (td / "apps" / "mobile-tauri" / "src" / "lib.rs",
+                   td / "apps" / "mobile-tauri" / "src" / "commands"),
+    }
+    v, _ = run_check(nested_shells, api, td)
+    check("a command under commands/<subdir>/ is scanned",
+          any("alpha_scoped" in x and "session_token" in x for x in v), True)
+
     print()
+    # r202: the shell -- main() graded through argv and a contract root, the
+    # r166..r201 pattern. The fixture is the same two-shell tree the pure
+    # cases build, now graded THROUGH main() so the SHELLS/API_DIR rebuild
+    # and the summary line are exercised, not just run_check().
+    import contextlib as _ctx
+    import io as _io
+    shell = 0
+    def run2(arglist):
+        out, err = _io.StringIO(), _io.StringIO()
+        try:
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                rc = main(argv=list(arglist), root=td)
+        except SystemExit as se:
+            return se.code, out.getvalue() + err.getvalue()
+        return rc, out.getvalue() + err.getvalue()
+    def build2(api_ts, lib=None, drop_lib=False, drop_api=False, lib_empty=False):
+        t2 = Path(tempfile.mkdtemp())
+        for side in ("desktop-tauri", "mobile-tauri"):
+            (t2 / "apps" / side / "src" / "commands").mkdir(parents=True)
+            if not drop_lib:
+                (t2 / "apps" / side / "src" / "lib.rs").write_text(
+                    lib if lib is not None else lib_text, encoding="utf-8")
+            (t2 / "apps" / side / "src" / "commands" / "alpha.rs").write_text(
+                alpha_rs, encoding="utf-8")
+        if not drop_api:
+            api2 = t2 / "ui" / "src" / "api"
+            api2.mkdir(parents=True)
+            (api2 / "f.ts").write_text(api_ts, encoding="utf-8")
+        return t2
+    lib_text = (
+        "tauri::generate_handler![\n"
+        "  commands::alpha::alpha_scoped,\n"
+        "]"
+    )
+    empty_lib = "tauri::generate_handler![\n]"
+    shell += 1
+    td = build2(good_ts)
+    rc, text = run2([])
+    if rc != 0 or "2 invoke(s)" not in text or "0 violation(s)" not in text:
+        print("  x a clean fixture must report 2 invokes, 0 violations (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    td = build2(good_ts + no_token_ts)
+    rc, text = run2([])
+    if rc != 1 or "payload carries no sessionToken" not in text:
+        print("  x a missing sessionToken must fail rc 1 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    td = build2(good_ts + no_token_ts, lib=empty_lib)
+    rc, text = run2([])
+    if rc != 1 or "parsed as empty" not in text:
+        print("  x an empty handler list must fail rc 1 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    td = build2(good_ts, drop_lib=True)
+    rc, text = run2([])
+    if rc != 1 or "lib.rs not found for shell" not in text:
+        print("  x a missing lib.rs must fail rc 1 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    td = build2(good_ts, drop_api=True)
+    rc, text = run2([])
+    if rc != 1 or "api dir not found" not in text:
+        print("  x a missing api dir must fail rc 1 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    # the self-test refusal must survive main() too
+    shell += 1
+    rc, text = run2(["--anything-else"])
+    if rc != 2 or "unrecognized arguments" not in text and "unrecognized" not in text:
+        print("  x an unknown flag must refuse rc 2 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+
     if failed:
         print(f"  {len(failed)} self-test case(s) FAILED:")
         for f in failed:
             print(f"    {f}")
         return 1
-    print("  all self-test cases passed")
+    print(f"  all self-test cases passed; main() shell graded "
+          f"({shell} cases through argv and root)")
     return 0
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r202: argv and root parameterized, the r166..r201 contract -- BOTH
+    shell trees (lib.rs + commands/, recursively) and the ui api dir are
+    rebuilt under the contract root, never half of them."""
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except (AttributeError, ValueError):
@@ -304,16 +515,26 @@ def main() -> int:
     parser.add_argument(
         "--self-test", action="store_true",
         help="Run the synthetic-fixture self-test and exit.")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.self_test:
         return self_test()
 
-    violations, checked = run_check(SHELLS, API_DIR)
+    base = REPO_ROOT if root is None else Path(root).resolve()
+    shells = {
+        shell: (
+            base / "apps" / f"{name}-tauri" / "src" / "lib.rs",
+            base / "apps" / f"{name}-tauri" / "src" / "commands",
+        )
+        for shell, name in (("desktop", "desktop"), ("tablet", "mobile"))
+    }
+    api_dir = base / "ui" / "src" / "api"
+
+    violations, checked = run_check(shells, api_dir, base)
     print(
         f"verify-invoke-parity: {checked} invoke(s) across "
-        f"{len(list(API_DIR.glob('*.ts')))} api file(s), "
-        f"{len(SHELLS)} shell(s)."
+        f"{len(list(api_dir.glob('*.ts')))} api file(s), "
+        f"{len(shells)} shell(s)."
     )
     if violations:
         print(f"verify-invoke-parity: {len(violations)} violation(s):")

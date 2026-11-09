@@ -142,6 +142,227 @@ async fn push_items_empty_list_handles_missing_server() {
     }
 }
 
+// ── O-H20: the push INSERT is batched, not one round trip per item ─
+
+/// Every `$n` placeholder number appearing in `sql`, in source order.
+fn placeholders(sql: &str) -> Vec<usize> {
+    let bytes = sql.as_bytes();
+    let mut found = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'$' {
+            let start = i + 1;
+            let mut end = start;
+            while end < bytes.len() && bytes[end].is_ascii_digit() {
+                end += 1;
+            }
+            if end > start {
+                found.push(sql[start..end].parse().expect("placeholder number"));
+            }
+            i = end;
+        } else {
+            i += 1;
+        }
+    }
+    found
+}
+
+/// Split the statement's `VALUES` list into one slot list per row: each
+/// slot is either `Some(n)` for placeholder `$n` or `None` for a literal.
+fn value_rows(sql: &str) -> Vec<Vec<Option<usize>>> {
+    let values = sql
+        .split("VALUES")
+        .nth(1)
+        .expect("statement has a VALUES list");
+    let body = values.split(')').next().map_or(values, str::trim_end);
+    let mut rows: Vec<Vec<Option<usize>>> = Vec::new();
+    // One row per `\n            (` group; each row's slots end at the
+    // closing paren the split above removed.
+    for raw in values.split("\n            (").skip(1) {
+        let tuple = raw.split(')').next().expect("tuple closes");
+        debug_assert!(!tuple.is_empty() || body.is_empty());
+        rows.push(
+            tuple
+                .split(", ")
+                .map(|slot| slot.strip_prefix('$').and_then(|n| n.parse().ok()))
+                .collect(),
+        );
+    }
+    rows
+}
+
+/// Build `n` pending items for one tenant, with distinct ids.
+fn push_fixture(n: usize, tenant: &str) -> Vec<OfflineQueueItem> {
+    (0..n)
+        .map(|i| {
+            let mut item =
+                OfflineQueueItem::with_tenant("complete_sale", format!("{{\"n\":{i}}}"), tenant);
+            item.id = format!("item-{i}");
+            item.retry_count = i as i64;
+            item.last_error = (i % 3 == 0).then(|| format!("boom-{i}"));
+            item.origin_terminal_id = (i % 2 == 0).then(|| "term-pg".to_owned());
+            item
+        })
+        .collect()
+}
+
+/// The batched statement is the per-item INSERT widened to one tuple per
+/// row: same column list (and order), `status` still the `pending` literal,
+/// the same `ON CONFLICT (id) DO NOTHING` upsert, and placeholders that run
+/// `$1..$N` with NO gaps — the property the driver depends on, because it
+/// binds the N-th parameter to `$N`.
+#[test]
+fn pg_insert_sql_widens_the_per_item_insert() {
+    const ROWS: usize = 3;
+    let bind_count = ROWS * PushColumn::BINDS_PER_ROW;
+    let sql = pg_insert_sql(bind_count);
+    assert!(
+        sql.starts_with(
+            "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, tenant_id, origin_terminal_id)"
+        ),
+        "column list must match the per-item INSERT, got: {sql}"
+    );
+    assert!(
+        sql.contains("'pending'"),
+        "status must stay the PENDING literal, not a bind, got: {sql}"
+    );
+    assert!(
+        sql.ends_with("ON CONFLICT (id) DO NOTHING"),
+        "upsert semantics must be preserved verbatim, got: {sql}"
+    );
+    // NO GAPS: the emitted numbers are exactly $1..$N, in order. A gap is
+    // what shipped in the per-item INSERT ($1, $2, $3, literal, $4..$7 with
+    // 7 binds), and it silently shifted every value after `payload` one
+    // column left; this assertion is the regression guard for that.
+    let emitted = placeholders(&sql);
+    let expected: Vec<usize> = (1..=bind_count).collect();
+    assert_eq!(
+        emitted, expected,
+        "placeholders must be exactly $1..${bind_count} with no gaps, got: {sql}"
+    );
+
+    // And the number of placeholders equals the number of binds the
+    // parameter builder produces: 7 values per row, no status slot.
+    let items = push_fixture(ROWS, "acme");
+    let indices: Vec<usize> = (0..ROWS).collect();
+    let params = pg_insert_params(&items, &indices);
+    assert_eq!(
+        params.len(),
+        emitted.len(),
+        "params ({}) must match placeholders ({}), got: {sql}",
+        params.len(),
+        emitted.len()
+    );
+
+    // Every row has the same 8 slots, and `status` is the literal in slot 4
+    // — i.e. `None` — in every row.
+    let rows = value_rows(&sql);
+    assert_eq!(rows.len(), ROWS, "one VALUES tuple per row, got: {sql}");
+    for row in &rows {
+        assert_eq!(
+            row.len(),
+            PushColumn::ALL.len(),
+            "every tuple must name every column, got: {sql}"
+        );
+        assert_eq!(row[3], None, "status must be the literal, got: {sql}");
+        for (slot, value) in row.iter().enumerate() {
+            if slot != 3 {
+                assert!(value.is_some(), "slot {slot} must be bound, got: {sql}");
+            }
+        }
+    }
+
+    // Slot 5 is `retry_count` and must carry the item's retry_count, not
+    // the value that sits in parameter position 4.
+    let first_row = &rows[0];
+    assert_eq!(first_row[4], Some(4), "retry_count binds $4");
+    assert_eq!(first_row[5], Some(5), "last_error binds $5");
+    assert_eq!(first_row[6], Some(6), "tenant_id binds $6");
+    assert_eq!(first_row[7], Some(7), "origin_terminal_id binds $7");
+}
+
+/// Every chunk of the same size produces the SAME statement text — that is
+/// what lets one prepared statement serve all chunks of a drain.
+#[test]
+fn pg_insert_sql_is_stable_across_chunks_of_equal_size() {
+    let full = pg_insert_sql(PG_INSERT_CHUNK_ROWS * PushColumn::BINDS_PER_ROW);
+    assert_eq!(
+        full,
+        pg_insert_sql(PG_INSERT_CHUNK_ROWS * PushColumn::BINDS_PER_ROW),
+    );
+    let short = pg_insert_sql(2 * PushColumn::BINDS_PER_ROW);
+    assert_ne!(full, short, "row count must change the statement");
+}
+
+/// The bounds the batching rests on: a chunk binds well under
+/// PostgreSQL's 65,535-parameter cap, and a drain costs O(chunks)
+/// statements rather than O(items).
+#[test]
+fn push_chunk_stays_within_bind_limits_and_counts_chunks_not_items() {
+    const {
+        assert!(PG_INSERT_CHUNK_ROWS > 0);
+    }
+    let chunk_binds = PG_INSERT_CHUNK_ROWS * PushColumn::BINDS_PER_ROW;
+    assert!(
+        chunk_binds <= PG_MAX_BIND_PARAMS,
+        "chunk binds {chunk_binds} params, over the {PG_MAX_BIND_PARAMS} cap"
+    );
+    let chunks = |items: usize| items.div_ceil(PG_INSERT_CHUNK_ROWS);
+    assert_eq!(chunks(0), 0, "an empty drain issues no INSERT");
+    assert_eq!(chunks(1), 1);
+    assert_eq!(chunks(PG_INSERT_CHUNK_ROWS), 1);
+    assert_eq!(chunks(PG_INSERT_CHUNK_ROWS + 1), 2);
+    assert_eq!(
+        chunks(5_000),
+        5,
+        "the 5,000-item drain in the debt entry must cost 5 statements"
+    );
+    assert!(
+        chunks(5_000) < 5_000 / 100,
+        "statement count must be O(chunks), not O(items)"
+    );
+}
+
+/// The tenant gate runs BEFORE admission, so a foreign item never enters a
+/// chunk: it takes a slot in the outcome vector and binds nothing.
+#[test]
+fn pg_insert_params_borrows_admitted_items_in_queue_order() {
+    let items = push_fixture(PG_INSERT_CHUNK_ROWS + 2, "acme");
+    let mut outcomes: Vec<usize> = Vec::new();
+    let mut accepted: Vec<usize> = Vec::new();
+    for (index, item) in items.iter().enumerate() {
+        if item.tenant_id == "acme" {
+            accepted.push(index);
+        } else {
+            outcomes.push(index);
+        }
+    }
+    assert!(outcomes.is_empty(), "no item is foreign in this fixture");
+    assert_eq!(accepted.len(), PG_INSERT_CHUNK_ROWS + 2);
+
+    // One chunk of the drain: binds are 7 per row, in the column order the
+    // SQL names, and chunk length is exactly a multiple of the column count.
+    let chunk = &accepted[..PG_INSERT_CHUNK_ROWS];
+    let params = pg_insert_params(&items, chunk);
+    assert_eq!(
+        params.len(),
+        PG_INSERT_CHUNK_ROWS * PushColumn::BINDS_PER_ROW
+    );
+    assert_eq!(
+        params.len() % PushColumn::BINDS_PER_ROW,
+        0,
+        "placeholder count must divide evenly into rows"
+    );
+
+    // The tail is its own (short) chunk — the same SAME statement cannot
+    // serve it, which is why the chunking test asserts 2 chunks above.
+    let tail = &accepted[PG_INSERT_CHUNK_ROWS..];
+    assert_eq!(tail.len(), 2);
+    assert_eq!(
+        pg_insert_params(&items, tail).len(),
+        2 * PushColumn::BINDS_PER_ROW
+    );
+}
 // ── Identity channel: builder terminal id, no vector stamping ─────
 
 /// The PG path carries terminal identity through `origin_terminal_id`,
@@ -680,6 +901,168 @@ async fn pull_updates_excludes_self_origin_rows() {
         .ok();
 }
 
+/// O-H20 against a REAL PostgreSQL: the batched push writes the same rows a
+/// per-item push would, across a chunk boundary AND across an item the
+/// tenant gate rejects, and the upsert still leaves an existing row alone.
+///
+/// Skips (does not fail) when the disposable PostgreSQL is unreachable, in
+/// the same style as the other live-PG tests above. Statement COUNT is not
+/// measured here — this is the correctness half of the batching fix;
+/// `push_chunk_stays_within_bind_limits_and_counts_chunks_not_items` pins
+/// the O(chunks) count.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
+#[tokio::test]
+async fn push_items_batches_across_chunk_boundaries() {
+    let url = std::env::var("OZ_TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
+    let ns = format!("pg-push-batch-{}", std::process::id());
+    let tenant = format!("{ns}-t");
+    let other = format!("{ns}-other");
+    let transport = match PgTransport::new_raw(&url, &tenant) {
+        Ok(t) => t,
+        Err(_) => {
+            eprintln!("push batching test skipped: cannot create raw pool");
+            #[cfg(not(feature = "pg-tests"))]
+            return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
+        }
+    };
+    let pool = transport.pool.clone();
+    let client = match pool.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("push batching test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
+            return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
+        }
+    };
+
+    // One chunk, exactly: the whole batch is a single multi-row INSERT, and
+    // the trail below is the short second chunk.
+    let count = PG_INSERT_CHUNK_ROWS + 5;
+    let mut items = push_fixture(count, &tenant);
+    // A row that already exists remotely: the upsert must leave it alone.
+    let clash = items[3].id.clone();
+    // A foreign-tenant item lands mid-batch: it must take no bind at all
+    // and must not shift the outcome slot of the item after it.
+    items.insert(
+        7,
+        OfflineQueueItem::with_tenant("complete_sale", "{}", &other),
+    );
+
+    client
+        .batch_execute(&format!(
+            "CREATE TABLE IF NOT EXISTS offline_queue (
+                    id TEXT PRIMARY KEY,
+                    action TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    retry_count BIGINT NOT NULL DEFAULT 0,
+                    last_error TEXT,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    created_at TEXT NOT NULL DEFAULT 'epoch',
+                    synced_at TEXT,
+                    origin_terminal_id TEXT
+                 );
+                 DELETE FROM offline_queue WHERE tenant_id LIKE '{ns}%';
+                 INSERT INTO offline_queue (id, action, payload, status, tenant_id)
+                 VALUES ('{clash}', 'already-here', '{{}}', 'pending', '{tenant}');"
+        ))
+        .await
+        .unwrap();
+
+    let outcomes = transport.push_items(&items).await.unwrap();
+
+    // Outcome slots still answer one-for-one, in queue order.
+    assert_eq!(outcomes.len(), items.len(), "one outcome per input item");
+    for (index, outcome) in outcomes.iter().enumerate() {
+        let rejected_without_reason = matches!(
+            outcome,
+            super::super::transport::PushOutcome::Rejected { reason }
+                if reason == PG_INSERT_OUTCOME_PLACEHOLDER
+        );
+        assert!(
+            !rejected_without_reason,
+            "slot {index} kept the placeholder — a chunk never reported back"
+        );
+        if items[index].tenant_id == tenant {
+            assert!(
+                matches!(outcome, super::super::transport::PushOutcome::Accepted),
+                "item {index} must be accepted, got {outcome:?}"
+            );
+        } else {
+            assert!(
+                matches!(
+                    outcome,
+                    super::super::transport::PushOutcome::Rejected { reason }
+                        if reason.contains("item tenant")
+                ),
+                "the foreign item must be rejected by the tenant gate, got {outcome:?}"
+            );
+        }
+    }
+
+    // Same rows a per-item push would have written — every column, not just
+    // the id — and the clashing row untouched by the upsert.
+    let rows = client
+        .query(
+            "SELECT id::TEXT, action::TEXT, payload::TEXT, status::TEXT,
+                    retry_count::TEXT, last_error::TEXT, tenant_id::TEXT,
+                    origin_terminal_id::TEXT
+             FROM offline_queue
+             WHERE tenant_id = $1
+             ORDER BY id ASC",
+            &[&tenant],
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        rows.len(),
+        count,
+        "batched push must write exactly the admitted rows"
+    );
+
+    let mut expected: Vec<OfflineQueueItem> = items
+        .into_iter()
+        .filter(|i| i.tenant_id == tenant)
+        .collect();
+    expected.sort_by(|a, b| a.id.cmp(&b.id));
+    for (row, item) in rows.iter().zip(expected.iter()) {
+        let stored = (
+            row.get::<_, String>("id"),
+            row.get::<_, String>("action"),
+            row.get::<_, String>("payload"),
+            row.get::<_, String>("status"),
+            row.get::<_, String>("retry_count"),
+            row.get::<_, Option<String>>("last_error"),
+            row.get::<_, String>("tenant_id"),
+            row.get::<_, Option<String>>("origin_terminal_id"),
+        );
+        assert_eq!(stored.0, item.id);
+        if stored.0 == clash {
+            // ON CONFLICT DO NOTHING: the pre-existing row wins.
+            assert_eq!(stored.1, "already-here", "upsert must not overwrite");
+            continue;
+        }
+        assert_eq!(stored.1, item.action);
+        assert_eq!(stored.2, item.payload);
+        assert_eq!(stored.3, "pending", "status is always the pending literal");
+        assert_eq!(stored.4, item.retry_count.to_string());
+        assert_eq!(stored.5, item.last_error);
+        assert_eq!(stored.6, item.tenant_id);
+        assert_eq!(stored.7, item.origin_terminal_id);
+    }
+
+    client
+        .batch_execute(&format!(
+            "DELETE FROM offline_queue WHERE tenant_id LIKE '{ns}%';"
+        ))
+        .await
+        .ok();
+}
 /// RED: `fetch_snapshot` must scope products/tax_rates/users to the
 /// tenant. Same direct-connection leak as pull.
 #[cfg_attr(not(feature = "pg-tests"), ignore)]

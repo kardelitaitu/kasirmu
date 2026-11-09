@@ -287,6 +287,35 @@ async fn test_alert_cooldown_state() {
     );
 }
 
+#[tokio::test]
+async fn test_alert_cooldown_prunes_expired_tenants_on_insert() {
+    let state = QuotaAlertState::new();
+    let t0 = Instant::now();
+
+    state
+        .record_alert("churned-tenant-1", CONDITION_PRODUCTS_OVER_QUOTA, t0)
+        .await;
+    assert_eq!(state.active_tenant_count().await, 1);
+
+    // 8 days later, another tenant records an alert; churned-tenant-1 should be pruned
+    let t_8days = t0 + Duration::from_secs(8 * 86400);
+    state
+        .record_alert("churned-tenant-2", CONDITION_PRODUCTS_OVER_QUOTA, t_8days)
+        .await;
+
+    assert_eq!(state.active_tenant_count().await, 1);
+    assert!(
+        !state
+            .is_suppressed("churned-tenant-1", CONDITION_PRODUCTS_OVER_QUOTA, t_8days)
+            .await
+    );
+    assert!(
+        state
+            .is_suppressed("churned-tenant-2", CONDITION_PRODUCTS_OVER_QUOTA, t_8days)
+            .await
+    );
+}
+
 #[test]
 fn test_render_quota_alert_invariants() {
     let v = TenantQuotaViolation {

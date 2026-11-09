@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loginAs, selectWorkspace, WORKSPACES, navigateTo } from './helpers';
+import { loginAs, navigateViaSidebar } from './helpers';
 
 /**
  * E2E: Dev Tools — Design System, Tooltip Preview
@@ -20,14 +20,14 @@ const SCREEN_TIMEOUT = 8_000;
 test.describe('Dev Tools', () => {
   test.beforeEach(async ({ page }) => {
     await loginAs(page, 'admin', '9999');
-    await selectWorkspace(page, WORKSPACES.ADMIN);
+    // The sidebar is the only path to these in-workspace screens; see
+    // helpers.navigateViaSidebar for why a raw hash write falls back to the picker.
+    await navigateViaSidebar(page, 'Dev', 'Design System');
   });
 
   // ── Design System ─────────────────────────────────────────
 
   test('Design System renders color swatches and sections', async ({ page }) => {
-    await navigateTo(page, 'design');
-
     await expect(page.locator('.ds-page')).toBeVisible({ timeout: SCREEN_TIMEOUT });
     await expect(page.locator('.ds-header')).toBeVisible({ timeout: 5_000 });
 
@@ -38,7 +38,7 @@ test.describe('Dev Tools', () => {
   // ── Tooltip Preview ───────────────────────────────────────
 
   test('Tooltip Preview renders position grid and sections', async ({ page }) => {
-    await navigateTo(page, 'tooltips');
+    await navigateViaSidebar(page, 'Dev', 'Tooltip Preview');
 
     await expect(page.locator('.tp-page')).toBeVisible({ timeout: SCREEN_TIMEOUT });
     await expect(page.locator('.tp-header')).toBeVisible({ timeout: 5_000 });

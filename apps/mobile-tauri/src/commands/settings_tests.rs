@@ -1,6 +1,7 @@
 use super::*;
 use kasirmu_core::SyncPriority;
 use kasirmu_core::migrations;
+use kasirmu_test_support::tempdir;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {
@@ -922,7 +923,7 @@ async fn scoped_user_preferences_rejects_invalid_token() {
 #[tokio::test]
 async fn scoped_user_preferences_roundtrip_targets_session_store_and_user() {
     let conn = kasirmu_core::migrations::fresh_db();
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
@@ -1693,7 +1694,7 @@ fn wire_pin_store_settings_carries_every_key_the_renderer_declares() {
 
 #[test]
 fn wire_pin_credit_settings_carries_every_key_the_renderer_declares() {
-    // ui/src/api/settings.ts:67 — CreditSettingsDto.
+    // ui/src/api/settings.ts:81 — CreditSettingsDto.
     const PAYLOAD: &str =
         r#"{"enabled": true, "reminderIntervalHours": 24, "maxLimitMinor": 500000}"#;
     assert_wire_matches::<CreditSettingsDto>(
@@ -1799,7 +1800,7 @@ fn owner_app(state: AppState) -> tauri::App<tauri::test::MockRuntime> {
 }
 
 fn store_state(conn: rusqlite::Connection) -> AppState {
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
@@ -2144,7 +2145,7 @@ async fn scoped_settings_reads_reach_their_bodies_for_an_owner() {
 // And the command is not decorative about its `user_id`.
 // `kasirmu_bridge::settings::set_setting` runs
 // `ctx.require_permission_for_user(&store, user_id, SETTINGS_EDIT)?` at
-// `crates/kasirmu-bridge/src/settings.rs:1259`, which reaches
+// `crates/kasirmu-bridge/src/settings.rs:766`, which reaches
 // `Store::require_permission` → `assignment_for_user(user_id)?`
 // (`crates/kasirmu-core/src/db/staff.rs:220`) — so an id that resolves to no user is
 // an error before `run_set_setting` is ever called.

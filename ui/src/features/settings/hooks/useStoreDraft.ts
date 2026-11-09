@@ -26,7 +26,7 @@
 //! store task does, so the two paths agree on the wire format and the refetch
 //! trigger and cannot silently diverge.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocalization } from '@fluent/react';
 import { useToast } from '@/components/Toast';
 import { useSettings } from '@/contexts/SettingsContext';
@@ -87,6 +87,8 @@ export function useStoreDraft(): StoreDraft {
   const [store, setStore] = useState<StoreSettingsDto>(EMPTY_STORE);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  /** Synchronous mirror of `saving` — see the re-entry guard in `save`. */
+  const savingRef = useRef(false);
 
   // Seed the draft from the context read, and RE-seed whenever the context
   // reports different values (a store switch, or a refetch after another
@@ -152,6 +154,12 @@ export function useStoreDraft(): StoreDraft {
 
   const save = useCallback(async () => {
     if (!sessionToken) return false;
+    // Re-entry guard: set_store_settings writes the same keys with the same values, so a
+    // replay cannot corrupt them -- but two in-flight saves each toast their OWN outcome,
+    // so a double tap on a failing save produces two error toasts and, worse, a save that
+    // lands can be followed by a "settings-save-error" from the tap that raced it.
+    if (savingRef.current) return false;
+    savingRef.current = true;
     setSaving(true);
     try {
       await setStoreSettingsScoped(sessionToken, store);
@@ -164,6 +172,7 @@ export function useStoreDraft(): StoreDraft {
       addToast({ message: l10n.getString('settings-save-error'), type: 'error' });
       return false;
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }, [sessionToken, store, markSettingsUpdated, addToast, l10n]);

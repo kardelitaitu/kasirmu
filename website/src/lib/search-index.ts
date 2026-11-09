@@ -1,3 +1,5 @@
+import { guidePath } from './guides';
+
 /**
  * One owner for "what the ⌘K quick search can find".
  *
@@ -36,6 +38,7 @@ export interface SearchDoc {
   slug: string;
   title: string;
   description?: string;
+  url?: string;
 }
 
 /** How many results the modal shows before the user types anything. */
@@ -105,6 +108,15 @@ function pageItems(locale: string): SearchItem[] {
     { id: 'minimarket', title: id ? 'Solusi untuk Minimarket & Ritel' : 'Solutions for Minimarkets & Retail', category: 'pages', url: `/${locale}/minimarket`, keywords: 'barcode scanning sku inventory fast retail kasir toko' },
     { id: 'warung', title: id ? 'Solusi untuk Warung & UMKM' : 'Solutions for Warung & Small Business', category: 'pages', url: `/${locale}/warung`, keywords: 'umkm warung simple affordable fast cash qris kasir murah gratis mudah gampang ringan' },
     { id: 'warehouse', title: id ? 'Solusi Manajemen & Sinkronisasi Gudang' : 'Solutions for Warehouse Sync & Stock Management', category: 'pages', url: `/${locale}/warehouse`, keywords: 'warehouse stock inventory 3pl transfer logistics offline' },
+
+    // Guides hub
+    {
+      id: 'guides-hub',
+      title: id ? 'Panduan Usaha & Kasir' : 'Business & POS Guides',
+      category: 'pages',
+      url: id ? `/${locale}/panduan/` : `/${locale}/guides/`,
+      keywords: 'panduan guides artikel blog tips trik warung toko kafe usaha umkm offline qris stok laporan omzet',
+    },
   ];
 }
 
@@ -116,6 +128,14 @@ function pageItems(locale: string): SearchItem[] {
 export interface SearchDocSource {
   id: string;
   data: { title: string; description?: string; order: number };
+}
+
+/**
+ * A guides collection entry, structurally.
+ */
+export interface SearchGuideSource {
+  id: string;
+  data: { title: string; description: string; order?: number };
 }
 
 /**
@@ -131,8 +151,9 @@ export interface SearchDocSource {
 export function toSearchDocs(
   entries: readonly SearchDocSource[],
   locale: string,
+  guides?: readonly SearchGuideSource[],
 ): SearchDoc[] {
-  return entries
+  const docs: SearchDoc[] = entries
     .filter((entry) => entry.id.startsWith(`${locale}/`))
     .sort((a, b) => a.data.order - b.data.order)
     .map((entry) => ({
@@ -140,6 +161,23 @@ export function toSearchDocs(
       title: entry.data.title,
       description: entry.data.description ?? '',
     }));
+
+  if (!guides || guides.length === 0) return docs;
+
+  const guideDocs: SearchDoc[] = guides
+    .filter((entry) => entry.id.startsWith(`${locale}/`))
+    .sort((a, b) => (a.data.order ?? 0) - (b.data.order ?? 0))
+    .map((entry) => {
+      const slug = entry.id.slice(locale.length + 1);
+      return {
+        slug: `guide-${slug}`,
+        title: entry.data.title,
+        description: entry.data.description ?? '',
+        url: guidePath(locale, slug),
+      };
+    });
+
+  return [...docs, ...guideDocs];
 }
 
 /**
@@ -152,7 +190,7 @@ export function docItems(docs: SearchDoc[], locale: string): SearchItem[] {
     id: `doc-${doc.slug}`,
     title: doc.title,
     category: 'docs' as const,
-    url: `/${locale}/docs/${doc.slug}`,
+    url: doc.url ?? `/${locale}/docs/${doc.slug}`,
     keywords: [doc.slug.replace(/-/g, ' '), DOC_KEYWORDS[doc.slug], doc.description ?? '']
       .filter(Boolean)
       .join(' '),

@@ -87,6 +87,118 @@ pub enum TenderState {
     Unconfirmed,
 }
 
+impl TenderState {
+    /// Canonical snake_case string representation matching ADR-64 D4 and SQLite CHECK constraints.
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Authorized => "authorized",
+            Self::Confirmed => "confirmed",
+            Self::Settled => "settled",
+            Self::Failed => "failed",
+            Self::Voided => "voided",
+            Self::Refunded => "refunded",
+            Self::Disputed => "disputed",
+            Self::Unconfirmed => "unconfirmed",
+        }
+    }
+
+    /// Parse a string into a `TenderState` variant.
+    pub fn parse_str(s: &str) -> Option<Self> {
+        match s {
+            "pending" => Some(Self::Pending),
+            "authorized" => Some(Self::Authorized),
+            "confirmed" => Some(Self::Confirmed),
+            "settled" => Some(Self::Settled),
+            "failed" => Some(Self::Failed),
+            "voided" => Some(Self::Voided),
+            "refunded" => Some(Self::Refunded),
+            "disputed" => Some(Self::Disputed),
+            "unconfirmed" => Some(Self::Unconfirmed),
+            _ => None,
+        }
+    }
+
+    /// Whether this state is terminal for a single payment row under ADR-64 D4 Rule 4.
+    ///
+    /// Terminal states (`failed`, `voided`, `disputed`) cannot transition to `settled`.
+    /// Corrections must be recorded as a new payment row.
+    pub const fn is_terminal(&self) -> bool {
+        matches!(self, Self::Failed | Self::Voided | Self::Disputed)
+    }
+
+    /// Validate whether a transition from `self` to `target` is permitted.
+    ///
+    /// Enforces ADR-64 D4 invariants:
+    /// - Terminal states cannot transition to any other state.
+    /// - Settled tenders can only transition to `refunded` or `disputed`.
+    /// - Unconfirmed electronic tenders can transition to `confirmed`, `settled`, `failed`, `voided`, `disputed`.
+    pub fn can_transition_to(&self, target: Self) -> bool {
+        if self.is_terminal() {
+            return false;
+        }
+        match self {
+            Self::Pending => matches!(
+                target,
+                Self::Pending
+                    | Self::Authorized
+                    | Self::Confirmed
+                    | Self::Settled
+                    | Self::Failed
+                    | Self::Voided
+                    | Self::Unconfirmed
+            ),
+            Self::Authorized => matches!(
+                target,
+                Self::Authorized | Self::Confirmed | Self::Settled | Self::Failed | Self::Voided
+            ),
+            Self::Confirmed => matches!(
+                target,
+                Self::Confirmed | Self::Settled | Self::Refunded | Self::Voided | Self::Disputed
+            ),
+            Self::Settled => matches!(target, Self::Settled | Self::Refunded | Self::Disputed),
+            Self::Unconfirmed => matches!(
+                target,
+                Self::Unconfirmed
+                    | Self::Confirmed
+                    | Self::Settled
+                    | Self::Failed
+                    | Self::Voided
+                    | Self::Disputed
+            ),
+            Self::Refunded => matches!(target, Self::Refunded | Self::Disputed),
+            Self::Failed | Self::Voided | Self::Disputed => false,
+        }
+    }
+
+    /// Determine initial tender state for checkout under ADR-64 D4 Rules 1, 2 & 3.
+    ///
+    /// - Rule 1: `cash` is the only method written `settled` at record time.
+    /// - Rule 3: Electronic tenders recorded without external corroboration are written `unconfirmed`.
+    /// - Corroborated electronic tenders start as `confirmed` (or `authorized`).
+    /// - Deferred methods (`open_bill`, `pay_later`, `credit`) start as `pending`.
+    pub fn initial_state_for_method(method: &str, is_online_corroborated: bool) -> Self {
+        let norm = method.to_ascii_lowercase();
+        match norm.as_str() {
+            "cash" => Self::Settled,
+            "open_bill" | "pay_later" | "credit" => Self::Pending,
+            _ => {
+                if is_online_corroborated {
+                    Self::Confirmed
+                } else {
+                    Self::Unconfirmed
+                }
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for TenderState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// A request to process a payment.
 #[derive(Debug, Clone)]
 pub struct PaymentRequest {

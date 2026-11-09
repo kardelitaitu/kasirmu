@@ -75,6 +75,31 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Re-entry guard for the shift write. `handleEndShift` awaits a transaction read
+  // before it writes, so the End button is live for that whole window; a double tap
+  // sent TWO `endInventoryShift` calls. core's `end_inventory_shift` updates
+  // `WHERE status = 'active'` and returns NotFound when 0 rows change
+  // (crates/kasirmu-core/src/db/inventory.rs:434), so the shift is not closed twice --
+  // but the replay's rejection lands in this handler's catch and raises an ERROR toast
+  // reading as a failed close on an operation that succeeded. The ref makes the guard
+  // synchronous (a `useState` flag updates too late), and `endShiftPending` drives the
+  // button's `disabled` so the operator sees the state instead of a no-op tap.
+  // Same re-entry class as useAutoQr.handleAutoReissue (round 124) and
+  // usePosHeldCarts.handleOpenBill (round 126).
+  const endShiftPendingRef = useRef(false);
+  const [endShiftPending, setEndShiftPending] = useState(false);
+
+  // The same guard for the OPEN path, and for the same reason: `handleStartShift`
+  // awaits the create, and core's `start_inventory_shift` refuses a duplicate (it
+  // counts this user's active shifts at the location and returns Validation,
+  // crates/kasirmu-core/src/db/inventory.rs:396-408, backed by the partial unique
+  // index idx_inv_shifts_active_per_user_location). So a double submit does not open
+  // two shifts -- the replay is rejected, and that rejection is reported as "Failed to
+  // start shift" for a shift that DID open, leaving the operator on the start form
+  // for a shift that is running.
+  const startShiftPendingRef = useRef(false);
+  const [startShiftPending, setStartShiftPending] = useState(false);
+
   // Exit-animation-pattern: hold the modal in the DOM through a mirrored
   // fade-out before unmounting (exit-animation-pattern skill; timing
   // matches the 200ms entry animation of .shift-summary-overlay).
@@ -150,6 +175,9 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
   const handleStartShift = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sessionToken || !session?.user_id || !selectedLocationId) return;
+    if (startShiftPendingRef.current) return;
+    startShiftPendingRef.current = true;
+    setStartShiftPending(true);
 
     try {
       const shift = await startInventoryShift(sessionToken, selectedLocationId, notes);
@@ -158,15 +186,27 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
       if (onShiftChange) onShiftChange(shift);
     } catch (err) {
       addToast({ message: l10nErrorMessage(err, l10nRef.current, 'inv-shift-error-start'), type: 'error' });
+    } finally {
+      startShiftPendingRef.current = false;
+      setStartShiftPending(false);
     }
   };
 
   const handleEndShift = async () => {
     if (!sessionToken || !activeShift) return;
+    if (endShiftPendingRef.current) return;
+    endShiftPendingRef.current = true;
+    setEndShiftPending(true);
 
     try {
       // Fetch transactions server-side for this shift window.
       const since = activeShift.started_at;
+      // `list_inventory_transactions_for_shift` filters on
+      // `staff_id = ?1 AND location_id = ?2 AND created_at >= ?3`
+      // (crates/kasirmu-core/src/db/inventory.rs:789), so the bridge fills staff_id from
+      // the SESSION (inventory.rs:586) -- this read is "MY movements at THIS location
+      // since I clocked in", not "the location's movements". The summary copy below says
+      // so, because a second cashier on the same location is outside it.
       const filtered = await listInventoryTransactionsForShift(
         sessionToken, activeShift.location_id, since,
       );
@@ -178,6 +218,9 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
       if (onShiftChange) onShiftChange(null);
     } catch (err) {
       addToast({ message: l10nErrorMessage(err, l10nRef.current, 'inv-shift-error-end'), type: 'error' });
+    } finally {
+      endShiftPendingRef.current = false;
+      setEndShiftPending(false);
     }
   };
 
@@ -201,7 +244,13 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
                 <span>Active Shift</span>
               </Localized>
             </span>
-            <Button variant="danger" size="sm" className="shift-btn shift-btn-danger" onClick={handleEndShift}>
+            <Button
+              variant="danger"
+              size="sm"
+              className="shift-btn shift-btn-danger"
+              onClick={handleEndShift}
+              disabled={endShiftPending}
+            >
               <Localized id="inv-shift-end-btn">
                 <span>End Shift</span>
               </Localized>
@@ -239,7 +288,13 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
               />
             </Localized>
 
-            <Button type="submit" variant="primary" size="sm" className="shift-btn shift-btn-primary">
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              className="shift-btn shift-btn-primary"
+              disabled={startShiftPending}
+            >
               <Localized id="inv-shift-start-btn">
                 <span>Start Shift</span>
               </Localized>
@@ -254,8 +309,12 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
             <Localized id="inv-shift-summary-title">
               <h3>Shift Summary</h3>
             </Localized>
+            {/* The copy names the SCOPE, not just the window. The read behind this
+                list is filtered by staff_id (the session's user) as well as by
+                location and start time, so "during this shift" would promise a
+                whole-location register the backend does not return. */}
             <Localized id="inv-shift-summary-performed">
-              <p>Transactions performed during this shift:</p>
+              <p>Your transactions at this location since this shift started:</p>
             </Localized>
             
             <ul className="summary-list">

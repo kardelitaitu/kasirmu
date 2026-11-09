@@ -40,7 +40,20 @@ SETTINGS_PARENTS = {'settings', 'pengaturan'}
 STAMP_OPEN = re.compile(r'^>\s*(?:\*\*last audited\b|\d{4}-\d{2}-\d{2}\b)')
 
 def repo_root():
-    o = subprocess.run(['git', 'rev-parse', '--show-toplevel'], stdout=subprocess.PIPE, text=True, errors='replace')
+    # This script lives at <root>/.agents/skills/docs-auditor/scripts/, so the root is
+    # four parents up. Resolving it from __file__ FIRST matters on Windows: under a
+    # restricted sandbox `subprocess.PIPE` cannot create its pipe (WinError 5), and the
+    # git call then dies with PermissionError -- which reads as a broken checker rather
+    # than a confinement artefact. The git call is kept only as a fallback and for the
+    # symlinked-checkout case, and its pipe is closed on failure.
+    guess = Path(__file__).resolve().parents[4]
+    if (guess / '.git').exists() or (guess / 'Cargo.toml').is_file():
+        return guess
+    try:
+        o = subprocess.run(['git', 'rev-parse', '--show-toplevel'],
+                           stdout=subprocess.PIPE, text=True, errors='replace')
+    except OSError as exc:
+        raise SystemExit('cannot resolve repo root: %s' % exc)
     if o.returncode != 0:
         raise SystemExit(2)
     return Path(o.stdout.strip())
@@ -166,6 +179,15 @@ def self_test():
     cases.append(('correct path clean', base == 0))
     cases.append(('Settings child accepted', len(check_docs([('x.md', 'open **Settings \u2192 License**')], nav, tree, 'en')) == 0))
     cases.append(('route as parent accepted', len(check_docs([('x.md', 'open **staff \u2192 Staff**')], nav, tree, 'en')) == 0))
+    # The root resolver, graded live: main() aims check() at repo_root(), so a gutted
+    # resolver must turn the self-test red rather than leave every read at None.
+    try:
+        rp = repo_root()
+        rooted = rp is not None and rp.is_dir() and (
+            (rp / '.git').exists() or (rp / 'Cargo.toml').is_file())
+    except SystemExit:
+        rooted = False
+    cases.append(('repo_root resolves to a checkout-shaped directory', rooted))
     bad = [n for n, ok in cases if not ok]
     if bad:
         print('SELF-TEST WRONG: ' + ', '.join(bad), file=sys.stderr)

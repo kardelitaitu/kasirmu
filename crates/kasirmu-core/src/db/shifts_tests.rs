@@ -694,6 +694,35 @@ fn close_shift_and_report_agree_on_cash_for_a_split_tender() {
     );
 }
 
+#[test]
+fn close_shift_includes_receivable_collections_cash_in_expected_cash() {
+    let conn = fresh();
+    seed_user(&conn);
+    let s = store(&conn);
+
+    let shift = s.open_shift("user-1", None, 10000).unwrap();
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+    let rec_id = uuid::Uuid::now_v7().to_string();
+    conn.execute_batch(&format!(
+        "INSERT INTO customers (id, name, created_at, updated_at)
+         VALUES ('cust-1', 'Alice', '{now}', '{now}');
+         INSERT INTO receivables (id, tenant_id, customer_id, source, reference, amount_minor, paid_minor, currency, status, note, created_at, updated_at)
+         VALUES ('{rec_id}', 'default', 'cust-1', 'pos', 'INV-REC', 5000, 5000, 'USD', 'paid', '', '{now}', '{now}');
+         INSERT INTO receivable_payments (id, tenant_id, receivable_id, amount_minor, currency, method, paid_at, recorded_by, note)
+         VALUES ('pay-rec-1', 'default', '{rec_id}', 5000, 'USD', 'cash', '{now}', 'user-1', 'Kasbon payment');"
+    ))
+    .unwrap();
+
+    let closed = s.close_shift(&shift.id, 15000, None).unwrap();
+    assert_eq!(
+        closed.expected_cash_minor,
+        Some(15000),
+        "expected cash must include kasbon cash collected during shift"
+    );
+    assert_eq!(closed.cash_difference_minor, Some(0));
+}
+
 /// RED: a refund belongs to the shift of the person who PROCESSED it, not to
 /// the shift of whoever sold the original sale. `close_shift` joins refunds to
 /// sales on the SALE's `user_id` and ignores `refunds.processed_by`, so a refund
@@ -956,14 +985,42 @@ fn open_shift_failed_open_leaves_no_row() {
 /// and then refuses.
 #[test]
 fn open_shift_race_cannot_create_a_second_open_shift() {
-    let dir = std::env::temp_dir().join(format!("oz_shift_race_{}", uuid::Uuid::now_v7()));
+    // The guard owns the directory and deletes it on drop.
+    let scratch = kasirmu_test_support::ScratchDir::new("shift-race");
+    let dir = scratch.path();
     let db_path = dir.join("kasir.db");
     {
-        let conn = fresh_file(&dir);
+        let conn = fresh_file(dir);
         seed_user(&conn);
     }
 
+    // B holds the write lock until A's busy handler reports A is BLOCKED on it —
+    // no timer (O-T15).
+    //
+    // The 300 ms sleep this replaces was a bet on wall-clock behaviour: a host
+    // that descheduled A past B's commit turned the intended "A waits on B's
+    // lock" into "A ran afterwards", and the test's own outcome silently differed.
+    // The property being pinned is that A's `BEGIN IMMEDIATE` must contend with
+    // B's lock BEFORE its duplicate check, so the check runs against B's
+    // committed row — A blocking on that lock is exactly that event, and A's busy
+    // handler can report it from inside the call. The wait is bounded (5 s,
+    // matching A's busy_timeout) so a regression that takes no write lock FAILS
+    // here instead of hanging.
+    static A_IS_WAITING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    A_IS_WAITING.store(false, std::sync::atomic::Ordering::SeqCst);
+    static A_WAITING_TX: std::sync::Mutex<Option<std::sync::mpsc::Sender<()>>> =
+        std::sync::Mutex::new(None);
+    fn note_a_is_waiting(_attempts: i32) -> bool {
+        if !A_IS_WAITING.swap(true, std::sync::atomic::Ordering::SeqCst)
+            && let Some(tx) = A_WAITING_TX.lock().unwrap().as_ref()
+        {
+            let _ = tx.send(());
+        }
+        true
+    }
+
     let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+    let (a_waiting_tx, a_waiting_rx) = std::sync::mpsc::channel();
     let rival = {
         let db_path = db_path.clone();
         std::thread::spawn(move || {
@@ -977,9 +1034,9 @@ fn open_shift_race_cannot_create_a_second_open_shift() {
             )
             .unwrap();
             locked_tx.send(()).unwrap();
-            // B releases on its own timer: A is blocked inside `open_shift` and
-            // cannot signal mid-call.
-            std::thread::sleep(std::time::Duration::from_millis(300));
+            // Release on A's report (or on the bound, in which case A's outcome
+            // is classified below rather than the test hanging).
+            let _ = a_waiting_rx.recv_timeout(std::time::Duration::from_secs(5));
             tx.commit().unwrap();
         })
     };
@@ -989,8 +1046,18 @@ fn open_shift_race_cannot_create_a_second_open_shift() {
     // lock request lands inside B's window instead of after B's commit.
     let conn_a = Connection::open(&db_path).unwrap();
     conn_a.pragma_update(None, "busy_timeout", "5000").unwrap();
+    // rusqlite's `busy_handler` takes a function POINTER, so the handler cannot
+    // capture the sender: it reports through a `static` mailbox instead.
+    A_WAITING_TX.lock().unwrap().replace(a_waiting_tx);
+    conn_a.busy_handler(Some(note_a_is_waiting)).unwrap();
     let outcome = Store::new(&conn_a).open_shift("user-1", None, 200);
     rival.join().unwrap();
+
+    assert!(
+        A_IS_WAITING.load(std::sync::atomic::Ordering::SeqCst),
+        "the losing open must have BLOCKED on B's write lock before its duplicate \
+         check; it never entered the race window"
+    );
 
     let err = outcome.expect_err("a second open shift for the same user must be refused");
     assert!(
@@ -1013,5 +1080,4 @@ fn open_shift_race_cannot_create_a_second_open_shift() {
 
     drop(check);
     drop(conn_a);
-    let _ = std::fs::remove_dir_all(&dir);
 }

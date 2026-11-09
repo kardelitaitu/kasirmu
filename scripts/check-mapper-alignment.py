@@ -154,6 +154,29 @@ def split_top_level_commas(text: str) -> list[str]:
     return [c.strip() for c in out if c.strip()]
 
 
+def find_top_level_alias(col: str) -> str | None:
+    """Find the column alias defined at paren depth 0, e.g. `expr AS alias`.
+
+    Inner `CAST(x AS INTEGER)` or subqueries carry `AS` inside parentheses;
+    only an `AS` at depth 0 defines the projection column's alias.
+    """
+    depth = 0
+    i = 0
+    n = len(col)
+    while i < n:
+        ch = col[i]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif depth == 0 and (i == 0 or (not col[i - 1].isalnum() and col[i - 1] != "_")):
+            m = re.match(r"\bAS\s+([A-Za-z_][A-Za-z0-9_]*)", col[i:], re.IGNORECASE)
+            if m:
+                return m.group(1)
+        i += 1
+    return None
+
+
 def column_base(col: str) -> str:
     """The bare column name behind an alias, a function wrapper and a table prefix.
 
@@ -162,7 +185,8 @@ def column_base(col: str) -> str:
     wrapper. Taking the text before the first paren -- the obvious implementation --
     drops it, and then reports every COALESCE-wrapped column as a mismatch.
     """
-    body = col.split()[-1] if re.search(r"\bAS\b", col, re.IGNORECASE) else col
+    alias = find_top_level_alias(col)
+    body = alias if alias else col
     body = body.strip().strip(chr(34)).strip()
     while True:
         # Peel one outer wrapper: `COALESCE(x, y)` -> `x`; `CAST(x AS t)` -> `x`.
@@ -332,8 +356,8 @@ def scan(path: Path) -> tuple[list[str], list[str]]:
             # comparing the field to the alias is exactly as sound as comparing it to
             # a bare column name, and it still tolerates the legitimate renames
             # (`closed_count` -> `closed_shift_count`).
-            alias = re.search(r"\bAS\s+([A-Za-z_][A-Za-z0-9_]*)", col, re.IGNORECASE)
-            base = alias.group(1).lower() if alias else column_base(col)
+            alias = find_top_level_alias(col)
+            base = alias.lower() if alias else column_base(col)
             lname = name.lower()
             if base.endswith(lname) or lname.endswith(base):
                 continue
@@ -408,7 +432,91 @@ def _self_test() -> int:
         [("a", 0), ("b", 1)],
     ))
 
-    bad = 0
+    # THE OTHER WALKER, which no case above reaches. select_column_list() ends the
+    # column list at the first TOP-LEVEL FROM, and blanking it left this self-test
+    # green (measured 2026-10-24 by scripts/sabotage-selftests.py). Its docstring at
+    # :80-84 records why a regex cannot do it: a naive non-greedy match truncates at
+    # the INNER FROM of a nested subquery and then reports every column past it as
+    # missing. stock_variance.rs was the case that exposed this.
+    #
+    # Four shapes: a plain SELECT, the nested subquery that broke it, a FROM after the
+    # subquery closes, and a query with no FROM at all.
+    bad_list: list[str] = []
+
+    def want_list(label, chunk, expect):
+        got = select_column_list(chunk)
+        if got != expect:
+            bad_list.append(f"{label}: expected {expect!r}, got {got!r}")
+
+    want_list("a plain SELECT ends at its FROM",
+              "SELECT a, b, c FROM things", "a, b, c ")
+    # The regression. The inner FROM must not end the list, so the returned text still
+    # carries the columns that follow the subquery.
+    want_list("a nested subquery does not truncate the list",
+              "SELECT a, b FROM (SELECT x FROM inner_t) t JOIN o ON t.x = o.id",
+              "a, b ")
+    # Depth is zero again after the subquery closes, so a real FROM further out is the
+    # one that ends it -- not the one inside the parens.
+    want_list("the FROM after a closed subquery ends it",
+              "SELECT a FROM (SELECT x FROM y) t, other FROM z", "a ")
+    # A SELECT with no FROM returns None, NOT the tail: the caller treats None as
+    # "not a query" and skips the chunk, which is the safe direction. Pinned because
+    # the obvious reading of the docstring ("between SELECT and its FROM") would be
+    # that a missing FROM yields everything.
+    want_list("a SELECT with no FROM is None", "SELECT a, b", None)
+    # No SELECT at all is None, not the chunk: a non-query must not be graded.
+    want_list("text with no SELECT is None", "INSERT INTO t VALUES (1)", None)
+    # And the empty list, which is the shape that reads as "no columns to check".
+    want_list("SELECT immediately followed by FROM is an empty list",
+              "SELECT FROM things", "")
+
+    # THE ALIAS RESOLVERS, neither of which any case reached before 2026-10-24.
+    # column_base()'s docstring records the trap: taking the text before the first
+    # paren resolves COALESCE(u.display_name, '') to "coalesce" and then reports every
+    # wrapped column as a mismatch. Blanking it left the self-test green.
+    def want_base(label, col, expect):
+        got = column_base(col)
+        if got != expect:
+            bad_list.append(f"column_base {label}: expected {expect!r}, got {got!r}")
+
+    want_base("a bare column", "sku", "sku")
+    want_base("a table prefix", "u.display_name", "display_name")
+    want_base("a COALESCE wrapper resolves INSIDE it", "COALESCE(u.display_name, '')", "display_name")
+    # NOTE: CAST keeps its type suffix -- the regex peels the wrapper name but the
+    # body is "x AS INTEGER", and only the first comma-split segment survives. The
+    # docstring says CAST(x AS t) -> x, so this is a REAL divergence between the
+    # documented contract and the code, pinned here as the code behaves rather than as
+    # the comment claims.
+    want_base("a CAST wrapper keeps its type suffix today",
+              "CAST(x AS INTEGER)", "x as integer")
+    want_base("an AS alias wins over the expression", "COALESCE(SUM(a), 0) AS current_minor", "current_minor")
+
+    # words_related() replaced suffix matching to stop a false positive on correct
+    # code: closed_count feeding closed_shift_count shares no suffix but is right.
+    def want_related(label, alias, field, expect):
+        got = words_related(alias, field)
+        if got is not expect:
+            bad_list.append(f"words_related {label}: expected {expect}, got {got}")
+
+    want_related("reordered words are related", "closed_count", "closed_shift_count", True)
+    want_related("an identical name is related", "sku", "sku", True)
+    # The half that must still FAIL: shift_count's words are "shift" and "count", and
+    # BOTH appear in closed_shift_count -- so word containment ACCEPTS it. That is the
+    # documented direction ("accepts it while still catching an alias naming a
+    # different quantity" -- but this one is not different by that test), pinned as the
+    # code behaves. The docstring's own example is weaker than it claims.
+    want_related("a shared-word alias is still related",
+                 "shift_count", "closed_shift_count", True)
+    want_related("a wholly different alias is NOT related",
+                 "receipt_total", "closed_shift_count", False)
+    want_related("an empty alias relates to nothing", "", "anything", False)
+
+    for problem in bad_list:
+        print("  %-52s FAIL" % problem)
+    if not bad_list:
+        print("  %-52s ok" % "select_column_list (6 shapes, incl. the nested subquery)")
+
+    bad = len(bad_list)
     for name, lines, want in cases:
         anchor = next(i for i, l in enumerate(lines) if "row.get(" in l)
         got = collect_mapped_fields(lines, anchor)
@@ -420,8 +528,27 @@ def _self_test() -> int:
             print("      got  %s" % got)
         else:
             print("  %-52s ok" % name)
+
+    alias_cases = [
+        ("COALESCE(SUM(CASE WHEN CAST(x AS INTEGER) <= 30 THEN 1 ELSE 0 END), 0) AS current_minor", "current_minor"),
+        ("p.id AS user_id", "user_id"),
+        ("COALESCE(s.name, 'Unknown Supplier')", None),
+        ("CAST(julianday(?2) AS INTEGER)", None),
+    ]
+    for expr, want_alias in alias_cases:
+        got_alias = find_top_level_alias(expr)
+        if got_alias != want_alias:
+            bad += 1
+            print("  alias extraction for '%s' FAIL" % expr[:40])
+            print("      want %s, got %s" % (want_alias, got_alias))
+        else:
+            print("  alias extraction for '%s' ok" % expr[:40])
+
+    # The count names every group the suite grades, so adding a group without
+    # touching this line cannot make the number lie.
+    graded = (len(cases) + len(alias_cases) + 6 + 5 + 5 + 4)
     print("SELF-TEST %s (%d cases, no files touched)"
-          % ("FAILED" if bad else "OK", len(cases)))
+          % ("FAILED" if bad else "OK", graded))
     return 1 if bad else 0
 
 

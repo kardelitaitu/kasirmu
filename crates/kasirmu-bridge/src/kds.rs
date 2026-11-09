@@ -132,16 +132,20 @@ pub fn build_kds_chit_jobs(
     plan: &Value,
 ) -> Vec<KdsChitJob> {
     let hardware_targets = runtime_kds_hardware_targets(plan, kds_instance_ids);
-    let mut jobs = Vec::new();
+    let mut seen = std::collections::HashSet::with_capacity(orders.len() * hardware_targets.len());
+    let mut jobs = Vec::with_capacity(orders.len() * hardware_targets.len());
     for order in orders {
         for (kds_instance_id, hardware_instance_id) in &hardware_targets {
-            let job = KdsChitJob {
-                order_id: order.id.clone(),
-                kds_instance_id: kds_instance_id.clone(),
-                hardware_instance_id: hardware_instance_id.clone(),
-            };
-            if !jobs.iter().any(|existing| existing == &job) {
-                jobs.push(job);
+            if seen.insert((
+                order.id.as_str(),
+                kds_instance_id.as_str(),
+                hardware_instance_id.as_str(),
+            )) {
+                jobs.push(KdsChitJob {
+                    order_id: order.id.clone(),
+                    kds_instance_id: kds_instance_id.clone(),
+                    hardware_instance_id: hardware_instance_id.clone(),
+                });
             }
         }
     }
@@ -274,8 +278,12 @@ pub async fn try_auto_print_kds_chit_jobs(
     emitter: Option<&Arc<dyn EventSink>>,
 ) {
     let jobs = build_kds_chit_jobs(orders, kds_instance_ids, plan);
+    let order_map: std::collections::HashMap<&str, &KdsOrder> = orders
+        .iter()
+        .map(|order| (order.id.as_str(), order))
+        .collect();
     for job in &jobs {
-        let Some(order) = orders.iter().find(|order| order.id == job.order_id) else {
+        let Some(order) = order_map.get(job.order_id.as_str()) else {
             continue;
         };
         print_kds_chit_job(job, order, registry, emitter).await;

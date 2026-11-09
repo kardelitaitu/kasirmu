@@ -192,3 +192,10 @@ fn every_ordering_consumed_by_the_conflict_detector_is_reachable() {
     assert_eq!(newer.compare(&base), CausalOrder::After);
     assert_eq!(base.compare(&base.clone()), CausalOrder::Equal);
 }
+
+#[test]
+fn iter_yields_str_references_in_terminal_order() {
+    let v = vector(&[("t2", 7), ("t1", 3)]);
+    let pairs: Vec<(&str, u64)> = v.iter().map(|(t, c)| (t, *c)).collect();
+    assert_eq!(pairs, vec![("t1", 3), ("t2", 7)]);
+}

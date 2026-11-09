@@ -61,3 +61,5 @@ migration cases plus `scopedStorage`'s own adoption case.
 their own spellings rather than the helper. Neither is unscoped — both already carry a scope —
 so they are a consistency question rather than a leak, and worth a look before assuming they
 need touching.
+
+> last audited 14-10-26 by docs-auditor

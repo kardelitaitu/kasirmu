@@ -58,7 +58,9 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ("avatars", 1, &["STAFF_UPDATE"]),
     ("desktop_link", 0, &[]),
     ("branding", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
-    ("browser", 0, &[]),
+    // 0 -> 1 in 428694f9c "fix(browser): gate open_product_images_scoped with
+    // PRODUCTS_READ (BR-S4)" -- the image browser is no longer ungated.
+    ("browser", 1, &["PRODUCTS_READ"]),
     // 1 gate call with SETTINGS_READ, absent from the pin. A REAL unpinned gate: the
     // one-click diagnostic archive export (bf8e004f9) resolves the session and then
     // requires SETTINGS_READ in the bridge, so this row reviews a live permission.
@@ -221,9 +223,12 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     // 4 -> 5 in fd4a0ff6e "feat(sync): add dead_letter_count to PgDaemonStatus and
     // gate list_remote_failures_scoped" -- one newly gated command, same key.
     ("offline", 5, &["SYNC_MANAGE"]),
+    // 4 -> 5 in 160734e90 "feat(receipt): add credit terms formatting, kasbon
+    // settlement printing, and ar/ap aging export" -- the aging export carries a
+    // gate call; the key set is unchanged.
     (
         "payables",
-        4,
+        5,
         &[
             "PAYABLES_CREATE",
             "PAYABLES_SETTLE",
@@ -290,6 +295,18 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ("qris_auto", 1, &["SALES_PROCESS"]),
     ("qris_listener", 3, &["SALES_PROCESS"]),
     ("receipt_format", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
+    // 7 -> 8 by the same 160734e90 as the payables row: the aging export spans
+    // both ledgers, one new gated call each side.
+    (
+        "receivables",
+        8,
+        &[
+            "RECEIVABLES_COLLECT",
+            "RECEIVABLES_CREATE",
+            "RECEIVABLES_VIEW",
+            "RECEIVABLES_WRITEOFF",
+        ],
+    ),
     ("refunds", 3, &["SALES_PROCESS", "SALES_REFUND"]),
     // 4 -> 5 in d635b58f0 "feat(regional): register get_active_market_profile_scoped
     // Tauri command" -- the command the subject names, gated on the existing pair.
@@ -354,7 +371,9 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
             "TOPOLOGY_WRITE",
         ],
     ),
-    ("sync", 12, &["SYNC_MANAGE"]),
+    // 12 -> 11 in b15cf5fd7 "refactor(sync): retire pending_sync_count_scoped,
+    // the gated duplicate of the ungated count" -- the gate call retired with it.
+    ("sync", 11, &["SYNC_MANAGE"]),
     // Pinned at its measured shape: the sync test pins module declares the
     // gates the sync tests drive, but carries no gate CALL of its own, so the
     // census reads 0 from it. It is a row because the census walks every
@@ -482,9 +501,12 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     ("offline", 4, &["SYNC_MANAGE"]),
     ("picker_ticket", 0, &[]),
     // 17 -> 22: aggregated with pos/ submodules in tablet commands.
+    // 22 -> 20 in 636935f4f "refactor(pos): retire uncalled
+    // get_active_cart_scoped and list_active_carts_scoped" -- two gated commands
+    // with no callers retired together.
     (
         "pos",
-        22,
+        20,
         &["SALES_DISCOUNT", "SALES_OVERRIDE_PRICE", "SALES_PROCESS"],
     ),
     (
@@ -520,6 +542,7 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     ("qris_auto", 2, &["SALES_PROCESS"]),
     ("qris_listener", 3, &["SALES_PROCESS"]),
     ("receipt_format", 2, &["SETTINGS_EDIT"]),
+    ("receivables", 0, &[]),
     ("refunds", 3, &["SALES_PROCESS", "SALES_REFUND"]),
     // 2 -> 3 by the same d635b58f0 as the desktop row.
     ("regional", 3, &["SETTINGS_EDIT", "SETTINGS_READ"]),
@@ -557,7 +580,9 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
             "TOPOLOGY_WRITE",
         ],
     ),
-    ("sync", 9, &["SYNC_MANAGE"]),
+    // 9 -> 8 by the same b15cf5fd7 as the desktop row: the tablet parity module
+    // carried the same gated duplicate.
+    ("sync", 8, &["SYNC_MANAGE"]),
     (
         "tables",
         6,
@@ -1064,6 +1089,10 @@ fn permission_value(name: &str) -> &'static str {
         "PROMOTIONS_EDIT" => p::PROMOTIONS_EDIT,
         "PURCHASING_MANAGE" => p::PURCHASING_MANAGE,
         "PURCHASING_VIEW" => p::PURCHASING_VIEW,
+        "RECEIVABLES_COLLECT" => p::RECEIVABLES_COLLECT,
+        "RECEIVABLES_CREATE" => p::RECEIVABLES_CREATE,
+        "RECEIVABLES_VIEW" => p::RECEIVABLES_VIEW,
+        "RECEIVABLES_WRITEOFF" => p::RECEIVABLES_WRITEOFF,
         "REPORTS_EXPORT" => p::REPORTS_EXPORT,
         "REPORTS_SCHEDULE" => p::REPORTS_SCHEDULE,
         "REPORTS_VIEW" => p::REPORTS_VIEW,
@@ -1463,12 +1492,16 @@ fn diff_rows_reports_every_drift_in_one_call() {
 //      winning -- `topology.rs` beside `topology/` is that shape in this tree
 //   5. keys are sorted and deduplicated across the merge
 //
-// These need a real directory, so they build one with `tempfile` (already a
-// dev-dependency) rather than mocking the filesystem.
+// These need a real directory, so they build one through
+// `kasirmu_test_support` (a `tempfile::TempDir` rooted under the gitignored
+// `target/` tree) rather than mocking the filesystem. A bare
+// `tempfile::tempdir()` would resolve TEMP, which on this project's Windows
+// machines is the MACHINE-level `C:\WINDOWS\TEMP` -- a directory an ordinary
+// user can create inside but cannot delete from.
 
 /// Write `files` (relative path -> contents) under a fresh temp dir.
 fn fixture(files: &[(&str, &str)]) -> tempfile::TempDir {
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = kasirmu_test_support::tempdir();
     for (rel, body) in files {
         let path = dir.path().join(rel);
         if let Some(parent) = path.parent() {

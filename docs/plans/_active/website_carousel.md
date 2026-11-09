@@ -3,20 +3,31 @@
 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 200 lines, with a prominent status block already on it that is the right way to write a blocked plan. It says the plan is blocked on TWO things rather than one, that no code has been changed, and it names both blockers precisely — a pending decision from its own section 7.0 about where the video mounts, and the absence of the video assets themselves. A plan that tells you exactly what it is waiting on is worth more than one that reads as merely unfinished, and the second blocker in particular is the kind that gets lost: a plan blocked on its own unresolved decision is a different problem from a plan blocked on assets, and only one of them is a design question. · IT ALSO RECORDS ITS OWN RE-AUDIT with the specific coordinates verified — `DWELL_MS = 10000`, the 1280/720 aspect ratio, the `SLIDE_IDS` set matching section 5, the immutable `/videos/*` rule, and the existence of the carousel test. Those are the claims a later reader would otherwise have to re-derive, and listing them turns a 200-line plan into something checkable at a glance. · WHAT WAS NOT CHECKED, and the limit is the same one every plan in this campaign carries: the video assets do not exist, so the encoding decisions — codec, bitrate budget, frame rate, container flags — are unfalsifiable from the repository, and the measured size comparison rests on a synthetic proxy clip rather than real footage. That is not a defect; it is what a plan looks like before its inputs arrive, and the status block says so. · The one place a reader should be careful is the status block's own correction: section 7.0 records that the video mounts inside `SlideWindow`'s content slot, whose box is approximately 1280×693 rather than the 1280×720 this plan encodes. That is a design decision with downstream consequences for the capture itself, not only the CSS, and the document correctly flags it as blocking rather than quietly adjusting the number. · No stamp existed; this is the first. -->
 # Website Hero Carousel — Video Format Plan
 
-> Status: **planned — blocked on two things, not one.** No code has been changed.
+> Status: **planned — blocked on video assets only.** (§7.0 mount-box decision resolved: **Option B** — standard 1280×720 / 960×540 with `object-fit: cover`). No code has been changed.
 > Scope: `website/src/components/HeroCarousel.astro` + `website/src/lib/hero-carousel.ts` + `website/public/videos/hero/`. (The React island this plan originally scoped, `HeroCarousel.tsx`, was retired when the homepage dropped the framework renderer — see the module header in `hero-carousel.ts`.)
 >
-> 1. **A decision from §7.0** — the video mounts *inside* `SlideWindow`'s
->    `content` slot, whose box is ~1280×693, not the 1280×720 this plan encodes
->    at. Pick A/B/C before recording; it changes the capture, not just the CSS.
-> 2. **The video assets themselves.**
+> 1. **§7.0 Mount-box decision** — **RESOLVED (Option B)** on 2026-11-09. Standard 16:9 recordings framed with ~15px safe margin, styled `h-full w-full object-cover` inside `<SlideWindow>`'s content slot.
+> 2. **Pending blocker** — **The video assets themselves** (5 slides × 10 s calm UI footage).
 >
-> When both are settled, follow §6 (encode) and §7 (integrate) in order.
+> When video assets arrive, follow §6 (encode) and §7 (integrate) in order.
 >
-> Re-audited against the tree on 2026-09-04; re-derived again on 2026-10-11. §1 and §7.0 were
-> corrected; §2–§6 and §8 verified accurate (`DWELL_MS = 10000` at `lib/hero-carousel.ts:28`,
-> `aspect-ratio: 1280 / 720` at `HeroCarousel.astro:45`, `SLIDE_IDS` matching §5 at `:24`, the
-> `/videos/*` immutable rule at `_headers:38`, and `hero-carousel.test.ts` existing).
+> Re-audited against the tree on 2026-09-04, re-derived again on 2026-10-11, and the §7 test
+> path corrected on 2026-10-26 (round 19). §1 and §7.0 were corrected; §2–§6 and §8 verified
+> accurate (`DWELL_MS = 10000` at `lib/hero-carousel.ts:28`, `aspect-ratio: 1280 / 720` at
+> `HeroCarousel.astro:45`, `SLIDE_IDS` matching §5 at `:24`, the `/videos/*` immutable rule at `_headers:38`,
+> and `website/src/lib/__tests__/hero-carousel.test.ts` existing).
+>
+> **Why the wrong test path survived two audits (recorded 2026-10-26).** The plan named
+> `hero-carousel.test.ts` in two places; the file is at `website/src/lib/__tests__/hero-carousel.test.ts`,
+> one directory deeper than both the 2026-09-04 and 2026-10-11 passes assumed. Neither
+> audit caught it because **no checker grades this file**: `check-cite-lines.py` reports
+> `0 graded citation(s)` for it, since `docs/plans/` is in HIST_DIRS (dated records,
+> not live claims). That is the same blind spot `check-dead-refs.py` documents for
+> every `todo-`/`plan-`/`prd-` file -- a plan's paths are graded by
+> nothing, so they drift silently while the prose around them stays correct. The path was
+> fixed here by resolving every backticked path token in the file by hand: 10 citations,
+> 9 resolved, and the single miss (`HeroCarousel.tsx`) is deliberate and
+> documented at sections 0, 5 and 7.
 
 ## 1. Context
 
@@ -158,6 +169,12 @@ not just the CSS:
 Recommendation: **B**, with recordings framed to keep the app's top bar clear of
 the crop band. It leaves §6's encode commands unchanged and costs under 4%.
 
+**Decision adopted (2026-11-09): Option B.** All video captures will be produced
+at standard 16:9 (`1280×720` desktop, `960×540` mobile), framed with a ~15px safe
+margin clear of critical UI elements at top/bottom. The `<video>` element inside
+`<SlideWindow>`'s content slot will use `class="h-full w-full object-cover"`.
+This completely unblocks the mount-box decision without waiting for assets.
+
 ### 7.1 Steps
 
 1. **Lazy activation** — render the `<video>` only for the *active* slide
@@ -188,7 +205,7 @@ the crop band. It leaves §6's encode commands unchanged and costs under 4%.
    `aria-label` from the existing slide label.
 6. **Fallback when `.webm` unsupported** — browser walks `<source>` list
    automatically; no JS needed.
-7. **Tests** — extend `hero-carousel.test.ts` (the `.tsx` suite was renamed with the extraction): only active slide mounts a
+7. **Tests** — extend `website/src/lib/__tests__/hero-carousel.test.ts` (the `.tsx` suite was renamed with the extraction): only active slide mounts a
    `<video>`; `preload="none"` present; poster attribute set; reduced-motion path
    renders no autoplaying video.
 

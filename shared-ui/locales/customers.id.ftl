@@ -62,6 +62,40 @@ customer-mgmt-history-no-sales = Belum ada penjualan.
 customer-mgmt-search-results = Menampilkan { $shown } dari { $total } pelanggan
 customer-mgmt-search-loading = Mencari…
 
+# ── Kasbon / Accounts Receivable Modal ──
+customer-mgmt-kasbon = Kasbon
+customer-mgmt-kasbon-aria =
+    .aria-label = Lihat kasbon untuk { $name }
+kasbon-modal-title = Piutang / Kasbon Pelanggan
+kasbon-modal-close = Tutup
+kasbon-modal-loading = Memuat daftar piutang…
+kasbon-modal-empty = Belum ada catatan kasbon untuk pelanggan ini.
+kasbon-modal-total-owed = Total Piutang:
+kasbon-modal-col-date = Tanggal
+kasbon-modal-col-ref = Referensi
+kasbon-modal-col-due = Jatuh Tempo
+kasbon-modal-col-amount = Total
+kasbon-modal-col-paid = Dibayar
+kasbon-modal-col-balance = Sisa
+kasbon-modal-col-status = Status
+kasbon-modal-col-actions = Aksi
+kasbon-modal-action-pay = Bayar
+kasbon-modal-action-writeoff = Hapus Buku
+kasbon-modal-writeoff-confirm = Yakin ingin menghapus buku piutang ini? Tindakan ini tidak dapat dibatalkan.
+kasbon-modal-writeoff-title = Hapus buku piutang?
+kasbon-modal-payment-title = Catat Pembayaran Piutang
+kasbon-modal-payment-amount = Jumlah Pembayaran
+kasbon-modal-payment-method = Metode Pembayaran
+kasbon-modal-payment-submit = Simpan Pembayaran
+kasbon-modal-payment-cancel = Batal
+kasbon-toast-payment-success = Pembayaran piutang berhasil dicatat
+kasbon-toast-payment-failed = Gagal mencatat pembayaran piutang
+kasbon-toast-writeoff-success = Piutang berhasil dihapus buku
+kasbon-toast-writeoff-failed = Gagal menghapus buku piutang
+kasbon-modal-print-receipt = Cetak Struk
+kasbon-toast-print-success = Struk bukti pembayaran berhasil dicetak
+kasbon-toast-print-failed = Gagal mencetak struk (periksa sambungan printer)
+
 # ── Customer Management (remaining) ──
 customer-mgmt-title = Pelanggan
 customer-mgmt-add = Tambah Pelanggan

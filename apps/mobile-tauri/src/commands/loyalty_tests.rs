@@ -108,7 +108,7 @@ async fn scoped_command_denies_user_without_loyalty_permission() {
     )
     .unwrap();
 
-    let temp_dir = std::env::temp_dir().join(format!(
+    let temp_dir = crate::state::test_scratch_root().join(format!(
         "kasirmu-mobile-loyalty-test-{}",
         uuid::Uuid::now_v7()
     ));
@@ -148,7 +148,7 @@ async fn scoped_command_reads_only_the_session_store() {
     )
     .unwrap();
 
-    let temp_dir = std::env::temp_dir().join(format!(
+    let temp_dir = crate::state::test_scratch_root().join(format!(
         "kasirmu-mobile-loyalty-test-{}",
         uuid::Uuid::now_v7()
     ));

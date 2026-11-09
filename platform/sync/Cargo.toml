@@ -38,6 +38,11 @@ pg-tests = []
 
 [dev-dependencies]
 axum = { workspace = true }
+# The one definition of the scratch-directory root, and of the Windows TEMP trap
+# it exists to avoid. test_helpers::scratch_dir used to carry its own ancestor
+# walk-up; delegating to the shared helper keeps the root logic at one site
+# instead of five.
+kasirmu-test-support = { path = "../../crates/kasirmu-test-support" }
 # P1-1: conflict resolution is the highest-risk surface in this crate — two
 # terminals editing one sale, arriving in either order — and it had no
 # property tests at all. `conflict_tests.rs` samples examples; these

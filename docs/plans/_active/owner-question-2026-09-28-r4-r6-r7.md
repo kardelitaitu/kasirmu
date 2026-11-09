@@ -34,6 +34,13 @@ Measured state:
   (`grep -rn DEFAULT_TERMINAL_ID crates platform apps --include='*.rs' | grep -vE "_tests?\.rs|/tests/" | wc -l`).
   That count is the price of either option, and it is small.
 
+  **Re-measured 2026-10-24 (round 109): the "8" was a coarse count and the honest number is
+  7 call sites.** `grep -rn DEFAULT_TERMINAL_ID crates platform apps --include='*.rs'` returns
+  **15** mentions; excluding test files leaves 9, and 2 of those 9 are `use` imports
+  (`desktop-tauri/src/commands/edc.rs:28`, `mobile-tauri/src/commands/edc.rs:12`) rather than
+  call sites. So the price of either option is **7 edits**, not 8 — smaller than recorded, which
+  does not change the recommendation. The remaining 6 mentions are doc comments, not code.
+
 **Options.**
 
 | | Option | Cost | Notes |

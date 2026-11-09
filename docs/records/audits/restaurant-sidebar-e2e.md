@@ -75,3 +75,5 @@ only by a record. Before this round, deleting that gate would have broken nothin
 | Source files | `RestaurantSidebar.tsx`, `PosScreen.tsx` verified **identical to HEAD** |
 | `eslint` / `tsc` | 0 / 0 |
 | Full UI suite | 12,670 passed, 0 failed |
+
+> last audited 14-10-26 by docs-auditor

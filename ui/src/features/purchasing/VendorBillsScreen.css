@@ -1,0 +1,271 @@
+.vendor-bills-screen {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  height: 100%;
+  overflow-y: auto;
+}
+
+.vendor-bills-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.vendor-bills-title {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-bold);
+  margin: 0;
+  color: var(--color-fg);
+}
+
+.vendor-bills-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+
+.vendor-bill-stat-card {
+  background-color: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  box-shadow: var(--shadow-sm);
+}
+
+.vendor-bill-stat-card--danger {
+  border-color: var(--color-danger-border);
+  background-color: var(--color-danger-bg);
+}
+
+.vendor-bill-stat-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-secondary);
+}
+
+.vendor-bill-stat-card--danger .vendor-bill-stat-label {
+  color: var(--color-danger-700);
+}
+
+.vendor-bill-stat-val {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-fg);
+}
+
+.vendor-bill-stat-card--danger .vendor-bill-stat-val {
+  color: var(--color-danger);
+}
+
+.vendor-bills-filters {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.vendor-bills-filter-btn {
+  padding: var(--space-1_5) var(--space-3_5);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.vendor-bills-filter-btn:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.vendor-bills-filter-btn--active {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-paper);
+}
+
+.vendor-bills-table-container {
+  background-color: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.vendor-bills-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: var(--text-base);
+}
+
+.vendor-bills-table th {
+  background-color: var(--color-bg-secondary);
+  padding: var(--space-3) var(--space-4);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+  border-bottom: 1px solid var(--color-border);
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.vendor-bills-table td {
+  padding: var(--space-3_5) var(--space-4);
+  border-bottom: 1px solid var(--color-border-subtle);
+  color: var(--color-fg);
+  vertical-align: middle;
+}
+
+.vendor-bills-table tr:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.vendor-bill-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1_5);
+  padding: var(--space-0_5) var(--space-2_5);
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  text-transform: capitalize;
+}
+
+.vendor-bill-status-badge--open {
+  background-color: var(--color-warning-subtle);
+  color: var(--color-warning-fg);
+}
+
+.vendor-bill-status-badge--partial {
+  background-color: var(--color-info-bg);
+  color: var(--color-info);
+}
+
+.vendor-bill-status-badge--paid {
+  background-color: var(--color-success-subtle);
+  color: var(--color-success);
+}
+
+.vendor-bill-status-badge--written_off {
+  background-color: var(--color-bg-subtle);
+  color: var(--color-fg-muted);
+  text-decoration: line-through;
+}
+
+.vendor-bill-overdue-tag {
+  display: inline-block;
+  padding: var(--space-0_5) var(--space-2);
+  background-color: var(--color-danger-bg);
+  color: var(--color-danger-700);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-bold);
+  border-radius: var(--radius-sm);
+  margin-left: var(--space-1_5);
+}
+
+.vendor-bills-actions-cell {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.vendor-bill-action-btn {
+  padding: var(--space-1) var(--space-2_5);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.vendor-bill-action-btn--pay {
+  background-color: var(--color-primary);
+  color: var(--color-paper);
+}
+
+.vendor-bill-action-btn--pay:hover {
+  background-color: var(--color-primary-hover);
+}
+
+.vendor-bill-action-btn--writeoff {
+  background-color: transparent;
+  color: var(--color-fg-secondary);
+  border-color: var(--color-border);
+}
+
+.vendor-bill-action-btn--writeoff:hover {
+  color: var(--color-danger);
+  border-color: var(--color-danger-border);
+  background-color: var(--color-danger-bg);
+}
+
+/* Modals & Drawers */
+.vendor-bills-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: var(--color-bg-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal-nested);
+  padding: var(--space-6);
+}
+
+.vendor-bills-modal {
+  background-color: var(--color-bg-surface);
+  border-radius: var(--radius-xl);
+  width: 100%;
+  max-width: 480px;
+  box-shadow: var(--shadow-xl);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+}
+
+.vendor-bills-modal-header {
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.vendor-bills-modal-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+}
+
+.vendor-bills-modal-close {
+  background: transparent;
+  border: none;
+  font-size: var(--text-2xl);
+  cursor: pointer;
+  color: var(--color-fg-secondary);
+}
+
+.vendor-bills-modal-body {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.vendor-bills-modal-footer {
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}

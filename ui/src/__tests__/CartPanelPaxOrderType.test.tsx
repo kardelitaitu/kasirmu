@@ -7,7 +7,7 @@
 //
 // So pax means seated guests at a table — a dine-in concept, exactly like the
 // table number. CartPanel nevertheless renders the field on EVERY order type
-// (CartPanel.tsx:808), so a takeaway or delivery order is prompted for a party
+// (CartPanel.tsx:837), so a takeaway or delivery order is prompted for a party
 // size it has no table to seat and no answer for.
 //
 // This is the sibling of the table-display case fixed in 547bf031d, and the same

@@ -239,6 +239,22 @@ pub struct AppState {
     pub table_lease_tracker: Arc<RwLock<kasirmu_lan::TableLeaseTracker>>,
     /// In-memory KDS active-queue snapshot served to reconnecting LAN KDS peers.
     pub kds_queue_cache: Arc<RwLock<kasirmu_lan::KdsQueueSnapshot>>,
+
+    /// Owning guard for the directory `db_manager` writes `store-<id>.sqlite`
+    /// files into — **test builds only**.
+    ///
+    /// `AppState::new` leaves it `None`: the production manager points at the
+    /// app data directory, which nothing here owns. `AppState::for_test` fills
+    /// it with a `kasirmu_test_support::ScratchDir` so each test state gets a
+    /// private, self-deleting root under the gitignored `target/` tree instead
+    /// of the shared `std::env::temp_dir()`. Dropping the state drops this
+    /// guard, which deletes the root after the manager is gone.
+    // Never read by name: the field is a pure lifetime guard, dropped only
+    // when the state is, and its `Drop` side effect (deleting the scratch
+    // root) is the entire point. Deleting it would drop the guard early.
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub(crate) test_scratch: Option<TestScratch>,
 }
 
 impl AppState {
@@ -475,6 +491,10 @@ impl AppState {
             local_api_op: Mutex::new(()),
             table_lease_tracker: Arc::new(RwLock::new(kasirmu_lan::TableLeaseTracker::new())),
             kds_queue_cache: Arc::new(RwLock::new(kasirmu_lan::KdsQueueSnapshot::default())),
+            // Production owns its data directory; only test states carry a
+            // scratch guard (see the field's doc comment).
+            #[cfg(test)]
+            test_scratch: None,
         })
     }
 }
@@ -941,18 +961,37 @@ impl Drop for AppState {
     }
 }
 
+/// `ScratchDir` bound in [`AppState::for_test`] and carried by the state for
+/// its whole lifetime, so the per-test `store-<id>.sqlite` root it owns cannot
+/// be deleted while the manager still uses it.
+///
+/// Dropping it IS the cleanup: `ScratchDir::drop` removes the directory. That
+/// is why it must travel with the state rather than be stored as a bare path
+/// from a helper — a helper that builds the guard and returns only
+/// `.path().to_path_buf()` deletes the directory at its own closing brace, and
+/// every later store open then fails with SQLite `CannotOpen` (os error 14).
+/// Gated like the field that uses it: a dev-dependency is not linked in a
+/// non-test build, so an ungated alias leaves `cargo check -p kasirmu-app`
+/// (no --all-targets) unable to resolve the crate.
+#[cfg(test)]
+type TestScratch = kasirmu_test_support::ScratchDir;
+
 #[cfg(test)]
 impl AppState {
     /// Construct an `AppState` suitable for unit tests.
     /// Creates a lightweight Tauri app handle via `tauri::test::mock_builder`.
     pub fn for_test() -> Self {
         let db = Arc::new(Mutex::new(Connection::open_in_memory().unwrap()));
+        // A private, self-deleting root for this state's store databases.
+        // The guard is MOVED into the struct below (not dropped here), so it
+        // lives exactly as long as the state does: the manager opens store
+        // files lazily, after this constructor has returned, and dropping the
+        // guard would delete the root before the first `open_store`.
+        let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-desktop-store");
+        let store_dir = scratch.path().to_path_buf();
         Self {
             db,
-            db_manager: StoreDatabaseManager::new(
-                std::env::temp_dir(),
-                kasirmu_core::migrations::ALL,
-            ),
+            db_manager: StoreDatabaseManager::new(store_dir, kasirmu_core::migrations::ALL),
             registry: Arc::new(DriverRegistry::default()),
             app: None,
             db_path: ":memory:".into(),
@@ -975,6 +1014,7 @@ impl AppState {
             local_api_op: Mutex::new(()),
             kds_queue_cache: Arc::new(RwLock::new(kasirmu_lan::KdsQueueSnapshot::default())),
             table_lease_tracker: Arc::new(RwLock::new(kasirmu_lan::TableLeaseTracker::new())),
+            test_scratch: Some(scratch),
         }
     }
 

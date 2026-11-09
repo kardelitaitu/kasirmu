@@ -251,7 +251,9 @@ pub(super) fn build_base_schemas() -> Value {
             "description": "Envelope for the product list. `missing_hashes` lists content hashes referenced by product image assignments whose files are not present in the server's image store — clients can fetch them via the image endpoints (spec 0046b).",
             "properties": {
                 "products": { "type": "array", "items": { "$ref": "#/components/schemas/ProductDetail" } },
-                "missing_hashes": { "type": "array", "items": { "type": "string" }, "description": "Content hashes referenced by products but absent from the image store" }
+                "missing_hashes": { "type": "array", "items": { "type": "string" }, "description": "Content hashes referenced by products but absent from the image store" },
+                "has_more": { "type": "boolean", "description": "Whether the catalogue continues past this page. ALWAYS present, so a bounded reply is never confused with a complete one." },
+                "next_after": { "type": ["string", "null"], "description": "The `after` value that fetches the next page; null on the last page. Always present." }
             }
         },
         "CategoryDto": {
@@ -493,8 +495,15 @@ pub(super) fn build_base_parameters() -> Value {
             "name": "limit",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "format": "int64", "default": 50, "maximum": 200 },
-            "description": "Maximum items per page (default 50, max 200)"
+            "schema": { "type": "integer", "format": "int64", "default": 100, "maximum": 500 },
+            "description": "Maximum items per page (default 100, max 500). A larger value is clamped, not rejected."
+        },
+        "PaginationCursor": {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" },
+            "description": "Keyset cursor: the SKU a previous response returned as next_after. Omit it to start from the first page."
         },
         "PaginationOffset": {
             "name": "offset",

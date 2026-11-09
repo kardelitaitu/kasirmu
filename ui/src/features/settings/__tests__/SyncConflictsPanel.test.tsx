@@ -39,9 +39,21 @@ const mockL10n = {
       'sync-conflicts-payload-hide': 'Hide',
       'sync-conflicts-payload-inspect-aria': `Inspect payload for item ${vars?.['id'] ?? ''}`,
       'sync-conflicts-payload-hide-aria': `Hide payload for item ${vars?.['id'] ?? ''}`,
+      // The payload block's own heading (settings.ftl:1287). It was the last hole
+      // this map was BLESSED to have: scripts/l10n-map-baseline.json carried it as
+      // a known miss, so the panel's heading rendered the raw id in every case.
+      'sync-conflicts-payload-title': 'JSON Payload',
       'sync-conflicts-payload-copy': 'Copy JSON',
       'sync-conflicts-payload-copied': 'Copied!',
       'sync-conflicts-badge-aria': `${vars?.['count'] ?? ''} quarantined sync conflicts`,
+      // Round 220 replaced `setError(String(e))` with l10nErrorMessage, which resolves
+      // a typed AppError to the shared app-error-* copy and falls back to the screen's
+      // own key. Both are stubbed here so a test can tell which arm fired.
+      'sync-conflicts-load-failed': 'Could not load the quarantined conflicts',
+      'sync-conflicts-requeue-failed': 'Could not requeue this conflict',
+      'sync-conflicts-requeue-partial': 'Some conflicts could not be requeued',
+      'app-error-generic': 'Something went wrong. Please try again.',
+      'app-error-validation': 'Please check the information you entered and try again.',
     };
     return map[id] ?? id;
   },
@@ -147,7 +159,10 @@ describe('SyncConflictsPanel', () => {
     render(<SyncConflictsPanel />);
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('Error: Network failure');
+      // Same rule on the list-load path, which was the THIRD raw-rejection site in
+      // this panel and the one a whole-suite run found after the first two were fixed.
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not load the quarantined conflicts');
+      expect(screen.getByRole('alert')).not.toHaveTextContent('Network failure');
     });
   });
 
@@ -166,7 +181,10 @@ describe('SyncConflictsPanel', () => {
     await user.click(retryBtn);
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('Error: Requeue failed');
+      // The raw rejection must NOT reach the operator; the screen's own key is the
+      // fallback for an untyped Error, which is what `new Error('Requeue failed')` is.
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not requeue this conflict');
+      expect(screen.getByRole('alert')).not.toHaveTextContent('Requeue failed');
     });
   });
 

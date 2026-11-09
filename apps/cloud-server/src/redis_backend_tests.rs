@@ -4,10 +4,43 @@
 //! Integration tests that require a live Redis are gated behind the
 //! `OZ_TEST_REDIS_URL` environment variable (mirroring the PG integration
 //! tests' `OZ_TEST_PG_URL` pattern): they skip when Redis is unavailable.
+//!
+//! # What runs without a server (O-T14)
+//!
+//! The default `cargo test -p kasirmu-cloud --bin kasirmu-cloud` run needs no
+//! Redis at all. `test_backend()` below reads `OZ_TEST_REDIS_URL`, returns
+//! `None` when it is unset, and every integration test returns early on that
+//! `None` — so the three integration tests EXECUTE in the default run and
+//! take their skip branch. They used to carry `#[ignore]`, which made them
+//! invisible no-ops; the attribute is gone because `test_backend()` already
+//! performs the gating, and a test that runs-and-skips is honest where an
+//! ignored one is not.
+//!
+//! # What needs `OZ_TEST_REDIS_URL`
+//!
+//! Everything below `test_backend()`: the snapshot round trip, the rate
+//! limiter burst, and the TTL expiry. Point `OZ_TEST_REDIS_URL` at any
+//! reachable Redis/Valkey and all three run for real.
+//!
+//! # Why TTL/expiry cannot be tested without a server
+//!
+//! `RedisBackend::snapshot_set` issues `SETEX` (server-side expiry) and
+//! `snapshot_get` issues a plain `GET` that honours whatever the server has
+//! already thrown away (`redis_backend.rs:192-205`, `redis_backend.rs:160-170`).
+//! The expiry therefore lives entirely in Redis; this crate never compares a
+//! timestamp against a TTL on that path. The one TTL check the repo owns is
+//! the in-process cache in `sync_api.rs` (`generated_at.elapsed() <
+//! SNAPSHOT_CACHE_TTL_SECS`), and it is covered separately by
+//! `sync_api_tests.rs` via back-dated entries. A fake Redis here would assert
+//! only that the fake expires its own map — a test of the fake, not of the
+//! product — so the integration test below is the only honest way to cover it.
+//
+// One leg still carries `#[ignore]`: `connect_returns_none_when_refused`
+// (`--ignored` to run it), which waits out a real connection timeout.
 
 use super::*;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 // ── Pure helpers ─────────────────────────────────────────────────────
 
@@ -58,7 +91,7 @@ async fn connect_rejects_malformed_url() {
 }
 
 #[tokio::test]
-#[ignore = "slow connection timeout without Redis"]
+#[ignore = "hangs: see the timing note in this test"]
 async fn connect_returns_none_when_refused() {
     // Point at a port that is (almost certainly) not listening. The
     // connection manager will retry, so this can take a moment — the
@@ -74,6 +107,17 @@ async fn connect_returns_none_when_refused() {
 }
 
 // ── Integration (gated on OZ_TEST_REDIS_URL) ────────────────────────
+
+/// Upper bound the TTL test will wait for Redis to drop a 1 s SETEX key.
+///
+/// Generous on purpose: the assertion is about the server honouring the TTL,
+/// not about this machine's scheduler. It exists so a server that never
+/// expires the key fails the test with a named message instead of hanging.
+const TTL_EXPIRY_BOUND: Duration = Duration::from_secs(10);
+
+/// Gap between polls for the expired key — well under the 1 s TTL so the
+/// test notices expiry promptly and stops waiting.
+const TTL_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 async fn test_backend() -> Option<RedisBackend> {
     let Ok(url) = std::env::var("OZ_TEST_REDIS_URL") else {
@@ -93,7 +137,6 @@ async fn test_backend() -> Option<RedisBackend> {
 }
 
 #[tokio::test]
-#[ignore = "Redis integration tests disabled in dev CI"]
 async fn integration_snapshot_roundtrip() {
     let Some(backend) = test_backend().await else {
         return;
@@ -124,7 +167,6 @@ async fn integration_snapshot_roundtrip() {
 }
 
 #[tokio::test]
-#[ignore = "Redis integration tests disabled in dev CI"]
 async fn integration_rate_limit_allows_then_denies() {
     let Some(backend) = test_backend().await else {
         return;
@@ -138,7 +180,6 @@ async fn integration_rate_limit_allows_then_denies() {
 }
 
 #[tokio::test]
-#[ignore = "Redis integration tests disabled in dev CI"]
 async fn integration_snapshot_ttl_expires() {
     let Some(backend) = test_backend().await else {
         return;
@@ -149,11 +190,32 @@ async fn integration_snapshot_ttl_expires() {
         backend.snapshot_get(&tenant).await.unwrap().unwrap().0,
         "v1"
     );
-    // Wait past the 1s TTL.
-    tokio::time::sleep(Duration::from_secs(2)).await;
-    assert_eq!(
-        backend.snapshot_get(&tenant).await.unwrap(),
-        None,
-        "entry must expire after TTL"
+
+    // The 1s TTL is enforced by the SERVER (SETEX), so this test has to wait
+    // for real — a fake clock would change nothing, because nothing in this
+    // crate reads a clock on this path. Poll instead of sleeping a fixed 2s:
+    // the loop returns the moment Redis drops the key (typically on the first
+    // poll after the second ticks over) instead of always paying the full
+    // nap, and it states its own bound in the failure message below.
+    let deadline = Instant::now() + TTL_EXPIRY_BOUND;
+    let mut polls = 0u32;
+    loop {
+        if backend.snapshot_get(&tenant).await.unwrap().is_none() {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "entry did not expire within {TTL_EXPIRY_BOUND:?} (1s SETEX TTL); \
+             the server is not honouring the TTL this backend sets"
+        );
+        polls += 1;
+        tokio::time::sleep(TTL_POLL_INTERVAL).await;
+    }
+    // `polls > 0` is part of the contract, not bookkeeping: a zero-TTL SETEX
+    // would delete the key before the first read even ran, and the expiry
+    // assertion above would then pass for the wrong reason.
+    assert!(
+        polls > 0,
+        "the entry vanished before the first poll — TTL not applied at all"
     );
 }

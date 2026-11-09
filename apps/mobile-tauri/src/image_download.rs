@@ -227,10 +227,25 @@ impl ImageDownloadManager {
         }
 
         // Phase 2: compute missing set (referenced minus present on disk).
+        // O-M33: Scan the images directory once with read_dir into a HashSet and diff
+        // in memory, rather than issuing N sequential try_exists stat syscalls.
+        let images_dir = cache_dir.join("images");
+        let mut present: std::collections::HashSet<String> = std::collections::HashSet::new();
+        if let Ok(mut dir) = tokio::fs::read_dir(&images_dir).await {
+            while let Ok(Some(entry)) = dir.next_entry().await {
+                if let Ok(ft) = entry.file_type().await
+                    && ft.is_file()
+                    && let Some(name) = entry.file_name().to_str()
+                    && let Some(hash) = name.strip_suffix(".webp")
+                {
+                    present.insert(hash.to_owned());
+                }
+            }
+        }
+
         let mut missing: Vec<(String, i32)> = Vec::new();
         for (hash, slot) in &referenced {
-            let path = cache_dir.join("images").join(format!("{hash}.webp"));
-            if !tokio::fs::try_exists(&path).await.unwrap_or(false) {
+            if !present.contains(hash.as_str()) {
                 missing.push((hash.clone(), *slot));
             }
         }

@@ -158,6 +158,52 @@ fn daily_revenue_gross_profit_from_product_costs() {
     );
 }
 
+/// Several refunds on one day/currency must net their cost out exactly once.
+///
+/// The refunds CTE is now a nested block so SQLite can use
+/// `idx_refunds_currency_created_date` (measured: the inline form scanned).
+/// That rewrote `(correlated cost subquery) AS rcost` into
+/// `SUM((same subquery)) / COUNT(*)`. The two are equal ONLY if the subquery is
+/// CONSTANT within each (day, currency) group — which it is, because it is
+/// correlated on (day, currency) and not on the individual refund. This test
+/// pins that: a group of THREE refunds whose aggregate is not a clean multiple
+/// would expose a truncating division or a double count.
+#[test]
+fn several_refunds_in_one_day_net_their_cost_exactly_once() {
+    let conn = fresh();
+    insert_user(&conn, "u1");
+    // 6 units at cost 400 = 2400 total cost.
+    let sale_id = seed_completed_sale(&conn, "SHIRT", 6, 1000);
+    conn.execute(
+        "UPDATE sale_lines SET cost_minor = 400 WHERE sale_id = ?1",
+        params![sale_id],
+    )
+    .unwrap();
+
+    // THREE refunds, same day and currency: 1 + 2 + 1 = 4 of 6 units refunded.
+    // At cost 400 per unit, refunded cost is 1600.
+    refund_units(&conn, &sale_id, "SHIRT", 1, 1000);
+    refund_units(&conn, &sale_id, "SHIRT", 2, 1000);
+    refund_units(&conn, &sale_id, "SHIRT", 1, 1000);
+
+    let rows = store(&conn)
+        .daily_revenue("2000-01-01", "2099-12-31")
+        .unwrap();
+    assert_eq!(rows.len(), 1, "all three refunds fall on one day/currency");
+    assert_eq!(
+        rows[0].refund_minor, 4000,
+        "three refunds of 1+2+1 units at 1000 each refund 4000"
+    );
+    // Two units stay sold at cost 400 = 800. The refunded 4 units of cost
+    // (1600) leave COGS; the inline and nested forms must agree EXACTLY.
+    assert_eq!(
+        rows[0].cogs_minor, 800,
+        "COGS must be the 2 unrefunded units only (2 * 400); a truncating rcost_sum/n or a double count would move this off 800",
+    );
+    assert_eq!(rows[0].total_minor, 6000);
+    assert_eq!(rows[0].net_revenue_minor, 2000);
+    assert_eq!(rows[0].gross_profit_minor, 1200);
+}
 // ── REP-08: refunded cost must leave COGS ──────────────────────
 
 #[test]
@@ -1485,6 +1531,172 @@ fn payment_method_breakdown_empty() {
     assert!(rows.is_empty());
 }
 
+/// THE GAP THIS REPORT CLOSES, stated as a test.
+///
+/// `payment_method_breakdown` reads `sales`, so a day whose only takings were
+/// receivable repayments reports NOTHING -- the money arrived, the drawer holds it, and
+/// the report is silent. That is precisely what decision Q1 was written to prevent, and
+/// it is why the two reports are separate rather than one UNION: this sale day and that
+/// collection day are different days and different questions.
+#[test]
+fn the_tender_breakdown_does_not_see_receivable_repayments() {
+    let conn = fresh();
+    conn.execute(
+        "INSERT INTO customers (id, name, created_at, updated_at) \
+         VALUES ('c1', 'c1', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    conn.execute_batch(
+        "INSERT INTO receivables (id, tenant_id, customer_id, source, reference, amount_minor,
+                                 currency, paid_minor, status, created_at, updated_at) VALUES
+            ('r1', 'default', 'c1', 'pos', 'INV-1', 100000, 'IDR', 100000, 'paid',
+             '2026-06-01T09:00:00Z', '2026-06-01T09:00:00Z');
+         INSERT INTO receivable_payments (id, tenant_id, receivable_id, amount_minor, currency, method, paid_at) VALUES
+            ('p1', 'default', 'r1', 100000, 'IDR', 'cash', '2026-07-10T10:00:00Z');",
+    )
+    .unwrap();
+    // No sale rows at all in July.
+    let breakdown = store(&conn)
+        .payment_method_breakdown("2026-07-01", "2026-07-31")
+        .unwrap();
+    assert!(
+        breakdown.is_empty(),
+        "the card-drawer report is silent on a day whose only takings were repayments"
+    );
+    // ...and the collections report is the one that answers it.
+    let collected = store(&conn)
+        .piutang_collections("2026-07-01", "2026-07-31")
+        .unwrap();
+    assert_eq!(collected.len(), 1);
+    assert_eq!(collected[0].total_minor, 100000);
+}
+// ── Piutang collections (decision Q1, the collection-day line) ──
+
+#[test]
+fn piutang_collections_split_by_the_tender_money_arrived_in() {
+    let conn = fresh();
+    // The receivable FKs to `customers`; without this row SQLite refuses the insert
+    // with a bare "FOREIGN KEY constraint failed" that names nothing.
+    conn.execute(
+        "INSERT INTO customers (id, name, created_at, updated_at) \
+         VALUES ('c1', 'c1', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    conn.execute_batch(
+        "INSERT INTO receivables (id, tenant_id, customer_id, source, reference, amount_minor,
+                                 currency, paid_minor, status, created_at, updated_at) VALUES
+            ('r1', 'default', 'c1', 'pos', 'INV-1', 100000, 'IDR', 40000, 'partial',
+             '2026-07-01T09:00:00Z', '2026-07-01T09:00:00Z');
+         INSERT INTO receivable_payments (id, tenant_id, receivable_id, amount_minor, currency, method, paid_at) VALUES
+            ('p1', 'default', 'r1', 30000, 'IDR', 'cash',         '2026-07-10T10:00:00Z'),
+            ('p2', 'default', 'r1', 10000, 'IDR', 'bank_transfer','2026-07-11T10:00:00Z'),
+            ('p3', 'default', 'r1',  5000, 'IDR', 'cash',         '2026-07-11T15:00:00Z');",
+    )
+    .unwrap();
+    let rows = store(&conn)
+        .piutang_collections("2026-07-01", "2026-07-31")
+        .unwrap();
+    let cash = rows.iter().find(|r| r.payment_method == "cash").unwrap();
+    assert_eq!(cash.total_minor, 35000, "two cash repayments sum");
+    assert_eq!(cash.payment_count, 2);
+    let bank = rows
+        .iter()
+        .find(|r| r.payment_method == "bank_transfer")
+        .unwrap();
+    assert_eq!(bank.total_minor, 10000);
+    // Highest revenue first inside a currency, same ordering as the tender split.
+    assert_eq!(rows[0].payment_method, "cash");
+}
+
+#[test]
+fn piutang_collections_excludes_payments_outside_the_range() {
+    let conn = fresh();
+    // The receivable FKs to `customers`; without this row SQLite refuses the insert
+    // with a bare "FOREIGN KEY constraint failed" that names nothing.
+    conn.execute(
+        "INSERT INTO customers (id, name, created_at, updated_at) \
+         VALUES ('c1', 'c1', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    conn.execute_batch(
+        "INSERT INTO receivables (id, tenant_id, customer_id, source, reference, amount_minor,
+                                 currency, paid_minor, status, created_at, updated_at) VALUES
+            ('r1', 'default', 'c1', 'pos', 'INV-1', 100000, 'IDR', 40000, 'partial',
+             '2026-06-01T09:00:00Z', '2026-06-01T09:00:00Z');
+         INSERT INTO receivable_payments (id, tenant_id, receivable_id, amount_minor, currency, method, paid_at) VALUES
+            ('p1', 'default', 'r1', 30000, 'IDR', 'cash', '2026-06-10T10:00:00Z'),
+            ('p2', 'default', 'r1', 10000, 'IDR', 'cash', '2026-07-10T10:00:00Z');",
+    )
+    .unwrap();
+    // June's take must not appear in July: money belongs to the day it arrived.
+    let july = store(&conn)
+        .piutang_collections("2026-07-01", "2026-07-31")
+        .unwrap();
+    assert_eq!(july.len(), 1);
+    assert_eq!(july[0].total_minor, 10000);
+    let june = store(&conn)
+        .piutang_collections("2026-06-01", "2026-06-30")
+        .unwrap();
+    assert_eq!(june[0].total_minor, 30000);
+}
+
+#[test]
+fn piutang_collections_separates_currencies() {
+    let conn = fresh();
+    // The receivable FKs to `customers`; without this row SQLite refuses the insert
+    // with a bare "FOREIGN KEY constraint failed" that names nothing.
+    conn.execute(
+        "INSERT INTO customers (id, name, created_at, updated_at) \
+         VALUES ('c1', 'c1', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    conn.execute_batch(
+        "INSERT INTO receivables (id, tenant_id, customer_id, source, reference, amount_minor,
+                                 currency, paid_minor, status, created_at, updated_at) VALUES
+            ('r1', 'default', 'c1', 'pos', 'INV-1', 100000, 'IDR', 0, 'open',
+             '2026-07-01T09:00:00Z', '2026-07-01T09:00:00Z'),
+            ('r2', 'default', 'c1', 'pos', 'INV-2', 100000, 'USD', 0, 'open',
+             '2026-07-01T09:00:00Z', '2026-07-01T09:00:00Z');
+         INSERT INTO receivable_payments (id, tenant_id, receivable_id, amount_minor, currency, method, paid_at) VALUES
+            ('p1', 'default', 'r1', 30000, 'IDR', 'cash', '2026-07-10T10:00:00Z'),
+            ('p2', 'default', 'r2',  7000, 'USD', 'cash', '2026-07-10T10:00:00Z');",
+    )
+    .unwrap();
+    let rows = store(&conn)
+        .piutang_collections("2026-07-01", "2026-07-31")
+        .unwrap();
+    // REP-06: one row per tender AND currency -- never a mixed sum.
+    assert_eq!(rows.len(), 2);
+    let idr = rows.iter().find(|r| r.currency == "IDR").unwrap();
+    let usd = rows.iter().find(|r| r.currency == "USD").unwrap();
+    assert_eq!(idr.total_minor, 30000);
+    assert_eq!(usd.total_minor, 7000);
+}
+
+#[test]
+fn piutang_collections_empty_when_nothing_was_collected() {
+    let conn = fresh();
+    let rows = store(&conn)
+        .piutang_collections("2000-01-01", "2099-12-31")
+        .unwrap();
+    assert!(rows.is_empty());
+}
+
+#[test]
+fn piutang_collections_refuses_a_malformed_date_bound() {
+    let conn = fresh();
+    let err = store(&conn)
+        .piutang_collections("2026-7-1", "2026-07-31")
+        .expect_err("REP-03 date bounds are strict YYYY-MM-DD");
+    match err {
+        crate::error::CoreError::Validation { field, .. } => assert_eq!(field, "start_date"),
+        other => panic!("expected a date-bound refusal, got {other:?}"),
+    }
+}
 // ── Voided sales summary ───────────────────────────────────────
 
 #[test]

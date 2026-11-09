@@ -80,7 +80,12 @@ fn backup_creates_snapshot_file() {
     // Windows — a stale or still-open file made the backup fail with
     // os error 32 ("file being used by another process"). A fresh UUID
     // name means a given run can never hit another run's leftover file.
-    let tmp = std::env::temp_dir().join(format!("oz-test-backup-{}.db", uuid::Uuid::now_v7()));
+    //
+    // The whole DIRECTORY is guarded (the previous form leaked the directory:
+    // it removed only the file), and the guard stays alive to the end of this
+    // test, so dropping `backup_conn` early is what lets Windows delete it.
+    let scratch = kasirmu_test_support::ScratchDir::new("oz-test-backup");
+    let tmp = scratch.path().join("test.db");
 
     s.backup(tmp.to_str().unwrap()).unwrap();
 
@@ -89,12 +94,10 @@ fn backup_creates_snapshot_file() {
         .query_row("SELECT COUNT(*) FROM categories", [], |r| r.get(0))
         .unwrap();
     assert_eq!(count, 1);
-    // Close the backup connection before removing the file — on Windows
-    // an open handle prevents deletion (os error 32) and would leave a
-    // locked stale file behind for the next run.
+    // Close the backup connection before this scope ends — on Windows an
+    // open handle blocks the guard's directory removal (os error 32) and
+    // would leave a locked stale directory behind for the next run.
     drop(backup_conn);
-
-    let _ = std::fs::remove_file(&tmp);
 }
 
 // ── Store Tax ID ───────────────────────────────────────────────────

@@ -16,6 +16,51 @@ use crate::{CreateKdsOrderInput, KdsOrder, KdsStatus};
 use rusqlite::params;
 use rusqlite::{Transaction, TransactionBehavior};
 
+// -- Hoisted SQL -------------------------------------------------------
+//
+// `kds_orders` is a LARGE table: served and cancelled tickets accumulate
+// forever while the board holds one service period, so a lost index seek on a
+// queue read is paid by every kitchen display on every refresh. The static
+// text of the three readers is hoisted to `pub` constants for the same reason
+// as `DAILY_REVENUE_SQL` (`db/reports/revenue.rs`): the query-plan probe
+// (`tests/integration/query_plan_probe.rs`) is a SEPARATE crate, so it can
+// only import `pub` items, and a probe that holds its own COPY of a query
+// stays green when the real one is reshaped back into the scanning form. This
+// module is reached as `kasirmu_core::db::kds::kds_orders` (`db/kds.rs`
+// declares the part module publicly), so these constants add no new surface.
+//
+// These readers are ASSEMBLED per call - `list_kds_orders` appends an optional
+// status filter, `get_kds_queue` an optional zone filter - so only the static
+// base can be shared. The product appends the same fragments in the same
+// order it always did; nothing about the emitted SQL changed.
+
+/// The active-queue ordering: status priority, then oldest ticket first.
+const KDS_QUEUE_ORDER_BY: &str = " ORDER BY
+                CASE status
+                    WHEN 'pending' THEN 1
+                    WHEN 'preparing' THEN 2
+                    WHEN 'ready' THEN 3
+                END,
+                received_at ASC";
+
+/// Base of `Store::list_kds_orders`: every ticket, before the optional
+/// ` WHERE status = ?1` and the always-appended ` ORDER BY received_at DESC`.
+pub const LIST_KDS_ORDERS_BASE_SQL: &str = "SELECT id, sale_id, store_id, target_instance_id, status, items_summary, item_count, display_number,
+                    received_at, started_at, ready_at, served_at,
+                    prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
+             FROM kds_orders";
+
+/// Base of `Store::get_kds_queue`: the active queue, before the optional zone
+/// filter and `KDS_QUEUE_ORDER_BY`.
+///
+/// This is the query whose own doc names `idx_kds_orders_status_received`
+/// (`20260904_kds_indexes.sql`).
+pub const KDS_QUEUE_BASE_SQL: &str = "SELECT id, sale_id, store_id, target_instance_id, status, items_summary, item_count, display_number,
+                    received_at, started_at, ready_at, served_at,
+                    prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
+             FROM kds_orders
+             WHERE status IN ('pending', 'preparing', 'ready')";
+
 impl Store<'_> {
     /// Create a KDS order from input, auto-incrementing the display number per day.
     pub fn create_kds_order(&self, input: CreateKdsOrderInput) -> Result<KdsOrder, CoreError> {
@@ -52,12 +97,7 @@ impl Store<'_> {
 
     /// List KDS orders, optionally filtered by status. Ordered by received_at DESC.
     pub fn list_kds_orders(&self, status_filter: Option<&str>) -> Result<Vec<KdsOrder>, CoreError> {
-        let mut sql = String::from(
-            "SELECT id, sale_id, store_id, target_instance_id, status, items_summary, item_count, display_number,
-                    received_at, started_at, ready_at, served_at,
-                    prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
-             FROM kds_orders",
-        );
+        let mut sql = String::from(LIST_KDS_ORDERS_BASE_SQL);
         let params: Vec<Box<dyn rusqlite::types::ToSql>> = if let Some(s) = status_filter {
             sql.push_str(" WHERE status = ?1");
             vec![Box::new(s.to_owned())]
@@ -123,12 +163,7 @@ impl Store<'_> {
             conditions.push("status = :status");
         }
         conditions.push(Self::instance_visibility_condition_sql());
-        let mut sql = String::from(
-            "SELECT id, sale_id, store_id, target_instance_id, status, items_summary, item_count, display_number,
-                    received_at, started_at, ready_at, served_at,
-                    prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
-             FROM kds_orders",
-        );
+        let mut sql = String::from(LIST_KDS_ORDERS_BASE_SQL);
         sql.push_str(" WHERE ");
         sql.push_str(&conditions.join(" AND"));
         sql.push_str(" ORDER BY received_at DESC");
@@ -511,13 +546,7 @@ impl Store<'_> {
     /// value are returned. Pass `Some("")` to match orders with no zone assigned.
     /// When `None`, all orders are returned (no zone filtering).
     pub fn get_kds_queue(&self, zone_filter: Option<&str>) -> Result<Vec<KdsOrder>, CoreError> {
-        let mut sql = String::from(
-            "SELECT id, sale_id, store_id, target_instance_id, status, items_summary, item_count, display_number,
-                    received_at, started_at, ready_at, served_at,
-                    prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
-             FROM kds_orders
-             WHERE status IN ('pending', 'preparing', 'ready')",
-        );
+        let mut sql = String::from(KDS_QUEUE_BASE_SQL);
 
         let params: Vec<Box<dyn rusqlite::types::ToSql>> = if let Some(zone) = zone_filter {
             if zone.is_empty() {
@@ -531,15 +560,7 @@ impl Store<'_> {
             vec![]
         };
 
-        sql.push_str(
-            " ORDER BY
-                CASE status
-                    WHEN 'pending' THEN 1
-                    WHEN 'preparing' THEN 2
-                    WHEN 'ready' THEN 3
-                END,
-                received_at ASC",
-        );
+        sql.push_str(KDS_QUEUE_ORDER_BY);
 
         let mut stmt = self.conn.prepare(&sql)?;
         let param_refs: Vec<&dyn rusqlite::types::ToSql> =
@@ -556,13 +577,7 @@ impl Store<'_> {
         zone_filter: Option<&str>,
         instance_id: &str,
     ) -> Result<Vec<KdsOrder>, CoreError> {
-        let mut sql = String::from(
-            "SELECT id, sale_id, store_id, target_instance_id, status, items_summary, item_count, display_number,
-                    received_at, started_at, ready_at, served_at,
-                    prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
-             FROM kds_orders
-             WHERE status IN ('pending', 'preparing', 'ready')",
-        );
+        let mut sql = String::from(KDS_QUEUE_BASE_SQL);
 
         // Zone parameter is only pushed into SQL when that branch is
         // active; binding names the statement does not contain is an error
@@ -585,15 +600,7 @@ impl Store<'_> {
         // `list_kds_orders_for_instance`.
         sql.push_str(" AND ");
         sql.push_str(Self::instance_visibility_condition_sql());
-        sql.push_str(
-            " ORDER BY
-                CASE status
-                    WHEN 'pending' THEN 1
-                    WHEN 'preparing' THEN 2
-                    WHEN 'ready' THEN 3
-                END,
-                received_at ASC",
-        );
+        sql.push_str(KDS_QUEUE_ORDER_BY);
 
         let mut binds: Vec<(&str, &dyn rusqlite::types::ToSql)> = vec![(":iid", &instance_id)];
         if let Some(zone) = &zone_param {

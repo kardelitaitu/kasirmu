@@ -22,11 +22,13 @@
 // deliberately NO pos-open-shift-* rules - Open Shift borrows the
 // close-shift stylesheet. That is current behaviour, not a defect to fix.
 import { useLocalization } from '@fluent/react';
-import type { Dispatch, SetStateAction } from 'react';
+import { useRef, type Dispatch, type SetStateAction } from 'react';
 import { Localized } from '@/components/Localized';
 import { formatMoney, minorUnitExponent, parseBalanceInput } from '@/types/domain';
 import type { ShiftDto } from '@/api/shifts';
 import type { UseExitAnimationResult } from '@/hooks/useExitAnimation';
+import { isEditableTarget } from '@/utils/isEditableTarget';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 // -- Close Shift confirmation ------------------------------------------
 
@@ -72,6 +74,16 @@ export function CloseShiftConfirm({
 }: CloseShiftConfirmProps) {
   const { l10n } = useLocalization();
   const storeCurrency = currency ?? 'IDR';
+  // Focus management. Escape is owned HERE and removed from the overlay's own
+  // onKeyDown below, so exactly one handler closes the dialog: the hook listens on
+  // document and the overlay keydown bubbled to it as well, and two closers would
+  // double-fire requestClose and the error reset. Enter stays on the overlay.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(
+    panelRef,
+    closeShiftExit.shouldRender && !!activeShift && !closeShiftExit.exiting,
+    () => { closeShiftExit.requestClose(); setCloseShiftError(null); },
+  );
   if (!closeShiftExit.shouldRender || !activeShift) return null;
   return (
           <div
@@ -80,14 +92,30 @@ export function CloseShiftConfirm({
             aria-modal="true"
             aria-label={l10n.getString('pos-close-shift-overlay-aria')}
             onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                closeShiftExit.requestClose();
-                setCloseShiftError(null);
+              // Escape is handled by useFocusTrap above (single owner).
+              // Enter confirms — but NOT from a text field. This handler sits on the
+              // overlay, so a keydown inside the notes <textarea> or the counted-cash
+              // <input> bubbles here: measured, pressing Enter to add a line to the
+              // shift note called handleConfirmCloseShift and closed the shift. A
+              // textarea is precisely where a multi-line note gets typed, and Shift is
+              // not required, so the keystroke that should insert a newline committed
+              // the action instead. Same guard the POS hotkey handler uses
+              // (PosScreen/RetailPosScreen via isEditableTarget).
+              // AND `!closingShift` — the guard the CONFIRM button below carries, as
+              // `closingShift || …` inside its `disabled`. (Anchored by that expression: the
+              // line numbers this note has carried all pointed elsewhere, most recently at the
+              // CANCEL button's markup.) `closingShift` is set the moment the hook starts
+              // its write and cleared only in its `finally`, so without this a cashier who
+              // pressed Enter while the dialog read "Closing…" issued a SECOND
+              // `closeShiftScoped` while the first was still in flight. Closing a shift is
+              // a money event, and the button's `disabled` cannot cover it: a keydown on
+              // the overlay never consults the button's state.
+              if (e.key === 'Enter' && !isEditableTarget(e.target) && !closingShift) {
+                handleConfirmCloseShift();
               }
-              if (e.key === 'Enter') handleConfirmCloseShift();
             }}
           >
-            <div className={`pos-close-shift-modal${closeShiftExit.exiting ? ' pos-close-shift-modal--exiting' : ''}`}>
+            <div ref={panelRef} className={`pos-close-shift-modal${closeShiftExit.exiting ? ' pos-close-shift-modal--exiting' : ''}`}>
               <Localized id="pos-close-shift-title">
               <h3 className="pos-close-shift-title">Close Shift</h3>
             </Localized>
@@ -153,7 +181,7 @@ export function CloseShiftConfirm({
               </Localized>
             </div>
 
-            <div className="pos-close-shift-actions">
+            <footer className="pos-close-shift-actions">
               <Localized id="cancel">
                 <button
                   type="button"
@@ -183,7 +211,7 @@ export function CloseShiftConfirm({
                   <span>{closingShift ? 'Closing…' : 'Close Shift'}</span>
                 </Localized>
               </button>
-            </div>
+            </footer>
           </div>
         </div>
   );
@@ -210,6 +238,14 @@ export function ShiftSummary({
 }: ShiftSummaryProps) {
   const { l10n } = useLocalization();
   const storeCurrency = currency ?? 'IDR';
+  // Focus management. This dialog has no keydown handler of its own, so the hook also
+  // supplies Escape — without it the summary had no keyboard dismiss at all.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(
+    panelRef,
+    shiftSummaryExit.shouldRender && !!closedShiftSummary && !shiftSummaryExit.exiting,
+    () => shiftSummaryExit.requestClose(),
+  );
   if (!shiftSummaryExit.shouldRender || !closedShiftSummary) return null;
   return (
           <div
@@ -218,7 +254,7 @@ export function ShiftSummary({
             aria-modal="true"
             aria-label={l10n.getString('pos-close-shift-summary-aria')}
           >
-            <div className={`pos-close-shift-modal pos-close-shift-summary${shiftSummaryExit.exiting ? ' pos-close-shift-modal--exiting' : ''}`}>
+            <div ref={panelRef} className={`pos-close-shift-modal pos-close-shift-summary${shiftSummaryExit.exiting ? ' pos-close-shift-modal--exiting' : ''}`}>
             <Localized id="pos-shift-closed-title">
               <h3 className="pos-close-shift-title">
                 Shift Closed
@@ -347,6 +383,13 @@ export function OpenShiftModal({
 }: OpenShiftModalProps) {
   const { l10n } = useLocalization();
   const storeCurrency = currency ?? 'IDR';
+  // Focus management; Escape owned here, removed from the overlay (see the close dialog).
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(
+    panelRef,
+    openShiftExit.shouldRender && !openShiftExit.exiting,
+    () => openShiftExit.requestClose(),
+  );
   if (!openShiftExit.shouldRender) return null;
   return (
           <div
@@ -355,11 +398,14 @@ export function OpenShiftModal({
             aria-modal="true"
             aria-label={l10n.getString('pos-open-shift-overlay-aria')}
             onKeyDown={(e) => {
-              if (e.key === 'Escape') openShiftExit.requestClose();
-              if (e.key === 'Enter') handleConfirmOpenShift();
+              // Escape is handled by useFocusTrap above (single owner).
+              // Same guard as the close-shift dialog above, and for the same measured
+              // reason: the opening-balance <input> is a text entry point, so Enter
+              // while typing there confirmed the open instead of committing the field.
+              if (e.key === 'Enter' && !isEditableTarget(e.target)) handleConfirmOpenShift();
             }}
           >
-            <div className={`pos-close-shift-modal${openShiftExit.exiting ? ' pos-close-shift-modal--exiting' : ''}`}>
+            <div ref={panelRef} className={`pos-close-shift-modal${openShiftExit.exiting ? ' pos-close-shift-modal--exiting' : ''}`}>
               <Localized id="pos-open-shift-title">
               <h3 className="pos-close-shift-title">Open Shift</h3>
             </Localized>
@@ -377,7 +423,6 @@ export function OpenShiftModal({
                   step="any"
                   className="pos-close-shift-input"
                   min="0"
-                  placeholder={minorUnitExponent(storeCurrency) > 0 ? "e.g. 50.00" : "e.g. 50000"}
                   value={openingBalance}
                   onChange={(e) => setOpeningBalance(e.target.value)}
                   aria-label={l10n.getString('pos-open-shift-balance-aria')}
@@ -385,7 +430,7 @@ export function OpenShiftModal({
               </Localized>
             </div>
 
-            <div className="pos-close-shift-actions">
+            <footer className="pos-close-shift-actions">
               <Localized id="cancel">
                 <button
                   type="button"
@@ -412,7 +457,7 @@ export function OpenShiftModal({
                   <span>{openingShift ? 'Opening…' : 'Open Shift'}</span>
                 </Localized>
               </button>
-            </div>
+            </footer>
           </div>
         </div>
   );

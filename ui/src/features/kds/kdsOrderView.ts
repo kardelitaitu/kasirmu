@@ -34,7 +34,7 @@ export type KdsFilterMode = 'all' | 'prepared';
 export function extractZones(orders: KdsOrder[]): string[] {
   const zoneSet = new Set<string>();
   for (const order of orders) {
-    if (order.kitchen_zone) zoneSet.add(order.kitchen_zone);
+    if (order.kitchen_zone && order.kitchen_zone.trim()) zoneSet.add(order.kitchen_zone.trim());
   }
   return [...zoneSet].sort();
 }
@@ -53,7 +53,7 @@ export function filterKdsOrders(
 ): KdsOrder[] {
   if (filterMode === 'prepared') return orders.filter((o) => o.status === 'ready');
   if (filterCats && filterCats.size > 0) {
-    return orders.filter((o) => o.kitchen_zone && filterCats.has(o.kitchen_zone));
+    return orders.filter((o) => Boolean(o.kitchen_zone && filterCats.has(o.kitchen_zone.trim())));
   }
   return orders;
 }

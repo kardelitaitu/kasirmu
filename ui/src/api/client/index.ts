@@ -11,7 +11,17 @@
 
 export { KasirMuClient } from './kasirmu-client';
 export { ApiError, HttpClient, type ClientConfig, type HttpMethod } from './client';
+export { TopologyClient } from './topology';
 export type * from './types';
 export type { TaxRate } from './tax';
 export type { User } from './users';
 export type { SaleRecord } from './sales';
+export type {
+  TopologyDiffSummary,
+  TopologyPlanRequest,
+  TopologyPlanResponse,
+  TopologyPublishRequest,
+  TopologyPublishResponse,
+  TopologyRevisionItem,
+  TopologyPullResponse,
+} from './topology';

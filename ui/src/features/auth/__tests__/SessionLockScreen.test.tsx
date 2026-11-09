@@ -53,11 +53,15 @@ vi.mock('@fluent/react', () => ({
           'session-lock-lockout': 'Wait { $seconds }s.',
           'session-lock-pad-aria': 'PIN pad',
           'staff-login-clear': 'Clear',
-          'staff-login-connection-checking': 'Checking…',
-          'staff-login-connection-connected': 'Connected',
-          'staff-login-connection-disconnected': 'Disconnected',
           'staff-login-connection-auth': 'Auth',
           'staff-login-connection-sync': 'Sync',
+          // Keys the screen renders that this stub map never carried. Values copied
+          // from shared-ui/locales/{shared,staff}.ftl in the FTL form this stub
+          // substitutes (replace(/\{\s*\$(\w+)\s*\}/g)), i.e. '{ $name }'.
+          'auth-copyright': 'kasir.mu © { $year } All rights reserved.',
+          'auth-version': 'Version { $version }',
+          'backspace-aria': 'Backspace',
+          'staff-login-error-connection': 'Could not verify username. Check your connection.',
         };
         let result = (map as Record<string, string>)[id];
         if (result && vars) {
@@ -96,6 +100,19 @@ describe('SessionLockScreen', () => {
   // landing on the CONTROL the user must retry. A screen-reader user who
   // navigates back to the PIN row otherwise cannot tell it apart from the one
   // that just failed, and the shake is a CSS class they cannot perceive.
+
+  // WHY A DOM ASSERTION AND NOT AN AXE RUN: axe's `page-has-heading-one` cannot
+  // reach a verdict under jsdom (both a document with an <h1> and one without
+  // return `incomplete` / `error-occurred`), measured 2026-10-27. The lock screen
+  // had NO heading at all -- a decorative aria-hidden badge, a time, a date and a
+  // PIN pad -- so a screen reader arriving here got no page name. Confirmed by
+  // mutation: reverting to <h2> left every case in this file green.
+  it('names the page with a single level-one heading', () => {
+    const { container } = render(<SessionLockScreen onUnlock={mockOnUnlock} />);
+    const h1s = Array.from(container.querySelectorAll('h1'));
+    expect(h1s, 'the lock screen must carry exactly one level-one heading').toHaveLength(1);
+    expect(h1s[0]!.textContent?.trim()).toBe('Session locked');
+  });
 
   describe('0. Failed-PIN field state', () => {
     const pinDots = () => document.querySelector('.session-lock-pin-dots')!;

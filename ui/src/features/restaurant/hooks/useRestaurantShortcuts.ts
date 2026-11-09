@@ -9,7 +9,7 @@
 // "every advertised key reaches a real handler" without rendering the whole POS, and it
 // mirrors how retail's function bar consumes `RETAIL_SHORTCUTS`.
 //
-// Suppressed while an editable target has focus, per the manifest's `editableGuard`, so a
+// Suppressed while an editable target has focus, per each entry's own `editableGuard`, so a
 // waiter typing a table number or a guest count is never interrupted.
 
 import { useEffect } from 'react';
@@ -40,10 +40,17 @@ function isEditableTarget(target: EventTarget | null): boolean {
 export function useRestaurantShortcuts(handlers: RestaurantShortcutHandlers): void {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (isEditableTarget(e.target)) return;
+      // `editableGuard` is read PER ENTRY, matching WarehouseConsole.tsx:249. It used to
+      // be ignored here while this file's own header claimed it was honoured: every
+      // restaurant entry happens to be `true`, so the two behaviours coincided and the
+      // field was decorative — the divergence would only have appeared the day someone
+      // added an `editableGuard: false` entry (a bare key meant to work while typing),
+      // which would then have been silently suppressed.
+      const typing = isEditableTarget(e.target);
 
       for (const shortcut of RESTAURANT_SHORTCUTS) {
         if (!matchesRestaurantShortcut(shortcut, e)) continue;
+        if (typing && shortcut.editableGuard) return;
         const handler = handlers[shortcut.action as keyof RestaurantShortcutHandlers];
         e.preventDefault();
         handler?.();

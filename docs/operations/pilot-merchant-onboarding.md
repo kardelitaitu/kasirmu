@@ -32,7 +32,7 @@ Select the matching merchant category preset. **The provisionable presets are on
 - **F&B with service charge:** `ppn11_service5` — the same PPN 11% plus the seeded **Service 5%** row (`tax-service-5`, `rate_bps=500`).
 - **Tax-free:** `tax_free`.
 
-**PB1 / Pajak Restoran is NOT a provisionable preset.** `"PB1"` exists only as a *receipt descriptor* string on the tax-regime field (`crates/kasirmu-core/src/regional.rs:580`, `db/receipt_formats.rs:452`) — there is no PB1 rate row, and nothing seeds a 10%. A restaurant that must charge PB1 sets its own `tax_rates` row; the 10% here was this document's assumption, not a shipped default. (Corrected 11-10-26.)
+**PB1 / Pajak Restoran is NOT a provisionable preset.** `"PB1"` exists only as a *receipt descriptor* string on the `tax_regime` field (`crates/kasirmu-core/src/regional.rs:666`, `db/receipt_formats.rs:452`) — there is no PB1 rate row, and nothing seeds a 10%. A restaurant that must charge PB1 sets its own `tax_rates` row; the 10% here was this document's assumption, not a shipped default. (Corrected 11-10-26.)
 
 ### Step 4: Hardware Pairing & Thermal Printer Test Chit
 1. Connect 58mm or 80mm ESC/POS thermal printer via USB, Bluetooth, or LAN.
@@ -57,7 +57,7 @@ Select the matching merchant category preset. **The provisionable presets are on
 ### 3.1 2D Floor Plan Setup & Table Merging
 1. Open **Table Management** screen (`/tables`).
 2. Arrange dining tables according to physical layout (Indoor, Outdoor, Bar zones).
-3. If a large party arrives, open the source table's detail panel, tap **Merge Table**, and pick the destination from the occupied-table list (`#/tables` → `tables-merge-table-btn` → `tables-merge-dest-select` → `tables-merge-confirm-btn`). The merge is a confirmed selection, **not a drag gesture**, and there is no `merged_into` column: the source held cart is read, its lines are appended to the destination cart, both carts are rewritten/released, and the source table is set free — so the combined order lives on the **destination** table. (Corrected 11-10-26: the drag + `merged_into` description matched no code; the shipped flow is `ui/src/features/tables/TableManagementScreen.tsx:562`.)
+3. If a large party arrives, open the source table's detail panel, tap **Merge Table**, and pick the destination from the occupied-table list (`#/tables` → `tables-merge-table-btn` → `tables-merge-dest-select` → `tables-merge-confirm-btn`). The merge is a confirmed selection, **not a drag gesture**, and there is no `merged_into` column: the source held cart is read, its lines are appended to the destination cart, both carts are rewritten/released, and the source table is set free — so the combined order lives on the **destination** table. (Corrected 11-10-26: the drag + `merged_into` description matched no code; the shipped flow is `ui/src/features/tables/TableManagementScreen.tsx:2794` -- the `tables-merge-confirm-btn` testid this sentence names.)
 
 ### 3.2 Real-Time Tab Handover & Optimistic Concurrency Leases
 - When a server tablet opens Table 4 to add drinks, an optimistic tab lease (`tabs:changed`) is broadcast over LAN P2P.

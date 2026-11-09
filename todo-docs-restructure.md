@@ -1172,7 +1172,7 @@ this plan's own §1/A4 text naming the OLD filenames it resolved (`docs/archived
 under `.agents/` and `docs/records/`. **No live markdown claim cites a tombstone path**, so the
 class remains a record, not a backlog. The three targets with a distinguishing detail: `benchmarks.md`
 and `ci-pipeline.md` appear only inside this plan and the tombstone README, and `BUSINESS_PLAN.md`
-is named in `docs/plans/_active/todo.md:151` as the *wrong* path a prior citation used — corrected
+is named in `docs/plans/_done/done-plan-todo.md:151` as the *wrong* path a prior citation used — corrected
 there on 2026-09-06, so it reads as history.
 
 **The verdict is §6p's verdict, applied to a new class: this is not a backlog.**

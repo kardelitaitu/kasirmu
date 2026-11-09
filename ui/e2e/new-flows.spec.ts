@@ -199,16 +199,34 @@ test.describe('KDS Ticket Board', () => {
 
 test.describe('Audit Log', () => {
   test.beforeEach(async ({ page }) => {
+    // Stay ON THE PICKER: the tool card is the navigation, so selecting a workspace
+    // here would consume the very surface this test needs. `loginAs` lands on
+    // `.workspace-home`, which IS the picker.
     await loginAs(page, 'admin', '9999');
-    await selectWorkspace(page, WORKSPACES.ADMIN);
+    await expect(page.getByTestId('workspace-tool-card').first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('audit log screen renders with header and filters', async ({ page }) => {
-    // Navigate to audit log. The registered page route is 'audit-log'
-    // (see src/features/audit/register.tsx) — '#/audit' is not a route.
-    await page.evaluate(() => {
-      window.location.hash = '#/audit-log';
-    });
+    // Navigate to audit log THROUGH ITS TOOL CARD.
+    //
+    // A raw hash write cannot reach it. `audit-log` is one of the eleven TOOLS entries in
+    // workspaces/tools.tsx that resolve to a `fullscreen: true` page, and
+    // WorkspaceHome.handleShortcutNav (WorkspaceHome.tsx:553-565) deliberately sets a
+    // workspace for fullscreen destinations ONLY -- the shell's workspace-rebind effect
+    // would otherwise overwrite the route (the 2026-10-05 Staff-card defect recorded at
+    // WorkspaceHome.tsx:530-552). `selectWorkspace(ADMIN)` activates the workspace via the
+    // Settings card and leaves the route at `settings`, so the hash write below then landed
+    // with no workspace for a non-fullscreen page and AppShell.tsx:708 returned the picker.
+    //
+    // Measured 2026-10-17 on the desktop project:
+    //   selectWorkspace(ADMIN) + hash '#/audit-log' -> picker 1, audit-log-table 0  (WRONG)
+    //   click the "Audit Log" tool card             -> audit-log-table present     (ok)
+    //
+    // The registered route really is 'audit-log' (features/audit/register.tsx) — that part
+    // of the original comment was right; only the navigation was wrong.
+    const auditCard = page.locator('[data-testid="workspace-tool-card"]').filter({ hasText: /audit/i }).first();
+    await expect(auditCard, 'the picker must offer an Audit Log tool card').toBeVisible({ timeout: 10_000 });
+    await auditCard.click();
 
     // Audit log container must be visible.
     const auditContainer = page.locator('[data-testid="audit-log-table"]');

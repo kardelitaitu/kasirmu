@@ -263,7 +263,7 @@ fn validate_product(store: &Store<'_>, sku: &str) -> Result<(), BridgeError> {
     if sku.trim().is_empty() {
         return Err(BridgeError::Invalid("sku must not be empty".into()));
     }
-    let exists: bool = store.conn.query_row(
+    let exists: bool = store.conn().query_row(
         "SELECT EXISTS(SELECT 1 FROM products WHERE sku = ?1)",
         [sku],
         |row| row.get(0),

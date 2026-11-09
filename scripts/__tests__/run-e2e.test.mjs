@@ -16,6 +16,7 @@ import { resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { platform } from 'os';
+import { dockerPlan } from '../run-e2e.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS_DIR = resolve(__dirname, '..');
@@ -190,24 +191,41 @@ describe('getChangedSpecs() (git integration)', () => {
   });
 });
 
-describe('dockerAvailable()', () => {
-  it('detects when Docker is unavailable (no error)', () => {
-    // The function wraps execSync in try-catch and returns boolean.
-    // We verify it doesn't throw regardless of Docker availability.
-    try {
-      const available = (() => {
-        try {
-          execSync('docker info', { stdio: 'pipe', timeout: 5_000 });
-          return true;
-        } catch {
-          return false;
-        }
-      })();
-      assert.strictEqual(typeof available, 'boolean');
-    } catch {
-      // Should never reach here — function should never throw
-      assert.fail('dockerAvailable() threw an exception');
-    }
+describe('dockerPlan() — what a missing daemon means for a run', () => {
+  // The predecessor of this block re-implemented the availability probe in a
+  // closure and asserted `typeof available === 'boolean'` — a tautology that
+  // passes whether or not the real function exists, let alone what it decides.
+  // The module is importable now, so the decision is tested instead of a copy
+  // of the thing it replaces.
+  it('a full run with no daemon is a SETUP failure, never a skip', () => {
+    assert.strictEqual(
+      dockerPlan({ noDocker: false, uiOnly: false, available: false }),
+      'unavailable-fatal',
+    );
+  });
+
+  it('--ui-only proceeds: those specs need no backend', () => {
+    assert.strictEqual(
+      dockerPlan({ noDocker: false, uiOnly: true, available: false }),
+      'unavailable-ui-only',
+    );
+  });
+
+  it('--no-docker never consults the daemon, even when it is up', () => {
+    // The caller owns its servers; starting ours would be a second backend on
+    // the same ports. The flag outranks availability, both ways.
+    assert.strictEqual(dockerPlan({ noDocker: true, uiOnly: false, available: true }), 'not-requested');
+    assert.strictEqual(dockerPlan({ noDocker: true, uiOnly: false, available: false }), 'not-requested');
+  });
+
+  it('an available daemon wins over the ui-only shortcut', () => {
+    assert.strictEqual(dockerPlan({ noDocker: false, uiOnly: true, available: true }), 'available');
+  });
+
+  it('the runner module imports without starting a run', () => {
+    // Guards the entry-point condition itself: without it, importing this
+    // module from a test would execute main() and start Vite.
+    assert.strictEqual(typeof dockerPlan, 'function');
   });
 });
 

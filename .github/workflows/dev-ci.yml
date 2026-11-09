@@ -554,10 +554,21 @@ jobs:
       # is set; without it those tests still PASS (they return early) but
       # the lines they would have covered are missing, which would quietly
       # depress the numbers instead of failing them.
+      #
+      # kasirmu-bridge is excluded for the reason this job's own header gives
+      # (:470-475): llvm-cov ABORTS on any failing test, and the crash it is
+      # guarding against was a bridge test. None of the four floored crates is
+      # bridge, and bridge carries no PG-gated case (0 files under
+      # crates/kasirmu-bridge reference OZ_TEST_PG_URL), so excluding it costs
+      # this job no coverage it grades. This matches the command recorded in
+      # scripts/coverage-floors.json under _measured -- which this step was
+      # NOT matching, while the gate's own error hint printed the two-exclude
+      # form and so taught the next reader the same wrong command.
       - name: Coverage report
         run: |
           cargo llvm-cov nextest --workspace --all-features \
             --exclude kasirmu-app --exclude kasirmu-mobile \
+            --exclude kasirmu-bridge \
             --json --output-path coverage-probe.json
       - name: Grade against the floors
         run: python3 scripts/verify-coverage-floors.py
@@ -730,6 +741,19 @@ jobs:
         run: python3 scripts/verify-exhaustive-deps.py --self-test
       - name: Run Vitest
         run: cd ui && npm test
+      # The suite above produces no coverage, so the floors need their own run.
+      # vite.config.ts has emitted coverage/ui/coverage-summary.json for months and
+      # nothing read it; the target numbers in the 2026-07-20 benchmark doc (Lines
+      # >= 50%, Branches >= 40%) were never enforced and the code now clears them by
+      # 35 points. This replaces them with a ratchet 2 points below the 2026-10-28
+      # measurement, after confirming two consecutive runs agree to 0.00.
+      # Gate: scripts/gates.json -> "ui-coverage-floors".
+      - name: UI coverage report
+        run: cd ui && npm run test:coverage
+      - name: UI coverage floors
+        run: python3 scripts/verify-ui-coverage-floors.py
+      - name: UI coverage floors self-test
+        run: python3 scripts/verify-ui-coverage-floors.py --self-test
       # GitHub runners are always UTC, so the suite above can never catch a
       # host-timezone dependency. This re-runs the analytics anchor test under
       # four zones and fails if results diverge -- the only CI coverage for the
@@ -795,6 +819,13 @@ jobs:
         run: cd ui && npm ci --no-audit --no-fund --ignore-scripts
       - name: i18n lint (parity + untranslated siblings + duplicate keys)
         run: bash scripts/lint-i18n.sh
+      # Same convention, and the sharper case of it: two of lint-i18n's three
+      # categories are exact-string greps over vitest output, and vitest exits 0 when it
+      # merely WARNS -- so a reworded warning empties the grep and the gate prints "no
+      # issues detected". The falsification runner extracts the patterns FROM the gate
+      # and plants each one, so a reworded warning reddens here instead of going quiet.
+      - name: i18n lint falsification
+        run: bash scripts/test-lint-i18n.sh
       - name: FTL duplicate-key dry-run
         run: python3 scripts/dedupe-ftl.py --dry-run
       # The orphan gate's own liveness cases. Blocking: if the diff parsers or the
@@ -837,6 +868,8 @@ jobs:
     if: needs.changes.outputs.docs == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       # Blocking: the router decides whether every other job runs, so a routing
       # bug that silently skips a suite is the one failure mode this workflow
       # must never allow. The test extracts the real body, so it cannot drift
@@ -950,12 +983,40 @@ jobs:
       - name: Docs dead references self-test
         run: python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py --self-test
 
+      # Gate: scripts/gates.json -> "rust-doc-paths". Until 2026-10-26 this ran ONLY in
+      # scripts/check.sh, which is manual and unhooked -- the same defect this file
+      # records a dozen times above. It grades two things: that a repo path named in a
+      # Rust doc comment EXISTS, and (added round 27) that the line number in a
+      # `path.rs:NNN` citation is not blank and not past EOF. The line half found 16
+      # stale citations the day it landed, several past the end of a file that had
+      # been split or shortened, so the blind spot was not theoretical. Pure text, no
+      # Docker and no database, and the scan is ~1s over 1430 files.
+      - name: Rust doc paths and line citations
+        run: python3 scripts/check-rust-doc-paths.py
+      # Its own cases, beside the gate it proves, per the convention at "Docs dead
+      # references self-test". Only the self-test can see a classifier that has gone
+      # blind: a bare run of the checker reports "clean" over exactly the same tree
+      # whether the line half works or returns nothing.
+      - name: Rust doc paths self-test
+        run: python3 scripts/check-rust-doc-paths.py --self-test
+
       # Gate: scripts/gates.json -> "api-surface". Green from day one (2026-09-29), when the
       # page was repaired from 169 drifts to 0 in the same change that added this step. This
       # checker exits 2, not 0, when it cannot parse an input, so a renamed registry or a
       # missing page fails the job instead of reading as agreement.
       - name: API reference surface
         run: python3 .agents/skills/docs-auditor/scripts/check-api-surface.py
+
+      # The surface checker proves the buckets' CONTENTS; this proves the NUMBERS the
+      # page prints for them. They disagreed: the page said 86 unregistered commands
+      # while the measurement was 0, in the present tense, on a page that tells the
+      # reader the front end cannot invoke them. The table's own "re-derive before
+      # repeating any figure" note is right for a human and no protection at all.
+      - name: API drift table
+        run: python3 scripts/check-api-drift-table.py
+
+      - name: API drift table self-test
+        run: python3 scripts/check-api-drift-table.py --self-test
 
       # Same convention and same reason as the step above. This one is the sharper case:
       # the checker's four drift buckets are counted from generate_handler! and from the
@@ -1045,6 +1106,44 @@ jobs:
         # to avoid.
         with:
           fetch-depth: 0
+      # Gate: scripts/gates.json -> "page-headings". axe cannot grade this under
+      # jsdom: page-has-heading-one aborts with error-occurred on every page in
+      # every suite, so a screen with no <h1> shipped green FOUR times (WorkspaceHome,
+      # KdsScreen, the topology editor, RetailPosScreen). This checker is the only
+      # thing that looks. It reads the page registry AND the shells, because
+      # RetailPosScreen is mounted by a shell branch and never registered.
+      - name: Page headings
+        run: python3 scripts/check-page-headings.py
+
+      # The falsification half: a checker that cannot fail is a comment. Each case
+      # proves one branch of the heading test (h1 vs h2, span, role+aria-level,
+      # comment-blanking, h10-vs-h1).
+      - name: Page headings self-test
+        run: python3 scripts/check-page-headings.py --self-test
+
+      # Gate: scripts/gates.json -> "fixture-ftl-keys". A fixture that stubs
+      # getString with `defaults[id] ?? id` cannot notice its own mistakes, so a
+      # key invented in a test stays green forever. Three were real: a near-miss
+      # for settings-tax-id-pattern-hint, and two error messages for copy the
+      # login screen deliberately does NOT have (STAFF-06 answers every pre-auth
+      # probe uniformly, so per-reason errors would undo it).
+      - name: Fixture FTL keys
+        run: python3 scripts/check-fixture-ftl-keys.py
+
+      - name: Fixture FTL keys self-test
+        run: python3 scripts/check-fixture-ftl-keys.py --self-test
+      # A status mapper's `default` branch that returns a REAL state instead of an
+      # unknown one. Four rounds shipped it: sales history fell back to completed
+      # (so pending and voided both read "Completed" and the refund guards never
+      # fired), void orders to active, and the offline queue to pending -- which
+      # there means "this WILL be pushed". The third was found only once this
+      # checker existed; the hand-written greps that found the first two skipped
+      # it because `pending` is a case VALUE, not a family name.
+      - name: Status fallbacks
+        run: python3 scripts/verify-status-fallbacks.py
+
+      - name: Status fallbacks self-test
+        run: python3 scripts/verify-status-fallbacks.py --self-test
       - name: Architecture boundaries
         run: python3 scripts/verify-architecture-boundaries.py --strict
       # The two SQLite maintenance scripts' own self-tests, beside the gate they
@@ -1086,6 +1185,47 @@ jobs:
       # motivated this step were tracked, so a runner catches exactly what a dev does.
       - name: Audit record footers
         run: python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py
+      # Every other docs checker resolves a PATH; none grades a LINE NUMBER. So a
+      # citation could name the right file and the wrong hundred lines while all of
+      # them stayed green — measured 2026-10-19: 23 of 150 sampled live citations were
+      # on the wrong line, the worst 333 lines out. This step anchors on a backticked
+      # symbol and asks whether it sits near the cited line, and reports the citations
+      # it cannot grade rather than counting them as passes. Gates.json: cite-lines.
+      - name: path:line citations
+        run: python3 .agents/skills/docs-auditor/scripts/check-cite-lines.py
+      # website/src/content/docs/{en,id} are the same pages in two locales, and a
+      # slug added to one without the other is a 404 for half the audience. The
+      # authoring guide already told contributors to run this and NOTHING invoked
+      # it. Negative control run before wiring: a probe page under en/ with no id/
+      # twin made it exit 1, and it passed again once removed. Gates.json: doc-parity.
+      - name: Website locale parity
+        run: python3 website/scripts/check-doc-parity.py
+      # Six docs-auditor checkers were wired into scripts/check.sh and recorded in
+      # gates.json with status "required", but ran in NO CI job -- so "required" meant
+      # "required of a developer who runs check.sh by hand", which is the same
+      # diligence-not-enforcement gap this file records for the script tests and the
+      # audit-record footers. All six are stdlib-only and read the working tree (the
+      # site-links checker parses website/astro.config.mjs, src/pages and public/, not a
+      # build), so they belong here where no toolchain install is needed. Verified
+      # 2026-10-19: each exits 0 on a clean tree and none imports a third-party module.
+      - name: Docs orphans
+        run: python3 .agents/skills/docs-auditor/scripts/check-orphans.py
+      - name: Docs site links
+        run: python3 .agents/skills/docs-auditor/scripts/check-site-links.py
+      - name: Docs nav paths
+        run: python3 .agents/skills/docs-auditor/scripts/check-nav-paths.py
+      - name: Docs env vars
+        run: python3 .agents/skills/docs-auditor/scripts/check-env-docs.py
+      - name: Docs ADR status
+        run: python3 .agents/skills/docs-auditor/scripts/check-adr-status.py
+      - name: Docs CI claims
+        run: python3 .agents/skills/docs-auditor/scripts/check-ci-claims.py
+      # `status: "required"` in gates.json is only true if a runner can reach the
+      # gate. This step is that question asked of the registry itself; it found
+      # eight non-conforming entries on 2026-10-19, including six checkers that
+      # were "required" but ran only when a developer remembered check.sh.
+      - name: Gate runner reachability
+        run: python3 .agents/skills/docs-auditor/scripts/check-gate-runners.py
       - name: Windows config drift
         run: python3 scripts/verify-windows-config.py
       - name: Skill drift guard
@@ -1182,6 +1322,58 @@ jobs:
         run: python3 scripts/check-merged-lines.py
       - name: Merged source lines self-test
         run: python3 scripts/check-merged-lines.py --self-test
+      # The last real performance defect here -- every revenue report reading the
+      # whole refunds table -- was found BY HAND with EXPLAIN QUERY PLAN. This is
+      # that pass made repeatable: the probe seeds 400 rows into every LARGE table,
+      # ANALYZEs, EXPLAINs 27 curated production queries and asserts none reads a
+      # large table in full. A scan regression is invisible to every other job --
+      # it compiles, lints, passes nextest, and gets slower with every new row.
+      # `--check` re-runs the probe's own falsification FIRST, so a detector gone
+      # deaf exits 2 instead of reporting a clean tree. Exit 1 is a real finding.
+      # Gates the whole job, so a plan regression surfaces in ~1 min rather than
+      # behind cargo-nextest. Gates.json: query-plan-gate.
+      - name: Query-plan regression probe
+        run: python3 scripts/check-query-plans.py --check
+      # The formatters around the probe are Python and ungraded until 2026-10-23: pure
+      # strings the file's own history says were each broken once. No build, no cargo.
+      - name: Query-plan formatter self-test
+        run: python3 scripts/check-query-plans.py --self-test
+      # An unguarded test fixture directory is never deleted, and target/ has no
+      # OS temp cleaner: 1,455 directories accumulated in target/test-scratch/
+      # before anyone counted. No test could see it -- the only cleanup test
+      # proved ScratchDir works, and nothing proved scratch_dir does not.
+      # Grades a per-file budget, and grades its own detector first so a broken
+      # regex exits 2 instead of reporting a clean tree. Gates.json: scratch-leak-gate.
+      - name: Scratch-directory leak scan
+        run: python3 scripts/check-scratch-leaks.py
+      # Rounds 206-212 localized every user-visible string in ui/src. Nothing
+      # checked that the next screen did not add English back: the population
+      # was measured by scripts/scan-fluent-hardcoded.py, which was wired into
+      # no gate. Grades a per-file budget over JSX text and the four copy
+      # attributes, excludes <Localized> fallback bodies (they never ship) and
+      # grades its own detector first. Gates.json: hardcoded-copy-gate.
+      - name: Hardcoded-copy scan
+        run: python3 scripts/check-hardcoded-copy.py
+      # Four docs cited a line inside ALL_ENFORCED (every enforced KEY) as a role
+      # preset (what a ROLE grants). Both are permissions::X lists in the same
+      # file, so the two are indistinguishable by line number, and the error
+      # inverts the fact. Records are exempt when they say so inline.
+      - name: Permission-inventory citation scan
+        run: python3 scripts/check-rbac-citations.py
+      # Production copy keeps moving into Fluent, and a vitest file that answers
+      # getString from a hand-maintained map is not updated by that move -- it
+      # returns the RAW KEY. The dangerous half is silent: the case that never
+      # asserts the string passes while the UI is unlabelled. Ratcheted against
+      # scripts/l10n-map-baseline.json, a census that may only shrink.
+      # Gates.json: l10n-test-maps.
+      - name: l10n stub map scan
+        run: python3 scripts/check-l10n-test-maps.py
+      # A test that matches getByText('some-key') passes only because its l10n
+      # stub falls back to the id, so the assertion describes the defect. Grades
+      # matchers naming a real bundle key where real copy could render, ratcheted
+      # against scripts/raw-key-assertions-baseline.json. Gates.json: raw-key-assertions.
+      - name: Raw-key assertion scan
+        run: python3 scripts/check-raw-key-assertions.py
       # The COR-7 per-attempt idempotency rules exist TWICE -- the implementation
       # in kasirmu-bridge and a fork in the tablet shell -- and the fork drifted
       # into a security defect: only the bridge refused a colon in the attempt id,
@@ -1190,6 +1382,16 @@ jobs:
       # drifts silently; this pins the control set on both sides.
       - name: Replay fork control set
         run: python3 scripts/check-replay-fork.py
+      # Its own cases, beside the gate it proves, per the convention at "Docs dead
+      # references self-test". `check-replay-fork.py` has NO `--self-test` flag -- its
+      # 12 cases live in `scripts/test-replay-fork.py`, which scripts/check.sh runs and
+      # CI did not. That mattered here more than usual: those cases are what prove the
+      # CONTROLS markers key on the DEFINITION (`fn NAME(`) rather than the bare name,
+      # so a renamed control cannot survive as a substring inside its own new name.
+      # A bare run of the gate cannot see that distinction at all -- it prints the same
+      # clean line either way.
+      - name: Replay fork self-test
+        run: python3 scripts/test-replay-fork.py
       # scripts/gates.json is the single source of truth for gate names and
       # status, and it records which CI step runs each gate. Nothing compared
       # those claims, so the coverage-floors entry sat claiming a step named
@@ -1210,6 +1412,12 @@ jobs:
         run: python3 scripts/verify-gate-completeness.py
       - name: Gate roster completeness self-test
         run: python3 scripts/verify-gate-completeness.py --self-test
+      # The round log is the audit's own durable record; its shape is policed
+      # like any other gate. Wired 2026-11-08 (round 154).
+      - name: Register hygiene
+        run: python3 scripts/check-register-hygiene.py
+      - name: Register hygiene self-test
+        run: python3 scripts/check-register-hygiene.py --self-test
       # R36-11: release.yml was renamed to .bak with an empty commit message and
       # nothing noticed that tagging had stopped producing installers. A workflow
       # that never runs cannot report its own breakage, so this validates the
@@ -1451,8 +1659,64 @@ jobs:
         run: python3 scripts/verify-workflow-syntax.py --self-test
       - name: No raw query params
         run: bash scripts/verify-no-raw-params.sh
+      # Its FALSIFICATION runner, beside the gate it proves. The gate fails closed on a
+      # list of shapes; this re-plants each one and asserts the gate still reddens -- the
+      # only thing that can see a classifier that has gone blind. scripts/check.sh ran it
+      # and CI did not, so on a fresh clone nothing proved the gate could still fail.
+      - name: No raw query params falsification
+        run: bash scripts/test-no-raw-params.sh
       - name: Scoped command coverage
         run: bash scripts/verify-scoped-coverage.sh
+      # FIVE gates that wore `status: required` and ran ONLY in scripts/check.sh, which
+      # is manual and unhooked -- the defect this file records a dozen times above. Each
+      # is stdlib/node-only, reads the working tree, and needs no service. Measured
+      # together on a warm runner: 1.8s, so there was never a build-cost reason.
+      #
+      # `server-origins`' own gates.json note is the sharpest evidence that leaving them
+      # local was wrong: it says "Local-only (no CI runner): needs node and nothing else"
+      # -- the leaf could have been wired the day it was written.
+      - name: Core size ratchet
+        run: python3 scripts/verify-core-size.py
+      - name: Licence server route carve-outs
+        run: node scripts/check-unified-routes.mjs
+      # A shell pipeline exits with its LAST command's status, so `if s=$(... | tail -1)`
+      # is always true and its else branch is dead. check.sh carried that shape in its
+      # cargo-deny block for weeks with both branches printing PASS.
+      - name: Pipeline verdicts
+        run: python3 scripts/check-pipeline-verdicts.py
+      - name: Debt ledger freshness
+        run: python3 scripts/check-debt-ledger.py
+      # ADR #55: the compiled origin list must agree with every CSP, the Worker
+      # fallback and the settings draft. The drift it guards was live once.
+      - name: Server origin consistency
+        run: node scripts/check-server-origins.mjs
+      # TWO more gates that were `status: required` with no `ci` block, i.e. enforced
+      # only by whoever remembered to run scripts/check.sh.
+      #
+      # `script-tests` is the sharpest of the set: 5 files, 78 assertions, 3.4s, and
+      # NONE of it ran in CI. Those files are the mutation-grade suites for the
+      # checkers themselves -- verify-architecture-boundaries.test.mjs is what proves
+      # its ui-direct-invoke arm can fail at all. A checker whose own suite never runs
+      # in CI is a green light nobody checks, which is the exact class this file
+      # records a dozen times above.
+      - name: Checker script tests
+        run: node --test scripts/__tests__/*.test.mjs
+      # root-policy: 0.2s, standard library only, reads the working tree.
+      - name: Root allowlist policy
+        run: python3 scripts/verify-root-policy.py
+      - name: Root allowlist policy self-test
+        run: python3 scripts/verify-root-policy.py --self-test
+      # Doc uniqueness: 0.1s, standard library only, guards conflicting-authority doc copies.
+      - name: Doc uniqueness
+        run: python3 scripts/verify-doc-uniqueness.py
+      - name: Doc uniqueness self-test
+        run: python3 scripts/verify-doc-uniqueness.py --self-test
+      # Ownership map parity: 0.2s, single source modules/ownership.json vs Rust and Python.
+      - name: Ownership map parity
+        run: |
+          node scripts/generate-ownership-map.mjs --check
+          python3 scripts/verify-namespace-governance.py --check-ownership
+
       # ORDERING RULE FOR THIS JOB, and the reason these two sit last rather than
       # where they used to. Every step above measured 0-2s; these two are whole-
       # repo scans at 10s and 11s, so they are the most expensive thing left here
@@ -1469,7 +1733,7 @@ jobs:
       - name: Scoped ambient reads self-test
         run: python3 scripts/verify-scoped-reads.py --self-test
       - name: Unguarded ambient IPC call sites
-        run: python3 scripts/verify-scoped-reads.py
+        run: python3 scripts/verify-scoped-reads.py --shell desktop,tablet
 
   # ── 7b. Go gate: the license-server module ────────────────────────────
   #
@@ -1553,6 +1817,22 @@ jobs:
       # of the checker can see this class; only the self-test can. Gate: C55.
       - name: IPC command parity self-test
         run: python3 scripts/verify-ipc-parity.py --self-test
+      # The OTHER direction, which the step above structurally cannot see: a
+      # command registered in one shell and forgotten in the other. Parity grades
+      # gaps that REACH THE UI, so a brand-new command nothing calls yet is
+      # invisible to it and the first symptom is a runtime `command not found` on a
+      # device nobody tested. Every one-sided name must be listed in
+      # scripts/shell-divergence.json with a reason; a blank reason fails, and an
+      # entry whose command both shells now register fails as stale. Same path gate
+      # as its sibling: it reads apps/*/src/lib.rs and nothing else.
+      # Gate: scripts/gates.json -> "shell-registration".
+      - name: Shell registration divergence
+        run: python3 scripts/verify-shell-registration.py
+      # Its own liveness cases, for the same reason the sibling carries them: the
+      # bare run cannot see a parser that stopped matching the handler list, and a
+      # parser reading zero names would report zero divergences and pass.
+      - name: Shell registration self-test
+        run: python3 scripts/verify-shell-registration.py --self-test
 
   # ── 8. Release readiness ──────────────────────────────────────────────
   # R36-11's root cause was not only that release.yml was renamed to .bak with an

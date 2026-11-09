@@ -35,6 +35,7 @@ import {
 } from '@/api/reports';
 import { useStoreTimezone } from '@/hooks/useStoreTimezone';
 import { isoDaysAgo, isoToday } from '@/features/analytics/analytics-data';
+import { DebtRemindersCard } from './DebtRemindersCard';
 import './DashboardScreen.css';
 
 echarts.use([
@@ -231,6 +232,20 @@ function DashboardScreenContent() {
       setHasLoaded(true);
     } catch (e) {
       setError(l10nErrorMessage(e, l10n, 'dashboard-error-load'));
+      // A failed refresh must not leave the PREVIOUS range's figures on screen.
+      // `error` alone is not enough: the KPIs, charts and low-stock list all
+      // derive from state that was never cleared, so the screen showed the old
+      // revenue and top product directly beneath "Something went wrong", and
+      // the low-stock branch printed "All stock levels are healthy." for a read
+      // that threw. Clearing them makes the failure honest: zero data, plus the
+      // alert. `prevDaily` goes too — a delta against a dead read is meaningless.
+      setDailyRevenue([]);
+      setTopProducts([]);
+      setLowStock([]);
+      setCategoryBreakdown([]);
+      setHeatmap([]);
+      setPrevDaily([]);
+      setSelectedCategory(null);
     } finally {
       setLoading(false);
     }
@@ -590,7 +605,15 @@ function DashboardScreenContent() {
       <Card shadow="sm" className="dashboard-section">
         <Localized id="dashboard-low-stock-alerts"><h2 className="dashboard-section-title">Low Stock Alerts</h2></Localized>
         {lowStock.length === 0 ? (
-          <p className="dashboard-no-data"><Localized id="dashboard-stock-ok"><span>All stock levels are healthy.</span></Localized></p>
+          // "All stock levels are healthy." is a CLAIM about the store, and it is
+          // only justified when the alert read actually succeeded. On the error
+          // path `lowStock` is empty because loadData cleared it, so the claim
+          // has to be suppressed rather than inferred from an empty array.
+          error ? (
+            <p className="dashboard-no-data"><Localized id="dashboard-stock-unknown"><span>Stock levels could not be loaded.</span></Localized></p>
+          ) : (
+            <p className="dashboard-no-data"><Localized id="dashboard-stock-ok"><span>All stock levels are healthy.</span></Localized></p>
+          )
         ) : (
           <ul className="dashboard-low-stock-list" aria-label={requiredLocalized(l10n, 'dashboard-stock-alerts-aria')}>
             {lowStock.map((item) => (
@@ -604,6 +627,9 @@ function DashboardScreenContent() {
           </ul>
         )}
       </Card>
+
+      {/* ── Debt & Credit Reminders ───────────────────── */}
+      <DebtRemindersCard sessionToken={sessionToken} currency={currency} />
     </div>
   );
 }

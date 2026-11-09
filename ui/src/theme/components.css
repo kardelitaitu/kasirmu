@@ -337,8 +337,16 @@
 
 /* Core pattern classes get noise automatically.
    Feature-specific legacy selectors are grouped below. */
+/* First-run provisioning card (features/setup/ProvisioningFlow.css). It gained a
+   --shadow-sm/--shadow-lg lift so it no longer sits flat on the radial gradient,
+   which makes it an elevated surface by the rule this block exists for. */
 .card::after,
 .modal-panel::after,
+.provisioning-card::after,
+/* The chosen option on the setup card. Its selected state gained a shadow lift, so
+   the same rule that covers the card covers the card option that sits on it. */
+.provisioning-store-type.is-selected::after,
+.provisioning-mode-card.is-selected::after,
 .staff-login-card::after,
 .workspace-card::after,
 .staff-mgmt-card::after,
@@ -399,6 +407,12 @@
 /* Table-management modal dialog — the same shape: an elevated dialog panel that
    is large enough to band. */
 .tables-modal-dialog::after,
+/* The arrange-tables inspector bar (TableManagementScreen.css:1180) carries
+   `box-shadow: var(--shadow-lg)` — a floating toolbar banded over the floor
+   plan. Found by the shadow walk, which is the walk doing its job: the rule
+   was written without the overlay, so it is wired here in all three lists
+   (main + both @media parity blocks). */
+.tables-arrange-inspector::after,
 /* The active restaurant preview tab. It gained a --shadow-* elevation on
    2026-10-12 when its hardcoded `0 1px 2px rgba(...)` was tokenised to
    --shadow-sm — tokenising made an already-elevated surface visible to the
@@ -421,6 +435,18 @@
    Named here rather than exempted: 32px tall and as wide as a third of the cart,
    so it bands at the same order as .restaurant-size-btn above. */
 .pos-cart-order-type-indicator::after,
+/* 2026-10-19: seven elevated surfaces that eb32a3b0f and 5a020213c introduced
+   without the overlay. All are --shadow-* cards, pills or action buttons on the
+   restaurant cart and menu, so every one of them bands at the same order as the
+   pills above -- this is the GRANTED overlay, not a waiver, which is why they are
+   named here rather than added to an exempt prefix. */
+.restaurant-category-pill::after,
+.restaurant-card::after,
+.pos-cart-panel::after,
+.pos-cart-open-bill-btn::after,
+.pos-cart-print-bill-btn::after,
+.pos-cart-split-bill-btn::after,
+.pos-cart-send-kitchen-btn::after,
 /* ⚠ DEPRECATED LEGACY SELECTORS — do not add new ones here.
    Instead, add className="noise-dither" to the TSX element.
    (wire-rename-input / wire-label-pill are positioned absolute with
@@ -433,7 +459,6 @@
 .retail-discount-modal::after,
 .retail-qty-modal::after,
 .retail-shortcuts-modal::after,
-.retail-preview-modal::after,
 .retail-customer-modal::after,
 .tables-detail::after,
 .settings-popup::after,
@@ -455,6 +480,12 @@
 .ssel-dropdown::after,
 .multi-store-stat-card::after,
 .product-card::after,
+/* The kiosk success card (KioskScreen.css:487) carries `box-shadow: var(--shadow-lg)`
+   — the order-confirmation card raised over the attract screen. Found by the shadow
+   walk on 2026-10-17, which is the walk doing its job: the card was written without
+   the overlay. Wired into all three lists (main + both @media parity blocks) like
+   .tables-arrange-inspector, the last surface found the same way. */
+.kiosk-success-card::after,
 .kiosk-product-card::after,
 .setup-preset-card::after,
 .setup-step-panel::after,
@@ -567,6 +598,16 @@
   .provisioning-subtab.active::after,
   .license-pairing-qr-wrapper::after,
   .provisioning-qr-wrapper::after,
+  /* Purchasing/Kasbon elevated surfaces. These always carried a literal
+     box-shadow; the 2026-10-21 token pass rewrote them to var(--shadow-*),
+     which is what made the guard see them for the first time. Named here
+     rather than given a .noise-dither class because each is a plain in-flow
+     box that anchors the overlay with position:relative in its own sheet. */
+  .kasbon-modal::after,
+  .receive-po-modal::after,
+  .vendor-bill-stat-card::after,
+  .vendor-bills-table-container::after,
+  .vendor-bills-modal::after,
   :global(.dark) .panel::after {
     content: '';
   position: absolute;
@@ -591,8 +632,21 @@
   .provisioning-subtab.active::after,
   .license-pairing-qr-wrapper::after,
   .provisioning-qr-wrapper::after,
+  /* Purchasing/Kasbon elevated surfaces. These always carried a literal
+     box-shadow; the 2026-10-21 token pass rewrote them to var(--shadow-*),
+     which is what made the guard see them for the first time. Named here
+     rather than given a .noise-dither class because each is a plain in-flow
+     box that anchors the overlay with position:relative in its own sheet. */
+  .kasbon-modal::after,
+  .receive-po-modal::after,
+  .vendor-bill-stat-card::after,
+  .vendor-bills-table-container::after,
+  .vendor-bills-modal::after,
   .card::after,
   .modal-panel::after,
+  .provisioning-card::after,
+  .provisioning-store-type.is-selected::after,
+  .provisioning-mode-card.is-selected::after,
   .staff-login-card::after,
   .workspace-card::after,
   .staff-mgmt-card::after,
@@ -618,6 +672,12 @@
 /* Table-management modal dialog — the same shape: an elevated dialog panel that
    is large enough to band. */
 .tables-modal-dialog::after,
+/* The arrange-tables inspector bar (TableManagementScreen.css:1180) carries
+   `box-shadow: var(--shadow-lg)` — a floating toolbar banded over the floor
+   plan. Found by the shadow walk, which is the walk doing its job: the rule
+   was written without the overlay, so it is wired here in all three lists
+   (main + both @media parity blocks). */
+.tables-arrange-inspector::after,
 /* The active restaurant preview tab. It gained a --shadow-* elevation on
    2026-10-12 when its hardcoded `0 1px 2px rgba(...)` was tokenised to
    --shadow-sm — tokenising made an already-elevated surface visible to the
@@ -634,12 +694,19 @@
   .restaurant-size-btn::after,
   /* Same parity for the cart order-type pill (also granted, not waived). */
   .pos-cart-order-type-indicator::after,
+  .restaurant-category-pill::after,
+  .restaurant-card::after,
+.restaurant-card::after,
+    .pos-cart-panel::after,
+  .pos-cart-open-bill-btn::after,
+  .pos-cart-print-bill-btn::after,
+  .pos-cart-split-bill-btn::after,
+  .pos-cart-send-kitchen-btn::after,
   .retail-shift-modal::after,
   .retail-held-carts-modal::after,
   .retail-discount-modal::after,
   .retail-qty-modal::after,
   .retail-shortcuts-modal::after,
-  .retail-preview-modal::after,
   .retail-customer-modal::after,
   .tables-detail::after,
   .settings-popup::after,
@@ -661,7 +728,13 @@
   .ssel-dropdown::after,
   .multi-store-stat-card::after,
   .product-card::after,
-  .kiosk-product-card::after,
+  /* The kiosk success card (KioskScreen.css:487) carries `box-shadow: var(--shadow-lg)`
+   — the order-confirmation card raised over the attract screen. Found by the shadow
+   walk on 2026-10-17, which is the walk doing its job: the card was written without
+   the overlay. Wired into all three lists (main + both @media parity blocks) like
+   .tables-arrange-inspector, the last surface found the same way. */
+.kiosk-success-card::after,
+.kiosk-product-card::after,
   .setup-preset-card::after,
   .setup-step-panel::after,
   .pos-cart-line::after,
@@ -759,8 +832,21 @@
   .provisioning-subtab.active::after,
   .license-pairing-qr-wrapper::after,
   .provisioning-qr-wrapper::after,
+  /* Purchasing/Kasbon elevated surfaces. These always carried a literal
+     box-shadow; the 2026-10-21 token pass rewrote them to var(--shadow-*),
+     which is what made the guard see them for the first time. Named here
+     rather than given a .noise-dither class because each is a plain in-flow
+     box that anchors the overlay with position:relative in its own sheet. */
+  .kasbon-modal::after,
+  .receive-po-modal::after,
+  .vendor-bill-stat-card::after,
+  .vendor-bills-table-container::after,
+  .vendor-bills-modal::after,
   .card::after,
   .modal-panel::after,
+  .provisioning-card::after,
+  .provisioning-store-type.is-selected::after,
+  .provisioning-mode-card.is-selected::after,
   .staff-login-card::after,
   .workspace-card::after,
   .staff-mgmt-card::after,
@@ -786,6 +872,12 @@
 /* Table-management modal dialog — the same shape: an elevated dialog panel that
    is large enough to band. */
 .tables-modal-dialog::after,
+/* The arrange-tables inspector bar (TableManagementScreen.css:1180) carries
+   `box-shadow: var(--shadow-lg)` — a floating toolbar banded over the floor
+   plan. Found by the shadow walk, which is the walk doing its job: the rule
+   was written without the overlay, so it is wired here in all three lists
+   (main + both @media parity blocks). */
+.tables-arrange-inspector::after,
 /* The active restaurant preview tab. It gained a --shadow-* elevation on
    2026-10-12 when its hardcoded `0 1px 2px rgba(...)` was tokenised to
    --shadow-sm — tokenising made an already-elevated surface visible to the
@@ -802,12 +894,19 @@
   .restaurant-size-btn::after,
   /* Same parity for the cart order-type pill (also granted, not waived). */
   .pos-cart-order-type-indicator::after,
+  .restaurant-category-pill::after,
+  .restaurant-card::after,
+.restaurant-card::after,
+    .pos-cart-panel::after,
+  .pos-cart-open-bill-btn::after,
+  .pos-cart-print-bill-btn::after,
+  .pos-cart-split-bill-btn::after,
+  .pos-cart-send-kitchen-btn::after,
   .retail-shift-modal::after,
   .retail-held-carts-modal::after,
   .retail-discount-modal::after,
   .retail-qty-modal::after,
   .retail-shortcuts-modal::after,
-  .retail-preview-modal::after,
   .retail-customer-modal::after,
   .tables-detail::after,
   .settings-popup::after,
@@ -829,7 +928,13 @@
   .ssel-dropdown::after,
   .multi-store-stat-card::after,
   .product-card::after,
-  .kiosk-product-card::after,
+  /* The kiosk success card (KioskScreen.css:487) carries `box-shadow: var(--shadow-lg)`
+   — the order-confirmation card raised over the attract screen. Found by the shadow
+   walk on 2026-10-17, which is the walk doing its job: the card was written without
+   the overlay. Wired into all three lists (main + both @media parity blocks) like
+   .tables-arrange-inspector, the last surface found the same way. */
+.kiosk-success-card::after,
+.kiosk-product-card::after,
   .setup-preset-card::after,
   .setup-step-panel::after,
   .pos-cart-line::after,

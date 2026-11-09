@@ -308,7 +308,7 @@ pub async fn send_test_report(
 /// Read the store name from settings, falling back to a default.
 fn get_store_name(store: &Store<'_>) -> Result<String, String> {
     use kasirmu_core::settings::Settings;
-    let name = Settings::get(store.conn, "store.name").map_err(|e| format!("DB error: {e}"))?;
+    let name = Settings::get(store.conn(), "store.name").map_err(|e| format!("DB error: {e}"))?;
     Ok(name.unwrap_or_else(|| "kasir.mu Store".to_string()))
 }
 

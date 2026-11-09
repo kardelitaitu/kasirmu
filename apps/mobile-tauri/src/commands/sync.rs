@@ -253,8 +253,8 @@ pub async fn sync_run_scoped(
     // This used to lock `state.db` — the global connection — so the marks
     // landed on a different file's `offline_queue` than the rows Phase 1
     // read: store items stayed `pending` forever while untouched global
-    // rows were flipped, and `pending_sync_count_scoped` kept counting the
-    // stranded store rows. Re-resolve the scope here rather than carrying
+    // rows were flipped, and the pending count kept reporting the stranded
+    // store rows. Re-resolve the scope here rather than carrying
     // the Phase 1 guard across the `send_items_to_server` await — the
     // store manager's std::sync::Mutex guard is not Send, and the global
     // connection is the wrong file anyway.
@@ -276,26 +276,6 @@ pub async fn sync_run_scoped(
         // gated, not broken). See `sync_client::undelivered_batch`.
         Err(e) => Ok(sync_client::undelivered_batch(&e)),
     }
-}
-
-/// Get the pending sync count resolved from a session token. ADR #7.
-#[allow(clippy::needless_borrow, dropping_references)]
-#[command]
-pub async fn pending_sync_count_scoped(
-    session_token: String,
-    state: State<'_, AppState>,
-) -> Result<i64, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
-    let conn_arc = state.resolve_store(&session_token)?;
-    let db_guard = conn_arc
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let db = &*db_guard;
-    let store = Store::new(&db);
-    let count = store.pending_offline_count()?;
-    drop(db);
-    Ok(count)
 }
 
 /// Request a new JWT API token from the cloud server's resolved from a session token. ADR #7.
@@ -552,18 +532,26 @@ pub struct SyncConflictDto {
 /// forever and the spinner never clears. 10s connect / 30s total matches the
 /// convention for the other bounded non-bulk JSON calls (`sync_client`,
 /// `whatsapp`, the payment drivers).
+///
+/// O-M32: Reuses a single shared client across calls to avoid re-initializing
+/// TLS contexts and connection pools on every invocation.
 fn bounded_conflict_client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .connect_timeout(std::time::Duration::from_secs(10))
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .unwrap_or_else(|e| {
-            tracing::error!(
-                error = %e,
-                "could not build bounded HTTP client for sync conflicts; falling back to an unbounded client"
-            );
-            reqwest::Client::new()
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_else(|e| {
+                    tracing::error!(
+                        error = %e,
+                        "could not build bounded HTTP client for sync conflicts; falling back to an unbounded client"
+                    );
+                    reqwest::Client::new()
+                })
         })
+        .clone()
 }
 
 async fn sync_server_credentials(

@@ -177,14 +177,26 @@ impl Store<'_> {
                     // attempt a rollback so subsequent queries on the same
                     // connection do not fail with "cannot start a transaction
                     // within a transaction".
-                    let _ = self.conn.execute_batch("ROLLBACK");
+                    if let Err(rb_err) = self.conn.execute_batch("ROLLBACK") {
+                        tracing::warn!(
+                            commit_error = %commit_error,
+                            rollback_error = %rb_err,
+                            "failed to rollback transaction after failed commit"
+                        );
+                    }
                     return Err(CoreError::Db(commit_error));
                 }
                 count.count_number = number;
                 Ok(())
             }
             Err(error) => {
-                let _ = self.conn.execute_batch("ROLLBACK");
+                if let Err(rb_err) = self.conn.execute_batch("ROLLBACK") {
+                    tracing::warn!(
+                        primary_error = %error,
+                        rollback_error = %rb_err,
+                        "failed to rollback transaction after error in stock count creation"
+                    );
+                }
                 Err(error)
             }
         }

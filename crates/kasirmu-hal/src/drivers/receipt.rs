@@ -292,6 +292,19 @@ impl PaymentInfo {
 
 // ── Sales receipt ────────────────────────────────────────
 
+/// Credit terms and customer debt info printed on trade credit / pay_later receipts.
+#[derive(Debug, Clone)]
+pub struct CreditTermsInfo {
+    /// Customer display name.
+    pub customer_name: String,
+    /// Customer phone or contact if available.
+    pub customer_phone: Option<String>,
+    /// Due date string (e.g. "2026-11-20" or localised).
+    pub due_date: Option<String>,
+    /// Previous outstanding debt or new total balance after this sale.
+    pub outstanding_balance: Option<Money>,
+}
+
 /// A complete sales receipt ready to format and print.
 ///
 /// Display formatting (currency prefix, decimal separator, etc.)
@@ -306,6 +319,8 @@ pub struct SalesReceipt {
     pub receipt_number: String,
     /// Optional table number (printed after date line).
     pub table_number: Option<String>,
+    /// Optional customer display name.
+    pub customer_name: Option<String>,
     /// Purchased line items.
     pub items: Vec<LineItem>,
     /// Subtotal before tax.
@@ -316,6 +331,8 @@ pub struct SalesReceipt {
     pub total: Money,
     /// Payments tendered.
     pub payments: Vec<PaymentInfo>,
+    /// Optional credit terms / customer debt info (for pay_later credit sales).
+    pub credit_terms: Option<CreditTermsInfo>,
     /// Optional 17-digit DJP Faktur Pajak string (e-Faktur Coretax PER-11/PJ/2025).
     pub faktur_pajak: Option<String>,
 }
@@ -569,6 +586,12 @@ pub fn format_sales_receipt(r: &SalesReceipt, config: &ReceiptConfig) -> Vec<u8>
         b.text(&format!("{table_gap}{table_line}"));
     }
 
+    // ── Customer name (optional) ──────────────────────
+    if let Some(ref cust) = r.customer_name {
+        let cust_line = format!("Customer: {cust}");
+        b.text(&truncate(&cust_line, w));
+    }
+
     b.separator();
 
     // ── Column headers ────────────────────────────────
@@ -692,6 +715,51 @@ pub fn format_sales_receipt(r: &SalesReceipt, config: &ReceiptConfig) -> Vec<u8>
         }
     }
 
+    // ── Credit Terms & Customer Acknowledgment (pay_later / kasbon) ──
+    let has_pay_later = r
+        .payments
+        .iter()
+        .any(|p| p.method.eq_ignore_ascii_case("pay_later"));
+
+    if let Some(ref terms) = r.credit_terms {
+        b.blank();
+        b.separator();
+        b.bold_center("NOTA PIUTANG / KASBON");
+        b.separator();
+        b.text(&truncate(
+            &format!("Pelanggan   : {}", terms.customer_name),
+            w,
+        ));
+        if let Some(ref phone) = terms.customer_phone {
+            b.text(&truncate(&format!("No. Telp    : {phone}"), w));
+        }
+        if let Some(ref due) = terms.due_date {
+            b.text(&truncate(&format!("Jatuh Tempo : {due}"), w));
+        }
+        if let Some(ref bal) = terms.outstanding_balance {
+            b.bold(&right_line("TOTAL HUTANG:", &format_money(bal, config), w));
+        }
+        b.blank();
+        b.center("Tanda Tangan Pelanggan:");
+        b.feed(2);
+        b.center("(........................)");
+        b.center(&truncate(&terms.customer_name, w));
+        b.blank();
+    } else if has_pay_later {
+        b.blank();
+        b.separator();
+        b.bold_center("NOTA PIUTANG / KASBON");
+        b.separator();
+        if let Some(ref cust) = r.customer_name {
+            b.text(&truncate(&format!("Pelanggan   : {cust}"), w));
+        }
+        b.blank();
+        b.center("Tanda Tangan Pelanggan:");
+        b.feed(2);
+        b.center("(........................)");
+        b.blank();
+    }
+
     // ── Footer ────────────────────────────────────────
     if let Some(ref footer) = config.footer {
         b.separator();
@@ -790,6 +858,128 @@ pub fn format_edc_settlement_slip(
     if !settlement.message.is_empty() {
         b.center(&settlement.message);
     }
+    b.feed(3);
+    b.cut();
+    b.build()
+}
+
+// ── Kasbon (Receivable) Settlement Slip ──────────────────
+
+/// A Kasbon / Accounts Receivable settlement receipt.
+#[derive(Debug, Clone)]
+pub struct KasbonSettlementReceipt {
+    /// Store identity printed at the top.
+    pub store: StoreInfo,
+    /// Transaction date string.
+    pub date: String,
+    /// Settlement transaction reference number (e.g. "PAY-REC-001").
+    pub settlement_number: String,
+    /// Customer name.
+    pub customer_name: String,
+    /// Optional customer phone.
+    pub customer_phone: Option<String>,
+    /// Receivable or original sale invoice reference (e.g. "REC-001" or "SALE-001").
+    pub receivable_reference: Option<String>,
+    /// Payment tender method (e.g. "CASH", "QRIS", "BANK_TRANSFER").
+    pub payment_method: String,
+    /// Total receivable debt before this payment.
+    pub previous_balance: Money,
+    /// Amount paid in this transaction.
+    pub amount_paid: Money,
+    /// Remaining balance after this payment.
+    pub remaining_balance: Money,
+    /// Optional cashier / operator name.
+    pub cashier_name: Option<String>,
+    /// Optional note.
+    pub note: Option<String>,
+}
+
+/// Format a Kasbon / Accounts Receivable settlement slip as an ESC/POS byte buffer.
+pub fn format_kasbon_settlement_slip(
+    slip: &KasbonSettlementReceipt,
+    config: &ReceiptConfig,
+) -> Vec<u8> {
+    let w = config.paper_width.chars();
+    let mut b = ReceiptBuilder::new(w);
+    b.init();
+    b.blank();
+
+    b.bold_center(&slip.store.name);
+    for line in slip.store.address.split('/') {
+        let trimmed = line.trim();
+        if !trimmed.is_empty() {
+            b.center(trimmed);
+        }
+    }
+    if let Some(ref tax_id) = slip.store.tax_id {
+        let label = slip.store.tax_id_label.as_deref().unwrap_or("Tax ID");
+        b.center(&format!("{label}: {tax_id}"));
+    }
+    b.blank();
+    b.separator();
+
+    b.bold_center("BUKTI PEMBAYARAN KASBON");
+    b.center("(RECEIVABLE SETTLEMENT)");
+    b.separator();
+
+    let right_num = format!("#{}", slip.settlement_number);
+    let left_date = &slip.date;
+    let gap = " ".repeat(w.saturating_sub(cell_width(left_date) + cell_width(&right_num) + 1));
+    b.text(&format!("{left_date}{gap}{right_num}"));
+    b.separator();
+
+    b.text(&truncate(
+        &format!("Pelanggan   : {}", slip.customer_name),
+        w,
+    ));
+    if let Some(ref phone) = slip.customer_phone {
+        b.text(&truncate(&format!("No. Telp    : {phone}"), w));
+    }
+    if let Some(ref rf) = slip.receivable_reference {
+        b.text(&truncate(&format!("No. Piutang : {rf}"), w));
+    }
+    b.text(&truncate(
+        &format!("Metode      : {}", slip.payment_method.to_uppercase()),
+        w,
+    ));
+    b.separator();
+
+    b.text(&right_line(
+        "HUTANG AWAL:",
+        &format_money(&slip.previous_balance, config),
+        w,
+    ));
+    b.text(&right_line(
+        "JUMLAH BAYAR:",
+        &format_money(&slip.amount_paid, config),
+        w,
+    ));
+    b.separator();
+
+    b.bold(&right_line(
+        "SISA PIUTANG:",
+        &format_money(&slip.remaining_balance, config),
+        w,
+    ));
+    b.separator();
+
+    if slip.remaining_balance.minor_units <= 0 {
+        b.blank();
+        b.bold_center("*** LUNAS / PAID OFF ***");
+    }
+
+    if let Some(ref cashier) = slip.cashier_name {
+        b.text(&truncate(&format!("Kasir: {cashier}"), w));
+    }
+    if let Some(ref note) = slip.note {
+        b.text(&truncate(&format!("Catatan: {note}"), w));
+    }
+
+    b.blank();
+    b.center("Simpan struk ini sebagai");
+    b.center("bukti pembayaran yang sah.");
+    b.center("Terima kasih.");
+
     b.feed(3);
     b.cut();
     b.build()

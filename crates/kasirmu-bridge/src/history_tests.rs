@@ -1,5 +1,5 @@
 //! Unit tests for the sales-history DTOs and session rejection (test
-//! relocation: moved out of `apps/desktop-tauri/src/commands/history_tests.rs`).
+//! relocation: moved out of `apps/desktop-client/src/commands/history_tests.rs`, since renamed to desktop-tauri).
 //!
 //! Mounted at the foot of `history.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the DTOs from the bridge module directly. The
@@ -246,6 +246,9 @@ fn eod_report_debug() {
         discount_count: 10,
         discount_total: 25000,
         hourly_breakdown: vec![],
+        receivable_collections_count: 2,
+        receivable_collections_total: 100000,
+        receivable_breakdown: vec![],
     };
     let d = format!("{report:?}");
     assert!(d.contains("100"));
@@ -268,10 +271,19 @@ fn eod_report_serialize() {
         discount_count: 5,
         discount_total: 10000,
         hourly_breakdown: vec![],
+        receivable_collections_count: 1,
+        receivable_collections_total: 50000,
+        receivable_breakdown: vec![PaymentBreakdown {
+            method: "cash".into(),
+            count: 1,
+            total: 50000,
+        }],
     };
     let json = serde_json::to_value(&report).unwrap();
     assert_eq!(json["total_sales"], 50);
     assert_eq!(json["currency"], "USD");
+    assert_eq!(json["receivable_collections_count"], 1);
+    assert_eq!(json["receivable_collections_total"], 50000);
     assert!(!json["payment_breakdown"].as_array().unwrap().is_empty());
 }
 
@@ -391,6 +403,51 @@ fn eod_report_reconciles_on_a_refund_and_void_fixture() {
         report.discount_total,
         report.total_revenue
     );
+}
+
+#[test]
+fn eod_report_includes_receivable_collections() {
+    let conn = crate::testing::temp_conn();
+
+    // Seed a completed cash sale
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, payment_method, created_at, updated_at)
+         VALUES ('sale-1', 10000, 'USD', 1, 'completed', 'cash', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+        [],
+    )
+    .expect("seed sale");
+
+    // Seed customer, receivable, and receivable payment collected today
+    let rec_id = uuid::Uuid::now_v7().to_string();
+    conn.execute(
+        "INSERT INTO customers (id, name, created_at, updated_at)
+         VALUES ('cust-1', 'Alice', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+        [],
+    )
+    .expect("seed customer");
+
+    conn.execute(
+        "INSERT INTO receivables (id, tenant_id, customer_id, source, reference, amount_minor, paid_minor, currency, status, note, created_at, updated_at)
+         VALUES (?1, 'default', 'cust-1', 'pos', 'INV-001', 5000, 5000, 'USD', 'paid', '', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+        rusqlite::params![rec_id],
+    )
+    .expect("seed receivable");
+
+    conn.execute(
+        "INSERT INTO receivable_payments (id, tenant_id, receivable_id, amount_minor, currency, method, paid_at, note)
+         VALUES ('pay-rec-1', 'default', ?1, 5000, 'USD', 'cash', strftime('%Y-%m-%dT%H:%M:%fZ','now'), 'Kasbon settlement')",
+        rusqlite::params![rec_id],
+    )
+    .expect("seed receivable payment");
+
+    let report = build_eod_report(&conn).expect("EOD report");
+    assert_eq!(report.total_sales, 1);
+    assert_eq!(report.total_revenue, 10000);
+    assert_eq!(report.receivable_collections_count, 1);
+    assert_eq!(report.receivable_collections_total, 5000);
+    assert_eq!(report.receivable_breakdown.len(), 1);
+    assert_eq!(report.receivable_breakdown[0].method, "cash");
+    assert_eq!(report.receivable_breakdown[0].total, 5000);
 }
 
 // ── Phase 6: e-Faktur tests ────────────────────────────────────────

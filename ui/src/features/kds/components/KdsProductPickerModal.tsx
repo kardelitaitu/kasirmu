@@ -91,16 +91,8 @@ export function addOrUpdatePicked(
   ];
 }
 
-/** Resolve a product category string to a KDS course ID. */
-export function resolveCourseFromCategory(category: string | null | undefined): string | null {
-  const c = (category ?? '').toLowerCase();
-  if (c.includes('appetizer') || c.includes('starter')) return 'appetizer';
-  if (c.includes('main') || c.includes('entree')) return 'main';
-  if (c.includes('side')) return 'side';
-  if (c.includes('dessert')) return 'dessert';
-  if (c.includes('drink') || c.includes('beverage')) return 'beverage';
-  return null;
-}
+import { resolveCourseFromCategory } from '@/types/domain';
+export { resolveCourseFromCategory };
 
 /**
  * Clamp a line-item quantity to the allowed positive range.
@@ -258,8 +250,26 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
     setPicked((prev) => prev.filter((e) => e.sku !== sku));
   }, []);
 
-  const updateQty = useCallback((sku: string, qty: number) => {
-    setPicked((prev) => updateQtyEntry(prev, sku, qty));
+  /**
+   * Adjust a picked entry's quantity by a DELTA.
+   *
+   * DELTA, not an absolute value, for the same reason as the POS cart's `changeQty`:
+   * the stepper buttons computed `entry.qty ± 1` from the row as it last rendered, and
+   * `updateQtyEntry` OVERWRITES rather than accumulates (`{ ...e, qty: clamped }` inside
+   * its `picked.map`). So two taps inside one React batch both closed over that snapshot and both
+   * wrote the same number — the cook pressed `+` twice on a touch panel and the quantity
+   * went up once.
+   *
+   * The delta is INSIDE the `setPicked` updater, so it composes with `prev` and batched
+   * taps accumulate. The stepper still carries the `disabled={qty <= 1}` guard on the
+   * decrement, which is why only the increment needed the change.
+   */
+  const adjustQty = useCallback((sku: string, delta: number) => {
+    setPicked((prev) => {
+      const current = prev.find((e) => e.sku === sku);
+      if (!current) return prev;
+      return updateQtyEntry(prev, sku, current.qty + delta);
+    });
   }, []);
 
   const updateCourse = useCallback((sku: string, course: string | null) => {
@@ -436,7 +446,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
                       <div className="kds-picker-picked-qty">
                         <button
                           className="kds-picker-qty-btn"
-                          onClick={() => updateQty(entry.sku, entry.qty - 1)}
+                          onClick={() => adjustQty(entry.sku, -1)}
                           disabled={entry.qty <= 1}
                           aria-label={requiredLocalized(l10n, 'kds-picker-qty-decrease')}
                           data-testid={`kds-picker-qty-dec-${entry.sku}`}
@@ -448,7 +458,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
                         </span>
                         <button
                           className="kds-picker-qty-btn"
-                          onClick={() => updateQty(entry.sku, entry.qty + 1)}
+                          onClick={() => adjustQty(entry.sku, 1)}
                           aria-label={requiredLocalized(l10n, 'kds-picker-qty-increase')}
                           data-testid={`kds-picker-qty-inc-${entry.sku}`}
                         >

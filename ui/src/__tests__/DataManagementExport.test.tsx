@@ -58,6 +58,109 @@ vi.mock('@fluent/react', () => {
     'data-mgmt-type-customers': 'Customers',
     'data-mgmt-type-users': 'Users',
     'data-mgmt-type-settings': 'Settings',
+    // Keys the component renders that this hand-maintained map never carried.
+    // No case here asserts them, so getString returned the raw id silently.
+    // Values copied verbatim from shared-ui/locales (curly holes rewritten to the
+    // stub's brace form).
+    'data-mgmt-import-confirm-title': 'Import Data',
+    'data-mgmt-import-confirm-message': 'Importing will overwrite current data with the contents of the backup file. This cannot be undone. Do you want to proceed?',
+    'data-mgmt-tabs-aria': 'Data management actions',
+    'data-mgmt-toast-export-fail': 'Export failed',
+    'data-mgmt-analyse-file': 'Analyse file',
+    'data-mgmt-backup-backing-up': 'Backing up…',
+    'data-mgmt-backup-create': 'Create backup now',
+    'data-mgmt-backup-desc': 'Create an online snapshot of the current database. The backup runs in the background and does not interrupt POS operations.',
+    'data-mgmt-backup-label-last': 'Last backup',
+    'data-mgmt-backup-label-size': 'Size',
+    'data-mgmt-backup-never': 'Never',
+    'data-mgmt-backup-status-aria': 'Backup status',
+    'data-mgmt-backup-title': 'Database backup',
+    'data-mgmt-encrypt-back': 'Back',
+    'data-mgmt-encrypt-confirm': 'Confirm password',
+    'data-mgmt-encrypt-confirm-placeholder': 'Re-enter password',
+    'data-mgmt-encrypt-desc': 'The export file will be encrypted with AES-256-GCM. Choose a strong password — you will need it to import the data later.',
+    'data-mgmt-encrypt-export': 'Export',
+    'data-mgmt-encrypt-password': 'Password',
+    'data-mgmt-encrypt-password-placeholder': 'At least 8 characters',
+    'data-mgmt-encrypt-title': 'Set encryption password',
+    'data-mgmt-export-complete': 'Export complete',
+    'data-mgmt-export-complete-aria': 'Export complete',
+    'data-mgmt-export-date-from': 'From',
+    'data-mgmt-export-date-to': 'To',
+    'data-mgmt-export-done-text': 'Data exported to:',
+    'data-mgmt-export-exporting': 'Exporting…',
+    'data-mgmt-export-new-export': 'New export',
+    'data-mgmt-export-next': 'Next: Encryption',
+    'data-mgmt-export-selected-types': 'Selected types:',
+    'data-mgmt-export-title': 'Select data to export',
+    'data-mgmt-export-types-aria': 'Data types to export',
+    'data-mgmt-export-wizard-aria': 'Export wizard',
+    'data-mgmt-import-analysing': 'Analysing file…',
+    'data-mgmt-import-browse': 'Browse files…',
+    'data-mgmt-import-cancel': 'Cancel',
+    'data-mgmt-import-complete': 'Import complete',
+    'data-mgmt-import-complete-aria': 'Import complete',
+    'data-mgmt-import-desc': 'Choose an encrypted .kasirpkg file to import. The file must have been created by kasir.mu export.',
+    'data-mgmt-import-done-summary': '{added} items added, {updated} updated, {skipped} skipped.',
+    'data-mgmt-import-done-text': 'All data has been imported successfully.',
+    'data-mgmt-import-dry-run-added': 'New items',
+    'data-mgmt-import-dry-run-complete': 'Dry-run complete — importing…',
+    'data-mgmt-import-dry-run-skipped': 'Skipped',
+    'data-mgmt-import-dry-run-title': 'Changes to be applied',
+    'data-mgmt-import-dry-run-updated': 'Updated',
+    'data-mgmt-import-meta-contains': 'Contains',
+    'data-mgmt-import-meta-created': 'Created',
+    'data-mgmt-import-meta-file': 'File',
+    'data-mgmt-import-meta-store': 'Store',
+    'data-mgmt-import-meta-version': 'Version',
+    'data-mgmt-import-new-import': 'New import',
+    'data-mgmt-import-password': 'Decryption password',
+    'data-mgmt-import-password-placeholder': 'Enter the export password',
+    'data-mgmt-import-preview-title': 'Preview import',
+    'data-mgmt-import-start': 'Start import',
+    'data-mgmt-import-title': 'Select a backup file',
+    'data-mgmt-import-wizard-aria': 'Import wizard',
+    'data-mgmt-restore-cancel': 'Cancel',
+    'data-mgmt-restore-cli-hint': 'You can also restore from the command line: run the kasir.mu CLI restore command while the app is closed.',
+    'data-mgmt-restore-confirm-desc': 'To confirm, type the store name that this BACKUP carries — not the name of the store you are running now. The name is not shown anywhere, on purpose: typing it is the confirmation that you have the right backup.',
+    'data-mgmt-restore-confirm-title': 'Restore from this backup?',
+    'data-mgmt-restore-desc': 'Replace the live database with one of the backup generations stored beside it. The restore runs the next time kasir.mu starts, before anything opens the database.',
+    'data-mgmt-restore-empty': 'No backup generations were found beside the database.',
+    'data-mgmt-restore-generation': 'Generation {number}',
+    'data-mgmt-restore-label-modified': 'Modified',
+    'data-mgmt-restore-label-schema': 'Backup schema',
+    'data-mgmt-restore-label-size': 'Size',
+    'data-mgmt-restore-loading': 'Reading backup generations…',
+    'data-mgmt-restore-next-boot': 'This restore will run the next time kasir.mu starts. You can keep using the app until then.',
+    'data-mgmt-restore-pending-aria': 'A restore is already pending',
+    'data-mgmt-restore-pending-desc': 'A restore has been requested and will run the next time kasir.mu starts. Requesting another would replace it.',
+    'data-mgmt-restore-pending-requested': 'Requested',
+    'data-mgmt-restore-pending-title': 'A restore is already pending',
+    'data-mgmt-restore-pending-unreadable': 'The pending request could not be read',
+    'data-mgmt-restore-request': 'Restore this backup',
+    'data-mgmt-restore-schema-unknown': 'Unknown',
+    'data-mgmt-restore-status-aria': 'Restore status',
+    'data-mgmt-restore-store-name-label': 'Store name in the backup',
+    'data-mgmt-restore-store-name-placeholder': 'Type the backup\'s store name',
+    'data-mgmt-restore-submit': 'Request restore',
+    'data-mgmt-restore-title': 'Restore from backup',
+    'data-mgmt-restore-unreadable': 'Could not read the backup generations beside the database.',
+    'data-mgmt-title': 'Data Management',
+    'data-mgmt-toast-backup-fail': 'Backup failed',
+    'data-mgmt-toast-backup-status-fail': 'Failed to load backup status',
+    'data-mgmt-toast-backup-success': 'Backup created successfully',
+    'data-mgmt-toast-export-password-length': 'Password must be at least 8 characters',
+    'data-mgmt-toast-export-password-match': 'Passwords do not match',
+    'data-mgmt-toast-export-select-type': 'Select at least one data type to export',
+    'data-mgmt-toast-export-success': 'Export complete',
+    'data-mgmt-toast-file-picker-fail': 'Failed to open file picker',
+    'data-mgmt-toast-import-enter-password': 'Enter the export password',
+    'data-mgmt-toast-import-no-file': 'No file selected',
+    'data-mgmt-toast-import-success': 'Import complete',
+    'data-mgmt-toast-restore-fail': 'Could not request the restore',
+    'data-mgmt-toast-restore-store-mismatch': 'That store name does not match the backup',
+    'data-mgmt-toast-restore-success': 'Restore requested. It will run the next time kasir.mu starts.',
+    'admin-locked-message': 'Administrative SaaS features lock while the subscription is expired, paused, or unavailable. Selling continues under the offline grace policy. Verify your subscription online to restore access.',
   };
   return {
     useLocalization: () => ({
@@ -271,7 +374,7 @@ describe('DataManagement — Export', () => {
     await user.click(screen.getByLabelText('Select all / none'));
     await user.click(screen.getByText('Next: Encryption'));
     expect(mockAddToast).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'data-mgmt-toast-export-select-type', type: 'error' }),
+      expect.objectContaining({ message: 'Select at least one data type to export', type: 'error' }),
     );
     expect(screen.getByText('Next: Encryption')).toBeInTheDocument();
   });
@@ -309,7 +412,7 @@ describe('DataManagement — Export', () => {
     await user.type(confirmInput, '1234567');
     await user.click(screen.getByRole('button', { name: 'Export' }));
     expect(mockAddToast).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'data-mgmt-toast-export-password-length', type: 'error' }),
+      expect.objectContaining({ message: 'Password must be at least 8 characters', type: 'error' }),
     );
   });
 
@@ -326,7 +429,7 @@ describe('DataManagement — Export', () => {
     await user.type(confirmInput, 'different456');
     await user.click(screen.getByRole('button', { name: 'Export' }));
     expect(mockAddToast).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'data-mgmt-toast-export-password-match', type: 'error' }),
+      expect.objectContaining({ message: 'Passwords do not match', type: 'error' }),
     );
   });
 
@@ -380,7 +483,7 @@ describe('DataManagement — Export', () => {
     await user.click(screen.getByRole('button', { name: 'Export' }));
     await waitFor(() => {
       expect(mockAddToast).toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'data-mgmt-toast-export-success', type: 'success' }),
+        expect.objectContaining({ message: 'Export complete', type: 'success' }),
       );
     });
   });
@@ -401,7 +504,7 @@ describe('DataManagement — Export', () => {
     await waitFor(() => {
       expect(screen.getByText('Set encryption password')).toBeInTheDocument();
       expect(screen.getByRole('alert')).toBeInTheDocument();
-      expect(screen.getByText('data-mgmt-toast-export-fail')).toBeInTheDocument();
+      expect(screen.getByText('Export failed')).toBeInTheDocument();
     });
   });
 

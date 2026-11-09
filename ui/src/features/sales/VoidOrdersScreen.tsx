@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useLocalization } from '@fluent/react';
 import { Localized } from '@/components/Localized';
 import {
@@ -21,6 +21,14 @@ import { l10nErrorMessage } from '@/utils/app-error';
 import { asArray } from '@/utils/ipc-payload';
 import './VoidOrdersScreen.css';
 
+/**
+ * Count ceiling for the void-orders list, matching `SALES_FETCH_LIMIT` in
+ * SalesHistoryScreen (500). A ceiling, not a page: this screen filters and
+ * sorts client-side, so an offset window would hide rows from its own search.
+ * Both the store (clamp 1..1000) and this constant keep one read bounded.
+ */
+const VOID_ORDERS_FETCH_LIMIT = 500;
+
 // ── Reason options ──────────────────────────────────────────────────
 
 const VOID_REASONS = [
@@ -38,21 +46,26 @@ const VOID_REASONS = [
 
 function statusBadgeVariant(status: string): 'success' | 'warning' | 'danger' | 'info' {
   switch (status) {
-    case 'Completed': return 'success';
-    case 'Active': return 'info';
-    case 'Pending': return 'warning';
-    case 'Voided': return 'danger';
+    case 'completed': return 'success';
+    case 'active': return 'info';
+    case 'pending': return 'warning';
+    case 'voided': return 'danger';
     default: return 'info';
   }
 }
 
 function statusLabelFluentId(status: string): string {
   switch (status) {
-    case 'Active': return 'void-orders-status-active';
-    case 'Completed': return 'void-orders-status-completed';
-    case 'Voided': return 'void-orders-status-voided';
-    case 'Pending': return 'void-orders-status-pending';
-    default: return 'void-orders-status-active';
+    case 'active': return 'void-orders-status-active';
+    case 'completed': return 'void-orders-status-completed';
+    case 'voided': return 'void-orders-status-voided';
+    case 'pending': return 'void-orders-status-pending';
+    // An unrecognised status must not read as the screen's busiest label. `active` is the
+    // voidable state this screen exists to surface, so falling back to it would present an
+    // unidentifiable row as the one thing the operator is looking for -- and offer a Void
+    // action for a state whose transition rules nobody checked. Same contract as
+    // SalesHistoryScreen's statusFluentId and TableManagementScreen's tables-status-unknown.
+    default: return 'void-orders-status-unknown';
   }
 }
 
@@ -67,7 +80,7 @@ function formatDate(iso: string): string {
 // ── Component ───────────────────────────────────────────────────────
 
 type ViewMode = 'list' | 'detail';
-type FilterStatus = 'all' | 'Active' | 'Completed' | 'Voided' | 'Pending';
+type FilterStatus = 'all' | 'active' | 'completed' | 'voided' | 'pending';
 
 interface VoidOrdersScreenProps {
   /** ID of the sale to open directly (for navigating from POS after completion). */
@@ -92,6 +105,11 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
   const [viewMode, setViewMode] = useState<ViewMode>(initialSaleId ? 'detail' : 'list');
   const [activeSaleId, setActiveSaleId] = useState<string | null>(initialSaleId ?? null);
   const [detail, setDetail] = useState<SaleDetail | null>(null);
+  // The DETAIL read's own failure. `detail === null` alone cannot tell "this sale does
+  // not exist" from "we could not read it", and the render turns null into the
+  // authoritative sentence "Order not found." — a claim about the database made from a
+  // read that never answered.
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
   // Void flow
@@ -110,8 +128,15 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
       // ADR #7: with a workspace session, read through the session's store. This screen already
       // voided through voidSaleScoped, so before this the write and the read could resolve to
       // different stores -- the cashier acted as one workspace and saw another's order list.
+      // R3 bounded, matching SalesHistoryScreen. Omitting `limit` here sent
+      // `None` down to `list_sales_with_history_cap_bounded`, whose LIMIT is
+      // only appended when a limit is given (sales_crud.rs:308-314) -- so the
+      // session path read EVERY sale inside the tier window into memory, while
+      // the same store's history screen read at most 500. The store clamps to
+      // 1000, so this is a count ceiling, not a page: no offset, and the list
+      // still renders complete up to the ceiling.
       const { sales: items } = sessionToken
-        ? await listSalesScoped(sessionToken)
+        ? await listSalesScoped(sessionToken, VOID_ORDERS_FETCH_LIMIT)
         : await listSales();
       setSales(asArray<typeof items[number]>(items));
     } catch (err) {
@@ -139,15 +164,21 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
         const sale = sessionToken
           ? await getSaleScoped(sessionToken, activeSaleId)
           : await getSale(activeSaleId);
-        if (!cancelled) setDetail(sale);
-      } catch {
-        if (!cancelled) setDetail(null);
+        if (!cancelled) {
+          setDetail(sale);
+          setDetailError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setDetail(null);
+          setDetailError(l10nErrorMessage(err, l10n, 'void-orders-error-load'));
+        }
       } finally {
         if (!cancelled) setDetailLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [activeSaleId, sessionToken]);
+  }, [activeSaleId, sessionToken, l10n]);
 
   // ── Open initial sale if provided ────────────────────────────────
 
@@ -191,6 +222,14 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
 
   // ── Void handler ────────────────────────────────────────────────
 
+  // Re-entry guard. `voiding` is React state and commits on the NEXT render, so the second
+  // dispatch of a real double tap still enters this handler. `void_sale` is a compare-and-set
+  // (`WHERE id = ?2 AND status = 'active'`, rows == 0 -> Conflict, sales_lifecycle.rs:903-914),
+  // so the replay is REFUSED -- and the catch reports `void-orders-error-void`, i.e. "failed to
+  // void" over a sale that was voided. Taken AFTER the reason validation above, which returns
+  // before the `finally` that clears the flag.
+  const voidPendingRef = useRef(false);
+
   const handleVoid = useCallback(async () => {
     if (!activeSaleId || !detail) return;
 
@@ -200,6 +239,8 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
       return;
     }
 
+    if (voidPendingRef.current) return;
+    voidPendingRef.current = true;
     setVoiding(true);
     setVoidError(null);
     setVoidSuccess(null);
@@ -219,6 +260,7 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
     } catch (err) {
       setVoidError(l10nErrorMessage(err, l10n, 'void-orders-error-void'));
     } finally {
+      voidPendingRef.current = false;
       setVoiding(false);
     }
     // sessionToken is read by the voidSaleScoped call above and was missing from these deps;
@@ -295,7 +337,10 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
 
           <Localized id="void-orders-filter-status-aria" attrs={{ 'aria-label': true }}>
           <div className="void-orders-status-filters" role="radiogroup">
-            {(['all', 'Active', 'Completed', 'Voided', 'Pending'] as FilterStatus[]).map((status) => (
+            {/* Filter values are the wire spellings, matching SaleStatus::as_stored_str
+                (foundation/src/enums.rs:40). They were capitalised while `s.status` is not, so
+                :196's equality test filtered every row out the moment a chip was selected. */}
+            {(['all', 'active', 'completed', 'voided', 'pending'] as FilterStatus[]).map((status) => (
               <button
                 key={status}
                 type="button"
@@ -421,7 +466,7 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
                   </tr>
                 </thead>
                 <tbody>{pageItems.map((sale) => (
-                    <tr key={sale.id} className={sale.status === 'Active' ? 'void-orders-row--active' : ''}>
+                    <tr key={sale.id} className={sale.status === 'active' ? 'void-orders-row--active' : ''}>
                       <td className="void-orders-cell-id">{sale.id.slice(0, 8)}&hellip;</td>
                       <td>{formatDate(sale.createdAt)}</td>
                       { }
@@ -448,7 +493,7 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
                             </Localized>
                           </button>
                         </Localized>
-                        {sale.status === 'Active' && (
+                        {sale.status === 'active' && (
                           <Localized id="void-orders-void-aria" attrs={{ 'aria-label': true }} vars={{ id: sale.id }}>
                             <button
                               type="button"
@@ -500,7 +545,7 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
 
   // ── Render: Detail view ────────────────────────────────────────
 
-  const canVoid = detail?.status === 'Active';
+  const canVoid = detail?.status === 'active';
 
   return (
     <div className="void-orders">
@@ -582,6 +627,16 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
             </table>
           </Card>
         </div>
+      ) : detailError ? (
+        // NOT "Order not found." — the read never answered, so the sale may well exist.
+        <Card shadow="sm">
+          <div className="void-orders-error" role="alert">
+            <p>{detailError}</p>
+            <Localized id="void-orders-go-back">
+              <Button variant="secondary" onClick={backToList}>Go back</Button>
+            </Localized>
+          </div>
+        </Card>
       ) : !detail ? (
         <Card shadow="sm">
           <div className="void-orders-error">
@@ -793,7 +848,7 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
           )}
 
           {/* Already voided notice */}
-          {detail.status === 'Voided' && (
+          {detail.status === 'voided' && (
             <Card shadow="sm" className="void-orders-section">
               <div className="void-orders-voided-notice">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20" aria-hidden="true">

@@ -180,7 +180,7 @@ fn the_info_recorded_names_the_transport_and_address() {
 
 #[test]
 fn the_database_row_wins_over_the_file() {
-    let dir = tempfile::tempdir().expect("tempdir");
+    let dir = kasirmu_test_support::ScratchDir::new("startup-hardware-profile");
     let conn = Connection::open_in_memory().expect("in-memory db");
     create_profiles_table(&conn);
     put_profile(
@@ -200,7 +200,7 @@ fn the_database_row_wins_over_the_file() {
 
 #[test]
 fn a_missing_database_row_falls_back_to_the_file() {
-    let dir = tempfile::tempdir().expect("tempdir");
+    let dir = kasirmu_test_support::ScratchDir::new("startup-hardware-profile");
     let conn = Connection::open_in_memory().expect("in-memory db");
     create_profiles_table(&conn);
 
@@ -216,7 +216,7 @@ fn a_missing_database_row_falls_back_to_the_file() {
 
 #[test]
 fn an_unparsable_database_row_falls_back_instead_of_failing_startup() {
-    let dir = tempfile::tempdir().expect("tempdir");
+    let dir = kasirmu_test_support::ScratchDir::new("startup-hardware-profile");
     let conn = Connection::open_in_memory().expect("in-memory db");
     create_profiles_table(&conn);
     put_profile(&conn, "term-3", "{ not json");
@@ -232,7 +232,7 @@ fn an_unparsable_database_row_falls_back_instead_of_failing_startup() {
 
 #[test]
 fn no_profile_anywhere_is_none_not_a_panic() {
-    let dir = tempfile::tempdir().expect("tempdir");
+    let dir = kasirmu_test_support::ScratchDir::new("startup-hardware-profile");
     let conn = Connection::open_in_memory().expect("in-memory db");
     create_profiles_table(&conn);
     assert!(load_profile(&conn, "ghost", dir.path()).is_none());
@@ -241,7 +241,7 @@ fn no_profile_anywhere_is_none_not_a_panic() {
 #[test]
 fn a_missing_table_does_not_panic_either() {
     // First run before migrations, or a store db that never got the table.
-    let dir = tempfile::tempdir().expect("tempdir");
+    let dir = kasirmu_test_support::ScratchDir::new("startup-hardware-profile");
     let conn = Connection::open_in_memory().expect("in-memory db");
     assert!(load_profile(&conn, "term-1", dir.path()).is_none());
 }

@@ -75,26 +75,112 @@ def strip(text: str) -> tuple[str, list[str]]:
     return LITERAL.sub(replace, text), changes
 
 
-def main() -> int:
-    check = "--check" in sys.argv[1:]
-    original = CSS.read_text(encoding="utf-8")
+def main(argv=None, root=None) -> int:
+    """r205: argv and root parameterized, the r166..r204 contract -- the
+    stylesheet is resolved under the contract root, so the WRITE path is
+    graded against a fixture tree instead of this checkout."""
+    check = "--check" in (sys.argv[1:] if argv is None else argv)
+    css = CSS if CSS.is_absolute() else (
+        Path(__file__).resolve().parent.parent if root is None else Path(root).resolve()
+    ) / CSS
+    try:
+        original = css.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"verify-strip-token-fallbacks: cannot read {css} -- {exc}")
+        return 1
     updated, changes = strip(original)
 
     if not changes:
-        print(f"{CSS}: no stale token fallbacks remain.")
+        print(f"{css}: no stale token fallbacks remain.")
         return 0
 
     if check:
-        print(f"{CSS}: {len(changes)} stale token fallback(s) remain:")
+        print(f"{css}: {len(changes)} stale token fallback(s) remain:")
         for change in changes:
             print(f"  - {change}")
         print("  Fix: python3 scripts/strip-topology-token-fallbacks.py")
         return 1
 
-    CSS.write_text(updated, encoding="utf-8")
-    print(f"{CSS}: dropped {len(changes)} stale token fallback(s).")
+    css.write_text(updated, encoding="utf-8")
+    print(f"{css}: dropped {len(changes)} stale token fallback(s).")
+    return 0
+
+
+def self_test() -> int:
+    """r205: the shell -- main() graded through argv and a contract root, the
+    r166..r204 pattern. The fixture carries stale fallbacks so --check and
+    the apply write are graded against a throwaway tree; a root-dropping
+    main reads THIS checkout's stylesheet (clean since ADR #45's strip
+    landed) and answers clean on the first rung."""
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+    shell = 0
+    STALE = ("a {\n"
+             "  color: var(--color-success, #10b981);\n"
+             "  border: var(--color-border-subtle, var(--color-border));\n"
+             "  left: var(--mouse-x, 50%);\n"
+             "}\n")
+    def run(tdp, *argv):
+        out, err = _io.StringIO(), _io.StringIO()
+        try:
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                rc = main(argv=list(argv), root=tdp)
+        except SystemExit as se:
+            return se.code, out.getvalue() + err.getvalue()
+        return rc, out.getvalue() + err.getvalue()
+    def tree(content):
+        tdp = Path(_tempfile.mkdtemp())
+        f = tdp / "ui" / "src" / "features" / "locations"
+        f.mkdir(parents=True)
+        (f / "NodeTopologyEditor.css").write_text(content, encoding="utf-8")
+        return tdp, f / "NodeTopologyEditor.css"
+    shell += 1
+    tdp, _ = tree(STALE)
+    rc, text = run(tdp, "--check")
+    if rc != 1 or "2 stale token fallback(s) remain" not in text:
+        print("  x a stale fallback must be reported rc 1 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    tdp, _ = tree("a { color: var(--color-success); }\n")
+    rc, text = run(tdp, "--check")
+    if rc != 0 or "no stale token fallbacks remain" not in text:
+        print("  x a clean stylesheet must pass rc 0 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    tdp, css = tree(STALE)
+    rc, text = run(tdp)
+    if rc != 0 or "dropped 2 stale token fallback(s)" not in text:
+        print("  x apply mode must drop the literal and the nested arm (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    back = css.read_text(encoding="utf-8")
+    if "#10b981" in back or "var(--color-border-subtle, var(--color-border))" in back:
+        print("  x the applied file must have both fallbacks stripped (back=%r)"
+              % back, file=sys.stderr)
+        return 1
+    if "var(--mouse-x, 50%)" not in back:
+        print("  x the runtime cursor token's fallback must survive (back=%r)"
+              % back, file=sys.stderr)
+        return 1
+    if "var(--color-success)" not in back or "var(--color-border-subtle)" not in back:
+        print("  x the stripped tokens must remain as bare var() (back=%r)"
+              % back, file=sys.stderr)
+        return 1
+    shell += 1
+    tdp = Path(_tempfile.mkdtemp())
+    rc, text = run(tdp, "--check")
+    if rc != 1 or "cannot read" not in text:
+        print("  x a missing stylesheet must refuse rc 1 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+
+    print("SELF-TEST OK (%d shell cases through argv and root, "
+          "no repository file touched)" % shell)
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(self_test() if "--self-test" in sys.argv[1:] else main())

@@ -44,6 +44,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import path from 'path';
+import { stripCommentsAndStrings } from '@/__tests__/test-utils/sourceAudit';
 
 const SRC = path.resolve(process.cwd(), 'src');
 
@@ -55,9 +56,19 @@ const SRC = path.resolve(process.cwd(), 'src');
  * instance it was written for. Found by kill-testing, not by reading.
  */
 function stripComments(text: string): string {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+  // The shared scanner, not a local regex. The previous version guarded URLs
+  // (`.replace(/(^|[^:])\/\/.*$/gm, '$1')` skips `://`) but still read the slash
+  // INSIDE a regex literal as a comment start, erasing the rest of that line —
+  // measurement: a `useState(false)` flag whose only read sat on the same line as
+  // `window.location.hash.replace(/^#\//, '')` counted 1 mention instead of 2 and was
+  // reported as SET-BUT-NEVER-READ, i.e. a FALSE POSITIVE on correct code. Three
+  // production .tsx files carry that line (app/AppShell.tsx, app/tablet/
+  // TabletAppShell.tsx, features/staff/StaffManagementScreen.tsx), so the guard would
+  // have failed on a correct file the day a flag read landed on one.
+  //
+  // The scanner also removes string literals, which is strictly more complete: a flag
+  // name inside a string is not a read either.
+  return stripCommentsAndStrings(text).stripped;
 }
 
 /**

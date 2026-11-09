@@ -1,5 +1,5 @@
 //! Unit tests for the report command bodies (Wave-A test relocation: moved
-//! out of `apps/desktop-tauri/src/commands/reports_tests.rs`).
+//! out of `apps/desktop-client/src/commands/reports_tests.rs`, since renamed to desktop-tauri).
 //!
 //! Mounted at the foot of `reports.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the scoped report operations, the pure validators
@@ -164,6 +164,45 @@ async fn scoped_report_returns_conn_for_valid_session() {
     assert!(result.is_ok(), "valid session should resolve scope");
 }
 
+#[tokio::test]
+async fn scoped_report_enforces_store_binding_against_scoped_assignment() {
+    use kasirmu_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
+
+    let conn = crate::testing::temp_conn();
+    {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+        conn.execute(
+            "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+             VALUES ('user-owner', 'owner', 'hash', 'Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+        store
+            .set_assignment(
+                "user-owner",
+                "role-owner",
+                &AssignmentSpec {
+                    scope_mode: ScopeMode::Scoped,
+                    branches_all: false,
+                    branches: vec!["store-a".into()],
+                    workspaces_all: true,
+                    workspaces: vec![],
+                    scope_type: ScopeType::Organization,
+                    scope_id: None,
+                },
+            )
+            .unwrap();
+    }
+
+    let state = scoped_state(conn, "tok-b", "user-owner", "role-owner", "store-b");
+    let result = resolve_report_scope(&state.ctx(), "tok-b", permissions::REPORTS_VIEW).await;
+    assert!(
+        matches!(result, Err(BridgeError::PermissionDenied(_))),
+        "resolve_report_scope must refuse session targeting store outside assigned branch"
+    );
+}
+
 // ── Helpers ───────────────────────────────────────────────────────
 
 fn seed_owner(conn: &rusqlite::Connection) {
@@ -302,6 +341,19 @@ async fn staff_denied_payment_method_breakdown() {
     assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
+// The piutang collections door exists so the report is REACHABLE, not just
+// queryable in core. `Store::piutang_collections` had no caller above the crate
+// before this: the query passed its unit tests and no screen could ask for it.
+#[tokio::test]
+async fn staff_denied_piutang_collections() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    seed_staff(&conn);
+    let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
+    let result =
+        get_piutang_collections_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
+}
 #[tokio::test]
 async fn staff_denied_voided_sales_summary() {
     let conn = crate::testing::temp_conn();
@@ -450,6 +502,16 @@ async fn owner_payment_method_breakdown_empty() {
     );
 }
 
+#[tokio::test]
+async fn owner_piutang_collections_empty() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
+    let result =
+        get_piutang_collections_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
+    let rows = result.expect("owner should access piutang collections");
+    assert!(rows.is_empty(), "a fresh store has collected nothing");
+}
 #[tokio::test]
 async fn owner_voided_sales_summary_empty() {
     let conn = crate::testing::temp_conn();

@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "description": "Explicit transitional debt for unguarded ambient IPC calls on shells where the call site is provably unreachable at runtime due to mount-chain isolation, hoisted guards, or early returns. An entry expires after 3 months and must be refreshed with an audit reason.",
+  "entries": [
+    {
+      "shell": "tablet",
+      "command": "apply_topology_diff",
+      "file": "ui/src/features/locations/topologyApply.ts",
+      "owner": "tablet-topology",
+      "reason": "Topology editor is desktop-only; TopologyScreen bails early with TopologyTabletNotice on tablet (ADR #46).",
+      "introduced": "2026-10-26",
+      "expires": "2027-01-26"
+    },
+    {
+      "shell": "tablet",
+      "command": "create_backup",
+      "file": "ui/src/app/UpdateBanner.tsx",
+      "owner": "desktop-shell-isolation",
+      "reason": "UpdateBanner is rendered exclusively in desktop AppShell; tablet uses isolated TabletAppShell.",
+      "introduced": "2026-10-26",
+      "expires": "2027-01-26"
+    },
+    {
+      "shell": "tablet",
+      "command": "get_key_rotation_info",
+      "file": "ui/src/hooks/useKeyAge.ts",
+      "owner": "desktop-shell-isolation",
+      "reason": "Key rotation reminder is mounted exclusively in desktop AppShell; tablet uses isolated TabletAppShell.",
+      "introduced": "2026-10-26",
+      "expires": "2027-01-26"
+    },
+    {
+      "shell": "tablet",
+      "command": "get_terminal_profile_scoped",
+      "file": "ui/src/hooks/useTerminalProfile.ts",
+      "owner": "desktop-shell-isolation",
+      "reason": "Terminal profile editor is mounted exclusively in desktop AppShell; tablet uses isolated TabletAppShell.",
+      "introduced": "2026-10-26",
+      "expires": "2027-01-26"
+    },
+    {
+      "shell": "tablet",
+      "command": "list_restore_candidates",
+      "file": "ui/src/features/settings/hooks/useRestore.ts",
+      "owner": "tablet-restore",
+      "reason": "Restore subsystem is desktop-only; gated behind const isAvailable = !isTabletShell() && sessionToken !== ''.",
+      "introduced": "2026-10-26",
+      "expires": "2027-01-26"
+    },
+    {
+      "shell": "tablet",
+      "command": "list_topology_revisions",
+      "file": "ui/src/features/locations/TopologyRevisionBrowser.tsx",
+      "owner": "tablet-topology",
+      "reason": "Topology editor is desktop-only; TopologyScreen bails early with TopologyTabletNotice on tablet (ADR #46).",
+      "introduced": "2026-10-26",
+      "expires": "2027-01-26"
+    },
+    {
+      "shell": "tablet",
+      "command": "list_workspaces_scoped",
+      "file": "ui/src/features/locations/topologyApply.ts",
+      "owner": "tablet-topology",
+      "reason": "Topology editor is desktop-only; TopologyScreen bails early with TopologyTabletNotice on tablet (ADR #46).",
+      "introduced": "2026-10-26",
+      "expires": "2027-01-26"
+    },
+    {
+      "shell": "tablet",
+      "command": "list_workspaces_scoped",
+      "file": "ui/src/features/locations/TopologyScreen.tsx",
+      "owner": "tablet-topology",
+      "reason": "Topology editor is desktop-only; TopologyScreen bails early with TopologyTabletNotice on tablet (ADR #46).",
+      "introduced": "2026-10-26",
+      "expires": "2027-01-26"
+    },
+    {
+      "shell": "tablet",
+      "command": "load_topology",
+      "file": "ui/src/features/locations/nodeTopologyEditorLoadLifecycle.ts",
+      "owner": "tablet-topology",
+      "reason": "Topology editor is desktop-only; TopologyScreen bails early with TopologyTabletNotice on tablet (ADR #46).",
+      "introduced": "2026-10-26",
+      "expires": "2027-01-26"
+    },
+    {
+      "shell": "tablet",
+      "command": "load_topology",
+      "file": "ui/src/features/locations/TopologyScreen.tsx",
+      "owner": "tablet-topology",
+      "reason": "Topology editor is desktop-only; TopologyScreen bails early with TopologyTabletNotice on tablet (ADR #46).",
+      "introduced": "2026-10-26",
+      "expires": "2027-01-26"
+    },
+    {
+      "shell": "tablet",
+      "command": "load_topology_revision",
+      "file": "ui/src/features/locations/TopologyRevisionBrowser.tsx",
+      "owner": "tablet-topology",
+      "reason": "Topology editor is desktop-only; TopologyScreen bails early with TopologyTabletNotice on tablet (ADR #46).",
+      "introduced": "2026-10-26",
+      "expires": "2027-01-26"
+    },
+    {
+      "shell": "tablet",
+      "command": "pin_topology_revision",
+      "file": "ui/src/features/locations/TopologyRevisionBrowser.tsx",
+      "owner": "tablet-topology",
+      "reason": "Topology editor is desktop-only; TopologyScreen bails early with TopologyTabletNotice on tablet (ADR #46).",
+      "introduced": "2026-10-26",
+      "expires": "2027-01-26"
+    },
+    {
+      "shell": "tablet",
+      "command": "restore_prepare",
+      "file": "ui/src/features/settings/hooks/useRestore.ts",
+      "owner": "tablet-restore",
+      "reason": "Restore subsystem is desktop-only; gated behind const isAvailable = !isTabletShell() && sessionToken !== ''.",
+      "introduced": "2026-10-26",
+      "expires": "2027-01-26"
+    },
+    {
+      "shell": "tablet",
+      "command": "restore_status",
+      "file": "ui/src/features/settings/hooks/useRestore.ts",
+      "owner": "tablet-restore",
+      "reason": "Restore subsystem is desktop-only; gated behind const isAvailable = !isTabletShell() && sessionToken !== ''.",
+      "introduced": "2026-10-26",
+      "expires": "2027-01-26"
+    },
+    {
+      "shell": "tablet",
+      "command": "update_workspace_instance_scoped",
+      "file": "ui/src/features/locations/TopologyScreen.tsx",
+      "owner": "tablet-topology",
+      "reason": "Topology editor is desktop-only; TopologyScreen bails early with TopologyTabletNotice on tablet (ADR #46).",
+      "introduced": "2026-10-26",
+      "expires": "2027-01-26"
+    }
+  ]
+}

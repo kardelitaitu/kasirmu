@@ -73,3 +73,5 @@ cash tender -> receipt -> workspace switch -> kitchen ticket.
 | Reloads used | **none** — required, since `mockKdsOrders` is page memory |
 | Full suite | 12,665 passed, 0 failed |
 | Tree | clean but for another lane's file; scratch script deleted; Vite stopped |
+
+> last audited 14-10-26 by docs-auditor

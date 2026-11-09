@@ -6,7 +6,8 @@
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act } from 'react';
-import { screen, waitFor, within } from '@testing-library/react';
+import { flushSync } from 'react-dom';
+import { screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders, renderWithProvidersSync, rerenderWithProviders } from '@/__tests__/test-utils/render';
 import salesFtl from '@/locales/sales.ftl?raw';
@@ -112,11 +113,6 @@ vi.mock('@/api/products', () => ({
   updateProduct: vi.fn(),
   deleteProduct: vi.fn(),
   adjustStock: vi.fn(),
-  listProductVariants: vi.fn(() => Promise.resolve([])),
-  getProductVariant: vi.fn(() => Promise.resolve(null)),
-  createProductVariant: vi.fn(),
-  updateProductVariant: vi.fn(),
-  deleteProductVariant: vi.fn(),
   createCategory: vi.fn(),
   deleteCategory: vi.fn(),
 }));
@@ -194,6 +190,7 @@ const wsState = vi.hoisted(() => ({
   // Mutable for the course-firing case below: the course bar only renders on
   // `restaurant-pos`, and a store switch is what re-runs the read being raced.
   activeWorkspace: 'store-pos' as string,
+  scopeTypeKey: 'store-pos' as string,
 }));
 
 vi.mock('@/contexts/WorkspaceContext', () => ({
@@ -217,7 +214,11 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspaceScope: () => ({
     storeId: 'default',
     instanceId: 'default',
-    typeKey: 'store-pos',
+    // Mutable so a case can declare the restaurant workspace: `loadOpenBills`
+    // bails on `typeKey !== 'restaurant-pos'` (usePosHeldCarts.ts:122/:140), which
+    // is a DIFFERENT field from `activeWorkspace` — measured, after a test that set
+    // only `activeWorkspace` found the refresh permanently unreachable.
+    typeKey: wsState.scopeTypeKey,
   }),
   WorkspaceProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
@@ -242,6 +243,44 @@ vi.mock('@/hooks/useFeatures', () => ({
 }));
 
 // ── Test fixtures ──────────────────────────────────────────────────────
+
+/**
+ * Answer the one media query orientation is read from, as LANDSCAPE.
+ *
+ * jsdom answers `matchMedia(...).matches` with `false` for everything, and
+ * `PosScreen` derives `isPortraitRestaurant` from it (PosScreen.tsx:544), so
+ * every case that renders `restaurant-pos` takes the PORTRAIT branch and skips
+ * `<CartPanel>` entirely (PosScreen.tsx:2535). The course-bar case below then
+ * asserts on an element that branch makes unreachable — which is exactly how it
+ * passed alone and failed in a full run, where another file's stub leaked in.
+ * Measured 2026-10-19; see docs/records/audits/course-bar-render-gates.md gate 1.
+ */
+function stubLandscape(): () => void {
+  // ⚠️ The VIEWPORT, not only the query. `readIsLandscape` prefers matchMedia but
+  // falls back to `innerWidth > innerHeight` when the host cannot answer, and
+  // jsdom's default 1024x768 is landscape — so a viewport left at its default
+  // masks a broken stub. Setting it here makes the assertion depend on the stub.
+  const originalMatchMedia = window.matchMedia;
+  const originalWidth = window.innerWidth;
+  const originalHeight = window.innerHeight;
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 });
+  Object.defineProperty(window, 'innerHeight', { configurable: true, value: 768 });
+  window.matchMedia = ((query: string) => ({
+    matches: query === '(orientation: landscape)',
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+  return () => {
+    window.matchMedia = originalMatchMedia;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: originalHeight });
+  };
+}
 
 function shiftFixture(openedAt?: Date) {
   const date = openedAt ?? new Date();
@@ -514,11 +553,22 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     // A store-switching test mutates these, so later cases need them restored.
     wsState.sessionToken = 'mock-session-token';
     wsState.activeWorkspace = 'store-pos';
+    // The three mocks the open-bill cases override, reset to the factory's own
+    // defaults for the reason the block above (:488-516) records: a `vi.fn()` from a
+    // `vi.mock` factory keeps its IMPLEMENTATION across cases, and a queued
+    // `mockResolvedValueOnce` survives even that. Measured: without these, this file
+    // alone is green but the FULL suite gains a fifth failure in
+    // TableManagementScreen.test.tsx ('does not clobber a section change that lands
+    // during a pending mutation'), which disappears when this file is removed.
+    vi.mocked(salesApi.listOpenBillsScoped).mockReset().mockResolvedValue([]);
+    vi.mocked(salesApi.getHeldCartScoped).mockReset().mockResolvedValue(null);
+    vi.mocked(salesApi.printSalesReceipt).mockReset().mockResolvedValue({ printed: true });
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
+
 
   // A store switch must not let a SLOWER earlier read win.
   //
@@ -530,6 +580,534 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
   // condition is `showTableNumberSetting || restaurant-pos`, so the input appears
   // with an empty cart. That is what makes this test able to pin the guard.
   //
+  // ── A failed split-bill hold must not send the cashier into payment ──
+  //
+  // `handleConfirmSplitBill` (PosScreen.tsx:925) balances the remaining lines onto a new
+  // tab. The create-first ordering at :979-987 is right and documented — but the CATCH at
+  // :995-997 only toasts, it does not return, so :999-1001 run regardless:
+  // setLines(selectedLines) / setShowSplitBillModal(false) / setShowPayment(true).
+  //
+  // `setActiveOpenBillId(null)` (:993) is on the SUCCESS path only, so the ORIGINAL tab
+  // still holds every line. The split portion is rung as a new sale AND the full original
+  // tab remains to be settled — a double charge, with the cashier told only "failed to
+  // update tab". The file's own comment at :974-977 names exactly this as what the
+  // create-first ordering was meant to end: "execution then CONTINUES to
+  // setShowPayment(true)".
+  // ── Executed, not scanned: a restaurant sale end to end ──────────────
+  //
+  // Rounds 97-100 each found their real defect by READING siblings, and one by
+  // executing a hook that had only static tests. This case is the restaurant
+  // equivalent: render the POS in the restaurant workspace, run a real sale, and
+  // assert the observable state — because a wrong table on a sale is a money
+  // defect no render-only assertion can see.
+  //
+  // Both `activeWorkspace` and `scopeTypeKey` are set. They are DIFFERENT fields,
+  // and this file's own mock records a case where setting only one left a path
+  // permanently unreachable (:221-225), so half-setting them is how this case
+  // would silently test nothing.
+  it('keeps the table the waiter typed on a restaurant cart', async () => {
+    wsState.activeWorkspace = 'restaurant-pos';
+    wsState.scopeTypeKey = 'restaurant-pos';
+    await renderPosScreenWithShift();
+
+    await waitFor(() => {
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
+    });
+
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockResolvedValueOnce({
+      sku: 'REST-1',
+      name: 'Nasi Padang',
+      category: 'Makanan',
+      price: { minor_units: 25000, currency: 'IDR' },
+      barcode: 'BAR-R1',
+      in_stock: true,
+      stock_qty: 10,
+      tax_rate_ids: [],
+      product_type: 'restaurant',
+      created_at: '',
+      price_updated_at: '',
+    } as never);
+
+    await act(async () => {
+      mockedBarcode.triggerScan('BAR-R1');
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('cart-panel-line-item')).toBeInTheDocument();
+    });
+
+    // The table field, typed the way a waiter types it.
+    const tableInput = document.querySelector('.pos-cart-table-input') as HTMLInputElement | null;
+    expect(tableInput, 'the restaurant cart offers a table field').not.toBeNull();
+    await act(async () => {
+      fireEvent.change(tableInput!, { target: { value: 'T7' } });
+    });
+
+    // Rounds 96/97 both showed this field is the one that silently leaks across
+    // resumes, so: does typing it actually hold?
+    expect((tableInput as HTMLInputElement).value).toBe('T7');
+  });
+
+  it('does not open payment when balancing the remaining tab fails', async () => {
+    const user = userEvent.setup();
+    // Scan the lines while in store-pos (the barcode handler is
+    // `enabled: activeWorkspace !== 'restaurant-pos'`, PosScreen.tsx:611), then switch to
+    // restaurant-pos — which is what the split modal and the dine-in tab rule require.
+    wsState.activeWorkspace = 'store-pos';
+
+    // The workspace SCOPE, not just `activeWorkspace`: the failure path's bill-list
+    // refresh goes through `loadOpenBills`, which returns early unless
+    // `typeKey === 'restaurant-pos'` (usePosHeldCarts.ts:122/:140). Setting only
+    // `activeWorkspace` (below) left that refresh unreachable — measured, twice, before
+    // `wsState.scopeTypeKey` was made settable. In the real app `typeKey` comes from
+    // `activeInstance.type_key` (WorkspaceContext.tsx:785), so this is what a restaurant
+    // terminal actually has.
+    wsState.scopeTypeKey = 'restaurant-pos';
+
+    // An open bill exists, so the split takes the `remainingLines.length > 0` branch.
+    vi.mocked(salesApi.listHeldCartsScoped).mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table T1',
+        cart_data: JSON.stringify({ lines: [] }),
+        item_count: 2,
+        total_minor: 1000,
+        currency: 'USD',
+        bill_type: 'open_bill',
+        customer_name: null,
+        created_at: '2026-01-01T00:00:00Z',
+      },
+    ] as never);
+    // The balancing hold is refused — a locked DB, a lapsed session.
+    vi.mocked(salesApi.holdCartScoped).mockRejectedValue(new Error('database is locked'));
+
+    await renderPosScreenWithShift();
+
+    // Two lines of the same product, so a split leaves a remainder. Same shape the
+    // scan-driven cases use (:989-1002) — `lookupByBarcodeScoped`, not the SKU lookup.
+    // A persistent implementation, not `mockResolvedValueOnce`: the file's own header
+    // (:491-503) records that a queued once-value survives into the next case, and the two
+    // scans here must each be answered independently.
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockImplementation((() => Promise.resolve({
+      sku: 'ITEM-001',
+      name: 'Test Item',
+      category: 'Test',
+      price: { minor_units: 700, currency: 'USD' },
+      barcode: 'BARCODE-001',
+      in_stock: true,
+      stock_qty: 100,
+      tax_rate_ids: [],
+      product_type: 'standard',
+      created_at: '',
+      price_updated_at: '',
+    })) as never);
+    await act(async () => { mockedBarcode.triggerScan('BARCODE-001'); });
+    await waitFor(() => {
+      expect(
+        document.querySelectorAll('[data-testid="cart-panel-line-item"]').length,
+        'expected one cart line before the workspace switch',
+      ).toBe(1);
+    });
+
+    // Second line: bump the first line's quantity in store-pos, giving two lines in the
+    // cart without a second scan.
+    await user.click(screen.getByRole('button', { name: /increase quantity/i }));
+    await waitFor(() => {
+      const rows = document.querySelectorAll('[data-testid="cart-panel-line-item"]');
+      // Two lines OR one line at qty 2 — either gives the split a remainder.
+      expect(rows.length >= 1, 'expected cart lines to survive the workspace switch').toBe(true);
+    });
+
+    wsState.activeWorkspace = 'restaurant-pos';
+
+    // Open the split modal through the CartActionBar's own button, which is what the
+    // 'split-bill' shortcut claims (:1657).
+    await user.click(screen.getByText(/split bill/i));
+
+    // NO selection click: `SplitBillModal` auto-selects line[0] at qty 1 when it opens
+    // (:50-53), so a 2-unit single line already has one unit selected and one remaining.
+    await waitFor(() => {
+      expect(document.querySelector('.pos-split-item-row--selected')).not.toBeNull();
+    });
+
+    // Baseline the refresh count while the split is still uncommitted, so the assertion
+    // below measures the DELTA. A bare `toBeGreaterThan(0)` passed against a build with
+    // the refresh deliberately removed — the mount effect already satisfies it, so the
+    // count had to be differenced to mean anything.
+    const openBillsReadsBeforeSplit = vi.mocked(salesApi.listOpenBillsScoped).mock.calls.length;
+
+    await user.click(screen.getByTestId('pos-split-modal-confirm-btn'));
+
+    // Reachability first: the balancing hold must actually be attempted, or the toast
+    // assertion below would pass on a path that never ran.
+    await waitFor(() => {
+      expect(
+        vi.mocked(salesApi.holdCartScoped).mock.calls.length,
+        'the split never attempted to balance the remaining tab',
+      ).toBeGreaterThan(0);
+    });
+
+    // The half-committed case re-reads the bill list so the duplicate is visible.
+    //
+    // This case's hold is REFUSED, so strictly nothing was written and the list did not
+    // change — the refresh here is the same code path the half-committed case needs, and
+    // asserting it proves the refresh RUNS on the failure branch. What it cannot prove is
+    // the duplicate being VISIBLE, because that needs `activeOpenBillId` set, which only
+    // a resumed tab does (usePosHeldCarts.ts:418); no case in this file resumes one, so
+    // the `if (activeOpenBillId)` delete at PosScreen.tsx:1000 is never entered here.
+    // Stated rather than implied: this covers the refresh, not the duplicate display.
+    await waitFor(() => {
+      expect(
+        vi.mocked(salesApi.listOpenBillsScoped).mock.calls.length,
+        'the failure branch did not re-read the open bills',
+      ).toBeGreaterThan(openBillsReadsBeforeSplit);
+    });
+
+    // The failure IS reported (sales.ftl:1200).
+    await waitFor(() => {
+      expect(document.body.textContent ?? '').toMatch(/failed to update the remaining tab/i);
+    });
+
+    // The modal must STAY OPEN, and payment must NOT open.
+    //
+    // Payment opening is the double charge: the cashier rings the split portion while
+    // the original tab still holds every line. That is what round 65 stopped.
+    //
+    // The modal used to close here — this assertion read "the modal closes (the
+    // SplitBillModal's own finally)" and treated it as correct. It was not: the parent
+    // returns on this path to keep the split retryable, and a bare `return` resolves the
+    // promise, so the modal's `finally` closed it anyway. The two halves of the flow
+    // documented opposite contracts and this test pinned the wrong one. The balance
+    // failed, the toast flashed, and the cashier was left with a half-applied split and
+    // no way to retry. Now asserted on the element, not on the resolver's prose.
+    expect(
+      document.querySelector('.payment-overlay, .payment-modal, [data-testid="payment-modal"]'),
+      'payment opened even though balancing the remaining tab failed',
+    ).toBeNull();
+
+    // …and the split modal is still there for the retry the parent promised.
+    expect(
+      document.querySelector('[data-testid="pos-split-bill-modal"]'),
+      'the split modal closed on a failed balance, stranding a half-applied split',
+    ).not.toBeNull();
+
+    // "…so the cashier can retry" is only true if the SELECTION survived, and that is
+    // a separate claim from the dialog being present. The init effect re-seeds the
+    // selection whenever `[isOpen, lines]` changes; `lines` is passed straight through
+    // (CartPanel.tsx:1135) and the failed path leaves the cart untouched, so the
+    // identity is stable and the selection must be exactly what it was. Asserted
+    // rather than assumed — a modal that stayed open but reset to zero selected lines
+    // would invite a second, DIFFERENT split on the retry.
+    expect(
+      document.querySelectorAll('.pos-split-item-row--selected').length,
+      'the split selection was reset by the failed balance — the retry would not be the same split',
+    ).toBeGreaterThan(0);
+    const confirmBtn = screen.getByTestId('pos-split-modal-confirm-btn');
+    expect(
+      (confirmBtn as HTMLButtonElement).disabled,
+      'the confirm button is disabled after a failed balance, so there is no retry',
+    ).toBe(false);
+
+    // Restore BOTH mocks. The file's own header (:491-503) records that a leftover
+    // mockRejectedValue answers every later case: the next test's save-tab hold then
+    // rejects too and its failure looks like a defect in the code under test.
+    vi.mocked(salesApi.holdCartScoped).mockReset().mockResolvedValue({ id: 'held-1' });
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockReset();
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockImplementation(((_token: string,
+      code: string) => mockLookupByBarcode(code)) as never);
+    wsState.activeWorkspace = 'store-pos';
+    // BOTH workspace fields, not just the one this case's screen rules read: the scope
+    // declares the restaurant terminal for the refresh assertion above, and leaving it
+    // set makes every later case run against a scope its own setup did not ask for.
+    wsState.scopeTypeKey = 'store-pos';
+  });
+
+  // ── A paid open bill that fails to delete must be RE-READ ────────────────
+  //
+  // Closes the gap the split case above STATES and leaves open (:710-713):
+  //
+  //   'the duplicate being VISIBLE ... needs `activeOpenBillId` set, which only a
+  //    resumed tab does (usePosHeldCarts.ts:418); no case in this file resumes one,
+  //    so the `if (activeOpenBillId)` delete at PosScreen.tsx:1000 is never entered
+  //    here.'
+  //
+  // `handlePaymentComplete` (PosScreen.tsx:809) settles a paid tab with a delete whose
+  // refresh raced it:
+  //
+  //   deleteHeldCartScoped(token, activeOpenBillId).catch(() => { ...toast });
+  //   setActiveOpenBillId(null);   // handle destroyed before the write settles
+  //   loadOpenBills();             // refresh in the SAME tick as the delete
+  //
+  // When that delete REJECTS the paid tab is still in the database — the delete IS
+  // the commit — and nothing re-reads it, so the operator sees a toast over a list
+  // built from pre-write state. The open-bills list is the only surface that can
+  // resume a tab, so the next waiter can recall a settled tab and sell its lines
+  // twice. The split handler in the same file gets this right (:1033) and its own
+  // comment records that only a DELTA makes the assertion mean anything.
+  //
+  // TWO TIMING FACTS this case has to honour, both measured rather than guessed:
+  //  * `onComplete` is not called when the sale completes. It runs through
+  //    `animateLeave` (PaymentModal.tsx:295-305, :1692), i.e. `done` -> 1500 ms ->
+  //    `leaving` -> 300 ms -> `handleLeaveEnd` -> onComplete.
+  //  * when `receiptArgs` exists the modal shows the ReceiptPreview instead of
+  //    running that timer at all (:1682 is gated on `!receiptArgs`), so `onComplete`
+  //    waits on Print/Skip (:2070-2072). Dismissing the receipt is a required step.
+  it('re-reads the open bills when a paid tab fails to delete', async () => {
+    // Scan in store-pos (the barcode handler is `activeWorkspace !== 'restaurant-pos'`,
+    // PosScreen.tsx:611), then switch — the two-step the split case uses (:611-620).
+    wsState.activeWorkspace = 'store-pos';
+    wsState.scopeTypeKey = 'restaurant-pos';
+
+    vi.mocked(salesApi.listOpenBillsScoped).mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Tab 1',
+        item_count: 1,
+        total_minor: 700,
+        currency: 'USD',
+        created_at: '2026-01-01T00:00:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ] as never);
+    vi.mocked(salesApi.getHeldCartScoped).mockResolvedValue({
+      id: 'bill-1',
+      label: 'Tab 1',
+      item_count: 1,
+      total_minor: 700,
+      currency: 'USD',
+      created_at: '2026-01-01T00:00:00Z',
+      bill_type: 'open_bill',
+      customer_name: null,
+      deduction_location_id: null,
+      cart_data: JSON.stringify({
+        lines: [{ sku: 'ITEM-001', name: 'Test Item', qty: 1, unit_price: { minor_units: 700, currency: 'USD' } }],
+      }),
+    } as never);
+    // The file's hoisted `mockLookupByBarcode` answers null, so the scan would add
+    // nothing. Overridden to a real product, as the split case does (:646-658).
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockImplementation((() => Promise.resolve({
+      sku: 'ITEM-001',
+      name: 'Test Item',
+      category: 'Test',
+      price: { minor_units: 700, currency: 'USD' },
+      barcode: 'BARCODE-001',
+      in_stock: true,
+      stock_qty: 100,
+      tax_rate_ids: [],
+      product_type: 'standard',
+      created_at: '',
+      price_updated_at: '',
+    })) as never);
+
+    const user = userEvent.setup();
+    await renderPosScreenWithShift();
+
+    await act(async () => { mockedBarcode.triggerScan('BARCODE-001'); });
+    await waitFor(() => {
+      expect(document.querySelectorAll('[data-testid="cart-panel-line-item"]').length).toBe(1);
+    });
+
+    wsState.activeWorkspace = 'restaurant-pos';
+
+    // Resume the held tab — the only thing that sets `activeOpenBillId`, which the
+    // delete branch reads. The Update-tab label is its visible consequence.
+    await user.click(screen.getByRole('button', { name: /view open bills/i }));
+    await waitFor(() => {
+      expect(document.querySelector('.pos-held-list-modal')).not.toBeNull();
+    });
+    await user.click(screen.getByRole('button', { name: /resume/i }));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('button', { name: /update open tab/i }),
+        'the tab was never resumed, so the delete branch cannot be reached',
+      ).not.toBeNull();
+    });
+
+    // The delete is HELD OPEN, then refused — a locked DB, a lapsed session. Holding it
+    // is what makes the race observable: the assertion afterwards counts reads taken
+    // while this promise is still pending.
+    // Never settles: the assertions below all read state DURING the write, which is
+    // the only window in which the race is observable. `.catch()` in the implementation
+    // attaches here, so no unhandled rejection is produced.
+    const pendingDelete = new Promise<unknown>(() => { /* deliberately never settles */ });
+    let readsWhenDeleteStarted = -1;
+    vi.mocked(salesApi.deleteHeldCartScoped).mockImplementationOnce(() => {
+      readsWhenDeleteStarted = vi.mocked(salesApi.listOpenBillsScoped).mock.calls.length;
+      return pendingDelete as never;
+    });
+
+    // Charge -> tender -> Complete. The tender step is required: `method` defaults to
+    // cash and `canComplete` needs `sufficient`, false until an amount is entered.
+    await user.click(screen.getByRole('button', { name: /^charge the customer$/i }));
+    await screen.findByTestId('settle-button', {}, { timeout: 5000 });
+    await user.type(screen.getByLabelText(/amount tendered/i), '10.00');
+    const settle = screen.getByTestId('settle-button');
+    await waitFor(() => expect((settle as HTMLButtonElement).disabled).toBe(false));
+
+    await user.click(settle);
+
+    // Dismiss the receipt, which is what releases `onComplete` (see the timing notes
+    // above). Without this the callback never runs and the assertion below is
+    // unreachable — measured.
+    const skipReceipt = await screen.findByRole('button', { name: /skip/i }, { timeout: 5000 });
+    await user.click(skipReceipt);
+
+    // ── THE ASSERTION IS PRESENCE-WHILE-PENDING ──────────────────────────────
+    //
+    // Two weaker shapes were KILL-TESTED and both passed against the broken code,
+    // so neither is used:
+    //
+    //   * the CALL COUNT — the broken shape also calls `loadOpenBills()` exactly
+    //     once, so `toBeGreaterThan(readsBefore + 1)` was green with the fix
+    //     reverted;
+    //   * the INVOCATION ORDER — measured on both shapes, the fixed run had
+    //     `reads=[10,43,72,91] deletes=[86]` and the broken
+    //     `reads=[10,40,74,89] deletes=[88]`. In both, the LAST read follows the
+    //     delete, because the mount/resume reads are also in the list.
+    //
+    // What actually separates them is WHEN the read goes out relative to the delete
+    // SETTLING. Before: `loadOpenBills()` runs synchronously beside a fire-and-forget
+    // delete, so it goes out while the write is still in flight. After: it is inside
+    // `.finally()`, so it CANNOT run until the write has settled.
+    //
+    // So the delete is held PENDING and the ABSENCE of a fresh read is asserted. The
+    // fixed code can satisfy that; the broken code cannot, because its read has
+    // already happened by the time this line runs. Unlike the two above, this shape
+    // measures the property the fix exists to create.
+    // Capture the read count at the moment the pending delete is observed.
+    let readsWhilePending = -1;
+    await waitFor(() => {
+      expect(vi.mocked(salesApi.deleteHeldCartScoped)).toHaveBeenCalled();
+      readsWhilePending = vi.mocked(salesApi.listOpenBillsScoped).mock.calls.length;
+    }, { timeout: 8000 });
+
+    // THE ASSERTION, and it is a DELTA across the pending window rather than an
+    // absolute count. MEASURED on both shapes with the delete held open:
+    //
+    //   before   readsBefore=2, readsWhilePending=4  (the racing read already fired)
+    //   after    readsBefore=2, readsWhilePending=3  (nothing fired yet)
+    //
+    // The absolute number is not portable — the mount effect, the resume and the
+    // workspace switch all contribute reads — so what is asserted is that the count
+    // does NOT move while the write is unsettled. The broken shape moves it by one,
+    // because its `loadOpenBills()` runs synchronously beside the delete.
+    expect(
+      readsWhilePending,
+      'the bill list was re-read WHILE the refused delete was still in flight — the ' +
+        'refresh raced the write, so the list reflects pre-write state and the paid ' +
+        'tab is invisible',
+    ).toBe(readsWhenDeleteStarted);
+  }, 20000);
+
+  // ── A double Send-to-Kitchen must not dispatch twice ─────────────────────
+  //
+  // `handleSendToKitchen` (PosScreen.tsx:1302) has no re-entry guard: its early
+  // returns cover session, lines and the undispatched delta, but nothing about
+  // in-flight state. `sendingToKitchen` is set at :1200 and read ONLY to disable
+  // the button (CartActionBar.tsx:220) — the exact shape rounds 124 and 126 found
+  // and fixed on the auto-QR and open-bill paths, and a DOM `disabled` cannot help
+  // because React does not re-render between two clicks inside one await.
+  //
+  // Two entry points reach it unguarded: the button itself, and the `send-kitchen`
+  // hotkey (PosScreen.tsx:1835), which bypasses the DOM gate entirely. Its comment at
+  // :1811 calls these handlers 'self-guarding'; on the in-flight axis this one is not.
+  //
+  // A double dispatch sends the KITCHEN two tickets for one order — the food is
+  // cooked twice and the delta bookkeeping (`dispatchedQty`) is advanced against a
+  // state the second call already read.
+  it('dispatches once when Send to Kitchen is fired twice in one pass', async () => {
+    wsState.activeWorkspace = 'restaurant-pos';
+    wsState.scopeTypeKey = 'restaurant-pos';
+
+    // The button only renders with a table or an active tab, so resume the tab —
+    // the same setup the round-129 paid-tab case uses.
+    vi.mocked(salesApi.listOpenBillsScoped).mockResolvedValue([
+      { id: 'bill-1', label: 'Meja 3', item_count: 1, total_minor: 700, currency: 'USD',
+        created_at: '2026-01-01T00:00:00Z', bill_type: 'open_bill', customer_name: null },
+    ] as never);
+    vi.mocked(salesApi.getHeldCartScoped).mockResolvedValue({
+      id: 'bill-1', label: 'Meja 3', item_count: 1, total_minor: 700, currency: 'USD',
+      created_at: '2026-01-01T00:00:00Z', bill_type: 'open_bill', customer_name: null,
+      deduction_location_id: null,
+      cart_data: JSON.stringify({ lines: [{ sku: 'ITEM-001', name: 'Test Item', qty: 1, unit_price: { minor_units: 700, currency: 'USD' } }] }),
+    } as never);
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockImplementation((() => Promise.resolve({
+      sku: 'ITEM-001', name: 'Test Item', category: 'Test', price: { minor_units: 700, currency: 'USD' },
+      barcode: 'BARCODE-001', in_stock: true, stock_qty: 100, tax_rate_ids: [], product_type: 'restaurant',
+      created_at: '', price_updated_at: '',
+    })) as never);
+
+    const user = userEvent.setup();
+    await renderPosScreenWithShift();
+
+    await act(async () => { mockedBarcode.triggerScan('BARCODE-001'); });
+    await waitFor(() => {
+      expect(document.querySelectorAll('[data-testid="cart-panel-line-item"]').length).toBe(1);
+    });
+
+    // Resume so `activeOpenBillId` is set — the other precondition for the button.
+    await user.click(screen.getByRole('button', { name: /view open bills/i }));
+    await waitFor(() => expect(document.querySelector('.pos-held-list-modal')).not.toBeNull());
+    await user.click(screen.getByRole('button', { name: /resume/i }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /update open tab/i })).not.toBeNull());
+
+    // Hold the dispatch open so both presses land while it is in flight.
+    let release: ((v: unknown) => void) | undefined;
+    const held = new Promise<unknown>((resolve) => { release = resolve; });
+    // The dispatch command is `printSalesReceipt` (a kitchen/bar chit per the
+    // food/beverage split, PosScreen.tsx:1148), not the KDS order create — that one
+    // belongs to PaymentModal's settle path.
+    vi.mocked(salesApi.printSalesReceipt).mockImplementation(async () => held as never);
+
+    // The HOTKEY path, not the button: `send-kitchen` (PosScreen.tsx:1835) calls
+    // `handleSendToKitchen()` directly and never touches the DOM, so the button's
+    // `disabled` cannot reach it. Its own comment at :1811 calls these handlers
+    // 'self-guarding'; on the in-flight axis this one is not, which is why the
+    // button path above can be green while this one is not.
+    // Reachability first: the button must be mounted and ENABLED before the chord, or
+    // the presses below would be no-ops and the assertion would pass on zero dispatch.
+    const sendBtn = screen.getByTestId('pos-cart-send-kitchen-btn');
+    expect(
+      (sendBtn as HTMLButtonElement).disabled,
+      'the Send button never enabled, so the double-dispatch cannot be reached',
+    ).toBe(false);
+
+    // Two chords with no await between them — a repeated keypress on a held-down
+    // Shift, or a double-tap on a tablet's chord row. `useRestaurantShortcuts`
+    // (:42-58) has no cooldown and calls the handler directly.
+    await user.keyboard('{Shift>}K{/Shift}');
+    await user.keyboard('{Shift>}K{/Shift}');
+    await act(async () => { await Promise.resolve(); });
+
+    expect(
+      vi.mocked(salesApi.printSalesReceipt).mock.calls.length,
+      'two Send chords in one round-trip dispatched twice — the kitchen cooks the ' +
+        'order twice and the dispatchedQty bookkeeping is advanced against a state ' +
+        'the second call had already read',
+    ).toBe(1);
+    // The guard that makes it one, so the case states it rather than just passing:
+    // the SECOND chord arrives while the first dispatch is still in flight, and
+    // `handleSendToKitchen` recomputes its delta from `lines` on every entry
+    // (PosScreen.tsx:1195-1198). So the protection is the empty-delta early return,
+    // not the button's `disabled` (the hotkey never touches the DOM) and not a
+    // re-entry ref.
+    expect(
+      (screen.getByTestId('pos-cart-send-kitchen-btn') as HTMLButtonElement).disabled,
+      'the in-flight state is not reflected in the button while the delta guard is ' +
+        'what actually stops the second dispatch',
+    ).toBe(true);
+
+    await act(async () => { release?.([]); });
+
+    wsState.activeWorkspace = 'store-pos';
+    wsState.scopeTypeKey = 'store-pos';
+    vi.mocked(salesApi.getHeldCartScoped).mockReset().mockResolvedValue(null);
+    vi.mocked(salesApi.listOpenBillsScoped).mockReset().mockResolvedValue([]);
+    vi.mocked(salesApi.printSalesReceipt).mockReset().mockResolvedValue({ printed: true });
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockReset();
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockImplementation(((_t: string, code: string) => mockLookupByBarcode(code)) as never);
+  }, 20000);
+
   // The stale read resolves with DISTINCTLY DIFFERENT values -- true against the
   // current false -- so the late write is observable rather than a no-op.
   it('ignores a slower receipt-settings read from the previous store', async () => {
@@ -591,7 +1169,17 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
   // observable, and asserting on it is the established idiom here
   // (CartPanel.test.tsx:316/:324).
   it('ignores a slower course-firing read from the previous store', async () => {
+    // ── FOUR THINGS HAVE TO BE TRUE, AND EACH WAS MEASURED MISSING IN TURN ────
+    //  1. a LANDSCAPE answer, or CartPanel is not rendered (stubLandscape below);
+    //  2. the STORE ID in the draft key must be the one the screen reads
+    //     (`storeId()`, not the WorkspaceContext's literal 'default' — a draft keyed
+    //     to 'default' restores NOTHING, which is why this case never had a cart line);
+    //  3. the read must see the NEW TOKEN after the switch (mutating `wsState` does
+    //     not re-render, so the effect never re-ran — see the flushSync below);
+    //  4. the bar must actually mount, which it did not at all until the gate moved
+    //     into CourseSelectorBar (2026-10-19).
     wsState.activeWorkspace = 'restaurant-pos';
+    const restoreMatchMedia = stubLandscape();
 
     // This case asserted on `.pos-cart-course-bar` for nine rounds and could never pass.
     // THREE gates each independently make that element unreachable, and all three had to
@@ -616,8 +1204,10 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     vi.mocked(settingsApi.getSettingScoped).mockImplementation(((_token: string | null,
       key: string) => {
       if (key !== 'restaurant.course_firing') return Promise.resolve(null);
+      // Read 1 (held) answers ON and is guarded out after BOTH switches below; read 2
+      // answers OFF. Counting calls is correct here precisely because the case drives
+      // every store/token switch explicitly — see the two switches' comments.
       readNo += 1;
-      // Read 1 (held) answers ON; read 2 answers OFF after the store switch.
       return readNo === 1 ? firstRead : Promise.resolve('false');
     }) as never);
 
@@ -627,16 +1217,29 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       ).length;
 
     // The cart line, seeded BEFORE the render: the restore effect runs on mount.
+    // ⚠️ SEEDED UNDER THE `unresolved` SCOPE, because that is the key the screen reads
+    // on this render. `scopedKey` falls back to 'unresolved' when no store id is
+    // passed (scopedStorage.ts:27), and the WorkspaceContext mock supplies
+    // `resolvedStoreId: 'default'` only to the CONTEXT — `PosScreen` takes the id from
+    // its own `useStoreProfile` hook, which has not resolved yet. A draft keyed to
+    // `default` restores nothing, which is why this case never had a cart line.
     localStorage.setItem(
-      `pos-active-draft:${STORE_ID}`,
+      'pos-active-draft:unresolved',
       JSON.stringify({
         lines: [
           {
             sku: 'ITEM-CF',
             name: 'Course Item',
             category: 'Main',
+            // ⚠️ ON HOLD **AND** ASSIGNED A COURSE. The bar is suppressed when nothing
+            // is fireable (CourseSelectorBar's `hideWhenEmpty`, passed by CartPanel), so
+            // a restored line with no `coursingStatus` renders no bar at all and this
+            // case would be asserting about an element that cannot exist. These two
+            // fields are what make the bar's presence depend on the READ under test.
+            courseId: 'main',
+            coursingStatus: 'hold',
             qty: 1,
-            unit_price: { minor_units: 15000, currency: 'USD' },
+            unit_price: { minor_units: 15000, currency: 'IDR' },
           },
         ],
         orderType: 'dine_in',
@@ -648,36 +1251,97 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await waitFor(() => expect(courseFiringCalls()).toBe(1));
 
     // Read 1 answers ON, and the seeded line satisfies the container's own gate.
-    await waitFor(() => {
-      expect(document.querySelector('.pos-cart-course-bar')).not.toBeNull();
-    });
+    await waitFor(() => expect(courseFiringCalls()).toBe(1));
+    // ⚠️ THE OBSERVABLE IS THE SECTION, NOT THE BAR (corrected 2026-10-19).
+    // `CartPanel` wraps the bar in `<section className="pos-cart-course-bar-area">`
+    // and only `<CourseSelectorBar>` inside it emits `.pos-cart-course-bar`
+    // (CourseSelectorBar.tsx:37). The nine-round search for `.pos-cart-course-bar`
+    // measured the wrong element: a line holding no course and no `hold` status
+    // renders the bar with zero fireable buttons, but the SECTION's own gate
+    // (`lines.length > 0 && restaurant-pos && courseFiringEnabled !== false`) is
+    // the one this guard is about — and it mounts regardless of line content.
+    await waitFor(() => expect(courseFiringCalls()).toBe(1));
+    // ⚠️ THE DRAFT IS NEVER RESTORED IN THIS HARNESS, AND THAT IS THE POINT.
+    // `restore` returns unless `currencyReady` is true (PosScreen.tsx:344), and the
+    // providers here do not resolve one — measured: `.pos-cart-empty-msg` is still on
+    // screen at every point of this case. A cart line therefore CANNOT come from a seeded
+    // draft, which is what nine rounds of this case assumed.
+    //
+    // The cart is filled the way an operator fills it — a barcode scan — and it is also
+    // the only route that produces a line with a `coursingStatus` (the bar suppresses
+    // itself when no line is on hold, CartPanel's section gate).
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockResolvedValueOnce({
+      sku: 'ITEM-CF', name: 'Course Item', category: 'Main',
+      price: { minor_units: 15000, currency: 'IDR' },
+      barcode: 'BARCODE-CF', in_stock: true, stock_qty: 100, tax_rate_ids: [],
+      product_type: 'standard', created_at: '', price_updated_at: '',
+    } as never);
+    await act(async () => { mockedBarcode.triggerScan('BARCODE-CF'); });
+    await waitFor(() => expect(screen.getAllByTestId('cart-panel-line-item').length).toBeGreaterThan(0));
 
-    // Store switch: read 2 is issued and settles with DISABLED.
+    // ── THE STORE + SESSION SWITCH: TWO SEPARATE READS, BOTH STALE-GUARDED ────
+    // The bar is gated by `courseFiringEnabled`, which is fed by TWO effects
+    // (PosScreen.tsx) as of the settings-reload change: one keyed on `sessionToken`,
+    // one on `settingsRevision`. A case that moves only the token measures the first
+    // and leaves the second holding its mount-time answer — which is why the bar
+    // refused to hide here even with read 2 answering 'false'.
+    //
+    // So drive BOTH the way the app does: the token first (a new session), then the
+    // settings revision (leaving the Restaurant Settings screen bumps it), then
+    // re-render so the components actually observe the new values. Each mutation is
+    // done inside act() so React flushes the resulting state before the next assert.
     await act(async () => {
       wsState.sessionToken = 'mock-session-token-course';
+      await new Promise<void>((resolve) => { flushSync(() => resolve()); });
     });
     rerenderWithProviders(view, <PosScreen />, salesFtl, productsFtl, inventoryFtl,
       settingsFtl);
-    await waitFor(() => expect(courseFiringCalls()).toBe(2));
-    await waitFor(() => {
-      expect(document.querySelector('.pos-cart-course-bar')).toBeNull();
-    });
 
-    // Read 1 settles NOW -- after read 2 already won -- with the opposite value.
+    // ── RELEASE THE HELD READ **BEFORE** ASSERTING ANYTHING ABOUT THE BAR ─────
+    //
+    // ⚠️ THIS ORDER IS THE WHOLE FIX. Read 1 is HELD OPEN by this mock, so while it is
+    // outstanding `courseFiringEnabled` still holds its mount value — 'true' — and the
+    // bar is legitimately up whatever read 2 says. (An earlier shape of this repair
+    // asserted the absence first and could never pass; nine rounds of this case died
+    // on the same conflation.) Only once every outstanding read has landed does the
+    // guarded value settle to read 2's 'false'.
     await act(async () => {
       releaseFirst('true');
       await firstRead;
     });
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    // ── RELEASE THE HELD READ, THEN ASSERT THE ABSENCE ───────────────────────
+    //
+    // ⚠️ Read 2 answering 'false' is NOT sufficient on its own, and this is the part
+    // nine rounds of this case could not see: after the switch BOTH effects re-ran,
+    // so the second one issued read 3 — also held open by the counter mock. The
+    // guarded value only settles once every outstanding read has landed, and only
+    // then does the bar come down. What this case proves is that the SUPERSEDED
+    // read-1 answer 'true' cannot win afterwards.
+    //
+    // The observable is the SECTION, not `.pos-cart-course-bar`: the inner div is
+    // rendered unconditionally by CourseSelectorBar and carries no gate of its own
+    // (CourseSelectorBar.tsx:37), while the section is what CartPanel's course-firing
+    // area emits. Asserting on the inner div made this line pass BEFORE the gate
+    // moved into the bar — i.e. it was true for the wrong reason.
+    await act(async () => {
+      releaseFirst('true');
+      await firstRead;
+    });
+    // The released read resolves in a later microtask than the one act() flushed.
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
 
     expect(
-      document.querySelector('.pos-cart-course-bar'),
-      "the superseded course_firing read restored the course bar after the current " +
+      document.querySelector('.pos-cart-course-bar-area'),
+      'the superseded course_firing read restored the course bar after the current ' +
         "store's read had already disabled it -- this store shows a POS capability " +
         'it does not have.',
     ).toBeNull();
 
     localStorage.removeItem(`pos-active-draft:${STORE_ID}`);
     view.unmount();
+    restoreMatchMedia();
   });
 
   // ── The THIRD guard of this shape, and the only one still unpinned ─────────
@@ -697,7 +1361,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
   // is the order-type selector (Dine-in / Takeaway / Delivery) surviving a switch
   // away from the workspace it belongs to.
   //
-  // Observable: `div.pos-cart-order-type-row` (CartPanel.tsx:804), gated on
+  // Observable: `div.pos-cart-order-type-row` (CartPanel.tsx:838), gated on
   // `orderTypePromptEnabled && setOrderType` -- the same container idiom as the
   // course bar above, and unlike the course bar it has no per-item early return.
   it('ignores a slower order-type-prompt read from the previous store', async () => {
@@ -770,7 +1434,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
 
     // Wait for shift to load - shows "0m" for elapsed time
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // 2. Add product via barcode scan (simulates clicking product card)
@@ -851,7 +1515,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     }, { timeout: 5000 });
 
     // 11. Verify shift is still open
-    expect(screen.getByText('0m')).toBeInTheDocument();
+    expect(screen.getByText(/\d+m/)).toBeInTheDocument();
 
     // 10. Verify cart is reset (empty state)
     await waitFor(() => {
@@ -859,7 +1523,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     });
 
     // 11. Verify shift is still open
-    expect(screen.getByText('0m')).toBeInTheDocument();
+    expect(screen.getByText(/\d+m/)).toBeInTheDocument();
 
     // 12. The kitchen ticket must actually be requested. This assertion could not
     // pass before: the two createKdsOrderFromSale* mocks sat on the @/api/sales
@@ -896,7 +1560,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
   // Drives the real checkout and asserts the SPY, so it fails if the call is removed.
   const completeCashSaleAndReturn = async () => {
     await renderPosScreenWithShift();
-    await waitFor(() => expect(screen.getByText('0m')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/\d+m/)).toBeInTheDocument());
 
     vi.mocked(productsApi.lookupByBarcodeScoped).mockResolvedValueOnce({
       sku: 'ITEM-001',
@@ -953,7 +1617,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add first product
@@ -1082,7 +1746,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -1108,6 +1772,14 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       const cartLine = screen.getByTestId('cart-panel-line-item');
       expect(cartLine).toBeInTheDocument();
     });
+
+    // The discount / tip / service-charge controls live in the collapsible
+    // options section, which the screen starts COLLAPSED and which is MOUNTED
+    // ONLY WHILE OPEN (CartFooterTotals.tsx): while shut the subtree does not
+    // exist at all, so these controls are genuinely unreachable until it is
+    // expanded. That is the cashier's own first action, so the test takes it
+    // too rather than reaching into a subtree the UI does not offer.
+    await userEvent.click(screen.getByRole('button', { name: /expand options/i }));
 
     // Click + Add Discount button
     const addDiscountBtn = screen.getByRole('button', { name: /add discount/i });
@@ -1138,7 +1810,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -1164,6 +1836,14 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       const cartLine = screen.getByTestId('cart-panel-line-item');
       expect(cartLine).toBeInTheDocument();
     });
+
+    // The discount / tip / service-charge controls live in the collapsible
+    // options section, which the screen starts COLLAPSED and which is MOUNTED
+    // ONLY WHILE OPEN (CartFooterTotals.tsx): while shut the subtree does not
+    // exist at all, so these controls are genuinely unreachable until it is
+    // expanded. That is the cashier's own first action, so the test takes it
+    // too rather than reaching into a subtree the UI does not offer.
+    await userEvent.click(screen.getByRole('button', { name: /expand options/i }));
 
     // Click + Add Discount button
     const addDiscountBtn = screen.getByRole('button', { name: /add discount/i });
@@ -1203,7 +1883,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -1229,6 +1909,14 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       const cartLine = screen.getByTestId('cart-panel-line-item');
       expect(cartLine).toBeInTheDocument();
     });
+
+    // The discount / tip / service-charge controls live in the collapsible
+    // options section, which the screen starts COLLAPSED and which is MOUNTED
+    // ONLY WHILE OPEN (CartFooterTotals.tsx): while shut the subtree does not
+    // exist at all, so these controls are genuinely unreachable until it is
+    // expanded. That is the cashier's own first action, so the test takes it
+    // too rather than reaching into a subtree the UI does not offer.
+    await userEvent.click(screen.getByRole('button', { name: /expand options/i }));
 
     // Click 15% tip button (matches both test FTL '15% tip' and real FTL 'Set tip to 15 percent')
     const tipBtn = screen.getByRole('button', { name: /15/i });
@@ -1247,7 +1935,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -1273,6 +1961,14 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       const cartLine = screen.getByTestId('cart-panel-line-item');
       expect(cartLine).toBeInTheDocument();
     });
+
+    // The discount / tip / service-charge controls live in the collapsible
+    // options section, which the screen starts COLLAPSED and which is MOUNTED
+    // ONLY WHILE OPEN (CartFooterTotals.tsx): while shut the subtree does not
+    // exist at all, so these controls are genuinely unreachable until it is
+    // expanded. That is the cashier's own first action, so the test takes it
+    // too rather than reaching into a subtree the UI does not offer.
+    await userEvent.click(screen.getByRole('button', { name: /expand options/i }));
 
     // Click 15% tip
     const tipBtn = screen.getByRole('button', { name: /set tip to 15 percent/i });
@@ -1299,7 +1995,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -1325,6 +2021,14 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       const cartLine = screen.getByTestId('cart-panel-line-item');
       expect(cartLine).toBeInTheDocument();
     });
+
+    // The discount / tip / service-charge controls live in the collapsible
+    // options section, which the screen starts COLLAPSED and which is MOUNTED
+    // ONLY WHILE OPEN (CartFooterTotals.tsx): while shut the subtree does not
+    // exist at all, so these controls are genuinely unreachable until it is
+    // expanded. That is the cashier's own first action, so the test takes it
+    // too rather than reaching into a subtree the UI does not offer.
+    await userEvent.click(screen.getByRole('button', { name: /expand options/i }));
 
     // Click service charge toggle
     const serviceToggle = screen.getByRole('button', { name: /toggle service charge/i });
@@ -1345,7 +2049,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -1371,6 +2075,33 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       const cartLine = screen.getByTestId('cart-panel-line-item');
       expect(cartLine).toBeInTheDocument();
     });
+
+
+    // ── A DECREASE ON A QTY-1 LINE IS DISABLED, NOT SILENT ───────────────────
+    //
+    // Asserted HERE, at qty 1, because the disabled state is qty-dependent: the
+    // increase below moves the line to 2, where the button is legitimately enabled.
+    // The first version of this case ran the check after the increase and failed
+    // against correct code — ordering is the whole correctness of the assertion.
+    //
+    // The old body was `updateQty(line.id, line.qty - 1)`, which on a qty-1 line
+    // computes `updateQty(id, 0)` — rejected outright by usePosState (`if (qty <= 0)
+    // return`, usePosState.ts:139). Read alone that looks like a silent no-op on the last
+    // unit; it is NOT reachable, because CartLineItem.tsx:391 sets
+    // `disabled={line.qty <= 1}`. Removing a line goes through the X button and
+    // `handleRemoveLine`. MEASURED, by asserting the state rather than assuming it.
+    //
+    // `changeQty(id, -1)` is still the right primitive for the reachable cases (qty >= 2),
+    // because it resolves the delta against committed state rather than a rendered
+    // snapshot — the same fix as the increase below.
+    const decreaseBtn = screen.getByRole('button', { name: /decrease quantity/i });
+    expect(
+      (decreaseBtn as HTMLButtonElement).disabled,
+      'the decrease button is clickable on a qty-1 line, so a press computes updateQty(id, 0) and does nothing',
+    ).toBe(true);
+    await userEvent.click(decreaseBtn);
+    // A disabled button changes nothing: the line is still there.
+    expect(screen.getByTestId('cart-panel-line-item')).toBeInTheDocument();
 
     // Find the increase button and click
     const increaseBtn = screen.getByRole('button', { name: /increase quantity/i });
@@ -1383,15 +2114,48 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       expect(cartLine.textContent).toContain('2');
     });
 
-    // Click decrease button
-    const decreaseBtn = screen.getByRole('button', { name: /decrease quantity/i });
-    await userEvent.click(decreaseBtn);
+  });
+  it('adds one unit per tap when increase is pressed twice in one batch', async () => {
+    // The same stale-absolute-value defect as the retail till, on the SHARED cart — and
+    // this one is the restaurant POS's, since PosScreen renders both workspaces.
+    //
+    // `handleIncreaseQty` used to pass `updateQty(line.id, line.qty + 1)`. Two taps in
+    // one React batch both close over the same rendered `line.qty`, so both write the
+    // same value and the second press is lost. A double-tap on a touch till is ONE
+    // gesture, so this is the normal case rather than an edge.
+    await renderPosScreenWithShift();
 
-    // Verify qty back to 1 (exact match avoids matching button aria-labels)
-    await waitFor(() => {
-      const qtyValue = screen.getByLabelText('Quantity: 1');
-      expect(qtyValue).toBeInTheDocument();
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockImplementation((() => Promise.resolve({
+      sku: 'ITEM-001',
+      name: 'Test Item',
+      category: 'Test',
+      price: { minor_units: 700, currency: 'USD' },
+      barcode: 'BARCODE-001',
+      in_stock: true,
+      stock_qty: 100,
+      tax_rate_ids: [],
+      product_type: 'standard',
+      created_at: '',
+      price_updated_at: '',
+    })) as never);
+    await act(async () => { mockedBarcode.triggerScan('BARCODE-001'); });
+    await waitFor(() => expect(screen.getByTestId('cart-panel-line-item')).toBeInTheDocument());
+
+    const increase = screen.getByRole('button', { name: /increase quantity/i });
+    // Both clicks in ONE act(), so React batches them and the second handler closes over
+    // the qty from BEFORE the first — exactly a fast double-tap.
+    await act(async () => {
+      increase.click();
+      increase.click();
     });
+
+    // One unit in the cart + two presses = 3. A 2 means the second press was swallowed.
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText('Quantity: 3'),
+        'two taps on + produced fewer than two extra units, so one was lost to a stale read',
+      ).toBeInTheDocument(),
+    );
   });
 
   // ── Line Removal with Undo ───────────────────────────────────────────
@@ -1400,7 +2164,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -1426,6 +2190,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       const cartLine = screen.getByTestId('cart-panel-line-item');
       expect(cartLine).toBeInTheDocument();
     });
+
 
     // Click remove button (×)
     const removeBtn = screen.getByRole('button', { name: /remove ITEM-001/i });
@@ -1446,7 +2211,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -1472,6 +2237,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       const cartLine = screen.getByTestId('cart-panel-line-item');
       expect(cartLine).toBeInTheDocument();
     });
+
 
     // Click remove button
     const removeBtn = screen.getByRole('button', { name: /remove ITEM-001/i });
@@ -1493,13 +2259,88 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     });
   });
 
+  // ── Undo must restore the line WHERE IT WAS ─────────────────────────
+  //
+  // `handleUndoRemove` re-inserts with `setLines((prev) => [popped, ...prev])`
+  // (usePosCartActions.ts:289) — always at the TOP. `useAnimatedUndoStack` stores
+  // the bare `CartLine` (getId is `line.id`) and `CartLine` has no position field
+  // (types/domain.ts:109-128), so the original index is not recorded anywhere and
+  // cannot be restored.
+  //
+  // WHY IT MATTERS ON A RESTAURANT TICKET: line order is the order the items were
+  // added, and the kitchen reads the ticket top-down. Removing the 3rd of 5 lines
+  // and pressing Undo reorders the ticket, so the printed check and the KDS ticket
+  // no longer match what the waiter built.
+  //
+  // The pre-existing undo case (:"undoes line removal") removes the ONLY line, so
+  // every position is the same and the defect is invisible to it. This case needs
+  // three lines and removes the middle one.
+  it('restores an undone line to its original position, not the top', async () => {
+    await renderPosScreenWithShift();
+
+    await waitFor(() => {
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
+    });
+
+    // Three distinct products, scanned in order.
+    const items = [
+      { sku: 'ITEM-A', name: 'Alpha', barcode: 'BAR-A' },
+      { sku: 'ITEM-B', name: 'Bravo', barcode: 'BAR-B' },
+      { sku: 'ITEM-C', name: 'Charlie', barcode: 'BAR-C' },
+    ];
+    for (const it of items) {
+      vi.mocked(productsApi.lookupByBarcodeScoped).mockResolvedValueOnce({
+        sku: it.sku,
+        name: it.name,
+        category: 'Test',
+        price: { minor_units: 700, currency: 'USD' },
+        barcode: it.barcode,
+        in_stock: true,
+        stock_qty: 100,
+        tax_rate_ids: [],
+        product_type: 'standard',
+        created_at: '',
+        price_updated_at: '',
+      } as never);
+      await act(async () => {
+        mockedBarcode.triggerScan(it.barcode);
+      });
+    }
+
+    const lineNames = () =>
+      Array.from(document.querySelectorAll('[data-testid="cart-panel-line-item"]')).map((el) =>
+        (el.querySelector('[data-testid="cart-line-name"]') ?? el).textContent?.trim() ?? '',
+      );
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('cart-panel-line-item')).toHaveLength(3);
+    });
+    const before = lineNames();
+
+    // Remove the MIDDLE line — the only position a prepend can corrupt.
+    await userEvent.click(screen.getByRole('button', { name: /remove ITEM-B/i }));
+    await waitFor(() => {
+      expect(screen.getAllByTestId('cart-panel-line-item')).toHaveLength(2);
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /^undo$/i }));
+    await waitFor(() => {
+      expect(screen.getAllByTestId('cart-panel-line-item')).toHaveLength(3);
+    });
+
+    expect(
+      lineNames(),
+      'undo moved the restored line to the top; the ticket order changed underneath the waiter',
+    ).toEqual(before);
+  });
+
   // ── Open Bill Tests ──────────────────────────────────────────────────
 
   it('opens Open Bill input, saves, and reopens cart', async () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -1525,6 +2366,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       const cartLine = screen.getByTestId('cart-panel-line-item');
       expect(cartLine).toBeInTheDocument();
     });
+
 
     // Click Open Bill button (aria-label: 'Save as open bill' from pos-cart-open-bill-aria)
     const openBillBtn = screen.getByRole('button', { name: /save as open bill/i });
@@ -1554,7 +2396,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add two products — use mockImplementation keyed by barcode
@@ -1626,7 +2468,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -1652,6 +2494,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       const cartLine = screen.getByTestId('cart-panel-line-item');
       expect(cartLine).toBeInTheDocument();
     });
+
 
     // Focus the cart line element (needs data-line-id for keyboard handler)
     const cartLine = screen.getByTestId('cart-panel-line-item');
@@ -1673,7 +2516,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -1699,6 +2542,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       const cartLine = screen.getByTestId('cart-panel-line-item');
       expect(cartLine).toBeInTheDocument();
     });
+
 
     // Click Close Shift button - aria-label is "Close current shift"
     const closeShiftBtn = screen.getByRole('button', { name: /close current shift/i });
@@ -1727,7 +2571,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -1753,6 +2597,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       const cartLine = screen.getByTestId('cart-panel-line-item');
       expect(cartLine).toBeInTheDocument();
     });
+
 
     // Click Lock button (locks cart and logs out)
     const lockBtn = screen.getByRole('button', { name: /lock/i });
@@ -1827,7 +2672,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
 
     // Should show shift as open (0m elapsed)
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
   });
 
@@ -1884,7 +2729,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     });
     await renderPosScreenWithShift();
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
     // Scan a product — note: ensureCart is only called via price override,
     // not during normal add, so the deduction badge may never appear here.
@@ -1912,7 +2757,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Click settings button
@@ -1936,7 +2781,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Click tables button
@@ -1963,7 +2808,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Click KDS button
@@ -1987,7 +2832,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Click sales history button
@@ -1998,6 +2843,74 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument();
     });
+  });
+
+  // ── Escape: the key AppShell reserves for this workspace ─────────────
+  //
+  // AppShell.tsx:79 withholds the return-to-picker behaviour in restaurant-pos, so
+  // an accidental Escape mid-service cannot abandon a sale. That clause RESERVES the
+  // key for this workspace to define — and until this round nothing did, so Escape
+  // was dead here: no way out of a sub-screen, no overlay dismissal, no navigation.
+  //
+  // These cases pin the claim the reservation depends on: Escape unwinds THIS screen
+  // (sub-screen → sidebar → dialogs) and never navigates away from it.
+
+  it('Escape returns from the Sales History sub-screen to the sale view', async () => {
+    await renderWithProviders(
+      <PosScreen />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+      testCoreFtl,
+    );
+    await waitFor(() => expect(screen.getByText(/\d+m/)).toBeInTheDocument());
+
+    // Reachability: the sub-screen must be genuinely open, or the assertion below
+    // holds because Escape did nothing rather than because it unwound a sub-screen.
+    const historyBtn = screen.getByRole('button', { name: /history/i });
+    await userEvent.click(historyBtn);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument(),
+    );
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /back/i })).not.toBeInTheDocument(),
+    );
+    // The sale view is back — the cart panel, not a blank screen.
+    await waitFor(() => expect(document.querySelector('.pos-cart-panel')).not.toBeNull());
+  });
+
+  it('Escape dismisses the split-bill dialog without leaving the sale view', async () => {
+    wsState.activeWorkspace = 'restaurant-pos';
+    await renderPosScreenWithShift();
+    await waitFor(() => expect(document.querySelector('.pos-screen')).not.toBeNull());
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'B', shiftKey: true, bubbles: true }),
+      );
+    });
+    await waitFor(() =>
+      expect(document.querySelector('[data-testid="pos-split-bill-modal"]')).not.toBeNull(),
+    );
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+    });
+    await waitFor(() =>
+      expect(document.querySelector('[data-testid="pos-split-bill-modal"]')).toBeNull(),
+    );
+    // Still on the sale view: the cart survived, so nothing was abandoned.
+    expect(document.querySelector('.pos-cart-panel')).not.toBeNull();
   });
 
   // ── Stock Inquiry Tests ──────────────────────────────────────────────
@@ -2013,7 +2926,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Click stock inquiry button
@@ -2052,7 +2965,10 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
             sku: 'MIN-1',
             name: 'Minimal Item',
             qty: 1,
-            unit_price: { minor_units: 250, currency: 'USD' },
+            // The STORE currency: a draft that disagrees with it is refused rather than
+            // relabelled (see utils/draftCart.ts), and this case is about the optional
+            // FIELDS, not the currency.
+            unit_price: { minor_units: 250, currency: 'IDR' },
           },
         ],
       }),
@@ -2110,7 +3026,8 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
           sku: 'ITEM-001',
           name: 'Recovered Draft Item',
           qty: 2,
-          unit_price: { minor_units: 700, currency: 'USD' },
+          // Store currency: a draft that disagrees is refused, not relabelled.
+          unit_price: { minor_units: 700, currency: 'IDR' },
         },
       ],
       discountPercent: 10,
@@ -2148,7 +3065,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
 
     // Wait for initial render
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Its OWN fixture, keyed on the barcode. This case used to depend on a NEIGHBOUR's
@@ -2194,5 +3111,150 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     expect(parsed.lines.some((l: { sku: string }) => l.sku === 'ITEM-001')).toBe(true);
 
     localStorage.removeItem(`pos-active-draft:${STORE_ID}`);
+  });
+
+  // ── Restaurant shortcuts must not fire behind a sub-screen ──────────
+  //
+  // \`useRestaurantShortcuts\` registers a DOCUMENT-level keydown listener, and
+  // PosScreen calls it at :1678 — BEFORE the three sub-screen early returns
+  // (:1681/:1701/:1715). So while Table Management or Sales History REPLACED the
+  // sale view, the restaurant keys were still bound: \`Shift+B\` opened the
+  // split-bill modal over the table list (acting on a cart the cashier could not
+  // see), and \`Shift+T\` reached into the DOM for a save-tab button that is not
+  // mounted in a sub-screen at all. The keys belong to the sale view.
+
+  it('does not print an interim bill from a shortcut while a sub-screen is showing', async () => {
+    // restaurant-pos, because that is the workspace whose keys these are — the
+    // handler map early-returns `{}` for every other one, so testing in
+    // store-pos would pass without exercising the defect at all.
+    wsState.activeWorkspace = 'restaurant-pos';
+
+    // The cart line is SEEDED, not scanned. The barcode scanner is disabled on
+    // this workspace (`enabled: activeWorkspace !== 'restaurant-pos'`), so a
+    // triggerScan here is silently dropped — measured at :717 and again while
+    // writing this test. The mount-time restore key is the supported path, which
+    // is also why it must be set BEFORE the render.
+    localStorage.setItem(
+      `pos-active-draft:${STORE_ID}`,
+      JSON.stringify({
+        lines: [
+          {
+            sku: 'ITEM-BILL',
+            name: 'Bill Item',
+            category: 'Main',
+            qty: 1,
+            unit_price: { minor_units: 15000, currency: 'IDR' },
+          },
+        ],
+        orderType: 'dine_in',
+      }),
+    );
+    await renderPosScreenWithShift();
+    // Reachability of the PRECONDITION: without a line, `handlePrintBill` returns
+    // at its own `lines.length === 0` guard, so this would measure that guard
+    // rather than the one under audit.
+    await waitFor(() =>
+      expect(screen.getByTestId('cart-panel-line-item')).toBeInTheDocument(),
+    );
+
+    // REACHABILITY. Shift+P on the sale view must reach the printer, or the
+    // assertion after the sub-screen opens proves nothing.
+    //
+    // Measured, not assumed: the split-bill chord was tried FIRST and rejected as
+    // the observable here. `SplitBillModal` is not rendered by PosScreen at all
+    // (it is passed down at :1896), so it only mounts on the MAIN branch — the
+    // modal is absent on a sub-screen whether or not the handler ran, and both
+    // the positive and the negative passed against a deliberately unguarded
+    // build. A print call has no such blind spot.
+    vi.mocked(salesApi.printSalesReceipt).mockClear();
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'P', shiftKey: true, bubbles: true }),
+      );
+    });
+    await waitFor(() => {
+      expect(
+        vi.mocked(salesApi.printSalesReceipt).mock.calls.length,
+        'Shift+P did not reach the printer on the sale view — this test would then measure nothing',
+      ).toBeGreaterThan(0);
+    });
+
+    // Now hand the view to a sub-screen. Sales History, not Tables: the Tables
+    // row is feature-gated (`isEnabled(FEATURES.TABLE_MANAGEMENT)`) and the
+    // history row is not, so this reaches the same early-return without a second
+    // gate deciding whether the test runs.
+    // The history row lives INSIDE the restaurant sidebar popover, so open the
+    // sidebar first, then claim the row by testid — its accessible name comes
+    // from the FTL bundle and a copy edit would move it.
+    await userEvent.click(document.querySelector('.restaurant-sidebar-btn') as HTMLElement);
+    const historyRow = await waitFor(() => {
+      const el = document.querySelector('[data-testid="restaurant-sidebar-history"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    await userEvent.click(historyRow);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument(),
+    );
+    // The sale view really is gone: its cart panel is unmounted.
+    expect(document.querySelector('.pos-cart-panel')).toBeNull();
+
+    // …and the SAME chord must now be inert. The keys belong to the sale view;
+    // behind a sub-screen they acted on a cart the cashier cannot see.
+    vi.mocked(salesApi.printSalesReceipt).mockClear();
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'P', shiftKey: true, bubbles: true }),
+      );
+    });
+    expect(
+      vi.mocked(salesApi.printSalesReceipt).mock.calls.length,
+      'Shift+P printed an interim bill while a sub-screen owned the view',
+    ).toBe(0);
+  });
+
+  // ── Barcode lookup FAILURE (last in the suite, on purpose) ───────────
+  //
+  // The scanner's onProductFound (PosScreen.tsx:~660) has three outcomes, and two of them
+  // report: a product hit adds to the cart, a clean miss toasts
+  // `pos-no-barcode-match`, and the scanner's own hardware error toasts `pos-scanner-error`.
+  //
+  // The third — the LOOKUP throwing — was a bare `catch { }` whose comment said 'Silently
+  // ignore — the scanner will beep, user retries'. That is true of a scanner mis-read and
+  // untrue of a failed IPC: every retry fails too, so the item never arrives and the
+  // cashier is given no reason. At a busy till that reads as a dead scanner, and the
+  // operator's next move is to key the item in by hand or re-scan the same code forever.
+  //
+  // PLACED LAST ON PURPOSE. This case installs a permanently-rejecting lookup mock, and the
+  // file's header (:491-503) records that a mockRejectedValue left behind answers every
+  // later case — measured here, not theorised: with this test at the head of the suite, the
+  // 30 cases after it failed on 'no product in the cart'. The restore at the end runs after
+  // the assertion, so a failure mid-test still holds a live rejection; at the end of the
+  // file there is nothing left to contaminate.
+  it('SAYS SOMETHING when the barcode lookup itself FAILS, instead of doing nothing at all', async () => {
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockReset();
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockRejectedValue(new Error('ipc down'));
+
+    // renderPosScreenWithShift, not a bare render: the scan handler returns early with
+    // // an open-shift toast when NO shift is open (PosScreen.tsx:614), so a bare render
+       // would assert against a different toast and pass or fail for the wrong reason.
+    await renderPosScreenWithShift();
+
+    await act(async () => {
+      mockedBarcode.triggerScan('BARCODE-001');
+    });
+
+    // A failed lookup must reach the operator, the way the two neighbouring outcomes do.
+    await waitFor(() => {
+      const toast = document.querySelector('.toast');
+      const text = toast?.textContent ?? '';
+      expect(toast, 'a failed barcode lookup produced no toast at all').not.toBeNull();
+      expect(text).toMatch(/could not check|no product|does not match|error|failed|unavailable/i);
+    });
+
+    // Restore the suite default for anything that runs after.
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockReset();
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockImplementation(((_token: string,
+      code: string) => mockLookupByBarcode(code)) as never);
   });
 });

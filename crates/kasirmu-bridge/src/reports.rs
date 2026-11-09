@@ -28,8 +28,8 @@ use kasirmu_core::db::popularity::{
 use kasirmu_core::db::reports::{
     BasketSizeRow, BasketTrendRow, CategoryBreakdownRow, CustomerSplitRow, DailyRevenueRow,
     DiscountsSummaryRow, HourlyHeatmapRow, HourlyOccupancyRow, InventoryTrendRow,
-    InventoryTurnoverRow, LowStockAlert, MonthlyRevenueRow, PaymentMethodRow, TableTurnoverRow,
-    TopProductRow, VoidedItemRow, VoidedSummaryRow, WeeklyRevenueRow,
+    InventoryTurnoverRow, LowStockAlert, MonthlyRevenueRow, PaymentMethodRow, PiutangCollectionRow,
+    TableTurnoverRow, TopProductRow, VoidedItemRow, VoidedSummaryRow, WeeklyRevenueRow,
 };
 use kasirmu_core::export::{CustomReportRequest, CustomReportResponse};
 use kasirmu_core::permissions;
@@ -50,27 +50,23 @@ pub const MAX_TREND_CATEGORIES: i64 = 10;
 
 /// Resolve the session's store database for a report command.
 ///
-/// Port of the shell helper: resolve the session token, check the permission
-/// for session.user_id against the GLOBAL identity store (non-scope-aware, as
-/// the original was), then open the session's own store database.
+/// Check the permission for the session using `require_session_permission`
+/// (scope-aware, verifying that the user's role grants `permission` and their
+/// assignment covers `session.store_id`), then open the session's own store database.
 ///
 /// # Errors
 ///
 /// Returns BridgeError::InvalidSession for an unknown or expired token,
-/// BridgeError::PermissionDenied when the role lacks the permission,
-/// BridgeError::Internal when the store database cannot be opened, and
-/// BridgeError::Core for identity-store read failures.
+/// BridgeError::PermissionDenied when the role lacks the permission or the user's
+/// assignment does not cover the store, BridgeError::Internal when the store database
+/// cannot be opened, and BridgeError::Core for identity-store read failures.
 pub async fn resolve_report_scope(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
     permission: &str,
 ) -> Result<Arc<std::sync::Mutex<rusqlite::Connection>>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    {
-        let db = ctx.db.lock().await;
-        let identity_store = Store::new(&db);
-        ctx.require_permission_for_user(&identity_store, &session.user_id, permission)?;
-    }
+    ctx.require_session_permission(&session, permission).await?;
     ctx.db_manager
         .open_store(&session.store_id)
         .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))
@@ -465,6 +461,25 @@ pub async fn get_payment_method_breakdown_scoped(
     Ok(Store::new(&db).payment_method_breakdown(start_date, end_date)?)
 }
 
+/// Get receivable repayments collected in a date range, split by the tender the
+/// money actually arrived in (decision Q1's collection-day settlement line).
+///
+/// Separate from [`get_payment_method_breakdown_scoped`] on purpose — see
+/// `Store::piutang_collections`. The breakdown reports what was SOLD that day and
+/// therefore excludes `pay_later`; this reports what was COLLECTED. A day whose only
+/// takings were repayments is invisible to the former and fully visible here.
+pub async fn get_piutang_collections_scoped(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    start_date: &str,
+    end_date: &str,
+) -> Result<Vec<PiutangCollectionRow>, BridgeError> {
+    let conn = resolve_report_scope(ctx, session_token, permissions::REPORTS_VIEW).await?;
+    let db = conn
+        .lock()
+        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+    Ok(Store::new(&db).piutang_collections(start_date, end_date)?)
+}
 /// Get voided-sale totals for the session's store.
 pub async fn get_voided_sales_summary_scoped(
     ctx: &BridgeCtx<'_>,

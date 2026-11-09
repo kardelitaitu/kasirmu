@@ -63,3 +63,5 @@ naming it alone is what keeps another session's edits out of my history.
 | `RestaurantSettingsScreen.tsx` | identical to HEAD after the kill-test |
 | `planHeaderMatchesPinnedDefects` | passes in isolation — the full-suite failure is another lane's |
 | `tsc` | 0 |
+
+> last audited 14-10-26 by docs-auditor

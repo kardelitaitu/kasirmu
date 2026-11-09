@@ -15,8 +15,8 @@ next: none | perf: N/A (both API-2 halves landed — see note)
 //! and the expiry timestamp. There is no revocation list in this pass;
 //! tokens are valid until their `exp` claim expires.
 
-use std::collections::HashMap;
-use std::sync::LazyLock;
+use std::collections::{HashMap, VecDeque};
+use std::sync::{Arc, LazyLock};
 use std::time::Instant;
 
 use axum::{
@@ -55,16 +55,103 @@ pub const MAX_TOKEN_HOURS: i64 = 8_760;
 /// while tests/dev may use the fallback constant in the same process).
 const JWT_CACHE_TTL_SECS: u64 = 60;
 
+/// Maximum entries cached per signing secret before incremental eviction.
+const MAX_CACHE_ENTRIES_PER_SECRET: usize = 1000;
+
 /// Cache entry: validated claims + timestamp of validation.
-type JwtCacheEntry = (ApiTokenClaims, Instant);
+#[derive(Clone)]
+pub(crate) struct JwtCacheEntry {
+    pub(crate) claims: ApiTokenClaims,
+    pub(crate) cached_at: Instant,
+}
 
-/// Cache key: (resolved_secret, raw_token).
-type JwtCacheKey = (String, String);
+#[derive(Default)]
+pub(crate) struct SecretCache {
+    tokens: HashMap<Arc<str>, JwtCacheEntry>,
+    order: VecDeque<(Arc<str>, Instant)>,
+}
 
-/// In-memory JWT validation cache.
-type JwtCache = RwLock<HashMap<JwtCacheKey, JwtCacheEntry>>;
+impl SecretCache {
+    pub(crate) fn get(&self, token: &str) -> Option<&JwtCacheEntry> {
+        self.tokens.get(token)
+    }
 
-static JWT_CACHE: LazyLock<JwtCache> = LazyLock::new(|| RwLock::new(HashMap::new()));
+    pub(crate) fn insert(&mut self, token: &str, claims: ApiTokenClaims, cached_at: Instant) {
+        // Incremental eviction (O-L06): evict expired entries from the front of the queue
+        // rather than doing an O(n) full sweep across the entire table.
+        while let Some((_, at)) = self.order.front() {
+            if at.elapsed().as_secs() < JWT_CACHE_TTL_SECS {
+                break;
+            }
+            if let Some((old_token, old_at)) = self.order.pop_front()
+                && let Some(entry) = self.tokens.get(&old_token)
+                && entry.cached_at == old_at
+            {
+                self.tokens.remove(&old_token);
+            }
+        }
+
+        // Keep cache bounded to MAX_CACHE_ENTRIES_PER_SECRET.
+        if self.tokens.len() >= MAX_CACHE_ENTRIES_PER_SECRET
+            && let Some((old_token, old_at)) = self.order.pop_front()
+            && let Some(entry) = self.tokens.get(&old_token)
+            && entry.cached_at == old_at
+        {
+            self.tokens.remove(&old_token);
+        }
+
+        let token_arc: Arc<str> = Arc::from(token);
+        self.tokens
+            .insert(Arc::clone(&token_arc), JwtCacheEntry { claims, cached_at });
+        self.order.push_back((token_arc, cached_at));
+    }
+
+    #[cfg(test)]
+    pub(crate) fn remove(&mut self, token: &str) -> bool {
+        self.tokens.remove(token).is_some()
+    }
+}
+
+/// In-memory JWT validation cache (O-L06: Arc<str> keys partitioned by secret,
+/// avoiding 2 String allocations per request lookup).
+#[derive(Default)]
+pub(crate) struct JwtCache {
+    by_secret: HashMap<Arc<str>, SecretCache>,
+}
+
+impl JwtCache {
+    pub(crate) fn get(&self, secret: &str, token: &str) -> Option<&JwtCacheEntry> {
+        self.by_secret.get(secret).and_then(|sc| sc.get(token))
+    }
+
+    pub(crate) fn insert(
+        &mut self,
+        secret: &str,
+        token: &str,
+        claims: ApiTokenClaims,
+        cached_at: Instant,
+    ) {
+        if let Some(sc) = self.by_secret.get_mut(secret) {
+            sc.insert(token, claims, cached_at);
+        } else {
+            let mut sc = SecretCache::default();
+            sc.insert(token, claims, cached_at);
+            self.by_secret.insert(Arc::from(secret), sc);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn remove(&mut self, secret: &str, token: &str) -> bool {
+        if let Some(sc) = self.by_secret.get_mut(secret) {
+            sc.remove(token)
+        } else {
+            false
+        }
+    }
+}
+
+pub(crate) static JWT_CACHE: LazyLock<RwLock<JwtCache>> =
+    LazyLock::new(|| RwLock::new(JwtCache::default()));
 
 /// The payload embedded in every API token.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -279,10 +366,17 @@ pub async fn validate_token_with_secret(
     token_str: &str,
     secret: Option<&str>,
 ) -> Result<ApiTokenClaims, jsonwebtoken::errors::Error> {
-    let secret = signing_secret(secret);
-    let cache_key = (secret.clone(), token_str.to_string());
+    let secret_fallback;
+    let secret_str = match secret.filter(|s| !s.is_empty()) {
+        Some(s) => s,
+        None => {
+            secret_fallback = signing_secret(None);
+            &secret_fallback
+        }
+    };
 
     // Check cache first (read lock — non-blocking for concurrent readers).
+    // O-L06: Zero heap allocations on lookup — queries by (&str, &str).
     //
     // The entry is served only while BOTH hold: the cache entry is younger
     // than the TTL, AND the token itself has not expired. The TTL alone was
@@ -299,29 +393,25 @@ pub async fn validate_token_with_secret(
     // second notion of "now".
     {
         let cache = JWT_CACHE.read().await;
-        if let Some((claims, cached_at)) = cache.get(&cache_key)
-            && cached_at.elapsed().as_secs() < JWT_CACHE_TTL_SECS
-            && (claims.exp as i64) > chrono::Utc::now().timestamp()
+        if let Some(entry) = cache.get(secret_str, token_str)
+            && entry.cached_at.elapsed().as_secs() < JWT_CACHE_TTL_SECS
+            && (entry.claims.exp as i64) > chrono::Utc::now().timestamp()
         {
-            return Ok(claims.clone());
+            return Ok(entry.claims.clone());
         }
     }
 
     // Cache miss or expired — validate the token cryptographically.
-    let decoding_key = DecodingKey::from_secret(secret.as_bytes());
+    let decoding_key = DecodingKey::from_secret(secret_str.as_bytes());
     let mut validation = Validation::default();
     validation.validate_exp = true;
     let claims =
         decode::<ApiTokenClaims>(token_str, &decoding_key, &validation).map(|data| data.claims)?;
 
-    // Store in cache (write lock — brief).
+    // Store in cache (write lock — brief). O-L06: Incremental eviction.
     {
         let mut cache = JWT_CACHE.write().await;
-        // Evict expired entries opportunistically (keep cache bounded).
-        if cache.len() > 1000 {
-            cache.retain(|_, (_, at)| at.elapsed().as_secs() < JWT_CACHE_TTL_SECS);
-        }
-        cache.insert(cache_key, (claims.clone(), Instant::now()));
+        cache.insert(secret_str, token_str, claims.clone(), Instant::now());
     }
 
     Ok(claims)

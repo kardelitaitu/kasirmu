@@ -128,12 +128,12 @@ grep -rn 'env::set_var\|env::remove_var' apps/desktop-tauri/src/ apps/mobile-tau
 # expect: 0 matches in production paths
 
 # 2. Tests pass
-cargo test -p oz-pos-app --lib
-cargo test -p oz-pos-tablet --lib
-cargo test -p oz-core --lib
+cargo test -p kasirmu-app --lib
+cargo test -p kasirmu-mobile --lib
+cargo test -p kasirmu-core --lib
 
 # 3. Lint + fmt clean
-cargo clippy -p oz-pos-app -p oz-pos-tablet --lib --tests -- -D warnings
+cargo clippy -p kasirmu-app -p kasirmu-mobile --lib --tests -- -D warnings
 cargo fmt --all -- --check
 
 # 4. Audit grep returns empty for C-2

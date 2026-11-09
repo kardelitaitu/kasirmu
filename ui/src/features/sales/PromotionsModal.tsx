@@ -190,7 +190,7 @@ export default function PromotionsModal({
           )}
 
           {items && items.length > 0 && (
-            <div className="promo-picker-footer">
+            <footer className="promo-picker-footer">
               <span className="promo-picker-count" role="status">
                 {requiredLocalized(l10n, 'pos-promotions-selected-count', { count: String(selectedPromos.length) })}
               </span>
@@ -202,7 +202,7 @@ export default function PromotionsModal({
               >
                 {requiredLocalized(l10n, 'pos-promotions-apply-selected')}
               </button>
-            </div>
+            </footer>
           )}
       </div>
     </div>

@@ -3,7 +3,7 @@ title: Kebijakan Privasi
 version: "1.0"
 effective: "17 Agustus 2026"
 ---
-<!-- Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 finding) · §8 Keamanan menyatakan kata sandi disimpan sebagai hash bcrypt. Terverifikasi salah: API cloud menyimpan Argon2id ($argon2id$v=19$…, crates/kasirmu-api/src/routes/users.rs:34) dan CLI mensyaratkan string PHC argon2 (crates/kasirmu-cli/src/commands/user.rs:91-96). bcrypt hanya dipakai untuk API key license server (apps/license-server/api_key.go), bukan kata sandi akun. Dikoreksi menjadi Argon2id. Klaim penyimpanan lokal (sesi masuk + tema) terverifikasi benar. · Repaired against branch 0.0.41. -->
+<!- - Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 finding) · §8 Keamanan menyatakan kata sandi disimpan sebagai hash bcrypt. Itu SEPARUH benar, dan separuh yang salah justru yang penting: kata sandi akun MEMANG bcrypt (salt + DefaultCost — apps/license-server/web_password.go:106, diverifikasi di :420/:530/:748), sementara dua penggunaan Argon2id di kode hanyalah PIN staf lokal (platform/core/src/auth.rs:23-37, hash_pin/verify_pin) dan cadangan .kasirpkg terenkripsi. Perbaikan 2026-10-08 memperbaiki ISI halamannya, tetapi semula stamp ini mencatat perbaikan itu secara terbalik — ia mengklaim API cloud menyimpan kata sandi akun sebagai Argon2id dan mengutip crates/kasirmu-api/src/routes/users.rs:34, yang sebenarnya field pin_hash milik CreateUserRequest (sebuah PIN, dan komentarnya sendiri di :32-34 menyatakan hal itu), bukan mekanisme kata sandi akun. Dikoreksi 2026-10-19: pernyataan di isi halaman — “bcrypt untuk kata sandi akun Anda; Argon2id untuk PIN staf lokal” — adalah yang akurat, dan stamp ini tidak lagi bertentangan dengannya. Klaim penyimpanan lokal (sesi masuk + tema) terverifikasi benar. Format ekspor: hanya penulis CSV yang ada; halaman ini tidak mengklaim format lain. · Repaired against branch 0.0.41. -->
 
 Kebijakan Privasi ini menjelaskan data apa saja yang dikumpulkan oleh kasir.mu ("Perusahaan", "kami", atau "kita") melalui situs web, aplikasi desktop, layanan cloud, dan layanan terkait kasir.mu (secara bersama-sama, "Layanan"), alasan pengumpulannya, cara kami menggunakan dan melindunginya, serta hak-hak Anda atas data tersebut.
 
@@ -78,7 +78,7 @@ Kami beroperasi secara global dan sebagian penyedia yang disebutkan di atas (ser
 ## 7. Retensi (jangka waktu penyimpanan)
 
 - **Data akun** disimpan selama akun Anda aktif dan untuk jangka waktu singkat setelah Anda meminta penghapusan, untuk memungkinkan pemulihan dan memenuhi kewajiban hukum.
-- **Data bisnis yang disinkronkan** dihapus saat Anda menghapus akun atau membatalkan paket, sebagaimana dijelaskan dalam Syarat dan Ketentuan Layanan, kecuali kami diwajibkan oleh hukum untuk menyimpan catatan.
+- **Data bisnis yang disinkronkan** dihapus atas permintaan terverifikasi melalui tindakan operator, sebagaimana dijelaskan dalam Syarat dan Ketentuan Layanan, kecuali kami diwajibkan oleh hukum untuk menyimpan catatan. Penghapusan dilakukan oleh operator kami, bukan secara otomatis.
 - **Log server** disimpan dalam jangka waktu terbatas (biasanya hingga 90 hari) lalu dihapus atau dianonimkan.
 - **Cadangan (backup)** dapat menyimpan data untuk jangka waktu tambahan yang terbatas untuk pemulihan bencana, kemudian dibersihkan.
 
@@ -89,7 +89,7 @@ Ketika Anda meminta penghapusan data, kami menghapus atau menganonimkannya dalam
 Kami menerapkan langkah keamanan teknis dan organisasi yang wajar untuk melindungi data Anda, antara lain:
 
 - Enkripsi selama transmisi (TLS) untuk seluruh komunikasi dengan server kami;
-- Kata sandi hanya disimpan sebagai hash satu arah yang kuat (Argon2id);
+- Kata sandi hanya disimpan sebagai hash satu arah bergaram (bcrypt untuk kata sandi akun Anda; Argon2id untuk PIN staf lokal);
 - Kunci lisensi yang ditandatangani secara kriptografis untuk mencegah pemalsuan;
 - Kontrol akses dan pencatatan pada sistem produksi;
 - Pembatasan akses ke data produksi bagi tim dan penyedia kami.

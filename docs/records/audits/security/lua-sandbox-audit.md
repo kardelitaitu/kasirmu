@@ -1,11 +1,11 @@
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 243 lines, with a prior stamp and footer re-verified rather than replaced. · A Lua sandbox audit is a security document about a code-execution surface, and the part that can be checked from the repository is whether the sandbox it describes still exists in the form it audited. The Lua runtime crate this campaign has referenced repeatedly is live, and the boundary the audit draws — a script runtime sandboxed away from the host, reached through the bridge — is the same boundary ADR-49 established when command bodies moved into the bridge layer. That relationship is worth recording, because it is not written down anywhere else: the sandbox audit predates the bridge decision, and the bridge refactor is the change that made the sandbox boundary structural rather than conventional. A reader assessing sandbox risk after that refactor should start with this document and then read ADR-49. · NOT re-measured: the escape-surface enumeration and any exploitability judgement, which require reading the sandbox implementation line by line and are the prior audit's subject. A documentation audit re-deriving a security finding would be overstating what it checked; what is recorded here is that the boundary the audit reasons about still exists and has since been given a stronger structural basis. · Prior stamp retained; footer re-dated. -->
 # Lua Sandbox Security Audit — P0-1
 
-<!-- Superseded audit marker (2026-07-26, body kept verbatim) · Hermes-Agent · status: STALE (dated 2026-07-19 security snapshot — 6 of 7 findings now remediated in code) · F1: "No instruction limit" -> REMEDIATED; crates/oz-lua/src/lib.rs now sets INSTRUCTION_LIMIT=100_000 via mlua HookTriggers (line 169) + test instruction_limit_aborts_infinite_loop (line 843) · F2: "No memory limit" -> REMEDIATED; set_memory_limit(10 MiB) at lib.rs:120 + collectgarbage exposed · F3: "Plugin permissions not enforced" -> REMEDIATED; oz-plugin/src/manager.rs:57-73 enforces required_permissions whitelist, rejects empty/unknown perms · F4: "Unvalidated discount %" -> REMEDIATED; oz.apply_discount validates 0-100 at manager.rs:144 · F-OPEN: "No execution timeout" (tokio::time::timeout wrapper) + "per-plugin VM isolation" still not evidenced in current code · O1: doc cites crates/oz-lua/src/lib.rs:33 instruction-limit claim + rlua crate; code migrated rlua->mlua 0.9 (lib.rs:4), so line/dep refs are stale · verified: crates/oz-lua + crates/oz-plugin exist; PluginPermissions struct (manifest.rs:143); oz.on/off/get_time/log present (manager.rs:115-198) · treat as a historical audit, not current security posture -->
+<!-- Superseded audit marker (2026-07-26, body kept verbatim) · Hermes-Agent · status: STALE (dated 2026-07-19 security snapshot — 6 of 7 findings now remediated in code) · F1: "No instruction limit" -> REMEDIATED; crates/kasirmu-lua/src/lib.rs now sets INSTRUCTION_LIMIT=100_000 via mlua HookTriggers (line 169) + test instruction_limit_aborts_infinite_loop (line 843) · F2: "No memory limit" -> REMEDIATED; set_memory_limit(10 MiB) at lib.rs:120 + collectgarbage exposed · F3: "Plugin permissions not enforced" -> REMEDIATED; oz-plugin/src/manager.rs:57-73 enforces required_permissions whitelist, rejects empty/unknown perms · F4: "Unvalidated discount %" -> REMEDIATED; oz.apply_discount validates 0-100 at manager.rs:144 · F-OPEN: "No execution timeout" (tokio::time::timeout wrapper) + "per-plugin VM isolation" still not evidenced in current code · O1: doc cites crates/kasirmu-lua/src/lib.rs:33 instruction-limit claim + rlua crate; code migrated rlua->mlua 0.9 (lib.rs:4), so line/dep refs are stale · verified: crates/kasirmu-lua + crates/kasirmu-plugin exist; PluginPermissions struct (manifest.rs:143); oz.on/off/get_time/log present (manager.rs:115-198) · treat as a historical audit, not current security posture -->
 
 **Date:** 2026-07-19
 **Auditor:** kasir.mu Architecture Team
-**Scope:** `crates/oz-lua/`, `crates/oz-plugin/`, example plugins under `plugins/` and `scripts/examples/`
+**Scope:** `crates/kasirmu-lua/`, `crates/kasirmu-plugin/`, example plugins under `plugins/` and `scripts/examples/`
 **Status:** 🔴 7 findings (3 critical, 2 high, 2 medium)
 
 ---
@@ -34,7 +34,7 @@ The Lua plugin system (`oz-lua` + `oz-plugin`) runs custom merchant scripts insi
 
 ### Finding #1: No Instruction Limit 🔴 Critical
 
-**Location:** `crates/oz-lua/src/lib.rs` — `LuaRuntime::new()`
+**Location:** `crates/kasirmu-lua/src/lib.rs` — `LuaRuntime::new()`
 
 **Description:** The `oz-lua` doc comment at line 33 claims "scripts are aborted after 100 000 Lua instructions to prevent infinite loops." However, no code actually calls `set_instruction_limit()` or `set_instruction_limit(100_000)`. The `rlua` crate provides `set_instruction_limit()` on the `Lua` struct, but it's never invoked.
 
@@ -51,7 +51,7 @@ The Lua plugin system (`oz-lua` + `oz-plugin`) runs custom merchant scripts insi
 
 ### Finding #2: No Execution Timeout 🔴 Critical
 
-**Location:** `crates/oz-lua/src/lib.rs` — all hook methods (`apply_discount`, `calc_line_tax`, `validate_order`)
+**Location:** `crates/kasirmu-lua/src/lib.rs` — all hook methods (`apply_discount`, `calc_line_tax`, `validate_order`)
 
 **Description:** Every Lua hook call (`apply_discount`, `calc_line_tax`, `validate_order`, `fire_event`) executes synchronously via `hook.call(...)`. If a script hangs (infinite loop, slow computation, or blocked I/O), the entire Rust async runtime thread is blocked. There is no tokio `select!` with a timeout wrapper.
 
@@ -69,8 +69,8 @@ The Lua plugin system (`oz-lua` + `oz-plugin`) runs custom merchant scripts insi
 
 ### Finding #3: Plugin Permissions Not Enforced 🔴 Critical
 
-**Location:** `crates/oz-plugin/src/manifest.rs` — `PluginPermissions` struct
-**Location:** `crates/oz-plugin/src/manager.rs` — `PluginManager::new()`
+**Location:** `crates/kasirmu-plugin/src/manifest.rs` — `PluginPermissions` struct
+**Location:** `crates/kasirmu-plugin/src/manager.rs` — `PluginManager::new()`
 
 **Description:** The `PluginPermissions` struct in `manifest.rs` has three permission fields (`allow_network`, `allow_filesystem`, `allow_http`) that are faithfully deserialized from `plugin.toml`. However, they are **never read or enforced** anywhere in the codebase. `PluginManager::new()` does not check permissions before loading scripts or registering the `oz.*` API.
 
@@ -95,7 +95,7 @@ The `PluginManager` loads all scripts into the same shared `LuaRuntime` — ther
 
 ### Finding #4: No Memory Limit 🟠 High
 
-**Location:** `crates/oz-lua/src/lib.rs` — `LuaRuntime::new()`
+**Location:** `crates/kasirmu-lua/src/lib.rs` — `LuaRuntime::new()`
 
 **Description:** The Lua VM has no memory limit. A plugin script can construct large tables or concatenate strings until the OS OOM-kills the process. `rlua`/`mlua` do not have built-in memory limits; they must be implemented via `collectgarbage` hooks or custom allocators.
 
@@ -112,7 +112,7 @@ The `PluginManager` loads all scripts into the same shared `LuaRuntime` — ther
 
 ### Finding #5: Unvalidated Discount Percentages 🟠 High
 
-**Location:** `crates/oz-plugin/src/manager.rs` — `oz.apply_discount(target, percent)`
+**Location:** `crates/kasirmu-plugin/src/manager.rs` — `oz.apply_discount(target, percent)`
 
 **Description:** The `oz.apply_discount(target, percent)` function accepts any `i64` value for `percent` without validating it's in the 0–100 range. A malicious plugin could push a discount of `-1000` (increasing prices) or `9999` (giving away products for negative money).
 

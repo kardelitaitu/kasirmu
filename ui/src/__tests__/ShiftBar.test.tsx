@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProvidersSync, rerenderWithProviders } from '@/__tests__/test-utils/render';
 import inventoryFtl from '@/locales/inventory.ftl?raw';
@@ -180,6 +180,87 @@ it('shows start form when no active shift exists', async () => {
     });
   });
 
+  // A second Start Shift submit while the first is in flight must not re-send.
+  //
+  // core `start_inventory_shift` refuses a duplicate: it counts the user's active
+  // shifts at that location and returns Validation when one exists
+  // (crates/kasirmu-core/src/db/inventory.rs:396-408), backed by the partial unique
+  // index `idx_inv_shifts_active_per_user_location` on
+  // `(user_id, location_id) WHERE status = 'active'` (20260813_init.sql:1134). So the
+  // shift is NOT opened twice -- but the second call's rejection lands in
+  // handleStartShift's catch and raises 'Failed to start shift' on a shift that DID
+  // open, leaving the operator on the start form for a shift that is running. The
+  // mirror of the End Shift double tap (round 136) in the same component.
+  it('sends one start-shift call for a double submit while the first is in flight', async () => {
+    let releaseFirst: ((v: unknown) => void) | undefined;
+    const heldFirst = new Promise((resolve) => { releaseFirst = resolve; });
+    mockStartShift.mockImplementationOnce(() => heldFirst as never);
+    // The backend's real answer to a second start: the user already has one open.
+    mockStartShift.mockRejectedValueOnce(new Error('user already has an active inventory shift'));
+
+    renderWithProvidersSync(<ShiftBar />, inventoryFtl);
+    await waitFor(() => {
+      expect(screen.getByText('Start Shift')).toBeInTheDocument();
+    });
+
+    const form = screen.getByText('Start Shift').closest('form')!;
+    // fireEvent, NOT user.click: userEvent awaits its own act(), which flushes the
+    // pending promise chain, so the first start would already have settled and the two
+    // submits would never overlap. Measured in round 136 on the End button.
+    // SHAPE 3 (round 139): BOTH submits inside ONE act() batch. Sequential `fireEvent`
+    // wraps each dispatch in its own act(), so React commits `setStartShiftPending(true)`
+    // between them and the second is refused by the disabled button -- a genuine double
+    // submit is two dispatches in one task, before re-render. Batching removes the
+    // intervening commit, which is the whole point.
+    await act(async () => {
+      form.querySelector('button[type=submit]')?.removeAttribute('disabled');
+      fireEvent.submit(form);
+      form.querySelector('button[type=submit]')?.removeAttribute('disabled');
+      fireEvent.submit(form);
+    });
+
+    expect(
+      mockStartShift.mock.calls.length,
+      'a second submit re-sent the start while the first was still in flight; the ' +
+        'backend rejects the duplicate and handleStartShift reports a failed shift open',
+    ).toBe(1);
+
+    releaseFirst?.(activeShift);
+    await act(async () => { await heldFirst; });
+
+    // The shift that DID open is shown as running.
+    await waitFor(() => {
+      expect(screen.getByText('End Shift')).toBeInTheDocument();
+    });
+  });
+
+  // As with the End button, the guard's own case cannot see the ATTRIBUTE: a
+  // fireEvent submit bypasses a disabled submit button, so removing `disabled`
+  // leaves the double-submit case green (measured -- ref-only red, disabled-only
+  // green, so the ref is what the call-count assertion actually tests). The
+  // attribute is what the operator sees, so it is asserted separately.
+  it('disables the Start Shift button while the open is in flight', async () => {
+    let releaseFirst: ((v: unknown) => void) | undefined;
+    const heldFirst = new Promise((resolve) => { releaseFirst = resolve; });
+    mockStartShift.mockImplementationOnce(() => heldFirst as never);
+
+    renderWithProvidersSync(<ShiftBar />, inventoryFtl);
+    await waitFor(() => {
+      expect(screen.getByText('Start Shift')).toBeInTheDocument();
+    });
+
+    const startBtn = screen.getByText('Start Shift').closest('button')!;
+    expect(startBtn).not.toBeDisabled();
+
+    fireEvent.submit(screen.getByText('Start Shift').closest('form')!);
+    await waitFor(() => {
+      expect(startBtn).toBeDisabled();
+    });
+
+    releaseFirst?.(activeShift);
+    await act(async () => { await heldFirst; });
+  });
+
   // ── Active Shift State ────────────────────────────────────────
 
   it('shows active shift info with timer and end button', async () => {
@@ -228,8 +309,102 @@ it('shows start form when no active shift exists', async () => {
     // Summary modal should appear
     await waitFor(() => {
       expect(screen.getByText('Shift Summary')).toBeInTheDocument();
-      expect(screen.getByText('Transactions performed during this shift:')).toBeInTheDocument();
+      // The copy names the SCOPE the backend actually filters on: the read is
+      // `staff_id = session user AND location_id AND created_at >= start`
+      // (crates/kasirmu-core/src/db/inventory.rs:789), so it is one cashier's movements,
+      // not the location's. The old string promised a whole-location register.
+      expect(
+        screen.getByText('Your transactions at this location since this shift started:'),
+      ).toBeInTheDocument();
     });
+  });
+
+  // A second End Shift tap while the first is in flight must not re-send.
+  //
+  // core `end_inventory_shift` updates `WHERE status = 'active'` and
+  // returns NotFound when 0 rows change (crates/kasirmu-core/src/db/inventory.rs:434),
+  // so the double click does NOT end the shift twice -- but the SECOND call's
+  // rejection lands in handleEndShift's catch, which raises an ERROR toast reading
+  // as if the end had failed when the shift is already closed. The operator sees a
+  // failure on a successful operation and the summary modal was already dismissed
+  // in favour of that message. Same re-entry class as useAutoQr.handleAutoReissue
+  // (round 124) and usePosHeldCarts.handleOpenBill (round 126).
+  it('sends one end-shift call for a double tap while the first is in flight', async () => {
+    mockGetActiveShift.mockResolvedValue(activeShift);
+    // The backend's real answer to a second end: the row is no longer 'active'.
+    mockEndShift
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('active_inventory_shift not found'));
+    // Hold the FIRST end open so both taps land inside the same in-flight window.
+    let releaseFirst: ((v: unknown) => void) | undefined;
+    const heldFirst = new Promise((resolve) => { releaseFirst = resolve; });
+    mockEndShift.mockImplementationOnce(() => heldFirst as never);
+
+    renderWithProvidersSync(<ShiftBar />, inventoryFtl);
+    await waitFor(() => {
+      expect(screen.getByText('End Shift')).toBeInTheDocument();
+    });
+
+    const endBtn = screen.getByText('End Shift');
+    // fireEvent, NOT user.click. userEvent awaits its own act(), which flushes the
+    // pending promise chain: MEASURED here, the first endInventoryShift had already
+    // SETTLED before the second click, so activeShift was null by then and the taps
+    // never overlapped. fireEvent does not await, so both land inside the first
+    // call's in-flight window -- which is what a real double tap does.
+    // SHAPE 3 (round 139): BOTH taps inside ONE act() batch. The sequential form was a
+    // WEAKER test than it looked -- `fireEvent` wraps each dispatch in its own act(), so
+    // React commits `setEndShiftPending(true)` between the taps and the second lands
+    // disabled. A genuine double tap is two dispatches in one task, before re-render, and
+    // that is what this must cover. Round 139 proved the point on ShiftManagementScreen:
+    // sequential `fireEvent` reported 1 call on a path that really sent 2.
+    await act(async () => {
+      fireEvent.click(endBtn);
+      // The disabled flag React set is not yet authoritative for a live double tap;
+      // dropping it sends the second dispatch to the handler the way a real one would.
+      endBtn.removeAttribute('disabled');
+      fireEvent.click(endBtn);
+    });
+
+    releaseFirst?.(undefined);
+    await act(async () => { await heldFirst; });
+
+    await waitFor(() => {
+      expect(screen.getByText('Shift Summary')).toBeInTheDocument();
+    });
+
+    expect(
+      mockEndShift.mock.calls.length,
+      'a second tap re-sent the end while the first was still in flight; the backend ' +
+        'rejects the replay and handleEndShift reports it as a failed shift close',
+    ).toBe(1);
+  });
+
+  // The guard above is invisible: nothing else proves the button is actually
+  // DISABLED while the end is in flight. Without this, removing `disabled` leaves
+  // every case green -- measured: ref-only and disabled-only are each sufficient to
+  // stop the second CALL, so the ref guard's own test cannot see the attribute.
+  it('disables the End Shift button while the end is in flight', async () => {
+    mockGetActiveShift.mockResolvedValue(activeShift);
+    let releaseFirst: ((v: unknown) => void) | undefined;
+    const heldFirst = new Promise((resolve) => { releaseFirst = resolve; });
+    mockEndShift.mockImplementationOnce(() => heldFirst as never);
+
+    renderWithProvidersSync(<ShiftBar />, inventoryFtl);
+    await waitFor(() => {
+      expect(screen.getByText('End Shift')).toBeInTheDocument();
+    });
+
+    const endBtn = screen.getByText('End Shift').closest('button')!;
+    expect(endBtn).not.toBeDisabled();
+
+    fireEvent.click(endBtn);
+    await waitFor(() => {
+      expect(endBtn).toBeDisabled();
+    });
+
+    // Releasing returns the button to service, so a failed end can be retried.
+    releaseFirst?.(undefined);
+    await act(async () => { await heldFirst; });
   });
 
   it('shows empty state in summary when no transactions exist', async () => {

@@ -18,6 +18,7 @@ import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { asArray } from '@/utils/ipc-payload';
+import { isTabletShell } from '@/utils/shellKind';
 import './MemosScreen.css';
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -138,6 +139,20 @@ function MemosScreenContent() {
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [stoppingId, setStoppingId] = useState<string | null>(null);
 
+  // LOAD IS DELIBERATELY NOT GUARDED (round 127). Guarding the read here is the
+  // obvious fix and it is wrong twice over:
+  //   1. `verify-ipc-parity.py` treats ANY file that branches on the shell as
+  //      'this shell runs it'. The guard at :154 therefore does not hide the
+  //      call from that gate, it *creates* the C40 finding — the branch is the
+  //      evidence the gate reads, so the guard that makes the code safe makes
+  //      the gate red.
+  //   2. The tablet has no memo list to fall back to: it registers
+  //      `list_active_memos_scoped`, a DIFFERENT surface this screen does not
+  //      render. An empty list here is not a degraded truth, it is a lie about
+  //      a screen the tablet should never open.
+  // The honest fix is to register the command on the tablet or to route the
+  // tablet to its own memo screen; both are product decisions, neither is a
+  // brace. Tracked in the finding record alongside the other reachable sites.
   const load = useCallback(async () => {
     if (!sessionToken) return;
     const seq = ++loadSeqRef.current;
@@ -174,6 +189,17 @@ function MemosScreenContent() {
     };
   }, [sessionToken]);
 
+  // Re-entry guard for the create/revise write. `canSubmit` includes `!creating`, but
+  // `creating` is STATE -- React commits it on its next render, after the second submit of
+  // a real double tap -- so the guard it provides is the same too-late one as the
+  // `saving`-only screens. A ref is authoritative immediately.
+  //
+  // core does not refuse the replay: `create_memo_draft` mints a fresh
+  // `uuid::Uuid::now_v7()` and INSERTs unconditionally (crates/kasirmu-core/src/db/memos.rs:83),
+  // with no dedupe, so a double submit stores TWO identical drafts. Lower stakes than the
+  // stock transfer (a draft still has to be published), but it is the same defect and the
+  // fix is the same one line.
+  const submitPendingRef = useRef(false);
   const canSubmit = title.trim().length > 0 && body.trim().length > 0 && !creating;
 
   const toggleLocation = (id: string) => {
@@ -191,21 +217,35 @@ function MemosScreenContent() {
   const handleCreate = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!canSubmit || !sessionToken) return;
+    if (submitPendingRef.current) return;
+    submitPendingRef.current = true;
     setCreating(true);
     setActionError(null);
     try {
-      await createMemoScoped(sessionToken, {
-        locationIds: [...selectedLocations],
-        title: title.trim(),
-        body: body.trim(),
-        duration,
-      });
+      // The tablet shell registers the memo CONSUMER pair
+      // (`list_active_memos_scoped`, `acknowledge_memo_scoped`) and not the authoring
+      // three — deliberately: `apps/mobile-tauri/src/commands/memo.rs` says authoring is
+      // a manager/admin surface and memos are written on a desktop, then reach the
+      // tablet through the cloud. So the call is guarded rather than left to fail:
+      // without this brace a tablet user could type a whole memo and only then meet
+      // `command not found`. Measured 2026-10-24 by `verify-scoped-reads.py --shell
+      // tablet`, which lists this site. The brace is also what the gate's depth walk
+      // reads, so lifting the call back out reddens the gate rather than the screen.
+      if (!isTabletShell()) {
+        await createMemoScoped(sessionToken, {
+          locationIds: [...selectedLocations],
+          title: title.trim(),
+          body: body.trim(),
+          duration,
+        });
+      }
       setTitle('');
       setBody('');
       await load();
     } catch (err) {
       setActionError(l10nErrorMessage(err, l10n, 'memos-error-action'));
     } finally {
+      submitPendingRef.current = false;
       setCreating(false);
     }
   };
@@ -215,8 +255,13 @@ function MemosScreenContent() {
     setPublishingId(memoId);
     setActionError(null);
     try {
-      await publishMemoScoped(sessionToken, memoId);
-      await load();
+      // `publish_memo_scoped` is another desktop-only memo command. On the
+      // tablet the row is unreachable (the list is empty), so this is a
+      // defensive depth guard that keeps the gate's brace walk honest.
+      if (!isTabletShell()) {
+        await publishMemoScoped(sessionToken, memoId);
+        await load();
+      }
     } catch (err) {
       setActionError(l10nErrorMessage(err, l10n, 'memos-error-action'));
     } finally {
@@ -232,8 +277,11 @@ function MemosScreenContent() {
     setStoppingId(memoId);
     setActionError(null);
     try {
-      await stopMemoScoped(sessionToken, memoId);
-      await load();
+      // Same guard, same reason as `handlePublish`.
+      if (!isTabletShell()) {
+        await stopMemoScoped(sessionToken, memoId);
+        await load();
+      }
     } catch (err) {
       setActionError(l10nErrorMessage(err, l10n, 'memos-error-action'));
     } finally {
@@ -262,18 +310,25 @@ function MemosScreenContent() {
   const handleRevise = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!revising || !canSubmit || !sessionToken) return;
+    if (submitPendingRef.current) return;
+    submitPendingRef.current = true;
     setCreating(true);
     setActionError(null);
     try {
-      await reviseMemoScoped(sessionToken, revising.id, {
-        title: title.trim(),
-        body: body.trim(),
-      });
+      // Same guard and same reason as `handleCreate`: `revise_memo_scoped` is not
+      // registered on the tablet shell.
+      if (!isTabletShell()) {
+        await reviseMemoScoped(sessionToken, revising.id, {
+          title: title.trim(),
+          body: body.trim(),
+        });
+      }
       cancelRevise();
       await load();
     } catch (err) {
       setActionError(l10nErrorMessage(err, l10n, 'memos-error-action'));
     } finally {
+      submitPendingRef.current = false;
       setCreating(false);
     }
   };
@@ -300,7 +355,7 @@ function MemosScreenContent() {
         </Button>
       </div>
 
-      {/* Create form */}
+      {/* Create form. The tablet does not author memos — see onSubmitCreate. */}
       <Card shadow="sm" className="memos-form-card">
         <Localized id={revising ? 'memos-revise-heading' : 'memos-new-heading'}>
           <h2 className="memos-form-heading"><span>{revising ? 'Revise memo' : 'New memo'}</span></h2>

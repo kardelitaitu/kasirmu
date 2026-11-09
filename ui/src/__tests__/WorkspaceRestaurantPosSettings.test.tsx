@@ -32,6 +32,23 @@ const testL10n = {
       'workspace-resto-kp-ip': 'Kitchen Printer IP',
       'save': 'Save',
       'settings-save-error': 'Save failed',
+      // Copy the card renders that this map never spelled out (settings.ftl /
+      // shared.ftl / products.ftl), so a hole here no longer renders the raw id.
+      'settings-load-failed': 'Failed to load settings',
+      'restaurant-settings-error-load': 'Failed to load restaurant settings',
+      'workspace-resto-courses-hint': 'Send appetizers, mains, and desserts to the kitchen in sequence',
+      'workspace-pos-printer-heading': 'Printer',
+      'workspace-pos-printer-connection': 'Connection',
+      'workspace-pos-printer-ip': 'IP Address',
+      'workspace-pos-printer-bluetooth': 'Bluetooth Address (MAC)',
+      'workspace-pos-printer-paper-size': 'Paper Size',
+      'toast-copy': 'Copy',
+      'toast-copied': 'Copied!',
+      'toast-copy-aria': 'Copy error details',
+      'toast-dismiss-aria': 'Dismiss notification',
+      'toast-hide-detail': 'Hide detail',
+      'toast-notifications-aria': 'Notifications',
+      'toast-show-detail': 'Show detail',
     };
     return defaults[id] ?? id;
   },

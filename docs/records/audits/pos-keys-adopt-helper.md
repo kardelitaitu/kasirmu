@@ -58,3 +58,5 @@ that drops the wrong two lines passes typecheck and reads as intended.
 | `RestaurantMenu` | untouched — a LOCATION scope (`restaurant-loc-${locId}-unavail`) and a different format |
 | `tsc` / `eslint` | 0 / 0 |
 | Full UI suite | 12,688 passed |
+
+> last audited 14-10-26 by docs-auditor

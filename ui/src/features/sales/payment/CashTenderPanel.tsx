@@ -56,6 +56,13 @@ export interface CashTenderPanelProps {
   sufficient: boolean;
   /** The change the tender earns, null while short — from useTenderMath. */
   change: Money | null;
+  /**
+   * The cashier typed something the amount parser REFUSED (an ambiguous `1,234`), as
+   * opposed to too little. Both leave `sufficient` false, but the reasons differ and the
+   * message must too: "Insufficient amount" invites retyping a LARGER number into a field
+   * that will refuse it again for the same reason.
+   */
+  tenderedUnparseable?: boolean;
   /** Resolved locale, for the quick-tender button labels. */
   locale: string;
 }
@@ -68,6 +75,7 @@ export default function CashTenderPanel({
   tenderPresets,
   sufficient,
   change,
+  tenderedUnparseable = false,
   locale,
 }: CashTenderPanelProps) {
   const { l10n } = useLocalization();
@@ -154,7 +162,12 @@ export default function CashTenderPanel({
           >
             {sufficient && change
               ? formatMoney(change, locale)
-              : l10n.getString('payment-insufficient')}
+              : tenderedUnparseable
+                // The amount could not be READ, so "insufficient" would name the wrong
+                // problem: the cashier has not tendered too little, they have typed
+                // something ambiguous. Say which.
+                ? l10n.getString('payment-tender-unreadable')
+                : l10n.getString('payment-insufficient')}
           </span>
         </div>
       )}

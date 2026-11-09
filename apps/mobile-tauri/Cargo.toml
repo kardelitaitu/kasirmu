@@ -28,6 +28,7 @@ tauri-build = { workspace = true }
 indexmap = { workspace = true }
 
 [dev-dependencies]
+kasirmu-test-support = { path = "../../crates/kasirmu-test-support" }
 tauri = { workspace = true, features = ["test"] }
 tempfile = { workspace = true }
 
@@ -93,3 +94,4 @@ hex = { workspace = true }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
+devtools = ["tauri/devtools"]

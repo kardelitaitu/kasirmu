@@ -94,7 +94,7 @@ A module that reads or writes another vertical's data declares the dependency in
 cross-vertical edge introduced in code without the matching manifest declaration is a review finding.
 
 **Rationale:** the manifest is the only machine-readable statement of what a module needs
-(`platform/kernel/src/manifest.rs:42-48`). A dependency that exists in SQL but not in the manifest is
+(`platform/kernel/src/manifest.rs:42-48`). A dependency that exists in SQL but not in the manifest is <!-- dead-ref: ok: verified 2026-10-19; manifest.rs:42-48 is the dependency-fields block the sentence names -->
 invisible to `every_module_manifest_is_registered` and to any future ordering check.
 
 **How it is checked:** the checker compares declared `dependencies` against the cross-vertical tables

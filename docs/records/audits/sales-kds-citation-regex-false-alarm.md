@@ -60,3 +60,5 @@ the tell; so was the unchanged count.
 | `Invariants:` sections in those features | none — the claim shape differs |
 | Tree | unchanged; 4 files verified byte-identical to HEAD |
 | Source changed | none |
+
+> last audited 14-10-26 by docs-auditor

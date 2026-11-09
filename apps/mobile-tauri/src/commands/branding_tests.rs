@@ -1,4 +1,5 @@
 use super::*;
+use kasirmu_test_support::tempdir;
 
 use kasirmu_core::db::Store;
 use kasirmu_core::migrations;
@@ -19,7 +20,7 @@ fn branding_state() -> (AppState, tempfile::TempDir) {
         )
         .unwrap();
     }
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
     state.session_store.write().unwrap().insert(

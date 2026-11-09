@@ -160,3 +160,21 @@ All 670 UI test files pass (11,306 tests, 24 skipped, 3 todo).
 - `6ebc95b97` — test(restaurant): add comprehensive unit, logic and component test suites for menu editor
 - `dc7d2ac25` — fix(ui): resolve token compliance, tooltip, dither, and extraction in menu editor
 - `ef294d167` — fix(ui): disambiguate sync-plan-row and sync-queue-summary data-testids in SyncStatusScreen
+
+### Verification pass (2026-10-22)
+- Re-verified acceptance baseline: `cargo check -p kasirmu-app -p kasirmu-mobile` compiles cleanly (0 warnings, 0 errors).
+- Re-verified dry run test: `offline::test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync` passes in 1.85s.
+- Localized in-app updater Android-only error states in `162863abc`, aligned test suite in `552d394a9`.
+- UI typecheck clean (`tsc --noEmit`, exit 0); UI lint clean (0 errors across `ui/`).
+- Full Vitest suite verified: 827+ test files, 13,120+ tests green.
+- Performance debt closed: O-M04 (covering index idempotency probe) and O-M68 (covering range index on `product_activity`), bringing the optimization ledger to 100% completion (134/134).
+- Web Topology Authoring: ratified ADR-66 (Phase 0), established `topology_revisions` metadata schema and PG twin (Phase 1 in `806c49480`), implemented server-side desired-state plan validation, diff summary, cryptographic signing (`OZ_TOPOLOGY_SIGNING_KEY`), optimistic concurrency control (I4/T8), and tenant-isolated replication pull in `kasirmu-api` (Phase 2 in `d83614830`), implemented terminal-side offline-first replication transport, additive key rotation (`TrustedKeyRegistry`), signature verification, monotonic ordering / idempotency, and atomic apply pipeline in `kasirmu-bridge` (Phase 3 in `340efb03c`), implemented typed API SDK (`TopologyClient`), web-managed read-only mode, and tablet centralized topology notices on the `settings/topology` seam (Phase 4 & Phase 6 in `8b2f56566`), codified Phase 5 rollout controls: runtime administrative kill switch (`is_topology_web_authoring_disabled`), shadow-mode evaluation with terminal withholding (`is_topology_shadow_mode_active`), and design token polish (Phase 5 in `6a40d64dc`); and executed full §8 acceptance suite (UI typecheck, ESLint, 112 UI tests, 333 bridge tests, 11 API tests, PG drift check, root policy check), formally earning the done- prefix (`done-plan-topology-web-authoring.md` in `aa69acb88`).
+
+### Verification pass (2026-10-23)
+- Re-verified pilot dry-run integration test: `cargo test -p kasirmu-core --test integration test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync` passes in 0.65s.
+- Re-verified desktop and mobile application shell compilation: `cargo check -p kasirmu-app -p kasirmu-mobile` compiles cleanly (0 errors).
+- UI static verification clean: `npm run lint` (0 errors), `npm run typecheck` (0 errors), `npm run bundle:check` (all budgets satisfied), `npm run testid:check` (0 cross-file collisions), `npm run dedupe:ftl` (0 duplicates).
+- Full Vitest suite verified: 828 test files, 13,121+ tests green.
+- Master architecture boundaries verified: 41 crates, 596 dependency edges, 630 UI files, 0 violations (`verify-architecture-boundaries.py --strict`).
+- IPC command parity verified: 510 registered desktop commands, 437 tablet commands, 0 missing (`verify-ipc-parity.py`).
+- Pre-commit mirrors & root allowlist clean (`verify-agents-mirrors.py`, `verify-root-policy.py`).

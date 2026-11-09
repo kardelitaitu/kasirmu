@@ -1,3 +1,5 @@
+<!-- Audit stamp: 2026-10-19 · docs-auditor · status: ACCURATE AFTER REPAIR (2 findings) · Re-audit of the modules index against the 14 module crates on disk. FIXED 1: the §Stubs and the promotion path section named FOUR stubs (`purchasing`, `promotions`, `giftcards`, `kitchen`). There are FIVE: `reporting` is pinned `pub const HAS_DOMAIN_SURFACE: bool = false` at `modules/reporting/src/lib.rs:60`, after its read-only domain surface was retired under Phase 3 P3.1. A reader counting stubs by this page would have concluded reporting still owned domain logic. FIXED 2: the directory sketch described `manifest.json` as carrying id, version, dependencies and permissions. It carries NINE fields, and the two the sketch omitted are the ones with runtime consequences: `capabilities` (the kernel fails boot with `KernelError::MissingCapability` when a declared capability is not granted) and `database_namespace`. The line now names `capabilities`, and `docs/specs/module-manifest-format.md` remains the field-by-field authority. VERIFIED AND LEFT ALONE: the `modules/<id>/` layout the page draws matches every crate on disk (Cargo.toml with package `modules-<id>`, manifest.json, README.md, src/); the four classic stubs each still carry a `## Stub status` section in their own module docs, so the `HAS_DOMAIN_SURFACE` flag and the prose marker are two different mechanisms for the same fact and this page names both honestly. · Footer re-dated. -->
+
 # kasir.mu Modules
 
 <!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 1 minor) · Re-audit of the module contract page; the 2026-08-31 stamp is merged at the bottom as plain text (delimiters stripped so it cannot nest). · MINOR: the description of what manifest.json carries listed id / version / dependencies / permissions and omitted `capabilities` — a field the schema defines, all fourteen real manifests populate, and the kernel actually enforces at boot (Kernel::verify_capabilities, KernelError::MissingCapability). A page that teaches the manifest format without naming an enforced field is the omission a reader cannot detect. Added, with a pointer to docs/specs/module-manifest-format.md, which was itself repaired to name all nine fields this campaign. · VERIFIED AND LEFT ALONE, re-derived at HEAD rather than inherited: the anatomy tree matches the four stub crates and the active ones; the two-source-of-truth explanation is correct — each module carries a per-crate manifest_json_matches_module_declaration test (modules/{giftcards,kitchen,promotions,purchasing}/src/lib_tests.rs), and platform/startup/src/startup_tests.rs really does hold every_module_manifest_is_registered and every_declared_dependency_is_registered (the third name in the example block is the per-module test, which lives in the module, not in startup); the current-modules table is exact — 14 directories, 14 k.register lines in init_module_system, and every dependency edge matches the manifest; the loyalty anecdote is still true (the LoyaltyEarnHandler is wired from platform/startup/src/lib.rs:245, and the comment at :134 records the same history); the generator scripts scripts/new-module.{ps1,sh} exist and both carry a -DryRun/--dry-run path. · NOT re-measured: whether the generator still produces a crate that compiles and passes its own tests on first run, which is a claim about runtime behaviour. · Superseded 2026-08-31 body follows as plain text:
@@ -15,7 +17,7 @@ is the contract for adding one.
 ```
 modules/<id>/
   Cargo.toml        # package `modules-<id>`, [lints] workspace = true
-  manifest.json     # id, version, dependencies, permissions
+  manifest.json     # id, version, dependencies, permissions, capabilities
   README.md         # what it owns; promotion checklist if it is a stub
   src/
     lib.rs          # `<Pascal>Module` implementing foundation::contracts::Module
@@ -103,9 +105,12 @@ cargo test -p platform-startup --lib every_module_manifest_is_registered
 
 ## Stubs and the promotion path
 
-Four modules — `purchasing`, `promotions`, `giftcards`, `kitchen` — are
+Five modules — `purchasing`, `promotions`, `giftcards`, `kitchen`, `reporting` — are
 **stubs**: they own their id, manifest, dependency edges, and error type, but no
-domain logic. Their hooks only log.
+domain logic. Their hooks only log. (`reporting` joined them on 2026-10-03 under
+Phase 3 P3.1, when its read-only domain surface was retired with zero non-test
+callers and `HAS_DOMAIN_SURFACE` was pinned to `false` —
+`modules/reporting/src/lib.rs`.)
 
 This is deliberate. A stub costs one `register` line and buys the dependency
 graph, load order, and shutdown order being exercised from the first commit.
@@ -170,4 +175,4 @@ Promoting a stub, in order:
 | `giftcards` | Stub | `sales` |
 | `kitchen` | Stub | `sales`, `terminal` |
 
-> last audited 11-10-26 by docs-auditor
+> last audited 19-10-26 by docs-auditor

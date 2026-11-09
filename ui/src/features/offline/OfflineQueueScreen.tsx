@@ -60,8 +60,13 @@ function statusLabel(status: string): string {
       return 'offline-queue-status-synced';
     case 'failed':
       return 'offline-queue-status-failed';
+    // This column carries NO CHECK constraint (offline_queue.status is
+    // `TEXT NOT NULL DEFAULT 'pending'`), so a value the UI does not know is a live
+    // possibility rather than a corrupt-data hypothetical. Labelling it "Pending" is the
+    // worst of the three: pending is the state that means "this will be pushed", so an
+    // unreadable row would be presented as work that is definitely on its way.
     default:
-      return 'offline-queue-status-pending';
+      return 'offline-queue-status-unknown';
   }
 }
 
@@ -93,6 +98,30 @@ function formatRelativeTime(iso: string | null): { fluentKey: string; fluentArgs
 // ui/src/utils/settle-read.ts. It used to be copied here from app/AppShell.tsx,
 // and four more screens grew their own copy before it moved.
 
+/**
+ * Coerce the pending count read from the wire into a usable number.
+ *
+ * `pending_offline_count_scoped` DECLARES a number and nothing enforces it at the IPC
+ * boundary — the same gap `asArray` covers for the list beside it. A non-number, a
+ * negative, or a NaN reached `setPendingCount` raw, and the two render sites then
+ * DISAGREED about the same value:
+ *
+ *   badge    `pendingCount > 0`      -> hidden for 'three' and for -5
+ *   button   `pendingCount === 0`    -> ENABLED for both, since neither equals 0
+ *
+ * MEASURED (round 134): with a queue item on screen and the count answering 'three',
+ * the row rendered, no pending badge appeared, and Sync All stayed clickable. So the
+ * one affordance telling an operator that work is queued vanished while the action
+ * that would clear it stayed armed. Flooring at 0 keeps both readers on the same
+ * footing: a bad value reads as 'nothing counted', which disables the button and hides
+ * the badge TOGETHER.
+ */
+function asCount(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : 0;
+}
+
 /** Props for {@link OfflineQueueScreen}. */
 export interface OfflineQueueScreenProps {
   /**
@@ -121,6 +150,10 @@ export default function OfflineQueueScreen({ embedded = false }: OfflineQueueScr
   const [error, setError] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState<number>(0);
   const [syncing, setSyncing] = useState(false);
+  /** Synchronous mirror of `syncing` — see the re-entry guard in `handleSyncAll`. */
+  const syncingRef = useRef(false);
+  /** Item ids whose requeue is in flight — see the per-row guard in `handleRequeue`. */
+  const requeuePendingRef = useRef(new Set<string>());
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [conflictCount, setConflictCount] = useState<number>(0);
@@ -169,7 +202,7 @@ export default function OfflineQueueScreen({ embedded = false }: OfflineQueueScr
       // ExchangeRateScreen / TaxConfigurationScreen / useBackupStatus and swept
       // across four more call sites. See utils/ipc-payload.
       setItems(asArray<OfflineQueueItemDto>(data));
-      setPendingCount(count);
+      setPendingCount(asCount(count));
       if (summary) {
         setConflictCount(summary.conflictCount);
         setQueueSummary(summary);
@@ -196,8 +229,10 @@ export default function OfflineQueueScreen({ embedded = false }: OfflineQueueScr
     } finally {
       setLoading(false);
     }
-    // sessionToken is read five times in this body (:126-:141) and was not a dependency, so
-    // :157's `useEffect(() => { load(); }, [load])` never re-ran for a new session.
+    // sessionToken is read five times in this body — the four scoped reads in the
+    // `Promise.all` arg list plus `getSyncPlanScoped` below — and was not a dependency, so
+    // the `useEffect(() => { load(); }, [load])` that follows never re-ran for a new
+    // session.
   }, [l10n, sessionToken]);
 
   // P7-3: Pull-to-refresh gesture (defined after load so it's hoist-safe)
@@ -224,7 +259,7 @@ export default function OfflineQueueScreen({ embedded = false }: OfflineQueueScr
           getOfflineQueueStatusSummaryScoped(sessionToken).catch(() => null),
         ]);
         if (gen !== pollGenRef.current) return; // superseded or unmounted
-        setPendingCount(count);
+        setPendingCount(asCount(count));
         if (summary) {
           setConflictCount(summary.conflictCount);
           setQueueSummary(summary);
@@ -250,17 +285,28 @@ export default function OfflineQueueScreen({ embedded = false }: OfflineQueueScr
       pollGenRef.current += 1; // invalidate any in-flight poll
       if (timer) clearTimeout(timer);
     };
-    // sessionToken is read at :170, :171 and :179. With [] this polled on a fixed 10s cadence
-    // with the mount-time token forever: after a cashier hot-swap (FastPINOverlay, and
-    // swapSessionToken destroys the old token at WorkspaceContext.tsx:273) every request failed
-    // with a dead session, pollFailuresRef reached 3, and the screen showed a permanent
-    // "stale queue" notice over a queue that was fine. Re-running is safe by construction --
-    // the cleanup bumps the generation and clears the timer, which is what :173/:189 guard on.
+    // sessionToken is read in THIS poll body by the two `pendingOfflineCountScoped` /
+    // `getOfflineQueueStatusSummaryScoped` calls inside its `Promise.all`.
+    // ⚠️ This note used to copy the LOAD effect's list of five reads verbatim, which was
+    // never true here — that parenthetical belongs to the other effect, and pasting it made
+    // a correct claim about the wrong body. Anchored by the two call names now.
+    // With [] this polled on a fixed 10s cadence with the mount-time token forever: after a
+    // cashier hot-swap (`FastPINOverlay`, and `swapSessionToken` destroys the old token via
+    // `destroySession`) every request failed with a dead session, pollFailuresRef reached 3,
+    // and the screen showed a permanent "stale queue" notice over a queue that was fine.
+    // Re-running is safe by construction — the cleanup bumps the generation and clears the
+    // timer, which is what the two `gen !== pollGenRef.current` guards check.
   }, [sessionToken]);
 
   // ── Sync all ──────────────────────────────────────────────────
 
   const handleSyncAll = useCallback(async () => {
+    // Re-entry guard. retry_offline_sync is safe to replay (an empty queue returns Ok and
+    // a duplicate-id rejection is folded into success), but two in-flight runs share one
+    // `syncResult` and one `error`, so the operator is shown the loser's outcome -- or an
+    // error over a sync that succeeded -- while the first run is still draining the queue.
+    if (syncingRef.current) return;
+    syncingRef.current = true;
     setSyncing(true);
     setSyncResult(null);
     try {
@@ -270,6 +316,7 @@ export default function OfflineQueueScreen({ embedded = false }: OfflineQueueScr
     } catch {
       setError(l10n.getString('offline-queue-sync-error'));
     } finally {
+      syncingRef.current = false;
       setSyncing(false);
     }
   }, [load, l10n, sessionToken]);
@@ -277,12 +324,18 @@ export default function OfflineQueueScreen({ embedded = false }: OfflineQueueScr
   // ── Requeue dead-lettered remote item ─────────────────────────
 
   const handleRequeue = useCallback(async (itemId: string) => {
+    // Per-ROW guard, not a global flag: two DIFFERENT items must requeue concurrently. The
+    // requeue is a status change on one dead-lettered row, so a replay only re-reports.
+    if (requeuePendingRef.current.has(itemId)) return;
+    requeuePendingRef.current.add(itemId);
     setRequeueError(null);
     try {
       await requeueRemoteFailureScoped(sessionToken, itemId);
       await load();
     } catch {
       setRequeueError(l10n.getString('offline-queue-quarantine-requeue-error'));
+    } finally {
+      requeuePendingRef.current.delete(itemId);
     }
   }, [load, l10n, sessionToken]);
 
@@ -551,24 +604,13 @@ export default function OfflineQueueScreen({ embedded = false }: OfflineQueueScr
               </Localized>
             </div>
           )}
-          {/* P7-3: Pull-to-refresh indicator */}
-          {pullState !== 'idle' && (
-            <div
-              className="offline-queue-pull-indicator"
-              style={{
-                transform: `translateY(${pullDistance}px)`,
-                opacity: Math.min(1, pullDistance / 60),
-              }}
-            >
-              {pullState === 'pulling' && (
-                <span>{requiredLocalized(l10n, 'offline-queue-pull-to-refresh')}</span>
-              )}
-              {pullState === 'ready' && (
-                <span>{requiredLocalized(l10n, 'offline-queue-release-to-refresh')}</span>
-              )}
-              {pullState === 'loading' && <span className="offline-queue-refresh-spinner" />}
-            </div>
-          )}
+          {/* ⚠️ NO SECOND PULL-TO-REFRESH INDICATOR HERE (removed 2026-10-19).
+              This block was a verbatim copy of the one rendered above, OUTSIDE the
+              `phase === 'loading'` ternary — so whenever the table was shown, both
+              mounted and the operator saw the indicator TWICE at the same translateY,
+              which reads as a doubled/darkened bar mid-pull. The one above is the
+              single source: it is outside the ternary, so it covers the loading
+              skeleton, the empty state and this table alike. */}
           <table className="offline-queue-table" aria-label={requiredLocalized(l10n, 'offline-queue-table-aria')}>
             <thead>
               <tr>

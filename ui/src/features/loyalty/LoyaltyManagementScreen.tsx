@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, Fragment } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, Fragment } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { EmptyState, requiredLocalized } from '@/components';
 import { NoLoyaltyIcon } from '@/components/EmptyStateIllustrations';
@@ -57,6 +57,8 @@ export default function LoyaltyManagementScreen() {
     name: '', min_points: '', points_per_unit: '', earn_multiplier: '', colour: '',
   });
   const [savingTier, setSavingTier] = useState(false);
+  /** Synchronous mirror of `savingTier` — see the re-entry guard in the tier save. */
+  const savingTierRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -134,6 +136,12 @@ export default function LoyaltyManagementScreen() {
       setError(l10n.getString('loyalty-validation-error'));
       return;
     }
+    // Re-entry guard, taken AFTER validation so an ordinary tap still reaches it. The
+    // update is a same-row UPDATE ... WHERE id = ?, so a replay cannot corrupt the tier --
+    // what it can do is share one \`error\` slot and one \`editingTier\` close between two
+    // in-flight saves, so the operator is shown the failure of the tap that raced.
+    if (savingTierRef.current) return;
+    savingTierRef.current = true;
     setSavingTier(true);
     setError(null);
     try {
@@ -152,6 +160,7 @@ export default function LoyaltyManagementScreen() {
     } catch (err) {
       setError(l10nErrorMessage(err, l10n, 'loyalty-save-tier-error'));
     } finally {
+      savingTierRef.current = false;
       setSavingTier(false);
     }
   }, [editingTier, tierForm, tiers, l10n, sessionToken]);

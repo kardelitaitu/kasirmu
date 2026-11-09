@@ -367,6 +367,23 @@ async fn usb_printer_enumerates_and_never_faults_on_an_empty_bus() {
     );
 }
 
+#[tokio::test]
+async fn multiple_usb_printers_hoist_discovery_and_skip_when_absent() {
+    // O-M44: Multiple configured USB printers must not fail or panic and
+    // must hoist bus enumeration above the loop.
+    let reg = DriverRegistry::default();
+    let cfg = HardwareConfig {
+        printers: vec![
+            printer("printer-1", Connection::Usb),
+            printer("printer-2", Connection::Usb),
+        ],
+        ..HardwareConfig::default()
+    };
+    let report = apply_config(&reg, &cfg).await;
+    assert!(report.ok(), "absent USB printers must not fault");
+    assert_eq!(report.skipped.len(), 2);
+}
+
 #[test]
 fn report_display_names_the_counts() {
     // The sample reason is one the bootstrap can still actually produce;

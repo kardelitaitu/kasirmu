@@ -11,8 +11,30 @@
 //! [`list_open_bills_scoped`], [`get_held_cart_scoped`], [`delete_held_cart_scoped`].
 //!
 //! Invariant: an open bill is a Restaurant POS concept, so
-//! [`is_restaurant_pos_workspace`] gates creation AND listing fail-closed
-//! against the session type_key, never the request bill_type.
+//! [`is_restaurant_pos_workspace`] gates **all five commands** fail-closed against the
+//! session type_key, never the request bill_type.
+//!
+//! ⚠️ THE LIST OF GATED COMMANDS IS THE POINT OF THIS PARAGRAPH, and it used to name
+//! only two of the five. When it said "gates creation AND listing" that was accurate and
+//! it made the other three look unremarkable — which is how `list_held_carts_scoped`
+//! came to serve a retail terminal the restaurant's open bills (round 302), and then how
+//! `get_held_cart_scoped` and `delete_held_cart_scoped` came to serve and *destroy* them
+//! by id (round 303). A doc that understates the enforcement is how the next command
+//! gets added without it.
+//!
+//! The five, and the shape of each gate:
+//!
+//! | Command | Gate |
+//! |---|---|
+//! | [`hold_cart_scoped`] | refuses an `open_bill` from a non-restaurant session |
+//! | [`list_held_carts_scoped`] | non-restaurant sessions get `open_bill` rows excluded |
+//! | [`list_open_bills_scoped`] | restaurant sessions only |
+//! | [`get_held_cart_scoped`] | [`refuse_cross_vertical_open_bill`] on the id |
+//! | [`delete_held_cart_scoped`] | the same, checked BEFORE the delete |
+//!
+//! **A SIXTH COMMAND MUST PICK ITS SHAPE FROM THIS TABLE.** Three of the five are only
+//! reachable through an id, so "it is not in the list" is not a defence — that was the
+//! exact reasoning that left two of them open.
 
 use serde::{Deserialize, Serialize};
 
@@ -146,6 +168,30 @@ pub async fn hold_cart_scoped(
 /// List held carts for the store resolved from a session token. ADR #7.
 ///
 /// Requires `SALES_PROCESS` permission.
+///
+/// # Terminal identity
+///
+/// **Open bills are excluded for every workspace that is not Restaurant POS.** An open
+/// bill is that vertical's concept — the restaurant cart reads them as "Open Bills"
+/// while a retail cart reads this command as "Held Carts" — so a store-pos session
+/// asking for its held carts must not receive the restaurant's open tabs.
+///
+/// ⚠️ This was MEASURED against the unfiltered query before the fix:
+///
+/// ```text
+/// PROBE total=1 open_bills_visible=1 our_id_visible=true
+/// ```
+///
+/// The two commands that look like the boundary were both already gated —
+/// [`hold_cart_scoped`] refuses to create an open bill off a restaurant terminal, and
+/// [`list_open_bills_scoped`] refuses to list them. This one sat between them with
+/// neither, and the only thing hiding it was a front-end filter
+/// (retail POS: `carts.filter((c) => c.bill_type === 'hold')`) — a UI
+/// convenience, not an authorization boundary. Any other caller of this command
+/// inherited none of it.
+///
+/// Restaurant POS itself is unchanged: it receives every row, because the open bills
+/// are its own.
 pub async fn list_held_carts_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
@@ -162,7 +208,13 @@ pub async fn list_held_carts_scoped(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
 
-    let carts = store.list_held_carts()?;
+    // The exclusion is applied HERE, where the session's vertical is known, rather than
+    // by each caller — see the doc above for the measurement that made it necessary.
+    let carts = if is_restaurant_pos_workspace(&session) {
+        store.list_held_carts()?
+    } else {
+        store.list_held_carts_excluding_open_bills()?
+    };
     drop(db);
     Ok(carts)
 }
@@ -206,9 +258,57 @@ pub async fn list_open_bills_scoped(
     Ok(carts)
 }
 
+/// Refuse an `open_bill` id to a session that is not Restaurant POS.
+///
+/// The BY-ID counterpart of the list gate in [`list_held_carts_scoped`]. Creation and
+/// listing were gated; reading and deleting by id were not, so a retail terminal could
+/// fetch a restaurant's open bill — `cart_data` included — and then destroy it. Measured
+/// before the fix:
+///
+/// ```text
+/// PROBE get_ok=true leaked=Some("{\"secret\":true}") delete_ok=true restaurant_still_has_it=false
+/// ```
+///
+/// The id is not secret (UUIDv7 is guess-resistant, not access-controlled), and relying on
+/// the caller not having one is the same reasoning round 302 rejected for the list: a
+/// front-end filter is not a boundary, and the next caller inherits none of it.
+///
+/// # Errors
+///
+/// `PermissionDenied` when the row exists, is an `open_bill`, and the session is not
+/// Restaurant POS. A plain `hold` is unrestricted in every vertical — the gate is about the
+/// restaurant concept, not about held carts in general.
+fn refuse_cross_vertical_open_bill(
+    store: &Store<'_>,
+    session: &kasirmu_core::session::SessionContext,
+    id: &str,
+) -> Result<(), BridgeError> {
+    if is_restaurant_pos_workspace(session) {
+        return Ok(());
+    }
+    // A missing row is not a breach: `get` answers `None` and `delete` is a no-op, both
+    // of which are already the callers' expectations for an unknown id.
+    let Some(row) = store.get_held_cart(id)? else {
+        return Ok(());
+    };
+    if row.bill_type == BILL_TYPE_OPEN_BILL {
+        return Err(BridgeError::PermissionDenied(format!(
+            "workspace '{}' may not access an open bill; only '{}' may",
+            session.type_key,
+            kasirmu_core::workspace_type::RESTAURANT_POS
+        )));
+    }
+    Ok(())
+}
+
 /// Get a held cart from the store resolved from a session token. ADR #7.
 ///
 /// Requires `SALES_PROCESS` permission.
+///
+/// # Terminal identity
+///
+/// An `open_bill` is refused to every non-Restaurant-POS session — see
+/// `refuse_cross_vertical_open_bill` (private to this module).
 pub async fn get_held_cart_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
@@ -226,6 +326,7 @@ pub async fn get_held_cart_scoped(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
 
+    refuse_cross_vertical_open_bill(&store, &session, &id)?;
     let cart = store.get_held_cart(&id)?;
     drop(db);
     Ok(cart)
@@ -234,6 +335,11 @@ pub async fn get_held_cart_scoped(
 /// Delete a held cart in the store resolved from a session token. ADR #7.
 ///
 /// Requires `SALES_PROCESS` permission.
+///
+/// # Terminal identity
+///
+/// An `open_bill` is refused to every non-Restaurant-POS session, checked before the
+/// delete so a refusal is not destructive — see `refuse_cross_vertical_open_bill`.
 pub async fn delete_held_cart_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
@@ -251,6 +357,9 @@ pub async fn delete_held_cart_scoped(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
 
+    // Checked BEFORE the delete, so a refused call leaves the row untouched rather than
+    // removing it and reporting afterwards.
+    refuse_cross_vertical_open_bill(&store, &session, &id)?;
     store.delete_held_cart(&id)?;
     drop(db);
     tracing::info!(held_cart_id = %id, "held cart deleted (scoped)");

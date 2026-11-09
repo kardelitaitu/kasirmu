@@ -74,7 +74,7 @@ describe('RestaurantFloatingCartBar', () => {
     // ⚠️ The TENTH consumer of the stray-table rule, and the one a tablet cashier
     // stares at continuously. The bar renders its pill from `tableNumber` alone, so
     // a takeaway with a stray number in the Table field (the field renders on
-    // restaurant POS unconditionally — CartPanel.tsx:864) advertised "Table 99" on
+    // restaurant POS unconditionally — CartPanel.tsx:898) advertised "Table 99" on
     // the persistent bottom bar for an order with no table.
     //
     // The prop is optional and defaults to dine-in, so retail and every existing

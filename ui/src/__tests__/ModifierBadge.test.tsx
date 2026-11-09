@@ -53,6 +53,8 @@ describe('classifyModifier', () => {
     'tanpa cabai',
     'JANGAN PEDAS',
     'gak pake es',
+    'tidak pakai bawang',
+    'tidak pake sambal',
   ])('reads "%s" as a removal', (choice) => {
     expect(classifyModifier(choice)).toBe('removal');
   });
@@ -68,6 +70,9 @@ describe('classifyModifier', () => {
     'side of salad',
     'EKSTRA KEJU',
     'tambah nasi',
+    'plus telur',
+    'banyak sambal',
+    'banyakin es',
   ])('reads "%s" as an addition', (choice) => {
     expect(classifyModifier(choice)).toBe('addition');
   });

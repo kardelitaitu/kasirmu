@@ -1,0 +1,62 @@
+# ── Pinned-image digest drift gate (DOCKER-02 follow-up) ───────────
+#
+# ADVISORY BY DESIGN, and the reason is measured rather than assumed. This job
+# exists because pins DO silently rot: on 2026-10-23 the gate was run by hand
+# for the first time in weeks and found SEVEN drifted references across five
+# images, the oldest pinned artifact four months stale. Nothing had alerted,
+# because the only thing that ever called this script was this workflow in its
+# retired .bak form -- which GitHub never executes.
+#
+# WHY NOT BLOCKING: the images use MOVING tags (bookworm-slim, 2-alpine, 16-alpine,
+# 7-alpine), so their index digest is expected to move. caddy alone moves roughly
+# four times a month. A blocking job would therefore be permanently red, and a
+# permanently red job is one nobody reads -- which is the failure this whole file
+# is here to prevent. So the job runs, and on drift it OPENS AN ISSUE rather than
+# failing a branch: a human decides whether the drift is security-relevant.
+#
+# Measured 2026-10-24: one of the five drifted images IS security-relevant --
+# debian:bookworm-slim was pinned to a 2026-08-24 artifact while current is the
+# bookworm-20261020 point release, and Debian point releases bundle security
+# fixes. That is exactly the case an issue is for.
+#
+# COST: 12 pins x up to 5 retries. GitHub runners have a warm registry
+# connection, so the retry path is not normally taken; a cold run is ~8 minutes.
+#
+# The gate itself fails closed (exit 2) when its pin pattern matches nothing, so
+# a scan that reads zero files cannot report a clean supply chain.
+
+name: Docker Digest Drift
+
+on:
+  schedule:
+    # Weekly Monday 05:00 UTC.
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check:
+    name: Verify pinned image digests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Run digest drift check
+        id: drift
+        run: bash scripts/verify-docker-digests.sh
+      - name: Open drift issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title "Pinned Docker image digests have drifted (DOCKER-02)" \
+            --body "The weekly digest-drift gate failed: at least one pinned image:tag@sha256 reference now resolves to a different upstream digest. Run 'bash scripts/verify-docker-digests.sh' locally for the exact references, then refresh the pins deliberately per the DOCKER-02 policy (see .trivyignore and the Dockerfile comments). The 2026-10-24 finding record already carries every re-derived digest, so the refresh is a copy-paste once a maintainer confirms it." \
+            --repo "${{ github.repository }}" \
+            || echo "::warning::Could not open drift issue (token scope?)"

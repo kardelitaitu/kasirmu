@@ -26,7 +26,11 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // deliberately corrupted copy. Default is unchanged, and this is the ONLY way
 // to exercise the syntax validator's failure branch without editing a tracked
 // file in place. `argv[2]` wins so a report can paste a self-contained command.
-const caddyPath = process.argv[2] ?? join(root, 'apps/unified/Caddyfile');
+// `--self-test` is a flag, not a path: argv[2] is read positionally below, so a bare
+// `process.argv[2]` made `--self-test` resolve as a filename and the whole gate died
+// with ENOENT before the self-test ever ran. Flags are filtered out first.
+const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+const caddyPath = args[0] ?? join(root, 'apps/unified/Caddyfile');
 const caddy = readFileSync(caddyPath, 'utf8');
 
 // ── Caddyfile syntax validation (C31) ────────────────────────────────────────
@@ -143,8 +147,11 @@ function validateCaddyfile(src) {
   let i = 0;
   while (i < tokens.length) {
     const t = tokens[i];
-    // A closing brace is its own statement wherever it appears.
-    if (t.value === '}') {
+    // A closing brace is its own statement wherever it appears -- but a QUOTED "}"
+    // is data, not structure. The lexer already marks it (quoted: true) and this
+    // check ignored the mark, so `respond "}" 200` reported "unmatched '}'" and
+    // failed a Caddyfile that caddy accepts. Found by mutation-testing the parser.
+    if (t.value === '}' && !t.quoted) {
       if (stack.length === 0) {
         errors.push(`line ${t.line}: unmatched '}' - a block is closed that was never opened`);
       } else {
@@ -157,11 +164,17 @@ function validateCaddyfile(src) {
     // The statement runs to the next line-starting token (or a closing brace).
     const stmt = [];
     let j = i;
-    while (j < tokens.length && tokens[j].value !== '}' && (j === i || !tokens[j].firstOnLine)) {
+    while (
+      j < tokens.length &&
+      !(tokens[j].value === '}' && !tokens[j].quoted) &&
+      (j === i || !tokens[j].firstOnLine)
+    ) {
       stmt.push(tokens[j]); j++;
     }
     const head = stmt[0].value;
-    const opensBlock = stmt[stmt.length - 1].value === '{';
+    // Same rule for the opening side: a quoted "{" is an argument, not a block.
+    const last = stmt[stmt.length - 1];
+    const opensBlock = last.value === '{' && !last.quoted;
 
     if (stack.length === 0) {
       if (/^\(.+\)$/.test(head)) {
@@ -199,6 +212,90 @@ function validateCaddyfile(src) {
     errors.push(`line ${open.line}: '${open.head}' opens a block that is never closed with '}'`);
   }
   return errors;
+}
+
+// ── Self-test: the Caddyfile validator's failure branch ──────────────────────
+//
+// The gate's whole answer over a broken file is "errors.length === 0 ? pass : fail",
+// so a validator that quietly stopped reporting would print a clean run over a
+// Caddyfile caddy refuses to adapt. Until now the only way to exercise the failure
+// branch was to hand-craft a corrupted copy and point argv[2] at it -- which nobody
+// re-runs, so a lexer edit that broke the parser stayed invisible.
+//
+// Each case is a shape the parser has to classify. The ones marked "must fail" are the
+// defects the C31 rewrite was written for: the OLD text scan split on the literal
+// "handle " and saw none of them, exiting 0 on all four.
+const SELF_TEST_CASES = [
+  // --- structurally sound: must report NO errors ---
+  ['minimal site block', ':80 {\n  encode gzip\n}\n', 0],
+  // A brace inside a QUOTED string is not a brace. The lexer must not count it.
+  ['brace inside a quoted string', ':80 {\n  respond "{" 200\n}\n', 0],
+  // A brace inside a COMMENT is not a brace either -- the header comment in the real
+  // Caddyfile contains one, which is what the old text scan tripped over.
+  ['brace inside a comment', ':80 {\n  # a comment with { in it\n  encode gzip\n}\n', 0],
+  // Matchers and the "*" head are not directives and must not be graded as unknown.
+  ['a matcher head is not a directive', ':80 {\n  @api path /api/*\n  reverse_proxy @api localhost:8080\n}\n', 0],
+  // A brace inside a QUOTED string is data, not structure. Before the fix,
+  // `respond "}" 200` reported "unmatched '}'" and failed a Caddyfile caddy accepts.
+  //
+  // HOW THESE CASES RELATE TO THE THREE GUARDS -- read this before "improving" them.
+  // The fix is three guards: the top-of-loop brace branch, the statement-run while
+  // condition, and the opensBlock test. They are JOINTLY load-bearing and SINGLY
+  // redundant: reverting any ONE of them still accepts this case, because the other
+  // two reject the quoted brace independently. Only reverting all three restores the
+  // old behaviour and reddens it, which was measured. So a mutation test that reverts
+  // one guard says "case survives" and is CORRECT to -- it is not a weak case, it is a
+  // redundant fix. What these cases pin is the BEHAVIOUR (a quoted brace is not
+  // structure), not the shape of the code that implements it.
+  ['a quoted closing brace is data', ':80 {\n  respond "}" 200\n}\n', 0],
+  ['a quoted opening brace is data', ':80 {\n  respond "{" 200\n}\n', 0],
+  ['a quoted brace does not hide a real unclosed block', ':80 {\n  respond "}" 200\n', 1],
+  // --- structurally broken: must report at least one error ---
+  ['unclosed block', ':80 {\n  encode gzip\n', 1],
+  ['unmatched closing brace', '}\n', 1],
+  ['unknown depth-1 directive', ':80 {\n  totally_not_a_directive\n}\n', 1],
+  ['top-level statement without a block', 'encode gzip\n', 1],
+  ['import that resolves to nothing', ':80 {\n  import nowhere_theres_no_file\n}\n', 1],
+  ['snippet declared without a block', '(snip)\n', 1],
+];
+
+function selfTest() {
+  const failures = [];
+  for (const [name, src, wantMin] of SELF_TEST_CASES) {
+    let got;
+    try {
+      got = validateCaddyfile(src).length;
+    } catch (err) {
+      failures.push('  ' + name + ': validateCaddyfile THREW (' + err.message + ') - it must never throw');
+      continue;
+    }
+    const ok = wantMin === 0 ? got === 0 : got >= wantMin;
+    if (!ok) {
+      const want = wantMin === 0 ? 'no errors' : 'at least ' + wantMin + ' error';
+      failures.push('  ' + name + ': expected ' + want + ', validator reported ' + got);
+    }
+  }
+  if (failures.length > 0) {
+    console.error('SELF-TEST WRONG:');
+    for (const line of failures) console.error(line);
+    return 2;
+  }
+  console.log('SELF-TEST OK (' + SELF_TEST_CASES.length + ' cases, no file read)');
+  return 0;
+}
+
+if (process.argv.includes('--self-test')) {
+  process.exit(selfTest());
+}
+
+// Grade the validator before grading the tree: a lexer or parser edit that made
+// validateCaddyfile report nothing would make the syntax gate pass over any file at all.
+{
+  const rc = selfTest();
+  if (rc !== 0) {
+    console.error('VALIDATOR WENT DEAF: not trusting the Caddyfile check below.');
+    process.exit(rc);
+  }
 }
 
 const syntaxErrors = validateCaddyfile(caddy);

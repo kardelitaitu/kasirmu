@@ -72,3 +72,5 @@ that a green run under the wrong conditions endorsed.
 
 Seeds 7 and 99 pass; 2 and 13 fail. Twelve cases in this file render `PosScreen` and share
 this one slot, so the exposure is broad and the fix belongs in the mock, not in a case.
+
+> last audited 14-10-26 by docs-auditor

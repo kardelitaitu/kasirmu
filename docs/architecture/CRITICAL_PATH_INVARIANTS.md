@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-10-19 · docs-auditor · status: ACCURATE AFTER REPAIR (3 findings) · Re-audit of a page that declares, in its own text, that nothing checks its citations — which makes it a high-yield target rather than a low-priority one. The 2026-10-11 and 2026-09-29 stamps are kept verbatim below as original evidence. · FIXED 1: the page called `adjust_stock_at_location_with_reason` the only live writer and asserted 63 call sites with none using a deprecated sibling. 51 call sites re-derive, and the deprecated `Store::adjust_stock` does still run: production callers remain at `platform/sync/src/queue.rs:587` (the sync-replay stock arm) and `crates/kasirmu-api/src/routes/products.rs:464`, plus `crates/kasirmu-cli/src/commands/catalog.rs:127`. The zero-production-callers framing in the Rust-guard row was false in the direction that matters — it told a reader the deprecated path was unreachable when it is the one that runs during sync replay. Both places now read canonical path, not unreachable, and name the callers. · FIXED 2: the scope note pointed at a line range in `platform/sync/src/queue.rs` for the refund-bound rationale; that code is now at `platform/sync/src/queue/appliers.rs:546-551`, in the `apply_refund_with_sale_in_tx` docstring. · FIXED 3: the closing count said 371 lines mentioning invariant; it re-derives as 367 in `.rs` files, and the line now names the command rather than repeating a figure that has now rotted once. · NOT RE-MEASURED: the invariant arguments themselves — each of the four boxes still states WHY the bound holds, and this pass checked their citations and caller claims, not their proofs. · Footer re-dated. -->
 <!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 2 minor) · Re-audit of the file that PREDICTS ITS OWN DRIFT — and the prediction came true a second time. The 2026-10-07 pass verified "all 11 cited line numbers still land exactly on their fn"; at HEAD SIX of those 11 have moved (inventory_tests.rs 311->307, products_tests.rs 2628->2695, sales_tests.rs 260->292 and 271->303, refunds_tests.rs 122->140, 210->228, 417->435), plus two SOURCE anchors (foundation/src/inventory.rs 359->380 for allow_negative_stock; products_stock_query.rs 460->470 for the guard message), and one cited test does not exist under the name given — lamport_tests.rs has no "commutativity" test; the two real order-independence properties are now named. ALL 17 NAMED TESTS STILL EXIST, so the invariant set is unchanged and the enforcement claim holds; only coordinates and one name were stale. ALL FOUR INVARIANTS re-verified live: the two-layer negative-stock floor (Rust guard + CHECK constraint at 20260813_init.sql:171, both present), from_cart's construction of the sale total, the three refund bounds in refunds.rs (cumulative money :132, quantity :265, per-line :343 — all exact), and the sync convergence tests. The file's own "Not a gate" note is still accurate and is now the third hand pass to find drift here. · Verified and left alone: the 2026-10-07 repair to §1, the debug_assert/invariant census figures (dated), and the two "NOT stronger than it reads" caveats. NOT re-measured: whether the named tests PASS, or whether they run in CI rather than by hand. · Prior two stamps preserved below as plain text. -->
 <!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file, with a prior marker re-verified rather than replaced. It sits in the architecture directory alongside what is now a pointer to the canonical architecture document, and it is a different kind of artefact: a short list of invariants the system must never violate, each naming the test that enforces it. · THE CLAIM IN ITS HEADER IS THE ONE WORTH CHECKING, because it is unusually specific for a self-assessment. It states that every enforcement link names a test that was located, and in most cases actually run, and that every figure is measured — easy to claim, hard to honour. It holds: all six test files named across the four invariants resolve in the tree. A list of invariants naming tests that do not exist is worse than no list, because it converts an aspiration into an apparent guarantee, and this one has avoided that. · WHY FOUR AND NOT A DOCTRINE, which is the design decision that makes the document useful. A critical-path list exists because not every property deserves equal attention, and a document enumerating all of them would be neither shorter nor more trusted. Four, each with a named enforcer, is a list someone can read in a minute and act on. It is the same instinct as the scoped-coverage gate and the boundary checker: prefer a small set of mechanically enforced properties over a large set of aspirational ones. · A NOTE ON THE FRAMING, since it is what a reader skims past. Calling these CRITICAL PATH rather than requirements is a statement about consequence rather than importance — the violations that would make the product wrong in a way that matters, as distinct from those that would merely make it untidy. All four are reachable from this campaign's own history: a money value that must never be a float, an operation that must not be recorded twice, a connection that must not be silently trusted, and a store that must not be deleted out from under a record. A reader who has met the money-closure spec, the idempotency migration and the settings-ingest policy will recognise all four. · NOT re-measured: whether the named tests currently pass, or whether they run in continuous integration rather than only by hand. Running them is the original work, and this stamp deliberately does not claim the invariants currently hold — only that each has an identifiable enforcer. · Prior marker retained; footer re-dated to match the new stamp. -->
 # Critical-path invariants
@@ -22,32 +23,53 @@ without saying so below.
 
 **The invariant is conditional, and stating it unconditionally would be false.**
 `WorkspaceInventoryLocation.allow_negative_stock`
-(`foundation/src/inventory.rs:380`) is a per-location policy flag, and the stock
-write is a raw `UPDATE inventory SET qty = qty + ?1`. A location that opts in may
-oversell; a location that does not must be refused.
+(`foundation/src/inventory.rs:380`) is a per-location policy flag. A location that
+opts in may oversell; a location that does not must be refused.
 
-> **Repaired 2026-10-07.** This paragraph cited `modules/inventory/src/models.rs:368`
-> for the policy flag and `Repository::adjust_stock_tx` (`modules/inventory/src/repository.rs:130`)
+> **Repaired 2026-10-07.** This paragraph cited `modules/inventory/src/models.rs:368` <!-- dead-ref: ok: deliberately quotes the STALE coordinate this Repaired-note records; repairing it would erase the evidence (verified 2026-10-19) -->
+> for the policy flag and `Repository::adjust_stock_tx` (`modules/inventory/src/repository.rs:130`) <!-- dead-ref: ok: deliberately quotes the STALE coordinate this note records; repairing it would erase the evidence (verified 2026-10-19) -->
 > for the raw UPDATE. Both were stale: the flag now lives in `foundation` (the inventory
 > model was extracted there), and `adjust_stock_tx` **no longer exists** — `get_stock` and
 > `adjust_stock_tx` were REMOVED on 2026-09-29 (`modules/inventory/src/repository.rs:147`)
 > because they read `inventory.sku` / `low_stock_threshold`, columns the migrations do not
-> carry, and had no caller. The raw `UPDATE` shape they described is still the live write
-> path, so the invariant itself is unchanged; only the anchors were. See the "Not a gate"
-> note at the foot of this file for why this drifted unnoticed.
+> carry, and had no caller. The invariant itself is unchanged; only the anchors were.
+> See the "Not a gate" note at the foot of this file for why this drifted unnoticed.
+>
+> **Repaired 2026-10-19 (second pass, two claims found false).**
+> 1. The write path is no longer "a raw `UPDATE inventory SET qty = qty + ?1`".
+>    `adjust_stock_at_location_with_reason`
+>    (`crates/kasirmu-core/src/db/products_stock_adjust/adjust.rs:190`) is the canonical
+>    writer — 51 call sites (19 in production files across 9 files) and the only one a
+>    new caller should use; it performs an
+>    `INSERT … ON CONFLICT DO UPDATE` on **`stock_summary`** as the canonical row
+>    (`adjust.rs:282-289`), then a recomputed-SUM upsert on the legacy `inventory`
+>    table (`adjust.rs:314-323`), which ADR-18 §2a keeps as a deferred
+>    composite-PK rebuild. A raw `qty = qty + ?1` string has zero hits in
+>    production Rust.
+> 2. The Database layer below was described as an unconditional `CHECK (qty >= 0)`
+>    on `inventory`. That constraint **does exist** in the schema
+>    (`20260813_init.sql:171`), but it is deliberately **not a backstop**: when
+>    `allow_negative` is set, the writer catches that `ConstraintViolation` and
+>    downgrades it to a `tracing::warn!` (`adjust.rs:302-336`), so it cannot refuse
+>    the opt-in path. Its own docstring states plainly that
+>    "no `CHECK (qty >= 0)` exists" on `stock_summary` (`adjust.rs:173-187`).
+>    The real Layer 2 is a **conditional trigger pair** on `stock_summary`.
+>    Describing the floor as defended unconditionally was a false assurance.
 
-Where it is enforced — **two independent layers**, which is worth knowing:
+Where it is enforced — **two independent layers**, and the second is
+**conditional on the location binding**, which is the same conditionality as the
+invariant itself:
 
 | Layer | Where | What it does |
 |---|---|---|
-| Rust guard | `crates/kasirmu-core/src/db/products_stock_query.rs:470` | `.filter(\|&v\| v >= 0)` on the new quantity; rejects with `"adjustment would cause negative stock (previous: N, delta: M)"` |
-| Rust guard (batch) | `crates/kasirmu-core/src/db/products_stock_adjust/batch.rs:156` | same, for a batch whose ANY member would go negative |
-| **Database** | CHECK constraint `qty >= 0` on `inventory` (`crates/kasirmu-core/migrations/20260813_init.sql:171`) | refuses the write even if the Rust guard is removed |
+| Rust guard | `crates/kasirmu-core/src/db/products_stock_adjust/adjust.rs:249` | `.filter(\|&v\| v >= 0)` on the new quantity inside `adjust_stock_at_location_with_reason`; rejects with `CoreError::InsufficientStockAtLocation`. **The two rows that used to sit here — `products_stock_query.rs:470` and `products_stock_adjust/batch.rs:156` — are inside `#[deprecated]` functions** (`products_stock_query.rs:435`, `batch.rs:132`), so they are no longer the guard. Corrected 2026-10-19: they do still run, because two production callers of the deprecated `Store::adjust_stock` remain — `platform/sync/src/queue.rs:587` (the sync-replay stock arm) and `crates/kasirmu-api/src/routes/products.rs:464` (plus `crates/kasirmu-cli/src/commands/catalog.rs:127`) — so read the floor as "guarded on the canonical path", not "unreachable" |
+| **Database (conditional)** | trigger pair `stock_summary_qty_nonnegative_{insert,update}` (`crates/kasirmu-core/migrations/20261012_stock_summary_qty_nonnegative.sql`) | rejects the `stock_summary` upsert — but **only when that location's binding has NOT opted into `allow_negative_stock`**, so it never fights the opt-in path. `rusqlite::ErrorCode::ConstraintViolation` (primary code 19) is mapped to the same error variant, which also covers a CHECK's 787 (`adjust.rs:290-299`) |
 
-**Measured, not assumed:** relaxing the Rust guard to `v >= i64::MIN` still
-fails, with `CHECK constraint failed: qty >= 0` — the floor is defended at both
-layers. That was found while writing the adversarial tests below, and no
-single-layer test would have shown it.
+**Measured, not assumed:** relaxing the Rust guard to `v >= i64::MIN` still fails,
+on the conditional trigger, for a location that has not opted in. That was found
+while writing the adversarial tests below, and no single-layer test would have
+shown it. The claim that this survives for an **opted-in** location is false by
+construction — that path is meant to succeed.
 
 **Enforced by:**
 - `foundation/src/inventory_tests.rs:307` — `inventory_new_rejects_negative_qty`
@@ -103,7 +125,8 @@ admitting an unbounded one.
 - `platform/sync/tests/adversarial_paths.rs` — `two_locations_cannot_refund_more_than_was_sold`
 
 **Scope note.** `platform/sync` deliberately does NOT re-derive these bounds when
-replaying a refund (`platform/sync/src/queue.rs:475-479`): a partially-replicated
+replaying a refund (`platform/sync/src/queue/appliers.rs:546-551`, the
+`apply_refund_with_sale_in_tx` docstring): a partially-replicated
 history would reject legitimate items. The bound is the originator's, and the
 converged pair must not compound it — which is what the adversarial test asserts.
 
@@ -131,9 +154,13 @@ items are never delivered back to it, since they are already local.
 
 ## What this document is not
 
-- **Not a full invariant inventory.** Measured 2026-09-28: **12 `debug_assert!`
-  sites** across the tree (the P3-1 box said 79 — that figure was stale) and 290
-  lines mentioning "invariant", most of them prose in audit stamps. This list is
+- **Not a full invariant inventory.** Measured 2026-10-19: **14 `debug_assert!`
+  sites** across the tree (the 2026-09-28 reading was 12; the P3-1 box before that
+  said 79 — that figure was stale) and 367
+  lines mentioning "invariant" in `.rs` files, most of them prose in audit stamps.
+  (This figure was 371 when first written and no longer re-derives; re-derive either
+  with `grep -rn debug_assert --include=*.rs . | wc -l` and
+  `grep -rn invariant --include=*.rs . | wc -l`.) This list is
   the four the box named, not every assertion in the codebase.
 - **Not a gate.** Nothing checks that these tests still exist. If one is renamed,
   this file goes stale silently — the failure mode P3-1's own sibling (P3-3)
@@ -143,7 +170,7 @@ items are never delivered back to it, since they are already local.
   > **Confirmed the hard way, 2026-10-07.** A manual pass checked every claim:
   > all **17** named tests still exist and all **11** cited line numbers still land
   > exactly on their `fn`, so §2–§4 are intact. §1 was NOT: it cited
-  > `modules/inventory/src/models.rs:368` and `Repository::adjust_stock_tx`
+  > `modules/inventory/src/models.rs:368` and `Repository::adjust_stock_tx` <!-- dead-ref: ok: deliberately quotes the STALE coordinate this note records; repairing it would erase the evidence (verified 2026-10-19) -->
   > (`repository.rs:130`), and both were stale — the flag moved to `foundation`, and
   > `adjust_stock_tx` was deleted on 2026-09-29. Repaired above. **This is exactly the
   > drift this note predicts**, and it took a hand pass to find: the failing citation
@@ -162,4 +189,4 @@ items are never delivered back to it, since they are already local.
   > numbers and that one test name were stale, so the invariant set is unchanged. Still no checker
   > parses these pairs; this is the third hand pass to find drift in this file.
 
-> last audited 11-10-26 by docs-auditor
+> last audited 19-10-26 by docs-auditor

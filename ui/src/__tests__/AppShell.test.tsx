@@ -17,7 +17,12 @@ import staffFtl from '@/locales/staff.ftl?raw';
 // ── Mock sub-screens ─────────────────────────────────────────────
 
 vi.mock('@/features/kds/KdsScreen', () => ({
-  default: () => <div data-testid="kds-screen">Kitchen Display System</div>,
+  default: ({ onBack }: { onBack?: () => void } = {}) => (
+    <div data-testid="kds-screen">
+      Kitchen Display System
+      {onBack && <button onClick={onBack}>Back</button>}
+    </div>
+  ),
 }));
 
 vi.mock('@/features/auth/RevokedScreen', () => ({

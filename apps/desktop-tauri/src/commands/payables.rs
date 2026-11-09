@@ -1,5 +1,5 @@
 //! Tauri commands for Accounts Payable (Hutang / Beli Tempo — Phase 4 AP of
-//! `docs/plans/payment-methods-plan.md`).
+//! `docs/plans/_done/done-payment-methods-plan.md`).
 //!
 //! Desktop-only authoring surface, following the memo / legal-entity
 //! "desktop-first authoring IPC" precedent: raising a vendor debt, settling
@@ -107,6 +107,19 @@ pub async fn write_off_payable_scoped(
 ) -> Result<PayableDto, AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::payables::write_off_payable_scoped(&ctx, &payable_id, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// Generate the accounts payable aging report. Requires `payables:view`.
+#[tauri::command]
+pub async fn get_ap_aging_report_scoped(
+    as_of_date: Option<String>,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<kasirmu_core::payable::PayableAgingReport, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::payables::get_ap_aging_report_scoped(&ctx, as_of_date, &session_token)
         .await
         .map_err(Into::into)
 }

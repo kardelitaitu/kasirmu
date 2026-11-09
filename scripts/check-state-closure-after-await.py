@@ -47,10 +47,13 @@ Exit codes: 0 report/clean, 1 --strict and candidates found, 2 self-test failure
 """
 
 import argparse
+import contextlib
+import io
 import json
 import os
 import re
 import sys
+import tempfile
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 SCAN_ROOT = os.path.join(ROOT, 'ui', 'src')
@@ -71,8 +74,6 @@ SKIP_DIRS = {'node_modules', 'dist', '__tests__', '__mocks__'}
 SETTER_ARRAY_RE = re.compile(r'\bset([A-Z]\w*)\(\s*([a-z]\w*)\.(map|filter|concat)\(')
 SETTER_ANY_RE = re.compile(r'\bset([A-Z]\w*)\(\s*([a-z]\w*)\s*\)')
 ARRAY_METHOD_RE = re.compile(r'\b([a-z]\w*)\.(map|filter|concat)\(')
-# `const [foo, bar] = useState(` / `const foo = useState(`
-USE_STATE_RE = re.compile(r'\bconst\s+(?:\[\s*)?(\w+)|\bconst\s+(\w+)\s*=\s*useState')
 
 
 def _state_bound_names(text):
@@ -132,7 +133,7 @@ def _enclosing_start(lines, index):
     """The first line of the function or arrow body enclosing `index`, best effort."""
     # Walk BACKWARD for the nearest line that dedents past this one AND opens a body.
     # The window form of this (look back N lines for an `await`) was tried first and
-    # produced a FALSE POSITIVE on StockTransfersScreen.tsx:250 -- `removeLineEntry`
+    # produced a FALSE POSITIVE on StockTransfersScreen.tsx:366 -- `removeLineEntry`
     # has no await of its own, but the handler 20 lines above it does, and the window
     # reached it. Scoping to the enclosing body is what makes the report trustworthy.
     indent = len(lines[index]) - len(lines[index].lstrip())
@@ -164,7 +165,9 @@ def _enclosing_has_await(lines, index):
     return False
 
 
-def scan_file(path):
+def scan_file(path, root=ROOT):
+    # r216: root names the tree the printed file path is relative to, so a
+    # fixture verdict names fixture files and never this checkout's.
     with open(path, encoding='utf-8', errors='replace') as handle:
         text = handle.read()
     lines = text.splitlines()
@@ -221,7 +224,7 @@ def scan_file(path):
             if not _enclosing_has_await(lines, i):
                 continue
             found.append({
-                'file': os.path.relpath(path, ROOT).replace(os.sep, '/'),
+                'file': os.path.relpath(path, root).replace(os.sep, '/'),
                 'line': i + 1,
                 'setter': 'set' + setter,
                 'variable': var,
@@ -241,11 +244,35 @@ def iter_sources(root):
             yield os.path.join(dirpath, name)
 
 
-def run_scan():
+def run_scan(root=SCAN_ROOT):
+    """(findings, files read) under the contract root.
+
+    The file count is returned because the two halves of this script's verdict are
+    separate facts: "no candidate" and "no file" print the same sentence, and until
+    2026-11-06 they did -- a copy of this script outside the checkout found no ui/src,
+    walked nothing, and reported 0 candidates over the tree. The live corpus is 730
+    files, so a floor of one costs nothing. Measured 2026-11-06. r216: root is the
+    r166 contract parameter -- the walk base and the rel-path base move together.
+    """
     findings = []
-    for path in iter_sources(SCAN_ROOT):
-        findings.extend(scan_file(path))
-    return findings
+    scanned = 0
+    for path in iter_sources(root):
+        scanned += 1
+        findings.extend(scan_file(path, root))
+    return findings, scanned
+
+
+def verdict(scanned, findings, strict):
+    """Exit code: 2 read nothing, 1 a candidate under --strict, 0 otherwise.
+
+    The report step in scripts/check.sh is wired WITHOUT --strict on purpose -- every hit
+    here is a CANDIDATE that needs a human to confirm the variable is the stale closure --
+    so a candidate does not fail the build. The CORPUS does: a sweep that read nothing has
+    not earned the sentence "0 candidates in ui/src".
+    """
+    if scanned == 0:
+        return 2
+    return 1 if (strict and findings) else 0
 
 
 def self_test():
@@ -301,29 +328,153 @@ async function go() {
             print('  FAIL %-28s expected %d, got %d' % (label, expected, got))
         else:
             print('  ok   %-28s (%d)' % (label, got))
+    # The VERDICT half, which the cases above do not touch: they grade the matcher on one
+    # source text at a time, so a tree of zero files was never in their reach.
+    for scanned, hits, strict, want in ((0, 0, False, 2), (0, 4, True, 2),
+                                        (730, 0, False, 0), (730, 0, True, 0),
+                                        (730, 2, False, 0), (730, 2, True, 1)):
+        got = verdict(scanned, hits, strict)
+        if got != want:
+            failures += 1
+            print('  FAIL verdict(%d file(s), %d hit(s), strict=%s) expected %d, got %d'
+                  % (scanned, hits, strict, want, got))
     if failures:
         print('self-test: %d failure(s)' % failures)
         return 2
-    print('self-test: all %d cases pass' % len(cases))
+    print('self-test: all %d detector cases + 6 verdict cases pass' % len(cases))
+    return shell_ladder()
+
+
+
+def shell_ladder() -> int:
+    """r216: the root contract, graded on fixtures through main(argv, root).
+
+    Every rung builds a tempdir tree and names it by the root parameter. Rung 1 is
+    the killing rung: the defect file exists only in the fixture, so a root-dropping
+    main scans THIS checkout instead -- which reads clean -- and returns 0 where the
+    fixture returns 1.
+    """
+
+    DEFECT = (
+        "const [lines, setLines] = useState([]);",
+        "export async function go() {",
+        "  await send();",
+        "  const updatedLines = lines.map((l) => ({ ...l }));",
+        "  setLines(updatedLines);",
+        "}",
+    )
+    CORRECT = (
+        "const [drafts, setDrafts] = useState([]);",
+        "export async function go() {",
+        "  const rows = await get();",
+        "  setDrafts(rows.map((r) => ({ ...r })));",
+        "}",
+    )
+
+    def run(root, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    rung_n = iter(range(1000))
+
+    def build(tmp, *, defect=True):
+        base = tempfile.mkdtemp(dir=tmp, prefix=("mini%d_" % next(rung_n)))
+        dest = os.path.join(base, "app")
+        os.makedirs(dest, exist_ok=True)
+        (os.path.join(dest, "PosScreen.tsx"),
+         DEFECT if defect else CORRECT)
+        with open(os.path.join(dest, "PosScreen.tsx"), "w", encoding="utf-8",
+                  newline="\n") as fh:
+            fh.write("\n".join(DEFECT if defect else CORRECT) + "\n")
+        return base
+
+    shell = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: --strict on a fixture carrying the exact
+        # round-201 split form must fail rc 1, naming the fixture-relative file
+        root = build(tmp)
+        rc, said = run(root, "--strict")
+        if rc != 1 or "1 candidate(s)" not in said \
+                or "app/PosScreen.tsx" not in said:
+            print("  x rung 1: the split-form defect under --strict must fail rc 1 "
+                  "named fixture-relative (rc=%r said=%r)" % (rc, said[-190:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: the awaited-value shape is the CORRECT pattern and stays silent
+        root = build(tmp, defect=False)
+        rc, said = run(root, "--strict")
+        if rc != 0 or "0 candidates" not in said:
+            print("  x rung 2: a fresh-awaited value must read 0 candidates rc 0 "
+                  "(rc=%r said=%r)" % (rc, said[-190:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: --json --strict carries the finding machine-readably through
+        # the root. MEASURED SURPRISE, pinned: --json ALONE exits 0 even on a
+        # finding (the json branch prints and falls through to verdict(), which
+        # without --strict returns 0) -- unlike verify-settled-read-copies.py,
+        # whose json branch returns 1 on findings itself. Here severity is the
+        # --strict flag's job, so the rung passes both.
+        root = build(tmp)
+        rc, said = run(root, "--json", "--strict")
+        payload = json.loads(said) if said.strip() else None
+        if rc != 1 or not payload or payload[0]["setter"] != "setLines" \
+                or payload[0]["variable"] != "lines" \
+                or payload[0]["file"] != "app/PosScreen.tsx":
+            print("  x rung 3: --json --strict must carry the candidate through "
+                  "the root (rc=%r said=%r)" % (rc, said[-190:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: the DEFAULT run reports and exits 0 even on a finding -- a
+        # candidate is a candidate, not a gate failure, and that contract rides
+        # the root parameter too
+        root = build(tmp)
+        rc, said = run(root)
+        if rc != 0 or "1 candidate(s)" not in said \
+                or "CANDIDATE, not a defect" not in said:
+            print("  x rung 4: the default run must report the candidate and exit 0 "
+                  "(rc=%r said=%r)" % (rc, said[-190:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("STATE-CLOSURE SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
     return 0
 
 
-def main():
+def main(argv=None, root=None):
+    # r216: the r166 contract. argv is explicit so a caller can pass a fixture's
+    # flags without sys.argv leaking in; root names the tree to scan, and it moves
+    # the walk base AND the printed file paths together -- a root-dropping main
+    # scans this checkout no matter what fixture the caller built.
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--strict', action='store_true', help='exit 1 on any candidate')
     parser.add_argument('--json', action='store_true', help='machine-readable output')
     parser.add_argument('--self-test', action='store_true', help="assert the matcher's shapes")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.self_test:
         return self_test()
 
-    findings = run_scan()
+    scan_root = SCAN_ROOT if root is None else os.path.abspath(root)
+    findings, scanned = run_scan(scan_root)
+    if scanned == 0:
+        sys.stderr.write(
+            'error: read no .ts/.tsx file under %s, so this run graded nothing and its '
+            'verdict would be about an empty corpus rather than about the screens. The '
+            'live tree reads 730.\n' % scan_root)
+        return 2
     if args.json:
         print(json.dumps(findings, indent=2))
     else:
         if not findings:
-            print('state-closure-after-await: 0 candidates in ui/src')
+            print('state-closure-after-await: 0 candidates in ui/src (%d file(s) read)'
+                  % scanned)
         else:
             print('state-closure-after-await: %d candidate(s) -- a setter replacing state'
                   ' from a variable bound by useState, after an await.' % len(findings))
@@ -334,7 +485,7 @@ def main():
                 print('  %s:%d  %s(%s.%s(' % (f['file'], f['line'], f['setter'],
                                               f['variable'],'map'))
                 print('      %s' % f['text'])
-    return 1 if (args.strict and findings) else 0
+    return verdict(scanned, findings, args.strict)
 
 
 if __name__ == '__main__':

@@ -77,7 +77,8 @@ export function useWarehouseScanner({
     return () => {
       cancelled = true;
       if (startedRef.current) {
-        // Silent by intent, same as sales/useBarcodeScanner.ts:73 — this is
+        // Silent by intent, same as the `stopScannerScoped(…).catch(() => {})` in
+        // sales/useBarcodeScanner.ts — this is
         // cleanup on unmount and the scanner may already be stopped. The sales
         // twin also guards on `&& sessionToken`; this copy does not, so on a
         // session loss it issues the stop with a dead token, the call rejects,
@@ -120,12 +121,13 @@ export function useWarehouseScanner({
     } catch {
       onProductNotFoundRef.current?.(payload.code);
     }
-    // sessionToken is read in the body (:77) to choose the scoped lookup, so it has to be a
+    // sessionToken is read in the body to choose the scoped lookup, so it has to be a
     // dependency. The callbacks are all behind refs precisely so this array can stay small and
     // stable -- but a plain prop is not a ref, and with [] here the closure kept the token from
     // the first render forever. A screen mounted before login, or kept alive across a store
-    // switch, scanned against the previous session. Adding it re-runs the subscription effect
-    // at :93, which is what that effect's [handleScan, handleError] deps were already for.
+    // switch, scanned against the previous session. Adding it re-runs the subscription
+    // effect below, which is what that effect’s [handleScan, handleError] deps were
+    // already for.
   }, [sessionToken, cooldownMs]);
 
   const handleError = useCallback((error: string) => {

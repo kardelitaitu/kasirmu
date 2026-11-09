@@ -488,6 +488,55 @@ describe('LocationPicker', () => {
     }, { timeout: 5000 });
   });
 
+  // Enter in the search field must commit the option the operator just filtered
+  // down to. The document-level keydown handler already computed
+  // `isSearchFocused` and used it to protect Space (:247) but never applied it
+  // to Enter, and typing resets `activeIndex` to 0 (:393) while the SELECTION
+  // still points at the old location — so Enter ran handleSelect on the row at
+  // index 0, which for a one-row result set is the row itself, but for the
+  // unfiltered list is the alphabetically first match, not what was typed.
+  it('commits the searched location when Enter is pressed in the search field', async () => {
+    const user = userEvent.setup();
+    const manyLocations = Array.from({ length: 10 }, (_, i) => ({
+      id: `loc-${i + 1}`,
+      name: `Shelf ${i + 1}`,
+      type: 'warehouse' as const,
+      description: '',
+      is_active: true,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    }));
+    mockListLocations.mockResolvedValue(manyLocations);
+    const onChange = vi.fn();
+    await renderWithProviders(
+      <LocationPicker value="loc-1" onChange={onChange} />,
+      inventoryFtl,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Shelf 1')).toBeInTheDocument();
+    }, { timeout: 5000 });
+
+    await user.click(screen.getByRole('button', { name: /select inventory location/i }));
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+    }, { timeout: 5000 });
+
+    const search = screen.getByRole('searchbox');
+    await user.type(search, 'Shelf 7');
+    await waitFor(() => {
+      expect(within(screen.getByRole('listbox')).getAllByRole('option')).toHaveLength(1);
+    }, { timeout: 5000 });
+
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalledWith('loc-7', 'Shelf 7');
+    });
+    // And the dropdown closes, the way choosing a row does.
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
   it('shows a no-results state when the search matches nothing', async () => {
     const user = userEvent.setup();
     const manyLocations = Array.from({ length: 9 }, (_, i) => ({

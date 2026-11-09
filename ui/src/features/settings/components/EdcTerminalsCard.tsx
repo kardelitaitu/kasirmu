@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
@@ -53,10 +53,13 @@ export function EdcTerminalsCard({
   const [isActive, setIsActive] = useState(true);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  /** Synchronous mirrors of the busy flags — see the re-entry guards in this file. */
+  const submittingRef = useRef(false);
 
   // Delete confirmation
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const deletingRef = useRef(false);
 
   const fetchTerminals = useCallback(async () => {
     if (!sessionToken) return;
@@ -64,7 +67,7 @@ export function EdcTerminalsCard({
     try {
       const list = await listEdcTerminalsScoped(sessionToken);
       // Defend the state at the boundary: the render path reads
-      // `terminals.length` and `terminals.map` unguarded (:248-:258), so a
+      // `terminals.length` and `terminals.map` unguarded in the render below, so a
       // backend that answers with a null/undefined body — or a caller whose
       // session predates the field — would crash the whole screen on
       // "Cannot read properties of undefined". Normalising once here keeps that
@@ -148,6 +151,18 @@ export function EdcTerminalsCard({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // RE-ENTRY GUARD. The Save button is `disabled={submitting}`, but this
+    // handler is also the form's `onSubmit` — pressing Enter in the Terminal Name
+    // field submits it directly and never consults the button. Without this, two submits
+    // ran `createEdcTerminalScoped` twice and configured TWO terminals for one register.
+    // Same shape as the table screens' Save and Reserve forms (rounds 60-61).
+    // The flag alone does NOT refuse the second submit: React commits `submitting` on the
+    // next render, so two Enters inside one tick both read false. The ref is synchronous,
+    // and this write has no unique index behind it -- create_edc_terminal is a plain
+    // INSERT with a freshly minted UUID (db/edc_terminals.rs:189-206) -- so a replay
+    // configures TWO card terminals on one register.
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     if (!sessionToken) {
       // Reported through the form's own error slot, which is where every other
       // refusal in this handler goes. Silently returning from a Submit left the
@@ -206,12 +221,18 @@ export function EdcTerminalsCard({
     } catch (err) {
       setFormError(plainErrorMessage(err));
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
 
   const handleDelete = async () => {
     if (!sessionToken || !deleteConfirmId) return;
+    // Same re-entry shape as the submit: a delete is a same-row DELETE, so a replay cannot
+    // remove anything twice, but the second one reports its NotFound over a delete that
+    // landed, and `deleteConfirmId` is cleared by the first.
+    if (deletingRef.current) return;
+    deletingRef.current = true;
     setDeleting(true);
     try {
       await deleteEdcTerminalScoped(sessionToken, deleteConfirmId);
@@ -227,6 +248,7 @@ export function EdcTerminalsCard({
         type: 'error',
       });
     } finally {
+      deletingRef.current = false;
       setDeleting(false);
     }
   };
@@ -265,7 +287,7 @@ export function EdcTerminalsCard({
       </div>
 
       {loading && terminals.length === 0 ? (
-        <div className="edc-terminals-empty">Loading…</div>
+        <div className="edc-terminals-empty">{l10n.getString('settings-edc-loading')}</div>
       ) : terminals.length === 0 ? (
         <div className="edc-terminals-empty">
           <Localized id="settings-edc-empty">
@@ -298,7 +320,7 @@ export function EdcTerminalsCard({
                     </span>
                     {isDefault && (
                       <span className="edc-badge edc-badge--default">
-                        Register Default
+                        {l10n.getString('settings-edc-default-badge')}
                       </span>
                     )}
                   </div>
@@ -341,7 +363,7 @@ export function EdcTerminalsCard({
                         size="sm"
                         onClick={() => onSelectDefaultTerminal(t.id)}
                       >
-                        Set as Default
+                        {l10n.getString('settings-edc-set-default')}
                       </Button>
                     )}
                     <Button
@@ -365,16 +387,16 @@ export function EdcTerminalsCard({
 
                 <div className="edc-terminal-details">
                   <span>
-                    <strong>Address:</strong> {t.address}
+                    <strong>{l10n.getString('settings-edc-detail-address')}</strong> {t.address}
                   </span>
                   {t.vendor && (
                     <span>
-                      <strong>Vendor:</strong> {t.vendor}
+                      <strong>{l10n.getString('settings-edc-detail-vendor')}</strong> {t.vendor}
                     </span>
                   )}
                   {t.model && (
                     <span>
-                      <strong>Model:</strong> {t.model}
+                      <strong>{l10n.getString('settings-edc-detail-model')}</strong> {t.model}
                     </span>
                   )}
                 </div>
@@ -510,7 +532,7 @@ export function EdcTerminalsCard({
               <Localized id="settings-edc-field-active">Active for Payment</Localized>
             </label>
             <span className="settings-toggle">
-              <span className="sr-only">Toggle</span>
+              <span className="sr-only">{l10n.getString('settings-edc-toggle')}</span>
               <span className="settings-toggle-switch">
                 <input
                   id="edc-active"
@@ -531,10 +553,10 @@ export function EdcTerminalsCard({
               variant="secondary"
               onClick={() => setModalOpen(false)}
             >
-              Cancel
+              {l10n.getString('cancel')}
             </Button>
             <Button type="submit" variant="primary" disabled={submitting}>
-              {submitting ? 'Saving…' : 'Save Terminal'}
+              {submitting ? l10n.getString('settings-edc-saving') : l10n.getString('settings-edc-save')}
             </Button>
           </div>
         </form>

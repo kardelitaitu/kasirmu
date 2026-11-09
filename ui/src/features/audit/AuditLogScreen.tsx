@@ -104,7 +104,8 @@ function AuditLogScreenContent() {
   //   Security export    -> `audit:export` (apps/mobile-tauri/src/commands/audit.rs:203-208)
   //
   // The AUDITOR preset holds `audit:view` and NOT `audit:export`, and it is not a
-  // manager (rbac_presets.rs:285-305; `isManager` covers only owner/admin/manager).
+  // manager (the STAFF/AUDITOR preset table in rbac_presets.rs is not the gate here;
+  // `isManager` covers only owner/admin/manager).
   // So `isManager &&` hid Mark Reviewed from the role whose entire purpose is reviewing
   // the log — a working action made unreachable, the shape round 48 found on the
   // pengganti button.
@@ -112,7 +113,8 @@ function AuditLogScreenContent() {
   // The two exports were right in DIRECTION (the Auditor legitimately has no export) but
   // wrong in KIND: `isManager` overlaps `audit:export` for the built-in presets, yet
   // `CUSTOM` roles are "fully flexible — Admin selects every permission manually"
-  // (rbac_presets.rs:306-310), so the two can be made to disagree either way. The
+  // (the CUSTOM preset in rbac_presets.rs grants nothing and leaves every permission to
+  // the admin), so the two can be made to disagree either way. The
   // permission is authoritative wherever the session can answer.
   const canMarkReviewed = hasPermission('audit:view', isManager);
   const canExportAudit = hasPermission('audit:export', isManager);
@@ -135,6 +137,9 @@ function AuditLogScreenContent() {
   const [unreviewedCount, setUnreviewedCount] = useState(0);
   const [markingReviewed, setMarkingReviewed] = useState(false);
   const [exporting, setExporting] = useState(false);
+  /** Synchronous mirrors of the export busy flags — see their re-entry guards above. */
+  const exportingRef = useRef(false);
+  const secExportingRef = useRef(false);
   // Dedicated export-failure notice (AUD-09): the table load error state only
   // renders when the table is empty, so an export failure with rows present
   // would otherwise be silent.
@@ -184,6 +189,17 @@ function AuditLogScreenContent() {
         }
       } catch (err) {
         if (seq !== loadSeqRef.current) return;
+        // CLEAR THE PAGE, then report. The error card and the empty state are both gated
+        // on `entries.length === 0`, so keeping the previous page made a failed reload
+        // render the OLD rows under the NEW filter with no error anywhere — a read that
+        // never answered presented as "filter applied, these N entries match". Only a
+        // reset (a new filter, a new search, a Retry) clears the list, so nothing the
+        // operator can page back to is lost.
+        if (reset) {
+          setEntries([]);
+          setTotal(0);
+          setHasMore(false);
+        }
         setError(l10nErrorMessage(err, l10n, 'audit-log-error-load'));
       } finally {
         if (seq === loadSeqRef.current) setLoading(false);
@@ -221,8 +237,27 @@ function AuditLogScreenContent() {
     void loadReviewStatus();
   }, [loadReviewStatus]);
 
+  // Re-entry guard for the review checkpoint. `markingReviewed` is STATE -- React commits it
+  // on its next render, after the second tap of a real double tap. MEASURED: two taps in one
+  // act() batch both reach the handler (AuditLogScreen.test.tsx 'writes one review checkpoint
+  // for a double tap'), and both are SENT.
+  //
+  // The backend cannot refuse it. `save_review_checkpoint` is a plain INSERT with no
+  // idempotency and no unique key (crates/kasirmu-core/src/db/audit.rs:909-944), and it also
+  // appends the `audit.review` event to the SAME append-only, hash-chained log it is
+  // attesting about. So the guard has to live here.
+  //
+  // Why a second row is worse than a duplicate: the checkpoint is an ATTESTATION that a human
+  // saw every entry at or before `reviewed_through_created_at`, and the payload is a
+  // CLIENT-DERIVED HIGH-WATER MARK -- page 1 is newest-first, so `entries[0]` is the globally
+  // newest row (:228-234). After the first submit the handler reloads the list, which puts the
+  // `audit.review` event itself at the head, so the second write asserts the reviewer looked
+  // at the record of them looking.
+  const markPendingRef = useRef(false);
   const handleMarkReviewed = useCallback(async () => {
+    if (markPendingRef.current) return;
     if (!sessionToken) return;
+    markPendingRef.current = true;
     setMarkingReviewed(true);
     try {
       // High-water mark = the newest entry the reviewer has seen (page 1 is
@@ -238,6 +273,7 @@ function AuditLogScreenContent() {
     } catch {
       await loadReviewStatus();
     } finally {
+      markPendingRef.current = false;
       setMarkingReviewed(false);
     }
   }, [sessionToken, entries, load, loadReviewStatus]);
@@ -250,6 +286,10 @@ function AuditLogScreenContent() {
 
   const handleExport = useCallback(async () => {
     if (!sessionToken || exporting) return;
+    // Re-entry guard: `exporting` above is STATE, so two taps in one tick both pass it and
+    // the audit CSV is written twice to the same download name.
+    if (exportingRef.current) return;
+    exportingRef.current = true;
     setExporting(true);
     setExportError(null);
     try {
@@ -271,6 +311,7 @@ function AuditLogScreenContent() {
       // Dedicated inline notice — always visible regardless of table state.
       setExportError(requiredLocalized(l10n, 'audit-log-export-error'));
     } finally {
+      exportingRef.current = false;
       setExporting(false);
     }
   }, [sessionToken, exporting, outcomeFilter, searchQuery, l10n]);
@@ -291,6 +332,10 @@ function AuditLogScreenContent() {
 
   const handleSecurityExport = useCallback(async () => {
     if (!sessionToken || secExporting) return;
+    // Same re-entry shape as the AUD-09 export above, on its OWN ref: the two downloads
+    // are independent and must not block each other.
+    if (secExportingRef.current) return;
+    secExportingRef.current = true;
     setSecExporting(true);
     setSecExportError(null);
     try {
@@ -312,6 +357,7 @@ function AuditLogScreenContent() {
     } catch {
       setSecExportError(requiredLocalized(l10n, 'audit-log-security-export-error'));
     } finally {
+      secExportingRef.current = false;
       setSecExporting(false);
     }
   }, [sessionToken, secExporting, secActor, secFrom, secTo, l10n]);

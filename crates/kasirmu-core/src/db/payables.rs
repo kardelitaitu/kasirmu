@@ -1,6 +1,6 @@
 //! Accounts Payable (Hutang) repository — the persistence behind the
 //! "received stock, not yet paid the supplier" ledger (Phase 4 of
-//! `docs/plans/payment-methods-plan.md`).
+//! `docs/plans/_done/done-payment-methods-plan.md`).
 //!
 //! Owns the `payables` and `payable_payments` tables. Every read/write is
 //! tenant-scoped (`WHERE tenant_id = ?`). The repository enforces DATA
@@ -21,7 +21,10 @@ use rusqlite::{OptionalExtension, params};
 
 use crate::error::CoreError;
 use crate::money::Currency;
-use crate::payable::{NewPayable, Payable, PayablePayment, PayableStatus};
+use crate::payable::{
+    NewPayable, Payable, PayableAgingBucket, PayableAgingReport, PayablePayment, PayableStatus,
+    VendorAgingRow,
+};
 use crate::{Money, Store};
 
 /// Current UTC time in the schema's canonical ISO-8601 millisecond form.
@@ -440,6 +443,79 @@ impl Store<'_> {
             paid_at: row.get("paid_at")?,
             recorded_by: row.get("recorded_by")?,
             note: row.get("note")?,
+        })
+    }
+
+    /// Calculate accounts payable aging report as of `as_of_date` (defaults to current UTC date `YYYY-MM-DD`).
+    /// Buckets vendor bills by days elapsed since creation (0-30, 31-60, 61-90, 90+ days)
+    /// across all open/partial payables, aggregated per supplier.
+    pub fn get_ap_aging_report(
+        &self,
+        tenant_id: &str,
+        as_of_date: Option<&str>,
+    ) -> Result<PayableAgingReport, CoreError> {
+        let date_str = match as_of_date {
+            Some(d) if !d.trim().is_empty() => d.trim().to_string(),
+            _ => chrono::Utc::now().format("%Y-%m-%d").to_string(),
+        };
+
+        let currency =
+            crate::Settings::get_default_currency(self.conn)?.unwrap_or_else(|| "IDR".to_string());
+
+        let mut stmt = self.conn.prepare(
+            "SELECT
+                COALESCE(s.id, p.supplier_id),
+                COALESCE(s.name, 'Unknown Supplier'),
+                COALESCE(SUM(CASE WHEN CAST(julianday(?2) - julianday(DATE(p.created_at)) AS INTEGER) <= 30 THEN p.amount_minor - p.paid_minor ELSE 0 END), 0) AS current_minor,
+                COALESCE(SUM(CASE WHEN CAST(julianday(?2) - julianday(DATE(p.created_at)) AS INTEGER) > 30 AND CAST(julianday(?2) - julianday(DATE(p.created_at)) AS INTEGER) <= 60 THEN p.amount_minor - p.paid_minor ELSE 0 END), 0) AS days_31_60_minor,
+                COALESCE(SUM(CASE WHEN CAST(julianday(?2) - julianday(DATE(p.created_at)) AS INTEGER) > 60 AND CAST(julianday(?2) - julianday(DATE(p.created_at)) AS INTEGER) <= 90 THEN p.amount_minor - p.paid_minor ELSE 0 END), 0) AS days_61_90_minor,
+                COALESCE(SUM(CASE WHEN CAST(julianday(?2) - julianday(DATE(p.created_at)) AS INTEGER) > 90 THEN p.amount_minor - p.paid_minor ELSE 0 END), 0) AS days_over_90_minor,
+                COALESCE(SUM(p.amount_minor - p.paid_minor), 0) AS total_minor,
+                COUNT(p.id) AS open_count
+             FROM payables p
+             LEFT JOIN suppliers s ON p.supplier_id = s.id
+             WHERE p.tenant_id = ?1 AND p.status IN ('open', 'partial')
+             GROUP BY COALESCE(s.id, p.supplier_id), s.name
+             ORDER BY total_minor DESC",
+        )?;
+
+        let rows = stmt.query_map(params![tenant_id, date_str], |row| {
+            Ok(VendorAgingRow {
+                vendor_id: row.get(0)?,
+                vendor_name: row.get(1)?,
+                current_minor: row.get(2)?,
+                days_31_60_minor: row.get(3)?,
+                days_61_90_minor: row.get(4)?,
+                days_over_90_minor: row.get(5)?,
+                total_minor: row.get(6)?,
+                open_count: row.get(7)?,
+            })
+        })?;
+
+        let mut vendors = Vec::new();
+        let mut summary = PayableAgingBucket {
+            current_minor: 0,
+            days_31_60_minor: 0,
+            days_61_90_minor: 0,
+            days_over_90_minor: 0,
+            total_outstanding_minor: 0,
+        };
+
+        for row in rows {
+            let v = row?;
+            summary.current_minor += v.current_minor;
+            summary.days_31_60_minor += v.days_31_60_minor;
+            summary.days_61_90_minor += v.days_61_90_minor;
+            summary.days_over_90_minor += v.days_over_90_minor;
+            summary.total_outstanding_minor += v.total_minor;
+            vendors.push(v);
+        }
+
+        Ok(PayableAgingReport {
+            as_of_date: date_str,
+            currency,
+            summary,
+            vendors,
         })
     }
 }

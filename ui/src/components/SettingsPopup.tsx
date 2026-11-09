@@ -170,7 +170,17 @@ export function SettingsPopup({
               <Button
                 variant="primary"
                 {...(saving ? { loading: true } : {})}
-                disabled={saveDisabled}
+                // `saving` reaches the button as `loading`, and Button derives `disabled` from
+                // it -- but only if the caller does not pass its own. This popup passed
+                // `disabled={saveDisabled}`, which OVERRODE that derivation (Button spread
+                // `...rest` last), so a host sending saveDisabled={false} — the tax rate and
+                // category dialogs both do, the moment a field is filled — got a spinning Save
+                // that was still clickable while the write was in flight. That is the exact
+                // window a double tap goes through: every hosted handler guards itself with
+                // React state, committed on the NEXT render. Fixed twice over — Button now
+                // spreads `...rest` FIRST so its own `disabled` always wins, and this OR keeps
+                // a host able to disable a save that is not in flight.
+                disabled={saving || saveDisabled}
                 onClick={onSave}
                 data-testid="settings-popup-save"
               >

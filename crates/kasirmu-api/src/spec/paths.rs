@@ -66,19 +66,16 @@ pub(super) fn build_base_paths() -> Value {
         "/api/v1/products": {
             "get": {
                 "tags": ["Products"],
-                "summary": "List all products",
-                "description": "Returns all products ordered by name, including category name and stock quantity, wrapped in a `ListProductsResponse` envelope (`products` + `missing_hashes`). Requires JWT auth. The pagination query parameters are reserved for a future release and currently ignored.",
+                "summary": "List products (keyset-paged)",
+                "description": "Returns ONE PAGE of the tenant's products, ordered by `(name, sku)`, including category name and stock quantity, wrapped in a `ListProductsResponse` envelope (`products` + `missing_hashes` + `has_more` + `next_after`). Requires JWT auth. Keyset paging, not OFFSET: pass the previous response's `next_after` as `after` and stop when `has_more` is `false`. `limit` defaults to 100 and is clamped to 200, so the response is always bounded; `has_more` states whether the catalogue continues, so a bounded reply is never mistaken for a complete one. The local (SQLite) API answers the whole catalogue in one page with `has_more: false`.",
                 "operationId": "listProducts",
                 "security": [{ "bearerAuth": [] }],
                 "parameters": [
                     { "$ref": "#/components/parameters/PaginationLimit" },
-                    { "$ref": "#/components/parameters/PaginationOffset" },
-                    { "$ref": "#/components/parameters/PaginationSort" },
-                    { "$ref": "#/components/parameters/PaginationOrder" },
-                    { "$ref": "#/components/parameters/PaginationQ" }
+                    { "$ref": "#/components/parameters/PaginationCursor" }
                 ],
                 "responses": {
-                    "200": { "description": "Product list envelope (may be empty)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ListProductsResponse" } } } },
+                    "200": { "description": "Product page envelope (products may be empty; has_more and next_after are always present)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ListProductsResponse" } } } },
                     "401": { "description": "Missing or invalid JWT", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
                     "403": { "description": "Token lacks the `products:read` read-tier permission", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": "insufficient_scope" } } } }
                 }
@@ -581,6 +578,71 @@ pub(super) fn build_base_paths() -> Value {
             }
         },
 
+        // ── Topology (centralised authoring, Phase 2) ───────────────
+        // Added 2026-10-23. These three routes were registered by d83614830 and
+        // documented nowhere: every_registered_route_is_documented was red because
+        // the router sources name them and this file did not. All three require the
+        // `topology:write` key -- including the pull, which is a READ, because the
+        // registry declares no `topology:read` for this family and inventing one here
+        // would name an unregistered key (crates/kasirmu-api/src/read_tiers.rs:130-141).
+        "/api/v1/topology/plan": {
+            "post": {
+                "tags": ["Topology"],
+                "summary": "Validate a desired-state topology and preview the diff",
+                "description": "Validates the submitted desired state and returns the diff preview against the current published revision WITHOUT publishing anything. Refused with 503 while the administrative kill switch is active, and with 403 when the tenant plan does not include multi-store authoring (ADR-66 D2/T11).",
+                "operationId": "postTopologyPlan",
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": {
+                    "required": true,
+                    "content": { "application/json": { "schema": { "type": "object" } } }
+                },
+                "responses": {
+                    "200": { "description": "Plan computed; the diff preview is in the body", "content": { "application/json": { "schema": { "type": "object" } } } },
+                    "400": { "description": "Malformed desired state (`invalid_topology`)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "401": { "description": "Missing or invalid bearer token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "403": { "description": "Plan does not include multi-store authoring (`plan_gate_exceeded`)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "503": { "description": "Administrative kill switch active (`kill_switch_active`)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+                }
+            }
+        },
+        "/api/v1/topology/publish": {
+            "post": {
+                "tags": ["Topology"],
+                "summary": "Sign and publish an immutable topology revision",
+                "description": "Commits the validated desired state as a signed, immutable revision. A published revision is never rewritten; later changes arrive as a new revision that a terminal pulls and applies.",
+                "operationId": "postTopologyPublish",
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": {
+                    "required": true,
+                    "content": { "application/json": { "schema": { "type": "object" } } }
+                },
+                "responses": {
+                    "200": { "description": "Revision signed and published", "content": { "application/json": { "schema": { "type": "object" } } } },
+                    "400": { "description": "Malformed desired state (`invalid_topology`)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "401": { "description": "Missing or invalid bearer token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "409": { "description": "The revision base is stale; re-plan before publishing", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "503": { "description": "Administrative kill switch active (`kill_switch_active`)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+                }
+            }
+        },
+        "/api/v1/topology/revisions/pull": {
+            "get": {
+                "tags": ["Topology"],
+                "summary": "Pull a topology revision by watermark",
+                "description": "Terminal-side replication pull: returns the revision a terminal should apply given the watermark it already holds. Requires the `topology:write` key, not a read key -- the topology family declares no read key.",
+                "operationId": "getTopologyRevisionsPull",
+                "security": [{ "bearerAuth": [] }],
+                "parameters": [
+                    { "name": "branch_id", "in": "query", "required": true, "schema": { "type": "string" }, "description": "Branch whose revision should be pulled" },
+                    { "name": "since_revision", "in": "query", "required": false, "schema": { "type": "integer" }, "description": "Watermark the caller already holds; 0 (or absent) means from the beginning" }
+                ],
+                "responses": {
+                    "200": { "description": "The revision to apply, if any", "content": { "application/json": { "schema": { "type": "object" } } } },
+                    "401": { "description": "Missing or invalid bearer token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "403": { "description": "Caller lacks `topology:write`", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+                }
+            }
+        },
         // ── Docs ────────────────────────────────────────────────────
         "/api/openapi.json": {
             "get": {

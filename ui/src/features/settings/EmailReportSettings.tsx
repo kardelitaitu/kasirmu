@@ -16,6 +16,7 @@ import Tooltip from '@/app/Tooltip';
 import { getReportSchedule, getReportScheduleScoped, saveReportSchedule, type ReportScheduleConfig } from '@/api/email';
 import { getSettingScoped, setSettingScoped } from '@/api/settings';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { isTabletShell } from '@/utils/shellKind';
 
 interface SmtpConfigDto {
   host: string;
@@ -61,6 +62,9 @@ export default function EmailReportSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
+  /** Synchronous mirrors of the busy flags — see the re-entry guards in the handlers. */
+  const savingRef = useRef(false);
+  const sendingRef = useRef(false);
   const [saved, setSaved] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   // The password field is write-only by design: smtp_config is on the backend
@@ -84,6 +88,8 @@ export default function EmailReportSettings() {
   });
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const [scheduleSaving, setScheduleSaving] = useState(false);
+  /** Synchronous mirror of `scheduleSaving` — see the re-entry guard in `saveSchedule`. */
+  const scheduleSavingRef = useRef(false);
 
   // Guarded. The note above records that the deps were changed to [sessionToken] so a
   // store switch re-fetches instead of showing the previous SMTP config -- correct, and
@@ -91,7 +97,7 @@ export default function EmailReportSettings() {
   // The latch was never added, so a slower earlier response lands last and shows the
   // previous store again, by a different route.
   //
-  // THE CONSEQUENCE IS CREDENTIALS. `saveConfig` (:134) writes the CONFIG STATE that was
+  // THE CONSEQUENCE IS CREDENTIALS. `saveConfig` writes the CONFIG STATE that was
   // just rendered, so a stale read does not merely display the wrong host -- it can
   // persist the previous store SMTP host, username and password over this one.
   const configSeqRef = useRef(0);
@@ -115,9 +121,9 @@ export default function EmailReportSettings() {
     } finally {
       setLoading(false);
     }
-    // sessionToken is read at :70 and derived from useWorkspace() at :44. This array was empty,
-    // and :81 is `useEffect(() => { loadConfig(); }, [loadConfig])` with no latch, so loadConfig's
-    // identity is the only thing that re-triggers the fetch -- it never changed, so the SMTP
+    // sessionToken is derived from `useWorkspace()` and read inside `loadConfig`. This array was
+    // empty, and the `useEffect(() => { loadConfig(); }, [loadConfig])` below is latchless, so
+    // loadConfig's identity is the only thing that re-triggers the fetch -- it never changed, so the SMTP
     // config shown after a store switch was still the previous store's.
   }, [sessionToken]);
 
@@ -125,7 +131,7 @@ export default function EmailReportSettings() {
 
   // ── Load schedule config ───────────────────────────────────────────
   // Same latch as loadConfig above, for the same reason: the deps name sessionToken,
-  // so a store switch overlaps two reads. `saveSchedule` (:188) writes the schedule
+  // so a store switch overlaps two reads. `saveSchedule` writes the schedule
   // state this read populated, so a stale one can be persisted.
   const scheduleSeqRef = useRef(0);
   const loadSchedule = useCallback(async () => {
@@ -135,6 +141,17 @@ export default function EmailReportSettings() {
       // ADR #7 conditional scoping. get_report_schedule_scoped enforces REPORTS_SCHEDULE; the
       // unscoped command checks nothing, while the save path in this same screen already
       // requires a token (api/email.ts:29).
+      // SHELL FIRST, then ADR #7 scoping. Both commands are registered by
+      // apps/desktop-tauri alone (lib.rs:1421-1423) and apps/mobile-tauri has no
+      // email module at all, so on the tablet BOTH arms would throw. The catch
+      // below would hide that, but hiding it is not the same as not asking: the
+      // screen would still fire an invoke the shell cannot answer on every mount,
+      // and the ADR #7 ternary made the file look shell-blind to
+      // verify-ipc-parity.py -- which is exactly the shape that leg exists to
+      // report. The tablet therefore skips the read and keeps its defaults.
+      if (isTabletShell()) {
+        return;
+      } else {
       const sched = sessionToken
         ? await getReportScheduleScoped(sessionToken)
         : await getReportSchedule();
@@ -142,6 +159,7 @@ export default function EmailReportSettings() {
       // (Tauri IPC resolves with null for unset data). Guard against
       // overwriting the initial default values with null.
       if (sched && !stale()) setSchedule(sched);
+      }
     } catch {
       // Use defaults
     } finally {
@@ -152,6 +170,13 @@ export default function EmailReportSettings() {
   useEffect(() => { loadSchedule(); }, [loadSchedule]);
 
   const saveConfig = useCallback(async () => {
+    // Re-entry guard. The SMTP blob is a same-key set_setting write, so a replay cannot
+    // corrupt it -- but two in-flight saves each toast their OWN outcome, so a save that
+    // lands can be followed by \`settings-email-save-error\` from the tap that raced it.
+    // Taken BEFORE the busy flag; the two validation returns below clear the flag they
+    // set, so the guard is released by the \`finally\` on every exit that sets it.
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     setSaved(false);
     try {
@@ -193,20 +218,43 @@ export default function EmailReportSettings() {
     } catch {
       addToast({ message: l10n.getString('settings-email-save-error'), type: 'error' });
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
-    // sessionToken is read at :116 by setSettingScoped. `userId` used to be listed here and is a
-    // different value, so it never covered the token: saving after a store switch wrote SMTP
-    // credentials to the previous store -- or failed on the destroyed session, after the success
-    // toast had already been scheduled on the happy path. `userId` has since been dropped: nothing
-    // in this component read it, and its presence in the array was the only thing keeping the
-    // binding from being reported as unused.
+    // sessionToken is read by the `setSettingScoped` call in this body. `userId` used to be
+    // listed here and is a different value, so it never covered the token: saving after a
+    // store switch wrote SMTP credentials to the previous store -- or failed on the
+    // destroyed session, after the success toast had already been scheduled on the happy
+    // path. `userId` has since been dropped: nothing in this component read it, and its
+    // presence in the array was the only thing keeping the binding from being reported
+    // as unused.
   }, [config, l10n, addToast, sessionToken, passwordTouched]);
 
   // ── Schedule event handlers ────────────────────────────────────────
 
   const saveSchedule = useCallback(async () => {
+    // Re-entry guard, taken BEFORE the busy flag and before the tablet refusal (which has
+    // to keep clearing whatever it set). An upsert of the same schedule, so a replay
+    // cannot corrupt the row; what it can do is toast success and failure for the same
+    // schedule, because both in-flight saves report their own outcome.
+    if (scheduleSavingRef.current) return;
+    scheduleSavingRef.current = true;
     setScheduleSaving(true);
+    // save_report_schedule is registered by apps/desktop-tauri alone (lib.rs:1424);
+    // the tablet has no email module at all. This screen is mounted on BOTH shells
+    // (settings/screens/registry.ts 'email-reports'), so the write has to be guarded
+    // or an owner who opens it on the tablet gets 'command not found'. The READ above
+    // is already shell-safe: it falls back to defaults on any failure.
+    // Positive/else form so verify-scoped-reads.py reads the call as guarded.
+    if (isTabletShell()) {
+      scheduleSavingRef.current = false;
+      setScheduleSaving(false);
+      addToast({
+        message: l10n.getString('settings-email-desktop-only'),
+        type: 'warning',
+      });
+      return;
+    } else {
     try {
       // Strip empty recipient entries before persisting.
       const cleaned = { ...schedule, recipients: schedule.recipients.filter((r) => r.trim() !== '') };
@@ -222,7 +270,9 @@ export default function EmailReportSettings() {
         type: 'error',
       });
     } finally {
+      scheduleSavingRef.current = false;
       setScheduleSaving(false);
+    }
     }
   }, [schedule, l10n, addToast, sessionToken]);
 
@@ -234,7 +284,22 @@ export default function EmailReportSettings() {
   ) as <K extends keyof ReportScheduleConfig>(key: K, value: ReportScheduleConfig[K]) => void;
 
   const handleSendTest = useCallback(async () => {
+    // Re-entry guard. send_test_report actually SENDS a message, so a replay delivers two
+    // test emails to the configured recipients -- the only handler here whose cost is
+    // outside the database.
+    if (sendingRef.current) return;
+    sendingRef.current = true;
     setSending(true);
+    // send_test_report is desktop-only for the same reason as the save above.
+    if (isTabletShell()) {
+      sendingRef.current = false;
+      setSending(false);
+      addToast({
+        message: l10n.getString('settings-email-desktop-only'),
+        type: 'warning',
+      });
+      return;
+    } else {
     try {
       // Dynamically import the email API to avoid circular deps
       const { sendTestReport } = await import('@/api/email');
@@ -244,7 +309,9 @@ export default function EmailReportSettings() {
       const errorMessage = typeof err === 'string' ? err : l10n.getString('settings-email-test-send-failed');
       addToast({ message: errorMessage, type: 'error' });
     } finally {
+      sendingRef.current = false;
       setSending(false);
+    }
     }
   }, [addToast, l10n, sessionToken]);
 

@@ -86,3 +86,5 @@ can charge, on a path where round 106 already showed the consequences of guessin
 | Preset read | absent — `grep 'presets' ui/src/features/sales` finds no consumer |
 | Course bar | absent live, correct: `courseFiringEnabled` unset resolves to `false` (round 105) |
 | Tree | `ui/src` clean; scratch script deleted; Vite stopped |
+
+> last audited 14-10-26 by docs-auditor

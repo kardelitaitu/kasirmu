@@ -143,6 +143,8 @@ pub mod quota_gate;
 /// missing L167 axis).
 pub mod receipt_code;
 pub mod receipt_formats;
+/// Accounts Receivable (Piutang / Kasbon) repository — create/collect/age customer debts.
+pub mod receivables;
 /// Recipe / modifier CRUD.
 pub mod recipes;
 /// Restore-candidate validation and the atomic restore swap (C8, slice S2).
@@ -194,7 +196,8 @@ pub use reports::{
     TopProductRow, WeeklyRevenueRow,
 };
 pub use sales::{
-    CartLineTaxInput, CartTaxResult, DailySummaryRow, HeldCartFull, HeldCartRow, SalesByHourRow,
+    CartLineTaxInput, CartTaxResult, DailySummaryRow, EodBreakdownRow, EodReceivableCollectionRow,
+    EodVoidRow, HeldCartFull, HeldCartRow, SalesByHourRow,
 };
 pub use shifts::{ShiftPaymentBreakdown, ShiftReport, ShiftSalesByHour};
 
@@ -213,15 +216,15 @@ pub use shifts::{ShiftPaymentBreakdown, ShiftReport, ShiftSalesByHour};
 /// boundaries for multi-statement workflows.
 pub struct Store<'a> {
     /// Underlying SQLite connection.
-    pub conn: &'a Connection,
+    pub(crate) conn: &'a Connection,
     /// Optional caching layer for product and inventory lookups.
     /// Uses `Arc` so multiple `Store` instances can share the same
     /// cache backend (e.g. Redis).
-    pub cache: Option<Arc<dyn Cache>>,
+    pub(crate) cache: Option<Arc<dyn Cache>>,
     /// Terminal ID for pub/sub message tagging (multi-terminal).
     /// Passed through to `Cache::publish_inventory_change` so other
     /// terminals can skip their own messages.
-    pub terminal_id: Option<String>,
+    pub(crate) terminal_id: Option<String>,
     /// W4-S4 TOCTOU closure: the tier a pre-tx quota gate armed for the NEXT
     /// creation on this Store, consumed inside the create transaction (so the
     /// check and the write commit atomically). Mutex keeps `Store` Sync;
@@ -263,8 +266,18 @@ impl<'a> Store<'a> {
     }
 
     /// Return a reference to the underlying connection.
-    pub fn conn(&self) -> &Connection {
+    pub fn conn(&self) -> &'a Connection {
         self.conn
+    }
+
+    /// Return the optional cache layer.
+    pub fn cache(&self) -> Option<&Arc<dyn Cache>> {
+        self.cache.as_ref()
+    }
+
+    /// Return the terminal ID for pub/sub message tagging.
+    pub fn terminal_id(&self) -> Option<&str> {
+        self.terminal_id.as_deref()
     }
 }
 

@@ -12,6 +12,7 @@ import { useLocalization } from '@fluent/react';
 import { requiredLocalized } from '@/components';
 import { useToast } from '@/components/Toast';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { isTabletShell } from '@/utils/shellKind';
 import { settleRead } from '@/utils/settle-read';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
@@ -86,6 +87,21 @@ export default function WarehouseCountFlow({ sessionToken, locationId, onComplet
   // a stale closure.
   const scansInFlight = useRef(new Set<string>());
 
+  // Re-entry guard for the COMPLETE write, which shares this file's own reasoning above
+  // but not its mechanism. `handleComplete` calls `setSaving(true)` and awaits, and `saving` is
+  // STATE -- React commits it on its next render, after the second tap of a real double
+  // tap -- so the button's `disabled={saving || ...}` is not authoritative in the same task.
+  //
+  // The backend DOES refuse the replay by compare-and-set:
+  //   UPDATE stock_counts SET status = 'completed' ... WHERE id = ?3
+  //     AND status IN ('draft', 'in_progress')      -- stock_counts.rs:529-539
+  // and `claimed != 1` returns Validation. So no second inventory adjustment is applied --
+  // but the rejection lands in the same catch that reports genuine failures, so the
+  // operator is told the COMPLETE FAILED for a count that did complete. Same shape as the
+  // purchasing and shift guards (rounds 136-141). A ref, not the state, because only the
+  // ref is authoritative at the moment the second tap runs.
+  const completePendingRef = useRef(false);
+
   const loadCounts = useCallback(async () => {
     if (!sessionToken) return;
     try {
@@ -105,6 +121,16 @@ export default function WarehouseCountFlow({ sessionToken, locationId, onComplet
       setProducts(null);
       return;
     }
+    // The tablet does not register `list_warehouse_products_at_location` (measured
+    // 2026-10-25: apps/mobile-tauri has only `list_warehouse_products_scoped`, which
+    // takes no location id). The Count TAB is already withheld on that shell
+    // (WarehouseConsole.warehouseModeAvailable), and the call is guarded here as well so
+    // the invoke can never fire from a shell that cannot answer it -- this gate grades
+    // the call site, not the visibility of the control that reaches it.
+    if (isTabletShell()) {
+      setProducts(null);
+      return;
+    } else {
     let cancelled = false;
     void settleRead('warehouse-count product catalogue',
       listWarehouseProductsAtLocation(sessionToken, locationId),
@@ -117,6 +143,7 @@ export default function WarehouseCountFlow({ sessionToken, locationId, onComplet
     return () => {
       cancelled = true;
     };
+    }
   }, [sessionToken, locationId]);
 
   const loadLines = useCallback(async () => {
@@ -254,6 +281,8 @@ export default function WarehouseCountFlow({ sessionToken, locationId, onComplet
 
   const handleComplete = useCallback(async () => {
     if (!sessionToken || !activeCount) return;
+    if (completePendingRef.current) return;
+    completePendingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -271,6 +300,7 @@ export default function WarehouseCountFlow({ sessionToken, locationId, onComplet
     } catch (err) {
       setError(l10nErrorMessage(err, l10n, 'warehouse-count-error'));
     } finally {
+      completePendingRef.current = false;
       setSaving(false);
     }
   }, [sessionToken, activeCount, loadCounts, onCompleted, l10n, addToast]);

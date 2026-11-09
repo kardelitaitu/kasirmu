@@ -41,6 +41,21 @@ import {
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
+/**
+ * The decision this script sells the release workflow: does `signatureB64` verify
+ * `installerBytes` under the base64 minisign pubkey the updater client embeds?
+ * True when it verifies; false when the signature is well-formed but does not match;
+ * throws when the pubkey cannot be parsed or the signature cannot be checked — a
+ * malformed input is a different fact from a mismatched one, and the caller prints
+ * which. The self-test drives THIS function with a synthetic keypair rather than a
+ * copy of it, so gutting it is caught — and the live path fails closed: anything
+ * but true blocks the release.
+ */
+export function verifyUpdaterSignature(pubkeyB64, installerBytes, signatureB64) {
+  const parsed = parsePublicKey(pubkeyB64);
+  return verifyMinisignSignature(parsed.raw, installerBytes, signatureB64);
+}
+
 function selfTest() {
   const { seed, raw, keyid } = testKeypair();
   const payload = Buffer.from("oz-pos signature verifier self-test", "utf8");
@@ -65,6 +80,33 @@ function selfTest() {
   );
   if (tampered) {
     console.error("FAIL tampered payload accepted");
+    process.exit(1);
+  }
+
+  // The wrapper the live path calls, driven with the same synthetic keypair: a gutted
+  // verifier must unrun this self-test, not pass it vacuously.
+  const wired = verifyUpdaterSignature(pubkeyB64, payload, signature);
+  if (wired !== true) {
+    console.error("FAIL verifyUpdaterSignature rejected a valid signature");
+    process.exit(1);
+  }
+  const wiredTampered = verifyUpdaterSignature(
+    pubkeyB64,
+    Buffer.concat([payload, Buffer.from([0])]),
+    signature
+  );
+  if (wiredTampered !== false) {
+    console.error("FAIL verifyUpdaterSignature accepted a tampered payload");
+    process.exit(1);
+  }
+  let wiredThrew = false;
+  try {
+    verifyUpdaterSignature("bm90LWEta2V5", payload, signature);
+  } catch {
+    wiredThrew = true;
+  }
+  if (!wiredThrew) {
+    console.error("FAIL verifyUpdaterSignature accepted an unparseable pubkey");
     process.exit(1);
   }
 
@@ -113,16 +155,14 @@ if (args.includes("--self-test")) {
     process.exit(1);
   }
 
-  let parsed;
+  let ok;
   try {
-    parsed = parsePublicKey(pubkey);
+    ok = verifyUpdaterSignature(pubkey, bytes, entry.signature);
   } catch (e) {
-    console.error(`Failed to parse updater pubkey: ${e.message}`);
+    console.error(`Failed to verify updater signature: ${e.message}`);
     process.exit(1);
   }
-
-  const ok = verifyMinisignSignature(parsed.raw, bytes, entry.signature);
-  if (!ok) {
+  if (ok !== true) {
     console.error(`SIGNATURE VERIFICATION FAILED for ${installerPath} (${platform})`);
     process.exit(1);
   }

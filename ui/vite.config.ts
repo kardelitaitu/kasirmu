@@ -197,7 +197,9 @@ export default defineConfig(({ command }) => ({
     // If an OOM is seen again, capture the free-memory figure and the worker
     // count in the same run — those are what distinguished the real contention
     // case above from this non-finding.
-    maxWorkers: 16,
+    // In CI (2 vCPUs on ubuntu-latest), 16 workers cause severe CPU starvation,
+    // especially under v8 coverage where execution is 3-5x slower.
+    maxWorkers: process.env.CI ? 4 : 16,
     minWorkers: 2,
     // maxConcurrency stays at its default: it bounds tests per worker, and
     // the files-with-many-tests case it was added for is already served by
@@ -216,13 +218,13 @@ export default defineConfig(({ command }) => ({
 
     // Per-test timeout (ms). Default 5000 is fine for most tests;
     // DataManagementScreen (55 tests, ~225ms each) is the heaviest
-    // file and stays well within this budget. Bumped to 10s for CI
+    // file and stays well within this budget. Bumped to 10s (20s in CI) for
     // headroom on slow runners.
-    testTimeout: 10_000,
+    testTimeout: process.env.CI ? 20_000 : 10_000,
 
     // Per-hook timeout (ms) for beforeEach / afterEach. Default 5000
-    // is generous — no test file has hooks that take longer.
-    hookTimeout: 5_000,
+    // is generous — bumped to 15s in CI to prevent false timeouts under coverage.
+    hookTimeout: process.env.CI ? 15_000 : 5_000,
 
     // ── Coverage ────────────────────────────────────────────────────────
     //
@@ -245,6 +247,16 @@ export default defineConfig(({ command }) => ({
         // Type-only modules (Fluent locale bundles are just strings). Path-agnostic,
         // so it kept matching after P9a moved the corpus to shared-ui/locales/.
         '**/locales/**',
+        // dev-mock is a FAKE BACKEND: handlers that stand in for IPC during local
+        // development. Grading its line coverage asks how much of the mock's own
+        // branching a test exercised, which is not a property anyone wants -- and the
+        // repo already treats it this way everywhere else (check-hardcoded-copy.py
+        // SKIP_DIR_PARTS, check-testid.mjs EXCLUDED_PREFIXES, census-orphan-modules.py
+        // and classify-finding-reachability.py SKIP_DIRS all name it). Measured
+        // 2026-10-28: it was 1,126 of 36,034 counted lines (5.9% of the denominator) at
+        // 52.84% covered, dragging the aggregate from 87.72% to 85.66%. The floors in
+        // scripts/coverage-floors.json ui_floors were re-derived after this exclusion.
+        '**/dev-mock/**',
       ],
     },
   },

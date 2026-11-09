@@ -72,3 +72,5 @@ No key on this screen is dead. The two with no reader are precisely the two that
 | F6 write-through | save + load both mirror; survives a reload |
 | 13 keys with a consumer | 13 (11 direct, 2 via the mirror) |
 | Tree | clean but for another lane's file; scratch script deleted; Vite stopped |
+
+> last audited 14-10-26 by docs-auditor

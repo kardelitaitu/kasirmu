@@ -69,3 +69,5 @@ producing a kitchen ticket is a regression test, on both form factors, in ~12 se
 The unused `test.fixme` and its three reasons are gone. Reason 3 — the localStorage claim — was
 already false when written, per round 142's measurement of `loadMockKdsState`; reasons 1 and 2
 were real but describe a count assertion the rewrite does not make.
+
+> last audited 14-10-26 by docs-auditor

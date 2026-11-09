@@ -2,14 +2,14 @@ use super::*;
 
 #[test]
 fn load_empty_directory() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let registry = load_plugins(dir.path()).unwrap();
     assert!(registry.is_empty());
 }
 
 #[test]
 fn load_single_plugin() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let plugin_dir = dir.path().join("my-plugin");
     std::fs::create_dir(&plugin_dir).unwrap();
 
@@ -32,7 +32,7 @@ scripts = ["test.lua"]
 
 #[test]
 fn skip_directories_without_manifest() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     std::fs::create_dir(dir.path().join("no-manifest")).unwrap();
     let registry = load_plugins(dir.path()).unwrap();
     assert!(registry.is_empty());
@@ -58,7 +58,7 @@ fn registry_new_equals_default() {
 
 #[test]
 fn registry_len_reflects_plugins() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     for i in 1..=3 {
         let plugin_dir = dir.path().join(format!("plugin-{i}"));
         std::fs::create_dir(&plugin_dir).unwrap();
@@ -77,7 +77,7 @@ fn registry_len_reflects_plugins() {
 
 #[test]
 fn loaded_plugin_debug() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let plugin_dir = dir.path().join("debug-plugin");
     std::fs::create_dir(&plugin_dir).unwrap();
     std::fs::write(
@@ -92,7 +92,7 @@ fn loaded_plugin_debug() {
 
 #[test]
 fn plugin_with_missing_scripts_dir() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let plugin_dir = dir.path().join("no-scripts");
     std::fs::create_dir(&plugin_dir).unwrap();
     std::fs::write(
@@ -141,7 +141,7 @@ fn write_plugin(dir: &std::path::Path, name: &str, scripts_decl: &[&str], files:
 
 #[test]
 fn plugin_with_dotdot_script_is_rejected() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     // Declare a script that escapes the plugin dir via `..`.
     write_plugin(dir.path(), "evil", &["../../escape.lua"], &[]);
     // Plant a file at the target location to prove it would be reachable.
@@ -156,7 +156,7 @@ fn plugin_with_dotdot_script_is_rejected() {
 
 #[test]
 fn plugin_with_absolute_script_is_rejected() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     write_plugin(dir.path(), "evil", &["/etc/passwd"], &[]);
     let registry = load_plugins(dir.path()).unwrap();
     assert!(
@@ -167,7 +167,7 @@ fn plugin_with_absolute_script_is_rejected() {
 
 #[test]
 fn plugin_with_directory_as_script_is_rejected() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     // Declare a script that is actually a directory.
     write_plugin(dir.path(), "evil", &["scripts"], &[]);
     std::fs::create_dir_all(dir.path().join("evil/scripts")).unwrap();
@@ -183,9 +183,9 @@ fn plugin_with_symlink_escape_is_rejected() {
     // Symlink creation requires privileges on Windows — skip there.
     #[cfg(unix)]
     {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = kasirmu_test_support::tempdir();
         // Target file OUTSIDE the plugins root.
-        let outside = tempfile::tempdir().unwrap();
+        let outside = kasirmu_test_support::tempdir();
         std::fs::write(outside.path().join("secret.lua"), "-- outside").unwrap();
 
         let plugin_dir = dir.path().join("evil");
@@ -212,7 +212,7 @@ fn plugin_with_symlink_escape_is_rejected() {
 
 #[test]
 fn plugin_with_legit_scripts_still_loads() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     write_plugin(
         dir.path(),
         "good",
@@ -235,7 +235,7 @@ fn plugin_with_legit_scripts_still_loads() {
 
 #[test]
 fn plugin_with_missing_script_is_still_tolerated() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     // Declared script does not exist on disk — tolerated (optional script).
     write_plugin(dir.path(), "sparse", &["missing.lua"], &[]);
     let registry = load_plugins(dir.path()).unwrap();
@@ -257,7 +257,7 @@ fn plugin_with_missing_script_is_still_tolerated() {
 /// shipping loader rather than a hand-built registry.
 #[test]
 fn fingerprint_covers_declared_permissions() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let plugin_dir = dir.path().join("perm-plugin");
     std::fs::create_dir(&plugin_dir).unwrap();
     // Byte-identical script in both runs: the ONLY difference is the manifest's
@@ -293,7 +293,7 @@ fn fingerprint_covers_declared_permissions() {
 /// the same false-positive the id-sort at load time exists to prevent.
 #[test]
 fn fingerprint_is_stable_across_permission_order() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let plugin_dir = dir.path().join("order-plugin");
     std::fs::create_dir(&plugin_dir).unwrap();
     std::fs::write(plugin_dir.join("main.lua"), "-- unchanged bytes").unwrap();
@@ -328,7 +328,7 @@ fn fingerprint_is_stable_across_permission_order() {
 
 #[test]
 fn oversized_script_is_rejected() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let plugin_dir = dir.path().join("giant-plugin");
     std::fs::create_dir(&plugin_dir).unwrap();
 

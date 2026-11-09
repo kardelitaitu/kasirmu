@@ -35,6 +35,33 @@ const EN: Record<string, string> = {
   'topology-rev-browser-identical': 'Same configuration as now',
   'topology-rev-browser-empty': 'Nothing has been applied to this branch yet.',
   'topology-rev-browser-no-note': 'No note',
+  // Copy these assertions matched as raw keys. Values from shared-ui/locales/*.ftl;
+  // geometry keeps its {moved}/{rerouted} holes in the form this stub substitutes.
+  'topology-rev-browser-deflated-body': 'This deploy is recorded but its graph was pruned by retention.',
+  'topology-rev-browser-error-detail': 'Could not load this revision',
+  'topology-rev-browser-geometry': '{moved} moved, {rerouted} rerouted',
+  'topology-rev-browser-deflated-remedy': 'Restore from a retained revision to inspect the graph.',
+  // Keys the browser renders that this hand-maintained map never carried. No case
+  // here asserts them, so getString returned the raw id silently. Values copied
+  // verbatim from shared-ui/locales/multi-location.ftl; this stub substitutes
+  // nothing (getString takes no vars), so each hole is kept in its authored
+  // "{ $name }" form and simply never interpolates -- no assertion reads it.
+  'topology-rev-browser-title': 'Deploy History',
+  'topology-rev-browser-close': 'Close deploy history',
+  'topology-rev-browser-loading': 'Loading history…',
+  'topology-rev-browser-loading-one': 'Loading 1 revision…',
+  'topology-rev-browser-counts': '{ $nodes } nodes · { $wires } wires',
+  'topology-rev-browser-detail-title': 'Revision { $revision }',
+  'topology-rev-browser-restore-aria': 'Load revision { $revision } onto the editor as an unsaved draft',
+  'topology-rev-browser-not-found': 'This revision is no longer present.',
+  'topology-rev-browser-diff-summary': '{ $count } changes since this deploy',
+  // NOTE: the one entry this map must NOT carry. The case at line ~313 asserts the
+  // raw key ('topology-rev-browser-restore-aria') precisely because the host may read
+  // it via getString while the DEFAULT English text is the inline English fallback the
+  // component renders when the host supplies none. Seeding the FTL value here turns
+  // that assertion red: Received "Load revision { $revision } onto the …" vs
+  // Expected "topology-rev-browser-restore-aria".
+  'topology-rev-browser-old-contract': "This deploy was recorded under contract version { $version }; today's is { $current }. Restoring loads it as a draft and Apply re-validates it against today's rules.",
 };
 
 vi.mock('@fluent/react', async () => {
@@ -45,7 +72,17 @@ vi.mock('@fluent/react', async () => {
     useLocalization: () => ({
       l10n: {
         bundles: [{ locales: ['en'] }],
-        getString: (key: string) => EN[key] ?? key,
+        getString: (key: string, vars?: Record<string, string | number>) => {
+        // Substitute the FTL { $name } form: the restore aria-label carries a
+        // revision number, and without this the seeded value renders literally.
+        let out = EN[key] ?? key;
+        if (vars) {
+          for (const [k, v] of Object.entries(vars)) {
+            out = out.replace(`{ $${k} }`, String(v)).replaceAll(`{${k}}`, String(v));
+          }
+        }
+        return out;
+      },
       },
     }),
   };
@@ -165,9 +202,49 @@ describe('TopologyRevisionBrowser', () => {
     // missing deflated branch.)
     await waitFor(() =>
       expect(document.querySelector('.topology-rev-browser-detail')?.textContent)
-        .toContain('topology-rev-browser-deflated-body'));
+        .toContain('pruned by retention'));
     // ...and the preview affordance is withdrawn, not merely disabled.
     expect(prunedRow?.querySelector('.topology-rev-browser-pruned')).not.toBeNull();
+  });
+
+  it('reports a failed revision read instead of spinning on "Loading revision…" forever', async () => {
+    // A rejected loadTopologyRevision used to be an unhandled rejection: the detail
+    // pane keys on \`!graph\`, which cannot tell a failure from a read still in flight,
+    // so it showed the spinner permanently — no error, no retry.
+    await deploy([node('a', 'Alpha')], 'a deploy', BRANCH);
+
+    // Intercept the ONE command this pane uses, delegating everything else to the mock.
+    const core = await import('@tauri-apps/api/core');
+    const realInvoke = core.invoke as unknown as (cmd: string, args?: unknown) => Promise<unknown>;
+    const spy = vi.spyOn(core, 'invoke').mockImplementation(((
+      cmd: string,
+      args?: unknown,
+    ) => (cmd === 'load_topology_revision'
+      ? Promise.reject(new Error('store db busy'))
+      : realInvoke(cmd, args))) as typeof core.invoke);
+
+    try {
+      renderBrowser({ branchId: BRANCH });
+      const row = await waitFor(() => {
+        const r = document.querySelector('.topology-rev-browser-row-main');
+        expect(r).not.toBeNull();
+        return r as HTMLElement;
+      });
+      fireEvent.click(row);
+
+      // The failure is REPORTED...
+      await waitFor(() => {
+        const err = document.querySelector('.topology-rev-browser-detail, .topology-rev-browser-error');
+        expect(document.body.textContent).toContain('Could not load this revision');
+        expect(err).not.toBeNull();
+      });
+      // ...and the endless spinner is gone.
+      expect(screen.queryByText('Loading revision…')).toBeNull();
+    // (The raw-key twin was deleted: queryByText on a key matches nothing once the
+    // stub maps it, so it asserted no fact. The line above is the real check.)
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('says "same configuration as now" rather than showing an empty diff', async () => {
@@ -203,7 +280,7 @@ describe('TopologyRevisionBrowser', () => {
     await waitFor(() =>
       expect(screen.getByText('Same configuration as now')).toBeInTheDocument());
     expect(document.querySelector('.topology-rev-browser-geometry')?.textContent)
-      .toContain('topology-rev-browser-geometry');
+      .toContain('moved');
     expect(document.querySelectorAll('.topology-rev-browser-change')).toHaveLength(0);
   });
 
@@ -249,7 +326,10 @@ describe('TopologyRevisionBrowser', () => {
       return b as HTMLButtonElement;
     });
     expect(restore.disabled).toBe(false);
-    expect(restore.getAttribute('aria-label')).toBe('topology-rev-browser-restore-aria');
+    // Assert the COPY. This read toBe('topology-rev-browser-restore-aria') and passed
+  // only while the stub returned the raw id; the screen passes the key and a
+  // revision through getString, so the label is real copy at runtime.
+  expect(restore.getAttribute('aria-label')).toBe('Load revision 1 onto the editor as an unsaved draft');
   });
 
   it('offers no restore affordance at all without a host callback', async () => {
@@ -283,7 +363,7 @@ describe('TopologyRevisionBrowser', () => {
     // §4's remedy, stated where the loss is visible — not a dead end.
     await waitFor(() =>
       expect(document.querySelector('.topology-rev-browser-detail')?.textContent)
-        .toContain('topology-rev-browser-deflated-remedy'));
+        .toContain('Restore from a retained revision'));
     expect(document.querySelector('.topology-rev-browser-restore')).toBeNull();
   });
 

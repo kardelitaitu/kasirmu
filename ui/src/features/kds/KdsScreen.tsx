@@ -4,6 +4,7 @@ import { DevProfiler } from '@/components/DevProfiler';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { useSwipe } from '@/hooks/useSwipe';
 import { useKdsOffline } from '@/hooks/useKdsOffline';
+import { l10nErrorMessage } from '@/utils/app-error';
 import { useWorkspaceScope, useWorkspace } from '@/contexts/WorkspaceContext';
 import { getKdsQueueScoped, updateKdsStatusScoped, updateKdsOrderItemsScoped, updateKdsLineItemStatusScoped, getKdsOrderLinesScoped, type KdsOrder, type KdsLineItem, type CreateKdsLineItemInput } from '@/api/kds';
 import { useKdsPreferences } from '@/features/kds/hooks/useKdsPreferences';
@@ -66,8 +67,12 @@ export interface KdsLayoutProps {
   slaThresholds?: SlaThresholds;
 }
 
+export interface KdsScreenProps {
+  onBack?: () => void;
+}
+
 /** KDS (Kitchen Display System) screen — real-time order queue in a single masonry view, with Open/Completed tabs and per-user preferences. */
-export default function KdsScreen() {
+export default function KdsScreen({ onBack }: KdsScreenProps = {}) {
   const workspaceScope = useWorkspaceScope();
   const { l10n } = useLocalization();
   const { goToWorkspacePicker } = useWorkspaceNav();
@@ -253,8 +258,42 @@ export default function KdsScreen() {
       if (nextStatus === 'ready') {
         speak(`${requiredLocalized(l10n, 'kds-order-up-tts')} ${item.display_name} ${requiredLocalized(l10n, 'kds-ready-tts')}!`);
       }
-    } catch {
-      // Silent — the backend will emit kds:orders-changed on next poll.
+    } catch (itemErr) {
+      // A FAILED item write used to be swallowed here with the note "the backend will
+      // emit kds:orders-changed on next poll". A poll repairs the DISPLAY, not the
+      // WRITE: the cook tapped "this dish is done", the status dot did not move, and
+      // nothing said why — so the honest response was to relaunch the app or tap
+      // harder. The ticket-level tap directly above (advanceStatus) has always
+      // reported through `wrapUpdate`; this path is the one that was silent.
+      //
+      // ⚠️ THE MESSAGE MUST NOT PROMISE A QUEUE THAT DOES NOT EXIST.
+      //
+      // This branch used `kds-offline-queued-update` — "Update queued — will sync
+      // when online" (kds.ftl) — borrowed from the ticket path directly above for
+      // "the same SIGNAL". But the queue cannot carry this action at all: as this
+      // comment's own predecessor concedes, it is keyed on (orderId, targetStatus)
+      // and has no item-level action type. So the cook read "queued, will sync",
+      // stopped worrying, and the dish was NEVER marked done — nothing was queued
+      // and nothing retries.
+      //
+      // A false reassurance is worse than silence: silence at least prompts a retry.
+      //
+      // ⚠️ AND A GENERIC TRUTH IS WORSE THAN A SPECIFIC ONE. The first fix here raised
+      // the bare `kds-error-update-failed` ("Failed to update the order — try again")
+      // and dropped the error, so EVERY failure read the same. The sibling
+      // `ExpoScreen.advanceItemStatus` (:306) classifies it instead — and the shared
+      // copy is strictly more useful per kind:
+      //
+      //   app-error-session   "Your session has expired. Please sign in again."
+      //   app-error-permission "You don't have permission to do this."
+      //   app-error-offline   "You appear to be offline. Check your connection and try again."
+      //
+      // "try again" is actively wrong advice for the first two — the cook would retry
+      // forever on an expired session. `l10nErrorMessage` falls back to the screen's own
+      // key for an unclassified error, so this keeps the KDS wording where the error is
+      // genuinely unknown and is never worse than the fixed string.
+      console.error('KDS advance item failed', itemErr);
+      setError(l10nErrorMessage(itemErr, l10n, 'kds-error-update-failed'));
     }
   }, [sessionToken, speak, l10n]);
 
@@ -416,6 +455,17 @@ export default function KdsScreen() {
           </Localized>
         )}
       </div>
+      {/* The page's level-one heading. The KDS had NONE at all -- no visible title
+          and no screen-reader one -- while its sibling ExpoScreen carries an <h1>
+          at ExpoScreen.tsx:451. A board whose only headings are h3s inside the
+          hamburger panel gives assistive tech no page name and no outline root.
+          Visually hidden because the board's header is a toolbar of icon buttons
+          with no room for a title; the accessible name is the whole fix.
+          `kds-screen-title` was an existing, unreferenced key whose value is the
+          same string as the used `kds-title`, so this adds no copy. */}
+      <Localized id="kds-screen-title">
+        <h1 className="sr-only">Kitchen Display</h1>
+      </Localized>
       <div className="kds-header">
       <KdsHeaderLeft
         zones={zones}
@@ -431,7 +481,8 @@ export default function KdsScreen() {
         setFilterCats={setFilterCats}
         completedFilter={completedFilter}
         setCompletedFilter={setCompletedFilter}
-        goToWorkspacePicker={goToWorkspacePicker}
+        goToWorkspacePicker={onBack ?? goToWorkspacePicker}
+        {...(onBack ? { backAriaLabel: requiredLocalized(l10n, 'back') } : {})}
         handleFilterBtnKeyDown={handleFilterBtnKeyDown}
         handleFilterPanelKeyDown={handleFilterPanelKeyDown}
       />
@@ -480,8 +531,13 @@ export default function KdsScreen() {
       <KdsNoticeBanners
         error={error}
         onRetryError={() => {
+          // Only clear the banner if the retry can actually run. `fetchOrders` returns
+          // immediately without a session token (:159), so clearing first left the cook
+          // with a dismissed error, no data read and no way to learn why — the banner
+          // was the only signal.
+          if (!sessionToken) return;
           clearError();
-          fetchOrders();
+          void fetchOrders();
         }}
         onDismissError={clearError}
         storageUnavailable={storageUnavailable}

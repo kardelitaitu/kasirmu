@@ -60,3 +60,5 @@ Three findings this session turned on it, in both directions:
 | Full suite | 12,657 passed, 0 failed (+1) |
 | `tsc` / `eslint` | 0 / 0 |
 | `RestaurantMenuEditorScreen.tsx` | restored; `scratch-kill.py` deleted |
+
+> last audited 14-10-26 by docs-auditor

@@ -15,6 +15,13 @@ fn fresh_conn() -> rusqlite::Connection {
     crate::testing::temp_conn()
 }
 
+/// An empty graph envelope, shared by the tenant-isolation fixtures.
+const EMPTY_GRAPH: TopologyRevisionGraph<'_> = TopologyRevisionGraph {
+    envelope: "{}",
+    node_count: 0,
+    wire_count: 0,
+};
+
 use crate::error::BridgeError;
 use rusqlite::OptionalExtension;
 use serde_json::Value;
@@ -26,6 +33,11 @@ fn ctx<'a>(note: &'a str, who: &'a str) -> TopologyRevisionContext<'a> {
         workspace_creations: 1,
         workspace_updates: 2,
         workspace_archives: 3,
+        org_id: None,
+        actor: None,
+        key_id: None,
+        signature: None,
+        base_revision: None,
     }
 }
 
@@ -909,4 +921,177 @@ fn pins_are_scoped_to_one_branch() {
         .unwrap()
     };
     assert_eq!((pinned_of("branch-a"), pinned_of("branch-b")), (1, 0));
+}
+
+#[test]
+fn metadata_columns_persisted_and_read_back() {
+    let conn = fresh_conn();
+    let tx = conn.unchecked_transaction().unwrap();
+    let ctx = TopologyRevisionContext {
+        change_note: "phase 1 metadata commit",
+        published_by: "user-author",
+        workspace_creations: 2,
+        workspace_updates: 1,
+        workspace_archives: 0,
+        org_id: Some("org-acme"),
+        actor: Some("user-actor"),
+        key_id: Some("key-2026-v1"),
+        signature: Some("a1b2c3d4e5f6"),
+        base_revision: Some(42),
+    };
+
+    let graph = TopologyRevisionGraph {
+        envelope: r#"{"nodes":[],"wires":[]}"#,
+        node_count: 2,
+        wire_count: 1,
+    };
+    insert_topology_revision(&tx, "branch-meta", 43, &graph, &ctx).unwrap();
+    tx.commit().unwrap();
+
+    let summaries = list_topology_revision_summaries(&conn, "branch-meta", 10).unwrap();
+    assert_eq!(summaries.len(), 1);
+    let s = &summaries[0];
+    assert_eq!(s.revision, 43);
+    assert_eq!(s.change_note, "phase 1 metadata commit");
+    assert_eq!(s.published_by, "user-author");
+    assert_eq!(s.org_id, "org-acme");
+    assert_eq!(s.actor, "user-actor");
+    assert_eq!(s.key_id.as_deref(), Some("key-2026-v1"));
+    assert_eq!(s.signature.as_deref(), Some("a1b2c3d4e5f6"));
+    assert_eq!(s.base_revision, Some(42));
+
+    match load_topology_revision_row(&conn, "branch-meta", 43).unwrap() {
+        TopologyRevisionLookup::Restorable {
+            org_id,
+            actor,
+            key_id,
+            signature,
+            base_revision,
+            ..
+        } => {
+            assert_eq!(org_id, "org-acme");
+            assert_eq!(actor, "user-actor");
+            assert_eq!(key_id.as_deref(), Some("key-2026-v1"));
+            assert_eq!(signature.as_deref(), Some("a1b2c3d4e5f6"));
+            assert_eq!(base_revision, Some(42));
+        }
+        _ => panic!("expected restorable revision"),
+    }
+}
+
+#[test]
+fn scoped_listing_strictly_isolates_by_tenant_and_org() {
+    let conn = fresh_conn();
+    let tx = conn.unchecked_transaction().unwrap();
+
+    let ctx_a = TopologyRevisionContext {
+        change_note: "tenant A org 1",
+        published_by: "user-a",
+        workspace_creations: 0,
+        workspace_updates: 0,
+        workspace_archives: 0,
+        org_id: Some("org-1"),
+        actor: Some("user-a"),
+        key_id: None,
+        signature: None,
+        base_revision: None,
+    };
+    insert_topology_revision(&tx, "branch-common", 1, &EMPTY_GRAPH, &ctx_a).unwrap();
+
+    let ctx_b = TopologyRevisionContext {
+        change_note: "tenant A org 2",
+        published_by: "user-b",
+        workspace_creations: 0,
+        workspace_updates: 0,
+        workspace_archives: 0,
+        org_id: Some("org-2"),
+        actor: Some("user-b"),
+        key_id: None,
+        signature: None,
+        base_revision: None,
+    };
+    insert_topology_revision(&tx, "branch-common", 2, &EMPTY_GRAPH, &ctx_b).unwrap();
+    tx.commit().unwrap();
+
+    // Isolated queries for tenant "default" + org-1 should only see revision 1
+    let org1_revisions =
+        list_topology_revision_summaries_scoped(&conn, "branch-common", "default", "org-1", 10)
+            .unwrap();
+    assert_eq!(org1_revisions.len(), 1);
+    assert_eq!(org1_revisions[0].revision, 1);
+    assert_eq!(org1_revisions[0].org_id, "org-1");
+
+    // Isolated queries for tenant "default" + org-2 should only see revision 2
+    let org2_revisions =
+        list_topology_revision_summaries_scoped(&conn, "branch-common", "default", "org-2", 10)
+            .unwrap();
+    assert_eq!(org2_revisions.len(), 1);
+    assert_eq!(org2_revisions[0].revision, 2);
+    assert_eq!(org2_revisions[0].org_id, "org-2");
+
+    // Query for a non-existent org gets 0 rows
+    let empty_revisions = list_topology_revision_summaries_scoped(
+        &conn,
+        "branch-common",
+        "default",
+        "org-foreign",
+        10,
+    )
+    .unwrap();
+    assert_eq!(empty_revisions.len(), 0);
+}
+
+#[test]
+fn cryptographic_signing_and_verification_roundtrip() {
+    let key = b"secret-authoritative-signing-key";
+    let tenant_id = "tenant-xyz";
+    let org_id = "org-main";
+    let branch_id = "branch-1";
+    let revision = 10;
+    let base_revision = Some(9);
+    let envelope = r#"{"schema_version":1,"revision":10,"nodes":[],"wires":[]}"#;
+
+    let payload = canonical_topology_revision_payload(
+        tenant_id,
+        org_id,
+        branch_id,
+        revision,
+        base_revision,
+        envelope,
+    );
+
+    let signature = sign_topology_revision_payload(key, &payload);
+    assert!(!signature.is_empty());
+
+    // Valid signature verifies true
+    assert!(verify_topology_revision_signature(
+        key, &payload, &signature
+    ));
+
+    // Tampered payload fails verification
+    let tampered_payload = canonical_topology_revision_payload(
+        tenant_id,
+        org_id,
+        branch_id,
+        revision + 1,
+        base_revision,
+        envelope,
+    );
+    assert!(!verify_topology_revision_signature(
+        key,
+        &tampered_payload,
+        &signature
+    ));
+
+    // Tampered key fails verification
+    assert!(!verify_topology_revision_signature(
+        b"wrong-key",
+        &payload,
+        &signature
+    ));
+
+    // Corrupted signature fails verification
+    assert!(!verify_topology_revision_signature(
+        key, &payload, "deadbeef"
+    ));
 }

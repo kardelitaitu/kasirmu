@@ -94,12 +94,18 @@ Incidents are classified by severity level. The classification determines the re
 
 | Contact | Method | Availability |
 |---------|--------|-------------|
-| **Security Lead** | `security@ozpos.my.id` · PagerDuty escalation · +1-555-SECURE | 24/7 |
-| **Incident Commander** | `incident@ozpos.my.id` · +1-555-INCIDENT | 24/7 (P1 only) |
-| **DevOps Lead** | `devops@ozpos.my.id` · Slack @devops-oncall | Business hours + P1 on-call |
-| **CEO** | `ceo@ozpos.my.id` · +1-555-CEO-OZPOS | Business hours (P1: any time) |
-| **Legal Counsel** | `legal@ozpos.my.id` (retained firm) | Business hours (P1: escalation) |
+| **Security Lead** | `security@kasir.mu` · PagerDuty escalation · +1-555-SECURE | 24/7 |
+| **Incident Commander** | `security@kasir.mu` · +1-555-INCIDENT | 24/7 (P1 only) |
+| **DevOps Lead** | `support@kasir.mu` · Slack @devops-oncall | Business hours + P1 on-call |
+| **CEO** | `owner@kasir.mu` · +1-555-CEO-OZPOS | Business hours (P1: any time) |
+| **Legal Counsel** | `legal@kasir.mu` (retained firm) | Business hours (P1: escalation) |
 | **Internal Slack** | `#security-incidents` channel | All incidents |
+
+> **Domain note.** These addresses were `@ozpos.my.id` until 2026-10-11. That domain survives
+> only as a *server origin* (`crates/kasirmu-core/src/server_origin.rs:36`) and the app-link
+> origin (`ui/src/api/browser.ts:18`); no `@ozpos.my.id` mailbox is used by the product. The
+> shipped customer-facing addresses are `@kasir.mu` (see `website/src/layouts/Base.astro:109`).
+> The PagerDuty/Slack identities above remain unverified placeholders.
 
 > **Emergency contacts file:** `docs/security/EMERGENCY_CONTACTS.md` (maintained quarterly) — ⚠️ **pending**: this file does not exist yet (verified 2026-08-08 by docs-auditor); create it before relying on this contact plan
 
@@ -115,10 +121,10 @@ Detection → Triage → Containment → Investigation → Remediation → Post-
 
 Incidents may be detected through:
 
-- **Automated alerts:** Intrusion detection, anomaly monitoring (rate limit breaches, unusual sync patterns), `cargo audit` findings, CI pipeline security checks
+- **Automated alerts:** Intrusion detection, anomaly monitoring (rate limit breaches, unusual sync patterns), CI pipeline security checks. **`cargo audit` is NOT among them** — it runs in no live workflow (`PCI-DSS_CHECKLIST.md:89`, `:136`), so dependency advisories are not a detection channel today.
 - **User reports:** Store staff report unusual behaviour via in-app feedback, support tickets, or direct contact
 - **Audit log review:** Daily audit log review (P12-3) flags suspicious events (`user.login` failures, `sale.void` spikes, permission escalation)
-- **External notification:** Payment gateway (Stripe/Square) webhook alerts, hosting provider (Northflank) security notices, CVE announcements
+- **External notification:** Payment-acquirer and Midtrans QRIS alerts (the shipped rails — `crates/kasirmu-payment/src/drivers/qris.rs`), Paddle billing webhooks, hosting provider (Northflank) security notices, CVE announcements. Stripe and Square exist as optional drivers in `kasirmu-payment` (`drivers/stripe.rs`, `drivers/square.rs`) but are **not** the deployed gateway, so they are not an alert source.
 - **Penetration testing:** Scheduled quarterly internal/external scans
 
 ### 4.2 Triage
@@ -178,7 +184,7 @@ Conduct a post-mortem meeting within 5 business days of closure. See §9 for the
 | 1 | Identify the scope of exposure (which terminals, transactions, time period) | Security Lead |
 | 2 | Disable the affected payment terminal(s) via the cloud server | Operations Lead |
 | 3 | Verify that kasir.mu does **not** store PAN/CVV/PIN (confirm with audit log + DB inspection) | Security Lead |
-| 4 | Notify the payment gateway (Stripe/Square) of the potential compromise | Communications Lead |
+| 4 | Notify the payment acquirer / Midtrans QRIS of the potential compromise | Communications Lead |
 | 5 | Engage external forensics if cardholder data is confirmed exposed | Legal / Compliance |
 
 ### 5.3 Service Outage / DoS
@@ -219,7 +225,7 @@ Conduct a post-mortem meeting within 5 business days of closure. See §9 for the
 For any P1 or P2 incident, preserve the following:
 
 - **Logs:**
-  - Application logs (`kasirmu-logging` output — crate renamed from `oz-logging` in the rebrand) — last 7 days
+  - Application logs (`kasirmu-logging` output — crate renamed from `oz-logging` in the rebrand) — **as retained by the configured `retention_days`** passed to `init_json_with_file`; there is no fixed 7-day horizon in the code, and the 12-month floor is still planned (`PCI-DSS_CHECKLIST.md:111`)
   - Audit log entries (`audit_log` table) — full export
   - System logs (syslog, Windows Event Log) — if accessible
 - **Database:**
@@ -248,6 +254,12 @@ For any P1 or P2 incident, preserve the following:
 ### 6.3 Retention
 
 Incident artefacts must be retained for **at least 12 months** (PCI-DSS §10.7.1). After 12 months, artefacts may be deleted unless they are part of an ongoing legal matter.
+
+> ⚠️ **This is policy, not an enforced control.** No code implements a 12-month artefact
+> floor: log retention is the caller-supplied `retention_days` parameter of
+> `kasirmu_logging::init_json_with_file` (`crates/kasirmu-logging/src/lib.rs:424`), and
+> `PCI-DSS_CHECKLIST.md:111` records 10.7.1 as 📋 Planned. Treat the sentence above as a
+> requirement on operators, not a property of the system.
 
 ---
 

@@ -62,3 +62,5 @@ tests — passes under shuffle.
 
 The instrument: `npx vitest run --sequence.shuffle.tests --sequence.seed=N`, run across
 SEVERAL seeds — seed 13 found this one and seed 2 did not.
+
+> last audited 14-10-26 by docs-auditor

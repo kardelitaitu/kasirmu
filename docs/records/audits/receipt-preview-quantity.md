@@ -92,3 +92,5 @@ not measured here.
 | `2x` label vs arithmetic | label only; `itemPrices[1]` is one unit |
 | Sample prices | self-contained `35000 / 16000 / 42000`, not the catalog's |
 | Tree | no source changed this round |
+
+> last audited 14-10-26 by docs-auditor

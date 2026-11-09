@@ -16,6 +16,7 @@
 // 86'd item cannot be added but can still be pinned/colourised. The
 // restaurant-grid / restaurant-empty class names are pinned by tests.
 
+import { memo } from 'react';
 import { requiredLocalized, LoadingStatus } from '@/components';
 import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
@@ -38,7 +39,21 @@ export interface MenuItemGridProps {
   onContextMenu: (sku: string, e: React.MouseEvent, trigger: HTMLElement, fromKeyboard: boolean, sourceInStock: boolean) => void;
 }
 
-export function MenuItemGrid({ loading, error, onRetry, items, hasActiveFilter, onClearFilter, pinned, unavailable, colors, catMetaMap, addedSku, onAdd, onContextMenu }: MenuItemGridProps) {
+// MEMOISED, and the parent had to be changed for it to mean anything.
+//
+// This component was a plain function, so a `RestaurantMenu` render re-rendered ALL of it —
+// and `RestaurantMenu` re-renders on every keystroke in the search box. Its two handler
+// props were inline arrows (`onRetry`, `onClearFilter`), which are a new function every
+// render, so adding `memo` alone would have changed nothing: the props would have compared
+// unequal every time. Both halves were needed, and either alone is inert — which is why the
+// tile-level memo below them (MenuItemTile) could not help on its own either.
+//
+// The props still passed as fresh values ARE load-bearing: `pinned`/`unavailable`/`colors`
+// are state objects the parent recreates on a toggle, and `addedSku` changes on every add
+// and again 400ms later when it clears. Those are real changes to what this grid draws, so
+// they SHOULD re-render it. The point of the memo is that a search keystroke, an unrelated
+// preference change, or a context-menu open no longer does.
+export const MenuItemGrid = memo(function MenuItemGrid({ loading, error, onRetry, items, hasActiveFilter, onClearFilter, pinned, unavailable, colors, catMetaMap, addedSku, onAdd, onContextMenu }: MenuItemGridProps) {
   const { l10n } = useLocalization();
   if (loading) {
     // LOAD-05: localized status announcement for the loading region.
@@ -117,4 +132,4 @@ export function MenuItemGrid({ loading, error, onRetry, items, hasActiveFilter, 
       ))}
     </div>
   );
-}
+});

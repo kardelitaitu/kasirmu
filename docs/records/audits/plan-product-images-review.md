@@ -50,10 +50,10 @@ The plan is **comprehensive and ready for implementation**. All key decisions ha
 ## ✅ Code Changes Required
 
 ### Server-Side (Rust)
-1. `crates/oz-core/src/subscription.rs` — Add `max_products()` and `supports_product_images()` ✅
-2. `crates/oz-core/migrations/` — New migration for `product_images` table ✅
+1. `crates/kasirmu-core/src/subscription.rs` — Add `max_products()` and `supports_product_images()` ✅
+2. `crates/kasirmu-core/migrations/` — New migration for `product_images` table ✅
 3. `apps/cloud-server/src/` — New image endpoints (upload, serve, delete, bulk) ✅
-4. `crates/oz-core/src/db/products.rs` — Enforce product limits on create ✅
+4. `crates/kasirmu-core/src/db/products.rs` — Enforce product limits on create ✅
 
 ### Client-Side (TypeScript)
 1. `ui/src/api/products.ts` — Add image upload/delete functions ✅

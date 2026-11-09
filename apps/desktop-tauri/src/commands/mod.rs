@@ -97,6 +97,8 @@ pub mod qris_auto;
 pub mod qris_listener;
 /// Receipt format commands (receipt-format axis).
 pub mod receipt_format;
+/// Accounts Receivable (Piutang / Kasbon) commands.
+pub mod receivables;
 /// Refund commands.
 pub mod refunds;
 /// Regional-configuration read commands (settings:read).

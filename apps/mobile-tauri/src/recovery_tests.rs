@@ -15,15 +15,19 @@
 
 use super::*;
 use kasirmu_core::{Store, migrations};
+use kasirmu_test_support::tempdir_with_prefix;
 use rusqlite::Connection;
 use tempfile::TempDir;
 
 /// A scratch directory removed when the guard drops.
+///
+/// The helper is `kasirmu_test_support`'s, not `tempfile::tempdir()`: the latter
+/// resolves TEMP, whose MACHINE-level value here is C:\WINDOWS\TEMP — creatable but
+/// not deletable for an ordinary user, so ten recovery tests failed with "create
+/// scratch dir: PermissionDenied" while the recovery logic was fine. Same
+/// auto-delete `TempDir`, rooted under the gitignored `target/test-scratch/`.
 fn scratch(label: &str) -> TempDir {
-    tempfile::Builder::new()
-        .prefix(&format!("kasirmu_tablet_restore_{label}_"))
-        .tempdir()
-        .expect("create scratch dir")
+    tempdir_with_prefix(&format!("kasirmu_tablet_restore_{label}_"))
 }
 
 /// A migrated, on-disk database carrying `store_name`.

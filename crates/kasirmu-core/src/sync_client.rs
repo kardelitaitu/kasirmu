@@ -159,6 +159,29 @@ fn apply_sync_outcomes_inner(
         }
     }
 
+    // A short `outcomes` vector is the one shape `zip` cannot report. Every
+    // entry point guarantees one outcome per item, so a mismatch means the
+    // server answered for fewer items than we sent — the trailing items keep
+    // their previous state (correct: they must never inherit a neighbour's
+    // verdict) but the cycle LOOKS successful while a tail of the batch was
+    // never acknowledged. Surface it instead of returning silently.
+    if outcomes.len() != pending.len() {
+        let detail = format!(
+            "push returned {} outcome(s) for {} item(s): {} item(s) left unacknowledged",
+            outcomes.len(),
+            pending.len(),
+            pending.len().saturating_sub(outcomes.len()),
+        );
+        tracing::warn!(
+            outcomes = outcomes.len(),
+            items = pending.len(),
+            "sync push: outcome count mismatch — trailing items stay queued"
+        );
+        if global_error.is_none() {
+            global_error = Some(detail);
+        }
+    }
+
     Ok(SyncAttemptResult {
         synced,
         failed,
@@ -239,7 +262,8 @@ pub fn mark_all_failed(
 /// prefer the split read/HTTP/write pattern using `send_items_to_server`
 /// (async) + `apply_sync_outcomes`.
 pub fn sync_pending(store: &Store, config: &SyncConfig) -> Result<SyncAttemptResult, CoreError> {
-    let pending = store.list_pending_offline()?;
+    let pending = store
+        .list_pending_offline_for_push_bounded(crate::offline::DEFAULT_MAX_OUTBOX_BATCH_ITEMS)?;
     if pending.is_empty() {
         return Ok(SyncAttemptResult {
             synced: 0,

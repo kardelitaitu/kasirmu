@@ -224,7 +224,7 @@
 
 /* The parenthetical inside that caption. ONE declaration: the grouped label rule sets
    --font-weight-medium (see the block above), and the marker is not part of the question.
-   NodeTopologyEditor.css:1415 / :2843 already drop nested text to --font-weight-normal in
+   NodeTopologyEditor.css:1380 / :2825 already drop nested text to --font-weight-normal in
    this feature, so the token and the move are both borrowed, not minted. NO colour: the
    parent's --color-fg-muted already paints it, and NO font-size, because this span sits
    one line above -note-count, which renders an amount. */

@@ -53,6 +53,47 @@ export function normalizeCourseId(course: string | null | undefined): CourseId |
   return course as CourseId;
 }
 
+/**
+ * Resolve a product category string to a canonical KDS course ID.
+ * Supports both English and Indonesian category names.
+ */
+export function resolveCourseFromCategory(category: string | null | undefined): CourseId | null {
+  const c = (category ?? '').toLowerCase();
+  if (!c) return null;
+  if (c.includes('appetizer') || c.includes('starter') || c.includes('pembuka')) return 'appetizer';
+  if (c.includes('main') || c.includes('entree') || c.includes('makanan') || c.includes('utama') || c.includes('food')) return 'main';
+  if (c.includes('side') || c.includes('tambahan') || c.includes('pelengkap')) return 'side';
+  if (c.includes('dessert') || c.includes('manisan') || c.includes('pencuci mulut')) return 'dessert';
+  if (c.includes('drink') || c.includes('beverage') || c.includes('minum')) return 'beverage';
+  return null;
+}
+
+/**
+ * Infer the default course for a product based on its category or name.
+ */
+export function inferCourseForProduct(product: Pick<Product, 'category' | 'name'>): CourseId | null {
+  const fromCat = resolveCourseFromCategory(product.category);
+  if (fromCat) return fromCat;
+
+  const name = (product.name || '').toLowerCase();
+  if (name.includes('teh') || name.includes('kopi') || name.includes('coffee') || name.includes('tea') || name.includes('jus') || name.includes('juice') || name.includes('drink') || name.includes('air') || name.includes('soda') || name.includes('beer') || name.includes('wine')) {
+    return 'beverage';
+  }
+  if (name.includes('nasi') || name.includes('mie') || name.includes('ayam') || name.includes('daging') || name.includes('sapi') || name.includes('ikan') || name.includes('steak') || name.includes('burger') || name.includes('pizza') || name.includes('pasta') || name.includes('goreng') || name.includes('bakar')) {
+    return 'main';
+  }
+  if (name.includes('salad') || name.includes('soup') || name.includes('sup') || name.includes('roti') || name.includes('toast')) {
+    return 'appetizer';
+  }
+  if (name.includes('es krim') || name.includes('ice cream') || name.includes('cake') || name.includes('kue') || name.includes('pancake') || name.includes('waffle')) {
+    return 'dessert';
+  }
+  if (name.includes('kentang') || name.includes('fries') || name.includes('kerupuk') || name.includes('sambal')) {
+    return 'side';
+  }
+  return null;
+}
+
 /** Coursing status — items on hold wait to be fired to the kitchen. */
 export type CoursingStatus = 'hold' | 'fired';
 
@@ -225,17 +266,18 @@ export function getProductModifierGroups(product: Product): ModifierGroup[] {
   if (product.modifierGroups && product.modifierGroups.length > 0) {
     return product.modifierGroups;
   }
-    if (product.notes && product.notes.startsWith('[')) {
+  const notes = product.notes?.trim();
+  if (notes && notes.startsWith('[')) {
     try {
-      const parsed = JSON.parse(product.notes);
+      const parsed = JSON.parse(notes);
       if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].modifiers) {
         return parsed as ModifierGroup[];
       }
     } catch { /* malformed notes */ }
   }
-  if (product.notes && product.notes.startsWith('{')) {
+  if (notes && notes.startsWith('{')) {
     try {
-      const parsed = JSON.parse(product.notes);
+      const parsed = JSON.parse(notes);
       if (parsed && typeof parsed === 'object') {
         const groups =
           (parsed as { modifierGroups?: unknown; modifiers?: unknown }).modifierGroups ||

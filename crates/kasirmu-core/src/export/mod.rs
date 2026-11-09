@@ -267,8 +267,42 @@ fn csv_cell(value: &str) -> String {
 }
 
 /// Write a CSV row from an iterator of cells.
+#[allow(dead_code)]
 fn csv_row(cells: impl Iterator<Item = String>) -> String {
     cells.map(|c| csv_cell(&c)).collect::<Vec<_>>().join(",")
+}
+
+fn write_csv_cell<W: std::io::Write>(w: &mut W, value: &str) -> std::io::Result<()> {
+    if value.contains(',') || value.contains('"') || value.contains('\n') {
+        w.write_all(b"\"")?;
+        for byte in value.bytes() {
+            if byte == b'"' {
+                w.write_all(b"\"\"")?;
+            } else {
+                w.write_all(&[byte])?;
+            }
+        }
+        w.write_all(b"\"")?;
+    } else {
+        w.write_all(value.as_bytes())?;
+    }
+    Ok(())
+}
+
+fn write_csv_row<W: std::io::Write, I>(w: &mut W, cells: I) -> std::io::Result<()>
+where
+    I: IntoIterator,
+    I::Item: AsRef<str>,
+{
+    let mut first = true;
+    for c in cells {
+        if !first {
+            w.write_all(b",")?;
+        }
+        first = false;
+        write_csv_cell(w, c.as_ref())?;
+    }
+    w.write_all(b"\n")
 }
 
 /// Write analytics data as CSV files and a metadata.json to the given directory.
@@ -295,6 +329,7 @@ pub fn write_analytics_bundle_csv(
     dir: &str,
 ) -> Result<Vec<String>, CoreError> {
     use std::fs;
+    use std::io::{BufWriter, Write};
     use std::path::Path;
 
     let root = Path::new(dir);
@@ -304,218 +339,225 @@ pub fn write_analytics_bundle_csv(
 
     let mut files: Vec<String> = Vec::new();
 
-    let write = |name: &str, content: &str| -> Result<String, CoreError> {
+    let create_writer = |name: &str| -> Result<(BufWriter<fs::File>, String), CoreError> {
         let path = root.join(name);
-        fs::write(&path, content)
-            .map_err(|e| CoreError::Internal(format!("failed to write {name}: {e}")))?;
-        Ok(path.to_string_lossy().to_string())
+        let file = fs::File::create(&path)
+            .map_err(|e| CoreError::Internal(format!("failed to create {name}: {e}")))?;
+        let writer = BufWriter::new(file);
+        let path_str = path.to_string_lossy().to_string();
+        Ok((writer, path_str))
     };
 
     // metadata.json
     let meta_json = serde_json::to_string_pretty(&bundle.metadata)
         .map_err(|e| CoreError::Internal(format!("failed to serialize metadata: {e}")))?;
-    files.push(write("metadata.json", &meta_json)?);
+    let meta_path = root.join("metadata.json");
+    fs::write(&meta_path, meta_json)
+        .map_err(|e| CoreError::Internal(format!("failed to write metadata.json: {e}")))?;
+    files.push(meta_path.to_string_lossy().to_string());
 
-    // Daily revenue
+    // Daily revenue (O-L04: write rows into BufWriter<File> directly to avoid unbounded memory accumulation)
     if !bundle.daily_revenue.is_empty() {
-        let mut csv = String::from("date,total_minor,currency,sale_count\n");
+        let (mut w, path_str) = create_writer("daily_revenue.csv")?;
+        w.write_all(b"date,total_minor,currency,sale_count\n")
+            .map_err(|e| CoreError::Internal(e.to_string()))?;
         for r in &bundle.daily_revenue {
-            csv.push_str(&csv_row(
-                [
-                    r.date.clone(),
-                    r.total_minor.to_string(),
-                    r.currency.clone(),
-                    r.sale_count.to_string(),
-                ]
-                .into_iter(),
-            ));
-            csv.push('\n');
+            let total_str = r.total_minor.to_string();
+            let count_str = r.sale_count.to_string();
+            write_csv_row(&mut w, [&r.date, &total_str, &r.currency, &count_str])
+                .map_err(|e| CoreError::Internal(e.to_string()))?;
         }
-        files.push(write("daily_revenue.csv", &csv)?);
+        w.flush().map_err(|e| CoreError::Internal(e.to_string()))?;
+        files.push(path_str);
     }
 
     // Weekly revenue
     if !bundle.weekly_revenue.is_empty() {
-        let mut csv = String::from("week_start,total_minor,currency,sale_count\n");
+        let (mut w, path_str) = create_writer("weekly_revenue.csv")?;
+        w.write_all(b"week_start,total_minor,currency,sale_count\n")
+            .map_err(|e| CoreError::Internal(e.to_string()))?;
         for r in &bundle.weekly_revenue {
-            csv.push_str(&csv_row(
-                [
-                    r.week_start.clone(),
-                    r.total_minor.to_string(),
-                    r.currency.clone(),
-                    r.sale_count.to_string(),
-                ]
-                .into_iter(),
-            ));
-            csv.push('\n');
+            let total_str = r.total_minor.to_string();
+            let count_str = r.sale_count.to_string();
+            write_csv_row(&mut w, [&r.week_start, &total_str, &r.currency, &count_str])
+                .map_err(|e| CoreError::Internal(e.to_string()))?;
         }
-        files.push(write("weekly_revenue.csv", &csv)?);
+        w.flush().map_err(|e| CoreError::Internal(e.to_string()))?;
+        files.push(path_str);
     }
 
     // Monthly revenue
     if !bundle.monthly_revenue.is_empty() {
-        let mut csv = String::from("month,total_minor,currency,sale_count\n");
+        let (mut w, path_str) = create_writer("monthly_revenue.csv")?;
+        w.write_all(b"month,total_minor,currency,sale_count\n")
+            .map_err(|e| CoreError::Internal(e.to_string()))?;
         for r in &bundle.monthly_revenue {
-            csv.push_str(&csv_row(
-                [
-                    r.month.clone(),
-                    r.total_minor.to_string(),
-                    r.currency.clone(),
-                    r.sale_count.to_string(),
-                ]
-                .into_iter(),
-            ));
-            csv.push('\n');
+            let total_str = r.total_minor.to_string();
+            let count_str = r.sale_count.to_string();
+            write_csv_row(&mut w, [&r.month, &total_str, &r.currency, &count_str])
+                .map_err(|e| CoreError::Internal(e.to_string()))?;
         }
-        files.push(write("monthly_revenue.csv", &csv)?);
+        w.flush().map_err(|e| CoreError::Internal(e.to_string()))?;
+        files.push(path_str);
     }
 
     // Top products
     if !bundle.top_products.is_empty() {
-        let mut csv = String::from("sku,name,total_qty,total_minor\n");
+        let (mut w, path_str) = create_writer("top_products.csv")?;
+        w.write_all(b"sku,name,total_qty,total_minor\n")
+            .map_err(|e| CoreError::Internal(e.to_string()))?;
         for r in &bundle.top_products {
-            csv.push_str(&csv_row(
-                [
-                    r.sku.clone(),
-                    r.name.clone(),
-                    r.total_qty.to_string(),
-                    r.total_minor.to_string(),
-                ]
-                .into_iter(),
-            ));
-            csv.push('\n');
+            let qty_str = r.total_qty.to_string();
+            let total_str = r.total_minor.to_string();
+            write_csv_row(&mut w, [&r.sku, &r.name, &qty_str, &total_str])
+                .map_err(|e| CoreError::Internal(e.to_string()))?;
         }
-        files.push(write("top_products.csv", &csv)?);
+        w.flush().map_err(|e| CoreError::Internal(e.to_string()))?;
+        files.push(path_str);
     }
 
     // Hourly heatmap
     if !bundle.hourly_heatmap.is_empty() {
-        let mut csv = String::from("day_of_week,hour,total_minor,sale_count\n");
+        let (mut w, path_str) = create_writer("hourly_heatmap.csv")?;
+        w.write_all(b"day_of_week,hour,total_minor,sale_count\n")
+            .map_err(|e| CoreError::Internal(e.to_string()))?;
         for r in &bundle.hourly_heatmap {
-            csv.push_str(&csv_row(
-                [
-                    r.day_of_week.to_string(),
-                    r.hour.to_string(),
-                    r.total_minor.to_string(),
-                    r.sale_count.to_string(),
-                ]
-                .into_iter(),
-            ));
-            csv.push('\n');
+            let day_str = r.day_of_week.to_string();
+            let hour_str = r.hour.to_string();
+            let total_str = r.total_minor.to_string();
+            let count_str = r.sale_count.to_string();
+            write_csv_row(&mut w, [&day_str, &hour_str, &total_str, &count_str])
+                .map_err(|e| CoreError::Internal(e.to_string()))?;
         }
-        files.push(write("hourly_heatmap.csv", &csv)?);
+        w.flush().map_err(|e| CoreError::Internal(e.to_string()))?;
+        files.push(path_str);
     }
 
     // Category breakdown
     if !bundle.category_breakdown.is_empty() {
-        let mut csv = String::from("category_name,total_minor,sale_count,percentage\n");
+        let (mut w, path_str) = create_writer("category_breakdown.csv")?;
+        w.write_all(b"category_name,total_minor,sale_count,percentage\n")
+            .map_err(|e| CoreError::Internal(e.to_string()))?;
         for r in &bundle.category_breakdown {
-            csv.push_str(&csv_row(
-                [
-                    r.category_name.clone(),
-                    r.total_minor.to_string(),
-                    r.sale_count.to_string(),
-                    format!("{:.1}", r.percentage),
-                ]
-                .into_iter(),
-            ));
-            csv.push('\n');
+            let total_str = r.total_minor.to_string();
+            let count_str = r.sale_count.to_string();
+            let pct_str = format!("{:.1}", r.percentage);
+            write_csv_row(&mut w, [&r.category_name, &total_str, &count_str, &pct_str])
+                .map_err(|e| CoreError::Internal(e.to_string()))?;
         }
-        files.push(write("category_breakdown.csv", &csv)?);
+        w.flush().map_err(|e| CoreError::Internal(e.to_string()))?;
+        files.push(path_str);
     }
 
     // Low stock alerts
     if !bundle.low_stock_alerts.is_empty() {
-        let mut csv = String::from("product_id,sku,name,current_qty,threshold\n");
+        let (mut w, path_str) = create_writer("low_stock_alerts.csv")?;
+        w.write_all(b"product_id,sku,name,current_qty,threshold\n")
+            .map_err(|e| CoreError::Internal(e.to_string()))?;
         for r in &bundle.low_stock_alerts {
-            csv.push_str(&csv_row(
-                [
-                    r.product_id.clone(),
-                    r.sku.clone(),
-                    r.name.clone(),
-                    r.current_qty.to_string(),
-                    r.threshold.to_string(),
-                ]
-                .into_iter(),
-            ));
-            csv.push('\n');
+            let qty_str = r.current_qty.to_string();
+            let thresh_str = r.threshold.to_string();
+            write_csv_row(
+                &mut w,
+                [&r.product_id, &r.sku, &r.name, &qty_str, &thresh_str],
+            )
+            .map_err(|e| CoreError::Internal(e.to_string()))?;
         }
-        files.push(write("low_stock_alerts.csv", &csv)?);
+        w.flush().map_err(|e| CoreError::Internal(e.to_string()))?;
+        files.push(path_str);
     }
 
     // Category popularity (one row per top product, category context repeated)
     if !bundle.category_popularity.is_empty() {
-        let mut csv = String::from(
-            "category_id,category_name,product_count,mean_score,catalog_ratio,rank,sku,product_name,popularity_score,percentile\n",
-        );
+        let (mut w, path_str) = create_writer("category_popularity.csv")?;
+        w.write_all(b"category_id,category_name,product_count,mean_score,catalog_ratio,rank,sku,product_name,popularity_score,percentile\n")
+            .map_err(|e| CoreError::Internal(e.to_string()))?;
         for cat in &bundle.category_popularity {
+            let cat_name = cat.category_name.as_deref().unwrap_or_default();
+            let count_str = cat.product_count.to_string();
+            let mean_str = format!("{:.4}", cat.mean_score);
+            let ratio_str = format!("{:.4}", cat.catalog_ratio);
             for p in &cat.top_products {
-                csv.push_str(&csv_row(
+                let rank_str = p.rank.to_string();
+                let pop_str = format!("{:.4}", p.popularity_score);
+                let pct_str = format!("{:.4}", p.percentile);
+                write_csv_row(
+                    &mut w,
                     [
-                        cat.category_id.clone(),
-                        cat.category_name.clone().unwrap_or_default(),
-                        cat.product_count.to_string(),
-                        format!("{:.4}", cat.mean_score),
-                        format!("{:.4}", cat.catalog_ratio),
-                        p.rank.to_string(),
-                        p.sku.clone(),
-                        p.name.clone(),
-                        format!("{:.4}", p.popularity_score),
-                        format!("{:.4}", p.percentile),
-                    ]
-                    .into_iter(),
-                ));
-                csv.push('\n');
+                        &cat.category_id,
+                        cat_name,
+                        &count_str,
+                        &mean_str,
+                        &ratio_str,
+                        &rank_str,
+                        &p.sku,
+                        &p.name,
+                        &pop_str,
+                        &pct_str,
+                    ],
+                )
+                .map_err(|e| CoreError::Internal(e.to_string()))?;
             }
         }
-        files.push(write("category_popularity.csv", &csv)?);
+        w.flush().map_err(|e| CoreError::Internal(e.to_string()))?;
+        files.push(path_str);
     }
 
     // Category demand forecast
     if !bundle.category_forecast.is_empty() {
-        let mut csv = String::from(
-            "category_id,category_name,forecast_units,trend_per_period,recent_avg_units\n",
-        );
+        let (mut w, path_str) = create_writer("category_forecast.csv")?;
+        w.write_all(
+            b"category_id,category_name,forecast_units,trend_per_period,recent_avg_units\n",
+        )
+        .map_err(|e| CoreError::Internal(e.to_string()))?;
         for r in &bundle.category_forecast {
-            csv.push_str(&csv_row(
+            let cat_name = r.category_name.as_deref().unwrap_or_default();
+            let forecast_str = r.forecast_units.to_string();
+            let trend_str = format!("{:.2}", r.trend_per_period);
+            let avg_str = format!("{:.2}", r.recent_avg_units);
+            write_csv_row(
+                &mut w,
                 [
-                    r.category_id.clone(),
-                    r.category_name.clone().unwrap_or_default(),
-                    r.forecast_units.to_string(),
-                    format!("{:.2}", r.trend_per_period),
-                    format!("{:.2}", r.recent_avg_units),
-                ]
-                .into_iter(),
-            ));
-            csv.push('\n');
+                    &r.category_id,
+                    cat_name,
+                    &forecast_str,
+                    &trend_str,
+                    &avg_str,
+                ],
+            )
+            .map_err(|e| CoreError::Internal(e.to_string()))?;
         }
-        files.push(write("category_forecast.csv", &csv)?);
+        w.flush().map_err(|e| CoreError::Internal(e.to_string()))?;
+        files.push(path_str);
     }
 
     // Active stock alerts
     if !bundle.active_stock_alerts.is_empty() {
-        let mut csv = String::from(
-            "id,threshold_id,product_id,location_id,current_qty,threshold,status,triggered_at,product_sku,product_name\n",
-        );
+        let (mut w, path_str) = create_writer("active_stock_alerts.csv")?;
+        w.write_all(b"id,threshold_id,product_id,location_id,current_qty,threshold,status,triggered_at,product_sku,product_name\n")
+            .map_err(|e| CoreError::Internal(e.to_string()))?;
         for r in &bundle.active_stock_alerts {
-            csv.push_str(&csv_row(
+            let qty_str = r.current_qty.to_string();
+            let thresh_str = r.threshold.to_string();
+            write_csv_row(
+                &mut w,
                 [
-                    r.id.clone(),
-                    r.threshold_id.clone(),
-                    r.product_id.clone(),
-                    r.location_id.clone(),
-                    r.current_qty.to_string(),
-                    r.threshold.to_string(),
-                    r.status.clone(),
-                    r.triggered_at.clone(),
-                    r.product_sku.clone(),
-                    r.product_name.clone(),
-                ]
-                .into_iter(),
-            ));
-            csv.push('\n');
+                    &r.id,
+                    &r.threshold_id,
+                    &r.product_id,
+                    &r.location_id,
+                    &qty_str,
+                    &thresh_str,
+                    &r.status,
+                    &r.triggered_at,
+                    &r.product_sku,
+                    &r.product_name,
+                ],
+            )
+            .map_err(|e| CoreError::Internal(e.to_string()))?;
         }
-        files.push(write("active_stock_alerts.csv", &csv)?);
+        w.flush().map_err(|e| CoreError::Internal(e.to_string()))?;
+        files.push(path_str);
     }
 
     Ok(files)

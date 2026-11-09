@@ -25,3 +25,7 @@ chrono = { workspace = true }
 [dev-dependencies]
 filetime = "0.2"
 uuid = { workspace = true }
+# Scratch directories under the gitignored target/, never the machine TEMP.
+# On this project's Windows machines TEMP resolves to C:\WINDOWS\TEMP, where an
+# ordinary user can create but not delete -- see retention_tests.rs::temp_dir.
+kasirmu-test-support = { path = "../kasirmu-test-support" }

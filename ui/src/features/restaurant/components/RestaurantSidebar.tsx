@@ -27,6 +27,7 @@ import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useVersionStatus } from '@/hooks/useVersionStatus';
 import { useAuth } from '@/contexts/AuthContext';
 import { isRovingKey, computeRovingIndex } from './sidebarLogic';
+import { RestaurantShortcutsHelp } from './RestaurantShortcutsHelp';
 import { hasGrantedPermission } from '@/registries/page-registry';
 
 /** The signed-in cashier, as the sidebar header shows them. */
@@ -73,6 +74,28 @@ export interface RestaurantSidebarActions {
   onOpenCashDrawer?: () => void;
   /** Request exit from workspace; handled by host to check shifts. */
   onRequestExit?: () => void;
+}
+
+/** Keyboard glyph for the shortcut-help row. */
+function KeyboardGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      width={18}
+      height={18}
+      aria-hidden="true"
+      focusable="false"
+      style={{ pointerEvents: 'none' }}
+    >
+      <rect x="2" y="6" width="20" height="12" rx="2" />
+      <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8" />
+    </svg>
+  );
 }
 
 export interface RestaurantSidebarProps {
@@ -298,6 +321,10 @@ export function RestaurantSidebar({
   // Animation state for sliding out when open flips to false
   const [prevOpen, setPrevOpen] = useState(open);
   const [exiting, setExiting] = useState(false);
+  // The keyboard-shortcut help is INLINE panel state, not a route: it renders
+  // above the rows inside this aside so it inherits the sidebar's own focus trap
+  // and Escape handling rather than opening a second dialog to fight them.
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasEverOpenRef = useRef(open);
 
@@ -353,19 +380,35 @@ export function RestaurantSidebar({
     sidebarWasOpenRef.current = open;
   }, [open, sidebarRef, triggerRef]);
 
-  // Close sidebar on Escape before global shortcuts can handle it
+  // Close sidebar on Escape before global shortcuts can handle it.
+  //
+  // UNWIND THE INNERMOST LAYER FIRST. This listener is on `document`, so it
+  // fires wherever focus sits inside the panel — including on the shortcut-help
+  // list, which is opened FROM the sidebar. Escape is the key a user presses to
+  // dismiss the thing they just opened, so handling it as "close the sidebar"
+  // threw away the whole panel (and the cashier's place in the POS) instead of
+  // the sub-panel. Measured: with the help open, Escape left it mounted AND
+  // called `onOpenChange(false)`.
+  //
+  // Same rule the commerce surfaces already follow — `PosScreen`'s Escape closes
+  // the split-bill dialog and leaves the sale view up.
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.preventDefault();
       e.stopPropagation();
+      if (showShortcuts) {
+        // The inner layer consumes this press; the sidebar stays open.
+        setShowShortcuts(false);
+        return;
+      }
       sidebarOpenedWithKeyboardRef.current = true;
       onOpenChange(false);
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [open, onOpenChange]);
+  }, [open, onOpenChange, showShortcuts]);
 
   // Close sidebar on click outside, EXCEPT on trigger or inside the sidebar
   useEffect(() => {
@@ -415,7 +458,7 @@ export function RestaurantSidebar({
     >
       {profile && (
         <>
-          <div className="restaurant-sidebar-profile">
+          <header className="restaurant-sidebar-profile">
             {onChangePhoto ? (
               <button
                 type="button"
@@ -432,7 +475,7 @@ export function RestaurantSidebar({
               <span className="restaurant-sidebar-name">{profile.displayName}</span>
               <span className="restaurant-sidebar-role">{profile.roleName}</span>
             </div>
-          </div>
+          </header>
           <div className="restaurant-sidebar-divider" role="separator" />
         </>
       )}
@@ -659,6 +702,33 @@ export function RestaurantSidebar({
           <div className="restaurant-sidebar-divider" role="separator" />
         </>
       )}
+      {/* ── Keyboard shortcuts ───────────────────────────────────────────
+          The five restaurant bindings had no discoverability surface at all:
+          `restaurantShortcuts.ts` declared them and both locale bundles carried
+          their labels, but nothing rendered a `labelId` (grep
+          `restaurant-shortcut-` returned the manifest and the locales only).
+          The keys worked and their documentation was unreachable. Retail solves
+          this with a `?` overlay; here the list lives in the sidebar, which is
+          already the panel a waiter opens to find operations. */}
+      <button
+        type="button"
+        className="restaurant-sidebar-item"
+        onKeyDown={handleSidebarKeyDown}
+        aria-label={l10n.getString('restaurant-shortcuts-help-title')}
+        aria-expanded={showShortcuts}
+        data-testid="restaurant-sidebar-shortcuts"
+        onClick={() => setShowShortcuts((v) => !v)}
+      >
+        <Tile>
+          <KeyboardGlyph />
+        </Tile>
+        <Localized id="restaurant-shortcuts-help-title">
+          <span>Keyboard shortcuts</span>
+        </Localized>
+      </button>
+      {showShortcuts && (
+        <RestaurantShortcutsHelp onClose={() => setShowShortcuts(false)} />
+      )}
       <button
         type="button"
         className="restaurant-sidebar-item"
@@ -699,14 +769,14 @@ export function RestaurantSidebar({
           names the product. `margin-top: auto` pins it to the foot of the flex
           column, so it sits flush with the bottom when the rows do not fill the
           panel and scrolls with them when they do. */}
-      <div className="restaurant-sidebar-footer">
+      <footer className="restaurant-sidebar-footer">
         <span className="restaurant-sidebar-version">v{currentVersion}</span>
         <Localized id="restaurant-sidebar-copyright">
           <span className="restaurant-sidebar-copyright">
             &copy; 2026 kasir.mu. All rights reserved.
           </span>
         </Localized>
-      </div>
+      </footer>
     </aside>
   );
 

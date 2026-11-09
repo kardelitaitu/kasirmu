@@ -2,7 +2,8 @@
 last audited 25-07-26 by RSA-Agent (cloud-server slice B: sync_api deep read)
 crate: cloud-server | status: SAFE | lint: CLEAN
 findings: CS-3 FIXED — the SQLite arm of sync_store push_batch now wraps the batch in one unchecked_transaction (commit at the end; UNIQUE failures stay statement-level so per-item outcomes are unchanged) SQLite arm of sync_store push_batch loops per-item in autocommit (no BEGIN/COMMIT), so a mid-batch failure persists partial items; proposed: unchecked_transaction around the loop to match the documented contract. Otherwise exemplary: tenant_id always from JWT claims (never request body, spoofing prevention documented), plan middleware fail-closed, per-tenant rate limiting, TTL caches for snapshot and tenant count with documented staleness rationale, index-order-preserving outcome reassembly, optional UUID-validation skip documented as a measured perf lever
-next: none | perf: batch transaction also fixes per-item autocommit latency
+findings: O-M25 FIXED — the snapshot cache was one global `tokio::Mutex<HashMap>` taken by EVERY snapshot request, with a full `Vec<u8>` payload clone on every HIT and a global `retain` sweep over all tenants under that same lock; now sharded 16 ways exactly as `rate_limit.rs` does it, storing/serving `bytes::Bytes` (hit = refcount bump), and the sweep locks one shard at a time with `try_lock` so two shards are never held at once and a busy shard is skipped rather than waited on
+next: none | perf: snapshot cache hit is now allocation-free and contention is per-shard
 */
 //! Sync API — server-side handlers for the offline-sync push/pull protocol.
 //!
@@ -12,6 +13,7 @@ next: none | perf: batch transaction also fixes per-item autocommit latency
 //! - `POST /api/sync/pull` — receives a `PullRequest` with `since` timestamp, returns `PullResponse`
 //! - `GET  /api/sync/status` — returns server status and pending queue count
 
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use axum::{
@@ -40,6 +42,13 @@ use crate::rate_limit::{RateLimiterState, rate_limit_middleware};
 /// when `SyncStore::snapshot_version` still matches, the cached bytes are
 /// served and the timestamp refreshed instead of re-serialising the full
 /// 3-table snapshot (products + tax_rates + users) on every cache miss.
+///
+/// **O-M25:** `bytes` is a `Bytes` handle, not a `Vec<u8>`. A cache HIT
+/// serves the cached payload on every request, and a `Vec<u8>` clone is a
+/// `memcpy` proportional to the whole snapshot (products + tax rates +
+/// users — tens of KB per hit). `Bytes` clones are one refcount bump, so the
+/// hit path allocates nothing at all. The served bytes are unchanged: a hit
+/// still serves exactly the buffer that was serialised on the miss.
 #[derive(Clone)]
 pub struct SnapshotData {
     /// When the entry was generated (or last version-revalidated).
@@ -47,10 +56,27 @@ pub struct SnapshotData {
     /// Reference-data version stamp (counts + MAX(updated_at) per table).
     pub version: String,
     /// Serialised JSON snapshot bytes, served verbatim.
-    pub bytes: Vec<u8>,
+    pub bytes: bytes::Bytes,
 }
 
-/// Per-tenant snapshot cache map.
+/// Number of shards for the snapshot cache map.
+///
+/// Mirrors `rate_limit::SHARD_COUNT`. Before O-M25 the whole map sat behind a
+/// single `tokio::sync::Mutex`, and EVERY snapshot request took that lock —
+/// a hit to get its tenant's entry handle, and a miss a second time for the
+/// sweep — so all tenants serialised on one lock on the hot path. Sharding by
+/// tenant hash means a request locks only the shard that owns its tenant, so
+/// concurrent requests for different tenants never contend.
+const SNAPSHOT_SHARD_COUNT: usize = 16;
+
+/// One shard's tenant map: the value inside a [`SnapshotShard`] lock.
+type SnapshotShardMap =
+    std::collections::HashMap<String, Arc<tokio::sync::RwLock<Option<SnapshotData>>>>;
+
+/// One shard of the snapshot cache: an independently-locked tenant map.
+type SnapshotShard = std::sync::Mutex<SnapshotShardMap>;
+
+/// Per-tenant snapshot cache, sharded by tenant hash (O-M25).
 ///
 /// Each tenant's entry is an `Arc<RwLock<Option<SnapshotData>>>` so a cold
 /// cache miss is **single-flight**: the first request to miss acquires the
@@ -58,8 +84,135 @@ pub struct SnapshotData {
 /// blocks on that lock, re-checks, and serves the freshly-written bytes
 /// instead of stampeding the database (one 3-table snapshot per burst,
 /// not N).
-type SnapshotCache =
-    Arc<Mutex<std::collections::HashMap<String, Arc<tokio::sync::RwLock<Option<SnapshotData>>>>>>;
+///
+/// The shard locks are plain `std::sync::Mutex`es, held only for a
+/// `HashMap` lookup/insert or a `retain` sweep — never across an `.await`
+/// and never two at once — so a poisoned lock cannot arise from a panic in
+/// unrelated code and cannot deadlock. `lock_shard` recovers from poisoning
+/// anyway, because the map is a cache: whatever a panicking writer left in it
+/// is still valid data.
+#[derive(Clone)]
+pub struct SnapshotCache {
+    /// One independently-locked map per shard; `shard_index` picks it.
+    shards: Arc<Vec<Arc<SnapshotShard>>>,
+}
+
+impl Default for SnapshotCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SnapshotCache {
+    /// Create an empty sharded cache.
+    pub fn new() -> Self {
+        let shards = (0..SNAPSHOT_SHARD_COUNT)
+            .map(|_| Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())))
+            .collect::<Vec<_>>();
+        Self {
+            shards: Arc::new(shards),
+        }
+    }
+
+    /// Pick the shard index for a tenant key (stable across calls).
+    ///
+    /// Keyed on the tenant id ALONE, so every entry for a tenant lives in
+    /// exactly one shard — that is what makes per-shard eviction
+    /// equivalent to a global eviction.
+    fn shard_index(tenant_id: &str) -> usize {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        Hash::hash(tenant_id, &mut hasher);
+        Hasher::finish(&hasher) as usize % SNAPSHOT_SHARD_COUNT
+    }
+
+    /// Lock the shard owning `tenant_id`, recovering from poisoning.
+    ///
+    /// The guarded value is a cache map: a panic elsewhere while a writer held
+    /// the lock does not leave the map inconsistent (the only operations are
+    /// `entry`, `insert` and `retain`, all panic-free), so serving from a
+    /// "poisoned" map is safe and strictly better than failing every snapshot
+    /// request for the rest of the process's life.
+    fn lock_shard(&self, tenant_id: &str) -> std::sync::MutexGuard<'_, SnapshotShardMap> {
+        self.shards[Self::shard_index(tenant_id)]
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// Return this tenant's entry handle, creating the (empty) entry on first
+    /// use. Locks exactly one shard, for a lookup and at most one insert.
+    fn entry(&self, tenant_id: &str) -> Arc<tokio::sync::RwLock<Option<SnapshotData>>> {
+        let mut map = self.lock_shard(tenant_id);
+        map.entry(tenant_id.to_owned())
+            .or_insert_with(|| Arc::new(tokio::sync::RwLock::new(None)))
+            .clone()
+    }
+
+    /// Evict TTL-expired entries, sweeping the shards ONE AT A TIME.
+    ///
+    /// Each shard is locked only for its own `retain`, so two shard locks are
+    /// never held simultaneously — there is no lock-ordering hazard to get
+    /// right. Lock acquisition is `try_lock`: a shard that is busy (another
+    /// request is inserting this tenant's handle right now) is SKIPPED rather
+    /// than waited on, so a sweep can never park a request behind a slow
+    /// tenant's map and can never starve a hot tenant. A skipped shard is
+    /// swept by the next miss — every miss sweeps, and every miss is also
+    /// what adds entries, so skipping cannot let the map grow unbounded.
+    ///
+    /// The staleness rule is unchanged from the pre-O-M25 global sweep: an
+    /// entry is stale when its value is `Some` and older than the TTL, or
+    /// when its value is `None` (a tenant that never completed a snapshot).
+    fn evict_expired(&self, ttl: std::time::Duration) {
+        for shard in self.shards.iter() {
+            let Ok(mut map) = shard.try_lock() else {
+                continue;
+            };
+            map.retain(|_, entry| {
+                let stale = entry
+                    .try_read()
+                    .map(|g| {
+                        g.as_ref()
+                            .map(|d| d.generated_at.elapsed() >= ttl)
+                            .unwrap_or(true)
+                    })
+                    .unwrap_or(false);
+                !stale
+            });
+        }
+    }
+
+    /// Total number of cached tenant entries across every shard.
+    ///
+    /// Test-only accessor (the rate limiter exposes the same shape as
+    /// `bucket_count`, which IS used in production by its cleanup task). Takes
+    /// each shard lock in turn — never two at once.
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.shards
+            .iter()
+            .map(|shard| {
+                shard
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .len()
+            })
+            .sum()
+    }
+
+    /// Whether the tenant has an entry in the cache (regardless of staleness).
+    #[cfg(test)]
+    pub fn contains_key(&self, tenant_id: &str) -> bool {
+        self.lock_shard(tenant_id).contains_key(tenant_id)
+    }
+
+    /// The cached entry handle for `tenant_id`, if present.
+    ///
+    /// Test-only accessor: lets a test backdate an entry to observe TTL
+    /// behaviour without waiting 15 minutes.
+    #[cfg(test)]
+    pub fn get(&self, tenant_id: &str) -> Option<Arc<tokio::sync::RwLock<Option<SnapshotData>>>> {
+        self.lock_shard(tenant_id).get(tenant_id).cloned()
+    }
+}
 
 /// Cached global tenant count (status endpoint).
 ///
@@ -103,7 +256,8 @@ pub struct SyncState {
     /// Postgres while the REST API continues to use the SQLite connection.
     pub pg: Option<deadpool_postgres::Pool>,
     /// Snapshot cache: keyed by tenant_id, stores (generated_at, JSON bytes).
-    /// P-3 Step 4: in-memory cache with 15-minute TTL.
+    /// P-3 Step 4: in-memory cache with 15-minute TTL. O-M25: sharded across
+    /// [`SNAPSHOT_SHARD_COUNT`] independently-locked maps, serving `Bytes`.
     pub snapshot_cache: SnapshotCache,
     /// P8-1: Per-tenant rate limiter for sync endpoints.
     pub rate_limiter: RateLimiterState,
@@ -125,7 +279,7 @@ impl SyncState {
         Self {
             db: state.db,
             pg: None,
-            snapshot_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            snapshot_cache: SnapshotCache::new(),
             rate_limiter,
             skip_push_validation: std::env::var("OZ_SKIP_PUSH_VALIDATION")
                 .map(|v| v == "1" || v == "true")
@@ -173,6 +327,7 @@ impl From<super::CloudServerState> for SyncState {
 ///
 ///   `.layer(axum::Extension(rate_limiter.clone()))` — makes RateLimiterState available
 ///   `.layer(axum::Extension(store))`                  — makes the SyncStore available to plan_middleware
+///   `.layer(axum::Extension(plan_cache))`             — O-H09: the short-TTL plan cache plan_middleware reads through
 ///   `.layer(axum::Extension(enforce_plans))`          — plan gate on/off
 ///   `.layer(middleware::from_fn(auth_middleware))`        ← outermost (injects ApiTokenClaims)
 ///   `.layer(middleware::from_fn(plan_middleware))`        ← reads claims, gates free tenants
@@ -181,15 +336,49 @@ impl From<super::CloudServerState> for SyncState {
 /// Execution order: auth_middleware → plan_middleware → rate_limit_middleware → handler
 /// Axum layers are applied from outside to inside, so the LAST .layer() is the
 /// innermost (closest to the handler).
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "kept as the named entry point of the sync gate: production goes through \
+                  sync_router_with_plan_enforcement (default plan cache), this is the \
+                  flag-only form the sync plan tests call"
+    )
+)]
 pub fn sync_router(state: SyncState, enforce_plans: bool) -> Router {
     sync_router_with_plan_enforcement(state, enforce_plans)
 }
 
 /// Build the sync router with an explicit plan-enforcement flag (used by
 /// tests and by [`sync_router`], which reads `OZ_ENFORCE_PLANS`).
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the flag-only form of the gate router; production adds the default plan \
+                  cache through sync_router_with_plan_enforcement_with_cache"
+    )
+)]
 pub fn sync_router_with_plan_enforcement(state: SyncState, enforce_plans: bool) -> Router {
+    sync_router_with_plan_enforcement_with_cache(state, enforce_plans, None)
+}
+
+/// Build the sync router with an explicit plan cache (O-H09).
+///
+/// `None` installs a fresh [`crate::sync_store::PlanCache::default`], which is
+/// what production wants: one cache per router, shared by every request through
+/// the extension added below, alive for exactly as long as the deployed
+/// process. `Some` lets a test supply a cache whose TTL it controls — the only
+/// way to observe a plan change made after the router was built once the gate
+/// is caching, since a hit is by definition not a read.
+pub fn sync_router_with_plan_enforcement_with_cache(
+    state: SyncState,
+    enforce_plans: bool,
+    plan_cache: Option<Arc<crate::sync_store::PlanCache>>,
+) -> Router {
     let rate_limiter = state.rate_limiter.clone();
     let store = state.store();
+    let plan_cache = plan_cache.unwrap_or_default();
     Router::new()
         .route("/api/sync/push", post(push_handler))
         .route("/api/sync/pull", post(pull_handler))
@@ -206,6 +395,7 @@ pub fn sync_router_with_plan_enforcement(state: SyncState, enforce_plans: bool) 
         .layer(middleware::from_fn(auth_middleware))
         .layer(axum::Extension(rate_limiter))
         .layer(axum::Extension(store))
+        .layer(axum::Extension(plan_cache))
         .layer(axum::Extension(enforce_plans))
 }
 
@@ -213,10 +403,16 @@ pub fn sync_router_with_plan_enforcement(state: SyncState, enforce_plans: bool) 
 /// on the `free` plan (or with no assigned plan — fail closed) is rejected
 /// with a structured 403 `{"error":"plan_required"}`. Runs after auth so
 /// claims are available, before the handler.
+///
+/// O-H09: the plan is read through [`crate::sync_store::PlanCache`], so a
+/// second request inside the cache TTL does not reach the database. The gate's
+/// decisions are unchanged — a hit serves an answer a successful read produced,
+/// a miss performs the same read as before, and an error is still a 500.
 #[allow(clippy::result_large_err)]
 pub async fn plan_middleware(
     Extension(enforce_plans): Extension<bool>,
     Extension(store): Extension<crate::sync_store::SyncStore>,
+    Extension(plan_cache): Extension<Arc<crate::sync_store::PlanCache>>,
     request: Request,
     next: middleware::Next,
 ) -> Result<axum::response::Response, axum::response::Response> {
@@ -233,13 +429,21 @@ pub async fn plan_middleware(
         .and_then(|claims| claims.tenant_id.as_deref())
         .unwrap_or("default");
 
-    let plan = store.get_tenant_plan(tenant_id).await.map_err(|_| {
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            axum::Json(serde_json::json!({ "error": "internal" })),
-        )
-            .into_response()
-    })?;
+    // O-H09: read through the short-TTL plan cache instead of hitting the
+    // database on every request. A cache MISS still performs the same store
+    // read this gate always did; a hit skips it. The error arm below is
+    // unchanged and deliberately not folded into `unwrap_or(Free)`: an error is
+    // a 500, a plan of `None` is a 403, and the cache never stores an error.
+    let plan = plan_cache
+        .get_or_load(tenant_id, || store.get_tenant_plan(tenant_id))
+        .await
+        .map_err(|_| {
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                axum::Json(serde_json::json!({ "error": "internal" })),
+            )
+                .into_response()
+        })?;
 
     if plan.unwrap_or(TenantPlan::Free) == TenantPlan::Free {
         return Err((
@@ -295,11 +499,35 @@ fn push_outcome_label(outcome: &PushOutcome) -> &'static str {
 ///
 /// Each item is inserted with its existing client-generated ID. Duplicate
 /// IDs (UNIQUE constraint violation) are reported as `Rejected`.
-#[tracing::instrument(skip(state, items), fields(tenant_id = claims.tenant_id.as_deref().unwrap_or("default"), item_count = items.len()))]
+// O-M23: `items` is no longer a parameter (the handler takes the raw body and
+// parses it below), so the span cannot read `items.len()` up front. The span now
+// opens with `body_bytes` — the same quantity the metric records — and
+// `item_count` is recorded on the span once the body has been parsed, so the
+// field is still present on every span that reaches the parse.
+#[tracing::instrument(skip(state, body), fields(tenant_id = claims.tenant_id.as_deref().unwrap_or("default"), body_bytes = body.len()))]
 async fn push_handler(
     State(state): State<SyncState>,
     Extension(claims): Extension<ApiTokenClaims>,
-    axum::Json(items): axum::Json<Vec<kasirmu_core::offline::OfflineQueueItem>>,
+    // O-M23: take the RAW body rather than `axum::Json<Vec<..>>`. Two reasons,
+    // and the second is the one that matters:
+    //
+    // 1. Cost. The metric below needs the body size, and the old code got it by
+    //    re-serialising the already-parsed `items` with `serde_json::to_vec` —
+    //    a second full serialisation of the hottest write path, allocating a
+    //    throwaway buffer the size of the request, purely to read `.len()`.
+    //
+    // 2. Meaning. The metric is documented as "Push request body size in bytes"
+    //    (`metrics.rs`), i.e. the TRANSPORT size. `serde_json::to_vec(&items)`
+    //    is the size of a RE-SERIALISATION, which is only equal to the request
+    //    body if the client formatted its JSON exactly as serde would (no
+    //    extra whitespace, same key order, same float formatting). A client
+    //    sending pretty-printed JSON inflates its own request without the old
+    //    metric ever seeing it. `bytes.len()` IS the body, so this observes the
+    //    quantity the metric names rather than a proxy for it.
+    //
+    // Malformed JSON is still rejected, just at the parse below instead of in
+    // the extractor, and with the same status the `Json` rejection produced.
+    body: axum::body::Bytes,
 ) -> Result<axum::Json<PushResponse>, (axum::http::StatusCode, String)> {
     let start = std::time::Instant::now();
 
@@ -307,9 +535,26 @@ async fn push_handler(
     // incoming JSON body, to prevent tenant spoofing.
     let tenant_id = claims.tenant_id.as_deref().unwrap_or("default");
 
-    // Estimate batch size for metrics.
-    let batch_bytes = serde_json::to_vec(&items).map(|v| v.len()).unwrap_or(0) as f64;
-    metrics::SYNC_BATCH_SIZE_BYTES.observe(batch_bytes);
+    // Request body size, as sent.
+    metrics::SYNC_BATCH_SIZE_BYTES.observe(body.len() as f64);
+
+    // Parse at the handler edge. The status and message mirror what
+    // `axum::Json` returned before, so a client sees no behaviour change.
+    // 400, matching what the `axum::Json` extractor returned before O-M23:
+    // `push_rejects_malformed_json` pins that status, and taking the raw body
+    // must not silently renegotiate a client-visible contract.
+    let items: Vec<kasirmu_core::offline::OfflineQueueItem> = serde_json::from_slice(&body)
+        .map_err(|e| {
+            (
+                axum::http::StatusCode::BAD_REQUEST,
+                format!("Failed to deserialize the JSON body into the target type: {e}"),
+            )
+        })?;
+    // Recorded here rather than in `#[instrument(fields(..))]` because the
+    // count does not exist until the body is parsed (O-M23). Nothing that read
+    // `item_count` on the span loses it: every request that reaches this line
+    // has it, and a body that fails to parse never had a count to report.
+    tracing::Span::current().record("item_count", items.len());
 
     // Phase 1.2: INSERT goes through the sync store in a single transaction
     // (previously one transaction per item). `db_start` measures backend
@@ -364,18 +609,46 @@ async fn push_handler(
 
     // Reassemble in request order: invalid ids stay Rejected at their
     // original position; batch outcomes land at the valid items' slots.
+    //
+    // O-M22: this is a MERGE, not a scan. `valid_indexes` is strictly ascending
+    // (one forward pass over `items` pushes `idx` in increasing order), so a
+    // single forward cursor suffices: walk `items` and `valid_indexes` together
+    // and the total work is O(items + valid), not the O(items x valid) of
+    // `valid_indexes.iter().position(..)` inside the loop over all items (a
+    // 1,000-item push did 10^6 comparisons).
+    //
+    // Order is the correctness invariant, not a nicety: the client zips `pending`
+    // against `results` by index (`apply_push_results`), so a reordering would
+    // mark the WRONG items synced. The loop emits exactly one outcome per
+    // `items` entry, in request order, so `results.len() == items.len()`.
     let mut results = Vec::with_capacity(items.len());
+    // Cursor into `valid_indexes` / `batch_results`: the position of the next
+    // valid item still waiting for its outcome. It only ever moves forward,
+    // which is what makes the walk linear rather than quadratic.
+    let mut cursor = 0usize;
     for (idx, item) in items.iter().enumerate() {
-        let outcome = match valid_indexes.iter().position(|&v| v == idx) {
-            Some(pos) => batch_results.get(pos).cloned().unwrap_or_else(|| {
-                // Should be unreachable: every valid index has an outcome.
-                PushOutcome::Rejected {
-                    reason: format!("missing batch outcome for {}", item.id),
+        let outcome = if cursor < valid_indexes.len() && valid_indexes[cursor] == idx {
+            // `idx` is the next valid item, so its outcome sits at the same
+            // position: `valid_indexes` and `batch_results` were filled by the
+            // same forward pass. Advance the cursor before reading so the
+            // slot stays correct for the next iteration.
+            let pos = cursor;
+            cursor += 1;
+            match batch_results.get(pos) {
+                Some(outcome) => outcome.clone(),
+                None => {
+                    // Should be unreachable: every valid index has an outcome.
+                    PushOutcome::Rejected {
+                        reason: format!("missing batch outcome for {}", item.id),
+                    }
                 }
-            }),
-            None => PushOutcome::Rejected {
+            }
+        } else {
+            // Not a valid index: the invalid id keeps its Rejected here, at its
+            // original position in the request.
+            PushOutcome::Rejected {
                 reason: format!("invalid id: {}", item.id),
-            },
+            }
         };
         metrics::SYNC_PUSHES_TOTAL
             .with_label_values(&[push_outcome_label(&outcome)])
@@ -496,7 +769,14 @@ fn compute_etag(bytes: &[u8]) -> String {
 /// `serde_json::from_slice` → `axum::Json` re-serialize round trip
 /// (SOTA finding C). If `If-None-Match` matches the computed ETag, returns
 /// `304 Not Modified` with zero body transmission.
-fn json_snapshot_response(bytes: Vec<u8>, if_none_match: Option<&str>) -> axum::response::Response {
+///
+/// O-M25: takes a `bytes::Bytes` rather than a `Vec<u8>`. `Bytes` is the body
+/// type axum buffers into, so the caller's handle is moved into the response
+/// as its single existing segment instead of being copied into one.
+fn json_snapshot_response(
+    bytes: bytes::Bytes,
+    if_none_match: Option<&str>,
+) -> axum::response::Response {
     let etag = compute_etag(&bytes);
     let mut headers = axum::http::HeaderMap::new();
     if let Ok(val) = axum::http::HeaderValue::from_str(&etag) {
@@ -584,7 +864,13 @@ async fn snapshot_handler(
         match redis.snapshot_get(tenant_id).await {
             Ok(Some((_version, bytes))) => {
                 metrics::SYNC_PULL_DURATION_MS.observe(start.elapsed().as_secs_f64() * 1000.0);
-                return Ok(json_snapshot_response(bytes, if_none_match));
+                // O-M25: a `Bytes` response body takes this `Vec<u8>` as ONE
+                // body segment and hands it over as-is, instead of the
+                // `to_vec()` copy that this path used to force.
+                return Ok(json_snapshot_response(
+                    bytes::Bytes::from(bytes),
+                    if_none_match,
+                ));
             }
             Ok(None) => {
                 // Cache miss — fall through to the in-process path.
@@ -597,19 +883,19 @@ async fn snapshot_handler(
 
     // Fast path: fresh cache hit under the READ lock — zero DB access
     // (SOTA finding C: serve the stored bytes, no re-serialise).
-    let entry = {
-        let mut cache = state.snapshot_cache.lock().await;
-        cache
-            .entry(tenant_id.to_owned())
-            .or_insert_with(|| Arc::new(tokio::sync::RwLock::new(None)))
-            .clone()
-    };
+    //
+    // O-M25: `entry` locks exactly ONE cache shard (a bare map lookup, with no
+    // `.await` inside the lock), so a request for tenant A no longer waits
+    // behind a request for tenant B.
+    let entry = state.snapshot_cache.entry(tenant_id);
 
     {
         let guard = entry.read().await;
         if let Some(data) = guard.as_ref()
             && data.generated_at.elapsed().as_secs() < SNAPSHOT_CACHE_TTL_SECS
         {
+            // O-M25: `Bytes::clone` is a refcount bump, not a copy of the
+            // response. This is the line that ran on EVERY cache hit.
             return Ok(json_snapshot_response(data.bytes.clone(), if_none_match));
         }
     }
@@ -621,6 +907,7 @@ async fn snapshot_handler(
     if let Some(data) = guard.as_ref()
         && data.generated_at.elapsed().as_secs() < SNAPSHOT_CACHE_TTL_SECS
     {
+        // Single-flight loser: serves the winner's bytes, refcount only.
         return Ok(json_snapshot_response(data.bytes.clone(), if_none_match));
     }
 
@@ -661,8 +948,12 @@ async fn snapshot_handler(
 
     // Serialize once: the bytes are both cached and served as the
     // response body (SOTA finding C — no second JSON pass).
+    // O-M25: the serialised payload becomes an immutable `Bytes` handle, so
+    // the cached copy and the served copy share one allocation. The buffer is
+    // the exact buffer `to_vec` produced, moved — the wire bytes are
+    // unchanged.
     let bytes = match serde_json::to_vec(&snapshot) {
-        Ok(bytes) => bytes,
+        Ok(bytes) => bytes::Bytes::from(bytes),
         Err(e) => return Err(error_json(&e.to_string())),
     };
 
@@ -688,18 +979,16 @@ async fn snapshot_handler(
     // polling cannot leave its entry in memory forever (unbounded growth
     // under tenant churn). The TTL read-check above only skips STALE
     // reads; this eviction is what bounds the map size.
-    let mut cache = state.snapshot_cache.lock().await;
-    cache.retain(|_, entry| {
-        let stale = entry
-            .try_read()
-            .map(|g| {
-                g.as_ref()
-                    .map(|d| d.generated_at.elapsed().as_secs() >= SNAPSHOT_CACHE_TTL_SECS)
-                    .unwrap_or(true)
-            })
-            .unwrap_or(false);
-        !stale
-    });
+    //
+    // O-M25: the sweep no longer holds one global lock across every tenant.
+    // It walks the shards one at a time (never two locks at once) and
+    // `try_lock`s each, so a busy shard is skipped rather than making a
+    // request wait, and a tenant being recomputed right now is never parked
+    // behind the sweep. Same staleness rule as before; see
+    // `SnapshotCache::evict_expired`.
+    state
+        .snapshot_cache
+        .evict_expired(std::time::Duration::from_secs(SNAPSHOT_CACHE_TTL_SECS));
 
     metrics::SYNC_PULL_DURATION_MS.observe(start.elapsed().as_secs_f64() * 1000.0);
     Ok(json_snapshot_response(bytes, if_none_match))

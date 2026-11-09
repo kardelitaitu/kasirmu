@@ -73,3 +73,5 @@ An observable that belongs to THIS interval. Options, none attempted far enough 
 `posScreenHooks.ts` remains. Its cart-width coverage is now fully ported; its shift-timer
 coverage is largely redundant with two production suites except the cleanup case above; its
 draft-persistence coverage (6 cases) was not examined this round.
+
+> last audited 14-10-26 by docs-auditor

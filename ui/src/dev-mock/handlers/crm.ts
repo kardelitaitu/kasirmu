@@ -89,5 +89,188 @@ export const crmHandlers: Record<string, MockHandler> = {
       MOCK_CUSTOMERS.find((c) => c.id === customerId) ?? MOCK_CUSTOMERS[0]!;
     return { customer, loyalty: null, sales: [], sales_total: 0 };
   },
+
+  // ═══════════════════════════════════════════════════════════════
+  // RECEIVABLES (Piutang / Kasbon)
+  // ═══════════════════════════════════════════════════════════════
+
+  'list_receivables_scoped': () => [],
+  'list_customer_receivables_scoped': () => [],
+  'get_receivable_scoped': () => null,
+  'get_customer_receivables_summary_scoped': (args) => {
+    const { customerId } = (args ?? {}) as { customerId?: string };
+    return {
+      customerId: customerId ?? 'cust-1',
+      outstandingTotal: { minor_units: 0, currency: 'IDR' },
+      openCount: 0,
+      hasOverdue: false,
+    };
+  },
+  'create_receivable_scoped': (args) => {
+    const payload = ((args as Record<string, unknown>)?.['args'] ?? args) as Record<string, unknown> | undefined;
+    const amount = (payload?.['amount'] as { minor_units: number; currency: string }) ?? { minor_units: 100000, currency: 'IDR' };
+    return {
+      id: 'rec-mock-1',
+      tenantId: 'default',
+      customerId: (payload?.['customerId'] as string) ?? 'cust-1',
+      saleId: (payload?.['saleId'] as string) ?? null,
+      source: (payload?.['source'] as string) ?? 'pos',
+      reference: (payload?.['reference'] as string) ?? '',
+      amount,
+      paid: { minor_units: 0, currency: 'IDR' },
+      balance: amount,
+      dueDate: (payload?.['dueDate'] as string) ?? null,
+      status: 'open',
+      isOverdue: false,
+      note: (payload?.['note'] as string) ?? '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      settledAt: null,
+      writtenOffAt: null,
+    };
+  },
+  'record_receivable_payment_scoped': (args) => {
+    const payload = ((args as Record<string, unknown>)?.['args'] ?? args) as Record<string, unknown> | undefined;
+    const amount = (payload?.['amount'] as { minor_units: number; currency: string }) ?? { minor_units: 100000, currency: 'IDR' };
+    return {
+      id: (payload?.['receivableId'] as string) ?? 'rec-mock-1',
+      tenantId: 'default',
+      customerId: 'cust-1',
+      saleId: null,
+      source: 'pos',
+      reference: '',
+      amount,
+      paid: amount,
+      balance: { minor_units: 0, currency: 'IDR' },
+      dueDate: null,
+      status: 'paid',
+      isOverdue: false,
+      note: '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      settledAt: new Date().toISOString(),
+      writtenOffAt: null,
+    };
+  },
+  'write_off_receivable_scoped': (args) => {
+    const { receivableId } = (args ?? {}) as { receivableId?: string };
+    return {
+      id: receivableId ?? 'rec-mock-1',
+      tenantId: 'default',
+      customerId: 'cust-1',
+      saleId: null,
+      source: 'pos',
+      reference: '',
+      amount: { minor_units: 100000, currency: 'IDR' },
+      paid: { minor_units: 0, currency: 'IDR' },
+      balance: { minor_units: 100000, currency: 'IDR' },
+      dueDate: null,
+      status: 'written_off',
+      isOverdue: false,
+      note: '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      settledAt: null,
+      writtenOffAt: new Date().toISOString(),
+    };
+  },
+  'get_ar_aging_report_scoped': () => ({
+    asOfDate: new Date().toISOString().slice(0, 10),
+    currency: 'IDR',
+    summary: {
+      currentMinor: 0,
+      days3160Minor: 0,
+      days6190Minor: 0,
+      daysOver90Minor: 0,
+      totalOutstandingMinor: 0,
+    },
+    customers: [],
+  }),
+
+  // ═══════════════════════════════════════════════════════════════
+  // PAYABLES (Hutang / Beli Tempo)
+  // ═══════════════════════════════════════════════════════════════
+
+  'list_payables_scoped': () => [],
+  'create_payable_scoped': (args) => {
+    const payload = ((args as Record<string, unknown>)?.['args'] ?? args) as Record<string, unknown> | undefined;
+    const amount = (payload?.['amount'] as { minor_units: number; currency: string }) ?? { minor_units: 5000000, currency: 'IDR' };
+    return {
+      id: 'pay-mock-1',
+      tenant_id: 'default',
+      supplier_id: (payload?.['supplierId'] as string) ?? 'supplier-1',
+      po_id: (payload?.['poId'] as string) ?? null,
+      source: (payload?.['source'] as string) ?? 'manual',
+      reference: (payload?.['reference'] as string) ?? 'INV-MOCK-001',
+      amount,
+      paid: { minor_units: 0, currency: amount.currency },
+      balance: amount,
+      due_date: (payload?.['dueDate'] as string) ?? null,
+      status: 'open',
+      is_overdue: false,
+      note: (payload?.['note'] as string) ?? '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      settled_at: null,
+      written_off_at: null,
+    };
+  },
+  'record_payable_payment_scoped': (args) => {
+    const payload = ((args as Record<string, unknown>)?.['args'] ?? args) as Record<string, unknown> | undefined;
+    const amount = (payload?.['amount'] as { minor_units: number; currency: string }) ?? { minor_units: 5000000, currency: 'IDR' };
+    return {
+      id: (payload?.['payableId'] as string) ?? 'pay-mock-1',
+      tenant_id: 'default',
+      supplier_id: 'supplier-1',
+      po_id: null,
+      source: 'manual',
+      reference: 'INV-MOCK-001',
+      amount,
+      paid: amount,
+      balance: { minor_units: 0, currency: amount.currency },
+      due_date: null,
+      status: 'paid',
+      is_overdue: false,
+      note: (payload?.['note'] as string) ?? '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      settled_at: new Date().toISOString(),
+      written_off_at: null,
+    };
+  },
+  'write_off_payable_scoped': (args) => {
+    const { payableId } = (args ?? {}) as { payableId?: string };
+    return {
+      id: payableId ?? 'pay-mock-1',
+      tenant_id: 'default',
+      supplier_id: 'supplier-1',
+      po_id: null,
+      source: 'manual',
+      reference: 'INV-MOCK-001',
+      amount: { minor_units: 5000000, currency: 'IDR' },
+      paid: { minor_units: 0, currency: 'IDR' },
+      balance: { minor_units: 5000000, currency: 'IDR' },
+      due_date: null,
+      status: 'written_off',
+      is_overdue: false,
+      note: '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      settled_at: null,
+      written_off_at: new Date().toISOString(),
+    };
+  },
+  'get_ap_aging_report_scoped': () => ({
+    asOfDate: new Date().toISOString().slice(0, 10),
+    currency: 'IDR',
+    summary: {
+      currentMinor: 0,
+      days3160Minor: 0,
+      days6190Minor: 0,
+      daysOver90Minor: 0,
+      totalOutstandingMinor: 0,
+    },
+    vendors: [],
+  }),
 };
 export { MOCK_CUSTOMERS };

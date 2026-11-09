@@ -51,3 +51,5 @@ helper rather than rediscovering the trap.
 | Kill-test (binding disabled) | **4 failed**, 2 passed as designed |
 | `PosScreen.tsx` | byte-identical to HEAD after the restore |
 | Full UI suite | 12,678 passed |
+
+> last audited 14-10-26 by docs-auditor

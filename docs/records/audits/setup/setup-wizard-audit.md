@@ -341,5 +341,8 @@ would require amending that record first. Reported, not acted on.
 > The five dead-end fixes this flow still needed — a named submit gate, an offline way out, a
 > pairing code that replaces itself, a default route a solo merchant can use, and a disclosed
 > currency/timezone — are in `bf5db7b94`.
->
-> > last audited 30-09-26 by DSH (recommendation status; findings above unchanged) · last full audited 29-09-26 by docs-auditor
+
+> **30-09-26 pass:** recommendation status re-checked; the findings above were unchanged, so this
+> was a re-check rather than a new full audit. The last FULL audit was 29-09-26 (`docs-auditor`).
+
+> last audited 30-09-26 by DSH

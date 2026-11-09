@@ -7,22 +7,55 @@
 # lint-i18n — and it never calls check.sh. So a red pre-push is not a failure of
 # this matrix, and a green push does not mean these steps ran.
 # Nothing here mirrors .github/workflows/ci.yml either: that workflow was
-# retired to ci.yml.bak in 23c96330. There are FOUR live workflows, not two, and
+# retired to ci.yml.bak in 23c96330. There are FIVE live workflows, not two, and
 # this line said "two" for months after the other two were reinstated:
 #   dev-ci.yml    PRs and pushes to main
 #   release.yml   v* tags
 #   android.yml   restored by a9dca0610
 #   website.yml   marketing site deploy
+#   docker-digest-drift.yml  restored 54d877434, advisory issue-opener
 # Count them rather than trust this comment:
 #   ls .github/workflows/*.yml
-# See docs/operations/ci-pipeline.md, which has said four throughout.
+# See docs/operations/ci-pipeline.md, which now says five throughout.
+# NOTE for whoever adds the next workflow: this comment AND the matching line in
+# docs/operations/agent-gates.md are both policed by verify-agents-mirrors.py,
+# which fails on a live workflow the docs do not count. Restoring the digest-drift
+# workflow (54d877434) turned that gate red in exactly two places until both were
+# updated -- the same two-file rule this repo records for check.sh and gates.json.
 #
 # Usage:  bash scripts/check.sh
 #         (run from the workspace root)
+#
+# Requirement: step 52 runs the workspace nextest pass with --all-features to
+# mirror dev-ci.yml, which turns the pg-tests feature on — and with pg-tests on,
+# an unreachable Postgres FAILS LOUD (crates/kasirmu-api/src/pg_tests.rs, the
+# R17 owner ruling: "PG test enabled but the resource is unreachable"), it does
+# not skip. So a full green run of this matrix needs Docker+Postgres up on
+# localhost:15432. Measured 2026-11-08 with PG down: steps 1-51 PASS, step 52
+# FAILs on one pg_* test with 670/671 run tests green before fail-fast, and the
+# failure PROPAGATES: step 54 grades target/nextest/default/junit.xml, which now
+# holds that failed run, so 54 reads FAIL too. A resume therefore cannot stop at
+# 53: CHECK_FROM=55 is the first trust-point past the PG lane (resumed runs print
+# the skipped steps as SKIPPED and prove nothing about them). The same
+# precondition is documented in scripts/coverage.sh for its rust lane.
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+# The repo root, captured once: later blocks cd into ui/ and website/ and a
+# guard that assumes it is still here silently degrades instead (measured
+# 2026-11-08: the UI coverage-floors guard below never ran its steps).
+repo_root_dir=$PWD
+
+# ── MSVC toolset fallback (sourced helper) ───────────────────────────────────
+# The derivation lives in scripts/msvc-env.sh (round 122 extraction of the r115
+# block) so scripts outside this matrix can source the same environment:
+# `source scripts/msvc-env.sh` before any cargo invocation that links.
+. "$(dirname -- "$0")/msvc-env.sh"
+# The go lane needs the same treatment from the other direction: go derives its
+# caches from LOCALAPPDATA/USERPROFILE, which stripped runners also remove
+# (measured 2026-11-08, step 103). Inert when the env is healthy.
+. "$(dirname -- "$0")/go-env.sh"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -36,7 +69,7 @@ step() {
     local retry_cmd=$1; shift
     local step_str; step_str=$(printf "%02d" "${step_counter}")
 
-    # CHECK_FROM: skip everything before step N without paying for it. The matrix has 120
+    # CHECK_FROM: skip everything before step N without paying for it. The matrix has 218
     # steps and the first 36 take about 20 minutes, so re-running it from the top to reach
     # step 37 is how a late leg stays unverified for a hundred rounds. The comparison is
     # against this step's OWN number, before the increment, and the counter still advances
@@ -120,15 +153,44 @@ step "rustdoc (deny warnings)" "RUSTDOCFLAGS='-D warnings' cargo doc --workspace
 
 # ── ADR #7 Phase 4: no raw store_id/user_id in command signatures ───────
 step "no-raw-params (ADR #7 Phase 4)" "bash scripts/verify-no-raw-params.sh" bash scripts/verify-no-raw-params.sh
+# The gate greps two exact literals ('store_id: String' / 'user_id: String') inside one
+# directory, so a rename or a type change empties its corpus and it prints PASS forever.
+# Added 2026-10-23 after the detector was measured alive (a planted unscoped parameter
+# gave VIOLATION + FAIL: 1) -- alive but UNPINNED, which is the state that rots.
+step "no-raw-params falsification" "bash scripts/test-no-raw-params.sh" bash scripts/test-no-raw-params.sh
+# The classifier as UNIT cases, plus the zero floor. test-no-raw-params.sh above proves
+# the detector fires on a planted parameter, which the cases here cannot and do not
+# replace; what it cannot see is an over-matching twin lookup (a DIFFERENT fn's twin
+# covering this one) and a scan that read nothing. Writing these found that gap: before
+# the floor, neutering the grep made the gate print PASS over ZERO classified parameters.
+step "no-raw-params self-test" "bash scripts/verify-no-raw-params.sh --self-test" bash scripts/verify-no-raw-params.sh --self-test
 
 # ── H-1/H-2: every registered command has a _scoped variant or allowlist entry ──
 step "scoped coverage (H-1)" "bash scripts/verify-scoped-coverage.sh" bash scripts/verify-scoped-coverage.sh
+# The classifier's silent failures: an allowlist regex that matches by SUBSTRING where
+# the rule is a whole name (a new command containing an allowlisted one reads as
+# The gate had TWO silent failures and the twin one was not covered by any floor: with a
+# dead `_scoped` scan every command falls to the allowlist and it printed PASS with twin
+# coverage 0, while the registered floor reads only the other half of the subject. A twin
+# floor now refuses that, and both derivations carry `|| true` because under
+# `set -euo pipefail` a grep matching nothing made the whole script die at the assignment
+# with EMPTY stdout and stderr. Measured 2026-10-23: the dead-scan mutant now prints
+# "derived ZERO _scoped twin(s)" and exits 1 instead of vanishing.
+step "scoped coverage self-test" "bash scripts/verify-scoped-coverage.sh --self-test" bash scripts/verify-scoped-coverage.sh --self-test
 
 # ── H-1b: a _scoped variant must actually AUTHORIZE, not merely exist ────
 # The check above stops at "a twin exists"; this one opens the twin. A _scoped
 # fn reaching the store or HAL must call a permission helper, be named in a
 # reasoned list, or carry an `// ungated-ok:` marker in its body.
 step "scoped authorization (H-1b)" "bash scripts/verify-scoped-authorization.sh --strict" bash scripts/verify-scoped-authorization.sh --strict
+# The classifier is one awk function whose four branches each decide SILENTLY: a body
+# matching PERM is skipped, a body not matching STORE is skipped, a listed name is
+# counted as explained. Disable any branch and the summary still prints and the gate
+# still exits 0 when the backlog is clear -- it grades nothing, quietly. Writing the
+# cases found a real defect: the program had TWO END blocks both calling classify(), so
+# awk ran both and the LAST function in the subject was counted twice (a single leaky fn
+# reported "UNREASONED: 2"). The floor at the bottom cannot see that.
+step "scoped authorization self-test" "bash scripts/verify-scoped-authorization.sh --self-test" bash scripts/verify-scoped-authorization.sh --self-test
 
 # ── IPC registration parity (F-008/F-050) ────────────────────────────────
 # Fails when the UI invokes a command string absent from a shell's
@@ -136,12 +198,41 @@ step "scoped authorization (H-1b)" "bash scripts/verify-scoped-authorization.sh 
 # so the list shrinks to zero as F-006 removes the dead surface.
 step "ipc parity" "python3 scripts/verify-ipc-parity.py" python3 scripts/verify-ipc-parity.py
 
+# ── Shell registration divergence ────────────────────────────────────────
+# The direction parity structurally cannot see: a command registered in ONE
+# shell and forgotten in the other. Parity grades gaps that reach the UI, so a
+# brand-new command nothing calls yet is invisible to it. Every one-sided name
+# must be listed in scripts/shell-divergence.json with a reason; an entry whose
+# command both shells now register fails as stale.
+step "shell registration" "python3 scripts/verify-shell-registration.py" python3 scripts/verify-shell-registration.py
+step "shell registration self-test" "python3 scripts/verify-shell-registration.py --self-test" python3 scripts/verify-shell-registration.py --self-test
+
+# Classifies the scoped-reads finding list by whether the flagged module runs at all.
+#
+# --strict since 2026-10-25 (round 156): the tree reached DEAD=0 when round 155 mounted
+# the email-reports screen, so the ratchet is armed. A finding whose module nothing in the
+# shipped bundle reaches now FAILS this step instead of being printed and ignored.
+# Proven before arming: planting an unmounted component that invokes a desktop-only
+# command made --strict exit 1, and deleting it returned 0.
+step "finding reachability" "python3 scripts/classify-finding-reachability.py --strict" python3 scripts/classify-finding-reachability.py --strict
+step "finding reachability self-test" "python3 scripts/classify-finding-reachability.py --self-test" python3 scripts/classify-finding-reachability.py --self-test
+
+# Counts component modules no production code reaches. Its sibling above only classifies
+# modules behind an UNRESOLVED finding, so a module whose finding was guarded (or which
+# never produced one) is invisible to it -- measured in round 156. Report only for now:
+# --strict is the switch once the current list is dispositioned.
+step "orphan module census" "python3 scripts/census-orphan-modules.py" python3 scripts/census-orphan-modules.py
+step "orphan module census self-test" "python3 scripts/census-orphan-modules.py --self-test" python3 scripts/census-orphan-modules.py --self-test
+
 # ── IPC session-token payload parity (round AE) ──────────────────────────
-# Fails when the UI invokes a command whose Rust signature requires
-# session_token without carrying a sessionToken payload (the round-AC edc
-# class). Union semantics across desktop + tablet shells.
-step "ipc invoke token parity" "python3 scripts/verify-invoke-parity.py" python3 scripts/verify-invoke-parity.py
-step "ipc invoke token parity self-test" "python3 scripts/verify-invoke-parity.py --self-test" python3 scripts/verify-invoke-parity.py --self-test
+# Fails when the UI invokes a command whose Rust signature requires a
+# session_token, or declares a currency argument, without the payload carrying
+# it. Two classes: the round-AC edc token class, and (added round 249) the
+# currency class -- a dropped currency deserializes fine and then applies a
+# number quoted in one denomination to a balance stored in another.
+# Union semantics across desktop + tablet shells.
+step "ipc invoke payload parity" "python3 scripts/verify-invoke-parity.py" python3 scripts/verify-invoke-parity.py
+step "ipc invoke payload parity self-test" "python3 scripts/verify-invoke-parity.py --self-test" python3 scripts/verify-invoke-parity.py --self-test
 
 # ipc-parity-allowlist.json records "UI command strings not yet registered in this shell", which
 # covers two very different things: an ambient call sitting in an ADR #7 else-branch (dead surface,
@@ -150,8 +241,15 @@ step "ipc invoke token parity self-test" "python3 scripts/verify-invoke-parity.p
 # get_cart_deduction_location, which made every desktop sale with a stock-target item throw. This
 # reads the allowlist, finds each command's wrapper and its production call sites, and fails on any
 # call not sitting behind a token test.
-step "scoped ambient reads" "python3 scripts/verify-scoped-reads.py --self-test" python3 scripts/verify-scoped-reads.py --self-test
-step "unguarded ambient ipc calls" "python3 scripts/verify-scoped-reads.py" python3 scripts/verify-scoped-reads.py
+# Label order fixed 2026-10-24. These two steps had the convention INVERTED versus the
+# other 46 pairs: the --self-test step came first and carried the label of the gate
+# ("scoped ambient reads"), while the bare gate came second under a different name
+# ("unguarded ambient ipc calls"). Both descriptions were accurate about their CHECK
+# and wrong about their STEP, which is the shape a future edit drops the wrong half of.
+# The other two self-test-first pairs (state-closure, reentry-guards) are deliberate and
+# say so in their labels; these two did not.
+step "unguarded ambient ipc calls" "python3 scripts/verify-scoped-reads.py --shell desktop,tablet" python3 scripts/verify-scoped-reads.py --shell desktop,tablet
+step "unguarded ambient ipc calls self-test" "python3 scripts/verify-scoped-reads.py --self-test" python3 scripts/verify-scoped-reads.py --self-test
 # P3-3. P2-6 put `#![deny(unsafe_code)]` at 38 of 43 crate roots, so the crates
 # that carry NO unsafe cannot grow any. The five that legitimately keep it
 # (kasirmu-logging syslog/eventlog FFI, kasirmu-security CredWriteW,
@@ -161,6 +259,21 @@ step "unguarded ambient ipc calls" "python3 scripts/verify-scoped-reads.py" pyth
 # SAFETY at all. This makes the justification mechanical instead of a
 # reviewer's-eye exercise. Gate: scripts/gates.json -> "unsafe-safety".
 step "unsafe safety comments" "python3 scripts/verify-unsafe-safety.py --self-test" python3 scripts/verify-unsafe-safety.py --self-test
+# The debt journal (todo-optimize-crates.md) is the source of truth for what is still open,
+# and five entries were caught ranked as open work after they were already fixed -- O-H23,
+# O-H24 and O-H26 by other lanes on 2026-09-27, O-H03/O-H04/O-H08 which said "Fixed:" in their
+# own text, and O-H22 whose commit touched the journal without adding a section. A SIXTH
+# failure was found while writing this gate: 49a304b97 deleted §11Z's body outright, so the
+# file recorded O-H16 as open while its code had shipped. Manual discipline has missed six;
+# this makes the cross-check mechanical. Reads git log against the journal, so it is cheap.
+# Gate: scripts/gates.json -> "debt-ledger".
+step "debt ledger" "python3 scripts/check-debt-ledger.py" python3 scripts/check-debt-ledger.py
+# Its four predicates have each been wrong once -- the status-report veto, the
+# case-sensitive close marker, the second section-heading shape, and the id requirement.
+# Each of those is a rule over a string, and a rule can be tidied back into the form that
+# produced the false positive while the gate goes on printing OK. The self-test pins all
+# four; reverting any one of them reddens the case that names it.
+step "debt ledger self-test" "python3 scripts/check-debt-ledger.py --self-test" python3 scripts/check-debt-ledger.py --self-test
 step "unsafe safety comments (tree)" "python3 scripts/verify-unsafe-safety.py" python3 scripts/verify-unsafe-safety.py
 # Round 201 of the restaurant-POS work found `setLines(updatedLines)` replacing state from a
 # pre-await render closure, so a line added mid-send was dropped with no message. The checker
@@ -176,6 +289,10 @@ step "unsafe safety comments (tree)" "python3 scripts/verify-unsafe-safety.py" p
 # before. Pair it with `--self-test` so a broken matcher cannot report a clean zero.
 step "state closure after await (self-test)" "python3 scripts/check-state-closure-after-await.py --self-test" python3 scripts/check-state-closure-after-await.py --self-test
 step "state closure after await (report)" "python3 scripts/check-state-closure-after-await.py" python3 scripts/check-state-closure-after-await.py
+# Re-entry guards: list write handlers whose only guard is a state flag. Report mode
+# with self-test, matching state-closure-after-await above.
+step "reentry guards (self-test)" "python3 scripts/check-reentry-guards.py --self-test" python3 scripts/check-reentry-guards.py --self-test
+step "reentry guards (report)" "python3 scripts/check-reentry-guards.py" python3 scripts/check-reentry-guards.py
 # Ratchet on react-hooks/exhaustive-deps. `npm run lint` is `eslint .` with no --max-warnings 0, so
 # it exits 0 while reporting 58 warnings -- and that rule is the ONLY automated check for a stale
 # closure. Item 69 found five callbacks listing `userId`, which no component body ever read, while
@@ -190,7 +307,17 @@ step "exhaustive-deps ratchet self-test" "python3 scripts/verify-exhaustive-deps
 # Existing transitional debt is reported but only new, expired, or stale
 # baseline entries fail. This is static-only and has no runtime impact.
 step "architecture boundaries" "python3 scripts/verify-architecture-boundaries.py --strict" python3 scripts/verify-architecture-boundaries.py --strict
+# The census floor's own cases, beside the gate they prove -- the same pairing the
+# exhaustive-deps ratchet uses above. Added with the floor (1d6a952e5): a checker that
+# can walk nothing and report clean is the failure this step exists to prevent, and
+# nothing was pinning the floor itself until verify-selftests-wired.py named it uncalled.
+step "architecture boundaries self-test" "python3 scripts/verify-architecture-boundaries.py --self-test" python3 scripts/verify-architecture-boundaries.py --self-test
 step "server origins" "node scripts/check-server-origins.mjs" node scripts/check-server-origins.mjs
+# The gate's answer is a conjunction of ~12 check() calls. Nothing proved any of them
+# could return false, so an admits() that answered true unconditionally would have made
+# the whole gate vacuous while it still printed its ok line. The cases run BEFORE any
+# file is read, so they need no checkout.
+step "server origins self-test" "node scripts/check-server-origins.mjs --self-test" node scripts/check-server-origins.mjs --self-test
 step "env docs" "python .agents/skills/docs-auditor/scripts/check-env-docs.py" python .agents/skills/docs-auditor/scripts/check-env-docs.py
 step "auditor self-tests" "sh scripts/check-auditor-selftests.sh" sh scripts/check-auditor-selftests.sh
 # Every workspace member must be represented in BOTH Dockerfiles' cache stages.
@@ -199,7 +326,50 @@ step "auditor self-tests" "sh scripts/check-auditor-selftests.sh" sh scripts/che
 # unbuildable from 2026-09-13 to 2026-09-18 with nothing to catch it.
 step "dockerfile workspace" "python3 scripts/verify-dockerfile-workspace.py" python3 scripts/verify-dockerfile-workspace.py
 step "dockerfile workspace self-test" "python3 scripts/verify-dockerfile-workspace.py --self-test" python3 scripts/verify-dockerfile-workspace.py --self-test
+# The digest pin gate had NO live runner at all: its only caller was
+# .github/workflows/attic/docker-digest-drift.yml.bak, a RETIRED workflow GitHub never
+# executes. So a pin could rot for months with nothing alerting. Only the SELF-TEST is
+# wired below -- it needs no daemon and no network, so it can run on every matrix pass.
+# The SCAN itself is deliberately NOT wired: it re-resolves 11 pins against live
+# registries with up to 5 retries each, which is not something a local matrix should do
+# on every run, and making it a blocking gate is an owner decision this commit does not take.
+# Writing the cases found the worst defect in this file: with the pin pattern dead the
+# gate printed "All pinned image digests are current." over ZERO pins and exited 0. A
+# floor now refuses that, and the self-test grades the pattern itself.
+step "docker digests self-test" "bash scripts/verify-docker-digests.sh --self-test" bash scripts/verify-docker-digests.sh --self-test
+# verify-docker-all.sh orchestrates four Docker stages and has NO step of its own: every
+# stage needs a live daemon. Only its SELF-TEST is wired, because the log-rotation
+# decision inside it is pure text analysis and can be graded without one. Writing the
+# cases found two real defects in that decision, neither about Docker: `grep -c` counted
+# a COMMENT mentioning max-size as a configured service, and a zero service count made
+# `0 -eq 0` true so an empty render reported full coverage.
+step "docker all self-test" "bash scripts/verify-docker-all.sh --self-test" bash scripts/verify-docker-all.sh --self-test
+# verify-docker-persistence.sh had NO proof form and NO runner until 2026-10-24: no
+# --self-test, no companion test, no measured mutation, no note explaining the absence --
+# and the only path that reaches it is verify-docker-all.sh's STAGE 1, which --self-test
+# exits before. Measured: no live workflow names it, and check.sh had zero hits. So
+# "Persistence verified" had never been produced by CI at all, while a dated audit
+# (docs/records/audits/2026-08-31-glm-5.3f-crates-audit.md:2203) claimed it "runs the
+# volume contract in CI". The full run needs a daemon and two image builds; the self-test
+# grades the three verdicts every run depends on (the survived() substring test, the
+# collection-completeness verdict, and fail() actually exiting) plus the structural fact
+# that the block sits above the first docker call.
+step "docker persistence self-test" "bash scripts/verify-docker-persistence.sh --self-test" bash scripts/verify-docker-persistence.sh --self-test
+# verify-deploy.mjs probes the LIVE deployment (dashboard/admin/... origins) and has no
+# runner anywhere, so it was a manual script. Only its SELF-TEST is wired: the cases need
+# no network, while the probe itself reaches four public origins and must not run on every
+# matrix pass. Writing the cases found the vacuous-pass shape in its config reader -- a
+# nested dotted routes key (the [observability.logs] shape) read as an empty array -- and
+# it now refuses a config that probes zero origins.
+step "verify deploy self-test" "node website/scripts/verify-deploy.mjs --self-test" node website/scripts/verify-deploy.mjs --self-test
 step "unified routes" "node scripts/check-unified-routes.mjs" node scripts/check-unified-routes.mjs
+# The Caddyfile parser's failure branch had NO automated exercise: the only way to reach
+# it was to hand-craft a corrupted copy and point argv[2] at it, which nobody re-runs.
+# Writing the cases found a real defect on their first run -- a QUOTED "}" was read as a
+# block close, so `respond "}" 200` failed a Caddyfile caddy accepts (HEAD reported
+# "line 3: unmatched '}'"). Fixed by three guards; see the note beside the cases for why
+# reverting only ONE of them keeps this self-test green and that is correct, not a weak case.
+step "unified routes self-test" "node scripts/check-unified-routes.mjs --self-test" node scripts/check-unified-routes.mjs --self-test
 
 # ── Money formatting gate (IDR/JPY/KWD exp-2 regression guard) ───────────
 # Fails when production .rs code hardcodes `/ 100` division or `{}.{:02}`
@@ -222,6 +392,31 @@ step "test shadow copies self-test" "python3 scripts/verify-test-shadow-copies.p
 # for 4.5× faster re-runs after compilation. Also run doctests separately
 # because nextest does not execute them. Falls back to cargo test if nextest
 # is not installed.
+#
+# TMP/TEMP fallback: `kasirmu-bridge`'s test harness calls `unique_store_dir()`
+# (`crates/kasirmu-bridge/src/testing.rs:62-73`), which is `std::env::temp_dir()`
+# — i.e. whatever TMP/TEMP say — and seeds a real SQLite store there. Under a
+# restricted sandbox the spawned test BINARY is denied writes to the system temp
+# dir even when the calling shell can write to it, and every bridge test fails
+# with `creating data dir ...: Access is denied. (os error 5)` at testing.rs:536.
+# Measured 2026-10-19: 1516/1516 bridge tests pass when TMP points inside the
+# tree, and 0/1516 when it points at %TEMP% under that confinement. So default
+# TMP into the (gitignored) build dir when it is not already set to something
+# writable. This is a default, not an override: an explicit TMP always wins.
+# Two conditions, because one was not enough. `test -w` is evaluated by THIS shell,
+# and under Git Bash on Windows it answers yes for TMP=/tmp -- but the spawned test
+# binary resolves /tmp to C:\\Users\\<user>\\AppData\\Local\\Temp and is then denied
+# there. Measured 2026-10-19: with TMP=/tmp this guard did NOT fire, and step 31 died
+# with 93 `Access is denied (os error 5)` failures at testing.rs:536 while the shell
+# could write the same bytes. So also treat any temp dir OUTSIDE the checkout as
+# untrusted: a path inside the tree is the only place both the shell and the child
+# are known to be able to write.
+tmp_is_inside_tree() { case "${1:-}" in "$PWD"/*) return 0 ;; *) return 1 ;; esac; }
+if [ -z "${TMP:-}" ] || [ ! -w "${TMP:-/nonexistent}" ] || ! tmp_is_inside_tree "${TMP:-}"; then
+    mkdir -p target/.tmp-check
+    export TMP="$PWD/target/.tmp-check"
+    export TEMP="$TMP"
+fi
 cpu_count=$(nproc --all 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 if command -v cargo-nextest &>/dev/null || cargo nextest --version &>/dev/null 2>&1; then
     step "test workspace (nextest)" "cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-mobile" cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-mobile
@@ -329,7 +524,16 @@ if command -v cargo-llvm-cov >/dev/null 2>&1 && command -v llvm-cov >/dev/null 2
     # 16 threads over 15 minutes is ordinary for a suite that needs 960s under nextest. I
     # killed a run that was still working. The reason to use nextest stands on the measured
     # race, not on a hang that never happened.
-    if cargo llvm-cov nextest \
+    # THREE-WAY, same shape as the ui floors guard below (measured 2026-11-08: this
+# multi-minute llvm-cov condition ran and its verdict was discarded on every
+# CHECK_FROM resume that only wanted to print SKIPPED here). A resume past BOTH
+# floors steps announces the skips and pays nothing; the real measurement runs
+# only when the grading step itself will run; the else branch is the honest
+# "could not complete" (today: PG down aborts the workspace suite, per R17).
+if [ -n "${CHECK_FROM:-}" ] && [ "${CHECK_FROM}" -gt "$((step_counter + 1))" ]; then
+        step "coverage floors" "scripts/coverage-floors.json (ratchet)" true
+        step "coverage floors self-test" "python3 scripts/verify-coverage-floors.py --self-test" true
+    elif cargo llvm-cov nextest \
         --workspace --all-features \
         --exclude kasirmu-app --exclude kasirmu-mobile \
         --json --output-path coverage-probe.json >/dev/null 2>&1; then
@@ -355,7 +559,14 @@ fi
 # one is the SQLite migrate-up path and nothing enforces it off a developer machine.
 # Recorded in scripts/gates.json -> "migration".
 step "migration smoke test" "cargo run -p kasirmu-cli -- migrate" cargo run -p kasirmu-cli -- migrate
-step "migration idempotency" "cargo run -p kasirmu-cli -- migrate" cargo run -p kasirmu-cli -- migrate
+# Idempotency needs TWO runs and an assertion on the second. The command is the same one the
+# step above runs, so running it once more proves nothing on its own -- measured 2026-10-24:
+# both runs print "applying migrations..." then "migrations up to date" and exit 0, which is
+# what idempotent means here. What was missing was the check that the SECOND run succeeds:
+# run_migrate (crates/kasirmu-cli/src/commands/db.rs:17) calls migrations::run once and has
+# no flag, so a non-idempotent migration set would fail only on the second pass, and this
+# step used to be the first pass repeated. It now runs twice and fails if the second errors.
+step "migration idempotency" "run migrate twice, assert the second pass succeeds" bash -c 'set -e; cargo run -q -p kasirmu-cli -- migrate >/dev/null 2>&1; out=$(cargo run -q -p kasirmu-cli -- migrate 2>&1); echo "$out" | tail -2; echo "$out" | grep -q "migrations up to date"'
 rm -f var/kasir.db var/kasir.db-wal var/kasir.db-shm
 
 # ── Skill drift guard (blocking in CI too: dev-ci.yml#static-gates) -------
@@ -383,6 +594,42 @@ fi
 # requirement of this repo, so unlike the bats step above there is no skip
 # branch: a missing node is a broken checkout, not an optional dependency.
 step "font-claims" "node scripts/check-font-claims.mjs" node scripts/check-font-claims.mjs
+# The rows themselves have no proof they can fail: each is an assertion about live code,
+# and an assertion written as always-true reads exactly like one that passes. Writing the
+# cases found that the first draft of the "did not run" case could not see the `ran` guard
+# at all (it chose a status that failed for a different reason), which is why the case that
+# isolates the guard is written with an ALLOWED status. The floor is pinned too: an emptied
+# results list printed "0 of 0 covered rows agreed" and exited 0 before it existed.
+step "font-claims self-test" "node scripts/check-font-claims.mjs --self-test" node scripts/check-font-claims.mjs --self-test
+
+# ── Font-bundle detector self-test ───────────────────────────────────────
+# check-font-bundle.mjs has no step of its own -- check-font-claims.mjs runs it
+# and grades its output -- so its DETECTOR had no liveness proof either. What it
+# does is a set comparison: the font files a sheet NAMES vs the files the build
+# SHIPS. That is exactly the shape that goes silent. An empty assets directory, a
+# stylesheet that stops declaring faces, or a disk set narrowed to the woff2
+# subset all make the comparison agree over NOTHING, and the report prints
+# "0 absent, 0 orphans" -- which no reader can tell from a healthy bundle.
+# --self-test runs 33 cases, one per rule and in both directions, including the
+# empty-input class that must exit 2 rather than print zeros. It reads no dist/,
+# so it passes on a machine that has never built the UI and cannot pass by
+# accident on a real build.
+# Gate: scripts/gates.json -> "font-claims".
+step "font bundle self-test" "node scripts/check-font-bundle.mjs --self-test" node scripts/check-font-bundle.mjs --self-test
+
+# ── Bundle-budget self-test ──────────────────────────────────────────────
+# check-bundle.mjs answers a COMPARISON: measured gzip bytes vs a ceiling. A
+# comparison that silently stops happening -- a predicate stuck on true, a
+# measurement that degrades to 0 because a chunk vanished, a report loop that
+# iterates nothing -- prints the same "All bundle budgets satisfied" a real
+# pass prints. Nothing outside can tell the two apart, and no bare run of the
+# gate can tell them apart from the inside. --self-test pins the three rules
+# the verdict is made of: over-budget fails and exactly-at-budget passes
+# (<=), an empty measurement set is REFUSED rather than read as 0 KB under
+# budget, and an expected chunk that is gone is refused rather than priced at
+# zero. It builds nothing, reads no dist/, and touches no files.
+# Gate: scripts/gates.json -> "bundle-budget" (same record as bundle:check).
+step "bundle budget self-test" "node scripts/check-bundle.mjs --self-test" node scripts/check-bundle.mjs --self-test
 
 # ── Panic-inventory gate (RUST-07 / ADR #33) — fail-closed ────────────────
 # Audits production unwrap()/expect() calls (excludes tests, benches, and
@@ -406,6 +653,7 @@ if command -v python3 &>/dev/null; then
 else
     echo -e "${YELLOW}⚠ panic-inventory skipped (python3 not found)${NC}"
 fi
+step "panic inventory self-test" "python3 scripts/scan-unwrap-panic.py --self-test" python3 scripts/scan-unwrap-panic.py --self-test
 
 # ── Debt-marker gate — every TODO id must resolve to a plan definition ──
 # A marker whose work shipped is a dead pointer; a marker whose id resolves
@@ -430,6 +678,93 @@ step "debt markers self-test" "python3 scripts/verify-debt-markers.py --self-tes
 # Gate: scripts/gates.json -> "client-type-drift".
 step "client type drift" "python3 scripts/check-client-type-drift.py" python3 scripts/check-client-type-drift.py
 step "client type drift self-test" "python3 scripts/check-client-type-drift.py --self-test" python3 scripts/check-client-type-drift.py --self-test
+
+# ── Query-plan regression — no probed production query scans a LARGE table ──
+# The last real performance defect in this project -- every revenue report reading
+# the whole `refunds` table -- was found BY HAND with EXPLAIN QUERY PLAN. This is
+# that pass made repeatable: crates/kasirmu-core/tests/integration/query_plan_probe.rs
+# seeds 400 rows into every LARGE table, ANALYZEs, EXPLAINs 27 curated production
+# queries and asserts none reads a large table in full. A missing index or a
+# dropped predicate is invisible to every other gate here -- it compiles, lints,
+# passes its suite, and gets slower with every row of transaction volume.
+# `--check` re-runs the probe's own falsification FIRST (`forcing_a_scan_fails_the_probe`
+# strips the daily-revenue predicates and requires the SAME detector to fire), so a
+# detector gone deaf exits 2 instead of reporting a clean tree.
+# Exits 0 clean, 1 a query scans a large table, 2 the probe could not run -- so a
+# probe that failed to compile never reads as one that found nothing.
+# Cost: a cargo TEST (compile + two runs), ~20-50 s warm. That is why it is here and
+# in dev-ci.yml#static-gates, and NOT in pre-commit, which must stay fast.
+# Gate: scripts/gates.json -> "query-plan-gate".
+step "query plan gate" "python3 scripts/check-query-plans.py --check" python3 scripts/check-query-plans.py --check
+# The report formatters between probe output and the console are Python, and they are
+# where this gate's three measured defects lived (ANSI noise, phantom blocks from cargo's
+# own "Compiling ..." lines, a plan body running past the harness footer). Pure: no build.
+step "query plan formatter self-test" "python3 scripts/check-query-plans.py --self-test" python3 scripts/check-query-plans.py --self-test
+
+# ── Scratch-directory leaks — an unguarded fixture dir is never deleted ──────
+# `kasirmu_test_support::scratch_dir` returns a bare PathBuf whose drop deletes
+# nothing, so a caller that walks away leaks a directory per run forever —
+# `target/` has no OS temp cleaner. Measured 2026-10-23: 1,455 directories in
+# `target/test-scratch/`. No test could see it, because the only cleanup test
+# proved `ScratchDir` works and nothing proved `scratch_dir` does not.
+# The gate grades a per-file budget and grades its own detector first, so a
+# broken regex exits 2 instead of reporting a clean tree.
+# Gate: scripts/gates.json -> "scratch-leak-gate".
+step "scratch leak gate" "python3 scripts/check-scratch-leaks.py" python3 scripts/check-scratch-leaks.py
+# The detector probe used to live INSIDE the default path, so it could not be run on its
+# own and nothing outside it exercised the census floor. Added 2026-10-23: 4 cases, the
+# last two reading the real tree, and one driving main() itself -- without that last one,
+# deleting main()'s "if FILES_READ == 0" arm left the suite green.
+step "scratch leak gate self-test" "python3 scripts/check-scratch-leaks.py --self-test" python3 scripts/check-scratch-leaks.py --self-test
+# Hardcoded-copy gate, added 2026-10-25 after rounds 206-212 localized every
+# user-visible string in ui/src (143 -> 0 real copy). scripts/scan-fluent-hardcoded.py
+# MEASURED that population but was wired into nothing, so the next screen could add
+# English and stay green. Same shape as the scratch-leak gate above: a per-file
+# budget, a census floor, and a detector graded over synthetic source first.
+# Proven to fire: a synthetic "<p>This is untranslated copy</p>" planted in a clean
+# file exits 1 naming that file at 1 string against budget 0.
+# Gate: scripts/gates.json -> "hardcoded-copy-gate".
+step "hardcoded copy gate" "python3 scripts/check-hardcoded-copy.py" python3 scripts/check-hardcoded-copy.py
+step "hardcoded copy gate self-test" "python3 scripts/check-hardcoded-copy.py --self-test" python3 scripts/check-hardcoded-copy.py --self-test
+# Permission-inventory citation gate, added 2026-10-25 after the SAME misreading was
+# found in four places: docs cited a line in ALL_ENFORCED (the constant inventory)
+# as if it were a role preset. Both lists are one-per-line in rbac_presets.rs, so a
+# line number cannot tell them apart, and the error inverts the fact -- inventory
+# says a key EXISTS, a preset says a ROLE GRANTS it. The span is COMPUTED from the
+# file each run; a hardcoded boundary would rot the way the citations did.
+# Gate: scripts/gates.json -> "rbac-citation-gate".
+step "rbac citation gate" "python3 scripts/check-rbac-citations.py" python3 scripts/check-rbac-citations.py
+step "rbac citation gate self-test" "python3 scripts/check-rbac-citations.py --self-test" python3 scripts/check-rbac-citations.py --self-test
+# Vitest l10n stub maps, added 2026-11-06. Production copy keeps moving into
+# Fluent, and a test that answers getString from a HAND-MAINTAINED map is not
+# updated by that move -- it returns the RAW KEY. The failure is silent: the case
+# that never asserts the string passes while the UI is unlabelled (an aria-label
+# becomes lsp-nav-aria). THREE files hit it in one session, each found by breaking
+# something else and reading the failure. Ratcheted against
+# scripts/l10n-map-baseline.json, which is a CENSUS, not a defect count: a
+# map is legitimately partial when the suite never reads the strings it omits.
+# The gate refuses a NEW hole and refuses to stay silent when a known one is
+# fixed, so the file can only shrink. Proven both ways by mutation.
+# Gate: scripts/gates.json -> "l10n-test-maps".
+step "l10n test maps" "python3 scripts/check-l10n-test-maps.py" python3 scripts/check-l10n-test-maps.py
+step "l10n test maps self-test" "python3 scripts/check-l10n-test-maps.py --self-test" python3 scripts/check-l10n-test-maps.py --self-test
+
+# Tests asserting on a translation KEY where the user sees copy, added 2026-11-07.
+# A vitest file that matches getByText('some-key') passes only because its l10n
+# stub falls back to the id, so the assertion describes the DEFECT. Found by hand
+# three times: a warehouse test matched a raw key under a comment that said so,
+# up to 37 in TopologyScreen.test.tsx. Ratcheted against
+# scripts/raw-key-assertions-baseline.json; the file may only shrink.
+# Gate: scripts/gates.json -> "raw-key-assertions".
+step "raw key assertions" "python3 scripts/check-raw-key-assertions.py" python3 scripts/check-raw-key-assertions.py
+step "raw key assertions self-test" "python3 scripts/check-raw-key-assertions.py --self-test" python3 scripts/check-raw-key-assertions.py --self-test
+# A pipeline exits with its LAST command's status, so `if s=$(... | tail -1)` is always
+# true and the branch meant for "nothing matched" is unreachable. This repo shipped that
+# shape for weeks in the cargo-deny block below and nobody saw it, because BOTH branches
+# printed PASS. Added 2026-10-23 after the fix; the checker was then mutated with the
+# original line and reddened, which is the only reason to trust it.
+step "pipeline verdicts" "python3 scripts/check-pipeline-verdicts.py" python3 scripts/check-pipeline-verdicts.py
+step "pipeline verdicts self-test" "python3 scripts/check-pipeline-verdicts.py --self-test" python3 scripts/check-pipeline-verdicts.py --self-test
 
 # ── Row-mapper alignment — a positional read vs the SELECT feeding it ──────
 # `name: row.get(3)?` couples a mapper to its SQL by POSITION, and nothing in Rust
@@ -592,10 +927,17 @@ if command -v cargo-deny &>/dev/null; then
     if deny_out=$(cargo deny check 2>&1); then
         # Success: print the tool's own summary line (panic-inventory style) so
         # the PASS says what was checked, not merely that it passed.
-        if deny_summary=$(printf '%s\n' "$deny_out" | grep -E '(advisories|bans|licenses|sources) ok' | tail -1); then
+        # grep the summary OUT, then test the RESULT, not the pipeline. As written the
+        # exit code came from `tail`, which is 0 whether or not grep matched, so the
+        # else below was unreachable and a tool whose output had changed shape printed
+        # "PASS ()" with an empty bracket. Measured 2026-10-23: with input that matches
+        # nothing, this if still took the true branch.
+        deny_summary=$(printf '%s\n' "$deny_out" \
+            | grep -E '(advisories|bans|licenses|sources) ok' | tail -1 || true)
+        if [ -n "$deny_summary" ]; then
             echo -e "${GREEN}PASS${NC} (${deny_summary})"
         else
-            echo -e "${GREEN}PASS${NC} (cargo-deny reported no failures)"
+            echo -e "${GREEN}PASS${NC} (cargo-deny reported no failures -- or printed a summary this repo does not recognise)"
         fi
     elif printf '%s\n' "$deny_out" | grep -qiE 'failed to (fetch|clone|download)|could not (connect|resolve)|network|offline|Updating advisory database'; then
         # Network-class failure: the advisories were never evaluated. Yellow,
@@ -669,6 +1011,42 @@ if command -v npm &>/dev/null && [ -f ui/package-lock.json ]; then
     step "ui lint" "cd ui; npm run lint" npm run lint
     step "ui typecheck" "cd ui; npm run typecheck" npm run typecheck
     step "ui test" "cd ui; npm run test" npm run test
+# ── UI coverage floors ───────────────────────────────────────────────────
+#
+# Same two-stage shape as the Rust floors above, for the same reason:
+# `vitest run --coverage` is expensive and needs the whole suite green, so a
+# failed run is reported as "could not measure" rather than "coverage
+# regressed". The GRADING step is cheap, offline and unit-tested.
+#
+# Why this exists at all: vite.config.ts has been writing
+# coverage/ui/coverage-summary.json for months and NOTHING read it -- a grep for
+# a consumer returned only the two scripts that generate it. The target numbers
+# in docs/records/benchmarks/coverage-report-2026-07-20.md (Lines >= 50%,
+# Branches >= 40%) were never enforced and the code now clears them by 35
+# points. Replaced by a ratchet 2 points below the 2026-10-28 measurement.
+#
+# Gate: scripts/gates.json -> "ui-coverage-floors".
+# THREE-WAY, and the three ways are not cosmetic. Measured 2026-11-08: this
+# block sits after the raw `cd ui` above, so the old guard's `( cd ui ... )`
+# ran from ui/ itself, looked for ui/ui, and failed EVERY run -- the two floors
+# steps below had never executed in any local matrix run, full or resumed, and
+# the else-branch warning blamed "a failing test" for what was a wrong
+# directory. The condition is also a multi-minute vitest run, so a CHECK_FROM
+# resume must not pay for it just to skip both steps: the first branch
+# announces the skips exactly as step() would and advances the counter, the
+# second runs the real measurement only when the grading step itself will run,
+# and the third is now a truthful "could not complete".
+# -gt step_counter+1, not -gt step_counter: a resume landing exactly ON the
+# self-test must fall through to the real branch and run it, not over-skip it.
+if [ -n "${CHECK_FROM:-}" ] && [ "${CHECK_FROM}" -gt "$((step_counter + 1))" ]; then
+    step "ui coverage floors" "scripts/coverage-floors.json ui_floors (ratchet)" true
+    step "ui coverage floors self-test" "python3 scripts/verify-ui-coverage-floors.py --self-test" true
+elif ( cd "$repo_root_dir/ui" && npm run test:coverage >/dev/null 2>&1 ); then
+    step "ui coverage floors" "scripts/coverage-floors.json ui_floors (ratchet)" python3 scripts/verify-ui-coverage-floors.py
+    step "ui coverage floors self-test" "python3 scripts/verify-ui-coverage-floors.py --self-test" python3 scripts/verify-ui-coverage-floors.py --self-test
+else
+    echo -e "${YELLOW}⚠ vitest --coverage could not complete (a failing test aborts it) — UI floors NOT checked${NC}"
+fi
     # R36-01: the suite above runs in this machine's zone, so a host-local date
     # anchor can pass here and fail on a UTC CI runner. Re-runs the analytics
     # anchor test under four zones and requires identical results.
@@ -706,9 +1084,20 @@ if command -v npm &>/dev/null && [ -f ui/package-lock.json ]; then
     # `shared-ui/locales/*.id.ftl` before they reach CI.
     cd ..
     step "i18n lint" "bash scripts/lint-i18n.sh" bash scripts/lint-i18n.sh
+    # The gate decides two of its three categories by grepping vitest output for exact
+    # strings. vitest exits 0 when it only WARNS, so a changed spelling leaves the grep
+    # empty and the gate prints "no issues detected". Added 2026-10-23: this plants both
+    # warnings and asserts the gate's OWN (extracted) patterns still match them, plus a
+    # clean-run control so a too-broad pattern cannot pass.
+    step "i18n lint falsification" "bash scripts/test-lint-i18n.sh" bash scripts/test-lint-i18n.sh
     # AUDIT-27 CI-06: FTL dedupe — detect duplicate Fluent keys so local
     # validation matches check-ui.mjs and the pre-commit gate.
-    step "ftl dedupe" "python3 scripts/dedupe-ftl.py" python3 scripts/dedupe-ftl.py
+    # --dry-run is REQUIRED, not optional. Without it this script runs in APPLY mode
+    # (`write = not args.dry_run`, dedupe-ftl.py:159) and REWRITES the .ftl files, then
+    # exits 0 no matter how many it changed (:181) -- so a validation step was both
+    # mutating the tree and unable to fail. With --dry-run it reports and exits 1 whenever
+    # there is real work, which is what a gate needs.
+    step "ftl dedupe (dry run)" "python3 scripts/dedupe-ftl.py --dry-run" python3 scripts/dedupe-ftl.py --dry-run
     # Orphan gate: its own liveness cases must pass, and the whole-tree candidate count
     # should be visible locally too, not just in CI. The blocking form of this check is
     # staged-scoped in the pre-commit hook; here it runs the self-test and census.
@@ -741,6 +1130,16 @@ if command -v npm &>/dev/null && [ -f website/package-lock.json ]; then
         step "website npm ci" "cd website; npm ci --no-audit --no-fund" npm ci --no-audit --no-fund
     fi
     step "website test" "cd website; npm test" npm test
+    # The SEO auditor reads dist/, which is BUILD OUTPUT and gitignored. Its self-test
+    # also walks the real tree, so on a clean checkout with no build it dies with ENOENT
+    # on dist/ -- measured 2026-10-23 by pointing DIST at a missing directory: exit 1,
+    # stack trace, no cases run. Guarding on the directory rather than dropping the step:
+    # a self-test that cannot run is not a pass, and it is not a failure either.
+    if [ -d dist ]; then
+        step "website seo self-test" "cd website; npm run check:seo:self-test --silent" npm run check:seo:self-test --silent
+    else
+        echo -e "${YELLOW}⚠ website seo self-test skipped (no dist/ — build the site first)${NC}"
+    fi
     cd ..
 else
     echo -e "${YELLOW}⚠ Website checks skipped (npm not found or website/package-lock.json missing)${NC}"
@@ -749,6 +1148,15 @@ fi
 # Asset hygiene is stdlib-only, so it runs even when npm is unavailable above.
 # Gate: scripts/gates.json → "website-assets".
 step "website assets" "python3 scripts/verify-website-assets.py" python3 scripts/verify-website-assets.py
+# The census refused a wired gate with no self-test (round 85): the flag is on
+# the checker now, so the pipeline must invoke it like every other self-test.
+step "website assets self-test" "python3 scripts/verify-website-assets.py --self-test" python3 scripts/verify-website-assets.py --self-test
+# The link checker's SELF-TEST, which nothing ran. CI invokes `npm run check:links` =
+# `node scripts/check-links.mjs` WITHOUT --self-test, so the gate ran and its 19 liveness
+# cases never did -- a checker that cannot be shown to fail is worthless, which is the
+# exact sentence in its own header. Found 2026-10-23 by widening verify-selftests-wired.py
+# to the website checker directory. Needs no build: the cases are source-shape assertions.
+step "website link checker self-test" "node website/scripts/check-links.mjs --self-test" node website/scripts/check-links.mjs --self-test
 
 # ── Plugin guide / API parity (PLG-10 tail; Rust-side, always runs) ─────
 step "plugin-guide parity" "python3 scripts/verify-plugin-guide-parity.py" python3 scripts/verify-plugin-guide-parity.py
@@ -843,6 +1251,28 @@ step "runner claims self-test" "python3 scripts/verify-runner-claims.py --self-t
 # since before it had a runner. Green as of that commit (0 bounded families with gaps),
 # so it can be a step rather than a note.
 step "fluent dynamic families" "python3 scripts/verify-fluent-dynamic-families.py" python3 scripts/verify-fluent-dynamic-families.py
+# The filter above is a comparison, so its quiet failure is a CLEAN one: a bundle reader
+# that stopped seeing keys, or a family list that emptied, still prints a verdict and
+# still prints OK over nothing. Writing the cases found exactly that -- zero .ftl files
+# used to exit 0 -- and a key regex that filed phantom "-term" attribute ids. The cases
+# pin both directions (missing from EN, missing from ID), the UNBOUNDED exemption, and
+# the found-nothing refusal.
+step "fluent dynamic families self-test" "python3 scripts/verify-fluent-dynamic-families.py --self-test" python3 scripts/verify-fluent-dynamic-families.py --self-test
+
+# Two UI-side sweeps that had NO check.sh step and NO self-test, so a regression in
+# either detector was invisible: the sweep kept printing "0 candidate(s)" over a scan
+# that had stopped seeing anything. Both now carry a --self-test that pins the shapes
+# their OWN history got wrong -- for dead-controls, the three recorded defects are the
+# line-window tag read, the bare "submit" substring and the tag inside a multi-line
+# comment; for orphan-prototype-files, the `hits <= 1` baseline that reported a loaded
+# stylesheet as an orphan. Both self-tests were mutated: reverting each historical bug
+# reddens the case that pins it, and the restore is green.
+# The SWEEPS themselves stay local-matrix only. Neither is on the merge path, and
+# making one a blocking gate is a policy decision this commit does not take.
+step "dead controls" "python3 scripts/check-dead-controls.py" python3 scripts/check-dead-controls.py
+step "dead controls self-test" "python3 scripts/check-dead-controls.py --self-test" python3 scripts/check-dead-controls.py --self-test
+step "orphan prototype files" "python3 scripts/check-orphan-prototype-files.py" python3 scripts/check-orphan-prototype-files.py
+step "orphan prototype files self-test" "python3 scripts/check-orphan-prototype-files.py --self-test" python3 scripts/check-orphan-prototype-files.py --self-test
 
 # The settled-read verdict union had FOUR hand-copied declarations before this
 # gate existed, and none of them was visible to any other check: each was
@@ -856,12 +1286,36 @@ step "settled-read copies self-test" "python3 scripts/verify-settled-read-copies
 
 step "selftest sweep" "python3 scripts/verify-selftest-sweep.py" python3 scripts/verify-selftest-sweep.py
 step "selftest sweep self-test" "python3 scripts/verify-selftest-sweep.py --self-test" python3 scripts/verify-selftest-sweep.py --self-test
+# The MUTATOR itself, not the sweep. verify-selftest-sweep.py runs every checker's
+# --self-test in the tree; this runs the harness that decides whether those self-tests
+# can fail, and its own worst failure mode is silent: a mutation that leaves a syntax
+# error makes every checker "fail", scoring as KILLED while proving nothing. The cases
+# grade that the mutants PARSE, that braces inside strings do not close a function
+# early, and that self_test is never its own candidate.
+# The pipeline runs the graded CASES only. The SURVEY (108 staged mutation
+# runs, 12-17 minutes) stays a manual decision tool: its round-70 exit
+# contract (every unmeasured verdict fails) is the wrong shape for a
+# per-commit gate, where one checker under development in another lane would
+# redden every unrelated commit. The harness's checksh_invokes_self_test()
+# holds THIS line to itself -- drop or reword it and the self-test reddens.
+step "sabotage mutator self-test" "python3 scripts/sabotage-selftests.py --self-test" python3 scripts/sabotage-selftests.py --self-test
 
 step "runner commands" "python3 scripts/verify-runner-commands.py" python3 scripts/verify-runner-commands.py
 step "runner commands self-test" "python3 scripts/verify-runner-commands.py --self-test" python3 scripts/verify-runner-commands.py --self-test
+# The round log is the audit's own durable record; its shape is policed like any
+# other gate. Wired 2026-11-08; entries append per round, so consecutiveness and
+# the honest-limits marker are checked on every run.
+step "register hygiene" "python3 scripts/check-register-hygiene.py" python3 scripts/check-register-hygiene.py
+step "register hygiene self-test" "python3 scripts/check-register-hygiene.py --self-test" python3 scripts/check-register-hygiene.py --self-test
 
 step "self-tests wired" "python3 scripts/verify-selftests-wired.py" python3 scripts/verify-selftests-wired.py
 step "self-tests wired self-test" "python3 scripts/verify-selftests-wired.py --self-test" python3 scripts/verify-selftests-wired.py --self-test
+# The arc's backlog, made derivable (round 232). Round 228 opened a second arc over
+# "nine un-contracted checkers" and recorded no list; r230 proved it unrecoverable and
+# had to guess its own target. This census exits 0 always -- it is a report, not a
+# verdict -- so it is classified rather than owed a gates.json row and a CI job.
+step "checker contract census" "python3 scripts/census-checker-contracts.py" python3 scripts/census-checker-contracts.py
+step "checker contract census self-test" "python3 scripts/census-checker-contracts.py --self-test" python3 scripts/census-checker-contracts.py --self-test
 step "deployment verification" "python3 scripts/verify-deployment.py" python3 scripts/verify-deployment.py
 step "deployment verification self-test" "python3 scripts/verify-deployment.py --self-test" python3 scripts/verify-deployment.py --self-test
 # The four parsers' own cases, beside the gate they prove. Pure regexes plus a
@@ -882,10 +1336,16 @@ step "tz invariance self-test" "python3 scripts/check-tz-invariance.py --self-te
 # the tag↔version gate, the updater-manifest generator, and the signature
 # verifier each carry a --self-test (mirroring release.yml's
 # release-validate + release-publish self-test steps).
+#
+# TWO OF THESE THREE WERE REMOVED 2026-10-24 AS DUPLICATES. "release version gate" and
+# "updater signature verifier" ran the IDENTICAL command as the unguarded pair above
+# (check-release-version.mjs --self-test and verify-updater-signature.mjs --self-test),
+# from a different wiring round. The pair above is unguarded by node; this block sits
+# inside `command -v node`, so the copy HERE is the weaker one -- deleting it keeps a
+# caller on a node-less box and halves the runtime. The generator stays because nothing
+# else invokes its self-test.
 if command -v node &>/dev/null; then
-    step "release version gate" "node scripts/check-release-version.mjs --self-test" node scripts/check-release-version.mjs --self-test
     step "updater manifest generator" "node scripts/generate-latest-json.mjs --self-test" node scripts/generate-latest-json.mjs --self-test
-    step "updater signature verifier" "node scripts/verify-updater-signature.mjs --self-test" node scripts/verify-updater-signature.mjs --self-test
 else
     echo -e "${YELLOW}⚠ release toolchain checks skipped (node not found)${NC}"
 fi
@@ -930,6 +1390,20 @@ step "ci docs drift self-test" "python3 scripts/verify-ci-docs-drift.py --self-t
 # Measured before flipping: 9 unresolved -> 0.
 # Gate: scripts/gates.json -> "dead-refs".
 step "docs dead refs" "python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py" python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py
+# The same class of claim, in RUST. check-dead-refs.py scans markdown and nothing else,
+# so a doc comment naming a file path was unchecked: measured 2026-10-23, 72 such
+# references in this tree pointed at nothing. 43 test modules claimed they were relocated
+# from `apps/desktop-tauri/...`, a path that never existed -- the files left
+# apps/desktop-client/ and the directory was renamed LATER. The rest named documents that
+# had moved in earlier restructures.
+step "rust doc paths" "python3 scripts/check-rust-doc-paths.py" python3 scripts/check-rust-doc-paths.py
+step "rust doc paths self-test" "python3 scripts/check-rust-doc-paths.py --self-test" python3 scripts/check-rust-doc-paths.py --self-test
+step "page headings" "python3 scripts/check-page-headings.py" python3 scripts/check-page-headings.py
+step "page headings self-test" "python3 scripts/check-page-headings.py --self-test" python3 scripts/check-page-headings.py --self-test
+step "fixture ftl keys" "python3 scripts/check-fixture-ftl-keys.py" python3 scripts/check-fixture-ftl-keys.py
+step "fixture ftl keys self-test" "python3 scripts/check-fixture-ftl-keys.py --self-test" python3 scripts/check-fixture-ftl-keys.py --self-test
+step "status fallbacks" "python3 scripts/verify-status-fallbacks.py" python3 scripts/verify-status-fallbacks.py
+step "status fallbacks self-test" "python3 scripts/verify-status-fallbacks.py --self-test" python3 scripts/verify-status-fallbacks.py --self-test
 
 # The API reference page is the IPC contract read first by every agent and integrator, and
 # nothing enforced it: it had drifted 169 ways from the registries (101 names that exist
@@ -939,6 +1413,8 @@ step "docs dead refs" "python3 .agents/skills/docs-auditor/scripts/check-dead-re
 # unwired from 08-09-26 to 09-29. The checker exits 2, not 0, on an unparseable input, so a
 # broken checker cannot read as a clean page. Gate: scripts/gates.json -> "api-surface".
 step "api surface" "python3 .agents/skills/docs-auditor/scripts/check-api-surface.py" python3 .agents/skills/docs-auditor/scripts/check-api-surface.py
+step "api drift table" "python3 scripts/check-api-drift-table.py" python3 scripts/check-api-drift-table.py
+step "api drift table self-test" "python3 scripts/check-api-drift-table.py --self-test" python3 scripts/check-api-drift-table.py --self-test
 # docs/records/README.md calls itself the single entry point, and its freshness
 # gate was "unbuilt by decision" (docs/README.md) — a decision the 2026-09-23
 # documentation audit reversed once the generator defect behind seven dead
@@ -991,6 +1467,42 @@ step "docs orphans" "python3 .agents/skills/docs-auditor/scripts/check-orphans.p
 step "audit stamps" "python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py" python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py
 step "nav paths" "python3 .agents/skills/docs-auditor/scripts/check-nav-paths.py" python3 .agents/skills/docs-auditor/scripts/check-nav-paths.py
 step "ci claims" "python3 .agents/skills/docs-auditor/scripts/check-ci-claims.py" python3 .agents/skills/docs-auditor/scripts/check-ci-claims.py
+# Every other docs checker resolves a PATH. None grades a LINE NUMBER, so a
+# citation could point at the right file and the wrong hundred lines forever
+# while all of them stayed green -- measured 2026-10-19: 23 of 150 sampled live
+# citations were on the wrong line, the worst 333 lines out. check-cite-lines.py
+# closes that: it anchors on a backticked symbol and asks whether that symbol is
+# near the cited line. Green from day one after that pass repaired 40+ citations
+# in runbook.md, admin-guide.md and the architecture docs. It reports what it
+# CANNOT grade (citations naming no symbol) rather than counting them as passes.
+# Gate: scripts/gates.json -> "cite-lines".
+step "cite lines" "python3 .agents/skills/docs-auditor/scripts/check-cite-lines.py" python3 .agents/skills/docs-auditor/scripts/check-cite-lines.py
+# website/src/content/docs/{en,id} are the same pages in two locales, and a page
+# added to one without the other is a hole in the site a reader falls into. The
+# authoring guide (website/src/content/docs/en/docs-authoring.md, Locale parity) told
+# contributors to run this checker and NOTHING invoked it -- not the hook, not CI, not
+# this script. That is the "documented check nobody executes" class this file already
+# records twice; wired here with a negative control run before the wiring (a probe page
+# added to en/ and no id/ twin made it exit 1, then passed again once removed, so the
+# green below is earned rather than vacuous). It runs from the repo root because it
+# resolves paths from __file__. Gate: scripts/gates.json -> "doc-parity".
+step "doc parity" "python3 website/scripts/check-doc-parity.py" python3 website/scripts/check-doc-parity.py
+# The gate's whole answer is a SET DIFFERENCE, and empty sets subtract to empty: a docs
+# root that was renamed printed "OK: 0 page pairs in parity" and exited 0. Measured
+# 2026-10-23 by pointing DOCS at a non-existent directory. The floor refuses a census too
+# small to describe the site; these are its cases.
+step "doc parity self-test" "python3 website/scripts/check-doc-parity.py --self-test" python3 website/scripts/check-doc-parity.py --self-test
+# `status: "required"` in gates.json is a claim that a change must pass this gate.
+# That is only true if something can reach it. Measured 2026-10-19 and this is what
+# the sweep found: six checkers were required with only a check.sh step (i.e.
+# required of a developer who remembers to run check.sh), rust-clippy named a step
+# that does not exist, and its own note had said for twelve days that a live CI job
+# existed while the gate carried no ci block. This checker asks the one question no
+# other consistency checker asks -- can this gate be RUN? -- and was proven against
+# five planted defect shapes before wiring (bad step name, no runner, ci block
+# naming a ghost job, ci block naming a ghost workflow, runner with no script).
+# Gates.json: gate-runners.
+step "gate runners" "python3 .agents/skills/docs-auditor/scripts/check-gate-runners.py" python3 .agents/skills/docs-auditor/scripts/check-gate-runners.py
 # scripts/__tests__/*.test.mjs is a whole suite that ui/package.json exposes as
 # `npm run test:scripts` and that NOTHING invoked -- not the hook, not CI, not check.sh.
 # It had been red for an unknown period for exactly that reason: verify-ci-docs-drift.test.mjs
@@ -1041,6 +1553,7 @@ step "ftl attribute requests self-test" "python3 scripts/check-ftl-attrs.py --se
 # never a build-time reason to leave them out.
 # Gate: scripts/gates.json -> "pg-schema-drift", "migration-column-types".
 step "pg schema drift" "python3 scripts/generate-pg-migration.py --check" python3 scripts/generate-pg-migration.py --check
+step "pg schema drift self-test" "python3 scripts/generate-pg-migration.py --self-test" python3 scripts/generate-pg-migration.py --self-test
 step "migration column types" "python3 scripts/verify-migration-column-types.py" python3 scripts/verify-migration-column-types.py
 step "migration column types self-test" "python3 scripts/verify-migration-column-types.py --self-test" python3 scripts/verify-migration-column-types.py --self-test
 
@@ -1124,7 +1637,13 @@ step "agents mirrors self-test" "python3 scripts/verify-agents-mirrors.py --self
 # Commits older than the hook's introduction are skipped, derived from
 # `git log --diff-filter=A` on the hook rather than a hardcoded sha.
 # Gate: scripts/gates.json -> "commit-subjects".
-step "commit subjects" "python3 scripts/verify-commit-subjects.py --range main..HEAD" python3 scripts/verify-commit-subjects.py --range main..HEAD
+# `origin/main`, NOT `main`. This remote has no local `main` branch -- the working branch
+# is named for the release (0.0.41) and `main` exists only as a remote-tracking ref, so
+# `main..HEAD` was an unknown revision and the step could never pass on any machine.
+# Measured 2026-10-23: the bare form refused with "cannot read the commit corpus" (which
+# is the checker behaving correctly -- an unknown corpus is not an empty one), while
+# origin/main..HEAD graded 1307 commits with 0 non-conforming subjects.
+step "commit subjects" "python3 scripts/verify-commit-subjects.py --range origin/main..HEAD" python3 scripts/verify-commit-subjects.py --range origin/main..HEAD
 step "commit subjects self-test" "python3 scripts/verify-commit-subjects.py --self-test" python3 scripts/verify-commit-subjects.py --self-test
 
 # ── Release workflow validation (R36-11) ──────────────────────────────────

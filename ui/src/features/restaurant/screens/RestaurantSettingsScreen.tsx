@@ -8,17 +8,27 @@
 //   restaurant.customer_name        owned here; gates the cart's customer field
 //   restaurant.guest_count          owned here; gates the cart's pax field
 //   restaurant.order_type_prompt    owned here; read by PosScreen (order-type effect)
-//   restaurant.hold_order           owned here
 //   restaurant.save_tab             owned here
 //   restaurant.course_firing        SHARED with the F10 card (both write it)
-//   restaurant.auto_print_kitchen   owned here
-//   restaurant.sound_chime          owned here
+//   restaurant.auto_print_kitchen   owned here; read by PosScreen's KOT path
+//   restaurant.sound_chime          owned here; read by PosScreen's chime path
+//   restaurant.dispatch_on_tab_save owned here; read by usePosHeldCarts
+//   restaurant.split_bill_by_item   owned here
+//   restaurant.table_transfer       owned here
+//   restaurant.print_bill_action    owned here
 //   restaurant.interaction_sound    owned here; mirrored to localStorage
 //   restaurant.interaction_vibration owned here; mirrored to localStorage
 //
+// This list is checked against the settings map the screen actually saves
+// (`restaurantSettingsScreenInventory.test.ts`): it had drifted in BOTH directions —
+// it still listed `restaurant.hold_order`, removed with its toggle in round 42, and
+// it omitted the four keys added since (`dispatch_on_tab_save`, `split_bill_by_item`,
+// `table_transfer`, `print_bill_action`). An inventory that is the file's own statement
+// of key ownership is worse than absent when it names a key nothing writes.
+//
 // TABLE CAPTURE IS NOT A TOGGLE HERE, deliberately. The cart's table input is
 // part of what a restaurant POS IS, so it renders unconditionally
-// (`CartPanel.tsx:655`) and the only table-number control is the PRINT toggle in
+// (`CartPanel.tsx:898`) and the only table-number control is the PRINT toggle in
 // RestaurantReceiptsScreen (`receipt.showTableNumber`, `:1889`). This screen used
 // to render a second toggle writing `restaurant.table_number`, a key with NO
 // reader anywhere: it persisted and reloaded faithfully while changing nothing.
@@ -385,7 +395,7 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
       ]);
 
       addToast({
-        message: l10n.getString('restaurant-save-success') || 'Settings saved successfully',
+        message: requiredLocalized(l10n, 'restaurant-save-success'),
         type: 'success',
       });
 
@@ -444,14 +454,14 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
   return (
     <div className="restaurant-settings-screen">
       {/* Header */}
-      <div className="restaurant-settings-header" data-testid="restaurant-settings-header">
+      <header className="restaurant-settings-header" data-testid="restaurant-settings-header">
         <div className="restaurant-settings-header-lead">
           {onBack && (
             <button
               type="button"
               className="restaurant-settings-back-btn"
               onClick={handleRequestBack}
-              aria-label={l10n.getString('back') || 'Back'}
+              aria-label={requiredLocalized(l10n, 'back')}
               data-testid="restaurant-settings-back-btn"
             >
               <svg
@@ -521,7 +531,7 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
             </button>
           </div>
         )}
-      </div>
+      </header>
 
       {/* Main Body */}
       <div className="restaurant-settings-main">
@@ -682,10 +692,9 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
               <div className="resto-compact-form">
                 <SettingRow
                   id="resto-setting-interaction-sound"
-                  label={l10n.getString('restaurant-settings-interaction-sound') || 'Sound Feedback'}
+                  label={requiredLocalized(l10n, 'restaurant-settings-interaction-sound')}
                   description={
-                    l10n.getString('restaurant-settings-interaction-sound-desc') ||
-                    'Play audio feedback on button taps, cart edits, and checkout'
+                    requiredLocalized(l10n, 'restaurant-settings-interaction-sound-desc')
                   }
                   checked={interactionSound}
                   onChange={setInteractionSound}
@@ -693,10 +702,9 @@ export function RestaurantSettingsScreen({ onSaved, onBack }: RestaurantSettings
                 />
                 <SettingRow
                   id="resto-setting-interaction-vibration"
-                  label={l10n.getString('restaurant-settings-interaction-vibration') || 'Haptic Vibration'}
+                  label={requiredLocalized(l10n, 'restaurant-settings-interaction-vibration')}
                   description={
-                    l10n.getString('restaurant-settings-interaction-vibration-desc') ||
-                    'Device vibration on taps (supported on Android/tablet only; not available on Windows, Linux, or macOS)'
+                    requiredLocalized(l10n, 'restaurant-settings-interaction-vibration-desc')
                   }
                   badge={l10n.getString('restaurant-setting-vibration-badge')}
                   checked={interactionVibration}

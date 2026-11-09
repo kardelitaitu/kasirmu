@@ -80,6 +80,7 @@ import datetime as _dt
 import json
 import pathlib
 import re
+import os
 import subprocess
 import sys
 
@@ -202,11 +203,150 @@ def _missing_footers(root: pathlib.Path):
     return out, baseline_absent
 
 
+#: Stamp/footer pairs and the class each must land in.
+#:
+#: WHY THESE CASES. main() decides everything with `if newest == footer / elif footer >
+#: newest / else`, three lines whose failure mode is SILENT: if the comparison flipped,
+#: every under-reporting doc would be relabelled into the informational class and the
+#: gate would exit 0 while the dangerous class sat empty. The census floor at the bottom
+#: of main() catches a DEAD regex; it cannot catch a MISCLASSIFIED pair. These can.
+CLASSIFY_CASES = (
+    ("equal dates are healthy", "Audit stamp: 2026-10-01", "> last audited 01-10-26 by x", "equal"),
+    ("earlier footer is the BUG class", "Audit stamp: 2026-10-05", "> last audited 01-10-26 by x", "older"),
+    ("later footer is informational", "Audit stamp: 2026-10-01", "> last audited 05-10-26 by x", "newer"),
+    ("stamp alone has nothing machine-read", "Audit stamp: 2026-10-01", "", "stamp_only"),
+    ("footer alone has no stamp behind it", "", "> last audited 01-10-26 by x", "footer_only"),
+    ("neither is not a claim at all", "", "", None),
+    (
+        "newest stamp governs when a doc carries two",
+        "Audit stamp: 2026-09-01\nAudit stamp: 2026-10-05",
+        "> last audited 01-09-26 by x",
+        "older",
+    ),
+)
+
+
+#: Impossible footers. detect.sh's SHAPE regex accepts 31-13-26, so a typo passes there
+#: and must be caught here.
+BAD_DATE_CASES = (
+    ("month 13", "> last audited 01-13-26 by x", True),
+    ("day 31 in a 30-day month", "> last audited 31-04-26 by x", True),
+    ("february 30", "> last audited 30-02-26 by x", True),
+    ("a real leap day is not flagged", "> last audited 29-02-24 by x", False),
+    ("an ordinary date is not flagged", "> last audited 15-06-26 by x", False),
+)
+
+
+def classify(text: str):
+    """The class one document body lands in, or None when it carries no claim.
+
+    Extracted from main() so the cases above exercise the REAL comparison rather than
+    a duplicate of it. Returns (klass, impossible_footer_triples).
+    """
+    stamps = _stamp_dates(text)
+    footers = _footer_dates(text)
+    bad = []
+    for dd, mm, yy in FOOTER_RE.findall(text):
+        try:
+            _dt.date(2000 + int(yy), int(mm), int(dd))
+        except ValueError:
+            bad.append("%s-%s-%s" % (dd, mm, yy))
+    if not stamps and not footers:
+        return None, bad
+    if not stamps:
+        return "footer_only", bad
+    if not footers:
+        return "stamp_only", bad
+    newest = max(stamps)
+    footer = footers[-1]
+    if newest == footer:
+        return "equal", bad
+    if footer > newest:
+        return "newer", bad
+    return "older", bad
+
+
+def self_test() -> int:
+    """Grade the classifier and the impossible-date rejection; report EVERY failure."""
+    bad = []
+    for name, stamps, footer, expected in CLASSIFY_CASES:
+        got, _ = classify(stamps + chr(10) + footer)
+        if got != expected:
+            bad.append("  %s: expected %r, classifier returned %r" % (name, expected, got))
+    for name, footer, should_flag in BAD_DATE_CASES:
+        _, flagged = classify(footer)
+        if should_flag and not flagged:
+            bad.append("  %s: must be flagged as an impossible date, got none" % name)
+        if not should_flag and flagged:
+            bad.append("  %s: must NOT be flagged, got %r" % (name, flagged))
+    # The ignore filter, graded against a throwaway git repo -- no live paths. main()
+    # consults _git_ignored to tell repo claims from scratch; a gutted one must turn
+    # the self-test red instead of silently checking (or skipping) everything.
+    import shutil
+    import tempfile
+    extra = 0
+    if shutil.which("git"):
+        with tempfile.TemporaryDirectory() as td:
+            g = pathlib.Path(td)
+            (g / ".gitignore").write_text("ignored/\n", encoding="utf-8")
+            (g / "tracked.md").write_text("x", encoding="utf-8")
+            (g / "ignored").mkdir()
+            (g / "ignored" / "x.md").write_text("y", encoding="utf-8")
+            subprocess.run(["git", "init", "-q"], cwd=g, capture_output=True)
+            extra += 1
+            got = _git_ignored(g, ["tracked.md", "ignored/x.md"])
+            if got != {"ignored/x.md"}:
+                bad.append("  git check-ignore: expected {'ignored/x.md'}, got %r" % (got,))
+        # The non-repo fixture must sit OUTSIDE any work tree: with 7e11b664c's TMP
+        # at target/.tmp-check, the default temp dir is INSIDE this checkout and
+        # check-ignore answers with the real repo's rules instead of failing
+        # (measured 2026-11-08, sweep step 151). Fall back to the repo's parent.
+        tmp_base = tempfile.gettempdir()
+        try:
+            _top = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                                  cwd=os.path.dirname(os.path.abspath(__file__)),
+                                  capture_output=True)
+            if _top.returncode == 0:
+                # normcase+abspath on BOTH sides: git prints forward slashes,
+                # commonpath answers backslashes, an unnormalized == never fires.
+                _root = os.path.normcase(os.path.abspath(_top.stdout.decode("utf-8", "replace").strip()))
+                if os.path.normcase(os.path.commonpath([os.path.abspath(tmp_base), _root])) == _root:
+                    tmp_base = os.path.dirname(_root)
+        except (ValueError, OSError):
+            pass  # different drives or no git: the temp dir cannot be inside a repo
+        with tempfile.TemporaryDirectory(dir=tmp_base) as td:
+            norepo = pathlib.Path(td)
+            (norepo / "a.md").write_text("x", encoding="utf-8")
+            extra += 1
+            got2 = _git_ignored(norepo, ["a.md"])
+            if got2 != set():
+                bad.append("  non-repo fallback: expected empty set, got %r" % (got2,))
+    else:
+        print("  (git unavailable: the check-ignore cases are skipped)")
+    if bad:
+        sys.stderr.write("SELF-TEST WRONG:" + chr(10) + chr(10).join(bad) + chr(10))
+        return 2
+    print("SELF-TEST OK (%d cases, live tree untouched)"
+          % (len(CLASSIFY_CASES) + len(BAD_DATE_CASES) + extra))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--verbose", action="store_true",
                     help="also list agreeing files and the informational classes")
+    ap.add_argument("--self-test", action="store_true",
+                    help="run this checker's cases and exit")
     args = ap.parse_args()
+    if args.self_test:
+        return self_test()
+    # Grade the classifier BEFORE the tree. A flipped comparison would relabel every
+    # under-reporting doc into the informational class, and the census floor below
+    # counts rows rather than checking them, so it would not see it.
+    rc = self_test()
+    if rc:
+        sys.stderr.write("CLASSIFIER WENT DEAF: not trusting the tree scan below." + chr(10))
+        return rc
 
     root = pathlib.Path.cwd()
     if not (root / "AGENTS.md").is_file() and not (root / "docs").is_dir():
@@ -268,6 +408,16 @@ def main() -> int:
         return 2
 
     total = len(equal) + len(newer) + len(older) + len(footer_only) + len(stamp_only)
+    # THE CENSUS FLOOR. Printing a denominator is not the same as checking it, and this
+    # file's own loop sets the trap: line 236 is `if not stamps and not footers: continue`,
+    # so a stamp regex that stops matching (a reworded house stamp, a changed date format)
+    # makes EVERY file `continue` and leaves a report of seven zeroes. Measured
+    # 2026-10-23 by emptying both _stamp_dates and _footer_dates: the checker printed its
+    # seven lines with 0 everywhere and exited 0.
+    #
+    # A real tree here has 892 docs carrying a stamp and/or a footer. The floor is set
+    # far below that so ordinary deletions never trip it; it exists to catch a ZERO.
+    MIN_DOCS_WITH_A_CLAIM = 50
     print("docs with a stamp and/or footer : %d" % total)
     print("  newest stamp == footer        : %d" % len(equal))
     print("  footer newer than newest stamp: %d   (re-checked without a stamp line)" % len(newer))
@@ -325,6 +475,15 @@ def main() -> int:
             print("   NOTE: %s is missing, so NOTHING is grandfathered -- every"
                   % FOOTER_BASELINE)
             print("   record above is a finding. Restore the baseline or footer them all.")
+
+    if total < MIN_DOCS_WITH_A_CLAIM:
+        print("")
+        print("REFUSED: only %d doc(s) carry a stamp or footer; a real tree has at least %d."
+              % (total, MIN_DOCS_WITH_A_CLAIM))
+        print("A report of zero findings over an empty census is not a clean tree: the loop")
+        print("skips every file whose stamp AND footer regexes both miss, so a reworded")
+        print("house stamp produces exactly these zeroes. Check STAMP_RE / FOOTER_RE.")
+        return 1
 
     if older or bad_dates or missing_footers:
         print("")

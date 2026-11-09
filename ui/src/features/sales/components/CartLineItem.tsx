@@ -1,5 +1,6 @@
 /* eslint-disable jsx-a11y/no-noninteractive-tabindex */
 import { useCallback, useState, useEffect, useRef } from 'react';
+import { requiredLocalized } from '@/components/requiredLocalized';
 import type { CSSProperties } from 'react';
 import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
@@ -131,7 +132,7 @@ export function CartLineItem({
     onSwipeRight: () => setRevealed(false),
   });
   // Compute once per render.
-  const thumbnail = lineThumbnail(String(line.sku));
+  const thumbnail = lineThumbnail(String(line.name ?? line.sku));
   // Only meaningful when the caller passed onAssignCourse; the chip renders
   // on that condition too, so a line without coursing never reaches here.
   const courseOpen = !!onAssignCourse && courseMenuLine === line.id;
@@ -176,19 +177,20 @@ export function CartLineItem({
         role="group"
         aria-label={l10n.getString('pos-cart-line-aria', { sku: String(line.sku), qty: String(line.qty), amount: formatMoney(line.unit_price) })}
       >
-        {/* 1 — Thumbnail */}
-        <span
-          className="pos-cart-line-thumb"
-          style={{ '--thumb-hue': thumbnail.hue } as CSSProperties}
-          aria-hidden="true"
-        >
-          {thumbnail.initial}
-        </span>
-
-        {/* 2 — Name + price */}
-        <div className="pos-cart-line-info">
-          <div className="pos-cart-line-name">
-            {line.name ?? line.sku}
+        {/* 1 — Left container: The Order (2 rows) */}
+        <div className="pos-cart-line-order pos-cart-line-info">
+          {/* Row 1: Item Identity & Badges */}
+          <div className="pos-cart-line-order-row1">
+            <span
+              className="pos-cart-line-thumb"
+              style={{ '--thumb-hue': thumbnail.hue } as CSSProperties}
+              aria-hidden="true"
+            >
+              {thumbnail.initial}
+            </span>
+            <div className="pos-cart-line-name">
+              {line.name ?? line.sku}
+            </div>
             {line.dispatchedQty !== undefined && line.dispatchedQty >= line.qty && (
               <span className="pos-cart-line-dispatched-badge" data-testid="cart-line-dispatched-badge">
                 <Localized id="pos-line-status-sent">
@@ -203,34 +205,26 @@ export function CartLineItem({
                 </Localized>
               </span>
             )}
-            {onUpdateNote && (
-              <button
-                type="button"
-                className={`pos-cart-line-note-btn${line.note ? ' pos-cart-line-note-btn--active' : ''}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openNoteEditor();
-                }}
-                aria-label={line.note ? `${l10n.getString('pos-cart-line-edit-note') || 'Edit Note'}: ${line.note}` : (l10n.getString('pos-cart-line-add-note') || 'Add Note')}
-                data-testid="cart-line-note-btn"
-              >
-                <NoteIcon />
-              </button>
-            )}
-            {onEditModifiers && (!line.modifiers || line.modifiers.length === 0) && (
-              <button
-                type="button"
-                className="pos-cart-line-modifier-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEditModifiers(line);
-                }}
-                aria-label={l10n.getString('edit-modifiers') || 'Customize item'}
-                data-testid="cart-line-add-modifier-btn"
-              >
-                <SlidersIcon />
-              </button>
-            )}
+          </div>
+
+          {/* Row 2: Price, Modifiers, Course, Notes */}
+          <div className="pos-cart-line-order-row2">
+            <div className="pos-cart-line-price">
+              <span className="pos-cart-line-total">
+                {formatMoney({
+                  minor_units: line.unit_price.minor_units * line.qty,
+                  currency: line.unit_price.currency,
+                })}
+              </span>
+              {line.qty > 1 ? (
+                <span className="pos-cart-line-unit-rate">
+                  (<span className="pos-cart-line-price-at">@</span> {formatMoney(line.unit_price)})
+                </span>
+              ) : (
+                <span className="pos-cart-line-price-at" style={{ display: 'none' }}>@</span>
+              )}
+            </div>
+
             {onAssignCourse && (
               <span className="pos-cart-line-course">
                 <button
@@ -312,112 +306,142 @@ export function CartLineItem({
                 )}
               </span>
             )}
-          </div>
-          {((line.modifiers && line.modifiers.length > 0) || onOverride) ? (
-            <div className="pos-cart-line-modifiers" data-testid="cart-line-modifiers">
-              {line.modifiers?.map((m) => (
-                <span key={`${m.groupId}-${m.modifierId}`} className="pos-cart-line-modifier-tag">
-                  {m.modifierName}
-                  {m.priceMinor > 0 && (
-                    <span className="pos-cart-line-modifier-price">
-                      {' '}(+{formatMoney({ minor_units: m.priceMinor, currency: line.unit_price.currency })})
-                    </span>
-                  )}
-                </span>
-              ))}
-              {onEditModifiers && (line.modifiers?.length ?? 0) > 0 && (
-                <button
-                  type="button"
-                  className="pos-cart-line-edit-modifiers-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEditModifiers(line);
-                  }}
-                  aria-label={l10n.getString('edit-modifiers') || 'Edit Modifiers'}
-                  data-testid="cart-line-edit-modifiers-btn"
-                >
-                  Edit
-                </button>
-              )}
-              {onOverride && (
-                <button
-                  type="button"
-                  className="pos-cart-line-modifier-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onOverride(line);
-                  }}
-                  aria-label={l10n.getString('pos-cart-line-override-aria', { name: line.name ?? line.sku }, 'Override price')}
-                  data-testid="cart-line-override-btn"
-                >
-                  <span aria-hidden="true">$</span>
-                </button>
-              )}
-            </div>
-          ) : null}
-          {line.note && (
-            <div
-              className="pos-cart-line-note-badge"
-              data-testid="cart-line-note"
-              onClick={(e) => {
-                e.stopPropagation();
-                openNoteEditor();
-              }}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
+
+            {onUpdateNote && (
+              <button
+                type="button"
+                className={`pos-cart-line-note-btn${line.note ? ' pos-cart-line-note-btn--active' : ''}`}
+                onClick={(e) => {
                   e.stopPropagation();
                   openNoteEditor();
-                }
-              }}
-              aria-label={line.note}
-            >
-              <span className="pos-cart-line-note-icon" aria-hidden="true">📝</span>
-              <span className="pos-cart-line-note-text">{line.note}</span>
-            </div>
-          )}
-          <div className="pos-cart-line-price">
-            <span className="pos-cart-line-price-at">@</span> {formatMoney(line.unit_price)}
+                }}
+                aria-label={line.note ? `${requiredLocalized(l10n, 'pos-cart-line-edit-note')}: ${line.note}` : (requiredLocalized(l10n, 'pos-cart-line-add-note'))}
+                data-testid="cart-line-note-btn"
+              >
+                <NoteIcon />
+              </button>
+            )}
+
+            {onEditModifiers && (!line.modifiers || line.modifiers.length === 0) && (
+              <button
+                type="button"
+                className="pos-cart-line-modifier-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEditModifiers(line);
+                }}
+                aria-label={requiredLocalized(l10n, 'pos-cart-line-customize-aria')}
+                data-testid="cart-line-add-modifier-btn"
+              >
+                <SlidersIcon />
+              </button>
+            )}
+
+            {((line.modifiers && line.modifiers.length > 0) || onOverride) && (
+              <div className="pos-cart-line-modifiers" data-testid="cart-line-modifiers">
+                {line.modifiers?.map((m) => (
+                  <span key={`${m.groupId}-${m.modifierId}`} className="pos-cart-line-modifier-tag">
+                    {m.modifierName}
+                    {m.priceMinor > 0 && (
+                      <span className="pos-cart-line-modifier-price">
+                        {' '}(+{formatMoney({ minor_units: m.priceMinor, currency: line.unit_price.currency })})
+                      </span>
+                    )}
+                  </span>
+                ))}
+                {onEditModifiers && (line.modifiers?.length ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    className="pos-cart-line-edit-modifiers-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEditModifiers(line);
+                    }}
+                    aria-label={requiredLocalized(l10n, 'edit-modifiers')}
+                    data-testid="cart-line-edit-modifiers-btn"
+                  >
+                    {requiredLocalized(l10n, 'edit-modifiers')}
+                  </button>
+                )}
+                {onOverride && (
+                  <button
+                    type="button"
+                    className="pos-cart-line-modifier-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOverride(line);
+                    }}
+                    aria-label={l10n.getString('pos-cart-line-override-aria', { name: line.name ?? line.sku }, 'Override price')}
+                    data-testid="cart-line-override-btn"
+                  >
+                    <span aria-hidden="true">$</span>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {line.note && (
+              <div
+                className="pos-cart-line-note-badge"
+                data-testid="cart-line-note"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openNoteEditor();
+                }}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.stopPropagation();
+                    openNoteEditor();
+                  }
+                }}
+                aria-label={line.note}
+              >
+                <span className="pos-cart-line-note-icon" aria-hidden="true">📝</span>
+                <span className="pos-cart-line-note-text">{line.note}</span>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* 3 — Qty controls */}
-        <div className="pos-cart-line-controls">
+        {/* 2 — Right container: Controls (-/+ and Close) */}
+        <div className="pos-cart-line-controls-wrap">
+          <div className="pos-cart-line-controls">
+            <button
+              type="button"
+              className="pos-cart-qty-btn"
+              onClick={() => onDecreaseQty(line)}
+              disabled={line.qty <= 1}
+              aria-label={l10n.getString('pos-cart-line-decrease-aria', { sku: String(line.sku) })}
+            >
+              <MinusIcon />
+            </button>
+            <span className="pos-cart-qty-value" aria-label={l10n.getString('pos-cart-line-qty-aria', { qty: String(line.qty) })}>
+              {line.qty}
+            </span>
+            <button
+              type="button"
+              className="pos-cart-qty-btn"
+              onClick={() => onIncreaseQty(line)}
+              aria-label={l10n.getString('pos-cart-line-increase-aria', { sku: String(line.sku) })}
+            >
+              <PlusIcon />
+            </button>
+          </div>
+
           <button
             type="button"
-            className="pos-cart-qty-btn"
-            onClick={() => onDecreaseQty(line)}
-            disabled={line.qty <= 1}
-            aria-label={l10n.getString('pos-cart-line-decrease-aria', { sku: String(line.sku) })}
+            className="pos-cart-line-remove"
+            onClick={handleRemove}
+            aria-label={l10n.getString('pos-cart-line-remove-aria', { sku: String(line.sku) })}
           >
-            <MinusIcon />
-          </button>
-          <span className="pos-cart-qty-value" aria-label={l10n.getString('pos-cart-line-qty-aria', { qty: String(line.qty) })}>
-            {line.qty}
-          </span>
-          <button
-            type="button"
-            className="pos-cart-qty-btn"
-            onClick={() => onIncreaseQty(line)}
-            aria-label={l10n.getString('pos-cart-line-increase-aria', { sku: String(line.sku) })}
-          >
-            <PlusIcon />
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
           </button>
         </div>
-
-        {/* 4 — Remove button */}
-        <button
-          type="button"
-          className="pos-cart-line-remove"
-          onClick={handleRemove}
-          aria-label={l10n.getString('pos-cart-line-remove-aria', { sku: String(line.sku) })}
-        >
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
 
         {/* Category ribbon */}
         {line.category && (
@@ -448,7 +472,7 @@ export function CartLineItem({
         <Modal
           open={showNoteModal}
           onClose={() => setShowNoteModal(false)}
-          title={l10n.getString('pos-cart-line-note-title') || 'Special Request'}
+          title={requiredLocalized(l10n, 'pos-cart-line-note-title')}
           className="pos-cart-line-note-modal"
           footer={
             <div className="pos-cart-note-modal-actions">
@@ -502,8 +526,8 @@ export function CartLineItem({
               // The placeholder is not an accessible name: it disappears the
               // moment the cashier types, and axe flags a control named only by
               // one. The modal's own title is the honest label.
-              aria-label={l10n.getString('pos-cart-line-note-title') || 'Special Request'}
-              placeholder={l10n.getString('pos-cart-line-note-placeholder') || 'e.g. No onion, less ice, allergy...'}
+              aria-label={requiredLocalized(l10n, 'pos-cart-line-note-title')}
+              placeholder={requiredLocalized(l10n, 'pos-cart-line-note-placeholder')}
               data-testid="cart-line-note-input"
               maxLength={200}
             />

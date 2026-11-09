@@ -13,7 +13,7 @@
  * Fluent-only copy: `settings-rcptfmt-*` keys in settings.ftl +
  * settings.id.ftl.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { Card } from '@/components/Card';
 import { SettingsScopeTag } from '@/features/settings/SettingsScopeTag';
@@ -95,12 +95,16 @@ export function ReceiptFormatSettingsCard() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  /** Synchronous mirror of `saving` — see the re-entry guard in `handleSave`. */
+  const savingRef = useRef(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   // Statutory-content draft (W2-C) — the entity-layer half. The content
   // write owns requiredFields; the display list above is its mirror.
   const [contentDraft, setContentDraft] = useState<ReceiptContentArgs | null>(null);
   const [contentSaving, setContentSaving] = useState(false);
+  /** Synchronous mirror of `contentSaving` — see the re-entry guard in `handleContentSave`. */
+  const contentSavingRef = useRef(false);
   const [contentSaved, setContentSaved] = useState(false);
   const [contentSaveError, setContentSaveError] = useState<string | null>(null);
 
@@ -157,6 +161,11 @@ export function ReceiptFormatSettingsCard() {
 
   const handleSave = useCallback(async () => {
     if (!sessionToken || !workspaceId || !draft) return;
+    // Re-entry guard: both saves are last-write-wins over the same keys, so a replay cannot
+    // corrupt the layout -- what it can do is share one \`saveError\` / \`saved\` pair between
+    // two in-flight writes, showing the operator the failure of the tap that raced.
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     setSaveError(null);
     setSaved(false);
@@ -181,6 +190,7 @@ export function ReceiptFormatSettingsCard() {
     } catch (err) {
       setSaveError(l10nErrorMessage(err, l10n, 'settings-rcptfmt-error-save'));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }, [sessionToken, workspaceId, draft, l10n, requiredFields]);
@@ -206,6 +216,10 @@ export function ReceiptFormatSettingsCard() {
 
   const handleContentSave = useCallback(async () => {
     if (!sessionToken || !contentDraft) return;
+    // Same re-entry guard as handleSave, on its own ref: the two saves write DIFFERENT
+    // documents and must not block each other, only themselves.
+    if (contentSavingRef.current) return;
+    contentSavingRef.current = true;
     setContentSaving(true);
     setContentSaveError(null);
     setContentSaved(false);
@@ -219,6 +233,7 @@ export function ReceiptFormatSettingsCard() {
     } catch (err) {
       setContentSaveError(l10nErrorMessage(err, l10n, 'settings-rcptfmt-content-error-save'));
     } finally {
+      contentSavingRef.current = false;
       setContentSaving(false);
     }
   }, [sessionToken, contentDraft, l10n]);

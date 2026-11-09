@@ -75,6 +75,20 @@ const files = walk(SRC);
 // three handlers were given a reporting guard and this ledger told me to delete the row.
 // That is the intended loop: the guard fails on a stale entry, so a fix cannot leave the
 // count wrong.
+//
+// GREW BY HAND twice on 2026-10-21, and each row states why it is a LOAD and not a fix the
+// guard is excusing:
+//   features/inventory/StockCountDetail.tsx:85 — inside the mount effect beside `load()`;
+//     the token arrives asynchronously, and the sibling reads already report failure
+//     through `setError`. Returning here defers the catalogue read, it does not deny one.
+//   features/reports/DebtRemindersCard.tsx:27 — first line of `loadDebts`, a useCallback
+//     loader. The component's whole design (recsFailed/paysFailed) is about reporting a
+//     failed read; this guard only fires before any read is issued.
+//   hooks/useTerminalProfile.ts:41 — deliberately stays in the loading state rather than
+//     answering `[]`. The comment at :34 says why: no token is not an answer, and
+//     answering would report "no terminals registered" from a read never issued.
+// A guard in a HANDLER in any of these three would still be a defect — the justification is
+// per-site, not per-file, which is the same limit the header above already records.
 const DECLARED: string[] = [
   'components/OrgSwitcher.tsx',
   'components/StockAlertBell.tsx',
@@ -83,6 +97,7 @@ const DECLARED: string[] = [
   'features/audit/SecurityTrailScreen.tsx',
   'features/design/DevToolbar.tsx',
   'features/inventory/ShiftBar.tsx',
+  'features/inventory/StockCountDetail.tsx',
   'features/inventory/ThresholdConfigScreen.tsx',
   'features/inventory/TransactionLogScreen.tsx',
   'features/kds/ExpoScreen.tsx',
@@ -97,6 +112,7 @@ const DECLARED: string[] = [
   'features/memo/MemosScreen.tsx',
   'features/memo/useMemos.ts',
   'features/products/RecipeEditorModal.tsx',
+  'features/reports/DebtRemindersCard.tsx',
   'features/restaurant/RestaurantMenu.tsx',
   'features/restaurant/screens/RestaurantPaymentsScreen.tsx',
   'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
@@ -134,6 +150,7 @@ const DECLARED: string[] = [
   'features/warehouse/WarehouseCountFlow.tsx',
   'features/warehouse/useWarehouseScanner.ts',
   'hooks/useSessionKeepalive.ts',
+  'hooks/useTerminalProfile.ts',
   'hooks/useStoreTimezone.ts',
 ];
 

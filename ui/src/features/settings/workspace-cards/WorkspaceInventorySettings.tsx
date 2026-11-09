@@ -63,10 +63,15 @@ export function WorkspaceInventorySettings({
   // ── Load from backend ───────────────────────────────────────
 
   useEffect(() => {
-    // `loaded` is a one-way latch (set true at :74, never reset), so adding sessionToken to the
-    // deps below would NOT have re-fetched -- the guard at :54 short-circuits every later run.
-    // Latching on the token instead: the body already refuses to overwrite fields the operator
-    // has touched (:61, :64), which is the signature of a function written to be re-entered.
+    // `loadedForRef` is a one-way latch (assigned the current token just before `setLoaded`,
+    // never reset), so adding sessionToken to the deps below would NOT have re-fetched -- the
+    // guard on this effect's FIRST line short-circuits every later run while the ref still
+    // holds the same token. Latching on the token instead: the body already refuses to
+    // overwrite fields the operator has touched (see the `touchedRef` checks), which is the
+    // signature of a function written to be re-entered.
+    // ⚠️ All four numbers this block used to carry were stale — the "set true at" figure
+    // pointed at a `Promise.all([`, the "guard at" figure at a comment line, and both touch
+    // figures at the wrong statements. Anchored by identifier now.
     // `reloadNonce > 0` means Retry was pressed, which must bypass the latch.
     if (reloadNonce === 0 && loadedForRef.current === sessionToken) return;
     // (the latch used to be set HERE, before the read — see the .finally() below)
@@ -102,9 +107,11 @@ export function WorkspaceInventorySettings({
       loadedForRef.current = sessionToken;
       setLoaded(true);
     });
-    // sessionToken is a prop (:21) read at :57 and :58. Without it here, a card mounted before a
-    // store switch kept showing the previous store's thresholds. `loaded` still drives the
-    // dirty-tracking memo at :49, so it is kept rather than replaced.
+    // sessionToken is a prop read by the two `getSettingScoped` calls in the `Promise.all`
+    // above. Without it here, a card mounted before a store switch kept showing the previous
+    // store's thresholds. `loaded` still drives the `dirty` memo, so it is kept rather than
+// replaced. (Anchored by identifier: the four figures this note used to print were all
+// either right by luck or pointed at a different statement.)
   }, [loaded, sessionToken, reloadNonce]);
 
   // ── Save ─────────────────────────────────────────────────────
@@ -128,7 +135,8 @@ export function WorkspaceInventorySettings({
     } finally {
       setSaving(false);
     }
-    // sessionToken is read at :83 by setSettingsScoped. `userId` was listed and is a different
+    // sessionToken is read by the `setSettingsScoped(sessionToken ?? null, …)` call in the save
+  // path. `userId` was listed and is a different
     // value, so it never covered the token: saving after a store switch wrote the previous
     // store's thresholds (or failed on the destroyed session) while the toast said it saved.
     // `userId` is now gone from this array -- nothing in the component read it, and this entry was

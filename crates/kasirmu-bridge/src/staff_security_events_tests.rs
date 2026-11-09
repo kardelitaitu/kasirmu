@@ -1,5 +1,5 @@
 //! Security-event wiring on the staff-management paths (Wave-B test
-//! relocation: moved out of `apps/desktop-tauri/src/commands/staff_security_events_tests.rs`).
+//! relocation: moved out of `apps/tablet-client/src/commands/staff_security_events_tests.rs`, since renamed to mobile-tauri).
 //!
 //! Mounted at the foot of `staff.rs` beside `staff_tests.rs` (multi-mount
 //! ruling). The desktop file drove the shell commands through `AppState` + a
@@ -142,7 +142,7 @@ async fn audit_rows(bridge: &TestBridge) -> Vec<(String, String, String, String,
 ///
 /// The refusal this produces is a PERMISSION one, and the choice is load
 /// bearing: see the comment on `a_rejected_create_records_no_security_event`.
-/// `create_staff_scoped` gates on `staff:create` at `staff.rs:1073` and only
+/// `create_staff_scoped` gates on `staff:create` at `staff.rs:656` and only
 /// reaches `sub.verify_signature()` at `:1080`, so a permission refusal is the
 /// one kind of refusal on that path that is live in BOTH profiles.
 fn lite_app(tier_key: &str) -> TestBridge {
@@ -195,7 +195,7 @@ async fn create_staff_scoped_records_a_security_event() {
     let bridge = owner_app("premium");
     let ctx = bridge.ctx();
     let settled = create_staff_scoped("owner-token".into(), create_args("jdoe"), &ctx).await;
-    // Release: staff.rs:1080 refuses the create at the seeded row signature before the
+    // Release: staff.rs:663 refuses the create at the seeded row signature before the
     // recorder is ever reached, so there is NO event to read - asserting a row count
     // here would be false evidence. Actor-vs-subject, the action name and the PIN
     // redaction below are all debug-profile claims about the WRITE side.
@@ -240,7 +240,7 @@ async fn a_rejected_create_records_no_security_event() {
     // to be a duplicate username; that case is now
     // `a_duplicate_username_create_records_no_security_event`, forked, because
     // it cannot be made honest in the release profile. `create_staff_scoped`
-    // gates on `staff:create` at staff.rs:1073 and only reaches
+    // gates on `staff:create` at staff.rs:656 and only reaches
     // `sub.verify_signature()` at :1080 — a duplicate-username setup needs the
     // FIRST create to succeed, and in release that create dies at :1080 on the
     // BOOTSTRAP_FREE sentinel. No fixture in this crate can mint a verifying
@@ -289,7 +289,7 @@ async fn a_duplicate_username_create_records_no_security_event() {
     // Split out because this half IS profile-bound, and the fork says so
     // instead of hiding it. The setup create must SUCCEED for a duplicate to
     // exist, and `create_staff_scoped` only reaches the duplicate check past
-    // `sub.verify_signature()` (staff.rs:1080), which the release profile
+    // `sub.verify_signature()` (staff.rs:663), which the release profile
     // refuses — see testing.rs:105-162 on why no fixture can satisfy it. So in
     // release there is no `jdoe` and no reachable duplicate check: the release
     // leg asserts the REFUSAL (with the row's existence pinned by

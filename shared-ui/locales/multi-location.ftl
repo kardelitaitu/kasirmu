@@ -1,7 +1,6 @@
 # shared-ui/locales/multi-store.ftl — Multi-store dashboard
 
 multi-store-dashboard-title = Multi-Store Dashboard
-multi-store-dashboard-loading = Loading dashboard…
 multi-store-stat-total-stores = Total Stores
 multi-store-stat-active-terminals = Active Terminals
 multi-store-stat-online-terminals = Online Terminals
@@ -20,6 +19,10 @@ multi-store-label-terminals = Terminals
 multi-store-section-stores-overview = Stores overview
 multi-store-section-terminal-status = Terminal status
 multi-store-error-load = Failed to load data
+# A refused Set-as-Primary / Delete. Both used to fail silently, so the click did nothing
+# with no explanation — the badge and the row simply stayed where they were.
+multi-store-error-set-primary = Could not set this store as primary — please try again
+multi-store-error-delete = Could not delete this store — please try again
 
 # ── Locations → Topology entry points (todo-global-saas-2 §"Locations and
 # Topology navigation") ──
@@ -35,6 +38,7 @@ multi-store-details-close-aria = Close location details
 # ── Topology Editor ──
 
 topology-builder-title = Visual Store & Workspace Topology Builder
+topology-editor-sections = Editor sections
 
 topology-apply-changes = Apply Topology
 # Confirmation popup
@@ -65,6 +69,7 @@ topology-rev-browser-title = Deploy History
 topology-rev-browser-close = Close deploy history
 topology-rev-browser-loading = Loading history…
 topology-rev-browser-loading-one = Loading 1 revision…
+topology-rev-browser-error-detail = Could not load this revision
 topology-rev-browser-empty = Nothing has been applied to this branch yet.
 topology-rev-browser-no-note = No note
 topology-rev-browser-counts = { $nodes } nodes · { $wires } wires
@@ -447,3 +452,8 @@ multi-store-prefix-error-save = Could not save the ticket prefix.
 # must explain itself instead of mounting an editor that cannot load or save.
 topology-tablet-unavailable-title = Topology authoring needs the desktop
 topology-tablet-unavailable-body = Store layout editing runs on the desktop app. This tablet keeps read-only Locations and every checkout surface.
+
+# Centralized Web Topology Authoring (ADR-66 / Phase 4 & Phase 6)
+topology-web-managed-notice = Managed via Web Dashboard (Read-Only)
+topology-tablet-web-managed-title = Centralized Topology Authoring
+topology-tablet-web-managed-body = Store layout is managed remotely via the Web Dashboard. This tablet runs on the latest synchronized revision.

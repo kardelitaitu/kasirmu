@@ -55,3 +55,5 @@ wrong reason.
 | Full suite | 12,674 passed, 0 failed (+3) |
 | `tsc` / `eslint` | 0 / 0 |
 | `usePosShifts.ts` | restored, verified clean |
+
+> last audited 14-10-26 by docs-auditor

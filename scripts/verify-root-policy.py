@@ -71,9 +71,30 @@ ROOT_FILE_ALLOWLIST = frozenset({
     # (apps/mobile-tauri/build-android-frontend.bat). Moving it would invalidate that
     # doc and the invocation it teaches.
     "deploy-website.bat",
+    # START_TABLET_HMR.bat is the same class and the same shape of decision: a
+    # 151-byte Windows launcher whose entire body is
+    # `powershell -File "%~dp0scripts\android-dev-hmr.ps1"` plus a `pause`. It is
+    # root-resident BECAUSE it is double-clicked, and it resolves its target via
+    # %~dp0 so the script it launches stays under scripts/ where it belongs.
+    # Allowlisted 2026-10-19 after confirming three things: nothing tracked
+    # references it as a path (only two plan docs mention it, as an inventory
+    # item), the sibling launcher `deploy-website.bat` was allowed on identical
+    # reasoning, and it is not this gate's target class — the gate exists for
+    # scratch that regenerates (screenshots, *.db copies, pr_body.md), not for a
+    # human entry point. Its siblings android-dev-hmr.ps1 / rebuild-tablet-*.sh
+    # correctly live under scripts/ because they are invoked, not double-clicked.
+    "START_TABLET_HMR.bat",
 
 
-    "todo-open-debt-program.md", "todo-review-type.md",
+    "done-todo-open-debt-program.md", "todo-review-type.md",
+
+    # Added 2026-11-09 (plan-next-30-days.md §1.2). This file was TRACKED and had been
+    # flagged by this gate since r174 -- "Root-policy RED on the foreign todo.md" in the
+    # register footer, carried in every round entry for ~58 rounds. It is the owner's
+    # working plan at the root, which is exactly the class the comment above names; the
+    # omission was an oversight, not a judgement, and the gate's own message invites the
+    # fix ("add it to ROOT_FILE_ALLOWLIST if it belongs"). It belongs.
+    "todo.md",
 
     # Owner plan docs, same class as the two above: named individually on purpose,
     # because the allowlist is names-not-patterns so adding one is a decision.
@@ -98,19 +119,10 @@ ROOT_FILE_ALLOWLIST = frozenset({
     # class: an owner plan doc at the root, added deliberately per AGENTS.md 7.4,
     # which puts plan files at the root and exempts `todo-` names in check-dead-refs.
     "todo-docs-restructure.md",
-    # todo-restaurant-pos-reliability.md — the restaurant-POS reliability plan.
-    # Same class again, and flagged by ANOTHER lane before this one: the
-    # docs-restructure plan's step-6 note identified it as tracked, clean,
-    # carrying the `todo-` token, and an owner plan doc (5,752 lines,
-    # 2026-10-09) — exactly the class ROOT_FILE_ALLOWLIST lists by name —
-    # and left it alone because that plan may not edit a script and the file
-    # was not its own. It landed 2026-10-12, after the last edit to this list,
-    # so it was simply never added.
-    #
-    # Adding it enforces the invariant stated at the top of this file
-    # ("extend the list in the same commit that adds the file") rather than
-    # making a new decision — the same reasoning as the 2026-10-02 group above.
-    "todo-restaurant-pos-reliability.md",
+    # done-todo-restaurant-pos-reliability.md — the restaurant-POS reliability plan.
+    # Earned `done-` rename on 2026-10-23 once all P0–P8 phases and F1–F24 findings
+    # passed acceptance testing.
+    "done-todo-restaurant-pos-reliability.md",
     "manager-codebase-review-checklist.md",
     "manager-codebase-review-decisions.md",
     "manager-codebase-review.md",
@@ -123,6 +135,13 @@ ROOT_FILE_ALLOWLIST = frozenset({
     # its own acceptance command ran and passed (3543 core tests, all governance
     # gates green), which is what §7.4 says earns the `done-` prefix.
     "plan-c1-install-key-s2b-s2c.md",
+    # The owner's 30-day plan written 2026-11-09 (the beta runway: 2026-11-09 to
+    # 2026-12-09, ending six days before the 2026-12-15 code freeze). Same class as
+    # the entries above: a tracked plan doc at the root carrying the `plan-` token
+    # its §7.4 exemption requires. Added in the commit that creates the file, which
+    # is what this gate's own docstring asks for -- the allowlist entry and the file
+    # land together or the gate is red in between.
+    "plan-next-30-days.md",
     # The 2026-10-12 plan-doc sweep. Fourteen tracked plan documents at the root
     # that were never added to this list, plus one STALE entry: `todo-android-
     # updater.md` was renamed to `done-todo-android-updater.md` when its own
@@ -150,7 +169,7 @@ ROOT_FILE_ALLOWLIST = frozenset({
     "done-todo-restaurant-recipe-authoring.md",
     "done-todo-retail-vs-restaurant-product-model.md",
     "done-todo-tablet-provisioned-workspaces-invisible-to-picker.md",
-    "plan-topology-web-authoring.md",
+    "done-plan-topology-web-authoring.md",
 
     # Measured exception (§5): not a duplicate of scripts/stats.json —
     # scripts/stats.ps1 and scripts/check.ps1 read this name.
@@ -245,8 +264,14 @@ def check(root: Path) -> list[str]:
     return findings
 
 
+_SHELL_ACTIVE = False   # r174: the --self-test passthrough case re-enters
+                        # self_test() through main(); without this guard that
+                        # recurses until the stack dies.
+
+
 def self_test() -> int:
     """Prove the two checks bite, over synthetic trees."""
+    global _SHELL_ACTIVE
     failures: list[str] = []
 
     def tree(build) -> Path:
@@ -278,25 +303,85 @@ def self_test() -> int:
     if any(".wrangler" in f for f in check(tool_owned)):
         failures.append("the sweep walked into tool-owned .wrangler state")
 
+    # r174: main()'s shell -- argv and root graded against tempdir fixtures,
+    # the r166..r173 pattern. check() itself is already fixture-graded above;
+    # these pin the exit mapping (0/1/2) and the argv passthrough.
+    import contextlib as _ctxlib
+    import io as _io
+    def _shell(argv, build):
+        tmp = Path(tempfile.mkdtemp())
+        build(tmp)
+        out, err = _io.StringIO(), _io.StringIO()
+        with _ctxlib.redirect_stdout(out), _ctxlib.redirect_stderr(err):
+            rc = main(argv=argv, root=tmp)
+        return rc, out.getvalue() + err.getvalue()
+    rc, text = _shell([], lambda t: (t / "pr_body.md").write_text("scratch"))
+    if rc != 1 or "pr_body.md" not in text or "1 finding(s)" not in text:
+        failures.append(f"a stray root file must exit 1 naming it (rc={rc} text={text[-100:]!r})")
+    rc, text = _shell([], lambda t: None)
+    if rc != 0 or "clean" not in text:
+        failures.append(f"a clean fixture must exit 0 (rc={rc} text={text[-100:]!r})")
+    out, err = _io.StringIO(), _io.StringIO()
+    with _ctxlib.redirect_stdout(out), _ctxlib.redirect_stderr(err):
+        rc = main(argv=[], root=Path(tempfile.mkdtemp()) / "absent")
+    if rc != 2 or "repo root not found" not in (out.getvalue() + err.getvalue()):
+        failures.append(f"a missing root must exit 2 (rc={rc})")
+    if not _SHELL_ACTIVE:
+        _SHELL_ACTIVE = True
+        try:
+            rc, text = _shell(["--self-test"], lambda t: None)
+            if rc != 0 or "self-test: all cases passed" not in text:
+                failures.append(f"--self-test must passthrough to the checker's own cases (rc={rc} text={text[-80:]!r})")
+        finally:
+            _SHELL_ACTIVE = False
+
     if failures:
         print("self-test FAILED:")
         for f in failures:
             print(f"  - {f}")
         return 1
-    print("  self-test: all 6 cases passed")
+    print("  self-test: all cases passed")
     return 0
 
 
-def main() -> int:
-    if "--self-test" in sys.argv[1:]:
+def main(argv: list[str] | None = None, root: str | Path | None = None) -> int:
+    """r174: argv and root parameterized, the r166..r173 contract -- root
+    redirects the graded tree, so a fixture cannot half-run against the real
+    repository root."""
+    # A REPORT MUST NOT CRASH ON WHAT IT REPORTS. Measured 2026-10-23 in a full matrix
+    # run: a stray root file whose name ended in U+F00A (private-use codepoint) made
+    # `print` raise UnicodeEncodeError on a cp1252 stdout, so step 01 died with a
+    # traceback and the FINDING -- a real one -- was never named. Reconfiguring the stream
+    # once is the fix; per-line escaping cannot help because the failure is at the stream.
+    #
+    # errors="backslashreplace": a mangled name is still diagnosable (\uf00a points at the
+    # odd character), while dropping the line would hide the finding the gate exists for.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+        except (AttributeError, ValueError):
+            pass  # a wrapped or already-configured stream; carry on with what we have
+
+    if "--self-test" in (sys.argv[1:] if argv is None else argv):
         return self_test()
 
-    if not ROOT.is_dir():
-        print(f"error: repo root not found: {ROOT}", file=sys.stderr)
+    root_path = ROOT if root is None else Path(root).resolve()
+    if not root_path.is_dir():
+        print(f"error: repo root not found: {root_path}", file=sys.stderr)
         return 2
 
-    findings = check(ROOT)
+    findings = check(root_path)
     if findings:
+        # NEVER let the REPORT crash on a finding. This loop printed a stray root file
+        # whose name ended in U+F00A (a private-use codepoint), and on a cp1252 stdout
+        # that raised UnicodeEncodeError at the `print` -- so the run died with a
+        # traceback instead of naming the file it had found. The finding was real and its
+        # identity was lost. Measured 2026-10-23 in a full matrix run: step 01 reported
+        # FAIL with the traceback and no filename.
+        #
+        # `backslashreplace` is the right fallback here: a mangled name is still
+        # diagnosable (`\uf00a` points straight at the odd character), while dropping the
+        # line would hide the finding the gate exists to report.
         print(f"root policy: {len(findings)} finding(s):")
         for f in findings:
             print(f"  - {f}")

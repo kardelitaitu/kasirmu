@@ -32,7 +32,18 @@ export interface UseCartKeyboardNavParams {
  * Moved verbatim out of PosScreen.tsx: same names, same logic, same handler
  * identity. 'focusLineByIndex' keeps its [lines] dependency plus the injected
  * ref object, whose identity never changes (it is the caller's useRef result),
- * so no memo boundary widens - which is what the keyboard tests pin down.
+ * so no memo boundary widens.
+ *
+ * ⚠️ THIS PARAGRAPH USED TO END "- which is what the keyboard tests pin down",
+ * AND THAT WAS FALSE. Corrected 2026-10-18 after grepping for it:
+ * `CartPanel.test.tsx:275` passes `handleCartPanelKeyDown: vi.fn()` and asserts only
+ * that the PANEL called it (`:288`), so the wiring was covered and not one branch of
+ * this handler was. No test named this hook, `handleCartPanelKeyDown` or
+ * `cartLineRefs` in a way that reached the logic below.
+ *
+ * The sibling `useCartKeyboardNav.test.tsx` now covers it for real — focus movement,
+ * the input guard, the Enter pay gate, and the `data-line-id` resolution — so the
+ * claim is true as of that file rather than this comment.
  */
 export function useCartKeyboardNav({
   cartLineRefs,

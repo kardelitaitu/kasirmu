@@ -1066,10 +1066,12 @@ fn update_po_status_race_cannot_overwrite_a_competing_transition() {
         true
     }
 
-    let dir = std::env::temp_dir().join(format!("oz_po_race_{}", uuid::Uuid::now_v7()));
+    // The guard owns the directory and deletes it on drop.
+    let scratch = kasirmu_test_support::ScratchDir::new("purchase-order-race");
+    let dir = scratch.path();
     let db_path = dir.join("kasir.db");
     let po_id = {
-        let conn = fresh_file(&dir);
+        let conn = fresh_file(dir);
         seed_supplier(&conn);
         let po = store(&conn)
             .create_purchase_order("PO-RACE", "sup-po", "", "", None, &[])
@@ -1147,7 +1149,6 @@ fn update_po_status_race_cannot_overwrite_a_competing_transition() {
     );
 
     drop(conn_a);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 /// COR-29: the `received + damaged` guard must not be defeated by integer wrap.
 ///

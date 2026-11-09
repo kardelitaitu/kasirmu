@@ -533,6 +533,22 @@
   gap: var(--space-2);
 }
 
+.staff-login-pin-user-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+}
+
+.staff-login-pin-user-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+  text-transform: capitalize;
+}
+
 .staff-login-pin-wrap {
   width: 100%;
   display: flex;

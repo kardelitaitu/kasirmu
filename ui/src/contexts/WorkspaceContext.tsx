@@ -290,7 +290,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (prev && session) return;
 
     // Fresh login (null → session) or logout (session → null): reset.
+    //
+    // BOTH the workspace AND `lastWorkspace`. The note on `handleSetActiveInstance`
+    // below says this reset "routes through handleSetActiveInstance and clears it" —
+    // it did not: this branch called the raw setter, which leaves `lastWorkspace`
+    // holding the previous account's type_key. The comment was describing the intent
+    // while the code skipped the one path that carries it out. Clearing the string
+    // here keeps the card indicator honest across a logout/login and an abandoned
+    // store switch.
     setActiveWorkspace(null);
+    setLastWorkspace(null);
     setActiveInstance(null);
     const token = sessionTokenRef.current;
     if (token) {

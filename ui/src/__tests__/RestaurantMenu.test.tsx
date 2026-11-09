@@ -161,6 +161,60 @@ describe('RestaurantMenu', () => {
     expect(localStorage.getItem('restaurant-user-2-pinned')).toBe(JSON.stringify(['ES-TEH']));
   });
 
+  it('keeps 86 persistence armed when the FIRST read failed but a later re-poll succeeded', async () => {
+    // The 86 list is cross-terminal: it lives in the server setting
+    // `restaurant.unavailable.<locationId>` and the write is gated on
+    // `unavailableLoadedRef` (RestaurantMenu.tsx:500) precisely so an empty local seed
+    // can never be pushed over a real list the terminal has not read yet (:294-298).
+    //
+    // The gate is set in exactly ONE place: the initial fetch's success branch (:306).
+    // When that first read REJECTS, the gate stays shut — correct, because nothing has
+    // been read. But `refetchUnavailable` (:333) is the recovery path, and it parses the
+    // payload into state (:342-349) WITHOUT re-opening the gate. So the terminal can
+    // display a list it successfully re-read while remaining permanently unable to
+    // persist any edit to it: the cashier 86's a dish, the tile greys out locally, and
+    // nothing ever reaches the server or the other terminals.
+    //
+    // That is the F5 cross-terminal feature silently dead after one transient read
+    // failure — the very failure the re-poll exists to recover from.
+    const settings = await import('@/api/settings');
+    const getSetting = vi.mocked(settings.getSettingScoped);
+    const setSetting = vi.mocked(settings.setSettingScoped);
+
+    mockSessionToken.current = 'tok-1';
+    getSetting.mockReset();
+    setSetting.mockReset().mockResolvedValue(undefined);
+    getSetting.mockRejectedValueOnce(new Error('transient read failure'));
+
+    renderMenu();
+
+    // The failed initial read must leave the gate shut (nothing read yet).
+    await waitFor(() => expect(getSetting).toHaveBeenCalledTimes(1));
+    expect(setSetting).not.toHaveBeenCalled();
+
+    // A later re-poll SUCCEEDS and returns a real list from another terminal.
+    getSetting.mockResolvedValue(JSON.stringify(['ES-TEH']));
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await waitFor(() => expect(getSetting.mock.calls.length).toBeGreaterThan(1));
+
+    // The item is now shown as unavailable, so the read plainly landed...
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Es Teh/i })).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    // ...therefore the terminal HAS read the server list, and the write gate must be
+    // open again. 86'ing another dish must reach the server.
+    const nasiCard = screen.getByRole('button', { name: /Nasi Goreng.*Add/i });
+    fireEvent.contextMenu(nasiCard, { clientX: 100, clientY: 200 });
+    await userEvent.setup().click(await screen.findByText(/Mark as unavailable|86/i));
+
+    await waitFor(() => {
+      expect(setSetting).toHaveBeenCalled();
+    });
+  });
+
   it('closes a previous user context menu and clears transient card feedback on user change', async () => {
     const renderResult = renderMenu();
     const user = userEvent.setup();
@@ -1069,19 +1123,56 @@ describe('RestaurantMenu', () => {
     expect(screen.getByRole('tab', { name: /Dessert Baru/i })).toBeInTheDocument();
   });
 
-  it('displays products with standard or untyped productType on restaurant selling grid', () => {
-    const standardProduct = {
+  // ── The grid shows RESTAURANT items, and ONLY restaurant items ───────
+  //
+  // This case used to be titled "displays products with standard or untyped
+  // productType" and forced `productType: 'standard'` in with an `as unknown as
+  // Product` cast. That value is impossible: migration
+  // 20261020_product_type_check.sql:41 declares
+  // `product_type TEXT NOT NULL DEFAULT 'retail' CHECK (product_type IN
+  // ('retail','restaurant','service'))`, and :26 backfills every legacy / NULL /
+  // 'both' row to 'retail'. So the old assertion described a row the database
+  // cannot hold, and the cast is what kept the compiler quiet about it.
+  //
+  // The REAL contract has two halves and both are pinned now: a restaurant item
+  // appears, and a retail one does NOT — because the restaurant grid is the till
+  // for a restaurant, and a retail SKU belongs to the other workspace's grid.
+  it('shows restaurant items on the selling grid and excludes retail ones', () => {
+    const retailProduct = {
       sku: 'ROTI-BAKAR',
       name: 'Roti Bakar',
       category: 'Snack',
-      productType: 'standard',
+      productType: 'retail',
       price: { minor_units: 15000, currency: 'IDR' },
       inStock: true,
       createdAt: '2026-01-04',
     } as unknown as Product;
 
+    const snackItem = {
+      sku: 'KERIPIK-SNACK',
+      name: 'Keripik Snack',
+      category: 'Snack',
+      productType: 'restaurant',
+      price: { minor_units: 8000, currency: 'IDR' },
+      inStock: true,
+      createdAt: '2026-01-04',
+    } as unknown as Product;
+
+    // The THIRD type of the closed set. Backend-supported (products_stock_query.rs:403
+    // skips stock deduction for it) and creatable from ProductManagementScreen:684, but
+    // it belonged to no grid at all until this change, so it could never be sold.
+    const serviceItem = {
+      sku: 'CORKAGE-FEE',
+      name: 'Corkage Fee',
+      category: 'Snack',
+      productType: 'service',
+      price: { minor_units: 50000, currency: 'IDR' },
+      inStock: true,
+      createdAt: '2026-01-04',
+    } as unknown as Product;
+
     mockUseProducts.mockReturnValue({
-      products: [...mockProducts, standardProduct],
+      products: [...mockProducts, retailProduct, snackItem, serviceItem],
       categories: ['Makanan', 'Minuman', 'Snack'],
       categoryMeta: [
         { id: 'cat-snack', name: 'Snack', colour: '#eab308', icon: 'snack' },
@@ -1093,8 +1184,14 @@ describe('RestaurantMenu', () => {
 
     renderMenu();
 
+    // The restaurant item is on the grid, in its own category.
     expect(screen.getByRole('tab', { name: /Snack/i })).toBeInTheDocument();
-    expect(screen.getByText('Roti Bakar')).toBeInTheDocument();
+    expect(screen.getByText('Keripik Snack')).toBeInTheDocument();
+    // The retail item is NOT — it belongs to the retail workspace's grid.
+    expect(screen.queryByText('Roti Bakar')).toBeNull();
+    // The SERVICE item IS — sellable here, where the server already knows it carries
+    // no stock. Without this the type was write-only in both workspaces.
+    expect(screen.getByText('Corkage Fee')).toBeInTheDocument();
   });
 
   it('reloads product catalog and unavailable status on visibility change', () => {

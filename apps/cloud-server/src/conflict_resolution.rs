@@ -402,8 +402,14 @@ pub fn tie_break(a: &VersionVector, b: &VersionVector) -> Ordering {
     // Equal — which is not symmetric-safe, since Equal means "same state".
     // Iteration is in terminal-id order on both sides, so the sequences are
     // directly comparable.
-    let keys_a: Vec<String> = a.iter().map(|(k, _)| k.clone()).collect();
-    let keys_b: Vec<String> = b.iter().map(|(k, _)| k.clone()).collect();
+    // Borrowed keys, not owned `String`s: `iter` yields `(&str, &u64)` since
+    // O-L11 narrowed it, and these two vectors are only ever COMPARED below —
+    // never returned, never stored. Collecting `String` would allocate twice
+    // per element to compare strings that are already alive for the whole
+    // call. (`k.clone()` on a `&str` is also what broke this file when O-L11
+    // landed: `clone()` on a `&str` yields `&str`, not `String`.)
+    let keys_a: Vec<&str> = a.iter().map(|(k, _)| k).collect();
+    let keys_b: Vec<&str> = b.iter().map(|(k, _)| k).collect();
     let values_a: Vec<u64> = a.iter().map(|(_, v)| *v).collect();
     let values_b: Vec<u64> = b.iter().map(|(_, v)| *v).collect();
 

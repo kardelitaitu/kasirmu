@@ -22,7 +22,6 @@ use tokio::sync::{Mutex, Notify, RwLock, watch};
 
 use kasirmu_core::db::Store;
 use kasirmu_core::events::SettingsUpdated;
-use kasirmu_core::offline::order_for_push;
 use kasirmu_core::settings::Settings;
 use kasirmu_core::sync_client::SyncConfig;
 
@@ -319,17 +318,11 @@ pub(crate) fn read_config_and_pending(
 > {
     let store = Store::new(conn);
     let config = SyncConfig::from_settings(&store).ok().flatten();
-    let mut pending = store.list_pending_offline().map_err(|e| {
-        format!("could not read the offline queue; refusing to report an empty push list: {e}")
-    })?;
-    // C49: the ONE ordering rule, shared by every push path. `list_pending_offline`
-    // orders by `created_at ASC` alone, so without this a Critical item queued
-    // behind a bulk one waits a full cycle and the priority column means nothing.
-    // Applied at the READ point so the same vector is pushed and applied by index.
-    order_for_push(&mut pending);
-    if pending.len() > DEFAULT_MAX_OUTBOX_BATCH_ITEMS {
-        pending.truncate(DEFAULT_MAX_OUTBOX_BATCH_ITEMS);
-    }
+    let pending = store
+        .list_pending_offline_for_push_bounded(DEFAULT_MAX_OUTBOX_BATCH_ITEMS)
+        .map_err(|e| {
+            format!("could not read the offline queue; refusing to report an empty push list: {e}")
+        })?;
     Ok((config, pending))
 }
 
@@ -422,20 +415,19 @@ async fn apply_push_results(
     results: Vec<PushOutcome>,
 ) -> Option<String> {
     let db_clone = db.clone();
+    // Captured before `pending`/`results` move into the closure.
+    let pending_len = pending.len();
+    let results_len = results.len();
     let outcome = tokio::task::spawn_blocking(move || {
         let conn = db_clone.blocking_lock();
         let store = Store::new(&conn);
         let queue = SyncQueue::new();
+        let mut synced_ids = Vec::new();
+
         for (local, outcome) in pending.iter().zip(results.iter()) {
             match outcome {
                 PushOutcome::Accepted => {
-                    if let Err(e) = store.mark_offline_synced(&local.id) {
-                        tracing::error!(
-                            item_id = %local.id,
-                            error = %e,
-                            "sync daemon: failed to mark item synced"
-                        );
-                    }
+                    synced_ids.push(local.id.clone());
                 }
                 PushOutcome::Rejected { reason }
                     if kasirmu_core::sync_client::is_duplicate_id_rejection(reason) =>
@@ -451,13 +443,7 @@ async fn apply_push_results(
                         item_id = %local.id,
                         "sync push duplicate-id replay: item already on server, marking synced"
                     );
-                    if let Err(e) = store.mark_offline_synced(&local.id) {
-                        tracing::error!(
-                            item_id = %local.id,
-                            error = %e,
-                            "sync daemon: failed to mark duplicate-replay item synced"
-                        );
-                    }
+                    synced_ids.push(local.id.clone());
                 }
                 PushOutcome::Rejected { reason } => {
                     if let Err(e) = store.mark_offline_failed(&local.id, reason) {
@@ -479,8 +465,33 @@ async fn apply_push_results(
                 }
             }
         }
+
+        if !synced_ids.is_empty()
+            && let Err(e) = store.mark_offline_synced_batch(&synced_ids)
+        {
+            tracing::error!(
+                count = synced_ids.len(),
+                error = %e,
+                "sync daemon: failed to mark batch synced"
+            );
+        }
     })
     .await;
+
+    // See `lib.rs apply_push_outcomes`: a short results vector leaves the
+    // trailing items queued (correct) but must be reported rather than
+    // absorbed into a successful cycle.
+    if results_len != pending_len {
+        tracing::warn!(
+            outcomes = results_len,
+            items = pending_len,
+            "sync daemon: outcome count mismatch — trailing items stay queued"
+        );
+        return Some(format!(
+            "push returned {results_len} outcome(s) for {pending_len} item(s): {} item(s) left unacknowledged",
+            pending_len.saturating_sub(results_len),
+        ));
+    }
 
     match outcome {
         Ok(()) => None,

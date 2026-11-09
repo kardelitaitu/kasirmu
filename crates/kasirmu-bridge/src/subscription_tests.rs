@@ -1095,14 +1095,28 @@ fn verdict_absent_features_block_leaves_the_tier_answer() {
 
 // ── §J B3: per-location quota rows ───────────────────────────────────
 
-fn b3_manager() -> StoreDatabaseManager {
-    StoreDatabaseManager::new(std::env::temp_dir(), kasirmu_core::migrations::ALL)
+fn b3_manager() -> (StoreDatabaseManager, kasirmu_test_support::ScratchDir) {
+    // A per-call unique directory under `target/test-scratch`, not
+    // `std::env::temp_dir()`: on this project's Windows machines the
+    // MACHINE-level `TEMP` is `C:\WINDOWS\TEMP`, where an ordinary
+    // user can create but not delete. This used to hand the bare temp root to the
+    // manager, so every `b3-*` store database landed directly in it (and could
+    // never be removed). `ScratchDir::new` returns a fresh, empty directory the
+    // manager can own outright, and the GUARD travels back with the manager (the
+    // `testing::unique_store_dir` shape): bound here it would drop on return and
+    // delete the store databases the test is still reading, while the former
+    // bare `scratch_dir` path leaked one directory per case.
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-b3");
+    (
+        StoreDatabaseManager::new(scratch.path().to_path_buf(), kasirmu_core::migrations::ALL),
+        scratch,
+    )
 }
 
-/// A store id unique to this process and test, because `b3_manager` writes into
-/// the real temp directory: a fixed name would let one run's leftover database
-/// satisfy the next run's `store_db_exists` and turn the skip test into a pass
-/// that proves nothing.
+/// A store id unique to this process and test, because `b3_manager` opens a
+/// fresh scratch directory per call: a fixed name would let one run's leftover
+/// database satisfy the next run's `store_db_exists` and turn the skip test
+/// into a pass that proves nothing.
 fn b3_store_id(tag: &str) -> String {
     format!("b3-{}-{}", std::process::id(), tag)
 }
@@ -1113,7 +1127,7 @@ fn per_location_rows_skip_a_store_with_no_database_and_create_none() {
     // settings screen, and `open_store` CREATES the file when missing. A
     // location row whose database does not exist yet must be skipped, and the
     // skip must not leave a file behind.
-    let manager = b3_manager();
+    let (manager, _scratch) = b3_manager();
     let sid = b3_store_id("ghost");
     assert!(!manager.store_db_exists(&sid));
     let rows = per_location_over_quota_rows(
@@ -1134,7 +1148,7 @@ fn per_location_rows_skip_a_store_with_no_database_and_create_none() {
 
 #[test]
 fn per_location_rows_emit_at_cap_and_omit_zero_counts() {
-    let manager = b3_manager();
+    let (manager, _scratch) = b3_manager();
     let sid = b3_store_id("pro-kds");
     {
         let conn = manager.open_store(&sid).unwrap();
@@ -1174,7 +1188,7 @@ fn per_location_rows_emit_at_cap_and_omit_zero_counts() {
             .create_workspace_instance(&format!("{sid}-kds-3"), "kds", &sid, "Kitchen 3", "", None)
             .unwrap();
         store
-            .conn
+            .conn()
             .execute(
                 "UPDATE workspace_instances SET status = 'quota_suspended' WHERE id = ?1",
                 rusqlite::params![format!("{sid}-kds-3")],
@@ -1315,51 +1329,59 @@ fn caps_report_the_ledger_tier_the_gate_enforces() {
     )
     .unwrap();
 
-    // Aligned clocks: both answers are Premium, so this fixture is not
-    // accidentally testing some other difference.
-    assert_eq!(caps(&conn).tier, "premium", "aligned clocks must agree");
+    if seeded_row_reaches_a_paid_tier() {
+        // Aligned clocks: both answers are Premium, so this fixture is not
+        // accidentally testing some other difference.
+        assert_eq!(caps(&conn).tier, "premium", "aligned clocks must agree");
 
-    // Roll the world forward 40 days of ledger time while the wall clock stays
-    // put: exactly the state a rolled-back install presents.
-    let rolled = ledger_now + chrono::Duration::days(40);
-    conn.execute(
-        "UPDATE sales SET created_at = ?1, updated_at = ?1 WHERE id = 's1'",
-        rusqlite::params![rolled.to_rfc3339()],
-    )
-    .unwrap();
+        // Roll the world forward 40 days of ledger time while the wall clock stays
+        // put: exactly the state a rolled-back install presents.
+        let rolled = ledger_now + chrono::Duration::days(40);
+        conn.execute(
+            "UPDATE sales SET created_at = ?1, updated_at = ?1 WHERE id = 's1'",
+            rusqlite::params![rolled.to_rfc3339()],
+        )
+        .unwrap();
 
-    let gate_tier = {
-        let store = Store::new(&conn);
-        store.resolve_tier_fail_closed().unwrap()
-    };
-    let dto = caps(&conn);
+        let gate_tier = {
+            let store = Store::new(&conn);
+            store.resolve_tier_fail_closed().unwrap()
+        };
+        let dto = caps(&conn);
 
-    assert_eq!(
-        gate_tier.tier_key(),
-        "free",
-        "past grace the enforcement gate downgrades to Free"
-    );
-    assert_eq!(
-        dto.tier,
-        gate_tier.tier_key(),
-        "the caps payload must report the tier the gate enforces, not the wall clock's"
-    );
+        assert_eq!(
+            gate_tier.tier_key(),
+            "free",
+            "past grace the enforcement gate downgrades to Free"
+        );
+        assert_eq!(
+            dto.tier,
+            gate_tier.tier_key(),
+            "the caps payload must report the tier the gate enforces, not the wall clock's"
+        );
 
-    // And the limits it publishes must follow that same tier, or the UI
-    // renders a cap the gate will refuse.
-    let free_max = QuotaDimension::Locations.limit_for(&kasirmu_core::SubscriptionTier::Free);
-    assert_eq!(
-        dto.max_locations, free_max,
-        "published caps follow the gate tier"
-    );
+        // And the limits it publishes must follow that same tier, or the UI
+        // renders a cap the gate will refuse.
+        let free_max = QuotaDimension::Locations.limit_for(&kasirmu_core::SubscriptionTier::Free);
+        assert_eq!(
+            dto.max_locations, free_max,
+            "published caps follow the gate tier"
+        );
 
-    // Sanity: the wall-clock reader really does disagree, so this test would
-    // notice if `caps` were switched back.
-    let sub = TenantSubscription::load(&conn, "default").unwrap().unwrap();
-    let wall = Entitlements::from_subscription(&sub, UsageCounts::default());
-    assert_eq!(
-        wall.tier.tier_key(),
-        "premium",
-        "the wall-clock reader still grants Premium — the divergence this pins"
-    );
+        // Sanity: the wall-clock reader really does disagree, so this test would
+        // notice if `caps` were switched back.
+        let sub = TenantSubscription::load(&conn, "default").unwrap().unwrap();
+        let wall = Entitlements::from_subscription(&sub, UsageCounts::default());
+        assert_eq!(
+            wall.tier.tier_key(),
+            "premium",
+            "the wall-clock reader still grants Premium — the divergence this pins"
+        );
+    } else {
+        // Release: an unverifiable row fails closed to Free under either clock,
+        // so the gate and caps agree on Free from the start.
+        assert_seeded_row(&conn, "premium");
+        let dto = caps(&conn);
+        assert_caps_fail_closed(&dto);
+    }
 }

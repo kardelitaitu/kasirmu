@@ -56,6 +56,25 @@
      (diff) and an advisory `cargo fmt --all --check`, and no clippy — which the wording
      does not contradict, so it is left alone. Footer re-dated to this pass. -->
 
+<!- - Correction 2026-10-19 (docs-auditor): the 2026-10-11 audit above reported §4
+     "ACCURATE" on the strength of twelve spellings "each traced to its reader". That
+     trace was not performed for the deploy half, and those six names have NO reader in
+     this repository: `scripts/wrangler-deploy.sh:52-53` (the `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` defaults) reads the bare
+     CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID and exits 1 without them (:67-70);
+     `git grep -n 'KASIRMU_CLOUDFLARE_API_TOKEN|KASIRMU_NORTHFLANK_API_TOKEN' --
+     scripts apps .github website` returns nothing. The R2 triple and
+     KASIRMU_NORTHFLANK_API_TOKEN were worse than useless: nothing reads them at any
+     layer, in or out of this repo. §4 now lists the two bare names and the four OZ_
+     server knobs. A SECOND falsehood in the same block was corrected with it: "which
+     fails open" was asserted of all four OZ_ names, but only OZ_ENFORCE_PLANS fails
+     open — OZ_ADMIN_KEY and OZ_API_SECRET return Err from validate_production
+     (config.rs:442-459) and OZ_LICENSE_PRIVATE_KEY is a log.Fatal
+     (apps/license-server/main.go:75-78), i.e. fail closed. Both defects share a cause
+     worth naming: the claim was written from the migration's INTENT (the rename plan
+     lists these KASIRMU_ names) rather than from what the tooling reads, and a plan is
+     not a reader. The lesson is the file's own E3/F rule in a new place — trace the
+     name to its reader, not to the document that proposed it. -->
+
 ## 0. Quick card — read this first
 
 Every value measured 2026-09-27 on branch `0.0.41`. Do not probe to orient (E3); if a
@@ -145,6 +164,7 @@ not a pre-commit step (removed 2026-09-13); formatting is check-only via pre-pus
 | **Commits** | **ALWAYS commit with format `<type>(<area>): <description>`.** | Conventional commits, after each logical task — the permitted *form* is the Commit Writing row below and §7. |
 | **Commit Writing** | **NEVER `git add` (sole exception: the §7.3 one-line new-file chain), NEVER `git stage`, NEVER `git commit -a`, NEVER `git commit --amend`, NEVER `git stash`. Only ONE line with an explicit pathspec: `git commit -m "<type>(<area>): <subject>" -- path/one path/two`.** | The shared checkout's index is a single racing object — see §7.3. |
 | **Pushing** | **NEVER run `git push` without an explicit direct order.** | Even after all checks pass, wait for the user to say "push". |
+| **Working Tree Reset** | **NEVER run `git clean -x…` (or any `-x` variant) in this checkout.** `-x` means *also delete ignored files*, and `.env` — the source of truth for every credential in §4 — is ignored. | Measured 2026-10-27: `git clean -xdn` names **82** removable entries including `.env` and live agent scratch under `.agents/`; `git clean -dn` **without `-x`** names **0** and touches nothing. The whole hazard is the one flag. `git clean -xdf` is routine "reset the tree" advice and there is **no `pre-clean` hook** in git 2.50 to catch it, `clean.requireForce` only refuses the force-less form nobody types. Full measurement and what is unrecoverable: [`GH-CLEAN-01`](docs/records/findings/audit-open-findings.md). |
 | **Version Lock** | **Version is locked at `0.0.41`. NEVER modify version numbers.** | `Cargo.toml`, `package.json`, `tauri.conf.json`, etc. |
 | **File Paths** | **ALWAYS use forward slashes (`/`) in path arguments on Windows. NEVER hardcode the checkout root** — resolve via `git rev-parse --show-toplevel` or script-relative (`$PSScriptRoot` / `__file__` / `import.meta.url`). | Escaping bugs; multi-root worktree layout. |
 | **File Reading** | **ALWAYS read whole files in ONE call (≤ 2,000 lines). Never chunk-read.** | Roundtrips are the scarce resource, not context (E4). |
@@ -158,25 +178,31 @@ API keys live as **user-scope Windows environment variables** (HKCU\Environment;
 survive reboots, visible in every NEW PowerShell session — the session that set them
 must be reopened). Source of truth: the gitignored `.env` at the repo root.
 
-**There is no single prefix.** The rename to `KASIRMU_*` is mid-migration and has
-reached the deploy tooling but not the server config: deploy tokens are `KASIRMU_*`,
-the server's own knobs are still `OZ_*`, and at-rest encryption has moved to
-`KASIRMU_MASTER_KEY` with `OZ_MASTER_KEY` still read as a legacy alias. Copy the names
-below verbatim; do not normalise them to one prefix.
+**There is no single prefix.** The rename to `KASIRMU_*` is mid-migration: the deploy
+tooling in this repo reads the **bare** names (`CLOUDFLARE_API_TOKEN`,
+`CLOUDFLARE_ACCOUNT_ID`), the server's own knobs are still `OZ_*`, and at-rest
+encryption has moved to `KASIRMU_MASTER_KEY` with `OZ_MASTER_KEY` still read as a
+legacy alias. Copy the names below verbatim; do not normalise them to one prefix.
 
 ```powershell
-$env:KASIRMU_CLOUDFLARE_API_TOKEN        # Cloudflare Workers deploy token
-$env:KASIRMU_CLOUDFLARE_ACCOUNT_ID       # Cloudflare account id
-$env:KASIRMU_CLOUDFLARE_ACCESS_KEY       # R2 access key id
-$env:KASIRMU_CLOUDFLARE_SECRET_ACCESS_KEY# R2 secret access key
-$env:KASIRMU_CLOUDFLARE_S3_ENDPOINT      # R2 S3 endpoint
-$env:KASIRMU_NORTHFLANK_API_TOKEN        # Northflank deploy token
-# The four below are the SERVER's names, not KASIRMU_* ones. The codebase is
-# mid-migration: deploy tokens above are KASIRMU_*, these are still OZ_*, and
-# setting a KASIRMU_ spelling of one of these does nothing -- the server reads
-# OZ_ and falls back to its default, which fails open. Verified against
-# apps/cloud-server/src/config.rs (round-5 check-env-docs scope) and
-# apps/license-server. KASIRMU_MASTER_KEY below IS correct: kasirmu-crypto reads it.
+# Deploy tooling: the BARE names. scripts/wrangler-deploy.sh reads these
+# (:52-53) and exits 1 without them (:67-70); .github/workflows/website.yml
+# reads the same two from secrets. The KASIRMU_CLOUDFLARE_* / KASIRMU_NORTHFLANK_*
+# spellings this file used to list have ZERO readers anywhere in the repo
+# (verified 2026-10-19: `git grep -n KASIRMU_CLOUDFLARE_API_TOKEN -- scripts apps
+# .github website` returns nothing) -- setting them makes the deploy fail closed.
+$env:CLOUDFLARE_API_TOKEN                 # Cloudflare Workers deploy token
+$env:CLOUDFLARE_ACCOUNT_ID                # Cloudflare account id
+# The four below are the SERVER's names. Setting a KASIRMU_ spelling of one of
+# these does nothing -- the server reads OZ_ and falls back to its default.
+# VERIFIED FAIL DIRECTION (2026-10-19), because this note previously said
+# "which fails open" of all four and that is true of only the first:
+#   OZ_ENFORCE_PLANS    -> fails OPEN  (env_bool false; plan gating silently off)
+#   OZ_ADMIN_KEY        -> fails CLOSED (validate_production Err under OZ_PRODUCTION=1)
+#   OZ_API_SECRET       -> fails CLOSED (same)
+#   OZ_LICENSE_PRIVATE_KEY -> fails CLOSED (license server log.Fatal)
+# Proof: apps/cloud-server/src/config.rs:442-459, apps/license-server/main.go:75-78.
+# KASIRMU_MASTER_KEY below IS correct: kasirmu-crypto reads it.
 $env:OZ_ADMIN_KEY                        # admin dashboard API key
 $env:OZ_API_SECRET                       # JWT signing secret
 $env:OZ_ENFORCE_PLANS                    # plan gating flag
@@ -184,9 +210,9 @@ $env:OZ_LICENSE_PRIVATE_KEY              # RSA license signing key (PEM, multili
 $env:KASIRMU_MASTER_KEY                  # at-rest master key (64 hex); OZ_MASTER_KEY is the legacy alias, still read
 ```
 
-- Use them in commands instead of hardcoding secrets (example: website deploy sets
-  `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` from the `KASIRMU_*` pair, then
-  `npm run deploy` from `website/`).
+- Use them in commands instead of hardcoding secrets (example: the website deploy
+  reads `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` — the bare names, not a
+  `KASIRMU_*` pair — then `npm run deploy` from `website/`).
 - Update `.env` → variables by re-running the save step (same names/prefix); never commit `.env`.
 - ⚠️ Plaintext in the user registry — local-dev convenience, not a secrets manager.
 

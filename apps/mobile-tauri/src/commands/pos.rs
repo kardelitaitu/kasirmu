@@ -204,49 +204,6 @@ pub async fn start_sale_scoped(
     })
 }
 
-// ── List Active Carts ────────────────────────────────────────────────
-
-/// List active carts in the session scope. ADR #7.
-#[command]
-pub async fn list_active_carts_scoped(
-    session_token: String,
-    state: State<'_, AppState>,
-) -> Result<Vec<CartId>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS)
-        .await?;
-    let conn_arc = state.resolve_store(&session_token)?;
-    let db = conn_arc
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let ids = store.list_active_carts()?;
-    drop(db);
-    Ok(ids)
-}
-
-// ── Get Active Cart ──────────────────────────────────────────────────
-
-/// Load a cart in the session scope. ADR #7.
-#[command]
-pub async fn get_active_cart_scoped(
-    session_token: String,
-    cart_id: CartId,
-    state: State<'_, AppState>,
-) -> Result<Option<Cart>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS)
-        .await?;
-    let conn_arc = state.resolve_store(&session_token)?;
-    let db = conn_arc
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let cart = store.load_active_cart(&cart_id)?;
-    drop(db);
-    Ok(cart)
-}
-
 // ── Add Line ─────────────────────────────────────────────────────────
 
 /// Resolve the unit price for an `add_line_scoped` request (FRONTEND-03).
@@ -310,7 +267,10 @@ fn run_add_line_scoped_store(
         .ok_or_else(|| AppError::Invalid(format!("cart not found: {}", args.cart_id)))?;
 
     let unit_price = line_unit_price(args, cart.currency())?;
-    let line = CartLine::new(args.sku.clone(), args.qty, unit_price);
+    let mut line = CartLine::new(args.sku.clone(), args.qty, unit_price);
+    line.set_course(args.course.as_deref());
+    line.set_modifiers(args.modifiers_json.clone());
+    line.set_note(args.note.clone());
     let line_id = line.id;
     let line_total = line.total();
     cart.add_line(line)
@@ -648,11 +608,14 @@ fn settle_shortfall_resolved(
     let mut cart = kasirmu_core::Cart::new(currency);
     for line_data in &args.lines {
         let unit_price = shortfall_line_unit_price(line_data, cart.currency())?;
-        let line = kasirmu_core::CartLine::new(
+        let mut line = kasirmu_core::CartLine::new(
             kasirmu_core::Sku::new(&line_data.sku),
             line_data.qty,
             unit_price,
         );
+        line.set_course(line_data.course.as_deref());
+        line.set_modifiers(line_data.modifiers_json.clone());
+        line.set_note(line_data.note.clone());
         cart.add_line(line)
             .map_err(|e| AppError::Invalid(e.to_string()))?;
     }
@@ -748,6 +711,7 @@ fn settle_shortfall_resolved(
                 line_count,
                 receipt_number: Some(deduct.receipt_number),
                 statutory_number: deduct.statutory_number,
+                stock_warnings: deduct.stock_warnings,
             },
             sale: Some(sale),
         }),
@@ -830,13 +794,27 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
         .await?;
 
     // §B read-only lock: a lapsed grace window rejects new sales.
-    {
+    //
+    // Only the LOAD is under the lock — it needs the connection. The two
+    // checks below are pure CPU: `verify_signature` parses no key (the embedded
+    // key is cached in a `OnceLock`) and takes no lock, and
+    // `enforce_pos_writable` reads only fields already in memory. Running them
+    // outside the guard releases the process-wide DB mutex ~197 us (release
+    // build) sooner on the hottest path. They still verify the EXACT row read
+    // under the lock — the value is moved out, not re-read — and keep their
+    // original order: signature first, writability second.
+    //
+    // Behavioural difference, stated plainly: a revocation (or a grace-window
+    // expiry) landing in the microseconds between the read and the check no
+    // longer pre-empts THIS checkout. The next command sees it. Zero change to
+    // what is accepted from a given row.
+    let sub = {
         let db = state.db.lock().await;
-        let sub = kasirmu_core::TenantSubscription::load(&db, "default")?
-            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
-        sub.verify_signature()?;
-        sub.enforce_pos_writable()?;
-    }
+        kasirmu_core::TenantSubscription::load(&db, "default")?
+            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?
+    };
+    sub.verify_signature()?;
+    sub.enforce_pos_writable()?;
 
     // ── COR-7: replay guard + settlement under ONE lock ─────────────
     // This is the path the guard matters most on: the command rebuilds its

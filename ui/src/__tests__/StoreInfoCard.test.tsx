@@ -16,7 +16,11 @@ const testL10n = {
   bundles: [], areBundlesEmpty: () => true,
   parseMarkup: (str: string) => [{ nodeName: '#text', textContent: str } as unknown as Node],
   getElement: (sourceElement: ReactElement) => sourceElement,
-  getString: (id: string) => id,
+  getString: (id: string) => ({
+    // The heading this card renders. The stub used to return the id, so the
+    // test asserted that the card displayed 'workspace-store-info-heading'.
+    'workspace-store-info-heading': 'Store Info',
+  } as Record<string, string>)[id] ?? id,
   reportError: () => {}, getBundle: () => null, getChildren: (str: string) => str,
 };
 
@@ -64,7 +68,7 @@ beforeEach(() => {
 describe('StoreInfoCard', () => {
   it('renders Store Info heading', () => {
     renderCard();
-    expect(screen.getByText('workspace-store-info-heading')).toBeInTheDocument();
+    expect(screen.getByText('Store Info')).toBeInTheDocument();
   });
 
   it('displays store name', () => {

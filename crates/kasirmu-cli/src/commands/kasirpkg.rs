@@ -18,6 +18,7 @@ use std::collections::HashMap;
 
 use anyhow::{Context, Result};
 use rusqlite::Connection;
+use serde::Serialize;
 
 use kasirmu_core::Settings;
 use kasirmu_core::db::Store;
@@ -90,6 +91,58 @@ fn importable_settings_row(row: &serde_json::Value) -> Option<(&str, &str)> {
     }
 }
 
+/// Serialize one export arm into the JSON array [`KasirpkgPayload`] carries —
+/// or fail, naming the arm.
+///
+/// O-M50. The arms used to read
+/// `serde_json::to_value(&rows).ok().and_then(|v| v.as_array().cloned()).unwrap_or_default()`,
+/// which has TWO silent failure modes and reported success through both:
+///
+/// * `to_value(..)` returned `Err` — e.g. a `Currency` whose three bytes are
+///   not UTF-8, which is a REAL failure of its hand-written `Serialize` impl
+///   (`foundation/src/money.rs`). A database-resident value made the arm a
+///   silently EMPTY array: the package was written, the command exited 0, and
+///   it reported an export containing zero products — indistinguishable from a
+///   store that has none.
+/// * `to_value(..)` returned `Ok` but not an array — unreachable while every
+///   arm is a `Vec`, and `unwrap_or_default()` would have hidden the day one
+///   stopped being one.
+///
+/// Both now propagate. The CLI reports failure the way the rest of this crate
+/// does (see `main.rs` and `error.rs`): `anyhow::Result` travels out of `run()`,
+/// `main` returns it, and the process exits NON-ZERO with Rust's default report
+/// on stderr. The `.context` names the arm, so the operator learns which data
+/// type failed without a backtrace.
+///
+/// The serde round-trip stays: the payload is `Vec<serde_json::Value>`, so
+/// this helper serializes the rows by REFERENCE (no clone of them) and moves
+/// the array in — the deep clone the ledger also names is gone, and
+/// `ExportError` is the one thing `serde_json::ArrayFromIter`'s `FromIterator`
+/// cannot express.
+fn export_arm<T: Serialize>(rows: &[T], arm: &'static str) -> Result<Vec<serde_json::Value>> {
+    match serde_json::to_value(rows).with_context(|| format!("serializing {arm} for export"))? {
+        serde_json::Value::Array(items) => Ok(items),
+        other => Err(anyhow::anyhow!(
+            "serializing {arm} for export produced {}, not a JSON array — refusing to write \
+             a package that would silently carry zero {arm} rows",
+            json_kind(&other)
+        )),
+    }
+}
+
+/// The JSON kind of `value`, for the error message in [`export_arm`]. A bare
+/// `{value:?}` would print a whole table into the terminal.
+fn json_kind(value: &serde_json::Value) -> &'static str {
+    match value {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "a boolean",
+        serde_json::Value::Number(_) => "a number",
+        serde_json::Value::String(_) => "a string",
+        serde_json::Value::Array(_) => "an array",
+        serde_json::Value::Object(_) => "an object",
+    }
+}
+
 /// Export store data to an encrypted .kasirpkg file.
 pub(crate) fn run_export_kasirpkg(
     conn: &Connection,
@@ -119,44 +172,28 @@ pub(crate) fn run_export_kasirpkg(
     // Collect data from the database.
     let products = if wants("products") {
         let prods = store.list_products()?;
-        serde_json::to_value(&prods)
-            .ok()
-            .and_then(|v| v.as_array().cloned())
-            .unwrap_or_default()
+        export_arm(&prods, "products")?
     } else {
         vec![]
     };
 
     let categories = if wants("categories") {
         let cats = store.list_categories()?;
-        serde_json::to_value(&cats)
-            .ok()
-            .and_then(|v| v.as_array().cloned())
-            .unwrap_or_default()
+        export_arm(&cats, "categories")?
     } else {
         vec![]
     };
 
     let sales = if wants("sales") {
         let sales_list = store.list_sales()?;
-        Some(
-            serde_json::to_value(&sales_list)
-                .ok()
-                .and_then(|v| v.as_array().cloned())
-                .unwrap_or_default(),
-        )
+        Some(export_arm(&sales_list, "sales")?)
     } else {
         None
     };
 
     let customers = if wants("customers") {
         let custs = store.list_customers()?;
-        Some(
-            serde_json::to_value(&custs)
-                .ok()
-                .and_then(|v| v.as_array().cloned())
-                .unwrap_or_default(),
-        )
+        Some(export_arm(&custs, "customers")?)
     } else {
         None
     };
@@ -177,12 +214,7 @@ pub(crate) fn run_export_kasirpkg(
         for u in &mut usrs {
             u.pin_hash.clear();
         }
-        Some(
-            serde_json::to_value(&usrs)
-                .ok()
-                .and_then(|v| v.as_array().cloned())
-                .unwrap_or_default(),
-        )
+        Some(export_arm(&usrs, "users")?)
     } else {
         None
     };
@@ -324,165 +356,239 @@ pub(crate) fn run_import_kasirpkg(
         .unchecked_transaction()
         .context("starting import transaction")?;
 
-    let mut total = 0usize;
+    // O-M49: ONE timestamp for the whole import. Previously every row of
+    // every table minted its own `chrono::Utc::now()` RFC-3339 string — up to
+    // three per row on the insert paths. That was never a semantic: the value
+    // only reaches `created_at` / `updated_at`, which are NOT part of any
+    // conflict target (the targets are `categories.id`, `products.sku`,
+    // `customers.id` and `users.id`) and are never compared for ordering
+    // within an import, since every row here is stamped at the same instant by
+    // construction. Hoisting also makes a bulk import's `updated_at` monotone
+    // in row order instead of racing the clock row by row.
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+    // `i64`, not `usize`: the counters live inside the `if let Ok(..)` arms
+    // below, several of them inside statements that borrow `tx` mutably, so
+    // they are `Cell`s. `Cell<i64>` needs no `Copy` trick and mirrors the rest
+    // of this crate's row counters.
+    let total = std::cell::Cell::new(0i64);
+
+    // ══ O-M49: one prepared upsert per row, not probe-then-write ═══════
+    //
+    // Every arm below used to run TWO statements per row — a `SELECT 1 … WHERE
+    // <key>` existence probe and then an INSERT or an UPDATE chosen from its
+    // result — against a statement that was re-compiled each time. The
+    // conflict behaviour of that shape is REPLACE-ONLY: the INSERT branch ran
+    // exactly when the row was absent, and the UPDATE branch wrote a FIXED
+    // column list. So a re-import of the same package UPDATES an existing row
+    // and never a second row, and each ON CONFLICT arm below preserves the
+    // UPDATE branch's column list verbatim — DO UPDATE, never DO NOTHING.
+    //
+    // Each statement is hoisted out of its loop and prepared ONCE per table,
+    // not once per row. The categories/products arms sit in their own scope so
+    // their statement is dropped before the next arm prepares its own; the
+    // remaining arms keep their statement alive until the end of the block,
+    // because `payload.sales` / `.customers` / `.users` are moved out of it.
+    //
+    // The error contract is unchanged too. A unique-constraint violation
+    // aborts the statement with `Err` and never runs the UPDATE branch, so
+    // propagating it with `?` matches the pre-change control flow exactly —
+    // including the fact that the whole transaction then rolls back.
+    //
+    // `now` (hoisted above) is bound once per row as an OWNED `String` clone
+    // rather than re-formatted; one `Utc::now()` + RFC-3339 format for the
+    // whole import instead of up to three per row.
 
     // ── Categories ──────────────────────────────────────────────
-    for val in &payload.categories {
-        if let Ok(cat) = serde_json::from_value::<kasirmu_core::Category>(val.clone()) {
-            let colour = if cat.colour.is_empty() {
-                "#6366f1"
-            } else {
-                &cat.colour
-            };
-            let exists = tx
-                .query_row(
-                    "SELECT 1 FROM categories WHERE id = ?1",
-                    rusqlite::params![cat.id],
-                    |_| Ok(()),
-                )
-                .is_ok();
-            if exists {
-                tx.execute(
-                    "UPDATE categories SET name = ?1, colour = ?2 WHERE id = ?3",
-                    rusqlite::params![cat.name, colour, cat.id],
-                )?;
-            } else {
-                tx.execute(
-                    "INSERT INTO categories (id, name, colour) VALUES (?1, ?2, ?3)",
-                    rusqlite::params![cat.id, cat.name, colour],
-                )?;
+    {
+        // Conflict target: `categories.id` (TEXT PRIMARY KEY). NOTE the other
+        // unique key on this table is `categories.name` (NOT NULL UNIQUE): a
+        // row whose id is new but whose name collides still fails with
+        // SQLITE_CONSTRAINT_UNIQUE — same as the old INSERT branch, which had
+        // no ON CONFLICT clause at all.
+        let mut upsert = tx.prepare_cached(
+            "INSERT INTO categories (id, name, colour) VALUES (?1, ?2, ?3)
+             ON CONFLICT(id) DO UPDATE SET name = excluded.name, colour = excluded.colour",
+        )?;
+        for val in payload.categories {
+            if let Ok(cat) = serde_json::from_value::<kasirmu_core::Category>(val) {
+                let colour = if cat.colour.is_empty() {
+                    "#6366f1"
+                } else {
+                    cat.colour.as_str()
+                };
+                upsert.execute(rusqlite::params![cat.id, cat.name, colour])?;
+                total.set(total.get() + 1);
             }
-            total += 1;
         }
     }
 
     // ── Products ────────────────────────────────────────────────
-    for val in &payload.products {
-        if let Ok(product) = serde_json::from_value::<kasirmu_core::Product>(val.clone()) {
-            let exists = tx
-                .query_row(
-                    "SELECT 1 FROM products WHERE sku = ?1",
-                    rusqlite::params![product.sku.to_string()],
-                    |_| Ok(()),
-                )
-                .is_ok();
-            if exists {
+    {
+        // Conflict target: `products.sku`. The PRIMARY KEY is `id` and the
+        // per-tenant unique index is `(tenant_id, sku)` — but `sku` carries no
+        // unique index of its own any more, so the old `WHERE sku = ?` probe
+        // already treated sku as the row identity and the inserted `id` was
+        // never checked. DO UPDATE on (tenant_id, sku) keeps that: the import
+        // writes only `tenant_id = 'default'` rows (the column is omitted from
+        // the INSERT, so its DEFAULT applies), and within that tenant the
+        // upsert matches the probe's answer for "the row with this sku".
+        //
+        // The UPDATE arm writes exactly the four payload columns plus
+        // `updated_at` — `id`, `created_at` and the 18 default-only columns
+        // are untouched on a re-import, as before. `created_at` therefore comes
+        // from EXCLUDED only on the INSERT path; on the DO UPDATE path it is
+        // not listed and the stored value survives.
+        let mut upsert = tx.prepare_cached(
+            "INSERT INTO products (id, sku, name, price_minor, currency, category_id, barcode, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(tenant_id, sku) DO UPDATE SET
+                 name = excluded.name,
+                 price_minor = excluded.price_minor,
+                 currency = excluded.currency,
+                 category_id = excluded.category_id,
+                 barcode = excluded.barcode,
+                 updated_at = excluded.updated_at",
+        )?;
+        for val in payload.products {
+            if let Ok(product) = serde_json::from_value::<kasirmu_core::Product>(val) {
+                // `?` on purpose: a non-UTF-8 currency is still a hard error
+                // and still aborts the whole import (RUST-07), and the old
+                // code only reached the conversion after the probe succeeded —
+                // now it runs unconditionally, one `from_utf8` earlier.
                 let cur_str = currency_to_utf8(&product)?;
-                let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-                tx.execute(
-                    "UPDATE products SET name = ?1, price_minor = ?2, currency = ?3, category_id = ?4, barcode = ?5, updated_at = ?6 WHERE sku = ?7",
-                    rusqlite::params![product.name, product.price.minor_units, cur_str, product.category_id, product.barcode.as_ref().map(|b| b.as_str()), now, product.sku.to_string()],
-                )?;
-            } else {
-                let cur_str = currency_to_utf8(&product)?;
-                let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-                tx.execute(
-                    "INSERT INTO products (id, sku, name, price_minor, currency, category_id, barcode, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                    rusqlite::params![product.id, product.sku.to_string(), product.name, product.price.minor_units, cur_str, product.category_id, product.barcode.as_ref().map(|b| b.as_str()), now, now],
-                )?;
+                upsert.execute(rusqlite::params![
+                    product.id,
+                    product.sku.to_string(),
+                    product.name,
+                    product.price.minor_units,
+                    cur_str,
+                    product.category_id,
+                    product.barcode.as_ref().map(|b| b.as_str()),
+                    now,
+                    now,
+                ])?;
+                total.set(total.get() + 1);
             }
-            total += 1;
         }
     }
 
     // ── Sales ───────────────────────────────────────────────────
-    if let Some(ref sales) = payload.sales {
+    if let Some(sales) = payload.sales {
+        // Sales are the ONE type that still probes, and deliberately: the
+        // write path is `Store::create_sale_in_tx` (CLI-1), which owns the
+        // 22-column INSERT *and* the sale-lines loop behind a money validator.
+        // A bare `INSERT … ON CONFLICT` here would have to duplicate that
+        // private SQL or silently drop the lines. The skip semantics are also
+        // not a conflict target's to decide: a sale already present is NOT
+        // updated at all, so this stays DO NOTHING-by-probe rather than
+        // DO UPDATE. Removing this probe is a change to `kasirmu-core`'s API,
+        // not to this file.
+        let mut exists = tx.prepare_cached("SELECT 1 FROM sales WHERE id = ?1")?;
         for val in sales {
-            if let Ok(sale) = serde_json::from_value::<kasirmu_core::Sale>(val.clone()) {
-                let exists = tx
-                    .query_row(
-                        "SELECT 1 FROM sales WHERE id = ?1",
-                        rusqlite::params![sale.id],
-                        |_| Ok(()),
-                    )
-                    .is_ok();
-                if !exists {
+            if let Ok(sale) = serde_json::from_value::<kasirmu_core::Sale>(val) {
+                if !exists.exists(rusqlite::params![sale.id])? {
                     // CLI-1 fix: use the tx-aware variant — the previous
                     // `store.create_sale` opened a nested transaction on the
                     // same connection ("cannot start a transaction within a
                     // transaction") and rolled the whole import back.
                     store.create_sale_in_tx(&tx, &sale)?;
                 }
-                total += 1;
+                total.set(total.get() + 1);
             }
         }
     }
 
     // ── Customers ───────────────────────────────────────────────
-    if let Some(ref customers) = payload.customers {
+    if let Some(customers) = payload.customers {
+        // Conflict target: `customers.id` (TEXT PRIMARY KEY). The only unique
+        // index on the table; email/phone/store are merely indexed.
+        //
+        // The UPDATE arm writes name/email/phone/notes/updated_at and nothing
+        // else. `loyalty_points`, `total_spent_minor` and `currency` are
+        // written ONLY on the INSERT path (0, 0, 'USD') — a re-import must not
+        // zero a live customer's balance. They are therefore absent from the
+        // DO UPDATE list, exactly as they were absent from the old UPDATE.
+        let mut upsert = tx.prepare_cached(
+            "INSERT INTO customers (id, name, email, phone, notes, loyalty_points, total_spent_minor, currency, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, 0, 0, 'USD', ?6, ?7)
+             ON CONFLICT(id) DO UPDATE SET
+                 name = excluded.name,
+                 email = excluded.email,
+                 phone = excluded.phone,
+                 notes = excluded.notes,
+                 updated_at = excluded.updated_at",
+        )?;
         for val in customers {
-            if let Ok(cust) = serde_json::from_value::<kasirmu_core::Customer>(val.clone()) {
-                let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-                let exists = tx
-                    .query_row(
-                        "SELECT 1 FROM customers WHERE id = ?1",
-                        rusqlite::params![cust.id],
-                        |_| Ok(()),
-                    )
-                    .is_ok();
+            if let Ok(cust) = serde_json::from_value::<kasirmu_core::Customer>(val) {
                 let email_str = cust.email.map(|e| e.to_string());
                 let phone_str = cust.phone.map(|p| p.to_string());
-                if exists {
-                    tx.execute(
-                        "UPDATE customers SET name = ?1, email = ?2, phone = ?3, notes = ?4, updated_at = ?5 WHERE id = ?6",
-                        rusqlite::params![cust.name, email_str, phone_str, cust.notes, now, cust.id],
-                    )?;
-                } else {
-                    tx.execute(
-                        "INSERT INTO customers (id, name, email, phone, notes, loyalty_points, total_spent_minor, currency, created_at, updated_at)
-                         VALUES (?1, ?2, ?3, ?4, ?5, 0, 0, 'USD', ?6, ?7)",
-                        rusqlite::params![cust.id, cust.name, email_str, phone_str, cust.notes, now, now],
-                    )?;
-                }
-                total += 1;
+                upsert.execute(rusqlite::params![
+                    cust.id, cust.name, email_str, phone_str, cust.notes, now, now,
+                ])?;
+                total.set(total.get() + 1);
             }
         }
     }
 
     // ── Users ───────────────────────────────────────────────────
-    if let Some(ref users) = payload.users {
+    if let Some(users) = payload.users {
+        // Conflict target: `users.id` (TEXT PRIMARY KEY). `users.username` is
+        // NOT plain-UNIQUE any more — migration 20260815 replaced it with
+        // `(tenant_id, username)` — so as with products the row identity the
+        // old `WHERE id = ?` probe used is preserved by keying the upsert on
+        // id, and a username collision from a DIFFERENT id still errors
+        // (SQLITE_CONSTRAINT_UNIQUE) instead of being absorbed — which is what
+        // the old INSERT branch did too.
+        //
+        // TWO column lists, on purpose, and the asymmetry is the OLD
+        // asymmetry, not a new one:
+        //   * INSERT path writes `pin_hash = ''` and `is_active = 0` — the
+        //     exported verifier is NEVER restored and the account lands
+        //     inactive (PIN reset required). See the long note below.
+        //   * DO UPDATE path does NOT touch either column. It writes
+        //     username/display_name/role_id/updated_at only, so an existing
+        //     local account keeps its verifier AND its active flag — the old
+        //     UPDATE arm wrote exactly this list, so a re-import has never
+        //     deactivated a logged-in user and must not start now.
+        //
+        // The INSERT-path note that used to live here, kept verbatim:
+        //
+        // The export DOES carry `pin_hash` — the users arm above serializes
+        // `Store::list_users()` wholesale, whose SELECT includes the column,
+        // and the payload is a pass-through. (A comment here previously
+        // claimed the hash was absent from the export; it is not.)
+        //
+        // The INSERT path deliberately does NOT use the exported value: a
+        // fresh install must not inherit another install's credential
+        // verifier, so the column is written empty and the account lands
+        // INACTIVE.
+        //
+        // Removing `pin_hash` from the export therefore needs
+        // `#[serde(default)]` on `User::pin_hash` FIRST: the field has no
+        // default, so `serde_json::from_value::<User>` fails on a row that
+        // omits it and every user is silently skipped — pinned by
+        // `modules/staff/src/models_tests.rs::user_deserialization_requires_pin_hash`.
+        let mut upsert = tx.prepare_cached(
+            "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+             VALUES (?1, ?2, '', ?3, ?4, 0, ?5, ?6)
+             ON CONFLICT(id) DO UPDATE SET
+                 username = excluded.username,
+                 display_name = excluded.display_name,
+                 role_id = excluded.role_id,
+                 updated_at = excluded.updated_at",
+        )?;
         for val in users {
-            if let Ok(user) = serde_json::from_value::<kasirmu_core::User>(val.clone()) {
-                let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-                let exists = tx
-                    .query_row(
-                        "SELECT 1 FROM users WHERE id = ?1",
-                        rusqlite::params![user.id],
-                        |_| Ok(()),
-                    )
-                    .is_ok();
-                if exists {
-                    tx.execute(
-                        "UPDATE users SET username = ?1, display_name = ?2, role_id = ?3, updated_at = ?4 WHERE id = ?5",
-                        rusqlite::params![user.username, user.display_name, user.role_id, now, user.id],
-                    )?;
-                } else {
-                    // The export DOES carry `pin_hash` — the users arm above
-                    // serializes `Store::list_users()` wholesale, whose SELECT
-                    // includes the column, and the payload is a pass-through.
-                    // (A comment here previously claimed the hash was absent
-                    // from the export; it is not.)
-                    //
-                    // This path deliberately does NOT use the exported value: a
-                    // fresh install must not inherit another install's
-                    // credential verifier, so the column is written empty and
-                    // the account lands INACTIVE — a PIN reset is required
-                    // before the member can log in.
-                    //
-                    // Removing `pin_hash` from the export therefore needs
-                    // `#[serde(default)]` on `User::pin_hash` FIRST: the field
-                    // has no default, so `serde_json::from_value::<User>` below
-                    // fails on a row that omits it and every user is silently
-                    // skipped. Pinned by
-                    // `modules/staff/src/models_tests.rs::user_deserialization_requires_pin_hash`.
-                    tx.execute(
-                        "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
-                         VALUES (?1, ?2, '', ?3, ?4, 0, ?5, ?6)",
-                        rusqlite::params![user.id, user.username, user.display_name, user.role_id, now, now],
-                    )?;
-                }
-                total += 1;
+            if let Ok(user) = serde_json::from_value::<kasirmu_core::User>(val) {
+                upsert.execute(rusqlite::params![
+                    user.id,
+                    user.username,
+                    user.display_name,
+                    user.role_id,
+                    now,
+                    now,
+                ])?;
+                total.set(total.get() + 1);
             }
         }
     }
@@ -512,7 +618,7 @@ pub(crate) fn run_import_kasirpkg(
                     // admitted by policy and then may still fail, which is
                     // neither a refusal nor a success.
                     match Settings::set(&tx, key, value) {
-                        Ok(()) => total += 1,
+                        Ok(()) => total.set(total.get() + 1),
                         Err(e) => {
                             settings_failed += 1;
                             tracing::warn!(
@@ -541,7 +647,7 @@ pub(crate) fn run_import_kasirpkg(
             "  {settings_skipped} settings row(s) skipped: secrets, device-bound ids \n             (machine_id, sync_terminal_id, local_api.secret, license.*, \n             gateway keys) and lifecycle-manager keys (local_api.*, lan_server.*) \n             never travel in a portable package (MED-2 / ingest policy)."
         );
     }
-    eprintln!("import complete — {total} records written.");
+    eprintln!("import complete — {} records written.", total.get());
     Ok(())
 }
 

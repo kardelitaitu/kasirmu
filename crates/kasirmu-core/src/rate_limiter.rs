@@ -14,6 +14,9 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+/// Default maximum number of distinct usernames tracked in memory simultaneously (O-M10).
+pub const DEFAULT_MAX_TRACKED_USERNAMES: usize = 10_000;
+
 /// Sliding-window rate limiter for login PIN attempts.
 ///
 /// Tracks failed attempts per username. When the number of attempts within
@@ -28,19 +31,32 @@ pub struct LoginRateLimiter {
     max_attempts: usize,
     /// Sliding window duration in seconds.
     window_secs: u64,
+    /// Maximum distinct usernames tracked simultaneously (O-M10 cap against login spray).
+    max_tracked: usize,
 }
 
 impl LoginRateLimiter {
-    /// Create a new rate limiter.
+    /// Create a new rate limiter with default capacity ceiling (10,000 tracked usernames).
     ///
     /// * `max_attempts` — number of failed attempts allowed within the window.
     /// * `window_secs` — sliding window duration in seconds.
     #[must_use]
     pub fn new(max_attempts: usize, window_secs: u64) -> Self {
+        Self::with_max_tracked(max_attempts, window_secs, DEFAULT_MAX_TRACKED_USERNAMES)
+    }
+
+    /// Create a new rate limiter with a custom capacity ceiling.
+    ///
+    /// * `max_attempts` — number of failed attempts allowed within the window.
+    /// * `window_secs` — sliding window duration in seconds.
+    /// * `max_tracked` — maximum distinct usernames tracked before eviction occurs.
+    #[must_use]
+    pub fn with_max_tracked(max_attempts: usize, window_secs: u64, max_tracked: usize) -> Self {
         Self {
             attempts: Mutex::new(HashMap::new()),
             max_attempts,
             window_secs,
+            max_tracked: max_tracked.max(1),
         }
     }
 
@@ -70,35 +86,60 @@ impl LoginRateLimiter {
         // over the window, not by the process lifetime.
         Self::evict_expired_locked(&mut map, now, window);
 
-        let attempts = map.entry(username.to_string()).or_default();
+        // O-M10: Borrow-keyed lookup to avoid allocating `String` on recurring attempts.
+        if let Some(attempts) = map.get_mut(username) {
+            // Prune entries whose window has expired.
+            attempts.retain(|t| now.duration_since(*t) < window);
 
-        // Prune entries whose window has expired.
-        attempts.retain(|t| now.duration_since(*t) < window);
-
-        // Check lockout BEFORE recording.
-        //
-        // Guard against empty vec when max_attempts is 0 — the caller is
-        // always locked out so we return the full window duration.
-        if attempts.len() >= self.max_attempts {
-            if attempts.is_empty() {
-                return Err(self.window_secs.max(1));
+            // Check lockout BEFORE recording.
+            if attempts.len() >= self.max_attempts {
+                if attempts.is_empty() {
+                    return Err(self.window_secs.max(1));
+                }
+                let oldest = attempts[0];
+                let elapsed = now.duration_since(oldest).as_secs();
+                let retry_after = self.window_secs.saturating_sub(elapsed);
+                return Err(retry_after.max(1));
             }
-            let oldest = attempts[0];
-            let elapsed = now.duration_since(oldest).as_secs();
-            let retry_after = self.window_secs.saturating_sub(elapsed);
-            return Err(retry_after.max(1));
+
+            // Record this attempt.
+            attempts.push(now);
+
+            // Check if this attempt pushed us over the limit.
+            if attempts.len() >= self.max_attempts {
+                return Err(self.window_secs);
+            }
+
+            return Ok(self.max_attempts.saturating_sub(attempts.len()));
         }
 
-        // Record this attempt.
-        attempts.push(now);
-
-        // Check if this attempt pushed us over the limit.
-        if attempts.len() >= self.max_attempts {
-            return Err(self.window_secs);
+        // New username branch:
+        if self.max_attempts == 0 {
+            return Err(self.window_secs.max(1));
         }
 
-        let remaining = self.max_attempts.saturating_sub(attempts.len());
-        Ok(remaining)
+        // O-M10: Capacity ceiling enforcement against login spray floods.
+        if map.len() >= self.max_tracked {
+            let candidate = map
+                .iter()
+                .filter_map(|(k, v)| {
+                    let is_locked = v.len() >= self.max_attempts;
+                    v.first().map(|&oldest| (k.clone(), oldest, is_locked))
+                })
+                .min_by_key(|(_, oldest, is_locked)| (*is_locked, *oldest));
+
+            if let Some((victim, _, _)) = candidate {
+                map.remove(&victim);
+            }
+        }
+
+        map.insert(username.to_string(), vec![now]);
+
+        if 1 >= self.max_attempts {
+            return Err(self.window_secs.max(1));
+        }
+
+        Ok(self.max_attempts.saturating_sub(1))
     }
 
     /// Remove every username whose attempts have all fallen outside the window.
@@ -152,11 +193,15 @@ impl Default for LoginRateLimiter {
 
 impl std::fmt::Debug for LoginRateLimiter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // `finish_non_exhaustive` rather than `finish`: the previous form silently
+        // omitted `max_tracked`, so two limiters with different capacities printed
+        // identically and the ".." is the honest way to say so (clippy 1.98).
         f.debug_struct("LoginRateLimiter")
             .field("max_attempts", &self.max_attempts)
             .field("window_secs", &self.window_secs)
+            .field("max_tracked", &self.max_tracked)
             .field("attempts", &"(locked)")
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 

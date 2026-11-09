@@ -150,8 +150,11 @@ export default function ItemModifierModal({
         const wasSelected = current.has(modifierId);
 
         if (wasSelected) {
-          // Allow deselecting only if above minSelections.
-          if (current.size <= group.minSelections) return prev;
+          // Single-select radio behavior: clicking the already-selected option in a
+          // required single-select group does not uncheck it (standard radio button).
+          // For multi-select or optional groups, allow deselecting so the user can
+          // change their choices or uncheck options without getting permanently trapped.
+          if (group.maxSelections === 1 && group.minSelections >= 1) return prev;
           current.delete(modifierId);
           return { ...prev, [groupId]: current };
         }
@@ -273,7 +276,7 @@ export default function ItemModifierModal({
         ref={panelRef}
       >
         {/* ── Header ─────────────────────────────────────── */}
-        <div className="modifier-header">
+        <header className="modifier-header">
           <h2 className="modifier-title">{productName}</h2>
           <button
             type="button"
@@ -286,7 +289,7 @@ export default function ItemModifierModal({
               <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
-        </div>
+        </header>
 
         {/* ── Body: modifier groups ──────────────────────── */}
         <div className="modifier-body">
@@ -380,7 +383,7 @@ export default function ItemModifierModal({
         </div>
 
         {/* ── Footer: price summary + confirm ───────────── */}
-        <div className="modifier-footer">
+        <footer className="modifier-footer">
           <div className="modifier-price-summary">
             <div className="modifier-price-row">
               <span className="modifier-price-label">
@@ -438,7 +441,7 @@ export default function ItemModifierModal({
               </Localized>
             </button>
           </div>
-        </div>
+        </footer>
       </div>
     </div>
   );

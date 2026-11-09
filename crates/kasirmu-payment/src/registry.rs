@@ -20,12 +20,14 @@ use tokio::sync::RwLock;
 
 use crate::PaymentProcessor;
 use crate::error::{ErrorClass, PaymentError};
+use crate::resilience::{CircuitBreaker, ResilientProcessor, ResilientProcessorConfig};
 
 /// Shared, mutable catalogue of payment processors.
 #[derive(Default)]
 pub struct PaymentProcessorRegistry {
     processors: RwLock<HashMap<String, Arc<dyn PaymentProcessor>>>,
     method_fallbacks: RwLock<HashMap<String, Vec<Arc<dyn PaymentProcessor>>>>,
+    breakers: RwLock<HashMap<(String, String), Arc<CircuitBreaker>>>,
 }
 
 impl PaymentProcessorRegistry {
@@ -52,6 +54,56 @@ impl PaymentProcessorRegistry {
     /// Snapshot of registered processor names.
     pub async fn processor_names(&self) -> Vec<String> {
         self.processors.read().await.keys().cloned().collect()
+    }
+
+    /// Get or create a circuit breaker keyed by `(tenant_id, gateway_name)` (§4).
+    ///
+    /// Multi-tenant isolation: ensures an outage, rate limit, or invalid credentials
+    /// for tenant-A on a shared gateway does not trip the circuit breaker for tenant-B.
+    pub async fn get_or_create_breaker(
+        &self,
+        tenant_id: &str,
+        gateway: &str,
+        config: Option<&ResilientProcessorConfig>,
+    ) -> Arc<CircuitBreaker> {
+        let key = (tenant_id.to_owned(), gateway.to_owned());
+        {
+            let readers = self.breakers.read().await;
+            if let Some(breaker) = readers.get(&key) {
+                return Arc::clone(breaker);
+            }
+        }
+        let mut writers = self.breakers.write().await;
+        if let Some(breaker) = writers.get(&key) {
+            return Arc::clone(breaker);
+        }
+        let (threshold, cooldown) = match config {
+            Some(c) => (c.failure_threshold, c.cooldown_duration),
+            None => {
+                let def = ResilientProcessorConfig::default();
+                (def.failure_threshold, def.cooldown_duration)
+            }
+        };
+        let breaker = Arc::new(CircuitBreaker::new(threshold, cooldown));
+        writers.insert(key, Arc::clone(&breaker));
+        breaker
+    }
+
+    /// Wrap a payment processor with a tenant-isolated shared circuit breaker (§4).
+    pub async fn wrap_resilient(
+        &self,
+        tenant_id: &str,
+        gateway: &str,
+        processor: Arc<dyn PaymentProcessor>,
+        config: Option<ResilientProcessorConfig>,
+    ) -> Arc<dyn PaymentProcessor> {
+        let cfg = config.unwrap_or_default();
+        let breaker = self
+            .get_or_create_breaker(tenant_id, gateway, Some(&cfg))
+            .await;
+        Arc::new(ResilientProcessor::with_shared_breaker(
+            processor, cfg, breaker,
+        ))
     }
 
     /// Register an ordered list of fallback processors for a payment method / rail
@@ -88,7 +140,7 @@ impl PaymentProcessorRegistry {
     /// operation, and it decides whether a `Transient` failure may advance
     /// the chain. The reasoning is the one the crate already applies to
     /// retries in [`crate::resilience::ResilientProcessor`]
-    /// (`payment-resilience-design.md:99`):
+    /// (`docs/plans/_done/done-plan-payment-resilience-design.md:99`):
     ///
     /// > `ResilientProcessor` may retry a money-moving operation **only when
     /// > that operation carries a caller-supplied gateway key**.

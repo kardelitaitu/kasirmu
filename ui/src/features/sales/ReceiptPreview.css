@@ -71,6 +71,13 @@
   font-variant-numeric: tabular-nums;
 }
 
+.receipt-preview-table-info {
+  margin-top: var(--space-1);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--text-xs);
+  color: var(--color-fg);
+}
+
 /* ── Separators ──────────────────────────────────────── */
 
 .receipt-preview-separator {

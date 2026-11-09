@@ -19,6 +19,21 @@ kiosk-section-cart = Keranjang
 kiosk-load-error = Gagal memuat menu
 kiosk-retry = Coba lagi
 kiosk-price-volatility-title = Harga baru saja berubah
-kiosk-pay-success = Pembayaran berhasil!
-
-# ── Customers (remaining) ──
+# ── Restaurant Self-Ordering Mode ──
+kiosk-dine-in = Makan di Tempat
+kiosk-takeaway = Bawa Pulang
+kiosk-table-number = Nomor Meja
+kiosk-table-placeholder = No. Meja
+kiosk-dining-mode = Pilihan Makan
+kiosk-pay-cashier = Bayar di Kasir
+kiosk-pay-qris = Bayar via QRIS
+kiosk-order-success-title = Pesanan Berhasil!
+kiosk-order-number = Pesanan #{ $number }
+kiosk-table-assigned = Meja { $table }
+kiosk-takeaway-label = Bawa Pulang
+kiosk-pay-cashier-instructions = Silakan bawa nomor pesanan Anda dan lakukan pembayaran di kasir.
+kiosk-pay-qris-instructions = Pembayaran berhasil! Pesanan Anda sedang disiapkan di dapur.
+kiosk-auto-reset = Kembali ke menu awal dalam { $seconds }d
+kiosk-done = Selesai
+kiosk-customizing = Kustomisasi
+kiosk-checkout-error = Gagal memproses pesanan

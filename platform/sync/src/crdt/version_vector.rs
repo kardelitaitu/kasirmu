@@ -137,8 +137,8 @@ impl VersionVector {
     }
 
     /// Iterate the tracked `(terminal_id, counter)` pairs in terminal order.
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &Counter)> {
-        self.counters.iter()
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &Counter)> {
+        self.counters.iter().map(|(t, c)| (t.as_str(), c))
     }
 }
 

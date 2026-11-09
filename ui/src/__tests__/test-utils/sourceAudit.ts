@@ -27,6 +27,48 @@ export interface UpdaterSite {
   index: number;
 }
 
+/**
+ * True when a `/` at `i` starts a REGEX literal rather than a division operator.
+ *
+ * JS has no token to disambiguate, so this uses the standard heuristic: a `/` opens
+ * a regex where an EXPRESSION may begin (after `(`, `,`, `=`, an operator, a
+ * keyword like `return`, or at the very start), and is division after something that
+ * can END an expression (identifier, number, `)`, `]`, string).
+ *
+ * Without this, a regex containing a slash — `window.location.hash.replace(/^#\//, '')`
+ * — was read as the start of a `//` comment, silently discarding the REST OF THAT
+ * LINE. Measured on `StaffManagementScreen.tsx`: `.split('?')[0]`, which trails the
+ * regex on the same line, was present in the source and absent from the stripped
+ * output, so every audit scanning that file was blind to it.
+ */
+function slashStartsRegex(src: string, i: number): boolean {
+  // Walk back over whitespace to the previous significant character.
+  let j = i - 1;
+  while (j >= 0 && /\s/.test(src[j]!)) j -= 1;
+  if (j < 0) return true; // start of file — an expression is expected
+  const prev = src[j]!;
+  // `</div>`, `</p>`, `</>` — a JSX/markup closing tag, never a regex. Without this
+  // arm, `<` fell through to the "expression expected" default and the scanner treated
+  // `</div>` as a regex literal, swallowing every character up to the next unescaped
+  // `/` — which in JSX is the next closing tag. Measurement: the single line
+  // `x = 1; </div> {flag} </p> tail` stripped to `x = 1; <> tail`, losing `{flag}`.
+  // That is a REGRESSION introduced with the regex arm itself (round 26); every audit
+  // over JSX was silently dropping code between closing tags.
+  if (prev === '<') return false;
+  // After a value-ending token, `/` is division.
+  if (/[A-Za-z0-9_$)\]'"`]/.test(prev)) {
+    // …unless that word is a keyword after which an expression begins.
+    if (/[A-Za-z0-9_$]/.test(prev)) {
+      let k = j;
+      while (k >= 0 && /[A-Za-z0-9_$]/.test(src[k]!)) k -= 1;
+      const word = src.slice(k + 1, j + 1);
+      return /^(return|typeof|instanceof|in|of|new|delete|void|do|else|case|yield|await)$/.test(word);
+    }
+    return false;
+  }
+  return true;
+}
+
 /** Remove comments and string literals so structural scanning cannot be
  *  unbalanced by prose parens inside comments or string content. Also
  *  returns origIndexAt[i] — the ORIGINAL source index of the i-th emitted
@@ -38,6 +80,23 @@ export function stripCommentsAndStrings(src: string): { stripped: string; origIn
   while (i < src.length) {
     const c = src[i]!;
     const n = src[i + 1];
+    if (c === '/' && n !== '/' && n !== '*' && slashStartsRegex(src, i)) {
+      // A regex literal: skip to its unescaped closing '/', honouring [class] where
+      // '/' needs no escaping, then any flags.
+      i += 1;
+      let inClass = false;
+      while (i < src.length) {
+        const rc = src[i]!;
+        if (rc === '\\') { i += 2; continue; }
+        if (rc === '[') inClass = true;
+        else if (rc === ']') inClass = false;
+        else if (rc === '/' && !inClass) { i += 1; break; }
+        else if (rc === '\n') break; // unterminated — treat as division instead
+        i += 1;
+      }
+      while (i < src.length && /[a-z]/.test(src[i]!)) i += 1; // flags
+      continue;
+    }
     if (c === '/' && n === '/') {
       while (i < src.length && src[i] !== '\n') i += 1;
     } else if (c === '/' && n === '*') {
@@ -62,11 +121,29 @@ export function stripCommentsAndStrings(src: string): { stripped: string; origIn
           i += 1;
           break;
         } else if (src[i] === '$' && src[i + 1] === '{') {
-          let d = 1;
+          // An interpolation is CODE, not string content, so emit it rather than
+          // skipping it. The previous version advanced past the whole `${...}`
+          // without emitting anything, so a reference that lives only inside one
+          // vanished from the stripped output — measurement: Button.tsx reads
+          // `spinnerExiting` at :135 inside a template interpolation, and the
+          // unread-state guard reported the flag as SET-BUT-NEVER-READ purely
+          // because of this. Anything scanning for an identifier, a class name or a
+          // call site was blind to interpolated code.
+          //
+          // Emitted verbatim, braces included, so bracket-balancing over the result
+          // still sees a matched pair. Nested template literals inside the
+          // interpolation are handled by this same loop's recursion via the outer
+          // while, because each emitted char is appended in order.
+          out += '${';
+          origIndexAt.push(i, i + 1);
           i += 2;
+          let d = 1;
           while (i < src.length && d > 0) {
-            if (src[i] === '{') d += 1;
-            else if (src[i] === '}') d -= 1;
+            const ic = src[i]!;
+            if (ic === '{') d += 1;
+            else if (ic === '}') d -= 1;
+            out += ic;
+            origIndexAt.push(i);
             i += 1;
           }
         } else i += 1;

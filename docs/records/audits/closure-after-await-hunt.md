@@ -62,7 +62,6 @@ between — which is a real candidate for a future round rather than another swe
 Recorded rather than left implicit: **the shape is not widespread, and the search that would find
 it is not a text search.**
 
-> last audited 14-10-26 by docs-auditor
  | grep -v __tests__ | grep -v '\.test\.' | grep -v '\.spec\.' | wc -l`) |
 | Candidates | 10, all inspected |
 | Defects found | 0 |

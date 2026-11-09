@@ -243,7 +243,138 @@ impl crate::db::Store<'_> {
         effective.sort_by(|a, b| a.label.cmp(&b.label).then(a.rail_code.cmp(&b.rail_code)));
         Ok(effective)
     }
+
+    /// Whether the site's rail surface REFUSES this tender, and why.
+    ///
+    /// This is plan `payment-methods-plan.md` safety rule 2 in code: the UI hides
+    /// disabled rails, "but the backend checkout command re-validates against the
+    /// effective config — never trust the UI". Until this existed,
+    /// [`Self::local_payment_methods_for_location`] had no writer-side caller at all,
+    /// so a client that posted `payment_method: "qris"` against a site that never
+    /// enabled QRIS was stored verbatim.
+    ///
+    /// Three deliberate narrowings, each of which keeps a real sale working:
+    ///
+    /// * **No surface means no opinion.** A location with no market link, or a market
+    ///   with no rows, answers `Ok(())` — refusing there would break every store that
+    ///   has not configured rails yet, and "unconfigured" is not "disabled".
+    /// * **Only ENABLED rails admit.** A rail the market knows but the site disabled is
+    ///   refused (`Withheld`); a rail the surface does not list at all is refused
+    ///   (`NotOffered`). The distinction is for the operator, not the outcome.
+    /// * **`rail_code` matches case-insensitively**, the same way `sales_checkout.rs`
+    ///   already compares `credit`, so a UI that sends `"QRIS"` is not a different rail
+    ///   from the row that says `qris`.
+    ///
+    /// Returns `Err` only for a database failure; a refusal is `Ok(Some(_))` so the
+    /// caller decides the `CoreError` shape and the field name.
+    pub fn refuse_unoffered_tender(
+        &self,
+        location_id: &str,
+        rail_code: &str,
+    ) -> Result<Option<TenderRefusal>, CoreError> {
+        let surface = self.local_payment_methods_for_location(location_id)?;
+        if surface.is_empty() {
+            // No market surface at all: nothing to enforce. See the doc comment.
+            return Ok(None);
+        }
+        let wanted = rail_code.trim().to_ascii_lowercase();
+        for rail in &surface {
+            if rail.rail_code.to_ascii_lowercase() != wanted {
+                continue;
+            }
+            return Ok(if rail.is_enabled {
+                None
+            } else {
+                Some(TenderRefusal::Withheld {
+                    rail_code: rail.rail_code.clone(),
+                })
+            });
+        }
+        Ok(Some(TenderRefusal::NotOffered {
+            rail_code: rail_code.trim().to_owned(),
+        }))
+    }
+
+    /// Whether the TIER withholds this tender, and which rail did it.
+    ///
+    /// Plan `payment-methods-plan.md` safety rule 4: "dynamic methods additionally
+    /// require their signed entitlement (`caps.supportsQris` etc.)". Until this
+    /// existed the rule was enforced only by the payment screen deciding whether to
+    /// render a button -- the same shape rule 2 had before `refuse_unoffered_tender`,
+    /// and the same reason it is not enough: a hidden button is not an enforcement
+    /// point.
+    ///
+    /// Only `qris` (DYNAMIC, Midtrans) is tier-gated. `qris_manual` is the static
+    /// printed code a cashier eyeballs, it costs the tier nothing, and refusing it
+    /// on Free would break the counter workflow the plan calls Phase 1 value.
+    #[must_use]
+    pub fn tier_withholds_tender(
+        rail_code: &str,
+        tier: &crate::subscription::SubscriptionTier,
+    ) -> Option<TenderRefusal> {
+        let wanted = rail_code.trim().to_ascii_lowercase();
+        for (code, grants) in TIER_GATED_RAILS {
+            if wanted == *code && !grants(tier) {
+                return Some(TenderRefusal::TierWithheld {
+                    rail_code: (*code).to_owned(),
+                });
+            }
+        }
+        None
+    }
 }
+
+/// Why a tender was refused at checkout, when the site's rail surface says it is
+/// not offered. Returned by [`crate::db::Store::refuse_unoffered_tender`] and mapped to
+/// `CoreError::Validation { field: "payment_method" }` by the caller.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TenderRefusal {
+    /// The site HAS a rail surface and this code is not an enabled rail in it.
+    NotOffered {
+        /// The rail code the caller asked for, trimmed.
+        rail_code: String,
+    },
+    /// The subscription tier does not include this rail, whatever the site configured.
+    TierWithheld {
+        /// The rail code the tier refuses.
+        rail_code: String,
+    },
+    /// The site has a rail surface and this CORE rail is explicitly disabled on it.
+    Withheld {
+        /// The rail code as stored on the row that disabled it.
+        rail_code: String,
+    },
+}
+
+impl TenderRefusal {
+    /// The operator-facing sentence. Names the rail so a client bug is legible
+    /// rather than a bare "payment method invalid".
+    #[must_use]
+    pub fn message(&self) -> String {
+        match self {
+            Self::NotOffered { rail_code } => {
+                format!("payment rail {rail_code:?} is not offered at this location")
+            }
+            Self::Withheld { rail_code } => {
+                format!("payment rail {rail_code:?} is disabled at this location")
+            }
+            Self::TierWithheld { rail_code } => {
+                format!("payment rail {rail_code:?} requires a subscription tier that includes it")
+            }
+        }
+    }
+}
+
+/// Rail codes that only exist when the TIER grants them. `qris` is DYNAMIC Midtrans
+/// processing (`supports_qris`, Plus+); `qris_manual` is the static printed code and
+/// needs no entitlement at all -- that is the whole distinction the plan's §1.3 draws,
+/// and conflating them is how a Free-tier store would lose its counter QRIS.
+/// A tier predicate for one rail: "does this tier include it?". Aliased because the
+/// inline fn-pointer type is unreadable in a slice of tuples.
+type TierGrantsRail = fn(&crate::subscription::SubscriptionTier) -> bool;
+
+const TIER_GATED_RAILS: &[(&str, TierGrantsRail)] =
+    &[("qris", crate::subscription::SubscriptionTier::supports_qris)];
 
 /// One rail in a replace-set submission.
 #[derive(Debug, Clone, PartialEq, Eq)]

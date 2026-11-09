@@ -136,7 +136,31 @@ export function AuthProvider({ children, onLogin }: AuthProviderProps) {
         const result = await staffLogin({ username, pin });
         setSession(result.session);
         setPickerTicket(result.picker_ticket);
-        try { sessionStorage.setItem('current-username', username); } catch { /* ignore */ }
+        try {
+          sessionStorage.setItem('current-username', username);
+          localStorage.setItem('oz-last-login', new Date().toISOString());
+          const u = username.trim();
+          if (u) {
+            const raw = localStorage.getItem('kasirmu-recent-cashiers');
+            const parsed = raw ? JSON.parse(raw) : [];
+            const list = Array.isArray(parsed) ? parsed : [];
+            const entry = {
+              username: u,
+              displayName: result.session.display_name || u,
+            };
+            const next = [
+              entry,
+              ...list.filter((x): x is { username: string; displayName?: string } =>
+                typeof x === 'object' &&
+                x !== null &&
+                'username' in x &&
+                typeof (x as { username: unknown }).username === 'string' &&
+                (x as { username: string }).username.toLowerCase() !== u.toLowerCase()
+              ),
+            ].slice(0, 4);
+            localStorage.setItem('kasirmu-recent-cashiers', JSON.stringify(next));
+          }
+        } catch { /* ignore */ }
         onLogin?.();
       } catch (err) {
         setError(loginErrorMessage(err));

@@ -58,14 +58,59 @@
   box-sizing: border-box;
 }
 
-/* ── Grabber handle ────────────────────────────────────────── */
+
+
+/* ── Memo stack clearance while the SHEET is open ──────────────────
+ *
+ * The sheet is `height: 85dvh`, anchored to `bottom: 0` — so it occupies
+ * the viewport's bottom 85%. The memo stack is `position: fixed` and parks
+ * itself at `bottom: var(--memo-bottom-inset, var(--space-6))`, which the
+ * shell sets for the TAB BAR's height (tablet.css:449) and
+ * RestaurantFloatingCartBar.css:216 sets for the FLOATING BAR. Neither of
+ * those is this sheet: the sheet is full-screen chrome, so the stack landed
+ * INSIDE it, on top of the cart footer's own controls.
+ *
+ * Measured 2026-10-17 on the tablet project (1024x1366), two live memos, the
+ * restaurant cart sheet open:
+ *
+ *   .memo-banner             x 21-499, y 1141-1282   (two, stacked)
+ *   .memo-banner-close       x 300-344, y 1142-1186  <- clickable, on top
+ *   .pos-cart-options-toggle x 131-894, y 1198-1242  <- the till's control
+ *   document.elementFromPoint(toggle centre) -> memo-banner-close
+ *
+ * so the "Expand options" toggle — the only way to reach the discount,
+ * tip and service-charge controls — could not be clicked, and the
+ * `.pos-cart-discount-btn` / `.pos-cart-promotion-btn` clicks failed as
+ * intercepted. Playwright surfaces this as the memo "intercepting pointer
+ * events" on exactly those two controls.
+ *
+ * Raising the inset to the sheet's own 85dvh pushes the stack above the
+ * sheet's top edge; verified in-browser that the toggle then hit-tests to
+ * itself and the expand click finds the discount button. `dvh` is the same
+ * unit the panel uses, so the two track the viewport together, and the
+ * `--space-3` gap keeps the stack visually clear of the sheet's handle.
+ *
+ * WHY THIS LIVES ON `body` AND NOT ON `.tablet-shell`
+ * --------------------------------------------------
+ * A `.tablet-shell:has(...)` rule would also win (the shell is a nearer DOM
+ * ancestor of the stack), so the two are alternatives, not a stack. The bar
+ * already sets the precedent of pairing its override with the element that
+ * creates the clearance problem (RestaurantFloatingCartBar.css:216), so the
+ * sheet follows the same rule: the override sits with the geometry it
+ * clears. Kept here also so the two cart surfaces document each other's
+ * insets side by side. */
+
+body:has(.restaurant-cart-sheet-panel) {
+  --memo-bottom-inset: calc(85dvh + var(--space-3));
+}
+
+/* ── Grabber handle (decorative affordance) ────────────────── */
 .restaurant-cart-sheet-handle-wrap {
   display: flex;
   justify-content: center;
   align-items: center;
   padding-top: var(--space-2);
   padding-bottom: var(--space-1);
-  cursor: pointer;
   flex-shrink: 0;
 }
 

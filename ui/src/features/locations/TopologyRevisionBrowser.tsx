@@ -31,7 +31,7 @@
 // its who/when/why intact, and only its preview/restore affordances are
 // withdrawn.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import {
   listTopologyRevisions,
@@ -41,7 +41,7 @@ import {
   type TopologyRevisionGraph,
 } from '@/api/topology';
 import { diffTopologyGraphs, type TopologyGraphDiff } from './topologyRevisionDiff';
-import { plainErrorMessage } from '@/utils/app-error';
+import { l10nErrorMessage, plainErrorMessage } from '@/utils/app-error';
 import type { TopologyData } from '@/api/topology';
 import topologySemantics from './topologySemantics.json';
 import './TopologyRevisionBrowser.css';
@@ -79,6 +79,10 @@ interface SelectedRevision {
   summary: TopologyRevisionSummary;
   graph: TopologyRevisionGraph | null;
   diff: TopologyGraphDiff | null;
+  /** Set when THIS revision's read failed. `graph === null` alone cannot tell a failure
+   *  from a read still in flight, so the detail pane spins on "Loading revision…"
+   *  forever after a rejection. */
+  loadError?: string | undefined;
 }
 
 /**
@@ -155,19 +159,39 @@ export default function TopologyRevisionBrowser({
     void refresh();
   }, [refresh]);
 
+  // Guards the same two hazards the LIST read above is guarded against: a rejected
+  // read must become an error in the detail pane rather than an unhandled rejection
+  // that leaves "Loading revision…" up forever, and a slower earlier read must not
+  // overwrite a newer one — the "Restore to editor" button takes `summary.revision`,
+  // so a late answer would arm a restore of the WRONG revision.
+  const selectSeq = useRef(0);
+
   const select = useCallback(async (summary: TopologyRevisionSummary) => {
+    const seq = ++selectSeq.current;
+    const stale = () => selectSeq.current !== seq;
     setSelected({ summary, graph: null, diff: null });
-    const graph = await loadTopologyRevision(sessionToken, summary.revision, branchId);
-    setSelected({
-      summary,
-      graph,
-      // Only a restorable row can be compared; a deflated one has no graph to
-      // judge, and inventing an empty one would read as "everything changed".
-      diff: graph.status === 'restorable' && currentGraph && graph.diagram
-        ? diffTopologyGraphs(graph.diagram, currentGraph)
-        : null,
-    });
-  }, [sessionToken, branchId, currentGraph]);
+    try {
+      const graph = await loadTopologyRevision(sessionToken, summary.revision, branchId);
+      if (stale()) return;
+      setSelected({
+        summary,
+        graph,
+        // Only a restorable row can be compared; a deflated one has no graph to
+        // judge, and inventing an empty one would read as "everything changed".
+        diff: graph.status === 'restorable' && currentGraph && graph.diagram
+          ? diffTopologyGraphs(graph.diagram, currentGraph)
+          : null,
+      });
+    } catch (err) {
+      if (stale()) return;
+      setSelected({
+        summary,
+        graph: null,
+        diff: null,
+        loadError: l10nErrorMessage(err, l10n, 'topology-rev-browser-error-detail'),
+      });
+    }
+  }, [sessionToken, branchId, currentGraph, l10n]);
 
   const togglePin = useCallback(async (summary: TopologyRevisionSummary) => {
     setBusyRevision(summary.revision);
@@ -333,6 +357,17 @@ function RevisionDetail({
   l10n: ReturnType<typeof useLocalization>['l10n'];
 }) {
   const { summary, graph, diff } = selected;
+  if (selected.loadError) {
+    // A rejected read is NOT "still loading". Without this the detail pane showed the
+    // spinner forever, with no error and no retry — the failure path indistinguishable
+    // from a hung one.
+    return (
+      <p className="topology-rev-browser-error" role="alert">
+        {selected.loadError}
+      </p>
+    );
+  }
+
   if (!graph) {
     return (
       // Its OWN key, not a reuse of `topology-rev-browser-loading`: two

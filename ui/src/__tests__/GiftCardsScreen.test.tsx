@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { screen, waitFor, fireEvent } from '@testing-library/react';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import { ToastProvider } from '@/components/Toast';
+import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import giftCardsFtl from '@/locales/gift-cards.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
 
@@ -12,6 +13,23 @@ vi.mock('@/api/giftCards', () => ({
   unfreezeGiftCard: vi.fn(),
   topUpGiftCard: vi.fn(),
 }));
+
+// The CurrencyProvider resolves through \`invoke('get_default_currency')\`; the ambient
+// tauri mock answers IDR. Pinning the command is how the repo's other currency tests
+// set it (PaymentModalEdgeCases.test.tsx) — \`fallback\` alone is NOT enough, because it
+// is only used while loading or on failure and the ambient call succeeds.
+const invokeMock = vi.hoisted(() => vi.fn());
+vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
+
+function mockDefaultCurrency(code: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  invokeMock.mockImplementation((cmd: string): any => {
+    if (cmd === 'get_default_currency' || cmd === 'get_default_currency_scoped') {
+      return Promise.resolve(code);
+    }
+    return Promise.resolve({});
+  });
+}
 
 // Mock WorkspaceContext so GiftCardsScreen can use useWorkspace.
 vi.mock('@/contexts/WorkspaceContext', () => ({
@@ -129,6 +147,21 @@ describe('GiftCardsScreen', () => {
     const skeleton = container.querySelector('[aria-hidden="true"].gift-cards-loading-skeleton');
     expect(skeleton).toBeInTheDocument();
     expect(screen.queryByText(/loading/i)).not.toBeInTheDocument();
+  });
+
+  // A rejected listGiftCards used to be reported only by an auto-dismissing
+  // toast, so the render fell through to the empty state and claimed there are
+  // no gift cards — on the screen that shows the balances the store owes
+  // customers, the one place an all-clear is actively dangerous.
+  it('reports a failed gift-card read instead of claiming there are none', async () => {
+    mockListGiftCards.mockRejectedValue(new Error('Server offline'));
+    renderWithFluentSync(<ToastProvider><GiftCardsScreen /></ToastProvider>, giftCardsFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(document.querySelector('.gift-cards-load-error')).toBeTruthy();
+    }, FAST_WAIT);
+    expect(screen.queryByText(/no gift cards found/i)).toBeNull();
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
   });
 
   it('shows empty state when no cards exist', async () => {
@@ -322,7 +355,59 @@ describe('GiftCardsScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: /confirm top-up/i }));
 
     await waitFor(() => {
-      expect(mockTopUpGiftCard).toHaveBeenCalledWith('tok-test', 'GC-001', 50000);
+      expect(mockTopUpGiftCard).toHaveBeenCalledWith('tok-test', 'GC-001', 50000, 'IDR');
+    }, FAST_WAIT);
+  });
+
+  // ── the top-up amount is in the STORE's currency ──────────────────────
+  //
+  // `handleTopUp` read the typed value as raw minor units (\`Number(raw)\` with an
+  // \`isInteger\` guard), so on a 2-exponent currency an operator typing \`50\` meaning
+  // $50.00 topped the card up by 50 minor units — $0.50, a 100x under-credit. The
+  // case above measures IDR, where the two readings coincide and the bug is invisible.
+  it('interprets the top-up amount in the store currency (USD: 50 -> 5000 minor)', async () => {
+    mockDefaultCurrency('USD');
+    // A USD CARD, not the IDR `sampleCards` fixture. This case exists to prove the EXPONENT
+    // (50 -> 5000 minor on a 2-decimal currency), and it used the IDR card only for
+    // convenience -- which made it a cross-currency top-up, now refused by the guard added
+    // in round 245 (the card's currency must match the till's, or amount_minor means two
+    // different things at once). Pinning the card currency keeps the exponent assertion
+    // measuring the exponent and nothing else.
+    mockListGiftCards.mockResolvedValue([
+      {
+        card: {
+          id: 'gc-usd', card_number: 'GC-001', pin: '1234',
+          initial_balance_minor: 100000, current_balance_minor: 75000,
+          currency: 'USD', status: 'active', issued_to: 'Alice',
+          issue_date: '2026-06-01', expiry_date: '2027-06-01',
+          created_by: 'user-1', updated_at: '2026-06-01',
+        },
+        transactions: [],
+      },
+    ]);
+    mockTopUpGiftCard.mockResolvedValue({});
+
+    renderWithFluentSync(
+      <CurrencyProvider>
+        <ToastProvider><GiftCardsScreen /></ToastProvider>
+      </CurrencyProvider>,
+      giftCardsFtl,
+      sharedFtl,
+    );
+
+    await expandCard('GC-001');
+    await waitAndClickButton(/top up/i);
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/amount in USD/i)).toBeInTheDocument();
+    }, FAST_WAIT);
+
+    fireEvent.change(screen.getByPlaceholderText(/amount in USD/i), { target: { value: '50' } });
+    fireEvent.click(screen.getByRole('button', { name: /confirm top-up/i }));
+
+    await waitFor(() => {
+      // $50.00 is 5000 minor units, not 50.
+      expect(mockTopUpGiftCard).toHaveBeenCalledWith('tok-test', 'GC-001', 5000, 'USD');
     }, FAST_WAIT);
   });
 
@@ -386,5 +471,41 @@ describe('GiftCardsScreen', () => {
     await waitFor(() => {
       expect(mockListGiftCards).toHaveBeenCalledTimes(2);
     }, FAST_WAIT);
+  });
+  it('REFUSES a top-up on a card in another currency than the till', async () => {
+    // The operator types in the STORE's currency; top_up_gift_card adds amount_minor to the
+    // CARD's balance with no currency check, and only prints the card currency in the ledger
+    // note. So 50 typed on an IDR till against a KWD card credits 50 fils (0.050 KWD), not
+    // 50 KWD -- a 1000x under-credit written into stored value. Same guard as the tender panel.
+    mockListGiftCards.mockResolvedValue([
+      {
+        card: {
+          id: 'gc-kwd', card_number: 'GC-KWD-1', pin: '0000',
+          initial_balance_minor: 5000, current_balance_minor: 5000,
+          currency: 'KWD', status: 'active', issued_to: 'Bob',
+          issue_date: '2026-06-01', expiry_date: null,
+          created_by: 'user-1', updated_at: '2026-06-01',
+        },
+        transactions: [],
+      },
+    ]);
+    mockTopUpGiftCard.mockResolvedValue({});
+    mockDefaultCurrency('IDR');
+    renderWithFluentSync(<ToastProvider><GiftCardsScreen /></ToastProvider>, giftCardsFtl, sharedFtl);
+
+    await expandCard('GC-KWD-1');
+    await waitAndClickButton(/top up/i);
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/amount/i)).toBeInTheDocument();
+    }, FAST_WAIT);
+
+    fireEvent.change(screen.getByPlaceholderText(/amount/i), { target: { value: '50' } });
+    await waitAndClickButton(/confirm top-up/i);
+
+    // The refusal is stated, and NO top-up was sent -- the ledger is untouched.
+    await waitFor(() => {
+      expect(screen.getByText(/cannot be applied to a IDR sale/i)).toBeInTheDocument();
+    }, FAST_WAIT);
+    expect(mockTopUpGiftCard).not.toHaveBeenCalled();
   });
 });

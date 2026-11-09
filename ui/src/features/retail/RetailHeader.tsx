@@ -11,6 +11,8 @@ interface RetailHeaderProps {
   // ── Full-variant props ──────────────
   storeSettings?: StoreSettingsDto;
   shiftLoading?: boolean;
+  /** The active-shift read THREW — distinct from "read fine, no shift open". */
+  shiftLoadFailed?: boolean;
   activeShift?: ShiftDto | null;
   displayName?: string;
   dateStr?: string;
@@ -32,6 +34,7 @@ export default function RetailHeader({
   variant = 'full',
   storeSettings,
   shiftLoading,
+  shiftLoadFailed,
   activeShift,
   displayName,
   dateStr,
@@ -54,7 +57,10 @@ export default function RetailHeader({
         )}
         <header className="retail-header">
           <div className="retail-header-store">
-            <span className="retail-header-name">{title}</span>
+            {/* The page title. This sub-view IS the whole screen, and the title was
+                a <span> -- so a screen reader arriving here had no heading root at
+                all. Same element and class, now a heading. */}
+            <h1 className="retail-header-name">{title}</h1>
           </div>
           {onBack && (
             <button
@@ -82,7 +88,10 @@ export default function RetailHeader({
           />
         )}
         <div>
-          <span className="retail-header-name">{storeSettings?.name || l10n.getString('retail-store-name-fallback')}</span>
+          {/* The page title, for the same reason as the minimal variant above. The
+              retail POS is a full-screen workspace with no other heading, and the
+              store name is what names the page. */}
+          <h1 className="retail-header-name">{storeSettings?.name || l10n.getString('retail-store-name-fallback')}</h1>
           {storeSettings?.branch && <span className="retail-header-branch"> &middot; {storeSettings.branch}</span>}
           <span className="retail-header-address">{storeSettings?.address || ''}</span>
         </div>
@@ -90,6 +99,10 @@ export default function RetailHeader({
       <div className="retail-header-right">
         {shiftLoading ? (
           <span className="retail-shift-badge">{l10n.getString('loading')}</span>
+        ) : shiftLoadFailed ? (
+          <span className="retail-shift-badge retail-shift-badge--idle">
+            {l10n.getString('retail-shift-unknown')}
+          </span>
         ) : activeShift ? (
           <span className="retail-shift-badge">
             {l10n.getString('retail-shift-label')} &middot; {formatMoney({ minor_units: activeShift.totalSalesMinor, currency: storeSettings?.currency ?? 'IDR' })}

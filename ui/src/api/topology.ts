@@ -96,6 +96,16 @@ export interface TopologyRevisionSummary {
   /** False once the retention sweep pruned the snapshot (ADR #46 §4).
    *  Render "record only — snapshot pruned"; do NOT offer a restore. */
   restorable: boolean;
+  /** Organization scope (ADR-66 / SaaS-3). */
+  orgId?: string;
+  /** Author / actor identity. */
+  actor?: string;
+  /** Key ID for cryptographic verification (ADR-66 D4). */
+  keyId?: string;
+  /** Cryptographic signature of the revision (ADR-66 D4). */
+  signature?: string;
+  /** Base revision for optimistic concurrency arbitration. */
+  baseRevision?: number;
 }
 
 /** One revision's graph, for diffing or loading as a draft.

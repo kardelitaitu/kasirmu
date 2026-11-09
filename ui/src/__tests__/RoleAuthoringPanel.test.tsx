@@ -260,6 +260,47 @@ describe('RoleAuthoringPanel', () => {
     });
   });
 
+  it('creates a role once for a double click while the first is in flight', async () => {
+    // `roles.name` is UNIQUE, so the replay is refused -- and the catch surfaces the
+    // backend's own message, which now reads "a role with that name already exists" about
+    // the role the first click just created.
+    let releaseCreate: ((v: unknown) => void) | undefined;
+    // Hold the create open so the second click lands while the first is still in flight.
+    handler.set(async (cmd) => {
+      if (cmd === 'get_brand_settings') return BRAND_SETTINGS;
+      if (cmd === 'list_roles_scoped') return [PRESET, CUSTOM_PRESET, AUTHORED, IN_USE];
+      if (cmd === 'list_permission_keys_scoped') return PERMISSION_KEYS;
+      if (cmd === 'create_role_scoped') {
+        return new Promise((resolve) => { releaseCreate = resolve; });
+      }
+      return undefined;
+    });
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Owner')).toBeInTheDocument());
+    openCreateEditor();
+    fireEvent.change(screen.getByLabelText('Role name'), { target: { value: 'Trainee' } });
+
+    const saveBtn = screen.getByRole('button', { name: 'Save role' });
+    // fireEvent, not userEvent: userEvent awaits its own act(), which flushes the pending
+    // chain so the first create would have settled. The disabled flag React set is dropped
+    // for the second click so the atomic guard is measured, not the DOM.
+    await act(async () => {
+      fireEvent.click(saveBtn);
+      saveBtn.removeAttribute('disabled');
+      fireEvent.click(saveBtn);
+    });
+
+    expect(
+      callsFor('create_role_scoped').length,
+      'a double click on Save role sent the create twice; roles.name is UNIQUE so the ' +
+        'second is refused and reported as an already-existing name',
+    ).toBe(1);
+
+    releaseCreate?.(undefined);
+    await waitFor(() => expect(callsFor('create_role_scoped')).toHaveLength(1));
+  });
+
   it('replaces the grant set on edit rather than merging it', async () => {
     renderScreen();
     await waitFor(() => expect(screen.getByText('Night Manager')).toBeInTheDocument());

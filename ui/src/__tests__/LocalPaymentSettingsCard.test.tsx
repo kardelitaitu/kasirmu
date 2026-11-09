@@ -24,7 +24,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 import { LocalPaymentSettingsCard } from '@/features/settings/screens/LocalPaymentSettingsCard';
 import settingsFtl from '@/locales/settings.ftl?raw';
@@ -276,6 +276,27 @@ describe('LocalPaymentSettingsCard', () => {
 
     fireEvent.click(screen.getAllByRole('checkbox')[0]!);
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('writes once when Save payment methods is double-tapped', async () => {
+    // The setter rewrites the same rail rows with the same values, so a replay cannot
+    // corrupt them -- but two in-flight saves share one \`saveError\` / \`saved\` pair and
+    // both overwrite \`drafts\` from their own response, so the operator can be shown the
+    // failure or the stale rows of the tap that lost. The button disables on the NEXT
+    // render; both taps fire before it.
+    const gate = deferred<unknown[]>();
+    renderCard();
+    await screen.findByText('QRIS');
+    mocks.setMethods.mockReturnValue(gate.promise);
+
+    const saveBtn = screen.getByRole('button', { name: 'Save payment methods' });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+      fireEvent.click(saveBtn);
+    });
+
+    gate.resolve(RAILS.map((r) => ({ ...r })));
+    await waitFor(() => expect(mocks.setMethods).toHaveBeenCalledTimes(1));
   });
 
   it('reports a failed save on the alert role and never claims success', async () => {

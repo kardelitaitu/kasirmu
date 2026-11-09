@@ -405,9 +405,16 @@ failed = False
 
 def check_zone(tz: str) -> tuple[str, str, bool]:
     env = {**os.environ, "TZ": tz}
+    # `text=True` with NO encoding decodes with the locale codec (cp1252 on this host) and
+    # makes the reader thread die on the first byte it cannot map, leaving `stdout=None` with
+    # returncode 0 and an empty stderr. The next line would then be `None.find`, i.e. an
+    # AttributeError naming neither the encoding nor the run. The reporter output is JSON and
+    # may carry any character a test name or failure message holds, so this is a live hole and
+    # not a theoretical one -- same fix, same reason, as check-chokepoints.py (round 198).
     r = subprocess.run(
         [NPMX, "exec", "--silent", "--", "vitest", "run", *TESTS, "--reporter=json"],
         cwd=UI, env=env, capture_output=True, text=True,
+        encoding="utf-8", errors="replace",
     )
     out = r.stdout
     start = out.find("{")

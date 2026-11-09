@@ -149,7 +149,7 @@ function SettingsPageContent() {
     branch: '',
   });
 
-  const { currency: ctxCurrency, setCurrency: setCtxCurrency } = useCurrency();
+  const { currency: ctxCurrency, setCurrency: setCtxCurrency, loading: currencyLoading } = useCurrency();
   const [defaultCurrency, setDefaultCurrencyState] = useState<string>(ctxCurrency);
 
   // Sync local state when context currency changes externally.
@@ -176,8 +176,8 @@ function SettingsPageContent() {
   // clear the floor), so staff, auditors — and anyone with an
   // unrecognized role — get the locked card instead of the shell. The gate
   // normalizes first: the session carries the backend's DISPLAY role name
-  // (capitalized, e.g. 'Owner', 'Manager' — kasirmu-bridge/src/auth.rs:485),
-  // while roleAtLeast's table is keyed lowercase, so an unnormalized 'Owner'
+  // (capitalized, e.g. 'Owner', 'Manager' — the `role_name: role.name` the
+  // backend assigns in `staff_login`), while roleAtLeast's table is keyed lowercase, so
   // scores 0 and locks a real owner out (reproduced in the browser).
   const canAccessSettings = roleAtLeast(normalizeRole(session?.role_name ?? null), 'manager');
   const { sessionToken } = useWorkspace();
@@ -287,7 +287,13 @@ function SettingsPageContent() {
     // Once context finishes loading, copy values into local editable state.
     // Only do this on the initial load — subsequent context refetches
     // (e.g. from markSettingsUpdated) should NOT overwrite user edits.
-    if (!settingsCtx.loading && !initialized) {
+    //
+    // ALSO WAIT FOR THE CURRENCY. `defaultCurrency` is snapshotted below, and the
+    // currency context publishes its FALLBACK until its own read settles. Seeding the
+    // Revert baseline from the fallback latched it there — `initialized` goes true on
+    // this pass and the later, real currency cannot repair a snapshot that is already
+    // closed. Waiting for both means the baseline is the first fully-known state.
+    if (!settingsCtx.loading && !currencyLoading && !initialized) {
       const s = settingsCtx.settings;
       setReceipt(s.receipt);
       setStore(s.store);
@@ -320,7 +326,7 @@ function SettingsPageContent() {
 
       setInitialized(true);
     }
-  }, [settingsCtx.loading, settingsCtx.settings, initialized, defaultCurrency]);
+  }, [settingsCtx.loading, currencyLoading, settingsCtx.settings, initialized, defaultCurrency]);
 
   // ── Partial-load toast (confirmation-gated) ─────────────────
   // The snapshot effect above runs the moment the FIRST load settles. On the
@@ -466,7 +472,7 @@ function SettingsPageContent() {
   // ── Main render ──────────────────────────────────────────────
 
   return (
-    <div className="settings-page" onContextMenu={(e) => e.preventDefault()}>
+    <div className="settings-page" data-initialized={initialized} onContextMenu={(e) => e.preventDefault()}>
       {/* ── Top bar (child owns the context menu + breadcrumb; search/save state threaded) ── */}
       <SettingsTopbar
         activeSection={activeSection}

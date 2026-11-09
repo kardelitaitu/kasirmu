@@ -62,9 +62,11 @@ If your change touches more than one layer (Rust core, Tauri IPC, UI, HAL, proje
 <type>(<optional scope>): <short summary> [optional body] [optional footer(s)]
 ```
 
-- `type` is one of the ten the commit-msg gate accepts: `feat`, `fix`, `docs`,
-  `style`, `refactor`, `perf`, `test`, `ci`, `chore`, `audit` — read live from
-  `.githooks/commit-msg` (`TYPES=\`), never from this page. Six of them have a matching
+- `type` is one of the **eleven** the commit-msg gate accepts: `feat`, `fix`, `docs`,
+  `style`, `refactor`, `perf`, `test`, `ci`, `chore`, `audit`, `build` — read live from
+  `.githooks/commit-msg` (`TYPES=`), never from this page. (`build` joined 2026-10-01;
+  this bullet said "ten" and omitted it until 2026-10-19, which is precisely why the
+  instruction is to read the hook.) Six of them have a matching
   branch prefix (see above); `style`, `perf`, `ci`, `audit` do not, so "type matches the
   branch prefix" is a guideline for feature work, not the acceptance rule.
 - Summary is ≤ 72 characters, imperative mood ("add" not "added").
@@ -94,7 +96,8 @@ a 250ms backoff recovers most cases without idempotency risk.
 the gate rejects them.
 
 > **`fix` was on this list until 08-09-26 — it is not forbidden.** `.githooks/commit-msg`
-> accepts it (`TYPES='feat|fix|docs|style|refactor|perf|test|ci|chore|audit'`),
+> accepts it (`TYPES='feat|fix|docs|style|refactor|perf|test|ci|chore|audit|build'` — the
+> live value at 2026-10-19; the copy here previously omitted `build`),
 > `fix/<name>` is a documented branch prefix two sections above, and `fix` is the most
 > common type in the log. The list contradicted the gate it describes, and an agent
 > following it would have reached for `refactor` or `chore` on a bug fix to avoid a

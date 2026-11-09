@@ -419,8 +419,7 @@ pub async fn get_hardware_settings_scoped(
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, permissions::SETTINGS_READ)
         .await?;
-    // Validate session; hardware profiles use the global db.
-    ctx.resolve_scope(session_token)?;
+    // Hardware profiles use the global db; session resolution above validates the token.
     get_hardware_settings(ctx, base_dir).await
 }
 
@@ -751,6 +750,21 @@ pub async fn set_setting(
     value: &str,
     user_id: &str,
 ) -> Result<(), BridgeError> {
+    // Verify that the caller-supplied user_id belongs to an active, authenticated
+    // session on this device to prevent caller-supplied identity spoofing (BR-S6).
+    let has_live_session = {
+        let store = ctx
+            .sessions
+            .read()
+            .map_err(|e| BridgeError::Internal(format!("session store lock poisoned: {e}")))?;
+        store
+            .values()
+            .any(|s| s.user_id == user_id && !s.is_expired())
+    };
+    if !has_live_session {
+        return Err(BridgeError::InvalidSession);
+    }
+
     // Extract terminal_id first.
     let terminal_id = ctx
         .terminal_id

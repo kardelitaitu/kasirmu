@@ -397,6 +397,7 @@ fn apply_sync_outcomes_conflict_resolves_with_server_copy_wins() {
         synced_at: None,
         priority: local.priority,
         origin_terminal_id: local.origin_terminal_id.clone(),
+        sale_id: local.sale_id.clone(),
     };
     let outcomes = vec![PushOutcome::Conflict(server_item)];
     let result = apply_sync_outcomes(&store, &items, &outcomes).unwrap();
@@ -426,12 +427,14 @@ fn apply_sync_outcomes_conflict_resolves_with_server_copy_wins() {
 
 #[test]
 fn apply_sync_outcomes_truncates_on_outcome_len_mismatch() {
-    // Documented behaviour: if the server returns fewer outcomes than
-    // pending items, `zip` silently truncates. The unpaired items are
-    // neither marked synced nor failed (they stay pending) — the
-    // retry caller must re-list them next cycle. This pins the
-    // current contract so a future refactor can't silently mark them
-    // synced without an outcome.
+    // If the server returns fewer outcomes than pending items, `zip`
+    // truncates. The unpaired items are neither marked synced nor failed (they
+    // stay pending) — the retry caller must re-list them next cycle. This pins
+    // that so a future refactor can't mark them synced without an outcome.
+    //
+    // The mismatch is ALSO reported through `result.error`. Leaving the tail
+    // pending is the right local state, but a cycle that reports success with
+    // an unacknowledged tail is how a stalled push hides from the operator.
     let store_db = migrations::fresh_db();
     let store = setup(&store_db);
     let items = [
@@ -446,6 +449,14 @@ fn apply_sync_outcomes_truncates_on_outcome_len_mismatch() {
     let result = apply_sync_outcomes(&store, &items, &outcomes).unwrap();
     assert_eq!(result.synced, 1);
     assert_eq!(result.failed, 0);
+    let err = result
+        .error
+        .as_deref()
+        .expect("a short outcome vector must surface an error, not pass as success");
+    assert!(
+        err.contains("1 item(s) left unacknowledged"),
+        "the error must name how many items were unacknowledged, got: {err}"
+    );
 
     let all = store.list_all_offline().unwrap();
     // One synced, one still pending — never falsely synced.

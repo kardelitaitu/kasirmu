@@ -125,9 +125,10 @@ interface ScreenEntry {
    * family of entries inherits inside src/features (e.g.
    * `settings/SettingsPage.css`, cited by the four settings cards), or a
    * theme sheet both shells import. `../theme/components.css`
-   * is the live case for the second shape: it defines `.sr-only` at :1492
-   * and `.skeleton` at :1296, and is imported by BOTH entry points
-   * (main.tsx:7 desktop, main.mobile.tsx:20 tablet), so those utilities
+   * is the live case for the second shape: it defines `.sr-only` (measured at
+   * this commit: it is the `.sr-only {` rule; the note said :1492 and was stale)
+   * and `.skeleton`, and is imported by BOTH entry points
+   * (main.tsx:7 desktop, main.mobile.tsx:4 tablet), so those utilities
    * really are provided at the element the class sits on.
    *
    * Before that exception, the only way to keep a global utility from
@@ -238,32 +239,6 @@ const SCREENS: ScreenEntry[] = [
     // Nothing newly dead: DEAD stayed 0 pair(s). Seven values struck across three entries, so
     // graded 107 -> 100 and credited moved with it, 107 -> 100; inert and residual stayed 0.
     externalClasses: ['product-card'],
-  },
-  {
-    name: 'ProductManagementScreen',
-    tsx: 'products/ProductManagementScreen.tsx',
-    css: ['products/ProductManagementScreen.css'],
-    // Four variants exist, not an open family: the name is composed at
-    // features/products/ProductManagementScreen.tsx:448 as
-    // `product-mgmt-type--${p.productType}`, and productType is the closed union at
-    // src/types/domain.ts:106 -- retail | restaurant | both | service -- which is exactly
-    // the four rules in products/ProductManagementScreen.css:94 / :99 / :103 / :108. Each is
-    // named whole, so this entry now asserts which variants are real: a fifth rule in the
-    // sheet with no fifth union member reads dead instead of being excused by a catch-all.
-    dynamicClassPrefixes: [
-      'product-mgmt-type--retail',
-      'product-mgmt-type--restaurant',
-      'product-mgmt-type--both',
-      'product-mgmt-type--service',
-    ],
-    // Classes used by child StockAlertPanel component rendered inside drawer
-    externalClasses: ['stock-alert-panel'],
-    // R3: cites the shared pager block (.pager-nav/.pager-btn/.pager-info) this
-    // screen's page controls use. The cite is the mechanism this suite offers
-    // for a globally imported sheet — case 1 resolves against css UNION
-    // parentCss, and cases 2 and 3 still walk `css` alone, so the shared sheet
-    // is never graded for duplicate or dead rules through this entry.
-    parentCss: ['../theme/components.css'],
   },
   {
     name: 'BundleManagementScreen',
@@ -380,7 +355,7 @@ const SCREENS: ScreenEntry[] = [
     // Cited, not muted: the page's button row writes `btn btn--primary` and its three
     // siblings as STATIC className strings (:177-181), and all four modifiers are
     // defined in theme/components.css (:56 and its siblings) — a sheet both entry points
-    // import (main.tsx:7, main.mobile.tsx:20). This is the same legitimate parent cite
+    // import (main.tsx:7, main.mobile.tsx:4). This is the same legitimate parent cite
     // SettingsSelect and ProvisioningFlow carry.
     //
     // The sheet's own .sr-only was a different matter and was DELETED rather than
@@ -402,7 +377,7 @@ const SCREENS: ScreenEntry[] = [
     // Cited, not muted: the tablet email/code fields take their accessible
     // names from visually-hidden <label>s, so this screen names `.sr-only`,
     // which is defined in theme/components.css and imported by both entry
-    // points (main.tsx:7 desktop, main.mobile.tsx:20 tablet). Same treatment as
+    // points (main.tsx:7 desktop, main.mobile.tsx:4 tablet). Same treatment as
     // KdsScreen and SettingsSelect above — a real dependency on a global
     // utility sheet, not a class this feature's own sheet should have to own.
     parentCss: ['../theme/components.css'],
@@ -435,6 +410,20 @@ const SCREENS: ScreenEntry[] = [
     // R3: cites the shared pager block — see the ProductManagementScreen note.
     parentCss: ['../theme/components.css'],
   },
+  {
+    // Mounted by CustomerManagementScreen; the sheet is imported there too.
+    name: 'KasbonSettlementModal',
+    tsx: 'customers/KasbonSettlementModal.tsx',
+    css: ['customers/KasbonSettlementModal.css'],
+    // The status class is built inline at :315 from r.status, and each of the
+    // four variants owns a rule in the sheet (:160-:179).
+    dynamicClassPrefixes: [
+      'kasbon-status--open',
+      'kasbon-status--partial',
+      'kasbon-status--paid',
+      'kasbon-status--written_off',
+    ],
+  },
 
   // ── Inventory ─────────────────────────────────────────
   {
@@ -461,19 +450,24 @@ const SCREENS: ScreenEntry[] = [
     // '--shake' stays on its own merit: a classList toggle the walker cannot reach at all.
     dynamicClassPrefixes: ['staff-login-logo--small', 'staff-login-card--shake'],
     // Cited, not muted: .skeleton is defined in theme/components.css:1296,
-    // a sheet both entry points import (main.tsx:7, main.mobile.tsx:20). The mute
+    // a sheet both entry points import (main.tsx:7, main.mobile.tsx:4). The mute
     // claimed a runtime-composed name; the cite says what is true.
     parentCss: ['../theme/components.css'],
-    // These classes are defined in StaffLoginScreen.css but are used by the
-    // StatusBar component (imported and rendered inside StaffLoginScreen).
+    // These classes are defined in theme/components.css (already parentCss above) and used
+    // by the StatusBar component rendered inside StaffLoginScreen.
+    //
+    // Round 158: the four `connection-*` members left this list with
+    // components/ConnectionStatus.css. That component was replaced by StatusBar, which
+    // renders .statusbar-* pills instead, and StaffLoginScreen names none of the
+    // connection-* classes any more (grep: zero hits in that file) -- the entry had
+    // outlived its own justification. `status-indicator` stays because
+    // theme/components.css:500-502 and ShiftBar.css:41 still style it.
+    // `checking` left too: it was the `.status-indicator.checking` rule in the deleted
+    // ConnectionStatus.css, and nothing defines it now.
     externalClasses: [
-      'connection-status',
       'status-indicator',
-      'checking',
       'online',
       'offline',
-      'connection-label',
-      'connection-latency',
     ],
   },
   {
@@ -515,6 +509,15 @@ const SCREENS: ScreenEntry[] = [
     // A prefix is right for both rather than a whole name: each is composed or
     // toggled, and a whole-name entry is not a wildcard.
     dynamicClassPrefixes: ['session-lock-pin-dot--', 'session-lock-card--'],
+    // `sr-only` is the global visually-hidden utility that `theme/components.css`
+    // defines and both entry points import -- so it is cited as a parent sheet, not
+    // muted in knownDynamicFragments (which would claim it is composed at runtime)
+    // nor listed in externalClasses (case 1 does not read that field). Added
+    // 2026-10-27 (round 40): round 35 gave this screen its level-one heading as
+    // `<h1 className="sr-only">`, and this guard caught the class the next time it
+    // ran. The h1 is right -- a lock screen has no visual room for a title -- so
+    // what was missing was the declaration, not the heading.
+    parentCss: ['../theme/components.css'],
   },
 
   {
@@ -657,7 +660,7 @@ const SCREENS: ScreenEntry[] = [
     tsx: 'kds/KdsScreen.tsx',
     css: ['kds/KdsScreen.css', 'kds/KdsCompletedView.css', 'kds/components/ModifierBadge.css'],
     // Cited, not muted: .sr-only is defined in theme/components.css:1492
-    // and that sheet is imported by both entry points (main.tsx:7, main.mobile.tsx:20),
+    // and that sheet is imported by both entry points (main.tsx:7, main.mobile.tsx:4),
     // so the class is provided to this screen. Case 1 resolves it here; cases 2 and 3
     // never grade the theme sheet through this entry.
     parentCss: ['../theme/components.css'],
@@ -691,6 +694,10 @@ const SCREENS: ScreenEntry[] = [
       //      string literals in one array: `const statusClasses = ['kds-column--pending',
       //      'kds-column--preparing', 'kds-column--ready']` at features/kds/KdsLayoutMasonry.tsx:74,
       //      reaching className by INDEX — `kds-col kds-column ${statusClasses[ci] ?? ''}` at :79.
+      //      (2026-11-05: those three literals now sit in the `COLUMNS` table as its
+      //      `className` fields, still complete and still reached by index; only the
+      //      variable that holds them changed, and the fallback above is gone. The
+      //      dated reading is left as written.)
       //      Nothing composes a modifier from a runtime value, so the field's own contract
       //      ("modifiers constructed at runtime via template literals or returned from helper
       //      functions") is false here. Same category as the struck 'gift-card-status--' in the
@@ -708,7 +715,7 @@ const SCREENS: ScreenEntry[] = [
       // What it was excusing: nothing, in either direction. The dead-class census reads
       // PREFIX-RESCUED 18 names and not one of them is a kds-column--* name, because the
       // extractor cannot see a class arriving through an array index — blindness pinned on
-      // purpose at screenExtraction.utils.test.ts:267-268 — so the three names never entered
+      // purpose at screenExtraction.utils.test.ts:268-272 — so the three names never entered
       // `used` and never needed saving. Striking it therefore moves no finding. The counts that
       // box recorded — 270 passed, 2 pre-existing RestaurantMenu failures from another session's
       // uncommitted features/restaurant edits, outside this fence — are a DATED working-tree
@@ -835,8 +842,10 @@ const SCREENS: ScreenEntry[] = [
       // in the module, not a composed family.
       'kds/kdsDensity.ts',
     ],
-    // Three names that exist ONLY to be selected: string literals in the
-    // `statusClasses` array at features/kds/KdsLayoutMasonry.tsx:74, read back as
+    // Three names that exist ONLY to be selected: complete string literals in
+    // the `COLUMNS` table at features/kds/KdsLayoutMasonry.tsx (one `className`
+    // per column; the array was `statusClasses` until 2026-11-05, when the three
+    // parallel arrays collapsed into that one table), read back as
     // `.kds-column--pending` at e2e/e2e-kds-critical-path.spec.ts:75, --preparing at
     // :96 and --ready at :107, and asserted via toHaveClass at
     // KdsLayoutMasonry.test.tsx:116-118. No rule anywhere styles them — the only CSS
@@ -951,9 +960,11 @@ const SCREENS: ScreenEntry[] = [
       // outside SettingsPage.tsx.
       'settings/workspace-cards/StoreInfoCard.tsx',
       'settings/sections/GeneralSection.tsx',
-      'settings/sections/AppearanceSection.tsx',
+      // AppearanceSection.tsx and AboutSection.tsx left this list (round 157) with the
+      // components themselves: both were labelled DEAD in their module headers on
+      // 2026-09-15 (commit 13348f9aec) because the flat-IA rebuild removed their nav
+      // entries, and this list is about markup a LIVE screen renders.
       'settings/sections/SyncSection.tsx',
-      'settings/sections/AboutSection.tsx',
       // SettingsFooter.tsx carries the settings-footer-* markup (theme switch,
       // version, Ctrl+S hint, date/clock), moved out of SettingsPage.tsx by the
       // settings lane footer slice; unregistered, the guard reads those six
@@ -1110,17 +1121,6 @@ const SCREENS: ScreenEntry[] = [
     name: 'SettingsSelect',
     tsx: 'settings/SettingsSelect.tsx',
     css: ['settings/SettingsSelect.css'],
-    // Cited, not muted: this component's markup uses .sr-only, which is defined in
-    // theme/components.css:1492, a sheet both entry points import (main.tsx:7
-    // desktop, main.mobile.tsx:20 tablet). It is not composed at runtime, so a
-    // knownDynamicFragments entry here would assert something false and then hide the
-    // name from case 3 forever. No additionalTsx either: all nine ssel-* names have
-    // exactly one consumer, this component -- measured with the guard's own extractors,
-    // dead-against-own 0, dead-against-features/settings 0, dead tree-wide 0 -- and
-    // locations/TopologyScreen.tsx, the only other file that names the component at :28,
-    // renders <SettingsSelect> at :747 and :918 without using a single ssel-* class.
-    // A sibling that merely shares a surface is not what that field claims.
-    parentCss: ['../theme/components.css'],
   },
 
   {
@@ -1244,7 +1244,18 @@ const SCREENS: ScreenEntry[] = [
     name: 'TableManagementScreen',
     tsx: 'tables/TableManagementScreen.tsx',
     css: ['tables/TableManagementScreen.css'],
-    dynamicClassPrefixes: [ 'tables-table--circle', 'tables-table--rectangle', 'tables-table--available', 'tables-table--occupied', 'tables-table--cleaning', 'tables-table--reserved'],
+    dynamicClassPrefixes: [ 'tables-table--circle', 'tables-table--square', 'tables-table--rectangle', 'tables-table--booth', 'tables-table--available', 'tables-table--occupied', 'tables-table--cleaning', 'tables-table--reserved'],
+    // `btn` (added 2026-10-16). tables/TableManagementScreen.css:746 carries
+    // `.tables-detail-actions .btn` -- a DESCENDANT rule whose subject is `btn`, a class
+    // this screen's own TSX never spells out. The children of
+    // `<div className="tables-detail-actions">` (TableManagementScreen.tsx:1335) are
+    // <Button> elements, and Button.tsx:112-121 prepends `btn` to every className it
+    // renders, so the rule matches live elements and is NOT dead. The base rule lives at
+    // theme/components.css:9, outside this entry's own sheet, which is what the field
+    // requires. The reachability walk reads this screen's TSX and cannot see a class
+    // contributed by an imported component -- the limitation the resolver states and
+    // tests at screenExtraction.utils.test.ts:515.
+    externalClasses: ['btn'],
   },
 
   // ── Tax ───────────────────────────────────────────────
@@ -1404,7 +1415,7 @@ const SCREENS: ScreenEntry[] = [
     // btn--primary/--secondary` for its terminal chips (CardTenderPanel.tsx:104)
     // and the modal shell renders `btn` on its own actions. The whole family is
     // defined once in theme/components.css, which BOTH entry points import
-    // (main.tsx:7 desktop, main.mobile.tsx:20 tablet), so those four names are a
+    // (main.tsx:7 desktop, main.mobile.tsx:4 tablet), so those four names are a
     // real global dependency rather than a rule this feature's sheet owes — the
     // same cite, for the same reason, that eight other entries already carry
     // (:266 PosScreen, :316 KdsScreen, :337 CustomerManagementScreen and
@@ -1442,6 +1453,14 @@ const SCREENS: ScreenEntry[] = [
       // todo-refactor-kds-agents-merged.md:115 firing on a live extraction,
       // measured here as 1 failed | 211 passed before the line was added.
       'sales/components/PaymentModalCustomerBadge.tsx',
+      // payment-pay-later-* left PaymentModal.tsx for its own panel component
+      // afterwards, the same shape as the line above and the same guard clause
+      // (todo-refactor-kds-agents-merged.md:115): the markup moved, so the
+      // extraction list must name the receiving file in the same change-set.
+      // PayLaterTenderPanel.tsx imports no sheet of its own — PaymentModal.tsx
+      // imports ../PaymentModal.css once for the whole surface — so without this
+      // line the guard calls all 19 payment-pay-later-* rules dead.
+      'sales/payment/PayLaterTenderPanel.tsx',
     ],
   },
   // PaymentModal WAS deliberately NOT registered, and this note is what
@@ -1559,6 +1578,12 @@ const SCREENS: ScreenEntry[] = [
     // `card`/`card-body` belong to the global Card component stylesheet;
     // `dashboard-kpi-delta--` modifiers are built via template literal.
     externalClasses: ['card', 'card-body'],
+    // dashboard-debt-* markup left DashboardScreen.tsx for DebtRemindersCard.tsx,
+    // which DashboardScreen.tsx:632 mounts. The card imports no sheet of its own —
+    // it renders inside DashboardScreen.css's surface — so without this line the
+    // guard calls all 14 dashboard-debt-* rules dead. Same shape as PaymentModal's
+    // payment-customer-* and payment-pay-later-* entries above.
+    additionalTsx: ['reports/DebtRemindersCard.tsx'],
     dynamicClassPrefixes: [ 'dashboard-kpi-delta--down'], // dashboard-kpi-delta--up struck 2026-09-15 · DSH · 0 rules (DashboardScreen.css defines only --down at :212) and 0 composition sites; the three sites at DashboardScreen.tsx:494/:509/:516 append --down only, so an up-delta renders unstyled rather than excused. Graded by the prefix arm at the foot of this file.
   },
   {
@@ -1577,7 +1602,7 @@ const SCREENS: ScreenEntry[] = [
     name: 'GiftCardsScreen',
     tsx: 'gift-cards/GiftCardsScreen.tsx',
     css: ['gift-cards/GiftCardsScreen.css'],
-    dynamicClassPrefixes: [ 'gift-card-txn-type--issue', 'gift-card-txn-type--topup', 'gift-card-txn-type--redeem', 'gift-card-txn-type--refund' ], // 2026-09-15 · DSH: struck the stem 'gift-card-status--' -- it credited 0 pairs and excused 0 dead names, because all four variants are written COMPLETE in the id map at features/gift-cards/GiftCardsScreen.tsx:24-27 and each owns a rule (:126/:131/:136/:142). A mute that waives nothing is not a claim, and it would have waived a fifth status silently.
+    dynamicClassPrefixes: [ 'gift-card-txn-type--issue', 'gift-card-txn-type--topup', 'gift-card-txn-type--redeem', 'gift-card-txn-type--refund' ], // 2026-09-15 · DSH: struck the stem 'gift-card-status--' -- it credited 0 pairs and excused 0 dead names, because all four variants are written COMPLETE in the id map at features/gift-cards/GiftCardsScreen.tsx:336-27 and each owns a rule (:126/:131/:136/:142). A mute that waives nothing is not a claim, and it would have waived a fifth status silently.
     // The 11 gift-cards-modal-* values lived in externalClasses as another
     // component's work, and the file that does that work is real markup in this
     // feature: IssueGiftCardModal.tsx, which named none of the 11 in the screen file
@@ -1701,12 +1726,54 @@ const SCREENS: ScreenEntry[] = [
     name: 'PurchaseOrdersScreen',
     tsx: 'purchasing/PurchaseOrdersScreen.tsx',
     css: ['purchasing/PurchaseOrdersScreen.css'],
+    // This screen mounts ReceivePoModal, whose markup and rules are that
+    // component's own work (ReceivePoModal.css, registered as its own entry
+    // below) — a cross-component reference, not a rule this sheet owes.
+    externalClasses: [
+      'receive-po-backdrop', 'receive-po-modal', 'receive-po-header',
+      'receive-po-title', 'receive-po-close-btn', 'receive-po-body',
+      'receive-po-summary', 'receive-po-summary-row', 'receive-po-summary-label',
+      'receive-po-summary-value', 'receive-po-summary-value--amount',
+      'receive-po-terms-group', 'receive-po-terms-label',
+      'receive-po-terms-options', 'receive-po-term-card',
+      'receive-po-term-card--selected', 'receive-po-term-title',
+      'receive-po-term-desc', 'receive-po-on-account-fields',
+      'receive-po-field', 'receive-po-field-label', 'receive-po-input',
+      'receive-po-error', 'receive-po-footer',
+    ],
     dynamicClassPrefixes: [ 'po-status--draft', 'po-status--pending', 'po-status--approved', 'po-status--received', 'po-status--cancelled'],
   },
   {
     name: 'PurchaseOrderForm',
     tsx: 'purchasing/PurchaseOrderForm.tsx',
     css: ['purchasing/PurchaseOrderForm.css'],
+  },
+  // The three entries below close the "uncited sheet" arm rather than joining
+  // BASELINE_UNCITED, which is shrink-only and must not take a new sheet. Each
+  // sheet was already live and imported by a reachable component; what they
+  // lacked was an entry naming them, so no check in this file ever read them.
+  {
+    name: 'ReceivePoModal',
+    tsx: 'purchasing/ReceivePoModal.tsx',
+    css: ['purchasing/ReceivePoModal.css'],
+  },
+  {
+    name: 'VendorBillsScreen',
+    tsx: 'purchasing/VendorBillsScreen.tsx',
+    css: ['purchasing/VendorBillsScreen.css'],
+    // The pay/write-off dialogs reuse the ReceivePoModal input surface. The
+    // used-but-not-defined case resolves against own css UNION parentCss (it
+    // does not read externalClasses), so the sheet is cited as a parent — the
+    // same device the shared-pager and components.css cites use.
+    parentCss: ['purchasing/ReceivePoModal.css'],
+    // The status modifier is built inline at :297 from p.status; the four
+    // variants each own a rule in the sheet (:143-:162).
+    dynamicClassPrefixes: [
+      'vendor-bill-status-badge--open',
+      'vendor-bill-status-badge--partial',
+      'vendor-bill-status-badge--paid',
+      'vendor-bill-status-badge--written_off',
+    ],
   },
 
   // ── Restaurant ─────────────────────────────────────────
@@ -1950,10 +2017,17 @@ const SCREENS: ScreenEntry[] = [
       'restaurant/components/MenuPreferencesMenu.tsx',
       'restaurant/components/RestaurantSidebar.tsx',
       'restaurant/components/MenuSearchBar.tsx',
+      // The shortcut-help panel (round 93). The sidebar OWNS the sheet's rules for it
+      // and renders only the wrapper `restaurant-shortcuts-help`; the six inner
+      // names are spelled in this child, which is where they actually live. Without
+      // this cite the walk grades them dead — the classes are reachable, the walker
+      // simply never opens the file that spells them. Cited rather than prefix-excused
+      // so a genuinely unused one still reads dead.
+      'restaurant/components/RestaurantShortcutsHelp.tsx',
     ],
     // Cited, not muted: the sr-only span the menu card's "Add" label moved into
     // is styled by theme/components.css:1492, which both entry points
-    // import (main.tsx:7, main.mobile.tsx:20) — so the name is global, not
+    // import (main.tsx:7, main.mobile.tsx:4) — so the name is global, not
     // runtime-composed, and the cite is checkable by the coverage block.
     parentCss: ['../theme/components.css'],
   },
@@ -1974,15 +2048,16 @@ const SCREENS: ScreenEntry[] = [
     // tooltip-content was worse than that: it matched nothing here, nothing in the
     // parent, and nothing in the markup, a grant for a name no sheet defines.
     css: ['settings/AppearanceSettings.css'],
-    parentCss: ['settings/SettingsPage.css'],
-    knownDynamicFragments: [
-      // Card component classes (defined in theme/components.css)
-      // that are used inline in AppearanceSettings.tsx but not present
-      // in the screen's own CSS files.
-      'card--padding-md',
-      'card--shadow-sm',
-      'card-header',
-    ],
+    // theme/components.css joined this list on 2026-10-27 (round 41) for the three
+    // card classes below. They were in knownDynamicFragments, which asserts a name
+    // is COMPOSED AT RUNTIME by a template literal -- false for all three: the
+    // markup at AppearanceSettings.tsx:489, :500 and :511 spells them out literally
+    // ("card card--padding-md card--shadow-sm"), and components.css defines them at
+    // :1030, :1034 and :1038. The file's own field doc calls knownDynamicFragments
+    // "taken on the author's word", and a muted name is never reported dead by case
+    // 3 either, so the wrong field was hiding two checks rather than one. parentCss
+    // states what is true and is checkable.
+    parentCss: ['settings/SettingsPage.css', '../theme/components.css'],
     externalClasses: [
       'card',
       'collapsed',
@@ -2540,14 +2615,6 @@ const SCREENS: ScreenEntry[] = [
     name: 'LocationPicker',
     tsx: 'inventory/LocationPicker.tsx',
     css: ['inventory/LocationPicker.css'],
-  },
-  {
-    // 213-line panel over a 251-line sheet, own import at :9. Mounted by
-    // products/ProductManagementScreen.tsx:30 (JSX :766); zero outside consumers,
-    // so the entry is own-sheet only.
-    name: 'StockAlertPanel',
-    tsx: 'inventory/StockAlertPanel.tsx',
-    css: ['inventory/StockAlertPanel.css'],
   },
   {
     // 491-line modal over its own 334-line sheet (import at :12), mounted by
@@ -3231,6 +3298,18 @@ const EXTERNAL_CLASS_OPEN_QUESTIONS: { entry: string; value: string; question: s
 ];
 
 const EXTERNAL_CLASS_LEDGER: { entry: string; value: string; reason: string }[] = [
+  // REMOVED 2026-10-19: `RestaurantMenu: restaurant-card`. It was a correct mute
+  // for a real walk limitation -- MenuItemTile.tsx:211 composes the base in a local
+  // (`let cardClass = 'restaurant-card'`), so the extractor never sees the literal.
+  // It is gone because noise-ditherCompliance now requires `.restaurant-card::after`
+  // in ui/src/theme/components.css (the card carries --shadow-md at
+  // RestaurantMenu.css:898), and definedElsewhere() below indexes every sheet EXCEPT
+  // this entry's own -- so that shared entry makes the value resolve elsewhere and
+  // the violation this mute was paired with no longer fires. Keeping the member
+  // would mean keeping a mute for a finding that cannot occur; the assertion's own
+  // rule is that a healed value cannot stay. The dither requirement is the stronger
+  // of the two (a real paint defect vs. a walk limitation), so it won. If the
+  // overlay ever leaves components.css, this mute must come BACK.
   {
     entry: 'SettingsPage',
     value: 'settings-topology-container',
@@ -3240,11 +3319,6 @@ const EXTERNAL_CLASS_LEDGER: { entry: string; value: string; reason: string }[] 
     entry: 'WorkspaceHome',
     value: 'workspace-card-ripple',
     reason: 'non-JSX: assigned imperatively at features/workspaces/WorkspaceHome.tsx:488, so it never enters the used set; removing its mute printed Dead classes and the value was restored',
-  },
-  {
-    entry: 'RestaurantMenu',
-    value: 'restaurant-card',
-    reason: 'non-JSX: the base is assigned to a local at features/restaurant/components/MenuItemTile.tsx:189 (let cardClass of the literal) and only the composed value reaches className, so the extractor never sees the base; its entry already carries a restaurant-card-- prefix which cannot cover the base either',
   },
   {
     entry: 'KdsScreen',
@@ -3263,11 +3337,12 @@ const EXTERNAL_CLASS_LEDGER: { entry: string; value: string; reason: string }[] 
 //     taking the list 23 -> 18. This is the majority case.
 //
 // (b) ONLY BY DELETION, or by deciding a never-rendered component should mount.
-//     Five sheets BELOW have no mount at all: their component is referenced by
-//     nothing but its own file and its own test, and every other "reference" in the
-//     tree is prose inside a CSS comment. They are inventory/ShiftBar.css,
-//     inventory/ThresholdConfigScreen.css, inventory/TransactionLogScreen.css,
-//     inventory/TransitAuditScreen.css and (elsewhere) WeightScaleWidget.
+//     Four sheets BELOW have no mount at all (it was five until round 192 deleted
+//     inventory/TransitAuditScreen.css along with its screen): their component is
+//     referenced by nothing but its own file and its own test, and every other
+//     "reference" in the tree is prose inside a CSS comment. They are
+//     inventory/ShiftBar.css, inventory/ThresholdConfigScreen.css,
+//     inventory/TransactionLogScreen.css and (elsewhere) WeightScaleWidget.
 //     Registering one of these would buy a green over markup no user can reach.
 //
 // This split is not new here — it is recorded in
@@ -3309,7 +3384,6 @@ const BASELINE_UNCITED: string[] = [
   'inventory/ShiftBar.css',
   'inventory/ThresholdConfigScreen.css',
   'inventory/TransactionLogScreen.css',
-  'inventory/TransitAuditScreen.css',
   'marketplace/AddonsMarketplace.css',
   'sales/widgets/widgets.css',
   'settings/WorkspaceSettingsModal.module.css',

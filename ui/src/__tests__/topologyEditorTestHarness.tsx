@@ -35,7 +35,32 @@ export const TOPOLOGY_EN: Record<string, string> = {
   'topology-new-hardware': 'New Hardware',
   'topology-new-hardware-subtitle': 'Peripheral',
   'topology-new-ready': 'Ready',
+  // Three keys the canvas renders that this map never carried. The other four
+  // reported by the imported-map check were already present in the tail; a
+  // comment block used to split this object, so they LOOKED missing from the head.
+  // The two HUD counters are flat because the stub substitutes {count} and does
+  // not evaluate select expressions.
+  'topology-hud-nodes': '{count} nodes',
+  'topology-hud-wires': '{count} wires',
+  'topology-wire-label-connected': 'Connected',
+  // The hover tooltip topologyWireGroup.tsx builds as `label — hint`; without an
+  // entry the stub rendered the component's own id, so every tooltip read
+  // "… — topology-wire-toggle-hint" and the tooltip tests pinned that.
+  'topology-wire-toggle-hint': 'Click to cycle direction (one-way → reverse → two-way)',
+  // The node card's rename affordance: the pencil button's aria-label/title, and
+  // the inline input's aria-label. topologyNodeCard.tsx resolves both through
+  // topologyUiString, which returns its own TOPOLOGY_UI_FALLBACKS entry (or the id)
+  // when the bundle has no copy — so the tests were addressing the id, not copy.
+  'topology-branch-rename-label': 'Rename branch',
+  'topology-branch-rename-placeholder': 'Branch name',
+  'topology-workspace-rename-label': 'Rename workspace',
+  'topology-workspace-rename-placeholder': 'Workspace name',
   'topology-workspace-types-title': 'Workspace Types',
+  // Copy the canvas renders through l10n.getString that this map never carried.
+  // No case in the suites that use this harness asserts them, so they were silent:
+  // the canvas aria-label and the HUD counters rendered as raw ids.
+  // The two plural messages are written FLAT because this stub substitutes
+  // {count} and does not evaluate select expressions.
   'topology-other-nodes-title': 'Other Nodes',
   'topology-tool-restaurant-pos': '+ Restaurant POS',
   'topology-tool-restaurant-pos-desc': 'Restaurant checkout workspace',
@@ -45,6 +70,13 @@ export const TOPOLOGY_EN: Record<string, string> = {
   'topology-tool-kds-desc': 'Kitchen display workspace',
   'topology-tool-warehouse-workspace': '+ Warehouse',
   'topology-tool-warehouse-workspace-desc': 'Inventory storage workspace',
+  // The lock badge on the warehouse card. It was a literal 'Premium' until
+  // 8cffb0935 moved it into FTL as topology-tool-locked-premium; this map is a
+  // hand-maintained mirror of the bundle, so the move left the key unresolved and
+  // l10n.getString returned the raw id. The tier-lock test then failed with
+  // 'topology-tool-locked-premium' where it expected 'Premium' -- a missing map
+  // entry, not a broken gate.
+  'topology-tool-locked-premium': 'Premium',
   'topology-toast-multi-warehouse': 'Warehouse nodes require a Premium Tier license.',
   'topology-warehouse-excess-badge': '{count} Warehouses — 1 allowed',
   'topology-branch-excess-badge': '{count} Branch Locations — 1 allowed',
@@ -120,8 +152,14 @@ export const TOPOLOGY_EN: Record<string, string> = {
   'topology-validation-unknown-wire-endpoint': 'This wire references a node that is not in the graph.',
   'topology-validation-invalid-semantic-connection': 'This wire uses an incompatible port and relationship type.',
   'topology-validation-ambiguous-legacy-wire': 'This older wire cannot be identified safely. Delete and reconnect it using the labeled ports.',
-  // NOTE: topology-wire-label-* keys are deliberately ABSENT so the
-  // existing label tests pin the raw-key fallback behavior.
+  // NOTE: most topology-wire-label-* keys are deliberately ABSENT so the
+  // existing label tests pin the raw-key fallback behavior. TWO are not:
+  // -fallback and -stock-deduct are both in this map (they always were -- this
+  // note said 'topology-wire-label-*' without the exception, which read as a
+  // claim about keys that were present). What 2026-11-05 actually fixed in them
+  // was interpolation: their values carried a bare `$priority` placeable, which
+  // this stub does not substitute, so the rendered label showed the raw
+  // placeholder while the map looked complete.
   'topology-migration-title': 'Migrate legacy connections',
   'topology-migration-description': 'These older connections cannot be identified safely. Choose what each one means so the diagram can be applied. Connections with no compatible meaning must be deleted and recreated with the labeled ports.',
   'topology-migration-select-aria': 'Connection from {from} to {to}',
@@ -196,6 +234,95 @@ export const TOPOLOGY_EN: Record<string, string> = {
   'topology-toast-template-deleted': 'Template deleted',
   'topology-apply-workspace-diff': '{ $created } created · { $updated } updated · { $archived } archived · { $typeChanged } type-changed · rev { $from } → { $to }',
   'topology-apply-blocked': 'Apply blocked — { $count } issue(s) to fix in the panel',
+  // Copy the components NodeTopologyEditor renders reach through its nested imports.
+  // Most values are copied from shared-ui/locales/*.ftl with select branches flattened;
+  // a FEW were written to the shape this stub can substitute (it replaces {name} and
+  // { $name }, not select expressions), so they read differently from the bundle. The
+  // four topology-rack-*-title entries above are deliberately IDENTITY-valued:
+  // openRackPanel() queries them as aria-labels, so real copy there would break the
+  // suite. They are addresses, not copy.
+  // The sections header the editor renders (multi-location.ftl:41); the map
+  // carried every neighbour of this key but not the key itself.
+  'topology-editor-sections': 'Editor sections',
+  'topology-apply-changes': 'Apply Topology',
+  'topology-apply-confirm-apply': 'Apply',
+  'topology-apply-confirm-archived': 'Archived',
+  'topology-apply-confirm-cancel': 'Cancel',
+  'topology-apply-confirm-created': 'Created',
+  'topology-apply-confirm-no-changes': 'No workspace changes detected.',
+  'topology-apply-confirm-note-count': '{count} / {max}',
+  'topology-apply-confirm-note-label': 'What changed?',
+  'topology-apply-confirm-note-optional': 'optional',
+  'topology-apply-confirm-note-placeholder': 'e.g. Opened the Pos Kota counter; moved Gudang to back-room routing',
+  'topology-apply-confirm-pin-error': 'Incorrect PIN. Please try again.',
+  'topology-apply-confirm-pin-label': 'Enter your PIN to confirm',
+  'topology-apply-confirm-pin-placeholder': 'PIN',
+  'topology-apply-confirm-pin-remember': 'Remember PIN for this session',
+  'topology-apply-confirm-scope-mismatch': 'Session store differs from Branch Location store. Workspace CRUD will target the Branch Location\'s store.',
+  'topology-apply-confirm-scope-session': 'Session store',
+  'topology-apply-confirm-scope-target': 'Target store',
+  'topology-apply-confirm-title': 'Confirm Topology Changes',
+  'topology-apply-confirm-type-changed': 'Type Changed',
+  'topology-apply-confirm-updated': 'Updated',
+  'topology-apply-confirm-verifying': 'Verifying…',
+  'topology-apply-permission-tooltip': 'Applying topology changes requires the topology:write permission.',
+  'topology-apply-status-saving': 'Saving topology changes…',
+  'topology-builder-title': 'Visual Store & Workspace Topology Builder',
+  'topology-delete-selected': 'Delete Selected Element',
+  'topology-export-desc': 'Download as JSON',
+  'topology-fit-all': 'Fit All',
+  'topology-import-desc': 'Load from JSON file',
+  'topology-inspector-anchor-label': 'Anchor',
+  'topology-inspector-close-aria': 'Close properties panel',
+  'topology-inspector-delete': 'Delete',
+  'topology-inspector-device-address': 'Connection Address',
+  'topology-inspector-device-address-placeholder': 'IP or hostname',
+  'topology-inspector-device-type': 'Device Type',
+  'topology-inspector-duplicate': 'Duplicate',
+  'topology-inspector-hardware-title': 'Hardware Device',
+  'topology-inspector-node-name': 'Name',
+  'topology-inspector-section-actions': 'Actions',
+  'topology-inspector-section-identity': 'Identity',
+  'topology-inspector-section-warehouse': 'Warehouse',
+  'topology-inspector-subtitle': 'Subtitle / Location',
+  'topology-minimap-aria': 'Canvas minimap — click or drag to move the view',
+  'topology-pan-tool-toggle': 'Pan tool',
+  'topology-purpose-checkout': 'Checkout',
+  'topology-purpose-dining-room': 'Dining room',
+  'topology-purpose-general': 'General',
+  'topology-purpose-kitchen-hot-line': 'Kitchen hot line',
+  'topology-purpose-receiving': 'Receiving',
+  'topology-purpose-returns': 'Returns',
+  'topology-purpose-stock-control': 'Stock control',
+  'topology-rack-delete-empty': 'Select a node or wire to delete',
+  'topology-readonly-note': 'View-only — saving topology changes requires the topology:write permission.',
+  'topology-redo': 'Redo (Ctrl+Y)',
+  'topology-reset-view': 'Reset View',
+  'topology-snap-toggle': 'Snap to grid',
+  'topology-tier-capacity-notice': 'Warehouse capacity numbers are saved but not enforced on your current plan — upgrade to Premium to use capacity limits.',
+  'topology-tier-suffix': '{tier} TIER',
+  'topology-toast-revision-conflict': 'The topology changed elsewhere — loaded the latest version. Re-apply your changes.',
+  'topology-toast-save-error': 'Failed to save topology',
+  'topology-tool-hardware': '+ Hardware Node',
+  'topology-tool-hardware-desc': 'Printer / KDS Peripheral',
+  'topology-tool-store': '+ Store Node',
+  'topology-tool-store-desc': 'Store Branch Profile',
+  'topology-undo': 'Undo (Ctrl+Z)',
+  'topology-validation-add-stock-wire': 'Add stock wire',
+  'topology-validation-dismiss': 'Dismiss',
+  'topology-validation-panel-aria': 'Diagram issues',
+  'topology-web-managed-notice': 'Managed via Web Dashboard (Read-Only)',
+  'topology-wire-label-fallback': 'Fallback (P{priority})',
+  'topology-wire-label-stock-deduct': 'Stock Deduct (P{priority})',
+  'topology-wire-routing-toggle': 'Elbow wires',
+  'topology-workspace-peer-group-label': 'Peer group',
+  'topology-workspace-peer-group-placeholder': 'e.g. Front Counter',
+  'topology-workspace-purpose-label': 'Purpose',
+  'topology-workspace-purpose-selector-aria': 'Select workspace purpose',
+  'topology-workspace-purpose-selector-label': 'Workspace purpose',
+  'topology-workspace-technical-type-label': 'Technical type',
+  'topology-ws-type-select-aria': 'Select workspace type',
+  'workspace-type-selector-label': 'Workspace Type',
 };
 
 

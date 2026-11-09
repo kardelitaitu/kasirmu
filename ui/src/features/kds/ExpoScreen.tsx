@@ -95,7 +95,7 @@ export interface ExpoStationColumn {
 export function groupByStation(orders: KdsOrder[]): ExpoStationColumn[] {
   const map = new Map<string | null, KdsOrder[]>();
   for (const order of orders) {
-    const zone = order.kitchen_zone;
+    const zone = order.kitchen_zone && order.kitchen_zone.trim() ? order.kitchen_zone.trim() : null;
     if (!map.has(zone)) map.set(zone, []);
     map.get(zone)!.push(order);
   }
@@ -161,7 +161,7 @@ export default function ExpoScreen() {
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   // Guarded against a store switch, and this one has a CONSEQUENCE the other pollers do
-  // not: `orders` supplies the RECALL candidates (:232) and restoreOrder passes one to
+  // not: `orders` supplies the RECALL candidates (:328) and restoreOrder passes one to
   // updateKdsStatusScoped with the CURRENT token, so a stale list offers a foreign order
   // for restoration. It is the id-discriminator hazard reached through the poll.
   //
@@ -311,8 +311,14 @@ export default function ExpoScreen() {
       if (nextStatus === 'ready') {
         speak(`${requiredLocalized(l10n, 'kds-order-up-tts')} ${item.display_name} ${requiredLocalized(l10n, 'kds-ready-tts')}!`);
       }
-    } catch {
-      // Silent — the next poll refresh replaces the board anyway.
+    } catch (e) {
+      // The ticket-level tap directly above reports through `setActionError` (:302); this
+      // item-level path swallowed the failure with "the next poll refresh replaces the
+      // board anyway". A poll replaces the DISPLAY, not the WRITE — the cook tapped
+      // "this dish is done", the dot did not move, and nothing said why. Same defect and
+      // same fix as KdsScreen.advanceItemStatus.
+      console.error('ExpoScreen advance item failed', e);
+      setActionError(l10nErrorMessage(e, l10n, 'kds-error-update-failed'));
     }
   }, [sessionToken, speak, l10n]);
 
@@ -349,7 +355,7 @@ export default function ExpoScreen() {
 
   const bannerError = loadError ?? actionError;
   const stationName = (zone: string | null): string =>
-    zone ?? requiredLocalized(l10n, 'kds-expo-no-station');
+    (zone && zone.trim()) ? zone.trim() : requiredLocalized(l10n, 'kds-expo-no-station');
 
   const renderContent = () => {
     if (initialLoading) {

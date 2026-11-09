@@ -106,7 +106,7 @@ vi.mock('@fluent/react', () => ({
           'setup-provision-gate-username': 'Login name',
           'setup-provision-gate-pin': 'A PIN of at least 4 digits',
           'setup-provision-gate-pin-match': 'Both PINs the same',
-          'setup-provision-locale-note': 'Set up in { $currency } ({ $timezone }). You can change this later in Settings.',
+          'setup-provision-locale-note': 'Set up in {currency} ({timezone}). You can change this later in Settings.',
           'setup-provision-offline-switch-local': 'Set up without an account instead',
           'setup-account-pair-requirement': ' QR pairing needs a second phone signed in to your account.',
           'auth-pair-waiting': 'Waiting for you to claim on your phone…',
@@ -114,6 +114,33 @@ vi.mock('@fluent/react', () => ({
           'auth-activating': 'Loading...',
           'auth-pair-expired': 'Pairing code expired.',
           'auth-pair-refresh': 'Refresh Code',
+          'auth-pair-scan-qr': 'Scan this QR code with your phone or visit { $url }',
+          'auth-setup-google-desc': 'Sign in, or create an account automatically if you are new.',
+          'auth-setup-google-failed': 'Could not sign in with Google. Please try again.',
+          // Linked-account panel (email code / Google sign-in / tablet pairing).
+          'setup-account-google': 'Continue with Google',
+          'setup-account-linked': 'Linked to { $email }.',
+          'setup-account-send': 'Email me a code',
+          'setup-account-sending': 'Sending the code…',
+          'setup-account-verify': 'Verify',
+          'setup-account-verifying': 'Checking the code…',
+          'setup-account-waiting': 'Waiting for your browser…',
+          'setup-account-tablet': 'Use the code sent to your account email to link this device.',
+          'setup-provision-account-hint':
+            'Connect your device to your free account to enable automatic sync and license protection.',
+          // Provisioning steps (ADR #56 §2.3 split into three gated steps).
+          'setup-provision-step-progress': 'Step {current} of {total}',
+          'setup-provision-step-back': 'Back',
+          'setup-provision-step-next': 'Next',
+          'setup-provision-location-label': 'Shop name',
+          'setup-provision-store-type': 'What kind of shop is this?',
+          'setup-provision-owner-name-label': 'Your name',
+          'setup-provision-owner-username-label': 'Login name',
+          'setup-provision-pin-label': 'PIN (at least 4 digits)',
+          'setup-provision-pin-confirm-label': 'Confirm PIN',
+          'setup-provision-tax-preset': 'Tax Preset',
+          'setup-provision-seed-catalog': 'Seed 5 sample products to get started',
+          'setup-provision-submit': 'Finish setup',
         };
         return map[id] || id;
       },
@@ -319,6 +346,54 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     }, FAST_WAIT);
   });
 
+
+  // ── A double submit must not provision twice ───────────────────────
+  //
+  // `handleSubmit` (:564) sets `busy` (:575) but has no `busy` re-entry check, and it is the
+  // form's `onSubmit` (:644). The submit button IS guarded — `disabled={!canSubmit || busy}`
+  // (:1331) — but pressing Enter in a field submits the form natively and never consults
+  // the button.
+  //
+  // The most consequential of the double-submit family: `provisionDevice` CREATES the
+  // device, the location and the OWNER ACCOUNT in one call (:592-608), and this is the
+  // one-shot first-run operation.
+  it('does not call provisionDevice twice when the form is submitted twice', async () => {
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((res) => { release = res; });
+    vi.mocked(provisionDevice).mockReset();
+    vi.mocked(provisionDevice).mockImplementation((() => gate.then(() => ({
+      terminal_id: 'test-terminal-01',
+      location_id: 'loc-1',
+      owner_user_id: 'u-1',
+      preset: 'simple_retail',
+      features: [],
+      mode: 'local',
+      tenant_id: null,
+      device_credential_id: null,
+      tax_preset: 'id_default',
+      seed_sample_products: true,
+    }))) as never);
+
+    render(<ProvisioningFlow onProvisioned={vi.fn()} />);
+    // Step 1: offline mode (nothing to link), then walk the rest.
+    fireEvent.click(screen.getByTestId('provision-mode-local'));
+    fillBasicForm();
+
+    // Two submits with NO await between them — the form's own submit path, which is what
+    // pressing Enter twice in a text field produces.
+    const form = document.querySelector('form') as HTMLFormElement;
+    expect(form, 'the provisioning submit form was not found').not.toBeNull();
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(provisionDevice).toHaveBeenCalled());
+    expect(
+      vi.mocked(provisionDevice).mock.calls.length,
+      'a double submit provisioned the device twice',
+    ).toBe(1);
+
+    release?.();
+  });
   // ── P4: a linked account the server issued no terminal for ─────────
   //
   // The fixture above resolves `linkDeviceGoogle` with NO `terminal`, and that
@@ -1487,6 +1562,45 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     expect(screen.getByTestId('provisioning-footer')).toHaveTextContent(
       /^v\d+\.\d+\.\d+( · [0-9a-f]{7}(\+dirty)?)? • kasir\.mu © 2026 All rights reserved\.$/,
     );
+  });
+
+  // The PAIRING twin of the test below. Provisioning had this guard; the pairing
+  // branch did not, and that asymmetry is what shipped the 2026-10-15 defect: a
+  // paired device set `linkedAccount` and toasted success while its capability
+  // state stayed at whatever it was before the link -- the fail-closed
+  // `unavailable` default, because pairing writes no `tenant_subscription` row.
+  // The operator then saw 'This terminal has no active licence' on home, a raw
+  // `invalid subscription signature` on restaurant-pos, and 'Could not start the
+  // session for this workspace' when the blocked login left the picker ticket
+  // unusable -- three symptoms, one cause. Pinned here so the pairing branch
+  // cannot silently lose the refresh again.
+  it('refreshes subscription capabilities when a device pairing is claimed', async () => {
+    vi.useFakeTimers();
+    mockRefreshSubscription.mockClear();
+    vi.mocked(isTabletShell).mockReturnValue(true);
+    vi.mocked(startDevicePairing).mockResolvedValueOnce({
+      code: 'WXYZ9876',
+      poll_token: 'poll-token-refresh',
+      expires_at: new Date(Date.now() + 60000).toISOString(),
+      qr_url: 'https://kasir.mu/pair?code=WXYZ9876',
+    });
+    vi.mocked(pollDevicePairing)
+      .mockResolvedValueOnce({ status: 'pending' })
+      .mockResolvedValueOnce({
+        status: 'claimed',
+        tenant_id: 'tenant-refresh-1',
+        email: 'paired@example.com',
+        terminal: { terminalId: 'term-refresh-1', issued: true },
+      });
+
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    fireEvent.click(screen.getByTestId('provision-mode-linked'));
+    await vi.runOnlyPendingTimersAsync();
+    // The claim arrives on the second 3s poll.
+    await vi.advanceTimersByTimeAsync(3000);
+
+    expect(mockRefreshSubscription).toHaveBeenCalled();
+    vi.useRealTimers();
   });
 
   it('refreshes subscription capabilities when provisioning finishes successfully', async () => {

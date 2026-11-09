@@ -70,6 +70,7 @@ LIMITATIONS
 """
 
 import argparse
+import pathlib
 import re
 import sys
 from pathlib import Path
@@ -136,24 +137,30 @@ def process_file(path: Path, *, write: bool) -> tuple[int, int]:
     return len(lines), len(out)
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r204: argv and root parameterized, the r166..r203 contract -- the
+    locales directory is resolved under the contract root, so a fixture
+    tree is graded instead of this checkout's shared-ui."""
     parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Report what would be removed without writing any files.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    if not LOCALE_DIR.is_dir():
-        print(f"error: locales dir not found: {LOCALE_DIR}", file=sys.stderr)
+    base = pathlib.Path(__file__).resolve().parent.parent if root is None else pathlib.Path(root).resolve()
+    locale_dir = base / "shared-ui" / "locales"
+
+    if not locale_dir.is_dir():
+        print(f"error: locales dir not found: {locale_dir}", file=sys.stderr)
         return 1
 
     files = sorted(
-        list(LOCALE_DIR.glob("*.ftl")) + list(LOCALE_DIR.glob("*.id.ftl"))
+        list(locale_dir.glob("*.ftl")) + list(locale_dir.glob("*.id.ftl"))
     )
     if not files:
-        print(f"error: no .ftl files under {LOCALE_DIR}", file=sys.stderr)
+        print(f"error: no .ftl files under {locale_dir}", file=sys.stderr)
         return 1
 
     write = not args.dry_run
@@ -181,5 +188,83 @@ def main() -> int:
     return 1 if args.dry_run else 0
 
 
+def self_test() -> int:
+    """r204: the shell -- main() graded through argv and a contract root, the
+    r166..r203 pattern. The fixture is a throwaway shared-ui/locales tree;
+    a root-dropping main reads THIS checkout's locales and finds no
+    duplicates, which the first rung refuses."""
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+    shell = 0
+    DUP = ("alpha = First\n"
+           "    cont line\n"
+           "beta = Second\n"
+           "alpha = Dup\n"
+           "    dup cont\n")
+    def run(tdp, *argv):
+        out, err = _io.StringIO(), _io.StringIO()
+        try:
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                rc = main(argv=list(argv), root=tdp)
+        except SystemExit as se:
+            return se.code, out.getvalue() + err.getvalue()
+        return rc, out.getvalue() + err.getvalue()
+    def tree(content):
+        tdp = Path(_tempfile.mkdtemp())
+        loc = tdp / "shared-ui" / "locales"
+        loc.mkdir(parents=True)
+        (loc / "main.ftl").write_text(content, encoding="utf-8")
+        return tdp, loc
+    shell += 1
+    tdp, _ = tree(DUP)
+    rc, text = run(tdp, "--dry-run")
+    if rc != 1 or "would dedupe 1 file(s)" not in text or "5 -> 3 lines" not in text:
+        print("  x a duplicate key must be reported rc 1 in dry-run (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    tdp, _ = tree("alpha = Only\n")
+    rc, text = run(tdp, "--dry-run")
+    if rc != 0 or "no duplicates found in any .ftl file" not in text:
+        print("  x a clean bundle must pass rc 0 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    tdp, loc = tree(DUP)
+    rc, text = run(tdp)
+    if rc != 0 or "deduped 1 file(s)" not in text:
+        print("  x apply mode must dedupe and exit 0 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    # post-condition INSIDE the tempdir's tree: the duplicate and its
+    # continuation are gone, the first-wins value stays
+    back = (loc / "main.ftl").read_text(encoding="utf-8")
+    if "alpha = Dup" in back or "dup cont" in back or "cont line" not in back:
+        print("  x the deduped file must keep the first block only (back=%r)"
+              % back[:80], file=sys.stderr)
+        return 1
+    shell += 1
+    tdp = Path(_tempfile.mkdtemp())
+    rc, text = run(tdp)
+    if rc != 1 or "locales dir not found" not in text:
+        print("  x a root without shared-ui/locales must refuse rc 1 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    tdp, loc2 = tree("alpha = x\n")
+    for f in loc2.glob("*.ftl"):
+        f.unlink()
+    rc, text = run(tdp)
+    if rc != 1 or "no .ftl files under" not in text:
+        print("  x an empty locales dir must refuse rc 1 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+
+    print("SELF-TEST OK (%d shell cases through argv and root, "
+          "no repository file touched)" % shell)
+    return 0
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(self_test() if "--self-test" in sys.argv[1:] else main())

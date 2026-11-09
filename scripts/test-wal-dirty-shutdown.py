@@ -3,6 +3,15 @@
 Process-Kill Simulation & SQLite WAL Recovery Verification
 Roadmap: todo-beta-testing-january-2027.md (Phase 2.1 Fault Tolerance)
 
+Status (2026-11-08): a ONE-TIME roadmap acceptance, deliberately runner-less.
+Phase 2.1 of todo-beta-testing-january-2027.md ticks this script as completed
+work (commit b852a47fd, live Android SIGKILL verified) -- it is not a checker,
+declares no --self-test, and no runner invokes it BY DESIGN, the same standing
+scripts/census-sync-ingest-admits.py claims for itself in its own docstring.
+Re-run manually when WAL handling, the PRAGMAs below, or the migration runner
+change. Measured re-run at version lock 0.0.41 on 2026-11-08: green, 5/5 kill
+cycles, 0.27s wall, integrity_check ok, foreign_key_check empty.
+
 Simulates abrupt process termination (kill -9 / taskkill / TerminateProcess)
 mid-transaction against an on-disk SQLite database running in WAL mode.
 Verifies that:

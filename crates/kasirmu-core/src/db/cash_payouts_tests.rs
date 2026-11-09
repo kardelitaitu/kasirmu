@@ -325,24 +325,57 @@ fn payout_ids_globally_unique() {
 
 // ── COR-28 / C18: the shift-open check is atomic with the INSERT ────
 
-/// The race the pre-fix code lost, forced rather than hoped for.
+/// A concurrent close that commits while this call is inside its
+/// check-then-act window must leave the drawer closed and the payout unrecorded.
 ///
 /// `create_cash_payout` used to read the shift, decide, and only then INSERT
 /// with no transaction — so a shift closed in that window still received the
-/// payout and cash left the drawer against a closed shift. Here connection B
-/// stages the close under a held `BEGIN IMMEDIATE` write lock, so the window
-/// is open for as long as this test wants; connection A then passes its
-/// pre-read (WAL readers do not block on a writer) and blocks inside the
-/// INSERT until B commits. The INSERT is now a compare-and-set on
-/// `status = 'open'`, so the row is not written and the caller gets the
-/// closed-shift error. Against the pre-fix statement — a bare INSERT with no
-/// predicate — this test returns `Ok` and the payout is persisted.
+/// payout and cash left the drawer against a closed shift. That was fixed with
+/// a compare-and-set INSERT (`WHERE EXISTS (... status = 'open')`), and O-M67
+/// then made the surrounding transaction `BEGIN IMMEDIATE`.
+///
+/// ── WHICH ARM THIS TEST EXERCISES, stated because it changed ─────────────
+///
+/// IMMEDIATE takes the write lock at BEGIN, which is BEFORE the
+/// out-of-transaction `get_shift` pre-read. A therefore cannot read the shift
+/// while B's uncommitted close is outstanding: it blocks at BEGIN (that block
+/// is what the busy handler below proves), B commits, A's BEGIN completes and
+/// its pre-read sees `status = 'closed'` — so the **fast-path rejection**
+/// (cash_payouts.rs, `if shift.is_closed()`) refuses the payout and the
+/// CAS is NEVER REACHED by this test.
+///
+/// Read that honestly: this test does **not** defend the compare-and-set. It
+/// defends the property the guard exists for (no cash leaves a closed drawer,
+/// no `cash_payouts` row is written) and it proves A was genuinely inside the
+/// window rather than merely running after B. What still defends the CAS is
+/// the caller that is already positioned when it calls: the CAS is evaluated
+/// inside the IMMEDIATE transaction at INSERT time, so it catches a close that
+/// commits after A's BEGIN but before its INSERT (A holds the lock across both
+/// only because BEGIN IMMEDIATE excluded B for that whole span — a close
+/// arriving in that gap must come from a writer that took the lock first). The
+/// CAS remains the last line of defence for any caller reaching
+/// `create_cash_payout` with an OPEN shift already visible to it.
+///
+/// What the busy handler buys: **NO TIMER** (O-T15). B used to be released on
+/// a fixed 200 ms sleep, which made the intended split a bet on wall-clock
+/// behaviour the test does not control — on a loaded host A's pre-read landed
+/// AFTER B's commit and the same three assertions passed without A ever
+/// contending, so the run proved nothing. The test now waits on three ORDERED
+/// events instead:
+///   1. B holds the write lock and its uncommitted close is invisible to
+///      readers (`locked`);
+///   2. A has reached BEGIN and is blocked on that lock (the busy handler);
+///   3. only then does B commit, releasing the lock A waits on.
+///
+/// Step 2 is a fact about A's position, not a duration.
 #[test]
 fn payout_refused_when_shift_closes_between_read_and_write() {
     // A file DB, because two connections must see the same rows (an
     // in-memory DB is private per connection).
-    let dir = std::env::temp_dir().join(format!("oz_payout_race_{}", uuid::Uuid::now_v7()));
-    std::fs::create_dir_all(&dir).unwrap();
+    // The guard owns the directory: dropping it (at the end of this test)
+    // deletes it, so the fixture cannot accumulate under target/test-scratch.
+    let scratch = kasirmu_test_support::ScratchDir::new("cash-payout-race");
+    let dir = scratch.path();
     let db_path = dir.join("test.db");
 
     let shift_id = {
@@ -368,11 +401,27 @@ fn payout_refused_when_shift_closes_between_read_and_write() {
             .id
     };
 
+    // Reported through a `static` mailbox because rusqlite's `busy_handler`
+    // takes a function POINTER (fn(i32) -> bool): a capturing closure would not
+    // compile.
+    static A_IS_WAITING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    A_IS_WAITING.store(false, std::sync::atomic::Ordering::SeqCst);
+    static A_WAITING_TX: std::sync::Mutex<Option<std::sync::mpsc::Sender<()>>> =
+        std::sync::Mutex::new(None);
+    fn note_a_is_waiting(_attempts: i32) -> bool {
+        if !A_IS_WAITING.swap(true, std::sync::atomic::Ordering::SeqCst)
+            && let Some(tx) = A_WAITING_TX.lock().unwrap().as_ref()
+        {
+            let _ = tx.send(());
+        }
+        true
+    }
+
     // Connection B stages the concurrent close under a write lock it holds
-    // until told to commit — that lock is what keeps the check-then-act window
-    // open for as long as this test needs, instead of racing for it.
+    // until A is provably waiting on it — that lock is what keeps the
+    // check-then-act window open for as long as this test needs.
     let (locked_tx, locked_rx) = std::sync::mpsc::channel();
-    let (commit_tx, commit_rx) = std::sync::mpsc::channel();
+    let (a_waiting_tx, a_waiting_rx) = std::sync::mpsc::channel();
     let closer = {
         let db_path = db_path.clone();
         let shift_id = shift_id.clone();
@@ -380,40 +429,48 @@ fn payout_refused_when_shift_closes_between_read_and_write() {
             let conn_b = Connection::open(&db_path).unwrap();
             conn_b.pragma_update(None, "busy_timeout", "5000").unwrap();
             let tx = conn_b.unchecked_transaction().unwrap();
-            tx.execute(
-                "UPDATE shifts SET status = 'closed', closed_at = ?1, closing_balance_minor = 1000 \
-                 WHERE id = ?2",
-                params!["2025-01-01T00:00:00.000Z", shift_id],
-            )
-            .unwrap();
+            let rows = tx
+                .execute(
+                    "UPDATE shifts SET status = 'closed', closed_at = ?1, closing_balance_minor = 1000 \
+                     WHERE id = ?2",
+                    params!["2025-01-01T00:00:00.000Z", shift_id],
+                )
+                .unwrap();
+            assert_eq!(rows, 1, "the rival must stage the shift it is closing");
             locked_tx.send(()).unwrap();
-            commit_rx.recv().unwrap(); // hold the window open until A is inside it
+            // Block until A's busy handler reports it is waiting on this lock,
+            // then release. Bounded (5 s, matching A's own busy_timeout) so a
+            // regression that lets A through without contending FAILS at the
+            // assertion below rather than hanging here.
+            let _ = a_waiting_rx.recv_timeout(std::time::Duration::from_secs(5));
             tx.commit().unwrap();
         })
     };
     locked_rx.recv().unwrap();
 
-    // Connection A now runs the real call. Its pre-read happens while B's
-    // close is still uncommitted, so the fast path sees an OPEN shift and
-    // proceeds; the INSERT then blocks on B's write lock. Committing B
-    // releases it, and the compare-and-set sees `status = 'closed'`.
-    let writer = {
-        let db_path = db_path.clone();
-        let shift_id = shift_id.clone();
-        std::thread::spawn(move || {
-            let conn_a = Connection::open(&db_path).unwrap();
-            conn_a.pragma_update(None, "busy_timeout", "5000").unwrap();
-            Store::new(&conn_a).create_cash_payout(&shift_id, 5000, "safe drop")
-        })
-    };
-
-    // Give A time to pass the pre-read and block inside the INSERT, then let
-    // B commit. A cannot finish before that: B holds the write lock.
-    std::thread::sleep(std::time::Duration::from_millis(200));
-    commit_tx.send(()).unwrap();
+    // Connection A now runs the real call. With IMMEDIATE it contends at BEGIN,
+    // i.e. inside the window and BEFORE its pre-read: committing B releases the
+    // lock, A's pre-read then sees the closed shift, and the fast-path rejection
+    // refuses the payout (see the doc comment for which arm that is and is not).
+    let writer_conn = Connection::open(&db_path).unwrap();
+    writer_conn
+        .pragma_update(None, "busy_timeout", "5000")
+        .unwrap();
+    A_WAITING_TX.lock().unwrap().replace(a_waiting_tx);
+    writer_conn.busy_handler(Some(note_a_is_waiting)).unwrap();
+    let outcome = Store::new(&writer_conn).create_cash_payout(&shift_id, 5000, "safe drop");
     closer.join().unwrap();
 
-    let outcome = writer.join().unwrap();
+    // The fact that replaces the old 200 ms sleep: A genuinely blocked on B's
+    // write lock from inside `create_cash_payout`. Without this the run below
+    // would only prove that a closed shift is refused — which the plain
+    // `create_payout_closed_shift_rejected` test already proves — not that A
+    // was inside the window when B committed.
+    assert!(
+        A_IS_WAITING.load(std::sync::atomic::Ordering::SeqCst),
+        "the losing payout must have BLOCKED on B's write lock; it never entered \
+         the race window, so this run proves nothing about the guard"
+    );
 
     // The shift is closed — so the payout MUST be refused.
     assert!(
@@ -432,6 +489,25 @@ fn payout_refused_when_shift_closes_between_read_and_write() {
         .unwrap();
     assert_eq!(stored, 0, "the refused payout must not be persisted");
 
+    // ⚠️ O-T17 / O-M67: what this arm does and does not pin, restated next to
+    // the assertion it qualifies. With BEGIN IMMEDIATE, A blocks BEFORE its
+    // pre-read, so after B commits A reads a CLOSED shift and the FAST PATH at
+    // cash_payouts.rs refuses the payout; the `WHERE EXISTS ... status = 'open'`
+    // CAS is not reached here. The three assertions above are therefore pinned
+    // as "the drawer stayed closed and nothing was written", NOT as "the CAS
+    // matched zero rows". Deleting the CAS predicate would leave THIS test green.
+    //
+    // What the busy-handler assertion above does buy is independence from the
+    // clock: before it, B released on a 200 ms sleep, so on a loaded host A's
+    // read could land after B's commit and all three assertions still passed
+    // without A ever entering the window. That ambiguity is gone; the arm is
+    // now known to be the fast path, honestly, rather than claimed to be the CAS.
+    //
+    // The CAS still earns its place in production: it is evaluated inside the
+    // IMMEDIATE transaction at INSERT time, so it refuses a payout whose
+    // open-shift snapshot went stale between BEGIN and the INSERT. No test here
+    // constructs that interleaving.
+
     // And the closed-shift invariant the guard exists to protect.
     let status: String = conn_a
         .query_row(
@@ -442,6 +518,10 @@ fn payout_refused_when_shift_closes_between_read_and_write() {
         .unwrap();
     assert_eq!(status, "closed");
 
+    // Release the verify connection first, then the one the real call ran on
+    // (`writer_conn` owns the busy handler). The mailbox is cleared so a later
+    // run cannot send into this test's dead channel.
     drop(conn_a);
-    let _ = std::fs::remove_dir_all(&dir);
+    A_WAITING_TX.lock().unwrap().take();
+    drop(writer_conn);
 }

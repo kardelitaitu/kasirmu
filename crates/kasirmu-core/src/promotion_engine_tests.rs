@@ -493,7 +493,7 @@ fn stacked_percentages_compound_downward_on_the_reduced_total() {
 }
 
 /// Two half-off promotions must leave a quarter, and must never drive the total
-/// below zero -- the clamp at promotion_engine.rs:205 uses the CURRENT total, so
+/// below zero -- the clamp at promotion_engine.rs:234 uses the CURRENT total, so
 /// the second one is bounded by what is left.
 #[test]
 fn stacked_half_off_leaves_a_quarter_and_never_goes_negative() {

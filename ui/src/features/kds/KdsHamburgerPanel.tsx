@@ -526,7 +526,7 @@ export function KdsHamburgerPanel({
                     onDragValue={(v) => setDragRed(v || null)}
                     // Same dead reference as the yellow slider above, same fix, and
                     // for the same reason: --color-danger is what
-                    // .kds-slider-value--danger (KdsScreen.css:876) uses. #fc3d39
+                    // .kds-slider-value--danger (KdsScreen.css:882) uses. #fc3d39
                     // happened to be the correct value already, which is exactly why
                     // the dead token went unnoticed for so long — the fallback looked
                     // right. The reference was still unreachable.

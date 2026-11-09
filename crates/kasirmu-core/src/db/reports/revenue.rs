@@ -102,6 +102,199 @@ pub struct MonthlyRevenueRow {
     pub net_revenue_minor: i64,
 }
 
+/// The daily revenue aggregation SQL.
+///
+/// Returns one row per (store-local day, currency): gross revenue, sale count,
+/// COGS net of refunded goods, refunds and net revenue.
+///
+/// Hoisted to a module constant so the plan tests
+/// (`revenue_refund_cte_uses_refunds_currency_created_date_index` in
+/// `migrations_tests.rs` and the query-plan probe in
+/// `tests/integration/query_plan_probe.rs`) read the SAME text the product
+/// runs. `pub` rather than `pub(crate)` because the probe is a separate test
+/// crate; the enclosing `revenue` module stays crate-private. A plan test
+/// against a copy of the SQL is worthless — it stays green when the production
+/// query is reshaped back into the form that scans.
+///
+/// **The refunds side is nested on purpose, and the defence is narrow.**
+/// `rg` is its own CTE and `r` divides it by `n`; inline, SQLite prices the
+/// correlated cost subquery against the GROUP BY block and abandons
+/// `idx_refunds_currency_created_date` for a full scan of `refunds`
+/// (measured 2026-10-24, both column orders, with and without ANALYZE). The
+/// index is only reachable for a NARROW window — around 30 days the seek is
+/// clearly cheaper, at 365 days the two estimates were within a few percent
+/// (scan 20.0 vs index 19.1) and SQLite still prefers the scan. A manager's
+/// usual window is a week; a full-year pull is not the case this optimises.
+pub const DAILY_REVENUE_SQL: &str = "WITH s AS (
+                 SELECT DATE(s1.created_at, ?3) AS d, s1.currency AS c,
+                        SUM(s1.total_minor) AS t, COUNT(*) AS n,
+                        (SELECT COALESCE(SUM(COALESCE(sl2.cost_minor, p2.cost_minor, 0) * sl2.qty), 0)
+                         FROM sale_lines sl2
+                         JOIN sales s2 ON sl2.sale_id = s2.id
+                         LEFT JOIN products p2 ON sl2.sku = p2.sku
+                         WHERE s2.status = 'completed'
+                           AND s2.currency = s1.currency
+                           AND DATE(s2.created_at, ?3) = DATE(s1.created_at, ?3)) AS cogs
+                 FROM sales s1
+                 WHERE s1.status = 'completed' AND DATE(s1.created_at, ?3) BETWEEN ?1 AND ?2
+                 GROUP BY DATE(s1.created_at, ?3), s1.currency
+             ),
+             rg AS (
+             -- The refunds aggregate is spelled as a nested CTE and joined
+             -- back on (d, c) rather than carried inline. Measured with
+             -- EXPLAIN QUERY PLAN over a seeded + ANALYZE'd database
+             -- (2026-10-24): with the cost subquery inline, SQLite prices the
+             -- correlated per-row lookup against the GROUP BY block and
+             -- abandons idx_refunds_currency_created_date for a full scan of
+             -- refunds; as its own block it plans the scan the index EXISTS
+             -- for. The cost subquery is evaluated once per refund, so it
+             -- divides by the group's row count.
+                 SELECT DATE(rf1.created_at, ?3) AS d, rf1.currency AS c,
+                        SUM(rf1.total_minor) AS rf, COUNT(*) AS n,
+                        SUM((SELECT COALESCE(SUM(COALESCE(sl3.cost_minor, p3.cost_minor, 0) * rl3.qty), 0)
+                             FROM refund_lines rl3
+                             JOIN refunds rf3 ON rf3.id = rl3.refund_id
+                             LEFT JOIN sale_lines sl3 ON sl3.id = rl3.sale_line_id
+                             LEFT JOIN products p3 ON sl3.sku = p3.sku
+                             WHERE DATE(rf3.created_at, ?3) = DATE(rf1.created_at, ?3)
+                               AND rf3.currency = rf1.currency)) AS rcost_sum
+                 FROM refunds rf1
+                 WHERE DATE(rf1.created_at, ?3) BETWEEN ?1 AND ?2
+                 GROUP BY rf1.currency, DATE(rf1.created_at, ?3)
+             ),
+             r AS (
+                 SELECT rg.d, rg.c, rg.rf, (rg.rcost_sum / rg.n) AS rcost FROM rg
+             )
+             SELECT COALESCE(s.d, r.d) AS date,
+                    COALESCE(s.c, r.c) AS currency,
+                    COALESCE(s.t, 0) AS total_minor,
+                    COALESCE(s.n, 0) AS sale_count,
+                    COALESCE(s.cogs, 0) - COALESCE(r.rcost, 0) AS cogs_minor,
+                    COALESCE(r.rf, 0) AS refund_minor,
+                    COALESCE(s.t, 0) - COALESCE(r.rf, 0) AS net_revenue_minor
+             FROM s FULL OUTER JOIN r ON s.d = r.d AND s.c = r.c
+             ORDER BY date ASC";
+
+/// The weekly revenue aggregation SQL (Monday-first buckets, matching the UI's
+/// `weekStartKey`).
+///
+/// Returns one row per (store-local week start, currency): gross revenue, sale
+/// count, COGS net of refunded goods, refunds and net revenue.
+///
+/// Hoisted so the plan test reads the same text the product runs — see
+/// [`DAILY_REVENUE_SQL`] for why the refunds side is nested and for the honest
+/// limits of what that nesting buys.
+pub const WEEKLY_REVENUE_SQL: &str = "WITH s AS (
+                 SELECT DATE(s1.created_at, ?3, '-6 days', 'weekday 1') AS d, s1.currency AS c,
+                        SUM(s1.total_minor) AS t, COUNT(*) AS n,
+                        (SELECT COALESCE(SUM(COALESCE(sl2.cost_minor, p2.cost_minor, 0) * sl2.qty), 0)
+                         FROM sale_lines sl2
+                         JOIN sales s2 ON sl2.sale_id = s2.id
+                         LEFT JOIN products p2 ON sl2.sku = p2.sku
+                         WHERE s2.status = 'completed'
+                           AND s2.currency = s1.currency
+                           AND DATE(s2.created_at, ?3, '-6 days', 'weekday 1')
+                                = DATE(s1.created_at, ?3, '-6 days', 'weekday 1')) AS cogs
+                 FROM sales s1
+                 WHERE s1.status = 'completed' AND DATE(s1.created_at, ?3) BETWEEN ?1 AND ?2
+                 GROUP BY DATE(s1.created_at, ?3, '-6 days', 'weekday 1'), s1.currency
+             ),
+             rg AS (
+             -- The refunds aggregate is spelled as a nested CTE and joined
+             -- back on (d, c) rather than carried inline. Measured with
+             -- EXPLAIN QUERY PLAN over a seeded + ANALYZE'd database
+             -- (2026-10-24): with the cost subquery inline, SQLite prices the
+             -- correlated per-row lookup against the GROUP BY block and
+             -- abandons idx_refunds_currency_created_date for a full scan of
+             -- refunds; as its own block it plans the scan the index EXISTS
+             -- for. The cost subquery is evaluated once per refund, so it
+             -- divides by the group's row count.
+                 SELECT DATE(rf1.created_at, ?3, '-6 days', 'weekday 1') AS d, rf1.currency AS c,
+                        SUM(rf1.total_minor) AS rf, COUNT(*) AS n,
+                        SUM((SELECT COALESCE(SUM(COALESCE(sl3.cost_minor, p3.cost_minor, 0) * rl3.qty), 0)
+                             FROM refund_lines rl3
+                             JOIN refunds rf3 ON rf3.id = rl3.refund_id
+                             LEFT JOIN sale_lines sl3 ON sl3.id = rl3.sale_line_id
+                             LEFT JOIN products p3 ON sl3.sku = p3.sku
+                             WHERE DATE(rf3.created_at, ?3, '-6 days', 'weekday 1')
+                                   = DATE(rf1.created_at, ?3, '-6 days', 'weekday 1')
+                               AND rf3.currency = rf1.currency)) AS rcost_sum
+                 FROM refunds rf1
+                 WHERE DATE(rf1.created_at, ?3) BETWEEN ?1 AND ?2
+                 GROUP BY rf1.currency, DATE(rf1.created_at, ?3, '-6 days', 'weekday 1')
+             ),
+             r AS (
+                 SELECT rg.d, rg.c, rg.rf, (rg.rcost_sum / rg.n) AS rcost FROM rg
+             )
+             SELECT COALESCE(s.d, r.d) AS week_start,
+                    COALESCE(s.c, r.c) AS currency,
+                    COALESCE(s.t, 0) AS total_minor,
+                    COALESCE(s.n, 0) AS sale_count,
+                    COALESCE(s.cogs, 0) - COALESCE(r.rcost, 0) AS cogs_minor,
+                    COALESCE(r.rf, 0) AS refund_minor,
+                    COALESCE(s.t, 0) - COALESCE(r.rf, 0) AS net_revenue_minor
+             FROM s FULL OUTER JOIN r ON s.d = r.d AND s.c = r.c
+             ORDER BY week_start ASC";
+
+/// The monthly revenue aggregation SQL (`YYYY-MM` buckets).
+///
+/// Returns one row per (store-local month, currency): gross revenue, sale
+/// count, COGS net of refunded goods, refunds and net revenue.
+///
+/// Hoisted so the plan test reads the same text the product runs — see
+/// [`DAILY_REVENUE_SQL`] for why the refunds side is nested and for the honest
+/// limits of what that nesting buys.
+pub const MONTHLY_REVENUE_SQL: &str = "WITH s AS (
+                 SELECT strftime('%Y-%m', s1.created_at, ?3) AS d, s1.currency AS c,
+                        SUM(s1.total_minor) AS t, COUNT(*) AS n,
+                        (SELECT COALESCE(SUM(COALESCE(sl2.cost_minor, p2.cost_minor, 0) * sl2.qty), 0)
+                         FROM sale_lines sl2
+                         JOIN sales s2 ON sl2.sale_id = s2.id
+                         LEFT JOIN products p2 ON sl2.sku = p2.sku
+                         WHERE s2.status = 'completed'
+                           AND s2.currency = s1.currency
+                           AND strftime('%Y-%m', s2.created_at, ?3) = strftime('%Y-%m', s1.created_at, ?3)) AS cogs
+                 FROM sales s1
+                 WHERE s1.status = 'completed' AND DATE(s1.created_at, ?3) BETWEEN ?1 AND ?2
+                 GROUP BY strftime('%Y-%m', s1.created_at, ?3), s1.currency
+             ),
+             rg AS (
+             -- The refunds aggregate is spelled as a nested CTE and joined
+             -- back on (d, c) rather than carried inline. Measured with
+             -- EXPLAIN QUERY PLAN over a seeded + ANALYZE'd database
+             -- (2026-10-24): with the cost subquery inline, SQLite prices the
+             -- correlated per-row lookup against the GROUP BY block and
+             -- abandons idx_refunds_currency_created_date for a full scan of
+             -- refunds; as its own block it plans the scan the index EXISTS
+             -- for. The cost subquery is evaluated once per refund, so it
+             -- divides by the group's row count.
+                 SELECT strftime('%Y-%m', rf1.created_at, ?3) AS d, rf1.currency AS c,
+                        SUM(rf1.total_minor) AS rf, COUNT(*) AS n,
+                        SUM((SELECT COALESCE(SUM(COALESCE(sl3.cost_minor, p3.cost_minor, 0) * rl3.qty), 0)
+                             FROM refund_lines rl3
+                             JOIN refunds rf3 ON rf3.id = rl3.refund_id
+                             LEFT JOIN sale_lines sl3 ON sl3.id = rl3.sale_line_id
+                             LEFT JOIN products p3 ON sl3.sku = p3.sku
+                             WHERE strftime('%Y-%m', rf3.created_at, ?3)
+                                   = strftime('%Y-%m', rf1.created_at, ?3)
+                               AND rf3.currency = rf1.currency)) AS rcost_sum
+                 FROM refunds rf1
+                 WHERE DATE(rf1.created_at, ?3) BETWEEN ?1 AND ?2
+                 GROUP BY rf1.currency, strftime('%Y-%m', rf1.created_at, ?3)
+             ),
+             r AS (
+                 SELECT rg.d, rg.c, rg.rf, (rg.rcost_sum / rg.n) AS rcost FROM rg
+             )
+             SELECT COALESCE(s.d, r.d) AS month,
+                    COALESCE(s.c, r.c) AS currency,
+                    COALESCE(s.t, 0) AS total_minor,
+                    COALESCE(s.n, 0) AS sale_count,
+                    COALESCE(s.cogs, 0) - COALESCE(r.rcost, 0) AS cogs_minor,
+                    COALESCE(r.rf, 0) AS refund_minor,
+                    COALESCE(s.t, 0) - COALESCE(r.rf, 0) AS net_revenue_minor
+             FROM s FULL OUTER JOIN r ON s.d = r.d AND s.c = r.c
+             ORDER BY month ASC";
+
 impl Store<'_> {
     /// Map the shared revenue/COGS columns of the aggregation rows.
     fn revenue_profit_fields(row: &rusqlite::Row<'_>) -> rusqlite::Result<(i64, i64, i64, f64)> {
@@ -146,45 +339,7 @@ impl Store<'_> {
         // REP-04: sales and refunds aggregate independently (CTEs) and join
         // FULL OUTER on (date, currency) — a refund-only day must still
         // produce a row, otherwise the refund silently vanishes from reports.
-        let mut stmt = self.conn.prepare(
-            "WITH s AS (
-                 SELECT DATE(s1.created_at, ?3) AS d, s1.currency AS c,
-                        SUM(s1.total_minor) AS t, COUNT(*) AS n,
-                        (SELECT COALESCE(SUM(COALESCE(sl2.cost_minor, p2.cost_minor, 0) * sl2.qty), 0)
-                         FROM sale_lines sl2
-                         JOIN sales s2 ON sl2.sale_id = s2.id
-                         LEFT JOIN products p2 ON sl2.sku = p2.sku
-                         WHERE s2.status = 'completed'
-                           AND s2.currency = s1.currency
-                           AND DATE(s2.created_at, ?3) = DATE(s1.created_at, ?3)) AS cogs
-                 FROM sales s1
-                 WHERE s1.status = 'completed' AND DATE(s1.created_at, ?3) BETWEEN ?1 AND ?2
-                 GROUP BY DATE(s1.created_at, ?3), s1.currency
-             ),
-             r AS (
-                 SELECT DATE(rf1.created_at, ?3) AS d, rf1.currency AS c,
-                        SUM(rf1.total_minor) AS rf,
-                        (SELECT COALESCE(SUM(COALESCE(sl3.cost_minor, p3.cost_minor, 0) * rl3.qty), 0)
-                         FROM refund_lines rl3
-                         JOIN refunds rf3 ON rf3.id = rl3.refund_id
-                         LEFT JOIN sale_lines sl3 ON sl3.id = rl3.sale_line_id
-                         LEFT JOIN products p3 ON sl3.sku = p3.sku
-                         WHERE DATE(rf3.created_at, ?3) = DATE(rf1.created_at, ?3)
-                           AND rf3.currency = rf1.currency) AS rcost
-                 FROM refunds rf1
-                 WHERE DATE(rf1.created_at, ?3) BETWEEN ?1 AND ?2
-                 GROUP BY DATE(rf1.created_at, ?3), rf1.currency
-             )
-             SELECT COALESCE(s.d, r.d) AS date,
-                    COALESCE(s.c, r.c) AS currency,
-                    COALESCE(s.t, 0) AS total_minor,
-                    COALESCE(s.n, 0) AS sale_count,
-                    COALESCE(s.cogs, 0) - COALESCE(r.rcost, 0) AS cogs_minor,
-                    COALESCE(r.rf, 0) AS refund_minor,
-                    COALESCE(s.t, 0) - COALESCE(r.rf, 0) AS net_revenue_minor
-             FROM s FULL OUTER JOIN r ON s.d = r.d AND s.c = r.c
-             ORDER BY date ASC",
-        )?;
+        let mut stmt = self.conn.prepare(DAILY_REVENUE_SQL)?;
         let rows = stmt.query_map(params![start_date, end_date, tz], |row| {
             let (total_minor, cogs_minor, gross_profit_minor, gross_margin_percent) =
                 Self::revenue_profit_fields(row)?;
@@ -219,47 +374,7 @@ impl Store<'_> {
         // Monday sale into the PREVIOUS week. COGS is a correlated subquery
         // keyed on the same week expression, so joining sale_lines never
         // multiplies revenue/count per sale line.
-        let mut stmt = self.conn.prepare(
-            "WITH s AS (
-                 SELECT DATE(s1.created_at, ?3, '-6 days', 'weekday 1') AS d, s1.currency AS c,
-                        SUM(s1.total_minor) AS t, COUNT(*) AS n,
-                        (SELECT COALESCE(SUM(COALESCE(sl2.cost_minor, p2.cost_minor, 0) * sl2.qty), 0)
-                         FROM sale_lines sl2
-                         JOIN sales s2 ON sl2.sale_id = s2.id
-                         LEFT JOIN products p2 ON sl2.sku = p2.sku
-                         WHERE s2.status = 'completed'
-                           AND s2.currency = s1.currency
-                           AND DATE(s2.created_at, ?3, '-6 days', 'weekday 1')
-                                = DATE(s1.created_at, ?3, '-6 days', 'weekday 1')) AS cogs
-                 FROM sales s1
-                 WHERE s1.status = 'completed' AND DATE(s1.created_at, ?3) BETWEEN ?1 AND ?2
-                 GROUP BY DATE(s1.created_at, ?3, '-6 days', 'weekday 1'), s1.currency
-             ),
-             r AS (
-                 SELECT DATE(rf1.created_at, ?3, '-6 days', 'weekday 1') AS d, rf1.currency AS c,
-                        SUM(rf1.total_minor) AS rf,
-                        (SELECT COALESCE(SUM(COALESCE(sl3.cost_minor, p3.cost_minor, 0) * rl3.qty), 0)
-                         FROM refund_lines rl3
-                         JOIN refunds rf3 ON rf3.id = rl3.refund_id
-                         LEFT JOIN sale_lines sl3 ON sl3.id = rl3.sale_line_id
-                         LEFT JOIN products p3 ON sl3.sku = p3.sku
-                         WHERE DATE(rf3.created_at, ?3, '-6 days', 'weekday 1')
-                               = DATE(rf1.created_at, ?3, '-6 days', 'weekday 1')
-                           AND rf3.currency = rf1.currency) AS rcost
-                 FROM refunds rf1
-                 WHERE DATE(rf1.created_at, ?3) BETWEEN ?1 AND ?2
-                 GROUP BY DATE(rf1.created_at, ?3, '-6 days', 'weekday 1'), rf1.currency
-             )
-             SELECT COALESCE(s.d, r.d) AS week_start,
-                    COALESCE(s.c, r.c) AS currency,
-                    COALESCE(s.t, 0) AS total_minor,
-                    COALESCE(s.n, 0) AS sale_count,
-                    COALESCE(s.cogs, 0) - COALESCE(r.rcost, 0) AS cogs_minor,
-                    COALESCE(r.rf, 0) AS refund_minor,
-                    COALESCE(s.t, 0) - COALESCE(r.rf, 0) AS net_revenue_minor
-             FROM s FULL OUTER JOIN r ON s.d = r.d AND s.c = r.c
-             ORDER BY week_start ASC",
-        )?;
+        let mut stmt = self.conn.prepare(WEEKLY_REVENUE_SQL)?;
         let rows = stmt.query_map(params![start_date, end_date, tz], |row| {
             let (total_minor, cogs_minor, gross_profit_minor, gross_margin_percent) =
                 Self::revenue_profit_fields(row)?;
@@ -291,46 +406,7 @@ impl Store<'_> {
         let tz = self.tz_modifier();
         // COGS is a correlated subquery keyed on the same YYYY-MM expression,
         // so joining sale_lines never multiplies revenue/count per line.
-        let mut stmt = self.conn.prepare(
-            "WITH s AS (
-                 SELECT strftime('%Y-%m', s1.created_at, ?3) AS d, s1.currency AS c,
-                        SUM(s1.total_minor) AS t, COUNT(*) AS n,
-                        (SELECT COALESCE(SUM(COALESCE(sl2.cost_minor, p2.cost_minor, 0) * sl2.qty), 0)
-                         FROM sale_lines sl2
-                         JOIN sales s2 ON sl2.sale_id = s2.id
-                         LEFT JOIN products p2 ON sl2.sku = p2.sku
-                         WHERE s2.status = 'completed'
-                           AND s2.currency = s1.currency
-                           AND strftime('%Y-%m', s2.created_at, ?3) = strftime('%Y-%m', s1.created_at, ?3)) AS cogs
-                 FROM sales s1
-                 WHERE s1.status = 'completed' AND DATE(s1.created_at, ?3) BETWEEN ?1 AND ?2
-                 GROUP BY strftime('%Y-%m', s1.created_at, ?3), s1.currency
-             ),
-             r AS (
-                 SELECT strftime('%Y-%m', rf1.created_at, ?3) AS d, rf1.currency AS c,
-                        SUM(rf1.total_minor) AS rf,
-                        (SELECT COALESCE(SUM(COALESCE(sl3.cost_minor, p3.cost_minor, 0) * rl3.qty), 0)
-                         FROM refund_lines rl3
-                         JOIN refunds rf3 ON rf3.id = rl3.refund_id
-                         LEFT JOIN sale_lines sl3 ON sl3.id = rl3.sale_line_id
-                         LEFT JOIN products p3 ON sl3.sku = p3.sku
-                         WHERE strftime('%Y-%m', rf3.created_at, ?3)
-                               = strftime('%Y-%m', rf1.created_at, ?3)
-                           AND rf3.currency = rf1.currency) AS rcost
-                 FROM refunds rf1
-                 WHERE DATE(rf1.created_at, ?3) BETWEEN ?1 AND ?2
-                 GROUP BY strftime('%Y-%m', rf1.created_at, ?3), rf1.currency
-             )
-             SELECT COALESCE(s.d, r.d) AS month,
-                    COALESCE(s.c, r.c) AS currency,
-                    COALESCE(s.t, 0) AS total_minor,
-                    COALESCE(s.n, 0) AS sale_count,
-                    COALESCE(s.cogs, 0) - COALESCE(r.rcost, 0) AS cogs_minor,
-                    COALESCE(r.rf, 0) AS refund_minor,
-                    COALESCE(s.t, 0) - COALESCE(r.rf, 0) AS net_revenue_minor
-             FROM s FULL OUTER JOIN r ON s.d = r.d AND s.c = r.c
-             ORDER BY month ASC",
-        )?;
+        let mut stmt = self.conn.prepare(MONTHLY_REVENUE_SQL)?;
         let rows = stmt.query_map(params![start_date, end_date, tz], |row| {
             let (total_minor, cogs_minor, gross_profit_minor, gross_margin_percent) =
                 Self::revenue_profit_fields(row)?;

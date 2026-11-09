@@ -247,6 +247,33 @@ describe('useTerminalHardware', () => {
     expect(result.current.error).toBeNull();
   });
 
+  it('save writes ONCE when called twice in the same tick', async () => {
+    // Same-key upsert, so a replay cannot corrupt the settings — but two in-flight saves
+    // share one `error` slot, so the operator can be shown the failure of the tap that
+    // raced. `isLoading` is STATE and both calls read it from the same render.
+    let release: (() => void) | undefined;
+    mockSetHardwareSettingsScoped.mockReturnValue(new Promise<void>((res) => { release = res; }));
+
+    const { result } = renderHook(() => useTerminalHardware('term-s'));
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    let first: Promise<void> | undefined;
+    let second: Promise<void> | undefined;
+    act(() => {
+      first = result.current.save();
+      second = result.current.save();
+    });
+
+    release?.();
+    await act(async () => {
+      await Promise.all([first, second]);
+    });
+
+    expect(mockSetHardwareSettingsScoped).toHaveBeenCalledTimes(1);
+  });
+
   it('save reports error on IPC failure', async () => {
     mockSetHardwareSettingsScoped.mockRejectedValue(new Error('Disk full'));
 

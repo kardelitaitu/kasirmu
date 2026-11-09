@@ -30,7 +30,7 @@ export interface ServerLicenseStatus {
    *
    * The enforcement is not here and must not be re-implemented here: the shell
    * refuses to open a session — and drops every live one — on the Rust side
-   * (`kasirmu-bridge/src/license.rs:568` calls `invalidate_all_sessions` when this
+   * (`kasirmu-bridge/src/license.rs` calls `invalidate_all_sessions` when this
    * or a hardware mismatch is set), because a client-side check cannot stop the
    * session already open on a stolen tablet. This comment previously claimed the
    * shell refuses the session, which is not what the code does and would invite
@@ -256,9 +256,10 @@ export async function pauseSubscription(pauseMonths: number): Promise<PauseResum
 /**
  * Pause a subscription resolved from a session token. ADR #7.
  *
- * pause_subscription_scoped (license.rs:806) enforces permissions::SETTINGS_EDIT before
- * delegating. The unscoped command reads the stored API key and calls the billing server with no
- * session and no permission check at all -- pausing a subscription is a billing action.
+ * `pause_subscription_scoped` in crates/kasirmu-bridge/src/license/scoped.rs enforces
+ * permissions::SETTINGS_EDIT before delegating. The unscoped command reads the stored API
+ * key and calls the billing server with no session and no permission check at all --
+ * pausing a subscription is a billing action.
  */
 export async function pauseSubscriptionScoped(
   sessionToken: string,
@@ -275,8 +276,9 @@ export async function resumeSubscription(): Promise<PauseResumeResponse> {
 /**
  * Resume a subscription resolved from a session token. ADR #7.
  *
- * Same differential as pauseSubscriptionScoped: resume_subscription_scoped (license.rs:820)
- * enforces SETTINGS_EDIT; the unscoped variant checks nothing.
+ * Same differential as pauseSubscriptionScoped: `resume_subscription_scoped` in
+ * crates/kasirmu-bridge/src/license/scoped.rs enforces SETTINGS_EDIT; the unscoped
+ * variant checks nothing.
  */
 export async function resumeSubscriptionScoped(
   sessionToken: string,

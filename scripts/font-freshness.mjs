@@ -35,6 +35,21 @@ const repoRoot = (dir) => path.join(dir, '..');
  * one IMPORTS them). So the list below is that one sheet, derived from HEAD rather
  * than kept by name, plus the two ways a face can appear or vanish without a CSS edit.
  */
+// The derivation below runs at module load. A context git cannot answer for is a legal
+// place to IMPORT this module -- a copy of this tree with no .git (this repo's self-test
+// harness stages exactly that), a bundled tool, a test runner cwd'd elsewhere -- and a
+// throw there makes the module unimportable, crashing every consumer before its own
+// code runs. That is a load failure, not a freshness answer, so load records the failure
+// instead of throwing it: FONT_SURFACE then holds only the static entries, and
+// surfaceCommitsSince re-derives against the repo its caller names. The loud throw in
+// fontSurfaceSheets is unchanged for every call that expects an answer.
+let loadDerivedSheets;
+try {
+  loadDerivedSheets = fontSurfaceSheets(repoRoot(HERE));
+} catch {
+  loadDerivedSheets = null;
+}
+
 export const FONT_SURFACE = [
   // The sheets that actually PRODUCE a face, DERIVED rather than assumed. At the commit
   // that introduced this list the filter was all of ui/src/**/*.css, and the 28-vs-1
@@ -58,7 +73,7 @@ export const FONT_SURFACE = [
   // limit worth writing down: the filter asks what can change the numbers, and after a
   // removal the answer is correct only if the removal itself is visible, which it is
   // not from inside the next run.
-  ...fontSurfaceSheets(repoRoot(HERE)),
+  ...(loadDerivedSheets ?? []),
   // The boot documents name the sheets the build starts from, so adding a third
   // entry point changes what the artifact contains without any .css changing.
   'ui/index.html',
@@ -129,7 +144,15 @@ function git(repo, args) {
 /** Commits on the font surface since the artifact was built, newest first. */
 export function surfaceCommitsSince(repo, sinceMs) {
   const since = new Date(sinceMs).toISOString();
-  const out = git(repo, ['log', '--format=%h %s', `--since=${since}`, '--', ...FONT_SURFACE]).trim();
+  // When the load-time derivation could not run (this module was imported where git
+  // cannot answer -- a copy with no .git, a bundled tool), FONT_SURFACE holds only the
+  // static entries, and a log over just those would under-count: the one sheet that
+  // PRODUCES a face is derived, not static. Re-derive against the repo the caller
+  // names -- in a checkout that restores the narrow filter, and where git still cannot
+  // answer, fontSurfaceSheets throws the same loud error it always has.
+  const staticTail = loadDerivedSheets ? FONT_SURFACE.slice(loadDerivedSheets.length) : FONT_SURFACE;
+  const surface = loadDerivedSheets ? FONT_SURFACE : [...fontSurfaceSheets(repo), ...staticTail];
+  const out = git(repo, ['log', '--format=%h %s', `--since=${since}`, '--', ...surface]).trim();
   const rows = out === '' ? [] : out.split('\n');
   const headSha = git(repo, ['rev-parse', '--short', 'HEAD']).trim();
   return { rows, headSha, since };

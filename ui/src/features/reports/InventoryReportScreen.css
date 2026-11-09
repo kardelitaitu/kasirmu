@@ -12,7 +12,7 @@
      No `margin-inline: auto` companion here, unlike EodReportScreen.css: that
      sheet needed one because container-type suppressed its block-level stretch
      under a `max-width`. This root declares no max-width and is stretched
-     either way — as a flex item of .app-content-inner (AppLayout.css:522)
+     either way — as a flex item of .app-content-inner (AppLayout.css:569)
      inside the shell, and as a block-level box outside it. */
   container-type: inline-size;
 }
@@ -254,7 +254,7 @@
    above the 112px floor, and the controls have 576px for a 323px run: there is
    nothing to fold at the tablet's own narrow case. These tiers claim only the
    boxes below it (a phone-sized viewport, where the shell hands the page about
-   296px). Both sit below the shell's own narrow tier (AppLayout.css:527,
+   296px). Both sit below the shell's own narrow tier (AppLayout.css:587,
    `max-width: 1023px`) and are declared widest-first, so the 336px block can
    still match inside the 380px one.
 

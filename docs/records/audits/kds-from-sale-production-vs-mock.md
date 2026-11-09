@@ -80,3 +80,5 @@ The practical consequence is for anyone using the browser preview to test the ki
 | `LATTE` in the mock catalog | `product_type: 'restaurant'` — would qualify |
 | `cargo test -p kasirmu-bridge kds_tests` | **38 passed; 0 failed** (83.7s) — covers the three cited `create_kds_order_from_sale_scoped` tests at `kds_tests.rs:1247`, `:1278`, `:1369` |
 | Tree | no source changed this round |
+
+> last audited 14-10-26 by docs-auditor

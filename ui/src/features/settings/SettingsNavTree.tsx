@@ -199,6 +199,36 @@ const NAV_ITEMS: SettingsNavItem[] = [
       </svg>
     ),
   },
+  {
+    key: 'email-reports',
+    label: 'Email Reports',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <rect x="2" y="4" width="20" height="16" rx="2" />
+        <path d="m22 7-10 6L2 7" />
+      </svg>
+    ),
+  },
+  {
+    key: 'appearance',
+    label: 'Appearance',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" />
+        <circle cx="12" cy="12" r="4" />
+      </svg>
+    ),
+  },
+  {
+    key: 'local-api',
+    label: 'Local API',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <polyline points="16 18 22 12 16 6" />
+        <polyline points="8 6 2 12 8 18" />
+      </svg>
+    ),
+  },
 ];
 
 // Fluent keys for the localized nav labels. 'settings-nav-general' is
@@ -219,6 +249,9 @@ const NAV_L10N_KEYS: Record<string, string> = {
   'tax-configuration': 'settings-nav-tax-configuration',
   'exchange-rates': 'settings-nav-exchange-rates',
   'system-diagnostics': 'settings-nav-system-diagnostics',
+  'email-reports': 'settings-nav-email-reports',
+  'appearance': 'settings-nav-appearance',
+  'local-api': 'settings-nav-local-api',
 };
 
 // ── Exported for SettingsPage topbar/breadcrumb ─────────────────

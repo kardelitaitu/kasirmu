@@ -1,5 +1,5 @@
 //! Hardware command unit tests (Wave-D test relocation: moved out of
-//! `apps/desktop-tauri/src/commands/hardware_tests.rs`).
+//! `apps/desktop-client/src/commands/hardware_tests.rs`, since renamed to desktop-tauri).
 //!
 //! Mounted at the foot of `hardware.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the DTOs and the scanner-preference helper
@@ -510,7 +510,7 @@ fn an_explicit_grouping_setting_is_honoured() {
 }
 
 /// The trap this deliberately avoids: the setting's OWN default is `"comma"`
-/// (`platform/core/src/settings/typed.rs:658`), which is English. Trusting it
+/// (`platform/core/src/settings/typed.rs:704`), which is English. Trusting it
 /// for an unset key would print `Rp15,000` beside a preview reading
 /// `Rp 15.000` — trading one divergence for another.
 #[test]
@@ -544,4 +544,53 @@ fn an_unset_grouping_key_leaves_a_non_idr_store_ungrouped() {
 
     let (config, _) = read_receipt_config_for_scope(&guard, None).expect("a config");
     assert_eq!(config.grouping, receipt::ThousandSeparator::None);
+}
+
+#[test]
+fn print_kasbon_settlement_args_deserialise() {
+    let json = r#"{
+        "date": "2026-10-21 16:00",
+        "settlementNumber": "PAY-00123",
+        "customerName": "Siti Nurhaliza",
+        "customerPhone": "0812345678",
+        "receivableReference": "REC-01",
+        "paymentMethod": "cash",
+        "previousBalance": { "minorUnits": 50000, "currency": "IDR" },
+        "amountPaid": { "minorUnits": 30000, "currency": "IDR" },
+        "remainingBalance": { "minorUnits": 20000, "currency": "IDR" },
+        "cashierName": "Budi",
+        "note": "Cicilan kasbon"
+    }"#;
+    let args: PrintKasbonSettlementArgs = serde_json::from_str(json).unwrap();
+    assert_eq!(args.settlement_number, "PAY-00123");
+    assert_eq!(args.customer_name, "Siti Nurhaliza");
+    assert_eq!(args.payment_method, "cash");
+    assert_eq!(args.amount_paid.minor_units, 30000);
+    assert_eq!(args.remaining_balance.minor_units, 20000);
+}
+
+#[test]
+fn print_sales_receipt_args_with_credit_terms_deserialise() {
+    let json = r#"{
+        "date": "2026-10-21",
+        "receiptNumber": "R-101",
+        "items": [],
+        "subtotal": { "minorUnits": 10000, "currency": "IDR" },
+        "total": { "minorUnits": 10000, "currency": "IDR" },
+        "payments": [
+            { "method": "pay_later", "amount": { "minorUnits": 10000, "currency": "IDR" } }
+        ],
+        "customerName": "Pak Joko",
+        "customerPhone": "081999888",
+        "dueDate": "2026-11-20",
+        "outstandingBalance": { "minorUnits": 25000, "currency": "IDR" }
+    }"#;
+    let args: PrintSalesReceiptArgs = serde_json::from_str(json).unwrap();
+    assert_eq!(args.customer_name.as_deref(), Some("Pak Joko"));
+    assert_eq!(args.customer_phone.as_deref(), Some("081999888"));
+    assert_eq!(args.due_date.as_deref(), Some("2026-11-20"));
+    assert_eq!(
+        args.outstanding_balance.as_ref().map(|b| b.minor_units),
+        Some(25000)
+    );
 }

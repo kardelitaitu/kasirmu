@@ -49,3 +49,5 @@ grepping the whole tree for the pattern.
 | Full suite | 12,657 passed, 0 failed |
 | `tsc` | 0 |
 | Tree | `RetailPosScreen.tsx` restored; `scratch-kill.py` deleted |
+
+> last audited 14-10-26 by docs-auditor

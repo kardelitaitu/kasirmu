@@ -21,6 +21,7 @@ fn sample_item(id: &str, action: &str, payload: &str, terminal: &str) -> Offline
         synced_at: None,
         priority: SyncPriority::Normal,
         origin_terminal_id: Some(terminal.into()),
+        sale_id: None,
     }
 }
 

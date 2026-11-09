@@ -2,7 +2,7 @@
 //!
 //! A [`Payable`](crate::payable::Payable) is money the store owes a supplier for stock received but
 //! not yet paid — the "add product, haven't paid yet" flow (Phase 4 of
-//! `docs/plans/payment-methods-plan.md` §2b). It mirrors the planned
+//! `docs/plans/_done/done-payment-methods-plan.md` §2b). It mirrors the planned
 //! receivables (AR) shape so both sides share one settlement pattern.
 //!
 //! [`PayableStatus`](crate::payable::PayableStatus) is the single source of truth for the `payables.status`
@@ -185,6 +185,58 @@ pub struct NewPayable {
     pub due_date: Option<String>,
     /// Free-form note.
     pub note: String,
+}
+
+/// An aging bucket breakdown for accounts payable (vendor bills).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PayableAgingBucket {
+    /// 0 - 30 days outstanding.
+    pub current_minor: i64,
+    /// 31 - 60 days outstanding.
+    pub days_31_60_minor: i64,
+    /// 61 - 90 days outstanding.
+    pub days_61_90_minor: i64,
+    /// More than 90 days outstanding.
+    pub days_over_90_minor: i64,
+    /// Total outstanding debt across all buckets.
+    pub total_outstanding_minor: i64,
+}
+
+/// A per-vendor AP aging summary row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VendorAgingRow {
+    /// Unique supplier identifier.
+    pub vendor_id: String,
+    /// Supplier display name.
+    pub vendor_name: String,
+    /// 0 - 30 days outstanding in minor units.
+    pub current_minor: i64,
+    /// 31 - 60 days outstanding in minor units.
+    pub days_31_60_minor: i64,
+    /// 61 - 90 days outstanding in minor units.
+    pub days_61_90_minor: i64,
+    /// More than 90 days outstanding in minor units.
+    pub days_over_90_minor: i64,
+    /// Total balance outstanding to this supplier in minor units.
+    pub total_minor: i64,
+    /// Count of open/partial payables for this supplier.
+    pub open_count: u32,
+}
+
+/// Complete AP Aging report response.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PayableAgingReport {
+    /// Effective cut-off date (`YYYY-MM-DD`).
+    pub as_of_date: String,
+    /// ISO-4217 currency code.
+    pub currency: String,
+    /// Aggregate aging totals across all suppliers.
+    pub summary: PayableAgingBucket,
+    /// Per-supplier breakdown rows.
+    pub vendors: Vec<VendorAgingRow>,
 }
 
 #[cfg(test)]

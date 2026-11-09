@@ -60,3 +60,6 @@ stock-transfers-error-qty-integer = Jumlah harus berupa bilangan bulat
 stock-transfers-receive-line = { $sku } — { $product } (dipesan: { $qty })
 stock-transfers-received-qty-aria =
     .aria-label = Jumlah diterima { $sku }
+inv-transit-lines-aria = Item baris untuk transfer dalam perjalanan ini
+inv-transit-overdue = Lebih dari 24 jam dalam perjalanan
+stock-transfers-empty-in-transit = { $count } transfer masih dalam perjalanan — lihat Audit Stok Transit di bawah.

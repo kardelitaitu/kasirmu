@@ -1,4 +1,4 @@
-// ── SettingsNavTree tests — FLAT 14-page settings IA ─────────────
+// ── SettingsNavTree tests — FLAT settings IA ─────────────────────
 //
 // The category accordion is gone: the sidebar is ONE role="list" of
 // 14 pages in a fixed order (general, license-subscription, devices-
@@ -208,7 +208,7 @@ function fireKey(key: string, dispatchTarget: EventTarget = document) {
 
 // ── Tests ────────────────────────────────────────────────────────
 
-describe('SettingsNavTree (flat 14-page IA)', () => {
+describe('SettingsNavTree (flat IA)', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
@@ -218,7 +218,7 @@ describe('SettingsNavTree (flat 14-page IA)', () => {
 
   // ── Render: the mandated flat list ───────────────────────────
 
-  it('renders all 14 nav items as ONE flat role=list in the mandated order', () => {
+  it('renders every nav item as ONE flat role=list in the mandated order', () => {
     render(<SettingsNavTree {...defaultProps} />);
 
     const sidebar = screen.getByTestId('settings-sidebar');
@@ -227,7 +227,11 @@ describe('SettingsNavTree (flat 14-page IA)', () => {
     const lists = Array.from(sidebar.querySelectorAll('[role="list"]'));
     expect(lists).toHaveLength(1);
     const list = lists[0]!;
-    expect(list.querySelectorAll('[role="listitem"]')).toHaveLength(14);
+    // Derived from NAV_ITEMS, not a literal: the flat IA is expected to grow, and a
+    // hardcoded length turns each added page into several red cases across this file
+    // (round 155 added 'email-reports' and broke exactly that way). The ORDER
+    // assertion below is the real contract.
+    expect(list.querySelectorAll('[role="listitem"]')).toHaveLength(NAV_ITEMS.length);
 
     // The mandated key order, asserted against the DOM via bundle-resolved names.
     expect(NAV_ITEMS.map((n) => n.key)).toEqual([
@@ -245,6 +249,16 @@ describe('SettingsNavTree (flat 14-page IA)', () => {
       'tax-configuration',
       'exchange-rates',
       'system-diagnostics',
+      // Round 155: the email-report scheduling screen, orphaned by the flat-IA
+      // rebuild without a nav entry. Appended at the END rather than placed beside
+      // its settings siblings, because every existing deep link and every test
+      // that names a position refers to this order.
+      'email-reports',
+      // Round 158: the appearance section the flat-IA rebuild dropped, restored
+      // with its screen. Appended at the end like email-reports, for the same reason.
+      'appearance',
+      // Round 159: the Local API section, dropped by the same rebuild and now restored.
+      'local-api',
     ]);
     expect(visibleNavKeys()).toEqual(NAV_ITEMS.map((n) => n.key));
 
@@ -478,14 +492,18 @@ describe('SettingsNavTree (flat 14-page IA)', () => {
   });
 
   it('drops stale pinned keys that no longer exist in the flat IA', async () => {
-    // 'appearance' was a page in the old IA; its pin must render nothing.
-    localStorage.setItem('settings-pinned-sections', JSON.stringify(['appearance']));
+    // A key in NO list. This fixture has now been overtaken TWICE -- by 'appearance'
+    // (restored round 158) and by 'local-api' (restored round 159) -- which is exactly
+    // what the case is about, and why the replacement has to be a name no future round
+    // would plausibly reintroduce. Reusing a real section name is the trap here: the
+    // moment it comes back, this test silently starts proving the opposite of its claim.
+    localStorage.setItem('settings-pinned-sections', JSON.stringify(['retired-settings-hub']));
     render(<SettingsNavTree {...defaultProps} />);
     const group = document.querySelector('[data-testid="settings-sidebar"] .settings-sidebar-pinned');
     expect(group).not.toBeNull();
     expect(group!.querySelectorAll('[role="listitem"]')).toHaveLength(0);
-    // The stale pin does not pollute the main list: still exactly 14 items.
-    expect(getNavItems()).toHaveLength(14);
+    // The stale pin does not pollute the main list: still exactly one item per page.
+    expect(getNavItems()).toHaveLength(NAV_ITEMS.length);
   });
 
   // ── Flat search ───────────────────────────────────────────────
@@ -606,7 +624,7 @@ describe('SettingsNavTree (flat 14-page IA)', () => {
 
     it('ArrowDown wraps from the last page to the first', () => {
       const onNavigate = vi.fn();
-      render(<SettingsNavTree {...defaultProps} onNavigate={onNavigate} activeSection="system-diagnostics" />);
+      render(<SettingsNavTree {...defaultProps} onNavigate={onNavigate} activeSection={NAV_ITEMS[NAV_ITEMS.length - 1]!.key} />);
 
       fireKey('ArrowDown', screen.getByTestId('settings-sidebar'));
       expect(onNavigate).toHaveBeenCalledWith('general');
@@ -617,7 +635,10 @@ describe('SettingsNavTree (flat 14-page IA)', () => {
       render(<SettingsNavTree {...defaultProps} onNavigate={onNavigate} activeSection="general" />);
 
       fireKey('ArrowUp', screen.getByTestId('settings-sidebar'));
-      expect(onNavigate).toHaveBeenCalledWith('system-diagnostics');
+      // The LAST nav item, read from the list rather than named: rounds add pages at the
+      // end (round 155 appended 'email-reports'), and a hardcoded tail makes three
+      // keyboard cases disagree with the tree they are testing.
+      expect(onNavigate).toHaveBeenCalledWith(NAV_ITEMS[NAV_ITEMS.length - 1]!.key);
     });
 
     it('Home jumps to the first page and End to the last', () => {
@@ -629,7 +650,7 @@ describe('SettingsNavTree (flat 14-page IA)', () => {
       expect(onNavigate).toHaveBeenCalledWith('general');
       onNavigate.mockClear();
       fireKey('End', sidebar);
-      expect(onNavigate).toHaveBeenCalledWith('system-diagnostics');
+      expect(onNavigate).toHaveBeenCalledWith(NAV_ITEMS[NAV_ITEMS.length - 1]!.key);
     });
 
     it('ArrowLeft/ArrowRight no longer expand or collapse anything', () => {

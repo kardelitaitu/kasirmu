@@ -65,10 +65,7 @@ async fn a_cached_entry_is_not_served_past_the_tokens_expiry() {
     };
     {
         let mut cache = JWT_CACHE.write().await;
-        cache.insert(
-            (secret.clone(), token.to_string()),
-            (claims.clone(), std::time::Instant::now()),
-        );
+        cache.insert(&secret, token, claims.clone(), std::time::Instant::now());
     }
 
     // The seeded entry is fresh and unexpired-by-TTL, so ONLY the `exp`
@@ -83,7 +80,7 @@ async fn a_cached_entry_is_not_served_past_the_tokens_expiry() {
     // Clean up so the seeded entry cannot leak into another test in this
     // process (JWT_CACHE is a process-global static).
     let mut cache = JWT_CACHE.write().await;
-    cache.remove(&(secret, token.to_string()));
+    cache.remove(&secret, token);
 }
 
 #[tokio::test]
@@ -411,4 +408,50 @@ fn ipc_door_mint(requested: Option<i64>) -> TokenResponse {
         .unwrap_or(DEFAULT_EXPIRY_HOURS)
         .clamp(1, MAX_TOKEN_HOURS);
     create_token_full("script", Some(clamped), None, None, None, None).unwrap()
+}
+
+#[tokio::test]
+async fn jwt_cache_incremental_eviction_bounds_entries() {
+    let secret = "test-incremental-eviction-secret";
+    let now = chrono::Utc::now();
+    let mut cache = JWT_CACHE.write().await;
+
+    // Insert 1005 entries; capacity is 1000.
+    for i in 0..1005 {
+        let claims = ApiTokenClaims {
+            sub: format!("user-{i}"),
+            jti: uuid::Uuid::now_v7().to_string(),
+            exp: (now.timestamp() + 3600) as usize,
+            iat: now.timestamp() as usize,
+            tenant_id: None,
+            terminal_id: None,
+            permissions: None,
+        };
+        cache.insert(
+            secret,
+            &format!("token-{i}"),
+            claims,
+            std::time::Instant::now(),
+        );
+    }
+
+    // The oldest 5 tokens (0..5) should have been incrementally evicted from the front.
+    for i in 0..5 {
+        assert!(
+            cache.get(secret, &format!("token-{i}")).is_none(),
+            "token-{i} should have been incrementally evicted"
+        );
+    }
+    // The newer tokens (e.g. 5..1005) remain.
+    for i in 5..1005 {
+        assert!(
+            cache.get(secret, &format!("token-{i}")).is_some(),
+            "token-{i} should remain cached"
+        );
+    }
+
+    // Cleanup
+    for i in 5..1005 {
+        cache.remove(secret, &format!("token-{i}"));
+    }
 }

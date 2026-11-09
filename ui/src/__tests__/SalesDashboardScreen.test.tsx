@@ -10,6 +10,7 @@ import salesFtl from '@/locales/sales.ftl?raw';
 import SalesDashboardScreen from '@/features/sales/SalesDashboardScreen';
 import { registerSalesWidgets } from '@/features/sales/widgets';
 import { clearWidgets } from '@/registries/widget-registry';
+import type * as CurrencyContextModule from '@/contexts/CurrencyContext';
 
 const SAMPLE_SUMMARY = [
   { sale_id: 'sale-1', total_minor: 1250, currency: 'USD', line_count: 2, status: 'completed', created_at: '2026-06-28T10:00:00Z' },
@@ -31,9 +32,23 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 // Canvas widgets render money via the store default currency.
-vi.mock('@/contexts/CurrencyContext', () => ({
-  useCurrency: () => ({ currency: 'USD', setCurrency: vi.fn(), loading: false }),
-}));
+//
+// Spreads the REAL module and overrides only what this suite pins. A partial mock here
+// silently removes every other export, so `SalesByHourWidget`'s `useOptionalCurrency`
+// call — added when it stopped hardcoding 'USD' — threw "No useOptionalCurrency export
+// is defined on the mock" and took all five cases in this file down. Spreading means the
+// next hook the widgets read cannot do that again.
+vi.mock('@/contexts/CurrencyContext', async () => {
+  const actual = await vi.importActual<typeof CurrencyContextModule>(
+    '@/contexts/CurrencyContext',
+  );
+  const store = { currency: 'USD', setCurrency: vi.fn(), loading: false };
+  return {
+    ...actual,
+    useCurrency: () => store,
+    useOptionalCurrency: () => store,
+  };
+});
 
 vi.mock('@/hooks/useFeatures', () => ({
   useFeatures: () => ({

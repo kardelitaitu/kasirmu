@@ -29,10 +29,12 @@ import { RestaurantCartSheet } from '@/features/restaurant/components/Restaurant
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useOrientation } from '@/hooks/useOrientation';
 
-import { defaultTenderPresets, formatMoney, getProductModifierGroups, type CartLine, type LineId, type ModifierSelection, type Product, type Sku } from '@/types/domain';
+import { defaultTenderPresets, formatMoney, getProductModifierGroups, inferCourseForProduct, type CartLine, type CourseId, type LineId, type ModifierSelection, type Product, type Sku } from '@/types/domain';
 import { useSwipe } from '@/hooks/useSwipe';
 import {
   deleteHeldCartScoped,
+  getCartDeductionLocation,
+  getCartDeductionLocationScoped,
   holdCartScoped,
   listOpenBillsScoped,
   printSalesReceipt,
@@ -59,6 +61,9 @@ import { usePosHeldCarts } from './hooks/usePosHeldCarts';
 import { usePosCartActions } from './hooks/usePosCartActions';
 import { useCartKeyboardNav } from './hooks/useCartKeyboardNav';
 import { scopedKey } from '@/utils/scopedStorage';
+import { reviveDraftLines } from './utils/draftCart';
+import { isEditableTarget } from '@/utils/isEditableTarget';
+import { isAnyAriaModalOpen } from '@/utils/modal-guard';
 import { useRestaurantShortcuts, type RestaurantShortcutHandlers } from '@/features/restaurant/hooks/useRestaurantShortcuts';
 import { useCartResize } from './hooks/useCartResize';
 import { cashTenderPresets, useLocalPaymentRails } from './useLocalPaymentRails';
@@ -128,7 +133,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     serviceChargeAmount,
     addProduct,
     removeLine,
-    updateQty,
+    changeQty,
     updateLinePrice,
     updateLineModifiers,
     updateLineNote,
@@ -179,7 +184,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // ⚠️ STORE-SCOPED. These were plain constants (`pos-locked-cart`, `pos-active-draft`),
   // and the payload they carry is entirely store-specific: the lines, `tableNumber`,
   // `customerName`, `guestCount` and `orderType`. A store switch remounts the POS —
-  // `WorkspaceContext.switchStore` sets `setActiveWorkspace(null)` (:363) — and the mount
+  // `WorkspaceContext.tsx` `switchStore` sets `setActiveWorkspace(null)` (WorkspaceContext.tsx:363) — and the mount
   // effect below restores whatever this key holds, so the operator who rang up a cart at
   // one store and moved to another was shown the FIRST store's cart and table number.
   //
@@ -200,6 +205,74 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     () => scopedKey('pos-active-draft', resolvedStoreId),
     [resolvedStoreId],
   );
+  // ── Retire the cart keys of the scope we just LEFT ──────────────────
+  //
+  // Scoping the keys by store (rounds 104/167/170) closed the cross-store leak and left
+  // this one open. `resolvedStoreId` is SEEDED to DEFAULT_STORE_ID and only later replaced
+  // by the real device binding (WorkspaceContext.tsx:132/229 -> :536), so the scope CHANGES
+  // during a normal boot, not only on a deliberate switch. The autosave effects below write
+  // under whichever scope is current, and both the restore and those saves read the value
+  // in these two `useMemo`s:
+  //
+  //   * Before resolution a cart lands under `pos-active-draft:default`.
+  //   * After resolution the same cart is re-saved under `pos-active-draft:<real id>`.
+  //
+  // Two keys then hold one ticket. The stale one is not read on this boot — that is the
+  // point of the scoping — but nothing ever removes it either. It stays until the operator
+  // happens to boot again inside the unresolved window, which is the very case the scoping
+  // exists to prevent, and the PREVIOUS store's cart is then restored ahead of the current
+  // one, because the restore prefers the resolved scope's keys over the seeded scope's.
+  //
+  // The fix treats a scope change as a MIGRATION rather than an abandonment: carry the draft
+  // across, then delete the key being left. Carrying it is deliberate. The cart is the
+  // cashier's unsaved work and the store it belongs to has not changed — only the knowledge
+  // of which store that is has. Deleting without carrying would empty the till mid-order,
+  // which is worse than a leak that is closed one boot later.
+  const previousScopeRef = useRef<string | null>(null);
+  useEffect(() => {
+    const previousScope = previousScopeRef.current;
+    previousScopeRef.current = resolvedStoreId;
+    // First run: nothing to migrate, and the ref now records the scope in use.
+    if (previousScope === null || previousScope === resolvedStoreId) return;
+    for (const base of ['pos-active-draft', 'pos-locked-cart']) {
+      const staleKey = scopedKey(base, previousScope);
+      try {
+        const carried = localStorage.getItem(staleKey);
+        if (carried === null) continue;
+        const destination = scopedKey(base, resolvedStoreId);
+        if (localStorage.getItem(destination) === null) {
+          // Destination is empty: adopt outright. This is the boot-time case, where the
+          // scope moved after the cart was written and the migrated value is the same
+          // cart under its now-correct name.
+          localStorage.setItem(destination, carried);
+        } else {
+          // Destination ALREADY holds a draft: this is a deliberate switch onto a store
+          // the operator used before, not a resolution of the current one. The
+          // destination draft is not newer — it is from a different, earlier session —
+          // so neither value may simply overwrite the other.
+          //
+          // Overwriting would destroy the abandoned cart; deleting the outgoing one
+          // would destroy the cart the operator is LOOKING AT, which is worse. The POS
+          // UNMOUNTS on a switch (`switchStore` clears `activeWorkspace`, and AppShell
+          // renders the POS only under its own workspace at AppShell.tsx:745/:778, re-measured
+  // 2026-10-19; the old `:722/:755` pair was this file's own line numbers and matched nothing), so the in-memory
+          // cart is already gone and this key holds its only copy.
+          //
+          // So the outgoing draft is PARKED under a dedicated key instead of dropped.
+          // It is not auto-restored — resurrecting a stale cart into a live till would
+          // be its own hazard — but it survives for recovery, and the destination keeps
+          // the draft it had.
+          try {
+            localStorage.setItem(scopedKey(base + '-parked', resolvedStoreId), carried);
+          } catch { /* quota: the outgoing draft is lost, which is the pre-existing state */ }
+        }
+        localStorage.removeItem(staleKey);
+      } catch {
+        // Storage unavailable or at quota. The in-memory cart is unaffected, so the
+        // operator loses nothing visible; only the stale key survives.
+      }
+    }
+  }, [resolvedStoreId]);
   // PROMO-5/PROMO-3: promotions selected in the picker. They no longer
   // map onto the cart-discount pipeline — the selected ids ride to
   // checkout (PaymentModal → complete_sale promotionIds) and the backend
@@ -207,35 +280,87 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // and percentage promotions stack instead of overwriting the manual
   // discount slot. Declared before the restore effect so a lock/unlock
   // cycle can rehydrate the selection.
+  // ── The store's currency, resolved BEFORE the draft restore ──────────────
+  //
+  // This used to be declared far below, next to its first consumer. It moved up
+  // because the restore now has to VALIDATE a draft against it: the draft records
+  // the currency its minor units were written under, and a minor unit is
+  // exponent-relative (IDR/JPY are 0, USD/EUR are 2), so the two are only
+  // comparable once the store has answered.
+  //
+  // `currencyReady` is what makes that ordering explicit, and it is load-bearing:
+  // `CurrencyProvider` starts on its `fallback` ('USD') with `loading: true`, so
+  // validating against `currencyCtx.currency` too early would compare the draft to
+  // the FALLBACK and wave a stale USD draft straight through — the very defect this
+  // guards. With no provider mounted (tests, or a shell that omits it) the local
+  // state is the authority and is ready immediately.
+  const [storeCurrency, setStoreCurrency] = useState<string>('IDR');
+  const currencyCtx = useOptionalCurrency();
+  const currencyReady = currencyCtx ? !currencyCtx.loading : true;
+
+  useEffect(() => {
+    // ⚠️ Adopt the context's currency ONLY once it has finished loading. While
+    // `loading` is true the provider is still publishing its `fallback`, which is
+    // 'USD' by DEFAULT (CurrencyContext.tsx) and NOT the store's currency. Publishing
+    // that here — even for one render — made the restore below validate an IDR draft
+    // against USD, and that direction of error is the destructive one: the draft is
+    // judged foreign and DELETED, so a correct cart was lost on a store that had
+    // simply not answered yet. Measured: the provider's own mount effect sets
+    // `loading` false only after the async read settles, so this guard is what keeps
+    // the fallback out of `storeCurrency` entirely.
+    if (currencyCtx && !currencyCtx.loading) {
+      setStoreCurrency(currencyCtx.currency);
+      return;
+    }
+    // Still loading (or no provider): fall back to the store's own settings read.
+    // The restore waits for `currencyReady` regardless, so this path only decides
+    // what `storeCurrency` holds in the meantime; it must not be the fallback.
+    if (!sessionToken) return;
+    let cancelled = false;
+    getStoreSettingsScoped(sessionToken)
+      .then((settings) => {
+        if (!cancelled && settings.currency) {
+          setStoreCurrency(settings.currency);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // `currencyCtx` itself is the dependency, not the two fields read from it: the
+    // effect's guard is on the CONTEXT (`currencyCtx && !currencyCtx.loading`), so a
+    // new provider value with the same currency and loading flag is still a new
+    // authority. Naming the fields let that go stale.
+  }, [sessionToken, currencyCtx]);
+
+  // Set once the restore effect has actually reached its verdict. The persist
+  // effect below must not touch storage before then: on the first render `lines` is
+  // empty, so its else-branch would delete the draft the restore has not yet read.
+  const draftRestoreSettledRef = useRef(false);
+
   const [appliedPromotions, setAppliedPromotions] = useState<Promotion[]>([]);
   useEffect(() => {
+    // Wait for the store currency, then settle exactly once. Must return BEFORE the
+    // ref is set, so a still-loading currency leaves the draft intact for the retry
+    // this effect performs when `currencyReady` flips.
+    if (!currencyReady) return;
+    draftRestoreSettledRef.current = true;
     try {
       const raw = localStorage.getItem(LOCKED_CART_KEY) ?? localStorage.getItem(ACTIVE_DRAFT_KEY);
       if (!raw) return;
       const data = JSON.parse(raw);
       if (data.lines && Array.isArray(data.lines)) {
-        setLines(data.lines.map((l: {
-          sku: string;
-          name?: string;
-          category?: string;
-          qty: number;
-          unit_price: { minor_units: number; currency: string };
-          courseId?: CartLine['courseId'];
-          coursingStatus?: CartLine['coursingStatus'];
-          modifiers?: CartLine['modifiers'];
-          note?: string;
-        }) => ({
-          id: `restored-${Date.now()}-${Math.random().toString(36).slice(2)}` as LineId,
-          sku: l.sku as Sku,
-          name: l.name,
-          category: l.category,
-          qty: l.qty,
-          unit_price: l.unit_price,
-          ...(l.courseId ? { courseId: l.courseId } : {}),
-          ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
-          ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
-          ...(l.note ? { note: l.note } : {}),
-        })));
+        const revived = reviveDraftLines(data.lines, storeCurrency);
+        if (revived === null) {
+          // Written under a currency the store no longer uses. Its amounts cannot be
+          // re-read in the store's — stamping the new code onto the old minor units
+          // would misprice them by the exponent ratio (100x between IDR and USD) —
+          // so the draft is DROPPED rather than shown wrong. An empty cart is
+          // recoverable; a wrong price at the till is not. Both keys go, or the
+          // refusal would be undone on the next mount by whichever key survived.
+          localStorage.removeItem(LOCKED_CART_KEY);
+          localStorage.removeItem(ACTIVE_DRAFT_KEY);
+          return;
+        }
+        setLines(revived);
       }
       if (typeof data.discountPercent === 'number') {
         setDiscount(data.discountPercent, data.discountLabel || '');
@@ -270,7 +395,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       }
       localStorage.removeItem(LOCKED_CART_KEY);
     } catch { /* ignore */ }
-  }, [setLines, setDiscount, setAppliedPromotions, setTipPercent, setServiceCharge, LOCKED_CART_KEY, ACTIVE_DRAFT_KEY]);
+  }, [currencyReady, storeCurrency, setLines, setDiscount, setAppliedPromotions, setTipPercent, setServiceCharge, LOCKED_CART_KEY, ACTIVE_DRAFT_KEY]);
 
   const [showOptions, setShowOptions] = useState(false);
   const [showTables, setShowTables] = useState(false);
@@ -291,10 +416,20 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [guestCount, setGuestCount] = useState('');
   const [editingCartLine, setEditingCartLine] = useState<CartLine | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const editingModifierGroups = useMemo(
+    () => (editingProduct ? getProductModifierGroups(editingProduct) : []),
+    [editingProduct],
+  );
   const [showTableNumberSetting, setShowTableNumberSetting] = useState(false);
 
   // ── Auto-persist active draft cart (crash & low-memory recovery) ─
   useEffect(() => {
+    // Hold off until the restore has reached its verdict. On the first render `lines`
+    // is empty (and, inside a `CurrencyProvider`, the currency is still loading, so
+    // the restore has deliberately not run yet), and the else-branch below would
+    // delete a draft that has not been read — the one thing this mechanism exists to
+    // prevent. The settle flag is set by the restore effect just before it commits.
+    if (!draftRestoreSettledRef.current) return;
     if (lines.length > 0) {
       try {
         const draft = {
@@ -336,9 +471,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   useEffect(() => {
     const handleMemoryTrim = (e: Event) => {
       const level = (e as CustomEvent<{ level?: number }>).detail?.level ?? 80;
+      // IF/ELSE rather than a bare guard: the restore block below reads and writes the
+      // saved POS draft, whose handlers include tablet-only commands, and
+      // `verify-scoped-reads.py` only reads a shell guard as in force INSIDE the block
+      // it opened. Same behaviour, and the desktop restore path is now provably the
+      // desktop's.
       if (isTabletShell()) {
         void notifyMemoryPressure(level).catch(() => {});
-      }
+      } else {
       if (lines.length > 0) {
         try {
           const draft = {
@@ -367,6 +507,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           localStorage.setItem(ACTIVE_DRAFT_KEY, JSON.stringify(draft));
         } catch { /* ignore */ }
       }
+      }
     };
     window.addEventListener('kasirmu:trimMemory', handleMemoryTrim);
     window.addEventListener('kasirmu:lowMemory', handleMemoryTrim);
@@ -379,7 +520,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // per-line course chip. Defaults to the workspace check alone until the
   // setting loads, so a slow settings read never hides coursing that the
   // workspace implies; an explicit "false" hides it.
-  const [courseFiringEnabled, setCourseFiringEnabled] = useState<boolean | null>(null);
+  const [courseFiringEnabled, setCourseFiringEnabled] = useState<boolean | null>(false);
+  const [settingsRevision, setSettingsRevision] = useState(0);
   // Defaults ON for restaurant POS and OFF elsewhere. The key is restaurant-only,
   // so a retail workspace must not gain an order-type prompt from an unset value.
   // This default is what lets `CartPanel` drop its `|| restaurant-pos` override
@@ -490,27 +632,17 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     [],
   );
 
-  const [storeCurrency, setStoreCurrency] = useState<string>('IDR');
-  const currencyCtx = useOptionalCurrency();
-
-  useEffect(() => {
-    if (currencyCtx?.currency) {
-      setStoreCurrency(currencyCtx.currency);
-      return;
-    }
-    if (!sessionToken) return;
-    let cancelled = false;
-    getStoreSettingsScoped(sessionToken)
-      .then((settings) => {
-        if (!cancelled && settings.currency) {
-          setStoreCurrency(settings.currency);
-        }
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [sessionToken, currencyCtx?.currency]);
-
   const activeCurrency = currencyCtx?.currency ?? storeCurrency ?? subtotal?.currency ?? 'IDR';
+
+  /**
+   * Whether a customer has an open tab on this terminal, read by the shift-close
+   * guard. Declared HERE, before `usePosShifts`, and assigned once
+   * `usePosHeldCarts` has produced `activeOpenBillId` below — the held-cart hook is
+   * instantiated after this one, so a plain argument would be undefined at
+   * configuration time. A ref is also correct on its own terms: the guard must read
+   * the CURRENT tab state when Close is pressed.
+   */
+  const hasOpenTabRef = useRef(false);
 
   const {
     activeShift,
@@ -539,7 +671,15 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     handleConfirmCloseShift,
     handleOpenShiftClick,
     handleConfirmOpenShift,
-  } = usePosShifts({ sessionToken, userId, lines, l10nRef, currency: activeCurrency });
+  } = usePosShifts({
+    sessionToken,
+    userId,
+    lines,
+    l10nRef,
+    currency: activeCurrency,
+    // Bound after usePosHeldCarts below — see the param's doc for why a ref.
+    hasOpenTabRef: hasOpenTabRef,
+  });
   // ── Cart actions: cart handle, deduction binding, add/qty/override ──
   const {
     overrideTarget,
@@ -551,6 +691,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     deductionLocationName,
     setDeductionLocationName,
     ensureCart,
+    syncLineCourse,
     handleAddProduct,
     handleDeductionBadgeClick,
     deductionOverridden,
@@ -573,7 +714,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     shiftUnavailableRef,
     l10nRef,
     addProduct,
-    updateQty,
+    changeQty,
     updateLinePrice,
     removeLine,
     setLines,
@@ -638,8 +779,19 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         } else {
           addToast({ type: 'warning', message: l10nRef.current.getString('pos-no-barcode-match') });
         }
-      } catch {
-        // Silently ignore — the scanner will beep, user retries.
+      } catch (err) {
+        // A FAILED lookup is not a clean miss, and the two need different words: this
+        // handler already toasts `pos-no-barcode-match` for a legitimate "not our
+        // barcode", and onError below toasts `pos-scanner-error`. A throwing lookup
+        // used to be swallowed with "Silently ignore — the scanner will beep, user
+        // retries", which is true of a scanner mis-read and untrue of a failed IPC:
+        // every retry fails too, so the item never arrives and nothing says why. At a
+        // busy till that reads as a dead scanner.
+        console.error('barcode lookup failed', err);
+        addToast({
+          message: requiredLocalized(l10nRef.current, 'pos-barcode-lookup-failed'),
+          type: 'warning',
+        });
       }
     }, [handleAddProduct, addToast, sessionToken, activeShiftRef, shiftUnavailableRef, l10nRef]), // l10n via ref
     onError: useCallback(
@@ -737,7 +889,41 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       },
       [],
     ),
+    deductionLocationIdRef,
+    onRestoreDeductionLocation: useCallback(
+      async (locId: string | null) => {
+        if (!locId) {
+          setDeductionLocationName(null);
+          return;
+        }
+        try {
+          // ADR #7: the ambient `get_cart_deduction_location` is registered by the
+          // TABLET shell only; desktop registers only the `_scoped` twin. `sessionToken`
+          // is `rawToken || ''` (:157), so a missing token is the EMPTY STRING, not
+          // null — a bare truthiness test therefore sent the desktop down the ambient
+          // branch whenever no workspace session existed, the invoke was rejected as an
+          // unknown command, and the `catch` below silently rendered the raw location id.
+          // Gate the fallback on the shell as well as the token. Found by
+          // scripts/verify-ipc-parity.py; see
+          // docs/records/audits/2026-10-19-ipc-door-missing-and-root-debris.md.
+          const info =
+            sessionToken || !isTabletShell()
+              ? await getCartDeductionLocationScoped(sessionToken, locId)
+              : await getCartDeductionLocation(locId);
+          setDeductionLocationName(info?.locationName ?? locId);
+          if (info?.overriddenAt) setDeductionOverridden(true);
+        } catch {
+          setDeductionLocationName(locId);
+        }
+      },
+      [sessionToken, setDeductionLocationName, setDeductionOverridden],
+    ),
   });
+
+  // The shift-close guard reads this. Assigned during render rather than in an effect
+  // so it is already correct the first time Close is clicked — no one-close-behind
+  // window where a tab exists but the ref still says false.
+  hasOpenTabRef.current = Boolean(activeOpenBillId);
 
   const { handlePaymentComplete: customerDisplayPaymentComplete } = useCustomerDisplay({
     sessionToken,
@@ -780,13 +966,39 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     // PROMO-3: the checkout consumed the promotion selection.
     setAppliedPromotions([]);
     // If this was an open bill being paid, delete it from DB.
+    //
+    // ⚠️ THE FAILURE BRANCH MUST RE-READ, and the delete must be AWAITED before the
+    // refresh — the same rule the split handler above states in handleConfirmSplitBill, and the
+    // same reason its comment gives: `loadOpenBills()` on the success path alone left
+    // the list showing stale data over a half-committed write.
+    //
+    // This site had both halves wrong. The delete was fire-and-forget and the refresh
+    // fired in the SAME TICK, so the read raced the write; and when the delete
+    // REJECTED the tab was still in the database with nothing re-reading it. The
+    // operator saw a toast and a list built from whatever the server held an instant
+    // earlier — while `setActiveOpenBillId(null)` had already destroyed the only
+    // handle that could retry the delete.
+    //
+    // A paid tab left in the database is not cosmetic: the open-bills list is the only
+    // surface that can resume one, so the next waiter can recall a tab this cashier
+    // already settled and sell its lines a second time.
+    //
+    // Still fire-and-forget for the SALE's sake — the money is already taken and a
+    // locked DB must not fail a completed checkout — but the list is refreshed once
+    // the write settles, on BOTH paths.
     if (activeOpenBillId) {
-      void releaseLease(activeOpenBillId);
-      deleteHeldCartScoped(sessionToken, activeOpenBillId).catch(() => {
-        addToast({ message: requiredLocalized(l10n, 'pos-toast-held-cart-delete-failed'), type: 'error' });
-      });
+      const paidBillId = activeOpenBillId;
+      void releaseLease(paidBillId);
       setActiveOpenBillId(null);
-      loadOpenBills();
+      deleteHeldCartScoped(sessionToken, paidBillId)
+        .catch(() => {
+          addToast({ message: requiredLocalized(l10n, 'pos-toast-held-cart-delete-failed'), type: 'error' });
+        })
+        .finally(() => {
+          // `finally`, not `.then`: the refusal has to re-read too, or the paid tab
+          // stays invisible until a manual reload.
+          void loadOpenBills();
+        });
     }
     resetCart();
     try {
@@ -796,7 +1008,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     //
     // ⚠️ This is the RELEASE half of the defect fixed on the claim side in
     // 206462b4d. The cart panel shows the Table number field for the restaurant
-    // POS on EVERY order type (CartPanel.tsx:735-743), so a cashier ringing up a
+    // POS on EVERY order type (CartPanel.tsx:855-856, re-measured 2026-10-19; the note
+  // said `:735-743`), so a cashier ringing up a
     // TAKEAWAY with a number left in that field reached here and freed a real
     // table: `releaseTableScoped` on whatever `match` the number resolved to.
     // Blocking the claim alone was therefore only half the fix — a takeaway could
@@ -837,7 +1050,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     // Also clear the customer-facing pole display.
     customerDisplayPaymentComplete();
     // F21: the order-sent chime. Placed here, at the end of a COMPLETED checkout —
-    // the same seat the retail POS uses (`RetailPosScreen.tsx:1576`) — so it cannot
+    // the same seat the retail POS uses (the `playSuccess()` inside `RetailPosScreen`'s
+  // PaymentModal `onComplete` — anchored by that call, not a line number: the numbers
+  // this note has carried were all stale within a week of being written) — so it cannot
     // fire for a sale that failed. `null` means never written, which the setting's own
     // default (true) says should chime.
     if (soundChime !== false) playSuccess();
@@ -857,7 +1072,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     }
     // ⚠️ DINE-IN ONLY — the NINTH site of this rule. Same derivation as the saved-tab
     // builders, but the consequence is on PAPER: completedSale.ts puts this value in
-    // the printed args (:232) and derives the receipt NUMBER from it (:212), so a
+    // the printed args (`tableNumber` on the returned object) and derives the receipt
+    // NUMBER from it (`CHECK-${tableNumber}`), so a
     // takeaway with a stray number in the Table field printed a check naming a table
     // it does not have. The button gate in CartActionBar now agrees with this.
     const billTable = orderType === 'dine_in' ? (tableNumber ?? '').trim() : '';
@@ -876,7 +1092,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       });
       await printSalesReceipt(sessionToken, receipt);
       addToast({
-        message: l10n.getString('pos-toast-bill-printed', { table: billTable }) || 'Interim bill check printed',
+        message: requiredLocalized(l10n, 'pos-toast-bill-printed', { table: billTable }),
         type: 'success',
       });
     } catch (err) {
@@ -919,6 +1135,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
               ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
               ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
               ...(l.note ? { note: l.note } : {}),
+              ...(typeof l.dispatchedQty === 'number' ? { dispatchedQty: l.dispatchedQty } : {}),
             })),
             discountPercent,
             discountLabel,
@@ -931,13 +1148,17 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             ...(orderType ? { orderType } : {}),
           });
           const label = heldCartLabel(trimmedTable, trimmedName) ?? `Open Bill #${Date.now()}`;
-          if (activeOpenBillId) {
-            await deleteHeldCartScoped(sessionToken, activeOpenBillId);
-          }
           const remSubtotalMinor = remainingLines.reduce(
             (sum, l) => sum + l.unit_price.minor_units * l.qty,
             0,
           );
+          // CREATE FIRST, DELETE SECOND. This ran the DELETE first, and the delete is
+          // what loses the tab: a rejected hold (locked DB, dropped IPC, lapsed session)
+          // left the table with no open bill at all while the catch below toasted
+          // "failed to update tab" — and execution then CONTINUES to
+          // `setShowPayment(true)`, so the sale goes to payment with the remaining
+          // lines destroyed. Same ordering fix as TableManagementScreen.handleMoveTable;
+          // the duplicate-row cost of the safe order is recoverable, a lost tab is not.
           await holdCartScoped(sessionToken, {
             label,
             cart_data: cartData,
@@ -946,11 +1167,72 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             currency: remainingLines[0]?.unit_price.currency || activeCurrency,
             bill_type: 'open_bill',
             customer_name: trimmedName || (trimmedTable ? `Table ${bareTableNumber(trimmedTable)}` : ''),
+            ...(deductionLocationIdRef.current ? { deduction_location_id: deductionLocationIdRef.current } : {}),
           });
+          // The remaining tab exists under this id now, so removing the previous
+          // record cannot lose data — a failure here leaves two tabs, not none.
+          if (activeOpenBillId) {
+            await deleteHeldCartScoped(sessionToken, activeOpenBillId);
+          }
           setActiveOpenBillId(null);
           loadOpenBills();
         } catch {
+          // REPORT AND STOP. This catch used to toast and fall through to the
+          // `setShowPayment(true)` below, which is the exact shape the create-first comment
+          // above (the "create-first order trades for not losing the tab" block) says the
+          // reordering was meant to end: the operator is taken to payment for the SPLIT
+          // portion while the ORIGINAL tab — still holding every line, because the
+          // `setActiveOpenBillId(null)` in handlePaymentComplete runs on the success path
+          // only — remains
+          // to be settled later. That is one set of lines charged twice.
+          //
+          // Returning keeps the cart intact and the split modal open, so the cashier can
+          // retry the balance or cancel; a lost tab is recoverable, a double charge is not.
+          // HALF-COMMITTED: re-read the open bills BEFORE reporting.
+          //
+          // The writes are ordered hold-then-delete, so this catch can fire after the
+          // hold SUCCEEDED — the original tab still holds every line and a new tab now
+          // holds the same remaining ones, which is the documented, hand-resolvable
+          // duplicate the create-first order trades for not losing the tab. But
+          // loadOpenBills() sits on the success path (the bare `loadOpenBills();` call just
+          // above this comment), so until the branch below re-read it the list
+          // was never re-read and the screen kept showing ONE bill over data that held
+          // TWO. The operator could not see, select, or settle the duplicate — the
+          // "recoverable" mess was recoverable only by someone with database access.
+          //
+          // Refreshing makes it visible and settleable. Best-effort: a second failure
+          // here must not mask the one being reported.
+          //
+          // The refresh IS covered now — see "the failure branch did not re-read the
+          // open bills" in PosScreenCoreFlow.test.tsx, which sets `wsState.scopeTypeKey`
+          // and DIFFERENCES the `listOpenBillsScoped` call count. A bare count was tried
+          // first and was worthless: the mount effect already satisfies `> 0`, so it
+          // passed against a build with this refresh deliberately removed. Only the delta
+          // distinguishes it — measured, not assumed.
+          //
+          // The duplicate being VISIBLE has a resume to stand on now: the case named
+          // 're-reads the open bills when a paid tab fails to delete' resumes a real
+          // tab, which is what sets `activeOpenBillId` (the `setActiveOpenBillId(id)` call in
+  // `usePosHeldCarts`'s `handleResumeOpenBill`) and
+          // therefore what makes this branch reachable at all. The previous wording —
+          // 'no case in the file resumes one' — measured true when written and is
+          // false now.
+          //
+          // This handler's ORDERING is still pinned at the source layer, not by a case
+          // here: heldCartReplacementOrder.test.ts grades hold-before-delete across four
+          // sites including this one, on purpose, because reaching the handler needs the
+          // whole POS. What nothing shows is the DUPLICATE appearing in the rendered
+          // list — that needs this branch to run, and no case drives a split here.
+          try {
+            await loadOpenBills();
+          } catch {
+            /* the toast below already reports the failure */
+          }
           addToast({ message: requiredLocalized(l10n, 'pos-toast-tab-balance-failed'), type: 'error' });
+          // `false`, not a bare `return`: the modal closes on ANY resolution that
+          // is not an explicit false, so returning nothing closed it and stranded
+          // the cashier with a half-applied split and no way to retry the balance.
+          return false;
         }
       }
       setLines(selectedLines);
@@ -974,6 +1256,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       loadOpenBills,
       addToast,
       setLines,
+      deductionLocationIdRef,
       // l10n is read by the failure toasts this handler raises (round 15's
       // localization pass), so it must be listed or the toast renders in the
       // locale the cashier was NOT using after a switch.
@@ -982,6 +1265,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   );
 
   const [sendingToKitchen, setSendingToKitchen] = useState(false);
+  const sendingToKitchenRef = useRef(false);
 
   const hasUndispatchedItems = useMemo(
     () => lines.some((l) => (l.qty - (l.dispatchedQty ?? 0)) > 0),
@@ -1023,7 +1307,18 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             printerTarget: 'kitchen',
             documentKind: 'kitchen',
           });
-          await printSalesReceipt(sessionToken, foodChit);
+          try {
+            await printSalesReceipt(sessionToken, foodChit);
+          } catch (printErr) {
+            // Non-fatal, but NOT silent — and `addToast` was already in this callback's
+            // dep array (below), so the intent was there. A kitchen chit that never
+            // printed means the line reaches nobody: the cashier must hear about it,
+            // because only they can re-send or tell the kitchen. Round 36 fixed the same
+            // shape in PaymentModal's chit catch; this is the dispatch path, where the
+            // order is actually sent.
+            console.warn('Kitchen chit printing failed/unavailable (non-fatal):', printErr);
+            addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-kitchen-print-failed'), type: 'warning' });
+          }
         }
 
         if (drinkLines.length > 0) {
@@ -1035,7 +1330,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             printerTarget: 'bar',
             documentKind: 'bar',
           });
-          await printSalesReceipt(sessionToken, barChit);
+          try {
+            await printSalesReceipt(sessionToken, barChit);
+          } catch (printErr) {
+            // Same as the kitchen chit above, with the bar's own string so the operator
+            // knows WHICH station is missing its ticket.
+            console.warn('Bar chit printing failed/unavailable (non-fatal):', printErr);
+            addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-bar-print-failed'), type: 'warning' });
+          }
         }
       }
     },
@@ -1047,6 +1349,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   dispatchKitchenDeltaRef.current = handleDispatchKitchenDelta;
 
   const handleSendToKitchen = useCallback(async () => {
+    if (sendingToKitchenRef.current) return;
     if (!sessionToken) {
       // Reported, not dropped. See handleDispatchKitchenDelta above.
       addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
@@ -1058,6 +1361,25 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       .map((l) => ({ ...l, qty: l.qty - (l.dispatchedQty ?? 0) }));
     if (deltaLines.length === 0) return;
 
+    // ⚠️ THE SEND IS NOT A NO-OP WHEN THE CHITS ARE OFF (2026-10-19).
+    //
+    // `handleDispatchKitchenDelta` does ONE thing: print the food/bar chits, and the
+    // whole body of that sits inside `if (autoPrintKitchen !== false)`. "Send to
+    // Kitchen" is the only route by which the kitchen learns about an order — the
+    // dispatch path creates no KDS order (grep: the only `createKdsOrderFromSaleScoped`
+    // callers are in PaymentModal, at checkout) — so with Auto-Print KOT switched off
+    // the button advanced every line's `dispatchedQty`, the Send control disappeared,
+    // and NOTHING had been sent. The kitchen was never told, and the screen said the
+    // opposite.
+    //
+    // Say so instead of pretending. The lines are still advanced: an operator who has
+    // turned printing off is expected to notify the kitchen by other means, and
+    // leaving progress behind would let the same items be "sent" again forever.
+    if (autoPrintKitchen === false) {
+      addToast({ message: requiredLocalized(l10n, 'pos-toast-kitchen-print-failed'), type: 'warning' });
+    }
+
+    sendingToKitchenRef.current = true;
     setSendingToKitchen(true);
     try {
       await handleDispatchKitchenDelta(deltaLines);
@@ -1075,27 +1397,40 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       // The other half is a raised quantity: marking the closure's `l.qty` when the
       // operator has since increased it would show 'Sent' for portions the kitchen never
       // received. Advancing by the sent amount keeps the badge honest in both cases.
-      // ⚠️ THE DELTA, NOT THE CLOSURE. Functional form, and only the lines the delta
-      // actually carried are advanced.
+      // ⚠️ RESOLVED INSIDE THE UPDATER, not built from `lines`.
       //
-      // The previous body was `setLines(lines.map((l) => ({ ...l, dispatchedQty: l.qty })))`
-      // — `lines` is this render's closure, captured BEFORE the await. The cart stays
-      // editable while the send is in flight (`sendingToKitchen` drives only a button's
-      // processing state and is never read as a guard), so anything added during the
-      // await was absent from the replacement array and `setLines` DROPPED it. Measured
-      // live (round 201): two lines before Send, one more added during, and the cart
-      // came back with two — the operator's item silently gone, with no message.
+      // The delta map above is correct; the WRITE was not. It read
+      // `const updatedLines = lines.map(...)` — the render closure captured BEFORE the
+      // await — and then `setLines(updatedLines)` REPLACED the array with it. That is
+      // the round-201 defect this comment describes as fixed, still live in the write:
+      // a line added while the send was in flight is absent from `updatedLines` and
+      // `setLines` dropped it, silently.
       //
-      // The other half is a raised quantity: marking the closure's `l.qty` when the
-      // operator has since increased it would show 'Sent' for portions the kitchen never
-      // received. Advancing by the sent amount keeps the badge honest in both cases.
-      const sentBySku = new Map(deltaLines.map((d) => [d.sku, d.qty]));
-      const updatedLines = lines.map((l) => {
-        const sentQty = sentBySku.get(l.sku);
-        if (sentQty === undefined) return l;
-        return { ...l, dispatchedQty: (l.dispatchedQty ?? 0) + sentQty };
-      });
-      setLines(updatedLines);
+      // posDispatchRecord.test.ts pins the arithmetic at the logic layer (its own header
+      // says the component body "is not reachable from a unit test"), which is why the
+      // copy could be correct while this write stayed wrong. Resolving inside the
+      // updater against the COMMITTED state makes the component satisfy the same
+      // contract the pure functions encode.
+      // ⚠️ KEYED BY `id`, NOT `sku`.
+      //
+      // One SKU can occupy TWO lines: `addProduct` merges only lines agreeing on
+      // course, coursing status, note AND modifiers (the `prev.find` comparator inside
+  // `usePosState`'s `addProduct`), so the
+      // same dish as a main and as a dessert is two lines sharing one SKU. A SKU-keyed
+      // map collapses them and applies one line's sent quantity to the OTHER —
+      // measured: A (qty 2, dispatched 0) in the delta, B (qty 1, dispatched 1) not,
+      // and B came out at dispatchedQty 3 of 1.
+      //
+      // A dispatchedQty ABOVE qty is the 'Sent' badge lying in its worst form, and the
+      // tab below persists the value, so the corruption outlives the session.
+      const sentById = new Map(deltaLines.map((d) => [d.id, d.qty]));
+      setLines((prev) =>
+        prev.map((l) => {
+          const sentQty = sentById.get(l.id);
+          if (sentQty === undefined) return l;
+          return { ...l, dispatchedQty: (l.dispatchedQty ?? 0) + sentQty };
+        }),
+      );
 
       // Persist to open bill if active or table assigned
       //
@@ -1119,8 +1454,47 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       // reachable sequence.
       const trimmedGuest = orderType === 'dine_in' ? (guestCount ?? '').trim() : '';
       if (activeOpenBillId || trimmedTable) {
+        // ⚠️ READ FROM `lines` AND PERSIST THE SENT AMOUNT.
+        //
+        // Two defects lived in this block, and the typecheck surfaced both when the
+        // write above stopped building `updatedLines`:
+        //
+        //   1. it mapped `updatedLines` — the SAME pre-await closure the dispatch
+        //      write had, so a tab held after a send recorded whatever the cart held
+        //      when the send STARTED, not what it holds now;
+        //   2. `dispatchedQty: l.qty` wrote the WHOLE quantity as dispatched. The
+        //      send explicitly advances by the SENT amount (the delta), because a
+        //      raised quantity was never sent — so this persisted the exact
+        //      over-record the dispatch write was fixed to avoid, into the
+        //      payload the resume reads back.
+        //
+        // A resumed tab would therefore show 'Sent' for portions the kitchen never
+        // received, and the kitchen ticket would disagree with the saved bill.
+        //
+        // ⚠️ THIRD DEFECT, FOUND BY VERIFYING THIS FIX IN SHIPPED FORM: the payload
+        // maps `lines` — the closure captured BEFORE the dispatch await, inside
+  // handleDispatchKitchenDelta — so
+        // it carried the PRE-send `dispatchedQty`. Live state was corrected above and
+        // the saved record was not:
+        //
+        //   cart: A qty 2, dispatchedQty 0
+        //   Send  -> setLines advances A to 2   (live state correct)
+        //   Hold  -> cartData recorded A as 0
+        //   Resume-> A reads as NOT sent, though the kitchen has it
+        //
+        // The opposite error from the over-record above, same root cause.
+        //
+        // FIXED BY APPLYING THE SAME ADVANCE THE DISPATCH APPLIED, to the same array it
+        // applied it to. `sentById` is already in scope and the dispatch's own write
+        // resolved against committed state, so this reproduces it exactly without a
+        // second await — and stays a pure function of the values the send used.
+        const persistedLines = lines.map((l) => {
+          const sentQty = sentById.get(l.id);
+          if (sentQty === undefined) return l;
+          return { ...l, dispatchedQty: (l.dispatchedQty ?? 0) + sentQty };
+        });
         const cartData = JSON.stringify({
-          lines: updatedLines.map((l) => ({
+          lines: persistedLines.map((l) => ({
             sku: l.sku,
             name: l.name,
             qty: l.qty,
@@ -1129,7 +1503,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
             ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
             ...(l.note ? { note: l.note } : {}),
-            dispatchedQty: l.qty,
+            ...(typeof l.dispatchedQty === 'number' ? { dispatchedQty: l.dispatchedQty } : {}),
           })),
           discountPercent,
           discountLabel,
@@ -1144,36 +1518,56 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
 
         const label = heldCartLabel(trimmedTable, trimmedName) ?? (trimmedTable ? `Table ${trimmedTable}` : `Open Bill #${Date.now()}`);
 
-        if (activeOpenBillId) {
-          await deleteHeldCartScoped(sessionToken, activeOpenBillId);
-        }
-
+        // CREATE FIRST, DELETE SECOND — same fix as the split-bill path above, and it
+        // matters more here: this branch runs AFTER the kitchen has been told to cook,
+        // so a failed hold that had already deleted the tab would leave food being
+        // prepared for a table whose order record no longer exists.
         const held = await holdCartScoped(sessionToken, {
           label,
           cart_data: cartData,
-          item_count: updatedLines.length,
+          item_count: lines.length,
           total_minor: subtotal?.minor_units ?? 0,
           currency: subtotal?.currency ?? activeCurrency,
           bill_type: 'open_bill',
           customer_name: trimmedName || (trimmedTable ? `Table ${bareTableNumber(trimmedTable)}` : ''),
+          ...(deductionLocationIdRef.current ? { deduction_location_id: deductionLocationIdRef.current } : {}),
         });
         setActiveOpenBillId(held.id);
+
+        // Safe to drop the previous record now: the tab exists under the new id.
+        if (activeOpenBillId) {
+          await deleteHeldCartScoped(sessionToken, activeOpenBillId);
+        }
         loadOpenBills();
       }
 
       addToast({
-        message: l10n.getString('pos-toast-kitchen-dispatched', { table: tableNumber || 'Order' }) || 'Order sent to kitchen',
+        message: requiredLocalized(l10n, 'pos-toast-kitchen-dispatched', { table: tableNumber || 'Order' }),
         type: 'success',
       });
     } catch (err) {
+      // HALF-COMMITTED — and this is the branch where it matters most, because the
+      // kitchen has ALREADY been told to cook (the chit/KDS calls in
+      // handleDispatchKitchenDelta). If the hold succeeded and
+      // only the delete of the previous tab failed, food is being prepared while
+      // loadOpenBills() on the success path (this note
+      // used to cite line 1259) left the bill list showing the
+      // OLD tab. The operator would then reconcile a running order against a list that
+      // cannot show both records.
+      try {
+        await loadOpenBills();
+      } catch {
+        /* the toast below already reports the failure */
+      }
       addToast({
         message: l10nErrorMessage(err, l10n, 'pos-toast-kitchen-dispatch-failed'),
         type: 'error',
       });
     } finally {
+      sendingToKitchenRef.current = false;
       setSendingToKitchen(false);
     }
-  }, [lines, sessionToken, handleDispatchKitchenDelta, setLines, tableNumber, customerName, guestCount, activeOpenBillId, discountPercent, discountLabel, tipPercent, serviceChargeEnabled, serviceChargePercent, orderType, subtotal, activeCurrency, setActiveOpenBillId, loadOpenBills, addToast, l10n]);
+  }, [lines, sessionToken, handleDispatchKitchenDelta, setLines, tableNumber, customerName, guestCount, activeOpenBillId, discountPercent, discountLabel, tipPercent, serviceChargeEnabled, serviceChargePercent, orderType, subtotal, activeCurrency, setActiveOpenBillId, loadOpenBills, addToast, l10n, deductionLocationIdRef, autoPrintKitchen]);
 
   // ── Lock: save cart state to localStorage, then logout ───────────
 
@@ -1250,9 +1644,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // settings-fetch failure.
   //
   // Guarded, like CurrencyContext, SettingsContext, BrandContext and ShiftBar
-  // before it (the whole class is written up in SettingsContext:207). This one
+  // before it (the whole class is written up in SettingsContext’s guard-register header). This one
   // is not cosmetic: CartPanel gates the course controls on
-  // `courseFiringEnabled !== false` (:631, :669), so a stale read carrying the
+  // `courseFiringEnabled !== false`, so a stale read carrying the
   // PREVIOUS store's setting forward would hide course firing on a store that has
   // it enabled -- a POS capability disappearing across a store switch.
   //
@@ -1263,7 +1657,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   //
   // The first attempt at this pin was worth documenting because it LOOKED pinned and was
   // not: it asserted on the bar's "Fire All" text, which CourseSelectorBar renders only
-  // when a line carries `coursingStatus === 'hold'` (:41). A barcode-scanned line has no
+  // while some course still has a fireable line. A barcode-scanned line has no
   // course, so the text was absent whether or not the bar mounted -- an assertion that
   // could not fail. The observable is the CONTAINER `div.pos-cart-course-bar`, which
   // mounts on exactly this guard's condition (CartPanel.tsx:961); asserting on it is the
@@ -1286,7 +1680,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         setCourseFiringEnabled(null);
       });
     return () => { courseFiringSeq.current += 1; };
-  }, [sessionToken]);
+  }, [sessionToken, settingsRevision]);
 
   // ── Restaurant cart-field gates (P1) ────────────────────────────
   // `restaurant.customer_name` / `restaurant.guest_count` gate the cart's two
@@ -1328,14 +1722,35 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // order and `printKdsChitScoped` prints the chit, with the latter having zero
   // callers anywhere under ui/src.
   //
-  // `null` means "never written", and the default is TRUE — matching the model's
-  // `DEFAULT_RESTAURANT_SETTINGS.autoPrintKitchen` (settingsModel), so an unset key
-  // keeps the pre-existing behaviour rather than silently changing it. TRUE is also
-  // what the module's own default says a kitchen expects.
+  // ⚠️ THE DEFAULT DIVERGES FROM THE MODEL, ON PURPOSE (corrected 2026-10-19).
+  //
+  // This comment used to claim "the default is TRUE — matching the model's
+  // `DEFAULT_RESTAURANT_SETTINGS.autoPrintKitchen`". It does not: the model says
+  // `false`, and its `fallback` (restaurantSettingsModel.ts:61, :99) reproduces that
+  // `false`. So the two surfaces DISAGREE for an unset key today.
+  //
+  // Which direction is right, and why it is not simply a bug to fix:
+  //   · the POS fails OPEN (`!== false`) because the asymmetry is not symmetric — a
+  //     chit printed for an order that did not want one is noise the kitchen sees and
+  //     corrects; a chit that never prints is food nobody cooks, discovered only when
+  //     the table complains. Pinned by restaurantToggleFailDirection.test.ts:51-58.
+  //   · the settings SCREEN, given the same unset key, renders the toggle OFF, because
+  //     `loadRestaurantSettings` maps `raw === null` to `spec.fallback` = the model's
+  //     `false` (restaurantSettingsModel.ts:159).
+  //
+  // That is the guest-count defect (F1) in the opposite sign: a control whose OFF
+  // position describes a state the POS is not in. It was called "agreement" here for
+  // twenty rounds because the claim was never checked against the model.
+  //
+  // NOT FIXED IN THIS EDIT, deliberately: closing it means moving either the model
+  // default or the failure direction, and both are load-bearing elsewhere (the screen's
+  // toggle is a real operator control; the POS's `!== false` is pinned by a guard whose
+  // whole file documents why fail-open is the safe side). Recorded here so the next
+  // reader cannot mistake the divergence for oversight.
 
   // PINNED (round 84, 2026-10-13). Removing the success-path `if (stale()) return;`
   // below fails PosScreenCoreFlow.test.tsx -> 'ignores a slower order-type-prompt read
-  // from the previous store', on `div.pos-cart-order-type-row` (CartPanel.tsx:804).
+  // from the previous store', on `div.pos-cart-order-type-row` (CartPanel.tsx:838).
   //
   // It went unnoticed because the round-82 sweep removed ALL THREE guards of this
   // shape at once and failed on the receipt case alone -- so this one and the
@@ -1396,7 +1811,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       .then((raw) => { if (!cancelled) setSoundChime(raw === null ? null : raw === 'true'); })
       .catch(() => { if (!cancelled) setSoundChime(null); });
     return () => { cancelled = true; };
-  }, [sessionToken]);
+  }, [sessionToken, settingsRevision]);
 
   // The same rails the payment modal consults for `autoKick` (PaymentModal:131).
   // Needed here so the till can honour the cash presets the operator configures.
@@ -1424,13 +1839,37 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return defaultTenderPresets(activeCurrency);
   }, [activeCurrency, paymentRails]);
 
+  /**
+   * Exit Terminal — NAVIGATION, and it must always be reachable.
+   *
+   * This used to divert into `handleCloseShiftClick()` whenever a shift was open, on
+   * the reasoning that leaving with an open shift should reconcile the cash first. The
+   * intent is sound and the mechanism was not: close-shift REFUSES when the cart is not
+   * empty and (since round 294) when a tab is outstanding, so the diversion turned a
+   * navigation action into a dead end. Measured in a browser with an open tab:
+   *
+   * ```
+   * PROBE RESULT homescreen=false closeshift=false opentab=true
+   * ```
+   *
+   * The operator pressed "Exit Workspace", got an error about a tab, and stayed exactly
+   * where they were. `setShowExitConfirm` is only reached when `activeShift === null`, so
+   * there was no second route out — the till could not be left at all until the tab was
+   * dealt with, by someone who already had their hand on the exit control.
+   *
+   * The two actions are genuinely different and are now separate:
+   *   · Exit Workspace        — navigation, always available, its own copy confirms it
+   *                             ("Exit Workspace / exit to the homescreen?")
+   *   · Close Shift           — cash reconciliation, stays guarded, because THAT is the
+   *                             surface where an unreconciled tab or cart is a real loss
+   *
+   * The dialog carries the warning instead of the guard, so the operator is told what
+   * they are walking away from and then allowed to decide. Blocking someone from leaving
+   * a screen is not a cash control; it is a lock-out.
+   */
   const handleRequestExit = useCallback(() => {
-    if (activeShift !== null) {
-      handleCloseShiftClick();
-    } else {
-      setShowExitConfirm(true);
-    }
-  }, [activeShift, handleCloseShiftClick]);
+    setShowExitConfirm(true);
+  }, []);
 
   const handleOpenCashDrawer = useCallback(async () => {
     if (!sessionToken) {
@@ -1493,25 +1932,59 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const handleConfirmEditModifiers = useCallback(
     (selections: ModifierSelection[], totalPriceMinor: number) => {
       if (!editingCartLine || !editingProduct) return;
-      updateLineModifiers(
+      // READ THE RESULT. `updateLineModifiers` returns `false` and writes nothing when
+      // the price's currency differs from the cart's anchor, and this handler
+      // discarded it and closed the modal regardless — so a refused edit dismissed the
+      // dialog, which reads to the cashier as "saved". The change was silently lost.
+      //
+      // The state is reachable: the restore paths fill `setLines` from a persisted
+      // payload with no currency check (the `setLines(data.lines.map(…))` restore in
+  // `usePosHeldCarts`, and the `setLines(revived)` draft restore in this file), so a
+      // cart can hold a line whose currency differs from `lines[0]`.
+      const applied = updateLineModifiers(
         editingCartLine.id,
         selections,
         { minor_units: totalPriceMinor, currency: editingCartLine.unit_price.currency },
       );
+      if (!applied) {
+        // Leave the modal OPEN so the operator can correct it, and say why. Closing
+        // it is what made the failure invisible.
+        addToast({
+          message: requiredLocalized(l10n, 'pos-toast-line-price-currency-mismatch'),
+          type: 'error',
+        });
+        return;
+      }
       setEditingCartLine(null);
       setEditingProduct(null);
     },
-    [editingCartLine, editingProduct, updateLineModifiers],
+    [editingCartLine, editingProduct, updateLineModifiers, addToast, l10n],
   );
 
   const handleSelectTableFromManagement = useCallback(
     (tableName: string) => {
-      setTableNumber(tableName);
       setShowTables(false);
-      // Find active tab matching this table to resume order if exists
+      // ⚠️ THE TABLE IS CLAIMED ONLY IF THE RESUME SUCCEEDS.
+      //
+      // `setTableNumber(tableName)` used to run FIRST and unconditionally, with the
+      // resume fired and forgotten (`void handleResumeOpenBill(...)`). That was
+      // survivable while the resume always replaced the cart — but it does not any
+      // more: it REFUSES when a different tab is already open (usePosHeldCarts,
+      // round 96). So the operator tapped table 5, the table number was set, and the
+      // resume was declined — leaving the PREVIOUS tab's lines sitting under table 5.
+      // The refusal protected the cart and mislabelled it in the same breath, which
+      // is worse than doing nothing.
+      //
+      // Ordering is now: try the resume, and set the table only when it reports that
+      // the cart was actually replaced. A table with no matching bill is still
+      // claimed immediately — there is nothing to refuse in that case.
       const matchingBill = openBills.find((b) => matchesTableBill(b, tableName));
       if (matchingBill) {
-        void handleResumeOpenBill(matchingBill.id);
+        void handleResumeOpenBill(matchingBill.id).then((resumed) => {
+          if (resumed) setTableNumber(tableName);
+        });
+      } else {
+        setTableNumber(tableName);
       }
       if (sessionToken) {
         void listTablesScoped(sessionToken)
@@ -1543,24 +2016,40 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // ── Restaurant keyboard shortcuts (round 159) ───────────────────────────
   //
   // Restaurant-ONLY, gated on `activeWorkspace` like every other restaurant branch here
-  // (`:395`, `:586`, `:1811`). The retail till shares this component, so its handler
-  // object is empty and none of these keys exist there.
+  // (each `activeWorkspace === 'restaurant-pos'` early return). The retail till shares
+  // this component, so its handler object is empty and none of these keys exist
+  // there.
   //
   // Each action routes through an EXISTING self-guarding handler:
-  //   * `handlePrintBill` returns early on no lines/total/session (`:845-850`);
-  //   * `handleSendToKitchen` returns early on no session/lines/undelivered delta
-  //     (`:1042-1052`);
+  //   * `handlePrintBill` returns early on no lines, no total or no session;
+  //   * `handleSendToKitchen` returns early on no session, no lines or no undelivered
+  //     delta;
   //   * `setShowSplitBillModal(true)` opens the split MODAL, not its confirm, so the
-  //     dine-in-only rule in `handleConfirmSplitBill` (`:884`) still applies;
+  //     dine-in-only rule in `handleConfirmSplitBill` still applies;
   //   * `setShowTables(true)` is the sidebar row's own action, already feature-gated.
+  //
+  // ⚠️ The three ranges above are the only thing making the 'self-guarding' claim
+  // checkable, and they had ALL drifted — by 68, 146 and 80 lines respectively. A
+  // stale range is worse than none: it points a reader at unrelated code and makes an
+  // assertion look verified when nothing was checked, which is the shape that hid a
+  // false claim in round 126. Re-point them when the handlers move rather than
+  // deleting them.
   //
   // Save Tab is the one exception and it is deliberate. Its precondition chain (shift
   // guard + the open-bill-input branch) is INLINE component logic in CartActionBar, so
   // the shortcut CLAIMS the button through its testid and clicks it. That runs the same
   // code the button runs — including the guard that stops a tab being saved with no
   // table — rather than a copy that would drift from it.
+  // A sub-screen REPLACES the sale view (`showTables`/`showSalesHistory`/
+  // `showStockInquiry` each early-return below), but this hook registers a
+  // DOCUMENT-level keydown listener and was still live behind them — so on the
+  // Table Management screen `Shift+B` opened the split-bill modal OVER the
+  // table list, acting on a cart the cashier could not see, and `Shift+T`
+  // reached into the DOM for a save-tab button that is not even mounted there.
+  // The keys belong to the sale view, so they are unbound while it is absent.
+  const saleViewVisible = !showTables && !showSalesHistory && !showStockInquiry;
   const restaurantShortcutHandlers = useMemo<RestaurantShortcutHandlers>(() => {
-    if (activeWorkspace !== 'restaurant-pos') return {};
+    if (activeWorkspace !== 'restaurant-pos' || !saleViewVisible) return {};
     return {
       'send-kitchen': () => { void handleSendToKitchen(); },
       'print-bill': () => { void handlePrintBill(); },
@@ -1573,9 +2062,100 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       },
       'open-tables': () => { setShowTables(true); },
     };
-  }, [activeWorkspace, handleSendToKitchen, handlePrintBill]);
+  }, [activeWorkspace, saleViewVisible, handleSendToKitchen, handlePrintBill]);
 
   useRestaurantShortcuts(restaurantShortcutHandlers);
+
+  // ── Escape: unwind this screen, never navigate away ──────────────────
+  //
+  // AppShell's workspace shortcuts RESERVE Escape in restaurant-pos: the
+  // `active !== 'restaurant-pos'` clause at AppShell.tsx:79 deliberately withholds
+  // the return-to-picker behaviour here, so an accidental keypress mid-service
+  // cannot throw away a sale in progress. The reservation exists for THIS
+  // workspace to claim the key — and until now nothing did, so Escape was simply
+  // dead in restaurant-pos: no way out of a sub-screen, and no dismissal of any
+  // overlay, without reaching for the mouse.
+  //
+  // Scope, outermost first: a sub-screen (each of the seven is an early return
+  // below), then the sidebar popover, then the dialogs. Nothing here navigates.
+  // `isAnyAriaModalOpen()` is NOT consulted — it is the guard the topmost modal
+  // uses to claim Escape for itself (useFocusTrap), and deferring to it is what
+  // keeps the payment dialog's own handling authoritative. That is why the
+  // sub-screen branch matters most: a sub-screen is not a modal, so nothing
+  // else owns Escape while it is open.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // ⚠️ A MODAL INSIDE A SUB-SCREEN OWNS THE KEY, and this cascade must stand down.
+      //
+      // The comment above says `isAnyAriaModalOpen()` is deliberately not consulted, on
+      // the grounds that "a sub-screen is not a modal, so nothing else owns Escape while
+      // it is open". That is true of the sub-screen ITSELF and false of an ARIA modal
+      // opened INSIDE it — the table detail panel is one, as are an item form and a
+      // confirm. Measured 2026-10-18: with the detail panel open, Escape closed the panel
+      // AND the whole table view behind it, 12 tiles to 0, because this cascade acted on a
+      // key the panel had already handled.
+      //
+      // Order is what makes this necessary rather than merely tidy: both listeners sit on
+      // `document` in the bubble phase and this one is registered FIRST, so it runs before
+      // the panel trap. Neither `defaultPrevented` (not yet set) nor `stopPropagation()`
+      // (which does not reach a sibling listener on the SAME node) can help from there.
+      // Asking whether a modal is open is the only question that answers correctly here.
+      //
+      // The guard stays narrow: a modal is only ever a sub-screen child, never the
+      // sub-screen itself, so the sub-screen branches below still own Escape when no
+      // modal is up.
+      if (isAnyAriaModalOpen()) return;
+      if (isEditableTarget(e.target)) return;
+      if (showTables) { setShowTables(false); return; }
+      if (showSalesHistory) { setShowSalesHistory(false); return; }
+      if (showStockInquiry) { setShowStockInquiry(false); return; }
+      if (showMenuEditor) { setShowMenuEditor(false); return; }
+      if (showReceiptsSettings) { setShowReceiptsSettings(false); return; }
+      if (showPaymentsSettings) { setShowPaymentsSettings(false); return; }
+      if (showRestaurantSettings) { setShowRestaurantSettings(false); return; }
+      if (restaurantSidebarOpen) { setRestaurantSidebarOpen(false); return; }
+      if (showSplitBillModal) { setShowSplitBillModal(false); return; }
+      if (showExitConfirm) { setShowExitConfirm(false); return; }
+      if (showTableNumberSetting) { setShowTableNumberSetting(false); return; }
+      if (showPromotions) { setShowPromotions(false); return; }
+      if (showDiscountInput) { setShowDiscountInput(false); return; }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [showTables, showSalesHistory, showStockInquiry, showMenuEditor, showReceiptsSettings,
+      showPaymentsSettings, showRestaurantSettings, restaurantSidebarOpen, showSplitBillModal,
+      showExitConfirm, showTableNumberSetting, showPromotions, showDiscountInput]);
+
+  // ⚠️ DECLARED ABOVE THE SUB-SCREEN EARLY RETURNS, NOT BELOW THEM.
+  //
+  // This callback sat at 2161 in commit 4b7d5cf4c, i.e. after every sub-screen
+  // early return in this component (`showTables`, `showSalesHistory`,
+  // `showStockInquiry`, `showReceipts`, ... eight of them). React's rules-of-hooks
+  // require every hook to run in the same order on EVERY render, so on any sub-view
+  // this hook was simply never registered — and `RestaurantMenu`'s `onAddProduct`
+  // resolved to `undefined` there. `npm run lint` caught it as
+  // `react-hooks/rules-of-hooks` once another lane’s file landed; the runtime
+  // consequence is the Menu Editor’s add path being inert whenever a sub-screen
+  // had been visited.
+  // Its only dependency is `handleAddProduct`, destructured from `usePosCartActions`
+  // well before any early return, so moving it up is safe and changes no behaviour
+  // on the sale view.
+  const handleRestaurantAddProduct = useCallback(
+    (product: Product, meta?: { courseId?: CourseId; modifiers?: ModifierSelection[] }) => {
+      const defaultCourse = courseFiringEnabled
+        ? (meta?.courseId ?? inferCourseForProduct(product) ?? undefined)
+        : undefined;
+      const combinedMeta = defaultCourse || meta?.modifiers
+        ? {
+            ...(defaultCourse ? { courseId: defaultCourse } : {}),
+            ...(meta?.modifiers ? { modifiers: meta.modifiers } : {}),
+          }
+        : undefined;
+      handleAddProduct(product, combinedMeta);
+    },
+    [handleAddProduct, courseFiringEnabled],
+  );
 
   // ── Sub-screen: Table Management ─────────────────────────────
   if (showTables) {
@@ -1684,8 +2264,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return (
       <div className="pos-screen">
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <LocalizedErrorBoundary onReset={() => setShowRestaurantSettings(false)}>
-            <RestaurantSettingsScreen onBack={() => setShowRestaurantSettings(false)} />
+          <LocalizedErrorBoundary onReset={() => { setShowRestaurantSettings(false); setSettingsRevision((r) => r + 1); }}>
+            <RestaurantSettingsScreen onBack={() => { setShowRestaurantSettings(false); setSettingsRevision((r) => r + 1); }} />
           </LocalizedErrorBoundary>
         </div>
       </div>
@@ -1703,8 +2283,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return (
       <div className="pos-screen">
         <div className="pos-login-required">
+          {/* This branch IS the whole screen when there is no session, so its
+              heading is the page title. It was an <h2> on a screen with no <h1>. */}
           <Localized id="pos-login-required">
-            <h2>Login Required</h2>
+            <h1>Login Required</h1>
           </Localized>
           <Localized id="pos-login-desc">
             <p>Please log in to use the POS.</p>
@@ -1753,8 +2335,21 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setOrderType,
     orderTypePromptEnabled,
   };
+  // Assign the course locally AND persist it, in that order: the device-local
+  // assignment is what the UI renders and must not wait on a round trip, and the
+  // server copy is what survives a restart. `syncLineCourse` is best-effort (it
+  // swallows its own failure and logs), so a sync problem can never block the
+  // cashier from putting a course on a line mid-service.
+  // A PLAIN function, not useCallback: this sits below the screen's early returns,
+  // and a hook cannot be called conditionally. Nothing here needs memoization -- the
+  // object below is rebuilt every render anyway, so a stable identity would buy
+  // nothing and would be the only hook in this region.
+  const assignCourseAndSync = (lineId: LineId, courseId: CourseId) => {
+    assignCourse(lineId, courseId);
+    void syncLineCourse(lineId, courseId);
+  };
   const cartLineRows = {
-    lines, fireCourse, fireAllCourses, assignCourse, setCartLineRef,
+    lines, fireCourse, fireAllCourses, assignCourse: assignCourseAndSync, setCartLineRef,
     handleRemoveLine, handleDecreaseQty, handleIncreaseQty,
     updateLineNote,
     onEditModifiers: handleEditModifiers,
@@ -1840,6 +2435,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     onRequestExit: handleRequestExit,
   };
 
+
   return (
     <>
     {/* ── Session died MID-SHIFT ──────────────────────────────────────────
@@ -1877,8 +2473,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         e.preventDefault();
       }}
     >
-      {/* ── Left: Product lookup ─────────────────── */}
-      <div className="pos-products">
+      {/* ── Section: Product lookup / menu ─────────────────── */}
+      <section className="pos-products">
         {/* Crash isolation (F9) at the SHELL level, not only inside it. Round 20
             wrapped two children of RestaurantMenu, but the component itself is
             rendered here and was still bare: a throw in its own body — the header,
@@ -1889,7 +2485,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           <LocalizedErrorBoundary resetKeys={[activeWorkspace, menuRevision]}>
           <RestaurantMenu
             key={menuRevision}
-            onAddProduct={handleAddProduct}
+            onAddProduct={handleRestaurantAddProduct}
             sidebarOpen={restaurantSidebarOpen}
             onSidebarOpenChange={setRestaurantSidebarOpen}
             cartActions={restaurantCartActions}
@@ -1905,7 +2501,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           <ProductLookupScreen onAddProduct={handleAddProduct} />
           </LocalizedErrorBoundary>
         )}
-      </div>
+      </section>
 
       {/* ── Resize handle & Cart panel (landscape / desktop) ── */}
       {!isPortraitRestaurant && (
@@ -1989,6 +2585,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           // resolves to its default (print). Passing `null` through would make an
           // unread setting indistinguishable from an explicit false.
           {...(autoPrintKitchen === null ? {} : { autoPrintKitchen })}
+          deductionLocationId={deductionLocationIdRef.current}
           onComplete={handlePaymentComplete}
           onClose={() => setShowPayment(false)}
         />
@@ -2095,14 +2692,26 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           goToWorkspacePicker();
         }}
         title={l10n.getString('restaurant-exit-confirm-title')}
-        message={l10n.getString('restaurant-exit-confirm-desc')}
+        // The warning the old guard was trying to deliver, delivered as INFORMATION.
+        //
+        // A shift that is still open (or a tab still outstanding) is worth saying out
+        // loud before someone walks away from the till — that is the real safety
+        // property. Refusing to navigate is not: it produced a dead end, and the
+        // operator could not act on the refusal from the exit control they were using.
+        // So the message names what is being left behind and the operator decides.
+        message={
+          activeShift !== null
+            ? l10n.getString('restaurant-exit-confirm-open-shift-desc')
+            : l10n.getString('restaurant-exit-confirm-desc')
+        }
         variant="warning"
         confirmLabel={l10n.getString('restaurant-exit-confirm-btn')}
       />
 
       {/* ── Item Modifier Modal (in-cart customization editing) ────── */}
       {/* Crash isolation (F9), the same surface wrapped in RestaurantMenu
-          (RestaurantMenu.tsx:684) and for the same reason: this is where an existing
+          (the `LocalizedErrorBoundary` with `resetKeys={[customizingProduct.sku]}` in
+      RestaurantMenu.tsx) and for the same reason: this is where an existing
           cart line's options and PRICE are edited, so a throw must cost the dialog,
           not the sale. `resetKeys` keys on the line so editing a different line
           clears a caught error. */}
@@ -2116,7 +2725,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           productName={editingProduct.name}
           basePriceMinor={editingProduct.price.minor_units}
           currency={editingCartLine.unit_price.currency}
-          groups={getProductModifierGroups(editingProduct)}
+          groups={editingModifierGroups}
           initialSelections={editingCartLine.modifiers}
           onConfirm={handleConfirmEditModifiers}
           onClose={() => {
@@ -2130,4 +2739,3 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   </>
   );
 }
-

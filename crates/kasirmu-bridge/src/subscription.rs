@@ -128,24 +128,26 @@ pub struct SubscriptionCapabilitiesDto {
 /// Gather the usage counts the gates and the caps DTO share, best-effort:
 /// they drive approaching-limit banners and verdict details, and a broken
 /// global DB must still yield a definitive fail-closed payload rather
-/// than an IPC error.
+/// than an IPC error. On a database read fault, each axis reports i64::MAX
+/// so quota gates fail closed (locking creation doors) rather than assuming
+/// zero consumption.
 fn gather_usage(store: &Store<'_>) -> UsageCounts {
     UsageCounts {
         locations: store.count_locations().unwrap_or_else(|e| {
-            tracing::warn!("location count failed — reporting 0: {e}");
-            0
+            tracing::warn!("location count failed — reporting fail-closed limit: {e}");
+            i64::MAX
         }),
         staff_users: store.count_staff_users().unwrap_or_else(|e| {
-            tracing::warn!("staff count failed — reporting 0: {e}");
-            0
+            tracing::warn!("staff count failed — reporting fail-closed limit: {e}");
+            i64::MAX
         }),
         pos_instances: store.count_terminals().unwrap_or_else(|e| {
-            tracing::warn!("terminal count failed — reporting 0: {e}");
-            0
+            tracing::warn!("terminal count failed — reporting fail-closed limit: {e}");
+            i64::MAX
         }),
         warehouses: store.count_warehouse_locations().unwrap_or_else(|e| {
-            tracing::warn!("warehouse count failed — reporting 0: {e}");
-            0
+            tracing::warn!("warehouse count failed — reporting fail-closed limit: {e}");
+            i64::MAX
         }),
     }
 }
@@ -379,14 +381,18 @@ pub fn load_feature_verdict(
         .unwrap_or_else(|| Entitlements::fail_closed(UsageCounts::default()));
     ent.apply_debug_upgrade();
 
+    // BR-C9: the permission this feature gates on is derived ONCE and used for
+    // both the check below and the diagnosis reported beside it. It used to be
+    // computed twice for one verdict, which is harmless while `gate_permission`
+    // is a pure match but means the two answers are only equal by coincidence —
+    // the verdict would report one permission while having enforced another.
+    let permission = gate_permission(feature);
+
     // Soft role check through the same authorize path the hard gates use —
     // a denial here is DIAGNOSED (reason `role`), not thrown.
-    let role_granted = store
-        .require_permission(user_id, gate_permission(feature))
-        .is_ok();
+    let role_granted = store.require_permission(user_id, permission).is_ok();
 
     let server_grant = server_grant_for(feature, loaded.as_ref());
-    let permission = gate_permission(feature);
 
     // Scope axis, evaluated with the same primitives the hard gates use so
     // a scope denial here is exactly the gate's answer for the caller's own
@@ -629,8 +635,9 @@ pub fn load_over_quota_report(
 ///
 /// # Errors
 ///
-/// Returns [`BridgeError::Internal`] when a store database that exists cannot
-/// be opened or locked; an unreadable store is skipped, never fatal.
+/// An unreadable or unopenable store is skipped with a warning rather than
+/// aborting the whole report, preventing TOCTOU races where a store database file
+/// is removed between existence check and opening.
 pub fn per_location_over_quota_rows(
     locations: &[(String, String)],
     manager: &StoreDatabaseManager,
@@ -642,12 +649,20 @@ pub fn per_location_over_quota_rows(
         if !manager.store_db_exists(store_id) {
             continue;
         }
-        let conn = manager
-            .open_store(store_id)
-            .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
-        let db = conn
-            .lock()
-            .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+        let conn = match manager.open_store(store_id) {
+            Ok(conn) => conn,
+            Err(e) => {
+                tracing::warn!(store_id = %store_id, error = %e, "per-location quota dims: store open failed, skipping");
+                continue;
+            }
+        };
+        let db = match conn.lock() {
+            Ok(db) => db,
+            Err(e) => {
+                tracing::warn!(store_id = %store_id, error = %e, "per-location quota dims: store lock failed, skipping");
+                continue;
+            }
+        };
         let store = Store::new(&db);
         // A store database that fails to answer is skipped rather than
         // aborting the whole report: one unreadable location must not hide the

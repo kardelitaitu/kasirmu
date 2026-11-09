@@ -1,4 +1,5 @@
 use super::*;
+use kasirmu_test_support::tempdir;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::commands::picker_ticket;
@@ -333,7 +334,7 @@ fn scoped_state_with_token(
     role_id: &str,
     store_id: &str,
 ) -> AppState {
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);

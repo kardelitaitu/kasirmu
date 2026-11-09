@@ -585,11 +585,13 @@ pub(super) fn apply_refund_with_sale_in_tx(
         ],
     )?;
 
-    for line in &payload.lines {
-        tx.execute(
+    if !payload.lines.is_empty() {
+        let mut stmt = tx.prepare_cached(
             "INSERT INTO refund_lines (id, refund_id, sale_line_id, sku, qty, unit_minor, line_minor, currency, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            rusqlite::params![
+        )?;
+        for line in &payload.lines {
+            stmt.execute(rusqlite::params![
                 line.id,
                 payload.id,
                 line.sale_line_id,
@@ -599,8 +601,8 @@ pub(super) fn apply_refund_with_sale_in_tx(
                 line.line_minor,
                 line.currency,
                 line.created_at,
-            ],
-        )?;
+            ])?;
+        }
     }
 
     credit_refund_effect_without_sale(tx, payload)?;

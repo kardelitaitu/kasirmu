@@ -68,3 +68,5 @@ Restored, and the file verified identical to HEAD.
 | dev-mock `in_stock: false` fixtures | 0 — not a defect, see above |
 | The app-level guard | `MenuItemTile.tsx:214` still guards the add path |
 | Tree | no source changed this round |
+
+> last audited 14-10-26 by docs-auditor

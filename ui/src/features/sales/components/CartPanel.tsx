@@ -269,7 +269,12 @@ export interface CartPanelProps {
   canOverridePrice?: boolean | undefined;
   setOverrideTarget: Dispatch<SetStateAction<CartLine | null>>;
   ensureCart: (currency: string) => Promise<CartId | null>;
-  animatedUndoStack: AnimatedUndoStack<CartLine>;
+  /**
+   * The undo stack as the cart hook builds it. Only the RENDER flags
+   * (`shouldRender`, `isExiting`) are read here — the entries are opened through
+   * the Undo button, so the component never inspects a `RemovedLine`.
+   */
+  animatedUndoStack: AnimatedUndoStack<{ line: CartLine; index: number }>;
   handleUndoRemove: () => void;
   handleDismissUndo: () => void;
   subtotal: Money | null;
@@ -320,7 +325,10 @@ export interface CartPanelProps {
   splitBillEnabled?: boolean | undefined;
   showSplitBillModal?: boolean | undefined;
   setShowSplitBillModal?: Dispatch<SetStateAction<boolean>> | undefined;
-  handleConfirmSplitBill?: ((selectedLines: CartLine[], remainingLines: CartLine[]) => Promise<void> | void) | undefined;
+  // `Promise<boolean | void>` rather than `Promise<void>`: `false` is how the
+  // screen tells SplitBillModal that the split did NOT commit and the dialog
+  // must stay open for a retry (see `onConfirmSplit` in SplitBillModal.tsx).
+  handleConfirmSplitBill?: ((selectedLines: CartLine[], remainingLines: CartLine[]) => Promise<boolean | void> | boolean | void) | undefined;
   hasUndispatchedItems?: boolean | undefined;
   sendingToKitchen?: boolean | undefined;
   handleSendToKitchen?: (() => Promise<void> | void) | undefined;
@@ -447,8 +455,6 @@ export function CartPanel({
   // opening one line's menu closes the other's.
   const [courseMenuLine, setCourseMenuLine] = useState<LineId | null>(null);
 
-  const orderTypeIndex = Math.max(0, ORDER_TYPES.findIndex((opt) => opt.id === orderType));
-
   /**
    * Whether this order can name a table at all. Only a dine-in order has one, so
    * the table badge is withheld for takeaway and delivery even when the field
@@ -479,6 +485,29 @@ export function CartPanel({
     onSwipeLeft: handleOrderTypeNext,
     onSwipeRight: handleOrderTypePrev,
   });
+
+  const [orderTypeMenuOpen, setOrderTypeMenuOpen] = useState(false);
+  const orderTypeDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!orderTypeMenuOpen) return;
+    const handleMousedown = (e: MouseEvent) => {
+      if (orderTypeDropdownRef.current && !orderTypeDropdownRef.current.contains(e.target as Node)) {
+        setOrderTypeMenuOpen(false);
+      }
+    };
+    const handleKeydown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOrderTypeMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleMousedown);
+    document.addEventListener('keydown', handleKeydown);
+    return () => {
+      document.removeEventListener('mousedown', handleMousedown);
+      document.removeEventListener('keydown', handleKeydown);
+    };
+  }, [orderTypeMenuOpen]);
 
   // Animation state for sliding out/in when hidden prop toggles
   const [cartExiting, setCartExiting] = useState(false);
@@ -554,7 +583,7 @@ export function CartPanel({
         onKeyDown={handleCartPanelKeyDown}
         {...cartSwipe}
       >
-        <div className="pos-cart-header">
+        <header className="pos-cart-header">
           {/* ── Left: order/sale title + count + deduction badge ── */}
           <div className="pos-cart-header-title-area">
             <h2 className="pos-cart-title">
@@ -731,10 +760,12 @@ export function CartPanel({
               </button>
             </div>
           )}
-        </div>
+        </header>
 
-        {/* ── Active Tab Indicator Banner ── */}
-        {activeOpenBillId && (
+        {/* ── Area: Order context (active tab, order type, table/pax) ── */}
+        <section className="pos-cart-order-context" aria-label={requiredLocalized(l10n, 'restaurant-setting-order-type')}>
+          {/* ── Active Tab Indicator Banner ── */}
+          {activeOpenBillId && (
           <div className="pos-cart-active-tab-banner" data-testid="pos-active-tab-banner">
             <span className="pos-cart-active-tab-info">
               <span className="pos-cart-active-tab-dot" aria-hidden="true">●</span>
@@ -749,8 +780,9 @@ export function CartPanel({
                     order type (CartPanel.tsx:735-743), so switching Dine-In ->
                     Takeaway left "Table 12" reading as this order's table. A
                     takeaway has no table to name. */}
-                {showTableForOrder ? `Table ${bareTableNumber(tableNumber!)}` : ''}
-                {(showTableForOrder && customerName) ? ` (${customerName})` : customerName || 'Active Tab'}
+                {showTableForOrder
+                  ? `Table ${bareTableNumber(tableNumber!)}${customerName ? ` (${customerName})` : ''}`
+                  : (customerName || 'Active Tab')}
               </span>
             </span>
             <button
@@ -764,10 +796,38 @@ export function CartPanel({
                 setTableNumber('');
                 setCustomerName?.('');
                 setActiveOpenBillId?.(null);
+                // ⚠️ THE PARTY SIZE BELONGS TO THE TAB TOO. Round 99 added the
+                // promotions line by comparing this handler against the HOLD path,
+                // and that comparison also leaves guestCount behind: the hold path
+                // clears it (usePosHeldCarts.ts:305) and so does the after-sale reset
+                // (PosScreen.tsx:871), while this handler did not.
+                //
+                // It is reachable and it is PERSISTED — the field renders for dine-in
+                // (:931-943) and the hold path's deps (:324) show `guestCount` is read
+                // when saving. So a leaked party size is saved onto the next order,
+                // against a table the operator has already left.
+                setGuestCount?.('');
+                // ⚠️ PROMOTIONS BELONG TO THE TAB, SO THEY GO WITH IT.
+                //
+                // This handler cleared the lines, the table, the customer and the tab id
+                // — but not the promotions, which are NOT cosmetic: they ride to
+                // checkout as `promotionIds` (PosScreen.tsx:2574, re-measured 2026-10-27;
+                // it was 2501 on 2026-10-19 and 2210 when the note was first written) and
+                // pre-select in the promotions modal (`initiallySelectedIds`,
+                // PosScreen.tsx:2614). Starting a new tab after a discounted one
+                // therefore applied that tab's discounts to the NEXT sale, with the cart
+                // empty and the banner gone so nothing on screen invited a second look.
+                //
+                // The sibling reset is the reference and always cleared them: the hold
+                // path in usePosHeldCarts.ts (:330, re-measured 2026-10-19; the note said
+                // `:302-307`, which never matched) calls `setAppliedPromotions([])`
+                // next to exactly these fields. New Tab is the same reset with one line
+                // missing, and it had no test at all, which is how the omission survived.
+                setAppliedPromotions([]);
               }}
               data-testid="pos-cart-new-tab-btn"
             >
-              + {l10n.getString('pos-cart-new-tab') || 'New Tab'}
+              + {requiredLocalized(l10n, 'pos-cart-new-tab')}
             </button>
           </div>
         )}
@@ -792,149 +852,173 @@ export function CartPanel({
           </div>
         )}
 
-        {/* ── Order Type Prompt (Dine-in / Takeaway / Delivery) ── */}
-        {/* Styling lives in CartPanel.css (.pos-cart-order-type-row); it used to
-            be an inline style block with hardcoded 6px values and no sheet behind it. */}
-        {/* The workspace arm that used to sit here was removed (P1/D2 of
-            todo-restaurant-pos-reliability.md): it made the setting inert on the
-            one workspace it exists for. `orderTypePromptEnabled` now defaults to
-            TRUE on restaurant-pos in PosScreen, so removing the override keeps
-            the control visible there while letting an explicit "off" take effect. */}
-        {orderTypePromptEnabled && setOrderType && (
-          <div className="pos-cart-order-type-row" {...orderTypeSwipe}>
-            <div
-              className="pos-cart-order-type-slider"
-              role="radiogroup"
-              aria-label={l10n.getString('restaurant-setting-order-type')}
-              tabIndex={-1}
-              style={{
-                '--order-type-index': orderTypeIndex,
-                '--order-type-count': ORDER_TYPES.length,
-              } as React.CSSProperties}
-              onKeyDown={(e) => {
-                if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                  e.preventDefault();
-                  handleOrderTypeNext();
-                } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                  e.preventDefault();
-                  handleOrderTypePrev();
-                } else if (e.key === 'Home') {
-                  e.preventDefault();
-                  const first = ORDER_TYPES[0];
-                  if (first) setOrderType(first.id);
-                } else if (e.key === 'End') {
-                  e.preventDefault();
-                  const last = ORDER_TYPES[ORDER_TYPES.length - 1];
-                  if (last) setOrderType(last.id);
-                }
-              }}
-            >
-              <span className="pos-cart-order-type-indicator" aria-hidden="true" />
-              {ORDER_TYPES.map((opt) => {
-                const active = orderType === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    role="radio"
-                    className={`pos-cart-order-type-btn${active ? ' pos-cart-order-type-btn--active' : ''}`}
-                    onClick={() => setOrderType(opt.id)}
-                    aria-checked={active}
-                    data-testid={`pos-order-type-${opt.id}`}
+        {/* ── Unified Single-Row Context Bar (Order Type Dropdown + Table Pill + Pax + Customer) ── */}
+        {((orderTypePromptEnabled && setOrderType) || (showTableNumberSetting || activeWorkspace === 'restaurant-pos') || (setCustomerName && customerNameEnabled !== false)) && (
+          <div
+            className={`pos-cart-context-row${orderTypePromptEnabled && setOrderType ? ' pos-cart-order-type-row' : ''}`}
+            {...(orderTypePromptEnabled && setOrderType ? orderTypeSwipe : {})}
+          >
+            {/* 1. Order Type Dropdown */}
+            {orderTypePromptEnabled && setOrderType && (
+              <div className="pos-cart-order-type-dropdown-wrap" ref={orderTypeDropdownRef}>
+                <button
+                  type="button"
+                  className={`pos-cart-order-type-dropdown-trigger${orderTypeMenuOpen ? ' pos-cart-order-type-dropdown-trigger--open' : ''}`}
+                  onClick={() => setOrderTypeMenuOpen((prev) => !prev)}
+                  aria-expanded={orderTypeMenuOpen}
+                  aria-haspopup="true"
+                  aria-label={l10n.getString('restaurant-setting-order-type')}
+                  data-testid="pos-cart-order-type-dropdown-trigger"
+                >
+                  <span className="pos-cart-order-type-icon">
+                    <OrderTypeIcon id={orderType} />
+                  </span>
+                  <span className="pos-cart-order-type-label">
+                    {l10n.getString(ORDER_TYPES.find((opt) => opt.id === orderType)?.labelKey ?? 'pos-order-type-dine-in')}
+                  </span>
+                  <svg
+                    className={`pos-cart-order-type-chevron${orderTypeMenuOpen ? ' pos-cart-order-type-chevron--open' : ''}`}
+                    viewBox="0 0 24 24"
+                    width="14"
+                    height="14"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
                   >
-                    <span className="pos-cart-order-type-icon">
-                      <OrderTypeIcon id={opt.id} />
-                    </span>
-                    <span className="pos-cart-order-type-label">{l10n.getString(opt.labelKey)}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
 
-        {/* ── Table number input & optional customer name ──
-            The `|| restaurant-pos` arm is INTENTIONAL, not a leftover: table
-            capture is part of what a restaurant POS is, so it does not depend on
-            a setting. `showTableNumberSetting` still governs the other
-            workspaces (retail), where it comes from the receipt toggle. The
-            restaurant-side settings toggle that used to write a competing
-            `restaurant.table_number` key was removed — see
-            RestaurantSettingsScreen.tsx's header. */}
-        {(showTableNumberSetting || activeWorkspace === 'restaurant-pos') && (
-          <div className="pos-cart-table-row">
-            <div className="pos-cart-table-field">
-              <label htmlFor="pos-table-number" className="pos-cart-table-label">
-                {l10n.getString('pos-cart-table-label')}
-              </label>
-              <input
-                id="pos-table-number"
-                type="text"
-                className="pos-cart-table-input"
-                value={tableNumber}
-                onChange={(e) => setTableNumber(e.target.value)}
-                aria-label={l10n.getString('pos-cart-table-aria')}
-                placeholder={l10n.getString('pos-cart-table-placeholder')}
-              />
-            </div>
-            {/* `!== false` (not truthiness) so an ABSENT prop shows the field:
-                retail passes nothing, and only RestaurantSettingsScreen's explicit
-                `restaurant.customer_name = false` hides it. Same idiom as
-                `courseFiringEnabled` above. */}
+                <div
+                  className={`pos-cart-order-type-menu${orderTypeMenuOpen ? ' pos-cart-order-type-menu--open' : ''}`}
+                  role="radiogroup"
+                  aria-label={l10n.getString('restaurant-setting-order-type')}
+                  tabIndex={-1}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      handleOrderTypeNext();
+                    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      handleOrderTypePrev();
+                    } else if (e.key === 'Home') {
+                      e.preventDefault();
+                      const first = ORDER_TYPES[0];
+                      if (first) setOrderType(first.id);
+                    } else if (e.key === 'End') {
+                      e.preventDefault();
+                      const last = ORDER_TYPES[ORDER_TYPES.length - 1];
+                      if (last) setOrderType(last.id);
+                    } else if (e.key === 'Escape') {
+                      setOrderTypeMenuOpen(false);
+                    }
+                  }}
+                >
+                  <span className="pos-cart-order-type-indicator" aria-hidden="true" />
+                  {ORDER_TYPES.map((opt) => {
+                    const active = orderType === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        role="radio"
+                        className={`pos-cart-order-type-btn${active ? ' pos-cart-order-type-btn--active' : ''}`}
+                        onClick={() => {
+                          setOrderType(opt.id);
+                          setOrderTypeMenuOpen(false);
+                        }}
+                        aria-checked={active}
+                        data-testid={`pos-order-type-${opt.id}`}
+                      >
+                        <span className="pos-cart-order-type-icon">
+                          <OrderTypeIcon id={opt.id} />
+                        </span>
+                        <span className="pos-cart-order-type-label">{l10n.getString(opt.labelKey)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 2. Table Pill: Icon button (opens table map) + Table input (DINE-IN only) */}
+            {(showTableNumberSetting || activeWorkspace === 'restaurant-pos') && orderType === 'dine_in' && (
+              <div
+                className={`pos-cart-table-pill${tableNumber?.trim() ? ' pos-cart-table-pill--has-table' : ''}`}
+                data-testid="pos-cart-table-pill"
+              >
+                {isEnabled(FEATURES.TABLE_MANAGEMENT) && (
+                  <button
+                    type="button"
+                    className={`pos-cart-table-select-btn${tableNumber?.trim() ? ' pos-cart-table-select-btn--selected' : ''}`}
+                    onClick={() => setShowTables(true)}
+                    title={requiredLocalized(l10n, 'tables-title')}
+                    aria-label={requiredLocalized(l10n, 'tables-title')}
+                    data-testid="pos-cart-open-tables-btn"
+                  >
+                    <TableChairIcon />
+                  </button>
+                )}
+                <input
+                  id="pos-table-number"
+                  type="text"
+                  className="pos-cart-table-input"
+                  value={tableNumber}
+                  onChange={(e) => setTableNumber(e.target.value)}
+                  aria-label={l10n.getString('pos-cart-table-aria')}
+                  placeholder={requiredLocalized(l10n, 'pos-cart-table-placeholder')}
+                />
+              </div>
+            )}
+
+            {/* 3. Guest Count / Pax (DINE-IN only).
+                No `title` on the pill: it wraps an input that already carries
+                `aria-label=pos-cart-guest-count-label`, so the native tooltip was the
+                same string twice — and it is the OS-square kind the tooltip rule bans
+                (nativeTooltipCompliance). The glyph is aria-hidden; the input's own
+                label is what a screen reader announces. */}
+            {setGuestCount && guestCountEnabled !== false && orderType === 'dine_in' && (
+              <div className="pos-cart-guest-pill">
+                <span className="pos-cart-guest-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                </span>
+                <input
+                  id="pos-guest-count"
+                  type="number"
+                  min={1}
+                  max={99}
+                  className="pos-cart-guest-input"
+                  value={guestCount ?? ''}
+                  onChange={(e) => setGuestCount(e.target.value)}
+                  aria-label={l10n.getString('pos-cart-guest-count-label')}
+                  placeholder={requiredLocalized(l10n, 'pos-cart-guest-placeholder')}
+                  data-testid="pos-cart-guest-input"
+                />
+              </div>
+            )}
+
+            {/* 4. Customer Name (box only with placeholder name) */}
             {setCustomerName && customerNameEnabled !== false && (
               <div className="pos-cart-customer-field">
-                <label htmlFor="pos-customer-name" className="pos-cart-customer-label">
-                  {l10n.getString('pos-cart-customer-label') || 'Customer (opt)'}
-                </label>
                 <input
                   id="pos-customer-name"
                   type="text"
                   className="pos-cart-customer-input"
                   value={customerName ?? ''}
                   onChange={(e) => setCustomerName(e.target.value)}
-                  aria-label={l10n.getString('pos-cart-customer-aria') || 'Customer Name (optional)'}
-                  placeholder={l10n.getString('pos-cart-customer-placeholder') || 'Name...'}
+                  aria-label={requiredLocalized(l10n, 'pos-cart-customer-aria')}
+                  placeholder={requiredLocalized(l10n, 'pos-cart-customer-placeholder')}
                   data-testid="pos-cart-customer-input"
                 />
               </div>
-            )}
-            {/* ⚠️ DINE-IN ONLY. products.ftl:105 defines pax as "party size and
-                number of SEATED GUESTS PER TABLE", so a takeaway or delivery order
-                has nothing to answer it with — yet the field was offered on every
-                order type, the same mistake the table DISPLAY had (547bf031d).
-                The setting gate below is unchanged: an unset key still SHOWS the
-                field for a dine-in order, which retail and the restaurant default
-                both rely on. */}
-            {setGuestCount && guestCountEnabled !== false && orderType === 'dine_in' && (
-              <div className="pos-cart-guest-field">
-                <label htmlFor="pos-guest-count" className="pos-cart-customer-label">
-                  {l10n.getString('pos-cart-guest-count-label') || 'Pax'}
-                </label>
-                <input
-                  id="pos-guest-count"
-                  type="number"
-                  min={1}
-                  max={99}
-                  className="pos-cart-customer-input"
-                  value={guestCount ?? ''}
-                  onChange={(e) => setGuestCount(e.target.value)}
-                  aria-label={l10n.getString('pos-cart-guest-count-label')}
-                  placeholder={l10n.getString('pos-cart-guest-placeholder')}
-                  data-testid="pos-cart-guest-input"
-                />
-              </div>
-            )}
-            {isEnabled(FEATURES.TABLE_MANAGEMENT) && (
-              <button
-                type="button"
-                className="pos-cart-table-select-btn"
-                onClick={() => setShowTables(true)}
-                title={requiredLocalized(l10n, 'tables-title')}
-                aria-label={requiredLocalized(l10n, 'tables-title')}
-                data-testid="pos-cart-open-tables-btn"
-              >
-                <TableChairIcon />
-              </button>
             )}
           </div>
         )}
@@ -956,18 +1040,36 @@ export function CartPanel({
             </button>
           </div>
         )}
+        </section>
 
-        {/* ── Course firing bar ──────────────────────── */}
-        {lines.length > 0 && activeWorkspace === 'restaurant-pos' && courseFiringEnabled !== false && (
-          <CourseSelectorBar
-            lines={lines}
-            fireCourse={fireCourse}
-            fireAllCourses={fireAllCourses}
-          />
+        {/* ── Area: Course firing ─────────────────────── */}
+        {/* ⚠️ The section is gated HERE **and** the conditions are repeated inside
+            <CourseSelectorBar>, which returns null on the same three. That is not
+            duplication for its own sake: the bar is also rendered standalone
+            (CourseSelectorBar.test.tsx), so it has to hold its own contract, while the
+            SECTION has to be gated or it wraps nothing and paints an empty area.
+            `hideWhenEmpty` additionally suppresses the bar when no line is on hold —
+            opt-in, because an all-fired cart legitimately shows an empty bar and that
+            behaviour is pinned by the bar's own suite. */}
+        {lines.length > 0 && activeWorkspace === 'restaurant-pos' && courseFiringEnabled !== false
+          && !lines.every((l) => l.coursingStatus !== 'hold') && (
+          <section className="pos-cart-course-bar-area" aria-label={l10n.getString('pos-cart-course-firing')}>
+            <CourseSelectorBar
+              lines={lines}
+              fireCourse={fireCourse}
+              fireAllCourses={fireAllCourses}
+              activeWorkspace={activeWorkspace}
+              courseFiringEnabled={courseFiringEnabled}
+              hideWhenEmpty
+            />
+          </section>
         )}
 
         {/* ── Cart lines ────────────────────────────── */}
-        <div className="pos-cart-lines">
+        <section
+          className="pos-cart-lines"
+          aria-label={l10n.getString(activeWorkspace === 'restaurant-pos' ? 'pos-cart-panel-title-order' : 'pos-cart-panel-title')}
+        >
           {lines.length === 0 ? (
             <div className="pos-cart-empty-msg">
               <ShoppingBagIcon />
@@ -1042,68 +1144,70 @@ export function CartPanel({
               </button>
             </div>
           )}
-        </div>
+        </section>
 
-        {/* ── Footer: subtotal + discount + tip + service + pay ──── */}
+        {/* ── Area: Footer totals + checkout actions ──── */}
         {lines.length > 0 && subtotal && (
-          <CartFooterTotals
-            lines={lines}
-            subtotal={subtotal}
-            discountPercent={discountPercent}
-            discountLabel={discountLabel}
-            discountAmount={discountAmount}
-            showOptions={showOptions}
-            setShowOptions={setShowOptions}
-            showDiscountInput={showDiscountInput}
-            setShowDiscountInput={setShowDiscountInput}
-            setShowPromotions={setShowPromotions}
-            appliedPromotions={appliedPromotions}
-            setAppliedPromotions={setAppliedPromotions}
-            discountInput={discountInput}
-            setDiscountInput={setDiscountInput}
-            discountName={discountName}
-            setDiscountName={setDiscountName}
-            handleApplyDiscount={handleApplyDiscount}
-            handleClearDiscount={handleClearDiscount}
-            tipPercent={tipPercent}
-            setTipPercent={setTipPercent}
-            tipAmount={tipAmount}
-            serviceChargeEnabled={serviceChargeEnabled}
-            serviceChargePercent={serviceChargePercent}
-            serviceChargeAmount={serviceChargeAmount}
-            setServiceCharge={setServiceCharge}
-            cartTax={cartTax}
-            taxEstimated={taxEstimated}
-            taxState={taxState}
-            retryTaxEstimate={retryTaxEstimate}
-          >
-            <CartActionBar
-              activeShift={activeShift}
-              shiftUnavailable={shiftUnavailable}
-              handlePay={handlePay}
-              addToast={addToast}
-              setShowOpenBillInput={setShowOpenBillInput}
-              setCartId={setCartId}
-              deductionLocationIdRef={deductionLocationIdRef}
-              setDeductionLocationName={setDeductionLocationName}
-              setDeductionOverridden={setDeductionOverridden}
-              resetCart={resetCart}
-              tableNumber={tableNumber}
-              orderType={orderType}
-              customerName={customerName}
-              activeOpenBillId={activeOpenBillId}
-              handleOpenBill={handleOpenBill}
-              saveTabEnabled={saveTabEnabled}
-              hasLines={lines.length > 0}
-              printBillEnabled={printBillEnabled}
-              handlePrintBill={handlePrintBill}
-              splitBillEnabled={splitBillEnabled}
-              handleOpenSplitBill={setShowSplitBillModal ? () => setShowSplitBillModal(true) : undefined}
-              hasUndispatchedItems={hasUndispatchedItems}
-              sendingToKitchen={sendingToKitchen}
-              handleSendToKitchen={handleSendToKitchen}
-            />
-          </CartFooterTotals>
+          <footer className="pos-cart-footer-area">
+            <CartFooterTotals
+              lines={lines}
+              subtotal={subtotal}
+              discountPercent={discountPercent}
+              discountLabel={discountLabel}
+              discountAmount={discountAmount}
+              showOptions={showOptions}
+              setShowOptions={setShowOptions}
+              showDiscountInput={showDiscountInput}
+              setShowDiscountInput={setShowDiscountInput}
+              setShowPromotions={setShowPromotions}
+              appliedPromotions={appliedPromotions}
+              setAppliedPromotions={setAppliedPromotions}
+              discountInput={discountInput}
+              setDiscountInput={setDiscountInput}
+              discountName={discountName}
+              setDiscountName={setDiscountName}
+              handleApplyDiscount={handleApplyDiscount}
+              handleClearDiscount={handleClearDiscount}
+              tipPercent={tipPercent}
+              setTipPercent={setTipPercent}
+              tipAmount={tipAmount}
+              serviceChargeEnabled={serviceChargeEnabled}
+              serviceChargePercent={serviceChargePercent}
+              serviceChargeAmount={serviceChargeAmount}
+              setServiceCharge={setServiceCharge}
+              cartTax={cartTax}
+              taxEstimated={taxEstimated}
+              taxState={taxState}
+              retryTaxEstimate={retryTaxEstimate}
+            >
+              <CartActionBar
+                activeShift={activeShift}
+                shiftUnavailable={shiftUnavailable}
+                handlePay={handlePay}
+                addToast={addToast}
+                setShowOpenBillInput={setShowOpenBillInput}
+                setCartId={setCartId}
+                deductionLocationIdRef={deductionLocationIdRef}
+                setDeductionLocationName={setDeductionLocationName}
+                setDeductionOverridden={setDeductionOverridden}
+                resetCart={resetCart}
+                tableNumber={tableNumber}
+                orderType={orderType}
+                customerName={customerName}
+                activeOpenBillId={activeOpenBillId}
+                handleOpenBill={handleOpenBill}
+                saveTabEnabled={saveTabEnabled}
+                hasLines={lines.length > 0}
+                printBillEnabled={printBillEnabled}
+                handlePrintBill={handlePrintBill}
+                splitBillEnabled={splitBillEnabled}
+                handleOpenSplitBill={setShowSplitBillModal ? () => setShowSplitBillModal(true) : undefined}
+                hasUndispatchedItems={hasUndispatchedItems}
+                sendingToKitchen={sendingToKitchen}
+                handleSendToKitchen={handleSendToKitchen}
+              />
+            </CartFooterTotals>
+          </footer>
         )}
 
         {/* ── Open Bills badge (only visible when open bills exist) ── */}

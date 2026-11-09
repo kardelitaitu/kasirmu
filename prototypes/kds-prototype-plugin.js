@@ -136,7 +136,7 @@ return {
               ? h('button', { style: { width: '100%', padding: '6px 0', borderRadius: 6, border: 'none', background: '#3b82f6', color: '#fff', fontWeight: 600, cursor: 'pointer' }, onClick: () => advanceC(o.id) }, 'Resume')
               : allDone
                 ? h('button', { style: { width: '100%', padding: '6px 0', borderRadius: 6, border: 'none', background: '#4ade80', color: '#0f0f14', fontWeight: 600, cursor: 'pointer' }, onClick: () => complete(o.id) }, 'Mark Completed')
-                : h('button', { style: { width: '100%', padding: '6px 0', borderRadius: 6, border: 'none', background: '#2a2a35', color: '#555', fontWeight: 600, cursor: 'not-allowed' }, onClick: () => { if (window.confirm(remaining + ' items still unchecked \u2014 override?')) complete(o.id); } }, remaining + ' items remaining'),
+                : h('button', { style: { width: '100%', padding: '6px 0', borderRadius: 6, border: 'none', background: '#2a2a35', color: '#555', fontWeight: 600, cursor: 'not-allowed' }, onClick: (e) => { const b = e && e.currentTarget; if (b && b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'Tap again to finish ' + remaining + ' unchecked'; return; } complete(o.id); } }, remaining + ' items remaining'),
           ),
         );
       };

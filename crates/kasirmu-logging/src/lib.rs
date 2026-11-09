@@ -54,9 +54,12 @@ next: none | perf: N/A
 #![deny(unsafe_code)]
 
 pub mod error;
+mod retention;
 pub mod visitor;
 
 pub use error::LoggingError;
+use retention::Retainer;
+pub use retention::{RETENTION_HEARTBEAT, RETENTION_SWEEP_INTERVAL, SweepReport};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::EnvFilter;
 
@@ -250,27 +253,76 @@ fn ensure_log_dir_writable(dir: &str) -> Result<(), LoggingError> {
     Ok(())
 }
 
-/// Remove log files in `dir` that start with `file_prefix` and whose
-/// modification time is older than `retention_days`.
-fn cleanup_old_log_files(dir: &str, file_prefix: &str, retention_days: u32) {
-    if retention_days == 0 {
+/// Build the retainer a file initialiser installs, or `None` when
+/// `retention_days == 0`.
+///
+/// Split out of [`install_retention`] so the initialiser can hand the retainer
+/// to the writer chain, and so a test can assert on what an init would install
+/// without taking the process-global subscriber. The clock is a parameter for
+/// the same reason: production passes `SystemTime::now`, tests pass a counter
+/// they can advance.
+fn retention_retainer_for_test(
+    log_dir: &std::path::Path,
+    file_prefix: &str,
+    retention_days: u32,
+    now: Box<dyn Fn() -> std::time::SystemTime + Send + Sync>,
+    epoch: std::time::Instant,
+) -> Option<std::sync::Arc<Retainer>> {
+    Retainer::new(log_dir, file_prefix, retention_days, now, epoch)
+}
+
+/// Start continuous retention for an initialised file writer.
+///
+/// This replaces the pre-O-M60 `std::thread::spawn` of a one-shot sweep.
+/// `retainer` has already been built by the initialiser and is already the
+/// appender's inner writer, so the per-write check is wired; this function
+/// adds the two things the writer alone cannot do:
+///
+/// 1. An **init-time sweep**, unconditionally, so a process that starts and
+///    exits quickly still prunes exactly as before.
+/// 2. A **heartbeat thread** that pushes a sentinel byte into `non_blocking`
+///    every [`RETENTION_HEARTBEAT`]. The byte travels the same channel as a
+///    log line, so the appender's worker thread performs the check -- it is
+///    the only thread that already owns the file -- and
+///    [`retention::RetainerWriter`] consumes the byte before the appender
+///    sees it. This is what makes retention *continuous*: an idle process,
+///    which writes no log lines at all, still sweeps.
+///
+/// `retainer` is `None` for `retention_days == 0`, in which case nothing runs
+/// and the writer is left exactly as it was before O-M60.
+fn install_retention(
+    non_blocking: &tracing_appender::non_blocking::NonBlocking,
+    retainer: Option<&std::sync::Arc<Retainer>>,
+    log_dir: &str,
+) {
+    let Some(retainer) = retainer else {
         return;
-    }
-    let cutoff = chrono::Utc::now() - chrono::Duration::days(retention_days as i64);
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if let Some(name) = path.file_name().and_then(|n| n.to_str())
-                && name.starts_with(file_prefix)
-                && let Ok(metadata) = std::fs::metadata(&path)
-                && let Ok(modified) = metadata.modified()
-            {
-                let modified: chrono::DateTime<chrono::Utc> = modified.into();
-                if modified < cutoff {
-                    let _ = std::fs::remove_file(&path);
-                }
-            }
-        }
+    };
+
+    // The init-time sweep, kept from the pre-O-M60 behaviour.
+    report_sweep_failures(log_dir, &retainer.run_now());
+
+    retention::spawn_heartbeat(non_blocking.clone(), std::sync::Arc::clone(retainer));
+}
+
+/// Report what a sweep could not delete, naming the file and the reason.
+///
+/// O-M60: the pre-fix sweep discarded `remove_file`'s error with `let _ =`, so
+/// an unwritable directory was indistinguishable from an empty backlog.
+///
+/// This prints to **stderr directly**, never through `tracing`, and that is
+/// deliberate for two reasons: the init-time sweep runs *before* the subscriber
+/// is installed, so a `tracing::warn!` there would be dropped on the floor; and
+/// a sweep triggered later runs *on the non-blocking worker thread*, so routing
+/// the report through `tracing` would feed the very writer it is reporting about
+/// -- a re-entrant loop through the log pipeline. Nothing in this crate or in
+/// `retention.rs` emits through the subscriber, by design.
+fn report_sweep_failures(log_dir: &str, report: &SweepReport) {
+    for (path, reason) in &report.failed {
+        eprintln!(
+            "[kasirmu-logging] could not remove log file {} ({reason}); log dir {log_dir}",
+            path.display()
+        );
     }
 }
 
@@ -322,10 +374,34 @@ pub fn try_init_with_file(
     // `LoggingError::LogDirUnusable`.
     ensure_log_dir_writable(log_dir)?;
 
+    // Writer chain: NonBlocking -> (optional RetainerWriter) -> rolling appender.
+    // The retainer sits on the worker thread, the only thread that already owns
+    // the file, and it is the single owner of the appender. When retention is
+    // off (`retention_days == 0`) the appender goes in untouched, exactly as it
+    // did before O-M60.
     let file_appender = tracing_appender::rolling::hourly(log_dir, file_prefix);
+    let retainer = retention_retainer_for_test(
+        std::path::Path::new(log_dir),
+        file_prefix,
+        retention_days,
+        Box::new(std::time::SystemTime::now),
+        std::time::Instant::now(),
+    );
     // L-1 fix: the guard is retained process-wide (see FILE_LOG_GUARDS);
     // dropping it locally shut the file writer down immediately.
-    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+    let (non_blocking, guard) = match &retainer {
+        Some(retainer) => tracing_appender::non_blocking(retention::RetainerWriter::new(
+            file_appender,
+            std::sync::Arc::clone(retainer),
+        )),
+        None => tracing_appender::non_blocking(file_appender),
+    };
+
+    // Retention starts BEFORE the subscriber takes the writer, so the
+    // init-time sweep happens even if `try_init` then fails on a duplicate
+    // subscriber -- which is exactly the short-lived-process case that must
+    // still prune.
+    install_retention(&non_blocking, retainer.as_ref(), log_dir);
 
     tracing_subscriber::fmt()
         .with_env_filter(filter)
@@ -334,15 +410,6 @@ pub fn try_init_with_file(
         .try_init()
         .map_err(|e| LoggingError::InitFailed(format!("{e}")))?;
     retain_file_log_guard(guard);
-
-    // Spawn a best-effort background task for log retention cleanup.
-    // The thread is detached — if the process exits before cleanup
-    // finishes, old log files simply persist until the next run.
-    let dir = log_dir.to_owned();
-    let prefix = file_prefix.to_owned();
-    std::thread::spawn(move || {
-        cleanup_old_log_files(&dir, &prefix, retention_days);
-    });
 
     Ok(())
 }
@@ -380,10 +447,32 @@ pub fn try_init_json_with_file(
     // LOG-2 (O-M59): prove the directory is writable BEFORE the subscriber is set.
     ensure_log_dir_writable(log_dir)?;
 
+    // Writer chain: NonBlocking -> (optional RetainerWriter) -> rolling appender.
+    // The retainer sits on the worker thread, the only thread that already owns
+    // the file, and it is the single owner of the appender. When retention is
+    // off (`retention_days == 0`) the appender goes in untouched, exactly as it
+    // did before O-M60.
     let file_appender = tracing_appender::rolling::hourly(log_dir, file_prefix);
+    let retainer = retention_retainer_for_test(
+        std::path::Path::new(log_dir),
+        file_prefix,
+        retention_days,
+        Box::new(std::time::SystemTime::now),
+        std::time::Instant::now(),
+    );
     // L-1 fix: the guard is retained process-wide (see FILE_LOG_GUARDS);
     // dropping it locally shut the file writer down immediately.
-    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+    let (non_blocking, guard) = match &retainer {
+        Some(retainer) => tracing_appender::non_blocking(retention::RetainerWriter::new(
+            file_appender,
+            std::sync::Arc::clone(retainer),
+        )),
+        None => tracing_appender::non_blocking(file_appender),
+    };
+
+    // Retention starts BEFORE the subscriber takes the writer; see the text
+    // initialiser for why.
+    install_retention(&non_blocking, retainer.as_ref(), log_dir);
 
     tracing_subscriber::fmt()
         .with_env_filter(filter)
@@ -396,15 +485,6 @@ pub fn try_init_json_with_file(
         .try_init()
         .map_err(|e| LoggingError::InitFailed(format!("{e}")))?;
     retain_file_log_guard(guard);
-
-    // Spawn a best-effort background task for log retention cleanup.
-    // The thread is detached — if the process exits before cleanup
-    // finishes, old log files simply persist until the next run.
-    let dir = log_dir.to_owned();
-    let prefix = file_prefix.to_owned();
-    std::thread::spawn(move || {
-        cleanup_old_log_files(&dir, &prefix, retention_days);
-    });
 
     Ok(())
 }

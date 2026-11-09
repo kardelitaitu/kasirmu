@@ -71,3 +71,5 @@ No behaviour changed — the diff is comments only.
 | Full UI suite | 12,670 passed, 0 failed |
 | `tsc` / `eslint` | 0 / 0 |
 | other `M` files | 10 verified as line-ending artefacts, not content |
+
+> last audited 14-10-26 by docs-auditor

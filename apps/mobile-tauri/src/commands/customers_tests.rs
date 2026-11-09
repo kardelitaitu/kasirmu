@@ -1,6 +1,7 @@
 use super::*;
 use foundation::{Email, Phone};
 use kasirmu_core::session::SessionContext;
+use kasirmu_test_support::tempdir;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
 
@@ -66,7 +67,7 @@ async fn scoped_customer_command_denies_user_without_permission() {
     )
     .unwrap();
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
@@ -110,7 +111,7 @@ async fn list_customers_scoped_denies_user_without_view_permission() {
     )
     .unwrap();
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
@@ -141,7 +142,7 @@ async fn scoped_customer_write_command_targets_only_the_session_store() {
     let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
@@ -512,7 +513,7 @@ async fn search_customers_scoped_is_bounded_and_store_isolated() {
     let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
@@ -578,7 +579,7 @@ async fn get_customer_history_scoped_returns_profile_loyalty_and_sales() {
     let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
@@ -643,7 +644,7 @@ async fn get_customer_history_scoped_unknown_customer_is_not_found() {
     let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
@@ -684,7 +685,7 @@ async fn delete_customer_scoped_is_blocked_by_loyalty_and_sales_references() {
     let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
@@ -746,7 +747,7 @@ async fn delete_customer_scoped_succeeds_without_references() {
     let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
@@ -818,7 +819,7 @@ async fn get_customer_scoped_denies_user_without_view_permission() {
     )
     .unwrap();
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
@@ -886,7 +887,7 @@ async fn get_customer_scoped_denies_view_holder_out_of_scope() {
         )
         .unwrap();
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);

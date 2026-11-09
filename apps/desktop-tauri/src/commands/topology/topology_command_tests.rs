@@ -1340,7 +1340,8 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
     // What this assertion actually grades, since the wording below it has long
     // suggested a compensation: this Apply wrote no journal at all (it returned
     // at the revision gate). The journal it finds gone is the FIRST, successful
-    // Apply's, finalized by recover_pending_topology_apply at commands.rs:526
+    // Apply's, finalized by recover_pending_topology_apply at
+    // kasirmu-bridge/src/topology/persistence.rs:552
     // through the "apply completed, just finalize" branch. So this is a
     // recovery-finalization check, not a compensation check.
     assert!(

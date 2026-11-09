@@ -30,11 +30,14 @@ Exit 0 all parse, 1 at least one does not, 2 could not run the parser.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -77,8 +80,13 @@ def is_shell(path: Path) -> bool:
     return any(k in head.decode("utf-8", "replace") for k in ("sh", "bash"))
 
 
-def targets() -> list[Path]:
-    """Every first-party shell file in the repo, not just scripts/ and .githooks/.
+def targets(root: Path = ROOT) -> list[Path]:
+    """Every first-party shell file under the contract root, not just scripts/ and .githooks/.
+
+    r215: root carries the r166 contract -- the default is the real checkout,
+    and a fixture root makes every evidence source (git ls-files base, walk
+    base) move TOGETHER, so the gate grades the fixture and never the tree
+    the tool file happens to live in.
 
     The first version of this gate scanned two directories and I wrote that limitation
     into its own docstring as a KNOWN GAP -- the same mistake the self-test meta-gate had
@@ -101,7 +109,7 @@ def targets() -> list[Path]:
     out: list[Path] = []
     tracked: set[str] | None = None
     try:
-        r = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z"],
+        r = subprocess.run(["git", "-C", str(root), "ls-files", "-z"],
                            capture_output=True, text=True, check=True)
         tracked = {p for p in r.stdout.split("\0") if p}
     except (OSError, subprocess.CalledProcessError):
@@ -117,12 +125,12 @@ def targets() -> list[Path]:
         # run as root during package install and uninstall, where a parse error breaks
         # the install. A shebang is a FACT about the file; a .sh suffix is a habit.
         for rel in sorted(tracked):
-            p = ROOT / rel
+            p = root / rel
             if p.is_file() and not rel.endswith(".sample") and is_shell(p):
                 out.append(p)
         return sorted(out)
 
-    for dirpath, dirnames, filenames in os.walk(ROOT):
+    for dirpath, dirnames, filenames in os.walk(root):
         # d != ".git", NOT d.startswith(".git"): the prefix form also swallows
         # ".githooks", which is where four of the shell scripts live (commit-msg,
         # post-commit, pre-commit, pre-push). That made this fallback find 56 where the
@@ -147,14 +155,43 @@ def targets() -> list[Path]:
 _INTERPRETERS: dict[str, str] = {}
 
 
+# Where Git for Windows puts its POSIX shells. Used only when `sh`/`bash` is not
+# already on PATH -- see _interpreter.
+_GIT_SH_CANDIDATES = (
+    r"C:\Program Files\Git\bin\sh.exe",
+    r"C:\Program Files\Git\usr\bin\sh.exe",
+    r"C:\Program Files (x86)\Git\bin\sh.exe",
+    r"C:\Program Files\Git\bin\bash.exe",
+)
+
+
 def _interpreter(name: str) -> str:
     """Absolute path to `name`, so PATH ambiguity cannot pick a different one.
 
-    Falls back to the bare name when nothing resolves, which is what the gate did
-    everywhere before; on a Linux runner the two forms are the same file.
+    **A bare-name fallback is not safe on Windows, and it was here.** `shutil.which`
+    returns None when nothing on PATH matches, and the old code then returned the bare
+    name -- which is right on a Linux runner where the two forms are the same file, and
+    wrong on Windows, where `subprocess` turns "sh" into `[WinError 2] The system cannot
+    find the file specified`. Measured 2026-10-23: `python scripts/verify-shell-syntax.py
+    --self-test` from a plain PowerShell exits 2 with exactly that, while the same call
+    under Git Bash's PATH passes 7/7 -- because `scripts/check.sh` runs it through bash
+    and inherits that PATH, so the failure only surfaced when the SELF-TEST SWEEP
+    launched it as a bare child. A gate that works when its parent happens to export the
+    right PATH is not a gate.
+
+    So: PATH first (unchanged), then the known Git-for-Windows locations, then the bare
+    name. The last fallback is kept deliberately -- on a host with no POSIX shell at all
+    this must still FAIL LOUDLY at spawn time rather than silently parse nothing, and the
+    caller reports "could not run sh" rather than a false syntax error.
     """
     if name not in _INTERPRETERS:
-        _INTERPRETERS[name] = shutil.which(name) or name
+        found = shutil.which(name)
+        if found is None and name in ("sh", "bash"):
+            for candidate in _GIT_SH_CANDIDATES:
+                if os.path.exists(candidate):
+                    found = candidate
+                    break
+        _INTERPRETERS[name] = found or name
     return _INTERPRETERS[name]
 
 
@@ -193,7 +230,7 @@ def parser_for(path: Path) -> list[str]:
     return [_interpreter("sh"), "-n"]
 
 
-def check(path: Path) -> tuple[bool, str]:
+def check(path: Path, root: Path = ROOT) -> tuple[bool, str]:
     # Forward slashes, always. The Windows-native form C:\\dev\\... reaches Git-bash's
     # /bin/bash with its separators eaten (C:devkasirmu...) and the parser then reports a
     # MISSING FILE rather than a syntax error -- a failure this gate must never
@@ -206,10 +243,10 @@ def check(path: Path) -> tuple[bool, str]:
     # tolerated C:\\... and bash -n did not. A repo-relative path has no drive letter
     # to mangle and is the one form every shell accepts on every platform, so that is
     # what is passed. cwd is ROOT, so the relative path resolves correctly.
-    rel = path.relative_to(ROOT).as_posix()
+    rel = path.relative_to(root).as_posix()
     cmd = parser_for(path) + [rel]
     try:
-        r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True,
+        r = subprocess.run(cmd, cwd=root, capture_output=True, text=True,
                            errors="replace")
     except OSError as exc:
         return False, f"could not run {cmd[0]}: {exc}"
@@ -223,7 +260,7 @@ def check(path: Path) -> tuple[bool, str]:
     # the retry or never worked, and a real syntax error reproduces every time.
     reason = (r.stderr or r.stdout or "").strip()
     if not _looks_like_parse_output(reason):
-        r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True,
+        r = subprocess.run(cmd, cwd=root, capture_output=True, text=True,
                            errors="replace")
         if r.returncode == 0:
             return True, ""
@@ -262,34 +299,125 @@ def self_test() -> int:
     """
     bad: list[str] = []
 
-    # BOTH SCOPE PATHS MUST AGREE, and this is here because of what happened on
-    # 2026-09-29: the no-git fallback went unexercised for its whole life and held two
-    # bugs -- an undefined VENDORED that raised NameError, and a startswith(".git")
-    # filter that swallowed all four git hooks, so it found 56 where the git path found
-    # 60. Both surfaced only by forcing the branch with a throwaway probe, and deleting
-    # that probe put the branch back to unexercised. So the branch is exercised HERE, on
-    # every run, as a DIFFERENTIAL: force the fallback and assert it returns exactly what
-    # the git path returns. A divergence between the two is the signature of a scope
-    # bug, and this is the only check in the file able to see one.
+    # BOTH SCOPE PATHS MUST AGREE ON TRACKED FILES, and this is here because of what
+    # happened on 2026-09-29: the no-git fallback went unexercised for its whole life
+    # and held two bugs -- an undefined VENDORED that raised NameError, and a
+    # startswith(".git") filter that swallowed all four git hooks, so it found 56 where
+    # the git path found 60. Both surfaced only by forcing the branch with a throwaway
+    # probe, and deleting that probe put the branch back to unexercised. So the branch
+    # is exercised HERE, on every run, as a DIFFERENTIAL against the FULL FILE SETS,
+    # not just the counts.
+    #
+    # The asymmetry below is measured semantics, not a softening, and both halves were
+    # earned in the field:
+    #
+    #   * MISSING (the fallback skips a file the git path checks) is ALWAYS a failure:
+    #     that is the historical scope bug, twice over -- the hooks swallow above, and
+    #     the *.sh glob that missed seven shebang-only scripts before the shebang rule.
+    #   * EXTRA (the fallback lists a file the git path does not) is a NOTE, not a
+    #     failure. The git path is "every TRACKED shell file", so by construction every
+    #     extra is UNTRACKED -- scratch debris, never a scope bug. Failing here was
+    #     measured 2026-11-08: this session's own .agents/nextest-run.sh (untracked,
+    #     and .agents is only PARTLY gitignored) failed this self-test while the tree
+    #     was fine -- the same false-positive class the probe block two cases down
+    #     documents for target/, defeated there by probe placement and not by any
+    #     scope property. .agents cannot take the VENDORED-name fix that scratch/ took,
+    #     because it holds 144 TRACKED files (3 of them .sh) and name-listing it would
+    #     make the no-git fallback skip real files on a git-less checkout -- exactly
+    #     the degradation the comment at the VENDORED tuple forbids. So the note keeps
+    #     the visibility and drops the false red, and the case below pins the class.
     import subprocess as _sp
     _real_run = _sp.run
-    _git_count = len(targets())
+    _git_set = {str(p) for p in targets()}
     try:
         def _no_git(*a, **k):
             raise OSError("self-test: pretend git is absent")
         _sp.run = _no_git
-        _fallback_count = len(targets())
+        _fb_set = {str(p) for p in targets()}
     except OSError as exc:
-        _fallback_count = None
+        _fb_set = None
         bad.append("the no-git fallback raised instead of falling back: " + str(exc))
     finally:
         _sp.run = _real_run
-    if _fallback_count is not None and _fallback_count != _git_count:
-        bad.append(f"scope paths disagree: git sees {_git_count} shell file(s), "
-                   f"the no-git fallback sees {_fallback_count} -- one of them is "
-                   f"skipping something the other checks")
+    if _fb_set is not None:
+        _missing = sorted(_git_set - _fb_set)
+        _extra = sorted(_fb_set - _git_set)
+        if _missing:
+            bad.append("the no-git fallback SKIPS " + str(len(_missing)) + " tracked shell "
+                       "file(s) the git path checks: " + ", ".join(
+                           Path(m).relative_to(ROOT).as_posix() for m in _missing[:6]))
+        if _extra:
+            print("self-test note: the no-git fallback also sees " + str(len(_extra)) +
+                  " untracked shell file(s) the git path does not -- untracked debris, "
+                  "not a scope bug (e.g. " + ", ".join(
+                      Path(m).relative_to(ROOT).as_posix() for m in _extra[:3]) + ")",
+                  file=sys.stderr)
 
-    scratch = ROOT / "scripts" / "_syntax_selftest_tmp.sh"
+    # THE 2026-11-08 EVENT, PINNED AS A CASE: an untracked .sh planted under .agents/
+    # (the directory this repo designates as live agent scratch -- AGENTS.md's
+    # clean -x measurement names it) must show up as an EXTRA of the differential,
+    # never as a MISSING file, and must leave this self-test green. Before the extras
+    # downgrade above this case could not exist: the plant itself failed the
+    # differential, which is exactly how the r117 scratch was found. The middle
+    # assertion also pins that .agents must NOT enter VENDORED: the fallback has to
+    # keep seeing shell files there, tracked or not.
+    _agents = ROOT / ".agents"
+    _agents.mkdir(parents=True, exist_ok=True)
+    _scope_probe = _agents / "_syntax_scope_probe.sh"
+    try:
+        _scope_probe.write_text("#!/usr/bin/env sh\necho ok\n", encoding="utf-8", newline="\n")
+        _probe_git = {str(p) for p in targets()}
+        try:
+            _sp.run = _no_git
+            _probe_fb = {str(p) for p in targets()}
+        finally:
+            _sp.run = _real_run
+        # The TRACKED assertion is only meaningful where git genuinely works. The
+        # sabotage harness's relocation control measured this on 2026-11-08: its staged
+        # copy has no .git, targets() walks there, and the probe is trivially "seen" --
+        # asserting not-tracked in that world fails the self-test for a reason that has
+        # nothing to do with scope. The two assertions below stay unconditional: they
+        # hold in both worlds and are the ones that pin the VENDORED ban.
+        _git_here = True
+        try:
+            subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z"],
+                           capture_output=True, check=True)
+        except (OSError, subprocess.CalledProcessError):
+            _git_here = False
+        if _git_here and str(_scope_probe) in _probe_git:
+            bad.append(".agents probe must not be TRACKED (git saw it) -- fixture broken")
+        if str(_scope_probe) not in _probe_fb:
+            bad.append("the no-git fallback must still see an untracked .agents shell "
+                       "file -- a VENDORED-style skip here would hide tracked files on "
+                       "git-less checkouts")
+        if _probe_git - _probe_fb:
+            bad.append("planting an untracked probe must not make the fallback SKIP any "
+                       "tracked file")
+    finally:
+        if _scope_probe.exists():
+            _scope_probe.unlink()
+
+    # THE PROBE MUST NOT LAND IN THE TREE THIS GATE SCANS. It used to be
+    # ROOT / "scripts" / "_syntax_selftest_tmp.sh" -- inside scripts/, which is exactly
+    # what this file enumerates. Two real consequences, measured 2026-10-23:
+    #
+    #   1. Below, this file writes an INTENTIONALLY BROKEN script (unterminated quote) and
+    #      leaves it on disk for a moment. Any concurrent run of the PLAIN checker -- which
+    #      check.sh also runs, as a step PAIR -- can read that half-written file and report
+    #      a PARSE ERROR on a tree that is fine.
+    #   2. The differential ABOVE compares the git count with the no-git count. An untracked
+    #      probe present during that comparison makes the two disagree and fails the
+    #      self-test for a reason that is not a scope bug.
+    #
+    # A ten-trial reproduction attempt did not trigger (1), so it is reported as LATENT
+    # rather than demonstrated -- but the write is real and the window is wider than the
+    # trial. Moving the probe under target/ removes the hazard without weakening a single
+    # assertion: check() takes any path, and target/ is gitignored, so the git path never
+    # counted the probe anyway. The differential above is unaffected because it runs
+    # BEFORE this block.
+    _scratch_dir = ROOT / "target"
+    _scratch_dir.mkdir(parents=True, exist_ok=True)
+    scratch = _scratch_dir / "_syntax_selftest_tmp.sh"
     try:
         scratch.write_text("#!/usr/bin/env sh\nset -e\necho ok\n", encoding="utf-8", newline="\n")
         ok, why = check(scratch)
@@ -392,35 +520,165 @@ def self_test() -> int:
                              ("bash: cannot execute: required file not found", False)):
             if _looks_like_parse_output(good) is not why_ok:
                 bad.append(f"_looks_like_parse_output({good[:48]!r}) should be {why_ok}")
+
+        # THE SCOPE RULE ITSELF. is_shell() decides WHICH files this gate parses, and it
+        # was never called by any case here -- blanking it to "return None" left this
+        # self-test green (measured 2026-10-24 by scripts/sabotage-selftests.py, which
+        # reported this file SURVIVED on exactly that function). It is not a helper: a
+        # rule that answers False for everything makes the gate parse ZERO files and
+        # report a clean tree, which is the same anti-zero shape as the digest gate.
+        #
+        # The claim is the SHEBANG, not the .sh suffix (the docstring records seven
+        # tracked scripts the suffix rule got wrong), so both directions are pinned.
+        _probe_dir = ROOT / "target" / "_syntax_selftest_scope"
+        _probe_dir.mkdir(parents=True, exist_ok=True)
+        for _name, _text, _want in (
+            ("a.sh",      "#!/usr/bin/env bash\necho ok\n", True),
+            ("b.sh",      "#!/bin/sh\necho ok\n",           True),
+            ("hooks/run", "#!/bin/sh\necho ok\n",           True),
+            ("c.sh",      "echo no shebang\n",              False),
+            ("d.sh",      "#!/usr/bin/env python3\nprint(1)\n", False),
+            ("e.txt",     "",                               False),
+        ):
+            _p = _probe_dir / _name
+            _p.parent.mkdir(parents=True, exist_ok=True)
+            _p.write_text(_text, encoding="utf-8", newline="\n")
+            if is_shell(_p) is not _want:
+                bad.append(f"is_shell({_name!r}) should be {_want}")
+        # A file that cannot be opened is not a shell script, and must not raise.
+        if is_shell(_probe_dir / "does-not-exist.sh") is not False:
+            bad.append("is_shell on a missing file must be False")
     finally:
         if scratch.exists():
             scratch.unlink()
+        # The scope probes are removed with the same rule as the parse probe: a self-test
+        # that leaves files in the tree it scans is a gate that fails itself.
+        _leftovers = ROOT / "target" / "_syntax_selftest_scope"
+        if _leftovers.exists():
+            shutil.rmtree(_leftovers, ignore_errors=True)
 
     if scratch.exists():
         bad.append("self-test left a scratch file behind")
+    if (ROOT / "target" / "_syntax_selftest_scope").exists():
+        bad.append("self-test left the scope probes behind")
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (7 cases, no files left behind)")
+    print("SELF-TEST OK (15 cases, no files left behind)")
     return 0
 
 
-def main() -> int:
+
+def shell_ladder() -> int:
+    """r215: the root contract, graded on fixtures through main(argv, root).
+
+    Every rung names the tree by the root parameter; a root-dropping main
+    grades THIS checkout instead, which parses clean, so rung 1's rc 1 kills
+    it. A fixture is deliberately repo-less, so every rung rides the
+    filesystem fallback of targets() (is_shell + the VENDORED skip) -- the
+    branch the 2026-09-29 edit deleted unnoticed, which only a deliberate
+    exercise of THIS path caught.
+    """
+
+    def run(root, *argv):
+        out, err = io.StringIO(), io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = main(argv=list(argv), root=str(root))
+        except SystemExit as se:
+            return se.code, out.getvalue() + err.getvalue()
+        return rc, out.getvalue() + err.getvalue()
+
+    rung_n = iter(range(1000))
+
+    def build(tmp, *, broken=False, sample=False, bashy=False):
+        root = Path(tmp) / ("mini%d" % next(rung_n))
+        (root / "scripts").mkdir(parents=True, exist_ok=True)
+        (root / "scripts/good.sh").write_text("#!/bin/sh\necho ok\n",
+                                              encoding="utf-8", newline="\n")
+        if broken:
+            (root / "scripts/broken.sh").write_text("#!/bin/sh\nif true; then\n",
+                                                    encoding="utf-8", newline="\n")
+        if sample:
+            (root / ".githooks").mkdir(parents=True, exist_ok=True)
+            (root / ".githooks/pre-commit.sample").write_text(
+                "#!/bin/sh\nif true; then\n", encoding="utf-8", newline="\n")
+        if bashy:
+            (root / "scripts/bashy.sh").write_text(
+                "#!/usr/bin/env bash\narr=(one two three)\necho \"${arr[1]}\"\n",
+                encoding="utf-8", newline="\n")
+        return root
+
+    shell = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: broken.sh exists only in the fixture, so
+        # a root-dropping main grades the real checkout, parses IT clean, and
+        # returns 0 where the fixture returns 1
+        root = build(tmp, broken=True)
+        rc, text = run(root)
+        if rc != 1 or "PARSE ERROR in scripts/broken.sh" not in text:
+            print("  x rung 1: a fixture parse error must fail rc 1, named "
+                  "root-relative (rc=%r tail=%r)" % (rc, text[-170:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: a clean fixture parses, counted through the root
+        root = build(tmp)
+        rc, text = run(root)
+        if rc != 0 or "1 shell entry point(s) parse" not in text:
+            print("  x rung 2: one good script must read OK rc 0 (rc=%r "
+                  "tail=%r)" % (rc, text[-170:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: a BROKEN .githooks/*.sample is documentation of a hook the
+        # repo does not run -- excluded by name, so the fixture stays green
+        root = build(tmp, sample=True)
+        rc, text = run(root)
+        if rc != 0 or "1 shell entry point(s) parse" not in text:
+            print("  x rung 3: a broken .sample must be excluded, fixture "
+                  "green (rc=%r tail=%r)" % (rc, text[-170:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: the shebang is honoured -- a bash-only array parses under
+        # bash -n and must not be reported against /bin/sh
+        root = build(tmp, bashy=True)
+        rc, text = run(root)
+        if rc != 0 or "2 shell entry point(s) parse" not in text:
+            print("  x rung 4: a bash-shebang file must parse under bash rc 0 "
+                  "(rc=%r tail=%r)" % (rc, text[-170:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("SHELL-SYNTAX SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
+    return 0
+
+
+def main(argv: list[str] | None = None, root: str | None = None) -> int:
+    # r215: the r166 contract. argv is explicit (a caller must be able to pass
+    # a fixture's verdict line without sys.argv leaking in); root names the
+    # tree to grade, and it moves EVERY evidence source together -- targets(),
+    # check()'s cwd and the relative path in the PARSE ERROR print all derive
+    # from one base, so no rung can pass while grading the wrong tree.
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--self-test", action="store_true",
                     help="Run this checker's cases and exit.")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     if args.self_test:
-        return self_test()
+        rc = self_test()
+        if rc:
+            return rc
+        return shell_ladder()
 
+    base = ROOT if root is None else Path(root).resolve()
     found = False
     checked = 0
-    for p in targets():
+    for p in targets(base):
         checked += 1
-        ok, why = check(p)
+        ok, why = check(p, base)
         if not ok:
             found = True
-            print(f"verify-shell-syntax: PARSE ERROR in {p.relative_to(ROOT).as_posix()}")
+            print(f"verify-shell-syntax: PARSE ERROR in {p.relative_to(base).as_posix()}")
             for line in why.splitlines()[:6]:
                 print("    " + line)
     if found:
@@ -461,8 +719,14 @@ def main() -> int:
         # and makes this file look badly unbalanced. Strip FULL-LINE comments only.
         # What is left is the grammar itself, so re-read the raw bytes around any suspect
         # line rather than the rendered text.
-        print("verify-shell-syntax: ADVISORY (not blocking) — see FLIP CONDITION above.")
-        return 0
+        # BLOCKING since round 240. The FLIP CONDITION above ("scripts/profile.sh
+        # parses") was met long ago — measured 2026-10-26 the whole tree parses, 63/63 —
+        # but the flip was never applied to the RETURN, so this branch printed the
+        # finding and then exited 0. Proven by mutation: append an unbalanced `if true;
+        # then` to scripts/android-preflight.sh and the script announces "PARSE ERROR"
+        # and exits 0. A gate that reports a defect and returns success is the defect.
+        print("verify-shell-syntax: FAILED — see the parse error(s) above.")
+        return 1
     print(f"verify-shell-syntax: OK — {checked} shell entry point(s) parse.")
     return 0
 

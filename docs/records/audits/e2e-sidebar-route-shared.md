@@ -67,3 +67,5 @@ reload block now calls `openRestaurantSidebarRow`, which is what it was doing by
 | Full UI suite | 12,680 passed (up 2) |
 | Login roles | unchanged — checked per spec before editing |
 | Diff | 4 files, +55 −41, no behaviour change |
+
+> last audited 14-10-26 by docs-auditor

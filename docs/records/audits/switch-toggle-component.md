@@ -60,3 +60,5 @@ The duplicate markup is still in all twelve files. What is new is that a shared 
 exists, is tested, and carries a docblock naming the exact defect the duplicates caused — so
 the next person touching any of them has somewhere to move to rather than a twelfth copy to
 maintain.
+
+> last audited 14-10-26 by docs-auditor

@@ -34,7 +34,7 @@ export interface CartActionBarProps {
   /**
    * The order's type. Read by the Print Bill gate below: a table number only
    * identifies a check on a DINE-IN order, and the table field renders on
-   * restaurant POS unconditionally (CartPanel.tsx:864), so a takeaway with a
+   * restaurant POS unconditionally (CartPanel.tsx:898), so a takeaway with a
    * stray number would otherwise be offered an interim check naming a table it
    * does not have. Optional with a dine-in default so retail and every existing
    * test render are unchanged.
@@ -125,8 +125,14 @@ export function CartActionBar({
     }
   }, [activeShift, addToast, l10n, tableNumber, customerName, activeOpenBillId, handleOpenBill, setShowOpenBillInput]);
 
+  const hasDiningActions = Boolean(
+    (printBillEnabled !== false && hasLines && ((orderType === 'dine_in' && Boolean(tableNumber?.trim())) || Boolean(activeOpenBillId)) && handlePrintBill) ||
+    (hasLines && (Boolean(tableNumber?.trim()) || Boolean(activeOpenBillId)) && hasUndispatchedItems && handleSendToKitchen) ||
+    (splitBillEnabled !== false && hasLines && handleOpenSplitBill)
+  );
+
   return (
-    <div className="pos-cart-actions-row">
+    <div className={`pos-cart-actions-row${hasDiningActions ? ' pos-cart-actions-row--dining' : ''}`}>
       {/* Clear cart button */}
       <Localized id="pos-cart-clear">
         <button
@@ -171,7 +177,7 @@ export function CartActionBar({
         type="button"
         className="pos-cart-open-bill-btn"
         onClick={handleSaveTabClick}
-        aria-label={activeOpenBillId ? (l10n.getString('pos-cart-update-tab-aria') || 'Update Tab') : l10n.getString('pos-cart-open-bill-aria')}
+        aria-label={activeOpenBillId ? (requiredLocalized(l10n, 'pos-cart-update-tab-aria')) : l10n.getString('pos-cart-open-bill-aria')}
         data-testid="pos-cart-save-tab-btn"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
@@ -179,8 +185,8 @@ export function CartActionBar({
           <line x1="3" y1="10" x2="21" y2="10" />
         </svg>
         {activeOpenBillId
-          ? (l10n.getString('pos-cart-update-tab') || 'Update Tab')
-          : (l10n.getString('pos-cart-save-tab') || 'Save Tab')}
+          ? (requiredLocalized(l10n, 'pos-cart-update-tab'))
+          : (requiredLocalized(l10n, 'pos-cart-save-tab'))}
       </button>
       )}
 
@@ -194,7 +200,7 @@ export function CartActionBar({
           type="button"
           className="pos-cart-print-bill-btn"
           onClick={() => { void handlePrintBill(); }}
-          aria-label={l10n.getString('pos-cart-print-bill-aria') || 'Print Bill'}
+          aria-label={requiredLocalized(l10n, 'pos-cart-print-bill-aria')}
           data-testid="pos-cart-print-bill-btn"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
@@ -202,7 +208,7 @@ export function CartActionBar({
             <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
             <rect x="6" y="14" width="12" height="8" />
           </svg>
-          {l10n.getString('pos-cart-print-bill') || 'Print Bill'}
+          {requiredLocalized(l10n, 'pos-cart-print-bill')}
         </button>
       )}
 
@@ -213,7 +219,7 @@ export function CartActionBar({
           className="pos-cart-send-kitchen-btn"
           disabled={sendingToKitchen}
           onClick={() => { void handleSendToKitchen(); }}
-          aria-label={l10n.getString('pos-cart-send-kitchen-aria') || 'Send to Kitchen'}
+          aria-label={requiredLocalized(l10n, 'pos-cart-send-kitchen-aria')}
           data-testid="pos-cart-send-kitchen-btn"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
@@ -223,7 +229,7 @@ export function CartActionBar({
             <line x1="10" y1="1" x2="10" y2="4" />
             <line x1="14" y1="1" x2="14" y2="4" />
           </svg>
-          {l10n.getString('pos-cart-send-kitchen') || 'Send to Kitchen'}
+          {requiredLocalized(l10n, 'pos-cart-send-kitchen')}
         </button>
       )}
 
@@ -233,7 +239,7 @@ export function CartActionBar({
           type="button"
           className="pos-cart-split-bill-btn"
           onClick={handleOpenSplitBill}
-          aria-label={l10n.getString('pos-cart-split-bill-aria') || 'Split Bill'}
+          aria-label={requiredLocalized(l10n, 'pos-cart-split-bill-aria')}
           data-testid="pos-cart-split-bill-btn"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
@@ -242,7 +248,7 @@ export function CartActionBar({
             <path d="M13 6h3a2 2 0 0 1 2 2v7" />
             <line x1="6" y1="9" x2="6" y2="21" />
           </svg>
-          {l10n.getString('pos-cart-split-bill') || 'Split Bill'}
+          {requiredLocalized(l10n, 'pos-cart-split-bill')}
         </button>
       )}
     </div>

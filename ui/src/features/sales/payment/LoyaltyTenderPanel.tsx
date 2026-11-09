@@ -27,27 +27,30 @@
  * decides whether the sale may settle.
  *
  * The feature/account gate is passed IN as `loyaltyOffered`, which is the shape
- * ./CardTenderPanel takes for its own gate (`terminalOffered` :42, `if
- * (!terminalOffered) return null` :64) and ./QrisTenderPanel for `qrisAllowed`:
+ * ./CardTenderPanel takes for its own gate (`terminalOffered`, refused by
+ * `if (!terminalOffered) return null`) and ./QrisTenderPanel for `qrisAllowed`:
  * the shell reads useFeatures() once for the whole modal and hands the verdict
  * down, so this file calls no hook - and, unlike the first cut of this panel,
  * it can refuse itself. That refusal is the point. The panel used to render
- * whenever it was mounted at all, leaving the shell's mount gate - today
- * PaymentModal.tsx:1629, `{loyaltyLicensed && loyaltyAccount && (` - as the ONLY
+ * whenever it was mounted at all, leaving the shell's mount gate - the
+ * `{loyaltyLicensed && loyaltyAccount && (` JSX guard in PaymentModal - as the ONLY
  * thing standing between an unlicensed tenant and a Points row, so a second
  * caller inherited no protection from it. `loyaltyLicensed` is the modal's
- * `isEnabled(FEATURES.LOYALTY_PROGRAM)` read, declared once at
- * PaymentModal.tsx:283 and shared by that gate, the loyalty fetch that now checks
- * it before calling the bridge, and the prop below. The modal keeps its own gate
+ * `isEnabled(FEATURES.LOYALTY_PROGRAM)` read, declared once and shared by that
+ * gate, the loyalty fetch that now checks it before calling the bridge, and the
+ * prop below. The modal keeps its own gate
+ * (Anchored by expression: every line number this paragraph carried into
+ * PaymentModal was stale — the JSX gate and the flag declaration had both moved
+ * a hundred and a half lines without anyone re-deriving them.)
  * (it also performs the narrowing that lets `points` arrive as a plain number).
  *
  * WHAT THAT DOES AND DOES NOT GUARANTEE, precisely. There is exactly ONE
- * production caller today, the JSX at PaymentModal.tsx:1630, and it passes
+ * production caller today, the JSX at PaymentModal.tsx:2937, and it passes
  * `loyaltyOffered={loyaltyLicensed && !!loyaltyAccount}` - a literal restatement
  * of its own enclosing condition - so on today's paths the `!loyaltyOffered`
  * return below is UNREACHABLE from the modal. It stays because it is the default
- * a second caller gets for free, and PaymentModalLoyalty's L14 mounts the panel
- * directly to prove the branch works rather than merely exists. The compile-time
+ * a second caller gets for free, and PaymentModalLoyalty.test mounts the panel
+ * directly (its child() helper) to prove the branch works rather than merely exists. The compile-time
  * half is narrower than the sentence it replaces: `loyaltyOffered` is required
  * with no default, so a new caller must answer the LICENSING question, but
  * TypeScript was never what carried the ACCOUNT condition - `points` is required
@@ -55,7 +58,7 @@
  * account already in hand. The prop adds the flag; the account was structural.
  *
  * Nullable props: `pointsWorthMinor` is `number | null` (null while the
- * balance's valuation is pending, rendered as the ellipsis at :145) and that is
+ * balance’s valuation is pending, rendered as the ellipsis in the JSX below) and that is
  * the ONLY nullable value here; every other prop is required and non-null.
  * Nullability was deliberately not extended to carry the gate: `points: number
  * | null` would express only "no account", never "unlicensed", so it would be a

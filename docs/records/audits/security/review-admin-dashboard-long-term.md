@@ -471,7 +471,7 @@ customer instead of the business (product call, not a silent fix);
 (`039197e9` + `e90b2e2c`)**. The deferral reason was that fixing one file
 alone would be worse than inconsistent, so the whole class was swept instead:
 11 sites across 7 files now mask through `maskLicenseKey` (tail-8, mirroring
-`mask_token` in `crates/oz-security/src/mask.rs`, so Rust and Go share one
+`mask_token` in `crates/kasirmu-security/src/mask.rs`, so Rust and Go share one
 convention). Classification was by argument, not keyword: 3 `login_lockout.go`
 sites were excluded as email-derived, and 2 `addon_admin.go` sites kept their
 stronger prefix form under a `key-log:masked` marker. An AST guard

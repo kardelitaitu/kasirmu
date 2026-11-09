@@ -103,7 +103,7 @@ async fn drop_throwaway_pg_db(db_name: &str) {
 }
 
 fn sqlite_with_data() -> (tempfile::TempDir, PathBuf) {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let path = dir.path().join("kasir.db");
     let conn = Connection::open(&path).unwrap();
     conn.execute_batch(
@@ -221,7 +221,7 @@ async fn pg_integration_migrate_and_verify() {
     let store_key = format!("{ns}-store");
 
     // Seed a second SQLite DB whose tenant/settings rows are namespaced.
-    let dir2 = tempfile::tempdir().unwrap();
+    let dir2 = kasirmu_test_support::tempdir();
     let path2 = dir2.path().join("kasir.db");
     {
         let conn = Connection::open(&path2).unwrap();
@@ -377,7 +377,7 @@ async fn pg_integration_migrate_large_db() {
     };
 
     let ns = format!("pg-migrate-vol-{}", uuid::Uuid::now_v7());
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let path = dir.path().join("kasir.db");
 
     // Clean any rows left by previous runs of this test (a crashed run

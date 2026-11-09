@@ -10,5 +10,6 @@ pub mod settings;
 pub mod tax_rates;
 pub mod terminals;
 pub mod tokens;
+pub mod topology;
 pub mod users;
 pub mod validate;

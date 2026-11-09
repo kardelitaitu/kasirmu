@@ -76,3 +76,5 @@ investigation removed a genuine defect (this one) and did not crack the remainin
   cd ui
   npx vitest run src/__tests__/mockFactorySurface.test.ts
   npx vitest run --sequence.shuffle.tests --sequence.seed=7 src/__tests__/PosScreenCoreFlow.test.tsx
+
+> last audited 14-10-26 by docs-auditor

@@ -1,4 +1,5 @@
 use super::*;
+use kasirmu_test_support::tempdir;
 
 #[test]
 fn sync_settings_serialize() {
@@ -540,7 +541,7 @@ async fn sync_run_scoped_plan_required_keeps_store_items_pending() {
             .id
     };
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
     state.session_store.write().unwrap().insert(
@@ -663,7 +664,7 @@ async fn sync_run_scoped_marks_store_queue_and_leaves_global_untouched() {
             .id
     };
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
     state.session_store.write().unwrap().insert(
@@ -733,7 +734,7 @@ async fn sync_run_scoped_marks_store_queue_and_leaves_global_untouched() {
         assert_eq!(
             store.pending_offline_count().unwrap(),
             0,
-            "pending_sync_count_scoped must drop to zero after the push"
+            "the store's pending count must drop to zero after the push"
         );
     }
 
@@ -805,7 +806,7 @@ async fn sync_pull_applies_the_snapshot_to_the_store_not_the_global_db() {
             .id
     };
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
     state.session_store.write().unwrap().insert(

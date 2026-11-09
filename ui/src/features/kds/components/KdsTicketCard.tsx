@@ -16,7 +16,7 @@ import { KdsTimerBadge } from '@/features/kds/components/KdsTimerBadge';
 // names from this path; the definitions have exactly one home.
 export { fmtDuration } from '@/features/kds/components/KdsTicketLineItem';
 export { itemDone };
-import { canAdvanceKdsStatus } from '@/features/kds/kdsStatus';
+import { canAdvanceKdsStatus, nextKdsStatus } from '@/features/kds/kdsStatus';
 import { useKdsCardColors } from '@/features/kds/KdsCardColorsContext';
 import { asArray } from '@/utils/ipc-payload';
 
@@ -172,19 +172,21 @@ export const KdsTicketCard = memo(function KdsTicketCard({
 
   // Play audio alert when ticket transitions into the red threshold.
   useEffect(() => {
+    if (order.status === 'served' || order.status === 'cancelled') return;
     if (prevLevel.current !== null && prevLevel.current !== 'red' && level === 'red') {
       playAlert();
     }
     prevLevel.current = level;
-  }, [level, playAlert]);
+  }, [level, playAlert, order.status]);
 
   // Play a second alert when ticket escalates to red-urgent (≥15 min).
   useEffect(() => {
+    if (order.status === 'served' || order.status === 'cancelled') return;
     if (urgent && !prevUrgent.current) {
       playAlert();
     }
     prevUrgent.current = urgent;
-  }, [urgent, playAlert]);
+  }, [urgent, playAlert, order.status]);
 
   const [editing, setEditing] = useState(false);
   const [editSummary, setEditSummary] = useState(order.items_summary);
@@ -276,6 +278,30 @@ export const KdsTicketCard = memo(function KdsTicketCard({
     }, 200),
     [editing, order, onAdvance],
   );
+
+  // ── Per-item advance with optimistic local update ──────────────────
+  const handleAdvanceItem = useMemo(() => {
+    if (!onAdvanceItem) return undefined;
+    return (item: KdsLineItem) => {
+      const next = nextKdsStatus(item.item_status);
+      if (next) {
+        setLineItems((prev) =>
+          prev
+            ? prev.map((it) =>
+                it.id === item.id
+                  ? {
+                      ...it,
+                      item_status: next,
+                      served_at: next === 'served' ? new Date().toISOString() : it.served_at,
+                    }
+                  : it,
+              )
+            : prev,
+        );
+      }
+      onAdvanceItem(item);
+    };
+  }, [onAdvanceItem]);
 
   // Toggle the whole card body (prototype: header button).
   const toggleCollapsed = useCallback((e: React.MouseEvent) => {
@@ -387,7 +413,7 @@ export const KdsTicketCard = memo(function KdsTicketCard({
                         item={item}
                         testIdBase={order.display_number ?? order.id}
                         receivedAt={order.received_at}
-                        onAdvanceItem={onAdvanceItem}
+                        onAdvanceItem={handleAdvanceItem}
                       />
                     ))}
                   </div>

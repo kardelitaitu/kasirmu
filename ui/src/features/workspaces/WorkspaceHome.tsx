@@ -250,6 +250,7 @@ function LayerFloatingButtons({
   l10n,
   toggleFullscreen,
   handleLogoutClick,
+  onOpenProfile,
   error,
   retry,
   greeting,
@@ -260,6 +261,8 @@ function LayerFloatingButtons({
   l10n: ReturnType<typeof useLocalization>['l10n'];
   toggleFullscreen: () => void;
   handleLogoutClick: () => void;
+  /** Opens the signed-in user's own account settings. */
+  onOpenProfile: () => void;
   error: string | null;
   retry: () => void;
   greeting: { word: string; lang: string };
@@ -285,7 +288,19 @@ function LayerFloatingButtons({
         </button>
         {session && (
           <>
-            <button type="button" className="workspace-home-user-profile" aria-label={l10n.getString('workspace-home-user-aria', { name: displayName })}>
+            {/* ⚠️ THIS BUTTON HAD NO onClick AND NO ANCESTOR HANDLER, so it was dead
+                outright -- unlike TransactionLogScreen's Details button (round 155), which
+                was rescued by a click bubbling to its row. Here the wrapper is
+                `div.ws-header-buttons` (:274) and the immediate parent is a fragment, so a
+                click did nothing at all: a labelled, focusable, rendered <button> that
+                answered to neither pointer nor keyboard. Pinned by
+                WorkspaceHome.test.tsx 'opens the user profile from the toolbar button'. */}
+            <button
+              type="button"
+              className="workspace-home-user-profile"
+              aria-label={l10n.getString('workspace-home-user-aria', { name: displayName })}
+              onClick={onOpenProfile}
+            >
               <div className="workspace-home-user-avatar">
                 <div className="workspace-home-user-avatar-inner">
                   <RoleIcon role={roleName} size={16} />
@@ -722,9 +737,17 @@ export default function WorkspaceHome() {
 
   // ── Shared floating layer props ────────────────────────────────
 
+  // The toolbar profile button opens the signed-in user's OWN account settings, the same
+  // registered page the Tools grid reaches for 'staff'. Wrapped, not passed directly:
+  // `handleShortcutNav` takes a ROUTE, and an onClick hands it the MouseEvent.
+  const openProfile = useCallback(
+    () => handleShortcutNav('staff'),
+    [handleShortcutNav],
+  );
+
   const floatingProps = {
     session, displayName, roleName, l10n,
-    toggleFullscreen, handleLogoutClick, error, retry, greeting,
+    toggleFullscreen, handleLogoutClick, onOpenProfile: openProfile, error, retry, greeting,
   };
 
   // ── Loading state ────────────────────────────────────────────
@@ -784,6 +807,18 @@ export default function WorkspaceHome() {
                 is how the selector became effectively invisible. */}
             <OrgSelector />
           </header>
+
+          {/* The page's one <h1>. The design has no visible page title -- the header
+              holds the OrgSelector and each section carries its own -- so it renders
+              visually hidden and nothing moves. It is NOT decoration: axe's
+              `page-has-heading-one` fails a page with no level-one heading, and this
+              screen had 0 <h1> against 7 <h2>. The rule never said so because it lands
+              in axe's INCOMPLETE bucket ("Page should contain a level-one heading") and
+              jest-axe's toHaveNoViolations() reads `violations` only -- measured
+              2026-10-26, all 123 a11y cases green over a page with no heading. */}
+          <h1 className="workspace-sr-only">
+            <Localized id="workspace-home-page-title"><span>Workspaces</span></Localized>
+          </h1>
 
           {/* ── Non-blocking licence notice ─────────────────────────────
               The boot gate admits a provisioned install even when its licence
@@ -862,7 +897,7 @@ export default function WorkspaceHome() {
                       className="workspace-card workspace-card--quick ws-color-store-pos"
                       data-testid="workspace-card-quick-retail"
                       onClick={() => setActiveWorkspace('store-pos')}
-                      aria-label="Retail POS"
+                      aria-label={l10n.getString('workspace-home-retail-pos')}
                     >
                       <div className="workspace-card-row">
                         <div className="workspace-card-icon">
@@ -870,10 +905,14 @@ export default function WorkspaceHome() {
                         </div>
                         <div className="workspace-card-body">
                           <div className="workspace-card-title">
-                            <h2 className="workspace-card-name">Retail POS</h2>
+                            <h2 className="workspace-card-name">
+                              {l10n.getString('workspace-home-retail-pos')}
+                            </h2>
                           </div>
                           <div className="workspace-card-text">
-                            <p className="workspace-card-desc">Barcode retail POS terminal</p>
+                            <p className="workspace-card-desc">
+                              {l10n.getString('workspace-home-retail-pos-desc')}
+                            </p>
                           </div>
                         </div>
                       </div>
@@ -884,7 +923,7 @@ export default function WorkspaceHome() {
                       className="workspace-card workspace-card--quick ws-color-restaurant-pos"
                       data-testid="workspace-card-quick-restaurant"
                       onClick={() => setActiveWorkspace('restaurant-pos')}
-                      aria-label="Restaurant POS"
+                      aria-label={l10n.getString('workspace-home-restaurant-pos')}
                     >
                       <div className="workspace-card-row">
                         <div className="workspace-card-icon">
@@ -892,10 +931,14 @@ export default function WorkspaceHome() {
                         </div>
                         <div className="workspace-card-body">
                           <div className="workspace-card-title">
-                            <h2 className="workspace-card-name">Restaurant POS</h2>
+                            <h2 className="workspace-card-name">
+                              {l10n.getString('workspace-home-restaurant-pos')}
+                            </h2>
                           </div>
                           <div className="workspace-card-text">
-                            <p className="workspace-card-desc">Dining and table service POS</p>
+                            <p className="workspace-card-desc">
+                              {l10n.getString('workspace-home-restaurant-pos-desc')}
+                            </p>
                           </div>
                         </div>
                       </div>

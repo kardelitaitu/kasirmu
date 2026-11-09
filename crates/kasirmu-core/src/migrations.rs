@@ -472,6 +472,81 @@ pub const ALL: &[Migration] = &[
         id: "20261020_product_type_check.sql",
         sql: include_str!("../migrations/20261020_product_type_check.sql"),
     },
+    // Accounts Receivable (Piutang / Jual Tempo / Kasbon) — Phase 3 of
+    // payment-methods-plan.md (§1.5 & §2c). Adds `receivables` and
+    // `receivable_payments` tables, mirroring the payables schema, plus
+    // `credit_limit_minor` on `customers`.
+    Migration {
+        id: "20261021_receivables.sql",
+        sql: include_str!("../migrations/20261021_receivables.sql"),
+    },
+    // O-M04: indexed sale_id and (status, action) on offline_queue for O(1) point-probe
+    // idempotency checks during checkout settlement.
+    Migration {
+        id: "20261023_offline_queue_sale_id.sql",
+        sql: include_str!("../migrations/20261023_offline_queue_sale_id.sql"),
+    },
+    // Measured defect: the daily/weekly/monthly revenue CTEs filter
+    // `DATE(refunds.created_at, tz) BETWEEN ?1 AND ?2`, which no existing index
+    // serves, so every revenue report scanned the whole refunds table. Adds the
+    // expression index idx_refunds_currency_created_date mirroring
+    // 20260814_analytics_index.sql's precedent for sales, plus
+    // idx_refunds_processed_by_created_at for the bare-created_at range the
+    // shift-close reconciliation uses. Two indexes, no table and no trigger, so
+    // the index-surface pin in migrations_tests.rs moves 196 -> 198. Appended at
+    // the registry tail so no earlier migration reorders.
+    Migration {
+        id: "20261024_refunds_analytics_index.sql",
+        sql: include_str!("../migrations/20261024_refunds_analytics_index.sql"),
+    },
+    // O-M68: covering range index for unrestricted window popularity recompute.
+    // Turns SCAN product_activity USING INDEX idx_product_activity_sku into
+    // SEARCH product_activity USING COVERING INDEX idx_product_activity_created_at.
+    Migration {
+        id: "20261025_product_activity_created_at.sql",
+        sql: include_str!("../migrations/20261025_product_activity_created_at.sql"),
+    },
+    // ADR-66 (Centralized Topology Authoring Phase 1): metadata columns on topology_revisions
+    // (org_id, actor, key_id, signature, base_revision) for signed revision replication.
+    Migration {
+        id: "20261026_topology_revisions_metadata.sql",
+        sql: include_str!("../migrations/20261026_topology_revisions_metadata.sql"),
+    },
+    // O-M69: covering index for the outcome-filtered audit screen. No existing
+    // audit_log index led with `outcome`, so ADDING that predicate to the page
+    // query dropped the index-only walk for a full scan plus a temp sort —
+    // filtering was slower than not filtering (measured, 5,000 rows + ANALYZE).
+    // One index, no table and no trigger, so the surface pin moves 199 -> 200.
+    Migration {
+        id: "20261027_audit_log_outcome_created.sql",
+        sql: include_str!("../migrations/20261027_audit_log_outcome_created.sql"),
+    },
+    // O-M04 follow-up: the legacy branch of the outbox idempotency probe.
+    // 20261023 added `sale_id` WITHOUT backfilling, so every row written before
+    // it is NULL forever and reachable only through the `sale_id IS NULL` branch,
+    // which scanned because idx_offline_queue_sale_pending is partial on
+    // `sale_id IS NOT NULL`. This partial index serves exactly that set.
+    // One index, no table and no trigger, so the surface pin moves 200 -> 201.
+    Migration {
+        id: "20261028_offline_queue_legacy_sale_probe.sql",
+        sql: include_str!("../migrations/20261028_offline_queue_legacy_sale_probe.sql"),
+    },
+    // O-M04 follow-up: backfill `sale_id` for rows that predate the column. 20261023
+    // added it without populating it, so those rows could never reach the indexed
+    // branch. Guarded by a closing-quote check so a naive substr cannot write garbage;
+    // anything left NULL keeps working through the legacy substring branch.
+    // No new index, no table, no trigger — the surface pin is unchanged.
+    Migration {
+        id: "20261029_offline_queue_sale_id_backfill.sql",
+        sql: include_str!("../migrations/20261029_offline_queue_sale_id_backfill.sql"),
+    },
+    // Gift card tender unblocking (owner-question-gift-card-tender.md Q1 Option A):
+    // widens payments.method CHECK to include 'gift_card'. Rebuilds payments
+    // table keeping both indexes (idx_payments_idempotency_key, idx_payments_sale_id).
+    Migration {
+        id: "20261107_payments_gift_card_method.sql",
+        sql: include_str!("../migrations/20261107_payments_gift_card_method.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.
@@ -655,6 +730,13 @@ pub fn ensure_bootstrap_subscription(
     Ok(written > 0)
 }
 
+/// `<workspace>/target/test-scratch`, created if absent.
+///
+/// A local copy of the walk-up in `kasirmu-test-support`, because that crate is a
+/// DEV-dependency and `fresh_db` is reachable from the library. Reusing the same
+/// path matters: the test-support fixtures and this snapshot cache must share one
+/// root, or the gitignore that covers `target/` stops describing reality.
+///
 /// Create a fresh in-memory database with all migrations already applied.
 ///
 /// Uses a [`std::sync::LazyLock`]ed pre-migrated snapshot connection.
@@ -680,6 +762,18 @@ pub fn ensure_bootstrap_subscription(
 /// up, and swapping the 66-odd surviving `run` call sites over to
 /// `fresh_db()` needs no prerequisite work here.
 ///
+/// RE-CONFIRMED at suite scale 2026-10-23, because the note above was written
+/// from a microbenchmark and someone had already tried to raise the thread count
+/// once. `kasirmu-bridge`'s full suite, 1542 tests, is the end-to-end version of
+/// the same curve: **1395-1471 s at libtest's default 32 threads, 355.95 s at 4**
+/// (identical 1542 passed / 0 failed). Per-module, `kds::` alone: 42.79 s at 1
+/// thread, 31.17 s at 2, **26.37 s at 4**, 50.80 s at 8, 92.90 s at 32. The
+/// modules that hurt are exactly the ones that construct many `TestBridge`s —
+/// every `TestBridge::new()` clones this snapshot — while the 332-test
+/// `topology` module, which mostly does not, finishes in 9.66 s serial and is
+/// unaffected. `.config/nextest.toml` now pins `test-threads = 4` on
+/// `[profile.default]` so the ceiling is applied instead of rediscovered.
+///
 /// The returned connection carries the same per-connection PRAGMAs
 /// [`run`] applies (see there for why each exists), except
 /// `journal_mode = WAL`: an in-memory database cannot use WAL — SQLite
@@ -698,52 +792,75 @@ pub fn ensure_bootstrap_subscription(
 pub fn fresh_db() -> rusqlite::Connection {
     use std::sync::{LazyLock, Mutex};
 
-    /// Pre-migrated snapshot — built once, cloned for every test.
-    static SNAPSHOT: LazyLock<Mutex<rusqlite::Connection>> = LazyLock::new(|| {
-        use std::sync::OnceLock;
+    // A file-backed snapshot in the scratch root, shared ACROSS PROCESSES.
+    //
+    // Why this exists: nextest forks one process per TEST, so the in-memory
+    // static below is rebuilt in every one of them. MEASURED 2026-10-23 on
+    // kasirmu-core (82 migrations): running the migration chain costs 440.66 ms
+    // while cloning an existing snapshot costs 1.05 ms -- a 420x difference.
+    // A full nextest run therefore paid that chain per test: 294.89 s under
+    // nextest against 65.10 s under cargo test --test-threads=4, for the same
+    // 3674 tests. The file cache is the fix: build once, reuse everywhere.
+    //
+    // The cache is keyed by a fingerprint of the migration set, so a changed
+    // migration produces a different file and never reads a stale schema.
+    // A corrupt or unreadable file falls back to rebuilding rather than failing.
+    let snapshot_file = test_db_snapshot::snapshot_cache_path();
 
-        fn cached_sql() -> &'static str {
-            static SQL: OnceLock<String> = OnceLock::new();
-            SQL.get_or_init(|| {
-                let mut buf = String::with_capacity(48_000);
-                buf.push_str("PRAGMA foreign_keys = ON;\n");
-                buf.push_str(
-                    "CREATE TABLE IF NOT EXISTS schema_migrations (\n\
-                     id         TEXT PRIMARY KEY,\n\
-                     applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\n\
-                     checksum   TEXT\n\
-                     );\n",
-                );
-                for mig in ALL {
-                    buf.push_str("BEGIN;\n");
-                    buf.push_str(mig.sql);
-                    buf.push('\n');
-                    buf.push_str("INSERT INTO schema_migrations (id) VALUES ('");
-                    buf.push_str(mig.id);
-                    buf.push_str("');\n");
-                    buf.push_str("COMMIT;\n");
-                }
-                buf
-            })
+    // The in-process snapshot, still the fastest path when it is warm: one
+    // process running many tests (what cargo test does) pays nothing here.
+    static SNAPSHOT: LazyLock<Mutex<rusqlite::Connection>> =
+        LazyLock::new(|| Mutex::new(test_db_snapshot::build_snapshot_conn()));
+
+    // INVARIANT: opening an in-memory SQLite database allocates a private pager and
+    // touches no file, so the only failure modes (I/O, path, permissions) cannot occur
+    // here. A panic would mean the SQLite library itself is unusable, in which case no
+    // test in this crate could run anyway.
+    let mut fresh = rusqlite::Connection::open_in_memory().unwrap();
+
+    let mut cloned = false;
+    if snapshot_file.is_file() {
+        // Fast path: clone from the shared file if valid and idle.
+        let mut try_clone = || -> rusqlite::Result<()> {
+            let src = rusqlite::Connection::open(&snapshot_file)?;
+            let backup = rusqlite::backup::Backup::new(&src, &mut fresh)?;
+            backup.run_to_completion(100, std::time::Duration::from_millis(0), None)
+        };
+        if try_clone().is_ok() {
+            cloned = true;
+        } else {
+            // A torn, locked, or corrupt file must not fail a test: discard it.
+            let _ = std::fs::remove_file(&snapshot_file);
         }
+    }
 
-        let conn = rusqlite::Connection::open_in_memory().unwrap(); // INVARIANT: in-memory test DB open cannot fail; failure is a harness programming error (see fresh_db # Panics)
-        conn.execute_batch(cached_sql()).unwrap(); // INVARIANT: SQL is compile-time embedded from `ALL`; syntax errors fail the test suite, not a live process
-        Mutex::new(conn)
-    });
+    if !cloned {
+        // Cold cache or corrupt file: clone from in-memory snapshot, then persist.
+        // INVARIANT: this Mutex is never held across code that can panic while holding
+        // it -- the guarded body only runs a rusqlite backup, whose failures are handled
+        // by the `expect`s below rather than by unwinding. A poisoned lock here therefore
+        // means an earlier test panicked mid-backup, and taking the poison is the correct
+        // signal rather than something to silently work around.
+        let snapshot = SNAPSHOT.lock().unwrap();
+        {
+            let backup = rusqlite::backup::Backup::new(&snapshot, &mut fresh)
+                .expect("backup from the in-memory snapshot cannot fail");
+            backup
+                .run_to_completion(100, std::time::Duration::from_millis(0), None)
+                .expect("page copy from the in-memory snapshot cannot fail");
+        }
+        drop(snapshot);
 
-    let mut fresh = rusqlite::Connection::open_in_memory().unwrap(); // INVARIANT: in-memory test DB open cannot fail (fresh_db # Panics)
-    {
-        let snapshot = SNAPSHOT.lock().unwrap(); // INVARIANT: lock is only poisoned if the snapshot init closure panicked, which is a test harness bug
-        let backup = rusqlite::backup::Backup::new(&snapshot, &mut fresh).unwrap(); // INVARIANT: both connections are valid in-memory SQLite handles; Backup::new cannot fail
-        backup
-            .run_to_completion(100, std::time::Duration::from_millis(0), None)
-            .unwrap(); // INVARIANT: page copy between two in-memory DBs cannot fail at runtime
-    } // drop Backup (releases &mut fresh borrow), then drop MutexGuard
+        // Write the file for the next process. Best-effort: a read-only scratch
+        // root costs speed, never correctness, and the next caller retries.
+        test_db_snapshot::write_snapshot_file(&snapshot_file);
+    }
 
     // Mirror the per-connection PRAGMAs `run` applies. WAL is impossible
-    // for `:memory:` (SQLite pins it to `memory`), so only the three
-    // per-connection settings are reproduced.
+    // for :memory: (SQLite pins it to memory), so only the three
+    // per-connection settings are reproduced. Without the busy timeout a
+    // contended test connection fails instantly instead of waiting, which is
+    // how a concurrency test can pass without ever exercising the wait.
     fresh
         .pragma_update(None, "busy_timeout", "5000")
         .expect("busy_timeout on a fresh test DB cannot fail");
@@ -755,6 +872,11 @@ pub fn fresh_db() -> rusqlite::Connection {
         .expect("foreign_keys on a fresh test DB cannot fail");
     fresh
 }
+
+/// The disk cache behind `fresh_db`; that module carries the measurements
+/// and the reason it is separate from the constructor.
+#[path = "test_db_snapshot.rs"]
+mod test_db_snapshot;
 
 #[cfg(test)]
 #[path = "migrations_tests.rs"]

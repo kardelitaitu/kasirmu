@@ -51,6 +51,17 @@ vi.mock('@fluent/react', () => ({
           'error-occurred': 'An error occurred',
           'no-results': 'No results found',
           'custom-report-no-columns-match': 'No columns match your search',
+          // The screen resolves a failed run through l10nErrorMessage, so the
+          // fallback key must be here or getString returns the raw id.
+          'custom-report-error-run': 'The report could not be run. Please try again.',
+          // Keys the component renders that this hand-maintained map never carried.
+          // No case here asserts them, so getString returned the raw id silently.
+          // Values copied verbatim from shared-ui/locales (curly holes rewritten to the
+          // stub's brace form).
+          'custom-report-page-of': 'Page {page}',
+          'custom-report-truncated': 'Results limited to {limit} rows. Use pagination to view more.',
+          'admin-locked-title': 'Administrative features locked',
+          'admin-locked-message': 'Administrative SaaS features lock while the subscription is expired, paused, or unavailable. Selling continues under the offline grace policy. Verify your subscription online to restore access.',
           // a11y labels
           'custom-report-dataset-aria': 'Dataset',
           'custom-report-start-aria': 'Start date',
@@ -63,6 +74,10 @@ vi.mock('@fluent/react', () => ({
           'custom-report-region-aria': 'Custom Report Builder',
           'custom-report-export-aria': 'Export CSV',
           'custom-report-columns-selected': '{ $selected } / { $total } selected',
+          // Pagination labels from shared-ui/locales/reports.ftl. Hole-free, so the
+          // FTL text is also this stub's brace form verbatim.
+          'custom-report-next-page': 'Next',
+          'custom-report-prev-page': 'Previous',
         };
         let result = strings[id];
         if (result && vars) {
@@ -318,8 +333,13 @@ describe('CustomReportScreen', () => {
     render(<CustomReportScreen />);
     fireEvent.click(screen.getByText('Run Report'));
 
+    // The banner must never print the rejection. Typed AppErrors resolve to the
+    // shared app-error-* copy; an untyped Error (what this throws) falls back to
+    // the screen's own key. Asserting the safe copy AND the absence of the raw
+    // text is the only pair that can fail when the leak returns.
     await waitFor(() => {
-      expect(screen.getByText(/Server is down/)).toBeTruthy();
+      expect(screen.getByText(/The report could not be run/)).toBeTruthy();
     });
+    expect(screen.queryByText(/Server is down/)).toBeNull();
   });
 });

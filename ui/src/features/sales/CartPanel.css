@@ -34,7 +34,7 @@
 /* ── Resize handle (drags the cart width) ───────────── */
 
 .pos-resize-handle {
-  flex: 0 0 0.25rem;
+  flex: 0 0 0.5rem;
   cursor: col-resize;
   background: transparent;
   position: relative;
@@ -55,7 +55,7 @@
  *
  * A mouse does not need a 32px target for a 4px separator, and it is the desktop layout
  * where the panel sits beside a list. Scoping to `pointer: coarse` keeps the tablet's
- * measured 44px target (the file's own COMPLIANT note at :605) and stops the overlap.
+ * measured 44px target (the COMPLIANT note further down this sheet) and stops the overlap.
  */
 @media (pointer: coarse) {
   .pos-resize-handle::before {
@@ -73,25 +73,34 @@
 }
 
 .pos-resize-handle:hover,
-.pos-resize-handle:focus-visible {
+.pos-resize-handle:focus-visible,
+.pos-resize-handle:active {
   background: var(--color-accent-dim);
 }
 
-/* A thin accent line in the middle appears on hover for affordance. */
+/* Sleek capsule grip in the middle with responsive tactile affordance. */
 .pos-resize-handle::after {
   content: '';
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 0.125rem;
-  height: 2rem;
+  width: var(--space-1);
+  height: var(--space-10);
   border-radius: var(--radius-full);
-  background: var(--color-border);
+  background: var(--color-border-strong);
   transform: translate(-50%, -50%);
 }
 
-.pos-resize-handle:hover::after {
+.pos-resize-handle:hover::after,
+.pos-resize-handle:focus-visible::after {
   background: var(--color-accent);
+  height: var(--space-14);
+}
+
+.pos-resize-handle:active::after {
+  background: var(--color-accent);
+  height: var(--space-16);
+  box-shadow: 0 0 10px var(--color-accent);
 }
 
 /* ── Right: Cart panel ──────────────────────────────── */
@@ -105,10 +114,13 @@
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
   margin: 8px 8px 8px 0;
   box-sizing: border-box;
   overflow: hidden;
   min-height: 0;
+  min-width: 360px;
+  max-width: calc(100% - 320px);
 }
 
 .pos-cart-header {
@@ -492,33 +504,60 @@
   background: color-mix(in srgb, var(--color-warning) 80%, black);
 }
 
-/* ── Table-number & Customer-name row ─────────────────── */
+/* ── Order context area wrapper ────────────────────── */
 
-.pos-cart-table-row {
+.pos-cart-order-context {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  border-bottom: 1px solid var(--color-border-subtle);
+  flex-direction: column;
+  flex-shrink: 0;
 }
 
-.pos-cart-table-field,
-.pos-cart-customer-field {
+/* ── Course bar area wrapper ────────────────────────── */
+
+.pos-cart-course-bar-area {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+/* ── Cart footer area wrapper ───────────────────────── */
+
+.pos-cart-footer-area {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+/* ── Unified Context Row (Order Type, Table, Pax, Customer) ── */
+
+.pos-cart-context-row {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-1_5);
+  padding: var(--space-1_5) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-subtle);
   min-width: 0;
+  position: relative;
 }
 
-.pos-cart-table-field {
-  flex: 0 0 auto;
-}
-
-.pos-cart-customer-field {
-  flex: 1 1 auto;
-}
-
-/* ── Order-type prompt slider (Dine-in / Takeaway / Delivery) ── */
+/* ── Order-type prompt row / dropdown ──
+ *
+ * `.pos-cart-order-type-indicator` is what survives of the 2026-10-15 segmented
+ * slider: 82a0dc983c replaced the control with the `.pos-cart-order-type-btn`
+ * pills below, and its sibling `.pos-cart-order-type-slider` rule was removed on
+ * 2026-10-19 once screenExtraction reported the class unreachable from any TSX.
+ *
+ * They used to read `var(--order-type-count, 3)` and `var(--order-type-index, 0)`.
+ * NOTHING ever defined or set either token: no custom property in any sheet, no
+ * inline style, no JS setter. So both fell back to their literals on every path,
+ * which is why the geometry still measures correctly -- but themeTokenCompliance
+ * treats a token declared nowhere as a hard failure (a sheet with no fallback
+ * renders NOTHING), and it was right: the pair was writing a runtime contract the
+ * runtime never honoured. The literals are now stated, so the sheet declares what
+ * it actually does. Wiring the slider back up means setting both properties from
+ * ORDER_TYPES in CartPanel.tsx, not only reintroducing the var() reads.
+ */
 .pos-cart-order-type-row {
   display: flex;
   padding: var(--space-1_5) var(--space-3);
@@ -527,26 +566,13 @@
   touch-action: pan-y;
 }
 
-.pos-cart-order-type-slider {
-  position: relative;
-  display: grid;
-  width: 100%;
-  grid-template-columns: repeat(var(--order-type-count, 3), 1fr);
-  align-items: center;
-  padding: 3px;
-  background: var(--color-bg-input);
-  box-shadow: inset 0 0 0 1px var(--color-border-subtle);
-  border-radius: var(--radius-full);
-  overflow: hidden;
-  user-select: none;
-}
 
 .pos-cart-order-type-indicator {
   position: absolute;
   top: 3px;
   bottom: 3px;
   left: 3px;
-  width: calc((100% - 6px) / var(--order-type-count, 3));
+  width: calc((100% - 6px) / 3);
   border-radius: var(--radius-full);
   background: var(--color-accent);
   /* Shared elevation token, not a literal: themeTokenCompliance holds
@@ -556,7 +582,32 @@
      offset/blur it replaces; the inset hairline is dropped rather than adding a
      token to preserve a 1px highlight. */
   box-shadow: var(--shadow-md);
-  transform: translateX(calc(var(--order-type-index, 0) * 100%));
+  transform: translateX(0);
+  /* Promote to its own composited layer for the slide (2026-10-15).
+   *
+   * WHY. The radius above is `var(--radius-full)` = 9999px, and CSS CLAMPS a
+   * radius to half the SHORT side of the box -- so the shape is a pill only
+   * while `width >= height`. Measured on this control: a 124x44 indicator
+   * renders 22px corners (pill), but 37x44 renders 18px and 31x44 renders 15px,
+   * i.e. the corners shrink WITH the width and the pill squares off. Without a
+   * layer hint the browser re-rasterises the element on every frame of the
+   * slide, and on the Android tablet (Blink/WebView) that rasterisation can
+   * resolve the clamped radius against a mid-flight box -- which reads as the
+   * pill SNAPPING SQUARE and then rounding again. Desktop Chrome never shows it,
+   * which is why it survived review.
+   *
+   * `will-change: transform` is the standard remedy and the repo's own idiom:
+   * KdsScreen.css:332/:1771/:1793 use it for the same reason. The layer is
+   * rasterised once at its settled size and afterwards only TRANSLATED by the
+   * GPU, so the radius cannot be recomputed mid-slide. One composited layer for
+   * a 124x44 pill is a trivial cost, and `pointer-events: none` means it can
+   * never intercept a tap.
+   *
+   * NOTE this is a HINT, not a guarantee -- a device that ignores it still gets
+   * the correct (if briefly square) shape. If the square persists on the tablet
+   * the remaining fix is to stop the width from ever falling below the height,
+   * which is a layout change to the segments rather than a paint one. */
+  will-change: transform;
   transition: transform 240ms cubic-bezier(0.2, 0.9, 0.3, 1);
   pointer-events: none;
   z-index: 1;
@@ -565,6 +616,10 @@
 @media (prefers-reduced-motion: reduce) {
   .pos-cart-order-type-indicator {
     transition: none;
+    /* No transition means no slide to smooth, so the promoted layer the rule
+       above asks for would be held for nothing -- and this preference is
+       chosen precisely by users on hardware that cannot afford one. */
+    will-change: auto;
   }
 }
 
@@ -644,47 +699,286 @@
   align-items: center;
 }
 
-/* Pax input beside the customer field. Was inline `width: 64px`; 4rem is the
-   token step this file already uses for the same size (see .pos-cart-table-input). */
-.pos-cart-guest-field {
-  width: 4rem;
+/* ── Order-type dropdown menu & trigger (Single-row context bar) ── */
+
+.pos-cart-order-type-dropdown-wrap {
+  position: relative;
   flex: 0 0 auto;
 }
 
-.pos-cart-table-label,
-.pos-cart-customer-label {
+.pos-cart-order-type-dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1_5);
+  min-height: 2.125rem;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-primary);
+  color: var(--color-fg-primary);
+  font-family: var(--font-sans);
   font-size: var(--text-xs);
   font-weight: var(--font-weight-medium);
-  color: var(--color-fg-secondary);
   white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-150) var(--ease-out),
+    border-color var(--duration-150) var(--ease-out),
+    color var(--duration-150) var(--ease-out);
+}
+
+.pos-cart-order-type-dropdown-trigger:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-accent);
+}
+
+.pos-cart-order-type-dropdown-trigger:focus-visible {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
+  outline: none;
+}
+
+.pos-cart-order-type-dropdown-trigger--open {
+  border-color: var(--color-accent);
+  background: var(--color-bg-surface);
+}
+
+.pos-cart-order-type-chevron {
+  flex-shrink: 0;
+  color: var(--color-fg-tertiary);
+  transition: transform var(--duration-150) var(--ease-out);
+}
+
+.pos-cart-order-type-chevron--open {
+  transform: rotate(180deg);
+}
+
+.pos-cart-order-type-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  min-width: 140px;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-1);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.pos-cart-order-type-menu--open {
+  display: flex;
+}
+
+.pos-cart-order-type-menu .pos-cart-order-type-indicator {
+  display: none;
+}
+
+.pos-cart-order-type-menu .pos-cart-order-type-btn {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  gap: var(--space-2);
+  min-height: 2rem;
+  padding: var(--space-1_5) var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-fg-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color var(--duration-150) var(--ease-out), color var(--duration-150) var(--ease-out);
+}
+
+.pos-cart-order-type-menu .pos-cart-order-type-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-fg-primary);
+}
+
+.pos-cart-order-type-menu .pos-cart-order-type-btn--active {
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* ── Table pill & Guest pill (Single-row context bar) ──────── */
+
+.pos-cart-table-pill {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: var(--space-1);
+  padding: 0 var(--space-1_5);
+  min-height: 2.125rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-primary);
+  transition:
+    border-color var(--duration-150) var(--ease-out),
+    box-shadow var(--duration-150) var(--ease-out);
+}
+
+.pos-cart-table-pill:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+
+.pos-cart-table-pill--has-table {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+}
+
+.pos-cart-table-pill .pos-cart-table-select-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-1);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-fg-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1;
+  flex-shrink: 0;
+  transition:
+    background-color var(--duration-150) var(--ease-out),
+    color var(--duration-150) var(--ease-out);
+}
+
+.pos-cart-table-pill .pos-cart-table-select-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-accent);
+}
+
+.pos-cart-table-pill .pos-cart-table-select-btn--selected {
+  background: transparent;
+  color: var(--color-accent);
+}
+
+/* .pos-cart-table-btn-text was removed 2026-10-19: 82a0dc983 gave the table
+   selector the .pos-cart-table-pill wrapper and this inner label rule was left
+   behind with no element applying it (screenExtraction reported it unreachable
+   from PosScreen). The pill's own .pos-cart-table-select-btn rules below carry
+   the text styling that survives. */
+
+.pos-cart-table-pill .pos-cart-table-input {
+  min-width: 3.5rem;
+  max-width: 6.5rem;
+  width: auto;
+  min-height: 2.125rem;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-fg-primary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  text-align: left;
+  box-shadow: none;
+  outline: none;
+}
+
+.pos-cart-guest-pill {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: var(--space-1);
+  padding: 0 var(--space-1_5);
+  min-height: 2.125rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-primary);
+  transition: border-color var(--duration-150) var(--ease-out);
+}
+
+.pos-cart-guest-pill:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+
+.pos-cart-guest-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-fg-tertiary);
+  flex-shrink: 0;
+}
+
+.pos-cart-guest-input {
+  width: 2.25rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-fg-primary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  text-align: center;
+  outline: none;
+  -moz-appearance: textfield;
+}
+
+.pos-cart-guest-input::-webkit-outer-spin-button,
+.pos-cart-guest-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* ── Fallback field wrappers & customer name input ─────────── */
+
+/* Only .pos-cart-customer-field survives here. Its two former siblings,
+   .pos-cart-table-field and .pos-cart-guest-field, plus the label pair
+   .pos-cart-table-label / .pos-cart-customer-label, were dead: the table-number
+   and guest-name inputs they styled were replaced by the single-row order-context
+   dropdown in 82a0dc983, and screenExtraction reported the four as unreachable
+   from PosScreen.tsx. The shared declarations moved onto the surviving class
+   rather than being kept for selectors nothing renders. */
+.pos-cart-customer-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1_5);
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .pos-cart-table-input {
-  width: 4rem;
+  width: 3.75rem;
+  min-height: 2.125rem;
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-bg-primary);
   color: var(--color-fg-primary);
   font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
   text-align: center;
+  transition: border-color var(--duration-150) var(--ease-out), box-shadow var(--duration-150) var(--ease-out);
 }
 
 .pos-cart-customer-input {
   width: 100%;
-  min-width: 4.5rem;
+  min-width: 4rem;
+  min-height: 2.125rem;
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-bg-primary);
   color: var(--color-fg-primary);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
+  transition: border-color var(--duration-150) var(--ease-out), box-shadow var(--duration-150) var(--ease-out);
 }
 
 .pos-cart-table-input:focus-visible,
 .pos-cart-customer-input:focus-visible {
   border-color: var(--color-accent);
-  box-shadow: inset 0 0 0 1px var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
   outline: none;
 }
 
@@ -692,18 +986,52 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-width: 2.125rem;
+  min-height: 2.125rem;
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: var(--color-bg-secondary);
-  color: var(--color-fg-primary);
+  background: var(--color-bg-surface);
+  color: var(--color-fg-secondary);
   font-size: var(--text-sm);
   cursor: pointer;
   line-height: 1;
+  transition:
+    background-color var(--duration-150) var(--ease-out),
+    border-color var(--duration-150) var(--ease-out),
+    color var(--duration-150) var(--ease-out),
+    transform var(--duration-150) var(--ease-out);
 }
 
 .pos-cart-table-select-btn:hover {
   background: var(--color-bg-hover);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  transform: translateY(-1px);
+}
+
+.pos-cart-table-select-btn:active {
+  transform: scale(0.96);
+}
+
+.pos-cart-table-select-btn:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  .pos-cart-table-input,
+  .pos-cart-customer-input,
+  .pos-cart-table-select-btn,
+  .pos-cart-order-type-dropdown-trigger,
+  .pos-cart-guest-input {
+    min-height: var(--touch-target-min);
+  }
+
+  .pos-cart-table-pill,
+  .pos-cart-guest-pill {
+    min-height: var(--touch-target-min);
+  }
 }
 
 /* ── Footer wrapper (children live in CartPanelFooter.css) */
@@ -772,7 +1100,7 @@
     transition: background-color var(--duration-150) var(--ease-out);
   }
   .pos-resize-handle::after {
-    transition: background-color var(--duration-150) var(--ease-out);
+    transition: background-color var(--duration-150) var(--ease-out), height var(--duration-200) var(--ease-out), box-shadow var(--duration-150) var(--ease-out);
   }
   .pos-cart-table-input {
     transition: border-color var(--duration-150) var(--ease-out);

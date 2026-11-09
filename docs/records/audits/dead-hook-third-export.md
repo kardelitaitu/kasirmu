@@ -73,3 +73,5 @@ pattern is worth stating plainly:
 | Full suite | 12,675 passed, 0 failed (+1) |
 | `tsc` / `eslint` | 0 / 0 |
 | `PosScreen.tsx` | restored, verified clean; the probe script deleted |
+
+> last audited 14-10-26 by docs-auditor

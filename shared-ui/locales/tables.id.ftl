@@ -17,6 +17,7 @@ tables-action-error = Gagal memperbarui meja ini.
 tables-status-unknown = Status tidak dikenal
 tables-table-label = { $name }, { $status }
 tables-load-error = Gagal memuat denah.
+tables-bills-unknown = Gagal memeriksa meja yang memiliki tagihan terbuka.
 tables-empty = Belum ada meja yang dikonfigurasi.
 tables-empty-desc = Tambahkan meja untuk membuat denah Anda.
 tables-empty-filtered = Tidak ada meja di bagian ini.
@@ -78,6 +79,37 @@ tables-reserve-confirm = Konfirmasi Reservasi
 tables-toast-reserved = Meja { $table } dipesan untuk { $guest }
 tables-seat-guests = Dudukkan Tamu
 tables-toast-guests-seated = Tamu didudukkan di Meja { $table }
+tables-manage-sections = Kelola Area
+tables-manage-sections-title = Kelola Area / Bagian
+tables-new-section-placeholder = mis. Teras, Rooftop, VIP
+tables-add-section-btn = Tambah Area
+tables-section-no-tables = 0 meja
+tables-section-table-count = { $count } meja
+tables-rename-section = Ubah Nama
+tables-delete-section = Hapus
+tables-delete-section-confirm = Hapus area "{ $section }"? Meja di area ini akan dipindahkan ke Utama.
+tables-toast-section-added = Area "{ $section }" ditambahkan
+tables-toast-section-renamed = Mengubah nama area menjadi "{ $section }"
+tables-toast-section-deleted = Menghapus area "{ $section }"
+tables-arrange-selected = Mengatur: Meja { $table }
+tables-arrange-shape = Bentuk
+tables-arrange-size = Ukuran
+# Round 210: tombol langkah pada panel atur tata letak. Glif yang terlihat
+# ("W -", "W +") adalah penanda ukuran yang dipetakan pedagang ke lebar/tinggi,
+# jadi tetap pendek sementara tooltip memuat frasa lengkap — keduanya BUKAN
+# duplikat dari judul.
+tables-legend = Legenda
+tables-arrange-decrease-width = Kurangi Lebar
+tables-arrange-increase-width = Tambah Lebar
+tables-arrange-decrease-height = Kurangi Tinggi
+tables-arrange-increase-height = Tambah Tinggi
+tables-arrange-width-short = W -
+tables-arrange-height-short = H +
+tables-quick-seat-walkin = Dudukkan Cepat:
+tables-mark-cleaned-quick = Tandai Selesai Dibersihkan (Tersedia)
+tables-toast-cleaned = Meja { $table } sekarang bersih dan tersedia
+tables-table-joined-badge = 🔗 +M{ $joined }
+
 
 
 

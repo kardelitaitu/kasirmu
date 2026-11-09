@@ -7,7 +7,7 @@
 // 7 tests.
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, act, fireEvent } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import userEvent from '@testing-library/user-event';
 import { withFluent } from '@/i18n/test-utils';
@@ -17,9 +17,16 @@ import salesFtl from '@/locales/sales.ftl?raw';
 import PaymentModal from '@/features/sales/PaymentModal';
 import type { Money, CartLine, Sku, LineId } from '@/types/domain';
 
+/**
+ * Render with Fluent + Toast providers.
+ *
+ * RETURNS the render result so a case can `rerender(...)`: the effect that loads credit
+ * settings depends on `[sessionToken, open]`, so proving a failure flag CLEARS needs a
+ * second render. It used to return nothing, which is why no case here could re-render.
+ */
 async function renderWithFluent(ui: React.ReactElement) {
   const wrapped = withFluent(<ToastProvider>{ui}</ToastProvider>, salesFtl);
-  await renderInAct(wrapped);
+  return renderInAct(wrapped);
 }
 
 const usd = (minor: number): Money => ({ minor_units: minor, currency: 'USD' });
@@ -201,12 +208,74 @@ describe('PaymentModal — sale flow', () => {
   });
 
 
+  it('issues a tax invoice once for a double tap on the receipt', async () => {
+    // The receipt's Issue Tax Invoice button is guarded by the shared
+    // `issuingTaxInvoice` flag: ReceiptPreview.tsx:252-256 renders it with
+    // `loading={issuingTaxInvoice}` AND `disabled={loading}`, and the sibling Print /
+    // Skip buttons cross-disable on `issuingTaxInvoice` (ReceiptPreview.tsx:249, :257).
+    // The markup clearly intends mutual exclusion — but it relies on STATE, which React
+    // commits on its next render, after the second dispatch of a real double tap.
+    //
+    // The backend does not fully absorb it. `issue_tax_invoice_for_sale` is idempotent ONCE
+    // A NUMBER IS WRITTEN: it reads `sales.statutory_number` and returns the existing value
+    // when it already carries the series prefix (crates/kasirmu-core/src/db/fiscal.rs:572-587).
+    // But that column is set by the SAME transaction at the end, so two issues in one tick
+    // both read NULL, both fall through to `claim_statutory_number_for_sale` -- an atomic
+    // `UPDATE document_number_sequences ... RETURNING` (fiscal.rs:438-455) -- and the
+    // sequence advances twice. One of those numbers is written onto the sale, so a legally
+    // numbered series ends up with a gap or a duplicate. That is not cosmetic.
+    //
+    // SHAPE 3 (round 139): both taps inside ONE act() batch, before React can re-render.
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await userEvent.type(screen.getByLabelText(/amount tendered/i), '10');
+    await userEvent.click(screen.getByTestId('settle-button'));
+
+    const issueBtn = await screen.findByRole('button', { name: /issue tax invoice/i });
+    // Hold the first issue open so both taps land inside the same in-flight window.
+    let releaseIssue: ((v: string) => void) | undefined;
+    const held = new Promise<string>((resolve) => { releaseIssue = resolve; });
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'issue_tax_invoice_scoped') return held as never;
+      return DEFAULT_INVOKE_IMPL(cmd) as never;
+    });
+
+    await act(async () => {
+      fireEvent.click(issueBtn);
+      // The disabled flag React set is not yet authoritative for a live double tap;
+      // dropping it sends the second tap to the handler the way a real one would.
+      issueBtn.removeAttribute('disabled');
+      fireEvent.click(issueBtn);
+    });
+
+    const issueCalls = invokeMock.mock.calls.filter(
+      (c: unknown[]) => c[0] === 'issue_tax_invoice_scoped',
+    );
+    expect(
+      issueCalls.length,
+      'a second tap re-issued the invoice; both calls pass the idempotency read before ' +
+        'either commits, so the statutory sequence advances twice for one sale',
+    ).toBe(1);
+
+    releaseIssue?.('010000000000001');
+    await act(async () => { await held; });
+  });
   it('PRINTS a human-readable tender on the receipt, not the stored enum', async () => {
     // `bbc530642` lowercased the tender for the DB CHECK constraint. It also lowercased
     // `methodLabel`, which is a DIFFERENT value with a different consumer: the same
     // variable feeds `paymentMethod` (the stored column, wants 'cash') and
     // `buildCompletedSaleReceipt({ payments: [{ method: methodLabel }] })` (the printed
-    // receipt, rendered verbatim at ReceiptPreview.tsx:183). One transform, two
+    // receipt, rendered verbatim at ReceiptPreview.tsx:186). One transform, two
     // requirements — so the receipt started printing 'cash' where it printed 'CASH'.
     //
     // The existing receipt test could not catch this: it feeds ReceiptPreview a fixture
@@ -383,6 +452,55 @@ describe('PaymentModal — sale flow', () => {
     });
   };
 
+  it('TELLS THE CASHIER when a kitchen chit fails to print', async () => {
+    // The chit print runs AFTER the sale is complete and already succeeded, so a
+    // failure here must not undo it — but it also must not be silent. The sibling
+    // `publishCourseFired` catch 20 lines above (PaymentModal.tsx:778-781) logs AND
+    // toasts for exactly this reason; the chit catch only logged, so a printer that
+    // was offline or out of paper left the cashier believing the kitchen had the
+    // ticket. `payment-toast-kds-failed` already exists in both bundles and already
+    // says 'notify the kitchen manually', which is the action required.
+    // Chain onto the file's own mock, as kdsOrderImpl does: replacing it wholesale
+    // breaks every other IPC the modal needs.
+    kdsOrderImpl();
+    // The hoisted mock is typed `(cmd: string) => …`, so chain on that arity.
+    const previous = invokeMock.getMockImplementation();
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'print_kds_chit_scoped') return Promise.reject(new Error('printer offline'));
+      return previous ? previous(cmd) : Promise.resolve(null);
+    });
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        autoPrintKitchen={true}
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await completeWithKdsOrder();
+
+    await waitFor(() => {
+      const calls = invokeMock.mock.calls as unknown as Array<[string, unknown]>;
+      expect(
+        calls.some((c) => c[0] === 'print_kds_chit_scoped'),
+        'the chit print must actually have been attempted',
+      ).toBe(true);
+    });
+    // The failure has to reach the operator, not only the console.
+    await waitFor(() => {
+      const toasts = screen.queryAllByRole('alert').map((a) => a.textContent ?? '');
+      const shown = toasts.join(' | ');
+      expect(
+        shown,
+        'a failed kitchen chit printed nothing the cashier can see',
+      ).toMatch(/kitchen/i);
+    });
+  });
+
   it('prints a kitchen chit per KDS order when auto_print_kitchen is on', async () => {
     kdsOrderImpl();
     await renderWithFluent(
@@ -541,6 +659,298 @@ describe('PaymentModal — sale flow', () => {
         expect.objectContaining({ tableId: 'tbl-12', saleId: 'sale-1' }),
       );
     });
+  });
+
+  it('TELLS THE CASHIER when the table could not be assigned to the sale', async () => {
+    // The sale completes, then the table claim fails. Nothing re-reads it, so the
+    // floor plan keeps showing the table as AVAILABLE while a party is sitting at it
+    // — the next waiter can seat someone there, and the cashier has no idea. The
+    // catch warned to the console only.
+    //
+    // `payment-toast-table-assign-failed` is new; the wording names the action
+    // (re-assign the table) rather than the mechanism.
+    kdsOrderImpl();
+    const prev = invokeMock.getMockImplementation() as (c: string) => Promise<unknown>;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'list_tables_scoped') {
+        return Promise.resolve([{ id: 'tbl-12', name: 'Table 12', status: 'available' }]);
+      }
+      if (cmd === 'assign_table_order_scoped') {
+        return Promise.reject(new Error('table already occupied'));
+      }
+      return prev(cmd);
+    });
+
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        tableNumber="12"
+        orderType="dine_in"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await completeWithKdsOrder();
+
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.some((c) => c[0] === 'assign_table_order_scoped'),
+        'the assignment must actually have been attempted',
+      ).toBe(true);
+    });
+    await waitFor(() => {
+      const shown = screen.queryAllByRole('alert').map((a) => a.textContent ?? '').join(' | ');
+      expect(
+        shown,
+        'a failed table assignment left the floor plan wrong with nothing shown',
+      ).toMatch(/table/i);
+    });
+  });
+
+  it('reports a failed table assignment on the GATEWAY settle path too', async () => {
+    // `settleGatewaySale` carries its OWN copy of the table-assignment block
+    // (PaymentModal.tsx, the QRIS/EDC settlement), separate from `complete`'s. The
+    // cash-path case above does not reach it, so both copies need their own proof.
+    const prev = invokeMock.getMockImplementation() as (c: string) => Promise<unknown>;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'list_tables_scoped') {
+        return Promise.resolve([{ id: 'tbl-12', name: 'Table 12', status: 'available' }]);
+      }
+      if (cmd === 'assign_table_order_scoped') {
+        return Promise.reject(new Error('table already occupied'));
+      }
+      return prev(cmd);
+    });
+
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        tableNumber="12"
+        orderType="dine_in"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    // Drive the QRIS tender, which settles through settleGatewaySale.
+    await userEvent.click(await screen.findByRole('radio', { name: /qris/i }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: /pay with qr|payment-qris-pay/i }),
+    );
+    await userEvent.click(
+      await screen.findByRole('button', { name: /qris-poll-double-confirm/i }),
+    );
+
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.some((c) => c[0] === 'assign_table_order_scoped'),
+        'settleGatewaySale must have attempted the assignment',
+      ).toBe(true);
+    });
+    await waitFor(() => {
+      const shown = screen.queryAllByRole('alert').map((a) => a.textContent ?? '').join(' | ');
+      expect(shown, 'the gateway path reported nothing').toMatch(/table/i);
+    });
+  });
+
+  it('does not offer credit when the credit settings could not be loaded', async () => {
+    // ⚠️ SCOPE, measured rather than asserted: the CEILING ITSELF is safe.
+    // `crates/kasirmu-core/src/db/sales_checkout.rs` re-checks it and
+    // `credit_checkout_enforces_max_credit_limit_ceiling` passes (run this round), so
+    // no bad sale can be recorded. What fails open is the WARNING:
+    //
+    //   PaymentModal.tsx:1218  creditSettings?.enabled === false
+    //   PaymentModal.tsx:1219  creditSettings && creditSettings.maxLimitMinor > 0 && …
+    //   PaymentModal.tsx:2464  method === 'credit' && creditSettings?.enabled === false
+    //   PaymentModal.tsx:2471  method === 'credit' && creditSettings && …
+    //
+    // Every one of those guards is skipped when `creditSettings` is null, and a failed
+    // `getCreditSettingsScoped` leaves it null forever (:379 warns to the console and
+    // does nothing else). So the cashier can select credit, sees no ceiling hint, and
+    // only learns at settle when the backend refuses — which is the readable-error path
+    // the frontend warnings exist to pre-empt.
+    const prev = invokeMock.getMockImplementation() as (c: string) => Promise<unknown>;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'get_credit_settings_scoped') {
+        return Promise.reject(new Error('settings read failed'));
+      }
+      return prev(cmd);
+    });
+
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    // The settings read must actually have been attempted.
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.some((c) => c[0] === 'get_credit_settings_scoped'),
+        'the credit settings read must have been attempted',
+      ).toBe(true);
+    });
+    // And the operator must be warned when they SELECT credit. /credit/i over the whole
+    // body is vacuous — the tender radio is always labelled "Credit", so it passes with
+    // no warning at all (measured: the first version of this case was green on the bug).
+    // Assert on the warning element itself.
+    const creditRadio = await screen.findByRole('radio', { name: /credit/i });
+    await userEvent.click(creditRadio);
+    await waitFor(() => {
+      const warnings = Array.from(
+        document.querySelectorAll('.payment-credit-warning'),
+      ).map((n) => n.textContent ?? '');
+      expect(
+        warnings.join(' | '),
+        'a failed credit-settings read left the credit tender UNWARNED',
+      ).toMatch(/credit/i);
+    });
+  });
+
+  it('CLEARS the credit warning once the settings load successfully', async () => {
+    // ⚠️ Regression from the round-38 fix. `setCreditSettingsFailed(true)` had no
+    // matching reset: the effect re-runs on `[sessionToken, open]` and its success
+    // branch only called `setCreditSettings(settings)`. So ONE transient failure pinned
+    // the warning for the component's lifetime — reopening the modal, or a later
+    // successful read, still told the cashier the store's credit limit could not be
+    // checked. A warning that cannot clear is worse than the silence it replaced.
+    let shouldReject = true;
+    const prev = invokeMock.getMockImplementation() as (c: string) => Promise<unknown>;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'get_credit_settings_scoped') {
+        return shouldReject
+          ? Promise.reject(new Error('settings read failed'))
+          : Promise.resolve({ enabled: true, maxLimitMinor: 0, reminderIntervalDays: 0 });
+      }
+      return prev(cmd);
+    });
+
+    const rendered = await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    // First read fails -> the warning appears when credit is selected.
+    await waitFor(() => {
+      expect(
+        invokeMock.mock.calls.some((c) => c[0] === 'get_credit_settings_scoped'),
+        'the first read must have been attempted',
+      ).toBe(true);
+    });
+    await userEvent.click(await screen.findByRole('radio', { name: /credit/i }));
+    await waitFor(() =>
+      expect(document.querySelector('.payment-credit-warning')).not.toBeNull(),
+    );
+
+    // Now let the read succeed and re-run the effect the way a re-login does: the
+    // effect depends on `[sessionToken, open]`, and a NEW token is what a fresh session
+    // hands the modal.
+    shouldReject = false;
+    // Re-wrap with the SAME providers the first render used (ToastProvider included):
+    // rerender replaces the element, and a bare element loses the toast context.
+    rendered.rerender(
+      withFluent(
+        <ToastProvider>
+          <PaymentModal
+            open
+            lineItems={[lineItem()]}
+            total={usd(700)}
+            userId="test-user-id"
+            sessionToken="mock-token-2"
+            onComplete={vi.fn()}
+            onClose={vi.fn()}
+          />
+        </ToastProvider>,
+        salesFtl,
+      ),
+    );
+    await waitFor(() => {
+      const warning = document.querySelector('.payment-credit-warning');
+      expect(
+        warning,
+        'the credit warning survived a successful reload — it never clears',
+      ).toBeNull();
+    });
+  });
+
+  it('does not blame the cashier for an unparseable tender amount', async () => {
+    // ⚠️ SCOPE: this is a MESSAGE defect, not a money defect. No wrong sale is possible
+    // — `payment/useTenderMath.ts:127` coerces an unparseable tender to 0n, so `sufficient` is
+    // false and Complete stays disabled (:1247). The problem is what the cashier is
+    // TOLD. `CashTenderPanel.tsx:157` renders `payment-insufficient` = "Insufficient
+    // amount", which reads as "you typed too little". For `1,234` in USD the truth is
+    // that the amount is AMBIGUOUS — the parser refuses it deliberately (domain.ts:430,
+    // `(exp === 0 || multiCommaGroup)`, because one comma group could be a thousands
+    // separator or a decimal point) — and refusing is right. Saying the wrong reason is
+    // not: the cashier retypes more digits into a field that will reject them again.
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const input = await screen.findByLabelText(/amount tendered/i);
+    await userEvent.clear(input);
+    await userEvent.type(input, '1,234');
+
+    const shown = document.querySelector('.payment-change-insufficient')?.textContent ?? '';
+    expect(
+      shown,
+      'an ambiguous amount was reported as merely insufficient',
+    ).not.toMatch(/insufficient/i);
+  });
+
+  it('still says merely insufficient for a READABLE amount that is too small (control)', async () => {
+    // The fix must NARROW the message, not replace it: 5 dollars against a 7 dollar
+    // payable is a real insufficiency and has to keep saying so.
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const input = await screen.findByLabelText(/amount tendered/i);
+    await userEvent.clear(input);
+    await userEvent.type(input, '5');
+
+    const shown = document.querySelector('.payment-change-insufficient')?.textContent ?? '';
+    expect(
+      shown,
+      'a readable-but-short tender must keep the insufficient message',
+    ).toMatch(/insufficient/i);
   });
 
   it('does NOT assign a table when the order is takeaway or delivery', async () => {
@@ -861,6 +1271,95 @@ describe('PaymentModal — sale flow', () => {
     const skipBtn = await screen.findByRole('button', { name: /Skip/i });
     await userEvent.click(skipBtn);
     await waitFor(() => expect(onComplete).toHaveBeenCalled(), { timeout: 5000 });
+  });
+
+  it('warns on the GATEWAY path too when a loyalty redemption fails (the second copy of the same catch)', async () => {
+    // `settleGatewaySale` (PaymentModal.tsx:940) is the SHARED QRIS tail — manual QRIS and
+    // Auto gateway settlement both run through it — and it carried its own copy of the
+    // loyalty-redemption try/catch at :1061-1076, with an EMPTY body (`// non-blocking`).
+    //
+    // The identical block on the direct-checkout path had already been fixed (:1621-1632)
+    // with a comment spelling out the stakes: the customer's total was reduced by
+    // `loyaltyDiscount`, so a failed redemption gives away the discount while the points
+    // stay in the account — a money leak the cashier has to settle by hand. The gateway
+    // copy was never updated, so a QRIS sale leaked exactly the same amount and said
+    // nothing.
+    //
+    // This is the SAME defect on the SAME screen, found by reading the two catches side by
+    // side rather than by a behaviour report: the direct path's own test above would pass
+    // while the QRIS path leaked.
+    invokeMock.mockImplementation((cmd: string): Promise<unknown> => {
+      if (cmd === 'get_enabled_features') {
+        return Promise.resolve({ features: ['loyalty-program'] });
+      }
+      if (cmd === 'get_loyalty_account_scoped') {
+        return Promise.resolve({
+          account: {
+            id: 'la-1', customer_id: 'cust-1', points: 500, lifetime_points: 500,
+            tier_id: null, updated_at: '', created_at: '',
+          },
+          tier: null, recent_transactions: [], next_tier: null, points_to_next_tier: 0,
+        });
+      }
+      if (cmd === 'get_points_value' || cmd === 'get_points_value_scoped') {
+        return Promise.resolve(50);
+      }
+      // The gateway settlement itself succeeds; only the points write fails.
+      if (cmd === 'redeem_loyalty_points_scoped') {
+        return Promise.reject(new Error('loyalty service unavailable'));
+      }
+      return defaultInvokeImpl(cmd) as Promise<unknown>;
+    });
+
+    await renderWithFluent(
+      <PaymentModal
+        open
+        sessionToken="mock-token"
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        selectedCustomer={{ id: 'cust-1', name: 'Ada', phone: null, email: null, notes: '', created_at: '', updated_at: '' }}
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const redeemBtn = await screen.findByRole('button', { name: /Use Points/i });
+    await userEvent.click(redeemBtn);
+    const pointsInput = document.querySelector('.payment-loyalty-input') as HTMLInputElement;
+    await userEvent.type(pointsInput, '100');
+
+    // Drive the manual-QRIS tender exactly as the gateway-path tests at :681-688 do: the
+    // method radio, then the QRIS pay button (which opens the dialog), then the dialog's
+    // confirm. `settleGatewaySale` runs from `handleQrConfirmed` (payment/useGatewayQr.ts:104),
+    // so skipping the confirm leaves the tail — and this defect — entirely unexercised.
+    await userEvent.click(await screen.findByRole('radio', { name: /qris/i }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: /pay with qr|payment-qris-pay/i }),
+    );
+    await userEvent.click(
+      await screen.findByRole('button', { name: /qris-poll-double-confirm/i }),
+    );
+
+    // Proof the redemption was actually ATTEMPTED: without this the test could pass or
+       // fail on a redemption that never ran (e.g. loyaltyDiscount still 0n), which is the
+       // failure mode the neighbouring test's own comment warns about at :1168-1171.
+    const redeemAttempted = invokeMock.mock.calls.some(
+      (c) => c[0] === 'redeem_loyalty_points_scoped',
+    );
+    expect(redeemAttempted, 'the gateway tail never attempted the redemption').toBe(true);
+
+    // The toast, not the modal: `settleGatewaySale` sets `done` right after, so the
+       // modal swaps to the done state and unmounts its own body. Searching the whole
+       // document rather than a modal-scoped container is what makes this assertion
+       // survive that transition.
+    await waitFor(() => {
+      const shown = Array.from(document.querySelectorAll('.toast, [role="alert"]'))
+        .map((n) => n.textContent ?? '')
+        .join(' | ');
+      expect(shown, 'the gateway tail reported nothing about the failed redemption')
+        .toMatch(/loyalty points were NOT deducted/i);
+    }, { timeout: 6000 });
   });
 
   it('shows change due in done state for cash', async () => {
@@ -1774,7 +2273,17 @@ describe('PaymentModal — EDC card-present tender', () => {
     expect(complete.args.paymentMethod).toBe('CARD');
     expect(complete.args.paymentSplits[0]?.method).toBe('CARD');
     expect(complete.args.paymentSplits[0]?.gatewayReference).toBe('EDC-TXN-1');
-    expect(complete.args.paymentSplits[0]?.gatewayStatus).toBe('captured');
+    // 'settled', not 'captured'.
+    //
+    // This assertion is what pinned the bug: it accepted `'captured'`, a value the
+    // `payments.gateway_status` CHECK rejects (migration
+    // 20261018_gateway_status_adr64_vocabulary.sql; the enforcement test at
+    // migrations_tests.rs:3786 lists 'processing'/'unknown'/'PENDING' as the
+    // rejected set and ADR-64's own card payments use 'settled', payment_tests.rs:266).
+    // The UI wrote it verbatim into `paymentSplits[].gatewayStatus`, which
+    // payments.rs:122 inserts unvalidated — so an EDC charge failed the checkout
+    // transaction AFTER the terminal had taken the customer's money.
+    expect(complete.args.paymentSplits[0]?.gatewayStatus).toBe('settled');
     const parsed = JSON.parse(complete.args.paymentSplits[0]?.gatewayResponse ?? '{}') as {
       card_last4?: string;
       auth_code?: string;
@@ -1899,6 +2408,81 @@ describe('PaymentModal — EDC card-present tender', () => {
           'Complete must NOT be offered after a declined card capture — ' +
             'pressing it books a card sale with no money taken',
         ).toBeDisabled();
+      },
+    );
+    view.unmount();
+  });
+
+  // ── No ledger write may occur while the terminal still holds the card ─────
+  //
+  // WHAT THIS PINS, and the mechanism is NOT the one I first assumed.
+  //
+  // I expected `canComplete`'s card arm (PaymentModal.tsx:1276-1280) to be the
+  // guard. It is not. MEASURED with a probe on this exact window:
+  //   { method:'card', sufficient:true, edcTerminalFailed:false,
+  //     cashOffered:true, cardOffered:true, totalMin:700, splitMode:false }
+  // so `canComplete` is TRUE for the whole tap/insert/swipe wait. Complete Sale is
+  // dark only because `loading={processing}` reaches Button.tsx:70-72, where
+  // `isDisabled = disabled || isProcessing || isSuccess` and
+  // `isProcessing = state==='processing' || loading===true`.
+  //
+  // So the protection is the shared `processing` flag that `handleTerminalPay`
+  // sets at its top and clears in its `finally` (useEdcTenderPhase.ts:169, :261).
+  // Nothing in `canComplete` reads the live EDC overlay, and the button carries no
+  // `state="processing"` of its own (the only <Button> in this file are at
+  // PaymentModal.tsx:2336 and :2340, and the settle one passes `loading` only).
+  // The failure this would produce is the same class as the declined-capture case
+  // above: `complete` has no card branch, so it would run startSaleScoped ->
+  // addLineScoped -> completeSaleScoped with `storedMethod` 'card' and record a
+  // CARD sale for money the terminal never took.
+  //
+  // THE ASSERTION IS THEREFORE ON THE LEDGER, not on the button's disabled
+  // attribute: whatever disables the control, the sale must not be booked. That
+  // is the invariant worth holding, and it is the one a future edit to `processing`
+  // handling would break first.
+  it('books no sale while the card-present capture is still waiting', async () => {
+    const view = await mount();
+    // A capture that never settles: the terminal is holding the tap.
+    let releaseCapture: (v: unknown) => void = () => {};
+    const capture = new Promise<unknown>((resolve) => { releaseCapture = resolve; });
+    await overrideInvoke(
+      'edc_sale',
+      () => capture,
+      async () => {
+        await clickTerminalPay();
+        // The overlay is up and the terminal owns the card (role=status is the
+        // preflight|waiting branch; the declined branch is role=alert).
+        await waitFor(() =>
+          expect(screen.getByRole('status')).toBeInTheDocument(),
+        );
+
+        // THE ASSERTION. Nothing has been captured, so a sale recorded now is a
+        // CARD tender with no money behind it.
+        expect(
+          callsOf('complete_sale_scoped'),
+          'a sale was booked while the terminal still held the card -- ' +
+            'that records CARD payment for money never taken',
+        ).toHaveLength(0);
+
+        // And the settle control must not be armed during the wait. This is a
+        // SECOND, weaker assertion on purpose: it documents today's mechanism
+        // (the shared `processing` flag) without being the thing the case exists
+        // for, so a refactor that keeps the ledger safe but changes how the
+        // button is disabled still shows exactly which half moved.
+        expect(
+          screen.getByTestId('settle-button'),
+          'Complete must stay dark while the terminal holds the card',
+        ).toBeDisabled();
+
+        // Release the capture so the flow unwinds and the unmount is clean.
+        releaseCapture({
+          success: false,
+          transactionId: null,
+          authCode: null,
+          cardScheme: null,
+          cardLast4: null,
+          message: 'cancelled',
+        });
       },
     );
     view.unmount();
@@ -2193,12 +2777,21 @@ describe('PaymentModal — local payment rails gating', () => {
       typeKey: 'store-pos',
     });
 
-    expect(await renderedTenders([rail(true)])).toEqual([
+    // The claim is that `open_bill` is ABSENT here, not that the list is frozen.
+    // `be153f8cf` added the accounts-receivable `pay_later` tender, which is
+    // retail-only by design (PaymentModal.tsx:391 gates it on `!isRestaurantPos`)
+    // and is therefore correctly offered on this terminal. The bare equality this
+    // replaces predates that feature and would need bumping for every future
+    // tender; the exclusion below states the contract the test is named for.
+    const tenders = await renderedTenders([rail(true)]);
+    expect(tenders).not.toContain('open_bill');
+    expect(tenders).toEqual([
       'cash',
       'card',
       'qris',
       'credit',
       'other',
+      'pay_later',
     ]);
   });
 
@@ -2440,7 +3033,7 @@ describe('PaymentModal — local payment rails gating', () => {
 
   // ── The checked-tender signal, row by row ─────────────────────────────
   //
-  // PaymentModal.css:184 styles the selected tender through an ADJACENT-
+  // PaymentModal.css:362 styles the selected tender through an ADJACENT-
   // SIBLING rule - `input[type="radio"]:checked + .payment-method-name` - so a
   // row is only treated when the element right after its radio carries that
   // class. The case above reads each row's NAME; nobody read whether the name

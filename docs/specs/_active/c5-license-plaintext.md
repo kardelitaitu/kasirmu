@@ -180,7 +180,7 @@ cargo test -p oz-core --lib machine_id_entropy   # NOTE: `oz-core` was the pre-r
 # expect: ok
 
 # 4. All tests pass
-cargo test -p oz-pos-app -p oz-pos-tablet -p oz-core --lib   # NOTE: all three are pre-rebrand package names, none resolvable today
+cargo test -p oz-pos-app -p oz-pos-tablet -p oz-core --lib   # NOTE: all three are pre-rebrand; they are `kasirmu-app`, `kasirmu-mobile` and `kasirmu-core` today
 
 # 5. Lint + fmt clean
 cargo clippy --workspace --all-targets -- -D warnings

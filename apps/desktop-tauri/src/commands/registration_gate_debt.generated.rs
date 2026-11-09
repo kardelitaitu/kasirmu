@@ -95,10 +95,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ("setup::get_preset_features", "no_session_resolution"),
     ("setup::get_first_run_state", "no_session_resolution"),
     ("setup::provision_device", "no_session_resolution"),
-    (
-        "browser::open_product_images_scoped",
-        "resolves_session_names_no_permission",
-    ),
     ("security::get_key_rotation_info", "no_session_resolution"),
     ("workspaces::list_workspaces", "no_session_resolution"),
     (
@@ -174,7 +170,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// Re-read 22-09-26: regenerated to 468 with the floor's raise for the staff/role trash's
 /// five gated commands. 74 debt rows before and after, which is the measurement saying they
 /// arrived already gated.)
-pub const REGISTERED_TOTAL: usize = 494;
+pub const REGISTERED_TOTAL: usize = 510;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 /// 70 -> 69: `security::rotate_encryption_key` was deregistered, and its ledger row
@@ -188,12 +184,12 @@ pub const REGISTERED_TOTAL: usize = 494;
 /// staff session exists and the device authenticates to the licence server with its own
 /// stored credentials, so a session permission would guard a door no session can reach —
 /// the same class `license::activate_license` has always occupied. Recorded in
-/// docs/records/JOURNAL.md, which is what the ceiling pin asks of a rise.
+/// docs/records/journal/JOURNAL.md, which is what the ceiling pin asks of a rise.
 /// 72 -> 74: `desktop_link::start_device_pairing` and `desktop_link::poll_device_pairing` (ADR #56 §2.5 / §5 Q1).
 /// 74 -> 75: `setup::get_preset_features` (`6ac851dd4`), ungated by design — the setup wizard
 /// reads the store-type presets BEFORE any staff session exists, so a session permission
 /// would guard a door no session can reach. Same class as the `link_device_*` rows above, and
-/// the rise is recorded in docs/records/JOURNAL.md.
+/// the rise is recorded in docs/records/journal/JOURNAL.md.
 /// 75 -> 78: `desktop_link::request_email_login_code`, `desktop_link::verify_email_login_code`
 /// and `desktop_link::login_with_email_password` (the wizard's email sign-in). All three are
 /// class 1 (`no_session_resolution`) and STRUCTURALLY so: each one CREATES the session the
@@ -202,7 +198,7 @@ pub const REGISTERED_TOTAL: usize = 494;
 /// `require_permission_for_session` there would demand a credential that cannot exist yet,
 /// so the only honest gate would be a bespoke pre-auth exemption keyed to a constant. Same
 /// class as the `link_device_*` rows above and `license::activate_license`; reason recorded
-/// in docs/records/JOURNAL.md, which is what the ceiling pin asks of a rise.
+/// in docs/records/journal/JOURNAL.md, which is what the ceiling pin asks of a rise.
 pub const DEBT_CEILING: usize = 78;
 
 /// Names that never resolve a session at all.

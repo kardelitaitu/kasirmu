@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback, type ReactNode } from 'react';
-import { useLocalization } from '@fluent/react';
+import { Localized, useLocalization } from '@fluent/react';
 import { useToast } from '@/components/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -199,6 +199,12 @@ export interface NodeTopologyEditorProps {
    */
   canSave?: boolean;
   /**
+   * When true, centralized web authoring is active for this tenant/branch (ADR-66 D3).
+   * The editor renders in read-only mode with authoring controls hidden and a
+   * "Managed via Web Dashboard" badge.
+   */
+  webAuthoringManaged?: boolean;
+  /**
    * ADR #46 §5 restore-to-draft: a revision's diagram the PARENT (the
    * revision browser's host screen) has decided to load onto the canvas as
    * an unsaved draft. The editor owns no restore UI, state, or command —
@@ -242,6 +248,7 @@ export default function NodeTopologyEditor({
   compareOverlay,
   compareFocus = false,
   canSave = true,
+  webAuthoringManaged = false,
   restoreSeed,
 }: NodeTopologyEditorProps) {
   const { sessionToken, resolvedStoreId: sessionStoreId } = useWorkspace();
@@ -2134,52 +2141,65 @@ export default function NodeTopologyEditor({
       <TopologyHeader
         l10n={l10n}
         branchToolbar={branchToolbar}
-        canSave={canSave}
-        onSaveAvailable={!!onSave}
+        canSave={canSave && !webAuthoringManaged}
+        onSaveAvailable={!!onSave && !webAuthoringManaged}
         currentTier={currentTier}
         saving={saving}
         onApply={() => void handleApplyClick()}
+        webAuthoringManaged={webAuthoringManaged}
       />
 
+      {/* A level-two heading so the editor's own h3 groupings (rack panel,
+          empty state) sit no more than one level under the page title in
+          topologyHeader.tsx. Without it the outline jumps h1 → h3 and axe
+          reports `heading-order` on every h3 -- measured, three violations.
+          Visually hidden: the groups it names are already visually obvious
+          (a tool rack on the left, a canvas filling the rest), and the heading
+          exists for the outline rather than for the eye. */}
+      <Localized id="topology-editor-sections">
+        <h2 className="sr-only">Editor sections</h2>
+      </Localized>
       <div className="node-topology-main">
-        <TopologyToolRack
-          l10n={l10n}
-          rackPanel={rackPanel}
-          onTogglePanel={toggleRackPanel}
-          onClosePanel={() => setRackPanel(null)}
-          hasSelection={selectedNodeIds.size > 0 || !!selectedWireId || history.length > 0 || redo.length > 0}
-          canDelete={selectedNodeIds.size > 0 || !!selectedWireId}
-          canUndo={history.length > 0}
-          canRedo={redo.length > 0}
-          onDeleteSelected={handleDeleteRequest}
-          onUndo={popUndo}
-          onRedo={popRedo}
-          allowLegacyApply={allowLegacyApply}
-          onAddNode={handleAddNode}
-          warehouseTierAllowed={warehouseTierAllowed}
-          onAutoLayout={autoLayout}
-          wireRouting={wireRouting}
-          onToggleWireRouting={() => setWireRouting((r) => (r === 'elbow' ? 'curved' : 'elbow'))}
-          anyBentWires={anyBentWires}
-          snapEnabled={snapEnabled}
-          onToggleSnap={() => setSnapEnabled((s) => !s)}
-          panToolActive={panToolActive}
-          onTogglePanTool={() => setPanToolActive((v) => !v)}
-          wireLabelsVisible={wireLabelsVisible}
-          onToggleWireLabels={() => setWireLabelsVisible((v) => !v)}
-          onExport={handleExport}
-          onImport={handleImport}
-          templateSaveOpen={templateSaveOpen}
-          onToggleTemplateSave={() => setTemplateSaveOpen((v) => !v)}
-          templateName={templateName}
-          onTemplateNameChange={setTemplateName}
-          onSaveTemplate={handleSaveTemplate}
-          onOpenTemplates={openTemplates}
-          templatesOpen={templatesOpen}
-          savedTemplates={savedTemplates}
-          onLoadTemplate={handleLoadTemplate}
-          onDeleteTemplate={handleDeleteTemplate}
-        />
+        {!webAuthoringManaged && (
+          <TopologyToolRack
+            l10n={l10n}
+            rackPanel={rackPanel}
+            onTogglePanel={toggleRackPanel}
+            onClosePanel={() => setRackPanel(null)}
+            hasSelection={selectedNodeIds.size > 0 || !!selectedWireId || history.length > 0 || redo.length > 0}
+            canDelete={selectedNodeIds.size > 0 || !!selectedWireId}
+            canUndo={history.length > 0}
+            canRedo={redo.length > 0}
+            onDeleteSelected={handleDeleteRequest}
+            onUndo={popUndo}
+            onRedo={popRedo}
+            allowLegacyApply={allowLegacyApply}
+            onAddNode={handleAddNode}
+            warehouseTierAllowed={warehouseTierAllowed}
+            onAutoLayout={autoLayout}
+            wireRouting={wireRouting}
+            onToggleWireRouting={() => setWireRouting((r) => (r === 'elbow' ? 'curved' : 'elbow'))}
+            anyBentWires={anyBentWires}
+            snapEnabled={snapEnabled}
+            onToggleSnap={() => setSnapEnabled((s) => !s)}
+            panToolActive={panToolActive}
+            onTogglePanTool={() => setPanToolActive((v) => !v)}
+            wireLabelsVisible={wireLabelsVisible}
+            onToggleWireLabels={() => setWireLabelsVisible((v) => !v)}
+            onExport={handleExport}
+            onImport={handleImport}
+            templateSaveOpen={templateSaveOpen}
+            onToggleTemplateSave={() => setTemplateSaveOpen((v) => !v)}
+            templateName={templateName}
+            onTemplateNameChange={setTemplateName}
+            onSaveTemplate={handleSaveTemplate}
+            onOpenTemplates={openTemplates}
+            templatesOpen={templatesOpen}
+            savedTemplates={savedTemplates}
+            onLoadTemplate={handleLoadTemplate}
+            onDeleteTemplate={handleDeleteTemplate}
+          />
+        )}
 
         <div
           ref={canvasRef}

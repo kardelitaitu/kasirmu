@@ -396,26 +396,6 @@ pub async fn update_pg_sync_settings_scoped(
     Ok(())
 }
 
-/// Pending sync count (scoped).
-pub async fn pending_sync_count_scoped(
-    ctx: &BridgeCtx<'_>,
-    session_token: &str,
-) -> Result<i64, BridgeError> {
-    // F-017: enforce per-domain permission on this scoped command.
-    let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, permissions::SYNC_MANAGE)
-        .await?;
-    let conn = ctx
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    Ok(store.pending_offline_count()?)
-}
-
 /// Request a sync token (scoped).
 pub async fn request_sync_token_scoped(
     ctx: &BridgeCtx<'_>,
@@ -568,8 +548,8 @@ pub async fn sync_run_scoped(
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, permissions::SYNC_MANAGE)
         .await?;
-    // Phase 1: Read pending items and config from DB (brief lock).
-    let (pending_items, config_opt) = {
+    // Phase 1: Read config from DB (brief lock).
+    let mut config = {
         let conn = ctx
             .db_manager
             .open_store(&session.store_id)
@@ -578,49 +558,26 @@ pub async fn sync_run_scoped(
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
         let store = Store::new(&db);
-        let pending = store.list_pending_offline()?;
-        let config = SyncConfig::from_settings(&store)?;
-        (pending, config)
-    };
-
-    let config = match config_opt {
-        Some(c) => c,
-        None => {
-            return Ok(SyncAttemptResult {
-                synced: 0,
-                failed: 0,
-                error: Some("Sync is not configured or disabled".into()),
-                plan_required: false,
-            });
+        match SyncConfig::from_settings(&store)? {
+            Some(c) => c,
+            None => {
+                return Ok(SyncAttemptResult {
+                    synced: 0,
+                    failed: 0,
+                    error: Some("Sync is not configured or disabled".into()),
+                    plan_required: false,
+                });
+            }
         }
     };
 
-    if pending_items.is_empty() {
-        return Ok(SyncAttemptResult {
-            synced: 0,
-            failed: 0,
-            error: None,
-            plan_required: false,
-        });
-    }
+    let mut total_synced = 0;
+    let mut total_failed = 0;
 
-    // C49: the ONE ordering rule, shared by every push path
-    // (`kasirmu_core::offline::order_for_push`). Without it a Critical item
-    // queued behind a bulk one waits a whole cycle, so the value of the priority
-    // column would depend on which of the push paths happened to run.
-    //
-    // Sorted ONCE, before the push: Phase 3 and the 401 retry below both reuse
-    // this same vector, so the server's index-aligned outcome list still lines up.
-    let mut pending_items = pending_items;
-    kasirmu_core::offline::order_for_push(&mut pending_items);
-
-    // Phase 2: Async HTTP push (no DB lock held).
-    let mut outcomes = sync_client::send_items_to_server(&config, &pending_items).await;
-
-    // ADR sync-auth-hardening P1: refresh token once on 401.
-    if matches!(outcomes, Err(sync_client::SyncHttpError::AuthExpired)) {
-        let client_credentials = {
-            let session = ctx.resolve_session(session_token)?;
+    // O-H07: Drain pending offline queue in bounded batches rather than
+    // uploading an unbounded backlog in a single HTTP request.
+    loop {
+        let pending_items = {
             let conn = ctx
                 .db_manager
                 .open_store(&session.store_id)
@@ -628,77 +585,132 @@ pub async fn sync_run_scoped(
             let db = conn
                 .lock()
                 .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-            match (
-                Settings::get_sync_terminal_id(&db)?,
-                Settings::get_sync_terminal_secret(&db)?,
-            ) {
-                (Some(id), Some(secret)) => Some((id, secret)),
-                _ => None,
+            let store = Store::new(&db);
+            store.list_pending_offline_for_push_bounded(
+                kasirmu_core::offline::DEFAULT_MAX_OUTBOX_BATCH_ITEMS,
+            )?
+        };
+
+        if pending_items.is_empty() {
+            break;
+        }
+
+        let batch_count = pending_items.len();
+
+        // Phase 2: Async HTTP push (no DB lock held).
+        let mut outcomes = sync_client::send_items_to_server(&config, &pending_items).await;
+
+        // ADR sync-auth-hardening P1: refresh token once on 401.
+        if matches!(outcomes, Err(sync_client::SyncHttpError::AuthExpired)) {
+            let client_credentials = {
+                let session = ctx.resolve_session(session_token)?;
+                let conn = ctx
+                    .db_manager
+                    .open_store(&session.store_id)
+                    .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
+                let db = conn
+                    .lock()
+                    .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+                match (
+                    Settings::get_sync_terminal_id(&db)?,
+                    Settings::get_sync_terminal_secret(&db)?,
+                ) {
+                    (Some(id), Some(secret)) => Some((id, secret)),
+                    _ => None,
+                }
+            };
+            let fresh_key = sync_client::request_refresh_token(
+                &config.server_url,
+                client_credentials
+                    .as_ref()
+                    .map(|(id, secret)| (id.as_str(), secret.as_str())),
+            )
+            .await;
+            if let Some(ref fresh_key) = fresh_key {
+                {
+                    let session = ctx.resolve_session(session_token)?;
+                    let conn = ctx
+                        .db_manager
+                        .open_store(&session.store_id)
+                        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
+                    let db = conn
+                        .lock()
+                        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+                    sync_client::persist_refreshed_api_key(&db, fresh_key)?;
+                }
+                let retry_config = {
+                    let session = ctx.resolve_session(session_token)?;
+                    let conn = ctx
+                        .db_manager
+                        .open_store(&session.store_id)
+                        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
+                    let db = conn
+                        .lock()
+                        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+                    let store = Store::new(&db);
+                    SyncConfig::from_settings(&store)?
+                };
+                if let Some(cfg) = retry_config {
+                    config = cfg.clone();
+                    outcomes = sync_client::send_items_to_server(&cfg, &pending_items).await;
+                }
+            }
+        }
+
+        // Phase 3: Write outcomes back to DB (brief lock).
+        let session = ctx.resolve_session(session_token)?;
+        let conn = ctx
+            .db_manager
+            .open_store(&session.store_id)
+            .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
+        let db = conn
+            .lock()
+            .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+        let store = Store::new(&db);
+        let batch_result = match outcomes {
+            Ok(outcomes) => sync_client::apply_sync_outcomes(&store, &pending_items, &outcomes)?,
+            Err(sync_client::SyncHttpError::PlanRequired) => {
+                return Ok(SyncAttemptResult {
+                    synced: total_synced,
+                    failed: total_failed,
+                    error: Some("cloud sync requires a paid plan".into()),
+                    plan_required: true,
+                });
+            }
+            Err(e) => {
+                let undelivered = sync_client::undelivered_batch(&e);
+                return Ok(SyncAttemptResult {
+                    synced: total_synced,
+                    failed: total_failed,
+                    error: undelivered.error,
+                    plan_required: false,
+                });
             }
         };
-        let fresh_key = sync_client::request_refresh_token(
-            &config.server_url,
-            client_credentials
-                .as_ref()
-                .map(|(id, secret)| (id.as_str(), secret.as_str())),
-        )
-        .await;
-        if let Some(fresh_key) = fresh_key {
-            {
-                let session = ctx.resolve_session(session_token)?;
-                let conn = ctx
-                    .db_manager
-                    .open_store(&session.store_id)
-                    .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
-                let db = conn
-                    .lock()
-                    .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-                sync_client::persist_refreshed_api_key(&db, &fresh_key)?;
-            }
-            let retry_config = {
-                let session = ctx.resolve_session(session_token)?;
-                let conn = ctx
-                    .db_manager
-                    .open_store(&session.store_id)
-                    .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
-                let db = conn
-                    .lock()
-                    .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-                let store = Store::new(&db);
-                SyncConfig::from_settings(&store)?
-            };
-            if let Some(cfg) = retry_config {
-                outcomes = sync_client::send_items_to_server(&cfg, &pending_items).await;
-            }
+
+        total_synced += batch_result.synced;
+        total_failed += batch_result.failed;
+
+        if batch_result.plan_required || batch_result.error.is_some() {
+            return Ok(SyncAttemptResult {
+                synced: total_synced,
+                failed: total_failed,
+                error: batch_result.error,
+                plan_required: batch_result.plan_required,
+            });
+        }
+
+        if batch_count < kasirmu_core::offline::DEFAULT_MAX_OUTBOX_BATCH_ITEMS {
+            break;
         }
     }
 
-    // Phase 3: Write outcomes back to DB (brief lock).
-    let session = ctx.resolve_session(session_token)?;
-    let conn = ctx
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    match outcomes {
-        Ok(outcomes) => Ok(sync_client::apply_sync_outcomes(
-            &store,
-            &pending_items,
-            &outcomes,
-        )?),
-        Err(sync_client::SyncHttpError::PlanRequired) => Ok(SyncAttemptResult {
-            synced: 0,
-            failed: 0,
-            error: Some("cloud sync requires a paid plan".into()),
-            plan_required: true,
-        }),
-        // A batch the server never saw is retried, not condemned: `failed` is
-        // terminal for a push item. See `sync_client::undelivered_batch`.
-        Err(e) => Ok(sync_client::undelivered_batch(&e)),
-    }
+    Ok(SyncAttemptResult {
+        synced: total_synced,
+        failed: total_failed,
+        error: None,
+        plan_required: false,
+    })
 }
 
 pub mod backup;

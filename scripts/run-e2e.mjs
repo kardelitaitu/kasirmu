@@ -24,6 +24,12 @@
  * start and never kills by port, so a sibling session's `npm run dev` on
  * 1420 can be neither adopted nor terminated by an E2E run.
  *
+ * Docker absent: a run that needs the backend (the default, and --api-only)
+ * is a SETUP failure — exit 3, zero tests executed — and never a "skipping"
+ * line followed by connection errors blamed on the suite. The two flags that
+ * legitimately run without a daemon are --no-docker (you supply the servers)
+ * and --ui-only (those specs use the Vite dev server + IPC mock).
+ *
  * Image freshness: `compose up --pull=missing` never rebuilds a tag that
  * already exists, so a stale e2e-{cloud,license}-server:latest would silently
  * test outdated binaries. The runner therefore refuses to start when a
@@ -34,7 +40,7 @@
 import { execSync, spawn } from 'child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { generateKeyPairSync } from 'crypto';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, resolve } from 'path';
 import http from 'node:http';
 import net from 'node:net';
@@ -199,15 +205,53 @@ async function assertE2ePortFree() {
   }
 }
 
+/**
+ * Why the last dockerAvailable() call returned false, as docker said it.
+ *
+ * Kept so the fatal path can quote the daemon's own words instead of a
+ * generic "Docker not available": the two shapes seen here ("cannot find the
+ * file specified" for a stopped pipe, and a permission error for a daemon
+ * the user's shell cannot reach) have different remedies, and the message is
+ * the only place a reader can tell them apart.
+ */
+let dockerUnavailableReason = null;
+
 /** Check whether Docker is available (daemon reachable). */
 function dockerAvailable() {
   try {
     execSync('docker info', { stdio: 'pipe', timeout: 10_000 });
     return true;
-  } catch {
+  } catch (e) {
+    const text = String(e.stderr ?? e.stdout ?? e.message ?? '').trim();
+    dockerUnavailableReason = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean).pop() ?? null;
     return false;
   }
 }
+
+/**
+ * What a missing Docker daemon means for THIS run.
+ *
+ *   'not-requested'        --no-docker: the caller supplies its own servers.
+ *   'available'            the daemon answered.
+ *   'unavailable-ui-only'  Docker is down and only the UI specs were asked for.
+ *                          They run against the Vite dev server + IPC mock, so
+ *                          there is no backend to miss.
+ *   'unavailable-fatal'    Docker is down and specs that need the backend are
+ *                          about to run.
+ *
+ * The fatal case used to be a soft skip: the runner logged "Not available —
+ * skipping." in yellow and started Vite anyway, so the first API spec failed
+ * on a connection error and the banner blamed the suite. A run that never
+ * reached its backend is a setup failure, not a test failure, and the exit
+ * code has to say so.
+ */
+function dockerPlan({ noDocker, uiOnly, available }) {
+  if (noDocker) return 'not-requested';
+  if (available) return 'available';
+  return uiOnly ? 'unavailable-ui-only' : 'unavailable-fatal';
+}
+
+export { dockerPlan };
 
 /* ── E2E image freshness guard ─────────────────────────────────────── */
 
@@ -774,11 +818,22 @@ async function main() {
 
     // ── Step 1: Start Docker backend ──────────────────────────────
     if (!NO_DOCKER) {
-      if (dockerAvailable()) {
+      const plan = dockerPlan({ noDocker: NO_DOCKER, uiOnly: UI_ONLY, available: dockerAvailable() });
+      if (plan === 'available') {
         ensureLicenseKey();
         startDocker();
+      } else if (plan === 'unavailable-ui-only') {
+        log('Docker', `${YELLOW}Not running — continuing because --ui-only needs no backend.${NC}`);
       } else {
-        log('Docker', `${YELLOW}Not available — skipping.${NC}`);
+        // Throw, do not exit here: the catch below already owns the
+        // "0 tests executed" banner and exit code 3, and a second exit path
+        // is one more thing that can disagree with it.
+        log('Docker', `${RED}Docker daemon is not reachable.${NC}`);
+        if (dockerUnavailableReason) console.log(`    ${YELLOW}•${NC} ${dockerUnavailableReason}`);
+        console.log('');
+        log('Docker', `Start it (Docker Desktop → "docker info" answers), or pass ${BOLD}--no-docker${NC} `
+          + `if you already have the E2E servers up, or ${BOLD}--ui-only${NC} for the specs that need no backend.`);
+        throw new Error('Docker is required for this run but its daemon is not reachable');
       }
     } else {
       // (a) --no-docker consumes no Docker binaries, so the image freshness
@@ -819,4 +874,9 @@ async function main() {
   }
 }
 
-main();
+// Only run when executed, not when imported: the unit tests import this
+// module for dockerPlan(). Before this guard they had to re-implement each
+// function in a closure to test it, which is how one of them ended up
+// asserting `typeof boolean === 'boolean'` and passing even if the function
+// under test were deleted.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

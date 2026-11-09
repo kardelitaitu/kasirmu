@@ -150,7 +150,7 @@ fn redeem_gift_card_deducts_balance() {
     ).unwrap();
 
     let result = store(&conn)
-        .redeem_gift_card("GC-4001", 25000, "sale-1")
+        .redeem_gift_card("GC-4001", 25000, "sale-1", None)
         .unwrap();
     assert_eq!(result.card.current_balance_minor, 25000);
     assert_eq!(result.transaction.amount_minor, -25000);
@@ -179,10 +179,10 @@ fn redeem_gift_card_is_idempotent() {
     ).unwrap();
 
     let r1 = store(&conn)
-        .redeem_gift_card("GC-4002", 10000, "sale-2")
+        .redeem_gift_card("GC-4002", 10000, "sale-2", None)
         .unwrap();
     let r2 = store(&conn)
-        .redeem_gift_card("GC-4002", 10000, "sale-2")
+        .redeem_gift_card("GC-4002", 10000, "sale-2", None)
         .unwrap();
     assert_eq!(r1.card.current_balance_minor, r2.card.current_balance_minor);
     assert_eq!(r1.transaction.id, r2.transaction.id);
@@ -210,7 +210,7 @@ fn redeem_insufficient_balance_fails() {
     ).unwrap();
 
     let err = store(&conn)
-        .redeem_gift_card("GC-5001", 10000, "sale-3")
+        .redeem_gift_card("GC-5001", 10000, "sale-3", None)
         .unwrap_err();
     assert!(matches!(
         err,
@@ -250,7 +250,7 @@ fn redeem_atomic_decrement_keeps_ledger_in_sync() {
         )
         .unwrap();
         let r = store(&conn)
-            .redeem_gift_card("GC-5002", amount, sale_id)
+            .redeem_gift_card("GC-5002", amount, sale_id, None)
             .unwrap();
         assert_eq!(
             r.card.current_balance_minor, expected_after,
@@ -298,7 +298,9 @@ fn top_up_increases_balance() {
     // in `crate::tests::shift_integration`.
     std::thread::sleep(std::time::Duration::from_millis(5));
 
-    let result = store(&conn).top_up_gift_card("GC-6001", 20000).unwrap();
+    let result = store(&conn)
+        .top_up_gift_card("GC-6001", 20000, None)
+        .unwrap();
     assert_eq!(result.card.current_balance_minor, 30000);
     assert_eq!(result.transactions[0].txn_type, "topup");
 }
@@ -388,7 +390,7 @@ fn redeem_on_frozen_card_fails() {
     ).unwrap();
 
     let err = store(&conn)
-        .redeem_gift_card("GC-8001", 10000, "sale-8")
+        .redeem_gift_card("GC-8001", 10000, "sale-8", None)
         .unwrap_err();
     assert!(matches!(
         err,
@@ -446,7 +448,7 @@ fn redeem_gift_card_zero_amount_fails() {
     ).unwrap();
 
     let err = store(&conn)
-        .redeem_gift_card("GC-9001", 0, "sale-9")
+        .redeem_gift_card("GC-9001", 0, "sale-9", None)
         .unwrap_err();
     assert!(matches!(
         err,
@@ -461,7 +463,7 @@ fn redeem_gift_card_zero_amount_fails() {
 fn top_up_nonexistent_card_fails() {
     let conn = fresh();
     let err = store(&conn)
-        .top_up_gift_card("NONEXISTENT", 10000)
+        .top_up_gift_card("NONEXISTENT", 10000, None)
         .unwrap_err();
     assert!(matches!(
         err,
@@ -531,7 +533,7 @@ fn redeem_exhausts_balance_auto_redeemed() {
     ).unwrap();
 
     let result = store(&conn)
-        .redeem_gift_card("GC-11001", 5000, "sale-11")
+        .redeem_gift_card("GC-11001", 5000, "sale-11", None)
         .unwrap();
     assert_eq!(result.card.current_balance_minor, 0);
     assert_eq!(result.card.status, "redeemed");
@@ -560,7 +562,7 @@ fn notes_format_major_units_via_card_currency() {
     ).unwrap();
 
     let result = store(&conn)
-        .redeem_gift_card("GC-12001", 25000, "sale-12")
+        .redeem_gift_card("GC-12001", 25000, "sale-12", None)
         .unwrap();
     assert_eq!(result.transaction.notes, "Redeemed 250.00 on sale sale-12");
 
@@ -576,7 +578,9 @@ fn notes_format_major_units_via_card_currency() {
         .unwrap();
     assert_eq!(redeem.notes, "Redeemed 250.00 on sale sale-12");
 
-    let topped = store(&conn).top_up_gift_card("GC-12001", 10000).unwrap();
+    let topped = store(&conn)
+        .top_up_gift_card("GC-12001", 10000, None)
+        .unwrap();
     let topup = topped
         .transactions
         .iter()
@@ -608,7 +612,7 @@ fn notes_keep_raw_minor_for_idr() {
     ).unwrap();
 
     let result = store(&conn)
-        .redeem_gift_card("GC-12002", 25000, "sale-13")
+        .redeem_gift_card("GC-12002", 25000, "sale-13", None)
         .unwrap();
     assert_eq!(result.transaction.notes, "Redeemed 25000 on sale sale-13");
 }
@@ -636,7 +640,7 @@ fn notes_render_kwd_three_decimals() {
     ).unwrap();
 
     let result = store(&conn)
-        .redeem_gift_card("GC-12003", 12, "sale-14")
+        .redeem_gift_card("GC-12003", 12, "sale-14", None)
         .unwrap();
     assert_eq!(result.transaction.notes, "Redeemed 0.012 on sale sale-14");
 }
@@ -763,14 +767,48 @@ fn unfreeze_gift_card_refuses_an_active_card() {
 /// status and timestamp survive exactly as B wrote them.
 #[test]
 fn freeze_gift_card_race_cannot_overwrite_a_competing_transition() {
-    let dir = std::env::temp_dir().join(format!("oz_gc_freeze_race_{}", uuid::Uuid::now_v7()));
+    // The guard owns the directory and deletes it on drop, so the fixture
+    // cannot be left behind by a failed assertion.
+    let scratch = kasirmu_test_support::ScratchDir::new("gift-card-freeze-race");
+    let dir = scratch.path();
     let db_path = dir.join("kasir.db");
     {
-        let conn = fresh_file(&dir);
+        let conn = fresh_file(dir);
         seed_card(&conn, "GC-C18-R1");
     }
 
+    // B holds the write lock until A's busy handler reports it is BLOCKED on
+    // it — no timer (O-T15).
+    //
+    // The 300 ms sleep this replaces was a bet on wall-clock behaviour: on a
+    // stalled host A's read could land after B's commit (which is why this test
+    // had no restage loop and simply failed), and the sleep was paid in full
+    // whether or not the window had been used. The property is unchanged and
+    // still the whole point: A must READ `active` while B's uncommitted
+    // `redeemed` is invisible, then lose its compare-and-set once B commits.
+    //
+    // A cannot signal mid-call, so A's busy handler signals for it: it runs on
+    // A's own thread, inside `freeze_gift_card`, after the status read and
+    // before the UPDATE. That is the proof A is inside the window, and it
+    // replaces the sleep with a fact. The wait is bounded (5 s) so a bug that
+    // makes A never block FAILS here rather than hanging.
+    static A_IS_WAITING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    A_IS_WAITING.store(false, std::sync::atomic::Ordering::SeqCst);
+    // Reported through a `static` mailbox because rusqlite's `busy_handler`
+    // takes a function POINTER: a capturing closure cannot be passed.
+    static A_WAITING_TX: std::sync::Mutex<Option<std::sync::mpsc::Sender<()>>> =
+        std::sync::Mutex::new(None);
+    fn note_a_is_waiting(_attempts: i32) -> bool {
+        if !A_IS_WAITING.swap(true, std::sync::atomic::Ordering::SeqCst)
+            && let Some(tx) = A_WAITING_TX.lock().unwrap().as_ref()
+        {
+            let _ = tx.send(());
+        }
+        true
+    }
+
     let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+    let (a_waiting_tx, a_waiting_rx) = std::sync::mpsc::channel();
     let rival = {
         let db_path = db_path.clone();
         std::thread::spawn(move || {
@@ -785,9 +823,10 @@ fn freeze_gift_card_race_cannot_overwrite_a_competing_transition() {
                 .unwrap();
             assert_eq!(rows, 1, "the rival transition must touch the staged card");
             locked_tx.send(()).unwrap();
-            // B releases on its own timer: A is blocked inside
-            // `freeze_gift_card` and cannot signal mid-call.
-            std::thread::sleep(std::time::Duration::from_millis(300));
+            // Commit either when A is demonstrably waiting on the lock, or (the
+            // timeout arm) when A has already finished — in which case its
+            // outcome is classified below instead of the test hanging.
+            let _ = a_waiting_rx.recv_timeout(std::time::Duration::from_secs(5));
             tx.commit().unwrap();
         })
     };
@@ -795,9 +834,16 @@ fn freeze_gift_card_race_cannot_overwrite_a_competing_transition() {
 
     let conn_a = Connection::open(&db_path).unwrap();
     conn_a.pragma_update(None, "busy_timeout", "5000").unwrap();
+    A_WAITING_TX.lock().unwrap().replace(a_waiting_tx);
+    conn_a.busy_handler(Some(note_a_is_waiting)).unwrap();
     let outcome = store(&conn_a).freeze_gift_card("GC-C18-R1");
     rival.join().unwrap();
 
+    assert!(
+        A_IS_WAITING.load(std::sync::atomic::Ordering::SeqCst),
+        "the losing freeze must have BLOCKED on B's write lock first; \
+         it never entered the race window"
+    );
     let err = outcome.expect_err("a freeze that lost the race must be refused");
     assert!(
         matches!(
@@ -818,7 +864,6 @@ fn freeze_gift_card_race_cannot_overwrite_a_competing_transition() {
     );
 
     drop(conn_a);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// C18 (slice P1.4): the same compare-and-set in the other direction.
@@ -830,15 +875,38 @@ fn freeze_gift_card_race_cannot_overwrite_a_competing_transition() {
 /// it A's UPDATE matches zero rows and the unfreeze is refused.
 #[test]
 fn unfreeze_gift_card_race_cannot_overwrite_a_competing_transition() {
-    let dir = std::env::temp_dir().join(format!("oz_gc_unfreeze_race_{}", uuid::Uuid::now_v7()));
+    // The guard owns the directory and deletes it on drop, so the fixture
+    // cannot be left behind by a failed assertion.
+    let scratch = kasirmu_test_support::ScratchDir::new("gift-card-unfreeze-race");
+    let dir = scratch.path();
     let db_path = dir.join("kasir.db");
     {
-        let conn = fresh_file(&dir);
+        let conn = fresh_file(dir);
         seed_card(&conn, "GC-C18-R2");
         store(&conn).freeze_gift_card("GC-C18-R2").unwrap();
     }
 
+    // Same channel-driven release as the freeze test above (O-T15): B holds the
+    // write lock until A's busy handler reports A is BLOCKED on it. The
+    // property is unchanged: A reads `frozen`, B's uncommitted `active` is
+    // invisible to it, and A's compare-and-set fails once B commits.
+    static A_IS_WAITING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    A_IS_WAITING.store(false, std::sync::atomic::Ordering::SeqCst);
+    // Reported through a `static` mailbox because rusqlite's `busy_handler`
+    // takes a function POINTER: a capturing closure cannot be passed.
+    static A_WAITING_TX: std::sync::Mutex<Option<std::sync::mpsc::Sender<()>>> =
+        std::sync::Mutex::new(None);
+    fn note_a_is_waiting(_attempts: i32) -> bool {
+        if !A_IS_WAITING.swap(true, std::sync::atomic::Ordering::SeqCst)
+            && let Some(tx) = A_WAITING_TX.lock().unwrap().as_ref()
+        {
+            let _ = tx.send(());
+        }
+        true
+    }
+
     let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+    let (a_waiting_tx, a_waiting_rx) = std::sync::mpsc::channel();
     let rival = {
         let db_path = db_path.clone();
         std::thread::spawn(move || {
@@ -853,7 +921,7 @@ fn unfreeze_gift_card_race_cannot_overwrite_a_competing_transition() {
                 .unwrap();
             assert_eq!(rows, 1, "the rival transition must touch the staged card");
             locked_tx.send(()).unwrap();
-            std::thread::sleep(std::time::Duration::from_millis(300));
+            let _ = a_waiting_rx.recv_timeout(std::time::Duration::from_secs(5));
             tx.commit().unwrap();
         })
     };
@@ -861,9 +929,16 @@ fn unfreeze_gift_card_race_cannot_overwrite_a_competing_transition() {
 
     let conn_a = Connection::open(&db_path).unwrap();
     conn_a.pragma_update(None, "busy_timeout", "5000").unwrap();
+    A_WAITING_TX.lock().unwrap().replace(a_waiting_tx);
+    conn_a.busy_handler(Some(note_a_is_waiting)).unwrap();
     let outcome = store(&conn_a).unfreeze_gift_card("GC-C18-R2");
     rival.join().unwrap();
 
+    assert!(
+        A_IS_WAITING.load(std::sync::atomic::Ordering::SeqCst),
+        "the losing unfreeze must have BLOCKED on B's write lock first; \
+         it never entered the race window"
+    );
     let err = outcome.expect_err("an unfreeze that lost the race must be refused");
     assert!(
         matches!(
@@ -884,7 +959,6 @@ fn unfreeze_gift_card_race_cannot_overwrite_a_competing_transition() {
     );
 
     drop(conn_a);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// The idempotency read must tell "no prior redemption" apart from a read that
@@ -949,7 +1023,7 @@ fn redeem_refuses_when_the_idempotency_read_errors_instead_of_double_redeeming()
     // RED: the failed read was taken for "no prior redemption", so the redemption ran a second
     // time. GREEN: the read failure propagates — the `if let` leaves the block untouched on
     // `Err`, which is the whole assertion.
-    if let Ok(r) = store(&conn).redeem_gift_card("GC-ERR-1", 10000, "sale-err-1") {
+    if let Ok(r) = store(&conn).redeem_gift_card("GC-ERR-1", 10000, "sale-err-1", None) {
         panic!(
             "unreadable idempotency row was read as absence and re-redeemed: {}",
             r.transaction.id
@@ -1005,8 +1079,192 @@ fn redeem_still_proceeds_when_no_prior_redemption_exists() {
     .unwrap();
 
     let result = store(&conn)
-        .redeem_gift_card("GC-OK-1", 10000, "sale-ok-1")
+        .redeem_gift_card("GC-OK-1", 10000, "sale-ok-1", None)
         .expect("a genuinely absent prior redemption must not be an error");
     assert_eq!(result.card.current_balance_minor, 40000);
     assert_eq!(result.transaction.txn_type, "redeem");
+}
+
+/// The redeem path's PA-01 guard, proven by a FORCED race that can fail.
+///
+/// Why this test exists. `redeem_atomic_decrement_keeps_ledger_in_sync` reads as
+/// proof of the atomic guard, but both of its redeems run sequentially on ONE
+/// connection with no rival writer — so it passes on the pre-PA-01 code too.
+/// Measured 2026-10-26 (round 244) by deleting the `AND current_balance_minor >= ?1`
+/// predicate from `gift_cards.rs` and re-running it: **it still passed**, 1 passed,
+/// 0 failed. A guard with no test that reddens when it is removed is a comment.
+///
+/// The shape is copied from `freeze_gift_card_race_cannot_overwrite_a_competing_transition`:
+/// B stages a competing deduction under its write lock, A reads the pre-deduction
+/// balance while that write is invisible, then writes after B commits. With the
+/// predicate A's UPDATE matches zero rows and the redemption is refused; without
+/// it A double-spends the same balance and reports success.
+#[test]
+fn redeem_gift_card_race_cannot_double_spend_the_same_balance() {
+    let scratch = kasirmu_test_support::ScratchDir::new("gift-card-redeem-race");
+    let dir = scratch.path();
+    let db_path = dir.join("kasir.db");
+    {
+        let conn = fresh_file(dir);
+        seed_card(&conn, "GC-RD-R1");
+        for sale in ["sale-rd-a", "sale-rd-b"] {
+            conn.execute(
+                "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at, subtotal_minor, tax_total_minor)
+                 VALUES (?1, 30000, 'IDR', 0, 'completed', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', 30000, 0)",
+                params![sale],
+            )
+            .unwrap();
+        }
+    }
+
+    // B holds the write lock until A's busy handler reports it is BLOCKED on it
+    // (O-T15, no timer). B deducts 30000 of the card's 50000, leaving 20000.
+    static A_IS_WAITING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    A_IS_WAITING.store(false, std::sync::atomic::Ordering::SeqCst);
+    static A_WAITING_TX: std::sync::Mutex<Option<std::sync::mpsc::Sender<()>>> =
+        std::sync::Mutex::new(None);
+    fn note_a_is_waiting(_attempts: i32) -> bool {
+        if !A_IS_WAITING.swap(true, std::sync::atomic::Ordering::SeqCst)
+            && let Some(tx) = A_WAITING_TX.lock().unwrap().as_ref()
+        {
+            let _ = tx.send(());
+        }
+        true
+    }
+
+    let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+    let (a_waiting_tx, a_waiting_rx) = std::sync::mpsc::channel();
+    let rival = {
+        let db_path = db_path.clone();
+        std::thread::spawn(move || {
+            let conn_b = Connection::open(&db_path).unwrap();
+            conn_b.pragma_update(None, "busy_timeout", "5000").unwrap();
+            let tx = conn_b.unchecked_transaction().unwrap();
+            let rows = tx
+                .execute(
+                    "UPDATE gift_cards SET current_balance_minor = current_balance_minor - 30000
+                     WHERE card_number = ?1",
+                    params!["GC-RD-R1"],
+                )
+                .unwrap();
+            assert_eq!(rows, 1, "the rival deduction must touch the staged card");
+            locked_tx.send(()).unwrap();
+            let _ = a_waiting_rx.recv_timeout(std::time::Duration::from_secs(5));
+            tx.commit().unwrap();
+        })
+    };
+    locked_rx.recv().unwrap();
+
+    // A read 50000 before B committed, and asks for 30000 of it. B leaves 20000,
+    // which is below A's request -- so the predicate must refuse A.
+    let conn_a = Connection::open(&db_path).unwrap();
+    conn_a.pragma_update(None, "busy_timeout", "5000").unwrap();
+    A_WAITING_TX.lock().unwrap().replace(a_waiting_tx);
+    conn_a.busy_handler(Some(note_a_is_waiting)).unwrap();
+    let outcome = store(&conn_a).redeem_gift_card("GC-RD-R1", 30000, "sale-rd-a", None);
+    rival.join().unwrap();
+
+    assert!(
+        A_IS_WAITING.load(std::sync::atomic::Ordering::SeqCst),
+        "the losing redemption must have BLOCKED on B's write lock first; \
+         it never entered the race window"
+    );
+    let err = outcome.expect_err(
+        "a redemption that lost the race must be refused, not silently overdraw the card",
+    );
+    assert!(
+        matches!(
+            err,
+            CoreError::Validation {
+                field: "current_balance_minor",
+                ..
+            }
+        ),
+        "expected the balance Validation for the losing redemption, got: {err}"
+    );
+
+    // The money fact that matters: B's deduction is the ONLY one that landed.
+    let balance = store(&conn_a)
+        .get_gift_card_balance("GC-RD-R1")
+        .unwrap()
+        .unwrap()
+        .0;
+    assert_eq!(
+        balance, 20000,
+        "only the rival's deduction may be applied; a double-spend leaves the card short"
+    );
+
+    // And no ledger row was written for the refused redemption.
+    let rows: i64 = conn_a
+        .query_row(
+            "SELECT COUNT(*) FROM gift_card_transactions WHERE sale_id = 'sale-rd-a'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(rows, 0, "a refused redemption must not write a ledger row");
+
+    drop(conn_a);
+}
+
+/// The CORE currency guard, which the UI guard cannot substitute for.
+///
+/// Both redeem and top-up used to take a bare amount_minor: i64 with no currency
+/// argument and no comparison against the card's stored currency -- the only money
+/// writer in the crate that did not check. receivables.rs:263, payables.rs:225 and
+/// refunds.rs:111 all refuse a mismatch server-side; this pins the same rule here.
+///
+/// Both directions are asserted, because a guard that refuses EVERYTHING would also
+/// pass a refusal-only test.
+#[test]
+fn redeem_and_top_up_refuse_a_mismatched_currency() {
+    let conn = fresh();
+    seed_card(&conn, "GC-CUR-1");
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at, subtotal_minor, tax_total_minor)
+         VALUES ('sale-cur-1', 30000, 'IDR', 0, 'completed', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', 30000, 0)",
+        [],
+    )
+    .unwrap();
+
+    // seed_card issues in IDR; re-denominate the row in KWD, a 3-decimal currency, so a
+    // 0-decimal caller's integer would be debited as-is (10000 IDR -> 10000 KWD minor).
+    conn.execute(
+        "UPDATE gift_cards SET currency = 'KWD' WHERE card_number = 'GC-CUR-1'",
+        [],
+    )
+    .unwrap();
+
+    let err = store(&conn)
+        .redeem_gift_card("GC-CUR-1", 10000, "sale-cur-1", Some("IDR"))
+        .expect_err("a redeem in a different currency than the card must be refused");
+    assert!(
+        matches!(err, CoreError::CurrencyMismatch(..)),
+        "expected CurrencyMismatch, got: {err}"
+    );
+
+    let err = store(&conn)
+        .top_up_gift_card("GC-CUR-1", 10000, Some("IDR"))
+        .expect_err("a top-up in a different currency than the card must be refused");
+    assert!(
+        matches!(err, CoreError::CurrencyMismatch(..)),
+        "expected CurrencyMismatch, got: {err}"
+    );
+
+    // Neither refusal may have moved the balance.
+    let balance = store(&conn)
+        .get_gift_card_balance("GC-CUR-1")
+        .unwrap()
+        .unwrap()
+        .0;
+    assert_eq!(
+        balance, 50000,
+        "a refused operation must not touch the balance"
+    );
+
+    // The SAME currency is accepted -- proving the guard compares rather than refuses all.
+    let ok = store(&conn)
+        .top_up_gift_card("GC-CUR-1", 10000, Some("KWD"))
+        .expect("a matching currency must be accepted");
+    assert_eq!(ok.card.current_balance_minor, 60000);
 }

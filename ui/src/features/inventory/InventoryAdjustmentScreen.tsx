@@ -77,7 +77,7 @@ export default function InventoryAdjustmentScreen() {
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-    // sessionToken is read at :66 (from useWorkspace() at :52). Because :85 is
+    // sessionToken is read at :67 (from useWorkspace() at :53). Because :84 is
     // `useEffect(..., [load])`, load's identity is what triggers a refetch -- with the token
     // missing, switching stores left this screen listing the previous store's products until a
     // manual reload.
@@ -127,8 +127,25 @@ export default function InventoryAdjustmentScreen() {
 
   // ── Submit adjustment ─────────────────────────────────────────
 
+  // Re-entry guard for the stock write. `setSaving(true)` is STATE -- React commits it on
+  // its next render, after the second submit of a real double tap. MEASURED: two submits in
+  // one act() batch both reach the handler
+  // (InventoryAdjustmentScreen.test.tsx 'applies a stock adjustment once for a double
+  // submit'), and both are SENT.
+  //
+  // Unlike the refused-replay screens, the backend does NOT refuse this. An adjustment is a
+  // RELATIVE delta: `adjust_stock_at_location_with_reason` mints a FRESH movement id and
+  // INSERTs a delta row, then computes `new_qty = current_qty + delta`
+  // (crates/kasirmu-core/src/db/products_stock_adjust/adjust.rs:259-271). There is no key to
+  // replay against, so two submissions credit the quantity twice -- a silent stock gain or
+  // loss that only a physical count catches, and which then feeds the NEXT adjustment's
+  // arithmetic. A ref, not the state, because only the ref is authoritative at the moment
+  // the second submit runs.
+  const submitPendingRef = useRef(false);
   const handleSubmit = useCallback(async () => {
     if (!selectedProduct) return;
+    if (submitPendingRef.current) return;
+    submitPendingRef.current = true;
 
     const qty = Number(quantity);
     if (!Number.isInteger(qty) || qty <= 0) {
@@ -169,13 +186,14 @@ export default function InventoryAdjustmentScreen() {
     } catch (err) {
       setError(l10nErrorMessage(err, l10n, 'inv-error-generic'));
     } finally {
+      submitPendingRef.current = false;
       setSaving(false);
     }
-    // sessionToken is read at :152 by adjustStockScoped -- a write that changes stock counts.
+    // sessionToken is read at :174 by adjustStockScoped -- a write that changes stock counts.
     // With the token missing from this array, an adjustment submitted after a cashier hot-swap
     // presented the destroyed session, so the write failed (or, if the old session were still
     // live, adjusted the wrong store's stock) while the form looked like any other retryable
-    // error. :163 also awaits load(), which now refreshes for the same session.
+// error. The reload below also awaits load(), which now refreshes for the same session.
   }, [selectedProduct, quantity, adjustmentType, reason, customReason, load, l10n, sessionToken]);
 
   // ── Stock status helpers ──────────────────────────────────────

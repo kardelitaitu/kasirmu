@@ -25,6 +25,7 @@ import { usePagedList } from '@/hooks/usePagedList';
 import { formatMoney } from '@/types/domain';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { asArray } from '@/utils/ipc-payload';
+import KasbonSettlementModal from './KasbonSettlementModal';
 import './CustomerManagementScreen.css';
 
 // ── Form state ──────────────────────────────────────────────────────
@@ -129,6 +130,7 @@ export default function CustomerManagementScreen() {
   } = usePagedList(customers);
   // CUST-05: read-only history modal state.
   const [historyTarget, setHistoryTarget] = useState<CustomerDto | null>(null);
+  const [kasbonTarget, setKasbonTarget] = useState<CustomerDto | null>(null);
   const [history, setHistory] = useState<CustomerHistory | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState(false);
@@ -207,7 +209,12 @@ export default function CustomerManagementScreen() {
         setLoadError(
           requiredLocalized(l10nRef.current, 'customer-mgmt-error-load'),
         );
+        // CLEAR BOTH. Emptying the rows without clearing `searchTotal` fell past the
+        // load-error card into "No customers match your search." — a confident negative
+        // from a read that never answered — and left the summary printing an old total
+        // ("Showing 0 of 120 customers") as current. An UNKNOWN search has no total.
         setCustomers([]);
+        setSearchTotal(null);
       } finally {
         if (seq === searchSeqRef.current) {
           setSearching(false);
@@ -337,6 +344,18 @@ export default function CustomerManagementScreen() {
 
   // ── Save / Update ──────────────────────────────────────────────
 
+  // Re-entry guard for the create/update write. The handler awaits an IPC round trip and
+  // the only thing stopping a second submit is the `saving` flag, which React commits on
+  // its NEXT render -- after the second dispatch of a real double tap. MEASURED: two
+  // clicks in one act() batch both reach this handler
+  // (CustomerManagementScreen.test.tsx 'creates a customer once for a double submit').
+  //
+  // The server does not backstop the create: core `create_customer` mints a fresh
+  // `uuid::Uuid::now_v7()` per call (crates/kasirmu-core/src/db/customers.rs:228) and INSERTs
+  // unconditionally, with no unique constraint on name -- so a double submit stores TWO
+  // customers with the same name and loyalty ledger. A ref, not the state, because only
+  // the ref is authoritative at the moment the second submit runs.
+  const savePendingRef = useRef(false);
   const handleSave = useCallback(async () => {
     // CUST-09: validate every field before any IPC round trip — the modal
     // stays open and the offending field is flagged with aria-invalid.
@@ -351,6 +370,8 @@ export default function CustomerManagementScreen() {
       return;
     }
 
+    if (savePendingRef.current) return;
+    savePendingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -376,6 +397,7 @@ export default function CustomerManagementScreen() {
       setError(requiredLocalized(l10n, 'customer-mgmt-error-save-failed'));
       void err;
     } finally {
+      savePendingRef.current = false;
       setSaving(false);
     }
   }, [form, editingId, closeModal, load, sessionToken, l10n]);
@@ -600,6 +622,15 @@ export default function CustomerManagementScreen() {
                     {customer.notes || '\u2014'}
                   </td>
                   <td className="customer-mgmt-cell-actions">
+                    <Localized id="customer-mgmt-kasbon-aria" attrs={{ 'aria-label': true }} vars={{ name: customer.name }}>
+                      <button
+                        type="button"
+                        className="customer-mgmt-action-btn"
+                        onClick={() => setKasbonTarget(customer)}
+                      >
+                        <Localized id="customer-mgmt-kasbon"><span>Kasbon</span></Localized>
+                      </button>
+                    </Localized>
                     <Localized id="customer-mgmt-history-aria" attrs={{ 'aria-label': true }} vars={{ name: customer.name }}>
                       <button
                         type="button"
@@ -888,6 +919,15 @@ export default function CustomerManagementScreen() {
             </div>
           </div>
         </div>
+      )}
+
+      {kasbonTarget && (
+        <KasbonSettlementModal
+          customer={kasbonTarget}
+          sessionToken={sessionToken}
+          onClose={() => setKasbonTarget(null)}
+          numLocale={numLocale}
+        />
       )}
     </div>
   );

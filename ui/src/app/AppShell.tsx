@@ -727,19 +727,8 @@ export default function AppShell() {
           {bootBadges}
           <div className="workspace-fullscreen">
             <div className="kds-workspace">
-              <div className="kds-workspace-header">
-                { }
-                <button
-                  className="kds-workspace-back"
-                  onClick={() => handleNavigate('sales')}
-                >
-                  <Localized id="back">
-                    <span>&larr; Back</span>
-                  </Localized>
-                </button>
-              </div>
               <LazyBoundary>
-                <KdsScreen />
+                <KdsScreen onBack={() => handleNavigate('sales')} />
               </LazyBoundary>
             </div>
           </div>
@@ -771,19 +760,8 @@ export default function AppShell() {
           {bootBadges}
           <div className="workspace-fullscreen">
             <div className="kds-workspace">
-              <div className="kds-workspace-header">
-                { }
-                <button
-                  className="kds-workspace-back"
-                  onClick={() => handleNavigate('products')}
-                >
-                  <Localized id="back">
-                    <span>&larr; Back</span>
-                  </Localized>
-                </button>
-              </div>
               <LazyBoundary>
-                <KdsScreen />
+                <KdsScreen onBack={() => handleNavigate('products')} />
               </LazyBoundary>
             </div>
           </div>

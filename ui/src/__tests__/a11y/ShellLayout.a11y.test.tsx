@@ -10,12 +10,13 @@
 //! coverage").
 //!
 //! Colour contrast stays disabled here: jsdom has no rendering engine, so
-//! computed colours are not meaningful; contrast is covered by the E2E suite
-//! (documented exception, tracked against the audit's expiry guidance).
+//! computed colours are not meaningful; contrast is graded directly on the
+//! token pairs by colorContrastCompliance.test.ts (documented exception,
+//! tracked against the audit's expiry guidance).
 
-import { describe, it, vi } from 'vitest';
+import { beforeAll, describe, it, vi } from 'vitest';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
-import { checkA11y } from './axe-helper';
+import { checkA11yDocument } from './axe-helper';
 import AppLayout from '@/app/AppLayout';
 import TabletAppLayout from '@/app/tablet/TabletAppLayout';
 import { Modal } from '@/components/Modal';
@@ -59,19 +60,26 @@ const SHELL_GLOBAL_RULES = {
   },
 };
 
+// jsdom's <html> has no lang, which makes axe's `html-has-lang` fire on every
+// document-scoped run. That is a property of the test document, not of the
+// component, so declare the language once here rather than muting a real rule.
+beforeAll(() => {
+  document.documentElement.lang = 'en';
+});
+
 describe('Desktop shell (AppLayout) — global axe rules', () => {
   it('has exactly one main landmark and no landmark/heading/region violations', async () => {
-    const { container } = await renderWithProviders(
+    await renderWithProviders(
       <AppLayout route="products" onNavigate={() => {}}>
         <h1>Products</h1>
         <p>Page content</p>
       </AppLayout>,
     );
-    await checkA11y(container, SHELL_GLOBAL_RULES);
+    await checkA11yDocument(SHELL_GLOBAL_RULES);
   });
 
   it('has no violations in a modal-open state (focus trap + aria-modal active)', async () => {
-    const { container } = await renderWithProviders(
+    await renderWithProviders(
       <AppLayout route="products" onNavigate={() => {}}>
         <h1>Products</h1>
         <Modal open onClose={() => {}} title="Confirm action">
@@ -79,18 +87,18 @@ describe('Desktop shell (AppLayout) — global axe rules', () => {
         </Modal>
       </AppLayout>,
     );
-    await checkA11y(container, SHELL_GLOBAL_RULES);
+    await checkA11yDocument(SHELL_GLOBAL_RULES);
   });
 });
 
 describe('Tablet shell (TabletAppLayout) — global axe rules', () => {
   it('has a main landmark and a labelled navigation landmark for the tab bar', async () => {
-    const { container } = await renderWithProviders(
+    await renderWithProviders(
       <TabletAppLayout route="products" onNavigate={() => {}}>
         <h1>Products</h1>
         <p>Page content</p>
       </TabletAppLayout>,
     );
-    await checkA11y(container, SHELL_GLOBAL_RULES);
+    await checkA11yDocument(SHELL_GLOBAL_RULES);
   });
 });

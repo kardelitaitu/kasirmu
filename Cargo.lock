@@ -3330,6 +3330,7 @@ dependencies = [
  "http-body-util",
  "jsonwebtoken",
  "kasirmu-core",
+ "kasirmu-test-support",
  "modules-currency",
  "rusqlite",
  "serde",
@@ -3367,6 +3368,7 @@ dependencies = [
  "kasirmu-plugin",
  "kasirmu-reporting",
  "kasirmu-security",
+ "kasirmu-test-support",
  "modules-crm",
  "modules-currency",
  "modules-inventory",
@@ -3419,6 +3421,7 @@ dependencies = [
  "kasirmu-plugin",
  "kasirmu-reporting",
  "kasirmu-security",
+ "kasirmu-test-support",
  "lettre",
  "modules-currency",
  "platform-core",
@@ -3451,6 +3454,7 @@ dependencies = [
  "foundation",
  "kasirmu-core",
  "kasirmu-security",
+ "kasirmu-test-support",
  "rand 0.8.6",
  "rusqlite",
  "serde",
@@ -3479,6 +3483,7 @@ dependencies = [
  "kasirmu-core",
  "kasirmu-logging",
  "kasirmu-payment",
+ "kasirmu-test-support",
  "lettre",
  "platform-sync",
  "prometheus",
@@ -3516,6 +3521,7 @@ dependencies = [
  "foundation",
  "hex",
  "kasirmu-crypto",
+ "kasirmu-test-support",
  "lettre",
  "mdns-sd",
  "modules-currency",
@@ -3592,6 +3598,7 @@ dependencies = [
  "chrono",
  "kasirmu-api",
  "kasirmu-core",
+ "kasirmu-test-support",
  "platform-core",
  "rand 0.8.6",
  "reqwest 0.12.28",
@@ -3609,6 +3616,7 @@ version = "0.0.41"
 dependencies = [
  "chrono",
  "filetime",
+ "kasirmu-test-support",
  "thiserror 1.0.69",
  "tracing",
  "tracing-appender",
@@ -3656,6 +3664,7 @@ dependencies = [
  "kasirmu-plugin",
  "kasirmu-reporting",
  "kasirmu-security",
+ "kasirmu-test-support",
  "modules-crm",
  "modules-currency",
  "modules-inventory",
@@ -3721,6 +3730,7 @@ dependencies = [
  "kasirmu-core",
  "kasirmu-hal",
  "once_cell",
+ "rand 0.8.6",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -3739,6 +3749,7 @@ dependencies = [
  "chrono",
  "hex",
  "kasirmu-lua",
+ "kasirmu-test-support",
  "mlua",
  "rand 0.8.6",
  "regex",
@@ -3773,6 +3784,7 @@ version = "0.0.41"
 dependencies = [
  "chrono",
  "hex",
+ "kasirmu-test-support",
  "rand 0.8.6",
  "security-framework",
  "serde",
@@ -3782,6 +3794,14 @@ dependencies = [
  "windows-sys 0.59.0",
  "zbus",
  "zeroize",
+]
+
+[[package]]
+name = "kasirmu-test-support"
+version = "0.0.41"
+dependencies = [
+ "tempfile",
+ "uuid",
 ]
 
 [[package]]
@@ -5238,6 +5258,7 @@ dependencies = [
  "chrono",
  "hex",
  "kasirmu-crypto",
+ "kasirmu-test-support",
  "rusqlite",
  "serde",
  "serde_json",
@@ -5263,9 +5284,9 @@ version = "0.0.41"
 dependencies = [
  "anyhow",
  "foundation",
+ "kasirmu-test-support",
  "serde",
  "serde_json",
- "tempfile",
  "thiserror 1.0.69",
  "tracing",
 ]
@@ -5281,6 +5302,7 @@ dependencies = [
  "kasirmu-core",
  "kasirmu-hal",
  "kasirmu-notification",
+ "kasirmu-test-support",
  "modules-crm",
  "modules-currency",
  "modules-giftcards",
@@ -5316,6 +5338,7 @@ dependencies = [
  "deadpool-postgres",
  "foundation",
  "kasirmu-core",
+ "kasirmu-test-support",
  "proptest",
  "rand 0.8.6",
  "reqwest 0.12.28",

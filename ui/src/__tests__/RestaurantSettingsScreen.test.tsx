@@ -89,7 +89,128 @@ describe('RestaurantSettingsScreen', () => {
     expect(screen.getByTestId('setting-toggle-sound-chime')).toBeInTheDocument();
     expect(screen.getByTestId('setting-toggle-interaction-sound')).toBeInTheDocument();
     expect(screen.getByTestId('setting-toggle-interaction-vibration')).toBeInTheDocument();
+    // The four newest toggles. They were rendered but unasserted: this list stopped at
+    // ten while the model held thirteen, so a toggle could stop rendering and the case
+    // would stay green. Named here AND covered exhaustively by the case below, which
+    // derives the whole set from RESTAURANT_SETTING_SPECS so a fourteenth cannot slip
+    // in unasserted the way these four did.
+    expect(screen.getByTestId('setting-toggle-print-bill-action')).toBeInTheDocument();
+    expect(screen.getByTestId('setting-toggle-table-transfer')).toBeInTheDocument();
+    expect(screen.getByTestId('setting-toggle-dispatch-on-tab-save')).toBeInTheDocument();
+    expect(screen.getByTestId('setting-toggle-split-bill-by-item')).toBeInTheDocument();
     expect(screen.getByText(/Mobile\/Tablet only \(not on Win\/Linux\/Mac\)/i)).toBeInTheDocument();
+  });
+
+  // ── Every toggle the model declares is actually ON SCREEN ──────────────
+  //
+  // WHY THIS IS DERIVED RATHER THAN LISTED. The case above names its toggles by hand
+  // and had drifted: it asserted ten while `RESTAURANT_SETTING_SPECS` — and the type
+  // it feeds — held THIRTEEN. Four toggles were being rendered with nothing asserting
+  // they render, which is the same shape as the stale "The ten DB-backed toggles"
+  // comment on that model. A hand-written list cannot notice a member it never had.
+  //
+  // The mapping from spec to testid is mechanical — `printBillAction` ->
+  // `setting-toggle-print-bill-action` — so it is computed here and checked against
+  // the DOM. A spec added to the model with no toggle on screen now fails, and so does
+  // a toggle whose testid stops matching its field.
+  //
+  // The kebab conversion is pinned by the FIRST assertion, not assumed: it is checked
+  // against a toggle this suite already relies on, so a change to the naming convention
+  // fails loudly here rather than silently testing the wrong ids.
+  it('renders one toggle for EVERY setting the model declares', async () => {
+    const kebab = (field: string) => field.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+    // Pin the conversion itself against a known pair before trusting it.
+    expect(kebab('customerName'), 'the field->testid conversion changed; re-derive it').toBe('customer-name');
+    expect(kebab('dispatchOnTabSave')).toBe('dispatch-on-tab-save');
+
+    // ONE field whose testid is not its kebab-cased field name: the order-type toggle
+    // is `setting-toggle-order-type`, not `setting-toggle-order-type-prompt`. Found by
+    // this very case on its first run -- the derivation flagged it, which is the horn
+    // working.
+    //
+    // It is recorded as an ALIAS rather than "fixed" by renaming the testid: the id is
+    // what one existing assertion and any future spec would reference, and renaming it
+    // for cosmetics buys nothing while costing a source change plus a test change. The
+    // DB key behind it (`restaurant.order_type_prompt`) and the field (`orderTypePrompt`)
+    // are both correct; only the testid is abbreviated. The alias map is also honest
+    // about its own limits -- one entry, pinned against a field that does NOT convert, so
+    // a second irregular name cannot quietly join it: its entry would fail to match the
+    // DOM and be reported, exactly as this one was.
+    const TESTID_OVERRIDES: Record<string, string> = {
+      orderTypePrompt: 'setting-toggle-order-type',
+    };
+    const testIdFor = (field: string) =>
+      TESTID_OVERRIDES[field] ?? 'setting-toggle-' + kebab(field);
+
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.queryByText(/Loading/i)).toBeNull();
+    });
+
+    const missing = RESTAURANT_SETTING_SPECS
+      .map((s) => testIdFor(s.field))
+      .filter((id) => screen.queryByTestId(id) === null);
+
+    expect(
+      missing,
+      'these model settings have no toggle on screen. Either the control was dropped ' +
+        'or its testid no longer matches its field name — both leave the operator ' +
+        'unable to set a value the POS reads.',
+    ).toEqual([]);
+
+    // And the denominator is real: this many specs were actually checked. Without it a
+    // spec list that collapsed to empty would make the assertion above vacuously pass.
+    expect(RESTAURANT_SETTING_SPECS.length).toBeGreaterThanOrEqual(13);
+  });
+
+  // ── The four toggles nothing asserted round-trip to their DB keys ──────
+  //
+  // CLOSES the same gap on the WRITE side. Before this case, four of the thirteen
+  // toggles (`printBillAction`, `tableTransfer`, `dispatchOnTabSave`,
+  // `splitBillByItem`) had no assertion anywhere in the repo: the model suite proved
+  // their keys and defaults, and `restaurantToggleFailDirection` proved their
+  // consumers read them fail-safe — but nothing proved the CONTROL writes one.
+  //
+  // The distinction is not academic here. `restaurant.dispatch_on_tab_save` is the
+  // key round 50 of todo-restaurant-pos-reliability.md records as DELIBERATELY
+  // IMPLEMENTED in PosScreen (commit 9377011c6) after a period as a dead key, and
+  // `restaurant.print_bill_action` / `table_transfer` are read by
+  // `TableManagementScreen.tsx:209,212`. So each has a live consumer on the other end
+  // of a wire that no test crossed end to end.
+  //
+  // The assertion is on the SAVE PAYLOAD, not the switch's `aria-checked`. Toggling
+  // flips the local state either way, so an `aria-checked` read would pass against a
+  // broken `handleSave` — the round-229/230 pairing rule, and round 288's own lesson
+  // on the Stripe selects one screen over.
+  it('writes the four formerly-unasserted toggles to their DB keys on Save', async () => {
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByTestId('setting-toggle-customer-name')).toBeInTheDocument();
+    });
+
+    // Flip each away from its default (all four default to TRUE in the model), so a
+    // write that silently re-sent the default cannot satisfy the assertion.
+    for (const id of [
+      'setting-toggle-print-bill-action',
+      'setting-toggle-table-transfer',
+      'setting-toggle-dispatch-on-tab-save',
+      'setting-toggle-split-bill-by-item',
+    ]) {
+      fireEvent.click(screen.getByTestId(id));
+    }
+
+    fireEvent.click(screen.getByTestId('restaurant-settings-save-btn'));
+
+    await waitFor(() => {
+      expect(mocks.setSettings).toHaveBeenCalled();
+    });
+    const written = mocks.setSettings.mock.calls.at(-1)?.[1] as Record<string, string>;
+
+    // Every one of the four, asserted individually so a missing key names itself.
+    expect(written['restaurant.print_bill_action'], 'print_bill_action not written').toBe('false');
+    expect(written['restaurant.table_transfer'], 'table_transfer not written').toBe('false');
+    expect(written['restaurant.dispatch_on_tab_save'], 'dispatch_on_tab_save not written').toBe('false');
+    expect(written['restaurant.split_bill_by_item'], 'split_bill_by_item not written').toBe('false');
   });
 
   it('reflects loaded settings in switch roles', async () => {
@@ -392,5 +513,33 @@ describe('RestaurantSettingsScreen', () => {
     fireEvent.click(screen.getByTestId('restaurant-settings-back-btn'));
     fireEvent.click(screen.getByTestId('unsaved-dialog-discard'));
     expect(onBack).toHaveBeenCalled();
+  });
+
+  // ── The KEYBOARD path, which every case above missed ─────────────────
+  //
+  // The cases above drive the BACK BUTTON. Escape is the path an operator actually
+  // uses at a till and it is a DIFFERENT code path: the button calls
+  // `handleRequestBack` directly, while Escape goes through a `document`-level
+  // listener that competes with `PosScreen`'s own Escape cascade
+  // (`PosScreen.tsx:2003`). Measured 2026-10-18: this screen had ZERO Escape
+  // coverage, so only a manual run asserted the race.
+  it('opens the unsaved-changes dialog on Escape, not just on the back button', async () => {
+    const onBack = vi.fn();
+    await renderScreen({ onBack });
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Loading/i)).toBeNull();
+    });
+
+    fireEvent.click(screen.getByTestId('setting-toggle-save-tab'));
+    // Dispatch from an ELEMENT, not `document`: the handler calls `e.target.closest(...)`,
+    // and a document node has no `closest`.
+    fireEvent.keyDown(screen.getByTestId('restaurant-settings-back-btn'), { key: 'Escape' });
+
+    expect(
+      screen.getByTestId('unsaved-dialog-discard'),
+      'Escape must reach this screen own handler, not the parent cascade',
+    ).toBeInTheDocument();
+    expect(onBack, 'a dirty screen must not leave without asking').not.toHaveBeenCalled();
   });
 });

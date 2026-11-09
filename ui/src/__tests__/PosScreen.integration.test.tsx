@@ -49,11 +49,13 @@
 // The line reference in the old note had also drifted (`:668-672` -> `:1386-1392`).
 //
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { act } from 'react';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { act, StrictMode } from 'react';
 import { screen, waitFor, fireEvent } from '@testing-library/react';
+import { CurrencyProvider } from '@/contexts/CurrencyContext';
+import * as currencyApi from '@/api/currency';
 import userEvent from '@testing-library/user-event';
-import { renderWithProviders } from '@/__tests__/test-utils/render';
+import { renderWithProviders, rerenderWithProviders } from '@/__tests__/test-utils/render';
 import salesFtl from '@/locales/sales.ftl?raw';
 import productsFtl from '@/locales/products.ftl?raw';
 import inventoryFtl from '@/locales/inventory.ftl?raw';
@@ -66,6 +68,21 @@ import type * as HardwareModule from '@/api/hardware';
 import { mockedBarcode } from '@/__tests__/test-utils/mocks/barcodeScanner';
 
 // ── Shared mock setup ────────────────────────────────────────────────
+
+// Spread the REAL module and override only the two bootstrap reads. A partial mock
+// here silently removes every other export — the payment path calls
+// `listCurrenciesScoped`, and a mock missing it throws inside the modal's render
+// ("No listCurrenciesScoped export is defined"), which reads as a broken Charge
+// button rather than a broken mock.
+vi.mock('@/api/currency', async () => {
+  // eslint-disable-next-line @typescript-eslint/consistent-type-imports
+  const actual = await vi.importActual<typeof import('@/api/currency')>('@/api/currency');
+  return {
+    ...actual,
+    getDefaultCurrency: vi.fn(() => Promise.resolve('IDR')),
+    getDefaultCurrencyScoped: vi.fn(() => Promise.resolve('IDR')),
+  };
+});
 
 vi.mock('@/api/hardware', async () => {
   const actual = await vi.importActual<typeof HardwareModule>('@/api/hardware');
@@ -153,11 +170,6 @@ vi.mock('@/api/products', () => ({
   updateProduct: vi.fn(),
   deleteProduct: vi.fn(),
   adjustStock: vi.fn(),
-  listProductVariants: vi.fn(() => Promise.resolve([])),
-  getProductVariant: vi.fn(() => Promise.resolve(null)),
-  createProductVariant: vi.fn(),
-  updateProductVariant: vi.fn(),
-  deleteProductVariant: vi.fn(),
   createCategory: vi.fn(),
   deleteCategory: vi.fn(),
 }));
@@ -201,6 +213,13 @@ vi.mock('@/contexts/AuthContext', async () => {
   };
 });
 
+// The POS keys are store-scoped, and the scope CHANGES during a normal boot: the context
+// seeds `resolvedStoreId` to 'default' and only later replaces it with the device's bound
+// store. A frozen 'default' literal here cannot observe that transition at all, so the
+// scope-migration case below needs to move it. Every other case in this file still sees the
+// literal it always did, because nothing mutates this object unless a test asks to.
+const mutableWorkspace = { resolvedStoreId: 'default' };
+
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({
     activeWorkspace: 'store-pos',
@@ -214,7 +233,7 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
     retry: vi.fn(),
     lastWorkspace: null,
     switchStore: vi.fn(),
-    resolvedStoreId: 'default',
+    resolvedStoreId: mutableWorkspace.resolvedStoreId,
     sessionToken: 'mock-session-token',
     swapSessionToken: vi.fn(),
     terminalId: '',
@@ -538,7 +557,7 @@ describe('PosScreen — Cart locked persistence', () => {
   it('restores cart from localStorage on mount', async () => {
     const savedCart = {
       lines: [
-        { sku: 'ITEM-001', name: 'Item 1', category: 'Test', qty: 2, unit_price: { minor_units: 400, currency: 'USD' } },
+        { sku: 'ITEM-001', name: 'Item 1', category: 'Test', qty: 2, unit_price: { minor_units: 400, currency: 'IDR' } },
       ],
       discountPercent: 10,
       discountLabel: 'Test Discount',
@@ -565,12 +584,17 @@ describe('PosScreen — Cart locked persistence', () => {
       expect(screen.getByTestId('cart-panel-line-item')).toBeInTheDocument();
     });
 
+    // The discount row lives in the cart footer's options section, which starts
+    // COLLAPSED and is MOUNTED ONLY WHILE OPEN (CartFooterTotals.tsx) — so the
+    // restored cart's discount is not queryable until it is expanded.
+    await userEvent.click(screen.getByRole('button', { name: /expand options/i }));
+
     expect(screen.getByText(/discount|diskon/i)).toBeInTheDocument();
   });
 
   it('clears localStorage after successful restore', async () => {
     const savedCart = {
-      lines: [{ sku: 'ITEM-001', name: 'Item 1', category: 'Test', qty: 1, unit_price: { minor_units: 400, currency: 'USD' } }],
+      lines: [{ sku: 'ITEM-001', name: 'Item 1', category: 'Test', qty: 1, unit_price: { minor_units: 400, currency: 'IDR' } }],
       discountPercent: 5,
       discountLabel: '',
       tipPercent: 0,
@@ -771,7 +795,20 @@ describe('PosScreen — Keyboard navigation (↑/↓/+/-/Del/Enter)', () => {
     expect(firstLine).toBeInTheDocument();
   });
 
-  it('- key triggers handler on focused line', async () => {
+  // ── The '-' key on a quantity-1 line DELETES that line ───────────────
+  //
+  // This case used to assert `expect(firstLine).toBeInTheDocument()` after the
+  // keypress, which is the wrong claim and was only ever true because the old
+  // `updateQty(id, -1)` was rejected by its own `qty <= 0` guard -- so the tap
+  // silently did nothing and the row stayed. `changeQty(lineId, -1)` (rounds
+  // 89-92) resolves the delta inside the `setLines` updater and filters a line
+  // whose qty reaches 0, which is the correct till behaviour: decrementing the
+  // last unit removes the row rather than leaving a 0-quantity line.
+  //
+  // The panel must stay alive -- that is the original claim, restated -- and the
+  // line count must drop from 2 to 1. A regression to the no-op form would leave
+  // 2 rows, so this case is now directional rather than merely non-throwing.
+  it('- key decrements, and removes the line at its last unit', async () => {
     await addTwoProducts();
 
     const firstLine = screen.getAllByTestId('cart-panel-line-item')[0]!;
@@ -780,8 +817,13 @@ describe('PosScreen — Keyboard navigation (↑/↓/+/-/Del/Enter)', () => {
       fireEvent.keyDown(firstLine, { key: '-' });
     });
 
-    // Handler should not throw
-    expect(firstLine).toBeInTheDocument();
+    // The cart panel survives: a throw inside the handler would unmount it.
+    expect(screen.getByRole('region', { name: /cart/i })).toBeInTheDocument();
+    // And the line is gone rather than stranded at zero.
+    await waitFor(() => {
+      expect(screen.getAllByTestId('cart-panel-line-item')).toHaveLength(1);
+    });
+    expect(screen.queryByTestId('cart-panel-line-item')).not.toBeNull();
   });
 
   it('Delete key triggers remove line handler', async () => {
@@ -833,6 +875,10 @@ describe('PosScreen — Keyboard navigation (↑/↓/+/-/Del/Enter)', () => {
   it('does not navigate when typing in input fields', async () => {
     await addTwoProducts();
 
+    // Open the options section first: the discount button lives in it and the
+    // section is mounted only while open (CartFooterTotals.tsx).
+    await userEvent.click(screen.getByRole('button', { name: /expand options/i }));
+
     // Open discount input
     const discountBtn = screen.getByRole('button', { name: /discount/i });
     await userEvent.click(discountBtn);
@@ -866,8 +912,20 @@ describe('PosScreen — Discount input flow (apply/cancel/validation)', () => {
     });
   }
 
-  it('opens discount input form when Add Discount button clicked', async () => {
+  // Same as setupCart, then opens the cart footer's options section.
+  //
+  // The tip segments and the service-charge toggle live inside that section,
+  // which the screen starts COLLAPSED and which is MOUNTED ONLY WHILE OPEN
+  // (CartFooterTotals.tsx). While it is shut those controls do not exist in the
+  // DOM at all, so a case that drives one of them must expand it first — the
+  // cashier's own first action, taken here once rather than in every case.
+  async function setupCartWithOptionsOpen() {
     await setupCart();
+    await userEvent.click(screen.getByRole('button', { name: /expand options/i }));
+  }
+
+  it('opens discount input form when Add Discount button clicked', async () => {
+    await setupCartWithOptionsOpen();
 
     const discountBtn = screen.getByRole('button', { name: /discount/i });
     await userEvent.click(discountBtn);
@@ -887,7 +945,7 @@ describe('PosScreen — Discount input flow (apply/cancel/validation)', () => {
   });
 
   it('applies discount when valid percentage entered and Apply clicked', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const discountBtn = screen.getByRole('button', { name: /discount/i });
     await userEvent.click(discountBtn);
@@ -907,7 +965,7 @@ describe('PosScreen — Discount input flow (apply/cancel/validation)', () => {
   });
 
   it('closes discount form without applying when Cancel clicked', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const discountBtn = screen.getByRole('button', { name: /discount/i });
     await userEvent.click(discountBtn);
@@ -925,7 +983,7 @@ describe('PosScreen — Discount input flow (apply/cancel/validation)', () => {
   });
 
   it('disables Apply button for invalid percentage (< 1)', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const discountBtn = screen.getByRole('button', { name: /discount/i });
     await userEvent.click(discountBtn);
@@ -938,7 +996,7 @@ describe('PosScreen — Discount input flow (apply/cancel/validation)', () => {
   });
 
   it('disables Apply button for invalid percentage (> 100)', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const discountBtn = screen.getByRole('button', { name: /discount/i });
     await userEvent.click(discountBtn);
@@ -951,7 +1009,7 @@ describe('PosScreen — Discount input flow (apply/cancel/validation)', () => {
   });
 
   it('prevents non-integer percentage input', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const discountBtn = screen.getByRole('button', { name: /discount/i });
     await userEvent.click(discountBtn);
@@ -966,7 +1024,7 @@ describe('PosScreen — Discount input flow (apply/cancel/validation)', () => {
   });
 
   it('disables Apply button when input is empty', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const discountBtn = screen.getByRole('button', { name: /discount/i });
     await userEvent.click(discountBtn);
@@ -978,7 +1036,7 @@ describe('PosScreen — Discount input flow (apply/cancel/validation)', () => {
   });
 
   it('clears discount when Clear Discount button clicked', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     // First apply a discount
     const discountBtn = screen.getByRole('button', { name: /discount/i });
@@ -1005,7 +1063,7 @@ describe('PosScreen — Discount input flow (apply/cancel/validation)', () => {
   });
 
   it('shows discount label when applied', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const discountBtn = screen.getByRole('button', { name: /discount/i });
     await userEvent.click(discountBtn);
@@ -1025,7 +1083,7 @@ describe('PosScreen — Discount input flow (apply/cancel/validation)', () => {
   });
 
   it('shows percentage as label when no custom label provided', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const discountBtn = screen.getByRole('button', { name: /discount/i });
     await userEvent.click(discountBtn);
@@ -1059,8 +1117,20 @@ describe('PosScreen — Tip segments (0/15/18/20%)', () => {
     });
   }
 
-  it('shows tip segment buttons (None, 15%, 18%, 20%)', async () => {
+  // Same as setupCart, then opens the cart footer's options section.
+  //
+  // The controls this block drives live inside that section, which the screen
+  // starts COLLAPSED and which is MOUNTED ONLY WHILE OPEN (CartFooterTotals.tsx).
+  // While it is shut they do not exist in the DOM at all, so a case must expand
+  // it first — the cashier's own first action, taken here once rather than in
+  // every case.
+  async function setupCartWithOptionsOpen() {
     await setupCart();
+    await userEvent.click(screen.getByRole('button', { name: /expand options/i }));
+  }
+
+  it('shows tip segment buttons (None, 15%, 18%, 20%)', async () => {
+    await setupCartWithOptionsOpen();
 
     // Check all tip segment buttons are visible (they use aria-label)
     expect(screen.getByLabelText(/no tip/i)).toBeInTheDocument();
@@ -1070,14 +1140,14 @@ describe('PosScreen — Tip segments (0/15/18/20%)', () => {
   });
 
   it('selects None (0%) tip by default', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const noneBtn = screen.getByLabelText(/no tip/i);
     expect(noneBtn).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('selects 15% tip when clicked', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const fifteenBtn = screen.getByLabelText(/set tip to 15 percent/i);
     await userEvent.click(fifteenBtn);
@@ -1087,7 +1157,7 @@ describe('PosScreen — Tip segments (0/15/18/20%)', () => {
   });
 
   it('selects 18% tip when clicked', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const eighteenBtn = screen.getByLabelText(/set tip to 18 percent/i);
     await userEvent.click(eighteenBtn);
@@ -1096,7 +1166,7 @@ describe('PosScreen — Tip segments (0/15/18/20%)', () => {
   });
 
   it('selects 20% tip when clicked', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const twentyBtn = screen.getByLabelText(/set tip to 20 percent/i);
     await userEvent.click(twentyBtn);
@@ -1105,7 +1175,7 @@ describe('PosScreen — Tip segments (0/15/18/20%)', () => {
   });
 
   it('shows tip preview row when tip is selected', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const fifteenBtn = screen.getByLabelText(/set tip to 15 percent/i);
     await userEvent.click(fifteenBtn);
@@ -1117,7 +1187,7 @@ describe('PosScreen — Tip segments (0/15/18/20%)', () => {
   });
 
   it('clears tip preview when None selected', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     // First select a tip
     const fifteenBtn = screen.getByLabelText(/set tip to 15 percent/i);
@@ -1138,7 +1208,7 @@ describe('PosScreen — Tip segments (0/15/18/20%)', () => {
   });
 
   it('updates tip when changing from one percentage to another', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const fifteenBtn = screen.getByLabelText(/set tip to 15 percent/i);
     await userEvent.click(fifteenBtn);
@@ -1175,22 +1245,34 @@ describe('PosScreen — Service charge toggle', () => {
     });
   }
 
-  it('shows service charge toggle button', async () => {
+  // Same as setupCart, then opens the cart footer's options section.
+  //
+  // The controls this block drives live inside that section, which the screen
+  // starts COLLAPSED and which is MOUNTED ONLY WHILE OPEN (CartFooterTotals.tsx).
+  // While it is shut they do not exist in the DOM at all, so a case must expand
+  // it first — the cashier's own first action, taken here once rather than in
+  // every case.
+  async function setupCartWithOptionsOpen() {
     await setupCart();
+    await userEvent.click(screen.getByRole('button', { name: /expand options/i }));
+  }
+
+  it('shows service charge toggle button', async () => {
+    await setupCartWithOptionsOpen();
 
     // Service charge toggle should be visible
     expect(screen.getByLabelText(/toggle service charge/i)).toBeInTheDocument();
   });
 
   it('starts with service charge disabled', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const toggleBtn = screen.getByLabelText(/toggle service charge/i);
     expect(toggleBtn).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('enables service charge when toggle clicked', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const toggleBtn = screen.getByLabelText(/toggle service charge/i);
     await userEvent.click(toggleBtn);
@@ -1199,7 +1281,7 @@ describe('PosScreen — Service charge toggle', () => {
   });
 
   it('disables service charge when toggle clicked again', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const toggleBtn = screen.getByLabelText(/toggle service charge/i);
     await userEvent.click(toggleBtn); // Enable
@@ -1210,7 +1292,7 @@ describe('PosScreen — Service charge toggle', () => {
   });
 
   it('shows service charge preview when enabled', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const toggleBtn = screen.getByLabelText(/toggle service charge/i);
     await userEvent.click(toggleBtn);
@@ -1222,7 +1304,7 @@ describe('PosScreen — Service charge toggle', () => {
   });
 
   it('hides service charge preview when disabled', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const toggleBtn = screen.getByLabelText(/toggle service charge/i);
     await userEvent.click(toggleBtn);
@@ -1241,7 +1323,7 @@ describe('PosScreen — Service charge toggle', () => {
   });
 
   it('shows service charge label with correct percentage', async () => {
-    await setupCart();
+    await setupCartWithOptionsOpen();
 
     const toggleBtn = screen.getByLabelText(/toggle service charge/i);
     // Label should show default percentage (10%)
@@ -1903,5 +1985,322 @@ describe('PosScreen — Sub-screens (Stock Inquiry, Settings)', () => {
     // Since we can't easily test onNavigate callback in this setup,
     // we verify the button exists and click doesn't throw
     expect(settingsBtn).toBeInTheDocument();
+  });
+});
+
+// ── A cart survives the boot-time scope CHANGE ────────────────────────
+//
+// The POS keys are store-scoped, and the scope is not stable during a boot: the context
+// seeds `resolvedStoreId` to 'default' and only later replaces it with the store the
+// device is bound to. Every other suite in this repo mocks a CONSTANT scope, so none of
+// them can observe the transition — which is why a straddled draft went unnoticed.
+//
+// This drives the real effect through a re-render rather than reading the source for a
+// pattern, so it cannot pass on a comment that merely describes the fix.
+describe('PosScreen — a cart survives the boot-time scope change', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    mutableWorkspace.resolvedStoreId = 'default';
+  });
+
+  afterEach(() => {
+    mutableWorkspace.resolvedStoreId = 'default';
+  });
+
+  it('carries the draft into the resolved scope and retires the seeded key', async () => {
+    // A draft written under the scope in effect before the binding resolves. Not a
+    // contrived state: it is what the autosave produces on any boot where the device
+    // binding lands after the first render.
+    const seededKey = 'pos-active-draft:default';
+    const resolvedKey = 'pos-active-draft:store-1';
+    // `lines` must be non-empty: the autosave effect REMOVES the draft key whenever the
+    // in-memory cart is empty (PosScreen.tsx:334), so an empty fixture would be erased by
+    // the POS itself and this case would be asserting the fixture's fate, not the fix's.
+    localStorage.setItem(
+      seededKey,
+      JSON.stringify({
+        lines: [
+          {
+            sku: 'TEST-001',
+            name: 'Test Item',
+            qty: 1,
+            // The store's currency, so the carry this case measures is not cut short by
+            // the currency refusal — that path has its own case below.
+            unit_price: { minor_units: 1000, currency: 'IDR' },
+          },
+        ],
+        tableNumber: 'T7',
+        orderType: 'takeaway',
+      }),
+    );
+
+    const view = await renderPosScreen();
+
+    // The binding resolves while the POS is mounted — the real transition.
+    await act(async () => {
+      mutableWorkspace.resolvedStoreId = 'store-1';
+      rerenderWithProviders(view, <PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl, testPosFtl, testProductsFtl);
+    });
+
+    // The stale scope no longer holds a ticket...
+    await waitFor(() => {
+      expect(localStorage.getItem(seededKey)).toBeNull();
+    });
+    // ...because it was carried into the scope now in effect, not discarded. The cart is
+    // the cashier's unsaved work, so deleting it outright would be the worse bug.
+    await waitFor(() => {
+      const carried = localStorage.getItem(resolvedKey);
+      expect(carried).not.toBeNull();
+      expect(JSON.parse(carried!)).toMatchObject({ tableNumber: 'T7' });
+    });
+  });
+});
+
+// ── A draft must survive the mount that reads it ──────────────────────
+//
+// The plain reload: the scope is ALREADY the resolved store, so nothing migrates. The
+// restore effect (`:281`) reads the draft and calls `setLines`; the autosave effect
+// (`:367`) then runs with the new lines and rewrites the same value. State updates are
+// asynchronous, so the autosave's FIRST pass runs with `lines` still at its initial
+// `[]` — and its else-branch is an unconditional `removeItem(ACTIVE_DRAFT_KEY)` (`:401`).
+//
+// If that empty pass wins the race, the draft is deleted on the very mount that was
+// meant to restore it: the cashier reloads after an OS memory trim and their cart is
+// gone, even though the crash-recovery draft was sitting on disk the whole time.
+// ── A draft written under another currency is refused, not relabelled ──
+//
+// The reported defect: a cart persisted while the store billed USD came back
+// rendering "$" — line prices, subtotal and change — long after the store, its
+// products and its settings had all moved to IDR. The restore copied the draft's
+// recorded currency verbatim, and `usePosState` anchors the whole cart's currency
+// to `lines[0].unit_price`, so a stale draft outvoted the store.
+//
+// Refusing is the fix rather than relabelling, because minor units are
+// exponent-relative (IDR 0, USD 2): re-stamping 500000 USD minor units as IDR would
+// render Rp 500.000 where the till meant $5,000.00 — the same integer, a 100x error.
+// Losing an unreadable draft is recoverable; a wrong price is not.
+// ── The restore must survive a real CurrencyProvider, and StrictMode ──
+//
+// Every other case in this file renders PosScreen with NO currency provider, so
+// `useOptionalCurrency()` returns null and the restore's `currencyReady` gate is
+// trivially open. The desktop shell is the opposite: `AppProviders` mounts a real
+// `CurrencyProvider` ABOVE the POS, whose `loading` starts true, and `main.tsx`
+// wraps the tree in `React.StrictMode`, which double-invokes mount effects. This
+// case renders that shape, because the gate is invisible without it.
+describe('PosScreen — the draft restore under a real CurrencyProvider', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    mutableWorkspace.resolvedStoreId = 'default';
+    vi.mocked(currencyApi.getDefaultCurrency).mockResolvedValue('IDR');
+  });
+
+  it('restores a matching draft after the provider finishes loading', async () => {
+    const key = 'pos-active-draft:default';
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        lines: [
+          {
+            sku: 'PROV-001',
+            name: 'Provider Item',
+            qty: 1,
+            unit_price: { minor_units: 2500, currency: 'IDR' },
+          },
+        ],
+      }),
+    );
+
+    await act(async () => {
+      renderWithProviders(
+        <StrictMode>
+          <CurrencyProvider>
+            <PosScreen />
+          </CurrencyProvider>
+        </StrictMode>,
+        salesFtl,
+        productsFtl,
+        inventoryFtl,
+        settingsFtl,
+        testPosFtl,
+        testProductsFtl,
+      );
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Provider Item'),
+        'the draft did not restore under a real CurrencyProvider: the currency gate never opened, or StrictMode settled it before the read.',
+      ).toBeInTheDocument();
+    });
+
+    // The restore must not have DELETED the draft on its way through — the failure
+    // this case was written for (an IDR draft judged foreign against the provider's
+    // USD fallback) ate the draft as well as skipping the restore.
+    const raw = localStorage.getItem(key);
+    expect(raw, 'the restore consumed the draft it failed to restore').not.toBeNull();
+    expect(JSON.parse(raw!).lines[0].sku).toBe('PROV-001');
+  });
+
+  it('still refuses a genuinely foreign draft once the provider has settled', async () => {
+    // The companion to the case above, and the reason the adoption guard must be
+    // narrow: waiting for `!loading` before trusting the context must NOT become
+    // "trust the draft" — a USD draft on an IDR store is still refused and dropped,
+    // even with a real provider mounted.
+    const key = 'pos-active-draft:default';
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        lines: [
+          {
+            sku: 'STALE-PROV-001',
+            name: 'Provider Stale Item',
+            qty: 1,
+            unit_price: { minor_units: 5000, currency: 'USD' },
+          },
+        ],
+      }),
+    );
+
+    await act(async () => {
+      renderWithProviders(
+        <StrictMode>
+          <CurrencyProvider>
+            <PosScreen />
+          </CurrencyProvider>
+        </StrictMode>,
+        salesFtl,
+        productsFtl,
+        inventoryFtl,
+        settingsFtl,
+        testPosFtl,
+        testProductsFtl,
+      );
+    });
+
+    await waitFor(() => {
+      expect(
+        localStorage.getItem(key),
+        'the refused draft was left on disk',
+      ).toBeNull();
+    });
+    expect(
+      screen.queryByText('Provider Stale Item'),
+      'a USD draft was restored onto an IDR store under a real provider',
+    ).toBeNull();
+  });
+});
+
+describe('PosScreen — a draft written under another currency', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    mutableWorkspace.resolvedStoreId = 'default';
+  });
+
+  it('drops the stale draft and boots an empty cart rather than relabelling it', async () => {
+    const key = 'pos-active-draft:default';
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        lines: [
+          {
+            sku: 'STALE-001',
+            name: 'Stale USD Item',
+            qty: 1,
+            unit_price: { minor_units: 500000, currency: 'USD' },
+          },
+        ],
+        tableNumber: 'T9',
+      }),
+    );
+
+    await renderPosScreen();
+
+    await waitFor(() => {
+      expect(document.querySelector('.pos-screen')).not.toBeNull();
+    });
+    expect(
+      screen.queryByText('Stale USD Item'),
+      'a USD draft was restored onto an IDR till: the restore relabelled it instead of refusing it.',
+    ).toBeNull();
+    expect(
+      screen.queryAllByTestId('cart-panel-line-item').length,
+      'a refused draft still put a line in the cart.',
+    ).toBe(0);
+
+    // The unreadable draft is gone, so it cannot poison the next boot either.
+    await waitFor(() => {
+      expect(
+        localStorage.getItem(key),
+        'the refused draft was left on disk: every later mount would re-read it.',
+      ).toBeNull();
+    });
+  });
+
+  it('still restores a draft whose currency matches the store', async () => {
+    // The refusal must be narrow: the same shape in the store's currency restores.
+    const key = 'pos-active-draft:default';
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        lines: [
+          {
+            sku: 'GOOD-001',
+            name: 'Good IDR Item',
+            qty: 1,
+            unit_price: { minor_units: 500000, currency: 'IDR' },
+          },
+        ],
+      }),
+    );
+
+    await renderPosScreen();
+
+    await waitFor(() => {
+      expect(screen.getByText('Good IDR Item')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('PosScreen — a draft survives the mount that restores it', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    mutableWorkspace.resolvedStoreId = 'default';
+  });
+
+  it('restores the lines and leaves the draft readable', async () => {
+    const key = 'pos-active-draft:default';
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        lines: [
+          {
+            sku: 'TEST-001',
+            name: 'Test Item',
+            qty: 2,
+            unit_price: { minor_units: 1000, currency: 'IDR' },
+          },
+        ],
+        tableNumber: 'T3',
+        orderType: 'dine_in',
+      }),
+    );
+
+    await renderPosScreen();
+
+    // The cart is on screen: the restore worked.
+    await waitFor(() => {
+      expect(screen.getAllByTestId('cart-panel-line-item').length).toBeGreaterThan(0);
+    });
+
+    // And the draft is still on disk, so a second reload recovers the same cart.
+    await waitFor(() => {
+      const raw = localStorage.getItem(key);
+      expect(raw, 'the mount autosave deleted the draft it had just restored').not.toBeNull();
+      expect(JSON.parse(raw!).tableNumber).toBe('T3');
+    });
   });
 });

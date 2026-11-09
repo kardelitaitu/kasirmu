@@ -14,6 +14,7 @@ fn sample_item(id: &str, action: &str, payload: &str) -> OfflineQueueItem {
         synced_at: None,
         priority: SyncPriority::Normal,
         origin_terminal_id: Some("tablet-a".into()),
+        sale_id: None,
     }
 }
 

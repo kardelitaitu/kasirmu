@@ -450,17 +450,47 @@
   transform: rotate(180deg);
 }
 
+/* Reveal for the options section. The subtree is MOUNTED ONLY WHILE OPEN
+   (CartFooterTotals.tsx), so `--open` is always present by the time these
+   styles apply and the track simply runs 0fr -> 1fr on mount.
+
+   Why this is a mount animation and not a persistent clip: the previous
+   `grid-template-rows: 0fr` left the closed content LAID OUT. Measured on the
+   live cart the track and `.pos-cart-options-body` both computed to height 0
+   while `.pos-cart-discount-area` still sat at y 1252-1296 on a 1024x1366
+   tablet (y 657-679 desktop) -- past the bottom of its own
+   `.pos-cart-options-section`, in the band `.pos-cart-actions-row` paints over.
+   `min-height: 0` on the item, `minmax(0, 0fr)` on the track, `overflow:`,
+   `visibility:`, `content-visibility:`, `contain: size`, `position: absolute`
+   and `pointer-events: none` were each measured and each failed to remove it;
+   only `display: none` does, which the conditional render provides.
+
+   `minmax(0, ...)` is kept so an animating track can never floor above 0 --
+   the same trap `.memo-stack-item` documents in MemoBanner.css:96. */
 .pos-cart-options-collapse {
   display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows var(--duration-200) var(--ease-out);
+  grid-template-rows: minmax(0, 1fr);
+  animation: pos-cart-options-reveal var(--duration-200) var(--ease-out);
 }
 
+/* The explicit form of the state above.
+   The subtree is MOUNTED ONLY WHILE OPEN (CartFooterTotals.tsx), so when this
+   rule applies the class is always present — declared rather than implied
+   because the class itself is a DOM contract: CartFooterTotals.test.tsx
+   asserts it toggles with `showOptions`, and screenExtraction's
+   class-integrity walk greps every className used in JSX against every rule
+   in the sheets, so a class emitted without a rule fails the suite. */
 .pos-cart-options-collapse--open {
-  grid-template-rows: 1fr;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+@keyframes pos-cart-options-reveal {
+  from { grid-template-rows: minmax(0, 0fr); }
+  to { grid-template-rows: minmax(0, 1fr); }
 }
 
 .pos-cart-options-body {
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;

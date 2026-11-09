@@ -19,6 +19,7 @@ tables-action-error = Could not update this table.
 tables-status-unknown = Unknown status
 tables-table-label = { $name }, { $status }
 tables-load-error = Could not load the floor plan.
+tables-bills-unknown = Could not check which tables have an open tab.
 tables-empty = No tables configured yet.
 tables-empty-desc = Add tables to build your floor plan.
 tables-empty-filtered = No tables in this section.
@@ -80,5 +81,35 @@ tables-reserve-confirm = Confirm Reservation
 tables-toast-reserved = Table { $table } reserved for { $guest }
 tables-seat-guests = Seat Guests
 tables-toast-guests-seated = Guests seated at Table { $table }
+tables-manage-sections = Manage Sections
+tables-manage-sections-title = Manage Sections
+tables-new-section-placeholder = e.g. Patio, Rooftop, VIP
+tables-add-section-btn = Add Section
+tables-section-no-tables = 0 tables
+tables-section-table-count = { $count } tables
+tables-rename-section = Rename
+tables-delete-section = Delete
+tables-delete-section-confirm = Delete section "{ $section }"? Tables in this section will be moved to Main.
+tables-toast-section-added = Section "{ $section }" added
+tables-toast-section-renamed = Renamed section to "{ $section }"
+tables-toast-section-deleted = Deleted section "{ $section }"
+tables-arrange-selected = Editing: Table { $table }
+tables-arrange-shape = Shape
+tables-arrange-size = Size
+# Round 210: the arrange panel's step buttons. The visible glyphs ("W -", "W +")
+# are size indicators a merchant maps to width/height, so they stay short while
+# the tooltip carries the full phrase — they are NOT duplicates of the title.
+tables-legend = Legend
+tables-arrange-decrease-width = Decrease Width
+tables-arrange-increase-width = Increase Width
+tables-arrange-decrease-height = Decrease Height
+tables-arrange-increase-height = Increase Height
+tables-arrange-width-short = W -
+tables-arrange-height-short = H +
+tables-quick-seat-walkin = Quick Seat:
+tables-mark-cleaned-quick = Mark Cleaned (Available)
+tables-toast-cleaned = Table { $table } is now clean and available
+tables-table-joined-badge = 🔗 +T{ $joined }
+
 
 

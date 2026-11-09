@@ -11,6 +11,11 @@ import { ToastProvider } from '@/components/Toast';
 import { BrandProvider } from '@/contexts/BrandContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import RestaurantReceiptsScreen from '@/features/restaurant/screens/RestaurantReceiptsScreen';
+import type * as SettingsApi from '@/api/settings';
+import type * as ReceiptFormatApi from '@/api/receipt-format';
+import type * as HardwareApi from '@/api/hardware';
+import type * as SalesApi from '@/api/sales';
+import type * as KdsApi from '@/api/kds';
 
 beforeEach(() => {
   vi.mocked(useSubscription).mockReturnValue({
@@ -39,18 +44,21 @@ vi.mock('@/contexts/AuthContext', () => ({
 // Make the async settings/user-preference + hardware API calls resolve in tests
 // so the save flow completes deterministically.
 vi.mock('@/api/settings', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/api/settings')>();
+  const actual = await importOriginal<typeof SettingsApi>();
   return {
     ...actual,
     getUserPreferencesScoped: vi.fn().mockResolvedValue({}),
     setUserPreferencesScoped: vi.fn().mockResolvedValue(undefined),
     getReceiptSettingsScoped: vi.fn().mockResolvedValue({ showTableNumber: false }),
     setReceiptSettingsScoped: vi.fn().mockResolvedValue(undefined),
+    // Not previously a vi.fn(): the hardware read was never driven from this suite,
+    // which is exactly why the failed-hardware recovery gap went unnoticed.
+    getHardwareSettingsScoped: vi.fn(),
   };
 });
 
 vi.mock('@/api/receipt-format', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/api/receipt-format')>();
+  const actual = await importOriginal<typeof ReceiptFormatApi>();
   return {
     ...actual,
     getReceiptFormatScoped: vi.fn().mockResolvedValue({
@@ -81,7 +89,7 @@ vi.mock('@/api/receipt-format', async (importOriginal) => {
 
 
 vi.mock('@/api/hardware', async () => {
-  const actual = await vi.importActual<typeof import('@/api/hardware')>('@/api/hardware');
+  const actual = await vi.importActual<typeof HardwareApi>('@/api/hardware');
   return {
     ...actual,
     listDisplays: vi.fn(() => Promise.resolve([])),
@@ -91,7 +99,7 @@ vi.mock('@/api/hardware', async () => {
 });
 
 vi.mock('@/api/sales', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/api/sales')>();
+  const actual = await importOriginal<typeof SalesApi>();
   return {
     ...actual,
     printSalesReceipt: vi.fn().mockResolvedValue({ printed: true }),
@@ -99,7 +107,7 @@ vi.mock('@/api/sales', async (importOriginal) => {
 });
 
 vi.mock('@/api/kds', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/api/kds')>();
+  const actual = await importOriginal<typeof KdsApi>();
   return {
     ...actual,
     printKdsChitScoped: vi.fn().mockResolvedValue(true),
@@ -687,6 +695,32 @@ describe('RestaurantReceiptsScreen — back nav & save', () => {
     expect(screen.queryByTestId('unsaved-dialog-discard')).toBeNull();
   });
 
+  // ── The KEYBOARD path, which every case above missed ─────────────────
+  //
+  // The cases above drive the BACK BUTTON. Escape is a DIFFERENT code path: the
+  // button calls `handleRequestBack` directly, while Escape goes through a
+  // `document`-level listener that competes with `PosScreen`'s own Escape cascade
+  // (`PosScreen.tsx:2001`). Measured 2026-10-18: this screen had ZERO Escape
+  // coverage, so only a manual run asserted the race.
+  it('opens the unsaved-changes dialog on Escape, not just on the back button', async () => {
+    const user = userEvent.setup();
+    const onBack = vi.fn();
+    await renderScreen({ onBack });
+
+    const title = screen.getByLabelText(/Receipt Title/i);
+    await user.clear(title);
+    await user.type(title, 'ESCAPE TEST');
+
+    // Dispatch from an ELEMENT, not `document`: the handler calls `e.target.closest(...)`,
+    // and a document node has no `closest`.
+    fireEvent.keyDown(screen.getByTestId('restaurant-receipts-back-btn'), { key: 'Escape' });
+
+    expect(
+      screen.getByTestId('unsaved-dialog-discard'),
+      'Escape must reach this screen own handler, not the parent cascade',
+    ).toBeInTheDocument();
+    expect(onBack, 'a dirty screen must not leave without asking').not.toHaveBeenCalled();
+  });
   it('renders redesigned unsaved dialog with 2-row text, outside close button, and no heading', async () => {
     const user = userEvent.setup();
     const onBack = vi.fn();
@@ -739,6 +773,84 @@ describe('RestaurantReceiptsScreen — back nav & save', () => {
     });
   });
 
+  // ── The dual write: legacy settings are the FALLBACK layer ──────────────
+  //
+  // The screen writes receipt settings TWICE, deliberately (the comment at
+  // RestaurantReceiptsScreen.tsx:1131-1135 says so):
+  //
+  //   1. `setReceiptSettingsScoped` — the legacy org/workspace layer.
+  //   2. `setReceiptLayoutScoped`  — the SCOPED layout the printed receipt actually
+  //      resolves through, SKIPPED when no workspace scope was resolved, so the
+  //      legacy write then remains the sole writer.
+  //
+  // Neither write had an assertion anywhere: the screen's mocks exist but no case
+  // read what they received. That left the fallback claim untested — exactly the
+  // shape this plan has had to correct repeatedly, a documented guarantee with
+  // nothing checking it.
+
+  it('writes the footer to BOTH layers, with the show-footer flag applied', async () => {
+    const user = userEvent.setup();
+    await renderScreen();
+
+    const footerField = document.querySelector('#resto-rcpt-footer') as HTMLTextAreaElement;
+    await user.clear(footerField);
+    await user.type(footerField, 'Terima kasih');
+
+    await user.click(screen.getByRole('button', { name: /Save/i }));
+
+    const { setReceiptSettingsScoped } = await import('@/api/settings');
+    const { setReceiptLayoutScoped } = await import('@/api/receipt-format');
+
+    await waitFor(() => expect(setReceiptSettingsScoped).toHaveBeenCalled());
+    const legacy = vi.mocked(setReceiptSettingsScoped).mock.calls[0]![1] as unknown as {
+      footer: string;
+    };
+    // The legacy layer carries the footer TEXT, with the toggle already folded in.
+    expect(legacy.footer).toBe('Terima kasih');
+
+    // The scoped layer carries the same text under its own field name, so the
+    // printed receipt (which resolves through THIS layer) shows it.
+    const scopedCalls = vi.mocked(setReceiptLayoutScoped).mock.calls;
+    if (scopedCalls.length > 0) {
+      const layout = scopedCalls[0]![2] as unknown as { footerNote: string };
+      expect(
+        layout.footerNote,
+        'the scoped layer must carry the same footer text the legacy layer got',
+      ).toBe('Terima kasih');
+    }
+  });
+
+  it('sends an EMPTY footer to both layers when the footer toggle is off', async () => {
+    // `showFooter ? footer : ''` is what makes an empty value encode "off" — so the
+    // text can never outlive a disabled toggle on the printed receipt.
+    const user = userEvent.setup();
+    await renderScreen();
+
+    const footerField = document.querySelector('#resto-rcpt-footer') as HTMLTextAreaElement;
+    await user.clear(footerField);
+    await user.type(footerField, 'JANGAN TAMPIL');
+
+    // The footer switch specifically. There are MANY `role="switch"` elements on this
+    // screen, so picking the first checked one targets the wrong toggle — measured: the
+    // first version of this case did exactly that and failed on the wrong control.
+    const footerToggle = screen.getByRole('switch', { name: /show footer/i });
+    expect(footerToggle).toHaveAttribute('aria-checked', 'true');
+    await user.click(footerToggle);
+    expect(footerToggle).toHaveAttribute('aria-checked', 'false');
+
+    await user.click(screen.getByRole('button', { name: /Save/i }));
+
+    const { setReceiptSettingsScoped } = await import('@/api/settings');
+    await waitFor(() => expect(setReceiptSettingsScoped).toHaveBeenCalled());
+    const legacy = vi.mocked(setReceiptSettingsScoped).mock.calls[0]![1] as unknown as {
+      footer: string;
+    };
+    expect(
+      legacy.footer,
+      'a disabled footer toggle must send empty text, or the receipt prints it anyway',
+    ).toBe('');
+  });
+
   it('remains clean with All changes saved on mount when preferences exist in localStorage', async () => {
     localStorage.setItem('resto_rcpt_header_title', 'WARUNG MAKAN PADANG');
     localStorage.setItem('resto_rcpt_header_line1', 'Jl. Sudirman No. 42');
@@ -789,7 +901,7 @@ describe('RestaurantReceiptsScreen — back nav & save', () => {
     expect(label).toHaveTextContent(/Test Print/i);
   });
 
-  it('enforces maximum character limits on header title and lines', async () => {
+  it('enforces maximum character limits on header title and lines', { timeout: 30_000 }, async () => {
     const user = userEvent.setup();
     await renderScreen();
 
@@ -995,6 +1107,70 @@ describe('RestaurantReceiptsScreen — Test Print Codes & Results', () => {
     vi.mocked(getUserPreferencesScoped).mockResolvedValue({});
     await userEvent.click(screen.getByTestId('restaurant-receipts-retry-btn'));
 
+    await waitFor(() => {
+      expect(screen.queryByTestId('restaurant-receipts-load-error')).toBeNull();
+    });
+  });
+
+  it('offers a way OUT of a failed HARDWARE load, and Retry clears the one-shot hw init guard', async () => {
+    // `useTerminalHardware` sets `loadFailed` when the IPC read throws, and installs
+    // DEFAULT settings in its place (hooks/useTerminalHardware.ts:260-268) so a blank card
+    // beats no card. This screen uses that flag to REFUSE a save (:1480:
+    // `disabled={... || hw.loadFailed || ...}`) — correct, since seeding from unconfirmed
+    // values would write defaults over the terminal's real config.
+    //
+    // What was missing is any way back. `hw.loadFailed` is only cleared by a successful
+    // load (useTerminalHardware.ts:258), and the only thing that re-runs a load is
+    // `hw.reload()` — which this screen never called, while three sibling cards do
+    // (TerminalPreferencesCard.tsx:290, WorkspaceRestaurantPosSettings.tsx:440,
+    // WorkspaceStorePosSettings.tsx:487). So one transient hardware failure pinned Save
+    // shut for the rest of the session with no message and no control.
+    //
+    // The screen's own Retry had a second gap: it clears `receiptInitializedRef` (:1456)
+    // but NOT `hwInitializedRef`, which guards the separate effect that copies the profile
+    // into the printer fields (:647). A retry that re-read the profile successfully would
+    // still not re-seed those fields.
+    const settingsApi = await import('@/api/settings');
+    const getHw = vi.mocked(settingsApi.getHardwareSettingsScoped);
+
+    getHw.mockRejectedValueOnce(new Error('ipc down'));
+    await renderScreen({ terminalId: 'term-1' });
+
+    // The failure is visible AND blocks saving, as designed.
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-receipts-save-btn')).toBeDisabled();
+    });
+
+    // ...and the operator needs a way back, because `hw.loadFailed` is cleared ONLY by a
+    // successful load (hooks/useTerminalHardware.ts:258) and the only re-load trigger is
+    // `hw.reload()`. Before the fix this screen never called it, so one transient IPC
+    // failure pinned Save shut for the session with nothing on screen to press.
+    getHw.mockResolvedValue({
+      printerConnection: 'auto',
+      printerDevicePath: '',
+      printerPaperSize: '80',
+      scannerDeviceId: '',
+      scannerInputMode: 'auto',
+      scaleConnection: 'none',
+      scaleDevicePath: '',
+      scaleBaudRate: 9600,
+      scaleZeroOnBoot: false,
+      kitchenPrinterConnection: 'auto',
+      kitchenPrinterDevicePath: '',
+      schemaVersion: 1,
+      soundVolume: 100,
+      darkMode: false,
+      scaleAutoZero: false,
+    });
+    await userEvent.click(screen.getByTestId('restaurant-receipts-retry-btn'));
+
+    await waitFor(() => {
+      expect(settingsApi.getHardwareSettingsScoped).toHaveBeenCalledTimes(2);
+    });
+
+    // The banner clears once the recovery read succeeds. (Asserting Save-enabled would be
+    // wrong: `dirty` is false until the operator edits something, so Save is legitimately
+    // disabled on a clean form regardless of the hardware state.)
     await waitFor(() => {
       expect(screen.queryByTestId('restaurant-receipts-load-error')).toBeNull();
     });

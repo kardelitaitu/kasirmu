@@ -20,7 +20,7 @@
 // compatible one.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { ReactLocalization, LocalizationProvider } from '@fluent/react';
 import UpdateBanner from '@/app/UpdateBanner';
@@ -143,6 +143,26 @@ describe('app/UpdateBanner (the SHIPPED banner)', () => {
 
     await waitFor(() => expect(screen.getByText(/Update available/i)).toBeInTheDocument());
     expect(screen.queryByText(/Update not available/i)).toBeNull();
+  });
+
+  it('installs ONCE when Install is double-tapped', async () => {
+    // downloadAndInstall() downloads, installs AND restarts, and it is preceded by a full
+    // database backup -- so a replay takes two backups and races two installers over one
+    // download directory.
+    setUpdate('Plain text release notes');
+    const downloadAndInstall = mocks.version.instance!.downloadAndInstall as unknown as ReturnType<typeof vi.fn>;
+    let release: (() => void) | undefined;
+    downloadAndInstall.mockReturnValue(new Promise<void>((res) => { release = res; }));
+
+    render(<UpdateBanner />, { wrapper });
+    const installBtn = await screen.findByRole('button', { name: /install/i });
+    await act(async () => {
+      fireEvent.click(installBtn);
+      fireEvent.click(installBtn);
+    });
+
+    release?.();
+    await waitFor(() => expect(downloadAndInstall).toHaveBeenCalledTimes(1));
   });
 
   it('treats a release with no min_version as compatible', async () => {

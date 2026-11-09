@@ -16,11 +16,12 @@
 // pos-held-item-* rules from PosScreen.css (700 lines), which stays imported
 // by PosScreen.tsx - their only caller. No CSS moved here.
 import { useLocalization } from '@fluent/react';
-import type { Dispatch, SetStateAction } from 'react';
+import { useRef, type Dispatch, type SetStateAction } from 'react';
 import { requiredLocalized } from '@/components';
 import { formatMoney } from '@/types/domain';
 import type { HeldCartRow } from '@/api/sales';
 import type { UseExitAnimationResult } from '@/hooks/useExitAnimation';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 // -- Open Bill Input ------------------------------------------------------
 
@@ -49,6 +50,23 @@ export function OpenBillInput({
   handleOpenBill,
 }: OpenBillInputProps) {
   const { l10n } = useLocalization();
+  // Every sibling sales modal installs this — `useFocusTrap` in ItemModifierModal,
+  // SplitBillModal (both under `sales/components/`) and PromotionsModal, RefundModal,
+  // PriceOverrideModal, StockShortfallDialog (all three directly under `sales/`; the
+  // paths were previously implied to be the components dir, which is wrong for these).
+  // Anchored by the `useFocusTrap(` call rather than a line per file: of the six numbers
+  // this note carried, two were right and four had rotted, one of them past EOF.
+  // These two were the only `aria-modal="true"` dialogs without it, so a
+  // keyboard operator got no autofocus into the dialog, Tab walked out into the page
+  // still rendered behind it, and Escape did nothing. Measured before the fix:
+  // activeElement was <body>, Tab reached an outside button, and Escape did not call
+  // requestClose.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(
+    panelRef,
+    openBillInputExit.shouldRender && !openBillInputExit.exiting,
+    () => openBillInputExit.requestClose(),
+  );
   if (!openBillInputExit.shouldRender) return null;
   return (
           <div
@@ -57,7 +75,7 @@ export function OpenBillInput({
             aria-modal="true"
             aria-label={l10n.getString('pos-open-bill-overlay-aria')}
           >
-            <div className={`pos-hold-modal${openBillInputExit.exiting ? ' pos-hold-modal--exiting' : ''}`}>
+            <div ref={panelRef} className={`pos-hold-modal${openBillInputExit.exiting ? ' pos-hold-modal--exiting' : ''}`}>
             <h3 className="pos-hold-title">{l10n.getString('pos-open-bill-title')}</h3>
             <p className="pos-hold-desc">
               {l10n.getString('pos-open-bill-desc')}
@@ -70,7 +88,7 @@ export function OpenBillInput({
               onChange={(e) => setOpenBillName(e.target.value)}
               aria-label={l10n.getString('pos-open-bill-name-aria')}
             />
-            <div className="pos-hold-actions">
+            <footer className="pos-hold-actions">
               <button
                 type="button"
                 className="pos-hold-cancel-btn"
@@ -90,7 +108,7 @@ export function OpenBillInput({
               >
                 <span>{l10n.getString(openingBill ? 'pos-open-bill-saving' : 'pos-open-bill-save')}</span>
               </button>
-            </div>
+            </footer>
           </div>
         </div>
   );
@@ -104,7 +122,12 @@ export interface OpenBillsPanelProps {
   /** Held-cart rows, already loaded by the hook - this component never fetches. */
   openBills: HeldCartRow[];
   /** Async recall of one held cart by id; used as a fire-and-forget click handler. */
-  handleResumeOpenBill: (id: string) => Promise<void>;
+  /**
+   * Returns whether the cart was actually replaced — the resume REFUSES when a
+   * different tab is already open (usePosHeldCarts round 96), and a caller that
+   * pre-set state must know which happened.
+   */
+  handleResumeOpenBill: (id: string) => Promise<boolean>;
 }
 
 /**
@@ -118,11 +141,19 @@ export function OpenBillsPanel({
   handleResumeOpenBill,
 }: OpenBillsPanelProps) {
   const { l10n } = useLocalization();
+  // Same trap as the input dialog above; the close button is the first focusable
+  // element, so focus lands somewhere meaningful inside the list.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(
+    panelRef,
+    openBillsExit.shouldRender && !openBillsExit.exiting,
+    () => openBillsExit.requestClose(),
+  );
   if (!openBillsExit.shouldRender) return null;
   return (
           <div className={`pos-hold-overlay${openBillsExit.exiting ? ' pos-hold-overlay--exiting' : ''}`} role="dialog" aria-modal="true" aria-label={l10n.getString('pos-open-bills-overlay-aria')}>
-          <div className={`pos-held-list-modal${openBillsExit.exiting ? ' pos-held-list-modal--exiting' : ''}`}>
-            <div className="pos-held-list-header">
+          <div ref={panelRef} className={`pos-held-list-modal${openBillsExit.exiting ? ' pos-held-list-modal--exiting' : ''}`}>
+            <header className="pos-held-list-header">
               <h3>{l10n.getString('pos-open-bills-title')}</h3>
               <button
                 type="button"
@@ -132,12 +163,12 @@ export function OpenBillsPanel({
               >
                 &times;
               </button>
-            </div>
+            </header>
             <div className="pos-held-list-body">
               {/*
                 R21 (owner, 2026-09-20): the EMPTY ARM of this list was deleted rather
                 than left dead. The overlay's only opener gates on
-                `openBills.length > 0` — `CartPanel.tsx:689` is the single
+                `openBills.length > 0` — `CartPanel.tsx:1144` is the single
                 `setShowOpenBills(true)` call site — so at zero bills the list cannot be
                 opened and its empty state was unreachable UI: unverifiable and
                 impossible to regression-test. The string and the class went with it.

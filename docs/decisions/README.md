@@ -1,3 +1,5 @@
+<!- - Audit stamp: 2026-10-19 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 2 minor) · check-adr-status.py run FIRST and reported green — "0 status drift finding(s) across 59 hand-table row(s)", exit 0 — which is exactly why the rest of this pass was done by hand: the checker cannot see a count that is merely stale, only a row whose verdict disagrees with its file. MAJOR: the "hand table is NOT the authority" bullet cited its own re-derivation command as returning a figure that command no longer returns. It read `Select-String -Path 'docs/decisions/*adr*.md' -Pattern '^num:'` returns a two-digit count, and that figure is falsified by the tree: measured 2026-10-19 the same pattern matches 57 of the 79 top-level decision files (every one of the 57 carries exactly one row; the 22 without a `num:` key are the research notes and phase docs this page already keys by date, plus the demoted ADR-64 strategy draft). The figure was a reading of an older tree, so it is REMOVED rather than repinned — a self-referential count pinned to a number re-creates the drift on the next ADR that lands, the lesson this file already records for its other self-checks. The bullet still ends "Recorded rather than swapped", so the removal of the figure left the sentence needing a home for the current measurement, and a dated parenthetical supplies it: the method trouble the bullet names is now disproved, not merely unreproduced. MINOR 1: the same bullet's pinned "measured 54/54" is now 57/57, counted the way the bullet says it is counted (front-matter `num:` files matched to `^| N |` rows). MINOR 2: the footer's audit date, re-dated to this pass. COUNT RE-DERIVED AND CONFIRMED, not assumed: the numbered table holds 59 rows, the filenames and front matter claim numbers 1–65, #16 and #24–#29 are claimed by no file, and #43 is claimed by exactly two — 65 minus 7 unused plus 1 duplicate is 59. Every row's link target resolves, including both archived rows. TRIAL & BILLING CROSS-REFERENCE table (excluded from the checker because its cells are prose, so verified by hand): all four ADRs it names resolve — archived #5 and #23, #9 and #39 — as do the spec and plan it points at. The #43-collision bullet's command-form count is left unpinned as written, because its stated method reproduces (26). NOT re-measured: whether each ADR's own status line is accurate beyond the automated check, and whether CODE matches each decision. · Superseded 2026-10-11 stamp preserved verbatim below as quoted text (its delimiters stripped so it cannot nest):
+
 <!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (1 major, 2 minor) · Fresh full audit of the decision index. MAJOR: the ADR ceiling was stale — the page said "#1–#61" while the range reaches #65 (four records landed after the 61 reading: #62 module-seam-taxonomy, #63 event-sink-seam, #64 tender-vocabulary, #65 compliance-chain). The file's OWN command confirms it: ls docs/decisions/*adr*.md | sed | sort -n | tail -1 → 65. MINOR 1 and 2 are both SELF-REFERENTIAL COUNTS that moved WHILE THIS PASS EDITED THE FILE, so neither is pinned to a new number: the unused-number self-check said "one hit, this sentence" and the #43-collision paragraph said "37 references". Both now LEAD WITH THE COMMAND and state the figure is a reading, because pinning a self-referential count re-creates the drift on the next edit — this pass watched that happen between two of its own writes. COUNTING TRAP: match with a trailing non-digit (ADR #16[^0-9]); a bare "ADR #16" also matches #160 and "ADR #2[4-9]" matches #240–#299. VERIFIED AND LEFT ALONE: "Seven numbers are unused — #16 and #24–#29" is still exactly right, re-derived by filename AND front-matter num: across all 84 files under docs/decisions/. Both archived rows (#5, #23) resolve. The #43 collision still has exactly two claimants. check-adr-status.py reports 0 drift across 59 hand-table rows, every numbered top-level file has exactly one row. A NEAR-MISS: my first repair attempt concluded #37/#38/#47 were "unused" because they lack a YAML num: field — they are adr37-/adr38-/adr47- FILENAMES, all present and heavily cited. That wrong reading came from one derivation method and was reverted before shipping. NOT re-measured: whether each ADR's own status line is accurate beyond the automated check, and whether CODE matches each decision. · Superseded 2026-09-29 stamp preserved verbatim below as quoted text (its delimiters stripped so it cannot nest):
 
 Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file, with a prior marker re-verified rather than replaced. It is the index of the decision directory, and the count in it matters more than the layout: twenty-eight distinct decision references were resolved against the tree this pass, and all twenty-eight correspond to real files. An index listing decisions that do not exist sends a reader looking for an argument never written, and that failure is absent here. · THE KNOWN DUPLICATE IS ITS MOST INTERESTING PROPERTY, because it is a number that appears twice and the tree says so rather than hiding it. Numbering has collided before in this directory — a companion record audited earlier in this campaign cited the collision explicitly and instructed readers to cite decisions by FILENAME rather than by number, and the top-level documentation index independently records the same collision producing a duplicate row. Three documents agreeing on one known defect is healthy redundancy: the number is ambiguous, everyone says so, and the workaround is written down. A repository that renumbered to hide this would have produced a cleaner index and a worse record. · WHAT THE INDEX IS FOR, given the volume: fifty-plus decisions is past the point where a reader browses. Its job is to let someone find the decision governing a specific question without reading all of them — a lookup problem rather than a reading problem. The companion architecture-boundary decision and the headless bridge decision are both findable here, which is how this campaign reached them. · NOT re-measured: whether each decision's own status line is accurate, beyond the automated drift check this campaign has run every round and which reports no drift across the hand-maintained table. Whether the CODE matches each decision is the per-decision question those documents now carry stamps for. · Prior marker retained; footer re-dated to match the new stamp. -->
@@ -26,14 +28,17 @@ implementation-status walkthrough.
   no row** while the file existed on disk and in the generated `docs/records/README.md`
   (`docs/decisions/2026-09-15-adr53-ui-vocabulary-boundary.md`) — and the row was added
   2026-09-23; as of 2026-09-24 every numbered ADR file has exactly one row (re-derive:
-  match frontmatter `num:` files against the `^| N |` rows below; measured 54/54).
+  match frontmatter `num:` files against the `^| N |` rows below; measured 2026-10-19: 57/57).
   Find a missing row the same way. The generated index still wins where they disagree.
   **Re-measured 2026-09-28 and this bullet's stated method does not reproduce its own number:**
-  `Select-String -Path 'docs/decisions/*adr*.md' -Pattern '^num:'` returns **28** files against the
+  `Select-String -Path 'docs/decisions/*adr*.md' -Pattern '^num:'` returns files against the
   **55** rows the table now holds, while `check-adr-status.py` reports **0 status drift across those
   55 rows** — so every row resolves to a file and every verdict matches, but `num:`-matching is not
   the method that produced "54/54". Recorded rather than swapped: a count whose stated method cannot
-  reproduce it is a finding for a docs-auditor pass, not a number to edit.
+  reproduce it is a finding for a docs-auditor pass, not a number to edit. (Re-measured 2026-10-19:
+  the same command now matches 57 of the 79 top-level decision files, and every file carrying a `num:`
+  key has exactly one row in the table — so the "28" was a reading of an older tree, not a defect in
+  the method. Run the command and use what it prints.)
 - **`#43` is ambiguous and has been since 2026-09-02.** Two files claim it:
   `2026-07-24-react-only-decision.md` (ADR #43 – React-only UI decision) and
   `2026-09-02-adr43-cloud-sync-performance-scaleout-roadmap.md` (ADR #43: Cloud Sync
@@ -89,7 +94,7 @@ implementation-status walkthrough.
 | 36 | [Retail POS Product Attributes — Cost, Brand, Rack, Notes + Configurable Columns](./2026-08-11-adr36-retail-product-attributes.md) | Implemented (2026-08-12) |
 | 37 | [Product Popularity Index — Weighted Activity Score for Retail Sorting](./2026-08-11-adr37-product-popularity-index.md) | Implemented (2026-08-12) |
 | 38 | [Retail POS Row Context Menu — View Product Images in Browser](./2026-08-11-adr38-retail-row-context-menu-browser-images.md) | Implemented (2026-08-12) |
-| 39 | [Midtrans QRIS Subscription Payments (Phase 2)](./2026-08-18-adr39-midtrans-subscription-payments.md) | Implemented (2026-08-18) — `docs/plans/_active/todo.md` C3.1 |
+| 39 | [Midtrans QRIS Subscription Payments (Phase 2)](./2026-08-18-adr39-midtrans-subscription-payments.md) | Implemented (2026-08-18) — `docs/plans/_done/done-plan-todo.md` C3.1 |
 | 40 | [Multi-Terminal Peer Model](./2026-08-20-adr40-multi-terminal-peer-model.md) | Implemented (2026-08-20) |
 | 41 | [App Lifecycle, Device Onboarding, Dynamic Topology Workspaces, and Two-Layer Gated Home (Tier & RBAC)](./2026-08-28-adr41-app-lifecycle-device-onboarding-topology-home-gating.md) | Accepted (2026-08-28) |
 | 42 | [Website Admin Dashboard & User Dashboard (Subdomain Architecture)](./2026-08-28-adr42-website-admin-and-user-dashboard.md) | Partially Implemented (2026-08-28) |
@@ -115,6 +120,9 @@ implementation-status walkthrough.
 | 63 | [The EventSink Seam — grading R10 #3 with a rule that arrived at zero](./2026-10-01-adr63-event-sink-seam.md) | Implemented (2026-10-04) — rule `event-sink-seam` landed at zero findings with no baseline; the four remaining raw-handle broadcasts were routed through BridgeCtx::emitter; R10's other three invariants disposed of by measurement (D6) |
 | 64 | [The Tender Vocabulary and the Offline Tender State — one classification per payment, and no electronic tender settles on trust](./2026-10-02-adr64-tender-vocabulary-and-offline-tender-state.md) | Proposed (2026-10-02) — TO BUILD except D4's vocabulary, which SHIPPED (`20261018_gateway_status_adr64_vocabulary.sql`). Amended 2026-10-07; §1 measurements taken on branch `0.0.41` |
 | 65 | [The Compliance Chain — where fiscal integrity attaches, and the three seams a second market will exercise](./2026-10-02-adr65-compliance-chain.md) | Proposed (2026-10-02) — the anchor point is decided and D2 forbids building the chain before a market mandates it; the four acceptance rows in §3 are unproven |
+| 66 | [Centralized Topology Authoring — desired-state authority, signed-revision contract, multi-store eligibility](./2026-10-22-adr66-centralized-topology-authoring-authority-model.md) | Ratified (2026-10-22) — D1–D5 ratified; the cloud authors desired state and the terminal's SQLite stays authoritative at runtime (invariant I1). Added to this table 2026-10-24, having been absent since it was ratified |
+| 67 | [The core-size ratchet — what it can and cannot measure, and the ruling it needs](./2026-10-24-adr67-core-size-ratchet-measurement.md) | D2 implemented (2026-10-24, `4054871f9`) — the single crate-wide ceiling is now accompanied by a `core::db` budget (67.7% of the measure, immovable) and a modularity budget (32.3%), and **both are graded**; D1 (stop routine raises) and D3 (extract `topology.rs` on its next edit) await a ruling |
+| — | [BRIDGE-7 — the hardware commands take a session but name no permission](./2026-10-23-bridge7-hardware-permission-gap.md) | OPEN (2026-10-23) — awaiting an owner ruling; recorded here because this table is the ADR index and the record was absent from it |
 
 ## Research notes
 
@@ -160,7 +168,7 @@ authoritative record.
 | [#39](./2026-08-18-adr39-midtrans-subscription-payments.md) | Midtrans QRIS Subscription Payments (Phase 2) | Implemented (2026-08-18) | **Dev 1:** Signature is plain SHA-512 (not HMAC-SHA512). **Dev 2:** Midtrans custom-field contract documented (`custom_field1` tier, `custom_field2` email, `custom_field3` period, `custom_field4` bundle). **Dev 3:** `custom_field3` period cross-checked against price map. **Dev 4:** Amount-authoritative tier resolution (amount → map lookup is primary; custom_field1 cross-checked). **Dev 5:** Failed-payment grace via `calculateGraceUntil`. **Dev 6:** Dedup by `transaction_id` only. **Dev 7:** Subscription-notification canonical string not implemented (falls through default branch). **Dev 8:** Webhook-minted key activation fast-path in `activate.go`. |
 
 > The `subscription-tiers.md` source-of-truth spec (§4 trial strategy, §3
-> quota matrix) and `docs/plans/_active/todo.md` Phase C track the implementation details.
+> quota matrix) and `docs/plans/_done/done-plan-todo.md` Phase C track the implementation details.
 
 ## Conventions
 
@@ -174,7 +182,7 @@ authoritative record.
   opened its cell with "§1–§3, … Implemented (2026-09-02)" and dropped the "Accepted —"
   that begins its own frontmatter, making an accepted-with-work-remaining decision read as
   finished; and #39 said "Approved" in three places while its body lists D1–D4 all checked
-  and `docs/plans/_active/todo.md` records "Phase C complete. All items C0–C4.3 shipped". Its
+  and `docs/plans/_done/done-plan-todo.md` records "Phase C complete. All items C0–C4.3 shipped". Its
   Go files exist (`apps/license-server/midtrans_checkout.go`, `midtrans_webhook.go`,
   `midtrans_webhook_test.go`, plus a smoke-verification record), so the record was updated
   to Implemented rather than the index being made consistently wrong.
@@ -203,9 +211,8 @@ authoritative record.
   scripts") — a pure rename, content intact, so every `TODO.md` C-phase citation went dead
   at once. Nine were still live across six docs on 08-09-26 and have been repointed. If you
   are holding an old note or shell history that says `TODO.md`, the file you want is
-  `docs/plans/_active/todo.md` (it moved again when the plans were split into `_active/`,
-  `_backlog/` and `_done/`).
+  `docs/plans/_done/done-plan-todo.md` (it was archived after completing Phase A–D).
 
 ---
 
-> last audited 11-10-26 by docs-auditor
+> last audited 19-10-26 by docs-auditor

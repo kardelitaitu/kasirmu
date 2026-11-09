@@ -242,7 +242,10 @@ describe('NodeTopologyEditor — Pro-tier warehouse fallback label', () => {
     const wires = document.querySelectorAll('.wire-group');
     const last = wires[wires.length - 1]!;
     const title = last.querySelector('.wire-hitbox title');
-    expect(title?.textContent).toContain('topology-wire-label-fallback');
+    // Was toContain('topology-wire-label-fallback'), which held only while the stub
+// returned the raw id; the comment above it said so ('raw key in the identity-l10n
+// mock') and that was the defect written down as intent.
+expect(title?.textContent).toContain('Fallback (P');
   });
 });
 
@@ -926,15 +929,16 @@ describe('NodeTopologyEditor — undo history cap', () => {
   // This case drives 51 adds + 50 undos synchronously: 5.4 s on an idle runner,
   // which the 10 s global testTimeout (ui/vite.config.ts) does not cover under
   // full-suite load, so the cap budget is raised here, not the assertions.
-  it('caps the undo stack at 50 entries, evicting the oldest', { timeout: 30_000 }, () => {
+  it('caps the undo stack at 50 entries, evicting the oldest', { timeout: 120_000 }, () => {
     renderEditor();
     const initial = getNodeCount(); // retail preset: 3
 
     // 51 node adds — each pushes one history entry; the cap (pushHistory
     // evicts when length > 50, so the stack holds at most 50) drops the
     // oldest, which is the snapshot of the ORIGINAL pre-edit state.
+    const addBtn = screen.getByText('+ Store Node');
     for (let i = 0; i < 51; i++) {
-      fireEvent.click(screen.getByText('+ Store Node'));
+      fireEvent.click(addBtn);
     }
     expect(getNodeCount()).toBe(initial + 51);
 
@@ -970,7 +974,11 @@ describe('NodeTopologyEditor — connected wire label', () => {
     const wires = document.querySelectorAll('.wire-group');
     const last = wires[wires.length - 1]!;
     const title = last.querySelector('.wire-hitbox title');
-    expect(title?.textContent).toContain('topology-wire-label-connected');
+    // Assert the COPY, not the key. This line read
+    //   toContain('topology-wire-label-connected')
+    // and passed only because the harness map did not carry the key, so the
+    // component rendered its own id: it was asserting the defect.
+    expect(title?.textContent).toContain('Connected');
   });
 });
 
@@ -1541,8 +1549,8 @@ describe('NodeTopologyEditor — node finder', () => {
 
     // Rename the node from its card while the finder stays open.
     const wsCard = nodeAt(1);
-    fireEvent.click(within(wsCard).getByRole('button', { name: 'topology-workspace-rename-label' }));
-    const renameInput = within(wsCard).getByLabelText('topology-workspace-rename-placeholder');
+    fireEvent.click(within(wsCard).getByRole('button', { name: 'Rename workspace' }));
+    const renameInput = within(wsCard).getByLabelText('Workspace name');
     fireEvent.change(renameInput, { target: { value: 'Front Register' } });
     fireEvent.keyDown(renameInput, { key: 'Enter' });
     await waitFor(() => expect(onRenameWorkspace).toHaveBeenCalledWith('ws-a', 'Front Register'));

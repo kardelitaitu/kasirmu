@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 // renderWithProviders* (not renderWithFluentSync): the EOD screen's print button now
 // reports a failed print through the toast context, so it needs a ToastProvider.
@@ -245,6 +245,23 @@ describe('EodReportScreen', () => {
     });
   });
 
+  it('renders Piutang Collections in payment breakdown and today summary when present', async () => {
+    mockEodReportScoped.mockResolvedValue(
+      makeEodReport({
+        receivable_collections_count: 2,
+        receivable_collections_total: 100000,
+      }),
+    );
+    mockListShifts.mockResolvedValue([]);
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Piutang Collections').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText('2 transactions')).toBeTruthy();
+      expect(screen.getAllByText('Rp 100.000').length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
   it('clicks Refresh re-fetches data', async () => {
     mockEodReportScoped.mockResolvedValue(makeEodReport());
     mockListShifts.mockResolvedValue([]);
@@ -294,6 +311,59 @@ describe('EodReportScreen', () => {
     await waitFor(() => {
       expect(screen.getByText('Shift in progress')).toBeTruthy();
     });
+  });
+
+  it('closes a shift once for a double click while the first is in flight', async () => {
+    // `close_shift` refuses a shift that is already closed under an IMMEDIATE transaction
+    // (db/shifts.rs:193-198), so the replay is REFUSED -- and the catch reports
+    // `pos-close-shift-failed`: "failed to close" over a shift that closed. The modal closes
+    // on success, so the cashier sees it gone AND an error saying it did not work.
+    const today = new Date().toISOString().slice(0, 10);
+    mockEodReportScoped.mockResolvedValue(makeEodReport({ total_sales: 0 }));
+    mockListShifts.mockResolvedValue([
+      makeShift({ status: 'open', closedAt: null, closingBalanceMinor: null, openedAt: `${today}T08:00:00.000Z` }),
+    ]);
+    let releaseClose: ((v: unknown) => void) | undefined;
+    mockCloseShift.mockImplementation(
+      () => new Promise((resolve) => { releaseClose = resolve; }),
+    );
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Shift in progress')).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId('eod-close-shift-btn'));
+
+    const balanceInput = await waitFor(() => {
+      const el = document.querySelector('.eod-close-shift-input') as HTMLInputElement | null;
+      expect(el, 'the close-shift modal did not open').not.toBeNull();
+      return el!;
+    });
+    fireEvent.change(balanceInput, { target: { value: '100' } });
+
+    // The modal's confirm reads "Close Shift", the same words as the banner button that
+    // opened it, so it is addressed by position: the LAST such button is the one in the
+    // open modal.
+    const closeButtons = screen.getAllByText('Close Shift').map((el) => el.closest('button')!);
+    const confirmBtn = closeButtons[closeButtons.length - 1] as HTMLButtonElement;
+    // The button is disabled without a balance, so the value above is what lets the handler
+    // run at all -- assert it, or this case would click a disabled control and measure
+    // nothing (the trap recorded in docs/operations/agent-gates.md).
+    expect(confirmBtn.disabled, 'the confirm button must be enabled or no handler is reached').toBe(false);
+
+    // fireEvent inside one act(): userEvent awaits its own act(), which flushes the pending
+    // chain so the first close would have settled and the clicks would never overlap.
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+      confirmBtn.removeAttribute('disabled');
+      fireEvent.click(confirmBtn);
+    });
+
+    expect(
+      mockCloseShift.mock.calls.length,
+      'a double click on Confirm sent the close twice; core refuses the replay and the ' +
+        'cashier is told the shift failed to close after it closed',
+    ).toBe(1);
+
+    releaseClose?.(makeShift({ status: 'closed' }));
   });
 
   // ── Print functionality with shifts ──

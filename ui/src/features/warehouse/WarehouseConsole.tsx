@@ -15,9 +15,11 @@ import { SegmentedTabs, requiredLocalized } from '@/components';
 import { useToast } from '@/components/Toast';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { asArray } from '@/utils/ipc-payload';
+import { isTabletShell } from '@/utils/shellKind';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
+import ShiftBar from '@/features/inventory/ShiftBar';
 
 import { listWarehouseProductsAtLocation, type ProductDto } from '@/api/products';
 import {
@@ -51,6 +53,30 @@ interface PendingTransferPick {
  * Phase 1: receive-via-transfer and send (pick-verify) are functional; count
  * and stock modes render the existing stock table.
  */
+/** Every warehouse mode, in tab order. */
+const WAREHOUSE_MODES: WarehouseMode[] = ['receive', 'send', 'count', 'stock'];
+
+/**
+ * Whether this shell can run a warehouse mode.
+ *
+ * `count` is desktop-only, and the reason is measured (2026-10-25): the counting
+ * flow loads its lines with `list_warehouse_products_at_location`
+ * (WarehouseCountFlow.tsx:125), which apps/desktop-tauri registers at lib.rs:1613 and
+ * apps/mobile-tauri does NOT register at all -- the tablet has only
+ * `list_warehouse_products_scoped` (mobile lib.rs:1381), which takes no location id
+ * and therefore cannot answer 'stock AT THIS location'. Substituting it would show
+ * counts from the wrong scope on a screen whose whole job is accuracy, so the mode is
+ * withheld rather than degraded. The route itself stays: receive/send/stock do not
+ * call the missing command.
+ *
+ * Withheld at the TAB list rather than at the render, so the tab is absent instead of
+ * present-and-broken -- the C47 idiom.
+ */
+function warehouseModeAvailable(mode: WarehouseMode): boolean {
+  if (mode === 'count' && isTabletShell()) return false;
+  return true;
+}
+
 export default function WarehouseConsole() {
   const { l10n } = useLocalization();
   const { addToast } = useToast();
@@ -60,11 +86,23 @@ export default function WarehouseConsole() {
   const session = useWarehouseSession();
   const { toggleFullscreen } = useFullscreen();
 
+  // Shared by the FnBar button and the keydown case, so Shift-less F5 / ? cannot
+  // diverge from the buttons that advertise them. Both were keyboard-dead no-ops.
+  const handlePrint = useCallback(() => {
+    addToast({ type: 'info', message: 'Print' });
+  }, [addToast]);
+  const handleShowHelp = useCallback(() => {
+    addToast({ type: 'info', message: '?' });
+  }, [addToast]);
+
   const [mode, setMode] = useState<WarehouseMode>('receive');
   const [locationId, setLocationId] = useState('');
   const [products, setProducts] = useState<ProductDto[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // True when this shell cannot answer the per-location stock read at all (tablet).
+  // Distinct from loadError, which means the read was attempted and failed.
+  const [loadUnavailable, setLoadUnavailable] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const [scanInput, setScanInput] = useState('');
@@ -78,12 +116,17 @@ export default function WarehouseConsole() {
   const [pendingTransfer, setPendingTransfer] = useState<PendingTransferPick | null>(null);
   const [transferListOpen, setTransferListOpen] = useState(false);
   const [inTransit, setInTransit] = useState<PendingTransferPick[]>([]);
+  // A failed list read must not render as "there are none". The dialog's empty state is
+  // an authoritative claim, so it needs to know the difference between an answered
+  // empty list and a read that never answered.
+  const [inTransitFailed, setInTransitFailed] = useState(false);
   const [destinationOpen, setDestinationOpen] = useState(false);
 
   // PO receive (Phase 2)
   const [pendingPo, setPendingPo] = useState<PurchaseOrderDto | null>(null);
   const [poListOpen, setPoListOpen] = useState(false);
   const [poList, setPoList] = useState<PurchaseOrderDto[]>([]);
+  const [poListFailed, setPoListFailed] = useState(false);
 
   // ── Products for the bound location ────────────────────────────────
   const loadProducts = useCallback(async () => {
@@ -93,6 +136,19 @@ export default function WarehouseConsole() {
     }
     setLoading(true);
     setLoadError(null);
+    // POSITIVE/ELSE, not an early return: `list_warehouse_products_at_location` is
+    // desktop-only (apps/desktop-tauri lib.rs:1613; apps/mobile-tauri registers only
+    // `list_warehouse_products_scoped`, which has no location id). Unguarded, every
+    // tablet visit to Warehouse landed in the catch and rendered 'could not load'
+    // over an empty grid -- a failure state for a shell that simply has no answer.
+    // The tablet reports the honest unavailable state instead, and the `else` arm is
+    // the shape verify-scoped-reads.py reads as a guard.
+    if (isTabletShell()) {
+      setProducts([]);
+      setLoadUnavailable(true);
+      setLoading(false);
+      return;
+    } else {
     try {
       // asArray: the render maps `products` (see utils/ipc-payload).
       const data = await listWarehouseProductsAtLocation(sessionToken, locationId);
@@ -101,6 +157,7 @@ export default function WarehouseConsole() {
       setLoadError(l10nErrorMessage(err, l10n, 'warehouse-load-error'));
     } finally {
       setLoading(false);
+    }
     }
   }, [sessionToken, locationId, l10n]);
 
@@ -156,8 +213,12 @@ export default function WarehouseConsole() {
           lines: t.lines,
         })),
       );
+      setInTransitFailed(false);
     } catch {
-      // Non-critical — dialog shows the empty state.
+      // NOT "the dialog shows the empty state" — that would tell the operator there is
+      // nothing in transit on the strength of a read that never answered.
+      setInTransit([]);
+      setInTransitFailed(true);
     }
   }, [sessionToken]);
 
@@ -267,11 +328,20 @@ export default function WarehouseConsole() {
           e.preventDefault();
           setMode('stock');
           break;
+        // ⚠️ These two used to `preventDefault()` and NOTHING ELSE, so F5 and ? were
+        // dead keys: advertised on their FnBar buttons (below, via `onPrint` /
+        // `onShowHelp`), listed in the help overlay, and silently swallowed. The
+        // parity test could not catch it because its "every active shortcut has a
+        // handler" claim compares `ACTIVE_SHORTCUT_ACTIONS` against the manifest that
+        // DERIVES that set — A ⊆ A. Both now call the same functions the buttons call,
+        // so the two paths cannot drift.
         case 'print':
           e.preventDefault();
+          handlePrint();
           break;
         case 'shortcut-list':
           e.preventDefault();
+          handleShowHelp();
           break;
         case 'close':
           e.preventDefault();
@@ -284,7 +354,11 @@ export default function WarehouseConsole() {
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, []);
+    // `handlePrint` / `handleShowHelp` are read by the F5 and ? cases above. Both are
+    // useCallback-stable (addToast is stable), so listing them cannot churn the
+    // listener — but omitting them froze the first render's closure, the stale-dep
+    // shape this file's other handlers already avoid.
+  }, [handlePrint, handleShowHelp]);
 
   // ── Pick transfer dialog handlers ──────────────────────────────────
   const openTransferList = useCallback(() => {
@@ -311,8 +385,10 @@ export default function WarehouseConsole() {
     try {
       const all = await listPurchaseOrdersScoped(sessionToken);
       setPoList(all.filter((po) => po.status === 'approved'));
+      setPoListFailed(false);
     } catch {
-      // Non-critical — dialog shows the empty state.
+      setPoList([]);
+      setPoListFailed(true);
     }
   }, [sessionToken]);
 
@@ -382,11 +458,35 @@ export default function WarehouseConsole() {
         )}
       </div>
 
+      {/* ── Inventory shift strip ──
+          Round 164 mounted this. `ShiftBar` tracks the INVENTORY shift (start/end,
+          per-location, with an end-of-shift transaction summary) -- not the POS cash
+          shift, which is `usePosShifts` and is live. Its four commands
+          (start/end/get_active/list_inventory_shifts) are registered on BOTH shells
+          (desktop lib.rs:1537-1540, tablet lib.rs:1483-1486), so no shell split is
+          needed. It had never been mounted by any commit -- `git log -S'<ShiftBar'`
+          returns only fixes TO it -- while three separate rounds (88415f10f, b245189b6a,
+          dcdc57f155) repaired races and double-submits in it. Care was invested in a
+          component no user could reach; the warehouse console is the surface whose
+          stock movements it scopes.
+
+          ⚠️ ONE THING THE MOUNT DOES NOT DO: record which location the shift belongs
+          to. ShiftBar keeps its OWN location picker (ShiftBar.tsx:221 reads
+          `locations.find(l => l.id === activeShift?.location_id)`), and this console
+          passes no `onShiftChange`, so the console's `locationId` (:457, the one the
+          stock views use) and the shift's location can differ. The console summarises
+          the picked location's stock; the shift strip may be open on another. Left as a
+          recorded gap rather than a rushed wiring: the obvious fix -- pass
+          `onShiftChange` and drive the console's `locationId` -- would make a shift
+          event silently retarget three stock reads, which is a behaviour change on a
+          money-adjacent screen and belongs in its own commit with its own tests. */}
+      <ShiftBar />
+
       {/* ── Mode tabs ── */}
       <SegmentedTabs
         className="warehouse-mode-tabs"
         ariaLabel={requiredLocalized(l10n, 'warehouse-mode-tabs-aria')}
-        items={(['receive', 'send', 'count', 'stock'] as WarehouseMode[]).map((m) => ({
+        items={WAREHOUSE_MODES.filter(warehouseModeAvailable).map((m) => ({
           value: m,
           label: requiredLocalized(l10n, `warehouse-mode-${m}`),
         }))}
@@ -441,6 +541,13 @@ export default function WarehouseConsole() {
                 <Skeleton variant="block" width="100%" height="2.5rem" />
                 <Skeleton variant="block" width="100%" height="2.5rem" />
               </>
+            ) : loadUnavailable ? (
+              // Not an error: this shell has no per-location stock read, so there is
+              // nothing to show and nothing to retry. A distinct state from loadError
+              // keeps a shell limitation out of the failure path.
+              <div className="warehouse-empty-panel" data-testid="warehouse-stock-unavailable">
+                {requiredLocalized(l10n, 'warehouse-stock-desktop-only')}
+              </div>
             ) : loadError ? (
               <div className="warehouse-error" role="alert">{loadError}</div>
             ) : grid.length === 0 ? (
@@ -554,9 +661,9 @@ export default function WarehouseConsole() {
         onSend={() => { setMode('send'); setSendPopupOpen((v) => !v); }}
         onCount={() => setMode('count')}
         onStock={() => setMode('stock')}
-        onPrint={() => addToast({ type: 'info', message: 'Print' })}
+        onPrint={handlePrint}
         onToggleFullscreen={toggleFullscreen}
-        onShowHelp={() => addToast({ type: 'info', message: '?' })}
+        onShowHelp={handleShowHelp}
       />
 
       {/* ── Receive popup (F1) ── */}
@@ -650,7 +757,9 @@ export default function WarehouseConsole() {
           open
           title={requiredLocalized(l10n, 'warehouse-receive-source-transfer')}
           message={
-            inTransit.length === 0 ? (
+            inTransitFailed ? (
+              <p role="alert">{requiredLocalized(l10n, 'warehouse-receive-load-failed')}</p>
+            ) : inTransit.length === 0 ? (
               <p>{requiredLocalized(l10n, 'warehouse-receive-no-transfers')}</p>
             ) : (
               <ul className="warehouse-transfer-list">
@@ -677,7 +786,9 @@ export default function WarehouseConsole() {
           open
           title={requiredLocalized(l10n, 'warehouse-receive-source-po')}
           message={
-            poList.length === 0 ? (
+            poListFailed ? (
+              <p role="alert">{requiredLocalized(l10n, 'warehouse-receive-load-failed')}</p>
+            ) : poList.length === 0 ? (
               <p>{requiredLocalized(l10n, 'warehouse-receive-no-pos')}</p>
             ) : (
               <ul className="warehouse-transfer-list">

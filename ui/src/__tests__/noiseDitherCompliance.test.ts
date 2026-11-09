@@ -38,6 +38,11 @@ const KNOWN_NOISE_SELECTORS = [
   // Core pattern classes (always covered)
   '.card',
   '.modal-panel',
+  // First-run provisioning card — gained a shadow lift, so it takes the overlay.
+  '.provisioning-card',
+  // ...and its two selected-option surfaces, which gained the same lift.
+  '.provisioning-store-type.is-selected',
+  '.provisioning-mode-card.is-selected',
   '.staff-login-card',
   '.workspace-card',
   '.staff-mgmt-card',
@@ -67,7 +72,12 @@ const KNOWN_NOISE_SELECTORS = [
   // selectors, so the ::after entry alone is not enough.
   '.pos-split-modal',
   '.tables-modal-dialog',
-  // The active preview tab, elevated once its shadow was tokenised.
+
+  // The arrange-tables inspector bar — `box-shadow: var(--shadow-lg)` on the
+  // floating toolbar over the floor plan (TableManagementScreen.css:1180).
+  // Named on both sides like the entry above: the coverage walk reads CSS
+  // selectors, so the ::after entry alone is not enough.
+  '.tables-arrange-inspector',  // The active preview tab, elevated once its shadow was tokenised.
   '.restaurant-preview-tab.active',
   // The exact-tender quick button, same reason. Covered rather than waived on
   // purpose: the exempt-prefix door was tried first and breached its ceiling
@@ -116,6 +126,10 @@ const KNOWN_NOISE_SELECTORS = [
   '.multi-store-stat-card',
   '.product-card',
   '.kiosk-product-card',
+  // Kiosk order-confirmation card (KioskScreen.css:487) — `box-shadow: var(--shadow-lg)`.
+  // Found by the shadow walk on 2026-10-17 and given the OVERLAY, not a waiver, so this
+  // entry and the ::after lists in theme/components.css are the two halves of one grant.
+  '.kiosk-success-card',
   '.setup-preset-card',
   '.setup-step-panel',
   '.pos-cart-line',
@@ -140,6 +154,16 @@ const KNOWN_NOISE_SELECTORS = [
   '.provisioning-subtab.active',
   '.license-pairing-qr-wrapper',
   '.provisioning-qr-wrapper',
+  // Purchasing/Kasbon elevated surfaces (2026-10-21). Each always carried a
+  // literal box-shadow; the design-token pass rewrote them to var(--shadow-*),
+  // which is what made the shadow walk see them. Wired to ::after in
+  // components.css main list + both @media parity blocks, anchoring via
+  // position:relative in their own feature sheets.
+  '.kasbon-modal',
+  '.receive-po-modal',
+  '.vendor-bill-stat-card',
+  '.vendor-bills-table-container',
+  '.vendor-bills-modal',
   '.store-switcher-dropdown',
   '.create-pin-card',
   '.custom-context-menu',
@@ -222,6 +246,21 @@ const KNOWN_NOISE_SELECTORS = [
   // absolute-positioned selectors listed there give. Present HERE because the
   // coverage assertion's own fix states the two halves are a pair.
   '.pos-cart-order-type-indicator',
+  // Seven elevated surfaces that landed without the overlay in eb32a3b0f
+  // (style(restaurant): polish category pills, order context row and cart actions)
+  // and 5a020213c. Each is a --shadow-* card, pill or action button on the
+  // restaurant cart and menu, so each bands at the same order as the pills above —
+  // the overlay is GRANTED, which is why they appear in the components.css
+  // ::after block (main plus both media blocks) rather than on an exempt prefix.
+  // Found by running this suite, which no lane had reached: it had been red at
+  // HEAD for as long as those two commits have existed.
+  '.restaurant-category-pill',
+  '.restaurant-card',
+  '.pos-cart-panel',
+  '.pos-cart-open-bill-btn',
+  '.pos-cart-print-bill-btn',
+  '.pos-cart-split-bill-btn',
+  '.pos-cart-send-kitchen-btn',
   '.refund-modal',
   '.shortfall-modal',
   '.settings-footer-shortcut kbd',
@@ -851,7 +890,63 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
     //
     // The ordering rule the earlier entry states was followed: surfaces fixed FIRST
     // (the ::after rules are what actually paint the overlay), entries named second.
-    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 122 selectors; measured 107 with 22 of headroom below the floor and 1 below the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeLessThanOrEqual(107);
+    //
+    // Ceiling 107 -> 108, 2026-10-18. The +1 is the SAME sanctioned shape as the +2
+    // above: .tables-arrange-inspector carries `box-shadow: var(--shadow-lg)`
+    // (TableManagementScreen.css:1180) and was given ::after entries in all three
+    // components.css lists in the SAME change that named it here, so the surface IS
+    // dithered and this door's own rule is satisfied. It is not a new waiver.
+    //
+    // It was never a hardcoded literal that tokenising made visible — the rule was
+    // simply written without the overlay. The shadow walk found it, which is the walk
+    // doing its job; the population moved 122 -> 123 with it.
+    // Ceiling 108 -> 109, 2026-10-17. The +1 is the SAME sanctioned shape as the +1 and
+    // +2 above: .kiosk-success-card carries `box-shadow: var(--shadow-lg)`
+    // (KioskScreen.css:487) and was given ::after entries in all three components.css
+    // lists in the SAME change that named it here, so the surface IS dithered and this
+    // door's own rule is satisfied. It is not a new waiver.
+    //
+    // Like .tables-arrange-inspector above, it was never a hardcoded literal that
+    // tokenising made visible — the card was simply written without the overlay. The
+    // shadow walk found it, which is the walk doing its job; the population moved
+    // 123 -> 124 with it, so the ceiling is +1 and the headroom below the floor is
+    // unchanged in absolute terms.
+    // Ceiling 109 -> 116, 2026-10-19. The +7 is the SAME sanctioned shape as the +1,
+    // +2, +1 and +1 above, applied to seven surfaces at once: .restaurant-category-pill,
+    // .restaurant-card, .pos-cart-panel, .pos-cart-open-bill-btn,
+    // .pos-cart-print-bill-btn, .pos-cart-split-bill-btn and .pos-cart-send-kitchen-btn
+    // each carry a --shadow-* value and each was given ::after entries in all THREE
+    // components.css lists in the SAME change that names them here, so all seven ARE
+    // dithered and this door's own rule is satisfied. None is a new waiver.
+    //
+    // Like the two cards above, none of them was ever a hardcoded literal -- eb32a3b0f
+    // and 5a020213c simply wrote the surfaces without the overlay, and the shadow walk
+    // found them. This is the walk doing exactly its job on the first run that reached
+    // it: the coverage assertion above had been RED at HEAD since those commits, and no
+    // lane had run this suite because the full matrix stops at the first earlier
+    // failure. Population 124 -> 131 with the seven, so the ceiling rises by 7 and the
+    // headroom below the floor is unchanged in absolute terms.
+    // 2026-10-19: population 132 -> 133 and the door 117 -> 119 for THREE new entries,
+    // all from the same setup-card design pass: .provisioning-card, and the two
+    // selected-option surfaces on it (.provisioning-store-type.is-selected,
+    // .provisioning-mode-card.is-selected). Each earned its place the only way this
+    // list accepts one — by GAINING a shadow and then being COVERED by the overlay,
+    // not by being exempted from it. The ceiling rises by exactly the number added.
+    // Ceiling 119 -> 124, 2026-10-21. The +5 is the SAME sanctioned shape, applied to
+    // five purchasing/kasbon surfaces at once: .kasbon-modal, .receive-po-modal,
+    // .vendor-bill-stat-card, .vendor-bills-table-container and .vendor-bills-modal.
+    // Each was given ::after entries in all THREE components.css lists in the SAME
+    // change that names them here, so all five ARE dithered and this door's own rule
+    // is satisfied. None is a new waiver.
+    //
+    // The mechanism is worth recording because it is NOT the usual one: these five were
+    // never plain, they carried a LITERAL box-shadow (rgba/hardcoded) that the shadow
+    // walk could not see. The 2026-10-21 design-token pass rewrote them to
+    // var(--shadow-xl) / var(--shadow-sm), which is what made them visible — so the walk
+    // did not find five under-covered surfaces, it found five surfaces whose coverage
+    // had been invisible. Population 157 -> 162 with the five; ceiling rises by exactly
+    // 5 and the headroom below the floor is unchanged in absolute terms.
+    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 162 selectors; measured 124 with 31 of headroom below the floor and 0 below the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeLessThanOrEqual(124);
     // State pseudo-class door: 21 of 118, floor 15 (6 below) and ceiling 28 (7 above).
     // A RISE is the :520 door crediting a state that belongs to a different element.
     // A FALL THROUGH THE FLOOR IS PRE-NAMED ON PURPOSE, because the sister lane is

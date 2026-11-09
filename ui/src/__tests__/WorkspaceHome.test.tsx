@@ -12,6 +12,7 @@ import WorkspaceHome from '@/features/workspaces/WorkspaceHome';
 import { useSubscription, useAdminGate } from '@/contexts/SubscriptionContext';
 import { makeSubscriptionCaps } from '@/__tests__/test-utils/mocks/subscriptionCaps';
 import { setShellKind } from '@/utils/shellKind';
+import { registerStaffFeature } from '@/features/staff/register';
 
 // WorkspaceHome renders a heavy multi-section screen driven by async
 // context mocks; under parallel CI load a full render can exceed the
@@ -1052,6 +1053,55 @@ describe('WorkspaceHome', () => {
 
   // ── Logout confirmation ────────────────────────────────────
 
+  it('opens the user profile from the toolbar button', async () => {
+    // The toolbar renders a labelled profile <button> for the signed-in user. It had NO
+    // onClick and NO ancestor handler -- the wrapper is div.ws-header-buttons and the
+    // immediate parent is a fragment, so unlike TransactionLogScreen's Details button
+    // (round 155, rescued by a click bubbling to its row) this one was dead outright:
+    // focusable, announced, inert under both pointer and keyboard.
+    //
+    // The destination is the registered 'staff' route (tools.tsx:88-89) through the SAME
+    // handleShortcutNav the Tools cards use, so the button cannot disagree with the grid.
+    // The REAL registration, not a stub: `handleShortcutNav` branches on
+    // `getPage(route)?.fullscreen`, so an unregistered 'staff' makes the branch take the
+    // workspace-rebind path and the assertion below would be testing the registry's
+    // absence rather than the product. Production imports the feature modules, so this
+    // case has to as well.
+    registerStaffFeature();
+
+    const user = userEvent.setup();
+    mockWorkspaceValue.mockReturnValue({
+      availableWorkspaces: [],
+      loading: false,
+      error: null,
+      activeWorkspace: null,
+      workspaceScreens: [],
+      lastWorkspace: null,
+      // REQUIRED. Without it the nav throws 'setActiveWorkspace is not a function' after
+      // the 150ms exit timer -- and the case still PASSED, because the hash assertion
+      // below ran before that timer fired. A passing test with an unhandled error is
+      // worse than no test, so this is asserted explicitly rather than left to the
+      // harness default.
+      setActiveWorkspace: mockSetActiveWorkspace,
+    });
+
+    await renderWithFluent(<WorkspaceHome />);
+
+    const profileBtn = await screen.findByRole('button', { name: /Test Owner/i });
+    expect(profileBtn.className).toContain('workspace-home-user-profile');
+
+    await user.click(profileBtn);
+
+    // handleShortcutNav sets the hash directly. The workspace rebind is exactly why a
+    // fullscreen destination must NOT also set a workspace (see the comment at :520).
+    await waitFor(() => {
+      expect(window.location.hash, 'clicking the profile button did not navigate').toBe('#/staff');
+    });
+    // 'staff' IS a registered fullscreen page, so navigating to it must not rebind the
+    // workspace -- rebinding is what made Staff Management unreachable on the tablet
+    // (the measured defect recorded at WorkspaceHome.tsx:520-529).
+    expect(mockSetActiveWorkspace).not.toHaveBeenCalled();
+  });
   describe('logout confirmation', () => {
     it('shows logout confirmation modal when logout is clicked', async () => {
       mockWorkspaceValue.mockReturnValue({

@@ -516,7 +516,10 @@ fn csv_export_creates_files() {
         .export_analytics_bundle(ExportConfig::default(), "t1", "S1")
         .unwrap();
 
-    let tmp = std::env::temp_dir().join("oz-pos-test-csv");
+    // The guard owns the directory and deletes it on drop; it stays alive
+    // until after the writes and the assertions below.
+    let scratch = kasirmu_test_support::ScratchDir::new("oz-pos-test-csv");
+    let tmp = scratch.path();
     let files = write_analytics_bundle_csv(&bundle, tmp.to_str().unwrap()).unwrap();
 
     // Should have created at least metadata.json + daily_revenue.csv + top_products.csv + heatmap + categories
@@ -536,7 +539,9 @@ fn csv_export_empty_bundle_writes_metadata_only() {
         .export_analytics_bundle(ExportConfig::default(), "", "")
         .unwrap();
 
-    let tmp = std::env::temp_dir().join("oz-pos-test-csv-empty");
+    // The guard owns the directory and deletes it on drop, after the write.
+    let scratch = kasirmu_test_support::ScratchDir::new("oz-pos-test-csv-empty");
+    let tmp = scratch.path();
     let files = write_analytics_bundle_csv(&bundle, tmp.to_str().unwrap()).unwrap();
 
     // Only metadata.json should be written (bundle is empty)

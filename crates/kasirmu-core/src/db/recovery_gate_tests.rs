@@ -9,24 +9,23 @@
 use super::*;
 
 /// A scratch directory removed when the guard drops.
-struct Scratch(PathBuf);
+struct Scratch(kasirmu_test_support::ScratchDir);
 
 impl Scratch {
     fn new(label: &str) -> Self {
-        let dir =
-            std::env::temp_dir().join(format!("oz_restore_gate_{label}_{}", uuid::Uuid::now_v7()));
-        std::fs::create_dir_all(&dir).unwrap();
-        Self(dir)
+        // The GUARD is stored, not just its path. Holding only the path while
+        // the guard lived in this function meant the guard dropped on return,
+        // deleted the directory, and left every later `Connection::open` inside
+        // it failing with "unable to open database file" (SQLite CannotOpen,
+        // extended code 14). Storing the guard keeps the directory alive for the
+        // test and removes it on drop, so this struct needs no `Drop` of its own.
+        Self(kasirmu_test_support::ScratchDir::new(&format!(
+            "oz_restore_gate_{label}"
+        )))
     }
 
     fn join(&self, name: &str) -> PathBuf {
-        self.0.join(name)
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        self.0.path().join(name)
     }
 }
 

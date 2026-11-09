@@ -158,7 +158,7 @@ describe('ItemModifierModal', () => {
     });
   });
 
-  it('prevents deselecting below minSelections in a group', async () => {
+  it('prevents deselecting below minSelections in a single-select radio group', async () => {
     const user = userEvent.setup();
     renderModal();
     const mediumBtn = screen.getByTestId('modifier-mod-medium');
@@ -167,6 +167,42 @@ describe('ItemModifierModal', () => {
     await user.click(mediumBtn);
     await waitFor(() => {
       expect(mediumBtn).toHaveAttribute('aria-checked', 'true');
+    });
+  });
+
+  it('allows deselecting in multi-select groups even when at minSelections to permit changing choices', async () => {
+    const user = userEvent.setup();
+    const comboGroup: ModifierGroup = {
+      id: 'grp-combo',
+      name: 'Choose 2 Sides',
+      minSelections: 2,
+      maxSelections: 2,
+      sortOrder: 1,
+      modifiers: [
+        { id: 'mod-c1', name: 'Fries', priceMinor: 0, sortOrder: 1, isDefault: true },
+        { id: 'mod-c2', name: 'Salad', priceMinor: 0, sortOrder: 2, isDefault: true },
+        { id: 'mod-c3', name: 'Soup', priceMinor: 0, sortOrder: 3, isDefault: false },
+      ],
+    };
+    renderModal({ groups: [comboGroup] });
+
+    const friesBtn = screen.getByTestId('modifier-mod-c1');
+    const soupBtn = screen.getByTestId('modifier-mod-c3');
+
+    // Soup is initially disabled because maxSelections (2) is met
+    expect(soupBtn).toBeDisabled();
+
+    // Deselect Fries to swap choices
+    await user.click(friesBtn);
+    await waitFor(() => {
+      expect(friesBtn).toHaveAttribute('aria-checked', 'false');
+      expect(soupBtn).not.toBeDisabled();
+    });
+
+    // Select Soup
+    await user.click(soupBtn);
+    await waitFor(() => {
+      expect(soupBtn).toHaveAttribute('aria-checked', 'true');
     });
   });
 

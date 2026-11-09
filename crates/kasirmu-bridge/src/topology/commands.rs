@@ -252,6 +252,21 @@ pub struct TopologyRevisionGraphResult {
     /// The stored envelope, present only when `status == "restorable"`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub diagram: Option<Value>,
+    /// Organization scope (ADR-66 / SaaS-3).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub org_id: Option<String>,
+    /// Author / actor identity.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actor: Option<String>,
+    /// Key ID for cryptographic verification (ADR-66 D4).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_id: Option<String>,
+    /// Cryptographic signature of the revision (ADR-66 D4).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
+    /// Base revision for optimistic concurrency arbitration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_revision: Option<i64>,
 }
 
 /// ADR #46 §4: pin or unpin one revision, exempting it from deflation.
@@ -344,11 +359,21 @@ pub async fn load_topology_revision(
             published_by: String::new(),
             contract_schema_version: None,
             diagram: None,
+            org_id: None,
+            actor: None,
+            key_id: None,
+            signature: None,
+            base_revision: None,
         }),
         TopologyRevisionLookup::Deflated {
             change_note,
             published_at,
             published_by,
+            org_id,
+            actor,
+            key_id,
+            signature,
+            base_revision,
         } => Ok(TopologyRevisionGraphResult {
             status: "deflated",
             revision,
@@ -357,6 +382,11 @@ pub async fn load_topology_revision(
             published_by,
             contract_schema_version: None,
             diagram: None,
+            org_id: Some(org_id),
+            actor: Some(actor),
+            key_id,
+            signature,
+            base_revision,
         }),
         TopologyRevisionLookup::Restorable {
             change_note,
@@ -364,6 +394,11 @@ pub async fn load_topology_revision(
             published_by,
             contract_schema_version,
             envelope,
+            org_id,
+            actor,
+            key_id,
+            signature,
+            base_revision,
         } => {
             let diagram: Value = serde_json::from_str(&envelope).map_err(|e| {
                 BridgeError::Internal(format!("invalid topology revision JSON: {e}"))
@@ -376,6 +411,11 @@ pub async fn load_topology_revision(
                 published_by,
                 contract_schema_version: Some(contract_schema_version),
                 diagram: Some(diagram),
+                org_id: Some(org_id),
+                actor: Some(actor),
+                key_id,
+                signature,
+                base_revision,
             })
         }
     }
@@ -784,6 +824,11 @@ pub async fn apply_topology_diff(
         workspace_creations: created,
         workspace_updates: updated,
         workspace_archives: archived,
+        org_id: None,
+        actor: Some(&session.user_id),
+        key_id: None,
+        signature: None,
+        base_revision: Some(base_revision as i64),
     };
     let save_result = {
         let branch_conn = ctx.db_manager.open_store(&session.store_id).map_err(|e| {

@@ -77,7 +77,14 @@ interface SettingSpec {
 }
 
 /**
- * The ten DB-backed toggles.
+ * The DB-backed toggles — thirteen as of this edit, and the number is spelled out
+ * because it was WRONG once: this comment read `ten` while the list below already
+ * held thirteen. Round 290 of todo-restaurant-pos-reliability.md caught it while
+ * closing the coverage gap on the four newest, which had been rendered and wired but
+ * asserted nowhere. A count in prose is a reading that expires the moment the list
+ * grows, so the source of truth for "how many" is `RESTAURANT_SETTING_SPECS` and this
+ * sentence is a convenience. `__tests__/RestaurantSettingsScreen.test.tsx` derives the
+ * toggle set from that array rather than from this line.
  *
  * `interactionSound` / `interactionVibration` are the one pair whose fallback is
  * not a constant: they mirror a localStorage preference, so the caller passes

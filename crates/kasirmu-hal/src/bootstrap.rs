@@ -287,6 +287,18 @@ impl fmt::Display for BootstrapReport {
 pub async fn apply_config(registry: &DriverRegistry, config: &HardwareConfig) -> BootstrapReport {
     let mut report = BootstrapReport::default();
 
+    // O-M44: Hoist USB printer discovery above the loop so N configured USB printers
+    // perform at most one bus enumeration rather than N redundant scans.
+    let mut usb_printers = if config
+        .printers
+        .iter()
+        .any(|p| matches!(p.connection, Connection::Usb))
+    {
+        Some(crate::drivers::usb_printer::UsbReceiptPrinter::discover_all().into_iter())
+    } else {
+        None
+    };
+
     for printer in &config.printers {
         let key = format!("printer:{}", printer.id);
         match &printer.connection {
@@ -299,14 +311,9 @@ pub async fn apply_config(registry: &DriverRegistry, config: &HardwareConfig) ->
                 // asks for "default". Without this binding, calling
                 // discover() would still leave every lookup empty.
                 //
-                // discover_all() is synchronous USB enumeration, so it does
-                // block the runtime thread briefly. It returns a Vec rather
-                // than a Result, so a dead or absent bus yields an empty
-                // list rather than an error.
-                match crate::drivers::usb_printer::UsbReceiptPrinter::discover_all()
-                    .into_iter()
-                    .next()
-                {
+                // O-M44: use the hoisted bus discovery iterator rather than
+                // re-enumerating the bus per configured printer.
+                match usb_printers.as_mut().and_then(|it| it.next()) {
                     Some(found) => {
                         let driver = Arc::new(found);
                         registry.register_printer(&printer.id, driver.clone()).await;

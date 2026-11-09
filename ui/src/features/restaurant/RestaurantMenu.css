@@ -345,6 +345,77 @@
   margin: var(--space-1_5) var(--space-1);
 }
 
+/* ── Sidebar: keyboard-shortcut help ─────────────── */
+/* An inline panel, not a dialog — it renders inside the sidebar's own scroll
+   column, so the focus trap and the Escape handling stay in one place. Tokens
+   only, and only tokens this sheet's siblings already define: an invented
+   custom-property name declares nothing and computes to nothing. */
+.restaurant-shortcuts-help {
+  margin: var(--space-1) var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+}
+
+.restaurant-shortcuts-help-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-fg-secondary);
+  margin-bottom: var(--space-1_5);
+}
+
+.restaurant-shortcuts-help-close {
+  appearance: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--color-fg-tertiary);
+  font-size: var(--text-md);
+  line-height: 1;
+  padding: 0 var(--space-1);
+}
+
+.restaurant-shortcuts-help-close:hover {
+  color: var(--color-fg-primary);
+}
+
+.restaurant-shortcuts-help-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.restaurant-shortcuts-help-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+}
+
+.restaurant-shortcuts-help-key {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 0 var(--space-1);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--color-fg-primary);
+  white-space: nowrap;
+}
+
+.restaurant-shortcuts-help-label {
+  text-align: right;
+}
+
 /* ── Sidebar header: the signed-in cashier ───────── */
 /* The one element in this panel that is allowed to carry a face. The rows
    below it are deliberately colourless: none of them is ever "current". */
@@ -587,13 +658,34 @@
   outline-offset: 2px;
 }
 
+/* ── Categories area wrapper ──────────────────────── */
+.restaurant-categories-area {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-width: 0;
+  position: relative;
+}
+
+.restaurant-categories-area::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 1px;
+  width: var(--space-8);
+  background: linear-gradient(to right, transparent, var(--color-bg));
+  pointer-events: none;
+  z-index: 2;
+}
+
 /* ── Category tabs ──────────────────────────────── */
 .restaurant-categories {
   display: flex;
-  gap: 0;
+  gap: var(--space-2);
   overflow-x: auto;
   scrollbar-width: thin;
-  padding-bottom: 0;
+  padding: var(--space-2) var(--space-3);
   -webkit-overflow-scrolling: touch;
   flex-shrink: 0;
   border-bottom: 1px solid var(--color-border);
@@ -605,7 +697,7 @@
 }
 
 .restaurant-categories::-webkit-scrollbar {
-  height: 6px;
+  height: 4px;
 }
 
 .restaurant-categories::-webkit-scrollbar-track {
@@ -624,42 +716,57 @@
 .restaurant-category-pill {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-1_5);
   flex-shrink: 0;
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-1_5) var(--space-3_5);
   font-family: var(--font-sans);
   font-size: calc(var(--text-sm) - 0.125rem + var(--font-size, 0) * 0.09375rem);
   font-weight: var(--font-weight-medium);
-  color: var(--color-fg-tertiary);
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
+  color: var(--color-fg-secondary);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-xs);
   cursor: pointer;
   white-space: nowrap;
   min-height: var(--touch-target-min);
   transition:
     color var(--duration-150) var(--ease-out),
-    border-color var(--duration-150) var(--ease-out);
+    background-color var(--duration-150) var(--ease-out),
+    border-color var(--duration-150) var(--ease-out),
+    box-shadow var(--duration-150) var(--ease-out),
+    transform var(--duration-150) var(--ease-out);
 }
 
 .restaurant-category-pill:hover {
   color: var(--color-fg);
-  border-bottom-color: var(--color-border-hover);
+  background: var(--color-bg-hover);
+  border-color: var(--color-border-hover);
+  transform: translateY(-1px);
+}
+
+.restaurant-category-pill:active {
+  transform: scale(0.96);
 }
 
 .restaurant-category-pill--active {
-  color: var(--pill-color, var(--color-accent));
-  border-bottom-color: var(--pill-color, var(--color-accent));
+  color: var(--color-accent-fg);
+  background: var(--pill-color, var(--color-accent));
+  border-color: var(--pill-color, var(--color-accent));
+  font-weight: var(--font-weight-semibold);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--pill-color, var(--color-accent)) 35%, transparent);
 }
 
 .restaurant-category-pill--active:hover {
-  color: var(--pill-color, var(--color-accent));
-  border-bottom-color: var(--pill-color, var(--color-accent));
+  color: var(--color-accent-fg);
+  background: var(--pill-color, var(--color-accent));
+  border-color: var(--pill-color, var(--color-accent));
+  filter: brightness(1.05);
 }
 
 .restaurant-category-pill:focus-visible {
   outline: 2px solid var(--color-border-focus);
-  outline-offset: -2px;
+  outline-offset: 2px;
 }
 
 /* Icon SVG before the label */
@@ -667,12 +774,21 @@
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  opacity: 0.7;
+  opacity: 0.8;
   transition: opacity var(--duration-150) var(--ease-out);
 }
 
 .restaurant-category-pill--active .restaurant-pill-icon {
   opacity: 1;
+}
+
+/* ── Grid area wrapper ────────────────────────────── */
+.restaurant-grid-area {
+  flex: 1 1 0%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
 }
 
 /* ── Product grid ───────────────────────────────── */
@@ -691,13 +807,13 @@
   display: contents;
 }
 
-/* ── Restaurant card (diagonal layout) ──────────── */
+/* ── Restaurant card ────────────────────────────── */
 .restaurant-card {
   position: relative;
   width: 100%;
-  /* Slimmer accent strip: keeps the + Add affordance while giving the name
-     and price far more horizontal room (was 32% of the card width). */
-  --card-add-width: 26%;
+  /* Modern menu item tile: full-width card with sleek left accent bar
+     and floating bottom-right action badge. */
+  --card-add-width: calc(var(--space-9) + var(--card-size, 0) * 2px);
   display: flex;
   min-width: 0;
   padding: 0;
@@ -711,6 +827,7 @@
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
   cursor: pointer;
   /* Uniform box per menu size: every card is exactly this tall regardless of
@@ -731,12 +848,15 @@
 .restaurant-card::after {
   content: '';
   position: absolute;
-  inset: 0 0 0 auto;
-  width: var(--card-add-width);
+  inset: 0 auto 0 0;
+  width: var(--space-1);
   background: var(--btn-color, var(--color-accent));
+  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
   pointer-events: none;
-  z-index: 0;
-  transition: background-color var(--duration-150) var(--ease-out);
+  z-index: 1;
+  transition:
+    width var(--duration-150) var(--ease-out),
+    background-color var(--duration-150) var(--ease-out);
 }
 
 .restaurant-card--added {
@@ -786,15 +906,23 @@ body.is-resizing .restaurant-card * {
 }
 
 .restaurant-card:hover:not(.restaurant-card--disabled) {
-  border-color: var(--color-accent);
-  transform: translateY(-0.125rem) scale(1.02);
+  border-color: var(--btn-color, var(--color-accent));
+  transform: translateY(-0.125rem);
   box-shadow: var(--shadow-md);
   z-index: 1;
+}
+
+.restaurant-card:hover:not(.restaurant-card--disabled)::after {
+  width: var(--space-1_5);
 }
 
 .restaurant-card:active:not(.restaurant-card--disabled) {
   transform: translateY(0) scale(0.985);
   box-shadow: var(--shadow-sm);
+}
+
+.restaurant-card:active:not(.restaurant-card--disabled)::after {
+  background-color: var(--color-accent-hover, var(--color-accent));
 }
 
 /* A refused add on an 86'd card. The card is excluded from the :hover/:active
@@ -891,7 +1019,7 @@ body.is-resizing .restaurant-card * {
   display: contents;
 }
 
-/* Card body — name area to the left of the diagonal */
+/* Card body — full-width typography area with balanced padding */
 .restaurant-card-body {
   position: relative;
   z-index: 1;
@@ -902,10 +1030,7 @@ body.is-resizing .restaurant-card * {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: calc(var(--space-2) + var(--card-size, 0) * 4px) var(--card-add-width) calc(var(--space-1_5) + var(--card-size, 0) * 4px) calc(var(--space-3) + var(--card-size, 0) * 2px);
-  padding-top: calc(var(--space-3) + var(--card-size, 0) * 4px);
-  /* Compact side padding: 12px at the smallest size (was 32px). */
-  padding-left: calc(var(--space-3) + var(--card-size, 0) * 2px);
+  padding: calc(var(--space-2_5) + var(--card-size, 0) * 4px) var(--card-add-width) calc(var(--space-1_5) + var(--card-size, 0) * 4px) calc(var(--space-3_5) + var(--card-size, 0) * 2px);
   transition: padding var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -929,6 +1054,8 @@ body.is-resizing .restaurant-card * {
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  word-break: break-word;
+  overflow-wrap: break-word;
   max-height: calc(var(--leading-normal) * 2em);
   line-height: var(--leading-normal);
   transition: font-size var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1);
@@ -936,12 +1063,10 @@ body.is-resizing .restaurant-card * {
 
 .restaurant-card-price {
   display: block;
-  margin-top: var(--space-0_5);
-  /* Secondary detail on a resto card: the cashier reads the name, not the
-     price — keep it one step smaller (10px vs the 12px title) and muted. */
+  margin-top: var(--space-1);
   font-size: calc(var(--text-xs) + var(--font-size, 0) * 1px);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-fg-tertiary);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg-secondary);
   transition: font-size var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -971,34 +1096,26 @@ body.is-resizing .restaurant-card * {
   line-height: var(--leading-condensed);
 }
 
-/* Add badge — icon-only circle centred in the accent strip.
-   The strip's ::after supplies the coloured background; the badge is a
-   two-tone circle that reads as a tappable button. The circle fills
-   --color-fg-inverse and the glyph strokes --color-fg-primary — the two
-   theme inks are always opposite, so the pair contrasts in every theme
-   AND under brand overrides (the demo brand forces --color-accent-fg to
-   white in both glass and light, which made an accent-stroked glyph wash
-   out to ~2.5:1 on the circle — below the 3:1 non-text AA threshold):
-   light = white circle + slate-900 glyph, glass/dark = navy circle +
-   white glyph. The visible "Add" label moved to an sr-only span so screen
-   readers and bundle parity are unaffected. */
+/* Add badge — sleek circular action badge anchored in the bottom-right corner.
+   The badge sits cleanly on the elevated card background with a soft hover/active
+   micro-interaction. On hover, it fills with the category accent color; on add,
+   it pulses green with the checkmark glyph. */
 .restaurant-card-add-icon {
   position: absolute;
-  inset: 0 0 0 auto;
-  width: var(--card-add-width);
-  min-width: var(--space-12);
+  right: calc(var(--space-2) + var(--card-size, 0) * 2px);
+  bottom: calc(var(--space-2) + var(--card-size, 0) * 2px);
   display: flex;
   align-items: center;
   justify-content: center;
   pointer-events: none;
-  z-index: 1;
+  z-index: 2;
 }
 
 .restaurant-card-add-badge {
   display: block;
   flex-shrink: 0;
-  width: calc(28px + var(--card-size, 0) * 4px);
-  height: calc(28px + var(--card-size, 0) * 4px);
+  width: calc(26px + var(--card-size, 0) * 4px);
+  height: calc(26px + var(--card-size, 0) * 4px);
   transition:
     width var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1),
     height var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1),
@@ -1006,39 +1123,54 @@ body.is-resizing .restaurant-card * {
 }
 
 .restaurant-card-add-badge circle {
-  fill: var(--color-fg-inverse);
+  fill: var(--color-bg-hover);
+  transition: fill var(--duration-150) var(--ease-out);
 }
 
 .restaurant-card-add-badge path {
   fill: none;
-  stroke: var(--color-fg-primary);
-  stroke-width: 2;
+  stroke: var(--color-fg-secondary);
+  stroke-width: 2.2;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-
-.restaurant-card:hover:not(.restaurant-card--disabled)::after {
-  background-color: var(--color-accent);
-  background-color: color-mix(in srgb, var(--btn-color, var(--color-accent)) 82%, white);
+  transition: stroke var(--duration-150) var(--ease-out);
 }
 
 .restaurant-card:hover:not(.restaurant-card--disabled) .restaurant-card-add-badge {
-  transform: scale(1.1);
+  transform: scale(1.12);
 }
 
-.restaurant-card:active:not(.restaurant-card--disabled)::after {
-  background-color: var(--color-accent-hover, var(--color-accent));
+.restaurant-card:hover:not(.restaurant-card--disabled) .restaurant-card-add-badge circle {
+  fill: var(--btn-color, var(--color-accent));
+}
+
+.restaurant-card:hover:not(.restaurant-card--disabled) .restaurant-card-add-badge path {
+  stroke: var(--color-accent-fg);
 }
 
 .restaurant-card:active:not(.restaurant-card--disabled) .restaurant-card-add-badge {
-  transform: scale(0.94);
+  transform: scale(0.92);
 }
 
-/* Added flash (400ms) — the whole strip turns success (same signal as the
-   old text button) while the badge swaps its glyph to a check; the circle
-   keeps its accent-fg fill so it stays legible on the green field. */
+.restaurant-card:active:not(.restaurant-card--disabled) .restaurant-card-add-badge circle {
+  fill: var(--btn-color, var(--color-accent));
+}
+
+.restaurant-card:active:not(.restaurant-card--disabled) .restaurant-card-add-badge path {
+  stroke: var(--color-accent-fg);
+}
+
+/* Added flash (400ms) */
 .restaurant-card--added::after {
   background-color: var(--color-success);
+}
+
+.restaurant-card--added .restaurant-card-add-badge circle {
+  fill: var(--color-success);
+}
+
+.restaurant-card--added .restaurant-card-add-badge path {
+  stroke: var(--color-accent-fg);
 }
 
 /* Unavailable — muted badge */

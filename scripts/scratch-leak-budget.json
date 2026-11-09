@@ -1,0 +1,5 @@
+{
+  "description": "Unguarded kasirmu_test_support::scratch_dir call sites, per file. Regenerate with 'python scripts/check-scratch-leaks.py --update' ONLY after migrating call sites to ScratchDir::new. Raising a number here is not a fix; it is an accepted leak.",
+  "total": 0,
+  "files": {}
+}

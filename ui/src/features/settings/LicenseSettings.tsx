@@ -164,8 +164,11 @@ export default function LicenseSettings() {
   const [flashRows, setFlashRows] = useState<Map<string, 'updated'>>(new Map());
   // C3.3: Pause/resume subscription state
   const [pausing, setPausing] = useState(false);
+  /** Synchronous mirrors of the billing busy flags — see their re-entry guards above. */
+  const pausingRef = useRef(false);
   const [showExitSurvey, setShowExitSurvey] = useState(false);
   const [resuming, setResuming] = useState(false);
+  const resumingRef = useRef(false);
   const flashTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const triggerFlash = useCallback((key: string) => {
@@ -308,13 +311,27 @@ export default function LicenseSettings() {
   /** C3.3: Pause the subscription for 1 month. */
   const handlePauseConfirm = useCallback(async () => {
     setShowExitSurvey(false);
+    // The tablet registers neither pause command, and the button that opens the
+    // survey is already behind `actionsAvailable`. Guarding here as well because
+    // the survey MODAL's `onConfirm` references this handler unconditionally, and a
+    // modal is one `open` prop away from being reachable: a handler that can fire
+    // when its command is not registered is a `command not found` rendered as a
+    // pause failure. `verify-ipc-parity.py` grades that reference, and it is right to.
+    if (!actionsAvailable) return;
+    // Re-entry guard. pausing is a BILLING call: a replay asks the subscription server to
+    // pause twice and then runs the status read twice, so the card can show the state of
+    // the call that lost. The state flag is committed on the next render, after the tap.
+    if (pausingRef.current) return;
+    pausingRef.current = true;
     setPausing(true);
     try {
       // ADR #7 conditional scoping. pause_subscription_scoped enforces SETTINGS_EDIT; the
       // unscoped command reads the stored API key and calls the billing server unchecked.
-      await (sessionToken
-        ? pauseSubscriptionScoped(sessionToken, 1)
-        : pauseSubscription(1));
+      if (actionsAvailable) {
+        await (sessionToken
+          ? pauseSubscriptionScoped(sessionToken, 1)
+          : pauseSubscription(1));
+      }
       addToast({ type: 'info', message: l10n.getString('settings-license-pause-success') });
       const status = await checkLicenseStatus();
       setServerStatus(status);
@@ -322,9 +339,10 @@ export default function LicenseSettings() {
       const msg = l10nErrorMessage(err, l10n, 'settings-license-pause-failed');
       addToast({ type: 'error', message: msg });
     } finally {
+      pausingRef.current = false;
       setPausing(false);
     }
-  }, [addToast, l10n, sessionToken]);
+  }, [addToast, l10n, sessionToken, actionsAvailable]);
 
   /** Show exit survey before pausing. */
   const handlePause = useCallback(() => {
@@ -333,11 +351,18 @@ export default function LicenseSettings() {
 
   /** C3.3: Resume a paused subscription. */
   const handleResume = useCallback(async () => {
+    // Same reason as `handlePauseConfirm`: the tablet registers no resume command.
+    if (!actionsAvailable) return;
+    // Same re-entry shape as the pause above: a billing call plus its status re-read.
+    if (resumingRef.current) return;
+    resumingRef.current = true;
     setResuming(true);
     try {
       // Same differential as handlePauseConfirm: resume_subscription_scoped enforces
       // SETTINGS_EDIT, the unscoped variant checks nothing.
-      await (sessionToken ? resumeSubscriptionScoped(sessionToken) : resumeSubscription());
+      if (actionsAvailable) {
+        await (sessionToken ? resumeSubscriptionScoped(sessionToken) : resumeSubscription());
+      }
       addToast({ type: 'info', message: l10n.getString('settings-license-resume-success') });
       // Reload status to reflect active state
       const status = await checkLicenseStatus();
@@ -346,9 +371,10 @@ export default function LicenseSettings() {
       const msg = l10nErrorMessage(err, l10n, 'settings-license-resume-failed');
       addToast({ type: 'error', message: msg });
     } finally {
+      resumingRef.current = false;
       setResuming(false);
     }
-  }, [addToast, l10n, sessionToken]);
+  }, [addToast, l10n, sessionToken, actionsAvailable]);
 
   // ── Loading / Error states ──────────────────────────────────
   if (loading) {

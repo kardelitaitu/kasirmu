@@ -44,7 +44,7 @@ fn requires_and_grants(cap: &str) -> ModuleCapabilities {
 /// Create an on-disk migrated temp database (the boot path opens its own
 /// connections, so an in-memory database would not be shared).
 fn temp_db() -> (tempfile::TempDir, std::path::PathBuf) {
-    let dir = tempfile::tempdir().expect("tempdir");
+    let dir = kasirmu_test_support::tempdir();
     let db_path = dir.path().join("boot.db");
     let mut conn = Connection::open(&db_path).expect("open");
     conn.pragma_update(None, "foreign_keys", "ON").expect("fk");

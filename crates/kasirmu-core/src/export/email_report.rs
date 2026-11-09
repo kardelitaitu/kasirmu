@@ -330,7 +330,7 @@ impl Store<'_> {
     /// `smtp_config` is deny-listed against the raw `get_setting` IPC surface,
     /// so the read refuses the whole blob. This is the read-back such a surface
     /// may expose instead, the same shape `gateway_status` uses for
-    /// `stripe.api_key` (`crates/kasirmu-bridge/src/settings.rs:987-992`) and
+    /// `stripe.api_key` (`crates/kasirmu-bridge/src/settings.rs:480-488`) and
     /// `SyncSettingsDto` uses for `has_api_key` (`crates/kasirmu-bridge/src/sync.rs:96`).
     pub fn smtp_password_configured(&self) -> Result<bool, CoreError> {
         Ok(self

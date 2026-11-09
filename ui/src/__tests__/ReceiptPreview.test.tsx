@@ -224,8 +224,8 @@ describe('ReceiptPreview', () => {
     const receiptWithTable = { ...mockReceipt, tableNumber: 'Table 5' };
     await renderWithFluent(<ReceiptPreview {...defaultProps} receipt={receiptWithTable} />);
 
-    // tableNumber is not rendered in preview but passed to print
     expect(screen.getByText('SALE-123')).toBeInTheDocument();
+    expect(screen.getByTestId('receipt-preview-table')).toHaveTextContent('Table: Table 5');
   });
 
   it('handles empty items array', async () => {

@@ -53,11 +53,15 @@ vi.mock('@fluent/react', () => ({
           'session-lock-lockout': 'Wait { $seconds }s.',
           'session-lock-pad-aria': 'PIN pad',
           'staff-login-clear': 'Clear',
-          'staff-login-connection-checking': 'Checking…',
-          'staff-login-connection-connected': 'Connected',
-          'staff-login-connection-disconnected': 'Disconnected',
           'staff-login-connection-auth': 'Auth',
           'staff-login-connection-sync': 'Sync',
+          // Keys the screen renders that this stub map never carried. Values copied
+          // from shared-ui/locales/{shared,staff}.ftl in the FTL form this stub
+          // substitutes (replace(/\{\s*\$(\w+)\s*\}/g)), i.e. '{ $name }'.
+          'auth-copyright': 'kasir.mu © { $year } All rights reserved.',
+          'auth-version': 'Version { $version }',
+          'backspace-aria': 'Backspace',
+          'staff-login-error-connection': 'Could not verify username. Check your connection.',
         };
         let result = (map as Record<string, string>)[id];
         if (result && vars) {

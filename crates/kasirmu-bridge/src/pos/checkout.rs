@@ -154,6 +154,11 @@ pub struct CompleteSaleResult {
     pub receipt_number: Option<String>,
     /// The statutory document number (e.g. invoice or receipt sequence).
     pub statutory_number: Option<String>,
+    /// Non-empty when one or more sale lines had insufficient stock at the
+    /// primary location. The sale still completes — this field is
+    /// informational only (shown as a warning toast in the cashier UI).
+    #[serde(default)]
+    pub stock_warnings: Vec<kasirmu_core::sale_deduction::StockWarning>,
 }
 
 /// Stamp one idempotency key per split from a checkout attempt id.
@@ -170,6 +175,20 @@ pub fn stamp_attempt_split_keys(attempt_id: Option<&str>, splits: &mut [PaymentS
     if let Some(attempt) = attempt_id {
         for (i, split) in splits.iter_mut().enumerate() {
             split.idempotency_key = Some(format!("{attempt}:{i}"));
+        }
+    }
+}
+
+/// Stamp ADR-64 tender states onto checkout splits when not explicitly supplied.
+///
+/// Under ADR-64 D4:
+/// - Cash is the only method written `settled` at record time.
+/// - Any uncorroborated electronic tender recorded without gateway confirmation is `unconfirmed`.
+/// - Deferred methods (e.g. `open_bill`, `pay_later`, `credit`) default to `pending`.
+pub fn stamp_tender_states(splits: &mut [PaymentSplitArg]) {
+    for split in splits.iter_mut() {
+        if split.gateway_status.is_none() {
+            split.gateway_status = Some(split.effective_gateway_status());
         }
     }
 }
@@ -499,6 +518,7 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
         // from colliding with itself on its own second row. A stale id the
         // guard refused above was re-keyed, so this stamps the fresh one.
         stamp_attempt_split_keys(effective_attempt_id.as_deref(), &mut splits);
+        stamp_tender_states(&mut splits);
 
         // Multi-terminal: terminal_id is passed to complete_sale so that
         // the sale record tracks which terminal processed it. This enables
@@ -551,6 +571,7 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
         line_count,
         receipt_number,
         statutory_number,
+        stock_warnings: vec![], // cashier explicitly resolved allocations
     })
 }
 
@@ -776,7 +797,7 @@ pub async fn complete_sale_scoped(
     let sale_id = sale.id.clone();
 
     // ── Lock 2: Compute tax and create sale ───────────────────────
-    let (receipt_number, statutory_number) = {
+    let (receipt_number, statutory_number, stock_warnings) = {
         let db = conn
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
@@ -839,6 +860,7 @@ pub async fn complete_sale_scoped(
         // from colliding with itself on its own second row. A stale id the
         // guard refused above was re-keyed, so this stamps the fresh one.
         stamp_attempt_split_keys(effective_attempt_id.as_deref(), &mut splits);
+        stamp_tender_states(&mut splits);
 
         let deduct = if stock_locations.is_empty() {
             // Same primary-location resolution the legacy
@@ -881,6 +903,7 @@ pub async fn complete_sale_scoped(
         };
         let mut statutory_number = deduct.statutory_number;
         let receipt_number = Some(deduct.receipt_number);
+        let stock_warnings = deduct.stock_warnings;
 
         if args.document_kind.as_deref() == Some("invoice") {
             let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
@@ -894,7 +917,7 @@ pub async fn complete_sale_scoped(
                 statutory_number = Some(inv_num);
             }
         }
-        (receipt_number, statutory_number)
+        (receipt_number, statutory_number, stock_warnings)
     };
 
     // Promotion-reduced payable (cart.total() would ignore promotions).
@@ -933,5 +956,6 @@ pub async fn complete_sale_scoped(
         line_count,
         receipt_number,
         statutory_number,
+        stock_warnings,
     })
 }

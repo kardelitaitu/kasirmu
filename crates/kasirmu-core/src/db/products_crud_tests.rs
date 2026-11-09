@@ -271,3 +271,54 @@ fn product_sku_and_name_limits_count_characters_not_bytes() {
         "255 characters is within the name limit"
     );
 }
+
+#[test]
+fn attach_images_chunks_across_batch_size_without_overflow() {
+    let conn = fresh();
+    let s = Store::new(&conn);
+
+    // Create 260 products (spanning the 250-item BATCH_SIZE boundary)
+    for i in 0..260 {
+        let id = format!("prod-chunk-{i:03}");
+        let sku = format!("SKU-CHUNK-{i:03}");
+        conn.execute(
+            "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at, price_updated_at) \
+             VALUES (?1, ?2, 'Test Product', 100, 'USD', '2026-01-01', '2026-01-01', '2026-01-01')",
+            rusqlite::params![&id, &sku],
+        )
+        .unwrap();
+
+        // Add image for first product and 255th product (in second chunk)
+        if i == 0 || i == 255 {
+            conn.execute(
+                "INSERT INTO product_images (product_id, slot, hash, position, updated_at) \
+                 VALUES (?1, 1, 'hash-val', 0, '2026-01-01')",
+                rusqlite::params![&id],
+            )
+            .unwrap();
+        }
+    }
+
+    let products = s.list_products().unwrap();
+    assert_eq!(products.len(), 260);
+
+    let p0 = products
+        .iter()
+        .find(|p| p.product.id == "prod-chunk-000")
+        .unwrap();
+    assert_eq!(p0.images.len(), 1);
+    assert_eq!(p0.images[0].hash, "hash-val");
+
+    let p1 = products
+        .iter()
+        .find(|p| p.product.id == "prod-chunk-001")
+        .unwrap();
+    assert_eq!(p1.images.len(), 0);
+
+    let p255 = products
+        .iter()
+        .find(|p| p.product.id == "prod-chunk-255")
+        .unwrap();
+    assert_eq!(p255.images.len(), 1);
+    assert_eq!(p255.images[0].hash, "hash-val");
+}

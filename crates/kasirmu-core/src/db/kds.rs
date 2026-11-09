@@ -24,8 +24,13 @@ use rusqlite::params;
 
 // F-011 split: cohesive impl-Store groups moved to sibling part files;
 // child-module wiring below keeps every downstream path unchanged.
+// `pub` (not crate-private) so the query-plan probe in
+// `tests/integration/query_plan_probe.rs` can import the ticket-list SQL
+// constants; the probe is a separate crate and reaches only `pub` items. This
+// module is itself only reachable as `db::kds::kds_orders`, inside the
+// already-public `db::kds`, so no new surface becomes reachable.
 #[path = "kds_orders.rs"]
-mod kds_orders;
+pub mod kds_orders;
 
 #[path = "kds_lines.rs"]
 mod kds_lines;
@@ -395,3 +400,7 @@ impl Store<'_> {
 #[cfg(test)]
 #[path = "kds_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "kds_orders_dynamic_where_tests.rs"]
+mod dynamic_where_tests;

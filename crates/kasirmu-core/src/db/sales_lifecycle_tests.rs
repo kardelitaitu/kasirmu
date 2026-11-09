@@ -522,10 +522,13 @@ fn a_failed_recipe_read_does_not_silently_skip_the_deduction() {
 /// voided. Needs a real second connection, hence the file-backed DB.
 #[test]
 fn void_sale_race_reports_the_conflict_rather_than_overwriting_a_completed_sale() {
-    let dir = std::env::temp_dir().join(format!("oz_void_race_{}", uuid::Uuid::now_v7()));
+    // The guard owns the directory and deletes it on drop; keep it alive for
+    // the whole test, including the rival thread that opens the same file.
+    let scratch = kasirmu_test_support::ScratchDir::new("sale-void-race");
+    let dir = scratch.path();
     let db_path = dir.join("kasir.db");
     let sale_id = {
-        let conn = fresh_file(&dir);
+        let conn = fresh_file(dir);
         let mut cart = Cart::new(usd());
         cart.add_line(CartLine::new(Sku::new("VOID-RACE"), 1, price(1000)))
             .unwrap();
@@ -539,8 +542,49 @@ fn void_sale_race_reports_the_conflict_rather_than_overwriting_a_completed_sale(
 
     // B stages the completing transition and holds the write lock, so A's
     // `void_sale` gets past its out-of-transaction pre-check (the row is still
-    // `active` when A reads it) and THEN blocks on the UPDATE.
+    // `active` when A reads it) and THEN blocks on its `BEGIN IMMEDIATE`.
+    //
+    // NO TIMER (O-T15). B used to release on a fixed 300 ms sleep, which made the
+    // intended split a bet on wall-clock behaviour the test does not control: on a
+    // loaded host A's pre-check landed AFTER B's commit, the row read back as
+    // `completed`, and A was refused by the PRE-check (`Validation { field:
+    // "status" }`) instead of reaching the CAS this test exists to defend. Measured
+    // 2026-10-11 under `cargo test -p kasirmu-core --lib` (full suite, parallel):
+    // `DIAG outcome=Err(Validation { field: "status", message: "only active sales
+    // can be voided (current: Completed)" }) db_status=completed` — the CAS branch
+    // was never entered, so the test was green for the wrong reason on the days the
+    // window happened to hold.
+    //
+    // What the test needs is not "300 ms" but three ORDERED events:
+    //   1. B has taken the write lock and its uncommitted `completed` is invisible
+    //      to readers (`staged` — already the case);
+    //   2. A has read `active` and is now blocked on B's lock, so its write cannot
+    //      have landed yet (`a_is_waiting` — the busy handler);
+    //   3. only then does B commit, releasing the lock A waits on.
+    // Step 2 is the proof A is INSIDE the check-then-act window, and it replaces
+    // the sleep with a fact. A's busy handler runs on A's own thread, inside
+    // `void_sale`, after the pre-check read and before the CAS.
+    //
+    // `void_sale` opens its transaction `BEGIN IMMEDIATE` specifically so it
+    // contends at BEGIN (where the busy handler fires) rather than at the UPDATE —
+    // `sales_checkout.rs:241` states the same intent for the checkout door.
+    static A_IS_WAITING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    A_IS_WAITING.store(false, std::sync::atomic::Ordering::SeqCst);
+    // Reported through a `static` mailbox because rusqlite's `busy_handler` takes
+    // a function POINTER: a capturing closure cannot be passed.
+    static A_WAITING_TX: std::sync::Mutex<Option<std::sync::mpsc::Sender<()>>> =
+        std::sync::Mutex::new(None);
+    fn note_a_is_waiting(_attempts: i32) -> bool {
+        if !A_IS_WAITING.swap(true, std::sync::atomic::Ordering::SeqCst)
+            && let Some(tx) = A_WAITING_TX.lock().unwrap().as_ref()
+        {
+            let _ = tx.send(());
+        }
+        true
+    }
+
     let (staged_tx, staged_rx) = std::sync::mpsc::channel();
+    let (a_waiting_tx, a_waiting_rx) = std::sync::mpsc::channel();
     let rival = {
         let db_path = db_path.clone();
         let sale_id = sale_id.clone();
@@ -556,8 +600,11 @@ fn void_sale_race_reports_the_conflict_rather_than_overwriting_a_completed_sale(
                 .unwrap();
             assert_eq!(rows, 1, "the rival must stage the sale it is completing");
             staged_tx.send(()).unwrap();
-            // B releases on its own timer: A is blocked inside `void_sale`.
-            std::thread::sleep(std::time::Duration::from_millis(300));
+            // Block until A's busy handler reports it is waiting on this lock, then
+            // release. Bounded (5 s, matching A's own busy_timeout) so a regression
+            // that lets A through without contending FAILS at the assertion below
+            // rather than hanging here.
+            let _ = a_waiting_rx.recv_timeout(std::time::Duration::from_secs(5));
             tx.commit().unwrap();
         })
     };
@@ -565,8 +612,19 @@ fn void_sale_race_reports_the_conflict_rather_than_overwriting_a_completed_sale(
 
     let conn_a = Connection::open(&db_path).unwrap();
     conn_a.pragma_update(None, "busy_timeout", "5000").unwrap();
+    A_WAITING_TX.lock().unwrap().replace(a_waiting_tx);
+    conn_a.busy_handler(Some(note_a_is_waiting)).unwrap();
     let outcome = store(&conn_a).void_sale(&sale_id, "user-2", "too late");
     rival.join().unwrap();
+
+    // A got past its pre-check and genuinely contended for the lock; without this
+    // the `Conflict` below (or any other arm) would be an ordinary "row moved
+    // earlier" refusal rather than a lost race.
+    assert!(
+        A_IS_WAITING.load(std::sync::atomic::Ordering::SeqCst),
+        "the losing void must have BLOCKED on B's write lock; it never entered \
+         the race window, so this run proves nothing about the CAS"
+    );
 
     // The race was LOST, so the CAS matched zero rows and reported the conflict.
     assert!(matches!(
@@ -585,7 +643,6 @@ fn void_sale_race_reports_the_conflict_rather_than_overwriting_a_completed_sale(
     assert_eq!(status, "completed", "the loser must not win the column");
 
     drop(conn_a);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 // ── Phase 5 P5.1: the cross-vertical write contract ────────────────────

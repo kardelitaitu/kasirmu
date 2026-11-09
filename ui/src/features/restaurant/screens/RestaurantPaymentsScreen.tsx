@@ -241,7 +241,7 @@ export function RestaurantPaymentsScreen({
   onSaved,
   onBack,
 }: RestaurantPaymentsScreenProps) {
-  const { sessionToken, terminalId: contextTerminalId } = useWorkspace();
+  const { sessionToken, terminalId: contextTerminalId, resolvedStoreId } = useWorkspace();
   const effectiveTerminalId = propTerminalId || contextTerminalId || '';
   const { l10n } = useLocalization();
   const { addToast } = useToast();
@@ -327,14 +327,29 @@ export function RestaurantPaymentsScreen({
   // whole load on every keystroke and toggle. These refs carry the current values
   // into that effect without making it reactive to them.
   const draftsRef = useRef<DraftRail[]>([]);
+  const loadedDraftsRef = useRef<DraftRail[] | null>(null);
+  // The list the load actually received, published from the success path so the
+  // `finally` can seed the baseline from it. `draftsRef` above is mirrored during
+  // RENDER, so on the first load it still holds the `useState` initializer — the
+  // default rails, not the server's — and seeding that made an untouched screen read
+  // dirty. `null` means "no successful load yet".
   const defaultEdcTerminalIdRef = useRef('');
   const hwInitializedRef = useRef(false);
 
   /**
    * F4: a gateway read failed, so the Midtrans/Stripe fields show EMPTY rather than
-   * the stored config. The drafts baseline is seeded before those reads
-   * (`:377`), so without this flag the screen looks clean and saving writes the
-   * blanks over real credentials.
+   * the stored config. The drafts baseline is seeded on the success path by the
+   * `originalsRef.current.drafts = fullDrafts.map(…)` assignment, and for every other
+   * outcome in the `finally` by the `draftsRef.current.map(…)` one — both BEFORE the
+   * `getPaymentGatewayConfigScoped` reads can be reached. So without this flag the screen
+   * looks clean and saving writes the blanks over real credentials.
+   *
+   * ⚠️ Anchored on those four expressions, not on line numbers. The numbers this note
+   * carried were of two different kinds and both failed: one pointed at the seeding
+   * STATEMENT, the others at the rationale SENTENCES around the other two sites, so even
+   * when the numbers were current they encoded the claim instead of showing where it
+   * executes. The retired citation named `listEdcTerminalsScoped`, an unrelated call in
+   * the same `Promise.all`, and never seeded anything.
    *
    * Gating Save on a flag is only safe with a way to CLEAR it — round 8 of the F4
    * campaign shipped four Save-gates and no recovery path, disabling Save for the
@@ -374,7 +389,14 @@ export function RestaurantPaymentsScreen({
       try {
         const [primary, edcList] = await Promise.all([
           getPrimaryLocationScoped(sessionToken),
-          listEdcTerminalsScoped(sessionToken).catch(() => [] as EdcTerminalDto[]),
+          // Same doctrine as the gateway reads below (:496-503): a swallowed EDC
+          // read left the card showing an empty terminal list with no banner, a
+          // green "All changes saved" header and an ENABLED Save — so saving
+          // wrote a default/no EDC binding over the real one. Flag it instead.
+          listEdcTerminalsScoped(sessionToken).catch(() => {
+            setLoadFailed(true);
+            return [] as EdcTerminalDto[];
+          }),
         ]);
 
         if (cancelled) return;
@@ -383,9 +405,10 @@ export function RestaurantPaymentsScreen({
           setEdcTerminals(edcList.filter((t) => t.isActive));
         }
 
-        if (primary) {
-          setLocationId(primary.id);
-          const rawRails = await getLocalPaymentMethodsScoped(sessionToken, primary.id);
+        const targetLocationId = primary?.id || resolvedStoreId || null;
+        if (targetLocationId) {
+          setLocationId(targetLocationId);
+          const rawRails = await getLocalPaymentMethodsScoped(sessionToken, targetLocationId);
           if (cancelled) return;
 
           const mergedDrafts = mergeCoreRails(rawRails);
@@ -401,6 +424,7 @@ export function RestaurantPaymentsScreen({
           }
 
           setDrafts(fullDrafts);
+          loadedDraftsRef.current = fullDrafts;
           originalsRef.current.drafts = fullDrafts.map((d) => ({ ...d }));
 
           // Hydrate card configurations from merged parameters
@@ -469,7 +493,9 @@ export function RestaurantPaymentsScreen({
           //
           // F4: these two used to `.catch(() => null)` INDEPENDENTLY, which swallowed a
           // failed read. Combined with the `if (midtransGw)` / `if (stripeGw)` guards
-          // and the baseline seeded at `:377` before this point, a failure left the
+          // and the baseline seeded on the success path (the `originalsRef.current.drafts =`
+          // assignment) or in the load effect's `finally` (the `draftsRef.current.map` one),
+          // both before this point, a failure left the
           // screen looking CLEAN while showing empty fields — so saving wrote the
           // blanks over the stored credentials. The flag is what makes that visible.
           try {
@@ -514,17 +540,22 @@ export function RestaurantPaymentsScreen({
         // The whole load failed, so the drafts are defaults too — same F4 exposure.
         setLoadFailed(true);
         addToast({
-          message: l10n.getString('settings-localpay-error-load') || 'Failed to load payment methods',
+          message: requiredLocalized(l10n, 'settings-localpay-error-load'),
           type: 'error',
         });
       } finally {
         // F40: the baseline MUST be seeded before `loading` clears.
         //
-        // `originalsRef` starts as `{ drafts: [] }` (:326) and was only filled
-        // inside `if (primary)` (:377). When `primary` is falsy — or the rail read
-        // throws before reaching :395 — the screen still RENDERS rails, because
-        // `drafts` comes from the useState initializer (:248), but the baseline
-        // stays empty. The `dirty` memo then returns false at :534 on
+        // `originalsRef` starts as `{ drafts: [] }` and is filled only inside the
+        // `if (targetLocationId)` gate (it read `if (primary)` when this note was
+        // written), by the `originalsRef.current.drafts = fullDrafts.map(…)` assignment.
+        // When no location resolves, or the `getLocalPaymentMethodsScoped` read throws,
+        // the screen still RENDERS rails, because `drafts` comes from the `useState`
+        // initializer, but the baseline stays empty. The `dirty` memo then returns false on
+        // ⚠️ Anchored by identifier rather than by line: these figures were carried in
+        // several places at once (the seeding one three times), so a shift at that line
+        // needed three simultaneous edits — and a half-fix is exactly what this file had
+        // already recorded once.
         // `length === 0` FOR EVER, so Save is permanently disabled and an
         // operator's rail toggle cannot be persisted at all. That is the state the
         // tablet is in, with an empty `local_payment_methods` table.
@@ -535,7 +566,14 @@ export function RestaurantPaymentsScreen({
         // rendered values and the baseline must be the same list.
         if (!cancelled) {
           if (originalsRef.current.drafts.length === 0) {
-            originalsRef.current.drafts = draftsRef.current.map((d) => ({ ...d }));
+            // Seed from the list the load RECEIVED when there is one. `draftsRef` is
+            // mirrored during render, so on the first load it still holds the `useState`
+            // initializer — the default rails, not the server's — and seeding that made an
+            // untouched screen read dirty, so Back popped the unsaved-changes dialog and
+            // Discard could throw away work against a baseline that never existed.
+            const seed = loadedDraftsRef.current ?? draftsRef.current;
+            draftsRef.current = seed;
+            originalsRef.current.drafts = seed.map((d) => ({ ...d }));
             originalsRef.current.defaultEdcTerminalId = defaultEdcTerminalIdRef.current;
             setDirtyVersion((v) => v + 1);
           }
@@ -548,7 +586,7 @@ export function RestaurantPaymentsScreen({
     return () => {
       cancelled = true;
     };
-  }, [sessionToken, l10n, addToast, reloadNonce]);
+  }, [sessionToken, resolvedStoreId, l10n, addToast, reloadNonce]);
 
   const dirty = useMemo(() => {
     void dirtyVersion;
@@ -685,7 +723,7 @@ export function RestaurantPaymentsScreen({
     const sanitized = sanitizeRailCode(newRailCode);
     if (!sanitized) {
       addToast({
-        message: l10n.getString('settings-localpay-code-placeholder') || 'Payment method code is required',
+        message: requiredLocalized(l10n, 'settings-localpay-code-required'),
         type: 'warning',
       });
       return;
@@ -739,7 +777,8 @@ export function RestaurantPaymentsScreen({
 
   // ── Save Handler ────────────────────────────────────────────
   const handleSave = useCallback(async () => {
-    if (!sessionToken || !locationId) return;
+    const effectiveLocationId = locationId || resolvedStoreId || null;
+    if (!sessionToken || !effectiveLocationId) return;
     setSaving(true);
     try {
       const tasks: Promise<unknown>[] = [];
@@ -757,7 +796,7 @@ export function RestaurantPaymentsScreen({
         is_enabled: d.is_enabled,
         parameters: sanitizeRailParams(d.rail_code, d.parameters),
       }));
-      tasks.push(setLocalPaymentMethodsScoped(sessionToken, locationId, payload));
+      tasks.push(setLocalPaymentMethodsScoped(sessionToken, effectiveLocationId, payload));
 
       // 2. Save payment gateway credentials (encrypted at rest in payment_gateways)
       tasks.push(
@@ -816,6 +855,7 @@ export function RestaurantPaymentsScreen({
   }, [
     sessionToken,
     locationId,
+    resolvedStoreId,
     drafts,
     effectiveTerminalId,
     hw,
@@ -892,14 +932,14 @@ export function RestaurantPaymentsScreen({
 
   return (
     <div className="restaurant-settings-screen">
-      <div className="restaurant-settings-header" data-testid="restaurant-payments-header">
+      <header className="restaurant-settings-header" data-testid="restaurant-payments-header">
         <div className="restaurant-settings-header-lead">
           {onBack && (
             <button
               type="button"
               className="restaurant-settings-back-btn"
               onClick={handleRequestBack}
-              aria-label={l10n.getString('back') || 'Back'}
+              aria-label={requiredLocalized(l10n, 'back')}
               data-testid="restaurant-payments-back-btn"
             >
               <svg
@@ -982,7 +1022,7 @@ export function RestaurantPaymentsScreen({
             </button>
           </div>
         )}
-      </div>
+      </header>
 
       {/* F4: the read failed, so the values shown are defaults. Without Retry the
           flag is a one-way latch and Save could never return this session. */}
@@ -1125,7 +1165,7 @@ export function RestaurantPaymentsScreen({
                         }}
                         data-testid="qris-mode-static"
                       >
-                        Static
+                        {l10n.getString('restaurant-payment-qr-static')}
                       </button>
                       <button
                         type="button"
@@ -1136,7 +1176,7 @@ export function RestaurantPaymentsScreen({
                         }}
                         data-testid="qris-mode-dynamic"
                       >
-                        Dynamic
+                        {l10n.getString('restaurant-payment-qr-dynamic')}
                       </button>
                     </div>
                   </div>
@@ -1151,7 +1191,7 @@ export function RestaurantPaymentsScreen({
                       id="resto-static-qris"
                       className="settings-input"
                       rows={2}
-                      placeholder="00020101021126580014ID.LINKAJA.WWW0118936009110022201389..."
+                      placeholder={l10n.getString('restaurant-payment-qr-payload-placeholder')}
                       value={staticQrValue}
                       onChange={(e) => handleStaticQrChange(e.target.value)}
                       aria-label={l10n.getString('restaurant-payment-qr-payload')}
@@ -1163,7 +1203,7 @@ export function RestaurantPaymentsScreen({
 
                 <div className="resto-compact-row">
                   <label htmlFor="qris-nmid" className="resto-compact-label">
-                    Merchant NMID
+                    {l10n.getString('restaurant-payment-midtrans-nmid')}
                   </label>
                   <div className="resto-compact-control">
                     <input
@@ -1176,7 +1216,7 @@ export function RestaurantPaymentsScreen({
                         setQrisNmid(val);
                         updateRailParams('qris', { nmid: val });
                       }}
-                      placeholder="ID1020030040050"
+                      placeholder={l10n.getString('restaurant-payment-midtrans-nmid-placeholder')}
                       data-testid="qris-nmid-input"
                     />
                   </div>
@@ -1184,7 +1224,7 @@ export function RestaurantPaymentsScreen({
 
                 <div className="resto-compact-row">
                   <label htmlFor="qris-surcharge" className="resto-compact-label">
-                    MDR Fee (%)
+                    {l10n.getString('restaurant-payment-midtrans-mdr')}
                   </label>
                   <div className="resto-compact-control">
                     <input
@@ -1288,7 +1328,7 @@ export function RestaurantPaymentsScreen({
                         }}
                         data-testid="midtrans-env-sandbox"
                       >
-                        Sandbox
+                        {l10n.getString('restaurant-payment-midtrans-sandbox')}
                       </button>
                       <button
                         type="button"
@@ -1299,7 +1339,7 @@ export function RestaurantPaymentsScreen({
                         }}
                         data-testid="midtrans-env-production"
                       >
-                        Production
+                        {l10n.getString('restaurant-payment-midtrans-production')}
                       </button>
                     </div>
                   </div>
@@ -1307,7 +1347,7 @@ export function RestaurantPaymentsScreen({
 
                 <div className="resto-compact-row">
                   <label htmlFor="midtrans-merchant-id" className="resto-compact-label">
-                    Merchant ID
+                    {l10n.getString('restaurant-payment-midtrans-merchant-id')}
                   </label>
                   <div className="resto-compact-control">
                     <input
@@ -1320,7 +1360,7 @@ export function RestaurantPaymentsScreen({
                         setMidtransMerchantId(val);
                         updateRailParams('midtrans', { merchantId: val });
                       }}
-                      placeholder="G123456789"
+                      placeholder={l10n.getString('restaurant-payment-midtrans-merchant-id-placeholder')}
                       data-testid="midtrans-merchant-id-input"
                     />
                   </div>
@@ -1328,7 +1368,7 @@ export function RestaurantPaymentsScreen({
 
                 <div className="resto-compact-row">
                   <label htmlFor="midtrans-client-key" className="resto-compact-label">
-                    Client Key
+                    {l10n.getString('restaurant-payment-midtrans-client-key')}
                   </label>
                   <div className="resto-compact-control">
                     <input
@@ -1341,7 +1381,7 @@ export function RestaurantPaymentsScreen({
                         setMidtransClientKey(val);
                         updateRailParams('midtrans', { clientKey: val });
                       }}
-                      placeholder="SB-Mid-client-XXXXX"
+                      placeholder={l10n.getString('restaurant-payment-midtrans-client-key-placeholder')}
                       data-testid="midtrans-client-key-input"
                     />
                   </div>
@@ -1349,7 +1389,7 @@ export function RestaurantPaymentsScreen({
 
                 <div className="resto-compact-row">
                   <label htmlFor="midtrans-server-key" className="resto-compact-label">
-                    Server Key
+                    {l10n.getString('restaurant-payment-midtrans-server-key')}
                   </label>
                   <div className="resto-compact-control">
                     <input
@@ -1362,7 +1402,7 @@ export function RestaurantPaymentsScreen({
                         setMidtransServerKey(val);
                         updateRailParams('midtrans', { serverKey: val });
                       }}
-                      placeholder="SB-Mid-server-XXXXX"
+                      placeholder={l10n.getString('restaurant-payment-midtrans-server-key-placeholder')}
                       data-testid="midtrans-server-key-input"
                     />
                   </div>
@@ -1424,7 +1464,7 @@ export function RestaurantPaymentsScreen({
                       }}
                       data-testid="midtrans-test-api-btn"
                     >
-                      Test API Keys
+                      {l10n.getString('restaurant-payment-midtrans-test-keys')}
                     </button>
                   </div>
                 </div>
@@ -1458,7 +1498,7 @@ export function RestaurantPaymentsScreen({
                         }}
                         data-testid="stripe-mode-test"
                       >
-                        Test
+                        {l10n.getString('restaurant-payment-stripe-test')}
                       </button>
                       <button
                         type="button"
@@ -1469,7 +1509,7 @@ export function RestaurantPaymentsScreen({
                         }}
                         data-testid="stripe-mode-live"
                       >
-                        Live
+                        {l10n.getString('restaurant-payment-stripe-live')}
                       </button>
                     </div>
                   </div>
@@ -1477,7 +1517,7 @@ export function RestaurantPaymentsScreen({
 
                 <div className="resto-compact-row">
                   <label htmlFor="stripe-pub-key" className="resto-compact-label">
-                    Publishable Key
+                    {l10n.getString('restaurant-payment-stripe-pub-key')}
                   </label>
                   <div className="resto-compact-control">
                     <input
@@ -1498,7 +1538,7 @@ export function RestaurantPaymentsScreen({
 
                 <div className="resto-compact-row">
                   <label htmlFor="stripe-sec-key" className="resto-compact-label">
-                    Secret Key
+                    {l10n.getString('restaurant-payment-stripe-sec-key')}
                   </label>
                   <div className="resto-compact-control">
                     <input
@@ -1519,7 +1559,7 @@ export function RestaurantPaymentsScreen({
 
                 <div className="resto-compact-row">
                   <label htmlFor="stripe-reader" className="resto-compact-label">
-                    Card Reader
+                    {l10n.getString('restaurant-payment-stripe-reader')}
                   </label>
                   <div className="resto-compact-control">
                     <SettingsSelect
@@ -1607,7 +1647,7 @@ export function RestaurantPaymentsScreen({
                   removeAriaLabel={`Remove ${rail.label}`}
                 >
                   <p className="settings-hint">
-                    Active tender method ready for cashier checkout and receipt attribution.
+                    {l10n.getString('restaurant-payment-custom-rail-hint')}
                   </p>
                 </PaymentMethodCard>
               );

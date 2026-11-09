@@ -18,6 +18,31 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOCS = os.path.join(ROOT, "src", "content", "docs")
 
 
+def frontmatter_text(text: str, key: str) -> str:
+    """The 'updated' value in frontmatter text, quotes stripped; '' when absent.
+
+    Named once: the live per-page loop and the self-test grade THIS parser, not
+    a copy of it — a gutted parser reddens the self-test instead of silencing
+    the 'updated differs' warnings.
+    """
+    m = re.search(rf"^{key}:\s*(.+)$", text, re.M)
+    return m.group(1).strip().strip('"') if m else ""
+
+
+def frontmatter(path: str, key: str) -> str:
+    with open(path, encoding="utf8") as fh:
+        return frontmatter_text(fh.read(), key)
+
+
+def headings_text(text: str) -> int:
+    return len(re.findall(r"^## ", text, re.M))
+
+
+def headings(path: str) -> int:
+    with open(path, encoding="utf8") as fh:
+        return headings_text(fh.read())
+
+
 def slugs(locale: str) -> set:
     return {
         os.path.basename(p)[:-3]
@@ -25,19 +50,94 @@ def slugs(locale: str) -> set:
     }
 
 
-def frontmatter(path: str, key: str) -> str:
-    with open(path, encoding="utf8") as fh:
-        m = re.search(rf"^{key}:\s*(.+)$", fh.read(), re.M)
-    return m.group(1).strip().strip('"') if m else ""
+# The fewest pages a real locale directory can hold. The site ships 20 per locale; the
+# floor is set well below that so ordinary growth or pruning never trips it. It exists to
+# catch a ZERO, which is what a renamed or moved content directory produces.
+MIN_PAGES_PER_LOCALE = 5
 
 
-def headings(path: str) -> int:
-    with open(path, encoding="utf8") as fh:
-        return len(re.findall(r"^## ", fh.read(), re.M))
+def census_problem(en: set, idl: set) -> str:
+    """Why this census cannot describe the real site, or '' when it can.
+
+    **The module docstring says parity "fails when a page exists in one locale but not the
+    other", and that is true only of the SET DIFFERENCE.** Empty sets subtract to empty, so
+    a docs root that moved produces the cheerful "OK: 0 page pairs in parity" success line
+    and exit 0. Measured 2026-10-23 by pointing DOCS at a non-existent directory: exactly
+    that, rc 0.
+
+    Same shape as verify-architecture-boundaries.py's census floor, and worth having for
+    the same reason: a gate whose whole answer is a set difference cannot tell "the sets
+    agree" from "there were no sets".
+    """
+    for locale, found in (("en", en), ("id", idl)):
+        if len(found) < MIN_PAGES_PER_LOCALE:
+            return (
+                f"only {len(found)} page(s) found under {locale}/; a real locale has at "
+                f"least {MIN_PAGES_PER_LOCALE}. A parity result over an empty set is not a "
+                "parity result -- check that the docs directory still exists and is spelled "
+                "the same"
+            )
+    return ""
+
+
+def self_test() -> int:
+    """Pin the census floor, which is the half a green line cannot show.
+
+    Every case asserts a VERDICT, not a count, because the defect this guards against is
+    a verdict: "0 pairs in parity" reads as success. Run with `--self-test`; touches no
+    file.
+    """
+    cases: list[str] = []
+
+    def want(name: str, got, expect) -> None:
+        if got != expect:
+            cases.append(f"{name}: expected {expect!r}, got {got!r}")
+
+    # The per-page detectors, through the SAME functions the WARN loop calls.
+    want("frontmatter reads a plain updated",
+         frontmatter_text("title: x\nupdated: 2026-01-02\n", "updated"), "2026-01-02")
+    want("frontmatter strips double quotes",
+         frontmatter_text('updated: "2026-01-02"\n', "updated"), "2026-01-02")
+    want("frontmatter misses an absent key", frontmatter_text("title: x\n", "updated"), "")
+    want("frontmatter anchors the key at line start",
+         frontmatter_text("xupdated: 2026-01-02\n", "updated"), "")
+    want("headings counts only ##-level", headings_text("## a\n### b\n## c\n"), 2)
+    want("headings of empty text is zero", headings_text(""), 0)
+
+    want("a real census passes", census_problem(set(range(20)), set(range(20))), "")
+
+    # The empty root: both globs return nothing, which is what a rename produces.
+    empty = census_problem(set(), set())
+    want("an empty census is refused", empty != "", True)
+    want("the refusal names the locale", "under en/" in empty, True)
+
+    # One side empty, the other populated. The SET DIFFERENCE would catch this too, but
+    # asserting it here pins that the floor does not mask a real one-sided deletion.
+    one_sided = census_problem(set(range(20)), set())
+    want("a one-sided census is refused", one_sided != "", True)
+    want("the one-sided refusal names id/", "under id/" in one_sided, True)
+
+    # Must not fire on a small but real site: 5 is far below the measured 20.
+    want("a small but real site passes",
+         census_problem(set(range(5)), set(range(5))), "")
+
+    # And the boundary itself: 4 is below the floor, 5 is at it.
+    want("four pages is still refused",
+         census_problem(set(range(4)), set(range(4))) != "", True)
+
+    if cases:
+        print("SELF-TEST WRONG: " + "; ".join(cases), file=sys.stderr)
+        return 2
+    print("SELF-TEST OK (6 cases, no files touched)")
+    return 0
 
 
 def main() -> int:
     en, idl = slugs("en"), slugs("id")
+    problem = census_problem(en, idl)
+    if problem:
+        print(f"FAIL: {problem}")
+        return 1
     missing_id = sorted(en - idl)
     missing_en = sorted(idl - en)
     failed = False
@@ -66,4 +166,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if "--self-test" in sys.argv[1:]:
+        sys.exit(self_test())
     sys.exit(main())

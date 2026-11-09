@@ -160,6 +160,20 @@ fn prune_aborts_instead_of_dropping_an_unreadable_id() {
         "the cycle must abort before deleting, not drop the unreadable id and carry on"
     );
 }
+/// A timestamp 30 days old — safely INSIDE the 90-day retention window.
+///
+/// The two SQLite prune fixtures wrote their "recent" rows with the
+/// absolute literal '2026-08-09T00:00:00Z'. That crossed the horizon on
+/// 2026-08-10 (measured 2026-11-08: the prune deleted the row each test
+/// asserts must survive, and the counter test recorded 3 deletions where
+/// 2 were expected) — a green codebase reddened by wall-clock time. The
+/// PG tests in this file already compute recency with `Utc::now()`;
+/// both SQLite tests now do the same.
+fn recent_stamp() -> String {
+    (chrono::Utc::now() - chrono::Duration::days(30))
+        .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+}
+
 /// P-1 retention must cover API-pushed rows. `push_handler` persists
 /// every accepted item with status `pending` and nothing ever
 /// transitions it server-side, so the old `status IN ('synced','failed')`
@@ -171,12 +185,13 @@ fn prune_aborts_instead_of_dropping_an_unreadable_id() {
 #[test]
 fn prune_ages_out_old_pending_rows_like_synced_ones() {
     let conn = kasirmu_core::migrations::fresh_db();
-    conn.execute_batch(
+    conn.execute_batch(&format!(
         "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority) VALUES
-         ('old-pending', 'act', '{}', 'pending', 0, NULL, '2025-01-01T00:00:00Z', NULL, 't1', 1),
-         ('old-synced', 'act', '{}', 'synced', 0, NULL, '2025-01-02T00:00:00Z', '2025-01-03T00:00:00Z', 't1', 1),
-         ('recent-pending', 'act', '{}', 'pending', 0, NULL, '2026-08-09T00:00:00Z', NULL, 't1', 1)"
-    )
+         ('old-pending', 'act', '{{}}', 'pending', 0, NULL, '2025-01-01T00:00:00Z', NULL, 't1', 1),
+         ('old-synced', 'act', '{{}}', 'synced', 0, NULL, '2025-01-02T00:00:00Z', '2025-01-03T00:00:00Z', 't1', 1),
+         ('recent-pending', 'act', '{{}}', 'pending', 0, NULL, '{}', NULL, 't1', 1)",
+        recent_stamp()
+    ))
     .unwrap();
 
     let db = Arc::new(Mutex::new(conn));
@@ -205,12 +220,13 @@ fn prune_ages_out_old_pending_rows_like_synced_ones() {
 #[test]
 fn prune_records_deleted_rows_on_retention_counter() {
     let conn = kasirmu_core::migrations::fresh_db();
-    conn.execute_batch(
+    conn.execute_batch(&format!(
         "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority) VALUES
-         ('old-1', 'act', '{}', 'pending', 0, NULL, '2025-01-01T00:00:00Z', NULL, 't1', 1),
-         ('old-2', 'act', '{}', 'synced', 0, NULL, '2025-01-02T00:00:00Z', '2025-01-03T00:00:00Z', 't1', 1),
-         ('fresh', 'act', '{}', 'pending', 0, NULL, '2026-08-09T00:00:00Z', NULL, 't1', 1)"
-    )
+         ('old-1', 'act', '{{}}', 'pending', 0, NULL, '2025-01-01T00:00:00Z', NULL, 't1', 1),
+         ('old-2', 'act', '{{}}', 'synced', 0, NULL, '2025-01-02T00:00:00Z', '2025-01-03T00:00:00Z', 't1', 1),
+         ('fresh', 'act', '{{}}', 'pending', 0, NULL, '{}', NULL, 't1', 1)",
+        recent_stamp()
+    ))
     .unwrap();
 
     // Delta around the cycle: other prune tests (serialized via

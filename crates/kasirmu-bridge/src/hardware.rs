@@ -186,6 +186,18 @@ pub struct PrintSalesReceiptArgs {
     #[serde(default)]
     /// Optional printer target instance ID (e.g. "kitchen", "default").
     pub printer_target: Option<String>,
+    #[serde(default)]
+    /// Optional customer display name.
+    pub customer_name: Option<String>,
+    #[serde(default)]
+    /// Optional customer phone number.
+    pub customer_phone: Option<String>,
+    #[serde(default)]
+    /// Optional due date for credit/kasbon sale.
+    pub due_date: Option<String>,
+    #[serde(default)]
+    /// Optional total outstanding debt balance after this sale.
+    pub outstanding_balance: Option<MoneyDto>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -531,11 +543,31 @@ pub async fn run_print_receipt_inner(
         store_info.tax_id_label = Some(label.clone());
     }
 
+    let credit_terms = if let Some(cust_name) = args.customer_name.clone() {
+        let has_pay_later = args
+            .payments
+            .iter()
+            .any(|p| p.method.eq_ignore_ascii_case("pay_later"));
+        if has_pay_later || args.due_date.is_some() || args.outstanding_balance.is_some() {
+            Some(receipt::CreditTermsInfo {
+                customer_name: cust_name,
+                customer_phone: args.customer_phone,
+                due_date: args.due_date,
+                outstanding_balance: args.outstanding_balance.map(|b| b.to_money()).transpose()?,
+            })
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let receipt = receipt::SalesReceipt {
         store: store_info,
         date: args.date,
         receipt_number: args.receipt_number,
         table_number: args.table_number,
+        customer_name: args.customer_name,
         items: args
             .items
             .into_iter()
@@ -566,6 +598,7 @@ pub async fn run_print_receipt_inner(
                 })
             })
             .collect::<Result<Vec<_>, _>>()?,
+        credit_terms,
         faktur_pajak: args.faktur_pajak,
     };
 
@@ -752,6 +785,105 @@ pub async fn print_edc_settlement_slip_scoped(
         &config,
     );
     printer.print_raw(&data).await?;
+    Ok(PrintSalesReceiptResult { printed: true })
+}
+
+/// Arguments for printing a Kasbon / receivable settlement slip.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrintKasbonSettlementArgs {
+    /// Formatted date string for the settlement slip.
+    pub date: String,
+    /// Settlement transaction reference number (e.g. "PAY-REC-001").
+    pub settlement_number: String,
+    /// Customer name.
+    pub customer_name: String,
+    #[serde(default)]
+    /// Optional customer phone number.
+    pub customer_phone: Option<String>,
+    #[serde(default)]
+    /// Optional receivable or original invoice reference.
+    pub receivable_reference: Option<String>,
+    /// Payment method tender (e.g. "cash", "qris", "bank_transfer").
+    pub payment_method: String,
+    /// Total receivable debt before this payment.
+    pub previous_balance: MoneyDto,
+    /// Amount paid in this transaction.
+    pub amount_paid: MoneyDto,
+    /// Remaining balance after this payment.
+    pub remaining_balance: MoneyDto,
+    #[serde(default)]
+    /// Optional cashier or operator name.
+    pub cashier_name: Option<String>,
+    #[serde(default)]
+    /// Optional note or remark.
+    pub note: Option<String>,
+    #[serde(default)]
+    /// Optional printer target instance ID.
+    pub printer_target: Option<String>,
+}
+
+/// Print a Kasbon (receivable) settlement slip (scoped — requires valid session).
+pub async fn print_kasbon_settlement_slip_scoped(
+    ctx: &BridgeCtx<'_>,
+    args: PrintKasbonSettlementArgs,
+    session_token: &str,
+) -> Result<PrintSalesReceiptResult, BridgeError> {
+    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
+    // authenticated operator, the same ruling that covers the other ten hardware
+    // commands in this module. Gating it is a product ruling, not a repair.
+    // Worth naming because this slip carries MORE than a sales receipt: customer
+    // name, optional phone, and the receivable balances. An operator who should not
+    // see another customer's receivable can print one today, so closing BRIDGE-7
+    // should consider this command first.
+    ctx.resolve_scope(session_token)?;
+    let terminal_id = ctx.terminal_id().await;
+    let (config, store_info) = {
+        let conn = ctx.resolve_store(session_token)?;
+        let db = conn
+            .lock()
+            .map_err(|e| BridgeError::Internal(format!("locking store db: {e}")))?;
+        read_receipt_config_for_scope(&db, terminal_id.as_deref())?
+    };
+
+    let printer = if let Some(target_id) = args.printer_target.as_deref() {
+        match ctx.registry.printer(target_id).await {
+            Some(p) => p,
+            None => ctx.registry.printer("default").await.ok_or_else(|| {
+                BridgeError::Invalid(format!(
+                    "no printer registered for '{target_id}' or 'default'"
+                ))
+            })?,
+        }
+    } else {
+        ctx.registry
+            .printer("default")
+            .await
+            .ok_or_else(|| BridgeError::Invalid("no receipt printer registered".into()))?
+    };
+
+    let slip = receipt::KasbonSettlementReceipt {
+        store: store_info,
+        date: args.date,
+        settlement_number: args.settlement_number,
+        customer_name: args.customer_name,
+        customer_phone: args.customer_phone,
+        receivable_reference: args.receivable_reference,
+        payment_method: args.payment_method,
+        previous_balance: args.previous_balance.to_money()?,
+        amount_paid: args.amount_paid.to_money()?,
+        remaining_balance: args.remaining_balance.to_money()?,
+        cashier_name: args.cashier_name,
+        note: args.note,
+    };
+
+    let data = receipt::format_kasbon_settlement_slip(&slip, &config);
+    printer.print_raw(&data).await?;
+
+    if let Some(sink) = &ctx.emitter {
+        sink.emit("receipt:printed", serde_json::json!({ "lines": 14 }));
+    }
+
     Ok(PrintSalesReceiptResult { printed: true })
 }
 

@@ -323,6 +323,58 @@ describe('CustomerManagementScreen', () => {
     });
   });
 
+  // A double submit on Create must not store the SAME customer twice.
+  //
+  // The server does not protect this. core `create_customer` mints a fresh
+  // `uuid::Uuid::now_v7()` per call (crates/kasirmu-core/src/db/customers.rs:228) and
+  // INSERTs unconditionally -- there is no unique constraint on `name`, so two calls
+  // store TWO customers with the same name, email and loyalty ledger. Same shape as the
+  // cash payout (round 139, ShiftManagementScreen) and unlike the open/close shift pair,
+  // which the backend already refuses.
+  //
+  // SHAPE 3 (round 139): both submits inside ONE act() batch. A sequential
+  // `fireEvent` wraps each dispatch in its own act(), so React commits `setSaving(true)`
+  // between them and the second lands on a disabled button -- measured on the payout
+  // path, that reports 1 call on a route that really sends 2. Batching removes the
+  // intervening commit, which is the point.
+  it('creates a customer once for a double submit while the first is in flight', async () => {
+    const user = userEvent.setup();
+    let releaseCreate: ((v: unknown) => void) | undefined;
+    const heldCreate = new Promise((resolve) => { releaseCreate = resolve; });
+    mockCreateCustomer.mockImplementation(() => heldCreate as never);
+    mockListCustomers.mockResolvedValue(sampleCustomers);
+    renderWithProvidersSync(<CustomerManagementScreen />, customersFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByText('Add Customer')).toBeInTheDocument();
+    });
+    await user.click(screen.getByText('Add Customer'));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/jane smith/i)).toBeInTheDocument();
+    });
+    await user.type(screen.getByPlaceholderText(/jane smith/i), 'Dave');
+
+    const createBtn = screen.getByText('Create').closest('button')!;
+    await act(async () => {
+      fireEvent.click(createBtn);
+      // The disabled flag React set is not yet authoritative for a live double tap;
+      // dropping it sends the second submit to the handler the way a real one would.
+      createBtn.removeAttribute('disabled');
+      fireEvent.click(createBtn);
+    });
+
+    expect(
+      mockCreateCustomer.mock.calls.length,
+      'a second submit re-sent the create while the first was in flight; core mints a ' +
+        'new UUID per call, so this stores TWO customers with the same name and ledger',
+    ).toBe(1);
+
+    releaseCreate?.({});
+    await waitFor(() => {
+      expect(mockCreateCustomer).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('disables Create button when name is empty', async () => {
     const user = userEvent.setup();
     renderWithProvidersSync(<CustomerManagementScreen />, customersFtl, sharedFtl);
@@ -505,7 +557,7 @@ describe('CustomerManagementScreen', () => {
           id: 's-1',
           total_minor: 2500,
           currency: 'USD',
-          status: 'Completed',
+          status: 'completed',
           line_count: 2,
           created_at: '2026-07-01T10:00:00.000Z',
         },

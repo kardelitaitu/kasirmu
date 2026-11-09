@@ -651,7 +651,7 @@ pub mod permissions {
 
     // ── Payables (Hutang / Beli Tempo — AP) ───────────────────────
     /// View vendor bills, due dates, and the payables aging report. Phase 4
-    /// (AP) of `docs/plans/payment-methods-plan.md`. Owner holds it via the
+    /// (AP) of `docs/plans/_done/done-payment-methods-plan.md`. Owner holds it via the
     /// global wildcard; the Auditor preset grants read-only visibility.
     pub const PAYABLES_VIEW: &str = "payables:view";
 
@@ -666,6 +666,20 @@ pub mod permissions {
     /// Forgive a vendor debt without payment (money destruction — audited).
     /// Owner-only.
     pub const PAYABLES_WRITEOFF: &str = "payables:writeoff";
+
+    // ── Receivables (Piutang / Jual Tempo — AR) ───────────────────────
+    /// View customer receivables, kasbon aging, and payment history. Phase 3
+    /// (AR) of `docs/plans/_done/done-payment-methods-plan.md`.
+    pub const RECEIVABLES_VIEW: &str = "receivables:view";
+
+    /// Extend customer credit / pay later tender at the register.
+    pub const RECEIVABLES_CREATE: &str = "receivables:create";
+
+    /// Record a customer debt repayment / collection.
+    pub const RECEIVABLES_COLLECT: &str = "receivables:collect";
+
+    /// Forgive an uncollectible customer debt without payment (money destruction — audited).
+    pub const RECEIVABLES_WRITEOFF: &str = "receivables:writeoff";
 
     // ── operator ──
     /// Act as another user within the operator's authorized tenant scope for

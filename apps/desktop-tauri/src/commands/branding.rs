@@ -52,6 +52,8 @@ pub async fn get_brand_settings(state: State<'_, AppState>) -> Result<BrandSetti
         .map_err(Into::into)
 }
 
+/// **Deprecated — use `pick_logo_file_scoped` (ADR #7).**
+///
 /// Open a native file picker filtered to image files and return the
 /// chosen path, or `None` if the user cancelled.
 #[tauri::command]

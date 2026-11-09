@@ -43,7 +43,7 @@ Handle large pull responses (terminals offline 90+ days) via cursor-based pagina
 ### Snapshot endpoint
 - [x] `GET /api/sync/snapshot` returns compressed `.kasirpkg` file (zstd, via existing `crates/kasirmu-core/src/kasirpkg.rs` — the module was renamed from `ozpkg.rs` in the rebrand, and the format's own extension moved with it) — **CONFIRMED 2026-10-11: module present, `.kasirpkg` envelope documented at `kasirpkg.rs:1-47` (JSON → zstd → encrypt), route live at `apps/cloud-server/src/sync_api.rs:197`**
 - [ ] Snapshot endpoint is protected by the same JWT auth middleware as push/pull/status (tenant-scoped)
-- [ ] Cached files stored at `{OZ_CACHE_DIR}/snapshots/{tenant_id}/{generation_timestamp}.ozpkg`. `OZ_CACHE_DIR` defaults to `<data_dir>/cache`.  — **NOT SHIPPED, still open 2026-10-11: there is no disk cache and no `OZ_CACHE_DIR` for snapshots. `SnapshotCache` is an in-memory single-flight structure — `Arc<Mutex<HashMap<String, Arc<RwLock<Option<SnapshotData>>>>>>` (`apps/cloud-server/src/sync_api.rs:61`) with an optional Redis tier and a TTL; `grep -n "fs::write\|PathBuf\|\.ozpkg" apps/cloud-server/src/sync_api.rs` returns nothing. The `.ozpkg` extension named here is also stale — the format is `.kasirpkg`.**
+- [ ] Cached files stored at `{OZ_CACHE_DIR}/snapshots/{tenant_id}/{generation_timestamp}.ozpkg`. `OZ_CACHE_DIR` defaults to `<data_dir>/cache`.  — **NOT SHIPPED, still open 2026-10-11: there is no disk cache and no `OZ_CACHE_DIR` for snapshots. `SnapshotCache` is an in-memory single-flight structure — `Arc<Mutex<HashMap<String, Arc<RwLock<Option<SnapshotData>>>>>>` (`apps/cloud-server/src/sync_api.rs:74`) with an optional Redis tier and a TTL; `grep -n "fs::write\|PathBuf\|\.ozpkg" apps/cloud-server/src/sync_api.rs` returns nothing. The `.ozpkg` extension named here is also stale — the format is `.kasirpkg`.**
 - [ ] Snapshot contains: all products, tax rates, users, and settings for the requesting tenant
 - [ ] Snapshot cached on disk keyed by `{tenant_id}_{generation_timestamp}`. LRU eviction with max 100 files  — **NOT SHIPPED; eviction is TTL-based (`SNAPSHOT_CACHE_TTL_SECS`), not an LRU of 100 files**
 - [ ] Cache invalidation: regeneration triggered on product/tax/user/setting domain events, debounced to at most once per 5 minutes per tenant
@@ -103,8 +103,8 @@ Handle large pull responses (terminals offline 90+ days) via cursor-based pagina
 | Check | Expected |
 |-------|----------|
 | `cargo build -p oz-cloud-server -p platform-sync -p platform-startup --lib --tests` | exit 0 — **`oz-cloud-server` is a pre-rebrand name; it is `kasirmu-cloud` today** |
-| `cargo clippy -p oz-cloud-server -p platform-sync --lib --tests -- -D warnings` | 0 warnings — **same name note** |
-| `cargo test -p oz-cloud-server` | all passing (pull pagination tests) |
+| `cargo clippy -p kasirmu-cloud -p platform-sync --lib --tests -- -D warnings` | 0 warnings — **same name note** |
+| `cargo test -p kasirmu-cloud` | all passing (pull pagination tests) |
 | `cargo test -p platform-sync` | all passing (client pull loop + snapshot recovery) |
 | Manual: pull with 1500 items in queue | 3 pages of 500 returned, `next_cursor` non-null on first two |
 | Manual: `curl /api/sync/snapshot` returns valid `.ozpkg` | File header matches zstd magic bytes |

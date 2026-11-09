@@ -72,6 +72,47 @@ import { registerMemoFeature } from './memo/register';
  *     whole point of item (3), and a false "not routed, delete it" reading has
  *     already cost this repo a review pass. Whoever owns it should either
  *     register it or say so here.
+ *
+ *     MEASURED 2026-10-25 (round 201): the four claims above all still hold, and a
+ *     fifth narrows it. The component's entire PURPOSE is one tap — handlePurchase
+ *     opens the WEBSITE pricing page with an anchor (`/pricing/#addon-<id>`,
+ *     AddonsMarketplace.tsx:102) — so mounting it would add a screen whose only
+ *     action is a browser hand-off to a page that is not this app's. Its data comes
+ *     from a static client-side catalog (api/addons.ts:31 ADDON_CATALOG). So the
+ *     honest reading of UNRESOLVED is now sharper: this is not a screen waiting for
+ *     a route, it is a SCAFFOLD for a purchase flow that cannot complete, kept
+ *     because the entitlement model it reads (SignedSubscriptionPayload.addons) is
+ *     real and shipped. That is the same state C4.3 describes in todo.md — "The Go
+ *     side will wire the field when actual add-ons are catalogued" — so the
+ *     component is ahead of nothing and behind nothing; it waits on the catalog.
+ *
+ *     CORRECTED 2026-10-25 (round 204). Round 201 also recorded two things that are
+ *     not true, both now measured:
+ *
+ *     (a) "every Paddle price in it is a placeholder (`pri_placeholder_*`, :90-93)".
+ *     addons.ts is 85 lines and carries four `pri_addon_*_monthly` ids (:38, :47,
+ *     :56, :65); `pri_placeholder_` appears in addons.ts zero times. The cited
+ *     ":90-93" was never a coordinate in that file. What follows from the
+ *     misreading is the real defect: AddonsMarketplace.tsx:90 refused a
+ *     placeholder price, and since NOTHING the catalog carries begins with that
+ *     prefix, the branch was unreachable and handlePurchase opened the browser for
+ *     every entry. The guard now lives in named
+ *     `isPlaceholderPriceId` (`pri_placeholder_`, the website's own test at
+ *     website/src/components/paddle.ts:101) and BOTH arms are pinned by cases that
+ *     feed the catalog's real id and a placeholder id — the placeholder case could
+ *     not be driven from the shipped catalog at all.
+ *
+ *     (b) the hand-off's DESTINATION was implied to be the add-on. It is not:
+ *     website/src/pages/[locale]/pricing.astro renders PricingGrid, whose only ids
+ *     are the tier keys (`free`/`plus`/`pro`), and "addon" has zero hits under
+ *     website/src. So the tap lands on the pricing table — the place a purchase
+ *     would start, not a page about the add-on it was tapped from. With (a) fixed
+ *     that is now the FIRST thing the operator sees, not the second.
+ *
+ *     Neither correction changes the ruling: the catalog is still not wired on the
+ *     server (SubscriptionPayload in apps/license-server/main.go:1440 has no
+ *     `addons` field, and the four `pri_addon_*` ids have no reader — the license
+ *     server's PADDLE_PRICE_TIERS does not know them), so the file still waits.
  */
 export function registerAllFeatures() {
   registerSalesFeature();

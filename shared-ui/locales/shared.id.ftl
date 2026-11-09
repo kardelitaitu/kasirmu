@@ -52,19 +52,10 @@ error-boundary-retry = Coba Lagi
 # page registering layout="landscape-locked"; keep the value in step with the
 # child text in AppShell/TabletAppShell (the English fallback).
 layout-rotate-to-landscape = Putar perangkat Anda ke lanskap untuk tata letak lengkap.
-layout-rotate-to-landscape-aria =
-    .aria-label = Putar ke lanskap
 
 # Status Bar
-status-bar-connected = Backend terhubung
-status-bar-disconnected = Backend terputus
 # Sync connection status
-status-bar-sync-connected = Sinkronisasi cloud terhubung
-status-bar-sync-disconnected = Sinkronisasi cloud terputus
-status-bar-sync-checking = Memeriksa koneksi sinkronisasi cloud…
 # License status (login screen)
-staff-login-license-active = Lisensi aktif
-staff-login-license-inactive = Lisensi tidak aktif
 # P1-3: Tooltip for conflict count badge in StatusBar
 statusbar-conflict-count = { $count } konflik sinkronisasi terselesaikan
 # SYNC-12: StatusBar visible labels + ARIA (localized at the render boundary)
@@ -304,8 +295,11 @@ nav-promotions = Promosi
 nav-tooltip-preview = Pratinjau Tooltip
 nav-suppliers = Pemasok
 nav-purchase-orders = Pesanan Pembelian
+nav-vendor-bills = Tagihan Pemasok
 nav-stock-transfers = Transfer Stok
 nav-stock-counts = Stok Opname
+nav-inventory-log = Log Transaksi
+nav-inventory-thresholds = Ambang Stok Rendah
 nav-stock = Stok
 nav-sidebar-collapse = Tutup sidebar
 nav-sidebar-expand = Buka sidebar
@@ -575,7 +569,6 @@ barcode-input-aria = Input kode batang
 submit-barcode-aria = Kirim kode batang
 select-course-aria = Pilih kursus
 revert-changes-aria = Kembalikan perubahan
-add-sample-line-aria = Tambah contoh baris
 previous-page-aria = Halaman sebelumnya
 next-page-aria = Halaman berikutnya
 results-per-page-aria = Hasil per halaman
@@ -588,10 +581,6 @@ refund-line-items-aria = Item baris pengembalian
 orders-aria = Pesanan
 back-to-orders-aria = Kembali ke daftar pesanan
 order-line-items-aria = Item baris pesanan
-decrease-card-size-aria = Kurangi ukuran kartu
-increase-card-size-aria = Tambah ukuran kartu
-decrease-font-size-aria = Kurangi ukuran font
-increase-font-size-aria = Tambah ukuran font
 primary-colour-picker-aria = Pemilih warna utama
 colour-hex-aria = Nilai heksadesimal warna
 reset-colour-aria = Kembalikan warna ke awal
@@ -630,6 +619,10 @@ workspace-home-shifts-title = Shift
 workspace-home-shifts-desc = Kelola shift dan jadwal staf
 workspace-home-promotions-title = Promosi
 workspace-home-promotions-desc = Buat dan kelola promosi
+# Judul halaman. Desain tidak punya judul halaman yang terlihat -- header berisi
+# OrgSelector dan tiap bagian punya judulnya sendiri -- jadi ini dirender
+# tersembunyi secara visual (.workspace-sr-only).
+workspace-home-page-title = Ruang kerja
 workspace-home-workspaces-section = Workspace
 workspace-home-tools-section = Alat
 # Header grup Tools — arsitektur informasi yang disepakati
@@ -652,46 +645,23 @@ workspace-home-memo-desc = Tulis pemberitahuan untuk terminal dan lokasi
 workspace-home-add-workspace = Tambah Workspace
 workspace-home-add-workspace-desc = Konfigurasi workspace di editor topologi
 workspace-home-add-workspace-aria = Tambah workspace melalui editor topologi
+# Dua kartu ruang kerja cepat pada pemilih ruang kerja. Judul dan deskripsinya
+# dulu berupa literal JSX di WorkspaceHome.tsx:888-921, padahal semua string
+# lain di layar itu datang dari bundel ini.
+workspace-home-retail-pos = POS Retail
+workspace-home-retail-pos-desc = Terminal POS retail dengan pemindai barcode
+workspace-home-restaurant-pos = POS Restoran
+workspace-home-restaurant-pos-desc = POS untuk layanan makan dan meja
 workspace-home-reports-aria = Buka Laporan
 workspace-home-shortcut-open = Buka
 
 # Warehouse workspace
 warehouse-title = Inventaris Gudang
-warehouse-location = Lokasi
-warehouse-no-location-title = Tidak ada lokasi gudang
 warehouse-no-location-desc = Workspace ini tidak terikat ke lokasi gudang. Konfigurasi di editor topologi.
 warehouse-empty-title = Tidak ada produk
-warehouse-empty-desc = Tidak ada produk inventaris yang ditemukan di lokasi ini.
 warehouse-load-error = Gagal memuat inventaris gudang.
+warehouse-stock-desktop-only = Stok per lokasi memerlukan aplikasi desktop.
 warehouse-adjust-error = Gagal menyesuaikan stok.
-warehouse-col-sku = SKU
-warehouse-col-name = Nama
-warehouse-col-category = Kategori
-warehouse-col-qty = Stok
-warehouse-col-cost = Harga
-warehouse-col-actions = Aksi
-warehouse-products-count = produk
-warehouse-low-stock-alerts = peringatan stok rendah
-warehouse-search-placeholder = Cari berdasarkan nama atau SKU…
-warehouse-search-aria = Cari produk
-warehouse-filter-category = Filter berdasarkan kategori
-warehouse-filter-stock = Filter berdasarkan status stok
-warehouse-all-categories = Semua kategori
-warehouse-stock-all = Semua stok
-warehouse-stock-in = Ada stok
-warehouse-stock-out = Habis
-warehouse-stock-low = Stok rendah
-warehouse-no-results = Tidak ada produk yang cocok dengan pencarian Anda.
-warehouse-stat-total = Total
-warehouse-stat-out-of-stock = Habis stok
-warehouse-stat-low-stock = Stok rendah
-warehouse-btn-adjust = Sesuaikan
-warehouse-adjust-title = Sesuaikan Stok
-warehouse-adjust-current = Stok saat ini
-warehouse-adjust-delta-label = Perubahan jumlah (gunakan + untuk menambah, − untuk mengurangi)
-warehouse-adjust-reason-label = Alasan
-warehouse-adjust-reason-placeholder = contoh: hitung stok, kerusakan, pengembalian
-warehouse-adjust-confirm = Konfirmasi
 warehouse-adjust-cancel = Batal
 warehouse-mode-tabs-aria = Mode gudang
 
@@ -720,7 +690,6 @@ warehouse-session-line-qty = Jumlah
 warehouse-session-line-picked = Dipetik
 warehouse-session-complete-receive = Selesaikan Terima
 warehouse-session-complete-send = Selesaikan Kirim
-warehouse-session-print = Cetak
 warehouse-session-clear = Kosongkan
 
 warehouse-fn-receive = Terima
@@ -736,24 +705,20 @@ warehouse-shortcut-close = Tutup
 
 warehouse-popup-receive-title = Sesi masuk
 warehouse-popup-send-title = Sesi keluar
-warehouse-popup-count-title = Sesi hitung
 warehouse-popup-close = Tutup
 
 warehouse-send-destination = Kirim ke…
 warehouse-send-destination-aria = Pilih tujuan
 warehouse-send-confirmed = Terkirim! { $number } — { $count } item ke { $destination }
-warehouse-send-verify-hint = Pindai setiap item untuk memverifikasi pemetikan
-warehouse-send-unpicked = { $count } baris belum dipetik
 
 warehouse-receive-source-po = Terima dari pesanan pembelian
 warehouse-receive-source-transfer = Terima dari transfer
 warehouse-receive-no-transfers = Tidak ada transfer dalam perjalanan
 warehouse-receive-no-pos = Tidak ada pesanan pembelian yang disetujui
+warehouse-receive-load-failed = Daftar tidak dapat dimuat — tutup dan coba lagi
 warehouse-receive-confirmed = Diterima! { $number } — { $count } item
 warehouse-receive-expected = Diharapkan
-warehouse-receive-received = Diterima
 warehouse-receive-damaged = Rusak
-warehouse-receive-short = Kurang
 
 warehouse-count-create = Mulai Hitung
 warehouse-count-type = Tipe hitung
@@ -767,3 +732,173 @@ warehouse-count-back = Kembali
 warehouse-count-complete = Selesaikan Hitung
 warehouse-count-complete-success = Hitung selesai — { $count } penyesuaian diposting
 warehouse-count-error = Hitung gagal
+
+# ── Desain → Pratinjau Tooltip (halaman pamer pengembang) ────────────
+# Halaman ini dapat dibuka setiap pengguna: 'tooltips' tidak ada di
+# ROUTE_FEATURE (hooks/useFeatures.ts:59), dan hanya dua rute yang dibatasi.
+tp-page-title = Pratinjau Tooltip
+tp-section-positions = Posisi
+tp-section-positions-desc = Tooltip dapat diposisikan di sisi mana pun dari elemen pemicu. Bawaannya adalah kanan.
+tp-position-right = Kanan
+tp-position-top = Atas
+tp-position-bottom = Bawah
+tp-position-left = Kiri
+tp-tooltip-right = Tooltip di sebelah kanan (bawaan)
+tp-tooltip-top = Tooltip di atas pemicu
+tp-tooltip-bottom = Tooltip di bawah pemicu
+tp-tooltip-left = Tooltip di sebelah kiri pemicu
+tp-section-delay = Jeda Tampil / Sembunyi
+tp-section-delay-desc = Jeda tampil mencegah tooltip berkedip saat kursor lewat. Bawaannya 400ms tampil, 100ms sembunyi.
+tp-trigger-instant = Seketika
+tp-trigger-default-ms = Bawaan (400ms)
+tp-tooltip-instant = Tampil seketika (jeda 0ms, sembunyi 100ms)
+tp-tooltip-fast = Tampil cepat (jeda 200ms, sembunyi 50ms)
+tp-tooltip-default-ms = Tampil bawaan (jeda 400ms, sembunyi 100ms)
+tp-tooltip-slow = Muncul lambat (jeda 800ms)
+tp-tooltip-very-slow = Sangat lambat (jeda 1200ms)
+tp-section-maxwidth = Lebar Maksimum
+tp-section-maxwidth-desc = Atur lebar gelembung tooltip dengan properti maxWidth. Bawaannya 280px. Isi dibungkus otomatis.
+tp-trigger-280 = Bawaan (280px)
+tp-tooltip-160 = Tooltip sempit — maks 160px
+tp-tooltip-280 = Lebar bawaan — maks 280px. Ini lebar tooltip standar yang dipakai di seluruh aplikasi.
+tp-tooltip-400 = Tooltip lebar — maks 400px. Berguna untuk deskripsi lebih panjang yang perlu ruang horizontal agar nyaman dibaca.
+tp-section-multiline = Isi Beberapa Baris
+tp-section-multiline-desc = Teks tooltip dibungkus alami dengan white-space: normal. Gunakan baris baru yang di-escape di string atau pemisah baris JSX untuk isi terstruktur.
+tp-trigger-short = Pendek
+tp-trigger-wrapping = Membungkus
+tp-trigger-structured = Terstruktur
+tp-label-single-line = Satu baris
+tp-label-auto-wrapping = Bungkus otomatis
+tp-label-with-breaks = Dengan pemisah baris
+tp-tooltip-short = Deskripsi pendek — ideal untuk item navigasi dan label ikon.
+tp-tooltip-wrapping = Deskripsi sedang yang membungkus ke beberapa baris ketika isinya lebih panjang dari lebar maksimum agar alami dan mudah dibaca.
+tp-tooltip-structured-line1 = Baris satu: ID Pesanan #2847
+tp-tooltip-structured-line2 = Baris dua: 4 item • { $amount }
+tp-tooltip-structured-line3 = Baris tiga: Prioritas: Tinggi
+tp-section-content-types = Jenis Isi
+tp-section-content-types-desc = Properti content menerima ReactNode apa pun — teks biasa, string berformat, atau elemen JSX.
+tp-trigger-text = Teks
+tp-trigger-jsx = JSX
+tp-trigger-rich = Kaya
+tp-tooltip-plain = Tooltip teks biasa — kasus pemakaian paling umum.
+tp-tooltip-jsx = Info: Gateway online
+tp-tooltip-rich-title = Detail Status
+tp-tooltip-rich-body = Online · Sinkron terakhir: 2 detik lalu · Antrean: 0
+tp-section-edge = Kasus Tepi
+tp-section-edge-desc = Tooltip berfungsi dengan elemen apa pun yang dapat difokus — tombol, tombol ikon saja, teks sebaris, span, dan komponen kustom.
+tp-tooltip-icon-collapse = Tombol ikon — kecilkan bilah samping
+tp-tooltip-icon-bell = Tombol ikon — notifikasi
+tp-tooltip-icon-settings = Tombol ikon — pengaturan
+tp-tooltip-badge = Lencana kecil dengan tooltip
+tp-trigger-beta = Beta
+tp-tooltip-inline = Pemicu teks sebaris — garis bawah titik-titik
+tp-trigger-inline = pemicu sebaris
+tp-section-production = Pemakaian Produksi
+tp-section-production-desc = Beginilah Tooltip dipakai di bilah samping aplikasi — item navigasi dibungkus Tooltip, menampilkan label saat kursor di atasnya dalam mode ringkas.
+tp-label-collapsed = Bilah samping ringkas (60px)
+tp-label-expanded = Bilah samping terbuka (220px)
+tp-label-status-bar = Elemen Bilah Status
+tp-tooltip-connected = Backend terhubung
+tp-tooltip-switch-workspace = Ganti Ruang Kerja
+tp-label-workspace = Ruang Kerja
+
+# ── Desain → Pameran Sistem Desain ───────────────────────────────────
+# Dibuka di rute 'design', yang TIDAK ada di ROUTE_FEATURE
+# (hooks/useFeatures.ts:59 hanya membatasi sales dan stock-transfers), jadi
+# halaman ini tampil untuk setiap tenant. Nilai *-title / *-label adalah KUNCI
+# Fluent yang dikirim sebagai prop ke Section/Swatch/SwatchRow, lalu dirender
+# lewat <Localized>; teks cadangan adalah anak elemen itu sendiri.
+ds-section-colors = Warna
+ds-section-typography = Tipografi
+ds-section-spacing = Jarak
+ds-section-shadows = Bayangan
+ds-section-radius = Radius Tepi
+ds-section-buttons = Tombol
+ds-section-forms = Elemen Formulir
+ds-section-badges = Lencana
+ds-section-spinners = Pemuat
+ds-section-skeleton = Muat Kerangka
+ds-section-toasts = Notifikasi Toast
+ds-section-empty = Keadaan Kosong
+ds-section-error = Keadaan Galat
+ds-swatch-row-neutral = Netral
+ds-swatch-row-primary = Utama (Emerald)
+ds-swatch-row-semantic = Semantik
+ds-swatch-row-backgrounds = Latar
+ds-swatch-row-text = Teks
+ds-swatch-row-borders = Tepi
+ds-swatch-row-accent = Aksen
+ds-swatch-success = Sukses
+ds-swatch-warning = Peringatan
+ds-swatch-danger = Bahaya
+ds-swatch-info = Info
+ds-swatch-bg = Dasar
+ds-swatch-bg-elevated = Ditinggikan
+ds-swatch-bg-surface = Permukaan
+ds-swatch-bg-input = Input
+ds-swatch-fg-primary = Utama
+ds-swatch-fg-body = Isi
+ds-swatch-fg-secondary = Sekunder
+ds-swatch-fg-tertiary = Tersier
+ds-swatch-fg-disabled = Nonaktif
+ds-swatch-border = Bawaan
+ds-swatch-border-hover = Hover
+ds-swatch-border-strong = Kuat
+ds-swatch-border-focus = Fokus
+ds-swatch-accent = Bawaan
+ds-swatch-accent-hover = Hover
+ds-swatch-accent-active = Aktif
+ds-swatch-accent-subtle = Halus
+ds-type-pangram = Contoh teks untuk menguji tampilan huruf
+ds-type-body-14 = Contoh teks untuk menguji tampilan huruf — isi 14px
+ds-type-body-12 = Contoh teks untuk menguji tampilan huruf — kecil 12px
+ds-type-body-10 = Contoh teks untuk menguji tampilan huruf — sangat kecil 10px
+ds-type-weight = Ketebalan:
+ds-type-weight-list = Normal · Sedang · Semi Tebal · Tebal
+ds-type-mono = Mono:
+ds-type-link = Tautan:
+ds-type-link-text = Tautan yang dapat diklik
+ds-btn-primary = Utama
+ds-btn-secondary = Sekunder
+ds-btn-danger = Bahaya
+ds-btn-ghost = Transparan
+ds-btn-disabled = Nonaktif
+ds-form-text-input = Input teks
+ds-form-placeholder = Teks contoh
+ds-form-select = Pilihan
+ds-form-option-1 = Opsi 1
+ds-form-option-2 = Opsi 2
+ds-form-option-3 = Opsi 3
+ds-form-textarea = Area teks
+ds-form-textarea-placeholder = Tulis sesuatu…
+ds-badge-variants-md = Varian (md)
+ds-badge-sizes-sm = Ukuran (sm)
+ds-badge-default = Bawaan
+ds-badge-success = Sukses
+ds-badge-warning = Peringatan
+ds-badge-danger = Bahaya
+ds-badge-info = Info
+ds-spinner-sizes = Ukuran
+ds-spinner-with-label = Dengan label
+ds-spinner-loading = Memuat…
+ds-spinner-saving = Menyimpan…
+ds-skeleton-variants = Varian
+ds-toast-trigger = Picu toast
+ds-toast-show-success = Tampilkan Sukses
+ds-toast-show-error = Tampilkan Galat
+ds-toast-show-warning = Tampilkan Peringatan
+ds-toast-show-info = Tampilkan Info
+ds-toast-success-msg = Operasi berhasil diselesaikan
+ds-toast-error-msg = Terjadi kesalahan
+ds-toast-warning-msg = Periksa kembali isian Anda
+ds-toast-info-msg = Ini pesan informasi
+ds-empty-title = Belum ada apa pun di sini
+ds-empty-desc = Mulai dengan menambahkan item pertama Anda
+ds-empty-action = Tambah Produk
+ds-error-title = Terjadi kesalahan
+ds-error-message = Terjadi galat tak terduga. Silakan coba lagi.
+ds-error-retry = Coba lagi
+
+# Round 212 — teks alt gambar hero aktivasi lisensi. "kasir.mu" adalah merek
+# dan tetap; keterangan sesudahnya adalah salinan.
+license-activation-logo-alt = Logo kasir.mu

@@ -21,8 +21,14 @@ in CI these arms connect and those cases really run.  That is also why the obvio
 "cleanup" -- converting the arms to `#[ignore]`, the idiom `platform/sync` already
 uses elsewhere -- would be a regression: nothing in `scripts/` or `.github/` passes
 `--run-ignored`, so `#[ignore]` removes 62 PG cases from the only environment that
-executes them.  This script deliberately changes no test and is not wired into any
-workflow; it grades a local run a human or a lane asked to *verify* something.
+executes them.  This script deliberately changes no test. In its plain mode it grades a local run
+a human or a lane asked to *verify* something.
+
+It IS wired into CI, but only through `--nextest-junit` -- a different mode, added
+2026-09-25 in `15192c315a` to fail CI when nextest retries mask a flaky test. That
+wiring does not run cargo and does not exercise the skip-arm channel below. (This
+paragraph used to say "not wired into any workflow", which was true on 2026-09-16 when
+it was written and stopped being true nine days later; corrected 2026-10-26.)
 
 Two independent checks, because one channel already lied once here:
   1. LOG    -- a `--nocapture` run must print zero skip events.
@@ -80,16 +86,15 @@ ARM_RE = re.compile(r'eprintln!\s*\(\s*"[^"]*skip', re.IGNORECASE)
 # ARM_CRATES bounds the membership, and a partition that sums correctly can still
 # be walking a silently narrowed population.
 #
-# Measured baseline: 88 arms across 16 test files in 3 crates. Moved 64 -> 66 -> 68 -> 84 -> 88:
+# Measured baseline: 95 arms across 16 test files in 3 crates. Moved 64 -> 66 -> 68 -> 84 -> 88 -> 95:
 # +16 across cloud-server (quota detector, reconciliation, stock guard, trigger ports)
-# and platform-sync; then +4 measured 2026-09-27, driven by the kasirmu-api `pg.rs`
-# split (`crates/kasirmu-api/src/pg_tests.rs` alone holds 15) rather than by any
-# conversion of an arm. The floor is NOT moved with it: 88 received arms push the
+# and platform-sync; +4 measured 2026-09-27; +7 measured 2026-10-22 (+4 in kasirmu-api/src/pg_tests.rs
+# to 19, plus email_pg and db_tests additions). The floor is NOT moved with it: 95 received arms push the
 # census further above the floor, which is the direction this guard is meant to
 # tolerate, and re-raising the floor would erode the headroom that absorbs a
 # legitimate conversion.
-ARM_FLOOR = 65  # headroom below 88: absorbs a legitimate conversion, fires on drift
-ARM_BASELINE = 88
+ARM_FLOOR = 65  # headroom below 95: absorbs a legitimate conversion, fires on drift
+ARM_BASELINE = 95
 # Per-crate membership: each crate that owns arms today must keep at least one.
 # Renaming a file survives this; a whole crate's arms going uncounted does not,
 # which is the "fix landed in one crate, 17 left behind" failure in another form.
@@ -353,11 +358,11 @@ def source_findings(arms: int, per_file: dict[str, int]) -> list[str]:
     if arms < ARM_FLOOR:
         notes.append(
             f"SOURCE: {arms} arms is below the floor of {ARM_FLOOR} (baseline\n"
-            f"      {ARM_BASELINE} measured 2026-09-15 across 12 files in 3 crates).\n"
+            f"      {ARM_BASELINE} measured 2026-10-22 across 16 files in 3 crates).\n"
             "      A silent shrink is the failure this floor exists for: if the\n"
             "      messages were reworded, or a shape rule narrowed, the census\n"
             "      drops and a green still prints. Diff\n"
-            "      `--census-only` against the table in todo-open-debt-program.md\n"
+            "      `--census-only` against the table in done-todo-open-debt-program.md\n"
             "      Phase 5 before proceeding."
         )
 
@@ -985,6 +990,39 @@ def self_test() -> int:
         rc_jbad = grade_junit("<testsuites><not closed", source="<fixture>")
     expect("a truncated XML report is refused rather than read as clean", rc_jbad == 1)
 
+    # A MISSING REPORT. main() refuses it in words (added 2026-10-24: it used to raise
+    # FileNotFoundError, which exits 1 by accident rather than by decision). Grade the
+    # real entry point here -- in a temp dir this never writes to -- so the refusal
+    # cannot be deleted without reddening this case.
+    import tempfile
+    with tempfile.TemporaryDirectory() as _td:
+        absent = Path(_td) / "no-such-report.xml"
+        _buf = io.StringIO()
+        with redirect_stdout(_buf):
+            rc_jmissing = main(["--nextest-junit", str(absent)])
+        _out = _buf.getvalue()
+    expect("a missing report is REFUSED, not crashed on", rc_jmissing == 1)
+    expect("  ...and says in words that nothing was graded",
+           "no report at" in _out and "Nothing was graded" in _out)
+    expect("  ...and does not leak a python traceback into the verdict",
+           "Traceback" not in _out)
+
+    # THE SAME REFUSAL FOR --log. It was fixed one day later (2026-10-26) because the
+    # junit branch above had been repaired and this sibling read had not: `--log` with
+    # an absent path still raised FileNotFoundError. Graded through main() for the same
+    # reason as above -- the refusal cannot be deleted without reddening this case.
+    with tempfile.TemporaryDirectory() as _td:
+        absent_log = Path(_td) / "no-such-log.txt"
+        _buf2 = io.StringIO()
+        with redirect_stdout(_buf2):
+            rc_lmissing = main(["--log", str(absent_log)])
+        _out2 = _buf2.getvalue()
+    expect("a missing --log is REFUSED, not crashed on", rc_lmissing == 1)
+    expect("  ...and says in words that nothing was graded",
+           "no captured log at" in _out2 and "Nothing was graded" in _out2)
+    expect("  ...and does not leak a python traceback into the verdict",
+           "Traceback" not in _out2)
+
     print(f"\nself-test: {'PASS' if fails == 0 else f'FAIL ({fails})'}")
     return 0 if fails == 0 else 1
 
@@ -1019,6 +1057,25 @@ def main(argv: list[str] | None = None) -> int:
     if ns.nextest_junit:
         if ns.log:
             print("note  --nextest-junit takes precedence; --log was ignored")
+        # A MISSING REPORT MUST BE A REFUSAL, NOT A TRACEBACK. `read_text` on an absent
+        # path raises FileNotFoundError, which exits 1 -- the right DIRECTION, but by
+        # accident of Python's exception handling rather than by decision, and the reader
+        # gets a stdlib path instead of the sentence that says what went wrong. Measured
+        # 2026-10-24: `--nextest-junit target/mstmp/nope.xml` printed a FileNotFoundError
+        # traceback. The comment above the `else` branch already states the rule --
+        # "a missing report must not be able to read as a clean one" -- so the refusal
+        # belongs here too, in words, and with the two usual causes named.
+        if not ns.nextest_junit.is_file():
+            print("FAIL  JUNIT: no report at %s" % ns.nextest_junit)
+            print("      Nothing was graded. Either `cargo nextest` has not run since the",
+                  )
+            print("      artifact directory was cleaned, or it wrote its JUnit file",
+                  )
+            print("      somewhere else (the configured `path` resolves relative to the",
+                  )
+            print("      PROFILE's own artifact dir, not the workspace root).",
+                  )
+            return 1
         return grade_junit(ns.nextest_junit.read_text(encoding="utf-8", errors="replace"),
                            source=str(ns.nextest_junit))
 
@@ -1030,6 +1087,22 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if ns.log:
+        # THE SAME REFUSAL THE --nextest-junit BRANCH GOT, one path over. That branch was
+        # fixed 2026-10-24 after `--nextest-junit target/mstmp/nope.xml` printed a
+        # FileNotFoundError traceback; this read was left as it was, so `--log` with an
+        # absent path still exited 1 by accident of Python's exception handling, with a
+        # stdlib path instead of the sentence that says what went wrong. Measured
+        # 2026-10-26: `--log target/nonexistent.log` printed
+        # "FileNotFoundError: [Errno 2] No such file or directory". The direction was
+        # right and the message was not -- a reader who sees a traceback learns that the
+        # tool broke, not that their log was missing.
+        if not ns.log.is_file():
+            print("FAIL  LOG: no captured log at %s" % ns.log)
+            print("      Nothing was graded. --log grades an ALREADY captured run; it")
+            print("      does not run cargo. Point it at the file you captured with")
+            print("      `cargo test ... -- --nocapture > LOG 2>&1`, or drop --log to")
+            print("      have this script run cargo itself.")
+            return 1
         text = ns.log.read_text(encoding="utf-8", errors="replace")
         harness = "unknown (log supplied with --log; the harness that made it is not visible here)"
         # The flag's own text only counts if whoever captured the log echoed the

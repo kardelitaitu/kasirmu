@@ -1,5 +1,54 @@
 use super::*;
 
+// ── Deterministic time control (no wall-clock sleeps) ──────────────────────
+//
+// The sliding window is a comparison against the `Instant` values stored in
+// the limiter's map, so a test can stand at any point in the window's future by
+// moving those stored timestamps into the past. That reproduces exactly the
+// state a real `thread::sleep` would reach — same prune, same lockout maths —
+// without paying the wall-clock cost, and without the jitter that forces
+// tolerance ranges such as `(8..=10)` into the assertions. Production code is
+// untouched: the helpers only mutate the map the tests already reach through
+// `limiter.attempts`, the same seam `apps/cloud-server/src/rate_limit_tests.rs:25`
+// uses for the cloud server's token bucket (`bucket.last_refill`).
+
+/// Back-date every recorded attempt of each username in `usernames` by `older_by`.
+///
+/// Use when the whole window for those users must have elapsed, so that the
+/// prune step drops them.
+fn backdate_attempts(limiter: &LoginRateLimiter, usernames: &[&str], older_by: Duration) {
+    let mut map = limiter.attempts.lock().unwrap();
+    for username in usernames {
+        let Some(attempts) = map.get_mut(*username) else {
+            panic!("no attempts recorded for {username:?}");
+        };
+        for timestamp in attempts.iter_mut() {
+            *timestamp = timestamp
+                .checked_sub(older_by)
+                .expect("stored attempt must be newer than the back-date offset");
+        }
+    }
+}
+
+/// Back-date only the FIRST (oldest) recorded attempt of `username` by `older_by`.
+///
+/// `attempts` is oldest-first, so this ages the single timestamp the lockout
+/// maths reads (`attempts[0]`) while leaving the newer attempts fresh — the
+/// state that distinguishes "retry_after is based on the oldest attempt" from
+/// "it is based on the newest".
+fn backdate_first_attempt(limiter: &LoginRateLimiter, username: &str, older_by: Duration) {
+    let mut map = limiter.attempts.lock().unwrap();
+    let Some(attempts) = map.get_mut(username) else {
+        panic!("no attempts recorded for {username:?}");
+    };
+    let Some(oldest) = attempts.first_mut() else {
+        panic!("{username:?} must have at least one recorded attempt");
+    };
+    *oldest = oldest
+        .checked_sub(older_by)
+        .expect("stored attempt must be newer than the back-date offset");
+}
+
 #[test]
 fn allows_up_to_max_attempts() {
     let limiter = LoginRateLimiter::new(3, 60);
@@ -207,8 +256,11 @@ fn window_expiry_allows_retry_after_wait() {
     limiter.record_failure("alice").ok();
     assert!(limiter.record_failure("alice").is_err()); // locked out
 
-    // Wait for the window to elapse.
-    std::thread::sleep(Duration::from_secs(2));
+    // Let the window elapse — deterministically. Both stored timestamps move
+    // 2 seconds into the past, which is the exact state the sleep used to
+    // reach; the prune compares against the stored values and cannot tell the
+    // difference.
+    backdate_attempts(&limiter, &["alice"], Duration::from_secs(2));
 
     // Should succeed — old attempts pruned. max=2, 1 recorded → 1 remaining.
     assert_eq!(limiter.record_failure("alice").unwrap(), 1);
@@ -220,11 +272,15 @@ fn window_expiry_partial_prune() {
     // only the old ones are pruned.
     let limiter = LoginRateLimiter::new(3, 1); // 1-second window
     limiter.record_failure("alice").ok(); // t=0
-    std::thread::sleep(Duration::from_millis(600));
-    limiter.record_failure("alice").ok(); // t=0.6s — still in window
-    std::thread::sleep(Duration::from_millis(600)); // total 1.2s
-    // First attempt (t=0) is now outside window, second (t=0.6) is inside.
-    // After pruning, only 1 attempt remains → 2 remaining.
+    limiter.record_failure("alice").ok(); // t≈0 — still in window
+    // Deterministic stand-in for the old "600ms, attempt, 600ms" choreography:
+    // age ONLY the first attempt past the 1-second window and leave the second
+    // fresh. That is the state those two sleeps were trying to reach — attempt
+    // #1 outside the window, attempt #2 inside — reached without the waits.
+    backdate_first_attempt(&limiter, "alice", Duration::from_millis(1_500));
+    // First attempt (1.5s old) is now outside the window, second (fresh) is inside.
+    // Pruning leaves 1 attempt; the third call pushes the vec to 2, so exactly
+    // 1 attempt remains before lockout.
     assert_eq!(limiter.record_failure("alice").unwrap(), 1);
 }
 
@@ -235,14 +291,17 @@ fn retry_after_is_based_on_oldest_attempt() {
     // retry_after = window_secs - elapsed_since_oldest.
     let limiter = LoginRateLimiter::new(2, 10); // 10-second window
     limiter.record_failure("alice").ok(); // t=0
-    std::thread::sleep(Duration::from_secs(1));
-    limiter.record_failure("alice").ok(); // t=1 — locked out (max=2)
+    limiter.record_failure("alice").ok(); // t≈0 — locked out (max=2)
+    // Deterministic stand-in for the old 1-second sleep between the attempts:
+    // age ONLY the oldest timestamp by exactly 1 second and leave the second
+    // attempt fresh. The result is then only correct if the code reads
+    // `attempts[0]` — which is precisely what this test names.
+    backdate_first_attempt(&limiter, "alice", Duration::from_secs(1));
     let err = limiter.record_failure("alice").unwrap_err();
-    // retry_after ≈ 10 - 1 = 9 seconds (±1 for sleep jitter)
-    assert!(
-        (8..=10).contains(&err),
-        "retry_after should be ~9, got {err}"
-    );
+    // retry_after = window_secs - elapsed_since_oldest = 10 - 1 = 9, exactly.
+    // The old assertion tolerated the range (8..=10) to absorb sleep jitter;
+    // with the timestamps under test control the value is pinned instead.
+    assert_eq!(err, 9, "retry_after should be exactly 9, got {err}");
 }
 
 #[test]
@@ -454,13 +513,15 @@ fn distinct_usernames_do_not_accumulate_without_bound() {
 #[test]
 fn expired_usernames_are_evicted_and_live_ones_are_kept() {
     // 1-second window: long enough that a live entry is retained, short enough
-    // that the sleep below reliably expires it.
+    // that the back-date below reliably expires it.
     let limiter = LoginRateLimiter::new(3, 1);
     limiter.record_failure("alice").ok();
     limiter.record_failure("bob").ok();
     assert_eq!(limiter.tracked_usernames(), 2, "both names are live");
 
-    std::thread::sleep(std::time::Duration::from_millis(1100));
+    // Deterministic stand-in for the 1100ms sleep: age both names' attempts
+    // past the 1-second window instead of waiting for the window to pass.
+    backdate_attempts(&limiter, &["alice", "bob"], Duration::from_millis(1_100));
 
     // A brand-new name arrives; the sweep must drop the two expired ones.
     limiter.record_failure("carol").ok();
@@ -498,4 +559,29 @@ fn eviction_never_clears_a_live_lockout() {
         limiter.tracked_usernames() >= 1,
         "alice's entry must still be tracked"
     );
+}
+
+// ── O-M10: capacity bound protects against login spray floods ────────
+
+#[test]
+fn max_tracked_capacity_evicts_oldest_non_locked_entry() {
+    let limiter = LoginRateLimiter::with_max_tracked(3, 3600, 3);
+    // User alice is locked out (3 attempts)
+    limiter.record_failure("alice").ok();
+    limiter.record_failure("alice").ok();
+    assert!(limiter.record_failure("alice").is_err());
+
+    // User bob has 1 attempt
+    limiter.record_failure("bob").ok();
+
+    // User charlie has 1 attempt -> now at max capacity (3)
+    limiter.record_failure("charlie").ok();
+    assert_eq!(limiter.tracked_usernames(), 3);
+
+    // User dave arrives -> exceeds capacity 3, should evict oldest non-locked (bob)
+    limiter.record_failure("dave").ok();
+    assert_eq!(limiter.tracked_usernames(), 3);
+
+    // Alice must still be locked out!
+    assert!(limiter.record_failure("alice").is_err());
 }

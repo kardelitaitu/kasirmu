@@ -7,7 +7,7 @@
 // 10 tests (2 sync render tests moved to CreatePinScreenRender.test.tsx).
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, screen, waitFor, fireEvent } from '@testing-library/react';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 import CreatePinScreen from '@/features/auth/CreatePinScreen';
 import sharedFtl from '@/locales/shared.ftl?raw';
@@ -75,6 +75,30 @@ function clickSubmit() {
 // The banner names the RULE ("All fields are required") but never said which
 // input broke it, and no input carried aria-invalid — so a screen-reader user
 // got a message with no control attached to it.
+
+describe('CreatePinScreen — one owner per tap', () => {
+  it('bootstraps the owner ONCE when the submit is double-tapped', async () => {
+    // bootstrap_owner CREATES the owner account. The replay is refused as a duplicate and
+    // that refusal lands in the catch as auth-create-pin-error-generic — an error over a
+    // setup that succeeded, on the first screen of a new install.
+    let release: (() => void) | undefined;
+    mockBootstrapOwner.mockReturnValue(new Promise((res) => {
+      release = () => res({ session: { user_id: 'u-1' }, picker_ticket: 't' });
+    }));
+
+    renderScreen();
+    fillAllFields({ Username: 'owner', PIN: '1234', 'Confirm PIN': '1234' });
+
+    const submit = screen.getByRole('button', { name: /create owner account/i });
+    act(() => {
+      fireEvent.click(submit);
+      fireEvent.click(submit);
+    });
+
+    release?.();
+    await waitFor(() => expect(mockBootstrapOwner).toHaveBeenCalledTimes(1));
+  });
+});
 
 describe('CreatePinScreen — a rejected submit marks the offending fields', () => {
   it('marks only the empty field when one is missing', () => {

@@ -6,7 +6,13 @@
 
 use std::sync::{Arc, Mutex};
 
-use axum::{Json, Router, extract::State, routing::post};
+use axum::{
+    Json, Router,
+    extract::State,
+    http::StatusCode,
+    response::IntoResponse,
+    routing::{get, post},
+};
 use kasirmu_core::{
     Store,
     inventory::{CANONICAL_DEFAULT_LOCATION_UUID, LocationId},
@@ -16,7 +22,10 @@ use kasirmu_core::{
 };
 use platform_sync::{
     SyncEngine,
-    transport::{PullRequest, PullResponse, PushOutcome, PushResponse},
+    transport::{
+        PullRequest, PullResponse, PushOutcome, PushResponse, SnapshotProduct, SnapshotTaxRate,
+        SnapshotUser, SyncSnapshotResponse,
+    },
 };
 
 // ── Test HTTP server ─────────────────────────────────────────────────
@@ -367,7 +376,11 @@ async fn api_key_is_sent_in_headers() {
                     .and_then(|v| v.to_str().ok())
                     .map(|s| s.to_owned());
                 *auth_state.lock().unwrap() = auth;
-                async { Json(PushResponse { results: vec![] }) }
+                async {
+                    Json(PushResponse {
+                        results: vec![PushOutcome::Accepted],
+                    })
+                }
             }),
         )
         .route(
@@ -1309,6 +1322,415 @@ async fn pull_unauthorized_401_returns_error() {
         pending.len(),
         0,
         "no items should remain pending after push succeeded"
+    );
+
+    handle.abort();
+}
+
+// ── Network Drop, Conflict Storm & Anchor Expiration Modernization ───
+
+#[cfg_attr(not(feature = "slow-tests"), ignore)]
+#[tokio::test]
+async fn network_drop_between_push_and_pull_preserves_pushed_sync_state() {
+    // Shared state tracking whether network is dropped on pull.
+    let pull_dropped = Arc::new(Mutex::new(true));
+    let pull_dropped_state = pull_dropped.clone();
+    let pushes_received = Arc::new(Mutex::new(0usize));
+    let pushes_state = pushes_received.clone();
+
+    let app = Router::new()
+        .route(
+            "/api/sync/push",
+            post(move |Json(items): Json<Vec<OfflineQueueItem>>| {
+                let mut p = pushes_state.lock().unwrap();
+                *p += items.len();
+                let results: Vec<PushOutcome> =
+                    items.iter().map(|_| PushOutcome::Accepted).collect();
+                async move { Json(PushResponse { results }) }
+            }),
+        )
+        .route(
+            "/api/sync/pull",
+            post(move || {
+                let dropped = *pull_dropped_state.lock().unwrap();
+                async move {
+                    if dropped {
+                        Err(StatusCode::SERVICE_UNAVAILABLE)
+                    } else {
+                        Ok(Json(PullResponse {
+                            items: vec![],
+                            next_cursor: None,
+                        }))
+                    }
+                }
+            }),
+        );
+
+    let (port, handle) = spawn_custom_server(app).await;
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
+
+    // Enqueue 2 offline sales.
+    store
+        .enqueue_offline("complete_sale", r#"{"sale_id":"drop-sale-1"}"#)
+        .unwrap();
+    store
+        .enqueue_offline("complete_sale", r#"{"sale_id":"drop-sale-2"}"#)
+        .unwrap();
+    assert_eq!(store.pending_offline_count().unwrap(), 2);
+
+    let engine = SyncEngine::new(test_config(port));
+
+    // Cycle 1: Push succeeds, but pull fails with 503 (simulated network partition).
+    let result_1 = engine.run_sync_cycle(&store).await;
+    assert!(
+        result_1.is_err(),
+        "cycle 1 should fail because pull was dropped"
+    );
+
+    // Invariant: The pushed items MUST already be marked Synced locally.
+    // They must not be rolled back to pending or left in limbo.
+    let all = store.list_all_offline().unwrap();
+    assert_eq!(all.len(), 2);
+    assert_eq!(all[0].status, OfflineQueueStatus::Synced);
+    assert_eq!(all[1].status, OfflineQueueStatus::Synced);
+    assert!(all[0].synced_at.is_some());
+    assert!(all[1].synced_at.is_some());
+    assert_eq!(store.pending_offline_count().unwrap(), 0);
+    assert_eq!(*pushes_received.lock().unwrap(), 2);
+
+    // Cycle 2: Network is restored. Pull succeeds.
+    *pull_dropped.lock().unwrap() = false;
+    let result_2 = engine.run_sync_cycle(&store).await.unwrap();
+
+    // No items re-pushed, 0 pulled.
+    assert_eq!(
+        result_2.pushed, 0,
+        "already-synced items must not be re-pushed"
+    );
+    assert_eq!(result_2.pulled, 0);
+    assert_eq!(
+        *pushes_received.lock().unwrap(),
+        2,
+        "server received no duplicate pushes"
+    );
+
+    handle.abort();
+}
+
+#[cfg_attr(not(feature = "slow-tests"), ignore)]
+#[tokio::test]
+async fn conflict_storm_concurrent_batch_resolutions() {
+    let second_push_count = Arc::new(Mutex::new(0usize));
+    let second_push_state = second_push_count.clone();
+
+    // Server that responds to cycle 1 push with a storm of 3 conflicts:
+    // 1. product.updated -> remote version is higher (remote won)
+    // 2. complete_sale -> local status is completed, remote is pending (local won)
+    // 3. stock.adjusted -> CRDT delta merge
+    let app = Router::new()
+        .route(
+            "/api/sync/push",
+            post(move |Json(items): Json<Vec<OfflineQueueItem>>| {
+                let mut sp = second_push_state.lock().unwrap();
+                let is_second_cycle = *sp > 0;
+                *sp += items.len();
+
+                async move {
+                    if is_second_cycle {
+                        // In cycle 2, the re-enqueued CRDT merged item is accepted.
+                        let results = items.iter().map(|_| PushOutcome::Accepted).collect();
+                        Json(PushResponse { results })
+                    } else {
+                        // Storm: every item gets a Conflict outcome with server counterpart.
+                        let mut results = Vec::new();
+                        for item in &items {
+                            let mut server_item = item.clone();
+                            match item.action.as_str() {
+                                "product.updated" => {
+                                    // Remote has higher version (version 5 vs local version 1).
+                                    server_item.id = "srv-prod-5".into();
+                                    server_item.payload =
+                                        r#"{"sku":"COFFEE","version":5,"price_minor":999}"#.into();
+                                }
+                                "complete_sale" => {
+                                    // Remote is only pending (rank 1 vs local completed rank 2).
+                                    server_item.id = "srv-sale-pending".into();
+                                    server_item.payload =
+                                        r#"{"sale_id":"sale-storm-1","status":"pending"}"#.into();
+                                }
+                                "stock.adjusted" => {
+                                    // Remote has another delta.
+                                    server_item.id = "srv-stock-delta".into();
+                                    server_item.payload = r#"{"sku":"COFFEE","delta":15}"#.into();
+                                }
+                                _ => {}
+                            }
+                            results.push(PushOutcome::Conflict(server_item));
+                        }
+                        Json(PushResponse { results })
+                    }
+                }
+            }),
+        )
+        .route(
+            "/api/sync/pull",
+            post(|| async {
+                Json(PullResponse {
+                    items: vec![],
+                    next_cursor: None,
+                })
+            }),
+        );
+
+    let (port, handle) = spawn_custom_server(app).await;
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
+
+    // Enqueue the 3 items:
+    // 1. product with version 1
+    store
+        .enqueue_offline(
+            "product.updated",
+            r#"{"sku":"COFFEE","version":1,"price_minor":500}"#,
+        )
+        .unwrap();
+    // 2. complete_sale with status completed
+    store
+        .enqueue_offline(
+            "complete_sale",
+            r#"{"sale_id":"sale-storm-1","status":"completed"}"#,
+        )
+        .unwrap();
+    // 3. stock.adjusted with delta -5
+    store
+        .enqueue_offline("stock.adjusted", r#"{"sku":"COFFEE","delta":-5}"#)
+        .unwrap();
+
+    assert_eq!(store.pending_offline_count().unwrap(), 3);
+
+    let engine = SyncEngine::new(test_config(port));
+
+    // Cycle 1: Conflict storm processed by apply_push_outcomes.
+    let result_1 = engine.run_sync_cycle(&store).await.unwrap();
+    assert_eq!(result_1.pushed, 3);
+
+    // Check resolutions on original items:
+    let all = store.list_all_offline().unwrap();
+    // All 3 original items should be marked Synced with conflict tags:
+    let prod_item = all.iter().find(|i| i.action == "product.updated").unwrap();
+    assert_eq!(prod_item.status, OfflineQueueStatus::Synced);
+    assert!(
+        prod_item
+            .last_error
+            .as_deref()
+            .unwrap_or("")
+            .contains("remote won")
+    );
+
+    let sale_item = all.iter().find(|i| i.action == "complete_sale").unwrap();
+    assert_eq!(sale_item.status, OfflineQueueStatus::Synced);
+    assert!(
+        sale_item
+            .last_error
+            .as_deref()
+            .unwrap_or("")
+            .contains("local won")
+    );
+
+    let stock_item = all
+        .iter()
+        .find(|i| i.action == "stock.adjusted" && i.id != "srv-stock-delta")
+        .unwrap();
+    assert_eq!(stock_item.status, OfflineQueueStatus::Synced);
+    assert!(
+        stock_item
+            .last_error
+            .as_deref()
+            .unwrap_or("")
+            .contains("crdt merge")
+    );
+
+    // CRDT merge created a NEW pending winner queue entry for stock.adjusted:
+    let pending = store.list_pending_offline().unwrap();
+    assert_eq!(
+        pending.len(),
+        1,
+        "CRDT merge winner must be re-enqueued as pending"
+    );
+    assert_eq!(pending[0].action, "stock.adjusted");
+    assert!(pending[0].payload.contains("crdt_delta"));
+
+    // Cycle 2: Push the re-enqueued CRDT merged winner to server.
+    let result_2 = engine.run_sync_cycle(&store).await.unwrap();
+    assert_eq!(
+        result_2.pushed, 1,
+        "merged CRDT item must be pushed in cycle 2"
+    );
+    assert_eq!(
+        store.pending_offline_count().unwrap(),
+        0,
+        "queue must now be fully cleared"
+    );
+
+    handle.abort();
+}
+
+#[cfg_attr(not(feature = "slow-tests"), ignore)]
+#[tokio::test]
+async fn anchor_expired_410_triggers_snapshot_recovery_and_advances_pull_anchor() {
+    const STALE_ANCHOR: &str = "2025-01-01T00:00:00.000Z";
+    const RETENTION_FLOOR: &str = "2026-03-01T00:00:00.000Z";
+
+    let snapshot_fetched = Arc::new(Mutex::new(false));
+    let snapshot_state = snapshot_fetched.clone();
+    let pull_since_received = Arc::new(Mutex::new(Vec::<Option<String>>::new()));
+    let pull_since_state = pull_since_received.clone();
+
+    let app = Router::new()
+        .route(
+            "/api/sync/push",
+            post(|| async { Json(PushResponse { results: vec![] }) }),
+        )
+        .route(
+            "/api/sync/pull",
+            post(move |Json(req): Json<PullRequest>| {
+                pull_since_state.lock().unwrap().push(req.since.clone());
+                async move {
+                    if let Some(ref since) = req.since
+                        && since.as_str() < RETENTION_FLOOR
+                    {
+                        // 410 Gone: client's since anchor is older than the server retention floor.
+                        return (
+                            StatusCode::GONE,
+                            Json(serde_json::json!({
+                                "error": "anchor_expired",
+                                "oldest_available": RETENTION_FLOOR,
+                            })),
+                        )
+                            .into_response();
+                    }
+                    // Valid / recovered anchor: return normal empty page.
+                    Json(PullResponse {
+                        items: vec![],
+                        next_cursor: None,
+                    })
+                    .into_response()
+                }
+            }),
+        )
+        .route(
+            "/api/sync/snapshot",
+            get(move || {
+                *snapshot_state.lock().unwrap() = true;
+                async move {
+                    Json(SyncSnapshotResponse {
+                        version: 1,
+                        products: vec![SnapshotProduct {
+                            id: "prod-snap-1".into(),
+                            sku: "SNAP-LATTE".into(),
+                            name: "Snapshot Latte".into(),
+                            price_minor: 400,
+                            currency: "USD".into(),
+                            category_id: None,
+                            barcode: None,
+                            created_at: Some("2026-03-01T00:00:00.000Z".into()),
+                            updated_at: Some("2026-03-01T00:00:00.000Z".into()),
+                            price_updated_at: None,
+                            track_serial: false,
+                            store_id: None,
+                            ..Default::default()
+                        }],
+                        tax_rates: vec![SnapshotTaxRate {
+                            id: "tax-snap-1".into(),
+                            name: "Snapshot VAT".into(),
+                            rate_bps: 1000,
+                            is_default: true,
+                            is_inclusive: false,
+                            created_at: Some("2026-03-01T00:00:00.000Z".into()),
+                            updated_at: Some("2026-03-01T00:00:00.000Z".into()),
+                            legal_entity_id: None,
+                            location_id: None,
+                            effective_from: None,
+                            effective_to: None,
+                            rounding_mode: String::new(),
+                        }],
+                        users: vec![SnapshotUser {
+                            id: "user-snap-1".into(),
+                            username: "snap-cashier".into(),
+                            display_name: "Snap Cashier".into(),
+                            role_id: "role-cashier".into(),
+                            is_active: true,
+                            created_at: Some("2026-03-01T00:00:00.000Z".into()),
+                            updated_at: Some("2026-03-01T00:00:00.000Z".into()),
+                        }],
+                    })
+                }
+            }),
+        );
+
+    let (port, handle) = spawn_custom_server(app).await;
+    let store_db = migrations::fresh_db();
+    store_db
+        .execute(
+            "INSERT OR IGNORE INTO roles (id, name) VALUES (?1, ?2)",
+            rusqlite::params!["role-cashier", "Cashier"],
+        )
+        .unwrap();
+    let store = setup_store(&store_db);
+
+    // Seed the store with an old durable pull anchor that predates the server's retention floor.
+    store.set_sync_pull_state(Some(STALE_ANCHOR), None).unwrap();
+
+    let engine = SyncEngine::new(test_config(port));
+
+    // Cycle 1: Trigger sync. Server returns 410 -> engine catches AnchorExpired -> fetches snapshot -> imports.
+    let result_1 = engine.run_sync_cycle(&store).await.unwrap();
+    assert_eq!(result_1.pushed, 0);
+
+    // Snapshot was fetched and imported:
+    assert!(
+        *snapshot_fetched.lock().unwrap(),
+        "snapshot endpoint must have been called"
+    );
+
+    // Product was imported into local SQLite:
+    let products = store.list_products().unwrap();
+    assert_eq!(products.len(), 1);
+    assert_eq!(products[0].product.sku.as_str(), "SNAP-LATTE");
+    assert_eq!(products[0].product.name, "Snapshot Latte");
+    assert_eq!(products[0].product.price.minor_units, 400);
+
+    // Tax rate was imported:
+    let taxes = store.list_tax_rates().unwrap();
+    assert_eq!(taxes.len(), 1);
+    assert_eq!(taxes[0].name, "Snapshot VAT");
+    assert_eq!(taxes[0].rate_bps, 1000);
+
+    // User was imported:
+    let users = store.list_users().unwrap();
+    assert!(users.iter().any(|u| u.username == "snap-cashier"));
+
+    // Durable pull anchor advanced to RETENTION_FLOOR:
+    let pull_state = store.get_sync_pull_state().unwrap();
+    assert_eq!(
+        pull_state.since.as_deref(),
+        Some(RETENTION_FLOOR),
+        "durable anchor must advance to oldest_available so subsequent cycles do not re-expire"
+    );
+
+    // Cycle 2: Subsequent sync cycle must send the advanced anchor, NOT the stale one.
+    let result_2 = engine.run_sync_cycle(&store).await.unwrap();
+    assert_eq!(result_2.pushed, 0);
+    assert_eq!(result_2.pulled, 0);
+
+    let pulls = pull_since_received.lock().unwrap();
+    assert_eq!(pulls.len(), 2);
+    assert_eq!(pulls[0].as_deref(), Some(STALE_ANCHOR));
+    assert_eq!(
+        pulls[1].as_deref(),
+        Some(RETENTION_FLOOR),
+        "second pull request must use the advanced anchor"
     );
 
     handle.abort();

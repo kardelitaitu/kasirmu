@@ -61,6 +61,8 @@ export default function PriceOverrideModal({
   const usernameInputRef = useRef<HTMLInputElement>(null);
   const pinWrapRef = useRef<HTMLDivElement>(null);
   const pinSubmitted = useRef(false);
+  /** Synchronous re-entrancy guard for the verify attempt — see attemptVerify. */
+  const verifyingRef = useRef(false);
 
   const MAX_PIN_LENGTH = 4;
 
@@ -74,6 +76,13 @@ export default function PriceOverrideModal({
 
   const attemptVerify = useCallback(async () => {
     if (pin.length === 0) return;
+    // Re-entrancy guard at ENTRY, via a ref rather than `loading`. React batches state
+    // updates, so a second call in the same tick still reads `loading === false` —
+    // measured: two Enter keydowns dispatched in one act() started TWO staffLogin calls
+    // and would have applied the price override twice. A ref is written synchronously,
+    // so it closes that window; `loading` alone only covers the next render onward.
+    if (verifyingRef.current) return;
+    verifyingRef.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -85,6 +94,7 @@ export default function PriceOverrideModal({
       setPin([]);
       pinSubmitted.current = false;
     } finally {
+      verifyingRef.current = false;
       setLoading(false);
     }
   }, [pin, username, newPriceMinor, onConfirm, l10n]);
@@ -264,7 +274,7 @@ export default function PriceOverrideModal({
               aria-label={requiredLocalized(l10n, 'price-override-new-aria')}
             />
             {priceError && <div className="price-override-error" role="alert">{priceError}</div>}
-            <div className="price-override-actions">
+            <footer className="price-override-actions">
               <button type="button" className="price-override-cancel-btn" onClick={handleClose}>
                 {requiredLocalized(l10n, 'price-override-cancel')}
               </button>
@@ -276,7 +286,7 @@ export default function PriceOverrideModal({
               >
                 {requiredLocalized(l10n, 'price-override-next')}
               </button>
-            </div>
+            </footer>
           </div>
         )}
 
@@ -295,7 +305,7 @@ export default function PriceOverrideModal({
               disabled={loading}
             />
             {error && <div className="price-override-error" role="alert">{error}</div>}
-            <div className="price-override-actions">
+            <footer className="price-override-actions">
               <button type="button" className="price-override-cancel-btn" onClick={handleGoBack} disabled={loading}>
                 {requiredLocalized(l10n, 'price-override-back')}
               </button>
@@ -306,7 +316,7 @@ export default function PriceOverrideModal({
               >
                 {requiredLocalized(l10n, 'price-override-next')}
               </button>
-            </div>
+            </footer>
           </form>
         )}
 
@@ -325,11 +335,11 @@ export default function PriceOverrideModal({
             {renderPinPad()}
             {error && <div className="price-override-error" role="alert">{error}</div>}
             {loading && <div className="price-override-loading" role="status">{requiredLocalized(l10n, 'price-override-verifying')}</div>}
-            <div className="price-override-actions">
+            <footer className="price-override-actions">
               <button type="button" className="price-override-cancel-btn" onClick={handleGoBack} disabled={loading}>
                 {requiredLocalized(l10n, 'price-override-back')}
               </button>
-            </div>
+            </footer>
           </div>
         )}
       </div>

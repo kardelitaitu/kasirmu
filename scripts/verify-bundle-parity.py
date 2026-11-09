@@ -648,10 +648,119 @@ def self_test() -> int:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
     print("SELF-TEST OK (6 cases, no files touched)")
+    return shell_ladder()
+
+
+
+def shell_ladder() -> int:
+    """r225: the root contract, graded on fixture trees through main(argv, root).
+
+    The gate's evidence is one locale pair plus one component tree, so the
+    fixtures are tiny: a demo.ftl / demo.id.ftl pair and one .tsx. Rung 1 is
+    the killing rung; a root-dropping main grades THIS checkout, which
+    measures "0 missing key(s)." at rc 0, where the fixture must fail.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    def run(root, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    EN = "app-title = Sales\n"
+    ID = "app-title = Penjualan\n"
+
+    def build(tmp, *, en=EN, id_txt=ID, code='<Localized id="app-title" />\n', label=None):
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix=(label or ("mini%d_" % next(rung_n)))))
+        if en is not None or id_txt is not None:
+            loc = base / "shared-ui" / "locales"
+            loc.mkdir(parents=True)
+            if en is not None:
+                (loc / "demo.ftl").write_text(en, encoding="utf-8", newline="\n")
+            if id_txt is not None:
+                (loc / "demo.id.ftl").write_text(id_txt, encoding="utf-8", newline="\n")
+        demo = base / "ui" / "src" / "features" / "demo.tsx"
+        demo.parent.mkdir(parents=True, exist_ok=True)
+        demo.write_text(code, encoding="utf-8", newline="\n")
+        return base
+
+    BROKEN_CODE = '<Localized id="app-title" />\n<Localized id="missing-key-zz" />\n'
+    ID_ONLY_CODE = '<Localized id="app-title" />\n<Localized id="missing-key-id-only" />\n'
+    rung_n = iter(range(1000))
+
+    shell = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: a site missing from both bundles
+        root = build(tmp, code=BROKEN_CODE)
+        rc, said = run(root)
+        if rc != 1 or "1 missing key(s)." not in said \
+                or "missing in BOTH en .ftl AND id .id.ftl" not in said \
+                or "[ui/src/features/demo.tsx:2] missing-key-zz" not in said:
+            print("  x rung 1: a both-bundles miss must fail rc 1 at file:line "
+                  "(rc=%r said=%r)" % (rc, said[-260:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: the complete pair reads clean
+        root = build(tmp)
+        rc, said = run(root)
+        if rc != 0 or "0 missing key(s)." not in said:
+            print("  x rung 2: a complete fixture must read clean rc 0 (rc=%r "
+                  "said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: the id-only bucket fires on its own
+        root = build(tmp, code=ID_ONLY_CODE,
+                     en=EN + "missing-key-id-only = X\n", id_txt=ID)
+        rc, said = run(root)
+        if rc != 1 or "missing in id .id.ftl only" not in said:
+            print("  x rung 3: an id-only miss must fail rc 1 in its own bucket "
+                  "(rc=%r said=%r)" % (rc, said[-220:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: --report-only prints the same finding and always exits 0
+        root = build(tmp, code=BROKEN_CODE)
+        rc, said = run(root, "--report-only")
+        if rc != 0 or "1 missing key(s)." not in said:
+            print("  x rung 4: --report-only must print findings at rc 0 (rc=%r "
+                  "said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: --staged-only joins the positional under the FIXTURE and
+        # grades it strictly -- no warning, no informational zero
+        root = build(tmp, code=BROKEN_CODE)
+        rc, said = run(root, "--staged-only", "ui/src/features/demo.tsx")
+        if rc != 1 or "1 missing key(s)." not in said \
+                or "none are eligible" in said:
+            print("  x rung 5: a staged fixture path must grade strictly rc 1 "
+                  "(rc=%r said=%r)" % (rc, said[-220:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 6: --scan-dirs naming no directory refuses rc 2 under the
+        # FIXTURE's ui/src, not the checkout's
+        root = build(tmp, code=BROKEN_CODE)
+        rc, said = run(root, "--scan-dirs", "nope")
+        if rc != 2 or "scan dir not found" not in said or "nope" not in said:
+            print("  x rung 6: a bogus scan dir must refuse rc 2 (rc=%r said=%r)"
+                  % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("BUNDLE-PARITY SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
     return 0
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    # r225: the r166 contract. argv is explicit; root names the tree to grade
+    # from code -- the ui/src candidates, both locale globs, the staged-path
+    # join and every file:line print hang under base. None keeps this
+    # checkout byte-for-byte.
     parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument(
         "--self-test",
@@ -748,10 +857,14 @@ def main() -> int:
              "(e.g. 'ui/src/features/foo.tsx'). Ignored without "
              "--staged-only.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.self_test:
         return self_test()
+
+    base = ROOT if root is None else Path(root).resolve()
+    ui_src = base / "ui" / "src"
+    locale_dir = base / "shared-ui" / "locales"
 
     if args.full_census:
         args.include_getstring = True
@@ -788,23 +901,23 @@ def main() -> int:
         return 2
     scan_dirs: list[Path] = []
     for name in dir_names:
-        candidate = UI_SRC_DIR / name
+        candidate = ui_src / name
         if not candidate.is_dir():
             print(f"error: scan dir not found: {candidate}", file=sys.stderr)
             return 2
         scan_dirs.append(candidate)
 
-    if not UI_SRC_DIR.is_dir():
-        print(f"error: ui src dir not found: {UI_SRC_DIR}", file=sys.stderr)
+    if not ui_src.is_dir():
+        print(f"error: ui src dir not found: {ui_src}", file=sys.stderr)
         return 2
-    if not LOCALE_DIR.is_dir():
-        print(f"error: locales dir not found: {LOCALE_DIR}", file=sys.stderr)
+    if not locale_dir.is_dir():
+        print(f"error: locales dir not found: {locale_dir}", file=sys.stderr)
         return 2
 
     # Load per-locale key sets. The `\*.id.ftl` suffix carries the
     # Indonesian twin of each English feature locale; we union each.
-    en_files = sorted(p for p in LOCALE_DIR.glob("*.ftl") if not p.name.endswith(".id.ftl"))
-    id_files = sorted(LOCALE_DIR.glob("*.id.ftl"))
+    en_files = sorted(p for p in locale_dir.glob("*.ftl") if not p.name.endswith(".id.ftl"))
+    id_files = sorted(locale_dir.glob("*.id.ftl"))
     en_keys: set[str] = set()
     for path in en_files:
         en_keys.update(parse_ftl_keys(path))
@@ -857,7 +970,7 @@ def main() -> int:
     if args.staged_only:
         staged: list[Path] = []
         for raw in args.paths:
-            path = ROOT / raw
+            path = base / raw
             if not path.exists():
                 print(
                     f"warning: --staged-only path not found, skipping: {raw}",
@@ -895,7 +1008,7 @@ def main() -> int:
         extracted, untracked, dynamic_gs = extract_sites_from_source(path, kinds)
         untracked_total += untracked
         dynamic_getstring_total += dynamic_gs
-        relpath = path.relative_to(ROOT).as_posix()
+        relpath = path.relative_to(base).as_posix()
         for kind, id_, line in extracted:
             sites.append((kind, id_, relpath, line))
 

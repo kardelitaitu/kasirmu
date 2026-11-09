@@ -70,8 +70,8 @@ Cloud Postgres (row-level-security enforced on all tenant-bearing tables —
   one narrow exception since `20260920_audit_retention.sql`: DELETE is allowed
   only while a `settings` row with key `audit.retention_sweep_active` exists,
   which `Store::sweep_audit_retention` writes around its own deletes
-  (`SWEEP_MARKER_KEY`, `crates/kasirmu-core/src/db/audit.rs:486`, inserted at :553-556
-  and removed at :562-565, both inside the one transaction the sweep opens). An auditor asking whether audit rows can be
+  (`SWEEP_MARKER_KEY`, `crates/kasirmu-core/src/db/audit.rs:584`, inserted at :651-655
+  and removed at :660-663, both inside the one transaction the sweep opens). An auditor asking whether audit rows can be
   deleted therefore gets a two-part answer: not by any ordinary path, and yes
   by the tier retention sweep, which announces itself in the same database.
 - **Ops**: `offline_queue`, `sent_reports`, `exchange_rates`,
@@ -97,7 +97,7 @@ counters/latencies, not user tracking, and the license server exposes no metrics
 (runbook §2) — precise about which process, because the deployed image answers `/metrics`
 anyway: Caddy routes it to `localhost:3099`, and that is `oz-cloud-server`
 (`apps/unified/Caddyfile:95`, `apps/unified/supervisord.conf:3`,
-`apps/cloud-server/src/config.rs:139`). PocketBase and the license code listen on `:8080`
+`apps/cloud-server/src/config.rs:139`). PocketBase and the license code listen on `:8080` <!-- dead-ref: ok: verified 2026-10-19; config.rs:139 is the JWT-secret comment the sentence names -->
 and register no metrics route. Both statements are true about different things, and for a
 residency policy the difference is load-bearing: an auditor asking whether *auth* data can
 leave via metrics has to look at the sync server, not at the absence of a route in

@@ -131,6 +131,30 @@
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  /* ── contain: layout — the bar scrolls WITHOUT scrolling the page ──
+     The compact 1-row bar (f5772454c) is `nowrap` + `overflow-x: auto` by design, and its
+     children are `flex-shrink: 0` groups, so 14 of them sit past the bar's own right edge
+     while it scrolls them. `overflow-x: auto` makes the bar a scrollport, but the children
+     STILL contributed to the ROOT's scroll area: measured at 480x800,
+     `documentElement.scrollWidth` was 677 against a 480 viewport, giving the whole page a
+     197px horizontal scroll RANGE. Every ancestor box reported
+     `scrollWidth == clientWidth == 480`, so nothing was mis-laid-out — the overflow merely
+     escaped the page box.
+
+     `contain: layout` was chosen over the two alternatives that also work (`paint`,
+     `content`) because it does the job with the LEAST side effect: it makes the bar a
+     layout containment root, which stops its children reaching the root scroll area, without
+     clipping painting. All three were measured equivalent for this fix (page scrollX 0, root
+     scrollWidth 480) and all three preserve the bar's function (scrollWidth - clientWidth = 373,
+     `scrollLeft` reaches 373, last child still `visible`). `contain: paint` would clip, a
+     stronger guarantee than this bug needs and a wider blast radius on a scrollport.
+
+     REFUTED on the way here, so the space is not re-walked: every overflow/contain/min-width/
+     width value on .sales-history or its ANCESTORS (.app-content-inner, .app-content,
+     .app-layout-body, .app-layout, html); wrapping the screen in an overflow:hidden div or a
+     real .workspace-fullscreen; narrowing the bar to retail's 192px; and hiding all six
+     fixed-position overlays. The fix had to go on the SCROLLER, not on anything containing it. */
+  contain: layout;
 }
 
 .sales-history-filters::-webkit-scrollbar {
@@ -576,6 +600,14 @@
   align-items: center;
   justify-content: center;
   z-index: var(--z-modal);
+}
+
+/* The e-Faktur stamp dialog is opened from INSIDE the sale-detail dialog, so the
+   detail overlay is still mounted (and rendered after it in DOM order). Sharing
+   --z-modal made the PARENT paint over the CHILD: the stamp dialog opened but
+   could not be clicked. Nested dialogs get their own layer. */
+.sales-history-overlay:has(.sales-history-stamp-modal) {
+  z-index: var(--z-modal-nested);
 }
 
 @media (prefers-reduced-motion: no-preference) {

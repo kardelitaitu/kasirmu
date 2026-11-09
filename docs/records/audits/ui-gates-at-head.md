@@ -41,3 +41,5 @@ The Rust legs are in `rust-gates-at-head.md`. The `static-gates` job's ~40 steps
 `static-gates-local-verification.md`. This covers `ui-test` only — and it does not run
 `npm ci --no-audit --no-fund --ignore-scripts`, which is an environment step rather than
 an assertion.
+
+> last audited 13-10-26 by docs-auditor

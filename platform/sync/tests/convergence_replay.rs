@@ -323,7 +323,7 @@ fn three_seeded_interleavings_converge_to_the_scripts_arithmetic() {
 /// Re-delivering everything must change nothing.
 ///
 /// The property `apply_remote`'s own doc comment makes the caller's
-/// obligation (`queue.rs:1336-1339`): `adjust_stock` appends a ledger row
+/// obligation (`queue.rs:601-604`): `adjust_stock` appends a ledger row
 /// per call and is not idempotent by itself, so the replay ledger is what
 /// stands between a dropped ACK and a double deduction.
 #[test]

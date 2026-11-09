@@ -257,6 +257,28 @@ describe('SettingsPopup', () => {
     expect(saveBtn).toBeDisabled();
   });
 
+  it('keeps Save disabled while saving even when the host says saveDisabled={false}', () => {
+    // The regression: `disabled={saveDisabled}` OVERRODE the Button's own
+    // `disabled || loading`. Every settings form hosted by this popup guards itself with
+    // React state -- committed on the next render -- so an enabled Save during an
+    // in-flight write is exactly the window a double tap goes through. The tax rate and
+    // category dialogs pass saveDisabled={false} the moment a field is filled.
+    render(
+      <SettingsPopup open={true} onClose={onClose} title="Test" saving={true} saveDisabled={false} onSave={vi.fn()}>
+        <p>Content</p>
+      </SettingsPopup>,
+    );
+    // Name is 'Save' at rest and the sr-only label is the same text, so query by testid.
+    const saveBtn = screen.getByTestId('settings-popup-save');
+    expect(saveBtn, 'Save stayed clickable while the write was in flight').toBeDisabled();
+    // Pins BOTH halves of the fix, and it took a two-step mutation to find out that it had
+    // to: with the popup's OR reverted alone the case stayed green, because Button's own
+    // `loading` derivation still disabled the button -- and with Button's spread order
+    // reverted alone it stayed green too, because the OR still passed `disabled`. Only
+    // removing BOTH makes it red (`Received element is not disabled`).
+    expect(saveBtn.className).toContain('btn--primary');
+  });
+
   it('does not have aria-busy on Save when saving is false', () => {
     render(
       <SettingsPopup open={true} onClose={onClose} title="Test">

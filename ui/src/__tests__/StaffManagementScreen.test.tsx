@@ -441,6 +441,29 @@ describe('StaffManagementScreen', () => {
     }, FAST_WAIT);
   });
 
+  it('restores an inactive member ONCE when Restore is double-tapped', async () => {
+    // The reactivate path has no confirmation dialog: nothing but the guard stands between
+    // a double tap and two `update_staff_scoped` calls, each computing
+    // `is_active: !member.is_active` from the same stale row.
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+    fireEvent.click(screen.getByTestId('staff-edit-staff-2'));
+
+    const restoreBtn = await screen.findByTestId('staff-toggle-active-staff-2');
+    act(() => {
+      fireEvent.click(restoreBtn);
+      fireEvent.click(restoreBtn);
+    });
+
+    await waitFor(() => {
+      const calls = invokeMock.mock.calls.filter(
+        (c: unknown[]) => c[0] === 'update_staff_scoped'
+          && (c[1] as { args?: { id?: string } })?.args?.id === 'staff-2',
+      );
+      expect(calls, 'a double tap restored the member twice').toHaveLength(1);
+    }, FAST_WAIT);
+  });
+
   it('closes the add modal when Escape is pressed', async () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
@@ -1420,6 +1443,60 @@ describe('StaffManagementScreen trash', () => {
     expect(await screen.findByTestId('staff-trash-empty', undefined, FAST_WAIT)).toHaveTextContent('Nothing in the trash');
   });
 
+  // A double tap on Restore must not send the restore twice.
+  //
+  // The case above proves the SEQUENTIAL shape -- one click, then the call. It cannot prove
+  // the double tap, because React commits `busy` on its next render, after the second
+  // dispatch. SHAPE 3 (round 139) sends both inside ONE act() batch.
+  //
+  // This arm is worth pinning even though the backend happens to defend it, because the
+  // defence is SUBTLE and easy to lose. `restore_user` is a compare-and-set:
+  //   UPDATE users SET deleted_at = NULL ... WHERE id = ?2 AND deleted_at IS NOT NULL
+  //     AND purged_at IS NULL AND deleted_at >= ?3        -- staff.rs:831-841
+  // and `rows == 0` returns NotFound. So the second call finds `deleted_at IS NULL` and is
+  // refused -- no row is restored twice. But the UI's `busy` guard is what keeps the round
+  // trip from being spent at all, and the assertion below is what would fail if someone
+  // later relaxed that WHERE clause, which is exactly the change the doc comment at
+  // staff.rs:815-826 invites a reader to consider making.
+  it('sends one restore call for a double tap while the first is in flight', async () => {
+    sessionPermissions.push('staff:delete');
+    let releaseRestore: ((v: unknown) => void) | undefined;
+    const held = new Promise((resolve) => { releaseRestore = resolve; });
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'restore_staff_scoped') return held as never;
+      if (cmd === 'list_staff_scoped') return Promise.resolve(SAMPLE_STAFF);
+      if (cmd === 'list_staff_trash_scoped') return Promise.resolve(TRASHED_STAFF);
+      if (cmd === 'list_role_trash_scoped') return Promise.resolve([]);
+      if (cmd === 'list_roles_scoped') return Promise.resolve(SAMPLE_ROLES);
+      if (cmd === 'list_all_workspaces_scoped') return Promise.resolve([]);
+      if (cmd === 'list_locations_scoped') return Promise.resolve(SAMPLE_BRANCHES);
+      if (cmd === 'get_brand_settings' || cmd === 'get_brand_settings_scoped') {
+        return Promise.resolve({ primary_colour: '#4f46e5', logo_path: null, store_name: '' });
+      }
+      recordUnmatchedInvoke(cmd);
+      return Promise.reject(new Error(`Unknown command: ${cmd}`));
+    });
+    await openTrash();
+
+    const restoreBtn = screen.getByTestId('staff-trash-restore-staff-2');
+    await act(async () => {
+      fireEvent.click(restoreBtn);
+      // The disabled flag React set is not yet authoritative for a live double tap;
+      // dropping it sends the second click to the handler the way a real one would.
+      restoreBtn.removeAttribute('disabled');
+      fireEvent.click(restoreBtn);
+    });
+
+    const restoreCalls = invokeMock.mock.calls.filter((c: unknown[]) => c[0] === 'restore_staff_scoped');
+    expect(
+      restoreCalls.length,
+      'a double tap spent two restore round trips; the backend CAS absorbs the replay, so ' +
+        'this pins that the UI guard is what keeps the second call from being made at all',
+    ).toBe(1);
+
+    releaseRestore?.({ id: 'staff-2' });
+    await act(async () => { await held; });
+  });
   it('restores a trashed member, who returns to the roster inactive', async () => {
     sessionPermissions.push('staff:delete');
     await openTrash();
@@ -1602,6 +1679,52 @@ describe('StaffManagementScreen trash', () => {
       expect(invokeMock).toHaveBeenCalledWith('delete_staff_scoped', { sessionToken: 'session-1', id: 'staff-2' });
     }, FAST_WAIT);
   });
+});
+
+
+// ── A double click on Confirm Delete must not send the delete twice ────
+//
+// `deleteStaffScoped` reaches `soft_delete_user`, a compare-and-set on `deleted_at IS
+// NULL` (db/staff.rs:830-840). The replay is therefore REFUSED with "this member is
+// already in the trash", and `confirmDelete`'s bare `catch {}` throws that away and toasts
+// `staff-delete-failed` — so the operator is told the delete failed on a member who is
+// already gone from every list and recoverable only from the Trash tab.
+it('sends one delete when the confirm is clicked twice while the first is in flight', async () => {
+  sessionPermissions.push('staff:delete');
+  let releaseDelete: (() => void) | undefined;
+  invokeMock.mockImplementation(((cmd: string) => {
+    if (cmd === 'delete_staff_scoped') {
+      return new Promise((resolve) => { releaseDelete = () => resolve(null); });
+    }
+    return defaultInvokeTable(cmd);
+  }) as never);
+
+  renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+  await waitForTable();
+
+  fireEvent.click(screen.getByTestId('staff-edit-staff-2'));
+  await screen.findByRole('dialog');
+  fireEvent.click(await screen.findByTestId('staff-delete-staff-2'));
+  const confirm = within(await screen.findByRole('dialog')).getByTestId('confirm-dialog-confirm');
+
+  // fireEvent twice inside one act(): `userEvent.click` awaits its own act(), which flushes
+  // the pending chain, so the first delete would have settled and the clicks would never
+  // overlap. The disabled attribute is dropped so the ref is what is measured, not the DOM.
+  await act(async () => {
+    fireEvent.click(confirm);
+    confirm.removeAttribute('disabled');
+    fireEvent.click(confirm);
+  });
+
+  const calls = invokeMock.mock.calls.filter(([c]: unknown[]) => c === 'delete_staff_scoped');
+  expect(
+    calls.length,
+    'a double click on Confirm Delete sent the delete twice; the CAS refuses the replay ' +
+      'and the operator is told it failed after the member was trashed',
+  ).toBe(1);
+
+  releaseDelete?.();
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument(), FAST_WAIT);
 });
 
 // ── Feedback paths and route entry (unpinned until these cases) ───────

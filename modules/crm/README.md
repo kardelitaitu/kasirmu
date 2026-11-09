@@ -34,11 +34,11 @@ In the current phase the runtime customer CRUD still runs through the files abov
 
 ## Lifecycle
 
-The module implements `foundation::contracts::Module` and follows the standard lifecycle:
+The module implements `foundation::contracts::Module`. **Its lifecycle hooks are currently stubs** — each logs a message and returns `Ok(())`; none touches the database or event bus yet (`modules/crm/src/lib.rs`):
 
-1. **`on_load`** — Validates configuration
-2. **`on_start`** — Prepares for customer operations
-3. **`on_stop`** — Cleans up resources
+1. **`on_load`** — logs "validating configuration" (a future phase will register event handlers — e.g. handle `sale.completed` to update customer history — and validate the required tables)
+2. **`on_start`** — logs "ready to manage customers" (a future phase will warm up in-memory caches)
+3. **`on_stop`** — logs "cleaning up"
 
 ## Registration
 

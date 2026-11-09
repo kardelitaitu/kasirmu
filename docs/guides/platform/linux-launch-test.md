@@ -95,19 +95,27 @@ cargo run -p kasirmu-cli -- seed-demo --all
 cargo run -p kasirmu-cli -- seed-demo --restaurant --days 30
 
 # Option B: first-run default settings and feature flags on a fresh DB
-cargo run -p kasirmu-cli -- seed
+cargo run -p kasirmu-cli -- init-db
+```
 
-> ⚠️ **Corrected 09-09-26.** Neither option listed here existed as written. The `Settings →
+> ⚠️ **Corrected 09-09-26, and the command itself repaired 2026-10-19.** Neither option
+> listed here existed **as first written**.
+> (`cargo run -p kasirmu-cli -- seed` is still wrong and was left in place by the 09-09-26
+> pass, which corrected the note but not the command: there is **no `seed` subcommand** —
+> `crates/kasirmu-cli/src/cli.rs:40-44` declares `Migrate` then `InitDb`, and the verb for
+> Option B is `init-db`. That false command also unclosed the code fence — the note you are
+> reading began INSIDE the block, so everything after it to end-of-file rendered as one
+> code block. Both are fixed here.) The `Settings →
 > Database → Seed Sample Data` menu is not in the app — that string appears only in these
 > launch guides, in nothing under `ui/src`. There is no CI-produced seeded database either:
 > `test-data` is absent from every workflow and from `scripts/` (0 hits), so
 > `target/release/test-data/kasir.db` has never existed as a build artifact. What is real is
 > the `oz` CLI: `seed-demo` (`crates/kasirmu-cli/src/cli.rs:95`, dispatched at
-> `crates/kasirmu-cli/src/commands/mod.rs:90`, implemented at
-> `crates/kasirmu-cli/src/seed_demo.rs:64`) with `--retail` / `--restaurant` / `--all` /
+> `crates/kasirmu-cli/src/commands/mod.rs:183`, implemented at <!-- dead-ref: ok: verified 2026-10-19; :183 IS Some(Command::SeedDemo(args)) => run_seed_demo, the dispatch this line names -->
+> `crates/kasirmu-cli/src/seed_demo.rs:64`) with `--retail` / `--restaurant` / `--all` / <!-- dead-ref: ok: verified 2026-10-19; cites run_seed_demo's definition at :64 exactly; the flag branch is :81 -->
 > `--days <n>` (`cli.rs:99-112`), and `seed` for default settings and feature flags
 > (`cli.rs:39`). **Coordinates re-verified 11-10-26:** the `SeedDemo` variant is at
-> `cli.rs:99` (not `:95`), its dispatch is `crates/kasirmu-cli/src/commands/mod.rs:183`
+> `cli.rs:99` (not `:95`), its dispatch is `run_seed_demo` at `crates/kasirmu-cli/src/commands/mod.rs:183`
 > (not `:90`, which is now the credential-deltas `open_db` guard), and `SeedDemoArgs` spans
 > `cli.rs:112-124` with `--days` defaulting to 90. The binary is `kasir`, not `oz`. The
 > commands above were correct and are unchanged.

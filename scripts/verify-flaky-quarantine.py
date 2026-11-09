@@ -47,9 +47,12 @@ gate does not implement (a refused command line, not a failed check); 0 otherwis
 
 import datetime
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 # Relative to the REPOSITORY ROOT, and only ever joined to a root that was accepted
@@ -168,7 +171,9 @@ def self_test() -> int:
     future flag would fall through to a green again -- silently, and in the exact way
     this file's own docstring records.
 
-    Pure: argv lists in, no file is read or written.
+    Pure argv/regex cases, plus three _git_toplevel cases over a scratch git repository
+    (created under tempfile.mkdtemp and removed in a finally; nothing in the checkout is
+    read or written).
     """
     bad: list[str] = []
 
@@ -196,15 +201,176 @@ def self_test() -> int:
     want("iso date accepted", bool(DATE_RE.match("2026-09-29")), True)
     want("a non-date is not a date", bool(DATE_RE.match("29/09/2026")), False)
 
+    # _git_toplevel() -- two of resolve_root()'s four candidates, and no case reached it:
+    # the assertions above are argv and regex only, so the sweep blanked it invisibly
+    # (2026-11-06). Honest stakes: in the standard layout 'here.parent' still finds the
+    # root, so a blanked stub keeps THIS checkout green -- what it silently loses is the
+    # contract for every other layout (run from any cwd of a repo the script does not sit
+    # in) and the None-refusal resolve_root() relies on to skip a candidate. Graded
+    # against a scratch 'git init' repo, removed in the finally.
+    def tl(label, start, expect):
+        got = _git_toplevel(start)
+        if expect is None:
+            if got is not None:
+                bad.append(f"{label}: expected None, got {got!r}")
+            return
+        if got is None or os.path.normcase(str(got.resolve())) != os.path.normcase(str(expect.resolve())):
+            bad.append(f"{label}: expected {expect!r}, got {got!r}")
+
+    scratch_root = Path(tempfile.mkdtemp(prefix="flakyq-toplevel-"))
+    try:
+        nested = scratch_root / "nested" / "deeper"
+        nested.mkdir(parents=True)
+        init = subprocess.run(["git", "init", "-q", str(scratch_root)],
+                              capture_output=True, text=True)
+        if init.returncode != 0:
+            bad.append("git init failed in the scratch dir: " + init.stderr.strip()[:120])
+        else:
+            tl("_git_toplevel returns the scratch repo's root", scratch_root, scratch_root)
+            tl("_git_toplevel ascends from a nested cwd", nested, scratch_root)
+        # The non-repo fixture must sit OUTSIDE any work tree for the refusal to be
+        # testable at all. tempfile's default no longer guarantees that: 7e11b664c
+        # pointed TMP at target/.tmp-check, INSIDE this repo, and rev-parse from there
+        # answers with this very root, so the refusal case read the repo as "not a
+        # work tree" and went red under the matrix (measured 2026-11-08, step 133 --
+        # the third tool tripped by that one TMP move, after verify-ftl-orphans.py
+        # and check-chokepoints.py the same morning). Fall back to the repo's own
+        # parent when the temp dir is inside the tree; the finally below removes it.
+        tmp_base = tempfile.gettempdir()
+        here_root = _git_toplevel(Path(__file__).resolve().parent)
+        if here_root is not None:
+            try:
+                if os.path.commonpath([os.path.abspath(tmp_base),
+                                       str(here_root)]) == str(here_root):
+                    tmp_base = str(here_root.parent)
+            except ValueError:
+                pass  # different drives: the temp dir cannot be inside the repo
+        plain = Path(tempfile.mkdtemp(prefix="flakyq-nogit-", dir=tmp_base))
+        try:
+            tl("_git_toplevel refuses a directory that is not a work tree", plain, None)
+        finally:
+            plain.rmdir()
+    finally:
+        shutil.rmtree(scratch_root, ignore_errors=True)
+
+    # r200: the shell -- main() graded through argv and a contract root, the
+    # r166..r199 pattern. The fixture hands an EXPLICIT root, so the
+    # data-driven resolution is bypassed and the fixture's own tree is the
+    # whole world; a root-dropping main falls back to resolve_root() and
+    # grades THIS repo instead, which the first rung catches.
+    import contextlib as _ctx
+    import io as _io
+    shell = 0
+    today = datetime.date.today()
+    future = (today + datetime.timedelta(days=30)).isoformat()
+    past = (today - datetime.timedelta(days=1)).isoformat()
+    with tempfile.TemporaryDirectory() as tdp:
+        base = Path(tdp)
+        (base / "scripts").mkdir(parents=True)
+        (base / "crates" / "demo").mkdir(parents=True)
+        (base / "crates" / "demo" / "lib.rs").write_text("pub fn x() {}\n", encoding="utf-8")
+        manifest = base / "scripts" / "flaky-quarantine.json"
+        def entry(**over):
+            e = {"test": "crates::demo::tests::flaky_case", "owner": "someone",
+                 "issue": "#42", "reason": "measured flake on CI",
+                 "date": today.isoformat(), "expiry": future}
+            e.update(over)
+            return e
+        def put(entries, raw=None):
+            manifest.write_text(raw if raw is not None else json.dumps(
+                {"version": 1, "entries": entries}), encoding="utf-8")
+        def run(*extra, root=base):
+            out, err = _io.StringIO(), _io.StringIO()
+            try:
+                with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                    rc = main(argv=list(extra), root=root)
+            except SystemExit as se:
+                return se.code, out.getvalue() + err.getvalue()
+            return rc, out.getvalue() + err.getvalue()
+        shell += 1
+        put([entry()])
+        rc, text = run()
+        if rc != 0 or "PASS: quarantine manifest valid (1 entries" not in text:
+            print("  x a clean single-entry manifest must PASS (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        shell += 1
+        rc, text = run("--report")
+        if rc != 0 or "INFO: 1 quarantined test(s), 0 expired" not in text:
+            print("  x --report must still gate and print the INFO line (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        shell += 1
+        put([entry(expiry=past)])
+        rc, text = run()
+        if rc != 1 or "EXPIRED on " + past not in text:
+            print("  x an expired entry must fail rc 1 (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        shell += 1
+        put([entry(owner=None)])
+        rc, text = run()
+        if rc != 1 or "missing required field 'owner'" not in text:
+            print("  x a missing required field must fail rc 1 (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        shell += 1
+        put([entry(issue="see the tracker")])
+        rc, text = run()
+        if rc != 1 or "must be a URL or #NN" not in text:
+            print("  x a free-text issue ref must fail rc 1 (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        shell += 1
+        put([entry()], raw="{not json")
+        rc, text = run()
+        if rc != 1 or "not valid JSON" not in text:
+            print("  x an unparseable manifest must fail rc 1 (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        # zero corpus behind the manifest is a refusal, not a verdict
+        shell += 1
+        put([])
+        import shutil as _sh
+        _sh.rmtree(base / "crates")
+        rc, text = run()
+        if rc != 1 or "no test corpus behind it" not in text:
+            print("  x an empty corpus must refuse rc 1 (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        (base / "crates" / "demo").mkdir(parents=True)
+        (base / "crates" / "demo" / "lib.rs").write_text("pub fn x() {}\n", encoding="utf-8")
+        # an explicit root with NO manifest is a refusal naming the root
+        shell += 1
+        manifest.unlink()
+        rc, text = run()
+        if rc != 1 or "was not found under the contract root" not in text:
+            print("  x a manifest-less root must refuse rc 1 (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        # the strict-argument rule, now through main()
+        shell += 1
+        rc, text = run("--anything-else")
+        if rc != 2 or "unrecognised argument --anything-else" not in text:
+            print("  x an unknown dashed flag must refuse rc 2 (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (10 cases, no files touched)")
+    print("SELF-TEST OK (13 pure/git cases + %d shell cases over a scratch tree, "
+          "nothing in the checkout touched)" % shell)
     return 0
 
 
-def main() -> int:
-    argv = sys.argv[1:]
+def main(argv=None, root=None) -> int:
+    """r200: argv and root parameterized, the r166..r199 contract. An EXPLICIT
+    root wins outright (a fixture hands its own tree); root=None keeps the
+    data-driven resolve_root() this gate is named for -- the script's location
+    is not evidence that a repository is there."""
+    if argv is None:
+        argv = sys.argv[1:]
     if "--self-test" in argv:
         return self_test()
     flag = unknown_flag(argv)
@@ -212,7 +378,18 @@ def main() -> int:
         return reject_unknown_flag(flag)
     report_only = "--report" in argv
 
-    root, root_source, probed = resolve_root()
+    if root is not None:
+        root = Path(root).resolve()
+        root_source = "the contract root argument"
+        probed = [root]
+        if not root.joinpath(*MANIFEST_REL).is_file():
+            print("FAIL: flaky-quarantine.json was not found under the contract root "
+                  "this gate was handed, so it has read nothing -- an unread manifest "
+                  "is not a clean one.")
+            print(f"  contract root               : {root}")
+            return 1
+    else:
+        root, root_source, probed = resolve_root()
     if root is None:
         # No manifest anywhere: the gate has read none of the tree it polices. Say so with
         # the paths it looked at, so nobody reads a refusal as a pass on an empty registry.

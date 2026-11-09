@@ -29,6 +29,15 @@ const testL10n = {
       'terminal-sound-volume-aria': 'Sound volume',
       'save': 'Save',
       'settings-save-error': 'Save failed',
+      // The EDC test/default controls and the load-error line. No case in this
+      // file asserts them, so their absence was silent: getString fell through to
+      // the raw id and the card rendered 'settings-edc-test' to the user.
+      // Values copied verbatim from shared-ui/locales/settings.ftl.
+      'settings-edc-test': 'Test Connection',
+      'settings-edc-testing': 'Testing…',
+      'settings-edc-default-select': 'Register Default EDC Terminal',
+      'settings-edc-default-auto': 'Auto (Earliest Created)',
+      'settings-load-failed': 'Failed to load settings',
     };
     return defaults[id] ?? id;
   },
@@ -201,5 +210,21 @@ describe('TerminalPreferencesCard', () => {
     mocks.hw.error = 'Printer not found';
     renderCard();
     expect(screen.getByText('Printer not found')).toBeInTheDocument();
+  });
+
+  // The three cases below pin copy that nothing asserted before, which is exactly
+  // why the map could drop it without a single test going red: the card rendered
+  // 'settings-edc-test' and 'settings-edc-default-auto' as visible text and as an
+  // aria-label, and every assertion in this file looked elsewhere.
+  // NB: the Test Connection button and the load-error banner are both gated
+  // (sessionToken is not passed here; hw.loadFailed is false), so no case in this
+  // file can reach them. The select below is unconditional, which is why it is the
+  // one that carries the regression guard for the EDC labels.
+
+  it('gives the default-terminal select its aria-label and auto option in English', () => {
+    renderCard();
+    const select = screen.getByLabelText('Register Default EDC Terminal');
+    expect(select).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Auto (Earliest Created)' })).toBeInTheDocument();
   });
 });

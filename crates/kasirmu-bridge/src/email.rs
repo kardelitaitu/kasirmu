@@ -58,7 +58,7 @@ pub async fn send_test_report(
             schedule.recipients.clone()
         };
 
-        let store_name = kasirmu_core::Settings::get(store.conn, "store.name")
+        let store_name = kasirmu_core::Settings::get(store.conn(), "store.name")
             .ok()
             .flatten()
             .unwrap_or_else(|| "kasir.mu Store".to_string());

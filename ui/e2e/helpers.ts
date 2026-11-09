@@ -185,6 +185,115 @@ export async function navigateTo(page: Page, route: string): Promise<void> {
 }
 
 /**
+ * Navigate to a TOOL route the way the picker tool card does.
+ *
+ * WHY THIS EXISTS SEPARATELY FROM navigateTo. A raw hash write changes the ROUTE but
+ * establishes no WORKSPACE. For a fullscreen page that is fine — AppShell renders those
+ * before the workspace gate (AppShell.tsx:669, whose comment says so: "Fullscreen pages
+ * render ... without requiring an active workspace").
+ *
+ * A NON-fullscreen tool route is gated on an active workspace at AppShell.tsx:708 and
+ * falls through to the workspace PICKER when there is none. Measured 2026-10-18:
+ *
+ *   admin workspace + navigateTo("settings")  -> .workspace-fullscreen 1, picker 0  (ok)
+ *   admin workspace + navigateTo("shifts")    -> .workspace-home-wrapper 1, picker 1 (WRONG)
+ *   admin workspace + navigateTo("terminals") -> same                             (WRONG)
+ *
+ * settings passes only because it is registered fullscreen: true. Every other admin tool
+ * — shifts, terminals, audit, memo — cannot be reached by hash navigation at all, which is
+ * why shift.spec.ts waited for .shift-mgmt on a screen that never mounted.
+ *
+ * Clicking the actual tool card is the path a user takes AND the one that works, because
+ * WorkspaceHome sets the workspace as part of the navigation. Prefer this for any tool
+ * route; navigateTo stays correct for fullscreen pages and for same-workspace moves.
+ */
+export async function openToolCard(page: Page, label: string | RegExp): Promise<void> {
+  const card = page.getByTestId('workspace-tool-card').filter({ hasText: label });
+  await expect(card, `no tool card matching ${String(label)}`).toBeVisible({ timeout: 8_000 });
+  await card.first().click();
+}
+
+/**
+ * Navigate to an IN-WORKSPACE screen the way a user does: through the sidebar.
+ *
+ * WHY THIS EXISTS ALONGSIDE openToolCard. The two cover the two different kinds of
+ * destination the admin surface has, and confusing them is what left 13 specs red:
+ *
+ *   - The picker's TOOL CARDS (openToolCard) go to standalone FULLSCREEN pages --
+ *     staff, locations, terminals, shifts, memos, promotions, analytics, dashboard,
+ *     audit-log, settings, topology. Every one of the eleven TOOLS entries carries a
+ *     `fullscreen: true` registration, which is exactly why WorkspaceHome's
+ *     handleShortcutNav deliberately does NOT set a workspace for them (see its comment
+ *     at WorkspaceHome.tsx:530-552): they render before the workspace gate at
+ *     AppShell.tsx:669, and forcing a workspace there would rebind the shell and
+ *     overwrite the route. So the picker CANNOT be used to reach an in-workspace screen;
+ *     there is no tool card for one.
+ *
+ *   - The SIDEBAR items (.app-nav-item) are the in-workspace navigation. They render
+ *     only inside AppLayout (AppShell.tsx:806), which is reached only when an active
+ *     workspace holds a NON-fullscreen page -- the warehouse (and the Settings hub),
+ *     never the POS workspaces, which are fullscreen and hide the sidebar.
+ *
+ * The sidebar sections start COLLAPSED (`aria-expanded="false"`), so the item buttons are
+ * not in the DOM until the section header is clicked. That is why a naive
+ * `.app-nav-item` probe returns 0 on every path and reads as "no sidebar at all".
+ * Measured 2026-10-18 on the desktop project:
+ *
+ *   picker -> warehouse card        -> .app-nav-item 0   (sections collapsed)
+ *   ... -> click "Reports" header   -> .app-nav-item 3+  (Dashboard, Sales Report, ...)
+ *   ... -> click "Tools" header     -> .app-nav-item 5   (Terminals, Audit Log, Shifts...)
+ *   click .app-nav-item[aria-label="Sales Report"]  -> content .sales-report, picker 0
+ *
+ * Establishes the workspace first (via establishWorkspace) so the sidebar exists, then
+ * expands the section that holds the item and clicks it.
+ *
+ * @param section Visible section header label, e.g. "Reports" or "Tools".
+ * @param item    The item's aria-label, e.g. "Sales Report" or "Terminals".
+ */
+export async function navigateViaSidebar(
+  page: Page,
+  section: string,
+  item: string,
+): Promise<void> {
+  await establishWorkspace(page);
+
+  const header = page
+    .locator('.app-sidebar-section-header')
+    .filter({ hasText: section })
+    .first();
+  await expect(header, `no sidebar section named "${section}"`).toBeVisible({ timeout: 10_000 });
+
+  // Sections are accordions; clicking an already-open one would close it, so only click
+  // when the item we want is not already rendered.
+  const itemButton = page.locator(`.app-nav-item[aria-label="${item}"]`).first();
+  if ((await itemButton.count()) === 0) {
+    await header.click();
+  }
+
+  await expect(itemButton, `no sidebar item labelled "${item}" in "${section}"`).toBeVisible({
+    timeout: 8_000,
+  });
+  await itemButton.click();
+}
+
+/**
+ * Put the shell into a state that renders the sidebar: an ACTIVE WORKSPACE on a
+ * non-fullscreen page.
+ *
+ * The warehouse is the only workspace whose landing screen is not fullscreen, so it is
+ * the one that reaches AppLayout (AppShell.tsx:806) on the desktop shell. No-op when a
+ * sidebar is already up.
+ */
+export async function establishWorkspace(page: Page): Promise<void> {
+  if ((await page.locator('.app-layout').count()) > 0) return;
+
+  const card = page.locator('.workspace-card').filter({ hasText: /warehouse|gudang/i }).first();
+  await expect(card, 'no warehouse workspace card on the picker').toBeVisible({ timeout: 10_000 });
+  await card.click();
+  await expect(page.locator('.app-layout')).toBeVisible({ timeout: 10_000 });
+}
+
+/**
  * Wait for the app to be fully loaded and ready.
  */
 export async function waitForApp(page: Page): Promise<void> {

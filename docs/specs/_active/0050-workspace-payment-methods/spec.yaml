@@ -1,0 +1,63 @@
+id: 0050-workspace-payment-methods
+title: Workspace payment methods, enforced end to end
+status: implemented-awaiting-approval
+owner: kasir.mu maintainers
+priority: P1
+scope:
+  - crates/kasirmu-core/migrations/20260924_local_payment_methods.sql
+  - crates/kasirmu-core/migrations/20261021_receivables.sql
+  - crates/kasirmu-core/src/db/payment_methods.rs
+  - crates/kasirmu-core/src/db/payment_gateways.rs
+  - crates/kasirmu-core/src/db/receivables.rs
+  - crates/kasirmu-core/src/db/sales_checkout.rs
+  - crates/kasirmu-core/src/db/reports/sales_summary.rs
+  - crates/kasirmu-bridge/src/local_payment.rs
+  - crates/kasirmu-bridge/src/receivables.rs
+  - ui/src/features/sales/useLocalPaymentRails.ts
+  - ui/src/features/sales/PaymentModal.tsx
+  - ui/src/features/settings/screens/LocalPaymentSettingsCard.tsx
+  - ui/src/features/restaurant/screens/RestaurantPaymentsScreen.tsx
+  - ui/src/features/customers/KasbonSettlementModal.tsx
+  - docs/specs/_active/0050-workspace-payment-methods/
+
+problem:
+  - The tender list a site offers was hardcoded in the UI, so a site could not
+    switch a rail off and a rail it had switched off could still be posted.
+  - "The plan includes QRIS" (a TIER fact) and "this site offers QRIS" (a MARKET
+    fact) were the same answer, so a Free-tier store could not distinguish a
+    withheld entitlement from an unconfigured rail.
+  - Piutang was recorded as cash, which corrupts drawer reconciliation and loses
+    "how much do customers owe me".
+
+implemented_slice:
+  - A `local_payment_methods` row set keyed (scope_type, scope_id, rail_code) with
+    per-location overrides, where an explicit disable survives an entity re-enable.
+  - Checkout re-validates every tender (header method and each split row) against
+    the site's effective rail surface before a single row is written.
+  - Checkout also enforces the TIER gate for dynamic rails, with `qris_manual`
+    deliberately excluded because the static printed code costs the tier nothing.
+  - A `receivables` + `receivable_payments` pair carrying the ACTUAL tender on the
+    collection day, and a `piutang_collections` report that surfaces it.
+  - Encrypted-at-rest gateway CRUD with a credential-shaped-key rejection on the
+    rail parameter bag.
+
+invariants:
+  - A site with NO rail surface refuses nothing; "unconfigured" is not "disabled".
+  - An unlisted rail and a disabled rail are refused, and the message names which.
+  - A CORE rail (`credit`, `cash`, `card`) is never refused by the rail surface;
+    `credit` is gated by its own settings (F23/F24) and is skipped here.
+  - `qris_manual` is never tier-gated; `qris` (dynamic) is, and `effective_tier:
+    None` skips the check rather than denying.
+  - Rule 2 and rule 4 cannot combine into a store that cannot trade at all.
+  - A rail's `parameters` bag never carries gateway credentials.
+  - Receivable repayments report on the day the money arrived, never the sale day.
+  - Money is `Money` (i64 minor units); no float anywhere in the path.
+
+non_goals:
+  - Card-drawer report merging: the tender breakdown and the piutang collections
+    line stay separate queries on purpose, so each is readable on its own.
+  - A UI operator requeue/undo for suspended registers.
+  - Midtrans acquirer-side behaviour (generic-QR interop, targeted-QR
+    restriction, real refunds, per-merchant activation); tracked in
+    docs/plans/_active/owner-question-2026-09-28-r4-r6-r7.md.
+  - Restaurant-pos pay-later; piutang is retail-only by ruling.

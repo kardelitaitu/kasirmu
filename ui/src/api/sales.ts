@@ -112,6 +112,20 @@ export interface CompleteSaleArgs {
   promotionIds?: string[];
 }
 
+/** A stock warning for a sale line that had insufficient stock. The sale still completes. */
+export interface StockWarning {
+  /** Product SKU that had insufficient stock. */
+  sku: string;
+  /** Product display name. */
+  productName: string;
+  /** Quantity the customer ordered. */
+  requestedQty: number;
+  /** Quantity actually available at the primary location. */
+  qtyAvailable: number;
+  /** Shortfall = requestedQty − qtyAvailable. */
+  deficit: number;
+}
+
 /** Result of completing a sale. */
 export interface CompleteSaleResult {
   saleId: string;
@@ -119,6 +133,11 @@ export interface CompleteSaleResult {
   lineCount: number;
   receiptNumber?: string | null;
   statutoryNumber?: string | null;
+  /**
+   * Non-empty when one or more sale lines had insufficient stock.
+   * The sale still completes — this field is informational only.
+   */
+  stockWarnings?: StockWarning[];
 }
 
 /** Arguments for setting a discount on a cart. */
@@ -177,6 +196,18 @@ export const getCartDeductionLocationScoped = (
 ): Promise<DeductionLocationInfo | null> =>
   loggedInvoke<DeductionLocationInfo | null>('get_cart_deduction_location_scoped', { sessionToken, cartId });
 
+/**
+ * Assign (or clear) the restaurant course on an active cart line.
+ *
+ * `course: null` clears it. The backend normalizes legacy course names and
+ * enforces `SALES_PROCESS` — the same gate as adding a line, because this is a
+ * cart mutation of the same kind.
+ */
+export const setLineCourseScoped = (
+  sessionToken: string,
+  args: { cartId: string; lineId: string; course: string | null },
+): Promise<void> =>
+  loggedInvoke<void>('set_line_course_scoped', { sessionToken, args });
 /** ADR #7: Add a line to a cart in the store resolved from a session token. */
 export const addLineScoped = (sessionToken: string, args: AddLineArgs): Promise<AddLineResult> =>
   loggedInvoke<AddLineResult>('add_line_scoped', { sessionToken, args });
@@ -382,7 +413,7 @@ export interface CompleteSaleWithResolvedShortfallsArgs {
   resolutions: ResolvedShortfall[];
   /** CUR-02: tip collected at checkout.
    *  Nullable: `CompleteSaleWithResolvedShortfallsArgs.tip_minor` is `Option<i64>`
-   *  (`pos/checkout.rs:275`), so both an absent key and an explicit null are valid. */
+ *  (`CompleteSaleWithResolvedShortfallsArgs` in `pos/checkout.rs`), so both an absent key and an explicit null are valid. */
   tipMinor?: number | null;
   /** CUR-02: service charge collected at checkout. See `tipMinor`. */
   serviceChargeMinor?: number | null;
@@ -477,7 +508,7 @@ export interface SerialTrackRow {
  *
  * PERF-03: many SKUs in a single IPC round trip, replacing the N+1 per-SKU loop in the retail
  * cart. The unscoped twin of this call was deleted on 2026-09-16 (T25); its contract case came
- * here with it, because this is the only form the cart uses (RetailPosScreen.tsx:191).
+ * here with it, because this is the only form the cart uses (RetailPosScreen.tsx:185).
  */
 export const getProductTrackSerialBatchScoped = (sessionToken: string, skus: string[]): Promise<SerialTrackRow[]> =>
   loggedInvoke<SerialTrackRow[]>('get_product_track_serial_batch_scoped', { sessionToken, skus });
@@ -717,17 +748,17 @@ export const voidSaleScoped = (sessionToken: string, saleId: string, reason: str
  * The bill type a parked cart carries.
  *
  * `hold` is the serde default (`crates/kasirmu-bridge/src/pos/hold_orders.rs:75`),
- * and `open_bill` is `BILL_TYPE_OPEN_BILL` (`:25`) — the value the bridge compares
- * with `==` to decide whether the workspace may park an open bill
- * (`apps/mobile-tauri/src/commands/pos.rs:897`).
+ * and `open_bill` is `BILL_TYPE_OPEN_BILL` — the value the bridge compares
+ * with `==` to decide whether the workspace may park an open bill (`hold_cart_scoped`
+ * in apps/mobile-tauri/src/commands/pos.rs).
  *
  * Typed as a union rather than `string` because NEITHER end checks it: the
  * `held_carts.bill_type` column is `TEXT NOT NULL DEFAULT 'hold'` with no CHECK
  * constraint (`migrations/20260813_init.sql:166`), and the comparison above is a
  * plain string `==`. A typo therefore compiled clean, stored clean, and quietly
  * stopped matching — the `open_bill` path would fall through to a plain hold with
- * no error anywhere. Two UI sites write it: `PaymentModal.tsx:1028` and
- * `hooks/usePosHeldCarts.ts:188`.
+ * no error anywhere. Two UI sites write it: `ui/src/features/sales/PaymentModal.tsx:1028` and
+ * `ui/src/features/sales/hooks/usePosHeldCarts.ts:318`.
  */
 export type BillType = 'hold' | 'open_bill' | 'credit' | 'pay_later' | 'other';
 
@@ -897,6 +928,9 @@ export interface EodReport {
   discount_count: number;
   discount_total: number;
   hourly_breakdown: SalesByHourRow[];
+  receivable_collections_count?: number;
+  receivable_collections_total?: number;
+  receivable_breakdown?: PaymentBreakdown[];
 }
 
 /** Export the daily sales summary. */

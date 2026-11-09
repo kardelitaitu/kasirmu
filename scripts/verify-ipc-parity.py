@@ -67,6 +67,7 @@ must never spend 1, because 1 is the number a reader (and
 from __future__ import annotations
 
 import argparse
+import functools
 import importlib.util
 import io
 import json
@@ -97,6 +98,14 @@ SHELLS = {
 
 ALLOWLIST_PATH = REPO_ROOT / "scripts" / "ipc-parity-allowlist.json"
 
+
+def _base(root=None) -> Path:
+    """r208: the r166..r207 contract's base resolution -- REPO_ROOT when no
+    root is passed, else the resolved contract root. Root redirects every
+    evidence source together: the UI scan trees, both shell libs, the
+    dev-mock tree, the allowlist file AND the shared schema module."""
+    return REPO_ROOT if root is None else Path(root).resolve()
+
 # The question "is this parsed document an allowlist at all" is answered in
 # scripts/allowlist-schema.py since 0454b542e4, shared with scripts/verify-scoped-reads.py,
 # because the repo holding two private definitions of valid is what let one file be GRADED by
@@ -118,7 +127,6 @@ UI_INVOKE_RE = re.compile(
     r"(?:loggedInvoke|invoke)(?:<[^()]*>)?\(\s*['\"]([a-z0-9_]+)['\"]"
 )
 
-HANDLER_BLOCK_RE = re.compile(r"generate_handler!\[", re.S)
 ENTRY_RE = re.compile(r"^(?:[a-z0-9_]+(?:::[a-z0-9_]+)+|[a-z0-9_]+)$")
 COMMAND_FN_RE = re.compile(
     # Both spellings of the attribute. `#[command]` is the short form of the same token, used
@@ -136,11 +144,14 @@ COMMAND_FN_RE = re.compile(
 )
 
 
-def extract_ui_commands() -> dict[str, list[str]]:
-    """Return {command: [files that invoke it]} from production UI code."""
+def extract_ui_commands(root=None) -> dict[str, list[str]]:
+    """Return {command: [files that invoke it]} from production UI code.
+
+    r208: scanned under the contract root when one is passed."""
     found: dict[str, list[str]] = {}
+    top = _base(root)
     for scan_dir in UI_SCAN_DIRS:
-        base = REPO_ROOT / scan_dir
+        base = top / scan_dir
         if not base.is_dir():
             continue
         for path in base.rglob("*"):
@@ -148,7 +159,7 @@ def extract_ui_commands() -> dict[str, list[str]]:
                 continue
             if "__tests__" in path.parts:
                 continue
-            rel = path.relative_to(REPO_ROOT).as_posix()
+            rel = path.relative_to(top).as_posix()
             try:
                 text = path.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError) as exc:
@@ -271,6 +282,131 @@ API_TREE_IMPORT_RE = re.compile(
 )
 
 
+# Cached regexes for the wrapper/export probes inside wrapper_reach.
+#
+# Keyed by the wrapper name, which is the only thing each pattern depends on.
+# The unbounded form called re.escape and recompiled inside a triple-nested
+# loop (files x wrappers x commands); the profiler measured that at 1.26M
+# re.search calls and 163 s of this file's 227 s self-test. These dicts turn it
+# into one compile per distinct name.
+_WRAPPER_PATTERNS = {}
+_EXPORT_PATTERNS = {}
+
+
+def _wrapper_pattern(name):
+    # A word-boundary match for a wrapper reference: foo( but not x.foo(.
+    pat = _WRAPPER_PATTERNS.get(name)
+    if pat is None:
+        pat = re.compile(r"(?<![\w.])" + re.escape(name) + r"\b")
+        _WRAPPER_PATTERNS[name] = pat
+    return pat
+
+
+def _export_pattern(name):
+    # The file that DEFINES this wrapper, so it is not a reference to itself.
+    pat = _EXPORT_PATTERNS.get(name)
+    if pat is None:
+        pat = re.compile(
+            r"export (?:const|async function|function) " + re.escape(name) + r"\b"
+        )
+        _EXPORT_PATTERNS[name] = pat
+    return pat
+
+
+_REACH_INDEX_CACHE: list = [None, None]
+
+
+def _reach_index(files: list[tuple[str, str]]) -> dict:
+    """One pass over the UI tree, reused by every `wrapper_reach` call.
+
+    `wrapper_reach` is asked once per command and there are hundreds of commands, so the
+    version that scanned all 692 runtime files per call did the same work hundreds of
+    times: measured 2026-10-20, 669 calls and 129 s of a 289 s `--self-test`. Everything
+    the per-command walk needs is a property of a SINGLE file, so it is computed once
+    here and the walk becomes a dict lookup plus one pattern search per candidate.
+
+    Cached on the identity of `files` AND its length. The identity half is what makes
+    repeated calls in a loop cheap; the length half is the guard, because a freed list's
+    address can be reused by a later, different list, and a stale index would then answer
+    for the wrong tree -- silently, and with a plausible shape. `len` is cheap and pins
+    the common case (same address, shorter list). Never cache across a mutation of an
+    input list in place: that is the one case this does not catch. Nothing in this file
+    mutates `files`.
+    """
+    key = (id(files), len(files))
+    if _REACH_INDEX_CACHE[0] == key:
+        return _REACH_INDEX_CACHE[1]
+    by_command: dict[str, set] = {}
+    definer_of: dict[str, str] = {}
+    rows: list[tuple] = []
+    for path, text in files:
+        if path.startswith("ui/src/api/client"):
+            bucket = "client"
+        elif path.startswith("ui/src/api"):
+            bucket = "api"
+        else:
+            bucket = "runtime"
+        imports_api_tree = bool(API_TREE_IMPORT_RE.search(text))
+        rows.append((path, text, imports_api_tree, bucket))
+        # The wrapper-defining files are the api tree itself, and no other file can DEFINE
+        # a wrapper -- a screen that happens to hold `function updateProduct(...)` is a
+        # reference to them, not a definition.
+        in_api_tree = path.startswith("ui/src/api")
+        if in_api_tree or "/api/" in f"/{path}":
+            for w, c in API_WRAPPER_RE.findall(text):
+                by_command.setdefault(c, set()).add(w)
+                # First definer wins, matching the `setdefault` the map replaced.
+                if in_api_tree and w not in definer_of:
+                    definer_of[w] = path
+    index = {
+        "files": rows,
+        "definer_of": definer_of,
+        "by_command": {c: frozenset(ws) for c, ws in by_command.items()},
+    }
+    _REACH_INDEX_CACHE[0] = key
+    _REACH_INDEX_CACHE[1] = index
+    return index
+
+
+_IDENT_RE = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
+
+
+@functools.lru_cache(maxsize=4096)
+def _ident_set(text: str) -> frozenset:
+    """Every identifier-shaped token in `text`, as a set."""
+    return frozenset(_IDENT_RE.findall(text))
+
+
+def _wrappers_named_in(text: str, wrappers) -> list[str]:
+    """Which of `wrappers` this file names as a call, in `wrappers` order.
+
+    The inversion that makes `wrapper_reach` affordable. Asking "does this file name
+    wrapper w?" once per wrapper runs |wrappers| regex searches over the file; asking
+    "which identifiers does this file hold?" runs ONE scan and then a set lookup per
+    identifier. Same answer, and on the real tree it is the difference between 1.26M
+    searches and one pass -- measured 2026-10-20, this file spent 173 s of a 289 s
+    `--self-test` inside `re.Pattern.search`, almost all of it here.
+
+    The identifier set is a SUPERSET test, so it is checked first as a cheap reject and
+    the precise pattern still decides. That keeps every distinction the original loop
+    made, and the regex remains the authority on what counts as a reference.
+
+    The identifier scan itself is memoised ON THE TEXT (not the path, not `id()`): the
+    same bytes yield the same identifiers by construction. Round 2 of this same
+    measurement, 2026-10-20, showed `re.findall` at 2.57M calls / 45 s -- this scan was
+    being redone for every command that reached the same file.
+    """
+    idents = _ident_set(text)
+    out = []
+    for w in wrappers:
+        if w not in idents:
+            continue
+        # Cached compiled patterns -- see _wrapper_pattern / _export_pattern.
+        if _wrapper_pattern(w).search(text):
+            out.append(w)
+    return out
+
+
 def wrapper_reach(files: list[tuple[str, str]], cmd: str) -> dict[str, list[str]]:
     """Who references the wrappers that invoke `cmd`, split by where the reference lives.
 
@@ -285,18 +421,12 @@ def wrapper_reach(files: list[tuple[str, str]], cmd: str) -> dict[str, list[str]
     `updateProduct(args)` forever while every screen imports `updateProductScoped`, and the
     parity leg counts that as the front-end asking for an unscoped door.
     """
-    wrappers = {w for path, text in files if "/api/" in f"/{path}" or path.startswith("ui/src/api")
-                for w, c in API_WRAPPER_RE.findall(text) if c == cmd}
+    index = _reach_index(files)
+    wrappers = index["by_command"].get(cmd, frozenset())
     out: dict[str, list[str]] = {"runtime": [], "client": [], "api": []}
     if not wrappers:
         return out
-    for path, text in files:
-        if path.startswith("ui/src/api/client"):
-            bucket = "client"
-        elif path.startswith("ui/src/api"):
-            bucket = "api"
-        else:
-            bucket = "runtime"
+    for path, text, imports_api_tree, bucket in index["files"]:
         # Whether this file refers to the WRAPPER or merely contains a member with the same
         # spelling. A bare-name match is not enough. Measured on the real tree 2026-09-26:
         # tablet `adjust_stock` was graded "reachable from the programmatic client" on
@@ -310,25 +440,27 @@ def wrapper_reach(files: list[tuple[str, str]], cmd: str) -> dict[str, list[str]
         # The import test is deliberately about the tree rather than the exact specifier:
         # `@/api/products`, `./api/products` and a relative `../api/products` all reach it,
         # and pinning one spelling would just move the false negative around.
-        imports_api_tree = bool(API_TREE_IMPORT_RE.search(text))
-        for w in wrappers:
-            if not re.search(r"(?<![\w.])" + re.escape(w) + r"\b", text):
-                continue
+        # `imports_api_tree` is precomputed by _reach_index, and the import test is checked
+        # BEFORE any wrapper pattern runs. Both orders were measured 2026-10-20 with
+        # cProfile over --self-test, where re.Pattern.search cost 173 s of a 289 s run.
+        if not imports_api_tree:
+            continue
+        for w in _wrappers_named_in(text, wrappers):
             # The defining file is not a reference to itself.
-            if bucket == "api" and re.search(r"export (?:const|async function|function) "
-                                            + re.escape(w) + r"\b", text):
-                continue
-            if not imports_api_tree:
+            if bucket == "api" and index["definer_of"].get(w) == path:
                 continue
             out[bucket].append(f"{path}#{w}")
     return out
 
 
-def ui_runtime_files() -> list[tuple[str, str]]:
-    """UI sources that can execute in a shipped build: no tests, no dev-mock."""
+def ui_runtime_files(root=None) -> list[tuple[str, str]]:
+    """UI sources that can execute in a shipped build: no tests, no dev-mock.
+
+    r208: scanned under the contract root when one is passed."""
     out: list[tuple[str, str]] = []
+    top = _base(root)
     for scan_dir in UI_SCAN_DIRS:
-        base = REPO_ROOT / scan_dir
+        base = top / scan_dir
         if not base.is_dir():
             continue
         for path in base.rglob("*"):
@@ -337,7 +469,7 @@ def ui_runtime_files() -> list[tuple[str, str]]:
             if "__tests__" in path.parts or "dev-mock" in path.parts:
                 continue
             try:
-                out.append((path.relative_to(REPO_ROOT).as_posix(),
+                out.append((path.relative_to(top).as_posix(),
                             path.read_text(encoding="utf-8")))
             except (OSError, UnicodeDecodeError):
                 continue
@@ -860,16 +992,19 @@ def _mock_code(text: str) -> str:
     )
 
 
-def read_dev_mock_sources() -> list[tuple[str, str]]:
-    """Every TS source under the dev-mock tree as (posix-relative path, text)."""
-    base = REPO_ROOT / DEV_MOCK_DIR_REL
+def read_dev_mock_sources(root=None) -> list[tuple[str, str]]:
+    """Every TS source under the dev-mock tree as (posix-relative path, text).
+
+    r208: walked under the contract root when one is passed."""
+    top = _base(root)
+    base = top / DEV_MOCK_DIR_REL
     if not base.is_dir():
         raise SystemExit(f"error: dev-mock tree missing: {DEV_MOCK_DIR_REL}")
     sources: list[tuple[str, str]] = []
     for path in sorted(base.rglob("*")):
         if not path.is_file() or path.suffix not in (".ts", ".tsx"):
             continue
-        rel = path.relative_to(REPO_ROOT).as_posix()
+        rel = path.relative_to(top).as_posix()
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError as exc:
@@ -1002,7 +1137,7 @@ def find_unreachable_mock_keys(
 
 
 
-def extract_dev_mock_answerable() -> tuple[set[str], set[str], dict[str, set[str]], str | None]:
+def extract_dev_mock_answerable(root=None) -> tuple[set[str], set[str], dict[str, set[str]], str | None]:
     """Names the browser dev-mock can serve.
 
     Returns (directly registered, aliasable, per-file names, file holding the alias pass).
@@ -1065,13 +1200,16 @@ def extract_dev_mock_answerable() -> tuple[set[str], set[str], dict[str, set[str
     whoever owns the flags, not for this gate to invent an answer to, so it is recorded here
     rather than fixed.
     """
-    per_file, alias_file = parse_dev_mock(read_dev_mock_sources())
+    per_file, alias_file = parse_dev_mock(read_dev_mock_sources(root))
     registered, aliasable = answerable_sets(per_file, alias_file)
     return registered, aliasable, per_file, alias_file
 
 
-def read_allowlist_text() -> str:
+def read_allowlist_text(path=None) -> str:
     """The file's bytes, waiting out the microsecond a rename is mid-flight.
+
+    r208: the path arrives as an argument (default ALLOWLIST_PATH) so a
+    contract root's allowlist is read through the same rename-patience.
 
     os.replace is atomic for the reader, not invisible: while the swap happens Windows denies
     an open of the target, and load_allowlist has no handler for that, so the bare run in
@@ -1087,9 +1225,10 @@ def read_allowlist_text() -> str:
     script-next-door readers, and one of them is in the refusal text precisely because it is
     not protected: see ALLOWLIST_READER_CALL_SITES.
     """
+    target = ALLOWLIST_PATH if path is None else Path(path)
     for attempt in range(READ_ATTEMPTS):
         try:
-            return ALLOWLIST_PATH.read_text(encoding="utf-8")
+            return target.read_text(encoding="utf-8")
         except PermissionError:
             if attempt + 1 == READ_ATTEMPTS:
                 raise AllowlistBusyError(
@@ -1147,7 +1286,7 @@ def refuse_unusable_allowlist(unusable: AllowlistUnusable) -> int:
     return 2
 
 
-def allowlist_schema():
+def allowlist_schema(root=None):
     """The shared schema module, imported by path, or an `AllowlistUnusable` naming the path.
 
     `spec_from_file_location` because the filename carries a hyphen, which no import statement
@@ -1159,7 +1298,7 @@ def allowlist_schema():
     be refused in words, it costs 2 like every other thing that never arrived. The cache is
     keyed by path so a self-test probe cannot be served a module imported for another path.
     """
-    path = str(ALLOWLIST_SCHEMA_PATH)
+    path = str(ALLOWLIST_SCHEMA_PATH if root is None else _base(root) / "scripts" / "allowlist-schema.py")
     cached = _SCHEMA_BY_PATH.get(path)
     if isinstance(cached, BaseException):
         raise cached
@@ -1189,8 +1328,10 @@ def allowlist_schema():
     return module
 
 
-def load_allowlist() -> dict:
+def load_allowlist(root=None) -> dict:
     """Read AND verify the shared allowlist, or refuse. It never hands back a guess.
+
+    r208: the allowlist lives under the contract root when one is passed.
 
     The floor is an OBJECT carrying each of `KNOWN_SECTIONS` (desktop, tablet, dev_mock,
     scoped_orphans) as a LIST, and since 0454b542e4 that question is answered by
@@ -1211,14 +1352,18 @@ def load_allowlist() -> dict:
     the empty shape either, since it invented two sections and silently dropped the other two
     -- and anything else went through as raw `json.loads` output.
     """
-    if not ALLOWLIST_PATH.exists():
+    al_path = ALLOWLIST_PATH if root is None else _base(root) / "scripts" / "ipc-parity-allowlist.json"
+    if not al_path.exists():
         raise AllowlistUnusable(
-            f"{ALLOWLIST_PATH.name} is not there, so this run has no allowlist -- an absent "
+            f"{al_path.name} is not there, so this run has no allowlist -- an absent "
             f"file is not an empty one. Three writer flags -- --write-allowlist, "
             f"--write-scoped-orphans and --write-dev-mock-gaps -- would each rewrite it from "
             f"what this run read, and a run that read nothing has nothing to preserve.")
     try:
-        text = read_allowlist_text()
+        # r208: zero-arg on the module default so the self-test's swapped-in
+        # zero-arg read stub (the drift harness) keeps its signature; the
+        # path is passed only when a contract root redirects the read.
+        text = read_allowlist_text(al_path) if root is not None else read_allowlist_text()
     except AllowlistBusyError:
         raise
     except UnicodeDecodeError as exc:
@@ -1227,17 +1372,17 @@ def load_allowlist() -> dict:
         # code 1 on a file nobody could read -- the same confusion verify-ftl-orphans.py
         # records for a locked bundle.
         raise AllowlistUnusable(
-            f"{ALLOWLIST_PATH.name} is not UTF-8 text ({exc}); whatever those bytes are, "
+            f"{al_path.name} is not UTF-8 text ({exc}); whatever those bytes are, "
             f"they are not an allowlist.") from None
     except OSError as exc:
         raise AllowlistUnusable(
-            f"{ALLOWLIST_PATH.name} would not open ({type(exc).__name__}: "
+            f"{al_path.name} would not open ({type(exc).__name__}: "
             f"{exc.strerror or exc})") from None
     try:
         payload = json.loads(text)
     except ValueError as exc:
         raise AllowlistUnusable(
-            f"{ALLOWLIST_PATH.name} is {len(text.encode('utf-8'))} bytes that are not JSON "
+            f"{al_path.name} is {len(text.encode('utf-8'))} bytes that are not JSON "
             f"({type(exc).__name__}: {exc}). A torn read is possible while a writer flag is "
             f"renaming onto it, and a torn read is a retry, not a verdict.") from None
     # IS THIS A DOCUMENT? Answered by the shared schema, not here, since 0454b542e4 -- the repo
@@ -1256,7 +1401,7 @@ def load_allowlist() -> dict:
     # rather than reduced to primary(), which keeps the claim a refusal makes whole: an operator
     # told to add scoped_orphans should also learn dev_mock is a string. Still one
     # AllowlistUnusable, still one handler, still exit 2, and no count anywhere on the line.
-    refusals = allowlist_schema().validate(payload, KNOWN_SECTIONS, ALLOWLIST_PATH.name)
+    refusals = allowlist_schema(root).validate(payload, KNOWN_SECTIONS, al_path.name)
     if refusals:
         raise AllowlistUnusable(" ".join(
             refusal.sentence for refusal in refusals))
@@ -1339,8 +1484,11 @@ def assert_allowlist_bytes(path: Path, written: bytes) -> None:
     ])
 
 
-def write_allowlist_payload(payload: dict) -> None:
+def write_allowlist_payload(payload: dict, path=None) -> None:
     """The ONE way this gate writes the allowlist file: LF endings, UTF-8, no escapes.
+
+    r208: the target arrives as an argument (default ALLOWLIST_PATH) so a
+    writer flag can land the fixture's allowlist, not only this checkout's.
 
     All three writer flags used to call ALLOWLIST_PATH.write_text(...) with an encoding and
     no newline argument, and Python text mode translates a newline into os.linesep -- on
@@ -1390,10 +1538,11 @@ def write_allowlist_payload(payload: dict) -> None:
     argument above fails the writer run that makes it instead of quietly re-emitting all 268
     lines of a file another lane owns as CRLF.
     """
-    ALLOWLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    target = ALLOWLIST_PATH if path is None else Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
     tmp = tempfile.NamedTemporaryFile(
         "w", encoding="utf-8", newline="\n", delete=False,
-        dir=str(ALLOWLIST_PATH.parent), prefix=ALLOWLIST_PATH.name + ".", suffix=".tmp")
+        dir=str(target.parent), prefix=target.name + ".", suffix=".tmp")
     tmp_path = Path(tmp.name)
     # The exact text this helper intends to land, kept so the guard below can compare BYTES
     # rather than re-serialising (a second json.dumps could differ from the first).
@@ -1410,10 +1559,10 @@ def write_allowlist_payload(payload: dict) -> None:
         assert_allowlist_bytes(tmp_path, written)
         for attempt in range(REPLACE_ATTEMPTS):
             try:
-                os.replace(tmp_path, ALLOWLIST_PATH)
+                os.replace(tmp_path, target)
                 # Proof half: the rename is the write, so read the TARGET back -- the file a
                 # reader will open -- and refuse unless it is byte-for-byte what was written.
-                assert_allowlist_bytes(ALLOWLIST_PATH, written)
+                assert_allowlist_bytes(target, written)
                 return
             except PermissionError:
                 # Windows denies a rename onto a file another process has open. Retry: the
@@ -1721,7 +1870,7 @@ def refuse_unwritten_allowlist(refusal: AllowlistWriteRefusal) -> int:
     return 2
 
 
-def update_allowlist(mutate, validated, label: str) -> list[str]:
+def update_allowlist(mutate, validated, label: str, root=None) -> list[str]:
     """The ONE place the write path opens this file: read, compare, mutate, replace.
 
     Returns entry-level FINDINGS (sentences, exit 1) or nothing; an empty list means it wrote.
@@ -1745,37 +1894,38 @@ def update_allowlist(mutate, validated, label: str) -> list[str]:
     is honest about being a refusal. A collision is rare and cheap to redo; a sealed-over edit
     is invisible.
     """
-    current = load_allowlist()
+    al_path = ALLOWLIST_PATH if root is None else _base(root) / "scripts" / "ipc-parity-allowlist.json"
+    current = load_allowlist(root)
     if validated is not None and current != validated:
         raise AllowlistWriteRefusal([
-            f"{label} did not write {ALLOWLIST_PATH.name}: the file changed after this run "
+            f"{label} did not write {al_path.name}: the file changed after this run "
             f"read and validated it, during the sweep between the two. Writing now would seal "
             f"an edit nobody validated and possibly overwrite one somebody did. Re-run the "
             f"command; if both edits are meant to exist, make them one edit."
         ])
-    problems = allowlist_shape_problems(current, ALLOWLIST_PATH)
+    problems = allowlist_shape_problems(current, al_path)
     if problems:
         return [
-            f"{label} did not write {ALLOWLIST_PATH.name}: what it just read is not a shape "
+            f"{label} did not write {al_path.name}: what it just read is not a shape "
             f"this gate accepts, and writing it back would make the problem permanent.",
             *problems,
         ]
     payload = dict(current)
     summary = mutate(payload)
     try:
-        write_allowlist_payload(payload)
+        write_allowlist_payload(payload, al_path)
     except AllowlistBusyError as busy:
         # Somebody else has the file open and never let go. The previous bytes are still on
         # disk, intact -- that is the whole content of this refusal, and it is not a verdict.
         raise AllowlistWriteRefusal(
-            [f"{label} did not write {ALLOWLIST_PATH.name}: {busy}"]) from None
+            [f"{label} did not write {al_path.name}: {busy}"]) from None
     except OSError as exc:
         # The other ways a write fails: the sibling temp would not be created, the directory
         # is not there or not writable, the swap raised something that is not a sharing denial.
         # Uncaught, each one escaped main() as a traceback, and an uncaught exception exits 1 --
         # the verdict code spent on a disk, not on a command.
         raise AllowlistWriteRefusal([
-            f"{label} could not write {ALLOWLIST_PATH.name}: the write itself failed "
+            f"{label} could not write {al_path.name}: the write itself failed "
             f"({type(exc).__name__}: {exc.strerror or exc}). Nothing was put in its place, so "
             f"the file on disk is the file that was already there."
         ]) from None
@@ -1829,7 +1979,7 @@ def write_or_refuse(run) -> int:
         return refuse_unusable_allowlist(unusable)
 
 
-def write_dev_mock_gaps(gaps: list[str], validated: dict | None = None) -> list[str]:
+def write_dev_mock_gaps(gaps: list[str], validated: dict | None = None, root=None) -> list[str]:
     """Seed/extend "dev_mock" from the current gaps, preserving reasons and other sections."""
     def mutate(payload: dict) -> str:
         before = allowlist_section(payload, "dev_mock")
@@ -1841,10 +1991,10 @@ def write_dev_mock_gaps(gaps: list[str], validated: dict | None = None) -> list[
             f"{sum(1 for _, reason in after if reason)} carrying a reason)"
         )
 
-    return update_allowlist(mutate, validated, "--write-dev-mock-gaps")
+    return update_allowlist(mutate, validated, "--write-dev-mock-gaps", root)
 
 
-def write_allowlist(missing: dict[str, set[str]], validated: dict | None = None) -> list[str]:
+def write_allowlist(missing: dict[str, set[str]], validated: dict | None = None, root=None) -> list[str]:
     """Seed/extend the two shell sections, additively, preserving every other section.
 
     This used to REPLACE both lists with sorted(measured gaps), which did two damaging
@@ -1883,10 +2033,10 @@ def write_allowlist(missing: dict[str, set[str]], validated: dict | None = None)
             + ")"
         )
 
-    return update_allowlist(mutate, validated, "--write-allowlist")
+    return update_allowlist(mutate, validated, "--write-allowlist", root)
 
 
-def write_scoped_orphans(orphans: set[str], validated: dict | None = None) -> list[str]:
+def write_scoped_orphans(orphans: set[str], validated: dict | None = None, root=None) -> list[str]:
     """Seed/extend the scoped_orphans section, preserving everything else.
 
     Read through section_names and written back through merge_section_entries, so an entry
@@ -1915,7 +2065,7 @@ def write_scoped_orphans(orphans: set[str], validated: dict | None = None) -> li
             f"({sum(1 for _, reason in written if reason)} carrying a reason)"
         )
 
-    return update_allowlist(mutate, validated, "--write-scoped-orphans")
+    return update_allowlist(mutate, validated, "--write-scoped-orphans", root)
 
 
 # ── C41: the shell-blind reachability leg ─────────────────────────────
@@ -1984,10 +2134,19 @@ _IMPORT_STATEMENT_START_RE = re.compile(r"import\b")
 SHELL_BLIND_SECTION = SHELL_BLIND_SECTIONS[0]
 
 
+@functools.lru_cache(maxsize=4096)
 def _strip_comments(text: str) -> str:
     """`text` with // and /* */ comments blanked, newlines preserved.
 
     Blanked rather than deleted so every offset still maps to its original line.
+
+    Memoised, and the key is the TEXT rather than the path -- which is what makes this
+    safe where the round-46 `id()` cache was not (it returned another test's answer).
+    Two files with identical content genuinely strip identically, so a hit is the right
+    answer by construction, not by luck. There are 692 runtime files and this is a
+    per-character Python loop: measured 2026-10-20, `_strip_comments` and
+    `_mask_imports` together were 71 s of a 289 s `--self-test` on 9,496 calls against
+    far fewer distinct texts.
     """
     out = list(text)
     i, n = 0, len(text)
@@ -2010,6 +2169,7 @@ def _strip_comments(text: str) -> str:
     return "".join(out)
 
 
+@functools.lru_cache(maxsize=4096)
 def _mask_imports(text: str) -> str:
     """Blank `import` STATEMENTS (which may span lines), keeping offsets.
 
@@ -2170,6 +2330,54 @@ def shell_blind_findings(
             for wrapper, cmd in API_WRAPPER_RE.findall(text):
                 wrapper_to_cmd.setdefault(wrapper, cmd)
 
+    # MASKED CACHE. `_mask_imports(_strip_comments(text))` was recomputed for
+    # every command in `gaps`, and with the wrapper scan below that made the
+    # two hottest functions in this file run once per (command, wrapper) pair --
+    # 1.26M regex searches and 164 s of the 227 s self-test. The masked form of
+    # a file cannot change between iterations, so compute it once per path.
+    masked_cache: dict = {}
+
+    # PRECOMPILED wrapper patterns. The same `re.escape(wn)` string was compiled
+    # inside the innermost loop; compiling each wrapper once turns ~125k
+    # compiles into ~N.
+    wrapper_res = {}
+    for wn in wrapper_to_cmd:
+        wrapper_res[wn] = re.compile(r"(?<![\w.])" + re.escape(wn) + r"\b")
+
+    # PER-FILE PROOF CACHE. The proof below -- "this file also calls a command this
+    # shell registers" -- is a property of the FILE and the shell, not of the gap being
+    # graded. It used to be recomputed inside the (command, reference) loop, so the same
+    # file was re-proved once per gap it appeared under, each time re-running every
+    # wrapper pattern over its text. Measure the pair, not the loop: the answer cannot
+    # change between commands because neither input does.
+    proof_cache: dict = {}
+
+    # Only the wrappers whose command this shell REGISTERS can prove anything, and there
+    # are far fewer of those than there are wrappers in the tree. Narrowing once removes
+    # most of the work below: measured 2026-10-23, `proves_shell_here` was 42 s of a 114 s
+    # profile because it ran every wrapper pattern over the text of every candidate file.
+    proving_wrappers = [wn for wn, c in wrapper_to_cmd.items() if c in registered]
+
+    def proves_shell_here(path: str, masked: str) -> set:
+        """Registered commands this file calls through a wrapper.
+
+        The identifier set rejects a wrapper the file does not even NAME before any pattern
+        runs, which is the same inversion `_wrappers_named_in` uses for reach: "which of
+        these names appear here" is one scan, "does name N appear here" is one scan PER
+        NAME. The precise pattern still decides, so a bare-name collision is still not a
+        call -- the C17 distinction this leg exists to keep.
+        """
+        got = proof_cache.get(path)
+        if got is None:
+            idents = _ident_set(masked)
+            got = {
+                wrapper_to_cmd[wn]
+                for wn in proving_wrappers
+                if wn in idents and wrapper_res[wn].search(masked)
+            }
+            proof_cache[path] = got
+        return got
+
     findings = {}
     for command in sorted(gaps):
         hits = set()
@@ -2178,20 +2386,16 @@ def shell_blind_findings(
             if path not in shell_aware:
                 continue
             text = by_path.get(path, "")
-            masked = _mask_imports(_strip_comments(text))
+            if path not in masked_cache:
+                masked_cache[path] = _mask_imports(_strip_comments(text))
+            masked = masked_cache[path]
             # The file has to PROVE it executes in this shell: it must also call a command
             # this shell registers. A file that branches on the shell but only ever calls
             # this shell's names is that shell's own screen, and its gaps are not C40.
-            proves = any(
-                cmd in registered
-                and cmd != command
-                and re.search(r"(?<![\w.])" + re.escape(wn) + r"\b", masked)
-                for wn, cmd in wrapper_to_cmd.items()
-            )
-            if not proves:
+            if not (proves_shell_here(path, masked) - {command}):
                 continue
             spans = shell_guarded_spans(text)
-            for match in re.finditer(r"(?<![\w.])" + re.escape(wrapper) + r"\b", masked):
+            for match in wrapper_res[wrapper].finditer(masked):
                 if any(start <= match.start() < end for start, end in spans):
                     continue
                 # A render-gated handler (\`const actionsAvailable = !isTabletShell()\` then
@@ -2363,9 +2567,9 @@ def _bridge_fn_body(fn_name: str, cache={}) -> str:
 
     Walked once per process and cached by name: this is called for every shell command that looks
     ungated, and re-reading the crate each time would make the gate slower than the thing it
-    checks. Only the bridge is followed, one level -- a delegation that itself delegates is rare
-    enough that reporting `None` for it is honest, while the one-level case is the repo's dominant
-    shape since the shells became thin.
+    checks. Only the bridge is followed, and how far is `_gate_within`'s budget, not this
+    function's business: the repo's dominant shape since the shells became thin is one hop, and
+    the budget is what keeps that a measurement rather than an assumption.
     """
     if not cache:
         root = REPO_ROOT / "crates" / "kasirmu-bridge" / "src"
@@ -2384,7 +2588,43 @@ def _bridge_fn_body(fn_name: str, cache={}) -> str:
 DELEGATION_RE = re.compile(r"\bkasirmu_bridge::[a-z_0-9]+::([a-z_0-9]+)\s*\(")
 
 
-def orphan_permission(command: str) -> str | None:
+def _gate_within(body: str, budget: int, lookup=None, seen: tuple = ()) -> str | None:
+    """The gate at most `budget` delegations away from `body`, or None.
+
+    Split out of `orphan_permission` so the depth is a value a test can move. `lookup` is
+    injectable for the same reason: a self-test needs to prove that two hops find a gate one hop
+    misses WITHOUT a fixture inside `crates/kasirmu-bridge`.
+
+    Measured on the allowlist, 2026-11-06: of 24 entries, 4 gate in their own body, 6 one
+    delegation away, and 14 not within four hops. So budget 1 is sufficient TODAY and the
+    self-test asserts exactly that — if an entry ever needs a second hop, the assertion fails
+    and the next reader decides whether to widen the follow or record the deep case, rather
+    than the gate quietly reporting "no check" for a command gated two crates away.
+    """
+    if not body:
+        return None
+    direct = gate_in_body(body)
+    if direct is not None:
+        return direct
+    if budget <= 0:
+        return None
+    if lookup is None:
+        lookup = _bridge_fn_body
+    elif isinstance(lookup, dict):
+        # A dict is the test spelling: the self-test must prove depth without a fixture in
+        # crates/kasirmu-bridge. Missing names are "" so the recursion's empty-body guard fires.
+        table = lookup
+        lookup = lambda name: table.get(name, "")
+    for target in DELEGATION_RE.findall(body):
+        if target in seen:
+            continue
+        found = _gate_within(lookup(target), budget - 1, lookup, seen + (target,))
+        if found is not None:
+            return found
+    return None
+
+
+def orphan_permission(command: str, delegations: int = 1) -> str | None:
     """The permission a scoped command enforces, or None if it enforces no check.
 
     Why the gate bothers to read Rust bodies at all: an orphaned `_scoped` command is not
@@ -2422,7 +2662,13 @@ def orphan_permission(command: str) -> str | None:
         cmd_dir = (REPO_ROOT / lib_rel).parent / "commands"
         if not cmd_dir.is_dir():
             continue
-        for rs in sorted(cmd_dir.glob("*.rs")):
+        # RECURSIVE, and that word is the fix (2026-11-06, BR-T1). The registry scan
+        # above already walks commands/ recursively, so the non-recursive glob here made
+        # this half blind to every extracted command: apps/desktop-tauri/src/commands/
+        # topology/ holds 7 require_permission sites that no run of this gate had ever
+        # read, and a gate that enforces nothing was exactly what the missing verdict
+        # would otherwise have caught. Match the scanner's reach, not its first draft.
+        for rs in sorted(cmd_dir.rglob("*.rs")):
             text = rs.read_text(encoding="utf-8", errors="replace")
             m = re.search(r"\bfn\s+" + re.escape(command) + r"\s*\(", text)
             if not m:
@@ -2433,15 +2679,30 @@ def orphan_permission(command: str) -> str | None:
             direct = gate_in_body(body)
             if direct is not None:
                 return direct
+            # `delegations` defaults to 1 and the caller decides no more than that; the
+            # self-test proves 1 is enough for every allowlisted entry today.
             # No gate in the shell's own body. In a thin shell that is the normal shape: the gate
             # lives in the bridge fn this line delegates to (ADR #49), so `None` used to mean
             # "redundant twin, wire a caller or allowlist it as host-only" for commands that are
             # gated two crates away. Follow the delegation one level before saying so.
-            for target in DELEGATION_RE.findall(body):
-                via_bridge = gate_in_body(_bridge_fn_body(target))
-                if via_bridge is not None:
-                    return via_bridge
-            return None
+            # NOT defensive noise: measured 2026-11-06 by deleting this loop and re-running.
+            # GATED DEAD SURFACE fell from 10 to 2 and redundant twins rose from 14 to 22, i.e.
+            # eight of the ten verdicts that matter exist only because this follow runs. Most of
+            # them are extracted commands whose shell body is now a run_scoped(...) one crate away.
+            # ONE level is what the caller asks for, and one is ENOUGH on today's allowlist:
+            # 4 entries gate in their own body, 6 one hop away, 14 nowhere within four hops, so
+            # no entry needs a second hop (measured 2026-11-06, asserted by the self-test so a
+            # future entry that does need one fails loudly instead of reading as "no check").
+            via_bridge = _gate_within(body, delegations)
+            if via_bridge is not None:
+                return via_bridge
+            # NO early `return None` here, and that is the fix (2026-11-06, first-shell-wins).
+            # This used to abandon the search at the first definition it met, so a command whose
+            # desktop body guards nothing and whose tablet body gates read as "no check". Two
+            # allowlisted entries are exactly that shape -- create_product_variant_scoped and
+            # update_product_variant_scoped -- and only looked correct because their desktop
+            # bodies delegate and the follow rescued them. Keep scanning; `None` means the
+            # whole tree was asked, not the first file that answered.
     return None
 
 
@@ -2843,6 +3104,28 @@ def self_test() -> int:
     case("case 10  scoped_orphans reads both shapes through the same helper",
          section_names({"scoped_orphans": mixed_scoped}, "scoped_orphans")
          == {"a_scoped", "b_scoped"})
+
+    # THE SUFFIX INVARIANT (GI-6, docs/records/findings/audit-open-findings.md). The real
+    # hazard is not the SHAPE the entry is written in -- scoped_orphans accepts objects by
+    # design -- it is that the COLLECTOR filters on endswith("_scoped") at :2432, so a name
+    # without the suffix is never collected and never examined for staleness, in either
+    # direction. Measured 2026-10-24: 21 entries, 0 without the suffix, so the hole is
+    # prospective rather than live.
+    #
+    # The first draft of this case asserted the SHAPE (that a bare name is readable) and was
+    # VACUOUS: section_names reads a bare name perfectly well, so the predicate was always
+    # true. Proven by mutation -- replacing the assertion with `True` left the suite green.
+    # The case now drives the COLLECTOR, which is the function the suffix actually gates.
+    _orphans = orphan_scoped(["ok_scoped", "plain_name"], {})
+    case("case 10  the collector keeps a suffixed orphan",
+         "ok_scoped" in _orphans)
+    case("case 10  the collector DROPS an unsuffixed name (the GI-6 blind spot)",
+         "plain_name" not in _orphans)
+    # And the invariant that makes the blind spot a correctness question rather than a
+    # preference: every entry the allowlist holds today must be one the collector can see.
+    _allow_scoped = section_names(load_allowlist(), "scoped_orphans")
+    case("case 10  every committed scoped_orphans entry is visible to the collector",
+         all(n.endswith("_scoped") for n in _allow_scoped))
     raw_would_crash = False
     try:
         set(mixed_scoped)
@@ -4280,6 +4563,39 @@ def self_test() -> int:
     case("real    walk covers more than the router",
          len(real_reg) > len(real_per.get(DEV_MOCK_ROUTER_REL, set())) and len(real_alias) > 0)
 
+    # --- the delegation budget: one hop is enough TODAY, and that is measured ----------------
+    # A two-hop gate would read as "no check", which is the wrong direction: it retires real
+    # posture as dead weight. So the budget is a parameter, and this pair of cases is what stops
+    # "one is enough" from decaying into an assumption nobody rechecked.
+    _allow_names = [e if isinstance(e, str) else e.get("name")
+                    for e in load_allowlist().get("scoped_orphans", [])]
+    _deep = sorted(n for n in _allow_names
+                   if orphan_permission(n) != orphan_permission(n, delegations=4))
+    case(f"real    no allowlisted scoped orphan needs more than one delegation "
+         f"[n={len(_allow_names)} deep={_deep}]", len(_allow_names) > 0 and not _deep)
+
+    # First-shell-wins: these two gate in the TABLET body while the desktop body guards nothing
+    # and only delegates. With delegations=0 the follow cannot rescue them, so a gate found here
+    # can only have come from the search continuing past the first definition. Measured red on
+    # the old early-return (2026-11-06): both read None.
+    _second_shell = ["create_product_variant_scoped", "update_product_variant_scoped"]
+    _second_shell_gates = {n: orphan_permission(n, delegations=0) for n in _second_shell}
+    case(f"real    a gate in the second shell's body survives the first shell's silence "
+         f"[{_second_shell_gates}]",
+         all(g is not None for g in _second_shell_gates.values()))
+
+    _shell_body = "fn a() { kasirmu_bridge::b::b(); }"
+    _hop1 = {"b": "fn b() { require_permission(crate::permissions::PRODUCTS_READ); }"}
+    _hop2 = {"b": "fn b() { kasirmu_bridge::c::c(); }",
+             "c": "fn c() { require_permission(crate::permissions::PRODUCTS_WRITE); }"}
+    _self_loop = {"b": "fn b() { kasirmu_bridge::b::b(); }"}
+    case("case 25  the budget is real: two hops find a gate one hop misses",
+         _gate_within(_shell_body, 1, _hop1) == "PRODUCTS_READ"
+         and _gate_within(_shell_body, 1, _hop2) is None
+         and _gate_within(_shell_body, 2, _hop2) == "PRODUCTS_WRITE"
+         and _gate_within(_shell_body, 1, {}) is None
+         and _gate_within(_shell_body, 8, _self_loop) is None)
+
     failed = [name for name, ok in results if not ok]
     for name, ok in results:
         if not ok:
@@ -4293,10 +4609,146 @@ def self_test() -> int:
         print(f"self-test: {len(failed)} FAILURE(S)", file=sys.stderr)
         return 1
     print("self-test: OK")
+    return shell_ladder()
+
+
+def shell_ladder() -> int:
+    """r208: main() graded through explicit argv AND a contract root -- the
+    r166..r207 pattern in its full form. The fixture tree is a miniature of
+    the real layout (both shell libs, a ui/src tree, a dev-mock tree, the
+    shared schema module copied from this checkout, an allowlist carrying
+    every KNOWN section); rung 1 demands a gap the real tree does not have,
+    so a root-dropping main is killed on the first rung against the clean
+    checkout."""
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+    import shutil as _shutil
+
+    rung_n = iter(range(1000))
+    def build_tree(tmp, api_text, desktop_extra="", tablet_handler=True,
+                   allowlist=None, with_schema=True):
+        root = Path(tmp) / ("mini%d" % next(rung_n))
+        (root / "ui/src/api/client").mkdir(parents=True, exist_ok=True)
+        (root / "ui/src/dev-mock/core").mkdir(parents=True, exist_ok=True)
+        (root / "apps/desktop-tauri/src").mkdir(parents=True, exist_ok=True)
+        (root / "apps/mobile-tauri/src").mkdir(parents=True, exist_ok=True)
+        (root / "scripts").mkdir(parents=True, exist_ok=True)
+        (root / "ui/src/api/client/products.ts").write_text(api_text, encoding="utf-8")
+        (root / "apps/desktop-tauri/src/lib.rs").write_text(
+            "generate_handler![\n    commands::sales::alpha,\n" + desktop_extra + "]\n",
+            encoding="utf-8")
+        if tablet_handler:
+            (root / "apps/mobile-tauri/src/lib.rs").write_text(
+                "generate_handler![\n    commands::sales::alpha,\n]\n", encoding="utf-8")
+        (root / "ui/src/dev-mock/tauri-api.ts").write_text(
+            "const handlers = {\n  'alpha': () => Promise.resolve(null),\n};\n",
+            encoding="utf-8")
+        (root / "ui/src/dev-mock/core/mockDispatcher.ts").write_text(
+            "// no alias pass in this fixture\n", encoding="utf-8")
+        _shutil.copy(ALLOWLIST_SCHEMA_PATH, root / "scripts" / "allowlist-schema.py")
+        if not with_schema:
+            (root / "scripts" / "allowlist-schema.py").unlink()
+        payload = allowlist if allowlist is not None else {
+            "desktop": [], "tablet": [], "dev_mock": [], "scoped_orphans": []}
+        (root / "scripts" / "ipc-parity-allowlist.json").write_text(
+            json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        return root
+
+    def run(root, *argv):
+        out, err = _io.StringIO(), _io.StringIO()
+        try:
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                rc = main(argv=list(argv), root=str(root))
+        except SystemExit as se:
+            return se.code, out.getvalue() + err.getvalue()
+        return rc, out.getvalue() + err.getvalue()
+
+    shell = 0
+    with _tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: the gap command 'beta' does not exist in
+        # this checkout, so a main that dropped its root reads the real
+        # (clean) tree and cannot produce this output
+        root = build_tree(tmp, "await loggedInvoke<void>('alpha');\n"
+                               "await invoke('beta');\n")
+        rc, text = run(root)
+        joined = text
+        if rc != 1 or "beta" not in joined or "FAIL:" not in joined:
+            print("  x rung 1: an unregistered UI invoke must FAIL rc 1 naming it "
+                  "(rc=%r tail=%r)" % (rc, joined[-160:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: parity clean -- only the registered name invoked
+        root = build_tree(tmp, "await loggedInvoke<void>('alpha');\n")
+        rc, text = run(root)
+        if rc != 0 or "FAIL:" in text or "IPC parity: OK" not in text:
+            print("  x rung 2: a parity-clean fixture must pass rc 0 (rc=%r tail=%r)"
+                  % (rc, text[-160:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: a stale allowlist entry -- the command came back
+        root = build_tree(tmp, "await loggedInvoke<void>('alpha');\n",
+                          allowlist={"desktop": ["alpha"], "tablet": [],
+                                     "dev_mock": [], "scoped_orphans": []})
+        rc, text = run(root)
+        if rc != 1 or "stale allowlist entry 'alpha'" not in text:
+            print("  x rung 3: a registered name still allowlisted must read stale rc 1 "
+                  "(rc=%r tail=%r)" % (rc, text[-160:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: --write-allowlist lands the measured gaps in the FIXTURE's
+        # allowlist, and the post-condition is read back inside the tree
+        root = build_tree(tmp, "await invoke('beta');\n")
+        rc, text = run(root, "--write-allowlist")
+        wrote = json.loads((root / "scripts" / "ipc-parity-allowlist.json")
+                           .read_text(encoding="utf-8"))
+        if rc != 0 or "allowlist written" not in text \
+                or "beta" not in wrote.get("desktop", []) \
+                or "beta" not in wrote.get("tablet", []):
+            print("  x rung 4: the writer must land beta in both shell sections "
+                  "(rc=%r wrote=%r)" % (rc, wrote), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: no allowlist at all under the contract root
+        root = build_tree(tmp, "await invoke('alpha');\n")
+        (root / "scripts" / "ipc-parity-allowlist.json").unlink()
+        rc, text = run(root)
+        if rc != 2 or "has no allowlist" not in text:
+            print("  x rung 5: an absent allowlist must refuse rc 2 (rc=%r tail=%r)"
+                  % (rc, text[-160:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 6: a shell lib missing under the contract root
+        root = build_tree(tmp, "await invoke('alpha');\n")
+        (root / "apps/mobile-tauri/src/lib.rs").unlink()
+        rc, text = run(root)
+        if rc != 2 or "shell lib missing" not in text:
+            print("  x rung 6: a missing shell lib must refuse rc 2 (rc=%r tail=%r)"
+                  % (rc, text[-160:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 7: the shared schema module is evidence too -- absent under the
+        # contract root, the gate must refuse in words, not traceback
+        root = build_tree(tmp, "await invoke('alpha');\n", with_schema=False)
+        rc, text = run(root)
+        if rc != 2 or "not usable as the shared allowlist schema" not in text:
+            print("  x rung 7: a missing schema module must refuse rc 2 (rc=%r tail=%r)"
+                  % (rc, text[-160:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("IPC-PARITY SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
     return 0
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r208: argv and root parameterized, the r166..r207 contract. Root
+    redirects EVERY evidence source together -- the UI scan trees, both
+    shell libs, the dev-mock tree, the allowlist file, and the shared
+    schema module it is validated against -- so the gate can be graded
+    against a fixture tree. parse_args(argv) per the arc's explicit-argv
+    rule: an in-process call must not inherit the caller's command line."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--self-test",
@@ -4323,7 +4775,7 @@ def main() -> int:
              "an operator hand-wrote, and exit (additive only -- it never removes an entry, "
              "so shrinking the list is a manual edit)",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.self_test:
         return self_test()
@@ -4344,13 +4796,15 @@ def main() -> int:
     # refuse to write if the file on disk has moved away from it, so the thing that reaches
     # disk is never something nobody looked at.
     try:
-        validated = load_allowlist()
+        validated = load_allowlist(root)
     except AllowlistUnusable as unusable:
         return refuse_unusable_allowlist(unusable)
     # Entry-level shape: the payload IS a usable allowlist now, so what is left here is a
     # wrong ENTRY inside a section this file can read -- a real finding about somebody's
     # exemption, and it keeps the FAIL/1 verdict convention of the findings below.
-    shape_problems = allowlist_shape_problems(validated, ALLOWLIST_PATH)
+    base = _base(root)
+    al_path = ALLOWLIST_PATH if root is None else base / "scripts" / "ipc-parity-allowlist.json"
+    shape_problems = allowlist_shape_problems(validated, al_path)
     if shape_problems:
         print(
             f"\nFAIL: allowlist shape, {len(shape_problems)} problem(s):", file=sys.stderr
@@ -4359,10 +4813,10 @@ def main() -> int:
             print(f"  - {problem}", file=sys.stderr)
         return 1
 
-    ui_commands = extract_ui_commands()
+    ui_commands = extract_ui_commands(root)
     handlers: dict[str, list[str]] = {}
     for shell, rel in SHELLS.items():
-        lib_path = REPO_ROOT / rel
+        lib_path = base / rel
         if not lib_path.exists():
             print(f"error: shell lib missing: {rel}", file=sys.stderr)
             return 2
@@ -4375,7 +4829,7 @@ def main() -> int:
                 missing[shell].add(command)
 
     if args.write_allowlist:
-        return write_or_refuse(lambda: write_allowlist(missing, validated))
+        return write_or_refuse(lambda: write_allowlist(missing, validated, root))
 
     allowlist = validated
     failures: list[str] = []
@@ -4388,15 +4842,15 @@ def main() -> int:
     all_orphans = sorted(set().union(*[set(v) for v in orphans.values()]))
     if args.write_scoped_orphans:
         return write_or_refuse(
-            lambda: write_scoped_orphans(set(all_orphans), validated))
+            lambda: write_scoped_orphans(set(all_orphans), validated, root))
 
     # Third direction: can the plain-browser dev-mock answer what the UI invokes?
     mock_registered, mock_aliasable, mock_per_file, mock_alias_file = (
-        extract_dev_mock_answerable())
+        extract_dev_mock_answerable(root))
     mock_answerable = mock_registered | mock_aliasable
     mock_gaps = sorted(c for c in ui_commands if c not in mock_answerable)
     if args.write_dev_mock_gaps:
-        return write_or_refuse(lambda: write_dev_mock_gaps(mock_gaps, validated))
+        return write_or_refuse(lambda: write_dev_mock_gaps(mock_gaps, validated, root))
 
     for command in sorted(set(all_orphans) - orphan_allow):
         shells = ", ".join(s for s in SHELLS if command in orphans[s])
@@ -4418,6 +4872,10 @@ def main() -> int:
                 [s for s in SHELLS if command in handlers[s]],
                 ALLOWLIST_PATH.name,
             ))
+
+    # Populated by the unrequested leg below so a cross-shell intersection can be printed
+    # after both shells have spoken; see the comment at the assignment.
+    per_shell_dead: dict[str, set[str]] = {}
 
     for shell in SHELLS:
         # Belt and braces: allowlist_shape_problems refuses an object in a shell section
@@ -4452,7 +4910,7 @@ def main() -> int:
     shell_blind = {}
     for shell in SHELLS:
         shell_blind[shell] = shell_blind_findings(
-            ui_runtime_files(), set(handlers[shell]), missing[shell]
+            ui_runtime_files(root), set(handlers[shell]), missing[shell]
         )
     all_blind = {}
     for shell in SHELLS:
@@ -4478,7 +4936,7 @@ def main() -> int:
     # A second read of the mock tree in this run. Ten small files, and the note below has to
     # describe the same bytes the answerable set was parsed from, which a shared variable
     # threaded across this function would buy at the cost of a longer reach.
-    midline_keys = find_midline_handler_keys(read_dev_mock_sources())
+    midline_keys = find_midline_handler_keys(read_dev_mock_sources(root))
     midline_paths = {
         name: sorted(path for path, names in midline_keys.items() if name in names)
         for name in {n for names in midline_keys.values() for n in names}
@@ -4529,7 +4987,7 @@ def main() -> int:
 
     for shell in SHELLS:
         unregistered = extract_unregistered(
-            shell, REPO_ROOT / SHELLS[shell], set(handlers[shell])
+            shell, base / SHELLS[shell], set(handlers[shell])
         )
         allowed_names = section_names(allowlist, shell)
         # Enforced now, not merely surfaced: an allowlisted name that is neither a gap this
@@ -4651,6 +5109,13 @@ def main() -> int:
             f"from; read the other shell's UI before believing one is dead everywhere)"
             + (": " + tail if dead else "")
         )
+        # The line above is PER SHELL, and read alone it says something stronger than it means:
+        # the two shipped UIs share one component tree, so a command the OTHER shell's UI names
+        # still appears in this shell's "dead" list. Until 2026-10-25 that was the only figure
+        # printed and the cross-shell number was carried forward by hand each time someone cited
+        # it -- and the two differ by an order of magnitude (measured: 18/10 per shell against
+        # 2 named by neither). Recorded here, printed once after both shells have spoken.
+        per_shell_dead[shell] = set(dead)
         # T9's mechanical form, five domains and three real defects after the fact. Informational
         # like every leg here, and for the same reason: making it fail the build is an owner call
         # (T9 says so explicitly), and the exclusions are a policy that wants review before it can
@@ -4811,6 +5276,26 @@ def main() -> int:
     # json, and it sent a reader off to re-verify a blob hash that had not moved. The
     # figures now name their own source: "entries allowlisted" is a count of file members,
     # "orphans measured in the tree" is a count of registrations with no caller.
+    # Reason state for THIS section, mirroring info[dev-mock-reasons] above. The same
+    # asymmetry that line was added to fix exists here and was measured on 2026-10-25:
+    # 19 of 20 scoped_orphans entries were BARE NAMES, so the ledger recorded a debt
+    # without recording what was owed. `pending_sync_count_scoped` is the case that
+    # matters -- it is a permission-gated DUPLICATE of `pending_offline_count_scoped`
+    # (both call `Store::pending_offline_count()`), not a missing surface, and nothing
+    # in the file said so until it was written down by hand.
+    #
+    # INFORMATIONAL, appending nothing to `failures`, for the reason the dev_mock twin
+    # gives: a run that was green stays green and a run that was red fails for the
+    # reason it already failed for. The count is the number an owner has to act on;
+    # it is invisible in a list of bare names, which is exactly how it stayed at 19.
+    orphan_entries = allowlist_section(allowlist, "scoped_orphans")
+    orphan_reasonless = sorted(name for name, reason in orphan_entries if not reason)
+    print(
+        f"info[scoped-orphans-reasons]: {len(orphan_reasonless)} of "
+        f"{len(orphan_entries)} allowlisted scoped orphans carry no reason (an entry "
+        f"is either a bare name or an object {{\"name\": ..., \"reason\": ...}}; the "
+        f"reason is the only record of why the debt was accepted rather than paid)"
+    )
     gated = [c for c in all_orphans if orphan_permission(c)]
     if all_orphans:
         detail = ", ".join(
@@ -4820,6 +5305,75 @@ def main() -> int:
             f"{len(all_orphans)} orphans measured in the tree, "
             f"{len(all_orphans) - len(gated)} redundant twins (no check), "
             f"{len(gated)} GATED DEAD SURFACE -> {detail}"
+        )
+
+        # A shell section holds 78 bare names by NEED, not by preference: verify-scoped-reads
+        # grades it by name and both validators refuse the object form there (measured round 177
+        # by feeding an object into a deep copy; the two gates each name the other as the reason).
+        # So a shell section can never carry a per-entry reason, and until round 177 the tablet
+        # section carried NO reason at all -- 78 names, no "_tablet_comment", nothing to read.
+        # This leg asks the only question that shape permits: is there prose at all?
+        print(
+            "info[shell-section-rationale]: "
+            + ", ".join(
+                f"{sec} {len(allowlist.get(sec) or [])} names / "
+                + ("has a _%s_comment" % sec if allowlist.get("_%s_comment" % sec)
+                   else "NO _%s_comment -- no recorded reason for any entry" % sec)
+                for sec in ("desktop", "tablet")
+            )
+        )
+
+    # The cross-shell reading of the two `-unrequested` lines above. Each of those is per
+    # shell, and the two shipped UIs share one component tree, so a command the OTHER shell
+    # names still lands in this shell's "dead" list: read alone the lines say 18 and 10 when
+    # the population no UI file on either shell names is 2. That difference is the whole
+    # reason this leg exists -- 28 is the figure that kept being quoted from memory, and it
+    # is the sum of two per-shell lists, not the set that needs an owner.
+    if len(per_shell_dead) == len(SHELLS):
+        everywhere = set.intersection(*per_shell_dead.values())
+        one_shell = {shell: sorted(per_shell_dead[shell] - everywhere) for shell in SHELLS}
+        per_shell_n = sum(len(v) for v in per_shell_dead.values())
+        other_only = sum(len(v) for v in one_shell.values())
+        spread = ", ".join(f"{s}={len(one_shell[s])}" for s in SHELLS)
+        listed = ", ".join(sorted(everywhere)) if everywhere else "-- none"
+        print(
+            f"info[cross-shell-unrequested]: {per_shell_n} per-shell unrequested "
+            f"registration(s) are {len(everywhere)} command(s) named by no shipped UI file on "
+            f"ANY shell ({spread}) = {len(everywhere)} named by neither side + "
+            f"{other_only} named by the other shell's UI only (the second group is a parity "
+            f"question between the two shells, not a dead door): {listed}"
+        )
+
+        # THE LINK NOBODY HAD MADE. Most of these names are the SAME POPULATION the
+        # `scoped_orphans` section already carries a dated MEASURED reason for, and until
+        # 2026-10-25 (round 176) the two lines never referred to each other -- so a lane
+        # reading only this one re-derived four findings that were already written down and
+        # then wrote a plan file claiming nobody had acted. Print the overlap, and the
+        # residue that no reason covers, because that residue is the only part of the list
+        # that is a question rather than a record.
+        #
+        # AN UNCOVERED NAME IS NOT AN INVITATION TO ADD ONE HERE. `scoped_orphans` is the
+        # section for `_scoped` commands, and self-test case 10 enforces exactly that: every
+        # committed entry must end in `_scoped`. Round 176 read this residue as a gap and
+        # appended the AMBIENT `get_over_quota_report` to it, which turned the self-test red
+        # and matched no measured orphan (the section then read "21 entries allowlisted, 20
+        # orphans measured in the tree"). The correct reading of a non-`_scoped` residue is
+        # that its reason belongs in a shell section's prose; the entry was removed in round
+        # 178. That is why this line counts them and stops -- the answer for the name it
+        # reports lives in `_desktop_comment` or `_tablet_comment`, and the schema will not
+        # let it live here.
+        reasoned = {name: (why or "")
+                    for name, why in allowlist_section(allowlist, "scoped_orphans")}
+        covered = sorted(n for n in everywhere if reasoned.get(n))
+        uncovered = sorted(n for n in everywhere if not reasoned.get(n))
+        print(
+            f"info[cross-shell-reasons]: {len(covered)} of {len(everywhere)} cross-shell "
+            f"name(s) already carry a dated reason in scoped_orphans -- read those first, they "
+            f"are the record and this line is only the census"
+            + (f": {len(uncovered)} NOT covered by scoped_orphans = " + ", ".join(uncovered)
+               + " (a non-_scoped name cannot go there -- check _desktop_comment /"
+               " _tablet_comment before concluding it is unrecorded)"
+               if uncovered else "; all covered")
         )
 
     if failures:

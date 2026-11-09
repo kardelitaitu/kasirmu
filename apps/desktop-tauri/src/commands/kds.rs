@@ -101,6 +101,7 @@ async fn refresh_kds_queue_cache(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
     cache: &Arc<std::sync::RwLock<KdsQueueSnapshot>>,
+    dirty_order_id: Option<&str>,
 ) {
     let orders = match kasirmu_bridge::kds::get_kds_queue_scoped(ctx, session_token, None).await {
         Ok(orders) => orders,
@@ -109,19 +110,50 @@ async fn refresh_kds_queue_cache(
             return;
         }
     };
+
+    // O-H16: Re-use cached line items and station routing for unchanged orders.
+    // Each status transition or line bump only fetches what actually changed,
+    // avoiding O(active tickets) awaited bridge round-trips on every keystroke.
+    let mut cached_tickets: std::collections::HashMap<
+        String,
+        (Vec<kasirmu_core::KdsLineItem>, Vec<String>),
+    > = cache
+        .read()
+        .map(|guard| {
+            guard
+                .tickets
+                .iter()
+                .map(|t| {
+                    (
+                        t.order.id.clone(),
+                        (t.line_items.clone(), t.stations.clone()),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
     let mut tickets = Vec::with_capacity(orders.len());
     for order in orders {
-        let line_items =
-            kasirmu_bridge::kds::get_kds_order_lines_scoped(ctx, session_token, &order.id)
-                .await
-                .unwrap_or_default();
-        // Station routing comes from the frozen engine; an empty vec is
-        // the broadcast fallback (Expo semantics), so a resolve failure
-        // degrades to broadcast rather than hiding the ticket.
-        let stations =
-            kasirmu_bridge::kds_routing::resolve_kds_targets(ctx, session_token, &order.id)
-                .await
-                .unwrap_or_default();
+        let (line_items, stations) = if dirty_order_id != Some(&order.id)
+            && let Some(cached) = cached_tickets.remove(&order.id)
+        {
+            cached
+        } else {
+            let line_items =
+                kasirmu_bridge::kds::get_kds_order_lines_scoped(ctx, session_token, &order.id)
+                    .await
+                    .unwrap_or_default();
+            // Station routing comes from the frozen engine; an empty vec is
+            // the broadcast fallback (Expo semantics), so a resolve failure
+            // degrades to broadcast rather than hiding the ticket.
+            let stations =
+                kasirmu_bridge::kds_routing::resolve_kds_targets(ctx, session_token, &order.id)
+                    .await
+                    .unwrap_or_default();
+            (line_items, stations)
+        };
+
         tickets.push(KdsQueueTicket {
             order,
             line_items,
@@ -226,7 +258,7 @@ pub async fn update_kds_status_scoped(
         };
         publish_kds_sync(&state, event).await;
     }
-    refresh_kds_queue_cache(&ctx, &session_token, &cache).await;
+    refresh_kds_queue_cache(&ctx, &session_token, &cache, None).await;
     Ok(order)
 }
 
@@ -276,7 +308,7 @@ pub async fn create_kds_order_from_sale_scoped(
             });
             publish_kds_sync(&state, event).await;
         }
-        refresh_kds_queue_cache(&ctx, &session_token, &cache).await;
+        refresh_kds_queue_cache(&ctx, &session_token, &cache, None).await;
     }
     Ok(orders)
 }
@@ -399,7 +431,7 @@ pub async fn update_kds_line_item_status_scoped(
             "kds.sync line_item_bumped skipped: parent order lookup failed"
         ),
     }
-    refresh_kds_queue_cache(&ctx, &session_token, &cache).await;
+    refresh_kds_queue_cache(&ctx, &session_token, &cache, Some(&item.kds_order_id)).await;
     Ok(item)
 }
 

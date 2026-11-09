@@ -85,6 +85,10 @@ export function RecipeEditorModal({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The RECIPE read's own failure — kept apart from `error`, which the popup renders for
+  // save/delete/catalog problems too, so the empty-state suppression below only fires for
+  // "we could not read the recipe".
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [rows, setRows] = useState<RecipeRow[]>([]);
   const [catalog, setCatalog] = useState<ProductDto[]>([]);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -147,8 +151,17 @@ export function RecipeEditorModal({
         } else {
           setRows([]);
         }
-      } catch {
-        if (!cancelled) setRows([]);
+      } catch (err) {
+        // An UNANSWERED recipe read is not an empty recipe. Clearing the rows alone made
+        // the render claim "No ingredients added yet. Add raw materials…" with a Total HPP
+        // of 0 — for a dish that HAS a bill of materials. `rows=[]` is a statement about
+        // configuration; this failure is a statement about the read.
+        if (!cancelled) {
+          setRows([]);
+          const message = l10nErrorMessage(err, l10n, 'restaurant-menu-editor-error-load');
+          setError(message);
+          setLoadError(message);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -344,7 +357,13 @@ export function RecipeEditorModal({
             </div>
           ) : (
             <div className="recipe-editor-body">
-              {rows.length === 0 ? (
+              {rows.length === 0 && loadError ? (
+                // The popup already shows the message; this stops the empty state from
+                // ALSO claiming there are no ingredients, which is the false part.
+                <div className="recipe-editor-empty" role="alert">
+                  {loadError}
+                </div>
+              ) : rows.length === 0 ? (
                 <div className="recipe-editor-empty">
                   <p>
                     <Localized id="recipe-editor-empty-ingredients">
@@ -369,7 +388,7 @@ export function RecipeEditorModal({
                         <th className="recipe-editor-th-cost">
                           <Localized id="recipe-editor-col-cost">Est. Cost</Localized>
                         </th>
-                        <th className="recipe-editor-th-action" aria-label="Actions" />
+                        <th className="recipe-editor-th-action" aria-label={l10n.getString('actions-aria')} />
                       </tr>
                     </thead>
                     <tbody>
@@ -446,7 +465,7 @@ export function RecipeEditorModal({
                                 type="button"
                                 className="recipe-editor-btn-remove"
                                 onClick={() => handleRemoveRow(row.id)}
-                                aria-label="Remove ingredient"
+                                aria-label={l10n.getString('recipe-editor-remove-ingredient')}
                                 data-testid={`recipe-remove-btn-${idx}`}
                               >
                                 <TrashIcon />

@@ -46,6 +46,9 @@ export default function TerminalStatusPanel({ refreshTrigger }: TerminalStatusPa
       setTerminals(asArray<typeof data[number]>(data));
       setError(null);
     } catch {
+      // Drop the list with the count: an UNKNOWN answer must not sit under a header that
+      // still describes it as current. The error line below is the whole surface.
+      setTerminals([]);
       setError(l10n.getString('terminal-status-error-load'));
     } finally {
       setLoading(false);
@@ -77,7 +80,11 @@ export default function TerminalStatusPanel({ refreshTrigger }: TerminalStatusPa
           <span className="terminal-status-title">
             <Localized id="terminal-status-title"><span>Terminal Status</span></Localized>
           </span>
-          {!loading && (
+          {/* NOT while `error` is set. A failed poll keeps the previous `terminals`, so this
+              header would print "N / M online" from the last successful read directly above
+              the error line that says the read failed — the count reading as current at the
+              moment the panel admits it is not. */}
+          {!loading && !error && (
             <span className="terminal-status-count">
               <Localized id="terminal-status-online-count" vars={{ online: onlineCount, total: terminals.length }}>
                 <span>{onlineCount} / {terminals.length} online</span>

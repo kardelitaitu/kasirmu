@@ -74,6 +74,7 @@ from __future__ import annotations
 import hashlib
 import re
 import sqlite3
+import subprocess
 import sys
 from collections import defaultdict, deque
 from datetime import datetime, timezone
@@ -94,7 +95,10 @@ DT_PG = "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')"
 # them: an expression index on a value derived from a TEXT column via a
 # cast (`date(created_at)` / `created_at::date`) is rejected because the
 # text→date cast is STABLE (DateStyle-dependent), not IMMUTABLE.
-SQLITE_ONLY_INDEXES = {"idx_sales_status_created_date"}
+SQLITE_ONLY_INDEXES = {
+    "idx_sales_status_created_date",
+    "idx_refunds_currency_created_date",
+}
 
 # Indexes an EARLIER revision of this generator emitted and a later SQLite
 # migration removed. Postgres has no re-apply for a dropped object: the
@@ -723,6 +727,97 @@ def check_rls_coverage(
             "error: stale RLS_EXEMPT entries (table is now covered or "
             "lost tenant_id — delete the exemption): " + ", ".join(stale)
         )
+    check_rls_exempt_reasons(exempt)
+
+
+#: Reason claims that are MECHANICALLY FALSIFIABLE, and the rule each one asserts.
+#:
+#: WHY THIS EXISTS. check_rls_coverage proves an exempt table still NEEDS its exemption and
+#: never re-reads the sentence giving the reason. Measured 2026-10-24: `payment_gateways`
+#: carried "db/payment_gateways.rs is a fail-fast stub (upsert_gateway returns PLANNED)"
+#: long after full encrypted CRUD replaced the stub -- the generator was green, correctly,
+#: while printing a false sentence into a 3,900-line schema. A reason field is documentation
+#: with a validator's address on it, and nothing validated the reason.
+#:
+#: The scope is deliberately NARROW. Only two claim shapes are provably true or false from
+#: the tree, so only those two are graded; the other reasons are prose about intent
+#: ("cover when cloud sync lands") that no checker could adjudicate without guessing. A
+#: census that manufactures work is worse than one that admits its floor.
+_NO_WRITER_RE = re.compile(r"no (?:production )?(?:insert/update|writer)", re.I)
+_STUB_RE = re.compile(r"fail-fast stub \(([a-z_0-9]+) returns planned\)", re.I)
+
+
+def check_rls_exempt_reasons(exempt: dict[str, str], root: Path | None = None) -> None:
+    """Fail when an exemption REASON has been falsified by the tree.
+
+    Two shapes only:
+      * "no writer / no INSERT/UPDATE" -> no production .rs or .sql may write that table;
+      * "fail-fast stub (NAME returns PLANNED)" -> NAME must still be tiny and mention
+        PLANNED, i.e. it must not have grown a real body.
+
+    Skipped when git is unavailable, because the generator is runnable against a bare
+    schema; membership checks have already run by then.
+    """
+    root = root or Path(__file__).resolve().parent.parent
+    try:
+        tracked = subprocess.run(
+            ["git", "ls-files", "*.rs", "*.sql"],
+            cwd=root, capture_output=True, text=True, check=True,
+        ).stdout.split()
+    except (OSError, subprocess.SubprocessError):
+        return
+    prod = [f for f in tracked
+            if f.endswith(".sql") or not re.search(r"_tests?\.rs$|/tests/|tests\.rs$", f)]
+    sources = {}
+    for f in prod:
+        try:
+            sources[f] = (root / f).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+    findings = []
+    for table, reason in exempt.items():
+        if _NO_WRITER_RE.search(reason):
+            pat = re.compile(
+                r"(INSERT\s+(?:OR\s+\w+\s+)?INTO|UPDATE)\s+" + re.escape(table) + r"\b",
+                re.I,
+            )
+            for f, text in sources.items():
+                m = pat.search(text)
+                if m:
+                    findings.append("%s claims no writer, but %s:%d writes it"
+                                    % (table, f, text[:m.start()].count(chr(10)) + 1))
+                    break
+        m = _STUB_RE.search(reason)
+        if m:
+            name = m.group(1)
+            pat = re.compile(
+                r"fn\s+" + re.escape(name) + r"\b[^\{]*(\{)", re.S)
+            for f, text in sources.items():
+                mm = pat.search(text)
+                if not mm:
+                    continue
+                start = mm.end(1) - 1
+                depth, i = 0, start
+                while i < len(text):
+                    if text[i] == "{":
+                        depth += 1
+                    elif text[i] == "}":
+                        depth -= 1
+                        if depth == 0:
+                            break
+                    i += 1
+                body = text[start:i + 1]
+                if "PLANNED" not in body and len(body.splitlines()) > 6:
+                    findings.append("%s says %s is a stub, but its body is %d lines and "
+                                    "mentions no PLANNED (%s)"
+                                    % (table, name, len(body.splitlines()), f))
+                break
+    if findings:
+        raise SystemExit(
+            "error: RLS_EXEMPT reason(s) falsified by the tree — fix the sentence or the "
+            "code, never leave a stale reason in a generated artefact:\n  "
+            + "\n  ".join(findings)
+        )
 
 
 def check_trigger_verification(
@@ -816,6 +911,65 @@ def _self_test_trigger_gate() -> None:
             raise SystemExit(
                 f"error: trigger verification gate self-test: {case} did not fail")
     print("ok: trigger verification gate self-test (fail-closed in both directions)")
+
+
+def _self_test_rls_exempt_reasons() -> None:
+    """Exercise the reason-freshness gate in BOTH directions on a synthetic tree.
+
+    The passing direction matters as much as the failing one: this gate reads English
+    prose, so a rule that fires on a legitimate reason would make the generator refuse
+    a correct tree.
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        (root / "db").mkdir()
+        (root / "db" / "writer.rs").write_text(
+            'fn save() {\n    conn.execute("INSERT INTO gadgets (id) VALUES (?1)", [id]);\n}\n',
+            encoding="utf-8",
+        )
+        (root / "db" / "stubs.rs").write_text(
+            'pub fn real_stub() -> u8 { Err("real_stub -- PLANNED") }\n'
+            'pub fn grown() -> u8 {\n'
+            '    let a = 1;\n    let b = 2;\n    let c = 3;\n'
+            '    let d = 4;\n    let e = 5;\n    a + b + c + d + e\n}\n',
+            encoding="utf-8",
+        )
+        subprocess.run(["git", "init", "-q"], cwd=root, capture_output=True)
+        subprocess.run(["git", "add", "-A"], cwd=root, capture_output=True)
+
+        # FAILING: the round-120 falsehood -- 'no writer' for a table that IS written.
+        try:
+            check_rls_exempt_reasons(
+                {"gadgets": "no writer anywhere in the repo; it is a stub"}, root)
+            raise SystemExit("error: reason gate: a false 'no writer' claim did not fail")
+        except SystemExit as exc:
+            if "gadgets" not in str(exc):
+                raise
+        # FAILING: a 'stub' claim naming a function that has grown a real body.
+        try:
+            check_rls_exempt_reasons(
+                {"widgets": "db/x.rs is a fail-fast stub (grown returns PLANNED)"}, root)
+            raise SystemExit("error: reason gate: a stale 'stub' claim did not fail")
+        except SystemExit as exc:
+            if "grown" not in str(exc):
+                raise
+        # PASSING: a TRUE stub claim, and prose the gate deliberately does not grade.
+        check_rls_exempt_reasons(
+            {"widgets": "db/x.rs is a fail-fast stub (real_stub returns PLANNED)",
+             "other": "cover when the cloud sync path lands"}, root)
+
+    # AND THE WIRING. Measured 2026-10-24 by deleting the call from check_rls_coverage:
+    # every case above still passed and a falsified reason sailed through, because the
+    # two gates are exercised independently. A gate nobody calls grades nothing.
+    import inspect as _inspect
+    if "check_rls_exempt_reasons" not in _inspect.getsource(check_rls_coverage):
+        raise SystemExit(
+            "error: rls-exempt reason gate is not called from check_rls_coverage -- "
+            "the gate exists but nothing invokes it")
+    print("ok: rls-exempt reason gate self-test (falsified reason fails, prose ignored, "
+          "wired into the coverage gate)")
 
 
 def _self_test_reconciliation_gate() -> None:
@@ -977,11 +1131,20 @@ RLS_EXEMPT = {
         "(pg.rs never touches it) — nothing for a policy to gate"
     ),
     "payment_gateways": (
-        "no writer anywhere in the repo — no INSERT/UPDATE exists outside "
-        "the CREATE TABLE in 20260825_payment_infra.sql; db/payment_gateways.rs "
-        "is a fail-fast stub (upsert_gateway returns PLANNED) and the copier's "
-        "DEFAULT_TABLES excludes it. Nothing to gate until gateway config CRUD "
-        "lands"
+        "local SQLite write path EXISTS and is wired end to end — "
+        "Store::upsert_payment_gateway / get_payment_gateway / "
+        "list_payment_gateways / delete_payment_gateway in "
+        "db/payment_gateways.rs, reached through the scoped commands in "
+        "kasirmu-bridge/src/local_payment.rs and registered on the desktop "
+        "shell. It is still exempt from RLS for the original reason plus one "
+        "correction: the earlier note here called this file a fail-fast stub "
+        "(upsert_gateway returns PLANNED), and that stopped being true when the "
+        "CRUD landed — upsert_gateway is now a deprecated shim returning "
+        "CoreError::Internal and has ZERO callers. What remains true is that no "
+        "PG write path exists: every writer is device-local, tenant_id is the "
+        "schema DEFAULT 'default' as it is for the other local-only tables, and "
+        "the copier never selects this table, so there is no PG insert for a "
+        "policy to gate. Cover when gateway config gains a cloud-sync path."
     ),
     "payment_settlements": (
         "no writer anywhere in the repo — no INSERT/UPDATE exists outside "
@@ -997,6 +1160,14 @@ RLS_EXEMPT = {
     "payables": (
         "no PG write path yet; desktop-local AP ledger (Hutang) — "
         "cover when payables cloud sync lands"
+    ),
+    "receivable_payments": (
+        "no PG write path yet; local AR settlement history — "
+        "cover when receivables cloud sync lands"
+    ),
+    "receivables": (
+        "no PG write path yet; local AR ledger (Piutang) — "
+        "cover when receivables cloud sync lands"
     ),
     "snapshot_versions": (
         "no PG write path audited; cover when snapshot sync reaches PG"
@@ -1545,12 +1716,30 @@ def render() -> tuple[str, int, int, int, list[str]]:
     return "\n".join(out).replace("\n", "\r\n") + "\n", len(ordered), len(indexes), len(seeds), skipped
 
 
+def _self_test_registry_ids():
+    """The registry parser sees the real chain: non-empty .sql ids, no repeats.
+
+    registry_ids() reads migrations.rs, which the sabotage survey's staged tree
+    reaches through a junction — so this case is graded there too, and a gutted
+    parser (None) fails here instead of silently shortening every rendered
+    snapshot.
+    """
+    ids = registry_ids()
+    if not ids or not all(i.endswith(".sql") for i in ids):
+        raise SystemExit(f"self-test FAIL: registry_ids() -> {ids!r} (need non-empty .sql ids)")
+    if len(set(ids)) != len(ids):
+        raise SystemExit("self-test FAIL: registry_ids() repeats an id")
+    print(f"ok: registry_ids self-test ({len(ids)} migrations in registry order)")
+
+
 def main(argv: list[str]) -> int:
     check = "--check" in argv
     if "--self-test" in argv:
         _self_test_rls_gate()
+        _self_test_rls_exempt_reasons()
         _self_test_trigger_gate()
         _self_test_reconciliation_gate()
+        _self_test_registry_ids()
         return 0
     body, n_tables, n_indexes, n_seeds, skipped = render()
 

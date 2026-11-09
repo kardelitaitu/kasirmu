@@ -32,6 +32,16 @@ const testL10n = {
       'workspace-kds-density': 'Density',
       'save': 'Save',
       'settings-save-error': 'Save failed',
+      // Copy the card renders that this map never spelled out (settings.ftl /
+      // shared.ftl), so a hole here no longer renders the raw id.
+      'settings-load-failed': 'Failed to load settings',
+      'toast-copy': 'Copy',
+      'toast-copied': 'Copied!',
+      'toast-copy-aria': 'Copy error details',
+      'toast-dismiss-aria': 'Dismiss notification',
+      'toast-hide-detail': 'Hide detail',
+      'toast-notifications-aria': 'Notifications',
+      'toast-show-detail': 'Show detail',
     };
     return d[id] ?? id;
   },

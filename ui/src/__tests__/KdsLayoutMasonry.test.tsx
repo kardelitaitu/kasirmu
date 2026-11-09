@@ -1,8 +1,9 @@
 // ── KdsLayoutMasonry tests ───────────────────────────────────────
 //
 // Covers: empty state (default + filtered), round-robin distribution
-// across 3 columns, column header titles, column count badges,
-// column CSS classes, and order-to-column assignment.
+// across 3 columns, column header titles (translated AND their untranslated
+// fallbacks), column count badges, column CSS classes, and order-to-column
+// assignment.
 //
 // Mocks: KdsTicketCard (rendered as a simple data-div) and Fluent
 // i18n (via renderWithFluentSync).
@@ -133,6 +134,31 @@ describe('KdsLayoutMasonry', () => {
         expect(header.querySelector('.kds-column-count')).not.toBeNull();
       }
     });
+
+    // The test above proves a title ELEMENT exists; it says nothing about which
+    // title. That is the gap a column table can fall through: reorder COLUMNS,
+    // point a titleId at a neighbour's message, or pair a header with the wrong
+    // modifier class, and every assertion above still passes while the kitchen
+    // reads "Ready" over the Pending column. This grades the pair — the state a
+    // column claims in its class and the word it shows — in order.
+    it('each header title names the state its own column carries', () => {
+      const orders = [makeOrder('o1'), makeOrder('o2'), makeOrder('o3')];
+      const { container } = renderWithFluentSync(
+        <KdsLayoutMasonry {...defaultProps(orders)} />,
+        kdsFtl,
+      );
+      const cols = [...container.querySelectorAll('.kds-col.kds-column')];
+      expect(
+        cols.map((col) => [
+          [...col.classList].find((c) => c.startsWith('kds-column--')),
+          col.querySelector('.kds-column-title')?.textContent,
+        ]),
+      ).toEqual([
+        ['kds-column--pending', 'Pending'],
+        ['kds-column--preparing', 'Preparing'],
+        ['kds-column--ready', 'Ready'],
+      ]);
+    });
   });
 
   // ── Round-robin distribution ──────────────────────────────────────
@@ -229,6 +255,52 @@ describe('KdsLayoutMasonry', () => {
       expect(counts[0]).toHaveTextContent('3');
       expect(counts[1]).toHaveTextContent('2');
       expect(counts[2]).toHaveTextContent('2');
+    });
+
+    // The two tests above stop at the DIGIT, so they grade neither the plural
+    // arm nor the claim in KdsLayoutMasonry's own comment: the badge passes
+    // `count` as a NUMBER because a string "bypasses number formatting
+    // entirely" and the Fluent select stops matching [one]. Both tests pass
+    // with "1 orders" on screen. This one grades the sentence.
+    //
+    // One render covers all three categories English needs: 4 orders
+    // round-robin to 2-1-1 across the three columns → other / one / one.
+    it('column count reads as a sentence, with the singular arm honoured', () => {
+      const orders = ['o1', 'o2', 'o3', 'o4'].map((id) => makeOrder(id));
+      const { container } = renderWithFluentSync(
+        <KdsLayoutMasonry {...defaultProps(orders)} />,
+        kdsFtl,
+      );
+      const counts = [...container.querySelectorAll('.kds-column-count')];
+      expect(counts.map((c) => c.textContent)).toEqual([
+        '2 orders',
+        '1 order',
+        '1 order',
+      ]);
+    });
+  });
+
+  // ── Header fallback ───────────────────────────────────────────────
+
+  // `title` is the English child <Localized> renders when the bundle carries no
+  // message for `titleId` — the string a cold or half-loaded bundle shows. Every
+  // other test here passes kdsFtl, so that child never rendered and the three
+  // strings were ungraded: a fallback naming the wrong state, or the same state
+  // three times (the old kds-pending-for-every-index fallback), would have passed
+  // the whole file. Passing '' leaves sharedFtl in place (it defines no kds-*
+  // message) and drops the KDS bundle.
+  describe('column header fallback', () => {
+    it('renders one English title per column when the bundle has no kds messages', () => {
+      const { container } = renderWithFluentSync(
+        <KdsLayoutMasonry {...defaultProps([makeOrder('o1')])} />,
+        '',
+      );
+      const titles = [...container.querySelectorAll('.kds-column-title')];
+      expect(titles.map((t) => t.textContent)).toEqual([
+        'Pending',
+        'Preparing',
+        'Ready',
+      ]);
     });
   });
 

@@ -83,7 +83,6 @@ const PAYMENT_MODAL_CSS = 'features/sales/PaymentModal.css';
 const POS_SCREEN_CSS = 'features/sales/PosScreen.css';
 const EOD_REPORT_CSS = 'features/sales/EodReportScreen.css';
 const KDS_EXPO_CSS = 'features/kds/ExpoScreen.css';
-const TRANSIT_AUDIT_CSS = 'features/inventory/TransitAuditScreen.css';
 const CATEGORY_MGMT_CSS = 'features/categories/CategoryManagementScreen.css';
 const STAFF_MGMT_CSS = 'features/staff/StaffManagementScreen.css';
 const MULTI_STORE_DASHBOARD_CSS = 'features/locations/MultiStoreDashboardScreen.css';
@@ -325,7 +324,6 @@ const MIGRATED: readonly MigratedSheet[] = [
   { sheet: POS_SCREEN_CSS, containerSelector: '.pos-screen', tiers: [720, 480], narrowShellPx: 640 },
   { sheet: EOD_REPORT_CSS, containerSelector: '.eod-report', tiers: [800, 600], narrowShellPx: 640 },
   { sheet: KDS_EXPO_CSS, containerSelector: '.kds-expo', tiers: [720, 480], narrowShellPx: 640 },
-  { sheet: TRANSIT_AUDIT_CSS, containerSelector: '.transit-audit-container', tiers: [640, 480], narrowShellPx: 640 },
   { sheet: CATEGORY_MGMT_CSS, containerSelector: '.cat-mgmt', tiers: [480], narrowShellPx: 640 },
   { sheet: STAFF_MGMT_CSS, containerSelector: '.staff-mgmt', tiers: [900, 600], narrowShellPx: 640 },
   { sheet: MULTI_STORE_DASHBOARD_CSS, containerSelector: '.multi-store-dashboard', tiers: [640, 480], narrowShellPx: 640 },
@@ -1187,10 +1185,12 @@ describe('narrow-shell / extreme-aspect verification (ADR-0001 Slice 7)', () => 
       'the fence no longer fires on a KDS-expo sheet that queries a container it never declares',
     ).toContain('container-not-declared');
 
-    // Planted 1d — the inverted tier order, on the 640/480 ladder.
+    // Planted 1d — the inverted tier order, on a 640/480 ladder. This plant used the
+    // TransitAudit sheet until round 192 deleted it as an unreachable module; the fixture
+    // is unchanged, only the sheet it is graded against, so the fence is still exercised.
     expect(
-      gradeMigratedSheet({ sheet: TRANSIT_AUDIT_CSS, containerSelector: '.transit-audit-container', tiers: [640, 480], narrowShellPx: 640 }, PLANTED.transitAuditTierOrder).map((f) => f.pattern),
-      'the fence no longer fires when TransitAudit declares its wider max-width tier last',
+      gradeMigratedSheet({ sheet: MULTI_STORE_DASHBOARD_CSS, containerSelector: '.multi-store-dashboard', tiers: [640, 480], narrowShellPx: 640 }, PLANTED.transitAuditTierOrder).map((f) => f.pattern),
+      'the fence no longer fires when a sheet declares its wider max-width tier last',
     ).toContain('tier-order');
 
     // Planted 3f — the container-not-declared shape, on the category sheet.
@@ -1210,15 +1210,11 @@ describe('narrow-shell / extreme-aspect verification (ADR-0001 Slice 7)', () => 
       'the graders reject the real ExpoScreen.css',
     ).toEqual([]);
     expect(
-      shapeOnly(gradeMigratedSheet(MIGRATED[7]!, source(TRANSIT_AUDIT_CSS))),
-      'the graders reject the real TransitAuditScreen.css',
-    ).toEqual([]);
-    expect(
-      shapeOnly(gradeMigratedSheet(MIGRATED[8]!, source(CATEGORY_MGMT_CSS))),
+      shapeOnly(gradeMigratedSheet(MIGRATED[7]!, source(CATEGORY_MGMT_CSS))),
       'the graders reject the real CategoryManagementScreen.css',
     ).toEqual([]);
     expect(
-      shapeOnly(gradeMigratedSheet(MIGRATED[9]!, source(STAFF_MGMT_CSS))),
+      shapeOnly(gradeMigratedSheet(MIGRATED[8]!, source(STAFF_MGMT_CSS))),
       'the graders reject the real StaffManagementScreen.css',
     ).toEqual([]);
 
@@ -1230,7 +1226,7 @@ describe('narrow-shell / extreme-aspect verification (ADR-0001 Slice 7)', () => 
     ).toContain('tier-order');
 
     expect(
-      shapeOnly(gradeMigratedSheet(MIGRATED[10]!, source(MULTI_STORE_DASHBOARD_CSS))),
+      shapeOnly(gradeMigratedSheet(MIGRATED[9]!, source(MULTI_STORE_DASHBOARD_CSS))),
       'the graders reject the real MultiStoreDashboardScreen.css',
     ).toEqual([]);
     expect(

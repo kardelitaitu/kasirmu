@@ -223,7 +223,7 @@ fn extract_to_keeps_legit_subdirectories() {
         ("migrations/b.sql", b"-- b"),
     ]);
     let archive = KasirpkArchive::from_bytes(&bytes, "sub.kasirpkg").unwrap();
-    let dest = tempfile::tempdir().unwrap();
+    let dest = kasirmu_test_support::tempdir();
     archive.extract_to(dest.path()).unwrap();
     assert!(dest.path().join("scripts/a.lua").exists());
     assert!(dest.path().join("migrations/b.sql").exists());
@@ -313,7 +313,7 @@ fn extract_to_directory() {
     ]);
 
     let archive = KasirpkArchive::from_bytes(&bytes, "extract.kasirpkg").unwrap();
-    let dest = tempfile::tempdir().unwrap();
+    let dest = kasirmu_test_support::tempdir();
     archive.extract_to(dest.path()).unwrap();
 
     // All files should be written
@@ -339,7 +339,7 @@ fn extract_to_with_subdirectories() {
     ]);
 
     let archive = KasirpkArchive::from_bytes(&bytes, "sub.kasirpkg").unwrap();
-    let dest = tempfile::tempdir().unwrap();
+    let dest = kasirmu_test_support::tempdir();
     archive.extract_to(dest.path()).unwrap();
 
     assert!(dest.path().join("manifest.json").exists());
@@ -362,7 +362,7 @@ fn extract_scripts_and_migrations_only() {
     ]);
 
     let archive = KasirpkArchive::from_bytes(&bytes, "x.kasirpkg").unwrap();
-    let dest = tempfile::tempdir().unwrap();
+    let dest = kasirmu_test_support::tempdir();
     archive.extract_scripts_and_migrations(dest.path()).unwrap();
 
     // Scripts and migrations extracted
@@ -487,7 +487,7 @@ fn open_from_file() {
     let manifest = br#"{"id": "file-test", "name": "FileTest", "version": "1.0.0"}"#;
     let bytes = build_kasirpkg(&[("manifest.json", manifest)]);
 
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let kasirpkg_path = dir.path().join("test.kasirpkg");
     std::fs::write(&kasirpkg_path, &bytes).unwrap();
 
@@ -508,7 +508,7 @@ fn extract_to_creates_dest_dir() {
     let bytes = build_kasirpkg(&[("manifest.json", manifest)]);
 
     let archive = KasirpkArchive::from_bytes(&bytes, "c.kasirpkg").unwrap();
-    let dest = tempfile::tempdir().unwrap();
+    let dest = kasirmu_test_support::tempdir();
     let sub_dir = dest.path().join("nested/dir");
     archive.extract_to(&sub_dir).unwrap();
     assert!(sub_dir.join("manifest.json").exists());
@@ -527,7 +527,7 @@ fn extract_scripts_and_migrations_creates_dirs() {
     ]);
 
     let archive = KasirpkArchive::from_bytes(&bytes, "m.kasirpkg").unwrap();
-    let dest = tempfile::tempdir().unwrap();
+    let dest = kasirmu_test_support::tempdir();
     let sub = dest.path().join("extracted");
     archive.extract_scripts_and_migrations(&sub).unwrap();
 
@@ -556,4 +556,355 @@ fn has_scripts_and_has_migrations_edge_cases() {
     let archive = KasirpkArchive::from_bytes(&bytes, "e.kasirpkg").unwrap();
     assert!(!archive.has_scripts());
     assert!(archive.has_migrations());
+}
+
+// ── O-M52: read_entry index equivalence ───────────────────────────
+
+/// The PRE-O-M52 `read_entry` body, verbatim (only `self` narrowed to the field
+/// it touched), kept here as the oracle the index is proved against.
+///
+/// It scans `entry_contents` once per call and allocates a normalised `String`
+/// per stored entry plus one for the target. One call is O(n); the caller,
+/// `extract_scripts_and_migrations`, makes one call per entry, which is the
+/// O(n²) with an allocation per entry that O-M52 names.
+fn old_read_entry<'a>(
+    entry_contents: &'a std::collections::HashMap<String, Vec<u8>>,
+    filename: &str,
+) -> Option<&'a [u8]> {
+    // Try exact match first
+    if let Some(data) = entry_contents.get(filename) {
+        return Some(data.as_slice());
+    }
+    // Fall back to matching on the last path component
+    let normalised = filename.replace('\\', "/");
+    let target = normalised
+        .rsplit('/')
+        .next()
+        .unwrap_or(&normalised)
+        .to_string();
+    for (stored_name, data) in entry_contents {
+        let stored_normalised = stored_name.replace('\\', "/");
+        let stored_file = stored_normalised
+            .rsplit('/')
+            .next()
+            .unwrap_or(&stored_normalised);
+        if stored_file == target {
+            return Some(data.as_slice());
+        }
+    }
+    None
+}
+
+/// The stored name whose bytes are `bytes`, or `None`.
+fn stored_name_of<'a>(archive: &'a KasirpkArchive, bytes: &[u8]) -> Option<&'a str> {
+    archive
+        .entry_contents
+        .iter()
+        .find(|(_, data)| data.as_slice() == bytes)
+        .map(|(name, _)| name.as_str())
+}
+
+/// A `HashMap` holding the same content inserted in a SECOND, independent
+/// order.
+///
+/// The old fallback scanned a `HashMap`, whose iteration order depends on the
+/// per-process `RandomState`, so one run of the oracle samples exactly one point
+/// of all that oracle could ever have returned. The point that matters is the
+/// one where a query is a miss: a fresh map with a different seed gives a
+/// genuinely different scan order, so if the old scan could find a name under
+/// ANY order, at least one of the two maps will.
+fn alternate_order(
+    entry_contents: &std::collections::HashMap<String, Vec<u8>>,
+) -> std::collections::HashMap<String, Vec<u8>> {
+    entry_contents
+        .iter()
+        .map(|(name, data)| (name.clone(), data.clone()))
+        .collect()
+}
+
+/// Compare `read_entry` against `old_read_entry` for one archive and one query.
+///
+/// Equality is on `(present, bytes)` under both insert orders, plus the winning
+/// NAME wherever the old lookup is order-independent.
+///
+/// Two entries can legitimately carry identical payloads, so a byte comparison
+/// alone would not notice a wrong winner — hence the name. Name equality is only
+/// required when both mirror orders pick the same winner — the `if` at the foot of
+/// this function, where the old lookup is re-run over the alternate order and the
+/// two results are compared. (This note used to name a helper `old_order_is_stable`
+/// that was never written; the condition is inline.) That set of stable cases is
+/// what the index must reproduce exactly.
+fn assert_matches_old(archive: &KasirpkArchive, query: &str) {
+    let second_order = alternate_order(&archive.entry_contents);
+    let old = old_read_entry(&archive.entry_contents, query);
+    let new = archive.read_entry(query);
+
+    assert_eq!(
+        new.is_some(),
+        old.is_some(),
+        "presence differs for query {query:?}"
+    );
+    assert_eq!(new, old, "bytes differ for query {query:?}");
+
+    // And the old lookup under the other scan order must not find anything this
+    // one does not: by the pre-index rule "the first entry whose last path
+    // component equals the target", presence is order-INDEPENDENT. Only the
+    // winner varies with order.
+    assert_eq!(
+        new.is_some(),
+        old_read_entry(&second_order, query).is_some(),
+        "presence differs under the alternate scan order for query {query:?}"
+    );
+
+    // Name equality is only meaningful where the old winner did not depend on
+    // iteration order.
+    if old_read_entry(&second_order, query) == old {
+        assert_eq!(
+            new.and_then(|bytes| stored_name_of(archive, bytes)),
+            old.and_then(|bytes| stored_name_of(archive, bytes)),
+            "winner differs for query {query:?}"
+        );
+    }
+}
+
+#[test]
+fn read_entry_matches_the_old_lookup_on_every_awkward_name_form() {
+    let manifest = br#"{"id": "eq", "name": "Eq", "version": "1.0.0"}"#;
+    // Every entry carries a distinct payload so the byte comparison is a real
+    // witness of which entry answered.
+    let bytes = build_kasirpkg(&[
+        ("manifest.json", manifest),
+        ("hello.lua", b"-- top-level hello"),
+        ("scripts/helper.lua", b"-- nested helper"),
+        ("scripts/deep/nested/x.sql", b"CREATE TABLE deep (id);"),
+        ("config.yaml", b"key: value"),
+        ("Mixed.LUA", b"-- uppercase extension"),
+    ]);
+    let archive = KasirpkArchive::from_bytes(&bytes, "eq.kasirpkg").unwrap();
+
+    // Every form `read_entry` accepts today: exact name, bare filename of a
+    // nested entry, path with a directory prefix, backslash prefix, trailing
+    // separator, different case (must miss — lookup is byte-exact), absent.
+    let queries = [
+        "manifest.json",
+        "hello.lua",
+        "helper.lua",
+        "scripts/helper.lua",
+        "scripts\\helper.lua",
+        "scripts/",
+        "nested/x.sql",
+        "x.sql",
+        "scripts/deep/nested/x.sql",
+        "config.yaml",
+        "Mixed.LUA",
+        "mixed.lua",
+        "HELLO.LUA",
+        "missing.lua",
+        "",
+        "/",
+        "./hello.lua",
+        "./scripts/helper.lua",
+        "absent/nothing.sql",
+        "\\",
+        "ünïcode.lua",
+        "manifest.json/nope",
+    ];
+    for query in queries {
+        assert_matches_old(&archive, query);
+    }
+
+    // Absolute expectations for the forms that DO resolve, so the equivalence
+    // test cannot pass by both sides being equally wrong.
+    assert_eq!(
+        archive.read_entry("hello.lua"),
+        Some(&b"-- top-level hello"[..])
+    );
+    assert_eq!(
+        archive.read_entry("helper.lua"),
+        Some(&b"-- nested helper"[..])
+    );
+    assert_eq!(
+        archive.read_entry("scripts/helper.lua"),
+        Some(&b"-- nested helper"[..])
+    );
+    assert_eq!(
+        archive.read_entry("scripts\\helper.lua"),
+        Some(&b"-- nested helper"[..])
+    );
+    assert_eq!(
+        archive.read_entry("nested/x.sql"),
+        Some(&b"CREATE TABLE deep (id);"[..])
+    );
+    assert_eq!(archive.read_entry("manifest.json"), Some(&manifest[..]));
+    // Lookup is byte-exact: no case folding existed before and none is added.
+    assert_eq!(archive.read_entry("HELLO.LUA"), None);
+    assert_eq!(archive.read_entry("mixed.lua"), None);
+    assert_eq!(
+        archive.read_entry("Mixed.LUA"),
+        Some(&b"-- uppercase extension"[..])
+    );
+    assert_eq!(archive.read_entry("config.yaml"), Some(&b"key: value"[..]));
+}
+
+#[test]
+fn read_entry_absent_name_is_still_none_after_the_index() {
+    let manifest = br#"{"id": "x", "name": "X", "version": "1.0.0"}"#;
+    let bytes = build_kasirpkg(&[("manifest.json", manifest), ("a.lua", b"-- a")]);
+    let archive = KasirpkArchive::from_bytes(&bytes, "x.kasirpkg").unwrap();
+
+    // Absent, and the error shape is unchanged (`None`, not an `Err`): a name
+    // that is not there, a missing extension, and the empty query — which
+    // resolves to the empty last component, and no stored name can equal that.
+    for query in ["nonexistent.lua", "a.sql", ""] {
+        assert_eq!(archive.read_entry(query), None, "query {query:?}");
+        assert_matches_old(&archive, query);
+    }
+    // A directory prefix the archive does not have still resolves: `read_entry`
+    // keys on the last component and discards the prefix. That is the
+    // PRE-EXISTING behaviour — `old_read_entry` does exactly the same — not a
+    // regression the index introduced; pinned here so it cannot drift silently.
+    for query in ["scripts/a.lua", "/a.lua", "a.lua"] {
+        assert_eq!(
+            archive.read_entry(query),
+            Some(&b"-- a"[..]),
+            "query {query:?}"
+        );
+        assert_matches_old(&archive, query);
+    }
+    // A trailing separator is NOT stripped into a match: the last component of
+    // `"a.lua/"` is the empty string, exactly as before.
+    assert_eq!(archive.read_entry("a.lua/"), None);
+    assert_matches_old(&archive, "a.lua/");
+    // `read_entry_exact` is untouched by O-M52 and still refuses the fallback.
+    assert_eq!(archive.read_entry_exact("a.lua"), Some(&b"-- a"[..]));
+    assert_eq!(archive.read_entry_exact("scripts/a.lua"), None);
+}
+
+#[test]
+fn read_entry_prefers_an_exact_name_over_a_same_filename_elsewhere() {
+    let manifest = br#"{"id": "dup", "name": "Dup", "version": "1.0.0"}"#;
+    let bytes = build_kasirpkg(&[
+        ("manifest.json", manifest),
+        ("foo.lua", b"-- top-level foo"),
+        ("scripts/foo.lua", b"-- nested foo"),
+    ]);
+    let archive = KasirpkArchive::from_bytes(&bytes, "dup.kasirpkg").unwrap();
+
+    // The exact-name branch runs before the filename branch — unchanged.
+    assert_eq!(
+        archive.read_entry("foo.lua"),
+        Some(&b"-- top-level foo"[..])
+    );
+    assert_eq!(
+        archive.read_entry("scripts/foo.lua"),
+        Some(&b"-- nested foo"[..])
+    );
+    assert_matches_old(&archive, "foo.lua");
+    assert_matches_old(&archive, "scripts/foo.lua");
+}
+
+#[test]
+fn read_entry_duplicate_filenames_pick_the_first_entry() {
+    let manifest = br#"{"id": "dup2", "name": "Dup2", "version": "1.0.0"}"#;
+    // The same last component under two directories: the duplicate the
+    // pre-index scan keyed on.
+    let bytes = build_kasirpkg(&[
+        ("manifest.json", manifest),
+        ("first/dup.lua", b"-- first"),
+        ("second/dup.lua", b"-- second"),
+    ]);
+    let archive = KasirpkArchive::from_bytes(&bytes, "dup2.kasirpkg").unwrap();
+
+    // The answer for the bare name is "the first entry in ARCHIVE order that
+    // carries this filename". It is NOT the old answer: the pre-index scan
+    // returned whichever of the two `entry_contents` iteration reached first,
+    // which varied per run and per process. Both entries remain reachable by
+    // their full path, and that is the surface a caller can rely on; no caller
+    // in this repo reads `read_entry` with a duplicated filename.
+    //
+    // The assertion is written so it pins WHICH entry answered, not a guess at
+    // archive order: `ZipWriter` plus a `HashMap` gives no guarantee that
+    // "first" is `first/dup.lua`, and pinning the wrong one would be a false
+    // statement about the code.
+    let bare = archive.read_entry("dup.lua").expect("duplicate filename");
+    assert!(bare == b"-- first" || bare == b"-- second", "got: {bare:?}");
+    // Whichever answered must be the one the index points at, for all runs.
+    assert_eq!(archive.read_entry("dup.lua"), Some(bare));
+    assert_eq!(
+        archive.read_entry("second/dup.lua"),
+        Some(&b"-- second"[..])
+    );
+    assert_eq!(archive.read_entry("first/dup.lua"), Some(&b"-- first"[..]));
+    assert_eq!(
+        archive.read_entry_exact("second/dup.lua"),
+        Some(&b"-- second"[..])
+    );
+    // `read_entry("dup.lua")` deliberately gets NO name assertion against the
+    // oracle: two stored entries share that filename, so the old scan's winner
+    // came from `HashMap` iteration order and is not a value to compare against.
+    // The rule above (first in archive order) is the deliberate, stable
+    // replacement; the old lookup must still find SOMETHING, which
+    // `assert_matches_old` checks for presence.
+    assert_matches_old(&archive, "second/dup.lua");
+}
+
+#[test]
+fn read_entry_fallback_scan_survives_an_archive_with_no_index() {
+    // A clone whose index was cleared stands in for an archive assembled by a
+    // path other than `from_reader`. The retained scan must still answer, and
+    // must agree with the indexed answer.
+    let manifest = br#"{"id": "scan", "name": "Scan", "version": "1.0.0"}"#;
+    let bytes = build_kasirpkg(&[
+        ("manifest.json", manifest),
+        ("scripts/helper.lua", b"-- helper"),
+    ]);
+    let archive = KasirpkArchive::from_bytes(&bytes, "scan.kasirpkg").unwrap();
+    let mut unindexed = archive.clone();
+    unindexed.filename_index.clear();
+
+    for query in [
+        "helper.lua",
+        "scripts/helper.lua",
+        "manifest.json",
+        "nope.lua",
+    ] {
+        assert_eq!(
+            unindexed.read_entry(query),
+            archive.read_entry(query),
+            "query {query:?}"
+        );
+    }
+    assert_eq!(unindexed.read_entry("helper.lua"), Some(&b"-- helper"[..]));
+    assert_eq!(unindexed.read_entry("nope.lua"), None);
+}
+
+#[test]
+fn extract_scripts_and_migrations_is_unchanged_by_the_index() {
+    let manifest = br#"{"id": "ext", "name": "Ext", "version": "1.0.0"}"#;
+    let bytes = build_kasirpkg(&[
+        ("manifest.json", manifest),
+        ("scripts/a.lua", b"-- a"),
+        ("scripts/nested/b.lua", b"-- b"),
+        ("migrations/001_init.sql", b"CREATE TABLE a (id);"),
+        ("migrations/nested/002_more.sql", b"CREATE TABLE b (id);"),
+        ("readme.txt", b"ignored"),
+    ]);
+    let archive = KasirpkArchive::from_bytes(&bytes, "ext.kasirpkg").unwrap();
+    let dest = kasirmu_test_support::tempdir();
+    archive.extract_scripts_and_migrations(dest.path()).unwrap();
+
+    // Flattened to the filename, as before — every script and migration lands.
+    for (dir, name, body) in [
+        ("scripts", "a.lua", &b"-- a"[..]),
+        ("scripts", "b.lua", &b"-- b"[..]),
+        ("migrations", "001_init.sql", &b"CREATE TABLE a (id);"[..]),
+        ("migrations", "002_more.sql", &b"CREATE TABLE b (id);"[..]),
+    ] {
+        let written = std::fs::read(dest.path().join(dir).join(name))
+            .unwrap_or_else(|e| panic!("{dir}/{name} not written: {e}"));
+        assert_eq!(written, body, "{dir}/{name}");
+    }
+    // Other files are still not extracted.
+    assert!(!dest.path().join("scripts/readme.txt").exists());
+    assert!(!dest.path().join("manifest.json").exists());
 }

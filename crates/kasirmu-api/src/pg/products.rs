@@ -22,16 +22,115 @@ use super::helpers::{
     currency_str, is_unique_violation, now_rfc3339, pg_bool, pg_placeholders,
 };
 
+/// Maximum number of products one page of [`list_products_page`] returns when
+/// the caller asks for none, or asks for too many (debt entry O-H12).
+///
+/// A bound is only honest when the caller is TOLD it applied — see
+/// [`ProductPage::has_more`], which is derived by fetching one row PAST this
+/// cap rather than by comparing the page length to it.
+pub const DEFAULT_PRODUCT_PAGE_LIMIT: usize = 100;
+
+/// Ceiling on a caller-supplied page size for [`list_products_page`]. A
+/// request above it is CLAMPED, not rejected, and `has_more` still tells the
+/// truth about whether a continuation row exists.
+pub const MAX_PRODUCT_PAGE_LIMIT: usize = 500;
+
+/// One keyset page of a tenant's catalogue.
+///
+/// Keyset — not OFFSET — because the catalogue changes while a client walks
+/// it: an OFFSET page means "skip N rows of whatever the ORDER BY produces at
+/// read time", so a product renamed or inserted mid-walk is served twice or
+/// skipped entirely. A keyset page resumes from the last row actually
+/// delivered, so it can neither repeat a product nor jump over one whose
+/// `(name, sku)` did not change. A product RE-keyed between two pages can
+/// still be missed — the standard keyset caveat, and strictly smaller than
+/// OFFSET's.
+#[derive(Debug, Clone)]
+pub struct ProductPage {
+    /// The rows of this page, in `(name, sku)` order, each product once.
+    pub products: Vec<ProductWithDetails>,
+    /// The `sku` to pass back as `after` for the next page, or `None` when
+    /// this page is the last one. Never present when `products` is empty.
+    ///
+    /// `Some` here is the EXPLICIT signal that the response was bounded: a
+    /// client that ignores it has been told it did not receive everything,
+    /// which is the difference between a bounded read and a silent
+    /// truncation.
+    pub next_after: Option<String>,
+    /// Whether more products exist beyond this page. **Derived from a row the
+    /// response does not contain**, not from `products.len() == limit`: a
+    /// catalogue whose size is an exact multiple of the page size otherwise
+    /// advertises one page more than exists.
+    pub has_more: bool,
+}
+
+/// Relational form of one product's stock, as the projection derives it.
+///
+/// The projection reads `COALESCE(SUM(stock_summary.qty), inventory.qty)`, so
+/// a product with no `stock_summary` row falls back to the legacy
+/// `inventory.qty` aggregate. The two cases are separated here, rather than
+/// left in SQL, so a plain Rust test can pin the semantics without Postgres.
+///
+/// Invariant: this must stay the ONLY place that decides which qty wins.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProductStock {
+    /// No `stock_summary` row at all: report the aggregate, including a NULL
+    /// one (a product with neither table row has unknown stock, not zero).
+    NoLocationRows(Option<i64>),
+    /// At least one `stock_summary` row: report their sum.
+    LocationRows(i64),
+}
+
+/// Resolve [`ProductStock`] into the `stock_qty` a `ProductWithDetails` carries.
+fn product_stock_qty(stock: ProductStock) -> Option<i64> {
+    match stock {
+        ProductStock::NoLocationRows(aggregate) => aggregate,
+        ProductStock::LocationRows(sum) => Some(sum),
+    }
+}
+
+/// The projection shared by every product read, WITHOUT the `WHERE` and
+/// `ORDER BY` the caller adds.
+///
+/// **The stock column is a lateral aggregate, not a correlated subquery and
+/// not a plain join.** Each alternative fails on this schema partway through
+/// a catalogue walk:
+///
+/// * bare `LEFT JOIN stock_summary ss ON ss.item_id = p.id` — WRONG. The key
+///   is `(item_id, location_id)` (ADR-18), so a product stocked at three
+///   locations yields three rows: page 1 contains duplicates of it, each with
+///   a PARTIAL quantity.
+/// * `LEFT JOIN (SELECT item_id, SUM(qty) FROM stock_summary GROUP BY
+///   item_id)` — wrong for PAGING. With no predicate on `item_id` the planner
+///   may aggregate EVERY tenant's `stock_summary` before serving page 1, so
+///   page 1 costs as much as the whole catalogue and a walk costs N times a
+///   full scan — worse than the subquery it replaces.
+/// * `LEFT JOIN LATERAL (SELECT … FROM stock_summary WHERE item_id = p.id) ON
+///   TRUE` — one aggregate per ROW, answered by `stock_summary_pkey` on
+///   `(item_id, location_id)`, and exactly one output row always. An
+///   aggregate with no matching row yields NULL, not zero rows, so a product
+///   with NO `stock_summary` rows survives the join; `COALESCE(sk.ss_qty,
+///   i.qty)` then falls back to the legacy `inventory.qty` exactly as the
+///   subquery did.
+///
+/// Tenant scope comes for free: `stock_summary` and `inventory` key on
+/// `products.id`, and `p` is already restricted to `tenant_id = $1`.
 const PRODUCT_SELECT: &str = "SELECT p.id, p.sku, p.name, p.price_minor, p.currency, \
      p.category_id, p.barcode, p.created_at, p.updated_at, p.price_updated_at, \
      p.track_serial, p.product_type, p.version, \
      p.cost_minor, p.brand, p.rack_location, p.notes, p.unit, \
      p.is_active, p.default_supplier_id, p.popularity_score, p.image_hash, \
      c.name AS category_name, \
-     COALESCE((SELECT SUM(ss.qty)::bigint FROM stock_summary ss WHERE ss.item_id = p.id), i.qty) AS stock_qty \
+     COALESCE(sk.ss_qty, i.qty) AS stock_qty, \
+     sk.ss_has_rows AS stock_has_location_rows, \
+     sk.ss_qty AS ss_qty \
      FROM products p \
      LEFT JOIN categories c ON p.category_id = c.id \
-     LEFT JOIN inventory i ON p.id = i.product_id";
+     LEFT JOIN inventory i ON p.id = i.product_id \
+     LEFT JOIN LATERAL ( \
+         SELECT bool_or(true) AS ss_has_rows, SUM(ss.qty)::bigint AS ss_qty \
+         FROM stock_summary ss WHERE ss.item_id = p.id \
+     ) sk ON TRUE";
 
 /// Build a [`ProductWithDetails`] from a Postgres row (mirrors the SQLite
 /// `row_to_product_with_details` mapper, including the `BIGINT` → `bool`
@@ -155,9 +254,28 @@ fn pg_row_to_product_with_details(
         category_name: row
             .try_get("category_name")
             .map_err(|e| PgError::Db(e.to_string()))?,
-        stock_qty: row
-            .try_get("stock_qty")
-            .map_err(|e| PgError::Db(e.to_string()))?,
+        // Which qty wins is decided ONCE, in `product_stock_qty` — the row
+        // carries the two facts, not the merged answer, so the rule is a
+        // plain Rust function a test can pin (see `products_tests.rs`).
+        //
+        // `ss_qty` is NULL whenever `ss_has_rows` is NULL (the lateral
+        // aggregate returned its single all-NULL row), which is why the two
+        // are read together and resolved here rather than in SQL.
+        stock_qty: product_stock_qty({
+            let has_location_rows: Option<bool> = row
+                .try_get("stock_has_location_rows")
+                .map_err(|e| PgError::Db(e.to_string()))?;
+            let ss_qty: Option<i64> = row
+                .try_get("ss_qty")
+                .map_err(|e| PgError::Db(e.to_string()))?;
+            match has_location_rows {
+                Some(true) => ProductStock::LocationRows(ss_qty.unwrap_or(0)),
+                _ => ProductStock::NoLocationRows(
+                    row.try_get("stock_qty")
+                        .map_err(|e| PgError::Db(e.to_string()))?,
+                ),
+            }
+        }),
         popularity_score: row
             .try_get("popularity_score")
             .map_err(|e| PgError::Db(e.to_string()))?,
@@ -308,7 +426,18 @@ pub async fn list_missing_hashes(
         .collect())
 }
 
-/// List a tenant's products, ordered by name, with category name and stock.
+/// List EVERY product of a tenant, ordered by `(name, sku)`, with category
+/// name and stock.
+///
+/// This is the UNBOUNDED read — it materialises the whole catalogue into one
+/// `Vec` and streams it back in one response. It still exists because several
+/// callers legitimately need the complete set; every one of them is named in
+/// the body's comment. A new caller that only needs A page must use
+/// [`list_products_page`] instead.
+///
+/// Debt entry O-H12: this function must never again be reachable from a
+/// plain `GET /api/v1/products` with no bound — the route uses
+/// [`list_products_page`] and reports `has_more`.
 pub async fn list_products(
     pool: &Pool,
     tenant_id: &str,
@@ -322,9 +451,14 @@ pub async fn list_products(
     tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
         .await
         .map_err(|e| PgError::Db(e.to_string()))?;
+    // `ORDER BY (p.name, p.sku)` — the SAME total order the keyset pages
+    // walk, so an unbounded read and a concatenation of pages agree row for
+    // row. `idx_products_tenant_sku` on `(tenant_id, sku)` makes the tiebreak
+    // free; without it `p.sku` is the tiebreak that keeps the keyset
+    // comparison total (a name alone is not unique).
     let rows = tx
         .query(
-            &format!("{PRODUCT_SELECT} WHERE p.tenant_id = $1 ORDER BY p.name"),
+            &format!("{PRODUCT_SELECT} WHERE p.tenant_id = $1 ORDER BY p.name, p.sku"),
             &[&tenant_id],
         )
         .await
@@ -336,6 +470,103 @@ pub async fn list_products(
     attach_product_images(&tx, tenant_id, &mut result).await?;
     tx.commit().await.map_err(|e| PgError::Db(e.to_string()))?;
     Ok(result)
+}
+
+/// One keyed page of a tenant's products, ordered by `(name, sku)`.
+///
+/// `limit` is clamped to `1..=MAX_PRODUCT_PAGE_LIMIT`, so the read is always
+/// bounded even when the caller passes nothing or passes `usize::MAX`.
+/// `after` is the `sku` of the last product the previous page delivered
+/// (i.e. [`ProductPage::next_after`]); `None` starts at the first product.
+///
+/// The continuation key is the SKU but the comparison is on the whole
+/// `(name, sku)` pair, resolved to that SKU's row inside the same
+/// STABLE-snapshot transaction: the keyset must compare the SAME tuple the
+/// `ORDER BY` sorts on, or a product would be skipped. Carrying the whole
+/// pair in the token instead was rejected because a SKU may contain any
+/// character a name can, so a client-built `(name, sku)` token is
+/// ambiguous to split — and a SKU delimiter is a data-corruption waiting to
+/// happen. An `after` that matches no row of this tenant (a product deleted
+/// mid-walk) simply starts from the beginning; that is unreachable through a
+/// token this function issued, and failing closed there would break a walk
+/// for no benefit.
+pub async fn list_products_page(
+    pool: &Pool,
+    tenant_id: &str,
+    limit: Option<usize>,
+    after: Option<&str>,
+) -> Result<ProductPage, PgError> {
+    let limit = limit
+        .unwrap_or(DEFAULT_PRODUCT_PAGE_LIMIT)
+        .clamp(1, MAX_PRODUCT_PAGE_LIMIT);
+    let mut client = pool.get().await.map_err(|e| PgError::Db(e.to_string()))?;
+    let tx = client
+        .transaction()
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    // RLS: scope to the tenant (LOCAL setting — auto-resets on commit).
+    tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+
+    // One row PAST the page is fetched, and that row is what `has_more`
+    // reports on. Comparing `rows.len() == limit` instead would report a
+    // final page as "has more" whenever the catalogue size is an exact
+    // multiple of the page size — the client would then follow `next_after`
+    // into an empty page and, if it stopped on `products.is_empty()`, still be
+    // correct but waste a round trip; if it displayed a page counter, wrong.
+    let probe_limit = limit.saturating_add(1) as i64;
+    let rows = match after {
+        Some(cursor) => {
+            let stmt = tx
+                .prepare(&format!(
+                    "{PRODUCT_SELECT} \
+                     WHERE p.tenant_id = $1 \
+                       AND (p.name, p.sku) > (SELECT p2.name, p2.sku FROM products p2 \
+                                               WHERE p2.tenant_id = $1 AND p2.sku = $2) \
+                     ORDER BY p.name, p.sku \
+                     LIMIT $3"
+                ))
+                .await
+                .map_err(|e| PgError::Db(e.to_string()))?;
+            tx.query(&stmt, &[&tenant_id, &cursor, &probe_limit])
+                .await
+                .map_err(|e| PgError::Db(e.to_string()))?
+        }
+        None => {
+            let stmt = tx
+                .prepare(&format!(
+                    "{PRODUCT_SELECT} WHERE p.tenant_id = $1 ORDER BY p.name, p.sku LIMIT $2"
+                ))
+                .await
+                .map_err(|e| PgError::Db(e.to_string()))?;
+            tx.query(&stmt, &[&tenant_id, &probe_limit])
+                .await
+                .map_err(|e| PgError::Db(e.to_string()))?
+        }
+    };
+
+    let has_more = rows.len() > limit;
+    let mut page: Vec<ProductWithDetails> = rows
+        .iter()
+        .take(limit)
+        .map(pg_row_to_product_with_details)
+        .collect::<Result<_, _>>()?;
+    let next_after = if has_more {
+        page.last().map(|p| p.product.sku.as_str().to_owned())
+    } else {
+        None
+    };
+    // Images are attached for the PAGE only — bounded like the rest of this
+    // read, and the chunk loop in `attach_product_images` now sees at most
+    // `MAX_PRODUCT_PAGE_LIMIT` ids per call.
+    attach_product_images(&tx, tenant_id, &mut page).await?;
+    tx.commit().await.map_err(|e| PgError::Db(e.to_string()))?;
+    Ok(ProductPage {
+        products: page,
+        next_after,
+        has_more,
+    })
 }
 
 /// Get a single product by SKU (tenant-scoped), including category name and
@@ -615,3 +846,7 @@ pub async fn adjust_stock(
         new_qty,
     })
 }
+
+#[cfg(test)]
+#[path = "products_tests.rs"]
+mod tests;

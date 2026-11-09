@@ -12,7 +12,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { LocalizationProvider, ReactLocalization } from '@fluent/react';
@@ -27,6 +27,9 @@ import sharedFtl from '@/locales/shared.ftl?raw';
 // ── Hoisted mocks ─────────────────────────────────────────────────
 
 const mocks = vi.hoisted(() => ({
+  // The shell the component believes it is running in. Desktop by default so every
+  // existing case keeps its meaning; the tablet cases flip it.
+  tablet: false,
   createMemoScoped: vi.fn(),
   listAuthoredMemosScoped: vi.fn(),
   publishMemoScoped: vi.fn(),
@@ -41,6 +44,14 @@ vi.mock('@/api/memos', () => ({
   publishMemoScoped: mocks.publishMemoScoped,
   stopMemoScoped: mocks.stopMemoScoped,
   reviseMemoScoped: mocks.reviseMemoScoped,
+}));
+
+// The tablet shell registers the memo CONSUMER pair and not the authoring three, so
+// `MemosScreen` guards its create/revise calls. Pin that guard: with the shell mocked
+// to tablet the command must NOT be invoked, because on a real device it would reject.
+vi.mock('@/utils/shellKind', () => ({
+  isTabletShell: () => mocks.tablet,
+  isDesktopShell: () => !mocks.tablet,
 }));
 
 vi.mock('@/api/locations', () => ({
@@ -153,6 +164,7 @@ describe('MemosScreen §B administrative gate', () => {
 describe('MemosScreen', () => {
   beforeEach(() => {
     mocks.listAuthoredMemosScoped.mockReset();
+    mocks.tablet = false;
     mocks.createMemoScoped.mockReset();
     mocks.publishMemoScoped.mockReset();
     mocks.stopMemoScoped.mockReset();
@@ -243,6 +255,78 @@ describe('MemosScreen', () => {
 
     // The list reloads after a successful create.
     await waitFor(() => expect(mocks.listAuthoredMemosScoped).toHaveBeenCalledTimes(2));
+  });
+
+  // THE TABLET DOES NOT AUTHOR MEMOS. The mobile shell registers
+  // `list_active_memos_scoped` and `acknowledge_memo_scoped` and NOT
+  // `create_memo_scoped`, so submitting the form there meets `command not found`
+  // and `setActionError`. The component guards on `!isTabletShell()`.
+  //
+  // This case pins the CALL, not the markup: the form is still rendered on tablet
+  // (hiding it is a separate product decision), so what must hold is that the
+  // unregistered command is never invoked. Asserting `toHaveBeenCalledTimes(0)`
+  // after a real submit is the only shape that would have caught the original
+  // defect -- a test that merely rendered the screen passed all the time.
+  it('does not invoke createMemoScoped on the tablet shell', async () => {
+    mocks.tablet = true;
+    render(<MemosScreen />, { wrapper: FluentWrapper });
+
+    // The LIST read stays UNGUARDED on purpose (see the rationale in
+    // `load()`): a guarded load both misleads the user and reddens
+    // `verify-ipc-parity.py`. So the tablet still renders the seeded row —
+    // what must never happen is the CREATE reaching the shell.
+    await screen.findByText('End-of-day checklist');
+    expect(mocks.listAuthoredMemosScoped).toHaveBeenCalled();
+
+    await userEvent.type(screen.getByLabelText('Title'), 'Tablet briefing');
+    await userEvent.type(screen.getByLabelText('Message'), 'This must not reach the shell.');
+    await userEvent.click(screen.getByRole('button', { name: 'Create draft' }));
+
+    // Give the handler a turn to settle, then assert it never called the command.
+    await waitFor(() => expect(screen.queryByText('Tablet briefing')).toBeNull());
+    expect(mocks.createMemoScoped).not.toHaveBeenCalled();
+  });
+
+  // A double submit on Create draft must not store the draft TWICE.
+  //
+  // `canSubmit` includes `!creating`, but `creating` is STATE: React commits it on its
+  // next render, after the second submit of a real double tap. core does not refuse the
+  // replay either -- `create_memo_draft` mints a fresh `uuid::Uuid::now_v7()` and INSERTs
+  // unconditionally (crates/kasirmu-core/src/db/memos.rs:83), with no dedupe -- so two
+  // submits store TWO identical drafts.
+  //
+  // SHAPE 3 (round 139): both submits inside ONE act() batch. Sequential `fireEvent`
+  // wraps each dispatch in its own act() and React commits `setCreating(true)` between
+  // them, disabling the button -- that shape reports 1 call where a real double submit
+  // sends 2. The `removeAttribute` drops the disabled flag React has set but not yet made
+  // authoritative, which is the state a live double tap does not have to wait for.
+  it('creates one memo draft for a double submit while the first is in flight', async () => {
+    let releaseCreate: (v: unknown) => void = () => {};
+    const heldCreate = new Promise((resolve) => { releaseCreate = resolve; });
+    mocks.createMemoScoped.mockImplementation(() => heldCreate as never);
+    render(<MemosScreen />, { wrapper: FluentWrapper });
+    await screen.findByText('End-of-day checklist');
+
+    await userEvent.type(screen.getByLabelText('Title'), 'Team briefing');
+    await userEvent.type(screen.getByLabelText('Message'), 'Meet at the back office at 5 PM.');
+
+    // The submit is the form, not the button: a real double tap dispatches twice before
+    // React can re-render, so the disabled flag is not yet in the DOM's event path.
+    const form = screen.getByLabelText('Title').closest('form')!;
+    await act(async () => {
+      fireEvent.submit(form);
+      form.querySelectorAll('button[type=submit]').forEach((b) => b.removeAttribute('disabled'));
+      fireEvent.submit(form);
+    });
+
+    expect(
+      mocks.createMemoScoped.mock.calls.length,
+      'a second submit re-sent the create while the first was in flight; core has no ' +
+        'dedupe, so this stores TWO identical memo drafts',
+    ).toBe(1);
+
+    releaseCreate({ id: 'memo-1' });
+    await waitFor(() => expect(mocks.createMemoScoped).toHaveBeenCalledTimes(1));
   });
 
   it('passes the selected locations and duration to createMemoScoped', async () => {

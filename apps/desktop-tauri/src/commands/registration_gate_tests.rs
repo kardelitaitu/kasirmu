@@ -193,7 +193,45 @@ mod debt;
 /// `qris_listener::simulate_qris_notification_scoped`. All three arrive gated on
 /// SALES_PROCESS, so they move no debt ledger row or ceiling — only the registration
 /// floor and the ledger total.
-const REGISTERED_FLOOR: usize = 500;
+/// The 500 -> 510 step is AR/AP (Piutang/Hutang), 2026-10-23. Ten commands landed across
+/// two feature commits and neither moved this floor nor the generated ledger, so both
+/// legs were red at HEAD:
+///   * `be153f8cf` (feat(sales): add accounts receivable pay_later tender and
+///     settlement) -- eight receivables commands,
+///   * `160734e90` (feat(receipt): add credit terms formatting, kasbon
+///     settlement printing, and ar/ap aging export) -- `print_kasbon_settlement_slip_scoped`
+///     and `get_ap_aging_report_scoped`.
+///
+/// Nine of the ten arrive ALREADY GATED, at the bridge layer rather than in the desktop
+/// wrapper: `receivables:view` for the five reads (get/list receivable,
+/// list_customer_receivables, ar_aging, customer_summary), `receivables:create` for
+/// `create_receivable_scoped`, `receivables:collect` for
+/// `record_receivable_payment_scoped` and `receivables:writeoff` for
+/// `write_off_receivable_scoped` -- the writeoff is registered `sensitive` in
+/// the permission registry, so it is the one of the ten that carries real authority.
+/// `get_ap_aging_report_scoped` requires `payables:view`.
+///
+/// The tenth, `print_kasbon_settlement_slip_scoped`, is gated by `resolve_scope`
+/// rather than by a permission key -- the same shape as the other print commands, which
+/// take a session and a printer target and read the receipt config for that scope.
+///
+/// The 510 -> 511 step is ONE command, 2026-10-24:
+///   * `03a506f87` (feat(reports): make the piutang collections report reachable from the
+///     UI) -- `get_piutang_collections_scoped`.
+///
+/// It arrived ALREADY GATED, which is precisely the case this pin exists for: a command that
+/// is gated at the bridge moves no ceiling and no generated-ledger row, so no other leg in
+/// this file can see it. Left unraised it turned `test application shells (nextest)` red on
+/// 2026-10-25 (round 180) with `left: 510, right: 511`.
+///
+/// Lowering the floor is the same discipline in the other direction: round 191 retired
+/// `pending_sync_count_scoped` from BOTH shells (a permission-gated duplicate of the ungated
+/// `pending_offline_count_scoped`, which every UI caller already uses), so the tree now
+/// registers 510 and the pin had to follow it down. A retirement is the one change that may
+/// lower this number, and it is recorded here for the same reason a raise is.
+///
+/// Raising the floor records what landed; it does not approve it.
+const REGISTERED_FLOOR: usize = 510;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
 /// the hard pin on the ledger's own rows is

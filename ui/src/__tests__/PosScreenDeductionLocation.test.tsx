@@ -64,11 +64,6 @@ vi.mock('@/api/products', () => ({
   updateProduct: vi.fn(),
   deleteProduct: vi.fn(),
   adjustStock: vi.fn(),
-  listProductVariants: vi.fn(() => Promise.resolve([])),
-  getProductVariant: vi.fn(() => Promise.resolve(null)),
-  createProductVariant: vi.fn(),
-  updateProductVariant: vi.fn(),
-  deleteProductVariant: vi.fn(),
   createCategory: vi.fn(),
   deleteCategory: vi.fn(),
 }));
@@ -243,6 +238,61 @@ describe('PosScreen – ADR-19 §17 deduction location', () => {
       expect(salesApi.getCartDeductionLocationScoped).toHaveBeenCalledWith('mock-session-token', 'cart-1');
       expect(salesApi.getCartDeductionLocation).not.toHaveBeenCalled();
       expect(screen.getByTestId('deduction-location-badge').textContent).toContain('Store Inventory');
+    });
+
+    it('never calls the tablet-only ambient wrapper when there is no session token', async () => {
+      // The branch this case exists for was silently broken and no test covered it.
+      // `sessionToken` is `rawToken || ''` (PosScreen.tsx:157), so "no session" is the
+      // EMPTY STRING; the screen chose its wrapper with `sessionToken ? ... : ...`, so the
+      // empty case took the ambient branch. Desktop registers ONLY the scoped twin, so the
+      // invoke was rejected as an unknown command and the bare catch rendered the raw id.
+      // 7/7 tests passed while this was live, because every existing case stubs the
+      // populated-token path. Caught by scripts/verify-ipc-parity.py (the C40 shape), not
+      // by the suite -- so this case asserts the CALL, not just the rendered badge.
+      const workspace = await import('@/contexts/WorkspaceContext');
+      const spy = vi
+        .spyOn(workspace, 'useWorkspace')
+        .mockReturnValue({ activeWorkspace: null, setActiveWorkspace: vi.fn(), sessionToken: '', resolvedStoreId: null } as never);
+      try {
+        vi.mocked(salesApi.startSaleScoped).mockResolvedValue({
+          cartId: 'cart-1' as CartId,
+          deductionLocationId: 'loc-store-inventory',
+        });
+        vi.mocked(salesApi.getCartDeductionLocationScoped).mockResolvedValue({
+          locationId: 'loc-store-inventory',
+          locationName: 'Store Inventory',
+        });
+        vi.mocked(salesApi.getCartDeductionLocation).mockResolvedValue(null);
+
+        await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
+        await waitFor(() => {
+          expect(mockedBarcode.useBarcodeScanner).toHaveBeenCalled();
+        }, FAST_WAIT);
+        await screen.findByText('Close');
+        vi.mocked(productsApi.lookupByBarcodeScoped).mockResolvedValueOnce({
+          sku: 'ITEM-001', name: 'Test Item', category: 'Test',
+          price: { minor_units: 400, currency: 'USD' }, barcode: 'BARCODE-001',
+          in_stock: true, stock_qty: 100, product_type: 'standard',
+          tax_rate_ids: [], created_at: '', price_updated_at: '',
+        });
+        await act(async () => {
+          mockedBarcode.triggerScan('BARCODE-001');
+        });
+        await waitFor(() => {
+          expect(screen.getByText('Test Item')).toBeInTheDocument();
+        }, FAST_WAIT);
+        await userEvent.click(
+          screen.getByRole('button', { name: /override price for test item/i }),
+        );
+        await waitFor(() => {
+          expect(screen.getByTestId('deduction-location-badge')).toBeInTheDocument();
+        }, FAST_WAIT);
+
+        expect(salesApi.getCartDeductionLocation).not.toHaveBeenCalled();
+        expect(salesApi.getCartDeductionLocationScoped).toHaveBeenCalled();
+      } finally {
+        spy.mockRestore();
+      }
     });
 
     it('keeps the cart when the location lookup fails, instead of reporting a failed cart', async () => {

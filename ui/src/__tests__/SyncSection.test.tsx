@@ -31,6 +31,28 @@ const testL10n = {
       'settings-sync-status-idle': 'Idle',
       'settings-sync-status-ok': 'Sync OK',
       'settings-sync-pending-count': '{count} pending',
+      'settings-sync-resolved-origin': 'Server in use: origin (source)',
+      'sync-conflicts-col-action': 'Action',
+      'sync-conflicts-col-actions': 'Actions',
+      'sync-conflicts-col-attempts': 'Attempts',
+      'sync-conflicts-col-error': 'Last Error',
+      'sync-conflicts-loading': 'Loading…',
+      'sync-conflicts-panel-empty': 'No dead-lettered conflicts.',
+      'sync-conflicts-panel-table-aria': 'Quarantined conflicts table',
+      'sync-conflicts-panel-title': 'Quarantined Sync Conflicts',
+      'sync-conflicts-payload-copied': 'Copied!',
+      'sync-conflicts-payload-copy': 'Copy JSON',
+      'sync-conflicts-payload-hide': 'Hide',
+      'sync-conflicts-payload-hide-aria': 'Hide payload for item id',
+      'sync-conflicts-payload-inspect': 'Inspect',
+      'sync-conflicts-payload-inspect-aria': 'Inspect payload for item id',
+      'sync-conflicts-payload-title': 'JSON Payload',
+      'sync-conflicts-requeue-all': 'Requeue All',
+      'sync-conflicts-requeue-all-aria': 'Requeue all quarantined sync conflicts',
+      'sync-conflicts-requeueing-all': 'Requeueing (current/total)…',
+      'sync-conflicts-retry': 'Retry',
+      'sync-conflicts-retry-aria': 'Retry sync for item id',
+      'sync-conflicts-retrying': 'Retrying…',
       'settings-sync-summary-pending': 'pending',
       'settings-sync-summary-synced': 'synced',
       'settings-sync-summary-failed': 'failed',
@@ -63,6 +85,12 @@ const testL10n = {
       'settings-sync-plan-required-hint': 'Your local sales keep working — upgrade to sync them to the cloud.',
       'settings-sync-confirm-overwrite': 'Overwrite local data with the server snapshot?',
       'settings-sync-confirm-pull-title': 'Pull from server?',
+      // Keys the component renders that this hand-maintained map never carried.
+      // No case here asserts them, so getString returned the raw id silently.
+      // Values copied verbatim from shared-ui/locales (curly holes rewritten to the
+      // stub's brace form).
+      'settings-sync-pull-empty': 'Server returned empty snapshot - nothing to pull',
+      'settings-sync-pull-toast-success': 'Pulled {products} products, {tax_rates} tax rates, {users} users from server',
       'cancel': 'Cancel',
       'settings-sync-request-token': 'Request Token',
       'settings-sync-requesting': 'Requesting…',
@@ -624,6 +652,22 @@ describe('SyncSection', () => {
       // SYNC-03: the confirmation dialog and the IPC payload are one flow.
       expect(syncPull).toHaveBeenCalledWith({ confirmDestructive: true });
     });
+  });
+
+  it('pulls once when the confirm button is double-tapped', async () => {
+    // A destructive pull rewrites local data from the server snapshot. The dialog's
+    // confirm button shows a spinner while `pulling` is true but is not disabled, so two
+    // taps inside one tick both reach runPull.
+    const syncPull = vi.fn().mockResolvedValue(PULL_OK);
+    renderSection({ sync: SYNCED, syncPull });
+
+    fireEvent.click(screen.getByText('Pull from Server'));
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    const confirmBtn = within(screen.getByRole('dialog')).getByRole('button', { name: 'Pull from Server' });
+    fireEvent.click(confirmBtn);
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => expect(syncPull).toHaveBeenCalledTimes(1));
   });
 
   it('does not pull when the dialog is cancelled', async () => {

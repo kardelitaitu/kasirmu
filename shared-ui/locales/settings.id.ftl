@@ -69,6 +69,9 @@ settings-nav-offline-queue = Antrean Offline
 settings-nav-tax-configuration = Konfigurasi Pajak
 settings-nav-exchange-rates = Kurs Valuta Asing
 settings-nav-system-diagnostics = Diagnostik Sistem
+settings-nav-email-reports = Laporan Email
+settings-nav-appearance = Tampilan
+settings-email-desktop-only = Mengirim dan menjadwalkan laporan memerlukan aplikasi desktop.
 settings-screen-placeholder = Halaman ini sedang dibangun ulang.
 settings-screen-migrating = Konten setelan yang ada akan dipindahkan ke sini secara selektif.
 # Gerbang lantai halaman Setelan: roleAtLeast (utils/role.ts) menampilkan teks ini
@@ -96,8 +99,6 @@ settings-sidebar-pinned-group-aria = Bagian yang disematkan
 settings-sidebar-resize-aria = Ubah ukuran bilah sisi
 settings-nav-pin-aria = Sematkan { $name }
 settings-nav-unpin-aria = Lepas sematan { $name }
-settings-nav-pin-title = Sematkan
-settings-nav-unpin-title = Lepas sematan
 settings-sidebar-no-results = Tidak ada bagian yang cocok
 settings-sidebar-clear-results = Hapus pencarian
 
@@ -110,6 +111,9 @@ settings-announce-search-count =
        *[other] { $count } hasil ditemukan
     }
 settings-announce-search-cleared = Pencarian dihapus
+
+settings-key-rotation-overdue = Rotasi kunci enkripsi sudah terlambat. Rotasi kunci dari Pengaturan Keamanan untuk menjaga kepatuhan PCI-DSS.
+settings-key-rotation-due = Rotasi kunci enkripsi jatuh tempo dalam { $count } hari. Silakan rotasi dari Pengaturan Keamanan.
 
 # ── Keyboard shortcut descriptions (popover) ──
 settings-shortcuts-desc-navigate = Navigasi item
@@ -279,8 +283,6 @@ settings-load-partial = Sebagian pengaturan gagal dimuat. Coba lagi.
 settings-section-store = Toko
 settings-section-currency = Mata Uang
 settings-currency-loading = Memuat mata uang…
-settings-section-display = Tampilan
-settings-section-receipt = Nota
 settings-field-store-name = Nama toko
 # Shown under the store-name input when it is left empty on blur.
 settings-store-name-required = Nama toko wajib diisi
@@ -288,25 +290,8 @@ settings-field-address = Alamat
 settings-field-branch = Cabang
 settings-field-tax-id = NPWP
 settings-field-default-currency = Mata uang default
-settings-field-decimal-separator = Pemisah desimal
-settings-field-paper-width = Lebar kertas
-settings-field-footer = Kaki nota
 
 # ── Tampilan ──
-settings-field-card-size = Ukuran Kartu Menu
-settings-field-font-size = Ukuran Font
-settings-card-size-decrease-aria =
-    .aria-label = Kurangi ukuran kartu
-settings-card-size-increase-aria =
-    .aria-label = Tambah ukuran kartu
-settings-font-size-decrease-aria =
-    .aria-label = Kurangi ukuran font
-settings-font-size-increase-aria =
-    .aria-label = Tambah ukuran font
-settings-field-font-smoothing = Penghalusan Font
-settings-toggle-show-currency = Tampilkan simbol mata uang
-settings-toggle-show-tax = Tampilkan baris pajak di nota
-settings-toggle-show-table-number = Tampilkan nomor meja di keranjang dan nota
 settings-btn-save = Simpan
 settings-close-unsaved-title = Keluar dengan perubahan yang belum disimpan?
 settings-close-unsaved-msg = Perubahan pengaturan Anda belum disimpan. Menutup sekarang akan membuangnya.
@@ -323,7 +308,6 @@ settings-sync-server-url = URL Server
 settings-sync-resolved-origin = Server yang dipakai: { $origin } ({ $source })
 settings-sync-api-key = Kunci API
 settings-sync-enabled = Aktifkan Sinkronisasi Cloud
-settings-sync-enabled-aria = Aktifkan/nonaktifkan sinkronisasi cloud
 settings-sync-sync-now = Sinkron Sekarang
 settings-sync-syncing = Menyinkronkan…
 settings-sync-test-connection = Tes Koneksi
@@ -363,8 +347,6 @@ settings-tax-id-placeholder =
     .placeholder = 12-345-678-9-000
 settings-branch-placeholder =
     .placeholder = Cabang Utama
-settings-footer-placeholder =
-    .placeholder = Terima kasih telah berbelanja!
 settings-server-url-placeholder =
     .placeholder = https://api.example.com
 settings-api-key-placeholder =
@@ -457,12 +439,8 @@ appearance-reset-all-failed = Gagal mengatur ulang pengaturan tampilan
 appearance-save-aria =
     .aria-label = Simpan tampilan
 appearance-save-success = Pengaturan tampilan berhasil disimpan
+settings-appearance-logo-desktop-only = Memilih logo memerlukan aplikasi desktop. Warna dan nama toko masih dapat diubah di sini.
 appearance-save-failed = Gagal menyimpan pengaturan tampilan
-settings-decimal-separator-dot = 1,00 (titik)
-settings-decimal-separator-comma = 1,00 (koma)
-settings-decimal-separator-none = 1 (tanpa)
-settings-paper-width-narrow = 58 mm (sempit)
-settings-paper-width-standard = 80 mm (standar)
 
 # ── Data Management ──
 data-mgmt-title = Manajemen Data
@@ -588,7 +566,6 @@ data-mgmt-toast-backup-status-fail = Gagal memuat status cadangan
 # ── Feature Toggles ──
 feature-toggle-title = Alih Fitur
 feature-toggle-subtitle = { $enabled } / { $total } aktif
-feature-toggle-loading = Memuat fitur…
 feature-toggle-group-core = Inti
 feature-toggle-group-payments = Pembayaran
 feature-toggle-group-products = Produk
@@ -640,11 +617,6 @@ category-name-fallback = (tanpa nama)
 
 # ── General Settings ──
 # ── Receipt Settings ──
-settings-margins-heading = Margin Kertas (mm)
-settings-margin-top = Atas
-settings-margin-bottom = Bawah
-settings-margin-left = Kiri
-settings-margin-right = Kanan
 
 # ── Receipt Preview ──
 
@@ -671,27 +643,14 @@ settings-margin-right = Kanan
 # ── Tender Presets ──
 
 # ── Cloud Sync ──
-settings-font-smoothing-antialiased = Antialiased (tajam)
-settings-font-smoothing-subpixel = Subpixel (halus)
 settings-sync-token-hint = Disimpan dengan aman di database — tidak pernah di localStorage
 settings-sync-last = Sinkronisasi terakhir
 settings-sync-pending = Perubahan tertunda
 settings-sync-confirm-overwrite = Timpa data lokal dengan snapshot server?
 settings-sync-confirm-pull-title = Tarik dari server?
-settings-sync-toast-success = Sinkronisasi berhasil
-settings-sync-toast-fail = Sinkronisasi gagal — periksa URL server dan token
-settings-sync-toast-test-success = Uji koneksi berhasil
-settings-sync-toast-test-fail = Tidak dapat menjangkau server
 settings-sync-pull-toast-success = { $products } produk, { $tax_rates } tarif pajak, { $users } pengguna ditarik dari server
-settings-sync-pull-toast-empty = Snapshot server kosong — tidak ada yang ditarik
-settings-sync-pull-toast-fail = Penarikan gagal — periksa URL server dan token
 
 # ── System & License ──
-settings-system-license-header = Sistem & Kepemilikan Lisensi
-settings-software-edition = Edisi Perangkat Lunak
-settings-license-type = Tipe Lisensi
-settings-copyright-notice = Pemberitahuan Hak Cipta
-settings-commercial-contact = Kontak Komersial
 settings-app-version = kasir.mu Enterprise v{ $version }
 
 # ── License Info Section ──
@@ -710,7 +669,6 @@ settings-license-server-tier = Tingkat Server
 settings-license-server-active = Server Aktif
 settings-license-server-expires = Server Kedaluwarsa
 settings-license-server-results = Hasil Pemeriksaan Lisensi
-settings-license-type-value = Proprietary
 settings-license-unlimited = Tidak Terbatas
 settings-license-yes = Ya
 settings-license-no = Tidak
@@ -755,23 +713,10 @@ settings-license-resume-failed = Gagal melanjutkan langganan
 settings-license-reauth-banner-title = Pemeriksaan Perpanjangan Langganan Diperlukan
 settings-license-reauth-banner-desc = Langganan Anda berakhir dalam { $days } hari. Hubungkan ke internet untuk melakukan autentikasi ulang dengan server lisensi.
 settings-license-reauth-action = Verifikasi Online Sekarang
-settings-copyright-notice-value = kasir.mu © 2025–2026. Seluruh hak cipta dilindungi.
 
 # ── Toast messages ──
 
 # ── Updates ──
-settings-updates-heading = Pembaruan
-settings-current-version = Versi Saat Ini
-settings-check-for-updates = Periksa Pembaruan
-settings-checking-for-updates = Memeriksa…
-settings-up-to-date = ✓ Anda telah menggunakan versi terbaru
-settings-update-available = { $version } tersedia
-settings-install-update = Pasang Sekarang
-settings-installing-update = Memasang…
-settings-update-status-label = Status
-settings-update-not-checked = Belum diperiksa
-settings-update-check-error = Pemeriksaan pembaruan gagal
-settings-update-retry = Coba Lagi
 settings-field-language = Bahasa
 
 # ── Field validation ──
@@ -954,6 +899,8 @@ addon-hal-desc = Muat dan gunakan driver abstraction layer hardware kustom untuk
 
 // ── API Lokal (Pengaturan → API Lokal) ────────────────────────────
 settings-section-local-api = API Lokal
+settings-local-api-desktop-only = Server API Lokal berjalan di aplikasi desktop.
+settings-nav-local-api = API Lokal
 settings-local-api-intro = Jalankan skrip Anda sendiri ke mesin kasir ini melalui HTTP. Server hanya mendengarkan di komputer ini (127.0.0.1) dan mati secara default.
 settings-local-api-enabled = Aktifkan API Lokal
 settings-local-api-port = Port
@@ -1026,6 +973,7 @@ settings-regional-scope-built-in = Default bawaan
 settings-localpay-title = Metode pembayaran lokal
 settings-localpay-subtitle = Jalur pembayaran yang tersedia di pasar dan lokasi ini.
 settings-localpay-code-placeholder = kode jalur, mis. qris
+settings-localpay-code-required = Kode metode pembayaran wajib diisi
 settings-localpay-code-label = Kode jalur
 settings-localpay-label-placeholder = label tampilan, mis. QRIS
 settings-localpay-label-label = Label tampilan
@@ -1210,6 +1158,19 @@ settings-edc-field-active = Aktif untuk Pembayaran
 settings-edc-conn-wired = Kabel (Wired)
 settings-edc-conn-wireless = Nirkabel (Wireless)
 settings-edc-default-select = Terminal EDC Standar Kasir Ini
+# Round 210: sisa literal pada render EdcTerminalsCard. "Register Default"
+# di :323 adalah frasa yang sama dengan kunci ini, dikurangi kata-kata
+# "Terminal EDC" — lencana dan tombolnya tidak pernah dibedakan, jadi lencana
+# kini punya kunci sendiri alih-alih memakai ulang kunci ini dengan teks lain.
+settings-edc-default-badge = Standar Kasir Ini
+settings-edc-set-default = Jadikan Standar
+settings-edc-loading = Memuat…
+settings-edc-save = Simpan Terminal
+settings-edc-saving = Menyimpan…
+settings-edc-toggle = Alih
+settings-edc-detail-address = Alamat:
+settings-edc-detail-vendor = Vendor:
+settings-edc-detail-model = Model:
 settings-edc-default-auto = Otomatis (Pertama Dibuat)
 settings-edc-saved = Terminal EDC berhasil disimpan.
 settings-edc-deleted = Terminal EDC berhasil dihapus.
@@ -1232,6 +1193,14 @@ sync-conflicts-retry-aria = Coba sinkronisasi ulang item { $id }
 sync-conflicts-requeue-all = Coba Lagi Semua
 sync-conflicts-requeueing-all = Mencoba lagi ({ $current }/{ $total })…
 sync-conflicts-requeue-all-aria = Coba lagi semua konflik sinkronisasi terkarantina
+# Round 220. Panel ini dulu menampilkan String(e) ke role="alert", sehingga penolakan
+# IPC mentah sampai ke operator. Kasus massal bahkan BERHENTI pada penolakan
+# pertama — padahal penolakan itu normal: requeue_remote_failure mengembalikan
+# CoreError::NotFound untuk item yang sudah tidak dead-lettered (remote.rs:192-195),
+# yang persis terjadi bila item itu baru saja diantrekan dari tombol barisnya.
+sync-conflicts-load-failed = Gagal memuat konflik terkarantina
+sync-conflicts-requeue-failed = Konflik ini gagal diantrekan ulang
+sync-conflicts-requeue-partial = Sebagian konflik gagal diantrekan ulang
 sync-conflicts-payload-inspect = Periksa
 sync-conflicts-payload-hide = Sembunyikan
 sync-conflicts-payload-inspect-aria = Periksa payload untuk item { $id }
@@ -1265,5 +1234,14 @@ settings-updater-offline-warning-body = Anda memiliki { $count } transaksi yang 
 settings-updater-offline-sync-now = Sinkronkan Sekarang
 settings-updater-offline-ignore-proceed = Tetap Lanjutkan
 settings-updater-cancel = Batal
+settings-updater-android-only = Pembaruan dalam aplikasi hanya tersedia untuk Android.
 
 
+
+# Round 212 - sisa literal di seluruh permukaan pengaturan, ditambah tombol
+# segarkan pada footer staf.
+staff-refresh-aria = Segarkan data staf
+sync-conflicts-payload-title = Muatan JSON
+update-notes-title = Catatan Perubahan
+data-mgmt-restore-unreadable = Gagal membaca generasi cadangan di samping basis data.
+terminal-hardware-error-save-profile = Gagal menyimpan profil perangkat keras

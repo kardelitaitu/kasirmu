@@ -2,7 +2,7 @@
 
 · Prior marker retained below, verbatim ·
 
-Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 finding, previously flagged) · Supersedes the 2026-09-29 marker below, kept verbatim. The prior stamp had already FLAGGED "OZ_DB_POOL_SIZE documented/claimed as 20 throughout but code default is 8 … left for the config owner"; this pass FIXED it rather than carrying the flag forward. Six present-tense claims of a 20-connection pool now state the code default (**8**, `apps/cloud-server/src/config.rs:226`), and the two RAM figures derived from 20 connections (~30 MB) are recomputed for 8 (~12 MB) with the scaling stated. The capacity/CPU snapshot figures the prior stamp called unverified are untouched. · Repaired against branch `0.0.41` at `134aaed1b`.
+Audit stamp: 2026-10-08 · docs-auditor · status: ACCURATE AFTER REPAIR (1 finding, previously flagged) · Supersedes the 2026-09-29 marker below, kept verbatim. The prior stamp had already FLAGGED "OZ_DB_POOL_SIZE documented/claimed as 20 throughout but code default is 8 … left for the config owner"; this pass FIXED it rather than carrying the flag forward. Six present-tense claims of a 20-connection pool now state the code default (**8**, `apps/cloud-server/src/config.rs:226`), and the two RAM figures derived from 20 connections (~30 MB) are recomputed for 8 (~12 MB) with the scaling stated. The capacity/CPU snapshot figures the prior stamp called unverified are untouched. · Repaired against branch `0.0.41` at `134aaed1b`. <!-- dead-ref: ok: verified 2026-10-19; audit-stamp narrative naming OZ_DB_POOL_SIZE's default 8, which config.rs:226 confirms; no symbol to anchor -->
 
 · Prior marker retained below, verbatim ·
 
@@ -61,7 +61,7 @@ Caddy (reverse proxy + gzip)
 Requests pass through this pipeline (outermost first):
 
 1. **Security headers** — `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, etc.
-2. **Gzip compression** — `CompressionLayer::new().gzip(true)` for all responses
+2. **Gzip compression — in Caddy, not in Rust.** There is no `CompressionLayer` in the server: it was removed to save ~0.01 core of CPU (`apps/cloud-server/src/main.rs:1008-1009`), and Caddy does the encoding (`apps/unified/Caddyfile:127` — `encode gzip`). This row claimed `CompressionLayer::new().gzip(true)` until 2026-10-11, contradicting this same document's §11.1.
 3. **CORS** — configurable origins via `OZ_CORS_ORIGINS`
 4. **Concurrency limit** — API routes: 10 concurrent; sync routes: 40 concurrent
 5. **Auth middleware** — JWT HS256 verification, extracts `ApiTokenClaims`
@@ -88,7 +88,7 @@ Two worker threads by **default**, now overridable at runtime on every deploymen
 | Component | Value |
 |-----------|-------|
 | Backend | PostgreSQL (Northflank free addon) |
-| Connection pool | `deadpool_postgres::Pool`, `OZ_DB_POOL_SIZE` connections (code default **8** — `apps/cloud-server/src/config.rs:226`) |
+| Connection pool | `deadpool_postgres::Pool`, `OZ_DB_POOL_SIZE` connections (code default **8** — `apps/cloud-server/src/config.rs:242`) |
 | Tenant isolation | `SET LOCAL oz.tenant_id` per transaction (RLS-ready) |
 | Schema | Auto-applied on first boot from `20260813_init.pg.sql` |
 | Fallback | In-memory SQLite for unported handlers only (health is PG-aware) |
@@ -375,16 +375,26 @@ The `/health` endpoint runs two async SQL queries on PostgreSQL (queue depth, la
 | PocketBase (Go runtime) | ~30 MB |
 | Rust cloud server (base) | ~15 MB |
 | Tokio runtime (2 workers) | ~5 MB |
-| PostgreSQL connection pool (20 conns) | ~30 MB |
+| PostgreSQL connection pool (8 conns — the code default) | ~12 MB |
 | Snapshot cache (200 tenants) | ~20 MB |
 | JWT cache (1000 tokens) | ~1 MB |
 | Rate limiter state | ~2 MB |
 | Prometheus metrics | ~1 MB |
 | OS + container overhead | ~30 MB |
-| **Total** | **~143 MB** |
+| **Total** | **~143 MB** — ⚠️ see the note below; the rows do not arithmetically produce this figure |
 | **Headroom** | **~369 MB (72%)** |
 
-The server is well within the 512 MB limit with PostgreSQL. The connection pool adds ~12 MB at the default 8 connections (~1.5 MB each), scaling with `OZ_DB_POOL_SIZE`, and is well worth the concurrency gains.
+The server is well within the 512 MB limit with PostgreSQL. The connection pool adds ~12 MB at the default 8 connections
+
+> ⚠️ **The table's figures are per-component ceilings, not a sum, and the `Total` row is not
+> re-derivable from them.** The rows above add to ~287 MB on paper while `Total` says ~143 MB and
+> `Headroom` follows from that — because several components share one process footprint (PocketBase
+> and the Rust server are separate containers, and the caches live inside the Rust server's own
+> RSS rather than beside it). The ~143 MB total is a **2026-08-21 measurement of a deployed
+> system**, not arithmetic; it is left as measured rather than recomputed, so treat the row values
+> as sizing hints and the total as the observation. The pool row previously said 20 connections /
+> ~30 MB against a code default of 8 — the stamp above claimed that repair, and this row is the one
+> it missed. (~1.5 MB each), scaling with `OZ_DB_POOL_SIZE`, and is well worth the concurrency gains.
 
 ### 10.2 Standard Tier (4 GB)
 
@@ -403,7 +413,7 @@ Same base memory + larger PG pool (~100 MB for 50 connections) + larger snapshot
 |------|---|-------------|-----------|----------------|--------|
 | [x] | 1 | Remove duplicate gzip | ~0.01 core | +20 | `main.rs:691` — removed `CompressionLayer`, Caddy handles it |
 | [x] | 2 | Extend snapshot cache TTL | ~0.01 core | +40 | `sync_api.rs:519` — 300s → 900s (15 min) |
-| [x] | 3 | JWT token caching | ~0.005 core | +20 | `crates/kasirmu-api/src/auth.rs:35` — `RwLock<HashMap\>` with 60s TTL, skips HMAC + base64 on hot paths |
+| [x] | 3 | JWT token caching | ~0.005 core | +20 | `DEFAULT_EXPIRY_HOURS` at `crates/kasirmu-api/src/auth.rs:35` — `RwLock<HashMap\>` with 60s TTL, skips HMAC + base64 on hot paths |
 | [x] | 4 | Skip UUID validation | ~0.02 core | +80 | `sync_api.rs:193` — `OZ_SKIP_PUSH_VALIDATION=1` env var, saves ~5µs × 20 items × 200 pushes/sec |
 | [x] | 5 | Reduce snapshot payload | ~0.005 core | +20 | `sync_store.rs` — omit null optional fields from JSON, saves ~30% payload |
 | [x] | 6 | Batch snapshot queries | ~0.002 core | +8 | `sync_store.rs:snapshot_all()` — 1 transaction instead of 3, saves 3 round-trips |
@@ -531,7 +541,7 @@ The current architecture is single-instance (SQLite mutex, in-memory cache, in-m
 | Concurrency limits | `apps/cloud-server/src/main.rs` | `ConcurrencyLimitLayer::new(10)` / `new(40)` |
 | Sync push handler | `apps/cloud-server/src/sync_api.rs` | `push_handler` — batch insert in one transaction (`push_batch`) |
 | Sync pull handler | `apps/cloud-server/src/sync_api.rs` | `pull_handler` — cursor-based pagination |
-| Snapshot cache | `apps/cloud-server/src/sync_api.rs` | `SnapshotCache` type alias, 5-min TTL |
+| Snapshot cache | `apps/cloud-server/src/sync_api.rs` | `SnapshotCache` type alias, **15-min** TTL (`SNAPSHOT_CACHE_TTL_SECS = 900`, `:576`) |
 | Rate limiter | `apps/cloud-server/src/rate_limit.rs` | Token bucket with per-endpoint config |
 | Prune loop | `apps/cloud-server/src/prune.rs` | Hourly, 90-day retention, batched DELETE |
 | Metrics | `apps/cloud-server/src/metrics.rs` | Prometheus counters + histograms |

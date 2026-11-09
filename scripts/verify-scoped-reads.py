@@ -103,6 +103,18 @@ finding lives. That number is stated, never scored -- same contract as
 the three above, and case 39 pins both halves: the line prints what an independent audit of the
 other section computed, and the run's exit code does not move whether it says 0 or 101.
 
+CORRECTED 2026-11-06: that 101 is spent, and the sentence it supported no longer holds. Both
+sections grade clean today -- `--shell tablet` prints `clean for tablet` at exit 0, and the
+visibility line on a bare `--shell desktop` run reports `tablet: 0 unguarded call site(s) across
+0 file(s) and 0 command(s), 64 cleared`. The tablet half was repaired somewhere between
+e6d211b98 (2026-09-16) and now, so the fourth line has become a report about a section that is
+clean rather than a warning about a hidden red. It stays for exactly the reason it was added: the
+moment someone grades one shell and the other drifts red again, this line is the only place the
+run says so unasked. Case 39's contract is unchanged -- the number is stated, never scored, and 0
+or 101 never moves the exit code. Read the paragraph above as history with a measurement
+attached, not as today's status: a quoted finding count is only as current as the tip it was
+measured on.
+
 usage:
     python scripts/verify-scoped-reads.py                # check the tree
     python scripts/verify-scoped-reads.py --self-test    # classifier + entry-shape reader
@@ -110,11 +122,16 @@ usage:
                                                        # checkout copy (F-1 seam)
 """
 import argparse
+from datetime import date
 import io
 import json
 import os
 import re
+import subprocess
 import sys
+import contextlib
+import pathlib
+import shutil
 import tempfile
 import time
 
@@ -140,8 +157,76 @@ import time
 # REPO is still __file__-derived, so the refusal fires in the wrong checkout rather than
 # pointing at the right one, and --repo does not exist to say which tree was meant.
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# ── The root anchor: git's answer first, the script's parent second ──────────
+#
+# CLOSED 2026-11-06 (F-2 above, the anchor half). The paragraph above is kept as history:
+# it recorded that REPO came from __file__ with nothing arguing for it, and that a gate
+# whose default on an empty corpus is clean will report a repository it is not looking at.
+# The reproduction it cites was real -- a HEAD-identical copy beside a copied allowlist
+# printed 'clean for desktop' over 0 files.
+#
+# git's answer is now asked FIRST, from the directory holding this file, and the
+# script-relative anchor is only the fallback for the case git cannot answer at all (a copy
+# sitting outside any repository, a git-less box). What that buys, measured: a copy of this
+# script placed ANYWHERE inside a checkout grades that checkout, instead of the directory
+# above the copy. What it did not buy then, and has now: the --repo flag (closed 2026-11-06).
+# A caller can name a tree git cannot find from the script's own location -- another checkout,
+# a fixture -- and resolve_repo_flag() refuses a named tree that is not a directory, in the
+# same EmptyCorpus family, before the walk. Cases 41a-41e grade it. require_gradeable_corpus()
+# is still what refuses an empty corpus on the default path -- exit 2, before a verdict.
+def _git_toplevel(where):
+    """git's `rev-parse --show-toplevel` for a directory, or None when git cannot answer.
+
+    None covers every way git can fail to name a tree: no git binary, a cwd outside any
+    repository, a timeout, a non-zero exit, an empty answer. The caller cannot tell those
+    apart and does not need to -- what it needs is a fact it may fall back from.
+    """
+    directory = where if os.path.isdir(where) else os.path.dirname(where)
+    try:
+        proc = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=directory,
+                              capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    top = (proc.stdout or "").strip()
+    return os.path.abspath(top) if top else None
+
+
+def resolve_repo(start=None):
+    """The checkout root to grade: git first, this file's parent only as a fallback.
+
+    Start is a path to THIS script (or a stand-in for it); the directory searched is the
+    one holding it, so an ordinary run and a copy behave the same way.
+    """
+    here = os.path.dirname(os.path.abspath(start or __file__))
+    top = _git_toplevel(here)
+    if top:
+        return top
+    return os.path.dirname(here)
+
+
+REPO = resolve_repo()
 ALLOWLIST = os.path.join(REPO, "scripts", "ipc-parity-allowlist.json")
+BASELINE = os.path.join(REPO, "scripts", "scoped-reads-baseline.json")
+
+
+def load_baseline(path=BASELINE):
+    """Load and validate the transitional debt baseline for scoped ambient reads."""
+    if not path or not os.path.isfile(path):
+        return []
+    with io.open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    entries = data.get("entries", [])
+    if not isinstance(entries, list):
+        raise ValueError(f"baseline at {path} must contain an 'entries' list")
+    for e in entries:
+        if not isinstance(e, dict):
+            raise ValueError(f"baseline entries in {path} must be objects")
+        for f in ("shell", "command", "file", "owner", "reason", "introduced", "expires"):
+            if not isinstance(e.get(f), str) or not e[f].strip():
+                raise ValueError(f"baseline entry in {path} missing non-empty field '{f}'")
+    return entries
 
 # WHO DECIDES AN ENTRY SHAPE, written where the rule is read rather than in a commit
 # message from whichever lane noticed the drift last.
@@ -628,12 +713,77 @@ def _in_force(head, pattern, strict_block=False):
                 if guard_depth is not None and depth < guard_depth:
                     break
                 if strict_block and guard_depth is not None and opened and depth <= guard_depth:
+                    # `} else {` continues the SAME if-statement: both arms run under the
+                    # condition, so the guard is still in force and the condition stays
+                    # armed for the else block. Breaking here dropped every else arm --
+                    # measured 2026-10-24 on DevToolbar.tsx, where
+                    # `if (isTabletShell()) { <status> } else { await createMemoScoped(..) }`
+                    # left the desktop-only call graded as an unguarded TABLET call. That is
+                    # also the shape the repo writes when the if-arm returns early: the early
+                    # return closes the block, so only the else carries the real body.
+                    rest = head[i + 1:]
+                    if re.match(r'\s*else\b', rest):
+                        opened = False
+                        continue
                     break
         if guard_depth is not None and (
                 depth > guard_depth if strict_block else depth >= guard_depth):
             return True
     return False
 
+
+def _in_else_arm_of(head, pattern):
+    """True when the END of `head` sits in the ELSE arm of a `pattern` guard.
+
+    The sibling of _in_force, answering a different question. _in_force asks "is the guarded
+    block still open"; this asks "did the guard's if-block CLOSE and hand over to an else".
+    They are not interchangeable: for a call in the else arm of
+    `if (isTabletShell()) { A } else { B }`, _in_force treats the else as a continuation of
+    the same block and answers for the if-arm question, which is not the one being asked.
+
+    Why a brace walk and not a text search: the difference between an UNGUARDED call and one
+    in an else arm is a single word. `if (c) { A } await x()` and
+    `if (c) { A } else { await x() }` differ only by `else`, so a regex looking for the word
+    nearby finds it in both -- the exact false-clear shape this file has fixed three times.
+    So the walk locates the guard, tracks its brace depth, and reports where the LAST match
+    ends: still inside the if-block (False, that is the if arm) or past a brace-balanced
+    `} else {` (True).
+
+    A guard whose block never closes, or which carries no else, answers False -- the
+    conservative direction, where an unguarded call stays a finding.
+    """
+    head = head.rstrip()
+    cut = head.rfind("\n")
+    if cut > 0:
+        head = head[:cut + 1]
+    for m in pattern.finditer(head):
+        depth = 0
+        guard_depth = None
+        opened = False
+        in_else = False
+        for i, ch in enumerate(head):
+            if i == m.start():
+                guard_depth = depth
+            if ch == "{":
+                depth += 1
+                if guard_depth is not None and depth > guard_depth:
+                    opened = True
+            elif ch == "}":
+                depth -= 1
+                if guard_depth is not None and depth < guard_depth:
+                    break
+                if guard_depth is not None and opened and depth <= guard_depth:
+                    # The if-block just closed. `} else {` continues into the arm that runs
+                    # when the condition is FALSE; a bare `}` ends the statement, and a call
+                    # past that point is unguarded.
+                    if re.match(r"\s*else\b", head[i + 1:]):
+                        in_else = True
+                        opened = False
+                        continue
+                    break
+        if in_else and guard_depth is not None and depth > guard_depth:
+            return True
+    return False
 
 def _dominating_bail(window):
     """True when a negated token bail is still in force at the end of the window.
@@ -661,9 +811,51 @@ def _platform_guard_excludes_shell(text, pos, shell):
     `!isTabletShell()` is the desktop branch, where the call is reachable. IPC parity grades
     registration per shell independently, so this cannot hide a genuinely missing one.
     """
+    # TWO SPELLINGS PER SHELL, and only two of the four used to count.
+    #
+    #   if (isTabletShell())  { ... }   -- POSITIVE tablet:   body runs ONLY on tablet.
+    #   if (!isTabletShell()) { ... }   -- NEGATED tablet:    body runs ONLY on desktop.
+    #   if (isDesktopShell()) { ... }   -- POSITIVE desktop:  body runs ONLY on desktop.
+    #   if (!isDesktopShell()){ ... }   -- NEGATED desktop:   body runs ONLY on tablet.
+    #
+    # So for shell="tablet" the exclusion forms are `isDesktopShell()` and
+    # `!isTabletShell()`; for shell="desktop" they are `isTabletShell()` and
+    # `!isDesktopShell()`.
+    #
+    # When this was written it hunted only the POSITIVE form of the OTHER shell's name, and
+    # assumed a helper called `isDesktopShell` that does not exist: measured 2026-10-24,
+    # it has ZERO occurrences outside this file. The repo spells the desktop branch
+    # `!isTabletShell()`, so the dominant idiom was invisible.
+    #
+    # Cost, measured on the tree: 5 of 34 tablet findings were false positives behind
+    # `if (!isTabletShell())` -- LicenseActivationScreen.tsx:293 (4 sites) and
+    # SettingsPage.tsx:195 (1) -- each graded as an unguarded TABLET call while the guard
+    # above it says the code never runs on tablet.
+    mine = "isTabletShell" if shell == "tablet" else "isDesktopShell"
+    # (a) the other shell's positive form, if that helper exists at all.
     other = "isDesktopShell" if shell == "tablet" else "isTabletShell"
-    pattern = re.compile(r"\bif\s*\(\s*" + other + r"\s*\(\s*\)\s*\)")
-    return _in_force(text[:pos + 1], pattern, strict_block=True)
+    # (b) THIS shell's negated form -- the one the repo actually writes.
+    up_to = text[:pos + 1]
+    if _in_force(up_to, re.compile(r"\bif\s*\(\s*" + other + r"\s*\(\s*\)\s*\)"),
+                 strict_block=True):
+        return True
+    if _in_force(up_to, re.compile(r"\bif\s*\(\s*!\s*" + mine + r"\s*\(\s*\)\s*\)"),
+                 strict_block=True):
+        return True
+    # (c) THE POSITIVE FORM OF THIS SHELL'S OWN NAME, restricted to its ELSE arm.
+    #
+    # `if (isTabletShell()) { A } else { B }` runs B exactly when the device is NOT a
+    # tablet, so graded tablet the else arm is unreachable -- yet (a) and (b) above both
+    # answer False for it: (a) hunts the OTHER shell's helper (isDesktopShell, which has
+    # zero occurrences outside this file) and (b) hunts a negation the source does not
+    # write. Measured 2026-10-25: six of 24 tablet findings were this shape, each graded
+    # an unguarded tablet call for code that can never execute on tablet.
+    #
+    # The else arm is established from the BRACE POSITION, not from a text search: a guard
+    # whose if-block closed and which has no else leaves the call unguarded, and that is
+    # the whole difference between `} else {` and a bare `}`.
+    return _in_else_arm_of(up_to, re.compile(
+        r"\bif\s*\(\s*" + mine + r"\s*\(\s*\)\s*\)"))
 
 def _window_is_guarded(window):
     # Three independent facts make a window guarded, tested in the order that says the most first:
@@ -1065,6 +1257,21 @@ def audit(shells, repo=REPO, allowlist=ALLOWLIST):
         with io.open(p, encoding="utf-8", errors="replace") as fh:
             texts[p] = strip_comments(fh.read())
 
+    baseline_path = os.path.join(repo, "scripts", "scoped-reads-baseline.json")
+    try:
+        baseline_entries = load_baseline(baseline_path)
+    except Exception as exc:
+        shape_problems.append(f"baseline unreadable: {exc}")
+        baseline_entries = []
+
+    baseline_by_key = {}
+    for entry in baseline_entries:
+        key = (entry["shell"], entry["command"], entry["file"].replace("\\", "/"))
+        baseline_by_key[key] = entry
+
+    matched_baseline_keys = set()
+    today = date.today()
+
     violations = []
     # Every row appended here is a site the veto at the bottom of this loop SILENTLY
     # continued past. Before this list existed the only way to learn that a call site was
@@ -1085,15 +1292,35 @@ def audit(shells, repo=REPO, allowlist=ALLOWLIST):
                             continue
                         upto = text[:m.start()].count("\n")
                         window = "\n".join(text.split("\n")[max(0, upto - 8):upto + 1])
+                        rel = os.path.relpath(path, repo).replace("\\", "/")
                         if _window_is_guarded(window) or _platform_guard_excludes_shell(
                                 text, m.start(), shell):
-                            cleared.append(
-                                (shell, cmd, os.path.relpath(path, repo).replace(chr(92), "/"),
-                                 upto + 1))
+                            cleared.append((shell, cmd, rel, upto + 1))
+                            continue
+                        b_key = (shell, cmd, rel)
+                        if b_key in baseline_by_key:
+                            b_entry = baseline_by_key[b_key]
+                            matched_baseline_keys.add(b_key)
+                            try:
+                                exp = date.fromisoformat(b_entry["expires"])
+                            except ValueError:
+                                exp = today
+                            if today <= exp:
+                                cleared.append((shell, cmd, rel, upto + 1))
+                                continue
+                            line = text.split("\n")[upto].strip()
+                            violations.append((shell, cmd, rel, upto + 1, f"{line[:70]} [BASELINE EXPIRED {b_entry['expires']}]"))
                             continue
                         line = text.split("\n")[upto].strip()
-                        rel = os.path.relpath(path, repo).replace("\\", "/")
                         violations.append((shell, cmd, rel, upto + 1, line[:88]))
+
+    # Check for stale baseline entries (ratchet: fail if a baseline entry is no longer matched)
+    for key, entry in baseline_by_key.items():
+        if entry["shell"] in shells and key not in matched_baseline_keys:
+            shape_problems.append(
+                f"stale baseline entry in {os.path.basename(baseline_path)}: [{entry['shell']}] {entry['command']} in {entry['file']} (call site not found)"
+            )
+
     # Coverage is counted HERE, from the same names_by_shell the loop above walked and the
     # same map it looked up in, so the printed ratio cannot disagree with the grading that
     # ran. It is returned, not printed: audit() has never written to stdout, and main() owns
@@ -1129,6 +1356,11 @@ def build_argparser():
                     help="grade PATH instead of the checkout copy at scripts/ipc-parity-"
                          "allowlist.json. The file is only read, never written, and the "
                          "default is unchanged.")
+    ap.add_argument("--repo", default=None, metavar="PATH",
+                    help="grade the tree at PATH instead of the one git resolves from this "
+                         "script's location (the F-2 note). The named tree's own scripts/"
+                         "ipc-parity-allowlist.json is graded unless --allowlist names a "
+                         "file. A PATH that is not a directory is refused, not walked.")
     return ap
 
 
@@ -1168,6 +1400,33 @@ def resolve_shells(raw):
             f'them explicitly (--shell {all_of_them}) rather than leaving the value empty, '
             f'because guessing what a blank argument meant is how a typo becomes evidence.')
     return shells
+
+
+def resolve_repo_flag(raw):
+    """(the tree to grade, how it was chosen) -- --repo's answer or the module default.
+
+    WHY THIS EXISTS. The F-2 note at the top of this file records the half the anchor fix
+    did not buy: REPO now comes from git (then __file__), and there was still no way to
+    NAME a tree git cannot find from the script's own location -- a checkout on another
+    disk, a tree whose root sits above a bind mount, a fixture. audit() has owned a repo=
+    parameter all along; main() simply never passed one. The flag is that seam, exposed.
+
+    A named tree that is not a directory is refused HERE, at resolution, as an
+    EmptyCorpus -- the same family as every other refusal in this file, so it leaves
+    through main()'s one handler with the one voice and exit 2. A typo'd path would
+    otherwise surface later as a corpus refusal pointing at <tree>/ui/src: the right
+    tree named in the wrong sentence. 'error:' and 2 say this run graded nothing.
+    """
+    if not raw:
+        return REPO, "module default"
+    tree = os.path.abspath(raw)
+    if not os.path.isdir(tree):
+        raise EmptyCorpus(
+            "--repo " + raw + " resolves to " + tree + ", which is not a directory. This "
+            "run graded nothing, and no verdict below would have been about that tree "
+            "anyway -- the flag exists to name the tree (the F-2 note), and naming it "
+            "wrong is a refusal, not a verdict about some other checkout.")
+    return tree, "--repo"
 
 
 def resolve_allowlist(path=None):
@@ -1230,7 +1489,7 @@ def describe_clearance(cleared):
             + str(len(set(row[1] for row in cleared))) + " command(s).")
 
 
-def describe_unggraded(shells, allowlist):
+def describe_unggraded(shells, allowlist, repo=REPO):
     """One line: what the shell sections this run did NOT grade would have reported.
 
     Informational by the same contract as describe_coverage() and describe_clearance(), aimed
@@ -1266,6 +1525,10 @@ def describe_unggraded(shells, allowlist):
     refuses rather than reads as empty -- is stated as undrawable, not dropped: an absent number
     and a zero read the same to a reader and mean different things, which is the defect the
     other two lines were built to avoid.
+
+    The audit below runs with the run's OWN repo -- threaded since --repo landed -- so the
+    digits it states describe the same tree the verdict covers, not whichever checkout this
+    file happens to sit in.
     """
     others = [shell for shell in SHELL_SECTIONS if shell not in shells]
     if not others:
@@ -1273,7 +1536,7 @@ def describe_unggraded(shells, allowlist):
     parts = []
     for shell in others:
         try:
-            violations, _shape, _scanned, _coverage, cleared = audit([shell], allowlist=allowlist)
+            violations, _shape, _scanned, _coverage, cleared = audit([shell], repo=repo, allowlist=allowlist)
         except AllowlistUnreadable:
             parts.append(shell + ": not computable here (audit refuses that section)")
             continue
@@ -1956,8 +2219,7 @@ def _wrapper_self_test():
         saved, saved_err = sys.stdout, sys.stderr
         sys.stdout, sys.stderr = buf, ebuf
         try:
-            audit.__defaults__ = (root, ALLOWLIST)
-            rc = main(["--allowlist", allowlist])
+            rc = main(["--allowlist", allowlist, "--repo", root])
         except BaseException as exc:
             rc = "bare " + type(exc).__name__ + ": " + str(exc)
         finally:
@@ -2137,8 +2399,7 @@ def _pattern_self_test():
     saved, saved_err = sys.stdout, sys.stderr
     sys.stdout, sys.stderr = buf, ebuf
     try:
-        audit.__defaults__ = (root, ALLOWLIST)
-        rc = main(["--allowlist", al])
+        rc = main(["--allowlist", al, "--repo", root])
     except BaseException as exc:
         rc = "bare " + type(exc).__name__ + ": " + str(exc)
     finally:
@@ -2215,8 +2476,7 @@ def _coverage_self_test():
         saved, saved_err = sys.stdout, sys.stderr
         sys.stdout, sys.stderr = buf, ebuf
         try:
-            audit.__defaults__ = (root, ALLOWLIST)
-            rc = main(["--allowlist", allowlist] + list(argv))
+            rc = main(["--allowlist", allowlist, "--repo", root] + list(argv))
         except BaseException as exc:
             rc = "bare " + type(exc).__name__ + ": " + str(exc)
         finally:
@@ -2559,12 +2819,7 @@ def _corpus_self_test():
     ui/src, and ui/src holding a README each printed '0 production file(s) graded' plus
     'clean for desktop.' and exited 0.
 
-    main() is driven for real, with audit()'s own defaults rebound through __defaults__ and
-    restored in a finally: audit(shells, repo=REPO) captures REPO at definition, so rebinding
-    the module global alone would grade the real checkout and the case would prove nothing.
-    That is the same trick the sibling gate's writer cases play on ALLOWLIST_PATH, and it is
-    the difference between testing the gate and testing a copy of it.
-
+    main() is driven for real, with the tree aimed through the --repo flag and,    restored in a finally: audit(shells, repo=REPO) captures REPO at,    definition, so rebinding     the module global alone would grade the real,    checkout and the case would prove nothing.     That is the same trick the,    sibling gate's writer cases play on ALLOWLIST_PATH, and it is     the,    difference between testing the gate and testing a copy of it. 
     Case 16 is the load-bearing control: a POPULATED corpus with genuinely nothing wrong in it
     must still grade and still print its verdict. A guard that refused every small tree would
     be a redder hazard than the one it closes, and it is the half of the line this file keeps
@@ -2580,8 +2835,7 @@ def _corpus_self_test():
         saved, saved_err = sys.stdout, sys.stderr
         sys.stdout, sys.stderr = buf, ebuf
         try:
-            audit.__defaults__ = (repo, ALLOWLIST)
-            rc = main(["--allowlist", ALLOWLIST])
+            rc = main(["--allowlist", ALLOWLIST, "--repo", repo])
         except BaseException as exc:
             rc = "bare " + type(exc).__name__ + ": " + str(exc)
         finally:
@@ -2937,7 +3191,20 @@ def _platform_guard_self_test():
         ("the same branch, graded tablet",
          "if (isTabletShell()) {\n  result = await createBackupTo(sessionToken, cache);\n}",
          "tablet", False),
-        ("negated form is the desktop branch, not a guard",
+        # THE BUG THIS CLOSES. The negated form used to be graded "not a guard" in BOTH
+        # directions, because the code hunted a helper (isDesktopShell) that does not exist
+        # in this repo and never tested the spelling the repo actually writes. Graded
+        # tablet, this is a desktop-only body, so the call can never run on tablet and the
+        # finding is a FALSE POSITIVE. Measured 2026-10-24: 5 of 34 tablet findings were
+        # behind this shape -- LicenseActivationScreen.tsx:293 (4 sites) and
+        # SettingsPage.tsx:195 (1) -- each reported as an unguarded tablet call.
+        ("negated form is the desktop branch, so it EXCLUDES tablet",
+         "if (!isTabletShell()) {\n  result = await createBackupTo(sessionToken, cache);\n}",
+         "tablet", True),
+        # And the control: the same body graded desktop is NOT excluded. Without this the
+        # case above would pass on a predicate that answers True for every shell, which is
+        # the vacuous-pass shape this file has fixed three times.
+        ("the same negated branch does not exclude desktop",
          "if (!isTabletShell()) {\n  result = await createBackupTo(sessionToken, cache);\n}",
          "desktop", False),
         # Wrapped in a function: every guard in the tree sits in one, and a guard at depth 0
@@ -2945,6 +3212,36 @@ def _platform_guard_self_test():
         ("the guard closed before the call",
          "const h = async () => {\n  if (isTabletShell()) {\n    pick();\n  }\n  return createBackupTo(sessionToken, cache);\n};",
          "desktop", False),
+        # THE ELSE ARM. `} else {` continues the same if-statement, so the else block runs
+        # exactly when the condition does -- the guard is still in force and the condition
+        # stays armed. This walk used to break on the closing brace, which dropped every
+        # else arm: DevToolbar.tsx writes `if (isTabletShell()) { status } else { await
+        # createMemoScoped(...) }`, and the desktop-only call was graded an unguarded
+        # TABLET call. Measured 2026-10-24; both gates had to be argued about before the
+        # classifier was suspected.
+        ("the else arm of a shell guard is guarded too",
+         "const h = async () => {\n  if (!isTabletShell()) {\n    pick();\n  } else {\n    return await createBackupTo(sessionToken, cache);\n  }\n};",
+         "tablet", True),
+        # ...and the control: without it the case above passes on any predicate that answers
+        # True for every line after a `} else {`, including one with no shell condition at all.
+        ("an else arm under a guard that names no shell is not excluded",
+         "const h = async () => {\n  if (ready) {\n    pick();\n  } else {\n    return await createBackupTo(sessionToken, cache);\n  }\n};",
+         "tablet", False),
+        # THE POSITIVE FORM'S ELSE ARM -- the mirror of the case above, and the one nobody
+        # tested. `if (isTabletShell()) { ... } else { ... }` makes the ELSE body
+        # desktop-only, so graded tablet it can never run. The negated case above clears
+        # through `!isTabletShell()`; this one has no negation to catch, and measured
+        # 2026-10-25 on DevToolbar.tsx:325 (`createMemoScoped`) it came back False -- an
+        # unguarded TABLET call that never runs on tablet. The two cases exist together
+        # because a fix for one direction is not a fix for the other.
+        ("the else arm of a POSITIVE shell guard excludes this shell",
+         "const h = async () => {\n  if (isTabletShell()) {\n    pick();\n  } else {\n    return await createBackupTo(sessionToken, cache);\n  }\n};",
+         "tablet", True),
+        # The control that keeps the case above from passing vacuously: the IF arm of the
+        # same statement is the tablet-only body, so graded tablet the call IS reachable.
+        ("the if arm of a POSITIVE shell guard does not exclude this shell",
+         "const h = async () => {\n  if (isTabletShell()) {\n    return await createBackupTo(sessionToken, cache);\n  }\n};",
+         "tablet", False),
         ("desktop branch, graded tablet",
          "if (isDesktopShell()) {\n  result = await createBackupTo(sessionToken, cache);\n}",
          "tablet", True),
@@ -2959,6 +3256,184 @@ def _platform_guard_self_test():
         if not ok:
             failures += 1
     return failures
+
+def anchor_self_test():
+    """Cases 40a-40c: resolve_repo() -- git's answer first, __file__ only as a fallback.
+
+    These three are the closure's witness, and none of them writes a file: 40a uses a path
+    that need not exist to show the two anchors DIFFER for the same input (git resolves to
+    the checkout, the old __file__ rule resolves to the directory above the copy), 40b shows
+    the live assignment agrees, and 40c proves no exception escapes when git cannot answer.
+    What they cannot prove is that a real copy grades the right tree -- that was measured by
+    hand on 2026-11-06, a copy at .anchor-copy-a/scripts/ grading 669 files of this checkout
+    where the old rule would have graded the copy's own empty parent.
+    """
+    print("  root anchor")
+    fails = 0
+
+    def report(label, ok, detail):
+        nonlocal fails
+        print(f"    {'ok  ' if ok else 'FAIL'} {label}" + (f"  {detail}" if detail else ""))
+        if not ok:
+            fails += 1
+
+    # 40a -- the ordering. A path inside the checkout whose __file__-style parent is NOT the
+    # checkout: git has to win for the answer to be the root.
+    probe = os.path.join(REPO, "scripts", "__anchor_probe__", "verify-scoped-reads.py")
+    got = resolve_repo(probe)
+    script_relative = os.path.dirname(os.path.dirname(os.path.abspath(probe)))
+    # 40a's ordering claim has two correct shapes, keyed to whether git can answer for the
+    # probe's directory at all. Inside a checkout the git answer wins and the old
+    # __file__-style rule is shown to differ. In a copy with no .git -- this harness stages
+    # exactly that -- the priority is unobservable, and what must hold instead is that the
+    # fallback answers EXACTLY the old script-relative rule for the same nested probe.
+    probe_git = _git_toplevel(os.path.dirname(probe))
+    if probe_git:
+        report("case 40a git's answer beats the script-relative one inside the checkout",
+               got == REPO and script_relative != REPO,
+               f"git -> {got}; __file__-style -> {script_relative}")
+    else:
+        report("case 40a no git answer here: the fallback IS the script-relative rule",
+               got == script_relative,
+               f"fallback -> {got}; script-relative -> {script_relative}")
+
+    # 40b -- the live assignment, through the same function main() uses.
+    report("case 40b this file resolves to REPO", resolve_repo(__file__) == REPO, REPO)
+
+    # 40c -- git cannot answer: the fallback is script-relative and nothing raises. Expected
+    # is computed, not assumed: on a box where the probe's drive IS a repository, the git
+    # branch is what this asserts, and the case still proves the contract.
+    outside = os.path.join(os.sep, "__scoped_reads_anchor_probe__", "scripts",
+                           "verify-scoped-reads.py")
+    outside_dir = os.path.dirname(os.path.abspath(outside))
+    git_answer = _git_toplevel(outside_dir)
+    expected = git_answer or os.path.dirname(outside_dir)
+    report("case 40c outside a repository the fallback is script-relative",
+           resolve_repo(outside) == expected,
+           f"{resolve_repo(outside)} (git answered: {git_answer or 'no'})")
+    # 40d -- the git branch itself, graded where it can be MADE to answer: a throwaway
+    # repo makes _git_toplevel return a fact regardless of whether the ambient tree is a
+    # checkout, so the branch is pinned in a history-less staging copy too -- and gutting
+    # _git_toplevel unruns this case instead of passing it vacuously.
+    import shutil as _shutil
+    import tempfile as _tempfile
+    if _shutil.which("git"):
+        with _tempfile.TemporaryDirectory(prefix="oz-scoped-40d-") as tdr:
+            subprocess.run(["git", "init", "-q"], cwd=tdr, capture_output=True)
+            top = _git_toplevel(tdr)
+            report("case 40d a throwaway repo makes git's branch answer",
+                   isinstance(top, str) and os.path.samefile(top, tdr),
+                   f"git -> {top}")
+    else:
+        print("    (git unavailable: case 40d is skipped)")
+
+    return fails
+
+
+def repo_flag_self_test():
+    """Cases 41a-41e: resolve_repo_flag() and the --repo wiring through the real main().
+
+    The flag is the other half of the F-2 note: the anchor fix made a copy grade the tree
+    it sits in; this flag names a tree git cannot find from the script's own location.
+    41a-41c grade the resolver (pure, one scratch dir, removed in a finally). 41d drives
+    the REAL main() over a scratch checkout with NO --allowlist and NO __defaults__
+    rebinding: the flag alone must point audit() at the named tree's corpus AND its own
+    allowlist copy, which the surfaces line proves in one sentence. 41e drives the
+    refusal: a tree that is not a directory leaves through the one AllowlistUnreadable
+    handler, 'error:' voice, exit 2, naming the path.
+    """
+    print("  --repo flag")
+    fails = 0
+
+    def report(label, ok, detail):
+        nonlocal fails
+        print(f"    {'ok  ' if ok else 'FAIL'} {label}" + (f"  {detail}" if detail else ""))
+        if not ok:
+            fails += 1
+
+    # 41a -- the absent flag changes nothing.
+    report("case 41a --repo absent resolves to the module default",
+           resolve_repo_flag(None) == (REPO, "module default"), str(resolve_repo_flag(None)))
+
+    # 41b -- a named tree resolves absolute, provenance "--repo".
+    scratch = tempfile.mkdtemp(prefix="oz-scoped-41b-")
+    try:
+        got = resolve_repo_flag(scratch)
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+    report("case 41b --repo names the tree and says so",
+           got == (os.path.abspath(scratch), "--repo"), str(got))
+
+    # 41c -- a path that is not a directory is refused at resolution, not at the walk.
+    base = tempfile.mkdtemp(prefix="oz-scoped-41c-")
+    missing = os.path.join(base, "nope")
+    try:
+        resolve_repo_flag(missing)
+        ok41c, detail = False, "returned a value instead of raising"
+    except EmptyCorpus as exc:
+        ok41c, detail = missing in str(exc), str(exc)[:90]
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+    report("case 41c a named tree that is not a directory is refused by name", ok41c, detail)
+
+    # 41d -- end to end: main(["--repo", root]) grades the fixture tree AND its own
+    # allowlist copy. No --allowlist, no __defaults__ rebinding: only the flag aims the run.
+    root = tempfile.mkdtemp(prefix="oz-scoped-41d-")
+    try:
+        scripts = os.path.join(root, "scripts")
+        os.makedirs(scripts)
+        src = os.path.join(root, "ui", "src")
+        os.makedirs(os.path.join(src, "api"))
+        os.makedirs(os.path.join(src, "features"))
+        with io.open(os.path.join(scripts, "ipc-parity-allowlist.json"), "w",
+                     encoding="utf-8") as fh:
+            json.dump({"desktop": ["zz_alpha"], "tablet": []}, fh)
+        with io.open(os.path.join(scripts, "scoped-reads-baseline.json"), "w",
+                     encoding="utf-8") as fh:
+            fh.write("{\"entries\": []}")
+        with io.open(os.path.join(src, "api", "probe.ts"), "w", encoding="utf-8") as fh:
+            fh.write("export const wv0_zz_alpha = (t: string) => "
+                     "loggedInvoke<any>('zz_alpha', { t });\n")
+        with io.open(os.path.join(src, "features", "Blank.tsx"), "w", encoding="utf-8") as fh:
+            fh.write("export const Blank = () => null;\n")
+        buf, ebuf = io.StringIO(), io.StringIO()
+        saved, saved_err = sys.stdout, sys.stderr
+        try:
+            sys.stdout, sys.stderr = buf, ebuf
+            rc = main(["--repo", root])
+        except BaseException as exc:
+            rc = "bare " + type(exc).__name__ + ": " + str(exc)
+        finally:
+            sys.stdout, sys.stderr = saved, saved_err
+        out = buf.getvalue() + ebuf.getvalue()
+        want_surface = ("1 production file(s) graded against "
+                        + os.path.join(root, "scripts", "ipc-parity-allowlist.json")
+                        + " (--repo default (the named tree's own copy)).")
+        report("case 41d --repo alone grades the named tree's corpus and its own allowlist",
+               rc == 0 and want_surface in out and "clean for desktop." in out,
+               "rc=" + repr(rc) + " surfaces-line="
+               + ("present" if want_surface in out else "MISSING"))
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    # 41e -- end to end: the refusal, through the one handler, naming the path. `missing`
+    # from 41c deliberately does not exist.
+    buf, ebuf = io.StringIO(), io.StringIO()
+    saved, saved_err = sys.stdout, sys.stderr
+    try:
+        sys.stdout, sys.stderr = buf, ebuf
+        rc = main(["--repo", missing])
+    except BaseException as exc:
+        rc = "bare " + type(exc).__name__ + ": " + str(exc)
+    finally:
+        sys.stdout, sys.stderr = saved, saved_err
+    out = buf.getvalue() + ebuf.getvalue()
+    report("case 41e a wrong --repo refuses with error: and exit 2, naming the path",
+           rc == 2 and out.startswith("error: ") and missing in out,
+           "rc=" + repr(rc) + " first-line="
+           + (out.splitlines() or ["(none)"])[0][:70])
+    return fails
+
 
 def self_test():
     print("  verify-scoped-reads self-test")
@@ -2991,6 +3466,8 @@ def self_test():
     else:
         print("    ok   classifier can report a violation (not vacuous)")
     failures += _platform_guard_self_test()
+    failures += anchor_self_test()
+    failures += repo_flag_self_test()
     failures += _shape_self_test()
     failures += _read_retry_self_test()
     failures += _aim_self_test()
@@ -3003,28 +3480,244 @@ def self_test():
     failures += _api_exclusion_self_test()
     failures += _exclusion_predicate_self_test()
     failures += _schema_self_test()
+    failures += shell_ladder()
     print(f"  self-test: {'PASS' if failures == 0 else f'FAIL ({failures})'}")
     return 0 if failures == 0 else 1
 
 
-def main(argv=None):
+
+def shell_ladder():
+    """r211: rungs through main(argv, root=fixture) -- the root contract; r212
+    added 7-8 (the surfaces line's how-clause for a root-named tree, and a
+    second-shell run whose ungraded-visibility line names the section skipped).
+
+    argv stays empty on every rung: the tree is named by the PARAMETER, not by a
+    flag, which is the seam the arc's contract adds. Rung 1 is the killing rung --
+    the fixture's command exists only in the fixture, so a root-dropping main
+    grades the checkout's own clean desktop section and the verdict differs.
+    """
+    rung_n = iter(range(1000))
+    failures = 0
+    shell = 0
+    def run(*argv, root=None):
+        out, err = io.StringIO(), io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = main(argv=list(argv), root=root)
+        except SystemExit as se:
+            return se.code, out.getvalue(), err.getvalue()
+        return rc, out.getvalue(), err.getvalue()
+    def build(tmp, allow, *, uses=True, guards=False, with_ui=True, with_api=True,
+              uses_call=True):
+        root = pathlib.Path(tmp) / ("mini%d" % next(rung_n))
+        if with_ui:
+            (root / "ui/src/api/client").mkdir(parents=True, exist_ok=True)
+            (root / "ui/src/features/pos").mkdir(parents=True, exist_ok=True)
+            (root / "ui/src/api/client/products.ts").write_text(
+                "export const wv0_zz_gap_cmd = async (t: string) => "
+                "loggedInvoke<any>('zz_gap_cmd', { t });\n"
+                "export const wv0_zz_ok_cmd = async (t: string) => "
+                "loggedInvoke<any>('zz_ok_cmd', { t });\n", encoding="utf-8")
+            if with_api is False:
+                shutil.rmtree(root / "ui/src/api")
+            if uses:
+                (root / "ui/src/features/pos/Uses.tsx").write_text(
+                    "export const useIt = async (t: string) => "
+                    "{ await wv0_zz_gap_cmd(t); };\n" if uses_call else
+                    "export const useIt = async (t: string) => "
+                    "{ await wv0_zz_ok_cmd(t); };\n", encoding="utf-8")
+            if guards:
+                (root / "ui/src/features/pos/Guards.tsx").write_text(
+                    "export const g = async (sessionToken: string, t: string) => {\n"
+                    "  return sessionToken\n"
+                    "    ? await wv0_zz_ok_cmdScoped(sessionToken, t)\n"
+                    "    : await wv0_zz_ok_cmd(t);\n"
+                    "};\n", encoding="utf-8")
+        (root / "scripts").mkdir(parents=True, exist_ok=True)
+        (root / "scripts/ipc-parity-allowlist.json").write_text(
+            json.dumps(allow, indent=2) + "\n", encoding="utf-8")
+        return root
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 (killing): a bare call of a fixture-only command -- rc 1, the
+        # verdict names the command, and every evidence source came from root
+        root = build(tmp, {"desktop": ["zz_gap_cmd"], "tablet": [],
+                           "dev_mock": [], "scoped_orphans": []})
+        rc, out, err = run(root=root)
+        if rc != 1 or "FAIL: 1 call site(s)" not in out \
+                or "zz_gap_cmd is not registered in that shell" not in out:
+            print("  x rung 1: an unguarded call must fail rc 1 naming the command "
+                  "(rc=%r tail=%r err=%r)" % (rc, out[-170:], err[-120:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: the ADR #7 ternary clears the same shape -- rc 0, clean, and the
+        # clearance line says which shell, file and command were cleared
+        root = build(tmp, {"desktop": ["zz_ok_cmd"], "tablet": [],
+                           "dev_mock": [], "scoped_orphans": []},
+                     uses=False, guards=True)
+        rc, out, err = run(root=root)
+        if rc != 0 or "clean for desktop." not in out \
+                or "cleared by the guard window: 1 (desktop 1)" not in out:
+            print("  x rung 2: a guarded call must pass rc 0 with a clearance line "
+                  "(rc=%r tail=%r)" % (rc, out[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: the allowlist the contract root names is missing -- refusal rc 2
+        root = build(tmp, {"desktop": ["zz_gap_cmd"], "tablet": [],
+                           "dev_mock": [], "scoped_orphans": []})
+        (root / "scripts/ipc-parity-allowlist.json").unlink()
+        rc, out, err = run(root=root)
+        if rc != 2 or "error:" not in err or "does not exist" not in err:
+            print("  x rung 3: a missing allowlist must refuse rc 2 (rc=%r err=%r)"
+                  % (rc, err[-170:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: parsed JSON that is a list -- refusal rc 2, the same family
+        root = build(tmp, [])
+        rc, out, err = run(root=root)
+        if rc != 2 or "not an object" not in err:
+            print("  x rung 4: a top-level list must refuse rc 2 (rc=%r err=%r)"
+                  % (rc, err[-170:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: no ui/src at all, WITH a name to grade -- the corpus refusal,
+        # reached only when there is something to grade (an empty section returns
+        # 0 before the walk, which rung 2's family already proves the other way)
+        root = build(tmp, {"desktop": ["zz_gap_cmd"], "tablet": [],
+                           "dev_mock": [], "scoped_orphans": []}, with_ui=False)
+        rc, out, err = run(root=root)
+        if rc != 2 or "corpus this gate grades is not there" not in err:
+            print("  x rung 5: a missing corpus with a name to grade must refuse "
+                  "rc 2 (rc=%r err=%r)" % (rc, err[-170:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 6: a corpus but no api layer -- the wrapper-surface refusal
+        root = build(tmp, {"desktop": ["zz_gap_cmd"], "tablet": [],
+                           "dev_mock": [], "scoped_orphans": []}, with_api=False)
+        rc, out, err = run(root=root)
+        if rc != 2 or "wrapper surface this gate grades is not there" not in err:
+            print("  x rung 6: a missing api layer must refuse rc 2 (rc=%r err=%r)"
+                  % (rc, err[-170:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 7 (r212): the surfaces line names HOW the tree was chosen -- a
+        # root-named tree grades its OWN policy copy, and the sentence says so
+        root = build(tmp, {"desktop": ["zz_gap_cmd"], "tablet": [],
+                           "dev_mock": [], "scoped_orphans": []})
+        rc, out, err = run(root=root)
+        if rc != 1 or "the contract root default (the named tree's own copy)" not in out:
+            print("  x rung 7: the surfaces line must name the contract root's "
+                  "own-copy clause (rc=%r head=%r)" % (rc, out[:220:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 8 (r212): a second shell -- tablet named, desktop skipped -- the
+        # verdict is tablet's, the coverage ratio reads tablet, and the
+        # ungraded-visibility line states desktop's count without scoring it
+        root = build(tmp, {"desktop": [], "tablet": ["zz_gap_cmd"],
+                           "dev_mock": [], "scoped_orphans": []})
+        rc, out, err = run("--shell", "tablet", root=root)
+        if rc != 1 or "[tablet] zz_gap_cmd is not registered in that shell" not in out \
+                or "(tablet 1 of 1)" not in out \
+                or "desktop: 0 unguarded call site(s)" not in out:
+            print("  x rung 8: a tablet run must fail rc 1, read tablet's ratio and "
+                  "state desktop's ungraded count (rc=%r tail=%r)"
+                  % (rc, out[-220:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 9 (r213): an explicit --allowlist wins over the contract root --
+        # proven by OUTCOME on ONE fixture, run twice. The tree's own copy names
+        # the UNGUARDED command, so grading it fails rc 1; the flag's copy names
+        # only the GUARDED one, so the flag run passes rc 0. The allowlist is
+        # the list of commands to CHECK (it says the shell does not register
+        # them), not an exemption list -- the flip is which commands get
+        # audited, and both copies are non-empty so no early return masks it.
+        root = build(tmp, {"desktop": ["zz_gap_cmd"], "tablet": [],
+                           "dev_mock": [], "scoped_orphans": []},
+                     uses_call=True, guards=True)
+        (root / "flag-allowlist.json").write_text(
+            json.dumps({"desktop": ["zz_ok_cmd"], "tablet": [],
+                        "dev_mock": [], "scoped_orphans": []}, indent=2) + "\n",
+            encoding="utf-8")
+        rc, out, err = run(root=root)
+        if rc != 1 or "FAIL: 1 call site(s)" not in out:
+            print("  x rung 9: the tree's own copy must fail rc 1 on the "
+                  "unguarded command (rc=%r tail=%r)" % (rc, out[-180:]),
+                  file=sys.stderr)
+            return 1
+        rc, out, err = run("--allowlist", str(root / "flag-allowlist.json"),
+                           root=root)
+        if rc != 0 or "clean for desktop." not in out \
+                or "flag-allowlist.json (--allowlist)" not in out:
+            print("  x rung 9: the flag's copy must win, rc 0, and the surfaces "
+                  "line must name its file (rc=%r head=%r)" % (rc, out[:220:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 10 (r213): the SKIPPED section is red and the graded one is clean
+        # -- exit 0, the visibility line states desktop's unguarded count, and
+        # nothing in the run scores it (case 39's contract on a fixture)
+        root = build(tmp, {"desktop": ["zz_gap_cmd"], "tablet": ["zz_ok_cmd"],
+                           "dev_mock": [], "scoped_orphans": []},
+                     uses_call=True, guards=True)
+        rc, out, err = run("--shell", "tablet", root=root)
+        if rc != 0 or "clean for tablet." not in out \
+                or "desktop: 1 unguarded call site(s)" not in out \
+                or "cleared by the guard window: 1 (tablet 1)" not in out:
+            print("  x rung 10: a clean graded shell beside a red skipped one must "
+                  "exit 0 and state the red (rc=%r tail=%r)" % (rc, out[-240:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+    if shell != 10:
+        print("  x shell ladder counted %d rungs, expected 10" % shell, file=sys.stderr)
+        return 1
+    print("SCOPED-READS SHELL LADDER OK (10 cases through argv and root, no repository file touched)")
+    return 0
+
+
+def main(argv=None, root=None):
     # argv is a parameter, not only sys.argv, so --self-test can drive the real main() over
     # a probe allowlist and prove the wiring rather than prove a copy of the logic.
+    # r211: root is the arc's contract parameter -- the explicit-parameter form of
+    # --repo, threaded through the SAME validator so a wrong root is refused by the
+    # same handler, the same 'error:' voice and the same code. The named tree still
+    # grades against ITS OWN policy copy unless --allowlist says otherwise.
     ap = build_argparser()
     args = ap.parse_args(argv)
 
     if args.self_test:
         return self_test()
 
-    allowlist, how = resolve_allowlist(args.allowlist)
     try:
+        # Both seams resolve INSIDE the try, ahead of audit() and so ahead of the walk: a
+        # --repo that names no directory is refused by the same handler as every other
+        # ungradeable input -- EmptyCorpus is an AllowlistUnreadable, so one handler, one
+        # 'error:' voice, exit 2, before any verdict. No provenance line is printed:
+        # the surfaces line already names the allowlist graded (inside the named tree
+        # unless --allowlist says otherwise), and stdout's line layout is pinned
+        # line-for-line by the self-test's refusal cases.
+        if root is not None:
+            repo, how_repo = resolve_repo_flag(root)
+            how_repo = "the contract root"
+        else:
+            repo, how_repo = resolve_repo_flag(args.repo)
+        if args.allowlist:
+            allowlist, how = resolve_allowlist(args.allowlist)
+        elif args.repo or root is not None:
+            # The named tree grades against ITS OWN policy copy, the way audit()'s repo=
+            # seam always implied; an explicit --allowlist still wins.
+            allowlist = os.path.join(repo, "scripts", "ipc-parity-allowlist.json")
+            how = how_repo + " default (the named tree's own copy)"
+        else:
+            allowlist, how = resolve_allowlist(None)
         # Resolved INSIDE the try, ahead of audit() and so ahead of the walk: a run that
         # names no shell has nothing to grade, and that is a property of the argument, which
         # is why it is refused here rather than discovered in the verdict below. NoShellsNamed
         # is an AllowlistUnreadable, so it leaves through the handler under this one -- the
         # gate's one-line error: voice and its refusal code, no new handler.
         shells = resolve_shells(args.shell)
-        violations, shape_problems, scanned, coverage, cleared = audit(shells, allowlist=allowlist)
+        violations, shape_problems, scanned, coverage, cleared = audit(shells, repo=repo, allowlist=allowlist)
     except AllowlistUnreadable as exc:
         # A file this gate cannot open is not a clean tree and not a dirty one; saying so
         # in a sentence is the whole difference between a red run someone can act on and a
@@ -3054,7 +3747,7 @@ def main(argv=None):
     # the sections this run did NOT grade are holding. Printed LAST of the three so the ratio
     # and the clearance keep the line positions the self-test pins, and tested only for
     # presence -- never on a number inside the string.
-    ungraded = describe_unggraded(shells, allowlist)
+    ungraded = describe_unggraded(shells, allowlist, repo)
     if ungraded:
         print(ungraded)
     if shape_problems:
@@ -3083,7 +3776,23 @@ def main(argv=None):
             print(f"    {path}:{line}: {snippet}")
         print("\nFix by routing through the scoped twin under the ADR #7 conditional:")
         print("  sessionToken ? await xScoped(sessionToken, ...) : await x(...)")
-        print("If the ambient call is genuinely unreachable, remove the allowlist entry instead.")
+        print("")
+        print("If the call is genuinely unreachable on this shell, the allowlist entry is what")
+        print("records that -- removing it makes the finding reappear, not disappear. Before")
+        print("believing a finding here, read the mount chain: every one of the 15 tablet")
+        print("findings on 2026-10-25 (round 174) was guarded, and this reader could not see")
+        print("the guard. The three shapes that defeat it, each with a live example:")
+        print("  - an early return AFTER the hooks, inside the component that owns the call")
+        print("    (TopologyScreen.tsx:847-849, ahead of the editor at :860 and the revision")
+        print("    browser at :1016);")
+        print("  - a hoisted const isAvailable = !isTabletShell() && ... plus an effect guard")
+        print("    (settings/hooks/useRestore.ts:143 and :148), a real gate for the three")
+        print("    restore commands;")
+        print("  - a shell branch INSIDE the handler that routes each shell to its own command")
+        print("    (settings/hooks/useBackupStatus.ts:140, where the tablet takes")
+        print("    create_backup_to and never reaches create_backup).")
+        print("Routing those through a scoped twin would be the wrong fix: the code cannot run")
+        print("on the graded shell, and the twin does not exist there either.")
         return 1
     print(f"verify-scoped-reads: clean for {', '.join(shells)}.")
     return 0

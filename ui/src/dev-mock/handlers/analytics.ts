@@ -394,6 +394,13 @@ export const analyticsHandlers: Record<string, MockHandler> = {
     { payment_method: 'card', total_minor: 61000000, sale_count: 89 },
     { payment_method: 'ewallet', total_minor: 39000000, sale_count: 57 },
   ],
+  // The COLLECTION side of the same day, not the same numbers: a receivable
+  // repayment is money arriving against goods sold earlier, so it carries a
+  // tender of its own and must not be summed with the sale rows above.
+  'get_piutang_collections_scoped': () => [
+    { payment_method: 'cash', currency: 'IDR', total_minor: 12500000, payment_count: 23 },
+    { payment_method: 'bank_transfer', currency: 'IDR', total_minor: 8700000, payment_count: 9 },
+  ],
   'get_discounts_summary_scoped': () => ({
     sale_count: 406,
     discounted_sale_count: 96,
@@ -405,7 +412,21 @@ export const analyticsHandlers: Record<string, MockHandler> = {
       { label: 'FREESHIP', redeemed_count: 10 },
     ],
   }),
-  'get_voided_sales_summary_scoped': () => ({ void_count: 23, void_total_minor: 5400000 }),
+  // ONE ROW PER CURRENCY — the real command returns Vec<VoidedSummaryRow>
+  // (kasirmu-core/src/db/reports/sales_summary.rs:239, pinned by
+  // voided_sales_summary_groups_by_currency asserting rows.len() === 2) and the TS
+  // signature is Promise<VoidedSummaryRow[]> (api/reports.ts:330). This handler
+  // returned a bare OBJECT, which is not what either side declares.
+  //
+  // It was not cosmetic: RefundsCard calls rows.reduce(...) (RefundsCard.tsx:35), so
+  // launching Analytics crashed with 'rows.reduce is not a function' and the screen
+  // fell to its error boundary. Measured 2026-10-17 on the desktop project. Two
+  // currencies are seeded so the per-currency join in the card
+  // (rows.map(r => fmtIn(...)).join(' · ')) is actually exercised.
+  'get_voided_sales_summary_scoped': () => ([
+    { currency: 'IDR', void_count: 18, void_total_minor: 5400000 },
+    { currency: 'USD', void_count: 5, void_total_minor: 12500 },
+  ]),
   'get_basket_size_scoped': () => ({ sale_count: 406, avg_line_count: 3.2 }),
   // Per-day basket size for the trend card — a week of plausible averages.
   'get_basket_size_trend_scoped': () => {

@@ -17,9 +17,11 @@
  * The two tokens, as measured at commit c85bae9ef:
  *   · front end arms the screen on  `reports:view`   — ui/src/features/sales/register.tsx:48
  *       registerPage({ route: 'eod-report', …, requiredPermission: 'reports:view' })
- *   · the command refuses without   `reports:export` — apps/mobile-tauri/src/commands/history.rs:428
- *       (export_eod_report_scoped → require_permission_for_user(…, permissions::REPORTS_EXPORT);
- *        the daily-summary twin at :380 and the sales-by-hour twin at :404 check the SAME constant)
+ *   · the command refuses without   `reports:export` — apps/mobile-tauri/src/commands/history.rs:409
+ *       (export_eod_report_scoped at :404 → require_permission_for_session(…, permissions::REPORTS_EXPORT);
+ *        the daily-summary twin at :369 and the sales-by-hour twin at :389 check the SAME constant)
+ *       re-measured 2026-10-27 (round 40): the note said :428 and twins at :380/:404, none of which
+ *       held — the function ends at :412, so :428 was past it.
  *
  * BOTH DECLARATIONS, not one: the screen is armed twice in that file — the page
  * gate at register.tsx:48 and the nav-item gate at :49-57 (token on :53) — and

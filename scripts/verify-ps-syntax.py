@@ -144,19 +144,20 @@ def host_command() -> list[str] | None:
     return None
 
 
-def targets() -> list[Path]:
+def targets(root=None) -> list[Path]:
     """Every tracked PowerShell script in the repo.
 
     git ls-files rather than a directory list, for the reason the shell gate records:
     a maintained list of directory names stands in for a rule, and the Windows
     installer pair in ops/ is exactly the sort of thing such a list forgets. The
     filesystem walk is a fallback for a checkout with no git, not a second scope --
-    both paths call is_powershell().
+    both paths call is_powershell(). r198: both paths follow the contract root.
     """
+    base = ROOT if root is None else Path(root).resolve()
     out: list[Path] = []
     tracked: set[str] | None = None
     try:
-        r = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z"],
+        r = subprocess.run(["git", "-C", str(base), "ls-files", "-z"],
                            capture_output=True, text=True, check=True)
         tracked = {x for x in r.stdout.split("\0") if x}
     except (OSError, subprocess.CalledProcessError):
@@ -164,12 +165,12 @@ def targets() -> list[Path]:
 
     if tracked is not None:
         for rel in sorted(tracked):
-            p = ROOT / rel
+            p = base / rel
             if p.is_file() and is_powershell(p):
                 out.append(p)
         return sorted(out)
 
-    for dirpath, dirnames, filenames in os.walk(ROOT):
+    for dirpath, dirnames, filenames in os.walk(base):
         dirnames[:] = [d for d in dirnames
                        if d.lower() not in VENDORED and d.lower() != ".git"]
         for fn in sorted(filenames):
@@ -286,19 +287,121 @@ def self_test(host: list[str] | None) -> int:
         if scratch.exists():
             scratch.unlink()
 
+    # The classifier -- which files the walker even hands to the host. Pure suffix
+    # work; a gutted one must turn the self-test red before any real script runs.
+    cases += 1
+    if is_powershell(Path("tools") / "build.ps1") is not True:
+        bad.append("a .ps1 path must classify as PowerShell")
+    cases += 1
+    if is_powershell(Path("tools") / "BUILD.PS1") is not True:
+        bad.append("the suffix test must fold case: BUILD.PS1 is still PowerShell")
+    cases += 1
+    if is_powershell(Path("tools") / "build.ps1.bak") is not False:
+        bad.append("a .bak file must not classify as PowerShell")
+    cases += 1
+    if is_powershell(Path("tools") / "build.py") is not False:
+        bad.append("a .py file must not classify as PowerShell")
+
+    # r198: the shell -- main() graded through argv and a contract root, the
+    # r166..r197 pattern. A tempdir root exercises the WALK scope (no git)
+    # and, in one case, the TRACKED scope (git init + index) -- proving an
+    # untracked file is outside the graded population. The broken fixture's
+    # defect is a backtick before the closing quote (chr(96) below, kept out
+    # of this source per the arc's lexing rule).
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+    shell = 0
+    GOOD = "param([string]$Name = 'x')\nWrite-Output $Name\n"
+    BAD = "Write-Host \"unterminated " + chr(96) + "\n"
+    with _tempfile.TemporaryDirectory() as tmp:
+        base = __import__("pathlib").Path(tmp)
+        def run(*extra, root=None):
+            out, err = _io.StringIO(), _io.StringIO()
+            try:
+                with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                    rc = main(argv=list(extra), root=root)
+            except SystemExit as se:
+                return se.code, out.getvalue() + err.getvalue()
+            return rc, out.getvalue() + err.getvalue()
+        def put(rel, content):
+            dst = base / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_text(content, encoding="utf-8", newline="\n")
+            return dst
+        # (S1) the walk scope finds .ps1 anywhere under the root, ops/ pair included
+        shell += 1
+        put("scripts/ok.ps1", GOOD)
+        put("ops/install/win/install.ps1", GOOD)
+        rc, text = run(root=base)
+        if rc != 0 or "2 PowerShell entry point(s) parse" not in text:
+            print("  x the walk scope must find both entry points (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        # (S2) a broken script fails rc 1 and names the ROOT-RELATIVE path
+        shell += 1
+        put("scripts/bad.ps1", BAD)
+        rc, text = run(root=base)
+        if rc != 1 or "PARSE ERROR in scripts/bad.ps1" not in text:
+            print("  x a broken script must fail naming its root-relative path (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        if "1 of 3" not in text:
+            print("  x the summary must count the broken among the scanned (text=%r)"
+                  % (text[-90:],), file=sys.stderr)
+            return 1
+        (base / "scripts" / "bad.ps1").unlink()
+        # (S3) vendored trees are outside the walk scope: a broken file there
+        # is not the gate's business
+        shell += 1
+        put("node_modules/pkg/inner/bad.ps1", BAD)
+        rc, text = run(root=base)
+        if rc != 0 or "2 PowerShell entry point(s) parse" not in text:
+            print("  x a broken .ps1 inside node_modules must be out of scope (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        import shutil as _shutil
+        _shutil.rmtree(base / "node_modules")
+        # (S4) zero .ps1 under the root is a refusal rc 2, not a vacuous pass
+        shell += 1
+        for gone in ("scripts/ok.ps1", "ops/install/win/install.ps1"):
+            (base / gone).unlink()
+        rc, text = run(root=base)
+        if rc != 2 or "no tracked .ps1" not in text:
+            print("  x an empty corpus must refuse rc 2 (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        # (S5) the TRACKED scope: git init + one tracked file; an UNTRACKED
+        # broken script is not in the graded population
+        shell += 1
+        put("scripts/ok.ps1", GOOD)
+        put("scripts/untracked-bad.ps1", BAD)
+        import subprocess as _sub
+        _sub.run(["git", "-C", str(base), "init", "-q"], check=True)
+        _sub.run(["git", "-C", str(base), "add", "scripts/ok.ps1"], check=True)
+        rc, text = run(root=base)
+        if rc != 0 or "1 PowerShell entry point(s) parse" not in text:
+            print("  x only TRACKED .ps1 count: the untracked broken one is out (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (%d cases, no files left behind)" % cases)
+    print("SELF-TEST OK (%d cases incl. %d shell, no files left behind)" % (cases, shell))
     return 0
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r198: argv and root parameterized, the r166..r197 contract -- the
+    tracked-file corpus resolves under the contract root for BOTH scope
+    paths (git ls-files and the no-git walk) together."""
     ap = argparse.ArgumentParser(
         description="every tracked PowerShell script must parse")
     ap.add_argument("--self-test", action="store_true",
                     help="run synthetic cases only; leaves no tracked file behind")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    base = ROOT if root is None else Path(root).resolve()
 
     host = host_command()
     if args.self_test:
@@ -310,7 +413,7 @@ def main() -> int:
               file=sys.stderr)
         return 2
 
-    files = targets()
+    files = targets(base)
     if not files:
         print("verify-ps-syntax: REFUSED -- no tracked .ps1 file was found, so there "
               "is nothing to report on. A clean run is indistinguishable from a "
@@ -321,7 +424,7 @@ def main() -> int:
     for q in files:
         ok, why = check(q, host)
         if not ok:
-            broken.append(q.relative_to(ROOT).as_posix())
+            broken.append(q.relative_to(base).as_posix())
             print("verify-ps-syntax: PARSE ERROR in %s" % broken[-1])
             for line in why.splitlines()[:6]:
                 print("    " + line)

@@ -220,11 +220,13 @@ function SecurityTrailScreenContent() {
     >
       <div className="audit-log-header">
         <div className="audit-log-header-left">
-          <h2 className="audit-log-title">
+          {/* Page-level title. Was an <h2> while the screen had no <h1> at all,
+              so the outline started at level two (round 35). */}
+          <h1 className="audit-log-title">
             <Localized id="security-trail-title">
               <span>Security Trail</span>
             </Localized>
-          </h2>
+          </h1>
           <p className="audit-log-search-label">
             <Localized id="security-trail-scope-note">
               <span>

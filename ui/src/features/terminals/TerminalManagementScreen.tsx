@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { SettingsPopup, useToast, requiredLocalized, EmptyState } from '@/components';
 import { NoTerminalsIcon } from '@/components/EmptyStateIllustrations';
@@ -179,13 +179,26 @@ export default function TerminalManagementScreen() {
   // Delete confirmation
   const [deleteTarget, setDeleteTarget] = useState<TerminalDto | null>(null);
   const [deleting, setDeleting] = useState(false);
+  /** Synchronous mirrors of the busy flags — see the re-entry guards in their handlers. */
+  const deletingRef = useRef(false);
 
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   // Feature overrides
   const [overrides, setOverrides] = useState<TerminalFeatureOverride[]>([]);
   const [overridesLoading, setOverridesLoading] = useState(false);
   const [overridesError, setOverridesError] = useState<string | null>(null);
+  /** In-flight guard for the feature-override toggles. The switch is a
+   *  controlled checkbox whose `checked` derives from `overrides`, so two fast
+   *  clicks before the refetch resolves both read the SAME stale `checked` and
+   *  both write `!currentEnabled` — the operator's second click vanished and
+   *  the switch snapped back to where it started. Freeze the whole set while a
+   *  write is outstanding: the optimistic `overrides` update lands first, so a
+   *  second click is either a no-op or the deliberate reverse AFTER this
+   *  round-trip, never a duplicate of it. */
+  const [overrideSaving, setOverrideSaving] = useState(false);
+  const overrideSavingRef = useRef(false);
 
   // Device binding (ADR #4 Phase 3)
   const [binding, setBinding] = useState<DeviceBindingDto | null>(null);
@@ -195,7 +208,13 @@ export default function TerminalManagementScreen() {
   const [selectedStoreId, setSelectedStoreId] = useState('');
   const [selectedInstanceId, setSelectedInstanceId] = useState('');
   const [bindingSaving, setBindingSaving] = useState(false);
+  /** Synchronous mirror of `bindingSaving`, SHARED by bind and clear — see their guards. */
+  const bindingSavingRef = useRef(false);
   const [bindingError, setBindingError] = useState<string | null>(null);
+  // The INSTANCE list's own read. `bindingError` covers the binding read; without this
+  // the instance read's failure was invisible, so an unanswered list looked exactly like
+  // a store with no instances.
+  const [instancesError, setInstancesError] = useState<string | null>(null);
 
   // ── Load data ──────────────────────────────────────────────────
 
@@ -279,7 +298,7 @@ export default function TerminalManagementScreen() {
         if (!cancelled) {
           // asObject for the binding: it is read field-by-field right here, and
           // an absent payload must not reach those reads (utils/ipc-payload).
-          // asArray for the store list: the render maps it (:910).
+      // asArray for the store list: the render maps it below.
           const binding = asObject<typeof b>(b);
           setBinding(binding);
           setBindingStores(asArray<typeof stores[number]>(stores));
@@ -297,7 +316,15 @@ export default function TerminalManagementScreen() {
                 if (binding.boundInstanceId) setSelectedInstanceId(binding.boundInstanceId);
               }
             } catch {
-              if (!cancelled) setBindingInstances([]);
+              // An UNANSWERED instance read is not an empty store. Without this the
+              // "— Select instance —" placeholder is byte-identical to a store that
+              // genuinely has no instances, Bind stays disabled, and `bindingError`
+              // stays null so no alert renders — the outer catch reports, this inner one
+              // swallowed the only failure the operator needed to know about.
+              if (!cancelled) {
+                setBindingInstances([]);
+                setInstancesError(l10n.getString('terminal-error-instances-load'));
+              }
             }
           }
         }
@@ -324,17 +351,23 @@ export default function TerminalManagementScreen() {
           ? await listWorkspacesForStoreScoped(sessionToken, selectedStoreId)
           : [];
         if (!cancelled) {
-          setBindingInstances(instances);
+          // Coerce like the sibling read above: an absent payload must not reach the map.
+          const list = asArray(instances);
+          setBindingInstances(list);
           setSelectedInstanceId((prev) =>
-            instances.some((i) => i.instance_id === prev) ? prev : '',
+            list.some((i) => i.instance_id === prev) ? prev : '',
           );
+          setInstancesError(null);
         }
       } catch {
-        if (!cancelled) setBindingInstances([]);
+        if (!cancelled) {
+          setBindingInstances([]);
+          setInstancesError(l10n.getString('terminal-error-instances-load'));
+        }
       }
     })();
     return () => { cancelled = true; };
-  }, [selectedStoreId, editingId, sessionToken]);
+  }, [selectedStoreId, editingId, sessionToken, l10n]);
 
   const closeModal = useCallback(() => {
     setShowModal(false);
@@ -349,6 +382,11 @@ export default function TerminalManagementScreen() {
 
   const handleBind = async () => {
     if (!editingId || !selectedStoreId || !selectedInstanceId) return;
+    // Re-entry guard: the write is an upsert of one (terminal, store, instance) triple, so a
+    // replay cannot bind anything twice -- but two runs share one `bindingError`, so the
+    // second can report a failure over a binding that landed.
+    if (bindingSavingRef.current) return;
+    bindingSavingRef.current = true;
     setBindingSaving(true);
     setBindingError(null);
     try {
@@ -358,12 +396,18 @@ export default function TerminalManagementScreen() {
     } catch {
       setBindingError(l10n.getString('terminal-error-binding-save'));
     } finally {
+      bindingSavingRef.current = false;
       setBindingSaving(false);
     }
   };
 
   const handleClearBinding = async () => {
     if (!editingId) return;
+    // Shares handleBind's ref on purpose: both write the SAME binding through the same
+    // slot, so a bind and a clear racing each other is the state this must prevent. An
+    // ordinary tap still passes, because the first handler clears the ref in `finally`.
+    if (bindingSavingRef.current) return;
+    bindingSavingRef.current = true;
     setBindingSaving(true);
     setBindingError(null);
     try {
@@ -374,6 +418,7 @@ export default function TerminalManagementScreen() {
     } catch {
       setBindingError(l10n.getString('terminal-error-binding-clear'));
     } finally {
+      bindingSavingRef.current = false;
       setBindingSaving(false);
     }
   };
@@ -397,12 +442,44 @@ export default function TerminalManagementScreen() {
 
   const handleToggleOverride = async (featureKey: string, currentEnabled: boolean) => {
     if (!editingId) return;
+    // The state flags are checked above, but they are stale inside one tick; the ref is the
+    // one that actually refuses the replayed tap. Two flips would write `nextEnabled`
+    // twice, and the second's refetch can land BEFORE the first's, pinning the row to the
+    // value the operator had already toggled away from.
+    if (overrideSavingRef.current) return;
+    if (overrideSaving || overridesLoading) return;
+    overrideSavingRef.current = true;
+    // Two windows must be frozen, not one: the write round-trip AND the
+    // initial load. Clicking a toggle before the list arrives would snapshot
+    // an EMPTY `previous` and roll the switch back to nothing, and it would
+    // also refetch over the load's own response.
+    const nextEnabled = !currentEnabled;
+    // Optimistic so the controlled checkbox reflects the click immediately —
+    // otherwise it re-renders from the unchanged `overrides` and visibly snaps
+    // back for the whole round-trip.
+    const previous = overrides;
+    // Only the update-existing case can be predicted honestly — a first-time
+    // override needs `terminalId`/`createdAt`/`updatedAt` that only the
+    // backend can supply, and inventing them here would put a row in this list
+    // that is not what the server stored. The refetch below writes the real
+    // list either way; this only stops the switch snapping back mid-flight.
+    setOverrides((prev) =>
+      prev.map((o) => (o.feature === featureKey ? { ...o, enabled: nextEnabled } : o)),
+    );
+    setOverridesError(null);
+    setOverrideSaving(true);
     try {
-      await setTerminalOverrideScoped(sessionToken, editingId, featureKey, !currentEnabled);
+      await setTerminalOverrideScoped(sessionToken, editingId, featureKey, nextEnabled);
       const data = await listTerminalOverridesScoped(sessionToken, editingId);
       setOverrides(asArray<typeof data[number]>(data));
     } catch {
+      // The write or the refetch failed: undo the optimistic flip, or the
+      // switch keeps advertising a state the backend never stored.
+      setOverrides(previous);
       setOverridesError(l10n.getString('terminal-error-override-update'));
+    } finally {
+      overrideSavingRef.current = false;
+      setOverrideSaving(false);
     }
   };
 
@@ -435,6 +512,11 @@ export default function TerminalManagementScreen() {
       return;
     }
 
+    // Re-entry guard, after the two validations. REGISTER mints a new terminal row bound to
+    // `deviceId`, refused only by device_id UNIQUE -- and that refusal lands in the catch as
+    // terminal-error-save, an error over a terminal that was registered. `saving` is STATE.
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -460,6 +542,7 @@ export default function TerminalManagementScreen() {
     } catch (err) {
       setError(l10nErrorMessage(err, l10n, 'terminal-error-save'));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -468,6 +551,9 @@ export default function TerminalManagementScreen() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
+    // Re-entry guard: the second delete reports the NotFound of a row the first removed.
+    if (deletingRef.current) return;
+    deletingRef.current = true;
     setDeleting(true);
     try {
       await deleteTerminalScoped(sessionToken, deleteTarget.id);
@@ -476,6 +562,7 @@ export default function TerminalManagementScreen() {
     } catch {
       addToast({ message: l10n.getString('terminal-error-save'), type: 'error' });
     } finally {
+      deletingRef.current = false;
       setDeleting(false);
     }
   };
@@ -820,6 +907,7 @@ export default function TerminalManagementScreen() {
                                   id={toggleId}
                                   className="terminal-mgmt-toggle-input"
                                   checked={checked}
+                                  disabled={overrideSaving || overridesLoading}
                                   onChange={() =>
                                     handleToggleOverride(
                                       featureKey,
@@ -960,6 +1048,11 @@ export default function TerminalManagementScreen() {
             {bindingError && (
               <div className="terminal-mgmt-error" role="alert">
                 <span>{bindingError}</span>
+              </div>
+            )}
+            {instancesError && (
+              <div className="terminal-mgmt-error" role="alert">
+                <span>{instancesError}</span>
               </div>
             )}
           </div>

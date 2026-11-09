@@ -2,6 +2,41 @@
 //!
 //! These helpers are re-exported from the crate root under `#[cfg(test)]`
 //! so every test module can use them without duplication.
+//!
+//! ## Why [`scratch_dir`] exists
+//!
+//! `std::env::temp_dir()` resolves `TEMP`/`TMP`, and on this project's Windows
+//! machines the MACHINE-level value is `C:\WINDOWS\TEMP` — a directory an ordinary
+//! user may create inside but cannot delete from. A fixture there can never be
+//! cleaned up, and once a stale entry exists the create itself fails with
+//! `PermissionDenied`, which reads as a broken test rather than as a hostile
+//! environment. Measured 2026-10-21: three `image_push` tests failed that way.
+//!
+//! `target/` is already gitignored (`.gitignore:2`), so nothing created here can be
+//! committed, and the per-call UUID keeps parallel tests apart. The workspace root is
+//! found by walking up from `CARGO_MANIFEST_DIR` rather than from the process CWD,
+//! because tests run from the crate directory while `target/` lives at the root.
+
+use std::path::PathBuf;
+
+/// A fresh, uniquely-named scratch directory under the gitignored `target/` tree.
+///
+/// Use this instead of `std::env::temp_dir()` or `tempfile::tempdir()` for any
+/// fixture that needs a real path on disk. See the module docs for why.
+///
+/// # Panics
+///
+/// Panics if the directory cannot be created: a test that cannot obtain its scratch
+/// space has nothing further it can usefully do.
+pub fn scratch_dir(prefix: &str) -> PathBuf {
+    // Delegates to the shared helper rather than carrying a fifth copy of the
+    // workspace-root walk-up. The copy that used to live here drifted from the
+    // others (no ScratchDir guard available, its own ancestor search) and was
+    // one of four places the same "find target/ above CARGO_MANIFEST_DIR" logic
+    // was written out by hand. kasirmu_test_support is the one definition;
+    // see its module docs for the Windows TEMP trap these all exist to avoid.
+    kasirmu_test_support::scratch_dir(prefix)
+}
 
 /// Spawn a mock server that returns HTTP 421 + `server_migrated` JSON on
 /// the push, pull, and snapshot endpoints (ADR #11).

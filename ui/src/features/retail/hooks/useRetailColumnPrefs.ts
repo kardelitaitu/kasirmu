@@ -104,14 +104,15 @@ export function useRetailColumnPrefs(): {
   // Guarded. Deps name userId and sessionToken, so a store switch starts a second read
   // while the first is in flight, and a slower earlier one lands last. Same class as
   // CurrencyContext (51c86e9e8) through useKdsPreferences (e19e412e4); the whole class is
-  // written up in SettingsContext:207.
+  // written up in SettingsContext's guard-register header.
   //
   // THE CONSEQUENCE IS PERSISTED, which is why this is guarded rather than noted: the
   // success path calls writeLocalPrefs(userId, serverPrefs) as well as setPrefs. A stale
   // read therefore does not merely display the previous store's columns -- it writes them
   // into localStorage under the current user, where they survive a reload and are read
-  // back on the next mount BEFORE the server answers (this file's own readLocalPrefs is
-  // the instant-restore source at :100). Display-only stale state self-corrects; this
+  // back on the next mount BEFORE the server answers (this file's own readLocalPrefs,
+  // the lazy useState initializer above, is the instant-restore source). Display-only
+  // stale state self-corrects; this
   // does not, and this is the second instance of that shape after useKdsPreferences.
   const prefsSeqRef = useRef(0);
   useEffect(() => {
@@ -123,14 +124,26 @@ export function useRetailColumnPrefs(): {
     const stale = () => prefsSeqRef.current !== seq;
     getUserPreferencesScoped(sessionToken)
       .then((raw) => {
-        const serverPrefs: RetailColumnPrefs = {
-          visibleColumns: parseColumns(raw['retail_visible_columns']),
-          hideInactive: raw['retail_hide_inactive'] === 'true',
-          viewMode: raw['retail_view_mode'] === 'grid' ? 'grid' : 'text',
-        };
         if (stale()) return;
-        setPrefs(serverPrefs);
-        writeLocalPrefs(userId, serverPrefs);
+        // AN ABSENT KEY IS NOT AN ANSWER. `=== 'grid' ? 'grid' : 'text'` collapsed
+        // "never saved" into "saved as text", and the write below then put that default
+        // over the localStorage copy that WAS the user's choice — so a store whose grid
+        // mode was picked locally reverted to text on every reload. Only take the
+        // server's word when the server actually carries one; otherwise keep the
+        // current (localStorage-backed) value.
+        const serverViewMode =
+          raw['retail_view_mode'] === 'grid' || raw['retail_view_mode'] === 'text'
+            ? (raw['retail_view_mode'] as RetailColumnPrefs['viewMode'])
+            : undefined;
+        setPrefs((current) => {
+          const serverPrefs: RetailColumnPrefs = {
+            visibleColumns: parseColumns(raw['retail_visible_columns']),
+            hideInactive: raw['retail_hide_inactive'] === 'true',
+            viewMode: serverViewMode ?? current.viewMode,
+          };
+          writeLocalPrefs(userId, serverPrefs);
+          return serverPrefs;
+        });
       })
       .catch(() => {
         // Server unavailable — keep localStorage defaults (already set).

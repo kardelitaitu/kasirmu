@@ -86,17 +86,26 @@ function PromotionManagementScreenContent() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const { addToast } = useToast();
+  // A rejected read was reported only by an auto-dismissing toast, so the render
+  // fell through to the empty state and claimed there are no promotions running,
+  // which reads as "nothing is discounted right now" on a screen that decides
+  // what customers are charged.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const deleteExit = useExitAnimation(!!deleteTarget, () => setDeleteTarget(null));
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       // asArray: the render maps/filters `promotions` (see utils/ipc-payload).
       const items = await listPromotions(sessionToken);
       setPromotions(asArray<typeof items[number]>(items));
     } catch {
       addToast({ message: requiredLocalized(l10n, 'promotions-error-load'), type: 'error' });
+      // Keep the promotions already on screen: a failed refresh must not delete
+      // the list the operator was reading.
+      setLoadError(requiredLocalized(l10n, 'promotions-error-load'));
     } finally {
       setLoading(false);
     }
@@ -123,8 +132,19 @@ function PromotionManagementScreenContent() {
   useFocusTrap(deleteModalRef, deleteExit.shouldRender && !deleteExit.exiting, deleteExit.requestClose);
   useFocusTrap(promoModalRef, modalExit.shouldRender && !modalExit.exiting, modalExit.requestClose);
 
+  // Re-entry guard. `saving` is React state and commits on the NEXT render, so the second
+  // dispatch of a real double tap still enters this handler. The create path cannot absorb
+  // the replay: `promotions` has only an `id` primary key and NO natural unique (the
+  // description, dates, category and value are all free or nullable -- 20260813_init.sql
+  // :"CREATE TABLE promotions"), and `create_promotion` mints a fresh id, so nothing on the
+  // server refuses the second INSERT. A double tap therefore creates TWO live promotions that
+  // both apply at checkout -- a discount given twice, with no error to notice.
+  const savePendingRef = useRef(false);
+
   const handleSave = useCallback(async () => {
     if (!form.name.trim()) return;
+    if (savePendingRef.current) return;
+    savePendingRef.current = true;
     setSaving(true);
     try {
       if (modalMode === 'add') {
@@ -151,6 +171,7 @@ function PromotionManagementScreenContent() {
     } catch (err) {
       addToast({ message: l10nErrorMessage(err, l10n, 'promotions-error-save'), type: 'error' });
     } finally {
+      savePendingRef.current = false;
       setSaving(false);
     }
   }, [form, modalMode, load, closeModal, addToast, l10n, sessionToken]);
@@ -189,6 +210,15 @@ function PromotionManagementScreenContent() {
         </Localized>
       </div>
 
+      {loadError && (
+        <div className="promo-mgmt-load-error" role="alert">
+          <span>{loadError}</span>
+          <button type="button" className="promo-mgmt-load-retry" onClick={load}>
+            <Localized id="retry"><span>Retry</span></Localized>
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="promo-mgmt-loading-skeleton" aria-hidden="true">
           <div className="promo-mgmt-header">
@@ -222,7 +252,7 @@ function PromotionManagementScreenContent() {
             </table>
           </div>
         </div>
-      ) : promotions.length === 0 ? (
+      ) : promotions.length === 0 && loadError ? null : promotions.length === 0 ? (
         <Card shadow="sm">
           <EmptyState
             region="table"

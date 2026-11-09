@@ -99,6 +99,91 @@ pub struct BootResolution {
 // ticket and resolve the REAL user + role from the global identity DB —
 // caller-supplied `role_id` / `user_id` are never trusted.
 
+/// Does `table` exist in this SQLite database?
+///
+/// The global and store schemas diverge after
+/// `20260906_rename_store_to_location.sql`, so the picker repair has to ask
+/// rather than assume which names it is writing to.
+fn table_exists(conn: &rusqlite::Connection, table: &str) -> bool {
+    conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        rusqlite::params![table],
+        |r| r.get::<_, i64>(0),
+    )
+    .map(|n| n > 0)
+    .unwrap_or(false)
+}
+
+/// Copy the GLOBAL DB's workspace rows into the STORE DB that lacks them.
+///
+/// Two schemas meet here. `20260906_rename_store_to_location.sql` renamed
+/// `store_profiles` to `locations` and `workspace_instances.store_id` to
+/// `location_id` in the STORE database, while the GLOBAL database this repair
+/// reads still calls them `store_profiles` / `store_id`. Writing the global
+/// names into the store DB fails with "no such table: store_profiles" -- and an
+/// earlier `let _ =` discarded that error, so the picker looked repaired while
+/// the store DB stayed empty and the repair re-ran on every boot.
+///
+/// Every failure is REPORTED, never swallowed: a repair that silently does
+/// nothing is worse than no repair, because it returns rows that will not
+/// survive the next boot.
+///
+/// Extracted so the picker path (`list_workspaces`) and the terminal-management
+/// path (`list_workspaces_for_store_scoped`) cannot drift apart again -- the
+/// second one simply never got a repair, and the asymmetry was invisible until
+/// a test pinned it.
+fn repair_store_db_from_global_rows(
+    conn: &std::sync::Arc<std::sync::Mutex<rusqlite::Connection>>,
+    global_rows: &[WorkspaceDto],
+) {
+    match conn.lock() {
+        Ok(db) => {
+            let (profile_table, instance_col) = if table_exists(&db, "locations") {
+                ("locations", "location_id")
+            } else {
+                ("store_profiles", "store_id")
+            };
+            for r in global_rows {
+                if let Err(e) = db.execute(
+                    &format!("INSERT OR IGNORE INTO {profile_table} (id, name) VALUES (?1, ?1)"),
+                    rusqlite::params![r.store_id],
+                ) {
+                    tracing::warn!(
+                        store_id = %r.store_id,
+                        table = profile_table,
+                        error = %e,
+                        "workspace picker repair could not seed the parent row; the instances below will be rejected"
+                    );
+                }
+            }
+            for r in global_rows {
+                if let Err(e) = db.execute(
+                    &format!(
+                        "INSERT OR IGNORE INTO workspace_instances (id, type_key, {instance_col}, name, description, status) VALUES (?1, ?2, ?3, ?4, ?5, 'active')"
+                    ),
+                    rusqlite::params![
+                        r.instance_id,
+                        r.type_key,
+                        r.store_id,
+                        r.name,
+                        r.description
+                    ],
+                ) {
+                    tracing::warn!(
+                        workspace = %r.instance_id,
+                        store_id = %r.store_id,
+                        error = %e,
+                        "workspace picker repair did not persist; the picker still shows the global rows, but the store DB stays empty and this re-runs on the next boot"
+                    );
+                }
+            }
+        }
+        Err(_) => tracing::warn!(
+            "workspace picker repair skipped: the store DB lock is poisoned; the picker still shows the global rows, but nothing was written"
+        ),
+    }
+}
+
 /// List workspace instances for the pre-session workspace picker.
 ///
 /// The caller presents the picker ticket minted by `staff_login`; the REAL
@@ -174,15 +259,7 @@ pub async fn list_workspaces(
         drop(global_db);
 
         if !global_rows.is_empty() {
-            if let Ok(db) = conn.lock() {
-                for r in &global_rows {
-                    let _ = db.execute(
-                        "INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name, description, status)
-                         VALUES (?1, ?2, ?3, ?4, ?5, 'active')",
-                        rusqlite::params![r.instance_id, r.type_key, r.store_id, r.name, r.description],
-                    );
-                }
-            }
+            repair_store_db_from_global_rows(&conn, &global_rows);
             rows = global_rows;
         }
     }
@@ -749,7 +826,14 @@ pub async fn list_workspaces_for_store_scoped(
     // entitlement filter as `list_workspaces_scoped` — a Free-tier session must
     // not enumerate tier-disallowed workspace types (e.g. kds) through the
     // terminal-management screen.
-    let (assignment, sub) = {
+    // Everything that needs the GLOBAL db is loaded HERE, before the store
+    // connection is opened. `open_store` hands back an
+    // `Arc<Mutex<rusqlite::Connection>>`, and `Connection` is not `Sync`, so that
+    // `Arc` is not `Send` -- an `async fn` awaited by a `#[tauri::command]` must
+    // be `Send`, and holding the Arc across any `.await` breaks it. That is
+    // exactly how this function failed to compile once: the read-repair added a
+    // second `ctx.lock_global().await` below the store open.
+    let (assignment, sub, global_rows) = {
         let global_db = ctx.lock_global().await;
         TenantSubscription::validate_clock_rollback(&global_db)?;
         let sub = TenantSubscription::load(&global_db, "default")?.unwrap_or_else(|| {
@@ -762,7 +846,16 @@ pub async fn list_workspaces_for_store_scoped(
         // subscription-trusting call sites.
         sub.verify_signature()?;
         let assignment = Store::new(&global_db).assignment_for_user(&session.user_id)?;
-        (assignment, sub)
+        // The read-repair's source rows, fetched while the global db is already
+        // locked. Cheap: it is one indexed listing, and it is only USED when the
+        // store db turns out to be empty (see below).
+        let global_rows = Store::new(&global_db).list_workspaces_with_entitlement(
+            &session.role_id,
+            Some(&session.user_id),
+            &store_id,
+            &sub,
+        )?;
+        (assignment, sub, global_rows)
     };
     let conn = ctx
         .db_manager
@@ -772,13 +865,32 @@ pub async fn list_workspaces_for_store_scoped(
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
-    let rows = store.list_workspaces_with_entitlement(
+    let mut rows = store.list_workspaces_with_entitlement(
         &session.role_id,
         Some(&session.user_id),
         &store_id,
         &sub,
     )?;
     drop(db);
+
+    // The same read-repair its sibling `list_workspaces` has had all along
+    // (O-M77). Without it the terminal-management screen's cross-store picker
+    // showed an empty grid in exactly the state the repair exists for: a freshly
+    // provisioned terminal whose workspaces live in the GLOBAL `kasir.db` while
+    // the store file it just opened is still empty.
+    //
+    // `list_workspaces_with_entitlement` is `list_workspaces_inner` plus a tier
+    // `retain`, so repairing the store DB here does not weaken the entitlement
+    // filter: the retained set is what gets returned, and the repair only writes
+    // the rows the global DB already holds for THIS user and store.
+    //
+    // NO `.await` here: the store connection is not `Send`, so this block must
+    // stay synchronous (see the note above the global-db block).
+    if rows.is_empty() && !global_rows.is_empty() {
+        repair_store_db_from_global_rows(&conn, &global_rows);
+        rows = global_rows;
+    }
+
     // Scope-filter through the user's assignment: a scoped member listing an
     // explicitly named store outside their branch scope, or a workspace type
     // outside their workspace scope, sees nothing (fail closed) — the

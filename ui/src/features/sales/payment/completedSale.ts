@@ -58,8 +58,31 @@ export interface CompletedSaleReceiptInput {
   statutoryNumber?: string | null | undefined;
   /** Customer or business name for B2B statutory invoice header. */
   customerName?: string | null | undefined;
+  /** Customer Phone number for receipt/contact. */
+  customerPhone?: string | null | undefined;
+  /** Due date for credit / pay_later transaction. */
+  dueDate?: string | null | undefined;
+  /** Total outstanding debt balance after this sale. */
+  outstandingBalance?: { minorUnits: number; currency: string } | null | undefined;
   /** Customer Tax ID (e.g. NPWP, VAT ID) for B2B statutory invoice header. */
   customerTaxId?: string | null | undefined;
+}
+
+/**
+ * Format custom notes and modifier selections into a clean receipt line note.
+ */
+export function formatReceiptLineNote(
+  modifiers?: { modifierName: string }[] | null,
+  note?: string | null,
+): string | undefined {
+  const noteParts: string[] = [];
+  if (modifiers && modifiers.length > 0) {
+    noteParts.push(modifiers.map((m) => m.modifierName).join(', '));
+  }
+  if (note?.trim()) {
+    noteParts.push(note.trim());
+  }
+  return noteParts.length > 0 ? noteParts.join(' | ') : undefined;
 }
 
 /**
@@ -89,6 +112,9 @@ export function buildCompletedSaleReceipt({
   isInvoice: isInvoiceProp,
   statutoryNumber: statutoryNumberProp,
   customerName,
+  customerPhone,
+  dueDate,
+  outstandingBalance,
   customerTaxId,
 }: CompletedSaleReceiptInput): PrintSalesReceiptArgs {
   const isInvoice = isInvoiceProp ?? Boolean(statutoryNumberProp ?? completedSale?.statutoryNumber);
@@ -124,6 +150,7 @@ export function buildCompletedSaleReceipt({
       const tax = computedLine?.tax_amount
         ? { minorUnits: computedLine.tax_amount.minor_units, currency: computedLine.tax_amount.currency }
         : null;
+      const note = formatReceiptLineNote(line.modifiers, line.note);
       return {
         name: line.name ?? line.sku,
         quantity: line.qty,
@@ -133,7 +160,7 @@ export function buildCompletedSaleReceipt({
           currency: line.unit_price.currency,
         },
         ...(tax ? { taxAmount: tax } : {}),
-        ...(line.note ? { note: line.note } : {}),
+        ...(note ? { note } : {}),
       };
     }),
     // `completedSale?.` on the SUBTOTAL too, not just on `completedSale`.
@@ -167,6 +194,9 @@ export function buildCompletedSaleReceipt({
     ...(isInvoice ? { isInvoice: true, documentKind: 'invoice' as const } : {}),
     ...(statutoryNumber ? { statutoryNumber } : {}),
     ...(customerName ? { customerName } : {}),
+    ...(customerPhone ? { customerPhone } : {}),
+    ...(dueDate ? { dueDate } : {}),
+    ...(outstandingBalance ? { outstandingBalance } : {}),
     ...(customerTaxId ? { customerTaxId } : {}),
   };
 }
@@ -214,13 +244,14 @@ export function buildPreCheckoutBillReceipt({
       const lineTax = taxAmount && cartLines.length > 0 && taxAmount.minor_units > 0
         ? { minorUnits: Math.round(taxAmount.minor_units / cartLines.length), currency: cartCurrency }
         : undefined;
+      const note = formatReceiptLineNote(line.modifiers, line.note);
       return {
         name: line.name ?? line.sku,
         quantity: line.qty,
         unitPrice: { minorUnits: line.unit_price.minor_units, currency: line.unit_price.currency },
         totalPrice: { minorUnits: line.unit_price.minor_units * line.qty, currency: line.unit_price.currency },
         ...(lineTax ? { taxAmount: lineTax } : {}),
-        ...(line.note ? { note: line.note } : {}),
+        ...(note ? { note } : {}),
       };
     }),
     subtotal: { minorUnits: subtotal.minor_units, currency: cartCurrency },
@@ -257,6 +288,15 @@ export function isBeverageItem(line: CartLine): boolean {
   return cat.includes('beverage') || cat.includes('drink') || cat.includes('minuman') || cat.includes('bar');
 }
 
+const COURSE_SORT_ORDER: Record<string, number> = {
+  appetizer: 1,
+  main: 2,
+  side: 3,
+  dessert: 4,
+  beverage: 5,
+  drinks: 5,
+};
+
 /**
  * Format a kitchen order ticket (KOT / chit) for food orders sent to the kitchen.
  * Formats line items with their quantity, modifiers, course indicators, and notes.
@@ -270,27 +310,34 @@ export function buildKitchenChitReceipt({
   printerTarget,
   documentKind,
 }: KitchenChitReceiptInput): PrintSalesReceiptArgs {
+  const tablePart = bareTableNumber(tableNumber || '');
+  const customerPart = customerName ? customerName.trim().replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase() : '';
+  const identifier = tablePart || customerPart || 'ORDER';
+
+  const sortedLines = [...cartLines].sort((a, b) => {
+    const orderA = a.courseId ? (COURSE_SORT_ORDER[a.courseId] ?? 99) : 99;
+    const orderB = b.courseId ? (COURSE_SORT_ORDER[b.courseId] ?? 99) : 99;
+    return orderA - orderB;
+  });
+
   return {
     date: new Date().toISOString(),
-    receiptNumber: chitNumber ?? `KOT-${bareTableNumber(tableNumber || '') || 'ORDER'}-${Date.now().toString().slice(-4)}`,
-    items: cartLines.map((line) => {
+    receiptNumber: chitNumber ?? `KOT-${identifier}-${Date.now().toString().slice(-4)}`,
+    items: sortedLines.map((line) => {
       let displayName = line.name ?? line.sku;
       if (line.courseId) {
         displayName = `[${courseLabel(line.courseId)}] ${displayName}`;
       }
-      const noteParts: string[] = [];
-      if (line.modifiers && line.modifiers.length > 0) {
-        noteParts.push(line.modifiers.map((m) => m.modifierName).join(', '));
+      if (line.coursingStatus === 'hold') {
+        displayName = `[HOLD] ${displayName}`;
       }
-      if (line.note?.trim()) {
-        noteParts.push(line.note.trim());
-      }
+      const note = formatReceiptLineNote(line.modifiers, line.note);
       return {
         name: displayName,
         quantity: line.qty,
         unitPrice: { minorUnits: 0, currency: cartCurrency },
         totalPrice: { minorUnits: 0, currency: cartCurrency },
-        ...(noteParts.length > 0 ? { note: noteParts.join(' | ') } : {}),
+        ...(note ? { note } : {}),
       };
     }),
     subtotal: { minorUnits: 0, currency: cartCurrency },

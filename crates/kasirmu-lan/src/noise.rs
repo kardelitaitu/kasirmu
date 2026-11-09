@@ -261,31 +261,38 @@ where
 /// bypass explicit).
 pub(crate) enum PeerTx {
     Plain(BufReader<TcpStream>),
-    Noise(BufReader<TcpStream>, snow::TransportState),
+    Noise(BufReader<TcpStream>, snow::TransportState, Vec<u8>),
 }
 
 impl PeerTx {
+    /// Create a new `Noise` peer transmitter with a pre-allocated reusable buffer (O-L19).
+    pub(crate) fn new_noise(stream: BufReader<TcpStream>, state: snow::TransportState) -> Self {
+        PeerTx::Noise(stream, state, Vec::with_capacity(1024))
+    }
+
     /// Write one event or heartbeat: a JSON line for plain peers, one
     /// encrypted frame for noise peers.
     pub(crate) async fn send_line(&mut self, line: &str) -> std::io::Result<()> {
         match self {
             PeerTx::Plain(stream) => {
-                stream
-                    .get_mut()
-                    .write_all(format!("{line}\n").as_bytes())
-                    .await
+                let sock = stream.get_mut();
+                sock.write_all(line.as_bytes()).await?;
+                sock.write_all(b"\n").await
             }
-            PeerTx::Noise(stream, state) => {
-                let mut out = vec![0u8; line.len() + 32];
+            PeerTx::Noise(stream, state, write_buf) => {
+                let needed = line.len() + 32;
+                if write_buf.len() < needed {
+                    write_buf.resize(needed, 0);
+                }
                 let n = state
-                    .write_message(line.as_bytes(), &mut out)
+                    .write_message(line.as_bytes(), &mut write_buf[..needed])
                     .map_err(|e| {
                         std::io::Error::new(
                             std::io::ErrorKind::InvalidData,
                             format!("noise encrypt failed: {e}"),
                         )
                     })?;
-                write_frame(stream.get_mut(), &out[..n]).await
+                write_frame(stream.get_mut(), &write_buf[..n]).await
             }
         }
     }
@@ -299,7 +306,7 @@ impl PeerTx {
                 let n = reader.read_line(&mut line).await?;
                 if n == 0 { Ok(None) } else { Ok(Some(line)) }
             }
-            PeerTx::Noise(reader, state) => {
+            PeerTx::Noise(reader, state, _) => {
                 let frame = match read_frame(reader).await {
                     Ok(f) => f,
                     Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(None),
@@ -315,8 +322,9 @@ impl PeerTx {
                         format!("noise decrypt failed: {e}"),
                     )
                 })?;
-                let text = String::from_utf8(out[..n].to_vec())
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+                let text = std::str::from_utf8(&out[..n])
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?
+                    .to_string();
                 Ok(Some(text))
             }
         }

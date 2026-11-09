@@ -168,7 +168,11 @@ describe('NodeTopologyEditor — first warehouse wire stock-deduct label', () =>
     const wires = document.querySelectorAll('.wire-group');
     const last = wires[wires.length - 1]!;
     const title = last.querySelector('.wire-hitbox title');
-    expect(title?.textContent).toContain('topology-wire-label-stock-deduct');
+    // Assert the COPY, not the key. This read toContain('topology-wire-label-stock-deduct')
+// and passed only because the harness map lacked the key, so the tooltip rendered
+// the component's own id -- the assertion was describing the defect. The label
+// carries a runtime priority, so match the stable prefix.
+expect(title?.textContent).toContain('Stock Deduct (P');
   });
 });
 
@@ -180,7 +184,16 @@ describe('NodeTopologyEditor — warehouse tool-card tier lock', () => {
 
     const locked = document.querySelector('.tool-card.locked');
     expect(locked).not.toBeNull();
-    expect(locked!.textContent).toContain('Premium');
+    // Assert the BADGE, not a substring of the whole card. The card's own copy
+    // ("Inventory storage workspace") and the badge's ("Premium") are separate FTL
+    // strings, so a toContain over the card cannot tell them apart -- and it reads
+    // as a failure the moment the wording around them changes, which is exactly
+    // what 8cffb0935 did when it moved the literal 'Premium' into
+    // topology-tool-locked-premium. Scoped to .lock-badge the assertion fails only
+    // when the lock indicator itself goes missing.
+    const badge = locked!.querySelector('.lock-badge');
+    expect(badge, 'the locked card renders no .lock-badge').not.toBeNull();
+    expect(badge!.textContent?.trim()).toBe('Premium');
 
     const before = getNodeCount();
     fireEvent.click(screen.getByText('+ Warehouse'));
@@ -1127,7 +1140,7 @@ describe('NodeTopologyEditor — Apply failure resilience', () => {
     // The failure surfaces as an error toast (plainErrorMessage sanitizes the
     // thrown Error to the generic fallback, so pin the save-error key itself).
     await waitFor(() =>
-      expect(screen.getByText(/topology-toast-save-error/)).toBeInTheDocument(),
+      expect(screen.getByText(/Failed to save topology/)).toBeInTheDocument(),
     );
 
     // The in-memory edit survives the failed save.
@@ -1154,7 +1167,7 @@ describe('NodeTopologyEditor — Apply failure resilience', () => {
     await applyWithPin();
 
     await waitFor(() =>
-      expect(screen.getByText(/topology-toast-save-error/)).toBeInTheDocument(),
+      expect(screen.getByText(/Failed to save topology/)).toBeInTheDocument(),
     );
 
     // Selection survives — the failure returns before the idMap branch clears it.
@@ -1266,7 +1279,11 @@ describe('NodeTopologyEditor — wire click keeps an in-flight connection', () =
     const wires = document.querySelectorAll('.wire-group');
     const created = wires[wires.length - 1]!;
     const title = created.querySelector('.wire-hitbox title');
-    expect(title?.textContent).toContain('topology-wire-label-connected');
+    // Assert the COPY, not the key. This line read
+    //   toContain('topology-wire-label-connected')
+    // and passed only because the harness map did not carry the key, so the
+    // component rendered its own id: it was asserting the defect.
+    expect(title?.textContent).toContain('Connected');
   });
 
   it('keeps the connection in flight when the cycle is undone (history push is orthogonal)', () => {
@@ -1343,11 +1360,15 @@ describe('NodeTopologyEditor — wire click keeps an in-flight connection', () =
     renderEditor();
 
     // Every wire's native tooltip carries its label plus the click-to-cycle
-    // hint (raw FTL key in the identity-l10n mock).
+    // hint, as COPY. This loop used to match on the FTL message id itself and
+    // passed only because the harness map never carried that key, so the
+    // tooltip described the component's own id instead of anything a user reads.
     const titles = [...document.querySelectorAll('.wire-hitbox title')];
     expect(titles.length).toBeGreaterThan(0);
     for (const title of titles) {
-      expect(title.textContent).toContain('topology-wire-toggle-hint');
+      expect(title.textContent).toContain(
+        'Click to cycle direction (one-way → reverse → two-way)',
+      );
     }
     // The first retail wire's label appears in its tooltip.
     expect(titles[0]!.textContent).toContain('Binds Store');
@@ -2642,8 +2663,8 @@ describe('NodeTopologyEditor — rename machinery characterization', () => {
     renderEditor({ onRenameBranch });
 
     const storeCard = document.querySelectorAll('.topology-node')[0] as HTMLElement;
-    fireEvent.click(within(storeCard).getByRole('button', { name: 'topology-branch-rename-label' }));
-    const input = within(storeCard).getByLabelText('topology-branch-rename-placeholder') as HTMLInputElement;
+    fireEvent.click(within(storeCard).getByRole('button', { name: 'Rename branch' }));
+    const input = within(storeCard).getByLabelText('Branch name') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'Double Submit' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
@@ -2654,7 +2675,7 @@ describe('NodeTopologyEditor — rename machinery characterization', () => {
     expect(onRenameBranch).toHaveBeenCalledTimes(1);
 
     settle(true);
-    await waitFor(() => expect(within(storeCard).queryByLabelText('topology-branch-rename-placeholder')).toBeNull());
+    await waitFor(() => expect(within(storeCard).queryByLabelText('Branch name')).toBeNull());
     await waitFor(() => expect(within(storeCard).getByText('Double Submit')).toBeTruthy());
     expect(onRenameBranch).toHaveBeenCalledTimes(1);
   });
@@ -2666,13 +2687,13 @@ describe('NodeTopologyEditor — rename machinery characterization', () => {
     renderEditor({ onRenameBranch });
 
     const storeCard = document.querySelectorAll('.topology-node')[0] as HTMLElement;
-    fireEvent.click(within(storeCard).getByRole('button', { name: 'topology-branch-rename-label' }));
-    const input = within(storeCard).getByLabelText('topology-branch-rename-placeholder') as HTMLInputElement;
+    fireEvent.click(within(storeCard).getByRole('button', { name: 'Rename branch' }));
+    const input = within(storeCard).getByLabelText('Branch name') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'Rejected HQ' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
     await waitFor(() => expect(onRenameBranch).toHaveBeenCalledWith('store-1', 'Rejected HQ'));
-    const stillOpen = within(storeCard).getByLabelText('topology-branch-rename-placeholder') as HTMLInputElement;
+    const stillOpen = within(storeCard).getByLabelText('Branch name') as HTMLInputElement;
     expect(stillOpen.value).toBe('Rejected HQ');
     // Still open means still no local write: the card title element is not
     // even rendered while the rename input owns that slot.
@@ -2682,7 +2703,7 @@ describe('NodeTopologyEditor — rename machinery characterization', () => {
     // Enter must reach the parent again instead of being swallowed.
     fireEvent.keyDown(stillOpen, { key: 'Enter' });
     await waitFor(() => expect(onRenameBranch).toHaveBeenCalledTimes(2));
-    expect(within(storeCard).getByLabelText('topology-branch-rename-placeholder')).not.toBeNull();
+    expect(within(storeCard).getByLabelText('Branch name')).not.toBeNull();
 
     // Escape is the honest exit — and the canvas still holds the AUTHORITATIVE
     // name, never the rejected one.
@@ -2821,11 +2842,11 @@ describe('NodeTopologyEditor — rename machinery characterization', () => {
     await waitFor(() => expect(within(storeCard).getByText('Inspector HQ')).toBeTruthy());
 
     // Card-level rename stacked on top of the inspector one.
-    fireEvent.click(within(storeCard).getByRole('button', { name: 'topology-branch-rename-label' }));
-    const cardInput = within(storeCard).getByLabelText('topology-branch-rename-placeholder') as HTMLInputElement;
+    fireEvent.click(within(storeCard).getByRole('button', { name: 'Rename branch' }));
+    const cardInput = within(storeCard).getByLabelText('Branch name') as HTMLInputElement;
     fireEvent.change(cardInput, { target: { value: 'Inspector HQ II' } });
     fireEvent.keyDown(cardInput, { key: 'Enter' });
-    await waitFor(() => expect(within(storeCard).queryByLabelText('topology-branch-rename-placeholder')).toBeNull());
+    await waitFor(() => expect(within(storeCard).queryByLabelText('Branch name')).toBeNull());
     await waitFor(() => expect(within(storeCard).getByText('Inspector HQ II')).toBeTruthy());
 
     // One undo reverts BOTH renames: history holds a single pre-inspector

@@ -201,8 +201,83 @@ impl Store<'_> {
     /// ever writes the number). D61 ruling 4: never silent-zero — the sale
     /// is flagged so history can flag it for recompute. `false` (or the
     /// legacy wrapper) stamps nothing: NULL = unstamped = no claim.
+    /// The same checkout, with the caller's effective subscription tier supplied so
+    /// safety rule 4 can be enforced: a dynamic rail the tier never included is refused
+    /// here rather than merely hidden in the UI.
+    ///
+    /// `effective_tier: None` means the CALLER could not resolve one (no signed
+    /// subscription row); that skips the tier check instead of denying. An unknown tier
+    /// is not a Free tier, and refusing every sale on a signature the desktop could not
+    /// read would be the worst direction to fail.
+    ///
+    /// The tier-less door below forwards `None`, which is why every existing caller and
+    /// test keeps its behaviour byte for byte; a caller that HAS the tier should use this
+    /// one so the gate is live.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CoreError::Validation`] naming the tender when the tier withholds it, or
+    /// forwarding any error the tier-less door raises.
+    #[allow(clippy::too_many_arguments)]
+    pub fn complete_sale_deduction_with_locations_and_tier(
+        &self,
+        sale: &Sale,
+        workspace_instance_id: Option<&str>,
+        stock_locations: &[crate::inventory::LocationId],
+        payment_splits: &[crate::PaymentSplitArg],
+        staff_user_id: &str,
+        terminal_id: Option<&str>,
+        checkout_applications: &[crate::PromotionApplication],
+        effective_tier: Option<&crate::subscription::SubscriptionTier>,
+    ) -> Result<crate::sale_deduction::CompleteSaleResult, CoreError> {
+        self.complete_sale_deduction_core(
+            sale,
+            workspace_instance_id,
+            stock_locations,
+            payment_splits,
+            staff_user_id,
+            terminal_id,
+            checkout_applications,
+            false,
+            effective_tier,
+        )
+    }
+
+    /// The tier-less door. Behaviour is unchanged from before rule 4 existed: it
+    /// forwards `None`, so no tier is consulted and no sale that completed yesterday
+    /// can start failing today. Callers that hold a subscription should prefer
+    /// [`Self::complete_sale_deduction_with_locations_and_tier`].
     #[allow(clippy::too_many_arguments)]
     pub fn complete_sale_deduction_with_locations_and_estimate(
+        &self,
+        sale: &Sale,
+        workspace_instance_id: Option<&str>,
+        stock_locations: &[crate::inventory::LocationId],
+        payment_splits: &[crate::PaymentSplitArg],
+        staff_user_id: &str,
+        terminal_id: Option<&str>,
+        checkout_applications: &[crate::PromotionApplication],
+        tax_estimated: bool,
+    ) -> Result<crate::sale_deduction::CompleteSaleResult, CoreError> {
+        // No tier in hand here: forward None, which skips rule 4 rather than denying.
+        self.complete_sale_deduction_core(
+            sale,
+            workspace_instance_id,
+            stock_locations,
+            payment_splits,
+            staff_user_id,
+            terminal_id,
+            checkout_applications,
+            tax_estimated,
+            None,
+        )
+    }
+
+    /// The one checkout body. Private because the two public doors differ ONLY in
+    /// whether they carry a subscription tier -- a second copy of this 600-line
+    /// transaction is how the two would drift apart.
+    #[allow(clippy::too_many_arguments)]
+    fn complete_sale_deduction_core(
         &self,
         sale: &Sale,
         workspace_instance_id: Option<&str>,
@@ -212,6 +287,7 @@ impl Store<'_> {
         _terminal_id: Option<&str>,
         checkout_applications: &[crate::PromotionApplication],
         tax_estimated: bool,
+        effective_tier: Option<&crate::subscription::SubscriptionTier>,
     ) -> Result<crate::sale_deduction::CompleteSaleResult, CoreError> {
         use crate::inventory_transaction::InventoryTransactionId;
         use crate::sale_deduction::{Shortfall, StockDeduction};
@@ -315,6 +391,50 @@ impl Store<'_> {
         };
         let primary_location = stock_locations[0].clone();
 
+        // ── Payment-rail re-validation (plan safety rule 2) ────────
+        //
+        // The settings UI hides rails the site has disabled, but a hidden button is
+        // not an enforcement point: never trust the UI. Every tender a sale claims --
+        // the header's `payment_method` and every split row -- is checked against the
+        // site's EFFECTIVE rail surface before a single row is written. A market with
+        // no surface configured refuses nothing (see the predicate's doc comment), so
+        // this cannot break a store that has not set rails up yet.
+        //
+        // `credit` is deliberately absent from the surface: it is a CORE rail gated
+        // by its own settings (F23/F24, enforced above), not a `local_payment_methods`
+        // row. Checking it here would refuse every credit sale on every configured
+        // site, which is the opposite of the intent.
+        let mut tenders: Vec<&str> = Vec::new();
+        if let Some(header_method) = sale.payment_method.as_deref() {
+            tenders.push(header_method);
+        }
+        for split in payment_splits {
+            tenders.push(split.method.as_str());
+        }
+        for tender in tenders {
+            if tender.eq_ignore_ascii_case("credit") {
+                continue;
+            }
+            // Safety rule 4 first: a tier that never included dynamic QRIS refuses it
+            // regardless of what the site configured. `None` (no tier supplied) skips the
+            // check rather than denying -- the desktop does not always have a signed
+            // subscription row, and "unknown tier" must not read as "Free".
+            if let Some(refusal) =
+                effective_tier.and_then(|tier| Self::tier_withholds_tender(tender, tier))
+            {
+                return Err(CoreError::Validation {
+                    field: "payment_method",
+                    message: refusal.message(),
+                });
+            }
+            if let Some(refusal) = self.refuse_unoffered_tender(&primary_location, tender)? {
+                return Err(CoreError::Validation {
+                    field: "payment_method",
+                    message: refusal.message(),
+                });
+            }
+        }
+
         // ── Phase 1: stock check + shortfall collection ────────────
         let mut deductions: Vec<StockDeduction> = Vec::with_capacity(sale.lines.len());
         let mut line_deductions: HashMap<String, Vec<crate::sale_deduction::LocationAllocation>> =
@@ -323,6 +443,7 @@ impl Store<'_> {
             HashMap::new();
         let mut line_tracks_inventory: HashMap<String, bool> = HashMap::new();
         let mut shortfalls: Vec<Shortfall> = Vec::new();
+        let mut stock_warnings: Vec<crate::sale_deduction::StockWarning> = Vec::new();
 
         // Batch-lookup all SKUs in a single query (avoids N+1 per-line SELECT).
         let skus: Vec<&str> = sale.lines.iter().map(|l| l.sku.as_str()).collect();
@@ -471,35 +592,44 @@ impl Store<'_> {
                                 let available = availability
                                     .first()
                                     .map_or(0, |location| location.qty_available);
-                                let alternatives = if stock_locations.len() > 1 {
-                                    availability
-                                        .into_iter()
-                                        .skip(1)
-                                        .filter(|a| a.qty_available > 0)
-                                        .collect()
-                                } else if let Some(ws_id) = workspace_instance_id {
-                                    crate::location_resolver::resolve_location_chain_for_sku(
-                                        &tx,
-                                        ws_id,
-                                        &ing_sku,
-                                        required_qty,
-                                    )?
-                                    .into_iter()
-                                    .filter(|a| a.location_id != primary_location)
-                                    .collect()
-                                } else {
-                                    vec![]
-                                };
 
-                                shortfalls.push(Shortfall {
-                                    sku: ing_sku,
+                                // Kitchen stock (recipe BOM ingredient) does not block ordering menu items.
+                                // It is only used as a warning/alarm. We deduct whatever is available.
+                                if available > 0 {
+                                    deductions.push(StockDeduction {
+                                        sku: ing_sku.clone(),
+                                        location_id: primary_location.clone(),
+                                        delta: -available,
+                                    });
+                                    recipe_line_deductions
+                                        .entry(line.id.clone())
+                                        .or_default()
+                                        .push(RecipeIngredientAllocation {
+                                            sku: ing_sku.clone(),
+                                            qty_per_unit: ingredient.quantity_required,
+                                            allocations: vec![
+                                                crate::sale_deduction::LocationAllocation {
+                                                    location_id: primary_location.clone(),
+                                                    qty: available,
+                                                },
+                                            ],
+                                        });
+                                }
+
+                                stock_warnings.push(crate::sale_deduction::StockWarning {
+                                    sku: ing_sku.clone(),
                                     product_name: ing_name,
                                     requested_qty: required_qty,
-                                    primary_qty_available: available,
+                                    qty_available: available,
                                     deficit: required_qty.saturating_sub(available),
-                                    primary_location_id: primary_location.clone(),
-                                    alternatives,
                                 });
+
+                                tracing::warn!(
+                                    sku = %ing_sku,
+                                    requested = required_qty,
+                                    available = available,
+                                    "kitchen stock shortfall for recipe ingredient — menu order proceeds with warning"
+                                );
                             }
                         }
                     }
@@ -507,12 +637,12 @@ impl Store<'_> {
             }
         }
 
-        // ── Shortfall path: rollback, return PartialStockResult ───
+        // ── Retail shortfall path: rollback, return PartialStockResult ───
+        // Only finished goods (retail products that track inventory directly)
+        // require cashier multi-location resolution. Kitchen stock shortfalls
+        // bypass this and proceed as warnings above.
         if !shortfalls.is_empty() {
             tx.rollback()?;
-            // Return as PartialStockResult via a dedicated error type is
-            // cleaner, but for now we use the standard result type pattern.
-            // The caller (Tauri command) matches on the return variant.
             return Err(CoreError::Validation {
                 field: "stock",
                 message: serde_json::to_string(&crate::sale_deduction::PartialStockResult {
@@ -726,6 +856,7 @@ impl Store<'_> {
             for split in payment_splits {
                 let payment_id = uuid::Uuid::now_v7().to_string();
                 let method_norm = split.method.to_ascii_lowercase();
+                let gateway_status = split.effective_gateway_status();
                 tx.execute(
                     "INSERT INTO payments (id, sale_id, method, amount_minor, currency,
                                            gateway_reference, gateway_status, gateway_response,
@@ -738,7 +869,7 @@ impl Store<'_> {
                         split.amount_minor,
                         cur_str,
                         split.gateway_reference,
-                        split.gateway_status,
+                        gateway_status,
                         split.gateway_response,
                         now,
                         split.idempotency_key,
@@ -795,6 +926,7 @@ impl Store<'_> {
             receipt_number: display_code.clone().unwrap_or_else(|| sale.id.clone()),
             deduct_tx_id,
             statutory_number,
+            stock_warnings,
         })
     }
 }

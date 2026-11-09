@@ -70,3 +70,5 @@ restaurant-only — but other writes there were not audited.
 
   cd ui && npx vitest run PosScreenCoreFlow.test.tsx PosScreen.integration.test.tsx \
     useLockedCartPersistence.test.tsx sessionBannerRenders.test.tsx
+
+> last audited 14-10-26 by docs-auditor

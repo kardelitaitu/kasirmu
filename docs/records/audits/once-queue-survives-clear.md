@@ -74,3 +74,5 @@ defaults and break the file.
 
 Each was a different mechanism. The one practice that found them all:
 **`npx vitest run --sequence.shuffle.tests --sequence.seed=N`**, repeated across seeds.
+
+> last audited 14-10-26 by docs-auditor

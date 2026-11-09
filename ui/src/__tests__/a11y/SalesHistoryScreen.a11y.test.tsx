@@ -8,7 +8,7 @@ import SalesHistoryScreen from '@/features/sales/SalesHistoryScreen';
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
-    session: { username: 'test', role: 'owner', displayName: 'Test' },
+    session: { username: 'test', role_name: 'Owner', displayName: 'Test' },
     loading: false,
     error: null,
     login: vi.fn(),

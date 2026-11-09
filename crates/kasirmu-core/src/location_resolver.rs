@@ -25,7 +25,7 @@ next: none | perf: cache avoids per-cart-open SELECT; the mutator clears it so a
 use rusqlite::params;
 use std::collections::HashMap;
 use std::sync::LazyLock;
-use std::sync::Mutex;
+use std::sync::RwLock;
 use std::time::Instant;
 
 use crate::error::CoreError;
@@ -45,16 +45,19 @@ struct CachedLocation {
 /// Global cache for resolved primary locations, keyed by `workspace_instance_id`.
 /// Entries expire after 30 seconds. Call [`invalidate_location_cache`] to clear
 /// the entire cache (e.g. on workspace switch).
-static LOCATION_CACHE: LazyLock<Mutex<HashMap<String, CachedLocation>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+static LOCATION_CACHE: LazyLock<RwLock<HashMap<String, CachedLocation>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
 
 /// TTL for cached location resolutions, in seconds.
 const CACHE_TTL_SECS: u64 = 30;
 
+/// Maximum number of cached location entries to prevent unbounded memory growth (O-M12).
+const MAX_CACHED_LOCATIONS: usize = 1024;
+
 /// Check the in-memory cache for a previously-resolved primary location.
 /// Returns `None` on cache miss or if the entry has expired (30s TTL).
 fn cache_get(workspace_instance_id: &str) -> Option<LocationId> {
-    let cache = LOCATION_CACHE.lock().ok()?;
+    let cache = LOCATION_CACHE.read().ok()?;
     if let Some(entry) = cache.get(workspace_instance_id)
         && entry.cached_at.elapsed().as_secs() < CACHE_TTL_SECS
     {
@@ -63,9 +66,15 @@ fn cache_get(workspace_instance_id: &str) -> Option<LocationId> {
     None
 }
 
-/// Store a resolved primary location in the in-memory cache.
+/// Store a resolved primary location in the in-memory cache with capacity bounding.
 fn cache_set(workspace_instance_id: &str, location_id: &LocationId) {
-    if let Ok(mut cache) = LOCATION_CACHE.lock() {
+    if let Ok(mut cache) = LOCATION_CACHE.write() {
+        if cache.len() >= MAX_CACHED_LOCATIONS {
+            cache.retain(|_, entry| entry.cached_at.elapsed().as_secs() < CACHE_TTL_SECS);
+            if cache.len() >= MAX_CACHED_LOCATIONS {
+                cache.clear();
+            }
+        }
         cache.insert(
             workspace_instance_id.to_owned(),
             CachedLocation {
@@ -79,7 +88,7 @@ fn cache_set(workspace_instance_id: &str, location_id: &LocationId) {
 /// Clear the entire location cache. Called on workspace switch so the next
 /// `resolve_primary_location` call performs a fresh database SELECT.
 pub fn invalidate_location_cache() {
-    if let Ok(mut cache) = LOCATION_CACHE.lock() {
+    if let Ok(mut cache) = LOCATION_CACHE.write() {
         cache.clear();
     }
 }
@@ -268,15 +277,35 @@ fn enrich_bindings(
     conn: &rusqlite::Connection,
     rows: &[(String, bool, bool)],
 ) -> Result<Vec<WorkspaceLocationBinding>, CoreError> {
+    if rows.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // O-M13: batch fetch location names in a single query instead of per-row queries
+    let mut names: HashMap<String, String> = HashMap::with_capacity(rows.len());
+    let placeholders = rows.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT id, COALESCE(name, '') FROM inventory_locations WHERE id IN ({placeholders})"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let params_vec: Vec<&dyn rusqlite::ToSql> = rows
+        .iter()
+        .map(|(id, _, _)| id as &dyn rusqlite::ToSql)
+        .collect();
+    let query_rows = stmt.query_map(params_vec.as_slice(), |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    for row in query_rows {
+        let (id, name) = row?;
+        names.insert(id, name);
+    }
+
     let mut results = Vec::with_capacity(rows.len());
     for (loc_id, is_primary, allow_negative) in rows {
-        let name: String = conn
-            .query_row(
-                "SELECT COALESCE(name, '') FROM inventory_locations WHERE id = ?1",
-                params![loc_id],
-                |row| row.get(0),
-            )
-            .unwrap_or_else(|_| loc_id.clone());
+        let name = names
+            .get(loc_id.as_str())
+            .cloned()
+            .unwrap_or_else(|| loc_id.clone());
         results.push(WorkspaceLocationBinding {
             location_id: loc_id.clone(),
             location_name: name,
@@ -536,32 +565,55 @@ pub fn resolve_location_chain_for_sku(
     let mut results = Vec::with_capacity(location_ids.len());
     let mut remaining = qty;
 
+    if location_ids.is_empty() {
+        return Ok(results);
+    }
+
+    // O-M13: batch fetch live stock and location names in a single joined query
+    let placeholders = location_ids
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(",");
+    let sql = format!(
+        "SELECT s.location_id, COALESCE(s.qty, 0), COALESCE(l.name, s.location_id) \
+         FROM stock_summary s \
+         LEFT JOIN inventory_locations l ON l.id = s.location_id \
+         WHERE s.item_id = ?1 AND s.location_id IN ({placeholders}) AND s.qty > 0"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let loc_strs: Vec<&str> = location_ids
+        .iter()
+        .map(foundation::LocationId::as_str)
+        .collect();
+    let mut params_vec: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(location_ids.len() + 1);
+    params_vec.push(&product_id);
+    for s in &loc_strs {
+        params_vec.push(s);
+    }
+    let query_rows = stmt.query_map(params_vec.as_slice(), |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, i64>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+
+    let mut stock_map: HashMap<String, (i64, String)> = HashMap::with_capacity(location_ids.len());
+    for row in query_rows {
+        let (loc_id, avail, name) = row?;
+        stock_map.insert(loc_id, (avail, name));
+    }
+
     for loc_id in &location_ids {
         if remaining <= 0 {
             break;
         }
 
-        let avail: i64 = conn
-            .query_row(
-                "SELECT COALESCE(qty, 0) FROM stock_summary \
-                 WHERE item_id = ?1 AND location_id = ?2",
-                params![product_id, loc_id.as_str()],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
-
-        if avail > 0 {
-            let name: String = conn
-                .query_row(
-                    "SELECT name FROM inventory_locations WHERE id = ?1",
-                    params![loc_id.as_str()],
-                    |row| row.get(0),
-                )
-                .unwrap_or_else(|_| loc_id.as_str().to_owned());
-
+        if let Some(&(avail, ref name)) = stock_map.get(loc_id.as_str()) {
             results.push(LocationStock {
                 location_id: loc_id.clone(),
-                location_name: name,
+                location_name: name.clone(),
                 qty_available: avail,
             });
 

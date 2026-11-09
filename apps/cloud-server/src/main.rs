@@ -67,7 +67,7 @@ use tower::limit::ConcurrencyLimitLayer;
 use tracing::info;
 
 use crate::rate_limit::{RateLimiterState, start_rate_limit_cleanup};
-use crate::sync_api::{SyncState, sync_router};
+use crate::sync_api::{SyncState, sync_router_with_plan_enforcement_with_cache};
 
 /// Short-TTL cache for the health endpoint's `sync_queue_depth` field.
 ///
@@ -884,8 +884,25 @@ pub fn build_router(
     config: &config::CloudServerConfig,
     pg: Option<deadpool_postgres::Pool>,
 ) -> Router {
+    build_router_with_plan_cache(state, rate_limiter, config, pg, None)
+}
+
+/// [`build_router`] with an explicit sync plan cache (O-H09).
+///
+/// `None` gives the production wiring: `sync_router` installs a default
+/// [`crate::sync_store::PlanCache`]. `Some` exists for tests that change a
+/// tenant's plan AFTER the router is built and must still observe it — a
+/// default cache would legitimately keep serving the answer it just cached,
+/// so such a test supplies a zero-TTL cache instead of the production one.
+pub fn build_router_with_plan_cache(
+    state: CloudServerState,
+    rate_limiter: RateLimiterState,
+    config: &config::CloudServerConfig,
+    pg: Option<deadpool_postgres::Pool>,
+    plan_cache: Option<Arc<crate::sync_store::PlanCache>>,
+) -> Router {
     // CORS allowlist shared with the kasirmu-api router
-    // (docs/archived/2026-08-15-unify-auth-and-sync.md
+    // (docs/records/audits/2026-08-15-unify-auth-and-sync.md
     // §11): documented defaults, overridable via OZ_CORS_ORIGINS.
     let cors_origins = kasirmu_api::cors_origins_from_env();
     let cors = kasirmu_api::build_cors(&cors_origins);
@@ -903,7 +920,7 @@ pub fn build_router(
         // rather than assumed: `config::validate_production` (`config.rs:442`,
         // called at `config.rs:238` while the config is built) refuses to load a
         // production config whose `OZ_API_SECRET` is unset or empty, and the
-        // loader filters an empty env var to `None` first (`config.rs:215-217`),
+        // loader filters an empty env var to `None` first (`config.rs:231-232`),
         // so it cannot pass as a non-empty secret. `kasirmu-api`'s standalone
         // `serve()` has the mirror-image guard (`kasirmu-api/src/lib.rs:430`,
         // API-1). An empty secret therefore never reaches a production router;
@@ -931,7 +948,8 @@ pub fn build_router(
     // P8-1: Share the same RateLimiterState with the cleanup task.
     let mut sync_state = SyncState::from_with_rate_limiter(state.clone(), rate_limiter);
     sync_state.pg = pg;
-    let sync_router = sync_router(sync_state, config.enforce_plans);
+    let sync_router =
+        sync_router_with_plan_enforcement_with_cache(sync_state, config.enforce_plans, plan_cache);
 
     // Build the webhook router (unauthenticated — HMAC signature verification).
     let webhook_router = webhooks::webhooks_router(state.clone());

@@ -58,11 +58,17 @@ export function WorkspaceRestaurantPosSettings({
   // Originals for dirty tracking — captured after initial load
   const originalsRef = useRef<Record<string, unknown>>({ tableManagement, courseFiring });
   // Keys the user has edited while the courseFiring load is in flight —
-  // the load must never silently revert them (draft-overwrite race).
-  const touchedRef = useRef<Set<'courseFiring'>>(new Set());
+  // the load must never silently revert them (draft-overwrite race). BOTH keys are
+  // tracked: `tableManagement` is seeded eagerly from `settings.receipt` before the
+  // courseFiring read settles, so an operator who flips Table Layout during that read
+  // would otherwise have the toggle reverted AND written into originalsRef as clean,
+  // leaving Save permanently disabled with the switch visibly ON.
+  const touchedRef = useRef<Set<'courseFiring' | 'tableManagement'>>(new Set());
   const [originalsLoaded, setOriginalsLoaded] = useState(false);
   // The session the originals above were seeded for; replaces originalsLoaded as the fetch guard
-  // so a store switch re-seeds. originalsLoaded stays for the dirty memo at :52.
+  // so a store switch re-seeds. originalsLoaded stays for the `dirty` memo (its `useMemo`
+  // deps). Anchored by the memo's identifier: the number this note carried is now a comment
+  // inside the loadFailed block.
   const originalsLoadedForRef = useRef<string | null | undefined>(undefined);
 
   // Original hardware snapshot for dirty tracking
@@ -89,10 +95,10 @@ export function WorkspaceRestaurantPosSettings({
   useEffect(() => {
     // Only seed initial values once; subsequent re-runs must not
     // overwrite user edits (e.g. when settings.receipt changes).
-    // "Once" is scoped to the session: originalsLoaded is a one-way latch (set at :73/:76, never
-    // reset), so listing sessionToken in the deps alone would have changed nothing -- the guard
-    // short-circuits every later run. Latching on the token makes a store switch re-seed, which
-    // is what the touchedRef guard at :71 is already built for.
+    // "Once" is scoped to the session: originalsLoaded is a one-way latch (set in the settle
+    // callbacks below, never reset), so listing sessionToken in the deps alone would have
+    // changed nothing -- the guard short-circuits every later run. Latching on the token makes
+    // a store switch re-seed, which is what the `touchedRef` guard is already built for.
     // `reloadNonce > 0` means Retry was pressed, which must bypass the once-per-
     // session latch or the re-read would be short-circuited.
     // ⚠️ THE LATCH IS SET WHEN THE READ SETTLES, NOT WHEN IT STARTS.
@@ -124,7 +130,17 @@ export function WorkspaceRestaurantPosSettings({
       // `null` = never written, so the default applies. That is a real answer.
       const loaded = raw === 'true';
       if (!touchedRef.current.has('courseFiring')) setCourseFiring(loaded);
-      originalsRef.current = { tableManagement: settings.receipt.showTableNumber, courseFiring: loaded };
+      // `tableManagement` is seeded from `settings.receipt` BEFORE this read even starts,
+      // so writing that value here as the ORIGINAL declares "unchanged" for a toggle the
+      // operator may have flipped in the meantime. That left the switch visibly ON while
+      // `dirty` read false — Save disabled, the edit silently pending. Keep whatever the
+      // operator touched; only seed the original for a toggle they never moved.
+      originalsRef.current = {
+        tableManagement: touchedRef.current.has('tableManagement')
+          ? originalsRef.current['tableManagement']
+          : settings.receipt.showTableNumber,
+        courseFiring: loaded,
+      };
       settle();
       setLoadFailed(false);
       setOriginalsLoaded(true);
@@ -138,9 +154,17 @@ export function WorkspaceRestaurantPosSettings({
       setOriginalsLoaded(true);
     });
     return () => { cancelled = true; };
-    return () => { cancelled = true; };
-    // sessionToken is read at :68 from useWorkspace() at :32. The save path at :125 already lists
-    // it, so the omission here is an inconsistency rather than a design decision.
+    // ⚠️ ONE cleanup, not two. This line used to be duplicated verbatim — the first
+    // `return` made the second unreachable, and nothing in a lint rule or test could see
+    // it because both bodies were identical (removed 2026-10-19).
+    //
+    // The cites here were also wrong: this note printed three numbers for the token’s
+    // source, the save path and the re-read. Measured:
+    // `sessionToken` is destructured from `useWorkspace()` at the top of the component,
+    // and the save path that uses it is the `setSettingsScoped(sessionToken ?? null, …)`
+    // call — anchored by those two expressions instead of numbers, because all three
+    // numbers pointed at unrelated lines (a hardware-snapshot comment, a `raw === 'true'`
+    // assignment, and nothing at all).
   }, [settings.receipt, originalsLoaded, sessionToken, reloadNonce]);
 
   // ── Save ─────────────────────────────────────────────────────
@@ -244,7 +268,10 @@ export function WorkspaceRestaurantPosSettings({
                   role="switch"
                   checked={tableManagement}
                   aria-checked={tableManagement}
-                  onChange={(e) => setTableManagement(e.target.checked)}
+                  onChange={(e) => {
+                  touchedRef.current.add('tableManagement');
+                  setTableManagement(e.target.checked);
+                }}
                 />
                 <span className="settings-toggle-slider" />
               </span>
@@ -446,7 +473,11 @@ export function WorkspaceRestaurantPosSettings({
 
       {hw.error && (
         <div className="settings-error-banner" role="alert">
-          {hw.error}
+          {/* hw.error is a Fluent KEY (useTerminalHardware.ts:367), not a
+              sentence: the hook has no Localization in scope, so the id is
+              resolved here and prints as the key itself if the message is
+              gone, rather than as English. */}
+          {requiredLocalized(l10n, hw.error)}
         </div>
       )}
 

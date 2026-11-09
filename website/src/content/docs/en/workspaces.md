@@ -20,7 +20,7 @@ a role for the screen in front of you — what you can do, not where you are:
 | Workspace       | What it is                                                                     | Shown as a card |
 | --------------- | ------------------------------------------------------------------------------ | --------------- |
 | Store POS       | Retail checkout — product lookup, customers, and loyalty                       | Ready           |
-| Retail POS      | Retail checkout (the second seeded retail type)                                 | Ready           |
+| Retail POS      | Retail checkout — the second seeded retail type. It maps to the **same five screens** as Store POS (sales, customers, loyalty, sales-history, promotions); the difference is the card and the features your plan bundles with it, not the screen set | Ready           |
 | Restaurant POS  | Table-service checkout — menu categories and table management                   | Ready           |
 | Kitchen Display | Order queue for the kitchen — tap tickets to advance their status               | Ready           |
 | Warehouse       | Products, stock levels, bundles, categories, and inventory reports              | Ready           |

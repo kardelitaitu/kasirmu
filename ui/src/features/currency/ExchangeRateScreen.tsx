@@ -153,7 +153,7 @@ export default function ExchangeRateScreen({ embedded = false }: ExchangeRateScr
   //
   // What makes it worth guarding rather than a label: the switch is the visible
   // state of the RATE-SYNC DAEMON, and this file already refuses to lie about that
-  // daemon. The catch arm of toggleAutoSync (:152) rolls the toggle back because
+  // daemon. The catch arm of toggleAutoSync (:219) rolls the toggle back because
   // "an optimistic toggle that stays flipped lies about the daemon's actual state"
   // -- a stale read here does the same lie from the other direction, showing a
   // daemon state that belongs to the previous store, with no error to hint at it.
@@ -247,7 +247,17 @@ export default function ExchangeRateScreen({ embedded = false }: ExchangeRateScr
     setDeleteTarget(null);
   }, []);
 
+  // Re-entry guard. `saving` is React state and commits on the NEXT render, so the second
+  // dispatch of a real double tap still enters this handler. The replay is refused by the
+  // natural key -- `exchange_rates` carries UNIQUE (from_currency, to_currency,
+  // effective_date) (20260813_init.sql), and the modal defaults the effective date, so both
+  // taps send the same triple -- and the catch then shows `currency-save-error`. The
+  // operator reads "could not save" over a rate that WAS saved.
+  const savePendingRef = useRef(false);
+
   const handleSave = useCallback(async () => {
+    if (savePendingRef.current) return;
+    savePendingRef.current = true;
     setSaving(true);
     try {
       // MONEY-02: exact decimal parse at the 6-decimal rate scale;
@@ -268,6 +278,7 @@ export default function ExchangeRateScreen({ embedded = false }: ExchangeRateScr
     } catch {
       addToast({ message: requiredLocalized(l10n, 'currency-save-error'), type: 'error' });
     } finally {
+      savePendingRef.current = false;
       setSaving(false);
     }
   }, [form, load, l10n, addToast, sessionToken]);

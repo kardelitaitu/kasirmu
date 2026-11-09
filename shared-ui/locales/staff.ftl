@@ -25,7 +25,6 @@ staff-add-button = Add Staff
 staff-empty = No staff members yet.
 staff-empty-cta = Add your first staff member
 staff-col-name = Name
-staff-col-username = Username
 staff-col-role = Role
 staff-col-workspace = Workspace
 staff-col-phone = Phone
@@ -63,6 +62,13 @@ staff-pin-placeholder =
     .placeholder = Enter PIN
 staff-field-role-label = Role *
 staff-role-permissions-label = Role permissions
+# The detail drawer's four card headings (round 211). Every field inside the
+# cards was already keyed; only the headings that name each card were literals
+# at StaffDetailDrawer.tsx:852, :927, :1131 and :1219.
+staff-drawer-account-credentials = Account Credentials
+staff-drawer-role-permissions = Role & Permissions
+staff-drawer-employment = Employment & Details
+staff-drawer-emergency-contact = Emergency Contact
 staff-role-select-default = Select a role…
 staff-btn-cancel = Cancel
 staff-btn-update = Update
@@ -163,6 +169,8 @@ fastpin-active-user = Active: { $name }
 fastpin-enter-pin = Enter PIN for { $user }
 
 # ── Session Lock Screen (i18n parity fix) ────────────────────────────────
+staff-login-title = kasir.mu
+session-lock-title = Session locked
 session-lock-expired = Session expired. Please log in again.
 session-lock-invalid-pin = Invalid PIN
 session-lock-pin-aria = PIN: { $length } of { $max } digits entered
@@ -170,9 +178,6 @@ session-lock-pad-aria = PIN pad
 session-lock-lockout = Wait { $seconds }s.
 
 # ── Connection Status (shared between StaffLoginScreen + SessionLockScreen) ──
-staff-login-connection-checking = Checking…
-staff-login-connection-connected = Connected
-staff-login-connection-disconnected = Disconnected
 staff-login-connection-auth = Auth
 staff-login-connection-sync = Sync
 

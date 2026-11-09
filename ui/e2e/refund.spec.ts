@@ -63,7 +63,15 @@ test.describe('Refund Flow', () => {
     await expect(settleBtn).toBeVisible({ timeout: 5_000 });
     await settleBtn.click();
 
-    // After sale completes, the cart should reset (product grid remains).
+    // After a completed sale the RECEIPT PREVIEW replaces the POS — the grid does NOT
+    // stay up, which is what this line used to assume. Measured 2026-10-18: after settle,
+    // `.retail-product-btn` 18 -> 0 and `.retail-pos` 0, with the receipt paper rendered
+    // (35 `.receipt-*` nodes) and three actions offered: Skip / Issue Tax Invoice /
+    // Print Receipt.
+    //
+    // `Skip` is the dismissal that returns to the till, and it is what an operator presses
+    // to start the next sale — measured: `.retail-product-btn` back to 18.
+    await page.getByRole('button', { name: /^Skip$/ }).first().click();
     await expect(page.locator('.retail-product-btn').first()).toBeVisible({ timeout: TIMEOUT });
 
     // ── Step 2: Navigate to Sales History ──────────────────────

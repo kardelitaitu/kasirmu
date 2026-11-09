@@ -559,6 +559,7 @@ impl Store<'_> {
             for split in payment_splits {
                 let payment_id = uuid::Uuid::now_v7().to_string();
                 let method_norm = split.method.to_ascii_lowercase();
+                let gateway_status = split.effective_gateway_status();
                 // COR-7: persist the split's idempotency key exactly as the
                 // main checkout path does (sales_checkout.rs) — without it,
                 // a shortfall-retry that commits but loses its response is
@@ -577,7 +578,7 @@ impl Store<'_> {
                         split.amount_minor,
                         cur_str,
                         split.gateway_reference,
-                        split.gateway_status,
+                        gateway_status,
                         split.gateway_response,
                         now,
                         split.idempotency_key,
@@ -624,10 +625,20 @@ impl Store<'_> {
         // ADR #37 D3: recompute popularity for every sold SKU — the sale
         // ledger rows are durable now, so the sales signal (decayed units)
         // reflects this transaction. Runs outside the tx (read-only pass).
-        for line in &sale.lines {
-            if let Err(e) = self.recompute_popularity(line.sku.as_str()) {
-                tracing::warn!(sku = %line.sku, error = %e, "popularity recompute failed after sale");
-            }
+        //
+        // O-H01: this used to call `recompute_popularity` once per LINE — five
+        // queries and a full category-means JSON parse each, so an N-line sale
+        // paid 6N round trips. The batch variant does four queries and one parse
+        // regardless of cart size. It is one call, so a failure now warns once for
+        // the whole sale instead of once per SKU; the SKUs are still identified,
+        // because the error is reported against the line set that produced it.
+        let sold_skus: Vec<String> = sale.lines.iter().map(|l| l.sku.clone()).collect();
+        if let Err(e) = self.recompute_popularity_batch(&sold_skus) {
+            tracing::warn!(
+                skus = sold_skus.len(),
+                error = %e,
+                "popularity recompute failed after sale"
+            );
         }
 
         Ok(crate::sale_deduction::CompleteSaleResult {
@@ -638,6 +649,7 @@ impl Store<'_> {
             receipt_number: display_code.clone().unwrap_or_else(|| sale.id.clone()),
             deduct_tx_id,
             statutory_number,
+            stock_warnings: vec![], // cashier explicitly resolved allocations — no warnings
         })
     }
 

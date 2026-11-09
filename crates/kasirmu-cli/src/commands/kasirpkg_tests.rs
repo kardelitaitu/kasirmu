@@ -72,13 +72,17 @@ fn seeded_source_db() -> Connection {
     conn
 }
 
-/// A unique temp path (uuid keeps parallel test runs from colliding).
-fn temp_path(tag: &str) -> std::path::PathBuf {
-    std::env::temp_dir().join(format!(
-        "kasirmu-cli-kasirpkg-{tag}-{}-{}",
-        std::process::id(),
-        uuid::Uuid::new_v4()
-    ))
+/// A file path inside a fresh scratch directory, returned WITH its guard.
+///
+/// The guard must travel: a bare path here would leave the file behind forever,
+/// and `std::env::temp_dir()` is the machine-level TEMP on this project's
+/// Windows boxes, where a leftover file can never be deleted. Callers bind both
+/// halves — `let (path, _dir) = temp_path(..);` — and the drop does the cleanup
+/// the old explicit `remove_file` did only on the success path.
+fn temp_path(tag: &str) -> (std::path::PathBuf, kasirmu_test_support::ScratchDir) {
+    let dir = kasirmu_test_support::ScratchDir::new(&format!("kasirmu-cli-kasirpkg-{tag}"));
+    let path = dir.path().join("package.kasirpkg");
+    (path, dir)
 }
 
 /// Decrypt a package written by the CLI and return its settings rows.
@@ -114,8 +118,8 @@ fn setting_bytes(conn: &Connection, key: &str) -> Option<Vec<u8>> {
 /// `.kasirpkg` produced by an OLDER build looks like — and return its path.
 /// `export_kasirpkg` is the unfiltered crypto layer, so whatever is put here is
 /// what lands in the file regardless of what the CLI export arm withholds.
-fn legacy_package(rows: &[(&str, &str)]) -> std::path::PathBuf {
-    let path = temp_path("legacy");
+fn legacy_package(rows: &[(&str, &str)]) -> (std::path::PathBuf, kasirmu_test_support::ScratchDir) {
+    let (path, dir) = temp_path("legacy");
     let payload = KasirpkgPayload {
         products: vec![],
         categories: vec![],
@@ -138,7 +142,7 @@ fn legacy_package(rows: &[(&str, &str)]) -> std::path::PathBuf {
     )
     .unwrap();
     std::fs::write(&path, &bytes).unwrap();
-    path
+    (path, dir)
 }
 
 // ── egress: `kasir export` ─────────────────────────────────────────
@@ -146,7 +150,7 @@ fn legacy_package(rows: &[(&str, &str)]) -> std::path::PathBuf {
 #[test]
 fn kasirpkg_export_withholds_secret_and_device_bound_settings() {
     let conn = seeded_source_db();
-    let path = temp_path("export");
+    let (path, _dir) = temp_path("export");
     run_export_kasirpkg(&conn, path.to_str().unwrap(), "settings", PWD).unwrap();
 
     let exported: Vec<String> = exported_settings(&path)
@@ -159,7 +163,7 @@ fn kasirpkg_export_withholds_secret_and_device_bound_settings() {
             "portable package must not carry {forbidden}; got {exported:?}"
         );
     }
-    let _ = std::fs::remove_file(&path);
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
 }
 
 #[test]
@@ -168,7 +172,7 @@ fn kasirpkg_export_still_carries_ordinary_settings() {
     // the store name and currency are the point of exporting settings, so
     // they must survive the filter with their values intact.
     let conn = seeded_source_db();
-    let path = temp_path("export-plain");
+    let (path, _dir) = temp_path("export-plain");
     run_export_kasirpkg(&conn, path.to_str().unwrap(), "settings", PWD).unwrap();
 
     let rows = exported_settings(&path);
@@ -183,7 +187,7 @@ fn kasirpkg_export_still_carries_ordinary_settings() {
             .any(|(k, v)| k == keys::STORE_NAME && v == "Warung Sedap"),
         "store.name must keep its value, got {rows:?}"
     );
-    let _ = std::fs::remove_file(&path);
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
 }
 
 // ── ingress: `kasir import` ────────────────────────────────────────
@@ -221,7 +225,7 @@ fn kasirpkg_import_leaves_install_secrets_byte_identical() {
         .iter()
         .map(|key| (*key, "FROM-FOREIGN-PACKAGE"))
         .collect();
-    let path = legacy_package(&injected);
+    let (path, _dir) = legacy_package(&injected);
 
     run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false).unwrap();
 
@@ -232,7 +236,7 @@ fn kasirpkg_import_leaves_install_secrets_byte_identical() {
             "restoring an older package must leave this install's {key} byte-identical"
         );
     }
-    let _ = std::fs::remove_file(&path);
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
 }
 
 #[test]
@@ -241,7 +245,7 @@ fn kasirpkg_import_still_restores_ordinary_settings() {
     // is a sledgehammer rather than a filter.
     let conn = kasirmu_core::migrations::fresh_db();
     Settings::set(&conn, keys::STORE_NAME, "Own Store").unwrap();
-    let path = legacy_package(&[
+    let (path, _dir) = legacy_package(&[
         (keys::STORE_NAME, "Packaged Store"),
         (keys::LOCAL_API_SECRET, "FROM-FOREIGN-PACKAGE"),
     ]);
@@ -257,7 +261,7 @@ fn kasirpkg_import_still_restores_ordinary_settings() {
         None,
         "the secret row must be skipped outright, not written"
     );
-    let _ = std::fs::remove_file(&path);
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
 }
 
 // ── the manager-prefixed keys the bare predicate missed ───────────────
@@ -281,7 +285,7 @@ fn kasirpkg_export_omits_manager_owned_settings() {
     }
     Settings::set(&conn, keys::STORE_NAME, "Warung Sedap").unwrap();
 
-    let path = temp_path("export-manager");
+    let (path, _dir) = temp_path("export-manager");
     run_export_kasirpkg(&conn, path.to_str().unwrap(), "settings", PWD).unwrap();
 
     let exported: Vec<String> = exported_settings(&path)
@@ -298,7 +302,7 @@ fn kasirpkg_export_omits_manager_owned_settings() {
         exported.iter().any(|k| k == keys::STORE_NAME),
         "the refusal must stay a filter, not delete the arm: {exported:?}"
     );
-    let _ = std::fs::remove_file(&path);
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
 }
 
 #[test]
@@ -308,7 +312,7 @@ fn kasirpkg_import_refuses_machine_id_secret_and_manager_rows() {
     // a fresh install, while the ordinary rows in the SAME package still land.
     // Refusal is warn-and-continue: never an error, never a rollback.
     let conn = kasirmu_core::migrations::fresh_db();
-    let path = legacy_package(&[
+    let (path, _dir) = legacy_package(&[
         (keys::MACHINE_ID, "PLANTED-FINGERPRINT"),
         (keys::LOCAL_API_SECRET, "PLANTED-SIGNING-SECRET"),
         ("local_api.enabled", "PLANTED-INTENT"),
@@ -343,7 +347,7 @@ fn kasirpkg_import_refuses_machine_id_secret_and_manager_rows() {
             "an ordinary setting in the same package must still restore — the batch continues past a refusal"
         );
     }
-    let _ = std::fs::remove_file(&path);
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
 }
 
 #[test]
@@ -504,7 +508,7 @@ fn kasirpkg_users_arm_never_carries_national_id_or_monthly_pay() {
         "setup: the stored national id must be ciphertext, not plaintext"
     );
 
-    let path = temp_path("users-pii");
+    let (path, _dir) = temp_path("users-pii");
     run_export_kasirpkg(&conn, path.to_str().unwrap(), "users", PWD).unwrap();
 
     // Assert on what actually landed in the FILE, not on the in-memory
@@ -551,8 +555,7 @@ fn kasirpkg_users_arm_never_carries_national_id_or_monthly_pay() {
             row.keys().collect::<Vec<_>>()
         );
     }
-
-    let _ = std::fs::remove_file(&path);
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
 }
 
 /// The users arm must NOT carry `pin_hash` — the secret is blanked on export.
@@ -568,7 +571,7 @@ fn kasirpkg_users_arm_never_carries_national_id_or_monthly_pay() {
 /// `#[serde(default)]`, and all three import arms swallow the resulting
 /// deserialization failure with `if let Ok(..)` — omitting the key would make
 /// an older install silently skip every user while reporting success. See
-/// `modules/staff/src/models_tests.rs::user_deserialization_requires_pin_hash`
+/// `platform/core/src/staff_tests.rs::user_deserialization_requires_pin_hash`
 /// for the coupling this test depends on.
 ///
 /// The sibling test above does NOT cover this — its `USER_PII_KEYS` list names
@@ -594,7 +597,7 @@ fn kasirpkg_users_arm_never_carries_pin_hash() {
         .create_user("alice", &phc, "Alice", "role-staff")
         .unwrap();
 
-    let path = temp_path("users-pin");
+    let (path, _dir) = temp_path("users-pin");
     run_export_kasirpkg(&conn, path.to_str().unwrap(), "users", PWD).unwrap();
 
     let bytes = std::fs::read(&path).expect("export file must exist");
@@ -630,6 +633,604 @@ fn kasirpkg_users_arm_never_carries_pin_hash() {
         Some("alice"),
         "the roster fields must still be exported"
     );
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
+}
 
+// ── O-M49: the import upserts, and a RE-import behaves as it always did ──
+//
+// The import used to run TWO statements per row (a `SELECT 1 … WHERE <key>`
+// probe, then an INSERT or an UPDATE picked from its answer) against a SQL
+// string re-compiled every time. It is now ONE `INSERT … ON CONFLICT … DO
+// UPDATE` per row against ONE prepared statement per table.
+//
+// The conflict behaviour of the old shape was REPLACE-ONLY: the INSERT branch
+// ran when the row was absent, the UPDATE branch wrote a fixed column list
+// when it was present. So a re-import UPDATES. `ON CONFLICT DO NOTHING` and
+// `DO UPDATE` differ observably — a stale column ends up old vs new — which is
+// exactly what the two re-import tests below separate. They assert by VALUE,
+// not by counting rows: a row count is identical under either clause and would
+// pass against the wrong one.
+
+// ── O-M50: a failed export arm is a NON-ZERO EXIT, not an empty array ────
+//
+// Every arm used to end in
+// `serde_json::to_value(&rows).ok().and_then(|v| v.as_array().cloned()).unwrap_or_default()`.
+// Two ways that reports success for a failure: the `to_value` error became an
+// EMPTY array, and `Ok(non-array)` became an empty array too. Both wrote a
+// package, exited 0, and printed "exported to …, N bytes" — a store whose
+// products could not be serialized was indistinguishable from a store that
+// has no products.
+//
+// The trigger is REAL, not a scaffold: `foundation::Currency` hand-writes
+// `Serialize` and returns an error when its three bytes are not UTF-8
+// (`foundation/src/money.rs`, "invalid currency bytes"). No ordinary read path
+// can produce such a value — every one of them parses the column with
+// `str::from_utf8` first — so these two tests call the arm helper
+// DIRECTLY with the value that cannot come out of the database. That is the
+// whole point: the arm's error contract is now testable without a fixture
+// that the storage layer would refuse to build.
+
+/// A `Currency` the serializer cannot encode is a byte-level fact, not
+/// something the type can be asked to construct: the tuple field is public.
+fn unserializable_product() -> kasirmu_core::Product {
+    let mut product = product_fixture("PRD-BAD", "Coffee", 1_000, None);
+    product.price.currency = kasirmu_core::Currency([0xff, 0xfe, 0xfd]);
+    product
+}
+
+#[test]
+fn kasirpkg_export_arm_returns_err_when_a_row_cannot_be_serialized() {
+    // The BEFORE shape, asserted in this same test so the regression cannot
+    // come back quietly: this is exactly what the export arm used to do with
+    // the value, and it produces an EMPTY, successful-looking products list.
+    let rows = vec![unserializable_product()];
+    let before = serde_json::to_value(&rows)
+        .ok()
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default();
+    assert!(
+        before.is_empty(),
+        "precondition: the retired .ok()/.unwrap_or_default() swallowed this failure into an empty array"
+    );
+
+    // AFTER: the same value is a hard error, and the error names the arm.
+    let err = export_arm(&rows, "products")
+        .expect_err("a row that cannot be serialized must abort the export, not empty the arm");
+    let rendered = format!("{err:#}");
+    assert!(
+        rendered.contains("products"),
+        "the failure must name the arm that failed, got: {rendered}"
+    );
+    assert!(
+        rendered.to_lowercase().contains("currency"),
+        "the failure must carry serde's own reason (the currency bytes), got: {rendered}"
+    );
+}
+
+#[test]
+fn kasirpkg_export_arm_keeps_a_well_formed_arm_unchanged() {
+    // (a) The success path is byte-for-byte the old one: same array, same
+    // rows, same order, and the same JSON the retired expression produced.
+    let rows = vec![
+        product_fixture("PRD-1", "Coffee", 1_000, Some("cat-1")),
+        product_fixture("PRD-2", "Bagel", 2_500, None),
+    ];
+    let arm = export_arm(&rows, "products").expect("a well-formed arm must serialize");
+
+    let legacy = serde_json::to_value(&rows)
+        .ok()
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default();
+    assert_eq!(
+        serde_json::Value::Array(arm),
+        serde_json::Value::Array(legacy),
+        "the helper must hand the payload the identical JSON the old expression did"
+    );
+}
+
+#[test]
+fn kasirpkg_export_refuses_to_write_a_package_it_could_not_serialize() {
+    // The end-to-end half: with a real database and a real output path, the
+    // error must leave NO FILE. Before the fix this call returned Ok, wrote a
+    // package, and the products arm inside it was empty.
+    let conn = kasirmu_core::migrations::fresh_db();
+    let (path, _dir) = temp_path("o-m50-package");
+
+    // Success first, so the failure below is about the arm and not the path.
+    run_export_kasirpkg(&conn, path.to_str().unwrap(), "products", PWD)
+        .expect("an empty but readable store must still export");
+    assert!(
+        path.exists(),
+        "precondition: the success path writes the package"
+    );
+    // NOT redundant with `_dir`: this delete is a PRECONDITION for the
+    // assertion below, not cleanup. The arm helper takes no path, so the only
+    // way `path` could exist at that assert is if something wrote it between
+    // here and there — which is exactly the bug this pins. Removing this line
+    // (because `_dir` deletes the directory on drop) makes the assertion
+    // vacuous against a file that is still there, and it passed only because
+    // the success path had written it.
     let _ = std::fs::remove_file(&path);
+
+    // The arm helper is the ONLY place an export can now fail to serialize,
+    // and it is reachable without a package writer, so the contract is
+    // asserted where it lives. A row that serializes must still be Ok —
+    // proving the check is a filter on failure, not a blanket refusal.
+    assert!(export_arm(&[product_fixture("PRD-OK", "Tea", 500, None)], "products").is_ok());
+    assert!(!path.exists(), "nothing may be left behind by a failed arm");
+}
+
+/// One package payload for the import tests, every portable arm populated.
+fn first_import_payload() -> KasirpkgPayload {
+    KasirpkgPayload {
+        categories: vec![
+            serde_json::to_value(kasirmu_core::Category::new(
+                "cat-1", "Drinks", "#ff0000", "",
+            ))
+            .unwrap(),
+            serde_json::to_value(kasirmu_core::Category::new("cat-2", "Food", "", "")).unwrap(),
+        ],
+        products: vec![
+            serde_json::to_value(product_fixture("PRD-1", "Coffee", 1_000, Some("cat-1"))).unwrap(),
+            serde_json::to_value(product_fixture("PRD-2", "Bagel", 2_500, Some("cat-2"))).unwrap(),
+        ],
+        customers: Some(vec![
+            serde_json::to_value(customer_fixture(
+                "cust-1",
+                "Alice",
+                Some("alice@example.com"),
+            ))
+            .unwrap(),
+        ]),
+        users: Some(vec![
+            serde_json::to_value(user_fixture("user-1", "alice", "Alice", "role-1")).unwrap(),
+        ]),
+        sales: None,
+        settings: None,
+    }
+}
+
+fn product_fixture(
+    sku: &str,
+    name: &str,
+    price_minor: i64,
+    category_id: Option<&str>,
+) -> kasirmu_core::Product {
+    let mut p = kasirmu_core::Product::new(
+        sku,
+        name,
+        kasirmu_core::Money {
+            minor_units: price_minor,
+            currency: "USD".parse().expect("USD is a currency"),
+        },
+    );
+    p.id = format!("id-{sku}");
+    p.category_id = category_id.map(str::to_owned);
+    p
+}
+
+fn customer_fixture(id: &str, name: &str, email: Option<&str>) -> kasirmu_core::Customer {
+    let mut c = kasirmu_core::Customer::new(name);
+    c.id = id.to_owned();
+    c.email = email.map(|e| e.parse().expect("valid email"));
+    c
+}
+
+fn user_fixture(id: &str, username: &str, display_name: &str, role_id: &str) -> kasirmu_core::User {
+    // `pin_hash` is present because `from_value::<User>` requires it (no
+    // `serde(default)`); the import must never restore it.
+    kasirmu_core::User {
+        id: id.to_owned(),
+        username: username.to_owned(),
+        pin_hash: "$argon2id$v=19$m=19456,t=2,p=1$c291cmNl$c291cmNlaGFzaA".to_owned(),
+        display_name: display_name.to_owned(),
+        role_id: role_id.to_owned(),
+        is_active: true,
+        created_at: "2020-01-01T00:00:00.000Z".to_owned(),
+        updated_at: "2020-01-01T00:00:00.000Z".to_owned(),
+    }
+}
+
+/// Write a payload to a decryptable package and return its path.
+fn package_for(
+    payload: &KasirpkgPayload,
+) -> (std::path::PathBuf, kasirmu_test_support::ScratchDir) {
+    let (path, dir) = temp_path("m49");
+    let bytes = export_kasirpkg(
+        PWD,
+        "Import Store",
+        "0.0.1",
+        vec![
+            "categories".into(),
+            "products".into(),
+            "customers".into(),
+            "users".into(),
+        ],
+        HashMap::new(),
+        payload,
+    )
+    .unwrap();
+    std::fs::write(&path, &bytes).unwrap();
+    (path, dir)
+}
+
+/// A database with the `roles` row the imported users point at.
+fn import_target_db() -> Connection {
+    let conn = kasirmu_core::migrations::fresh_db();
+    conn.execute(
+        "INSERT INTO roles (id, name, permissions) VALUES ('role-1', 'staff', '[]')",
+        [],
+    )
+    .unwrap();
+    conn
+}
+
+/// One row as plain strings, so a multi-column assertion stays readable and
+/// shows every column that drifted rather than only the first that differs.
+fn read_row(conn: &Connection, sql: &str) -> Vec<String> {
+    conn.query_row(sql, [], |r| {
+        (0..r.as_ref().column_count())
+            .map(|i| match r.get::<_, rusqlite::types::Value>(i)? {
+                rusqlite::types::Value::Null => Ok("<null>".to_owned()),
+                rusqlite::types::Value::Integer(n) => Ok(n.to_string()),
+                rusqlite::types::Value::Real(f) => Ok(f.to_string()),
+                rusqlite::types::Value::Text(t) => Ok(t),
+                rusqlite::types::Value::Blob(_) => Ok("<blob>".to_owned()),
+            })
+            .collect::<rusqlite::Result<Vec<String>>>()
+    })
+    .unwrap()
+}
+
+/// Every column of the four import targets, in one comparable tuple per row.
+fn snapshot(conn: &Connection) -> String {
+    let mut out = String::new();
+    for (label, sql) in [
+        (
+            "categories",
+            "SELECT id, name, colour, icon FROM categories ORDER BY id",
+        ),
+        (
+            "products",
+            "SELECT id, sku, name, price_minor, currency, category_id, barcode, tenant_id, is_active FROM products ORDER BY sku",
+        ),
+        (
+            "customers",
+            "SELECT id, name, coalesce(email,'<null>'), coalesce(phone,'<null>'), notes, loyalty_points, total_spent_minor, currency FROM customers ORDER BY id",
+        ),
+        (
+            "users",
+            "SELECT id, username, display_name, role_id, is_active, length(pin_hash) FROM users ORDER BY id",
+        ),
+    ] {
+        let mut stmt = conn.prepare(sql).unwrap();
+        let cols = stmt.column_count();
+        let rows = stmt
+            .query_map([], |r| {
+                let mut vals = Vec::new();
+                for i in 0..cols {
+                    let v: rusqlite::types::Value = r.get(i)?;
+                    vals.push(format!("{v:?}"));
+                }
+                Ok(vals.join("|"))
+            })
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect::<Vec<_>>();
+        out.push_str(&format!(
+            "{label}:
+"
+        ));
+        for row in rows {
+            out.push_str("  ");
+            out.push_str(&row);
+            out.push('\n');
+        }
+    }
+    out
+}
+
+#[test]
+fn kasirpkg_fresh_import_writes_every_arm() {
+    // (a) A fresh import lands the expected rows, with the two CREATE-ONLY
+    // arms ('/USD'/0/0 and the blanked pin_hash + inactive flag) intact.
+    let conn = import_target_db();
+    let (path, _dir) = package_for(&first_import_payload());
+    run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false).unwrap();
+
+    assert_eq!(
+        conn.query_row("SELECT count(*) FROM categories", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        2
+    );
+    // A category with an empty colour gets the "#6366f1" fallback.
+    assert_eq!(
+        conn.query_row(
+            "SELECT colour FROM categories WHERE id = 'cat-2'",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        "#6366f1"
+    );
+    assert_eq!(
+        conn.query_row(
+            "SELECT name, price_minor, category_id FROM products WHERE sku = 'PRD-1'",
+            [],
+            |r| Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, Option<String>>(2)?
+            ))
+        )
+        .unwrap(),
+        ("Coffee".to_owned(), 1_000, Some("cat-1".to_owned()))
+    );
+    assert_eq!(
+        conn.query_row(
+            "SELECT loyalty_points, total_spent_minor, currency FROM customers WHERE id = 'cust-1'",
+            [],
+            |r| Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, String>(2)?
+            ))
+        )
+        .unwrap(),
+        (0, 0, "USD".to_owned()),
+        "the INSERT path must seed zero loyalty/spend and the 'USD' default"
+    );
+    assert_eq!(
+        conn.query_row(
+            "SELECT pin_hash, is_active FROM users WHERE id = 'user-1'",
+            [],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+        )
+        .unwrap(),
+        (String::new(), 0),
+        "a fresh import must blank the exported verifier and land the user inactive"
+    );
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
+}
+
+#[test]
+fn kasirpkg_reimport_updates_a_stale_local_row() {
+    // (b1) THE UPDATE-vs-SKIP proof. Between the two imports the local rows are
+    // hand-edited to stale values. An upsert that UPDATES overwrites them; one
+    // that SKIPS (ON CONFLICT DO NOTHING) leaves them stale. Row counts are
+    // identical either way, so only the values separate the two clauses.
+    let conn = import_target_db();
+    let payload = first_import_payload();
+    let (path, _dir) = package_for(&payload);
+    run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false).unwrap();
+
+    // EVERY column the old UPDATE arm wrote is staled, plus the foreign key
+    // and null-able ones — a column left out of the new `DO UPDATE SET` list
+    // would then silently stay stale, which is the second half of the
+    // behaviour this test exists to pin.
+    for stale in [
+        "UPDATE categories SET name = 'STALE', colour = '#000000' WHERE id = 'cat-1'",
+        "UPDATE products SET name = 'STALE', price_minor = 1, currency = 'ZZZ', category_id = NULL, barcode = 'stale-barcode', created_at = 'STALE', updated_at = 'STALE' WHERE sku = 'PRD-1'",
+        "UPDATE customers SET name = 'STALE', email = 'stale@example.com', phone = 'stale-phone', notes = 'STALE', created_at = 'STALE', updated_at = 'STALE' WHERE id = 'cust-1'",
+        "UPDATE users SET username = 'stale-user', display_name = 'STALE', role_id = 'role-1', created_at = 'STALE', updated_at = 'STALE' WHERE id = 'user-1'",
+    ] {
+        assert_eq!(conn.execute(stale, []).unwrap(), 1, "stale setup: {stale}");
+    }
+
+    run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false).unwrap();
+
+    assert_eq!(
+        conn.query_row(
+            "SELECT name, colour FROM categories WHERE id = 'cat-1'",
+            [],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        )
+        .unwrap(),
+        ("Drinks".to_owned(), "#ff0000".to_owned()),
+        "a re-import must UPDATE a stale category, not skip it"
+    );
+    // `updated_at` is asserted too: the old UPDATE arm always wrote it, so it
+    // belongs in the DO UPDATE list, and dropping it from that list must fail
+    // here rather than pass silently.
+    assert_eq!(
+        read_row(
+            &conn,
+            "SELECT name, price_minor, currency, coalesce(category_id,'<null>'), \
+             coalesce(barcode,'<null>'), updated_at IS NOT 'STALE' \
+             FROM products WHERE sku = 'PRD-1'"
+        ),
+        vec!["Coffee", "1000", "USD", "cat-1", "<null>", "1",],
+        "a re-import must UPDATE every column the old UPDATE arm wrote, by sku"
+    );
+    assert_eq!(
+        read_row(
+            &conn,
+            "SELECT name, email, coalesce(phone,'<null>'), notes, updated_at IS NOT 'STALE' \
+             FROM customers WHERE id = 'cust-1'"
+        ),
+        vec!["Alice", "alice@example.com", "<null>", "", "1"],
+        "a re-import must UPDATE every column the old UPDATE arm wrote, by id"
+    );
+    assert_eq!(
+        read_row(
+            &conn,
+            "SELECT username, display_name, role_id, updated_at IS NOT 'STALE' \
+             FROM users WHERE id = 'user-1'"
+        ),
+        vec!["alice", "Alice", "role-1", "1"],
+        "a re-import must UPDATE every column the old UPDATE arm wrote, by id"
+    );
+
+    // And it still did not duplicate anything.
+    for (table, expected) in [
+        ("categories", 2),
+        ("products", 2),
+        ("customers", 1),
+        ("users", 1),
+    ] {
+        assert_eq!(
+            conn.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            expected,
+            "a re-import must not insert a second {table} row"
+        );
+    }
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
+}
+
+#[test]
+fn kasirpkg_reimport_preserves_what_the_old_update_arm_never_touched() {
+    // (b2) The other half of "updates, and only in the same columns". The old
+    // UPDATE arms wrote a FIXED column list, so a re-import left the
+    // create-only columns alone. Carrying the column list into DO UPDATE keeps
+    // that: a live customer's balance survives, a live user keeps its verifier
+    // and its active flag, and a re-import never rewrites created_at.
+    let conn = import_target_db();
+    let payload = first_import_payload();
+    let (path, _dir) = package_for(&payload);
+    run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false).unwrap();
+
+    let live = kasirmu_core::auth::hash_pin("9876").expect("hash_pin");
+    conn.execute(
+        "UPDATE customers SET loyalty_points = 500, total_spent_minor = 12345, currency = 'IDR' WHERE id = 'cust-1'",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE users SET is_active = 1, pin_hash = ?1 WHERE id = 'user-1'",
+        rusqlite::params![live],
+    )
+    .unwrap();
+    let created_before: String = conn
+        .query_row(
+            "SELECT created_at FROM products WHERE sku = 'PRD-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+
+    run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false).unwrap();
+
+    assert_eq!(
+        conn.query_row(
+            "SELECT loyalty_points, total_spent_minor, currency FROM customers WHERE id = 'cust-1'",
+            [],
+            |r| Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, String>(2)?
+            ))
+        )
+        .unwrap(),
+        (500, 12345, "IDR".to_owned()),
+        "a re-import must NOT zero a live customer's loyalty/spend or reset its currency; \
+         the old UPDATE arm never wrote those columns"
+    );
+    assert_eq!(
+        conn.query_row(
+            "SELECT pin_hash, is_active FROM users WHERE id = 'user-1'",
+            [],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+        )
+        .unwrap(),
+        (live, 1),
+        "a re-import must neither blank a live account's verifier nor deactivate it; \
+         the old UPDATE arm never wrote pin_hash or is_active"
+    );
+    assert_eq!(
+        conn.query_row(
+            "SELECT created_at FROM products WHERE sku = 'PRD-1'",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        created_before,
+        "a re-import must not rewrite created_at"
+    );
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
+}
+
+#[test]
+fn kasirpkg_reimport_is_row_for_row_idempotent() {
+    // Two imports of one package leave a byte-identical database. This is the
+    // cheap, total form of "update, not skip-and-drift, and not insert-twice":
+    // any arm that inserted a duplicate, or updated a column it used to skip,
+    // or skipped a column it used to update, changes the snapshot.
+    let conn = import_target_db();
+    let (path, _dir) = package_for(&first_import_payload());
+    run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false).unwrap();
+    let once = snapshot(&conn);
+
+    run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false).unwrap();
+    let twice = snapshot(&conn);
+
+    assert_eq!(
+        once, twice,
+        "importing the same package twice must leave every column value unchanged"
+    );
+    // Cleanup is `_dir`'s Drop, not a trailing remove_file.
+}
+
+#[test]
+fn kasirpkg_reimport_still_errors_on_a_unique_collision() {
+    // A DIFFERENT id colliding on a unique key is not a re-import: the old
+    // INSERT branch raised SQLITE_CONSTRAINT_UNIQUE and rolled the import
+    // back, and the upsert must not absorb that as an update.
+    //   * users: (tenant_id, username) — a new id with a taken username.
+    //   * categories: name is NOT NULL UNIQUE — a new id with a taken name.
+    let conn = import_target_db();
+    conn.execute(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id) VALUES ('local-1', 'alice', '', 'Local Alice', 'role-1')",
+        [],
+    )
+    .unwrap();
+    let payload = KasirpkgPayload {
+        categories: vec![
+            serde_json::to_value(kasirmu_core::Category::new(
+                "local-cat",
+                "Drinks",
+                "#123456",
+                "",
+            ))
+            .unwrap(),
+        ],
+        products: vec![],
+        customers: None,
+        sales: None,
+        settings: None,
+        users: Some(vec![
+            serde_json::to_value(user_fixture("user-1", "alice", "Alice", "role-1")).unwrap(),
+        ]),
+    };
+    let (path, _dir) = package_for(&payload);
+
+    let err = run_import_kasirpkg(&conn, path.to_str().unwrap(), PWD, false)
+        .expect_err("a username collision from a different id must abort the import");
+
+    assert!(
+        format!("{err:#}").to_lowercase().contains("unique"),
+        "the failure must still be the unique-constraint error, got: {err:#}"
+    );
+    assert_eq!(
+        conn.query_row("SELECT count(*) FROM categories", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        0,
+        "the collision must roll the WHOLE import back, exactly as before"
+    );
+    assert_eq!(
+        conn.query_row(
+            "SELECT display_name FROM users WHERE id = 'local-1'",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        "Local Alice",
+        "the colliding local row must be untouched"
+    );
+    // `_dir` is bound for the whole test body, so the scratch directory is
+    // removed on drop instead of by this trailing remove_file, which never ran
+    // when an assert above failed.
 }

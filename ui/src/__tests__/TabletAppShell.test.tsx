@@ -73,11 +73,21 @@ vi.mock('@/features/retail/RetailPosScreen', () => ({
 }));
 
 vi.mock('@/features/sales/PosScreen', () => ({
-  default: () => <div data-testid="pos-screen">POS</div>,
+  default: ({ onNavigate }: { onNavigate?: (route: string) => void }) => (
+    <div data-testid="pos-screen">
+      <span>POS</span>
+      <button type="button" onClick={() => onNavigate?.('kds')}>Go KDS</button>
+    </div>
+  ),
 }));
 
 vi.mock('@/features/kds/KdsScreen', () => ({
-  default: () => <div data-testid="kds-screen">KDS</div>,
+  default: ({ onBack }: { onBack?: () => void } = {}) => (
+    <div data-testid="kds-screen">
+      KDS
+      {onBack && <button onClick={onBack}>Back</button>}
+    </div>
+  ),
 }));
 
 // Workspace settings stub. TabletAppShell lazy-loads the real modal and only
@@ -573,6 +583,30 @@ describe('TabletAppShell — routing', () => {
       await waitFor(() => {
         expect(screen.getByTestId('pos-screen')).toBeInTheDocument();
       });
+    });
+
+    it('renders KdsScreen when restaurant-pos navigates to kds and returns to pos on back', async () => {
+      mockWorkspaceValue({ activeWorkspace: 'restaurant-pos' });
+
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('pos-screen')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /go kds/i }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('kds-screen')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('pos-screen')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /back/i }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('pos-screen')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('kds-screen')).not.toBeInTheDocument();
     });
 
     it('renders KdsScreen for the kds workspace', async () => {

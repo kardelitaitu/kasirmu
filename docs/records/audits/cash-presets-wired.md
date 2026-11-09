@@ -88,3 +88,5 @@ parameters are unread because nobody wrote the second half of that pair for them
 its own typed reader — both reasons round 121 declined to wire them in bulk. This round
 repaired the one where the operator decision is plainly live, the values are already in the
 right units, and the consumer exists.
+
+> last audited 14-10-26 by docs-auditor

@@ -55,3 +55,5 @@ Playwright SPEC against the same dev server. Recorded as the method to use, not 
 | KDS board | live, 10 orders, stations and statuses |
 | POS -> KDS chain | **NOT verified**; see above |
 | Tree | clean but for another lane's file; scratch script deleted; Vite stopped |
+
+> last audited 14-10-26 by docs-auditor

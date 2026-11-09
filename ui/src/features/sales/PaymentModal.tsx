@@ -8,8 +8,9 @@ import { Localized, useLocalization } from '@fluent/react';
 import { Skeleton } from '@/components/Skeleton';
 import { startSaleScoped, addLineScoped, completeSaleScoped, printSalesReceipt, getSale, getSaleScoped, issueTaxInvoiceScoped, setCartDiscountScoped, holdCartScoped, finalizeSale, voidPendingSale, previewPromotedTotalFromLinesScoped, type SetCartDiscountScopedArgs, type CompleteSaleScopedArgs, type PaymentSplitArg, type SerialNumberArg, type PartialStockResult, type PreviewPromotedTotalResult } from '@/api/sales';
 import { openCashDrawerScoped } from '@/api/hardware';
-import { assignTableOrderScoped, listTablesScoped } from '@/api/tables';
+import { assignTableOrderScoped, listTablesScoped, createTableScoped } from '@/api/tables';
 import { createKdsOrderFromSaleScoped, printKdsChitScoped, publishCourseFiredScoped } from '@/api/kds';
+import type { KdsOrder } from '@/api/kds';
 import { Button } from '@/components/Button';
 import { formatMoney, minorUnitExponent, parseMoneyInput, type Money } from '@/types/domain';
 import { useFeatures, FEATURES } from '@/hooks/useFeatures';
@@ -41,14 +42,18 @@ import CashTenderPanel from './payment/CashTenderPanel';
 import CardTenderPanel from './payment/CardTenderPanel';
 import SplitTenderRows from './payment/SplitTenderRows';
 import LoyaltyTenderPanel from './payment/LoyaltyTenderPanel';
+import PayLaterTenderPanel from './payment/PayLaterTenderPanel';
+import GiftCardPayment from '@/features/gift-cards/GiftCardPayment';
+import { redeemGiftCard } from '@/api/giftCards';
 import PaymentModalCustomerBadge from './components/PaymentModalCustomerBadge';
 import { distributeEvenly } from './payment/splitDistribution';
 import { buildCompletedSaleReceipt } from './payment/completedSale';
 import type { PaymentModalProps } from './payment/types';
 import { classifyRetry, plainErrorMessage, rejectionText } from '@/utils/app-error';
+import { getCustomerReceivablesSummaryScoped, createReceivableScoped, type CustomerReceivablesSummary } from '@/api/receivables';
 import './PaymentModal.css';
 
-import type { PaymentMethod } from '@/api/types/payment';
+import type { GatewayStatus, PaymentMethod } from '@/api/types/payment';
 export type { PaymentMethod };
 
 /**
@@ -82,6 +87,7 @@ const PAYMENT_METHOD_MESSAGE_IDS: Record<PaymentMethod, string> = {
   open_bill: 'payment-open-bill',
   credit: 'payment-method-credit',
   pay_later: 'payment-method-pay-later',
+  gift_card: 'payment-method-gift-card',
   other: 'payment-other-placeholder',
 };
 
@@ -119,6 +125,7 @@ export default function PaymentModal({
   serviceChargeMinor = 0,
   promotionIds,
   taxEstimated,
+  deductionLocationId,
 }: PaymentModalProps) {
   const { l10n } = useLocalization();
   const l10nRef = useRef(l10n);
@@ -141,7 +148,7 @@ export default function PaymentModal({
   // switch the rail off and the tender kept being offered. A toggle that silently does
   // nothing is worse than no toggle: it reads as a live control.
   //
-  // This is a SECOND gate, not a replacement for the workspace check at :303. The two
+  // This is a SECOND gate, not a replacement for the workspace check above. The two
   // answer different questions: `isRestaurantPos` is a CAPABILITY (the backend refuses
   // `bill_type: 'open_bill'` outside restaurant-pos, so offering it would submit a bill
   // that fails), while the rail flag is a MERCHANT PREFERENCE. Both must hold.
@@ -170,7 +177,21 @@ export default function PaymentModal({
   // toggle stop lying. Same helper, same shape as `open_bill` and `credit` above.
   const cashOffered = !coreRailWithheld(paymentRails, 'cash');
   const cardOffered = !coreRailWithheld(paymentRails, 'card');
+  const payLaterOffered = !coreRailWithheld(paymentRails, 'pay_later');
+  const [customerReceivablesSummary, setCustomerReceivablesSummary] = useState<CustomerReceivablesSummary | null>(null);
+  const [loadingReceivablesSummary, setLoadingReceivablesSummary] = useState(false);
   const [creditSettings, setCreditSettings] = useState<CreditSettingsDto | null>(null);
+  /**
+   * True when `getCreditSettingsScoped` REJECTED (as opposed to not having run yet).
+   *
+   * Every credit guard below is written `creditSettings?.enabled === false` or
+   * `creditSettings && …`, so a null value silently SKIPS them: the ceiling hint and the
+   * disabled notice both disappear and the cashier meets the refusal at settle instead.
+   * The ceiling itself is safe — `sales_checkout.rs` re-checks it and
+   * `credit_checkout_enforces_max_credit_limit_ceiling` passes — but the operator should
+   * not have to learn it from a rejected sale.
+   */
+  const [creditSettingsFailed, setCreditSettingsFailed] = useState(false);
   // Manual QRIS shows the merchant's real static QR when the rail
   // carries one (agents-5 R2); the dialog itself says so when not.
   const manualQrString = staticQrisPayload(paymentRails);
@@ -195,6 +216,7 @@ export default function PaymentModal({
   // un-promoted total and fails closed if the splits no longer cover it).
   const [promoPreview, setPromoPreview] = useState<PreviewPromotedTotalResult | null>(null);
   const [pointsWorthMinor, setPointsWorthMinor] = useState<number | null>(null);
+  const [giftCardApplied, setGiftCardApplied] = useState<{ cardNumber: string; amountMinor: number } | null>(null);
 
   const notifyCustomerChange = useCallback(
     (c: CustomerDto | null) => {
@@ -348,13 +370,17 @@ export default function PaymentModal({
   // the dep array holds a value (isEnabled's identity in this file is not
   // something an effect should depend on).
   const loyaltyLicensed = isEnabled(FEATURES.LOYALTY_PROGRAM);
-
+  const giftCardsLicensed = isEnabled(FEATURES.GIFT_CARDS);
 
   // A rail that loads (or reloads) to disabled while QRIS is the chosen
   // tab must not strand the cashier on a hidden surface (agents-5 R1).
   useEffect(() => {
     if (!qrisOffered && method === 'qris') setMethod('cash');
   }, [qrisOffered, method]);
+
+  useEffect(() => {
+    if (!giftCardsLicensed && method === 'gift_card') setMethod('cash');
+  }, [giftCardsLicensed, method]);
 
   // The Open Bill tender is restaurant-only (see `isRestaurantPos` above), so a
   // method chosen while the modal was on a restaurant terminal — or chosen on a
@@ -369,14 +395,54 @@ export default function PaymentModal({
   }, [isRestaurantPos, openBillOffered, method]);
 
   useEffect(() => {
+    // Pay Later is retail-only (store-pos) and gated by pay_later rail.
+    if ((isRestaurantPos || !payLaterOffered) && method === 'pay_later') setMethod('cash');
+  }, [isRestaurantPos, payLaterOffered, method]);
+
+  useEffect(() => {
+    if (!open || !sessionToken || method !== 'pay_later' || !selectedCustomer) {
+      setCustomerReceivablesSummary(null);
+      setLoadingReceivablesSummary(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingReceivablesSummary(true);
+    getCustomerReceivablesSummaryScoped(sessionToken, selectedCustomer.id)
+      .then((summary) => {
+        if (!cancelled) {
+          setCustomerReceivablesSummary(summary);
+          setLoadingReceivablesSummary(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.warn('Failed to load customer receivables summary', err);
+          setLoadingReceivablesSummary(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, sessionToken, method, selectedCustomer]);
+
+  useEffect(() => {
     if (!sessionToken || !open) return;
     let cancelled = false;
     getCreditSettingsScoped(sessionToken)
       .then((settings) => {
-        if (!cancelled) setCreditSettings(settings);
+        if (cancelled) return;
+        setCreditSettings(settings);
+        // CLEAR the failure flag on success, or ONE transient rejection pins the warning
+        // for the component's lifetime: the effect re-runs on [sessionToken, open], so a
+        // later good read (a re-login, a reopened modal) would still tell the cashier the
+        // store's credit limit could not be checked. Measured: without this line the
+        // warning survived a successful reload.
+        setCreditSettingsFailed(false);
       })
       .catch((err) => {
+        // Reported, not swallowed: see creditSettingsFailed.
         console.warn('Failed to load credit settings', err);
+        if (!cancelled) setCreditSettingsFailed(true);
       });
     return () => {
       cancelled = true;
@@ -412,12 +478,12 @@ export default function PaymentModal({
 
   // ── Multi-currency (FEATURES.MULTI_CURRENCY) ───────────────────────
   // Charge-currency state, the rate reads, the converter and cartCurrency
-  // moved verbatim to ./payment/useMultiCurrency (slice W5-a). It receives
-  // six values and writes none of the shell atoms; the totals that convert
+  // moved verbatim to ./payment/useMultiCurrency (slice W5-a). It returns
+  // thirteen values and writes none of the shell atoms; the totals that convert
   // through it stay here because their other inputs (loyalty, promo preview,
   // the displayed cart, the tendered string) are not currency data.
-  // cartCurrency / convertToChargeCurrency were declared far below, at :508
-  // and :529 — nothing above this call read them, so their first read is
+  // Both are returned by useMultiCurrency below and were declared far below the call
+  // site before the W5-a slice; nothing above it read them, so their first read is
   // still the promoted/unpromoted total memos further down.
   const {
     currencies,
@@ -457,6 +523,7 @@ retryCurrencyLoad,
       setShortfallResult(null);
       setReceiptArgs(null);
       setCompletedSaleId(null);
+      setGiftCardApplied(null);
       setIssuingTaxInvoice(false);
       setSelectedCurrency(total.currency);
       setCustomerSearchQuery('');
@@ -539,6 +606,7 @@ retryCurrencyLoad,
     tenderedMinorInCartCurrency,
     sufficient,
     change,
+    tenderedUnparseable,
     splitTotals,
     splitComplete,
   } = useTenderMath({
@@ -561,7 +629,7 @@ retryCurrencyLoad,
   // 'qris', 'other'). `bbc530642` established that and is correct for this value.
   //
   // `methodLabel` goes to the RECEIPT (`buildCompletedSaleReceipt`, rendered
-  // verbatim by ReceiptPreview.tsx:183 and printed for the customer). It must be
+  // verbatim by ReceiptPreview.tsx:188 and printed for the customer). It must be
   // human-readable.
   const storedMethod = useMemo(
     () =>
@@ -791,6 +859,39 @@ retryCurrencyLoad,
   // charge can bind to the real sale id (the ledger's queued finalize_sale
   // then addresses a sale the device actually has), and EDC completes
   // 'captured' with the terminal's transaction fields.
+  // ── ONE KDS ORDER FETCH, TWO CALL SITES (2026-10-19) ──────────────────────
+  //
+  // The QR and terminal paths each used to call `createKdsOrderFromSaleScoped`
+  // directly and each had its OWN error story: one bare await inside the table-claim
+  // `try` (whose catch only speaks about the table), one with a local `.catch`. Both
+  // now go through this helper so the failure shape cannot drift again — the reported
+  // defect was exactly that drift: `orders is not iterable` reaching the console as
+  // "createKdsOrderFromSale failed" with no order in hand, and no toast at all on the
+  // path whose catch belonged to the table.
+  //
+  // Returns [] for ANY unusable answer (rejection, or a non-array payload), because
+  // every downstream consumer — `printKitchenChits`, `publishFiredCourses` — iterates.
+  // The caller decides how loud to be; this never throws.
+  const loadKdsOrders = useCallback(
+    async (
+      saleId: string,
+      { sessionToken: token, onError }: {
+        sessionToken: string | null | undefined;
+        onError: (e: unknown) => void;
+      },
+    ): Promise<KdsOrder[]> => {
+      if (!token) return [];
+      try {
+        const orders = await createKdsOrderFromSaleScoped(token, saleId);
+        return Array.isArray(orders) ? orders : [];
+      } catch (kdsErr) {
+        onError(kdsErr);
+        return [];
+      }
+    },
+    [],
+  );
+
   const printKitchenChits = useCallback(
     async (orders: Array<{ id: string }>) => {
       if (!autoPrintKitchen || !sessionToken) return;
@@ -798,17 +899,31 @@ retryCurrencyLoad,
         try {
           await printKdsChitScoped(sessionToken, order.id);
         } catch (chitErr) {
-          // Loud but non-fatal: a printer that is offline should be visible in the
-          // console, not turn a completed sale into an error the cashier retries.
+          // Non-fatal, but NOT silent. The sale is already complete and must not be
+          // undone by a printer, which is why this does not throw — but a chit that
+          // never printed means the kitchen has no ticket, and only the cashier can
+          // fix that. The console alone was not enough: measured, a rejected
+          // printKdsChitScoped left the operator with an empty toast area and no way
+          // to know the kitchen was blind to the order. The sibling
+          // `publishCourseFired` catch 20 lines above toasts for exactly this reason,
+          // and `payment-toast-kds-failed` already exists in both bundles with the
+          // right words ('notify the kitchen manually').
           console.error('printKdsChitScoped failed', order.id, chitErr);
+          addToast({
+            message: requiredLocalized(l10nRef.current, 'payment-toast-kds-failed'),
+            type: 'warning',
+          });
         }
       }
     },
-    [autoPrintKitchen, sessionToken],
+    [autoPrintKitchen, sessionToken, addToast, l10nRef],
   );
 
   const buildGatewaySale = useCallback(
-    async (split: { method: string; gatewayReference: string; gatewayStatus: string; gatewayResponse: string }) => {
+    // `gatewayStatus` is the CLOSED union (ADR-64 D4), not `string`. This is the
+    // function every tender hook calls, so typing it here is the guard that stops a
+    // fourth site writing a value the `payments.gateway_status` CHECK rejects.
+    async (split: { method: string; gatewayReference: string; gatewayStatus: GatewayStatus; gatewayResponse: string }) => {
       const { cartId } = await startSaleScoped(sessionToken!, { currency: cartCurrency });
 
       if (discountPercent > 0) {
@@ -949,7 +1064,8 @@ retryCurrencyLoad,
 
       try {
         // ⚠️ DINE-IN ONLY. The cart panel renders the Table number field for the
-        // restaurant POS on EVERY order type (CartPanel.tsx:735-743 — table capture
+        // restaurant POS on EVERY order type (the `showTableNumberSetting || activeWorkspace ===
+  // 'restaurant-pos'` gate on CartPanel's context row — table capture
         // "does not depend on a setting"), so ringing up a TAKEAWAY with a number
         // left in that field used to claim a real table for the sale: measured live
         // as `assign_table_order_scoped { tableId: 'table-01', … }`, after which
@@ -961,20 +1077,64 @@ retryCurrencyLoad,
           try {
             const tbls = await listTablesScoped(sessionToken);
             const bareInput = bareTableNumber(tableNumber);
-            const match = tbls.find(
+            let match = tbls.find(
               (t) =>
                 t.id === tableNumber ||
                 t.name === tableNumber ||
                 (bareTableNumber(t.name) === bareInput && bareInput !== ''),
             );
+            if (!match && bareInput !== '') {
+              try {
+                match = await createTableScoped(sessionToken, {
+                  id: '',
+                  name: `Table ${bareInput}`,
+                  capacity: 4,
+                  pos_x: 10,
+                  pos_y: 10,
+                  shape: 'square',
+                  width: 12,
+                  height: 12,
+                  status: 'available',
+                  active_sale_id: null,
+                  section: 'Main Area',
+                  active: true,
+                  sort_order: tbls.length + 1,
+                  created_at: '',
+                  updated_at: '',
+                });
+              } catch (createErr) {
+                console.warn('Auto-create table failed', createErr);
+              }
+            }
             if (match) {
               await assignTableOrderScoped(sessionToken, match.id, saleResult.saleId);
             }
           } catch (tableErr) {
+            // Non-fatal, but NOT silent. The sale is already complete, so this must not
+            // throw — but the table was never claimed, and nothing re-reads it: the floor
+            // plan keeps showing the table AVAILABLE while a party is sitting at it, so
+            // the next waiter can seat someone there. Only the cashier can fix that.
+            // Measured: with the console.warn only, a rejected assign_table_order_scoped
+            // left the operator with an empty toast area. Same rule the sibling chit
+            // catches follow (round 36).
             console.warn('assignTableOrderScoped failed', tableErr);
+            addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-table-assign-failed'), type: 'warning' });
           }
         }
-        const orders = await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId);
+        // A .catch, NOT an awaited bare call. This sits inside the table-claim `try`
+        // above, and a rejected create_kds_order_from_sale_scoped is handled by THAT
+        // catch, which only reports the table assignment. Measured in
+        // PaymentModalSaleFlow: 'orders is not iterable' surfaced as
+        // 'createKdsOrderFromSale failed' with NO order in hand, so the kitchen was
+        // never told and the toast named the wrong subsystem. Null-ish is treated as
+        // 'no orders' — the chit loop and publishFiredCourses both iterate.
+        const orders = await loadKdsOrders(saleResult.saleId, {
+          sessionToken,
+          onError: (kdsErr) => {
+            console.error('createKdsOrderFromSale failed', kdsErr);
+            addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-kds-failed'), type: 'warning' });
+          },
+        });
         // F20: the Auto-Print KOT switch. Until this round
         // `restaurant.auto_print_kitchen` was written by the settings screen and read
         // by nothing, and `printKdsChitScoped` had no caller anywhere under ui/src —
@@ -1018,6 +1178,20 @@ retryCurrencyLoad,
         }
       }
 
+      // ── Stock warning toasts (informational only, sale already complete) ──
+      if (saleResult.stockWarnings && saleResult.stockWarnings.length > 0) {
+        for (const w of saleResult.stockWarnings) {
+          addToast({
+            message: requiredLocalized(l10nRef.current, 'payment-toast-stock-warning', {
+              product: w.productName,
+              requested: w.requestedQty,
+              available: w.qtyAvailable,
+            }),
+            type: 'warning',
+          });
+        }
+      }
+
       if (loyaltyAccount && redeemPoints && loyaltyDiscount > 0n) {
         try {
           if (selectedCustomer?.id) {
@@ -1030,8 +1204,38 @@ retryCurrencyLoad,
               );
             }
           }
-        } catch {
-          // non-blocking
+        } catch (redeemErr) {
+          // Non-blocking for the SALE — the payment already succeeded and rolling it back
+          // is worse — but it must not be silent. See the direct-checkout path's copy of
+          // this block below for the stakes: the customer's total was reduced by
+          // `loyaltyDiscount`, so a failed redemption gives away that discount while
+          // the points stay in the account, a money leak the cashier has to settle by
+          // hand. Identical code, identical consequence — same fix.
+          console.error('redeemLoyaltyPoints failed', redeemErr);
+          addToast({
+            message: requiredLocalized(l10nRef.current, 'payment-toast-loyalty-redeem-failed'),
+            type: 'warning',
+          });
+        }
+      }
+
+      if (giftCardApplied) {
+        try {
+          if (sessionToken) {
+            await redeemGiftCard(
+              sessionToken,
+              giftCardApplied.cardNumber,
+              giftCardApplied.amountMinor,
+              cartCurrency,
+              saleResult.saleId,
+            );
+          }
+        } catch (redeemErr) {
+          console.error('redeemGiftCard failed', redeemErr);
+          addToast({
+            message: requiredLocalized(l10nRef.current, 'payment-toast-gift-card-redeem-failed'),
+            type: 'warning',
+          });
         }
       }
 
@@ -1043,7 +1247,7 @@ retryCurrencyLoad,
     // still take the dine-in branch and claim a table.
     [sessionToken, lineItemsInCartCurrency, cartCurrency, tableNumber, orderType, addToast,
      loyaltyAccount, redeemPoints, loyaltyDiscount, selectedCustomer, effectiveTotalInCartCurrency,
-     publishFiredCourses, activeMarketProfile, paymentRails, printKitchenChits],
+     giftCardApplied, publishFiredCourses, activeMarketProfile, paymentRails, printKitchenChits, loadKdsOrders],
   );
 
   // ── Manual QRIS (gateway tender, cashier-asserted reference) ─────────
@@ -1174,11 +1378,12 @@ retryCurrencyLoad,
   const canComplete = useMemo(() => {
     // CUR-02: settling in a charge currency records `tender_rate_millionths`
     // against the sale. With the rate read failed we do not know that number,
-    // and the backend does not refuse the write (crates/kasirmu-bridge/src/pos/checkout.rs:424-428
-    // assigns the three CUR-02 fields straight from the args). So the sale would be
-    // recorded with no rate at all while the total silently carried the charge
-    // currency's label. Refuse here instead: the operator retries or picks the
-    // store's own currency.
+    // and the backend does not refuse the write (both `complete_sale*` paths in
+    // crates/kasirmu-bridge/src/pos/checkout.rs assign the three CUR-02 fields straight
+    // from the args, `sale.base_currency` / `base_total_minor` / `tender_rate_millionths`).
+    // So the sale would be recorded with no rate at all while the total silently carried
+    // the charge currency’s label. Refuse here instead: the operator retries or picks
+    // the store’s own currency.
     if (rateUnknown) return false;
     if (splitMode) return splitComplete;
     if (method === 'other' && !otherLabel.trim()) return false;
@@ -1200,6 +1405,11 @@ retryCurrencyLoad,
       if (creditSettings && creditSettings.maxLimitMinor > 0 && total.minor_units > creditSettings.maxLimitMinor) {
         return false;
       }
+      return true;
+    }
+    if (method === 'pay_later') {
+      if (isRestaurantPos || !payLaterOffered) return false;
+      if (!selectedCustomer) return false;
       return true;
     }
     // F23 (closed 2026-10-14): a switch-off core rail cannot be tendered even
@@ -1225,6 +1435,12 @@ retryCurrencyLoad,
       if (edcTerminalFailed) return false;
       return true;
     }
+    if (method === 'gift_card') {
+      return (
+        giftCardApplied !== null &&
+        giftCardApplied.amountMinor >= Number(effectiveTotalInCartCurrency)
+      );
+    }
     return true;
     // orderType is read above (the open-bill dine-in table arm) and so must be
     // listed: without it this memo closes over the render-time value, and a cashier
@@ -1232,7 +1448,7 @@ retryCurrencyLoad,
     // bill on a table number. THIRD occurrence of this exact trap in this area
     // (see PosScreen's release guard and PaymentModal's claim guard), which is why
     // the class sweep asserts the rule positively rather than trusting each site.
-  }, [rateUnknown, splitMode, splitComplete, method, otherLabel, sufficient, customerName, tableNumber, orderType, qrReference, creditOffered, creditSettings, total.minor_units, edcTerminalFailed, cashOffered, cardOffered]);
+  }, [rateUnknown, splitMode, splitComplete, method, otherLabel, sufficient, customerName, tableNumber, orderType, qrReference, creditOffered, creditSettings, total.minor_units, edcTerminalFailed, cashOffered, cardOffered, isRestaurantPos, payLaterOffered, selectedCustomer, giftCardApplied, effectiveTotalInCartCurrency]);
 
   /**
    * Print one kitchen chit per KDS order, when the merchant asked for it (F20).
@@ -1257,7 +1473,7 @@ retryCurrencyLoad,
         const trimmedName = customerName.trim();
         // ⚠️ DINE-IN ONLY, the same guard the table CLAIM (206462b4d) and RELEASE
         // (035d1d01b) had to gain. The cart panel renders the Table field for the
-        // restaurant POS on every order type (CartPanel.tsx:735-743), so a stray
+        // restaurant POS on every order type (the same context-row gate as above), so a stray
         // number there reached this path and was written into the saved cart_data
         // AND the tab's label. Measured: a takeaway tab persisted
         // `{"discountPercent":0,"tableNumber":"T99","orderType":"takeaway"}` — a
@@ -1276,6 +1492,7 @@ retryCurrencyLoad,
             ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
             ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
             ...(l.note ? { note: l.note } : {}),
+            ...(typeof l.dispatchedQty === 'number' ? { dispatchedQty: l.dispatchedQty } : {}),
           })),
           discountPercent,
           discountLabel,
@@ -1301,6 +1518,7 @@ retryCurrencyLoad,
           // already reads "Table 12", so this wrote "Table Table 12" into the bill's
           // customer_name.
           customer_name: trimmedName || (trimmedTable ? `Table ${bareTableNumber(trimmedTable)}` : ''),
+          ...(deductionLocationId ? { deduction_location_id: deductionLocationId } : {}),
         });
         setDone(true);
         return;
@@ -1364,7 +1582,7 @@ retryCurrencyLoad,
       // 'qris', 'other'). `bbc530642` established that and is correct for this value.
       //
       // `methodLabel` goes to the RECEIPT (`buildCompletedSaleReceipt`, rendered
-      // verbatim by ReceiptPreview.tsx:183 and printed for the customer). It must be
+      // verbatim by ReceiptPreview.tsx:188 and printed for the customer). It must be
       // human-readable. That commit lowercased this one too, so a cash sale started
       // printing 'cash' where it had printed 'CASH'. The two were the same variable;
       // they are not the same fact.
@@ -1428,6 +1646,23 @@ retryCurrencyLoad,
         }
       }
 
+      // ── Stock warning toasts (informational only, sale already complete) ──
+      // Backend returns stockWarnings when one or more sale lines had
+      // insufficient stock at the primary location. The sale is committed
+      // regardless — we just alert the cashier so they can restock.
+      if (saleResult.stockWarnings && saleResult.stockWarnings.length > 0) {
+        for (const w of saleResult.stockWarnings) {
+          addToast({
+            message: requiredLocalized(l10nRef.current, 'payment-toast-stock-warning', {
+              product: w.productName,
+              requested: w.requestedQty,
+              available: w.qtyAvailable,
+            }),
+            type: 'warning',
+          });
+        }
+      }
+
       // Auto-kick cash drawer on cash tenders (ADR #7 scoped)
       //
       // F18: the operator's "Automatic Cash Drawer" switch
@@ -1456,6 +1691,24 @@ retryCurrencyLoad,
           : await getSale(saleResult.saleId);
 
         setCompletedSaleId(saleResult.saleId);
+
+        if (sessionToken && method === 'pay_later' && selectedCustomer) {
+          try {
+            await createReceivableScoped(sessionToken, {
+              customerId: selectedCustomer.id,
+              saleId: saleResult.saleId,
+              amount: total,
+              source: 'pos',
+              reference: completedSale?.displayCode ?? `SALE-${saleResult.saleId}`,
+            });
+          } catch (receivableErr) {
+            console.error('createReceivableScoped failed', saleResult.saleId, receivableErr);
+            addToast({
+              message: requiredLocalized(l10nRef.current, 'payment-toast-receivable-failed'),
+              type: 'warning',
+            });
+          }
+        }
         const receiptData = buildCompletedSaleReceipt({
           saleId: saleResult.saleId,
           saleTotal: saleResult.total,
@@ -1496,6 +1749,13 @@ retryCurrencyLoad,
           tableNumber,
           marketProfile: activeMarketProfile,
           customerName: selectedCustomer?.name ?? (method === 'credit' && customerName.trim() ? customerName.trim() : undefined),
+          customerPhone: selectedCustomer?.phone ?? undefined,
+          outstandingBalance: method === 'pay_later' && selectedCustomer
+            ? {
+                minorUnits: (customerReceivablesSummary?.outstandingTotal.minor_units ?? 0) + total.minor_units,
+                currency: cartCurrency,
+              }
+            : undefined,
         });
         // Store receipt data for preview (user chooses to print or skip)
         setReceiptArgs(receiptData);
@@ -1526,20 +1786,64 @@ retryCurrencyLoad,
           try {
             const tbls = await listTablesScoped(sessionToken);
             const bareInput = bareTableNumber(tableNumber);
-            const match = tbls.find(
+            let match = tbls.find(
               (t) =>
                 t.id === tableNumber ||
                 t.name === tableNumber ||
                 (bareTableNumber(t.name) === bareInput && bareInput !== ''),
             );
+            if (!match && bareInput !== '') {
+              try {
+                match = await createTableScoped(sessionToken, {
+                  id: '',
+                  name: `Table ${bareInput}`,
+                  capacity: 4,
+                  pos_x: 10,
+                  pos_y: 10,
+                  shape: 'square',
+                  width: 12,
+                  height: 12,
+                  status: 'available',
+                  active_sale_id: null,
+                  section: 'Main Area',
+                  active: true,
+                  sort_order: tbls.length + 1,
+                  created_at: '',
+                  updated_at: '',
+                });
+              } catch (createErr) {
+                console.warn('Auto-create table failed', createErr);
+              }
+            }
             if (match) {
               await assignTableOrderScoped(sessionToken, match.id, saleResult.saleId);
             }
           } catch (tableErr) {
+            // Non-fatal, but NOT silent. The sale is already complete, so this must not
+            // throw — but the table was never claimed, and nothing re-reads it: the floor
+            // plan keeps showing the table AVAILABLE while a party is sitting at it, so
+            // the next waiter can seat someone there. Only the cashier can fix that.
+            // Measured: with the console.warn only, a rejected assign_table_order_scoped
+            // left the operator with an empty toast area. Same rule the sibling chit
+            // catches follow (round 36).
             console.warn('assignTableOrderScoped failed', tableErr);
+            addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-table-assign-failed'), type: 'warning' });
           }
         }
-        const orders = await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId);
+        // A .catch, NOT an awaited bare call. This sits inside the table-claim `try`
+        // above, and a rejected create_kds_order_from_sale_scoped is handled by THAT
+        // catch, which only reports the table assignment. Measured in
+        // PaymentModalSaleFlow: 'orders is not iterable' surfaced as
+        // 'createKdsOrderFromSale failed' with NO order in hand, so the kitchen was
+        // never told and the toast named the wrong subsystem. Null-ish is treated as
+        // 'no orders' — the chit loop and publishFiredCourses both iterate.
+        const orders = await loadKdsOrders(saleResult.saleId, {
+          sessionToken,
+          onError: (kdsErr) => {
+            console.error('createKdsOrderFromSale failed', kdsErr);
+            addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-kds-failed'), type: 'warning' });
+          },
+        });
         // F20: the Auto-Print KOT switch. Until this round
         // `restaurant.auto_print_kitchen` was written by the settings screen and read
         // by nothing, and `printKdsChitScoped` had no caller anywhere under ui/src —
@@ -1584,6 +1888,26 @@ retryCurrencyLoad,
         }
       }
 
+      if (giftCardApplied) {
+        try {
+          if (sessionToken) {
+            await redeemGiftCard(
+              sessionToken,
+              giftCardApplied.cardNumber,
+              giftCardApplied.amountMinor,
+              cartCurrency,
+              saleResult.saleId,
+            );
+          }
+        } catch (redeemErr) {
+          console.error('redeemGiftCard failed', redeemErr);
+          addToast({
+            message: requiredLocalized(l10n, 'payment-toast-gift-card-redeem-failed'),
+            type: 'warning',
+          });
+        }
+      }
+
       if (change) setChangeDue(change);
       setDone(true);
     } catch (err) {
@@ -1615,7 +1939,7 @@ retryCurrencyLoad,
     } finally {
       setProcessing(false);
     }
-  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, orderType, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated, publishFiredCourses, activeMarketProfile, storedMethod, methodLabel, paymentRails, printKitchenChits]);
+  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, orderType, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total, tenderSnapshot, taxEstimated, publishFiredCourses, activeMarketProfile, storedMethod, methodLabel, paymentRails, printKitchenChits, loadKdsOrders, deductionLocationId, customerReceivablesSummary?.outstandingTotal.minor_units, giftCardApplied]);
 
   useEffect(() => {
     if (!done || receiptArgs) return;
@@ -1699,7 +2023,27 @@ retryCurrencyLoad,
       });
   }, [serialNumbers, lineItems]);
 
+  // Re-entry guard for the statutory invoice write. ReceiptPreview.tsx:252-256 already
+  // renders the button with `loading={issuingTaxInvoice}` and `disabled={loading}`, and the
+  // sibling Print / Skip buttons cross-disable on `issuingTaxInvoice` (:249, :257) -- the
+  // markup clearly intends mutual exclusion. But it relies on STATE, which React commits on
+  // its next render, after the second tap of a real double tap. MEASURED: two taps in one
+  // act() batch both reach the handler (PaymentModalSaleFlow.test.tsx 'issues a tax invoice
+  // once for a double tap'), and both are SENT.
+  //
+  // The backend does not fully absorb it. `issue_tax_invoice_for_sale` is idempotent ONCE A
+  // NUMBER IS WRITTEN -- it reads `sales.statutory_number` and returns the existing value
+  // when it already carries the series prefix
+  // (crates/kasirmu-core/src/db/fiscal.rs:572-587). But that column is set by the SAME
+  // transaction at the end, so two issues in one tick both read NULL and both fall through to
+  // `claim_statutory_number_for_sale`, an atomic `UPDATE document_number_sequences ...
+  // RETURNING` (fiscal.rs:438-455). The sequence advances TWICE. One number is written onto
+  // the sale, so a legally numbered series ends up with a gap or a duplicate -- not a
+  // cosmetic defect. A ref, not the state, because only the ref is authoritative at the
+  // moment the second tap runs.
+  const issueInvoicePendingRef = useRef(false);
   const handleIssueTaxInvoice = useCallback(async () => {
+    if (issueInvoicePendingRef.current) return;
     if (!sessionToken) {
       // Reported, not dropped. The other two halves of this condition stay silent —
       // no completed sale or no receipt args is a screen state — but a missing token
@@ -1708,6 +2052,7 @@ retryCurrencyLoad,
       return;
     }
     if (!completedSaleId || !receiptArgs) return;
+    issueInvoicePendingRef.current = true;
     setIssuingTaxInvoice(true);
     try {
       const invoiceNumber = await issueTaxInvoiceScoped(sessionToken, completedSaleId);
@@ -1733,6 +2078,7 @@ retryCurrencyLoad,
         type: 'error',
       });
     } finally {
+      issueInvoicePendingRef.current = false;
       setIssuingTaxInvoice(false);
     }
   }, [completedSaleId, sessionToken, receiptArgs, addToast]);
@@ -1758,8 +2104,8 @@ retryCurrencyLoad,
           {...paymentSwipe}
         >
       <QrisQrDisplay
-        amount={total.minor_units}
-        currency={total.currency}
+        amount={effectiveTotalMoney.minor_units}
+        currency={effectiveTotalMoney.currency}
         reference={qrReference}
         isOpen={showQr}
         onClose={() => setShowQr(false)}
@@ -1769,8 +2115,8 @@ retryCurrencyLoad,
 
       {autoQr && (
         <QrisQrDisplay
-          amount={total.minor_units}
-          currency={total.currency}
+          amount={effectiveTotalMoney.minor_units}
+          currency={effectiveTotalMoney.currency}
           reference={autoQr.orderId}
           isOpen={true}
           onClose={handleAutoCancel}
@@ -1864,8 +2210,8 @@ retryCurrencyLoad,
           // it kept `method.toUpperCase()` after that path was lowercased, so a cash
           // retry sent 'CASH' where the first send was 'cash'. The backend normalises
           // only `payment_splits`; the scalar `sales.payment_method` is written
-          // verbatim (sales_checkout.rs:549), so the two spellings both reached the
-          // column. Derived from `storedMethod` so they cannot drift again.
+          // verbatim from `kind.wire_method(...)` against the args, so the two spellings
+          // both reached the column. Derived from `storedMethod` so they cannot drift again.
           paymentMethod={storedMethod}
           tenderedMinor={method === 'cash' && !splitMode ? tenderedMinorInCartCurrency : null}
           paymentSplits={paymentSplitsFromState() ?? null}
@@ -2033,7 +2379,7 @@ retryCurrencyLoad,
           </div>
         ) : (
           <>
-            <div className="payment-header">
+            <header className="payment-header">
               <Localized id="payment-title">
                 <h2 className="payment-title">Complete Sale</h2>
               </Localized>
@@ -2046,7 +2392,7 @@ retryCurrencyLoad,
                   &times;
                 </button>
               </Localized>
-            </div>
+            </header>
 
             {/* Two columns, and which one scrolls is load-bearing.
                 LEFT (1fr) is the tender/entry surface and the only scroller.
@@ -2253,6 +2599,7 @@ retryCurrencyLoad,
                   splits={splits}
                   currency={total.currency}
                   remainingMinor={splitTotals.remaining}
+                  unreadableRows={splitTotals.unreadableRows}
                   onSplitModeChange={setSplitMode}
                   onAddSplit={addSplit}
                   onRemoveSplit={removeSplit}
@@ -2266,7 +2613,7 @@ retryCurrencyLoad,
                   onRemove={() => notifyCustomerChange(null)}
                 />
 
-                <div className="payment-actions">
+                <footer className="payment-actions">
                   <Localized id="payment-cancel">
                     <Button variant="ghost" onClick={() => animateLeave(onClose)} disabled={processing}>
                       Cancel
@@ -2285,13 +2632,15 @@ retryCurrencyLoad,
                       </Localized>
                     ) : method === 'credit' ? (
                       <Localized id="payment-credit-sale"><span>Credit Sale</span></Localized>
+                    ) : method === 'pay_later' ? (
+                      <Localized id="payment-method-pay-later"><span>Pay Later / Kasbon</span></Localized>
                     ) : (
                       <Localized id="payment-complete">
                         <span>Complete Sale</span>
                       </Localized>
                     )}
                   </Button>
-                </div>
+                </footer>
               </div>
 
               <div className="payment-tender-col">
@@ -2326,6 +2675,23 @@ retryCurrencyLoad,
                             </span>
                           </label>
                         ))}
+                        {giftCardsLicensed && (
+                          <label
+                            className={`payment-method-label payment-method-label--gift_card${method === 'gift_card' ? ' payment-method-label--active' : ''}`}
+                            data-testid="quick-pay-button"
+                          >
+                            <input
+                              type="radio"
+                              name="payment-method"
+                              value="gift_card"
+                              checked={method === 'gift_card'}
+                              onChange={() => setMethod('gift_card')}
+                            />
+                            <span className="payment-method-name">
+                              {requiredLocalized(l10n, PAYMENT_METHOD_MESSAGE_IDS['gift_card'])}
+                            </span>
+                          </label>
+                        )}
                         <div
                           className={`payment-method-label payment-method-label--other${method === 'other' ? ' payment-method-label--active' : ''}`}
                           // This row is a div, not a label, because it holds two controls —
@@ -2371,7 +2737,7 @@ retryCurrencyLoad,
                           />
                           </Localized>
                           {/* .payment-method-name on the text input below is not decoration:
-                              the checked-tender rule (PaymentModal.css:184) is an ADJACENT-SIBLING
+                              the checked-tender rule (PaymentModal.css:374) is an ADJACENT-SIBLING
                               selector, so that input - the radio's next sibling, and the element
                               the cashier actually reads for this row - is the only one the rule
                               can treat. Without the class, Other was the one selected tender
@@ -2410,6 +2776,28 @@ retryCurrencyLoad,
                             </label>
                           </>
                         )}
+                        {!isRestaurantPos && payLaterOffered && (
+                          <>
+                            {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
+                            <label
+                              className={`payment-method-label payment-method-label--pay_later${method === 'pay_later' ? ' payment-method-label--active' : ''}`}
+                              htmlFor="payment-method-pay-later"
+                              data-testid="quick-pay-button"
+                            >
+                              <input
+                                id="payment-method-pay-later"
+                                type="radio"
+                                name="payment-method"
+                                value="pay_later"
+                                checked={method === 'pay_later'}
+                                onChange={() => setMethod('pay_later')}
+                              />
+                              <span className="payment-method-name">
+                                <Localized id="payment-method-pay-later"><span>Pay Later / Kasbon</span></Localized>
+                              </span>
+                            </label>
+                          </>
+                        )}
                       </div>
                     </fieldset>
 
@@ -2434,6 +2822,13 @@ retryCurrencyLoad,
                           </Localized>
                       </label>
                     </>
+                    {method === 'credit' && creditSettingsFailed && (
+                      <p className="payment-credit-warning">
+                        <Localized id="payment-credit-settings-unavailable">
+                          <span>Credit settings could not be loaded — the store&apos;s credit limit could not be checked.</span>
+                        </Localized>
+                      </p>
+                    )}
                     {method === 'credit' && creditSettings?.enabled === false && (
                       <p className="payment-credit-warning">
                         <Localized id="payment-credit-disabled">
@@ -2459,6 +2854,7 @@ retryCurrencyLoad,
                     tenderPresets={tenderPresets}
                     sufficient={sufficient}
                     change={change}
+                    tenderedUnparseable={tenderedUnparseable}
                     locale={locale}
                   />
                 )}
@@ -2486,6 +2882,35 @@ retryCurrencyLoad,
                     onDynamicQrPay={handleDynamicQrPay}
                   />
                 )}
+
+                {method === 'pay_later' && (
+                  <PayLaterTenderPanel
+                    customer={selectedCustomer}
+                    onOpenCustomerSearch={() => setShowCustomerSearch(true)}
+                    summary={customerReceivablesSummary}
+                    loadingSummary={loadingReceivablesSummary}
+                    currentTotal={total}
+                    creditLimitMinor={creditSettings?.maxLimitMinor ?? 0}
+                  />
+                )}
+
+                {method === 'gift_card' && (
+                  <GiftCardPayment
+                    sessionToken={sessionToken ?? ''}
+                    totalMinor={Number(effectiveTotalInCartCurrency)}
+                    currency={cartCurrency}
+                    onApplied={(amount, code) => {
+                      setTendered(String(amount));
+                      setGiftCardApplied({ cardNumber: code, amountMinor: amount });
+                    }}
+                    // GiftCardPayment resolves the failure copy at source (Fluent
+                    // lookup or l10nErrorMessage, backend cause logged there), so the
+                    // toast forwards the already-classified message untouched.
+                    onError={(classified) => addToast({ message: classified.message, type: 'error' })}
+                    onCancel={() => setMethod('cash')}
+                    onComplete={() => {}}
+                  />
+                )}
               </>
             )}
 
@@ -2498,6 +2923,7 @@ retryCurrencyLoad,
               splits={splits}
               currency={total.currency}
               remainingMinor={splitTotals.remaining}
+              unreadableRows={splitTotals.unreadableRows}
               onSplitModeChange={setSplitMode}
               onAddSplit={addSplit}
               onRemoveSplit={removeSplit}
@@ -2625,7 +3051,7 @@ retryCurrencyLoad,
                       className="payment-customer-search-close"
                       onClick={() => setShowCustomerSearch(false)}
                     >
-                      <span>Cancel</span>
+                      <Localized id="cancel"><span>Cancel</span></Localized>
                     </button>
                   </Localized>
                 </div>

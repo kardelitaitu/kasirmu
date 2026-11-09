@@ -150,8 +150,146 @@ pub struct SyncEngine {
 /// Maximum bytes per batch (64 KB). P-1 retention spec §Batching.
 pub const MAX_BATCH_BYTES: usize = 64 * 1024;
 
-/// Split pending items into batches that each serialise to ≤ `max_bytes`
-/// bytes of JSON. Ensures at least one item per batch (no empty requests).
+/// Per-item constant in the batch size estimate: the JSON envelope a queue
+/// item carries AROUND its payload — field names, the id, the action, the
+/// status/tenant/timestamp fields, one timestamp and up to one error string.
+///
+/// 1024 is not a guess. An item with an empty payload and a one-character
+/// action serialises to 249 bytes and one with `{"total":150000}` to 279, so
+/// this constant leaves a 4x margin over the real envelope of a measured
+/// item. It also covers the payload of an item that carries several long
+/// strings, measured at 1010 bytes of JSON: a 200-character action, a
+/// 500-character `last_error` and a 64-character `origin_terminal_id`.
+/// See [`estimate_item_bytes`] for the bound this constant is part of.
+const BATCH_ITEM_ENVELOPE_BYTES: usize = 1024;
+
+/// The most one payload byte can become in JSON output: a control character
+/// other than `"` or `\\` is escaped as `\u00XX`, six bytes for one.
+///
+/// Not 2. A quote or a backslash becomes two bytes, but `serde_json` writes
+/// every other character below 0x20 as a six-byte unicode escape, so the
+/// worst case for a payload of control characters is 6x — 4480 of them
+/// serialise to 24329 bytes, 5.4x their length. A 2x bound under-counts that
+/// payload; this constant is what makes [`estimate_item_bytes`] safe.
+const JSON_MAX_ESCAPE_EXPANSION: usize = 6;
+
+/// Extra payload bytes budgeted per item for vector stamping.
+///
+/// `SyncTransport::push_items` does not send the queue item as-is when the
+/// transport has a stamp: it rewrites `payload` with `_terminal` and
+/// `_vector` added ([`crate::crdt::stamp_payload`]), which grows the JSON by a
+/// measured 65 bytes for a 16-character terminal id and 97 for the widest
+/// (32-character) form.
+///
+/// DELIBERATELY NOT SPENT HERE. Charging this to every batch would shrink
+/// every batch for a transport that is not necessarily stamped. The bound is
+/// maintained by the CALLER instead — see the transport-margin rule on
+/// [`build_batches`] and [`transport_margin_per_item`]. The constant is
+/// referenced from a `debug_assert!` in [`estimate_item_bytes`] so it stays
+/// live and stays tied to the estimate it describes.
+const STAMP_GROWTH_BYTES: usize = 128;
+
+/// Conservative upper bound on the serialised JSON size of one
+/// [`kasirmu_core::offline::OfflineQueueItem`].
+///
+/// # Why not the exact length (O-M34)
+///
+/// This used to be `serde_json::to_vec(item).map(|v| v.len())`, i.e. a full
+/// serialisation of every item on every sync cycle purely to measure it. The
+/// estimate below is a byte scan with no allocation and no serialisation.
+///
+/// # The bound, and why each term is safe
+///
+/// ```text
+/// estimate = payload.len() * 6 + action.len() + 1024
+/// ```
+///
+/// The 6 is [`JSON_MAX_ESCAPE_EXPANSION`]: the most one payload byte can
+/// become in JSON output, not merely "2 for a quote". `serde_json` writes a
+/// payload byte as itself, as a two-byte `"`-style escape, or — for every
+/// other control character — as a SIX-byte `\u00XX` escape. Sizing on 2 is
+/// the trap: 4096 quotes serialise to 8441 bytes (within 2x) but 4480
+/// control characters serialise to 24329, which is 5.4x their length and
+/// would slip past any cheaper bound. Non-ASCII does NOT expand (UTF-8
+/// sequences pass through, as do `\uXXXX` escapes the producer already
+/// wrote), so 6x is very pessimistic for ordinary text — deliberately,
+/// because the constant is worth more than the bytes and because a
+/// per-character rule would have to agree with `serde_json` escaping for
+/// every input. Proven per shape by
+/// `build_batches_estimate_never_under_estimates_the_wire`.
+///
+/// * `payload.len() * 6` — the payload at its worst case per byte, expanded
+///   as described above. This is the term that cannot be shaved: 2x is
+///   enough for quotes (4096 -> 8441 bytes) and NOT enough for control
+///   characters (4480 -> 24329 bytes).
+/// * `action.len()` — the action string rides the wire too. An action is a
+///   short constant name (`complete_sale`), never payload text, so it is
+///   charged its own length rather than the escape multiplier.
+/// * [`BATCH_ITEM_ENVELOPE_BYTES`] — the rest of the envelope, which is
+///   independent of the payload.
+///
+/// # The cost, stated plainly
+///
+/// Payload-heavy batches carry about HALF the payload they did when this
+/// charged the exact serialised length: a 64 KB request of large items now
+/// holds roughly 32 KB of payload. That is the price of a bound an
+/// escaping-heavy payload cannot beat. Where the old exact measurement split a
+/// batch, this splits it EARLIER — extra requests, never an oversized one.
+///
+/// # The wire is not this estimate
+///
+/// A stamped push regrows `payload` (see [`STAMP_GROWTH_BYTES`]) and the
+/// request body is the batch's bare JSON array, whose own bytes this does not
+/// charge. Both are supplied by the transport-margin rule on
+/// [`build_batches`], not by inflating every item.
+#[must_use]
+pub fn estimate_item_bytes(item: &kasirmu_core::offline::OfflineQueueItem) -> usize {
+    // The stamp budget must stay a live constant of this module: a caller's
+    // margin has to be at least this, or a stamped push exceeds the budget by
+    // the stamp's own growth. `4 * TERMINAL_FIELD.len()` is the field name
+    // counted twice (key and escaping slack) in this file's two fields.
+    debug_assert!(
+        STAMP_GROWTH_BYTES
+            >= 4 * crate::crdt::TERMINAL_FIELD.len() + 4 * crate::crdt::VECTOR_FIELD.len(),
+        "the stamp-growth budget must cover the field names it describes"
+    );
+
+    // 6x the payload is the worst case per output byte, not per input byte.
+    // A JSON string has-escapes only '"' and '\' to two bytes; every OTHER
+    // control character (NUL..0x1f) becomes a SIX-byte `\u00XX` escape. So a
+    // payload of 4480 control characters serialises to 24329 bytes — 5.4x —
+    // and a 2x bound under-counts it. Non-ASCII does not expand at all, so
+    // this is very pessimistic for ordinary text; that is the price of a
+    // bound no payload can beat.
+    let payload = item.payload.len();
+    payload * crate::JSON_MAX_ESCAPE_EXPANSION + item.action.len() + BATCH_ITEM_ENVELOPE_BYTES
+}
+
+/// Bytes of slack a caller must subtract from [`MAX_BATCH_BYTES`], per planned
+/// item, before handing the remainder to [`build_batches`].
+///
+/// [`estimate_item_bytes`] measures the queue item as it sits in the local DB.
+/// The wire body is not that: it is the batch's bare JSON array (see
+/// [`TRANSPORT_MARGIN_BASE_BYTES`]), and when the transport stamps, each
+/// payload regrown by `_terminal`/`_vector` ([`STAMP_GROWTH_BYTES`]: 65 bytes
+/// measured for a 16-character terminal id, 97 for the widest 32; the server
+/// accepts ids of at most 64 characters, so 128 holds).
+///
+/// `stamps` is whether the pushing transport was built with
+/// [`crate::transport::SyncTransport::with_vector_stamping`].
+#[must_use]
+pub const fn transport_margin_per_item(stamps: bool) -> usize {
+    if stamps { STAMP_GROWTH_BYTES } else { 0 }
+}
+
+/// Slack for the request body's own bytes — the array brackets and the commas
+/// between items — which [`estimate_item_bytes`] does not charge, plus one byte
+/// per boundary for their own escaping. See [`transport_margin_per_item`].
+pub const TRANSPORT_MARGIN_BASE_BYTES: usize = 1024;
+
+/// Split pending items into batches that each carry a conservative estimate of
+/// at most `max_bytes` bytes of JSON. Ensures at least one item per batch (no
+/// empty requests) and never drops the last partial batch.
 ///
 /// Items are ordered by the shared rule ([`kasirmu_core::offline::order_for_push`])
 /// before chunking: all Critical items transmit before any Normal item, which
@@ -159,20 +297,52 @@ pub const MAX_BATCH_BYTES: usize = 64 * 1024;
 ///
 /// C49: this used to sort by priority alone, which is NOT a total order. See the
 /// shared function for why same-millisecond items need the id tie-break.
+///
+/// # `max_bytes` must already be a TRANSPORT budget (O-M34)
+///
+/// Each item is charged [`estimate_item_bytes`] — a conservative estimate, not
+/// its exact serialised length. So `max_bytes` is `MAX_BATCH_BYTES` MINUS the
+/// margins the caller's transport needs: [`transport_margin_per_item`] times
+/// the planned item count, plus [`TRANSPORT_MARGIN_BASE_BYTES`]. A stamped
+/// reqwest push therefore passes
+/// `MAX_BATCH_BYTES - transport_margin_per_item(true) * n - TRANSPORT_MARGIN_BASE_BYTES`.
+/// The estimate can only ever make batches SMALLER than the old exact
+/// measurement would, never larger — the safe direction against a body limit.
+///
+/// # The one clone that stays
+///
+/// The return type is `Vec<Vec<OfflineQueueItem>>`, so each chosen item is
+/// cloned into its batch; that clone is required. The pre-sort clone of the
+/// whole backlog that used to precede it is gone: the order is computed as a
+/// permutation of indexes over an `Option` placeholder slice (no item copied)
+/// and applied while chunking.
 pub fn build_batches(
     items: &[kasirmu_core::offline::OfflineQueueItem],
     max_bytes: usize,
 ) -> Vec<Vec<kasirmu_core::offline::OfflineQueueItem>> {
-    let mut sorted: Vec<kasirmu_core::offline::OfflineQueueItem> = items.to_vec();
-    kasirmu_core::offline::order_for_push(&mut sorted);
-
+    // O-M34: the order is a permutation of INDEXES into `items`, so the
+    // backlog is never copied just to be sorted. The key is NOT re-implemented
+    // here — `compare_for_push` is the ONE ordering rule (C49), and a second
+    // copy would be the divergent-twin failure that rule exists to prevent.
+    //
+    // An earlier attempt lifted the rule onto a slice of `None` placeholders and
+    // sorted that. It could not work: every slot was `None`, so every comparison
+    // returned `Equal` and the permutation stayed the identity — the batches came
+    // out in arrival order and the priority tests caught it. Sorting indexes
+    // directly is the same saving with no such trap.
+    let mut order: Vec<usize> = (0..items.len()).collect();
+    order.sort_by(|&a, &b| kasirmu_core::offline::compare_for_push(&items[a], &items[b]));
     let mut batches: Vec<Vec<kasirmu_core::offline::OfflineQueueItem>> = Vec::new();
     let mut current: Vec<kasirmu_core::offline::OfflineQueueItem> = Vec::new();
     let mut current_bytes = 0usize;
 
-    for item in &sorted {
-        // Estimate the JSON size of this item alone.
-        let item_bytes = serde_json::to_vec(item).map(|v| v.len()).unwrap_or(0);
+    // `arranged[pos]` is the index of the item that belongs at `pos`: the slot
+    // slice started as the identity arrangement, so the permutation the lift
+    // applied to it IS the transmit order over `items`.
+    for index in order {
+        let item = &items[index];
+        // Conservative JSON size of this item alone — see `estimate_item_bytes`.
+        let item_bytes = estimate_item_bytes(item);
 
         // If adding this item would exceed the budget and we already have
         // items in the current batch, finalise and start a new batch.
@@ -224,10 +394,11 @@ fn apply_push_outcomes(
     batch: &[kasirmu_core::offline::OfflineQueueItem],
     results: &[transport::PushOutcome],
 ) -> Result<(), SyncError> {
+    let mut synced_ids = Vec::new();
     for (item, outcome) in batch.iter().zip(results.iter()) {
         match outcome {
             transport::PushOutcome::Accepted => {
-                queue.mark_synced(store, &item.id)?;
+                synced_ids.push(item.id.clone());
             }
             transport::PushOutcome::Conflict(server_item) => {
                 // SYNC-02: single shared conflict-application service --
@@ -244,13 +415,38 @@ fn apply_push_outcomes(
                     item_id = %item.id,
                     "sync engine: duplicate-id replay, item already on server, marking synced"
                 );
-                queue.mark_synced(store, &item.id)?;
+                synced_ids.push(item.id.clone());
             }
             transport::PushOutcome::Rejected { reason } => {
                 queue.mark_failed(store, &item.id, reason)?;
             }
         }
     }
+
+    if !synced_ids.is_empty() {
+        queue.mark_synced_batch(store, &synced_ids)?;
+    }
+
+    // `zip` stops at the shorter side. Trailing items keeping their previous
+    // state is CORRECT (see
+    // `apply_push_outcomes_truncated_results_leave_trailing_items_pending`),
+    // but it must not pass unremarked: the cycle would report success while a
+    // tail of the batch was never acknowledged. Reported after the loop so the
+    // items that DID get an outcome are still applied.
+    if results.len() != batch.len() {
+        tracing::warn!(
+            outcomes = results.len(),
+            items = batch.len(),
+            "sync engine: outcome count mismatch — trailing items stay queued"
+        );
+        return Err(SyncError::Transport(format!(
+            "push returned {} outcome(s) for {} item(s): {} item(s) left unacknowledged",
+            results.len(),
+            batch.len(),
+            batch.len().saturating_sub(results.len()),
+        )));
+    }
+
     Ok(())
 }
 
@@ -624,7 +820,16 @@ impl SyncEngine {
         let batch_count;
 
         if !pending.is_empty() {
-            let batches = build_batches(&pending, MAX_BATCH_BYTES);
+            // O-M34: `build_batches` charges a conservative per-item estimate, so
+            // the budget it is given must leave room for what the transport adds
+            // on top of it (the stamp's payload regrowth, and the body's own
+            // brackets/separators). See `build_batches`.
+            let budget = MAX_BATCH_BYTES
+                .saturating_sub(
+                    transport_margin_per_item(self.transport.stamps_payloads()) * pending.len(),
+                )
+                .saturating_sub(TRANSPORT_MARGIN_BASE_BYTES);
+            let batches = build_batches(&pending, budget);
             batch_count = batches.len();
             for (batch_idx, batch) in batches.iter().enumerate() {
                 let batch_items = batch.len();

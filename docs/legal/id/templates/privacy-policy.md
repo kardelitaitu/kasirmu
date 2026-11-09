@@ -57,8 +57,8 @@ Tujuan pemrosesan mencakup:
 
 ### 4. PENYIMPANAN DAN KEAMANAN DATA
 1. **Standar Keamanan Teknis**:
-   * Seluruh pengiriman data antara aplikasi kasir lokal dan server komputasi awan dienkripsi menggunakan protokol **Transport Layer Security (TLS 1.3 / HTTPS)**.
-   * Kata sandi akun dienkripsi menggunakan algoritma pengacakan satu arah yang kuat (*cryptographic hash with salt*).
+   * Seluruh pengiriman data antara aplikasi kasir lokal dan server komputasi awan dienkripsi menggunakan **HTTPS**. *(Catatan bagi penyusun: versi TLS dinegosiasikan di tepi platform — Northflank/Caddy — dan **tidak dipin oleh kode di repositori ini**; `apps/unified/Caddyfile:4-5` mencatat TLS dihentikan di tepi. Menyebut versi tertentu seperti "TLS 1.3" adalah klaim tentang penyedia yang tidak dapat diverifikasi dari pohon ini. Kalimat ini menyebut "TLS 1.3 / HTTPS" sampai 2026-10-19.)*
+   * Kata sandi akun dienkripsi menggunakan algoritma pengacakan satu arah yang kuat (*cryptographic hash with salt*). *(Catatan: mekanismenya bcrypt untuk kata sandi akun, Argon2id untuk PIN staf lokal — lihat `apps/license-server/web_password.go:106` dan `platform/core/src/auth.rs:23-37`.)*
    * Akses ke basis data produksi dibatasi secara ketat berdasarkan prinsip hak akses minimum (*Principle of Least Privilege*).
 2. **Lokasi Penyimpanan Data (*Data Residency*)**:
    Data transaksi dan identitas pengguna disimpan pada infrastruktur cloud berstandar industri dengan pusat data regional yang mematuhi standar perlindungan data nasional Indonesia.

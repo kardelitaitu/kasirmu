@@ -21,10 +21,11 @@ const locale = Astro.params.locale ?? 'en';
 const { Content, headings } = await render(doc);
 
 const allDocs = await getCollection('docs');
+const allGuides = await getCollection('guides');
 const localeDocs = allDocs.filter((d) => d.id.startsWith(`${locale}/`));
 // This route is what makes a docs page a docs page, so it is what builds the
 // header's search payload — see `toSearchDocs` (the single owner of the rule).
-const searchDocs = toSearchDocs(allDocs, locale);
+const searchDocs = toSearchDocs(allDocs, locale, allGuides);
 const categoryOrder = ['gettingStarted', 'guides', 'reference'];
 const entries = categoryOrder
   .map((category) => ({

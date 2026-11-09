@@ -37,11 +37,13 @@ the rates the checkout and reports use. Receipt settings control paper
 width, currency and tax display, rounding, the footer, and the printer —
 per workspace, so each screen prints its own way.
 
-## Appearance & devices
+## Device preferences
 
-**Appearance** sets the theme (dark mode) that the device boots into.
-Per-device preferences such as sound volume live on the terminal; see
-[Terminals](../terminals/) for what follows the device rather than the user.
+There is **no Appearance screen** in Settings. The theme is a per-device
+preference, not a per-user one: it follows the device the till is running on
+rather than the person signed in. Per-device preferences such as sound volume
+are set on the terminal; see [Terminals](../terminals/) for what follows the
+device rather than the user.
 
 ## Staff & security
 

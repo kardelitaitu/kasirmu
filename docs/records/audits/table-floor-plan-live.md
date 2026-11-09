@@ -65,3 +65,5 @@ in the tree. Found by reading `git status` before committing rather than after, 
 | `tsc` / `eslint` | 0 / 0 |
 | Full UI suite | 12,693 passed |
 | Stale probe | removed |
+
+> last audited 14-10-26 by docs-auditor

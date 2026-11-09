@@ -6,6 +6,19 @@ dashboard-top-product = Produk Terlaris
 dashboard-low-stock-alerts = Peringatan Stok Menipis
 dashboard-no-data = Belum ada data
 dashboard-stock-ok = Semua level stok dalam kondisi baik.
+dashboard-stock-unknown = Level stok tidak dapat dimuat.
+
+# Dashboard — Debt reminders (AR & AP)
+dashboard-debt-reminders = Pengingat Piutang & Hutang
+dashboard-debt-ok = Semua piutang dan hutang dalam kondisi baik.
+dashboard-debt-panel-ok = Lancar
+dashboard-receivables-title = Piutang Pelanggan (Kasbon)
+dashboard-payables-title = Hutang Pemasok (Beli Tempo)
+dashboard-overdue-count = { $count } lewat jatuh tempo
+dashboard-due-soon-count = { $count } segera jatuh tempo
+dashboard-outstanding = Belum lunas: { $amount }
+dashboard-view-customers = Kelola Pelanggan
+dashboard-view-vendor-bills = Kelola Tagihan
 
 # Dashboard — date range
 dashboard-filter-from = Dari
@@ -168,10 +181,17 @@ custom-report-page-of = Halaman { $page }
 # Export
 dashboard-export-csv = CSV
 dashboard-export-csv-aria = Ekspor data dasbor sebagai CSV
+dashboard-export-ar-aging = Ekspor Umur Piutang
+dashboard-export-ap-aging = Ekspor Umur Hutang
+dashboard-export-aging-failed = Ekspor gagal
 dashboard-category-clear-aria = Hapus pilihan kategori
 dashboard-back = Kembali
 dashboard-back-aria = Kembali ke beranda
 dashboard-error-load = Gagal memuat data dasbor. Silakan coba lagi.
+sales-report-error-load = Gagal memuat laporan penjualan. Silakan coba lagi.
+inventory-report-error-load = Gagal memuat laporan inventaris. Silakan coba lagi.
+custom-report-error-run = Laporan tidak dapat dijalankan. Silakan coba lagi.
+menu-engineering-error-load = Gagal memuat rekayasa menu. Silakan coba lagi.
 dashboard-refreshing = Menyegarkan…
 dashboard-delta-new = Baru
 

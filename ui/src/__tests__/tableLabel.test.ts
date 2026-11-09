@@ -103,6 +103,9 @@ describe('matchesTableBill', () => {
   it('matches custom table names like VIP 1 or Patio 5', () => {
     expect(matchesTableBill({ label: 'Table VIP 1 (Ana)' }, 'VIP 1')).toBe(true);
     expect(matchesTableBill({ label: 'VIP 1' }, 'VIP 1')).toBe(true);
+    expect(matchesTableBill({ label: 'Booth B1 · Res: Pak Budi (19:30) [6p]' }, 'Booth B1')).toBe(true);
+    expect(matchesTableBill({ label: '1 · Res: Pak Budi (19:30) [6p]' }, '1')).toBe(true);
+    expect(matchesTableBill({ label: 'Booth B10 · Res: Pak Budi (19:30) [6p]' }, 'Booth B1')).toBe(false);
   });
 
   it('matches Indonesian table names with Meja prefix or bare numbers', () => {

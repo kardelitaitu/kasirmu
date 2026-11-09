@@ -61,3 +61,5 @@ structural redundancy that the filter already covers.
 | Full suite | 12,656 passed, 0 failed (+2) |
 | `tsc` / `eslint` | 0 / 0 |
 | `PaymentModal.tsx` | restored; `scratch-kill.py` deleted; tree clean but for another lane |
+
+> last audited 14-10-26 by docs-auditor

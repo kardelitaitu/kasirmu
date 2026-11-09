@@ -56,3 +56,5 @@ A second, smaller miss from the same cause: the payment-modal refactor left **tw
 | Login roles | all three `staff` specs still `staff` |
 | Full UI suite | 12,678 passed |
 | Diff | 5 files, +73 −89, no behaviour change |
+
+> last audited 14-10-26 by docs-auditor

@@ -127,6 +127,7 @@ pub async fn redeem_gift_card_scoped(
     ctx: &BridgeCtx<'_>,
     card_number_or_id: &str,
     amount_minor: i64,
+    currency: &str,
     sale_id: &str,
     session_token: &str,
 ) -> Result<RedeemGiftCardResult, BridgeError> {
@@ -138,7 +139,11 @@ pub async fn redeem_gift_card_scoped(
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
-    let result = store.redeem_gift_card(card_number_or_id, amount_minor, sale_id)?;
+    // The caller supplies the currency it entered amount_minor in, and the store
+    // refuses a mismatch (round 247): a bare minor-unit integer means different
+    // money on a 0-exponent currency than on a 3-exponent one.
+    let result =
+        store.redeem_gift_card(card_number_or_id, amount_minor, sale_id, Some(currency))?;
     drop(db);
     Ok(result)
 }
@@ -148,6 +153,7 @@ pub async fn top_up_gift_card_scoped(
     ctx: &BridgeCtx<'_>,
     card_number_or_id: &str,
     amount_minor: i64,
+    currency: &str,
     session_token: &str,
 ) -> Result<GiftCardWithTransactions, BridgeError> {
     let (session, conn) = ctx.resolve_scope(session_token)?;
@@ -158,7 +164,7 @@ pub async fn top_up_gift_card_scoped(
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
-    let result = store.top_up_gift_card(card_number_or_id, amount_minor)?;
+    let result = store.top_up_gift_card(card_number_or_id, amount_minor, Some(currency))?;
     drop(db);
     Ok(result)
 }

@@ -7,10 +7,11 @@
  * checkout for new purchases.
  */
 
-import { useCallback } from 'react';
+import { useCallback, useContext } from 'react';
 import { Localized } from '@fluent/react';
 import { Button } from '@/components/Button';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { LocaleContext } from '@/i18n/LocaleContext';
 import {
   getAddonsForTier,
   tenantHasAddon,
@@ -18,6 +19,28 @@ import {
 } from '@/api/addons';
 import { WEBSITE_ORIGIN, openExternalUrl } from '@/api/browser';
 import './AddonsMarketplace.css';
+
+/**
+ * Website pricing URL for one add-on.
+ *
+ * Copied in SHAPE from `upgradePricingUrl` (utils/upgrade.ts:12), whose two
+ * differences from the old inline string were both load-bearing:
+ *
+ *  - **the locale prefix.** Every marketing page lives at `/[locale]/…`
+ *    (astro.config.mjs:72 sets `prefixDefaultLocale: true`), so `/pricing/`
+ *    has no page to resolve to. A live fetch on 2026-10-25 answered 404 for
+ *    /pricing/, /en/pricing/ and /id/pricing/ alike, but it served a stale
+ *    build (no target has an id yet), so the prefix is argued from the
+ *    routing config and from `upgradePricingUrl`, whose CTAs work — not from
+ *    that fetch.
+ *  - **the fragment.** `#addon-<id>` has no target: pricing.astro renders
+ *    PricingGrid, whose only ids are the tier keys. Kept because it states
+ *    the intent and costs nothing, but the operator lands on the pricing
+ *    table, not on the add-on.
+ */
+function addonPricingUrl(locale: string, addonId: string): string {
+  return `${WEBSITE_ORIGIN}/${locale}/pricing/#addon-${addonId}`;
+}
 
 interface AddonCardProps {
   addon: AddonDefinition;
@@ -69,12 +92,34 @@ function AddonCard({ addon, owned, onPurchase }: AddonCardProps) {
 }
 
 /**
+ * True when the catalog entry's Paddle price is still a placeholder rather
+ * than a live Paddle price id.
+ *
+ * The prefix is the WEBSITE's convention, not this file's: pricing content
+ * carries `pri_placeholder_plus_bundle_monthly` until the real Paddle catalog
+ * lands, and website/src/components/paddle.ts:101 refuses to open a checkout
+ * for exactly that prefix. Copying the test rather than the ids is the point —
+ * the check used to name `pri_placeholder_` while the catalog this file reads
+ * carried four `pri_addon_*_monthly` ids, so it never matched and
+ * `handlePurchase` handed the operator to a URL instead of refusing.
+ *
+ * NOT the same test as "not a real price id": a non-placeholder id that Paddle
+ * does not know still reaches the browser, which is the best available
+ * behaviour for a value only the operator sets.
+ */
+function isPlaceholderPriceId(priceId: string): boolean {
+  return priceId.startsWith('pri_placeholder_');
+}
+
+/**
  * Add-on Marketplace — renders a grid of available add-ons for the
  * tenant's current tier. Owned add-ons are shown as "Active" badges.
  * Purchase opens Paddle checkout via the existing `openPaddleCheckout` helper.
  */
 export default function AddonsMarketplace() {
   const { caps } = useSubscription();
+  // Same locale source as every other pricing CTA (TierLockedFeature.tsx:35).
+  const locale = useContext(LocaleContext)?.locale ?? 'en';
 
   const tier = caps?.tier ?? 'free';
   const ownedAddons = caps?.addons ?? [];
@@ -87,7 +132,7 @@ export default function AddonsMarketplace() {
       // Open Paddle checkout for the addon price ID.
       // In production, the email should come from the session/account.
       // For now, open the Paddle checkout URL directly.
-      if (addon.paddlePriceId.startsWith('pri_placeholder_')) {
+      if (isPlaceholderPriceId(addon.paddlePriceId)) {
         // Placeholder — not yet configured in Paddle
         console.warn(`Addon ${addon.id} Paddle price not configured yet`);
         return;
@@ -96,12 +141,14 @@ export default function AddonsMarketplace() {
       // paddle.ts openPaddleCheckout helper. For the POS app, we
       // open the pricing page with the addon anchor.
       //
-      // Absolute, and through `openExternalUrl`: a relative `/pricing/`
-      // resolves against the app's own `https://tauri.localhost` origin
-      // (a 404), and `window.open` is discarded by the Android WebView.
-      void openExternalUrl(`${WEBSITE_ORIGIN}/pricing/#addon-${addon.id}`);
+      // Absolute, and through `openExternalUrl`: a relative path resolves
+      // against the app's own `https://tauri.localhost` origin (a 404), and
+      // `window.open` is discarded by the Android WebView. The locale prefix
+      // and the fragment's missing target are documented on
+      // `addonPricingUrl` above.
+      void openExternalUrl(addonPricingUrl(locale, addon.id));
     },
-    [],
+    [locale],
   );
 
   if (relevantAddons.length === 0) {

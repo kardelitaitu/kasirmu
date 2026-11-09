@@ -87,3 +87,5 @@ inferred rather than reproduced.** If CI still fails after this, the next suspec
 | Affected topology suites, 6 consecutive runs | 242 passed, 0 failures |
 | `tsc` / `eslint` | 0 / 0 |
 | Full UI suite | **787 files, 12,680 passed** (3 skipped, 3 todo) |
+
+> last audited 14-10-26 by docs-auditor

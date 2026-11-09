@@ -350,13 +350,19 @@
 /* 2-column layout ordering:
    Row 1: [Cash] [QRIS]
    Row 2: [Card] [Credit]
-   Row 3: [Other] [Open Bill] */
+   Row 3: [Gift Card] [Other]
+   Row 4: [Open Bill] [Pay Later]
+   gift_card is licensed separately from visibleMethods, so it renders in DOM
+   between the quick-pay methods and Other; order 5 keeps the grid rows in the
+   same sequence the DOM reads. */
 .payment-method-label--cash { order: 1; }
 .payment-method-label--qris { order: 2; }
 .payment-method-label--card { order: 3; }
 .payment-method-label--credit { order: 4; }
-.payment-method-label--other { order: 5; }
-.payment-method-label--open_bill { order: 6; }
+.payment-method-label--gift_card { order: 5; }
+.payment-method-label--other { order: 6; }
+.payment-method-label--open_bill { order: 7; }
+.payment-method-label--pay_later { order: 8; }
 
 /* The tender row inherited everything from .payment-method-label, so the name
    never claimed the row and the selected method never read as selected — the
@@ -384,14 +390,22 @@
   color: inherit;
   text-align: center;
   width: 100%;
-  height: 100%;
+  height: auto;
+  min-height: 0;
+  min-width: 0;
   padding: 0;
   outline: none;
   cursor: pointer;
   box-sizing: border-box;
 }
 
-.payment-other-input:focus {
+.payment-other-input:focus,
+.payment-other-input:focus-visible,
+input.payment-other-input:focus,
+input.payment-other-input:focus-visible {
+  outline: none;
+  border: none;
+  box-shadow: none;
   cursor: text;
 }
 
@@ -406,6 +420,164 @@
 
 .payment-open-bill-section {
   padding: 0 var(--space-5) var(--space-4);
+}
+
+/* ── Pay Later / Kasbon Section ──────────────────── */
+.payment-pay-later-section {
+  padding: 0 var(--space-5) var(--space-4);
+}
+
+.payment-pay-later-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--space-6) var(--space-4);
+  background: var(--color-bg-subtle);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  margin-top: var(--space-2);
+}
+
+.payment-pay-later-prompt-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-full);
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
+  margin-bottom: var(--space-3);
+}
+
+.payment-pay-later-title {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+}
+
+.payment-pay-later-desc {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+  max-width: 28rem;
+}
+
+.payment-pay-later-select-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: opacity var(--duration-150) var(--ease-out);
+}
+
+.payment-pay-later-select-btn:hover {
+  opacity: 0.9;
+}
+
+.payment-pay-later-customer-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.payment-pay-later-customer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-2);
+}
+
+.payment-pay-later-customer-name {
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+}
+
+.payment-pay-later-customer-phone {
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+}
+
+.payment-pay-later-loading {
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+  padding: var(--space-2) 0;
+}
+
+.payment-pay-later-ledger-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.payment-pay-later-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--text-sm);
+}
+
+.payment-pay-later-stat-label {
+  color: var(--color-fg-secondary);
+}
+
+.payment-pay-later-stat-value {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg);
+}
+
+.payment-pay-later-stat-row--total {
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--color-border);
+  margin-top: var(--space-1);
+}
+
+.payment-pay-later-stat-value--projected {
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-accent);
+}
+
+.payment-pay-later-overdue-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-danger);
+  background: var(--color-danger-subtle);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  width: fit-content;
+}
+
+.payment-pay-later-warning {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2_5) var(--space-3);
+  background: var(--color-warning-subtle);
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-md);
+  color: var(--color-warning-fg);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  margin-top: var(--space-2);
 }
 
 /* The card-terminal selector block shown when a payment has more than one
@@ -812,6 +984,17 @@
 
 .payment-split-remaining-positive {
   color: var(--color-danger);
+}
+
+/* A split row the money parser refused (e.g. "1,234" in USD, where the comma is
+   read as an ambiguous group separator and deliberately rejected). The sum treats
+   such a row as 0n, so the Remaining line below it can read 0 while Complete stays
+   disabled. This says why, on the row itself. */
+.payment-split-unreadable {
+  flex: 1 0 100%;
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
 }
 
 /* ── Currency Selector ──────────────────────────── */
@@ -1233,7 +1416,14 @@
 .payment-customer-search-overlay {
   position: fixed;
   inset: 0;
-  z-index: var(--z-modal);
+  /* Above the payment overlay it is opened FROM, below toasts.
+     `.payment-overlay` sits at `calc(var(--z-modal) + 10)` (410) because it has to
+     clear the app chrome, and this dialog is mounted INSIDE that overlay. At the
+     plain `--z-modal` (400) the child painted UNDER its own parent — the customer
+     search opened, focus moved into it (useFocusTrap(customerSearchPanelRef,
+     showCustomerSearch)), and the operator saw the payment panel still on top
+     with the search unreachable. Same class as RestaurantCartSheet.css:31-48. */
+  z-index: var(--z-modal-nested);
   display: flex;
   align-items: center;
   justify-content: center;

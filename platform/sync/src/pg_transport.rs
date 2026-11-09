@@ -26,6 +26,18 @@ next: none | perf: deadpool pool max 5 with bounded timeouts
 //! and the pull excludes the sender's own rows. That column is the identity
 //! this path uses; `_vector` is the identity the HTTP path uses. Do not
 //! "fix" the missing stamp by adding one — it would be dead metadata.
+//!
+//! # Push batching (O-H20)
+//!
+//! `push_items` batches: it issues ONE multi-row `INSERT ... VALUES (...)`
+//! per [`PG_INSERT_CHUNK_ROWS`] rows instead of one INSERT per item, all
+//! inside the same tenant transaction, so a 5,000-item drain is 5 round
+//! trips rather than 5,000. A statement text this path was not written with
+//! costs two round trips instead of one: `tokio-postgres` sends `Parse`,
+//! waits for `ParseComplete`, then sends `Bind`+`Execute`+`Sync` — the
+//! driver has no multi-message flush. That is still 2 per CHUNK, not 2 per
+//! item, but do not describe the prepared-statement path in this file as a
+//! single round trip without first changing how the driver is driven.
 
 use deadpool_postgres::Pool;
 use kasirmu_core::offline::{OfflineQueueItem, OfflineQueueStatus};
@@ -54,6 +66,104 @@ pub struct PgTransport {
 /// exist (P-3 pagination).
 const PG_PULL_PAGE_SIZE: usize = 500;
 const PG_PULL_FETCH_LIMIT: i64 = 501;
+
+/// One column of the push INSERT, in insertion order.
+///
+/// Each row binds exactly the [`PushColumn::BIND`] columns, in tuple order,
+/// so the emitted placeholder numbers and the bind list are derived from
+/// this ONE list and cannot disagree — see [`pg_insert_sql`].
+#[derive(Clone, Copy)]
+enum PushColumn {
+    /// `id`, bound.
+    Id,
+    /// `action`, bound.
+    Action,
+    /// `payload`, bound.
+    Payload,
+    /// `status` — a LITERAL (`'pending'`), never bound: the local queue
+    /// status is not the remote column's value.
+    Status,
+    /// `retry_count`, bound.
+    RetryCount,
+    /// `last_error`, bound.
+    LastError,
+    /// `tenant_id`, bound.
+    TenantId,
+    /// `origin_terminal_id`, bound.
+    OriginTerminalId,
+}
+
+impl PushColumn {
+    /// Columns in tuple order — the INSERT column list, verbatim.
+    const ALL: [Self; 8] = [
+        Self::Id,
+        Self::Action,
+        Self::Payload,
+        Self::Status,
+        Self::RetryCount,
+        Self::LastError,
+        Self::TenantId,
+        Self::OriginTerminalId,
+    ];
+
+    /// The literal text this slot stands for when it is NOT bound.
+    ///
+    /// Only [`Self::Status`] has one; every other column is emitted as the
+    /// placeholder the caller numbers.
+    const fn literal(self) -> &'static str {
+        match self {
+            Self::Status => "'pending'",
+            Self::Id => "",
+            Self::Action => "",
+            Self::Payload => "",
+            Self::RetryCount => "",
+            Self::LastError => "",
+            Self::TenantId => "",
+            Self::OriginTerminalId => "",
+        }
+    }
+
+    /// Whether this column takes a bind parameter.
+    const fn is_bound(self) -> bool {
+        !matches!(self, Self::Status)
+    }
+
+    /// The number of bound columns per row — 7 of the 8 tuple slots.
+    const BINDS_PER_ROW: usize = 7;
+}
+
+/// PostgreSQL's hard cap on bind parameters in a single statement
+/// (wire protocol `Int16` parameter count).
+const PG_MAX_BIND_PARAMS: usize = 65_535;
+
+/// A chunk must stay inside [`PG_MAX_BIND_PARAMS`] — checked at compile
+/// time, so a future bump of [`PG_INSERT_CHUNK_ROWS`] cannot silently push
+/// the statement past the protocol limit.
+const _: () = assert!(PG_INSERT_CHUNK_ROWS * PushColumn::BINDS_PER_ROW < PG_MAX_BIND_PARAMS);
+
+/// Rows per multi-row push INSERT (O-H20).
+///
+/// 1,000 × 7 binds = 7,000 parameters — roughly a tenth of
+/// [`PG_MAX_BIND_PARAMS`], so even an item whose payload is tens of
+/// kilobytes stays far from the ~65,535 parameters and the 1 GiB
+/// statement ceiling. 1,000 also keeps the per-statement tuple list small
+/// enough that PostgreSQL's parse time stays flat, which a ~9,000-row
+/// chunk (the raw parameter cap) does not. So a 5,000-item drain is **5**
+/// round trips instead of 5,000.
+const PG_INSERT_CHUNK_ROWS: usize = 1_000;
+
+/// Sentinel an item's outcome slot carries between admission and its
+/// chunk's result. Never observable: every slot is overwritten before
+/// `push_items` returns (a test pins that).
+const PG_INSERT_OUTCOME_PLACEHOLDER: &str = "pg insert outcome unresolved";
+
+/// The push INSERT header: every column the per-item INSERT named, in the
+/// same order, plus the `VALUES` keyword the tuples follow.
+const PG_INSERT_HEAD: &str = "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, tenant_id, origin_terminal_id)\n     VALUES ";
+
+/// The push INSERT trailer: the upsert the per-item INSERT carried,
+/// unchanged — a duplicate id is accepted without overwriting the row.
+const PG_INSERT_TAIL: &str = "\n     ON CONFLICT (id) DO NOTHING";
 
 /// Classify whether a pull's durable anchor predates the retained remote data.
 fn classify_anchor_expiry(
@@ -117,16 +227,16 @@ fn decode_pull_cursor(cursor: Option<&str>) -> (Option<String>, Option<String>) 
 fn build_pull_sql(since: Option<&str>, cursor: Option<&str>) -> &'static str {
     match (since, cursor) {
         (None, Some(_)) => {
-            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND (created_at > $2 OR (created_at = $2 AND id > $3))\n\n           AND ($4::text IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> $4)\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $5"
+            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id, sale_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND (created_at > $2 OR (created_at = $2 AND id > $3))\n\n           AND ($4::text IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> $4)\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $5"
         }
         (Some(_), Some(_)) => {
-            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND created_at >= $2\n\n           AND (created_at > $3 OR (created_at = $3 AND id > $4))\n\n           AND ($5::text IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> $5)\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $6"
+            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id, sale_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND created_at >= $2\n\n           AND (created_at > $3 OR (created_at = $3 AND id > $4))\n\n           AND ($5::text IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> $5)\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $6"
         }
         (Some(_), None) => {
-            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND created_at >= $2\n\n           AND ($3::text IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> $3)\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $4"
+            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id, sale_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND created_at >= $2\n\n           AND ($3::text IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> $3)\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $4"
         }
         (None, None) => {
-            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND ($2::text IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> $2)\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $3"
+            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id, sale_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND ($2::text IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> $2)\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $3"
         }
     }
 }
@@ -146,6 +256,119 @@ fn derive_next_cursor(items: &mut Vec<OfflineQueueItem>) -> Option<String> {
     } else {
         None
     }
+}
+
+/// Build the multi-row push INSERT for `bind_count` bind parameters.
+///
+/// The column list, tuple order and placeholder numbers all come from
+/// [`PushColumn::ALL`], and `bind_count` must equal
+/// `rows * PushColumn::BINDS_PER_ROW` — the function REFUSES to build a
+/// statement whose placeholder count differs from the bind count it was
+/// asked for, which is the check that keeps the builder and
+/// [`pg_insert_params`] locked together.
+///
+/// # Placeholder numbering
+///
+/// Placeholders are CONTIGUOUS across the whole statement, `$1..$n`, because
+/// the PostgreSQL wire protocol numbers parameters globally and a driver
+/// binds the N-th parameter to `$N`. [`PushColumn::Status`] is a literal,
+/// not a parameter, so it consumes no number: a four-row chunk is
+/// `$1..$28`, not `$1..$32` with holes.
+///
+/// The shipped per-item INSERT punched exactly such a hole: its tuple was
+/// `($1, $2, $3, <pending literal>, $4, $5, $6, $7)` while its bind slice
+/// carried 7 values, so slot 5 (`retry_count`) received slot 4's value
+/// (`last_error`) and the last parameter was never bound at all. The
+/// numbering is therefore recomputed here from the column spec rather than
+/// copied from that statement.
+///
+/// Every chunk of the same length yields the *same* string, which is what
+/// lets PostgreSQL prepare it once and bind it once per chunk.
+fn pg_insert_sql(bind_count: usize) -> String {
+    let rows = bind_count / PushColumn::BINDS_PER_ROW;
+    assert_eq!(
+        bind_count % PushColumn::BINDS_PER_ROW,
+        0,
+        "bind_count {bind_count} is not a whole number of rows"
+    );
+    let mut sql = String::from(PG_INSERT_HEAD);
+    // The next placeholder number to emit; 1-based, contiguous.
+    let mut next_bind = 1usize;
+    for row in 0..rows {
+        if row > 0 {
+            sql.push(',');
+        }
+        sql.push_str("\n            (");
+        for (slot, column) in PushColumn::ALL.iter().enumerate() {
+            if slot > 0 {
+                sql.push_str(", ");
+            }
+            // EXACTLY ONE place advances the counter, and only for a bound
+            // column: a literal consumes no parameter number, so the
+            // numbers stay contiguous across the whole statement.
+            if column.is_bound() {
+                sql.push_str(&format!("${next_bind}"));
+                next_bind += 1;
+            } else {
+                sql.push_str(column.literal());
+            }
+        }
+        sql.push(')');
+    }
+    sql.push_str(PG_INSERT_TAIL);
+    // INVARIANTS, enforced here rather than only in a test, because a
+    // statement whose placeholder count differs from its bind count does
+    // not fail loudly — it binds the wrong value into the wrong column,
+    // silently, which in a sync queue is data corruption.
+    //
+    // 1. The running counter advanced exactly once per bound column.
+    // 2. The last placeholder is the last bind the caller will pass.
+    assert_eq!(
+        next_bind - 1,
+        rows * PushColumn::BINDS_PER_ROW,
+        "the statement emits a different number of placeholders than binds"
+    );
+    assert_eq!(
+        next_bind - 1,
+        bind_count,
+        "placeholder count disagrees with the requested bind count"
+    );
+    sql
+}
+
+/// Collect the bind values for one chunk, in the placeholder order
+/// [`pg_insert_sql`] emitted.
+///
+/// Exactly [`PushColumn::BINDS_PER_ROW`] values per item, in tuple order,
+/// skipping [`PushColumn::Status`] (a literal, never bound). `chunk` holds
+/// indices into `items` in queue order; every value is borrowed straight out
+/// of the item — nothing is computed per chunk.
+fn pg_insert_params<'a>(
+    items: &'a [OfflineQueueItem],
+    chunk: &[usize],
+) -> Vec<&'a (dyn ToSql + Sync)> {
+    let mut params: Vec<&'a (dyn ToSql + Sync)> =
+        Vec::with_capacity(chunk.len() * PushColumn::BINDS_PER_ROW);
+    for &index in chunk {
+        let item = &items[index];
+        params.extend([
+            &item.id as &(dyn ToSql + Sync),
+            &item.action,
+            &item.payload,
+            &item.retry_count,
+            &item.last_error,
+            &item.tenant_id,
+            &item.origin_terminal_id,
+        ]);
+    }
+    // The bind list and the statement must agree on width; `pg_insert_sql`
+    // asserts the same invariant from its side.
+    assert_eq!(
+        params.len(),
+        chunk.len() * PushColumn::BINDS_PER_ROW,
+        "bind count must be rows x binds-per-row"
+    );
+    params
 }
 
 impl std::fmt::Debug for PgTransport {
@@ -320,9 +543,14 @@ impl PgTransport {
             .await
             .map_err(|e| SyncError::Transport(format!("pg set tenant failed: {e}")))?;
 
+        // O-H20: one multi-row INSERT per CHUNK, not one per item. The
+        // tenant check stays per item (it is a local comparison, not a round
+        // trip); the survivors are inserted in queue order, so outcome slot
+        // i still answers for `items[i]`.
         let mut outcomes = Vec::with_capacity(items.len());
+        let mut accepted: Vec<usize> = Vec::with_capacity(items.len());
 
-        for item in items {
+        for (index, item) in items.iter().enumerate() {
             // The pushed item's tenant is authoritative; the GUC above must
             // match it or the RLS WITH CHECK rejects the write.
             if item.tenant_id != tenant {
@@ -334,29 +562,38 @@ impl PgTransport {
                 });
                 continue;
             }
-            let params: &[&(dyn ToSql + Sync)] = &[
-                &item.id,
-                &item.action,
-                &item.payload,
-                &item.retry_count,
-                &item.last_error,
-                &item.tenant_id,
-                &item.origin_terminal_id,
-            ];
-            let result = tx
-                .execute(
-                    "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, tenant_id, origin_terminal_id)
-                     VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
-                     ON CONFLICT (id) DO NOTHING",
-                    params,
-                )
-                .await;
+            // Placeholder until the chunk that carries this item reports
+            // back; every slot is overwritten before the function returns.
+            outcomes.push(super::transport::PushOutcome::Rejected {
+                reason: PG_INSERT_OUTCOME_PLACEHOLDER.to_owned(),
+            });
+            accepted.push(index);
+        }
+
+        for chunk in accepted.chunks(PG_INSERT_CHUNK_ROWS) {
+            // Same shape as the per-item INSERT, widened to one `($n, ...)`
+            // tuple per chunk row. `status` stays the literal
+            // `'pending'` (not a bind) and the upsert stays
+            // `ON CONFLICT (id) DO NOTHING`: a duplicate id is accepted
+            // without overwriting the existing row, exactly as before.
+            let params = pg_insert_params(items, chunk);
+            let sql = pg_insert_sql(params.len());
+            let result = tx.execute(&sql, &params).await;
+            drop(params);
 
             match result {
-                Ok(_) => outcomes.push(super::transport::PushOutcome::Accepted),
-                Err(e) => outcomes.push(super::transport::PushOutcome::Rejected {
-                    reason: format!("pg insert failed: {e}"),
-                }),
+                Ok(_) => {
+                    for &index in chunk {
+                        outcomes[index] = super::transport::PushOutcome::Accepted;
+                    }
+                }
+                Err(e) => {
+                    for &index in chunk {
+                        outcomes[index] = super::transport::PushOutcome::Rejected {
+                            reason: format!("pg insert failed: {e}"),
+                        };
+                    }
+                }
             }
         }
 
@@ -638,6 +875,7 @@ impl PgTransport {
                     priority: kasirmu_core::offline::SyncPriority::Normal,
                     // NULL stays NULL: "unknown origin", never a default.
                     origin_terminal_id: row.get("origin_terminal_id"),
+                    sale_id: row.get("sale_id"),
                 }
             })
             .collect();

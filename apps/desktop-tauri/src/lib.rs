@@ -1501,7 +1501,7 @@ pub fn run() {
             // desktop it threw "command not found" -- useVersionStatus caught that and displayed
             // the app version as 0.0.0, while UpdateBanner's throw aborted the same try block that
             // decides whether to show the rollback-recovery banner, so that feature never fired.
-            // mobile-tauri has registered `version` all along (lib.rs:409).
+            // mobile-tauri has registered `version` all along (mobile-tauri/src/lib.rs:1134).
             commands::health::version,
             commands::health::version_scoped,
             commands::health::get_device_id,
@@ -1580,6 +1580,7 @@ pub fn run() {
             commands::void::void_sale_scoped,
             commands::hardware::print_sales_receipt_scoped,
             commands::hardware::print_edc_settlement_slip_scoped,
+            commands::hardware::print_kasbon_settlement_slip_scoped,
             commands::fiscal::get_document_number_sequence_scoped,
             commands::fiscal::upsert_document_number_sequence_scoped,
             commands::fiscal::list_document_number_sequences_scoped,
@@ -1681,6 +1682,7 @@ pub fn run() {
             commands::reports::get_low_stock_alerts_scoped,
             commands::reports::get_category_breakdown_scoped,
             commands::reports::get_payment_method_breakdown_scoped,
+        commands::reports::get_piutang_collections_scoped,
             commands::reports::get_voided_sales_summary_scoped,
             commands::reports::get_voided_items_scoped,
             commands::reports::get_basket_size_scoped,
@@ -1827,6 +1829,15 @@ pub fn run() {
             commands::payables::create_payable_scoped,
             commands::payables::record_payable_payment_scoped,
             commands::payables::write_off_payable_scoped,
+            commands::payables::get_ap_aging_report_scoped,
+            commands::receivables::list_receivables_scoped,
+            commands::receivables::list_customer_receivables_scoped,
+            commands::receivables::get_receivable_scoped,
+            commands::receivables::get_customer_receivables_summary_scoped,
+            commands::receivables::create_receivable_scoped,
+            commands::receivables::record_receivable_payment_scoped,
+            commands::receivables::write_off_receivable_scoped,
+            commands::receivables::get_ar_aging_report_scoped,
             commands::locations::list_locations_scoped,
             commands::locations::get_location_profile_scoped,
             commands::locations::get_primary_location_scoped,
@@ -1879,7 +1890,6 @@ pub fn run() {
             commands::sync::resolve_sync_conflict_scoped,
             commands::sync::pg_sync_start_scoped,
             commands::sync::pg_sync_stop_scoped,
-            commands::sync::pending_sync_count_scoped,
             commands::sync::request_sync_token_scoped,
             commands::sync::get_sync_plan_scoped,
             commands::sync::test_sync_connection,

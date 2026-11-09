@@ -2257,3 +2257,67 @@ fn a_db_failure_in_the_coverage_probe_does_not_silently_allow_the_last_scoped_ar
         "the coverage guard must surface the DB fault, got {err:?}"
     );
 }
+
+#[test]
+fn ensure_active_tax_rate_ids_batched_validation_parity() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let r1 = s.create_tax_rate("Rate 1", 500, false, false).unwrap();
+    let r2 = s.create_tax_rate("Rate 2", 1000, false, false).unwrap();
+    let r3 = s.create_tax_rate("Rate 3", 1500, false, false).unwrap();
+
+    let currency = Currency::from_str("USD").unwrap();
+    let money = crate::Money {
+        minor_units: 1000,
+        currency,
+    };
+    s.create_product("SKU-1", "Product 1", money, None, None, 0, None)
+        .unwrap();
+    s.create_category("cat-1", "Cat One", "#fff", "").unwrap();
+
+    // 1. Empty list succeeds
+    s.set_product_tax_rates("SKU-1", &[]).unwrap();
+    assert_eq!(
+        s.get_product_tax_rates("SKU-1").unwrap(),
+        Vec::<String>::new()
+    );
+
+    // 2. Single active id succeeds
+    s.set_product_tax_rates("SKU-1", std::slice::from_ref(&r1.id))
+        .unwrap();
+    assert_eq!(
+        s.get_product_tax_rates("SKU-1").unwrap(),
+        vec![r1.id.clone()]
+    );
+
+    // 3. Batched multi-id list succeeds
+    let multi = vec![r1.id.clone(), r2.id.clone(), r3.id.clone()];
+    s.set_product_tax_rates("SKU-1", &multi).unwrap();
+    assert_eq!(s.get_product_tax_rates("SKU-1").unwrap(), multi);
+
+    s.set_category_tax_rates("cat-1", &multi).unwrap();
+    assert_eq!(s.get_category_tax_rates("cat-1").unwrap(), multi);
+
+    // 4. Missing ID in multi-id list returns NotFound for that ID
+    let missing_err = s
+        .set_product_tax_rates(
+            "SKU-1",
+            &[r1.id.clone(), "missing-tax-id".into(), r2.id.clone()],
+        )
+        .unwrap_err();
+    assert!(
+        matches!(missing_err, CoreError::NotFound { entity: "tax_rate", ref id } if id == "missing-tax-id"),
+        "expected NotFound for missing-tax-id, got {missing_err:?}"
+    );
+
+    // 5. Archived ID in multi-id list returns NotFound for archived ID
+    s.delete_tax_rate(&r2.id).unwrap();
+    let archived_err = s
+        .set_category_tax_rates("cat-1", &[r1.id.clone(), r2.id.clone()])
+        .unwrap_err();
+    assert!(
+        matches!(archived_err, CoreError::NotFound { entity: "tax_rate", ref id } if id == &r2.id),
+        "expected NotFound for archived rate, got {archived_err:?}"
+    );
+}

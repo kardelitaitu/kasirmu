@@ -6,7 +6,7 @@ import { useToast } from '@/components/Toast';
 import { requiredLocalized } from '@/components';
 import { LocalizedErrorBoundary } from '@/components/LocalizedErrorBoundary';
 import { useLocalization } from '@fluent/react';
-import { plainErrorMessage } from '@/utils/app-error';
+import { l10nErrorMessage, plainErrorMessage } from '@/utils/app-error';
 import { isEditableTarget } from '@/utils/isEditableTarget';
 import { isAnyAriaModalOpen } from '@/utils/modal-guard';
 import { isCommandModifier } from '@/utils/keyboard-modifier';
@@ -20,9 +20,10 @@ import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useInvalidSession } from '@/hooks/useInvalidSession';
 import { useFeatures, FEATURES } from '@/hooks/useFeatures';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { lookupProductBySkuScoped, lookupByBarcodeScoped, createProductScoped, updateProductScoped, adjustStockScoped, recordProductSearchScoped, type ProductDto, type CategoryDto } from '@/api/products';
+import { lookupProductBySkuScoped, lookupByBarcodeScoped, createProductScoped, createCategoryScoped, updateProductScoped, adjustStockScoped, recordProductSearchScoped, type ProductDto, type CategoryDto } from '@/api/products';
 import { hasGrantedPermission } from '@/registries/page-registry';
-import { openProductImagesScoped } from '@/api/browser';
+import { openProductImagesOnTablet, openProductImagesScoped } from '@/api/browser';
+import { isTabletShell } from '@/utils/shellKind';
 import { loadCatalog, invalidateCatalog } from '@/utils/catalog-cache';
 import { usePagedList } from '@/hooks/usePagedList';
 import { listCustomersScoped, type CustomerDto } from '@/api/customers';
@@ -136,7 +137,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   const {
     lines, total, subtotal, discountPercent, discountLabel, discountAmount,
     tipAmount, serviceChargeAmount,
-    addProduct, removeLine, updateQty, updateLinePrice, assignCourse, setDiscount, resetCart,
+    addProduct, removeLine, updateQty, changeQty, updateLinePrice, assignCourse, setDiscount, resetCart,
   } = usePosState();
 
   const lineCount = lines.reduce((a, l) => a + l.qty, 0);
@@ -198,9 +199,9 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
         // re-fetch only happens on the next explicit cart mutation.
         for (const sku of missing) pendingTrackFetchRef.current.delete(sku);
       });
-    // sessionToken is read at :189. Without it, a cart mutation after a cashier hot-swap re-ran
+    // sessionToken is read at :184. Without it, a cart mutation after a cashier hot-swap re-ran
     // this effect against the destroyed token, hit the catch above, and left trackSerialMap
-    // undefined for those SKUs -- which per the comment at :201 keeps the serial-capture UI
+    // undefined for those SKUs -- which per the comment just above keeps the serial-capture UI
     // hidden. Serial-tracked products would silently stop capturing serial numbers mid-shift,
     // and the effect would not retry until another explicit cart mutation.
   }, [lines, trackSerialMap, sessionToken]);
@@ -213,12 +214,20 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   const [showQuickReturn, setShowQuickReturn] = useState(false);
   const [quickReturnBarcode, setQuickReturnBarcode] = useState('');
   const [quickReturnLoading, setQuickReturnLoading] = useState(false);
+  /** Synchronous mirror of `quickReturnLoading` — see the re-entry guard above. */
+  const quickReturnLoadingRef = useRef(false);
   const [quickReturnSale, setQuickReturnSale] = useState<SaleDetail | null>(null);
   const [showQuickReturnRefund, setShowQuickReturnRefund] = useState(false);
 
   const handleQuickReturnSubmit = useCallback(async () => {
     const barcode = quickReturnBarcode.trim();
     if (!barcode) return;
+    // Re-entry guard: a READ, so nothing is written -- but the second lookup can answer
+    // after the first has opened the refund modal, and it would then re-open it over a
+    // screen the cashier has already moved on from, or toast "not found" over a receipt
+    // that was found.
+    if (quickReturnLoadingRef.current) return;
+    quickReturnLoadingRef.current = true;
     setQuickReturnLoading(true);
     try {
       const sale = await lookupSaleByReceiptBarcodeScoped(sessionToken, barcode);
@@ -235,14 +244,11 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       addToast({ message: requiredLocalized(l10n, 'retail-quick-return-error'), type: 'error' });
       playError();
     } finally {
+      quickReturnLoadingRef.current = false;
       setQuickReturnLoading(false);
     }
   }, [quickReturnBarcode, addToast, l10n, playError, sessionToken]);
 
-  const handleQuickReturnRefundDone = useCallback(() => {
-    setShowQuickReturnRefund(false);
-    setQuickReturnSale(null);
-  }, []);
 
   // P0-1 (retail theming audit, archived by d0fe74814 — the doc is gone): replace the
   // shadow useState that read a per-component localStorage key and matched
@@ -379,6 +385,36 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   const [pendingProduct, setPendingProduct] = useState<ProductDto | null>(null);
   const [qtyInput, setQtyInput] = useState('1');
 
+  // The one ceiling for this picker, shared by the display and the commit.
+  //
+  // WHY IT IS A BUSINESS BOUND AND NOT A SCHEMA ONE: the DB CHECK on cart/sale
+  // line quantity is `qty > 0` (the `sale_lines` CHECK constraint in 20260813_init.sql)
+  // with no upper limit, so
+  // nothing downstream would have caught an absurd value. The only other gate,
+  // the stock check in `handleConfirmQty`, is skipped entirely for a product
+  // whose `stock_qty` is null — every service item and anything inventory does
+  // not cover. Measured before the fix: typing 999999 into the box committed
+  // exactly 999999 units.
+  //
+  // WHY IT LIVES HERE AND NOT ONLY AT THE COMMIT: the modal renders its total
+  // from the raw input (RetailModals.tsx:655), so a bound applied only at
+  // commit leaves a wrong MONEY figure on screen the cashier reads as a price.
+  // Clamping on the write bounds both paths at one place, which is the point —
+  // two ceilings would drift.
+  const MAX_QTY_PER_LINE = 9999;
+  const clampQtyInput = useCallback((raw: string) => {
+    // Keep the box editable while the user is mid-typing: an empty or partial
+    // string parses to 0, which the lower bound turns into '1'. Only clamp the
+    // upper end, so backspacing still behaves.
+    const n = parseInt(raw, 10);
+    if (Number.isNaN(n)) return '1';
+    return String(Math.min(MAX_QTY_PER_LINE, Math.max(1, n)));
+  }, []);
+
+  const handleQtyInputChange = useCallback((raw: string) => {
+    setQtyInput(clampQtyInput(raw));
+  }, [clampQtyInput]);
+
   const handleOpenQtyPicker = useCallback((p: ProductDto) => {
     setPendingProduct(p);
     setQtyInput('1');
@@ -387,7 +423,24 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
 
   const handleConfirmQty = useCallback(() => {
     if (!pendingProduct) return;
-    const qty = Math.max(1, parseInt(qtyInput, 10) || 1);
+    // CLAMPED AT THE COMMIT SITE. The lower bound alone was the old rule, so a
+    // quantity typed into the picker box — which reaches `setQtyInput` raw as
+    // `onInputChange` with no validation (RetailModals.tsx:618 -> :2046) — went
+    // straight through for any product whose `stock_qty` is null, which is every
+    // service item and anything inventory does not cover. Measured: typing
+    // 999999 committed exactly 999999 units.
+    //
+    // The ceiling is a BUSINESS bound, not a schema one: the DB CHECK is
+    // `qty > 0` (the `sale_lines` CHECK constraint in 20260813_init.sql) with no upper
+  // limit, so nothing
+    // downstream would have caught it. A till quantity has no legitimate reading
+    // at 10,000 units — an operator who fat-fingers a 9 into a box meaning 1
+    // cannot tell 9 from 999999 on a touch screen, and the modal's own total
+    // line (RetailModals.tsx:655) multiplies the unit price by the raw value, so
+    // the wrong figure is on screen as MONEY before the confirm is even pressed.
+    // Backstop: the writer above already clamps, so this only fires for a
+    // value that arrived by another path.
+    const qty = Math.min(MAX_QTY_PER_LINE, Math.max(1, parseInt(qtyInput, 10) || 1));
     if (pendingProduct.stock_qty != null) {
       const inCart = linesRef.current.filter((l) => l.sku === pendingProduct.sku).reduce((s, l) => s + l.qty, 0);
       if (inCart + qty > pendingProduct.stock_qty) {
@@ -400,6 +453,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     setShowQtyPicker(false);
     setPendingProduct(null);
   }, [pendingProduct, qtyInput, addProduct, addToast, l10n, announce]);
+
 
   // ── Keyboard shortcut overlay ────────────────────────────────────
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -588,16 +642,57 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
         });
       }
     } catch (err) {
+      // ROLL THE OPTIMISTIC EDIT BACK. The product was replaced by the
+      // `setProducts(prevList.map(… updatedProduct …))` call above, and the editor closed by
+      // the `setEditingProduct(null)` beside it, before the write was attempted — so a
+      // refusal left the grid showing the operator's new values while the server kept the
+      // old ones, until the next reload, long after the toast had gone. `prev` was captured
+      // for exactly this and was never used; same defect as the add path one function down.
+      // (Anchored by those two expressions: the numbers this note carried were all stale.)
+      if (prev) {
+        setProducts((prevList) =>
+          prevList.map((p) => (p.sku === prev.sku ? prev : p)),
+        );
+      }
       addToast({ message: plainErrorMessage(err, requiredLocalized(l10nRef.current, 'retail-toast-save-product-failed')), type: 'error' });
     }
   }, [products, categories, addToast, sessionToken, canEditCost]);
 
-  const handleSaveNewCategory = useCallback((newCat: CategoryDto) => {
-    setCategories((prev) => [...prev, newCat]);
-    // PERF-08: catalog mutated — next load must refetch.
-    invalidateCatalog(sessionToken);
+  // ADR #36 for CATEGORIES. This handler used to append to React state and call
+  // `invalidateCatalog` without ever awaiting a write — `createCategoryScoped` exists
+  // (api/products.ts:285) and the whole retail feature called it ZERO times, so a category
+  // the operator added lived only in local state and vanished on the next reload. That is
+  // the same defect class the ADR #36 note below records for products, still open here.
+  const handleSaveNewCategory = useCallback(async (newCat: CategoryDto) => {
     setActiveCategory(newCat.id);
-  }, [setCategories, sessionToken]);
+    try {
+      const created = await createCategoryScoped(sessionToken, {
+        id: newCat.id,
+        name: newCat.name,
+        colour: newCat.colour ?? '',
+        icon: newCat.icon ?? '',
+      });
+      // Adopt the SERVER's id when it returns one: the modal mints a client-side
+      // `cat-<timestamp>` (AddCategoryModal.tsx:45), and the products that reference this
+      // category carry whatever id is in state, so keeping the local one when the server
+      // disagrees would file those products under a category that does not exist.
+      const persisted = created?.id && created.id !== newCat.id
+        ? { ...newCat, id: created.id }
+        : newCat;
+      setCategories((prev) => [...prev, persisted]);
+      // PERF-08: catalog mutated — next load must refetch.
+      invalidateCatalog(sessionToken);
+      setActiveCategory(persisted.id);
+    } catch (err) {
+      // Nothing was persisted, so nothing is added to the grid. The operator keeps the
+      // category list they had and is told why.
+      setActiveCategory(null);
+      addToast({
+        message: plainErrorMessage(err, requiredLocalized(l10nRef.current, 'retail-toast-save-product-failed')),
+        type: 'error',
+      });
+    }
+  }, [setCategories, sessionToken, addToast]);
 
   // ADR #36 D5: the retail add modal now persists through
   // `create_product_scoped` (previously the product only lived in local
@@ -629,12 +724,28 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
         defaultSupplierId: newProd.default_supplier_id ?? null,
       });
     } catch (err) {
+      // ROLL THE OPTIMISTIC ROW BACK. The row was inserted at the top of this callback
+      // (`setProducts((prev) => [newProd, ...prev])`) before the create was attempted, so a
+      // refusal would otherwise leave the
+      // operator looking at a product they believe is saved — and it vanishes on the next
+      // reload. That is the same class the ADR #36 comment above describes fixing
+      // ("previously the product only lived in local React state and vanished on reload"),
+      // reintroduced on the FAILURE path. The toast says what failed; this makes the grid
+      // agree with the server.
+      setProducts((prev) => prev.filter((p) => p.sku !== newProd.sku));
       addToast({ message: plainErrorMessage(err, requiredLocalized(l10nRef.current, 'retail-toast-save-product-failed')), type: 'error' });
     }
   }, [categories, addToast, sessionToken, canEditCost]);
 
   const filteredProducts = useMemo(() => {
-    let list = products.filter((p) => p.product_type === 'retail');
+    // `'service'` items belong on this grid too. They are a real, backend-supported
+    // product type — `products_stock_query.rs:403` reads `is_service` and SKIPS stock
+    // deduction for them — and `ProductManagementScreen.tsx:684` lets a merchant create
+    // one. But nothing consumed them: this grid filtered on `'retail'` alone, the
+    // restaurant grid on `'restaurant'` alone, so a service item (an installation fee, an
+    // hourly rate) could be created and then never added to a sale in EITHER workspace.
+    // A type the UI can write but no screen can sell is the write-only shape.
+    let list = products.filter((p) => p.product_type === 'retail' || p.product_type === 'service');
     if (activeCategory) {
       const activeCatObj = categories.find((c) => c.id === activeCategory);
       list = list.filter(
@@ -777,23 +888,62 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   const handleViewProductImages = useCallback((p: ProductDto) => {
     // ADR #38 D3: opens the OS default browser in a new tab at a Google
     // Images search for the product name (+ brand). Best-effort.
-    openProductImagesScoped(sessionToken, p.sku).catch(() => {});
+    //
+    // TWO DOORS, one per shell (measured 2026-10-25): the desktop registers the
+    // store-scoped twin; the tablet registers `open_product_images`, a global-db
+    // read whose own module doc names the desktop command as the other half.
+    // Neither shell registers both. Calling the scoped twin on tablet threw, and
+    // the catch turned that into a search on the raw SKU -- a worse query than
+    // the name+brand the backend builds, and silent.
+    //
+    // The guard is at the SITE, not inside a shared wrapper, because
+    // `verify-scoped-reads.py` follows a wrapper to its call sites and grades the
+    // site: a branch one module down is invisible to it, and a tablet-only
+    // command reached unguarded from a shared screen is the C40 shape.
+    if (isTabletShell()) {
+      openProductImagesOnTablet(p.sku).catch(() => {});
+    } else {
+      openProductImagesScoped(sessionToken, p.sku).catch(() => {});
+    }
   }, [sessionToken]);
 
-  /** Stock-aware cart qty increase — checks stock_qty before incrementing. */
+  /**
+   * Stock-aware cart qty increase — checks stock_qty before incrementing.
+   *
+   * READS THE LIVE ROW, not the rendered prop. Both this guard and the write used to
+   * derive from `line`, the object captured when the row last rendered — and both call
+   * sites pass the SAME stale object when two taps land in one React batch (a fast
+   * double-tap on a touch till is one gesture, so this is the normal case).
+   *
+   * MEASURED: two batched taps asked for qty 2 twice (`updateQty(id, 2)` then
+   * `updateQty(id, 2)`), so `updateQty` — which OVERWRITES the row rather than
+   * incrementing (`usePosState.ts:138`) — ended at 2 after two presses. The cashier
+   * pressed `+` twice and the cart went up by one.
+   *
+   * The stock guard was stale for the same reason and is the more serious half: it tested
+   * `line.qty + 1` against remaining stock, so rapid taps could walk past the ceiling the
+   * guard exists to enforce on a SKU that is nearly out.
+   */
   const handleIncreaseQty = useCallback((line: { sku: string; id: LineId; qty: number }) => {
+    // The row as the cart ACTUALLY holds it. `linesRef` is assigned on every render,
+    // so it always carries the committed state rather than a render snapshot.
+    const current = linesRef.current.find((l) => l.id === line.id) ?? line;
     const product = products.find((p) => p.sku === line.sku);
     if (product?.stock_qty != null) {
       const otherLinesQty = linesRef.current
         .filter((l) => l.sku === line.sku && l.id !== line.id)
         .reduce((s, l) => s + l.qty, 0);
-      if (otherLinesQty + line.qty + 1 > product.stock_qty) {
+      if (otherLinesQty + current.qty + 1 > product.stock_qty) {
         addToast({ message: requiredLocalized(l10n, 'retail-toast-insufficient-stock', { name: product.name }), type: 'warning' });
         return;
       }
     }
-    updateQty(line.id, line.qty + 1);
-  }, [products, updateQty, addToast, l10n]);
+    // The DELTA form, so the increment resolves against whatever the cart holds when
+    // React flushes it — not the `qty` this row rendered with. Reading `current.qty`
+    // fixes the stock GUARD; passing a delta fixes the WRITE, and only the write
+    // being a delta makes two batched taps accumulate to two increments.
+    changeQty(line.id, 1);
+  }, [products, changeQty, addToast, l10n]);
 
   /** Open the modifier editor for a cart line. */
   const handleEditModifiers = useCallback((line: CartLine) => {
@@ -859,10 +1009,23 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   // lands last and applies the PREVIOUS store's settings.
   //
   // THE CONSEQUENCE IS MONEY, at three sites. `storeSettings.currency` is passed to
-  // minorUnitExponent() when parsing the OPENING drawer balance (:930), the CLOSING
-  // balance (:948) and the manual discount (:1032). The exponent is 0 for IDR and 2
-  // for USD, so a stale currency misreads those amounts by a factor of 100. That is
-  // the failure mode the MONEY-02 / MONEY-05 notes at :902 protect against -- they
+  // `parseMoneyInput` when parsing the OPENING drawer balance (`openingBalance` in
+  // handleOpenShift), the CLOSING balance (`closingBalance` in handleConfirmCloseShift)
+  // and the manual discount (`discountRpInput`) — all three found by IDENTIFIER, not by
+  // line number. ⚠️ They were cited first as lines 930 / 948 / 1032, then as 1140 /
+  // 1158 / 1242, and every rewrite moved the very lines it was citing: this comment
+  // sits ABOVE all three sites, so each added line shifted them. A number that the act
+  // of writing invalidates is not an anchor. The three symbols are unique in this file.
+  // (Those figures are spelled "line N" and NOT ":N" on purpose — a bare colon-number
+  // in a comment IS a live citation to the guard that polices this file, which is how
+  // this note acquired three of its own.)
+  // The cause of the original drift: the SKU/barcode block was inserted above the money
+  // handlers and pushed them down ~210 lines. `minorUnitExponent` is no longer called
+  // here at all — `parseMoneyInput` replaced it, so the name survives only in this
+  // comment, which is why nobody re-derived the numbers.
+  // The exponent is 0 for IDR and 2 for USD, so a stale currency misreads those amounts
+  // by a factor of 100. That is the failure mode the MONEY-02 / MONEY-05 notes protect
+  // against (search "MONEY-02"; the old cite pointed at the stock guard) -- they
   // fixed the hardcoded x100 and left the currency itself able to go stale.
   //
   // PINNED, and the two attempts to pin it are worth reading before touching this.
@@ -896,6 +1059,9 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
 
   const [activeShift, setActiveShift] = useState<ShiftDto | null>(null);
   const [shiftLoading, setShiftLoading] = useState(true);
+  // True when the active-shift read THREW. Distinct from "read successfully and
+  // found no shift", which is what `activeShift === null` used to mean on its own.
+  const [shiftLoadFailed, setShiftLoadFailed] = useState(false);
   const [showOpenShift, setShowOpenShift] = useState(false);
   const [showCloseShift, setShowCloseShift] = useState(false);
   const [openingBalance, setOpeningBalance] = useState('');
@@ -903,6 +1069,9 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   const [shiftNotes, setShiftNotes] = useState('');
   const [openingShift, setOpeningShift] = useState(false);
   const [closingShift, setClosingShift] = useState(false);
+  /** Synchronous mirrors of the shift busy flags — see their re-entry guards below. */
+  const openingShiftRef = useRef(false);
+  const closingShiftRef = useRef(false);
   const [closeShiftError, setCloseShiftError] = useState<string | null>(null);
   const [closedShiftSummary, setClosedShiftSummary] = useState<ShiftDto | null>(null);
 
@@ -957,11 +1126,27 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   // re-rendering a stale element and the effect is irrelevant.
   const shiftSeq = useRef(0);
 
-  useEffect(() => {
+  /**
+   * Read the active shift, with the staleness guard this screen has always had.
+   *
+   * EXTRACTED FROM THE MOUNT EFFECT so a MUTATING path can refresh it. It was a
+   * single effect keyed on `sessionToken`, which is correct for the read at mount
+   * and wrong for every other read: nothing re-ran it afterwards, so anything that
+   * changed the shift's money left the till — and the close-shift flow it feeds —
+   * showing pre-mutation totals.
+   *
+   * The first defect this exposed (round 118): a QUICK-RETURN REFUND. `ShiftDto`
+   * carries `totalRefundsMinor`, `totalSalesMinor` and `totalCashMinor`
+   * (api/shifts.ts:18-23), and `handleQuickReturnRefundDone` cleared the modal
+   * without re-reading. The drawer was then reconciled against figures that
+   * excluded the refund the cashier had just processed.
+   */
+  const loadActiveShift = useCallback(() => {
     if (!sessionToken) return;
     const seq = ++shiftSeq.current;
     const stale = () => shiftSeq.current !== seq;
     setActiveShift(null);
+    setShiftLoadFailed(false);
     setShiftLoading(true);
     getActiveShiftScoped(sessionToken)
       .then((s) => {
@@ -970,7 +1155,12 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       })
       .catch(() => {
         if (stale()) return;
+        // A FAILED shift read is not the same as "no shift open". Setting null
+        // made the header print "No shift" and made handlePay tell the cashier to
+        // open a shift first — for a read that never answered. Flag it so the
+        // header can say "unknown" instead of asserting an absence.
         setActiveShift(null);
+        setShiftLoadFailed(true);
       })
       .finally(() => {
         if (!stale()) setShiftLoading(false);
@@ -980,21 +1170,56 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     };
   }, [sessionToken]);
 
+  useEffect(() => loadActiveShift(), [loadActiveShift]);
+
+  const handleQuickReturnRefundDone = useCallback(() => {
+    setShowQuickReturnRefund(false);
+    setQuickReturnSale(null);
+    // ⚠️ THE REFUND MOVED MONEY ON THE SHIFT, SO THE SHIFT IS RE-READ.
+    //
+    // This callback is wired to BOTH `onClose` and `onRefunded` (RetailModals.tsx:826-827)
+    // and used to only hide the modal. `ShiftDto` carries `totalRefundsMinor`,
+    // `totalSalesMinor` and `totalCashMinor` (api/shifts.ts:18-23), and this screen read
+    // the shift ONCE at mount — so the close-shift flow the till feeds showed totals that
+    // excluded the refund the cashier had just processed, and the drawer was reconciled
+    // against the wrong figure.
+    //
+    // Round 110's rule applies to which halves of the behaviour change: the DISPLAY half
+    // (what the cashier sees) needed the re-read; the modal state was already right.
+    loadActiveShift();
+  }, [loadActiveShift]);
+
   const handleOpenShift = useCallback(async () => {
     // MONEY-02: exact decimal parse; MONEY-05: scale by the STORE
     // currency's exponent — the drawer holds store currency, and the
     // old hardcoded ×100 inflated IDR (exponent 0) 100x.
     const val = parseMoneyInput(openingBalance, storeSettings.currency);
     if (val === null || val < 0) return;
+    // Re-entry guard, after the money parse. Core REFUSES the replay ("user already has an
+    // open shift", db/shifts.rs:95-107) but the catch below is a bare `catch {}` that
+    // discards core's accurate reason and toasts retail-toast-failed-open-shift -- so the
+    // cashier is told the drawer failed to open when it opened.
+    if (openingShiftRef.current) return;
+    openingShiftRef.current = true;
     setOpeningShift(true);
     try {
       const s = await openShiftScoped(sessionToken, val);
       setActiveShift(s);
       setShowOpenShift(false);
       setOpeningBalance('');
-    } catch {
-      addToast({ message: requiredLocalized(l10n, 'retail-toast-failed-open-shift'), type: 'error' });
+    } catch (err) {
+      // The catch used to be bare, so core's accurate refusal ("user already has an
+      // open shift", db/shifts.rs:95-107) was discarded and the cashier was told the
+      // drawer FAILED to open over a shift that was already open. l10nErrorMessage
+      // maps the typed AppError onto the shared app-error-* copy instead, so a
+      // Validation reads as "Please check the information you entered" rather than as
+      // a failure; the screen's own key stays as the fallback for anything untyped.
+      addToast({
+        message: l10nErrorMessage(err, l10n, 'retail-toast-failed-open-shift'),
+        type: 'error',
+      });
     } finally {
+      openingShiftRef.current = false;
       setOpeningShift(false);
     }
   }, [openingBalance, addToast, l10n, sessionToken, storeSettings.currency]);
@@ -1004,6 +1229,10 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     // MONEY-02 + MONEY-05: exact parse at the store currency exponent.
     const val = parseMoneyInput(closingBalance, storeSettings.currency);
     if (val === null || val < 0) return;
+    // Same re-entry shape as the open: core refuses a second close of the same shift
+    // (:193-198) and this handler renders that refusal as the close failing.
+    if (closingShiftRef.current) return;
+    closingShiftRef.current = true;
     setClosingShift(true);
     setCloseShiftError(null);
     try {
@@ -1013,6 +1242,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     } catch (e) {
       setCloseShiftError((e instanceof Error ? e.message : String(e)) ?? (requiredLocalized(l10n, 'pos-close-shift-failed')));
     } finally {
+      closingShiftRef.current = false;
       setClosingShift(false);
     }
   }, [activeShift, closingBalance, shiftNotes, l10n, sessionToken, storeSettings.currency]);
@@ -1167,12 +1397,24 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     }
     try {
       await overrideLinePriceScoped(sessionToken, cId, overrideTarget.id, newPriceMinor);
-      updateLinePrice(overrideTarget.id, {
+      // READ THE RESULT, and note the ordering: the server has ALREADY accepted the
+      // override, so a refused local write means the recorded sale and the watched
+      // total now disagree. Silently ignoring it is the worst of the three call
+      // sites for that reason. (`usePosCartActions.handleOverrideConfirm` carries the
+      // same fix.)
+      //
+      // The catch below also stops passing a hardcoded English fallback: this file
+      // already carries `retail-toast-override-failed`, and an Indonesian operator
+      // read English on the failure path.
+      const applied = updateLinePrice(overrideTarget.id, {
         minor_units: newPriceMinor,
         currency: overrideTarget.unit_price.currency,
       });
+      if (!applied) {
+        addToast({ message: requiredLocalized(l10n, 'pos-toast-line-price-currency-mismatch'), type: 'error' });
+      }
     } catch (err) {
-      const msg = plainErrorMessage(err, 'Override failed');
+      const msg = plainErrorMessage(err, requiredLocalized(l10n, 'retail-toast-override-failed'));
       addToast({ message: msg, type: 'error' });
     } finally {
       setOverrideTarget(null);
@@ -1205,11 +1447,13 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       .catch(() => { if (cancelled) return; addToast({ message: requiredLocalized(l10nRef.current, 'retail-toast-customers-failed'), type: 'error' }); setCustomerSearchResults([]); })
       .finally(() => { if (cancelled) return; setLoadingCustomers(false); });
     return () => { cancelled = true; };
-    // sessionToken is read at :1053. The trailing comment deliberately routes l10n through a ref
+    // sessionToken is read by the `listCustomersScoped(sessionToken)` call above. The trailing
+  // comment deliberately routes l10n through a ref
     // so keystrokes do not refetch, which is correct -- but the token was left out entirely, so
     // opening the customer modal after a hot-swap listed customers with a destroyed session and
     // surfaced the "customers failed" toast. Adding it re-fetches only when the modal is open,
-    // since the early return at :1050 still short-circuits the closed case.
+    // since the effect's OWN opening guard (`if (!showCustomerSearch) … return;`) still
+  // short-circuits the closed case.
   }, [showCustomerSearch, addToast, sessionToken]); // l10n via ref — fetch only when modal opens
 
   // Filter cached customers locally on keystroke — avoids redundant API calls
@@ -1252,8 +1496,21 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   const [showHeldCartsList, setShowHeldCartsList] = useState(false);
   const [heldCartsList, setHeldCartsList] = useState<HeldCartRow[]>([]);
 
+  //
+  // Re-entry guard for handleHold. The Hold/Resume button (RetailFnBar, its `disabled`
+  // expression `!heldCartId && linesLength === 0`) is only
+  // `disabled` on an EMPTY cart, and React does not re-render between two clicks that land
+  // inside one await — so a double-click, or F4 twice before the first settles, issued TWO
+  // holdCartScoped writes for one sale and left the cashier with a duplicate tab to find
+  // and delete. `useAutoQr` guards the same way (`reissuingRef`); so does
+  // `usePosHeldCarts.handleOpenBill` now, via `openingBillRef` — the claim this comment
+  // used to make about both, before round 126 measured that neither had one.
+  const holdingRef = useRef(false);
+
   const handleHold = useCallback(async () => {
     if (lines.length === 0) return;
+    if (holdingRef.current) return;
+    holdingRef.current = true;
     try {
       const cartData = JSON.stringify({
         lines: lines.map((l) => ({ sku: l.sku, name: l.name, category: l.category, qty: l.qty, unit_price: l.unit_price })),
@@ -1274,6 +1531,10 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       addToast({ message: requiredLocalized(l10n, 'retail-toast-order-held'), type: 'success' });
     } catch {
       addToast({ message: requiredLocalized(l10n, 'retail-toast-failed-hold'), type: 'error' });
+    } finally {
+      // Released only once the write settles, so a second press that lands mid-await is
+      // dropped rather than queued.
+      holdingRef.current = false;
     }
   }, [lines, discountPercent, discountLabel, subtotal, resetCart, addToast, l10n, sessionToken]);
 
@@ -1313,8 +1574,8 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       }
       // typeof, not truthiness. This is the only field below that reached
       // setDiscount unchecked, and it is the one the main POS already guards:
-      // `if (typeof data.discountPercent === 'number')` at
-      // features/sales/hooks/usePosHeldCarts.ts:209. A truthiness test also
+      // `if (typeof data.discountPercent === 'number')` in
+      // features/sales/hooks/usePosHeldCarts.ts (anchored by that expression). A truthiness test also
       // passes a STRING, and setDiscount does `Math.round(percent)` --
       // Math.round('abc') is NaN, and Math.max(0, Math.min(100, NaN)) is
       // still NaN because every comparison against NaN is false.
@@ -1329,11 +1590,49 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       }
       await deleteHeldCartScoped(sessionToken, cartId);
       setHeldCartId(null);
+      // DROP THE ROW, the same write `handleDeleteHeldCart` makes.
+      //
+      // The delete above is the commit, and it is the ONLY thing that made this
+      // path correct — the round-118 case pins that a rejected delete reports a
+      // failure rather than a success. What it never did was remove the row from
+      // `heldCartsList`, so the local list kept offering a record the server no
+      // longer holds, with two reachable consequences:
+      //
+      //  1. The reminder popup counts `heldCartsList.length` (the `heldCartCount` prop —
+      //     on <RetailCart> below) — the one
+      //     affordance that tells a cashier 'there are carts on hold'. After
+      //     resuming the last one it still claimed one, and every resume left the
+      //     count inflated by one for the rest of the shift.
+      //  2. That popup's row opens the modal with a bare `setShowHeldCartsList(true)`
+      //     (`onClickHeldCarts` below) —
+      //     no refetch — so the held carts list showed a cart that no
+      //     longer existed. Tapping it ran getHeldCartScoped, got null, and hit
+      //     `if (!full) return;` in the held-cart resume read: no modal change, no toast,
+      //     nothing. A dead control with no way for the cashier to learn why.
+      //     (Anchored by the guard expression, not a line — every number this sentence
+      //     has ever carried is now something else, and reprinting one would just create
+      //     the next stale cite.)
+      //
+      // Filtering by id, not by index or by clearing the list: the resumed cart is
+      // one row among possibly several, and the others must survive.
+      setHeldCartsList((prev) => prev.filter((c) => c.id !== cartId));
       setShowHeldCartsList(false);
     } catch {
       addToast({ message: requiredLocalized(l10n, 'retail-toast-failed-resume'), type: 'error' });
     }
   }, [addProduct, setDiscount, addToast, l10n, sessionToken]);
+
+  /** Open the held-carts list without resuming anything. */
+  const showHeldCartList = useCallback(async () => {
+    try {
+      const carts = await listHeldCartsScoped(sessionToken);
+      const held = carts.filter((c) => c.bill_type === 'hold');
+      setHeldCartsList(held);
+      setShowHeldCartsList(true);
+    } catch {
+      addToast({ message: requiredLocalized(l10nRef.current, 'retail-toast-failed-load-held'), type: 'error' });
+    }
+  }, [addToast, sessionToken]);
 
   const handleResume = useCallback(async () => {
     try {
@@ -1341,6 +1640,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       const held = carts.filter((c) => c.bill_type === 'hold');
       if (held.length === 0) return;
       if (held.length === 1) {
+        // Only auto-resume from a NON-empty browse intent — see the F4 binding.
         await handleResumeCart(held[0]!.id);
         return;
       }
@@ -1376,8 +1676,15 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     listHeldCartsScoped(sessionToken)
       .then((carts) => {
         if (!mounted) return;
-        const held = carts.find((c) => c.bill_type === 'hold');
-        if (held) setHeldCartId(held.id);
+        const held = carts.filter((c) => c.bill_type === 'hold');
+        const first = held[0];
+        if (first) setHeldCartId(first.id);
+        // Also seed the list, not just the id. `heldCartsList` drives the reminder
+        // popup's held-cart row (`onClickHeldCarts`) — the only affordance that tells a cashier
+        // "there are carts on hold". Setting `heldCartId` alone left the popup
+        // claiming there were none until a resume happened to fill the list, so a
+        // reloaded till hid the holds it had just fetched.
+        setHeldCartsList(held);
       })
       .catch(() => { if (mounted) addToast({ message: requiredLocalized(l10nRef.current, 'retail-toast-failed-load-held'), type: 'error' }); });
     return () => { mounted = false; };
@@ -1420,7 +1727,27 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     loadCreditSales();
   }, [loadCreditSales]);
 
+  // Re-entry guard for the credit settle. The row button already disables on
+  // `settlingId === c.saleId` (RetailModals.tsx:387), but that is STATE -- React commits it on
+  // its next render, after the second dispatch of a real double tap. MEASURED: two clicks in
+  // one act() batch both reach the handler (RetailPosScreen.test.tsx 'settles a credit sale
+  // once for a double tap'), and both are SENT.
+  //
+  // The backend does not refuse the replay: `settle_credit_scoped` runs
+  //   UPDATE payments SET settled_at = ?1 WHERE sale_id = ?2 AND method = 'credit'
+  // (crates/kasirmu-bridge/src/settings.rs:657) with no status predicate and no idempotency
+  // key, and it does not check the matched row count -- so it also reports success for a sale
+  // that was already settled or was never a credit sale. A double tap therefore moves
+  // `settled_at` to a LATER timestamp and the first one is lost: the payment record claims the
+  // credit was cleared twice. The round-143 last-write-wins shape, on a payment.
+  //
+  // Per-row, not global, and deliberately so: two DIFFERENT credit rows can be settled
+  // concurrently and must not block each other. The set is mutated in place so the guard is
+  // authoritative at the moment of the second dispatch and needs no re-render.
+  const settlingIdsInFlight = useRef(new Set<string>());
   const handleSettleCredit = useCallback(async (saleId: string) => {
+    if (settlingIdsInFlight.current.has(saleId)) return;
+    settlingIdsInFlight.current.add(saleId);
     setSettlingId(saleId);
     try {
       await settleCreditScoped(sessionToken, saleId);
@@ -1429,6 +1756,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     } catch {
       addToast({ message: requiredLocalized(l10n, 'retail-toast-failed-settle'), type: 'error' });
     } finally {
+      settlingIdsInFlight.current.delete(saleId);
       setSettlingId(null);
     }
   }, [addToast, l10n, sessionToken]);
@@ -1487,17 +1815,68 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     showShortcuts, showCreditList, showClearConfirm, showOpenShift, showCloseShift,
     closedShiftSummary, editingProduct, isAddCategoryOpen, isAddProductOpen, deleteHeldTarget]);
 
+  // A SUB-VIEW is an early return that REPLACES this screen: `if (showSalesHistory)`,
+  // `if (showTables)` and `if (showStockInquiry)` below, each a `return (<LocalizedError
+  // Boundary>…)`; the payment modal is the fourth, `<PaymentModal>`. `isAnyOverlayOpen`
+  // covers the local DIALOGS but none of these, and although their flags sat in the
+  // dependency array below, the handler never READ them — so the retail function keys
+  // stayed live while a replacement screen owned the view. F1 (Pay) opened the payment
+  // dialog for a cart the cashier could not see, and F2/F3/F4 could clear, discount or
+  // re-hold that same invisible cart.
+  //
+  // `showPayment` is included for the same reason it is in the deps: without it the
+  // hotkeys keep acting on the cart BEHIND the payment dialog.
+  const saleViewVisible = !(showPayment && total) && !showSalesHistory &&
+    !showTables && !showStockInquiry;
+
   useEffect(() => {
 
     const handler = (e: KeyboardEvent) => {
       // Guard: block all hotkeys while any aria-modal is open (e.g. WorkspaceSettingsModal)
       if (isAnyModalOpen()) return;
 
-      // Escape: handled per-modal by useFocusTrap (Phase A gave all overlays
-      // aria-modal="true", so isAnyModalOpen() above already returned).
+      // ── Esc: the manifest's `close` action ──────────────────────────────
+      //
+      // `retailShortcuts.ts:54` declares `Esc → close` and the help overlay renders
+      // it with the label `retail-shortcut-close = Close modal / Options`, but
+      // NOTHING in this file consumed it — the only `case 'close':` in the tree is
+      // WarehouseConsole's. So the overlay advertised a key that did nothing. The
+      // parity suite could not see it: it asserts the overlay LISTS every manifest
+      // key and that the function bar derives the F-key labels, and its action list
+      // omits `close` — the label rendered, the behaviour was never exercised.
+      //
+      // Placed BEFORE both guards below, deliberately. The whole point of Esc is to
+      // get out: it must reach the sub-view exit (where `saleViewVisible` is false
+      // and every other key is inert) and it must not be swallowed by
+      // `isAnyOverlayOpen`, which is a guard named for the overlays Esc is meant to
+      // close. A modal that owns the keyboard keeps it — `isAnyModalOpen` above has
+      // already returned, and useFocusTrap handles the per-modal case.
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        // A sub-view is the outermost thing on screen, so it closes first.
+        if (showSalesHistory) { setShowSalesHistory(false); return; }
+        if (showTables) { setShowTables(false); return; }
+        if (showStockInquiry) { setShowStockInquiry(false); return; }
+        // Then the local overlays, in the order they stack.
+        if (showCreditList) { setShowCreditList(false); return; }
+        if (showQuickReturn) { setShowQuickReturn(false); return; }
+        if (showCustomerSearch) { setShowCustomerSearch(false); return; }
+        if (showHeldCartsList) { setShowHeldCartsList(false); return; }
+        if (showShortcuts) { setShowShortcuts(false); return; }
+        return;
+      }
 
       // Guard: block hotkeys while local overlays/dialogs are visible
       if (isAnyOverlayOpen()) return;
+
+      // Guard: block hotkeys while a sub-view has replaced the sale screen. See
+      // `saleViewVisible` above — this is the guard whose ABSENCE let F1 pay for an
+      // invisible cart.
+      if (!saleViewVisible) return;
+
+      // Guard: block hotkeys while a sub-view has replaced the sale screen. See
+      // `saleViewVisible` above — this is the guard whose ABSENCE let F1 pay for an
+      // invisible cart.
 
       // KEY-03: suppress high-impact hotkeys while the user is typing in an
       // input/textarea/select/contenteditable (covers shift notes, customer
@@ -1510,7 +1889,14 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
         case 'F1': if (typing) break; if (e.cancelable) e.preventDefault(); handlePay(); break;
         case 'F2': if (typing) break; if (e.cancelable) e.preventDefault(); if (lines.length > 0) handleRequestClear(); break;
         case 'F3': if (typing) break; if (e.cancelable) e.preventDefault(); if (lines.length > 0) setShowDiscount(true); break;
-        case 'F4': if (typing) break; if (e.cancelable) e.preventDefault(); if (heldCartId) handleResume(); else handleHold(); break;
+        // F4: with a cart in progress the intent is unambiguous — hold it, or
+        // update/clear the tab it was resumed from. With an EMPTY cart there is
+        // nothing to hold and nothing to update, so F4 can only mean "show me the
+        // held carts". Sending that to `handleResume` auto-resumed a lone hold
+        // with no modal, no confirmation and no toast — browsing silently became
+        // a committing action. `handleResume` is therefore gated on there being
+        // something to resume INTO.
+        case 'F4': if (typing) break; if (e.cancelable) e.preventDefault(); if (lines.length === 0) showHeldCartList(); else if (heldCartId) handleResume(); else handleHold(); break;
         case 'F5': if (e.cancelable) e.preventDefault(); skuInputRef.current?.focus(); break;
         case 'F6': if (typing) break; if (e.cancelable) e.preventDefault(); goToSubView(setShowSalesHistory); break;
         case 'F7': if (typing) break; if (e.cancelable) e.preventDefault(); setShowCustomerSearch(true); break;
@@ -1531,7 +1917,13 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   // handleOpenSettings deliberately excluded — F10 removed (handled by AppShell).
-  }, [isAnyModalOpen, isAnyOverlayOpen, showPayment, showOpenShift, showCloseShift, showDiscount, showQtyPicker, showShortcuts, showCustomerSearch, showClearConfirm, showCreditList, showSalesHistory, showStockInquiry, showTables, showHeldCartsList, showQuickReturn, closedShiftSummary, editingProduct, isAddCategoryOpen, isAddProductOpen, handlePay, lines.length, handleRequestClear, handleHold, handleResume, heldCartId, activeShift, session, addToast, onNavigate, goToSubView]);
+  }, [isAnyModalOpen, isAnyOverlayOpen, saleViewVisible, showPayment, total, showOpenShift, showCloseShift, showDiscount, showQtyPicker, showShortcuts, showCustomerSearch, showClearConfirm, showCreditList, showSalesHistory, showStockInquiry, showTables, showHeldCartsList, showQuickReturn, closedShiftSummary, editingProduct, isAddCategoryOpen, isAddProductOpen, handlePay, lines.length, handleRequestClear, handleHold, handleResume, showHeldCartList, heldCartId, activeShift, session, addToast, onNavigate, goToSubView,
+    // Esc is the manifest's `close` action (see its block above). Each of these
+    // state SETTERS is read by that branch, so they belong here — the flags are
+    // already listed, and a setter omitted from a deps array is the stale-closure
+    // shape this file's other handlers already avoid.
+    setShowSalesHistory, setShowTables, setShowStockInquiry, setShowCreditList,
+    setShowQuickReturn, setShowCustomerSearch, setShowHeldCartsList, setShowShortcuts]);
 
   // ── Render ───────────────────────────────────────────────────
 
@@ -1637,6 +2029,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       <RetailHeader
         storeSettings={storeSettings}
         shiftLoading={shiftLoading}
+        shiftLoadFailed={shiftLoadFailed}
         activeShift={activeShift}
         displayName={session?.display_name ?? ''}
         dateStr={dateStr}
@@ -1868,7 +2261,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
           exit: { shouldRender: retailQtyExit.shouldRender, exiting: retailQtyExit.exiting, requestClose: retailQtyExit.requestClose },
           product: pendingProduct ? { name: pendingProduct.name, price: pendingProduct.price } : null,
           input: qtyInput,
-          onInputChange: setQtyInput,
+          onInputChange: handleQtyInputChange,
           onConfirm: handleConfirmQty,
           onCancel: () => retailQtyExit.requestClose(),
         }}

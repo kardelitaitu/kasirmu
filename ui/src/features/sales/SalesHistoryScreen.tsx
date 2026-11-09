@@ -60,21 +60,35 @@ const STATUS_OPTIONS = ['All', 'Completed', 'Pending', 'Voided'] as const;
  */
 const SALES_FETCH_LIMIT = 500;
 
+/** The four states `SaleStatus` serialises to -- see foundation/src/enums.rs:39-47.
+ *  This screen compared against capitalised spellings ('Completed', 'Pending') while the
+ *  wire value is lowercase, so nothing matched. Every sale therefore took the `default`
+ *  branch: the badge fell to the neutral tone AND the label read "Completed" for sales that
+ *  were pending or voided. The same mismatch silently disabled the `status === 'Completed'`
+ *  guards that decide whether the refund action is offered at all.
+ *
+ *  `active` is listed too: SaleStatus has four members and this mapper had three, so even
+ *  after fixing the case an in-progress sale had no label of its own. */
 function statusBadgeVariant(status: string): 'success' | 'warning' | 'danger' | 'info' {
   switch (status) {
-    case 'Completed': return 'success';
-    case 'Pending': return 'warning';
-    case 'Voided': return 'danger';
+    case 'completed': return 'success';
+    case 'pending': return 'warning';
+    case 'voided': return 'danger';
     default: return 'info';
   }
 }
 
 function statusFluentId(status: string): string {
   switch (status) {
-    case 'Completed': return 'sales-history-status-completed';
-    case 'Pending': return 'sales-history-status-pending';
-    case 'Voided': return 'sales-history-status-voided';
-    default: return 'sales-history-status-completed';
+    case 'completed': return 'sales-history-status-completed';
+    case 'pending': return 'sales-history-status-pending';
+    case 'voided': return 'sales-history-status-voided';
+    case 'active': return 'sales-history-status-active';
+    // An unrecognised status must NOT read as "Completed": this is a financial list, and a
+    // sale the operator cannot identify is exactly the row they need to look at. The floor
+    // falls back to an honest "Unknown status" the way TableManagementScreen does
+    // (tables-status-unknown), rather than to the most reassuring of the four states.
+    default: return 'sales-history-status-unknown';
   }
 }
 
@@ -154,9 +168,9 @@ function SwipeableOrderRow({ sale, canVoid, onView, onVoid, cashierName }: Swipe
           <Tooltip content={`Faktur Pajak: ${sale.fakturPajak}`}>
             <span
               className="sales-history-faktur-badge"
-              aria-label={`Faktur Pajak: ${sale.fakturPajak}`}
+              aria-label={`${l10n.getString('sales-history-efaktur')}: ${sale.fakturPajak}`}
             >
-              <Badge variant="info" size="sm">e-Faktur</Badge>
+              <Badge variant="info" size="sm">{l10n.getString('sales-history-efaktur')}</Badge>
             </span>
           </Tooltip>
         )}
@@ -257,6 +271,15 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
   const [staffUnknown, setStaffUnknown] = useState(false);
   const [detail, setDetail] = useState<SaleDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  /**
+   * The open sale's PRIMARY read did not answer.
+   *
+   * The modal cannot render without a sale (the `detailExit.shouldRender && detail` guard), so
+   * this flag is what keeps a failed open distinguishable from one that is still loading or
+   * that the cashier never triggered. Without it a rejected getSaleScoped was an empty catch
+   * and a tap that drew nothing at all.
+   */
+  const [detailLoadFailed, setDetailLoadFailed] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [refundSaleId, setRefundSaleId] = useState<string | null>(null);
   const [refunds, setRefunds] = useState<RefundDto[]>([]);
@@ -275,9 +298,11 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
   const { session, isManager, hasPermission } = useAuth();
 
   // The pengganti action is NOT manager-only. `create_faktur_pengganti_scoped`
-  // requires `sales:process` (kasirmu-bridge/src/history.rs:309) — the permission the
+  // requires `sales:process` (the `require_session_permission(…, permissions::SALES_PROCESS)`
+  // call in kasirmu-bridge/src/history.rs) — the permission the
   // STAFF preset holds and its description says it exists for ("Checkout-operations
-  // role — processes sales… No management access", rbac_presets.rs:162-166). Gating it
+  // role — processes sales… No management access", the STAFF preset in
+  // platform/core/src/rbac_presets.rs). Gating it
   // on `isManager` hid a working action from exactly the people allowed to use it.
   //
   // The VOID action above is the opposite case and keeps `isManager`: voiding requires
@@ -304,6 +329,8 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
   const [stampNsfp, setStampNsfp] = useState('');
   const [stampKodeTransaksi, setStampKodeTransaksi] = useState('01');
   const [stamping, setStamping] = useState(false);
+  /** Synchronous mirror of `stamping` — see the re-entry guard in `handleConfirmStamp`. */
+  const stampingRef = useRef(false);
   const [stampError, setStampError] = useState<string | null>(null);
   const [penggantiLoading, setPenggantiLoading] = useState(false);
 
@@ -384,8 +411,8 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
       // R3: bounded. `SALES_FETCH_LIMIT` is a count ceiling rather than a
       // page window — see the constant for why an offset would break the
       // filters above. The unscoped `listSales` fallback declares no bounds
-      // of its own (`history.rs:61`), so it is left exactly as it was; it
-      // is the no-session path.
+      // of its own (`list_sales_scoped` / `list_sales_scoped_bounded` in history.rs are
+      // the bounded pair), so it is left exactly as it was; it is the no-session path.
       const response = await (sessionToken
         ? listSalesScoped(sessionToken, SALES_FETCH_LIMIT)
         : listSales());
@@ -437,8 +464,17 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
 
   const voidExit = useExitAnimation(!!voidTarget, handleCloseVoid);
 
+  // Re-entry guard, the same one VoidOrdersScreen carries. `voiding` is React state and
+  // commits on the NEXT render, so the second dispatch of a real double tap still enters
+  // this handler. `void_sale` compare-and-sets on `status = 'active'`
+  // (sales_lifecycle.rs:903-914), so the replay is REFUSED and the catch reports
+  // `sales-history-void-error`: "failed to void" over a sale that was voided.
+  const voidPendingRef = useRef(false);
+
   const handleConfirmVoid = useCallback(async () => {
     if (!voidTarget) return;
+    if (voidPendingRef.current) return;
+    voidPendingRef.current = true;
     setVoiding(true);
     setVoidError(null);
     try {
@@ -450,15 +486,17 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
     } catch (err) {
       setVoidError(l10nErrorMessage(err, l10n, 'sales-history-void-error'));
     } finally {
+      voidPendingRef.current = false;
       setVoiding(false);
     }
-    // sessionToken is read at :266 and was missing. `session` was in the array but is never
-    // read in this body -- eslint only reported the missing token until the token was added,
-    // because the rule surfaces one problem per hook, so the unnecessary dep was latent behind
-    // it. `session` comes from useAuth() at :163 (staff identity) and is a different value from
-    // useWorkspace()'s sessionToken at :164; listing one never covered the other. A void is an
-    // audit-trail event: a stale token either fails the permission check outright or, if the old
-    // session were still live, attributes the void to the previous cashier.
+  // sessionToken is read in this body and was missing from the deps. `session` was in
+  // the array but is never read here -- eslint only reported the missing token, because
+  // the rule surfaces one problem per hook, so the unnecessary dep was latent behind it.
+  // `session` comes from `useAuth()` in the component body (staff identity) and is a
+  // different value from `useWorkspace()`’s sessionToken, destructured there too;
+  // listing one never covered the other. A void is an
+  // audit-trail event: a stale token either fails the permission check outright or, if the old
+  // session were still live, attributes the void to the previous cashier.
   }, [voidTarget, voidReason, load, l10n, invalidateCache, sessionToken]);
 
   // ── Client-side filtering + sorting ────────────────────────────
@@ -476,7 +514,11 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
       }
 
       // Status filter.
-      if (statusFilter !== 'All' && s.status !== statusFilter) return false;
+      // Status filter. `statusFilter` holds the chip's display value ('Completed') while
+      // `s.status` is the wire value ('completed'), so comparing them directly matched
+      // nothing and selecting any chip emptied the table. Comparing case-insensitively
+      // keeps the chips and their STATUS_OPTIONS -> fluent-id map exactly as they were.
+      if (statusFilter !== 'All' && s.status.toLowerCase() !== statusFilter.toLowerCase()) return false;
 
       // Cashier filter.
       if (cashierFilter && s.userId !== cashierFilter) return false;
@@ -545,16 +587,28 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
     }
 
     setDetailLoading(true);
+    setDetailLoadFailed(false);
     setRefunds([]);
     setRefundsUnknown(false);
     setLineMargins([]);
     setMarginsUnknown(false);
     try {
-      const [sale, refundData, marginData] = await Promise.all([
+      const [saleRead, refundData, marginData] = await Promise.all([
         // Three calls, three different scoping treatments in one expression: this one was
         // ambient, the next asserts a token with `!`, the third uses the ADR #7 conditional.
         // Now all three resolve from the session when one exists.
-        sessionToken ? getSaleScoped(sessionToken, id) : getSale(id),
+        //
+        // THE PRIMARY READ GOES THROUGH settleRead LIKE ITS TWO SIBLINGS. It used to be a
+        // bare await in a Promise.all whose catch was empty, so a rejected getSaleScoped
+        // took the whole trio down, `detail` stayed null, and the modal's
+        // `detailExit.shouldRender && detail` guard rendered nothing at all: the cashier
+        // tapped a sale and the drawer never opened,
+        // with no message to tell a dead tap from a slow one. Refunds and margins already
+        // reported their own failures; the read that everything else depends on did not.
+        settleRead(
+          'sale',
+          sessionToken ? getSaleScoped(sessionToken, id) : getSale(id),
+        ),
         settleRead('refunds', listRefundsScoped(sessionToken!, id)),
         settleRead(
           'sale_line_margins',
@@ -563,6 +617,20 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
             : Promise.resolve([] as SaleLineMarginDto[]),
         ),
       ]);
+      if (!saleRead.ok) {
+        // An UNANSWERED sale read is not an empty one. Say so: the modal cannot open, so
+        // the toast is the only surface that can carry the news (detailLoadFailed below
+        // drives it), and the operator needs to know to try again rather than keep tapping.
+        setDetail(null);
+        setDetailLoadFailed(true);
+        addToast({
+          message: requiredLocalized(l10n, 'sales-history-detail-load-failed'),
+          type: 'error',
+        });
+        return;
+      }
+      const sale = saleRead.value;
+      setDetailLoadFailed(false);
       // Cache the result for future re-opens (null-safe: getSale can return null)
       if (sale) {
         detailCacheRef.current.set(id, sale);
@@ -572,12 +640,19 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
       setRefunds(refundData.ok ? refundData.value : []);
       setMarginsUnknown(!marginData.ok);
       setLineMargins(marginData.ok ? marginData.value : []);
-    } catch {
-      // IPC unavailable.
+    } catch (err) {
+      // Nothing above can reject now (all three reads are settled), so this is an
+      // unexpected throw — report it rather than leaving the tap looking dead.
+      console.error('openDetail failed', err);
+      setDetailLoadFailed(true);
+      addToast({
+        message: requiredLocalized(l10n, 'sales-history-detail-load-failed'),
+        type: 'error',
+      });
     } finally {
       setDetailLoading(false);
     }
-  }, [sessionToken]);
+  }, [sessionToken, addToast, l10n]);
 
   const closeDetail = useCallback(() => {
     setDetail(null);
@@ -628,7 +703,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
         isInvoice: Boolean(detail.statutoryNumber),
       });
       addToast({
-        message: l10n.getString('sales-history-reprint-success') || 'Receipt reprinted successfully',
+        message: requiredLocalized(l10n, 'sales-history-reprint-success'),
         type: 'success',
       });
     } catch (printErr) {
@@ -645,8 +720,8 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
     } finally {
       setPrinting(false);
     }
-    // sessionToken is read at :406. Because the catch above deliberately swallows everything,
-    // this is the quietest failure in the set: after a hot-swap the reprint presents a dead
+  // sessionToken is read by the reprint call in this body. Because the catch above
+  // deliberately swallows everything, this is the quietest failure in the set: after a
     // token, the call rejects, and the UI shows nothing at all -- no toast, no error, just a
     // button that stops doing anything. Listing the token at least makes the next attempt use
     // a live one.
@@ -681,6 +756,15 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
       setStampError('NSFP must be exactly 13 digits (PER-11/PJ/2025)');
       return;
     }
+    // Re-entry guard, taken AFTER the 13-digit validation so a refused attempt still runs.
+    // stamp_faktur_pajak writes a legally numbered field: the second call re-reads the sale
+    // and, on a sale already stamped with the same NSFP, the outcome is either a refusal
+    // reported as 'sales-history-stamp-error' over a stamp that landed, or -- for a
+    // DIFFERENT nsfp, which the operator can reach by typing while the first is in flight --
+    // a second statutory number written under the first. The state flag is read from the
+    // render that built this closure, so both taps see `stamping === false`.
+    if (stampingRef.current) return;
+    stampingRef.current = true;
     setStamping(true);
     setStampError(null);
     try {
@@ -701,21 +785,42 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
       // ERR-10: the raw backend message used to go straight into this state and
       // was then rendered inside the stamp modal, so a failed stamp showed the
       // operator backend text instead of a mapped, localized sentence. The
-      // void path twelve lines up (:349) already used l10nErrorMessage; this
+      // void path (`handleConfirmVoid`) already used l10nErrorMessage; this
       // arm and the pengganti toast below were the two that missed the sweep.
       setStampError(l10nErrorMessage(err, l10n, 'sales-history-stamp-error'));
     } finally {
+      stampingRef.current = false;
       setStamping(false);
     }
   }, [detail, sessionToken, stampNsfp, stampKodeTransaksi, invalidateCache, load, addToast, l10n]);
 
+  // Re-entry guard for the pengganti write. `penggantiLoading` is STATE -- React commits it
+  // on its next render, after the second tap of a real double tap. MEASURED: two taps in one
+  // act() batch both reach the handler
+  // (SalesHistoryScreen.test.tsx 'creates one faktur pengganti for a double tap').
+  //
+  // This is not a duplicate-row defect and the backend does not refuse it -- it cannot: a
+  // pengganti is a deliberate INCREMENT. `create_faktur_pengganti` reads the stored status,
+  // refuses at MAX_PENGGANTI_STATUS and writes current_status + 1
+  // (crates/kasirmu-core/src/db/faktur_pajak.rs:278-300), and its own test drives two calls in a
+  // row on purpose, asserting 00 -> 01 -> 02 (faktur_pajak_tests.rs:195-205). So an accidental
+  // second revision is indistinguishable from an intentional one.
+  //
+  // The consequence is therefore different in kind: the NSFP is preserved and no row is
+  // duplicated, but the STATUS CODE is a finite sequential slot in a legally numbered series
+  // and it only ever moves FORWARD. One extra tap advances the sale to 02 with no revision 01
+  // ever intended, and there is no decrement path to undo it. A ref, not the state, because
+  // only the ref is authoritative at the moment the second tap runs.
+  const penggantiPendingRef = useRef(false);
   const handleCreatePengganti = useCallback(async () => {
+    if (penggantiPendingRef.current) return;
     if (!sessionToken) {
       // Reported, not dropped. See handleConfirmStamp above.
       addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
       return;
     }
     if (!detail || !detail.fakturPajak) return;
+    penggantiPendingRef.current = true;
     setPenggantiLoading(true);
     try {
       const updated = await createFakturPenggantiScoped(sessionToken, detail.id);
@@ -736,6 +841,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
         type: 'error',
       });
     } finally {
+      penggantiPendingRef.current = false;
       setPenggantiLoading(false);
     }
   }, [detail, sessionToken, invalidateCache, load, addToast, l10n]);
@@ -743,13 +849,32 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
   // ── Statutory Tax Invoice handler ──────────────────────────────────
   const [issuingInvoice, setIssuingInvoice] = useState(false);
 
+  // Re-entry guard for the statutory invoice write -- the SAME defect round 148 fixed on
+  // the receipt surface (PaymentModal, and ReceiptPreview.tsx:249-257 cross-disables its
+  // buttons on `issuingTaxInvoice`). Here `issuingInvoice` drives only the button's
+  // `loading`, and it is STATE: React commits it on its next render, after the second tap of
+  // a real double tap. MEASURED: two taps in one act() batch both reach the handler
+  // (SalesHistoryScreen.test.tsx 'issues a tax invoice once for a double tap').
+  //
+  // The backend does not fully absorb it. `issue_tax_invoice_for_sale` is idempotent ONCE A
+  // NUMBER IS WRITTEN -- it reads `sales.statutory_number` and returns the existing value when
+  // it already carries the series prefix (crates/kasirmu-core/src/db/fiscal.rs:572-587). But
+  // that column is set by the SAME transaction, so two issues in one tick both read NULL and
+  // both fall through to `claim_statutory_number_for_sale`, an atomic
+  // `UPDATE document_number_sequences ... RETURNING` (fiscal.rs:438-455). The sequence
+  // advances TWICE, leaving a gap or duplicate in a legally numbered series -- a compliance
+  // defect, not a cosmetic one. A ref, not the state, because only the ref is
+  // authoritative at the moment the second tap runs.
+  const issueInvoicePendingRef = useRef(false);
   const handleIssueTaxInvoice = useCallback(async () => {
+    if (issueInvoicePendingRef.current) return;
     if (!sessionToken) {
       // Reported, not dropped. See handleConfirmStamp above.
       addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
       return;
     }
     if (!detail) return;
+    issueInvoicePendingRef.current = true;
     setIssuingInvoice(true);
     try {
       const invNumber = await issueTaxInvoiceScoped(sessionToken, detail.id);
@@ -767,6 +892,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
         type: 'error',
       });
     } finally {
+      issueInvoicePendingRef.current = false;
       setIssuingInvoice(false);
     }
     // l10n is read by the e-Faktur outcome toasts this handler raises.
@@ -786,11 +912,12 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
     const data = await settleRead('refunds', listRefundsScoped(sessionToken!, saleId));
     setRefundsUnknown(!data.ok);
     setRefunds(data.ok ? data.value : []);
-    // sessionToken is a free variable from useWorkspace() at :164, read at :451. The sibling
-    // effect above already lists [sessionToken, l10n] at :227, so the token was understood to
-    // change -- this array just omitted it. With [] the callback kept the mount-time token, and
-    // because :467 lists loadRefunds in its own deps, the refund list for an opened sale was
-    // fetched against whatever session was active when the screen mounted.
+    // sessionToken is a free variable from `useWorkspace()` in the component body, read by
+    // the `listRefundsScoped` call above. The sibling effect above already lists
+    // [sessionToken, l10n] in its own deps, so the token was understood to change -- this
+    // array just omitted it. With [] the callback kept the mount-time token, and because
+    // `handleRefunded` lists loadRefunds in its own deps, the refund list for an opened
+    // sale was fetched against whatever session was active when the screen mounted.
   }, [sessionToken]);
 
   // The margin read's own retry, deliberately NOT openDetail: the sale itself is
@@ -830,9 +957,15 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
   }, [staff, staffUnknown]);
 
   const [csvExporting, setCsvExporting] = useState(false);
+  /** Synchronous mirror of `csvExporting` — see the re-entry guard in `handleExportCsv`. */
+  const csvExportExportingRef = useRef(false);
 
   const handleExportCsv = useCallback(async () => {
-    if (csvExporting) return;
+    // `if (csvExporting) return` above is STATE and is stale inside one tick, so two taps
+    // exported two files to the same destination. The read is expensive (one margin call per
+    // sale) and the second write can land on top of the first.
+    if (csvExportExportingRef.current) return;
+    csvExportExportingRef.current = true;
     setCsvExporting(true);
     try {
       const headers = [
@@ -924,9 +1057,10 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
       URL.revokeObjectURL(url);
       a.remove();
     } finally {
+      csvExportExportingRef.current = false;
       setCsvExporting(false);
     }
-  }, [filteredSales, cashierName, l10n, sessionToken, csvExporting, addToast]);
+  }, [filteredSales, cashierName, l10n, sessionToken, addToast]);
 
   // ── Focus trap refs ───────────────────────────────
   const voidPanelRef = useRef<HTMLDivElement>(null);
@@ -967,7 +1101,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
               type="button"
               className="sales-history-back-btn"
               onClick={onBack}
-              aria-label={l10n.getString('back') || 'Back'}
+              aria-label={requiredLocalized(l10n, 'back')}
               data-testid="sales-history-back-btn"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
@@ -1130,7 +1264,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
               type="button"
               className="sales-history-clear-filters-btn"
               onClick={handleClearFilters}
-              aria-label={l10n.getString('sales-history-clear-filters') || 'Clear filters'}
+              aria-label={requiredLocalized(l10n, 'sales-history-clear-filters')}
               data-testid="sales-history-clear-filters-btn"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
@@ -1182,7 +1316,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
                   type="button"
                   className="sales-history-search-clear-btn"
                   onClick={() => setSearchQuery('')}
-                  aria-label={l10n.getString('retail-search-clear-aria') || 'Clear search'}
+                  aria-label={requiredLocalized(l10n, 'retail-search-clear-aria')}
                   data-testid="sales-history-search-clear-btn"
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="13" height="13" aria-hidden="true">
@@ -1539,15 +1673,19 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
 
       {/* ── Stamp e-Faktur Modal (PER-11/PJ/2025) ──────────────────── */}
       {stampExit.shouldRender && (
-        <div className={`sales-history-overlay${stampExit.exiting ? ' sales-history-overlay--exiting' : ''}`} role="dialog" aria-modal="true" aria-label="Stamp e-Faktur NSFP">
+        <div className={`sales-history-overlay${stampExit.exiting ? ' sales-history-overlay--exiting' : ''}`} role="dialog" aria-modal="true" aria-label={l10n.getString('sales-history-stamp-modal-aria')}>
           <div ref={stampPanelRef} className={`sales-history-modal sales-history-stamp-modal${stampExit.exiting ? ' sales-history-modal--exiting' : ''}`}>
             <div className="sales-history-modal-header">
-              <h2><span>Input e-Faktur NSFP (DJP Coretax)</span></h2>
+              <h2>
+                <Localized id="sales-history-stamp-title">
+                  <span>Input e-Faktur NSFP (DJP Coretax)</span>
+                </Localized>
+              </h2>
               <button
                 type="button"
                 className="sales-history-modal-close"
                 onClick={stampExit.requestClose}
-                aria-label="Close"
+                aria-label={l10n.getString('close')}
               >
                 &times;
               </button>
@@ -1588,13 +1726,14 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
                   id="stamp-nsfp"
                   type="text"
                   maxLength={13}
-                  placeholder="e.g. 2600000000123"
+                  placeholder={l10n.getString('sales-history-stamp-nsfp-placeholder')}
                   className="sales-history-stamp-input"
                   value={stampNsfp}
                   onChange={(e) => setStampNsfp(e.target.value.replace(/\D/g, ''))}
                 />
                 <div className="sales-history-stamp-preview">
-                  Format Faktur Pajak: <span className="sales-history-stamp-preview-code">{stampKodeTransaksi}00{stampNsfp.padEnd(13, '·')}</span>
+                  {l10n.getString('sales-history-stamp-preview')}{' '}
+                  <span className="sales-history-stamp-preview-code">{stampKodeTransaksi}00{stampNsfp.padEnd(13, '·')}</span>
                 </div>
               </div>
 
@@ -1606,7 +1745,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
 
               <div className="sales-history-modal-actions">
                 <Button variant="ghost" onClick={stampExit.requestClose} disabled={stamping}>
-                  Cancel
+                  {l10n.getString('cancel')}
                 </Button>
                 <Button
                   variant="primary"
@@ -1614,11 +1753,22 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
                   loading={stamping}
                   disabled={stampNsfp.length !== 13}
                 >
-                  Stamp e-Faktur
+                  {l10n.getString('sales-history-stamp-confirm')}
                 </Button>
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Detail open failure ──────────────────────────────────── */}
+      {/* The primary sale read did not answer, so the detail modal below cannot open.
+          The toast is transient and the failure is not: without a banner the operator's
+          only cue is a tap that does nothing. This stays until the next open attempt
+          clears `detailLoadFailed`. */}
+      {detailLoadFailed && (
+        <div className="sales-history-void-error" role="alert" data-testid="sales-history-detail-load-failed">
+          {requiredLocalized(l10n, 'sales-history-detail-load-failed')}
         </div>
       )}
 
@@ -1880,7 +2030,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
                         </div>
                       )}
                     </div>
-                    {session && detail.status === 'Completed' && !detail.statutoryNumber && (
+                    {session && detail.status === 'completed' && !detail.statutoryNumber && (
                       <div className="sales-history-statutory-invoice-actions">
                         <Button
                           variant="secondary"
@@ -2063,7 +2213,7 @@ export default function SalesHistoryScreen({ onBack }: SalesHistoryScreenProps =
                       sale being completed: an unanswered read leaves the refunded
                       total unknown, and offering the action is what turns a display
                       gap into a wrong-reason refund rejection. */}
-                  {detail.status === 'Completed' && session && !refundsUnknown && (
+                  {detail.status === 'completed' && session && !refundsUnknown && (
                     <Localized id="refund-action-refund">
                       <Button variant="secondary" onClick={openRefund}>Refund</Button>
                     </Localized>

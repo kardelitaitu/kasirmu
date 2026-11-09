@@ -21,6 +21,7 @@ import {
   getMenuEngineering,
   getMonthlyRevenue,
   getPaymentMethodBreakdown,
+  getPiutangCollections,
   getTableTurnover,
   getTopProducts,
   getVoidedItems,
@@ -42,6 +43,7 @@ import type {
   MenuEngineeringRow,
   MonthlyRevenueRow,
   PaymentMethodRow,
+  PiutangCollectionRow,
   TopProductRow,
   VoidedItemRow,
   VoidedSummaryRow,
@@ -940,8 +942,14 @@ export const CARD_PAYLOAD_VALIDATORS: Record<string, (v: unknown) => boolean> = 
   staff: Array.isArray,
   customers: isRecord,
   payments: Array.isArray,
+  'piutang-collections': Array.isArray,
   discounts: isRecord,
-  refunds: isRecord,
+  // ARRAY, not a record. The card reduces this payload (RefundsCard.tsx:35) and the
+  // API returns Promise<VoidedSummaryRow[]> (api/reports.ts:330), so an object
+  // container is a contract violation the guard must REJECT rather than admit. It
+  // said isRecord, which fitted the dev-mock's object shape instead of the declared
+  // type -- the guard was written to match the bug, so it could not catch it.
+  refunds: Array.isArray,
   'top-items': Array.isArray,
   category: Array.isArray,
   basket: (v) => isRecord(v) && Array.isArray(v['buckets']),
@@ -960,7 +968,12 @@ export const CARD_LOADERS: Record<string, (q: AnalyticsQuery) => Promise<CardLoa
   staff: loadStaff,
   customers: (q) => getCustomerSplit(q.from, q.to, q.sessionToken),
   payments: (q) => getPaymentMethodBreakdown(q.from, q.to, q.sessionToken),
-  discounts: (q) => getDiscountsSummary(q.from, q.to, q.sessionToken),
+  // The COLLECTION side of the same period, deliberately a second card rather than a
+  // row inside `payments`: a receivable repayment is money arriving against goods sold
+  // earlier. Merging the two series would let a reader add today's cash sale to a
+  // repayment of last week's debt and believe the drawer should hold both (it should --
+  // but the two numbers are each readable alone, and one merged list loses that).
+  'piutang-collections': (q) => getPiutangCollections(q.from, q.to, q.sessionToken),  discounts: (q) => getDiscountsSummary(q.from, q.to, q.sessionToken),
   // Refunds is a money/totals summary (count + amount + average); the
   // voided-item list belongs to the separate restaurant-only Voids card.
   refunds: (q) => getVoidedSalesSummary(q.from, q.to, q.sessionToken),
@@ -990,6 +1003,7 @@ export type {
   LowStockAlert,
   MonthlyRevenueRow,
   PaymentMethodRow,
+  PiutangCollectionRow,
   TopProductRow,
   VoidedItemRow,
   VoidedSummaryRow,

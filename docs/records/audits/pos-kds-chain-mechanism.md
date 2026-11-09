@@ -74,3 +74,5 @@ discriminating, and the count `#101..#110` held constant through every attempt.
 | The creator | `pushKdsOrderFromCart`, `sales.ts:523/571/600` on sale completion |
 | Sale leg | attempted, `SALE_DONE=false`, unverified |
 | Tree | clean but for another lane's file; scratch script deleted |
+
+> last audited 14-10-26 by docs-auditor

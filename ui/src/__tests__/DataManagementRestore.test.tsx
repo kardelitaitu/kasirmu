@@ -325,6 +325,22 @@ describe('restore tab — pending request', () => {
     expect(screen.queryByText(/already pending/i)).not.toBeInTheDocument();
   });
 
+  it('does not claim no backups exist when the LIST read fails', async () => {
+    // The mirror of the pair above. `candidates` is \`undefined\` when the read never
+    // answered, and \`[]\` only when it did — the flat sentence "No backup generations
+    // were found beside the database." is a claim about the disk, so it may only be
+    // rendered for the ANSWERED empty read.
+    mockListRestoreCandidates.mockRejectedValue(new Error('ipc down'));
+    await openRestoreTab();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Could not read the backup generations/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/No backup generations were found/i)).toBeNull();
+    // The status read still answered, so its own surface is unaffected.
+    expect(screen.queryByText(/already pending/i)).not.toBeInTheDocument();
+  });
+
   it('still lists generations when the status read fails', async () => {
     mockGetRestoreStatus.mockRejectedValue(new Error('ipc down'));
     await openRestoreTab();

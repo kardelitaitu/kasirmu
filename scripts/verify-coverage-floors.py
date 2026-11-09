@@ -248,24 +248,130 @@ def self_test() -> int:
     code, _ = grade(skewed, {"platform-sync": 66.0})
     expect("many small covered lines cannot mask one large uncovered file", code == 1)
 
+    # (7) load_floors() -- the one function that touches disk. Every case above hands
+    #     grade() a dict literal, so this had no case at all and the sabotage sweep found
+    #     it SURVIVED on 2026-11-06: a body replaced by `return {}` would have gated every
+    #     crate against nothing. It takes a path, so the fixture is a temp file.
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        manifest = Path(tmp) / "floors.json"
+        manifest.write_text(
+            json.dumps({"floors": {"foundation": 97.0, "platform-sync": 66}}), encoding="utf-8")
+        expect("load_floors() reads a manifest and coerces every floor to float",
+               load_floors(manifest) == {"foundation": 97.0, "platform-sync": 66.0})
+        empty = Path(tmp) / "no-floors.json"
+        empty.write_text(json.dumps({"floors": {}}), encoding="utf-8")
+        try:
+            load_floors(empty)
+            expect("a manifest declaring no floors is refused", False)
+        except ValueError:
+            expect("a manifest declaring no floors is refused, not read as 'nothing to gate'", True)
+
+    # r197: the shell -- main() graded through argv and a contract root, the
+    # r166..r196 pattern. The fixtures are RELATIVE names plus root: a
+    # root-dropping main resolves them against the repo and refuses on a
+    # report that does not exist there, which is the graded kill.
+    import contextlib as _ctx
+    import io as _io
+    from pathlib import Path as _Path
+    import tempfile as _tempfile
+    shell = 0
+    FLOORS_DOC = json.dumps({"floors": {"foundation": 97.0, "platform-sync": 66.0}})
+    HEALTHY = _report({"foundation/src/a.rs": (980, 1000), "platform/sync/src/b.rs": (700, 1000)})
+    REGRESSED = _report({"foundation/src/a.rs": (980, 1000), "platform/sync/src/b.rs": (600, 1000)})
+    with _tempfile.TemporaryDirectory() as tmp:
+        base = _Path(tmp)
+        def run(*extra):
+            out, err = _io.StringIO(), _io.StringIO()
+            try:
+                with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                    rc = main(argv=list(extra), root=base)
+            except SystemExit as se:
+                return se.code, out.getvalue() + err.getvalue()
+            return rc, out.getvalue() + err.getvalue()
+        # (S1) the DEFAULT paths resolve under the root: no argv paths at all
+        shell += 1
+        (base / "scripts").mkdir(parents=True, exist_ok=True)
+        (base / "scripts" / "coverage-floors.json").write_text(FLOORS_DOC, encoding="utf-8")
+        (base / "coverage-probe.json").write_text(json.dumps(HEALTHY), encoding="utf-8")
+        rc, text = run()
+        if rc != 0 or "coverage floors: OK." not in text:
+            print("  x default report+floors under the root must grade OK (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        # (S2) RELATIVE argv paths follow the root too, and a regression fails
+        shell += 1
+        (base / "probe-bad.json").write_text(json.dumps(REGRESSED), encoding="utf-8")
+        rc, text = run("--json", "probe-bad.json", "--floors", "scripts/coverage-floors.json")
+        if rc != 1 or "FAIL  platform-sync" not in text or "coverage floors: FAIL" not in text:
+            print("  x a relative regression report must fail naming the crate (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        # (S3) a missing report is a named refusal, not a crash
+        shell += 1
+        rc, text = run("--json", "absent.json")
+        if rc != 1 or "cannot read the coverage report" not in text:
+            print("  x a missing report must be refused with the regen command (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        # (S4) an empty report reads as a broken run, not 0% everywhere
+        shell += 1
+        (base / "probe-empty.json").write_text(json.dumps({"data": []}), encoding="utf-8")
+        rc, text = run("--json", "probe-empty.json")
+        if rc != 1 or "contains no measured files" not in text:
+            print("  x an empty report must fail as a broken run (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        # (S5) a missing floors manifest refuses with the manifest path
+        shell += 1
+        rc, text = run("--floors", "no-floors.json")
+        if rc != 1 or "cannot read the floors manifest" not in text:
+            print("  x a missing floors manifest must be refused (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        # (S6) a manifest declaring no floors is the same refusal
+        shell += 1
+        (base / "shallow.json").write_text(json.dumps({"floors": {}}), encoding="utf-8")
+        rc, text = run("--floors", "shallow.json")
+        if rc != 1 or "cannot read the floors manifest" not in text:
+            print("  x a floor-less manifest must be refused (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
     print()
     if failures:
         print(f"self-test: FAIL ({len(failures)})")
         return 1
     print("self-test: all cases passed -- fires on a shortfall, quiet when met, "
           "and a workspace average cannot carry a failing crate")
+    print(f"self-test: main() shell graded ({shell} cases through argv and root)")
     return 0
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r197: argv and root parameterized, the r166..r196 contract -- the
+    default report and floors paths resolve under the contract root, and a
+    RELATIVE --json/--floors argument follows it too. Root changes where the
+    inputs are read from, nothing else; the grading math is untouched."""
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--json", type=Path, default=DEFAULT_REPORT,
-                    help=f"llvm-cov JSON report to grade (default: {DEFAULT_REPORT})")
-    ap.add_argument("--floors", type=Path, default=FLOORS_PATH,
-                    help=f"floors manifest (default: {FLOORS_PATH})")
+    ap.add_argument("--json", type=Path, default=None,
+                    help="llvm-cov JSON report to grade (default: <root>/coverage-probe.json)")
+    ap.add_argument("--floors", type=Path, default=None,
+                    help="floors manifest (default: <root>/scripts/coverage-floors.json)")
     ap.add_argument("--self-test", action="store_true",
                     help="prove the gate fires in both directions, then exit")
-    ns = ap.parse_args()
+    ns = ap.parse_args(argv)
+    base = Path(__file__).resolve().parent.parent if root is None else Path(root).resolve()
+
+    def against_base(p):
+        q = Path(p) if p is not None else None
+        if q is None:
+            return None
+        return q if q.is_absolute() else base / q
+
+    ns.json = against_base(ns.json) or base / "coverage-probe.json"
+    ns.floors = against_base(ns.floors) or base / "scripts" / "coverage-floors.json"
 
     if ns.self_test:
         return self_test()
@@ -284,7 +390,13 @@ def main() -> int:
             f"Generate one with:\n"
             f"  cargo llvm-cov --workspace --all-features \\\n"
             f"    --exclude kasirmu-app --exclude kasirmu-mobile \\\n"
-            f"    --json --output-path {ns.json}",
+            f"    --exclude kasirmu-bridge \\\n"
+            f"    --json --output-path {ns.json}\n"
+            f"  kasirmu-bridge is excluded because llvm-cov aborts on any failing\n"
+            f"  test, and one in-flight bridge test would cost the whole report\n"
+            f"  rather than one crate. The floors never name bridge, so the\n"
+            f"  exclusion costs no graded crate -- this matches the command\n"
+            f"  recorded in scripts/coverage-floors.json under _measured.",
             file=sys.stderr,
         )
         return 1

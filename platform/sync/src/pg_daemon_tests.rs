@@ -8,6 +8,7 @@
 //! Extracted from the inline `mod tests` in `pg_daemon.rs` (F-018).
 
 use super::*;
+use kasirmu_core::CoreError;
 use kasirmu_core::migrations;
 use kasirmu_core::offline::{OfflineQueueItem, OfflineQueueStatus};
 
@@ -43,12 +44,30 @@ where
         status.running, status.last_sync_at, status.last_error
     );
 }
+/// Seed `prod-coffee` with an OPENING BALANCE of 50 that the delta ledger
+/// backs with one real movement.
+///
+/// The backing movement is not decoration: `Store::rebuild_stock_summary`
+/// scopes itself to `DISTINCT item_id FROM stock_movements UNION DISTINCT
+/// item_id FROM stock_summary` (`ledger.rs:73`), so a product present ONLY in
+/// `inventory` is never in scope and a rebuild silently returns 0 having
+/// written nothing. Without this row the O-H18 tests below would stage a
+/// rebuild that does not run, then reason about a summary that does not exist.
+///
+/// `inventory.qty` (50) EQUALS the ledger sum (50) on purpose, so the rebuild's
+/// legacy-heal predicate (`inventory.qty > SUM(delta)`) does NOT fire: this
+/// fixture represents a healthy install, and a healed legacy shortfall would
+/// make every subsequent rebuild write an extra compensating row — noise that
+/// would blur exactly the "did a rebuild run here?" observation the O-H18
+/// tests make.
 fn seed_product_and_inventory(conn: &rusqlite::Connection) {
     conn.execute_batch(
             "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at) VALUES
                 ('prod-coffee', 'COFFEE', 'Coffee', 350, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
              INSERT INTO inventory (product_id, qty, updated_at) VALUES
-                ('prod-coffee', 50, '2025-01-01T00:00:00.000Z');",
+                ('prod-coffee', 50, '2025-01-01T00:00:00.000Z');
+             INSERT INTO stock_movements (id, item_id, location_id, delta, reason, created_at) VALUES
+                ('seed-opening-balance', 'prod-coffee', '01926b3a-0000-7000-8000-000000000001', 50, 'opening-balance', '2025-01-01T00:00:00.000Z');",
         )
         .unwrap();
 }
@@ -163,16 +182,21 @@ fn apply_pulled_page_applies_stock_adjustment_and_records_receipt() {
         10,
         "2026-01-02T00:00:00.000Z",
     )];
-    let new_since = apply_pulled_page(&store, &page, None, &noop_settings_sink());
+    let (new_since, carried_movement) =
+        apply_pulled_page(&store, &page, None, &noop_settings_sink()).expect("page applies");
 
     assert_eq!(store.get_stock("prod-coffee").unwrap(), 60);
+    assert!(
+        !carried_movement,
+        "a stock.adjusted page is not a stock.movement page — it writes the summary itself"
+    );
     assert!(
         store.is_remote_item_applied("pg-item-1").unwrap(),
         "ledger receipt must be recorded with the mutation"
     );
     assert_eq!(
-        new_since.as_deref(),
-        Some("2026-01-02T00:00:00.000Z"),
+        new_since.as_str(),
+        "2026-01-02T00:00:00.000Z",
         "anchor advances on created_at, not synced_at"
     );
 }
@@ -192,12 +216,12 @@ fn apply_pulled_page_advances_anchor_on_created_at_when_synced_at_null() {
         10,
         "2026-01-02T00:00:00.000Z",
     )];
-    let new_since = apply_pulled_page(&store, &page, None, &noop_settings_sink());
+    let (new_since, _) =
+        apply_pulled_page(&store, &page, None, &noop_settings_sink()).expect("page applies");
 
     assert_eq!(store.get_stock("prod-coffee").unwrap(), 60);
     assert_eq!(
-        new_since.as_deref(),
-        Some("2026-01-02T00:00:00.000Z"),
+        new_since, "2026-01-02T00:00:00.000Z",
         "anchor must advance on created_at even when synced_at is NULL"
     );
 }
@@ -279,17 +303,28 @@ fn apply_pulled_page_anchor_is_monotonic_max_created_at() {
         Some("2026-01-02T00:00:00.000Z"),
         &noop_settings_sink(),
     );
-    assert_eq!(new_since.as_deref(), Some("2026-01-03T00:00:00.000Z"));
+    assert_eq!(
+        new_since.expect("page applies").0,
+        "2026-01-03T00:00:00.000Z"
+    );
 }
 
-/// ADR #6 parity (SQLite daemon, daemon.rs): a page containing a
-/// `stock.movement` writes ONLY the raw delta-ledger row (the summary
-/// cache is NOT touched by the apply path), so the materialized
-/// `stock_summary` must be rebuilt from the ledger before the anchor
-/// advances. Without the rebuild, a remote stock movement pulled via PG
+/// ADR #6 (SQLite daemon, daemon.rs): a page containing a `stock.movement`
+/// writes ONLY the raw delta-ledger row (the summary cache is NOT touched by
+/// the apply path), so the materialized `stock_summary` must be rebuilt from
+/// the ledger. Without the rebuild, a remote stock movement pulled via PG
 /// leaves the on-hand cache the app reads permanently stale.
+///
+/// O-H18: the rebuild is no longer INSIDE `apply_pulled_page` — it is one
+/// call after the pull loop, so that a multi-page tick pays for one ledger
+/// aggregate instead of one per page. This test now pins the two halves that
+/// survive at the page seam: the page reports the movement to the caller, and
+/// the anchor still advances for it (writing the report into the anchor write
+/// is what makes a skipped rebuild impossible to lose — a movement page can
+/// never advance the anchor silently). End-state correctness across pages is
+/// pinned by `apply_pulled_page_pages_report_movements_for_one_tick_rebuild`.
 #[test]
-fn apply_pulled_page_rebuilds_stock_summary_after_stock_movements() {
+fn apply_pulled_page_reports_stock_movements_and_still_advances_the_anchor() {
     let conn = migrations::fresh_db();
     seed_product_and_inventory(&conn);
     let store = Store::new(&conn);
@@ -301,65 +336,348 @@ fn apply_pulled_page_rebuilds_stock_summary_after_stock_movements() {
     item.id = "pg-item-movement-1".into();
     item.created_at = "2026-01-05T00:00:00.000Z".into();
 
-    let new_since = apply_pulled_page(
+    let (new_since, carried_movement) = apply_pulled_page(
         &store,
         std::slice::from_ref(&item),
         None,
         &noop_settings_sink(),
-    );
+    )
+    .expect("a stock.movement page applies");
 
     assert_eq!(
-        new_since.as_deref(),
-        Some("2026-01-05T00:00:00.000Z"),
+        new_since, "2026-01-05T00:00:00.000Z",
         "a stock.movement page applies and advances the anchor"
     );
-    let summary_qty: i64 = conn
-        .query_row(
-            "SELECT qty FROM stock_summary WHERE item_id = 'prod-coffee'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    // 40 -> 50. seed_product_and_inventory writes inventory (prod-coffee = 50)
-    // with no movement behind it — exactly the legacy shape the compensating
-    // row closes — so the rebuild inside apply_pulled_page heals the 10 unbacked
-    // units first and the ledger-derived cache lands on 50 rather than
-    // destroying them. Same reader, same call; only the expected quantity moved.
-    assert_eq!(
-        summary_qty, 50,
-        "stock_summary must be rebuilt from the ledger after a stock.movement page"
+    assert!(
+        carried_movement,
+        "the page must REPORT its stock.movement so the tick rebuilds the summary; \
+         a quiet advance here is exactly the stale-cache bug the rebuild prevents"
     );
+    assert!(
+        store.is_remote_item_applied("pg-item-movement-1").unwrap(),
+        "the delta-ledger receipt is written by the apply, independent of the rebuild"
+    );
+    // The summary is NOT rebuilt at this seam any more (O-H18): doing so per
+    // page was O(pages × all movements) for one tick.
 }
 
-/// ADR #6 parity: if the summary rebuild fails, the durable anchor must
-/// be retained so the next cycle re-pulls the same page (the ledger
-/// absorbs the replay) and retries the derived-state rebuild — mirroring
-/// the SQLite daemon's "old anchor retained so a retry can restore the
-/// derived state as well".
+// ── O-H18: ONE stock-summary rebuild per pull tick ─────────────────
+//
+// Before this, `apply_pulled_page` called `store.rebuild_stock_summary()`
+// whenever the page it had just applied carried a `stock.movement`. That
+// rebuild is an aggregate over the ENTIRE delta ledger, and the PG pull loop
+// pages with no page cap, so one tick over a large backlog cost
+// O(pages × all movements). The rebuild now runs once, after the loop.
+//
+// HOW THE CALL COUNT IS MEASURED — or, precisely, is NOT: the rebuild is a
+// method on `kasirmu_core::db::Store`, a concrete struct borrowed from a
+// `rusqlite::Connection`, with no trait or field this crate can wrap or
+// substitute. There is no counting seam, so these tests do NOT measure the
+// call count directly. They pin the two observable halves instead:
+//
+//   1. the PAGE SEAM no longer rebuilds (a movement page applies, reports the
+//      movement, and leaves `stock_summary` untouched) — this asserts "the
+//      rebuild is not inside the loop", but note it does NOT prove "exactly
+//      once": an extra, idempotent second rebuild in the same tick would be
+//      invisible to it; and
+//   2. the tick-end rebuild produces the correct END STATE when a multi-page
+//      tick is applied the way the pull loop applies it (every page, one
+//      rebuild of a ledger-visible state).
+//
+// A second rebuild per tick would be invisible to (2) — the rebuild is
+// idempotent. The structural guarantee is the single call site in `run_tick`.
+
+/// Helper: a remote `stock.movement` item for `prod-coffee`.
+fn remote_stock_movement(
+    id: &str,
+    movement_id: &str,
+    delta: i64,
+    created_at: &str,
+) -> OfflineQueueItem {
+    let mut item = OfflineQueueItem::new(
+        "stock.movement",
+        format!(
+            r#"{{"id":"{movement_id}","item_id":"prod-coffee","delta":{delta},"reason":"restock","store_id":"default","created_at":"{created_at}"}}"#
+        ),
+    );
+    item.id = id.into();
+    item.created_at = created_at.into();
+    item
+}
+
+/// Helper: the current `stock_summary` quantity for `prod-coffee`, summed
+/// across locations (ADR-18 gives the table a composite `(item_id,
+/// location_id)` key, so a movement page can legitimately leave more than one
+/// row).
+///
+/// `None` means the product has NO summary row — which is itself an
+/// observation these tests need: "the rebuild never ran" shows up as a missing
+/// row, not as a zero. `SUM(qty)` over an EMPTY set returns ONE row whose
+/// value is NULL, not zero rows, so the decoder must be `Option<i64>` for that
+/// contract to hold (a missing row is "never rebuilt", a 0 is "rebuilt and
+/// empty").
+fn summary_qty(conn: &rusqlite::Connection) -> Option<i64> {
+    conn.query_row(
+        "SELECT SUM(qty) FROM stock_summary WHERE item_id = 'prod-coffee'",
+        [],
+        |row| row.get::<_, Option<i64>>(0),
+    )
+    .unwrap()
+}
+
+/// The page seam must NOT rebuild the summary — that is the call that used to
+/// run once per backlog page, and removing it is the whole of O-H18.
+///
+/// The page here carries a `stock.movement`, i.e. exactly the page the old
+/// per-page rebuild fired on. Removing the hoist's page report would also be
+/// caught: nothing would reach the tick's rebuild and the ledger-only delta
+/// would never appear in `stock_summary` (STAGE 3).
+///
+/// WHAT THIS TEST CANNOT SEE, stated plainly: the quantities alone would NOT
+/// discriminate a hoist from a per-page rebuild — a rebuild re-derives the
+/// same numbers. Only a call COUNT could, and `Store::rebuild_stock_summary`
+/// is a concrete method on a struct borrowed from `rusqlite::Connection`, with
+/// no trait or field to wrap. So the call count is NOT measured here. What the
+/// seam assertion observes is the consequence the count produces on this page:
+/// a summary the page left alone.
 #[test]
-fn apply_pulled_page_retains_anchor_when_stock_summary_rebuild_fails() {
+fn apply_pulled_page_does_not_rebuild_the_summary_at_the_page_seam() {
     let conn = migrations::fresh_db();
     seed_product_and_inventory(&conn);
     let store = Store::new(&conn);
-    // Force the rebuild to fail: the summary table no longer exists.
-    conn.execute_batch("DROP TABLE stock_summary").unwrap();
+    // A current, healthy cache: the fixture's opening balance is ledger-backed,
+    // so a rebuild writes the same 50 the seed already holds and any heal
+    // predicate stays quiet. Nothing in this test can be explained by a heal.
+    store.rebuild_stock_summary().unwrap();
+    let before = summary_qty(&conn).expect("one rebuild materializes the summary");
 
-    let mut item = OfflineQueueItem::new(
-        "stock.movement",
-        r#"{"id":"sm-remote-2","item_id":"prod-coffee","delta":10,"reason":"restock","store_id":"default","created_at":"2026-01-06T00:00:00.000Z"}"#,
-    );
-    item.id = "pg-item-movement-2".into();
-    item.created_at = "2026-01-06T00:00:00.000Z".into();
-
-    let new_since = apply_pulled_page(
+    let item = remote_stock_movement("pg-oh18-p1", "sm-oh18-p1", 7, "2026-02-01T00:02:00.000Z");
+    let (anchor, carried) = apply_pulled_page(
         &store,
         std::slice::from_ref(&item),
         None,
         &noop_settings_sink(),
+    )
+    .expect("a stock.movement page applies");
+
+    assert_eq!(anchor, "2026-02-01T00:02:00.000Z");
+    assert!(
+        carried,
+        "the page must report its movement to the tick's single rebuild"
+    );
+    assert_eq!(
+        summary_qty(&conn),
+        Some(before),
+        "the page seam must NOT rebuild stock_summary — that per-page rebuild is O-H18"
+    );
+    assert_eq!(
+        store.get_stock_from_ledger("prod-coffee").unwrap(),
+        before + 7,
+        "the delta-ledger row IS written per page; only the aggregate rebuild moved"
+    );
+}
+
+/// A multi-page tick: EVERY page reports its movement, so the tick's flag is
+/// true no matter which page carries one — and the tick-end rebuild leaves the
+/// summary reflecting every applied movement.
+///
+/// The failure mode this pins is the one the hoist could introduce: rebuilding
+/// only when the LAST page carried a movement. Page 3 of this tick carries
+/// none, so a "last page wins" implementation would skip the rebuild entirely
+/// and leave `stock_summary` stale behind an anchor that had already advanced.
+#[test]
+fn multi_page_tick_flag_survives_a_trailing_page_without_a_movement() {
+    let conn = migrations::fresh_db();
+    seed_product_and_inventory(&conn);
+    let store = Store::new(&conn);
+    // No seed rebuild here on purpose: the ledger starts EMPTY, so
+    // `stock_summary.qty` is exactly `SUM(delta)` for this product and the
+    // assertion below is arithmetic on the deltas themselves rather than on a
+    // quantity some other write happened to produce.
+    assert_eq!(
+        summary_qty(&conn),
+        None,
+        "fixture sanity: nothing has been summarized yet"
+    );
+
+    // Exactly the pull loop's shape: OR-fold each page's report.
+    let pages = vec![
+        vec![
+            remote_stock_movement("pg-oh18-a", "sm-oh18-a", 5, "2026-02-02T00:00:00.000Z"),
+            remote_stock_movement("pg-oh18-b", "sm-oh18-b", 6, "2026-02-02T00:00:01.000Z"),
+        ],
+        vec![remote_stock_movement(
+            "pg-oh18-c",
+            "sm-oh18-c",
+            7,
+            "2026-02-02T00:00:02.000Z",
+        )],
+        // A trailing page with NO movement — the last-page trap.
+        vec![remote_stock_adjustment(
+            "pg-oh18-d",
+            1,
+            "2026-02-02T00:00:03.000Z",
+        )],
+    ];
+
+    let mut tick_carried_movements = false;
+    for page in &pages {
+        let (_, carried) = apply_pulled_page(&store, page, None, &noop_settings_sink())
+            .expect("every page of this tick applies");
+        tick_carried_movements |= carried;
+    }
+
+    assert!(
+        tick_carried_movements,
+        "a tick whose FIRST pages carried movements must report one, \
+         even though its last page carried none"
+    );
+
+    // The single rebuild the pull loop performs after its page loop.
+    store.rebuild_stock_summary().unwrap();
+
+    // 50 is the fixture's opening balance, which the seed backs with a real
+    // ledger movement precisely so this total is arithmetic rather than a
+    // number the code happened to produce.
+    assert_eq!(
+        summary_qty(&conn),
+        Some(50 + 5 + 6 + 7 + 1),
+        "one tick-end rebuild must reflect every movement applied across all pages"
+    );
+    assert_eq!(
+        store.get_stock_from_ledger("prod-coffee").unwrap(),
+        50 + 5 + 6 + 7 + 1,
+        "ledger and summary agree: the rebuild is a pure function of the ledger"
+    );
+}
+
+/// The tick-end rebuild's failure contract: when it fails, the durable anchor
+/// is restored to the value the tick captured, so the next tick re-pulls and
+/// retries both the pages and the derived-state rebuild.
+#[tokio::test]
+async fn pull_loop_builder_rebuild_failure_is_reported_and_restores_the_anchor() {
+    let db = setup_db();
+    let (captured_since, captured_cursor) = ("2026-01-01T00:00:00.000Z", "cursor-at-tick-start");
+    {
+        let db_clone = db.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = db_clone.blocking_lock();
+            let store = Store::new(&conn);
+            seed_product_and_inventory(&conn);
+            // The rebuild fails when the summary table is gone — the same
+            // lever the per-page test used before the hoist.
+            conn.execute_batch("DROP TABLE stock_summary").unwrap();
+            // The state a pulled page would have left behind before the
+            // tick-end rebuild ran: anchor advanced past the movement page.
+            store
+                .set_sync_pull_state(Some("2026-02-01T00:00:00.000Z"), Some("cursor-after-pages"))
+                .unwrap();
+        })
+        .await
+        .unwrap();
+    }
+
+    let failure = rebuild_tick_summary(&db, Some(captured_since), Some(captured_cursor))
+        .await
+        .expect("a rebuild against a dropped stock_summary table must fail");
+
+    assert_eq!(
+        failure,
+        TickRebuild::Restored,
+        "the anchor restore must succeed and be reported as such"
     );
     assert!(
-        new_since.is_none(),
-        "a failed summary rebuild must retain the pull anchor"
+        failure.message().contains("anchor restored"),
+        "the cycle error must say the anchor was restored for retry, got {:?}",
+        failure.message()
+    );
+
+    let db_clone = db.clone();
+    let (since, cursor) = tokio::task::spawn_blocking(move || {
+        let conn = db_clone.blocking_lock();
+        let store = Store::new(&conn);
+        let state = store.get_sync_pull_state().unwrap();
+        (state.since, state.cursor)
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        since.as_deref(),
+        Some(captured_since),
+        "a failed rebuild must put the anchor back where the tick found it"
+    );
+    assert_eq!(
+        cursor.as_deref(),
+        Some(captured_cursor),
+        "both halves of the composite anchor are restored"
+    );
+}
+
+/// The success path reports NOTHING — the tick must not invent an error for a
+/// rebuild that worked, and the anchor must be left exactly where the pages
+/// advanced it.
+#[tokio::test]
+async fn pull_loop_builder_rebuild_success_leaves_the_anchor_advanced() {
+    let db = setup_db();
+    {
+        let db_clone = db.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = db_clone.blocking_lock();
+            let store = Store::new(&conn);
+            seed_product_and_inventory(&conn);
+            store
+                .set_sync_pull_state(Some("2026-02-01T00:00:00.000Z"), Some("cursor-after-pages"))
+                .unwrap();
+        })
+        .await
+        .unwrap();
+    }
+
+    assert_eq!(
+        rebuild_tick_summary(
+            &db,
+            Some("2026-01-01T00:00:00.000Z"),
+            Some("cursor-at-tick-start")
+        )
+        .await,
+        None,
+        "a successful rebuild must not report a failure"
+    );
+
+    let db_clone = db.clone();
+    let (since, cursor) = tokio::task::spawn_blocking(move || {
+        let conn = db_clone.blocking_lock();
+        let state = Store::new(&conn).get_sync_pull_state().unwrap();
+        (state.since, state.cursor)
+    })
+    .await
+    .unwrap();
+    assert_eq!(since.as_deref(), Some("2026-02-01T00:00:00.000Z"));
+    assert_eq!(cursor.as_deref(), Some("cursor-after-pages"));
+}
+
+/// A page whose item cannot be applied at all (retryable, not yet dead-
+/// lettered) must retain the anchor — unchanged by O-H18, and the reason the
+/// pull loop stops paginating instead of skipping ahead.
+///
+/// O-H18 moved the summary-rebuild retry out of this seam: the rebuild now
+/// runs once after the pull loop, so its failure cannot be pinned here. Its
+/// own contract — "a failed rebuild restores the anchor so the next tick
+/// retries it" — lives in
+/// `pull_loop_builder_rebuild_failure_is_reported_and_restores_the_anchor`.
+#[test]
+fn apply_pulled_page_retains_anchor_when_a_page_item_is_retryable() {
+    let conn = migrations::fresh_db();
+    seed_product_and_inventory(&conn);
+    let store = Store::new(&conn);
+    // A malformed payload is Internal (transient), so the item keeps its
+    // three-attempt budget and the page must not advance.
+    let page = vec![remote_transient_sale("pg-poison-movement")];
+
+    let outcome = apply_pulled_page(&store, &page, None, &noop_settings_sink());
+    assert!(
+        outcome.is_none(),
+        "a retryable failure must retain the pull anchor"
     );
 }
 
@@ -392,9 +710,10 @@ fn apply_pulled_page_emits_settings_updated_after_settings_change() {
     item.id = "pg-item-settings-1".into();
     item.created_at = "2026-01-02T00:00:00.000Z".into();
 
-    let new_since = apply_pulled_page(&store, std::slice::from_ref(&item), None, &sink);
+    let (new_since, _) =
+        apply_pulled_page(&store, std::slice::from_ref(&item), None, &sink).expect("applies");
 
-    assert_eq!(new_since.as_deref(), Some("2026-01-02T00:00:00.000Z"));
+    assert_eq!(new_since.as_str(), "2026-01-02T00:00:00.000Z");
     let captured = emitted.lock().unwrap().clone();
     assert_eq!(
         captured.len(),
@@ -424,9 +743,9 @@ fn apply_pulled_page_is_silent_for_non_settings_pages() {
         10,
         "2026-01-02T00:00:00.000Z",
     )];
-    let new_since = apply_pulled_page(&store, &page, None, &sink);
+    let applied = apply_pulled_page(&store, &page, None, &sink);
 
-    assert!(new_since.is_some());
+    assert!(applied.is_some());
     assert!(
         emitted.lock().unwrap().is_empty(),
         "no settings change in the page → no SettingsUpdated emission"
@@ -577,14 +896,125 @@ fn mark_offline_synced_is_idempotent() {
     assert!(store.mark_offline_synced(&id).is_ok());
 }
 
+/// An id that was never enqueued is [`CoreError::NotFound`] — NOT a no-op.
+///
+/// `Store::mark_offline_synced` documents both halves of the contract
+/// (`db/offline.rs`: "CoreError::NotFound when the id does not exist. An id that
+/// exists in a non-pending state is an idempotent no-op returning Ok(())"), and
+/// the idempotent half is pinned by `mark_offline_synced_is_idempotent` right
+/// above. This test is the other half.
+///
+/// It used to assert nothing (`let _ = result;`) under a comment admitting
+/// "Ok (or Err depending on implementation)" — so it could only fail on a panic
+/// and still paid for a `fresh_db()` snapshot clone. The contract is documented
+/// and is not a coin flip: the missing row must surface as `NotFound`, never as
+/// a silent success that would tell the drain loop a non-existent item synced.
 #[test]
 fn mark_offline_synced_nonexistent_item() {
     let conn = migrations::fresh_db();
     let store = Store::new(&conn);
-    // Syncing a nonexistent ID should not panic
-    let result = store.mark_offline_synced("nonexistent-id");
-    // Should be Ok (or Err depending on implementation) — but never panic
-    let _ = result;
+
+    let err = store
+        .mark_offline_synced("nonexistent-id")
+        .expect_err("a never-enqueued id must be refused, not silently accepted");
+    match &err {
+        CoreError::NotFound { entity, id } => {
+            assert_eq!(
+                *entity, "offline_queue",
+                "NotFound must name the queue table"
+            );
+            assert_eq!(
+                id, "nonexistent-id",
+                "NotFound must echo the id it looked for"
+            );
+        }
+        other => panic!("a missing queue id must be NotFound, got: {other:?}"),
+    }
+
+    // Nothing was written or resolved by the failed call.
+    assert_eq!(
+        raw_pending_count(&conn),
+        0,
+        "the refused mark must write nothing"
+    );
+}
+
+/// The BATCH drain deliberately DISAGREES with the single-item variant: an
+/// unknown id in the batch is an error, and the whole batch rolls back.
+///
+/// `Store::mark_offline_synced` raises `NotFound` for a missing id; a reader
+/// might expect `mark_offline_synced_batch` to swallow it ("a batch of 100
+/// where one was already deleted should not fail the drain"). It does not: the
+/// batch loop is `Self::mark_synced_on(&tx, id)?` per id inside ONE
+/// transaction (`db/offline.rs`), so the `?` propagates the first
+/// `NotFound` and the transaction is dropped uncommitted. This test pins that
+/// decision so a future "be lenient" change is a visible, deliberate one — and
+/// pins the atomicity that makes it safe: the valid ids in the poisoned batch
+/// must NOT be left half-marked.
+#[test]
+fn mark_offline_synced_batch_rejects_an_unknown_id_and_rolls_back() {
+    let conn = migrations::fresh_db();
+    let store = Store::new(&conn);
+    let first = enqueue_item(&conn, "sale.completed", r#"{"sale_id":"s1"}"#);
+    let second = enqueue_item(&conn, "sale.completed", r#"{"sale_id":"s2"}"#);
+    assert_eq!(raw_pending_count(&conn), 2);
+
+    let ids = vec![first.clone(), "nonexistent-id".to_owned(), second.clone()];
+    let err = store
+        .mark_offline_synced_batch(&ids)
+        .expect_err("an unknown id must fail the batch, not be skipped");
+    assert!(
+        matches!(&err, CoreError::NotFound { entity, id }
+            if *entity == "offline_queue" && id == "nonexistent-id"),
+        "the batch must surface the NotFound for the offending id, got: {err:?}"
+    );
+
+    // The batch is ONE transaction: the ids that WOULD have been marked are
+    // still pending, because the failed batch committed nothing.
+    assert_eq!(
+        raw_pending_count(&conn),
+        2,
+        "a failed batch must not leave the valid ids half-marked"
+    );
+
+    // Without the poison id the same batch succeeds — proving the failure
+    // above came from the unknown id and not from the ids themselves.
+    let good = vec![first, second];
+    assert!(store.mark_offline_synced_batch(&good).is_ok());
+    assert_eq!(raw_pending_count(&conn), 0);
+}
+
+/// The tenant-scoped variant shares the single-item contract for an id that is
+/// simply absent: `NotFound`.
+///
+/// `Store::mark_offline_synced_for_tenant` documents `NotFound` when the id
+/// "does not exist **or** belongs to a different tenant". Only the absent-id
+/// half is pinned here; the cross-tenant half needs a second tenant's row seeded
+/// with its own `tenant_id`, which this fixture does not build. The absent-id
+/// half is the one this variant shared with `mark_offline_synced`, and all
+/// three variants are now asserted with the same shape.
+#[test]
+fn mark_offline_synced_for_tenant_nonexistent_item() {
+    let conn = migrations::fresh_db();
+    let store = Store::new(&conn);
+    // `enqueue_offline` writes into the default tenant (`enqueue.rs:29`), which
+    // is the tenant these rows must be marked under.
+    let tenant = "default";
+
+    let err = store
+        .mark_offline_synced_for_tenant("nonexistent-id", tenant)
+        .expect_err("a never-enqueued id must be refused, not silently accepted");
+    assert!(
+        matches!(&err, CoreError::NotFound { entity, id }
+            if *entity == "offline_queue" && id == "nonexistent-id"),
+        "the tenant-scoped miss must be NotFound, got: {err:?}"
+    );
+
+    // Control: an id that DOES exist, in this tenant, is marked for real — so
+    // the NotFound above is about the id and not about the tenant argument.
+    let id = enqueue_item(&conn, "sale.completed", r#"{"sale_id":"s1"}"#);
+    assert!(store.mark_offline_synced_for_tenant(&id, tenant).is_ok());
+    assert_eq!(raw_pending_count(&conn), 0);
 }
 
 #[test]
@@ -607,24 +1037,58 @@ fn duplicate_enqueue_creates_separate_items() {
 
 // ── Large batch handling ───────────────────────────────────────
 
+/// 10,000 pending rows: the queue still reads its own backlog at a size no
+/// single push cycle can drain in one go (`DEFAULT_MAX_OUTBOX_BATCH_ITEMS` is
+/// 100, so this is 100 cycles' worth), and both read paths agree on the count.
+///
+/// WHY THE INSERT IS SET-BASED (O-T08). It used to be 10,000 individual
+/// `enqueue_offline` calls — each one a `Settings::get_sync_terminal_id`
+/// subscription read plus its own autocommit INSERT — to produce two numbers.
+/// Nothing here is about the ENQUEUE path's per-item behaviour: `pending_offline_count`
+/// and `raw_pending_count` are pure readers, and the enqueue path's own
+/// per-call contract is pinned row-by-row in `offline_tests.rs`
+/// (`enqueue_offline_creates_pending_item` and neighbours). What THIS test
+/// owns is that a deep queue stays countable, so it now writes the rows in
+/// ONE transaction with one prepared INSERT — same 10,000 rows, same columns,
+/// same `pending` status, ~100x fewer statement round-trips.
+///
+/// The count is deliberately NOT tied to the batch cap: 10,000 is arbitrary
+/// (it is not a page size, a limit, or a threshold anywhere in the code —
+/// `DEFAULT_MAX_OUTBOX_BATCH_ITEMS` = 100 is the real bound and
+/// `daemon_tests.rs` already pins it), so the number stays as a scale marker
+/// and the assertion is only that the two counters agree with each other and
+/// with the number of rows written.
 #[test]
 fn large_batch_enqueue_10k_items() {
     let conn = migrations::fresh_db();
     let store = Store::new(&conn);
 
-    // Enqueue 10,000 items
-    for i in 0..10_000 {
-        store
-            .enqueue_offline(
-                "product.created",
-                &format!(r#"{{"sku":"SKU-{i}","name":"Item {i}"}}"#),
+    // Enqueue 10,000 items in one transaction.
+    const N: i64 = 10_000;
+    conn.execute_batch("BEGIN;").unwrap();
+    {
+        let mut stmt = conn
+            .prepare(
+                "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id)
+                 VALUES (?1, ?2, ?3, 'pending', 0, NULL, ?4, NULL, 'default', 1, NULL)",
             )
             .unwrap();
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        for i in 0..N {
+            stmt.execute(rusqlite::params![
+                uuid::Uuid::now_v7().to_string(),
+                "product.created",
+                format!(r#"{{"sku":"SKU-{i}","name":"Item {i}"}}"#),
+                now,
+            ])
+            .unwrap();
+        }
     }
+    conn.execute_batch("COMMIT;").unwrap();
 
     let count = store.pending_offline_count().unwrap();
-    assert_eq!(count, 10_000);
-    assert_eq!(raw_pending_count(&conn), 10_000);
+    assert_eq!(count, N);
+    assert_eq!(raw_pending_count(&conn), N);
 }
 
 #[test]

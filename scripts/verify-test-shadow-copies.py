@@ -42,13 +42,6 @@ first idea and it is unusable: 7 hits, 5 false positives, because the phrase als
 in comments explaining that a shadow copy was REMOVED. A gate that fires on its own fix
 teaches people to ignore it.
 
-WHAT IT DELIBERATELY DOES NOT DO
---------------------------------
-It does not grep for confession comments ("same logic as", "reimplement"). That was the
-first idea and it is unusable: 7 hits, 5 false positives, because the phrase also appears
-in comments explaining that a shadow copy was REMOVED. A gate that fires on its own fix
-teaches people to ignore it.
-
 KNOWN BLIND SPOTS
 -----------------
   * A copy under a DIFFERENT name is invisible to both passes. KdsSlaEscalationPipeline
@@ -186,10 +179,14 @@ def imported_names(text):
     return names
 
 
-def collect_prod():
-    """name -> list of (path, body_tokens)."""
+def collect_prod(dirs=None):
+    """name -> list of (path, body_tokens).
+
+    r219: dirs is the seam -- the r166 contract root resolves its own ui/src
+    subdirs and passes them here; None keeps the module globals, which is what
+    the monkey-patching self-test sets."""
     prod = {}
-    for d in PROD_DIRS:
+    for d in (PROD_DIRS if dirs is None else dirs):
         if not os.path.isdir(d):
             continue
         for root, _dirs, files in os.walk(d):
@@ -259,10 +256,10 @@ def consts_in(text):
     return out
 
 
-def collect_prod_consts():
-    """name -> list of (path, normalised value source)."""
+def collect_prod_consts(dirs=None):
+    """name -> list of (path, normalised value source). Same seam as collect_prod."""
     prod = {}
-    for d in PROD_DIRS:
+    for d in (PROD_DIRS if dirs is None else dirs):
         if not os.path.isdir(d):
             continue
         for root, _dirs, files in os.walk(d):
@@ -278,18 +275,28 @@ def collect_prod_consts():
     return prod
 
 
-def scan(threshold=THRESHOLD):
-    prod = collect_prod()
+def scan(threshold=THRESHOLD, root=None):
+    # r219: root is the r166 contract seam. When given, EVERY evidence source
+    # hangs under it -- the production walk, the __tests__ walk, and the paths
+    # printed in findings -- so a fixture's verdict names fixture files. When
+    # None, the module globals stand, which is what the self-test patches.
+    base = REPO if root is None else os.path.abspath(root)
+    prod_dirs = (PROD_DIRS if root is None
+                 else [os.path.join(base, "ui", "src", d) for d in
+                       ("features", "hooks", "utils", "api", "contexts",
+                        "platform", "components")])
+    test_dir = TEST_DIR if root is None else os.path.join(base, "ui", "src", "__tests__")
+    prod = collect_prod(prod_dirs)
     findings = []
     all_candidates = []
     examined = 0
     candidates = 0
-    if not os.path.isdir(TEST_DIR):
+    if not os.path.isdir(test_dir):
         return None
-    for fn in sorted(os.listdir(TEST_DIR)):
+    for fn in sorted(os.listdir(test_dir)):
         if not fn.endswith((".ts", ".tsx")):
             continue
-        path = os.path.join(TEST_DIR, fn)
+        path = os.path.join(test_dir, fn)
         text = read(path)
         imported = imported_names(text)
         for m in FN_DEF.finditer(text):
@@ -312,11 +319,11 @@ def scan(threshold=THRESHOLD):
                 if s > best:
                     best, best_path = s, ppath
             row = {
-                "test": os.path.relpath(path, REPO).replace("\\", "/"),
+                "test": os.path.relpath(path, base).replace("\\", "/"),
                 "line": text[:m.start()].count("\n") + 1,
                 "function": name,
                 "similarity": round(best, 3),
-                "production": os.path.relpath(best_path, REPO).replace("\\", "/"),
+                "production": os.path.relpath(best_path, base).replace("\\", "/"),
             }
             all_candidates.append(row)
             if best >= threshold:
@@ -326,11 +333,15 @@ def scan(threshold=THRESHOLD):
     # No threshold here on purpose. A copied constant is either the same value or it is a
     # different thing that happens to share a name, and value equality decides that exactly.
     # The function pass needs similarity because bodies vary; `STORAGE_KEY_PREFIX` does not.
-    prod_consts = collect_prod_consts()
-    for fn in sorted(os.listdir(TEST_DIR)):
+    prod_consts = collect_prod_consts(prod_dirs)
+    # r219: the const pass iterates test_dir too -- the first draft left this
+    # loop on the TEST_DIR global, and rung 4 caught it live: the fixture's
+    # const copy read 0 shadows while the REAL checkout's tests were silently
+    # the ones being scanned. Both passes move with the root or neither does.
+    for fn in sorted(os.listdir(test_dir)):
         if not fn.endswith((".ts", ".tsx")):
             continue
-        path = os.path.join(TEST_DIR, fn)
+        path = os.path.join(test_dir, fn)
         text = read(path)
         imported = imported_names(text)
         for name, entries in consts_in(text).items():
@@ -343,11 +354,11 @@ def scan(threshold=THRESHOLD):
                     if pval != norm:
                         continue
                     row = {
-                        "test": os.path.relpath(path, REPO).replace("\\", "/"),
+                        "test": os.path.relpath(path, base).replace("\\", "/"),
                         "line": ln,
                         "function": f"{name} ({kind} const)",
                         "similarity": 1.0,
-                        "production": os.path.relpath(ppath, REPO).replace("\\", "/"),
+                        "production": os.path.relpath(ppath, base).replace("\\", "/"),
                     }
                     findings.append(row)
                     break
@@ -486,21 +497,155 @@ def self_test():
             ok = False
 
     print("  SELF-TEST:", "PASS" if ok else "FAIL")
-    return 0 if ok else 1
+    if not ok:
+        return 1
+    return shell_ladder()
 
 
-def main():
+
+def shell_ladder() -> int:
+    """r219: the root contract, graded through main(argv, root) on fixture trees.
+
+    The prod body is the self-test's own computeTax, whose similarity is already
+    measured (1.000 as a byte copy) -- the ladder does not re-derive the
+    threshold, it grades the PLUMBING: that a shadow in the fixture fails, that
+    importing the real one exempts, that --json reports rc 1 with a parseable
+    payload (this file's json branch RETURNS its verdict, unlike
+    check-state-closure-after-await's, which falls through to --strict; pinned
+    here so the two are never silently "aligned"), that the const pass reports
+    without the similarity threshold, and that a missing __tests__ dir refuses.
+    Rung 1 is the killing rung: a root-dropping main scans THIS checkout, which
+    is clean, and returns 0 where the fixture returns 1.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    PROD_BODY = (
+        "export function computeTax(amount: number, rate: number): number {\n"
+        "  const net = amount / (1 + rate);\n"
+        "  return Math.round((amount - net) * 100) / 100;\n"
+        "}\n"
+    )
+    SHADOW_BODY = (
+        "function computeTax(amount: number, rate: number): number {\n"
+        "  const net = amount / (1 + rate);\n"
+        "  return Math.round((amount - net) * 100) / 100;\n"
+        "}\n"
+    )
+
+    def run(root, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    def build(tmp, *, test_body, prod_extra="", with_tests=True, prefix=None):
+        # os.path, not pathlib: tempfile.mkdtemp returns a str and this file's
+        # evidence layer is os-based throughout
+        base = tempfile.mkdtemp(dir=tmp, prefix=(prefix or ("mini%d_" % next(rung_n))))
+        os.makedirs(os.path.join(base, "ui", "src", "utils"), exist_ok=True)
+        with open(os.path.join(base, "ui", "src", "utils", "tax.ts"), "w",
+                  encoding="utf-8", newline="\n") as f:
+            f.write(PROD_BODY + prod_extra)
+        if with_tests:
+            os.makedirs(os.path.join(base, "ui", "src", "__tests__"), exist_ok=True)
+            with open(os.path.join(base, "ui", "src", "__tests__", "kds.test.tsx"),
+                      "w", encoding="utf-8", newline="\n") as f:
+                f.write(test_body)
+        return base
+
+    rung_n = iter(range(1000))
+
+    shell = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: a byte-copy shadow of a production function
+        root = build(tmp, test_body=SHADOW_BODY)
+        rc, said = run(root)
+        if rc != 1 or "1 shadow copy" not in said \
+                or "shadows ui/src/utils/tax.ts" not in said \
+                or "kds.test.tsx" not in said:
+            print("  x rung 1: a byte-copy shadow must fail rc 1, named "
+                  "fixture-relative (rc=%r said=%r)" % (rc, said[-200:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: importing the real one exempts the same-named local -- the
+        # exemption the docstring calls "~50% precise" alone
+        root = build(tmp, test_body='import { computeTax } from "../utils/tax";\n'
+                                     + SHADOW_BODY)
+        rc, said = run(root)
+        if rc != 0 or "verify-test-shadow-copies: OK" not in said:
+            print("  x rung 2: an imported name must be exempt, rc 0 (rc=%r "
+                  "said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: --json RETURNS its verdict (1 with findings) and the payload
+        # names fixture-relative paths on both sides
+        root = build(tmp, test_body=SHADOW_BODY)
+        rc, said = run(root, "--json")
+        payload = None
+        try:
+            payload = json.loads(said)
+        except ValueError:
+            pass
+        if rc != 1 or not payload or not payload.get("findings") \
+                or payload["findings"][0]["function"] != "computeTax" \
+                or payload["findings"][0]["similarity"] < THRESHOLD \
+                or payload["findings"][0]["production"] != "ui/src/utils/tax.ts" \
+                or payload["findings"][0]["test"] != "ui/src/__tests__/kds.test.tsx":
+            print("  x rung 3: --json must exit 1 with a parseable, "
+                  "fixture-relative payload (rc=%r said=%r)" % (rc, said[-160:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: the const pass needs no similarity -- exact value equality
+        # decides -- and a benign non-colliding function keeps the population
+        # non-empty, since examined==0 would refuse before the const prints
+        root = build(tmp,
+                     test_body=("const DEFAULT_TAX_RATE = 0.11;\n"
+                                "function helperThing(x: number): number {"
+                                " return x + 1; }\n"),
+                     prod_extra="export const DEFAULT_TAX_RATE = 0.11;\n")
+        rc, said = run(root)
+        if rc != 1 or "DEFAULT_TAX_RATE (scalar const)" not in said:
+            print("  x rung 4: a same-value const copy must fail rc 1 named "
+                  "(rc=%r said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: a tree without ui/src/__tests__ is the "nothing examined"
+        # refusal, rc 2 -- the seam must move the directory lookup, not just
+        # the walk
+        root = build(tmp, test_body=SHADOW_BODY, with_tests=False)
+        rc, said = run(root)
+        if rc != 2 or "no test directory found" not in said:
+            print("  x rung 5: a missing fixture __tests__ dir must refuse rc 2 "
+                  "(rc=%r said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("TEST-SHADOW SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
+    return 0
+
+
+def main(argv=None, root=None):
+    # r219: the r166 contract. argv is explicit; root names the tree to grade
+    # from code -- scan() moves every evidence source under it when given.
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--self-test", action="store_true", help="prove the detector can fail")
     ap.add_argument("--json", action="store_true", help="machine-readable findings")
     ap.add_argument("--calibrate", action="store_true",
                     help="print every candidate's similarity, not just those over threshold")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     if args.self_test:
         return self_test()
 
-    res = scan(0.0) if args.calibrate else scan()
+    res = scan(0.0, root=root) if args.calibrate else scan(root=root)
     if res is None:
         print("verify-test-shadow-copies: no test directory found -- nothing examined",
               file=sys.stderr)

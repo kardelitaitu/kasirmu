@@ -240,6 +240,24 @@ describe('AuditLogScreen', () => {
     );
   });
 
+  it('clears the old page when a reload fails, instead of showing it without an error', async () => {
+    // The error card and the empty state are gated on `entries.length === 0`. A failed
+    // reload that keeps the previous page renders those rows with NO error — a read that
+    // never answered presenting as a successful answer.
+    mockListAuditLogScoped.mockResolvedValue(makePage([makeEntry()]));
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Target')).toBeDefined());
+    // The table slices `target_id` to 8 chars.
+    expect(screen.getByText('sale-123')).toBeDefined();
+
+    // Every later read fails; Refresh drives load({ reset: true }).
+    mockListAuditLogScoped.mockRejectedValue(new Error('DB error'));
+    await userEvent.click(screen.getByRole('button', { name: /Refresh/ }));
+
+    await waitFor(() => expect(screen.getByText('Failed to load audit log')).toBeDefined());
+    expect(screen.queryByText('sale-123')).toBeNull();
+  });
+
   it('renders table with audit entries', async () => {
     mockListAuditLogScoped.mockResolvedValue(makePage([makeEntry(), makeEntry({ id: 'a-2', action: 'login' })]));
     await renderScreen();
@@ -464,6 +482,52 @@ describe('AuditLogScreen', () => {
     );
   });
 
+  // A double tap on Mark Reviewed must not write TWO review checkpoints.
+  //
+  // This is the audit arm of the same class, and it is the one where the backend is the
+  // least able to help. `save_review_checkpoint` is a plain INSERT with no idempotency and
+  // no unique key (crates/kasirmu-core/src/db/audit.rs:909-944), and it also appends the
+  // `audit.review` event to the SAME append-only, hash-chained log it is attesting about.
+  //
+  // Two consequences a duplicate row does not capture. First, the checkpoint is an
+  // ATTESTATION: `reviewed_through_created_at` says every entry at or before that cursor has
+  // been seen by a human. Second, the payload is a client-derived HIGH-WATER MARK --
+  // page 1 is newest-first, so `entries[0]` is the globally newest row (AuditLogScreen.tsx
+  // :228-234) -- and after the first submit the handler refreshes the list, which puts the
+  // `audit.review` event itself at the head. So the second write asserts a reviewer looked at
+  // the record of them looking.
+  //
+  // A second `audit.review` row also means a later chain verification walks two review
+  // events for one review. Not a hash break, but the count of reviewed checkpoints no longer
+  // equals the number of times anyone reviewed anything.
+  it('writes one review checkpoint for a double tap while the first is in flight', async () => {
+    mockGetAuditReviewStatusScoped.mockResolvedValue({ checkpoint: null, unreviewed_count: 5 });
+    mockListAuditLogScoped.mockResolvedValue(makePage([makeEntry({ id: 'a-1', created_at: '2026-07-01T12:00:00Z' })]));
+    let releaseMark: ((v: unknown) => void) | undefined;
+    const held = new Promise((resolve) => { releaseMark = resolve; });
+    mockMarkAuditReviewedScoped.mockImplementation(() => held as never);
+    await renderScreen();
+    await waitFor(() => expect(screen.getByText('Mark Reviewed')).toBeDefined());
+
+    const markBtn = screen.getByRole('button', { name: 'Mark Reviewed' });
+    // Both taps in ONE batch: a real double tap dispatches twice before React can commit
+    // `markingReviewed` and disable the button (round 148's shape).
+    await act(async () => {
+      fireEvent.click(markBtn);
+      markBtn.removeAttribute('disabled');
+      fireEvent.click(markBtn);
+    });
+
+    expect(
+      mockMarkAuditReviewedScoped.mock.calls.length,
+      'a second tap wrote another review checkpoint; the row is an attestation that a ' +
+        'human saw every entry at or before the cursor, and the payload is a ' +
+        'client-derived high-water mark',
+    ).toBe(1);
+
+    releaseMark?.({ reviewedAt: '2026-07-02T00:00:00Z', unreviewedCount: 0 });
+    await act(async () => { await held; });
+  });
   // ── Request-generation protection (AUD-05) ─────────────────────
 
   it('discards a stale slower load in favor of a newer one (AUD-05)', async () => {
@@ -647,6 +711,31 @@ describe('AuditLogScreen', () => {
     clickSpy.mockRestore();
   });
 
+  it('exports the audit log ONCE when Export CSV is double-tapped', async () => {
+    // The CSV is the audit evidence; a replay writes it twice under the same download name
+    // and the second blob's object URL is the one the operator ends up with.
+    let release: (() => void) | undefined;
+    mockExportAuditLogScoped.mockReturnValue(new Promise((res) => {
+      release = () => res({ csv: 'id\n', row_count: 0, generated_at: '', requested_by: 'u' });
+    }));
+    const createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:fake');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    await renderScreen();
+    await waitFor(() => expect(screen.getByText('Export CSV')).toBeDefined());
+
+    const btn = screen.getByRole('button', { name: 'Export CSV' });
+    act(() => {
+      fireEvent.click(btn);
+      fireEvent.click(btn);
+    });
+
+    release?.();
+    await waitFor(() => expect(mockExportAuditLogScoped).toHaveBeenCalledTimes(1));
+    createUrl.mockRestore();
+  });
+
   it('shows a localized export-error notice even when the table has rows (AUD-09)', async () => {
     mockExportAuditLogScoped.mockRejectedValue(new Error('export boom'));
     // Rows present — the table-load error branch (error && entries.length === 0)
@@ -782,7 +871,7 @@ describe('AuditLogScreen', () => {
   //
   // All three were gated on `isManager`, which excludes the AUDITOR preset — the one
   // role whose whole purpose is reviewing this log, and the one holding `audit:view`
-  // without `audit:export` (rbac_presets.rs:285-305). So Mark Reviewed was hidden from
+  // without `audit:export` (the AUDITOR preset in rbac_presets.rs). So Mark Reviewed was hidden from
   // its intended user. This is the direction round 48 found on the pengganti button:
   // not an enabled control that errors, but a working action made unreachable.
 
@@ -805,9 +894,9 @@ describe('AuditLogScreen', () => {
 
   it('lets a non-manager CUSTOM role export when the grant is explicit', async () => {
     // The mirror case, and the reason the gate cannot be the role: `CUSTOM` is
-    // "fully flexible — Admin selects every permission manually" (rbac_presets.rs:306-310),
+    // "fully flexible — Admin selects every permission manually" (the CUSTOM preset in
+    // rbac_presets.rs grants nothing and leaves every permission to the admin),
     // so `audit:export` can be held by someone `isManager` excludes.
-    mockAuth.isManager = false;
     mockAuth.permissions = ['audit:export'];
     mockListAuditLogScoped.mockResolvedValue(makePage([makeEntry()]));
     await renderScreen();

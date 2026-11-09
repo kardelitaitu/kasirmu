@@ -93,3 +93,5 @@ degrading the instrument that found rounds 118-120's findings.
 | Real feature scoping | per store (`preset_registry` -> `FeatureRegistry`) |
 | Store's own preset | not recorded in the mock at all |
 | Tree | no source changed this round |
+
+> last audited 14-10-26 by docs-auditor

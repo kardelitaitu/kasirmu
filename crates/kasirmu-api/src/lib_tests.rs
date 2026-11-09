@@ -1098,7 +1098,7 @@ async fn root_returns_401() {
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
-// ── Security headers (docs/archived/2026-08-15-unify-auth-and-sync.md §11) ──
+// ── Security headers (docs/records/audits/2026-08-15-unify-auth-and-sync.md §11) ──
 
 #[test]
 fn security_header_hsts_only_in_production() {
@@ -1131,7 +1131,7 @@ async fn security_headers_present_on_health() {
     assert!(resp.headers().get("strict-transport-security").is_none());
 }
 
-// ── CORS allowlist (docs/archived/2026-08-15-unify-auth-and-sync.md §11) ────
+// ── CORS allowlist (docs/records/audits/2026-08-15-unify-auth-and-sync.md §11) ────
 
 #[test]
 fn parse_cors_origins_defaults_to_documented_allowlist() {

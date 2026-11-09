@@ -78,3 +78,5 @@ store serving two differently-provisioned workspaces is the underlying limitatio
 | Real backend | `setup.rs:208-215` reads the FeatureRegistry |
 | Live sidebar rows | 6; KDS absent because the feature is off |
 | Round 128's fix | behaving correctly, not over-correcting |
+
+> last audited 14-10-26 by docs-auditor

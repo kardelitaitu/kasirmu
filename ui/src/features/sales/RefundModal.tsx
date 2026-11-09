@@ -45,14 +45,33 @@ export default function RefundModal({ open, sale, onClose, onRefunded }: RefundM
     });
   }, []);
 
-  const updateQty = useCallback((lineId: string, qty: number) => {
+  /**
+   * Step one line's refunded quantity by `delta`, resolving the sum INSIDE the
+   * updater so it reads the value the previous step actually committed.
+   *
+   * WHY A DELTA AND NOT AN ABSOLUTE `qty`: the stepper used to call
+   * `changeQty(line.id, selectedQty + 1)` where `selectedQty` came from the render
+   * snapshot (`selectedLines[line.id] ?? 0`, :257). Two clicks landing in the same
+   * React batch both closed over that one snapshot, both computed the same sum, and
+   * `{ ...prev, [lineId]: qty }` wrote it twice -- the second tap vanished.
+   *
+   * THE MONEY IS WHY THIS MATTERS MORE THAN THE STEPPER LOOKING RIGHT: the refunded
+   * amount is derived from `selectedQty` itself (:295), so a lost tap refunds a
+   * CASH amount smaller than the operator asked for. The `disabled` guard at the
+   * ceiling can only catch a tap at the maximum; every tap below it is exposed.
+   *
+   * Same defect and same remedy as the retail till, the shared POS cart and the KDS
+   * picker (rounds 89-91).
+   */
+  const changeQty = useCallback((lineId: string, delta: number) => {
     setSelectedLines((prev) => {
-      if (qty <= 0) {
-        const next = { ...prev };
-        delete next[lineId];
-        return next;
+      const next = (prev[lineId] ?? 0) + delta;
+      if (next <= 0) {
+        const cleared = { ...prev };
+        delete cleared[lineId];
+        return cleared;
       }
-      return { ...prev, [lineId]: qty };
+      return { ...prev, [lineId]: next };
     });
   }, []);
 
@@ -113,7 +132,26 @@ export default function RefundModal({ open, sale, onClose, onRefunded }: RefundM
 
   const hasSelection = Object.values(selectedLines).some((q) => q > 0);
 
+  // Re-entry guard for the refund write, and this one is the MONEY arm of the class.
+  // `processing` is STATE: React commits it on its next render, after the second click of a
+  // real double tap. MEASURED: two clicks in one act() batch both reach the handler
+  // (RefundModal.test.tsx 'sends one refund for a double click while the first is in
+  // flight'), and both are SENT.
+  //
+  // Unlike the refused-replay screens (suppliers, purchase orders, staff, shift
+  // open/close, stock-count complete), the backend does NOT refuse this. `process_refund`
+  // bounds a refund only by the CUMULATIVE refundable balance --
+  //   SELECT COALESCE(SUM(total_minor), 0) FROM refunds WHERE sale_id = ?1
+  //   if already_refunded + refund.total > sale_total { Err }
+  // (crates/kasirmu-core/src/db/refunds.rs:119-142) -- so refunding part of a sale accepts
+  // BOTH writes as long as the total stays under the sale total. Refund 7000 of a 35000
+  // sale twice and 14000 <= 35000 passes: the customer is refunded twice, and the modal
+  // closes on the FIRST success so the second is invisible. A ref, not the state, for the
+  // reason every sibling guard records.
+  const refundPendingRef = useRef(false);
   const handleRefund = useCallback(async () => {
+    if (refundPendingRef.current) return;
+    refundPendingRef.current = true;
     if (!session || !sessionToken || !hasSelection || !reason.trim()) return;
     setProcessing(true);
     setError(null);
@@ -148,6 +186,7 @@ export default function RefundModal({ open, sale, onClose, onRefunded }: RefundM
     } catch (err) {
       setError(l10nErrorMessage(err, l10n, 'refund-error'));
     } finally {
+      refundPendingRef.current = false;
       setProcessing(false);
     }
   }, [session, sessionToken, hasSelection, reason, note, selectedLines, sale, l10n]);
@@ -220,7 +259,7 @@ export default function RefundModal({ open, sale, onClose, onRefunded }: RefundM
           </div>
         ) : (
           <>
-            <div className="refund-header">
+            <header className="refund-header">
               <Localized id="refund-title">
                 <h2 className="refund-title">Process Refund</h2>
               </Localized>
@@ -235,7 +274,7 @@ export default function RefundModal({ open, sale, onClose, onRefunded }: RefundM
                 &times;
               </button>
               </Localized>
-            </div>
+            </header>
 
             <div className="refund-sale-info">
               <Localized id="refund-sale-id" vars={{ id: sale.id.slice(0, 8) }}>
@@ -275,7 +314,7 @@ export default function RefundModal({ open, sale, onClose, onRefunded }: RefundM
                           <button
                             type="button"
                             className="refund-qty-btn"
-                            onClick={() => updateQty(line.id, selectedQty - 1)}
+                            onClick={() => changeQty(line.id, -1)}
                             disabled={selectedQty <= 1}
                             aria-label={l10n.getString('decrease-qty-aria')}
                           >−</button>
@@ -285,7 +324,7 @@ export default function RefundModal({ open, sale, onClose, onRefunded }: RefundM
                           <button
                             type="button"
                             className="refund-qty-btn"
-                            onClick={() => updateQty(line.id, selectedQty + 1)}
+                            onClick={() => changeQty(line.id, 1)}
                             disabled={selectedQty >= (line.qty ?? 1)}
                             aria-label={l10n.getString('increase-qty-aria')}
                           >+</button>
@@ -345,7 +384,7 @@ export default function RefundModal({ open, sale, onClose, onRefunded }: RefundM
               </span>
             </div>
 
-            <div className="refund-actions">
+            <footer className="refund-actions">
               <Localized id="refund-cancel">
                 <Button
                   variant="ghost"
@@ -365,7 +404,7 @@ export default function RefundModal({ open, sale, onClose, onRefunded }: RefundM
                   Process Refund
                 </Button>
               </Localized>
-            </div>
+            </footer>
           </>
         )}
       </div>

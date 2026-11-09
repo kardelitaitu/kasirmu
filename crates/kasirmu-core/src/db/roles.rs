@@ -40,6 +40,15 @@ use super::staff::{TRASH_RETENTION_DAYS, TrashedRole};
 use crate::error::CoreError;
 use crate::{Role, Store};
 
+/// Per-role reference counts: table name to the number of live rows pointing at the role.
+pub type RoleReferenceCounts = std::collections::HashMap<String, Vec<(&'static str, i64)>>;
+
+/// Per-role holder counts, keyed by role id.
+pub type RoleHolderCounts = std::collections::HashMap<String, i64>;
+
+/// The pair `all_role_counts_map` returns: `(references, holders)`.
+pub type RoleCountsMap = (RoleReferenceCounts, RoleHolderCounts);
+
 /// Re-exported so the authoring IPC can label preset rows without taking a
 /// `platform-core` dependency of its own. Reached through this module rather
 /// than `kasirmu_core`'s crate root because that re-export list is a shared edit
@@ -266,6 +275,50 @@ impl Store<'_> {
             }
         }
         Ok(out)
+    }
+
+    /// Batched computation of role references and role holder counts for all roles.
+    ///
+    /// Returns `(reference_counts_by_role, holder_counts_by_role)` in 5 total queries
+    /// instead of 5N queries per role.
+    pub fn all_role_counts_map(&self) -> Result<RoleCountsMap, CoreError> {
+        let mut refs_map: std::collections::HashMap<String, Vec<(&'static str, i64)>> =
+            std::collections::HashMap::new();
+
+        for (table, live) in ROLE_REFERRERS {
+            let filter = live.map_or(String::new(), |p| format!(" WHERE {p}"));
+            let query = format!("SELECT role_id, COUNT(*) FROM {table}{filter} GROUP BY role_id");
+            let mut stmt = self.conn.prepare(&query)?;
+            let rows = stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?;
+            for row in rows {
+                let (role_id, count) = row?;
+                if count > 0 {
+                    refs_map.entry(role_id).or_default().push((table, count));
+                }
+            }
+        }
+
+        let mut holders_map: std::collections::HashMap<String, i64> =
+            std::collections::HashMap::new();
+        let mut stmt = self.conn.prepare(
+            "SELECT COALESCE(a.role_id, u.role_id) AS resolved_role, COUNT(*)
+             FROM users u
+             LEFT JOIN assignments a ON a.user_id = u.id
+             GROUP BY resolved_role",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, Option<String>>(0)?, row.get::<_, i64>(1)?))
+        })?;
+        for row in rows {
+            let (role_id_opt, count) = row?;
+            if let Some(role_id) = role_id_opt {
+                holders_map.insert(role_id, count);
+            }
+        }
+
+        Ok((refs_map, holders_map))
     }
 
     /// Turn a uniqueness violation on the role name into the typed

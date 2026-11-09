@@ -222,7 +222,7 @@ Every phase and high-level objective is broken down below into actionable, atomi
 #### 5.3 Production Docker & Compose Setup (`Dockerfile.server` & `docker-compose.yml`)
 
 - [x] **5.3.1 [Multi-Stage Dockerfile]**: Create `Dockerfile.server` in root with two stages:
-  - Stage 1 (`builder`): `FROM rust:1.88-slim`, `cargo build --release --package oz-cloud-server`.
+  - Stage 1 (`builder`): `FROM rust:1.88-slim`, `cargo build --release --package oz-cloud-server`. <!-- dead-ref: ok: historical checklist item, kept verbatim per the superseded marker at :1; the package was renamed to kasirmu-cloud (see :6) and the working command is recorded there -->
   - Stage 2 (`runtime`): `FROM debian:bookworm-slim`, copy binary to `/app/oz-cloud-server`, expose `3099`, set `VOLUME ["/data"]`, and `ENTRYPOINT ["/app/oz-cloud-server"]`.
 - [x] **5.3.2 [Docker Compose Topology]**: Create `docker-compose.yml` defining two services:
   - `pos-cloud-server`: built from `Dockerfile.server`, port `3099:3099`, environment `OZ_DB_PATH=/data/kasir.db` (or `DATABASE_URL=postgres://...`), volume `oz_cloud_data:/data`.

@@ -1,6 +1,7 @@
 use super::*;
 use kasirmu_core::db::Store;
 use kasirmu_core::migrations;
+use kasirmu_test_support::tempdir;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
 
@@ -17,7 +18,7 @@ fn analytics_state() -> (AppState, tempfile::TempDir) {
         )
         .unwrap();
     }
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
 

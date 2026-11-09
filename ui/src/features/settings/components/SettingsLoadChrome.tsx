@@ -3,8 +3,8 @@
  * initial-load skeleton and the fatal-load error card with its Retry button.
  *
  * Extracted from SettingsPage.tsx by the settings lane's load-chrome slice.
- * Both blocks moved verbatim - the skeleton guard at :376-419 and the error
- * guard at :421-432 of the 498-line page, with only base indentation changed
+ * Both blocks moved verbatim out of that page - the skeleton guard and the
+ * role="alert" error guard, in that order - with only base indentation changed
  * (the page held them inside an "if (...) return (...)" guard, so the JSX root
  * loses two spaces here) - so each diffs clean against its old lines. Nothing
  * here is a rewrite: the topbar mock, the three Skeleton cards and the
@@ -24,8 +24,8 @@
  *     rather than a moved handler, and that is the one judgement call here:
  *     the original onClick was a two-statement arrow - setInitialized(false)
  *     then settingsCtx.refetch() - and setInitialized is the page's
- *     draft-initialization flag, the same state the init effect (:221-263)
- *     uses to seed the local editable copy exactly once. The alternatives were
+ *     draft-initialization flag, the same state the init effect that seeds the
+ *     local editable copy exactly once also reads. The alternatives were
  *     a setter prop or a resetDraft callback, both of which drag page state
  *     across the seam to save one prop, and a refetch that does not also
  *     un-initialize the page retries into a card that can never leave. So the
@@ -38,7 +38,7 @@
  * settings/SettingsPage.css. Skip that registration and the guard goes red on
  * the dead-class check for exactly those names: this slice MOVES markup out of
  * the scanned file, so the registration is what keeps them reachable. It is
- * also where the four classes SettingsTopbar.tsx's header note (:47-49) says
+ * also where the four classes SettingsTopbar.tsx's header note names (they
  * survive only because the page's skeleton renders them come to rest - they
  * are rendered here, which is registered, so they stay alive for the right
  * reason instead of because the page happens to hold a second copy.
@@ -64,7 +64,14 @@ export function SettingsLoadingChrome() {
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
             </svg>
           </div>
-          <span className="settings-topbar-name"><Localized id="settings-title">Settings</Localized></span>
+          {/* An <h1>, not a <span>, because this skeleton IS the page's topbar while
+              SettingsContext's first load resolves -- SettingsTopbar.tsx:157 renders
+              the same title as an <h1> once it does. A span here meant the page had
+              no heading at all during the initial fetch, so `page-has-heading-one`
+              would fail on a loading screen and pass a moment later, and a screen
+              reader had nothing to announce the page by until the data arrived.
+              Same class as the accessible name, same element as the loaded state. */}
+          <h1 className="settings-topbar-name"><Localized id="settings-title">Settings</Localized></h1>
         </div>
         {/* COL 2 (search) and COL 3 (actions) — empty in skeleton. Three items
             total, matching the real header's `1fr auto 1fr` grid. */}

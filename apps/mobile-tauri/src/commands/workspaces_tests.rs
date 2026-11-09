@@ -1,6 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::*;
+use kasirmu_test_support::tempdir;
 
 use crate::commands::picker_ticket;
 use kasirmu_core::LocationProfile;
@@ -45,7 +46,7 @@ fn make_profile(id: &str, name: &str) -> LocationProfile {
 fn picker_state() -> (AppState, tempfile::TempDir) {
     let conn = migrations::fresh_db();
     seed_global_users(&conn);
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
 
@@ -381,7 +382,7 @@ fn binding_state() -> (
         .update_terminal_binding(&terminal.id, "store-a", "ws-a-1", &sig)
         .unwrap();
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
     let conn = state.db_manager.open_store("store-a").unwrap();
@@ -589,7 +590,7 @@ fn bindable_device() -> (
     )
     .unwrap();
 
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
     {
         let store_conn = db_manager.open_store("store-a").unwrap();

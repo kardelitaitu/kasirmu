@@ -6,7 +6,7 @@ findings: production logic clean — dependency DAG with recursive enable, kebab
 next: none | perf: N/A
 */
 //!
-//! The [`Feature`] enum defines all 32 toggleable features in the
+//! The [`Feature`] enum defines every toggleable feature in the
 //! kasir.mu framework. A [`FeatureRegistry`] holds the currently-active
 //! set and provides helpers for enabling/disabling flags with automatic
 //! dependency resolution.

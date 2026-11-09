@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
+import { loginAs, navigateViaSidebar } from './helpers';
 
 /**
  * E2E: Exchange Rates screen contract (CUR-11 Playwright coverage)
@@ -24,10 +24,20 @@ import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
 test.describe('Exchange Rates screen', () => {
   test.beforeEach(async ({ page }) => {
     await loginAs(page, 'admin', '9999');
-    await selectWorkspace(page, WORKSPACES.ADMIN);
-    await page.evaluate(() => {
-      window.location.hash = '#/exchange-rates';
-    });
+    // REACH THE SCREEN THE WAY A USER DOES, through the workspace sidebar.
+    //
+    // `selectWorkspace(ADMIN) + window.location.hash = '#/exchange-rates'` cannot work:
+    // `selectWorkspace` activates admin through the Settings card, and `exchange-rates`
+    // is NOT a fullscreen page. WorkspaceHome.handleShortcutNav (WorkspaceHome.tsx:553-565)
+    // sets a workspace for fullscreen destinations only, so a hash write to a plain page
+    // arrives with no workspace — AppShell.tsx:708 then returns the picker.
+    //
+    // The screen IS a first-class in-workspace page: its own header calls it "top-level page
+    // (finance nav section, manager+)" and it registers a nav item (features/currency/
+    // register.tsx), which is why the sidebar is the correct route. Measured 2026-10-17:
+    // the Finance section offers Exchange Rates and reaching it renders
+    // `.exchange-rate-title`. See helpers.navigateViaSidebar.
+    await navigateViaSidebar(page, 'Finance', 'Exchange Rates');
     await expect(page.locator('.exchange-rate-title')).toBeVisible({ timeout: 10_000 });
   });
 

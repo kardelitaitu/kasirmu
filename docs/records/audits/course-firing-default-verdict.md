@@ -57,3 +57,5 @@ unreachable, and a reader comparing the two comments could reasonably conclude o
 
 A repair has to satisfy all three: seed the cart (not scan), and set
 `restaurant.course_firing` to `'true'` in the mock. The third was the missing piece.
+
+> last audited 14-10-26 by docs-auditor

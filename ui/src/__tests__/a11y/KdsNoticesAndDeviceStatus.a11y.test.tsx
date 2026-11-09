@@ -12,13 +12,14 @@ import { renderWithProviders, checkA11y } from './axe-helper';
 import { KdsNoticeBanners } from '@/features/kds/components/KdsNoticeBanners';
 import kdsFtl from '@/locales/kds.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
+import type * as KdsApi from '@/api/kds';
 
 const FTL = [sharedFtl, kdsFtl];
 
 const { mockListDevices } = vi.hoisted(() => ({ mockListDevices: vi.fn() }));
 
 vi.mock('@/api/kds', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/api/kds')>()),
+  ...(await importOriginal<typeof KdsApi>()),
   listKdsDevicesScoped: () => mockListDevices(),
 }));
 

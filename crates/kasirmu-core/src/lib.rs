@@ -193,6 +193,8 @@ pub mod promotion_engine;
 pub mod purchase_order;
 /// Sliding-window rate limiter for login PIN attempts.
 pub mod rate_limiter;
+/// Accounts Receivable (Piutang / Jual Tempo / Kasbon) domain model — status machine and row shapes.
+pub mod receivable;
 /// Product recipes — bill-of-materials for make-from-scratch items.
 pub mod recipe;
 /// Refund and return processing.

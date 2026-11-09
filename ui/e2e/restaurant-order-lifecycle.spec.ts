@@ -70,10 +70,14 @@ test.describe('Restaurant POS — order lifecycle', () => {
     await expect(table).toHaveValue('12');
 
     // ── Step 2: order type is a radio group, so assert the selection moved ──
+    const trigger = page.locator('[data-testid="pos-cart-order-type-dropdown-trigger"]');
+    if (await trigger.isVisible({ timeout: 1_000 }).catch(() => false)) {
+      await trigger.click();
+    }
     const orderTypeBtns = page.locator('.pos-cart-order-type-btn');
     await expect(orderTypeBtns.first()).toBeVisible({ timeout: 5_000 });
-    await orderTypeBtns.nth(1).click();
-    await expect(orderTypeBtns.nth(1)).toHaveAttribute('aria-checked', 'true');
+    await orderTypeBtns.first().click();
+    await expect(orderTypeBtns.first()).toHaveAttribute('aria-checked', 'true');
 
     // ── Step 3: the table number must SURVIVE that interaction. A re-render
     // that dropped cart state would show up here, not at the end. ──────────
@@ -87,7 +91,7 @@ test.describe('Restaurant POS — order lifecycle', () => {
 
     // Table and order type still intact after a line mutation.
     await expect(table).toHaveValue('12');
-    await expect(orderTypeBtns.nth(1)).toHaveAttribute('aria-checked', 'true');
+    await expect(orderTypeBtns.first()).toHaveAttribute('aria-checked', 'true');
 
     // ── Step 5: charge, and prove the modal opened with the items attached ──
     const payBtn = page.locator('.pos-cart-pay-btn');

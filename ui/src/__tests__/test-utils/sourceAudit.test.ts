@@ -57,6 +57,79 @@ describe('sourceAudit.stripCommentsAndStrings', () => {
     expect(stripped[1]).toBe('s');
     expect(origIndexAt[1]).toBe(5);
   });
+
+  // ── A regex literal containing a slash is NOT a line comment ───────
+  //
+  // The scanner read any `//` as a comment start, so `/^#\\//` -- the hash-route
+  // regex three production files carry -- was treated as `//` and the REST OF THAT
+  // LINE was discarded. Measured on features/staff/StaffManagementScreen.tsx: the
+  // trailing `.split(...)` was present in the source and absent from the stripped
+  // output, so every audit scanning that file was blind to it.
+
+  it('keeps code that follows a regex literal on the same line', () => {
+    const src = 'const r = /^#\\//; const AFTER = 2;';
+    const { stripped } = stripCommentsAndStrings(src);
+    expect(stripped).toContain('AFTER');
+  });
+
+  it('handles a slash inside a regex character class, where it needs no escape', () => {
+    const src = 'const parts = s.split(/[/]+/); const AFTER = 2;';
+    const { stripped } = stripCommentsAndStrings(src);
+    expect(stripped).toContain('AFTER');
+  });
+
+  it('still removes a real line comment that follows code', () => {
+    const src = 'const a = 1; // comment with setX((prev) => bad)\nconst b = 2;';
+    const { stripped } = stripCommentsAndStrings(src);
+    expect(stripped).not.toContain('setX');
+    expect(stripped).toContain('const a = 1;');
+    expect(stripped).toContain('const b = 2;');
+  });
+
+  it('does NOT mistake division for a regex (the inverse direction)', () => {
+    // After an identifier, a value-ending token, `/` is division. Reading it as a
+    // regex would swallow every char to the next `/`, which is worse than the bug
+    // this fix removes -- so the false-positive direction is pinned too.
+    const src = 'const ratio = total / count; const AFTER = 2;';
+    const { stripped } = stripCommentsAndStrings(src);
+    expect(stripped).toContain('total / count');
+    expect(stripped).toContain('AFTER');
+  });
+
+  it('keeps a division that follows a closing paren or bracket', () => {
+    const src = 'const a = (x + y) / 2; const b = arr[0] / 3; const AFTER = 2;';
+    const { stripped } = stripCommentsAndStrings(src);
+    expect(stripped).toContain('(x + y) / 2');
+    expect(stripped).toContain('arr[0] / 3');
+    expect(stripped).toContain('AFTER');
+  });
+
+  it('reads a regex that follows a keyword where an expression begins', () => {
+    const src = 'function f() { return /a\\/b/.test(s); } const AFTER = 2;';
+    const { stripped } = stripCommentsAndStrings(src);
+    expect(stripped).toContain('AFTER');
+  });
+
+  // ── A JSX closing tag is not a regex literal ───────────────────────
+  //
+  // `</div>` puts a slash after `<`, which the expression-expected arm read as the
+  // start of a regex literal. The scanner then swallowed every character up to the
+  // next unescaped slash — in JSX, the NEXT CLOSING TAG. Measurement: the single line
+  // `x = 1; </div> {flag} </p> tail` stripped to `x = 1; <> tail`, losing `{flag}`.
+  // Real instance: features/sales/SalesHistoryScreen.tsx:1646 reads `detailLoading`
+  // on a line that follows `</div>`, and the unread-state guard reported the flag
+  // SET-BUT-NEVER-READ because of it. Introduced with the regex arm (round 26).
+
+  it('keeps code between two JSX closing tags on one line', () => {
+    const { stripped } = stripCommentsAndStrings('x = 1; </div> {flag} </p> tail');
+    expect(stripped).toContain('flag');
+    expect(stripped).toContain('tail');
+  });
+
+  it('keeps a read that follows a closing tag inside real JSX', () => {
+    const src = ['<div>', '  </span>            {loading ? (', '    <p>x</p>', '  ) : null}', '</div>'].join('\\n');
+    expect(stripCommentsAndStrings(src).stripped).toContain('loading');
+  });
 });
 
 describe('sourceAudit.extractUpdaterBodies', () => {

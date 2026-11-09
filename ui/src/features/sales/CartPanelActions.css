@@ -37,6 +37,33 @@
   min-width: 0;
 }
 
+/* ── Dining operations: 2x2 grid above Charge hero ─── */
+.pos-cart-actions-row--dining {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.pos-cart-actions-row--dining .pos-cart-clear-btn {
+  order: 9;
+  flex: 0 0 auto;
+}
+
+.pos-cart-actions-row--dining .pos-cart-pay-btn {
+  order: 10;
+  flex: 1 1 200px;
+}
+
+.pos-cart-actions-row--dining .pos-cart-open-bill-btn,
+.pos-cart-actions-row--dining .pos-cart-print-bill-btn,
+.pos-cart-actions-row--dining .pos-cart-send-kitchen-btn,
+.pos-cart-actions-row--dining .pos-cart-split-bill-btn {
+  order: 1;
+  flex: 1 1 calc(50% - var(--space-2));
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-2_5);
+}
+
 /* ── Pay button (hero) ─────────────────────────────── */
 /* Elevated hero: 56 px tall, xl-size label, vertical accent
  * gradient, soft accent-tinted glow that strengthens on hover
@@ -103,7 +130,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-1);
+  gap: var(--space-1_5);
   padding: var(--space-3) var(--space-4);
   font-family: var(--font-sans);
   font-size: var(--text-base);
@@ -112,13 +139,25 @@
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
   cursor: pointer;
   white-space: nowrap;
+  transition:
+    background-color var(--duration-150) var(--ease-out),
+    border-color var(--duration-150) var(--ease-out),
+    transform var(--duration-150) var(--ease-out),
+    box-shadow var(--duration-150) var(--ease-out);
 }
 
 .pos-cart-open-bill-btn:hover {
   background: var(--color-bg-elevated);
   border-color: var(--color-border-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.pos-cart-open-bill-btn:active {
+  transform: scale(0.98);
 }
 
 .pos-cart-open-bill-btn:focus-visible {
@@ -133,7 +172,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-1);
+  gap: var(--space-1_5);
   padding: var(--space-3) var(--space-3);
   font-family: var(--font-sans);
   font-size: var(--text-sm);
@@ -142,8 +181,15 @@
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
   cursor: pointer;
   white-space: nowrap;
+  transition:
+    background-color var(--duration-150) var(--ease-out),
+    border-color var(--duration-150) var(--ease-out),
+    color var(--duration-150) var(--ease-out),
+    transform var(--duration-150) var(--ease-out),
+    box-shadow var(--duration-150) var(--ease-out);
 }
 
 .pos-cart-send-kitchen-btn {
@@ -158,6 +204,14 @@
   background: var(--color-bg-elevated);
   border-color: var(--color-border-hover);
   color: var(--color-fg);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.pos-cart-print-bill-btn:active,
+.pos-cart-split-bill-btn:active,
+.pos-cart-send-kitchen-btn:active {
+  transform: scale(0.98);
 }
 
 .pos-cart-print-bill-btn:focus-visible,
@@ -172,7 +226,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-1);
+  gap: var(--space-1_5);
   padding: var(--space-3) var(--space-3);
   font-family: var(--font-sans);
   font-size: var(--text-sm);
@@ -183,11 +237,20 @@
   border-radius: var(--radius-lg);
   cursor: pointer;
   white-space: nowrap;
+  transition:
+    background-color var(--duration-150) var(--ease-out),
+    border-color var(--duration-150) var(--ease-out),
+    transform var(--duration-150) var(--ease-out);
 }
 
 .pos-cart-clear-btn:hover {
   background: var(--color-danger-bg);
   border-color: var(--color-danger);
+  transform: translateY(-1px);
+}
+
+.pos-cart-clear-btn:active {
+  transform: scale(0.96);
 }
 
 .pos-cart-clear-btn:focus-visible {

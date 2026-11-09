@@ -159,6 +159,8 @@ export default function TaxConfigurationScreen({ embedded = false }: TaxConfigur
   const [editingCatName, setEditingCatName] = useState('');
   const [selectedCatRateIds, setSelectedCatRateIds] = useState<string[]>([]);
   const [savingCat, setSavingCat] = useState(false);
+  /** Synchronous mirror of `savingCat` — see the re-entry guard in `handleSaveCat`. */
+  const savingCatRef = useRef(false);
 
   // ── Data loading ────────────────────────────────────────────────
 
@@ -278,21 +280,43 @@ export default function TaxConfigurationScreen({ embedded = false }: TaxConfigur
     // select from it, so a stale empty map must not be captured.
   }, [roundingModes]);
 
+  // Re-entry guard. `saving` is React state and commits on the NEXT render, so the second
+  // dispatch of a real double click still enters `handleSave`. The CREATE path writes a row
+  // with no natural key to refuse it: `tax_rates` has only `id TEXT PRIMARY KEY` (the id is
+  // minted per call, 20260813_init.sql) and NO unique on `name`, and `create_tax_rate` is a
+  // plain INSERT inside a transaction (db/tax/rates.rs:165-172). So a double click stores TWO
+  // tax rates with the same name and rate, both selectable in the picker and both applied to
+  // categories -- a tax configuration the merchant never intended and cannot tell apart.
+  //
+  // The ref sits in `commitSave`, not in `handleSave`, on purpose: it is the single write
+  // tail for BOTH the direct save and the tier-move ConfirmDialog continuation, so one guard
+  // covers both paths. That is also why `confirmTierMove` still shows up in
+  // check-reentry-guards.py's list: the reader only reads a handler's OWN body, and this
+  // handler's guard lives in the function it calls. Measured round 189 -- see the note on
+  // `setSaving` in `confirmTierMove` itself, and the double-tap case in the test file.
+  const savePendingRef = useRef(false);
+
   // Shared write tail of a save: called directly by handleSave, and by the
   // tier-move ConfirmDialog continuation — the action on confirm is exactly
   // the write the removed native gate used to gate.
   const commitSave = useCallback(async (args: CreateTaxRateArgs) => {
-    if (editingId) {
-      await updateTaxRateScoped(sessionToken, { id: editingId, ...args });
-    } else {
-      await createTaxRateScoped(sessionToken, args);
+    if (savePendingRef.current) return;
+    savePendingRef.current = true;
+    try {
+      if (editingId) {
+        await updateTaxRateScoped(sessionToken, { id: editingId, ...args });
+      } else {
+        await createTaxRateScoped(sessionToken, args);
+      }
+      // F2-8: the write succeeded — any cached cart-tax answer computed
+      // under the old configuration is now potentially stale. Drop it so
+      // an open POS session can never serve it as fresh.
+      invalidateCartTaxCache();
+      setShowModal(false);
+      await loadAll();
+    } finally {
+      savePendingRef.current = false;
     }
-    // F2-8: the write succeeded — any cached cart-tax answer computed
-    // under the old configuration is now potentially stale. Drop it so
-    // an open POS session can never serve it as fresh.
-    invalidateCartTaxCache();
-    setShowModal(false);
-    await loadAll();
   }, [editingId, sessionToken, loadAll]);
 
   const handleSave = useCallback(async () => {
@@ -355,6 +379,13 @@ export default function TaxConfigurationScreen({ embedded = false }: TaxConfigur
     if (!pendingTierMove) return;
     const args = pendingTierMove;
     setPendingTierMove(null);
+    // `commitSave` carries the guard (see above), so the second tap of a double press on the
+    // ConfirmDialog's confirm button is refused there -- but it is refused AFTER
+    // `setPendingTierMove(null)` has already run, so the dialog closes on the replay even
+    // though the write did not. Taking the ref HERE as well makes the refusal silent from
+    // the operator's side: the second tap does nothing at all, rather than closing a dialog
+    // whose write was skipped. The ref is RELEASED by commitSave's own `finally`.
+    if (savePendingRef.current) return;
     setSaving(true);
     try {
       await commitSave(args);
@@ -446,6 +477,15 @@ export default function TaxConfigurationScreen({ embedded = false }: TaxConfigur
 
   const handleSaveCat = useCallback(async () => {
     if (!editingCatId) return;
+    // Re-entry guard, documented rather than redundant. `set_category_tax_rates` is a
+    // DELETE-then-`INSERT OR IGNORE` over a PRIMARY KEY (category_id, tax_rate_id), so a
+    // replay writes the same set twice and nothing in the schema is at risk. What a replay
+    // COSTS is the shared state: two runs share one `savingCat`, the first closes the modal
+    // and reloads, and the second then reports tax-config-cat-save-error over a save that
+    // landed. The settings popup now disables Save while `saving` is true, so this is the
+    // second door -- a keyboard submit or a host that stops passing `saving`.
+    if (savingCatRef.current) return;
+    savingCatRef.current = true;
     setSavingCat(true);
     try {
       await setCategoryTaxRatesScoped(sessionToken, {
@@ -460,6 +500,7 @@ export default function TaxConfigurationScreen({ embedded = false }: TaxConfigur
     } catch {
       addToast({ message: requiredLocalized(l10n, 'tax-config-cat-save-error'), type: 'error' });
     } finally {
+      savingCatRef.current = false;
       setSavingCat(false);
     }
   }, [editingCatId, selectedCatRateIds, sessionToken, loadAll, l10n, addToast]);

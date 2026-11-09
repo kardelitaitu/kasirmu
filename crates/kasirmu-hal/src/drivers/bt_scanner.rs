@@ -39,7 +39,9 @@ use crate::types::{Barcode, DeviceInfo};
 pub const DEFAULT_BAUD: u32 = 9600;
 
 /// Maximum length of a single scanned barcode buffer (1024 bytes) to bound memory.
-pub const MAX_BARCODE_LEN: usize = 1024;
+pub use crate::transport::barcode_reader::MAX_BARCODE_LEN;
+
+use crate::transport::barcode_reader::BarcodeReader;
 
 /// A barcode scanner driven through a Bluetooth serial (SPP) connection.
 pub struct BtBarcodeScanner {
@@ -47,6 +49,10 @@ pub struct BtBarcodeScanner {
     baud_rate: u32,
     /// Wrapped in `Option` to detect "not connected" vs "disconnected".
     port: Arc<Mutex<Option<Box<dyn serialport::SerialPort + Send>>>>,
+    /// Bytes already read off `port` that belong to the next barcode. Kept
+    /// alongside `port` because a retained remainder only makes sense for the
+    /// port it was read from.
+    reader: Arc<Mutex<BarcodeReader>>,
     info: DeviceInfo,
 }
 
@@ -62,6 +68,7 @@ impl BtBarcodeScanner {
             port_name: info.port_name,
             baud_rate,
             port: Arc::new(Mutex::new(None)),
+            reader: Arc::new(Mutex::new(BarcodeReader::new())),
             info: device_info,
         }
     }
@@ -94,6 +101,7 @@ impl BarcodeScanner for BtBarcodeScanner {
                 port_name: self.port_name.clone(),
                 baud_rate: self.baud_rate,
                 port: self.port.clone(),
+                reader: self.reader.clone(),
                 info: self.info.clone(),
             }));
         }
@@ -117,74 +125,26 @@ impl BarcodeScanner for BtBarcodeScanner {
             port_name: self.port_name.clone(),
             baud_rate: self.baud_rate,
             port: self.port.clone(),
+            reader: self.reader.clone(),
             info: self.info.clone(),
         }))
     }
 
     async fn poll(&mut self, timeout_ms: u32) -> Result<Option<Barcode>, HalError> {
         let port_arc = self.port.clone();
+        let reader_arc = self.reader.clone();
 
         spawn_blocking(move || {
             let mut guard = port_arc.blocking_lock();
+            let mut reader = reader_arc.blocking_lock();
             let port = guard
                 .as_mut()
                 .ok_or(HalError::Bluetooth("not connected".into()))?;
 
-            let timeout = std::time::Duration::from_millis(timeout_ms as u64);
-            let deadline = std::time::Instant::now() + timeout;
-            let mut buf = Vec::with_capacity(64);
-
-            loop {
-                if std::time::Instant::now() >= deadline {
-                    return if buf.is_empty() {
-                        Ok(None)
-                    } else {
-                        let code = String::from_utf8_lossy(&buf).trim().to_owned();
-                        Ok(Some(Barcode::new(code)))
-                    };
-                }
-
-                let mut byte = [0u8; 1];
-                match port.read(&mut byte) {
-                    Ok(0) | Err(_) => {
-                        if buf.is_empty() {
-                            return Ok(None);
-                        }
-                        let code = String::from_utf8_lossy(&buf).trim().to_owned();
-                        return Ok(Some(Barcode::new(code)));
-                    }
-                    Ok(1) => {
-                        if byte[0] == b'\r' || byte[0] == b'\n' {
-                            if buf.is_empty() {
-                                continue;
-                            }
-                            let code = String::from_utf8_lossy(&buf).trim().to_owned();
-                            return Ok(Some(Barcode::new(code)));
-                        }
-                        buf.push(byte[0]);
-                        if buf.len() >= MAX_BARCODE_LEN {
-                            let code = String::from_utf8_lossy(&buf).trim().to_owned();
-                            return Ok(Some(Barcode::new(code)));
-                        }
-                    }
-                    Ok(n) => {
-                        for &b in &byte[..n] {
-                            if b == b'\r' || b == b'\n' {
-                                if buf.is_empty() {
-                                    continue;
-                                }
-                                let code = String::from_utf8_lossy(&buf).trim().to_owned();
-                                return Ok(Some(Barcode::new(code)));
-                            }
-                            buf.push(b);
-                            if buf.len() >= MAX_BARCODE_LEN {
-                                let code = String::from_utf8_lossy(&buf).trim().to_owned();
-                                return Ok(Some(Barcode::new(code)));
-                            }
-                        }
-                    }
-                }
-            }
+            // Same buffered loop as the serial scanner — see
+            // `transport::barcode_reader`: chunked reads, CR or LF terminator,
+            // remainder retained for the next poll.
+            reader.next_barcode(port.as_mut(), timeout_ms)
         })
         .await
         .map_err(|e| HalError::Bluetooth(format!("BT poll join error: {e}")))?

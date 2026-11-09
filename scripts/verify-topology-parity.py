@@ -98,12 +98,28 @@ UI_ROOT = Path("ui/src")
 MATRIX = Path("crates/kasirmu-core/src/topologySemantics.matrix.json")
 
 
-def check_contract_copies() -> tuple[int, bool]:
+def _res(rel: Path, root) -> Path:
+    """r203: a module-level relative path resolved against the contract root.
+
+    An ABSOLUTE path (as the self-test's fixture rebinds use) passes through
+    untouched; a relative one is joined to `root` -- or, with no root handed,
+    to the working directory exactly as before the contract existed.
+    """
+    if rel.is_absolute():
+        return rel
+    base = Path.cwd() if root is None else Path(root).resolve()
+    return base / rel
+
+
+def check_contract_copies(root=None) -> tuple[int, bool]:
     """Phase 1: the two contract copies must be byte-identical.
 
     Returns `(exit_code, skipped)`. `skipped` is True in exactly one case —
     no `ui/` tree at all — where nothing was compared and 0 is still honest.
     """
+    VENDORED = _res(globals()["VENDORED"], root)
+    UI = _res(globals()["UI"], root)
+    UI_ROOT = _res(globals()["UI_ROOT"], root)
     if not VENDORED.exists():
         print(f"verify-topology-parity: missing vendored contract {VENDORED}")
         return 1, False
@@ -180,8 +196,9 @@ def expected_kinds(contract: dict) -> list[str]:
     return out
 
 
-def check_corpus(contract: dict) -> int:
+def check_corpus(contract: dict, root=None) -> int:
     """Phase 2: the generated verdict corpus must match the contract's shape."""
+    MATRIX = _res(globals()["MATRIX"], root)
     if not MATRIX.exists():
         print(
             f"verify-topology-parity: missing corpus {MATRIX}\n"
@@ -272,15 +289,21 @@ def check_corpus(contract: dict) -> int:
     return 0
 
 
-def main() -> int:
-    copies, copies_skipped = check_contract_copies()
-    source = UI if UI.exists() else VENDORED
+def main(argv=None, root=None) -> int:
+    """r203: argv and root parameterized, the r166..r202 contract -- the
+    vendored copy, the UI canonical, the ui/ tree question and the corpus
+    all resolve under the contract root together."""
+    base = Path.cwd() if root is None else Path(root).resolve()
+    copies, copies_skipped = check_contract_copies(base)
+    ui = _res(globals()["UI"], base)
+    vendored = _res(globals()["VENDORED"], base)
+    source = ui if ui.exists() else vendored
     try:
         contract = json.loads(source.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         print(f"verify-topology-parity: cannot read contract {source} — {exc}")
         return 1
-    corpus = check_corpus(contract)
+    corpus = check_corpus(contract, base)
     if copies_skipped:
         # A skipped comparison must be the LAST thing a caller reads. Phase 2
         # prints its own "OK — corpus covers …" line, and two lines above an
@@ -339,10 +362,245 @@ def self_test() -> int:
     want("null lists are tolerated",
          expected_kinds({"nodeKinds": None, "endpointWorkspaceTypeKeys": None}), [])
 
+    # PHASE 1, the parity leg itself -- the half that "byte parity proves the two sides
+    # read the same file" rests on, and which no case above touched: blanking
+    # check_contract_copies() left this self-test 5/5 green (measured 2026-10-23). Its
+    # three branches are the three verdicts a checkout can earn, and the middle one is
+    # the subtle one: a ui/ tree with no contract file is DRIFT, not the server-only
+    # skip, because a moved file reads exactly like a deleted one.
+    #
+    # The branch reads only module-level paths, so it is driven by pointing those at a
+    # temp dir. No real tree is opened, and no real file is written.
+    import contextlib
+    import io
+    import tempfile
+
+    # Rebinding module globals inside a function needs the declaration, or Python
+    # treats every name as local and the first read raises UnboundLocalError.
+    global VENDORED, UI, UI_ROOT
+    real = (VENDORED, UI, UI_ROOT)
+    # The branches print their verdicts; a green run that dumps four paragraphs of
+    # repair advice trains the reader to skip the output. Swallow it and grade the
+    # RETURN VALUE, which is what main() actually acts on.
+    quiet = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet):
+            with tempfile.TemporaryDirectory() as td:
+                root = Path(td)
+                vend = root / "vendored.json"
+                ui = root / "ui" / "contract.json"
+                ui_root = root / "ui"
+
+                # Grade the PAIR, not an unpacked tuple: a gutted function answers
+                # None, and "code, skipped = None" dies of TypeError instead of naming
+                # the broken case -- a self-test has to be its own diagnostic.
+                def verdict() -> tuple:
+                    answer = check_contract_copies()
+                    return answer if isinstance(answer, tuple) else ("<not a pair>", answer)
+
+                # (a) no vendored copy: fail, and NOT a skip.
+                VENDORED, UI, UI_ROOT = vend, ui, ui_root
+                want("a missing vendored contract fails", verdict()[0], 1)
+                want("a missing vendored contract does not skip", verdict()[1], False)
+
+                # (b) vendored present, no ui/ tree at all: an honest skip.
+                vend.write_text("{}", encoding="utf-8")
+                want("a server-only checkout skips", verdict()[0], 0)
+                want("the skip is declared", verdict()[1], True)
+
+                # (c) ui/src present but the contract is gone: DRIFT, not a skip.
+                ui_root.mkdir(parents=True, exist_ok=True)
+                want("a ui tree with no contract is drift", verdict()[0], 1)
+                want("drift is not a skip", verdict()[1], False)
+
+                # (d) byte parity: identical copies pass, one differing byte fails.
+                ui.write_text('{"a": 1}', encoding="utf-8")
+                vend.write_text('{"a": 1}', encoding="utf-8")
+                want("identical copies pass", verdict(), (0, False))
+                vend.write_text('{"a": 2}', encoding="utf-8")
+                want("one differing byte fails", verdict(), (1, False))
+    finally:
+        VENDORED, UI, UI_ROOT = real
+
+    # PHASE 2's own rules. expected_kinds() was graded above, but check_corpus() -- which
+    # is what ACTUALLY fails a stale corpus -- was never called, so blanking it stayed
+    # green (measured 2026-10-24, the same shape as phase 1). Five independent rules live
+    # in it and each one is a different way the corpus can lie, so each gets a case.
+    #
+    # Driven the same way as phase 1: point MATRIX at a fixture and grade the exit code.
+    # The fixture is derived from a tiny contract, so the 2x2 verdict grid is 4 entries.
+    import json
+
+    global MATRIX
+    real_matrix = MATRIX
+    contract_min = {
+        "schemaVersion": 2,
+        "semanticPairings": [{"source": "store", "target": "product",
+                              "relationshipType": "sells"}],
+        "nodeKinds": ["store", "product"],
+    }
+    kinds_min = expected_kinds(contract_min)          # ["store", "product"]
+    grid = {f"{s}->{t}": True for s in kinds_min for t in kinds_min}
+    row_ok = {"source": "store", "target": "product", "relationshipType": "sells",
+              "verdicts": dict(grid)}
+
+    def corpus_verdict(matrix_text: str | None) -> tuple:
+        """Write a fixture corpus and return check_corpus()'s answer.
+
+        The module binding is set through globals(): a plain "MATRIX = path" here would
+        create a LOCAL, leave the global untouched, and silently grade the real
+        repository corpus instead of the fixture -- a green self-test answering a question
+        it was never asked. This is the same trap as the UnboundLocalError above, in the
+        other direction, and it is what made the first draft of these cases fail.
+        """
+        global MATRIX
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "matrix.json"
+            if matrix_text is not None:
+                path.write_text(matrix_text, encoding="utf-8")
+            MATRIX = path
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                return check_corpus(contract_min)
+
+    def as_text(obj) -> str:
+        return json.dumps(obj, indent=2)
+
+    try:
+        good = {"contractSchemaVersion": 2, "kinds": kinds_min, "rows": [row_ok]}
+        want("a well-formed corpus passes", corpus_verdict(as_text(good)), 0)
+
+        # (1) NO corpus at all: fail, and say how to regenerate.
+        want("a missing corpus fails", corpus_verdict(None), 1)
+
+        # (2) unparseable JSON is a failure, not a traceback.
+        want("invalid JSON fails", corpus_verdict("{not json"), 1)
+
+        # (3) stale schemaVersion -- the corpus was generated against an older contract.
+        stale = dict(good, contractSchemaVersion=1)
+        want("a stale schemaVersion fails", corpus_verdict(as_text(stale)), 1)
+
+        # (4) rows that do not mirror the contract pairings, in order.
+        mismatched = dict(good, rows=[dict(row_ok, target="wrong-kind-here")])
+        want("rows that do not mirror the contract fail", corpus_verdict(as_text(mismatched)), 1)
+
+        # (5) a declared kind the corpus never probes: the corpus looks complete but
+        # proves nothing about that kind. This is the quiet direction.
+        short_kinds = dict(good, kinds=["store"])
+        want("an unprobed kind fails", corpus_verdict(as_text(short_kinds)), 1)
+
+        # (6) a row holding the wrong number of verdicts: skipped before the value check.
+        half = dict(good, rows=[dict(row_ok, verdicts={"store->store": True})])
+        want("a row with too few verdicts fails", corpus_verdict(as_text(half)), 1)
+
+        # (7) non-boolean verdicts: a string "true" is not a verdict.
+        strfy = dict(good, rows=[dict(row_ok, verdicts={k: "yes" for k in grid})])
+        want("non-boolean verdicts fail", corpus_verdict(as_text(strfy)), 1)
+
+        # (8) the all-false row. Historically the family-match rule failed and the
+        # Location row went all-false while every test still passed; a full grid of
+        # False is complete AND meaningless, so it must be refused rather than counted.
+        dead = dict(good, rows=[dict(row_ok, verdicts={k: False for k in grid})])
+        want("a row that admits no kind pair fails", corpus_verdict(as_text(dead)), 1)
+
+        # And the grade must move: a corpus with the SAME rules broken in a way the
+        # cases above do not cover (extra unexpected row) also fails, so rule 4 is
+        # pinned from both directions rather than only "missing".
+        extra = dict(good, rows=[row_ok, dict(row_ok, source="ghost")])
+        want("an unexpected extra row fails", corpus_verdict(as_text(extra)), 1)
+    finally:
+        MATRIX = real_matrix
+
+    # r203: the shell -- main() graded through argv and a contract root, the
+    # r166..r202 pattern. The fixture is a full four-path tree (vendored
+    # contract, UI canonical, ui/ tree, matrix) under ONE tempdir root; a
+    # root-dropping main resolves the module's relative paths against the
+    # CWD and grades the real checkout instead.
+    shell = 0
+    import tempfile as _tempfile2
+    def build_tree(vendored_text, ui_text, matrix_text, ui_exists=True, ui_root=True):
+        t3 = Path(_tempfile2.mkdtemp())
+        vpath = t3 / "crates" / "kasirmu-core" / "src"
+        vpath.mkdir(parents=True)
+        (vpath / "topologySemantics.json").write_text(vendored_text, encoding="utf-8")
+        if ui_root:
+            upath = t3 / "ui" / "src" / "features" / "locations"
+            upath.mkdir(parents=True)
+            if ui_exists:
+                (upath / "topologySemantics.json").write_text(ui_text, encoding="utf-8")
+        if matrix_text is not None:
+            (vpath / "topologySemantics.matrix.json").write_text(matrix_text, encoding="utf-8")
+        return t3
+    def run3(root):
+        out, err = io.StringIO(), io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = main(argv=[], root=root)
+        except SystemExit as se:
+            return se.code, out.getvalue() + err.getvalue()
+        return rc, out.getvalue() + err.getvalue()
+    contract_min = {
+        "schemaVersion": 2,
+        "semanticPairings": [{"source": "store", "target": "product",
+                              "relationshipType": "sells"}],
+        "nodeKinds": ["store", "product"],
+    }
+    ctext = json.dumps(contract_min)
+    kinds_min = ["store", "product"]
+    grid = {f"{a}->{b}": True for a in kinds_min for b in kinds_min}
+    good_matrix = json.dumps({
+        "contractSchemaVersion": 2, "kinds": kinds_min,
+        "rows": [{"source": "store", "target": "product",
+                  "relationshipType": "sells", "verdicts": dict(grid)}],
+    })
+    shell += 1
+    td3 = build_tree(ctext, ctext, good_matrix)
+    rc, text = run3(td3)
+    if rc != 0 or "byte-identical" not in text or "corpus covers 1 pairings" not in text:
+        print("  x a parity-clean tree must pass both phases (rc=%r text=%r)"
+              % (rc, text[-100:]), file=sys.stderr)
+        return 1
+    shell += 1
+    td3 = build_tree(ctext, ctext.replace("2", "3"), good_matrix)
+    rc, text = run3(td3)
+    if rc != 1 or "DRIFT" not in text:
+        print("  x differing contract copies must fail rc 1 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    td3 = build_tree(ctext, ctext, good_matrix, ui_exists=False)
+    rc, text = run3(td3)
+    if rc != 1 or "compared NOTHING" not in text:
+        print("  x a ui tree with no contract must fail rc 1 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    td3 = build_tree(ctext, ctext, good_matrix, ui_root=False)
+    rc, text = run3(td3)
+    if rc != 0 or "NOT FULLY VERIFIED" not in text:
+        print("  x a server-only checkout must skip declaredly (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    td3 = build_tree(ctext, ctext, None)
+    rc, text = run3(td3)
+    if rc != 1 or "missing corpus" not in text:
+        print("  x a missing corpus must fail rc 1 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    stale = json.loads(good_matrix); stale["contractSchemaVersion"] = 1
+    td3 = build_tree(ctext, ctext, json.dumps(stale))
+    rc, text = run3(td3)
+    if rc != 1 or "the corpus is stale" not in text:
+        print("  x a stale corpus schemaVersion must fail rc 1 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (5 cases, no files touched)")
+    print("SELF-TEST OK (23 pure cases + %d shell cases through argv and root)"
+          % shell)
     return 0
 
 

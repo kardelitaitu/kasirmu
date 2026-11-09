@@ -45,6 +45,17 @@ const testL10n = {
       'workspace-pos-test-drawer': 'Test Cash Drawer',
       'save': 'Save',
       'settings-save-error': 'Save failed',
+      // Keys the card and the Toast chrome render that this stub map never carried.
+      // getString here takes no vars; none of these eight has a hole, so the FTL
+      // text is copied verbatim from shared-ui/locales/{settings,shared}.ftl.
+      'settings-load-failed': 'Failed to load settings',
+      'toast-copied': 'Copied!',
+      'toast-copy': 'Copy',
+      'toast-copy-aria': 'Copy error details',
+      'toast-dismiss-aria': 'Dismiss notification',
+      'toast-hide-detail': 'Hide detail',
+      'toast-notifications-aria': 'Notifications',
+      'toast-show-detail': 'Show detail',
     };
     return defaults[id] ?? id;
   },

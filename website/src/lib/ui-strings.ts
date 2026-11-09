@@ -172,12 +172,23 @@ const literalText = (template: string) => template.replace(/\$\{[^}]*\}/g, ' ');
 const allowed = new Set(ALLOWED_LITERALS.map((entry) => entry.value));
 
 /**
- * Every literal UI string that is neither translated nor declared.
+ * Every literal UI string in ONE file that is neither translated nor declared.
  *
- * An empty result is the contract: a new English `aria-label`, a new literal
- * `textContent`, or a new English sentence in markup fails this scan.
+ * `file` is the path as the walk names it (relative to `src`, forward slashes);
+ * `text` is the file's content AFTER the walk stripped its comments and masked
+ * its non-markup.
+ *
+ * The rule sits behind `(file, text)` rather than inline in the walk because that
+ * is the seam `--self-test` needs: a fixture is handed to the SAME function the
+ * build runs, with no temp directory and no copy of the logic. The walk
+ * (`findUiStringOffenders`, below) is one caller and the self-test in
+ * `scripts/check-ui-strings.mjs` is the other.
+ *
+ * Comments are already gone and frontmatter / script / style bodies are already
+ * spaces by the time this runs, so a case written against a RAW file would be
+ * graded on a path the walk never takes.
  */
-export function findUiStringOffenders(root: string = SRC): UiStringOffender[] {
+export function findUiStringOffendersIn(file: string, text: string): UiStringOffender[] {
   const offenders: UiStringOffender[] = [];
   const proseAttrs = PROSE_ATTRS.join('|');
   const quotedAttr = new RegExp(`\\b(${proseAttrs})\\s*=\\s*(["'])([^"'\\n]*)\\2`, 'g');
@@ -192,58 +203,93 @@ export function findUiStringOffenders(root: string = SRC): UiStringOffender[] {
   );
   const textNode = />([^<>{}]+)</g;
 
+  const source = text;
+
+  // In markup, text nodes are read over the whole file rather than line by
+  // line: a sentence written on its own line between two tags
+  // (`<a …>\n  Skip to content\n</a>`) has no `>` before it on that line,
+  // which is the shape the first version of this scanner missed.
+  //
+  // TS/TSX keeps the per-line rule instead: there, everything between a `>`
+  // and a later `<` is code — `Array.from(rootRef.current.querySelectorAll`
+  // read as "text" is a false positive, and JSX text is written inline anyway.
+  if (file.endsWith('.astro')) {
+    for (const match of source.matchAll(textNode)) {
+      const value = match[1];
+      if (!hasStopword(literalText(value))) continue;
+      offenders.push({
+        file,
+        line: source.slice(0, match.index).split('\n').length,
+        rule: 'text-node',
+        value: value.replace(/\s+/g, ' ').trim().slice(0, 80),
+      });
+    }
+  }
+  source.split('\n').forEach((line, index) => {
+    const at = index + 1;
+    const push = (rule: UiStringOffender['rule'], value: string) => {
+      const trimmed = value.trim();
+      if (!hasLetters(trimmed) || allowed.has(trimmed)) return;
+      offenders.push({ file, line: at, rule, value: trimmed });
+    };
+
+    for (const match of line.matchAll(quotedAttr)) push('attribute', match[3]);
+    for (const match of line.matchAll(templateAttr)) {
+      const text = literalText(match[2]);
+      if (hasStopword(text)) push('attribute', text.trim());
+    }
+    for (const match of line.matchAll(domWrite)) push('dom-write', match[2]);
+    for (const match of line.matchAll(domWriteTemplate)) {
+      const raw = match[1];
+      if (!raw.includes('${')) push('dom-write', raw);
+      else if (hasStopword(literalText(raw))) push('dom-write', literalText(raw).trim());
+    }
+    for (const match of line.matchAll(setAttribute)) push('dom-write', match[4]);
+    if (!file.endsWith('.astro')) {
+      for (const match of line.matchAll(textNode)) {
+        // Only prose: a single token is caught by the rules above, while an
+        // English stopword means a sentence was written out in the markup.
+        if (hasStopword(literalText(match[1]))) push('text-node', match[1]);
+      }
+    }
+  });
+  return offenders;
+}
+
+/**
+ * Every literal UI string that is neither translated nor declared.
+ *
+ * An empty result is the contract: a new English `aria-label`, a new literal
+ * `textContent`, or a new English sentence in markup fails this scan.
+ *
+ * This is the WALK: it names the files, strips their comments and masks their
+ * non-markup, then hands each one to `findUiStringOffendersIn` — the same
+ * function a self-test fixture goes through.
+ */
+export function findUiStringOffenders(root: string = SRC): UiStringOffender[] {
+  return scanUiStringSources(root).offenders;
+}
+
+/**
+ * The walk AND the list of files it read.
+ *
+ * `findUiStringOffenders` cannot tell a caller how many files it saw, and a
+ * caller that only gets findings cannot distinguish "read 107 files, none had a
+ * literal" from "read nothing". That is the vacuous pass this gate exists to
+ * refuse, so the evidence travels with the result instead of with the finding
+ * list — a scan that finds no offenders is then still provably non-empty.
+ */
+export function scanUiStringSources(root: string = SRC): {
+  offenders: UiStringOffender[];
+  files: string[];
+} {
+  const offenders: UiStringOffender[] = [];
+  const files: string[] = [];
   for (const path of sourceFiles(root)) {
     const file = relative(SRC, path).split(sep).join('/');
     const raw = stripComments(readFileSync(path, 'utf8'));
-    const source = maskNonMarkup(raw);
-    // In markup, text nodes are read over the whole file rather than line by
-    // line: a sentence written on its own line between two tags
-    // (`<a …>\n  Skip to content\n</a>`) has no `>` before it on that line,
-    // which is the shape the first version of this scanner missed.
-    //
-    // TS/TSX keeps the per-line rule instead: there, everything between a `>`
-    // and a later `<` is code — `Array.from(rootRef.current.querySelectorAll`
-    // read as "text" is a false positive, and JSX text is written inline anyway.
-    if (file.endsWith('.astro')) {
-      for (const match of source.matchAll(textNode)) {
-        const value = match[1];
-        if (!hasStopword(literalText(value))) continue;
-        offenders.push({
-          file,
-          line: source.slice(0, match.index).split('\n').length,
-          rule: 'text-node',
-          value: value.replace(/\s+/g, ' ').trim().slice(0, 80),
-        });
-      }
-    }
-    source.split('\n').forEach((line, index) => {
-      const at = index + 1;
-      const push = (rule: UiStringOffender['rule'], value: string) => {
-        const trimmed = value.trim();
-        if (!hasLetters(trimmed) || allowed.has(trimmed)) return;
-        offenders.push({ file, line: at, rule, value: trimmed });
-      };
-
-      for (const match of line.matchAll(quotedAttr)) push('attribute', match[3]);
-      for (const match of line.matchAll(templateAttr)) {
-        const text = literalText(match[2]);
-        if (hasStopword(text)) push('attribute', text.trim());
-      }
-      for (const match of line.matchAll(domWrite)) push('dom-write', match[2]);
-      for (const match of line.matchAll(domWriteTemplate)) {
-        const raw = match[1];
-        if (!raw.includes('${')) push('dom-write', raw);
-        else if (hasStopword(literalText(raw))) push('dom-write', literalText(raw).trim());
-      }
-      for (const match of line.matchAll(setAttribute)) push('dom-write', match[4]);
-      if (!file.endsWith('.astro')) {
-        for (const match of line.matchAll(textNode)) {
-          // Only prose: a single token is caught by the rules above, while an
-          // English stopword means a sentence was written out in the markup.
-          if (hasStopword(literalText(match[1]))) push('text-node', match[1]);
-        }
-      }
-    });
+    files.push(file);
+    offenders.push(...findUiStringOffendersIn(file, maskNonMarkup(raw)));
   }
-  return offenders;
+  return { offenders, files };
 }

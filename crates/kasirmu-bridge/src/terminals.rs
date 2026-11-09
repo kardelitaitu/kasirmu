@@ -10,9 +10,8 @@
 //! gate placement inside `register_terminal_scoped`, every `tracing!` message
 //! and every error variant (each `AppError` maps 1:1 onto its `BridgeError`
 //! twin). Global-DB reads go through [`BridgeCtx::lock_global`](crate::ctx::BridgeCtx::lock_global); store-scoped
-//! reads keep the ORIGINAL split between `resolve_store` and
-//! `db_manager.open_store` — the two are not interchangeable and each call site
-//! kept whichever it had. `DEVICE_BINDING_KEYRING_NAME` stays a terminals-module
+//! commands consistently open the store DB through `db_manager.open_store(&session.store_id)`
+//! following session resolution (BR-X1). `DEVICE_BINDING_KEYRING_NAME` stays a terminals-module
 //! literal; the copy in `workspaces.rs` is a deliberate duplicate and is not
 //! unified here.
 
@@ -241,7 +240,10 @@ pub async fn list_terminals_scoped(
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, permissions::TERMINALS_READ)
         .await?;
-    let conn = ctx.resolve_store(session_token)?;
+    let conn = ctx
+        .db_manager
+        .open_store(&session.store_id)
+        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
     let db = conn
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
@@ -274,7 +276,10 @@ pub async fn get_terminal_scoped(
         .await?;
     validate_not_empty("id", &id).map_err(|e| BridgeError::Invalid(e.to_string()))?;
 
-    let conn = ctx.resolve_store(session_token)?;
+    let conn = ctx
+        .db_manager
+        .open_store(&session.store_id)
+        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
     let db = conn
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
@@ -298,7 +303,10 @@ pub async fn ping_terminal_scoped(
         .await?;
     validate_not_empty("id", &id).map_err(|e| BridgeError::Invalid(e.to_string()))?;
 
-    let conn = ctx.resolve_store(session_token)?;
+    let conn = ctx
+        .db_manager
+        .open_store(&session.store_id)
+        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
     let db = conn
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
@@ -323,7 +331,10 @@ pub async fn list_terminal_overrides_scoped(
     validate_not_empty("terminal_id", &terminal_id)
         .map_err(|e| BridgeError::Invalid(e.to_string()))?;
 
-    let conn = ctx.resolve_store(session_token)?;
+    let conn = ctx
+        .db_manager
+        .open_store(&session.store_id)
+        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
     let db = conn
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
@@ -343,7 +354,10 @@ pub async fn list_terminal_profiles_scoped(
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, permissions::TERMINALS_READ)
         .await?;
-    let conn = ctx.resolve_store(session_token)?;
+    let conn = ctx
+        .db_manager
+        .open_store(&session.store_id)
+        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
     let db = conn
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
@@ -366,7 +380,10 @@ pub async fn get_terminal_profile_scoped(
     validate_not_empty("terminal_id", &terminal_id)
         .map_err(|e| BridgeError::Invalid(e.to_string()))?;
 
-    let conn = ctx.resolve_store(session_token)?;
+    let conn = ctx
+        .db_manager
+        .open_store(&session.store_id)
+        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
     let db = conn
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
@@ -420,14 +437,23 @@ fn build_device_binding_dto(
         }),
         Some((store_id, instance_id, signature)) => {
             let keyring = binding_keyring()?;
+            // BR-C2: a keyring READ FAILURE is not a signature verdict, so it
+            // must not become one here. `verify_binding` returns `Ok(false)` for
+            // every input it can actually judge — a non-hex signature, a
+            // signature for another store, one minted with another secret — and
+            // `Err` only when the credential store itself could not be read.
+            // `.unwrap_or(false)` collapsed both into "invalid signature", which
+            // told the operator their binding had been forged when the truth was
+            // "this machine's keyring is locked". That is the wrong repair to
+            // prompt: the indicated action is a re-bind, which destroys a
+            // binding that was never wrong.
             let valid = verify_binding(
                 keyring.as_ref(),
                 terminal_id,
                 &store_id,
                 &instance_id,
                 &signature,
-            )
-            .unwrap_or(false);
+            )?;
 
             Ok(DeviceBindingDto {
                 bounded: true,

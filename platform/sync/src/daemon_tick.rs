@@ -119,15 +119,118 @@ async fn with_stamping_seed(db: &DbConnection, transport: SyncTransport) -> Sync
         None => transport,
     }
 }
+/// The outcome of pushing every batch of one cycle's push phase.
+///
+/// Counts are CUMULATIVE across the batches that actually ran, never derived
+/// from the pending vector: `pushed` is the number of outcomes the server
+/// returned and the apply phase consumed, so a batch that failed on the wire
+/// contributes nothing and nothing is counted twice.
+struct PushRunOutcome {
+    /// Sum of outcomes over all batches that completed.
+    pushed: usize,
+    /// The FIRST failure, kept typed so the caller can still react to the
+    /// variant (ADR #11 redirect, ADR sync-auth-hardening P1/P4 refresh) rather
+    /// than pattern-matching on message text. Later failures are only logged —
+    /// a repeat is rarely the new information.
+    error: Option<SyncError>,
+}
+
+/// Push one cycle's backlog as a sequence of independently-committed batches.
+///
+/// Each batch is one HTTP request capped at [`crate::MAX_BATCH_BYTES`] of
+/// serialised JSON, which is what keeps the body under the transport's 30 s
+/// ceiling as a backlog grows (O-H19). This is the SQLite daemon's use of the
+/// batching facility [`crate::build_batches`] already had; before it, the daemon POSTed
+/// the entire pending vector in a single request, so a large enough queue
+/// could never drain — the request timed out, the cycle failed, the queue grew.
+///
+/// # Partial failure is the whole point
+///
+/// Batches commit INDEPENDENTLY, matching [`crate::SyncEngine::run_sync_cycle`]:
+/// a failure at batch N does not roll back batches 1..N-1. Those items were
+/// accepted by the server and are marked synced before this function moves on,
+/// which is the only behaviour that can shrink a backlog — the all-or-nothing
+/// alternative would re-push acknowledged items forever. Once a batch fails the
+/// remaining ones are NOT attempted (the same shape as the single-request case,
+/// where one failure ended the push phase): a transport failure is expected to
+/// persist, and re-connecting for every remaining batch of a backed-up queue
+/// burns the 30 s ceiling once per batch inside one tick.
+///
+/// The failure's identity is preserved for the caller — an `AuthExpired`,
+/// `ServerMigrated` or `PlanRequired` from the first failing batch is
+/// returned as-is in `error`, so the caller's refresh/redirect/prompt handling
+/// is unchanged. `push_items` burns one logical-clock counter per item BEFORE
+/// the HTTP call, so the persisted clock is written after every attempt,
+/// success or failure (see [`persist_stamped_counter`]).
+///
+/// # Outcomes are applied exactly once per item
+///
+/// Batch N is applied before batch N+1 is sent, and `build_batches` partitions
+/// the item vector (every item appears in exactly one batch), so every item gets
+/// exactly one outcome applied — no double-count, no drop. An empty `batches`
+/// list issues zero requests.
+async fn push_batches(
+    db: &DbConnection,
+    transport: &SyncTransport,
+    batches: Vec<Vec<OfflineQueueItem>>,
+) -> PushRunOutcome {
+    let mut run = PushRunOutcome {
+        pushed: 0,
+        error: None,
+    };
+    let total_batches = batches.len();
+    for (idx, batch) in batches.into_iter().enumerate() {
+        let batch_items = batch.len();
+        match transport.push_items(&batch).await {
+            Ok(results) => {
+                // Counted only after the apply phase ran, and only from the
+                // server's own answer: a short results vector leaves trailing
+                // items queued and is reported by `apply_push_results`, so
+                // counting `batch_items` here would over-report.
+                run.pushed += results.len();
+                // Persist after EVERY attempt: even a push whose apply phase
+                // fails has burnt its counters (see `persist_stamped_counter`).
+                persist_stamped_counter(db, transport).await;
+                // SYNC-02: carry the FULL local items (not just ids) so a
+                // conflict is resolved by the shared ADR #21 service.
+                if let Some(apply_err) = apply_push_results(db, batch, results).await
+                    && run.error.is_none()
+                {
+                    run.error = Some(SyncError::Replication(apply_err));
+                }
+            }
+            Err(e) => {
+                // The burnt counters must still be written back or the range
+                // can be re-emitted (RUST-05 / counter contract).
+                persist_stamped_counter(db, transport).await;
+                tracing::error!(
+                    batch = idx + 1,
+                    total_batches,
+                    items = batch_items,
+                    error = %e,
+                    "sync daemon: push batch failed — earlier batches stay committed, later batches are deferred to the next cycle"
+                );
+                if run.error.is_none() {
+                    run.error = Some(e);
+                }
+                break;
+            }
+        }
+    }
+    run
+}
+
 /// ADR sync-auth-hardening P1/P4: refresh the persisted API key and retry
-/// the push batch exactly once after an `AuthExpired` rejection. Returns
-/// (pushed, error) where `error` is set when the entire retry path fails
-/// (refresh failure, transport construction, or the retry push itself).
-/// On success `error` carries the `apply_push_results` outcome (if any).
+/// the push exactly once after an `AuthExpired` rejection.
+///
+/// `batches` must already be split (see [`push_batches`]). Returns
+/// `(pushed, error)`: `pushed` counts the outcomes accepted by the retry's
+/// batches, and `error` is `Some` when the retry path failed at all — refresh
+/// failure, transport construction, a rejected push, or the apply phase.
 async fn push_retry_after_auth_refresh(
     db: &DbConnection,
     cfg: &SyncConfig,
-    pending: Vec<OfflineQueueItem>,
+    batches: Vec<Vec<OfflineQueueItem>>,
 ) -> (usize, Option<String>) {
     tracing::warn!("push rejected (401) — refreshing API key and retrying once");
     if !refresh_persisted_api_key(db, &cfg.server_url).await {
@@ -161,20 +264,8 @@ async fn push_retry_after_auth_refresh(
     };
     let transport = with_stamping_seed(db, transport).await;
 
-    match transport.push_items(&pending).await {
-        Ok(results) => {
-            let pushed = results.len();
-            persist_stamped_counter(db, &transport).await;
-            let apply_err = apply_push_results(db, pending, results).await;
-            (pushed, apply_err)
-        }
-        Err(retry_err) => {
-            // Even a rejected push burnt one counter per queued item, so the
-            // persisted clock must still advance or the range can be re-emitted.
-            persist_stamped_counter(db, &transport).await;
-            (0, Some(retry_err.to_string()))
-        }
-    }
+    let run = push_batches(db, &transport, batches).await;
+    (run.pushed, run.error.map(|e| e.to_string()))
 }
 
 /// ADR #11: persist a server-migration redirect so the next cycle connects to
@@ -312,44 +403,57 @@ pub(super) async fn run_tick(
             if let Some(transport) = transport {
                 let transport = with_stamping_seed(db, transport).await;
 
-                match transport.push_items(&pending).await {
-                    Ok(results) => {
-                        pushed = results.len();
-                        persist_stamped_counter(db, &transport).await;
-                        // Phase 3: Apply push results to DB (blocking).
-                        // SYNC-02: carry the FULL local items (not just ids)
-                        // so a conflict is resolved by the shared ADR #21
-                        // conflict-application service — the same strategy the
-                        // immediate SyncEngine uses, never a blanket LWW.
-                        if let Some(apply_err) = apply_push_results(db, pending, results).await {
-                            sync_error = Some(apply_err);
-                        }
+                // O-H19: split the backlog into ≤ MAX_BATCH_BYTES requests and
+                // push them in turn, instead of POSTing the whole queue in one
+                // request — an unbounded body plus the transport's 30 s ceiling
+                // makes a backed-up queue impossible to drain, and the failed
+                // cycle grows it further. The SAME split is handed to the 401
+                // retry below, so the retry path holds only a list of batches.
+                // O-M34: `build_batches` now charges a conservative per-item
+                // ESTIMATE, so it must be handed the budget left after the
+                // transport's own additions — the stamp's payload regrowth when
+                // this transport stamps, and the body's brackets/separators.
+                let budget = crate::MAX_BATCH_BYTES
+                    .saturating_sub(
+                        crate::transport_margin_per_item(transport.stamps_payloads())
+                            * pending.len(),
+                    )
+                    .saturating_sub(crate::TRANSPORT_MARGIN_BASE_BYTES);
+                let batches = crate::build_batches(&pending, budget);
+
+                // Phase 3: push + apply, batch by batch. `push_batches` applies
+                // each batch's outcomes before sending the next (SYNC-02: the
+                // FULL local items travel, so a conflict is resolved by the
+                // shared ADR #21 conflict-application service — the same
+                // strategy the immediate SyncEngine uses, never a blanket LWW)
+                // and stops at the first failed batch, leaving earlier batches
+                // committed and the rest queued for the next cycle.
+                let run = push_batches(db, &transport, batches.clone()).await;
+                pushed = run.pushed;
+
+                if let Some(e) = run.error {
+                    tracing::error!(error = %e, "sync daemon push phase failed");
+                    // ADR #11: If the server migrated, update the local URL so
+                    // the next cycle connects to the new server.
+                    if let SyncError::ServerMigrated { new_url } = &e {
+                        persist_migration_url(db, new_url).await;
                     }
-                    Err(e) => {
-                        pushed = 0;
-                        // Even a rejected push burnt one counter per queued
-                        // item; persist the advanced clock so the range cannot
-                        // be re-emitted (see `persist_stamped_counter`).
-                        persist_stamped_counter(db, &transport).await;
-                        // ADR #11: If the server migrated, update the local
-                        // URL so the next cycle connects to the new server.
-                        if let SyncError::ServerMigrated { new_url } = &e {
-                            persist_migration_url(db, new_url).await;
+                    // ADR sync-auth-hardening P1/P4: stale auth — refresh the
+                    // key once and retry the push (every batch) exactly once.
+                    // An explicit `invalid_token` is a config problem and must
+                    // not be masked by a refresh.
+                    if let SyncError::AuthExpired = e {
+                        let (retry_pushed, retry_err) =
+                            push_retry_after_auth_refresh(db, cfg, batches).await;
+                        // Batches before the failing one are already committed
+                        // and counted, so the retry ADDS to `pushed` — it never
+                        // replaces it (that would drop acknowledged items).
+                        pushed = pushed.saturating_add(retry_pushed);
+                        if sync_error.is_none() {
+                            sync_error = retry_err;
                         }
-                        // ADR sync-auth-hardening P1/P4: stale auth — refresh
-                        // the key once and retry the push batch exactly once.
-                        // An explicit `invalid_token` is a config problem and
-                        // must not be masked by a refresh.
-                        if let SyncError::AuthExpired = e {
-                            let (retry_pushed, retry_err) =
-                                push_retry_after_auth_refresh(db, cfg, pending).await;
-                            pushed = retry_pushed;
-                            if sync_error.is_none() {
-                                sync_error = retry_err;
-                            }
-                        } else if sync_error.is_none() {
-                            sync_error = Some(e.to_string());
-                        }
+                    } else if sync_error.is_none() {
+                        sync_error = Some(e.to_string());
                     }
                 }
             }

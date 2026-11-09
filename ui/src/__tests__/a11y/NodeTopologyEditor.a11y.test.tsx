@@ -143,6 +143,43 @@ const COMPARE_OVERLAY = {
 };
 
 describe('NodeTopologyEditor a11y', () => {
+  // WHY THIS CASE IS A STRUCTURAL ASSERTION AND NOT AN AXE RUN.
+  //
+  // axe's `page-has-heading-one` cannot reach a verdict under jsdom -- both a
+  // document with an <h1> and one without come back `incomplete` with
+  // `error-occurred` (`document.elementFromPoint is not a function`, thrown from
+  // the rule's own isModalOpen helper). Measured 2026-10-27. So the structure is
+  // pinned directly.
+  //
+  // The heading lived at README level in `topologyHeader.tsx:47-49` as an <h2>,
+  // under a comment claiming that kept "h2 → h3 Palette Tools" intact. It did --
+  // and that was the defect: the screen has no <h1>, so the outline STARTED at
+  // h2 and every heading below it was a level too deep. Confirmed by mutation:
+  // flipping it back to <h2> left all 129 cases in the two suites green.
+  it('exposes the editor title as the page heading', () => {
+    const { container } = renderWithProviders(<NodeTopologyEditor currentTier="plus" />);
+    const h1s = Array.from(container.querySelectorAll('h1'));
+    expect(h1s, 'the topology screen must carry exactly one level-one heading').toHaveLength(1);
+    // Localized is mocked to a passthrough above, so the fallback child is the text.
+    expect(h1s[0]!.textContent?.trim(), 'an empty h1 satisfies a rule but not a reader')
+      .toBe('Visual Store & Workspace Topology Builder');
+    // The editor's OWN headings must sit no more than one level below the page
+    // title. h3 is what the editor renders (tool rack, empty state), so a
+    // level-two heading has to exist between them or the outline jumps. This is
+    // the half the mutation exposed: promoting h1 alone left three axe
+    // `heading-order` violations on `h3`. `heading-order` CAN grade under jsdom
+    // (unlike page-has-heading-one), so this one is redundant with the axe run --
+    // it is here to name the requirement when the axe case reports a bare
+    // "moderate: heading-order".
+    const headings = Array.from(container.querySelectorAll('h1, h2, h3'));
+    const levels = headings.map((h) => Number(h.tagName.slice(1)));
+    expect(levels[0], 'the first heading in DOM order is the page title').toBe(1);
+    for (let i = 1; i < levels.length; i += 1) {
+      expect(levels[i]! - levels[i - 1]!, 'heading levels may only increase by one')
+        .toBeLessThanOrEqual(1);
+    }
+  });
+
   it('has no axe violations on initial render', async () => {
     const { container } = renderWithProviders(<NodeTopologyEditor currentTier="plus" />);
     await checkA11y(container);

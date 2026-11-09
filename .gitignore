@@ -122,6 +122,22 @@ nul
 /ui/snippet.txt
 /apps/license-server/coverage.html
 /apps/license-server/coverage.out
+# 2026-11-05: the per-file coverage reports the 2026-10-26 coverage-gate work
+# left at the repo root -- cov-inv.json (26 MB) and cov-sync.json (29 MB) of
+# raw instrumentation. Same class as /coverage-probe.json above: a measurement,
+# never a committed artifact; the floors live in scripts/coverage-floors.json.
+# Anchored at the root and scoped to the cov- prefix, so it cannot start hiding
+# a real manifest elsewhere -- the run names these after whatever it measured.
+#
+# The two files were DELETED the same day (54.9 MB, last written 2026-10-26,
+# untracked in every commit, zero references in the tree), because ignoring them
+# was only half the job: scripts/verify-root-policy.py reads the DIRECTORY, not
+# the index, and failed with "stray root file" for both. That gate is the
+# detector this rule assumes, so do not read the entry as permission to leave
+# them at the root -- it keeps a regenerated report out of `git status`, nothing
+# more. The gap it closes is the window between a coverage run finishing and
+# someone noticing.
+/cov-*.json
 
 # Test artifacts
 *.profraw
@@ -326,3 +342,18 @@ manager-journal.md
 /kasir.pre-migration.bak
 SENTINEL_STASH.txt
 /scratch/
+# 2026-10-17: two more scratch artifacts found in the tree, same treatment as the
+# block above -- kept on disk, out of `git status`, NOT committed.
+#
+#   /ui/_r.cmd  -- a three-line throwaway batch file that runs one vitest case and
+#                  greps the log. Captured command output, like /ser.txt above.
+#   *.tsx.bak   -- a pre-edit copy of ShiftManagementScreen.tsx. Verified redundant
+#                  before listing it: the current file is committed (b0fbea9b6), is 19
+#                  lines AHEAD of the backup, and the backup is tracked nowhere in
+#                  history (`git ls-files --error-unmatch` fails). So this rule hides a
+#                  superseded copy, not recoverable content.
+#
+# Scoped to *.tsx.bak rather than *.bak: the two genuine .bak paths above are named
+# explicitly and a blanket *.bak would silently start hiding future ones that matter.
+/ui/_r.cmd
+*.tsx.bak

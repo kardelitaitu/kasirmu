@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, waitFor, act } from '@testing-library/react';
+import { screen, waitFor, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 // renderWithProviders* (not renderWithFluentSync): the reprint button now reports a
 // failed print through the toast context, so the screen needs a ToastProvider.
@@ -20,6 +20,11 @@ vi.mock('@/api/sales', () => ({
   voidSaleScoped: vi.fn(),
   stampFakturPajakScoped: vi.fn(),
   createFakturPenggantiScoped: vi.fn(),
+  // Both were ABSENT, so `handleIssueTaxInvoice` threw on its first call and no case
+  // exercised it. The statutory-invoice surface of this screen was untested until
+  // round 149, longer than any other write on it.
+  issueTaxInvoiceScoped: vi.fn(),
+  getSaleStatutoryNumberScoped: vi.fn(),
 }));
 
 vi.mock('@/api/staff', () => ({
@@ -73,9 +78,17 @@ import {
   listRefundsScoped,
   stampFakturPajakScoped,
   createFakturPenggantiScoped,
+  issueTaxInvoiceScoped,
+  getSaleStatutoryNumberScoped,
+  voidSaleScoped,
 } from '@/api/sales';
 import { listStaffScoped } from '@/api/staff';
 import { getSaleLineMarginsScoped } from '@/api/reports';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const mockListSales = listSales as ReturnType<typeof vi.fn>;
 const mockGetSale = getSale as ReturnType<typeof vi.fn>;
@@ -83,7 +96,10 @@ const mockListSalesScoped = listSalesScoped as ReturnType<typeof vi.fn>;
 const mockGetSaleScoped = getSaleScoped as ReturnType<typeof vi.fn>;
 const mockListRefunds = listRefundsScoped as ReturnType<typeof vi.fn>;
 const mockStampFakturPajakScoped = stampFakturPajakScoped as ReturnType<typeof vi.fn>;
+const mockVoidSale = voidSaleScoped as ReturnType<typeof vi.fn>;
 const mockCreateFakturPenggantiScoped = createFakturPenggantiScoped as ReturnType<typeof vi.fn>;
+const mockIssueTaxInvoiceScoped = issueTaxInvoiceScoped as ReturnType<typeof vi.fn>;
+const mockGetSaleStatutoryNumberScoped = getSaleStatutoryNumberScoped as ReturnType<typeof vi.fn>;
 const mockListStaff = listStaffScoped as ReturnType<typeof vi.fn>;
 const mockGetSaleLineMargins = getSaleLineMarginsScoped as ReturnType<typeof vi.fn>;
 
@@ -91,17 +107,17 @@ const mockGetSaleLineMargins = getSaleLineMarginsScoped as ReturnType<typeof vi.
 
 const sampleSales = [
   {
-    id: 'sale-001-aaaa-bbbb-cccc-ddddeeee', status: 'Completed',
+    id: 'sale-001-aaaa-bbbb-cccc-ddddeeee', status: 'completed',
     createdAt: '2026-07-07T10:00:00.000Z', total: { minor_units: 50000, currency: 'IDR' },
     lineCount: 2, paymentMethod: 'cash', userId: 'user-1',
   },
   {
-    id: 'sale-002-aaaa-bbbb-cccc-ddddefff', status: 'Pending',
+    id: 'sale-002-aaaa-bbbb-cccc-ddddefff', status: 'pending',
     createdAt: '2026-07-07T11:00:00.000Z', total: { minor_units: 25000, currency: 'IDR' },
     lineCount: 1, paymentMethod: 'card', userId: 'user-2',
   },
   {
-    id: 'sale-003-aaaa-bbbb-cccc-ddddaaaa', status: 'Voided',
+    id: 'sale-003-aaaa-bbbb-cccc-ddddaaaa', status: 'voided',
     createdAt: '2026-07-06T09:00:00.000Z', total: { minor_units: 10000, currency: 'IDR' },
     lineCount: 1, paymentMethod: null, userId: 'user-1',
   },
@@ -113,7 +129,7 @@ const sampleStaff = [
 ];
 
 const sampleDetail = {
-  id: 'sale-001-aaaa-bbbb-cccc-ddddeeee', status: 'Completed',
+  id: 'sale-001-aaaa-bbbb-cccc-ddddeeee', status: 'completed',
   createdAt: '2026-07-07T10:00:00.000Z', total: { minor_units: 50000, currency: 'IDR' },
   subtotal: { minor_units: 50000, currency: 'IDR' },
   taxTotal: { minor_units: 0, currency: 'IDR' },
@@ -227,6 +243,62 @@ describe('SalesHistoryScreen', () => {
       expect(screen.queryByText(/sale-002/)).not.toBeInTheDocument();
     });
   });
+  // ── Status label rendering (wire values are lowercase) ──────
+  // The fixtures used to carry capitalised statuses ('Completed'), matching the screen's
+  // switch while the real wire value is lowercase (SaleStatus::as_stored_str,
+  // foundation/src/enums.rs:40). With both sides capitalised the mapper's default branch
+  // was never exercised, so a sale that should read "Pending" rendered "Completed" and
+  // the suite stayed green. These cases drive the real spellings and grade the TABLE cell,
+  // not the filter chips -- getAllByText('Completed') matches a chip too, which is how the
+  // original assertion could not fail.
+  it('labels each row with the status the wire actually carries', async () => {
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getByText(/sale-001/)).toBeInTheDocument();
+    });
+    // Rows are sorted by date, not by fixture order, so address each one by its id.
+    const rowFor = (fragment: string): Element => {
+      const row = Array.from(document.querySelectorAll('tbody tr'))
+        .find((r) => (r.textContent ?? '').includes(fragment));
+      expect(row, `a table row containing ${fragment}`).toBeDefined();
+      return row!;
+    };
+    // The regression this guards: every unrecognised status collapsed to 'Completed', so a
+    // pending and a voided sale both read "Completed" while the chips looked correct.
+    expect(rowFor('sale-001').textContent).toContain('Completed');
+    expect(rowFor('sale-002').textContent).toContain('Pending');
+    expect(rowFor('sale-003').textContent).toContain('Voided');
+    expect(rowFor('sale-002').textContent).not.toContain('Completed');
+    expect(rowFor('sale-003').textContent).not.toContain('Completed');
+  });
+
+  it('gives an active sale its own label instead of the default', async () => {
+    const activeSale = { ...sampleSales[0], id: 'sale-active-0000', status: 'active' };
+    mockListSalesScoped.mockResolvedValue({ sales: [activeSale], salesHistoryCapped: false });
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+    // Exactly one sale is returned, so the single body row IS that sale.
+    await waitFor(() => {
+      expect(document.querySelectorAll('tbody tr').length).toBe(1);
+    });
+    const row = document.querySelectorAll('tbody tr')[0];
+    expect(row?.textContent).toContain('In progress');
+    expect(row?.textContent).not.toContain('Completed');
+  });
+  it('says the status is unknown instead of pretending the sale completed', async () => {
+    // A status the UI has never seen (a newer backend, a half-migrated row) must not be
+    // shown as the most reassuring of the four states. This is the same contract
+    // TableManagementScreen already keeps with `tables-status-unknown`.
+    const oddSale = { ...sampleSales[0], id: 'sale-odd-0000', status: 'refunded' };
+    mockListSalesScoped.mockResolvedValue({ sales: [oddSale], salesHistoryCapped: false });
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+    await waitFor(() => {
+      expect(document.querySelectorAll('tbody tr').length).toBe(1);
+    });
+    const row = document.querySelectorAll('tbody tr')[0];
+    expect(row?.textContent).toContain('Unknown status');
+    expect(row?.textContent).not.toContain('Completed');
+  });
 
   it('shows search input and cashier dropdown', async () => {
     mockListSalesScoped.mockResolvedValue({ sales: [], salesHistoryCapped: false });
@@ -328,6 +400,135 @@ describe('SalesHistoryScreen', () => {
     });
   });
 
+  // ── The KEYBOARD path, which none of the cases above covered ──────────
+  //
+  // Every detail-modal case here opens the panel by CLICK. Escape is the path an
+  // operator uses at a till, and it is a DIFFERENT code path: the panel is closed by
+  // `useFocusTrap`'s document listener (`useExitAnimation` -> `requestClose`), not by
+  // the click handler. Measured 2026-10-18: this screen's three focus-trapped
+  // overlays had ZERO Escape coverage, so nothing pinned that Escape dismisses the
+  // overlay rather than the screen behind it.
+  //
+  // The bug that shape produced one layer up is real and recent: `PosScreen`'s Escape
+  // cascade is registered on `document` before the panel's trap, so it used to close
+  // the WHOLE screen along with the panel (see `restaurant-tables-toolbar.spec.ts`).
+  // `PosScreen` now stands down whenever `isAnyAriaModalOpen()`, and this case is what
+  // pins the resulting behaviour for Sales History.
+  it('closes the detail modal on Escape without leaving the screen', async () => {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    mockListRefunds.mockResolvedValue([]);
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getAllByText('View')[0]!);
+    await waitFor(() => {
+      expect(screen.getByText('Sale Detail')).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+
+    // The PANEL goes.
+    await waitFor(() => {
+      expect(screen.queryByText('Sale Detail')).toBeNull();
+    });
+    // And the SCREEN STAYS — still showing the rows it was showing before.
+    expect(
+      screen.getAllByText('View').length,
+      'Escape must dismiss the overlay, not navigate away from the screen',
+    ).toBeGreaterThan(0);
+  });
+  it('voids once for a double click on Confirm while the first is in flight', async () => {
+    // `void_sale` compare-and-sets on `status = 'active'` (sales_lifecycle.rs:903-914), so the
+    // replay is REFUSED and the catch reports `sales-history-void-error`: "failed to void" over
+    // a sale that was voided. The overlay closes on success, so the cashier sees the row gone
+    // AND an error telling them it did not work.
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    mockListRefunds.mockResolvedValue([]);
+    let releaseVoid: ((v: unknown) => void) | undefined;
+    mockVoidSale.mockImplementation(
+      () => new Promise((resolve) => { releaseVoid = resolve; }),
+    );
+    const { container } = renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('.sales-history-row-wrap').length).toBeGreaterThan(0);
+    });
+
+    const row = container.querySelector('.sales-history-row-wrap') as HTMLElement;
+    fireEvent.touchStart(row, { touches: [{ clientX: 200, clientY: 10 }] });
+    fireEvent.touchEnd(row, { changedTouches: [{ clientX: 40, clientY: 10 }] });
+    await user.click(await screen.findByText('Void'));
+
+    const confirmBtn = await screen.findByRole('button', { name: /confirm/i });
+    // fireEvent inside one act(): userEvent awaits its own act(), which flushes the pending
+    // chain so the first void would have settled and the clicks would never overlap. The
+    // disabled flag React set is dropped for the second click so the ref is measured.
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+      confirmBtn.removeAttribute('disabled');
+      fireEvent.click(confirmBtn);
+    });
+
+    expect(
+      mockVoidSale.mock.calls.length,
+      'a double click on Confirm sent the void twice; the CAS refuses the replay and the ' +
+        'operator is told the void failed over a sale that was voided',
+    ).toBe(1);
+
+    releaseVoid?.({});
+  });
+
+  // ── The VOID overlay is a SEPARATE overlay from the detail panel ──────
+  //
+  // It is reached by SWIPING a row left (`SwipeableOrderRow` -> `useSwipe` ->
+  // `onSwipeLeft` sets `revealed`), not by tapping, so none of the detail-modal cases
+  // exercise it. Its own trap (`voidPanelRef`) is a second instance of the same
+  // pattern, and round 191 pinned only the DETAIL one — do not assume that case covers
+  // this. Measured 2026-10-18: the E2E probe could not find the Void affordance at all
+  // because it lives behind a swipe, which is why this is a unit case.
+  it('closes the VOID overlay on Escape without leaving the screen', async () => {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    mockListRefunds.mockResolvedValue([]);
+    const { container } = renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('.sales-history-row-wrap').length).toBeGreaterThan(0);
+    });
+
+    // Swipe the first row LEFT to reveal its actions. `useSwipe` reads clientX from
+    // the touch payload, so start/finish must be supplied explicitly.
+    const row = container.querySelector('.sales-history-row-wrap') as HTMLElement;
+    fireEvent.touchStart(row, { touches: [{ clientX: 200, clientY: 10 }] });
+    fireEvent.touchEnd(row, { changedTouches: [{ clientX: 40, clientY: 10 }] });
+
+    const voidBtn = await screen.findByText('Void');
+    await user.click(voidBtn);
+
+    // The overlay is up: it is an ARIA modal, which is the predicate PosScreen uses.
+    await waitFor(() => {
+      expect(container.querySelectorAll('[aria-modal="true"]').length).toBeGreaterThan(0);
+    });
+
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+
+    // The OVERLAY goes…
+    await waitFor(() => {
+      expect(container.querySelectorAll('[aria-modal="true"]').length).toBe(0);
+    });
+    // …and the SCREEN STAYS: the rows are still there.
+    expect(
+      container.querySelectorAll('.sales-history-row-wrap').length,
+      'Escape must dismiss the void overlay, not navigate away from the screen',
+    ).toBeGreaterThan(0);
+  });
   it('renders line items with course and modifier choices in detail modal', async () => {
     const user = userEvent.setup();
     const detailWithModifiers = {
@@ -571,7 +772,55 @@ describe('SalesHistoryScreen', () => {
   // from where it forgets it on listSales (see load(), SalesHistoryScreen.tsx:211-216), and reads
   // sale detail through the ambient getSale. The asymmetry inside a single Promise.all is what makes
   // the omission a slip rather than a policy.
-  describe('ADR #7: reads are session-scoped when a workspace token exists', () => {
+    // ── Statutory invoice (e-Faktur) ─────────────────────────────
+  //
+  // The same defect round 148 fixed in PaymentModal (the receipt surface). This screen's
+  // `handleIssueTaxInvoice` sets `issuingInvoice` and awaits with no ref guard, so the
+  // second tap of a real double tap still reaches the handler.
+  //
+  // The backend does not fully absorb it: `issue_tax_invoice_for_sale` is idempotent ONCE A
+  // NUMBER IS WRITTEN -- it reads `sales.statutory_number` and returns the existing value when
+  // it already carries the series prefix (crates/kasirmu-core/src/db/fiscal.rs:572-587). But
+  // that column is set by the SAME transaction, so two issues in one tick both read NULL and
+  // both fall through to `claim_statutory_number_for_sale`, an atomic
+  // `UPDATE document_number_sequences ... RETURNING` (fiscal.rs:438-455). The statutory
+  // sequence advances TWICE: a gap or duplicate in a legally numbered series.
+  it('issues a tax invoice once for a double tap on the detail panel', async () => {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockListStaff.mockResolvedValue([]);
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    mockListRefunds.mockResolvedValue([]);
+    mockGetSaleStatutoryNumberScoped.mockResolvedValue(null);
+    let releaseIssue: ((v: string) => void) | undefined;
+    const held = new Promise<string>((resolve) => { releaseIssue = resolve; });
+    mockIssueTaxInvoiceScoped.mockImplementation(() => held as never);
+
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getAllByText('View')[0]!);
+
+    const issueBtn = await screen.findByRole('button', { name: /issue tax invoice/i });
+    // Both taps in ONE batch: a real double tap dispatches twice before React can
+    // commit `issuingInvoice` and disable the button (round 148's shape).
+    await act(async () => {
+      fireEvent.click(issueBtn);
+      issueBtn.removeAttribute('disabled');
+      fireEvent.click(issueBtn);
+    });
+
+    expect(
+      mockIssueTaxInvoiceScoped.mock.calls.length,
+      'a second tap re-issued the invoice; both calls pass the idempotency read before ' +
+        'either commits, so the statutory sequence advances twice for one sale',
+    ).toBe(1);
+
+    releaseIssue?.('010000000000001');
+    await act(async () => { await held; });
+  });
+describe('ADR #7: reads are session-scoped when a workspace token exists', () => {
     beforeEach(() => {
       mockListSales.mockClear();
       mockGetSale.mockClear();
@@ -668,15 +917,75 @@ describe('SalesHistoryScreen', () => {
         expect(mockCreateFakturPenggantiScoped).toHaveBeenCalledWith('session-1', sampleDetail.id);
       });
     });
+    // A double tap on Create Faktur Pengganti must not burn TWO revisions.
+    //
+    // This is NOT a duplicate-row defect and it is not refused by the backend. A pengganti
+    // is a deliberate INCREMENT: `create_faktur_pengganti` reads the stored status, refuses
+    // at `MAX_PENGGANTI_STATUS`, and writes `current_status + 1`
+    // (crates/kasirmu-core/src/db/faktur_pajak.rs:278-300). Its own test drives two calls in a
+    // row on purpose and asserts 00 -> 01 -> 02 (faktur_pajak_tests.rs:195-205), so the
+    // backend cannot tell an intentional second revision from an accidental one.
+    //
+    // The consequence is different from every other case in this class: the NSFP is preserved
+    // and no row is duplicated, but the STATUS CODE is a finite sequential slot in a legally
+    // numbered series, and it only ever moves FORWARD. One extra tap permanently advances a
+    // sale's revision to 02 with no revision 01 ever intended -- and there is no way back,
+    // because there is no decrement path.
+    //
+    // The handler sets `penggantiLoading` and awaits with no ref guard, so a real double tap
+    // (two dispatches in one task) reaches the write twice (round 148's shape).
+    it('creates one faktur pengganti for a double tap while the first is in flight', async () => {
+      const fpDetail = {
+        ...sampleDetail,
+        fakturPajak: {
+          nsfp: '2600000000123', kodeTransaksi: '01', status: '00',
+          formatted: '01002600000000123',
+        },
+      };
+      mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+      mockListStaff.mockResolvedValue([]);
+      mockGetSaleScoped.mockResolvedValue(fpDetail);
+      mockListRefunds.mockResolvedValue([]);
+      let releasePengganti: ((v: unknown) => void) | undefined;
+      const held = new Promise((resolve) => { releasePengganti = resolve; });
+      mockCreateFakturPenggantiScoped.mockImplementation(() => held as never);
+
+      const user = userEvent.setup();
+      renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+      });
+      await user.click(screen.getAllByText('View')[0]!);
+
+      const penggantiBtn = await screen.findByText('Create Faktur Pengganti');
+      await act(async () => {
+        fireEvent.click(penggantiBtn);
+        penggantiBtn.removeAttribute('disabled');
+        fireEvent.click(penggantiBtn);
+      });
+
+      expect(
+        mockCreateFakturPenggantiScoped.mock.calls.length,
+        'a second tap advanced the sale revision again; the status code only ever ' +
+          'increments, so one extra tap permanently moves this sale to status 02 with no ' +
+          'revision 01 ever intended, and no path back',
+      ).toBe(1);
+
+      releasePengganti?.({
+        nsfp: '2600000000123', kodeTransaksi: '01', status: '01',
+        formatted: '01012600000000123',
+      });
+      await act(async () => { await held; });
+    });
     it('lets STAFF create a pengganti but not void — the two actions need different permissions', async () => {
       // The two role-gated actions on this screen are NOT the same gate:
       //
-      //   void      -> `sales:void`     (kasirmu-bridge/src/pos/void.rs:56)
-      //   pengganti -> `sales:process`  (kasirmu-bridge/src/history.rs:309)
+      //   void      -> `sales:void`     (kasirmu-bridge/src/void.rs, `void_sale_scoped`)
+      //   pengganti -> `sales:process`  (kasirmu-bridge/src/history.rs, `create_faktur_pengganti_scoped`)
       //
       // The STAFF preset holds `sales:process` and NOT `sales:void`, and its own
       // description says so: "Checkout-operations role — processes sales… No management
-      // access" (rbac_presets.rs:162-166). Both were gated on `isManager`, so Staff were
+      // access" (the STAFF preset in rbac_presets.rs). Both were gated on `isManager`, so Staff were
       // shown a working pengganti action HIDDEN from them — a capability removed from the
       // people the backend authorises, which is the mirror image of the usual
       // enabled-button-that-errors bug.
@@ -711,7 +1020,79 @@ describe('SalesHistoryScreen', () => {
       expect(screen.queryByText('Void')).toBeNull();
     });
 
-    it('stamps e-Faktur NSFP on unstamped sale', async () => {
+    // ── The STAMP overlay is the THIRD focus-trapped overlay on this screen ─
+  //
+  // It is opened from INSIDE the detail panel ('Input e-Faktur NSFP'), so it is a
+  // second-level overlay: the trap that must own Escape at that moment is
+  // `stampPanelRef`, not `detailPanelRef`. Rounds 191 and 192 pinned DETAIL and VOID;
+  // this is the last of the three, and the only one whose trigger lives behind another
+  // overlay — which is why it needed its own case rather than being assumed covered.
+  //
+  // Asserting the screen survives as well as the overlay leaving is the half that
+  // discriminates: the bug this class produces is a dismissal that ALSO navigates away
+  // (see `restaurant-tables-toolbar.spec.ts`).
+  // One Escape must dismiss ONE overlay. Both traps are active while the stamp
+  // dialog sits over the sale-detail dialog, and each attaches its own document
+  // keydown listener, so an unguarded handler closed BOTH — the cashier pressed
+  // Escape once and lost the detail view behind it too (measured: 2 dialogs
+  // open, Escape, 0 dialogs left).
+  it('closes only the innermost overlay on a single Escape', async () => {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockListStaff.mockResolvedValue([]);
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    mockListRefunds.mockResolvedValue([]);
+    const { container } = renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => expect(screen.getAllByText('View').length).toBeGreaterThan(0));
+    await user.click(screen.getAllByText('View')[0]!);
+    await waitFor(() => expect(screen.getByText('Input e-Faktur NSFP')).toBeInTheDocument());
+    await user.click(screen.getByText('Input e-Faktur NSFP'));
+    expect(screen.getByText('Input e-Faktur NSFP (DJP Coretax)')).toBeInTheDocument();
+    expect(container.querySelectorAll('[role="dialog"]').length).toBe(2);
+
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+
+    // The stamp overlay goes…
+    await waitFor(() => {
+      expect(screen.queryByText('Input e-Faktur NSFP (DJP Coretax)')).toBeNull();
+    });
+    // …and the DETAIL overlay it was opened from is still there.
+    expect(screen.getByText('Input e-Faktur NSFP')).toBeInTheDocument();
+    expect(container.querySelectorAll('[role="dialog"]').length).toBe(1);
+  });
+
+  it('closes the e-Faktur STAMP overlay on Escape without leaving the screen', async () => {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockListStaff.mockResolvedValue([]);
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    mockListRefunds.mockResolvedValue([]);
+    const { container } = renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getAllByText('View')[0]!);
+    await waitFor(() => {
+      expect(screen.getByText('Input e-Faktur NSFP')).toBeInTheDocument();
+    });
+    await user.click(screen.getByText('Input e-Faktur NSFP'));
+    expect(screen.getByText('Input e-Faktur NSFP (DJP Coretax)')).toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+
+    // The STAMP overlay goes…
+    await waitFor(() => {
+      expect(screen.queryByText('Input e-Faktur NSFP (DJP Coretax)')).toBeNull();
+    });
+    // …and the SCREEN STAYS: its rows are still rendered.
+    expect(
+      container.querySelectorAll('.sales-history-row-wrap').length,
+      'Escape must dismiss the stamp overlay, not navigate away from the screen',
+    ).toBeGreaterThan(0);
+  });
+  it('stamps e-Faktur NSFP on unstamped sale', async () => {
       const user = userEvent.setup();
       mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
       mockListStaff.mockResolvedValue([]);
@@ -749,6 +1130,38 @@ describe('SalesHistoryScreen', () => {
           kodeTransaksi: '01',
         });
       });
+    });
+
+    it('stamps ONCE when the Stamp button is double-tapped', async () => {
+      // The NSFP + status code is a legally numbered field. A replay either re-reports a
+      // refusal over a stamp that landed, or -- for a different nsfp typed while the first
+      // is in flight -- writes a second statutory number. `stamping` is STATE, so both
+      // taps in one tick read it as false.
+      const user = userEvent.setup();
+      mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+      mockListStaff.mockResolvedValue([]);
+      mockGetSaleScoped.mockResolvedValue(sampleDetail);
+      mockListRefunds.mockResolvedValue([]);
+      let release: (() => void) | undefined;
+      mockStampFakturPajakScoped.mockReturnValue(new Promise((res) => {
+        release = () => res({ nsfp: '2600000000999', kodeTransaksi: '01', status: '00', formatted: '01002600000000999' });
+      }));
+
+      renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+      await waitFor(() => expect(screen.getAllByText('View').length).toBeGreaterThan(0));
+      await user.click(screen.getAllByText('View')[0]!);
+      await waitFor(() => expect(screen.getByText('Input e-Faktur NSFP')).toBeInTheDocument());
+      await user.click(screen.getByText('Input e-Faktur NSFP'));
+      await user.type(screen.getByLabelText('13-Digit NSFP'), '2600000000999');
+
+      const stampBtn = screen.getByRole('button', { name: 'Stamp e-Faktur' });
+      await act(async () => {
+        fireEvent.click(stampBtn);
+        fireEvent.click(stampBtn);
+      });
+
+      release?.();
+      await waitFor(() => expect(mockStampFakturPajakScoped).toHaveBeenCalledTimes(1));
     });
   });
 
@@ -860,6 +1273,68 @@ describe('SalesHistoryScreen', () => {
     expect(screen.queryByText('Margin %')).not.toBeInTheDocument();
     // And only the margin read was unanswered: the detail itself is intact.
     expect(screen.getByText('SKU-001')).toBeInTheDocument();
+  });
+
+  // ── The SALE read itself, which was the one read settleRead never covered ──
+  //
+  // `openDetail` (:532-580) wraps getSale + refunds + margins in ONE Promise.all and
+  // catches the lot with an empty body. The two SECONDARY reads are settled individually
+  // through settleRead, so a failure in either is named on screen. The PRIMARY read was
+  // not: when getSaleScoped rejects, the whole Promise.all rejects, the catch drops it,
+  // `detail` stays null, and the modal's render guard (`detailExit.shouldRender && detail`,
+  // :1626) draws nothing. The cashier taps a row and the drawer simply never opens -- no
+  // skeleton, no message, nothing. Their next move is to tap it again.
+  //
+  // settle-read.ts's own doc lists SalesHistoryScreen as a consumer "-- the refunds of the
+  // open sale ... then the sale's roster, then its per-line cost/margin report", and stops
+  // short of the sale. This is that last read.
+  it('opens the detail via settleRead so a FAILED sale read is not a dead tap', async () => {
+    const source = readFileSync(
+      resolve(__dirname, '../features/sales/SalesHistoryScreen.tsx'),
+      'utf8',
+    );
+    // The contract, asserted at source because the behaviour is an ABSENCE (no modal, no
+    // message) that a render assertion cannot distinguish from 'not opened yet'.
+    expect(
+      source,
+      'the primary sale read must go through settleRead like its two siblings',
+    ).toMatch(/settleRead\(\s*'sale'\s*,/);
+    // And the failure must produce a message, not a dropped drawer.
+    expect(source).toMatch(/sales-history-detail-load-failed/);
+  });
+
+  it('names the failure when the SALE read throws, and retries', async () => {
+    mockListRefunds.mockResolvedValue([]);
+    mockGetSaleLineMargins.mockResolvedValue([]);
+    mockGetSaleScoped.mockRejectedValueOnce(new Error('invoke failed'));
+
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getAllByText('View')[0]!);
+
+    // A failed open must SAY so, on a surface that OUTLIVES the toast: the toast is
+       // transient and the failure is not, so the persistent banner is the assertion that
+       // matters — polling for a toast alone would pass and then leave the operator with
+       // nothing.
+    await waitFor(() => {
+      expect(
+        screen.getByTestId('sales-history-detail-load-failed'),
+        'tapping a sale that failed to load said nothing',
+      ).toBeInTheDocument();
+    });
+
+    // And the retry works: the second attempt answers, so the detail opens.
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    const retry = screen.queryByRole('button', { name: /retry/i });
+    if (retry) await user.click(retry);
+    else await user.click(screen.getAllByText('View')[0]!);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /reprint/i })).toBeInTheDocument();
+    });
   });
 
   it('shows the margin columns again once a retry answers', async () => {

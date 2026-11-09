@@ -39,17 +39,18 @@ cargo run -p kasirmu-cli -- seed-demo --all
 cargo run -p kasirmu-cli -- seed-demo --retail --days 30
 
 # Option B: first-run default settings and feature flags on a fresh DB
-cargo run -p kasirmu-cli -- seed
+cargo run -p kasirmu-cli -- init-db
 
 > ⚠️ **Corrected 09-09-26 — the commands and menus this section listed were not real.**
 > There is no `seeder` binary in the workspace (the 11 `[[bin]]` targets are `kasir`
 > — the CLI — `kasirmu-cloud`, `kasirmu-app`, `kasirmu-mobile`, and seven fuzz bins), and
 > `--seed-staff` / `--seed-products` / `--seed-workspace` appear nowhere. `kasir seed-demo` is the
 > real thing: the `SeedDemo` variant at `crates/kasirmu-cli/src/cli.rs:95`, dispatched at
-> `crates/kasirmu-cli/src/commands/mod.rs:90` into `run_seed_demo`
-> (`crates/kasirmu-cli/src/seed_demo.rs:64`), with flags `--retail`, `--restaurant`, `--all` and
-> `--days <n>` (default 90) at `cli.rs:99-112`. `kasir seed` (`cli.rs:39`) is the separate
-> subcommand provisioning default settings and feature flags.
+> `crates/kasirmu-cli/src/commands/mod.rs:183` into `run_seed_demo`
+> (`crates/kasirmu-cli/src/seed_demo.rs:64`), with flags `--retail`, `--restaurant`, `--all` and <!-- dead-ref: ok: verified 2026-10-19; cites run_seed_demo's definition at :64 exactly; the flag branch is :81 -->
+> `--days <n>` (default 90) at `cli.rs:99-112`. The Option-B verb is **`init-db`**, the
+> `InitDb` variant declared at `crates/kasirmu-cli/src/cli.rs:44` — this note and the command
+> above both said `seed` until 2026-10-19, and no `seed` subcommand has ever existed.
 >
 > Read the module header before relying on `seed-demo`: it generates ~10k time-series sales
 > rows in about 2 seconds for analytics and report development. That is **not** a minimal

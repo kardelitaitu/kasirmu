@@ -56,6 +56,7 @@ pub use bootstrap::{
     BootstrapReport, Connection, DisplayConfig, DrawerConfig, HardwareConfig, PrinterConfig,
     TerminalConfig, TerminalConnection, apply_config,
 };
+pub use drivers::edc::resilient::{CircuitState, ResilientEdcConfig, ResilientEdcTerminal};
 pub use error::{HalError, HalErrorKind};
 pub use registry::DriverRegistry;
 pub use traits::barcode::BarcodeScanner;

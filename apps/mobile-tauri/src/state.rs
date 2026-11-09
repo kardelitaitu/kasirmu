@@ -29,6 +29,37 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::RwLock;
 
+/// A per-instance scratch directory for a TEST store database, inside the
+/// gitignored `target/` tree.
+///
+/// Why not `std::env::temp_dir()`: that resolves `TEMP`/`TMP`, and on this
+/// project's Windows machines the MACHINE-level value is `C:\WINDOWS\TEMP` — a
+/// directory an ordinary user may create inside but cannot delete from. The two
+/// `AppState` test constructors below are the shared fixture every mobile test
+/// goes through, so a failure here took out **144 tests at once** with
+/// `Access is denied (os error 5)` while the code under test was fine. Measured
+/// 2026-10-21.
+///
+/// The root is `kasirmu_test_support::scratch_root()` — the workspace's ONE copy
+/// of that walk-up (`target/` is gitignored at `.gitignore:2`, so nothing created
+/// here can be committed), and the per-call UUID keeps parallel tests apart.
+#[cfg(test)]
+fn test_scratch_store_dir() -> PathBuf {
+    kasirmu_test_support::scratch_root()
+        .join(format!("kasirmu-test-store-{}", uuid::Uuid::now_v7()))
+}
+
+/// The shared `target/test-scratch` root, created if absent.
+///
+/// `pub(crate)` because the crate's test modules create fixtures that need a
+/// plain path rather than a guard too. The lookup itself is
+/// `kasirmu_test_support::scratch_root()` — one copy workspace-wide — so this
+/// stays a delegate and owns no path arithmetic of its own.
+#[cfg(test)]
+pub(crate) fn test_scratch_root() -> PathBuf {
+    kasirmu_test_support::scratch_root()
+}
+
 use kasirmu_security::mask::mask_token;
 use rusqlite::Connection;
 use tauri::AppHandle;
@@ -615,7 +646,7 @@ impl AppState {
             // tests that write users into a store db (session-user replication)
             // must not collide with rows from earlier runs under different ids.
             db_manager: StoreDatabaseManager::new(
-                std::env::temp_dir().join(format!("kasirmu-test-store-{}", uuid::Uuid::now_v7())),
+                test_scratch_store_dir(),
                 kasirmu_core::migrations::ALL,
             ),
             picker_ticket_secret: b"test-picker-ticket-secret".to_vec(),
@@ -647,7 +678,7 @@ impl AppState {
             plugins: Mutex::new(None),
             topology_apply_lock: Mutex::new(()),
             db_manager: StoreDatabaseManager::new(
-                std::env::temp_dir().join(format!("kasirmu-test-store-{}", uuid::Uuid::now_v7())),
+                test_scratch_store_dir(),
                 kasirmu_core::migrations::ALL,
             ),
             picker_ticket_secret: b"test-picker-ticket-secret".to_vec(),

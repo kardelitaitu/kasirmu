@@ -160,6 +160,13 @@ const mockGetPaymentMethodBreakdown = vi.fn(() => Promise.resolve([
   { payment_method: 'cash', total_minor: 600000, sale_count: 30 },
   { payment_method: 'card', total_minor: 900000, sale_count: 45 },
 ]));
+// The COLLECTION side of the same period. Required since `piutang-collections`
+// joined the retail grid: an unmocked loader returns `undefined`, and the card's
+// data hook calls `.then` on it, which crashes the whole screen for every case in
+// this file rather than just the new card's.
+const mockGetPiutangCollections = vi.fn(() => Promise.resolve([
+  { payment_method: 'cash', currency: 'USD', total_minor: 125000, payment_count: 4 },
+]));
 const mockGetDiscountsSummary = vi.fn(() => Promise.resolve({
   sale_count: 100, discounted_sale_count: 12, share_percent: 12.5,
   codes: [{ label: 'WELCOME10', redeemed_count: 8 }, { label: 'HAPPYHOUR', redeemed_count: 4 }],
@@ -174,12 +181,23 @@ const mockGetInventoryTurnover = vi.fn(() => Promise.resolve({ units_sold: 500, 
 // off-range fixed date would be dropped (rendering an all-zero chart).
 const daysAfter = (iso: string, n: number) =>
   new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
-/** ISO Monday of the current local week — matches `weekStartKey` in the loader. */
+/**
+ * ISO Monday of the current week, matching `weekStartKey` in analytics-data.ts:730.
+ *
+ * It must use the SAME clock the loader uses. `weekStartKey` reads UTC parts
+ * (`getUTCDay`, `getUTCFullYear`, …) because the bucket axis is UTC-keyed, but this
+ * helper used to read LOCAL parts (`getDay`, `getFullYear`, …) while its comment
+ * claimed the two matched. They only agree when the host's local date equals its UTC
+ * date -- which stops being true for the hours a UTC+14 host is already on tomorrow.
+ * check-tz-invariance caught it in exactly one zone: TZ=Pacific/Kiritimati produced
+ * `Low: <local Monday> · 134 min` against a card rendering the UTC Monday, and the
+ * test failed while UTC, Jakarta, Honolulu and Los_Angeles all passed.
+ */
 const isoLocalMonday = () => {
-  const now = new Date();
-  const dow = (now.getDay() + 6) % 7;
-  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
-  return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
+  const d = new Date();
+  const dow = (d.getUTCDay() + 6) % 7; // Monday-first, in UTC like the loader
+  d.setUTCDate(d.getUTCDate() - dow);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 };
 const mockGetInventoryTrend = vi.fn((startDate?: string, _endDate?: string, _token?: string) => Promise.resolve([
   { date: startDate ?? '2026-07-21', units_sold: 15 },
@@ -226,6 +244,7 @@ vi.mock('@/api/reports', () => ({
   getBasketSizeTrend: (startDate: string, endDate: string, token: string) => mockGetBasketSizeTrend(startDate, endDate, token),
   getCustomerSplit: () => mockGetCustomerSplit(),
   getPaymentMethodBreakdown: () => mockGetPaymentMethodBreakdown(),
+  getPiutangCollections: () => mockGetPiutangCollections(),
   getDiscountsSummary: () => mockGetDiscountsSummary(),
   getVoidedSalesSummary: () => mockGetVoidedSalesSummary(),
   getVoidedItems: () => mockGetVoidedItems(),
@@ -496,8 +515,9 @@ describe('AnalyticsScreen layout shell', () => {
   it('shows the view status bar with card count and workspace', () => {
     renderWithFluentSync(<AnalyticsScreen />, analyticsFtl, sharedFtl, reportsFtl);
 
-    expect(screen.getByText('13 cards')).toBeTruthy();
-    // Status shows workspace · granularity (scoped to the status bar)
+    // 14, not 13: `piutang-collections` joined the retail grid (decision Q1's
+    // collection-day line). Retail-only, so the restaurant count is unchanged.
+    expect(screen.getByText('14 cards')).toBeTruthy();    // Status shows workspace · granularity (scoped to the status bar)
     const status = document.querySelector('.analytics-status');
     expect(status?.textContent).toContain('Retail');
     expect(status?.textContent).toContain('Weekly');
@@ -1081,6 +1101,27 @@ describe('AnalyticsScreen layout shell', () => {
     });
   });
 
+  // The piutang CSV must carry the CURRENCY column. Rows are per tender AND
+  // currency (REP-06), so a file without it invites summing minor units across
+  // currencies into a number that is not money -- the same trap the card's
+  // dominant-currency read exists to avoid on screen.
+  it('exports the piutang collections CSV with a currency column', async () => {
+    vi.useFakeTimers();
+    renderWithFluentSync(<AnalyticsScreen />, analyticsFtl, sharedFtl, reportsFtl);
+    await flushRecalc();
+
+    vi.mocked(downloadCsv).mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Export piutang collections CSV' }));
+
+    expect(downloadCsv).toHaveBeenCalledTimes(1);
+    const [filename, columns, rows] = vi.mocked(downloadCsv).mock.calls[0]!;
+    expect(filename).toContain('piutang-collections-');
+    expect(columns.map((c) => c.key)).toEqual(['method', 'currency', 'collected', 'payments']);
+    expect(columns.map((c) => c.label)).toEqual([
+      'Payment method', 'Currency', 'Collected', 'Repayments',
+    ]);
+    expect(rows[0]).toMatchObject({ method: 'Cash', currency: 'USD', payments: '4' });
+  });
   it('exports the top products CSV from the top-items card', async () => {
     vi.useFakeTimers();
     renderWithFluentSync(<AnalyticsScreen />, analyticsFtl, sharedFtl, reportsFtl);

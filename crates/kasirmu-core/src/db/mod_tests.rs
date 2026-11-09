@@ -26,8 +26,9 @@ fn backup_creates_valid_copy() {
     // Insert a row so the copy has content.
     s.set_setting("audit.key", "value").unwrap();
 
-    let dir = std::env::temp_dir().join(format!("oz_backup_{}", uuid::Uuid::now_v7()));
-    std::fs::create_dir_all(&dir).unwrap();
+    // The guard owns the directory and deletes it on drop.
+    let scratch = kasirmu_test_support::ScratchDir::new("db-backup");
+    let dir = scratch.path();
     let path = dir.join("backup.sqlite");
 
     s.backup(&path.to_string_lossy()).unwrap();
@@ -43,9 +44,10 @@ fn backup_creates_valid_copy() {
         )
         .ok();
     assert_eq!(got.as_deref(), Some("value"));
-    // Close the read-only copy before cleanup so Windows can remove the dir.
+    // Close the read-only copy before the guard drops so Windows can remove
+    // the dir (an open handle would make the removal fail, leaving the
+    // fixture behind for the next run).
     drop(copy);
-    std::fs::remove_dir_all(&dir).unwrap();
 }
 
 /* ── check_integrity ────────────────────────────────────────────── */

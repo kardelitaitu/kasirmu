@@ -74,3 +74,5 @@ the wrong place to look.
 | Tax-mode toggle in the restaurant feature | none — it is configured on the tax rate |
 | Tests covering the printed payload figures | none (`printSalesReceipt` mocked, payload unasserted) |
 | Tree | no source changed this round |
+
+> last audited 14-10-26 by docs-auditor

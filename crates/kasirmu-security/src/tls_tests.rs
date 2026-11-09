@@ -13,7 +13,8 @@ fn tls_config_builder_minimal() {
 
 #[test]
 fn tls_config_builder_with_paths() {
-    let dir = std::env::temp_dir();
+    let scratch = kasirmu_test_support::ScratchDir::new("oz-tls-test");
+    let dir = scratch.path().to_path_buf();
     let cert_path = dir.join("oz-pos-test-cert.pem");
     let key_path = dir.join("oz-pos-test-key.pem");
     let ca_path = dir.join("oz-pos-test-ca.pem");
@@ -64,8 +65,8 @@ fn tls_config_validates_file_exists() {
 
 #[test]
 fn tls_config_load_files_roundtrip() {
-    let dir = std::env::temp_dir().join(format!("oz-tls-test-{}", std::process::id()));
-    fs::create_dir_all(&dir).unwrap();
+    let scratch = kasirmu_test_support::ScratchDir::new("oz-tls-config");
+    let dir = scratch.path().to_path_buf();
 
     let cert_path = dir.join("cert.pem");
     let key_path = dir.join("key.pem");
@@ -91,8 +92,6 @@ fn tls_config_load_files_roundtrip() {
     assert!(config.load_cert().unwrap().is_some());
     assert!(config.load_key().unwrap().is_some());
     assert!(config.load_ca().unwrap().is_some());
-
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -133,7 +132,8 @@ fn tls_config_load_cert_returns_none_when_unset() {
 /// `validate()` should accept it as long as the CA file exists.
 #[test]
 fn tls_config_validates_ca_only() {
-    let dir = std::env::temp_dir().join(format!("oz-tls-ca-only-{}", std::process::id()));
+    let scratch = kasirmu_test_support::ScratchDir::new("oz-tls-ca-only");
+    let dir = scratch.path().to_path_buf();
     fs::create_dir_all(&dir).unwrap();
     let ca_path = dir.join("ca.pem");
     fs::write(&ca_path, b"fake-ca").unwrap();
@@ -142,8 +142,6 @@ fn tls_config_validates_ca_only() {
     assert!(config.ca_path.is_some());
     assert!(config.cert_path.is_none());
     assert!(config.key_path.is_none());
-
-    fs::remove_dir_all(&dir).ok();
 }
 
 /// Validate-time success is NOT load-time success: if the file is
@@ -153,7 +151,8 @@ fn tls_config_validates_ca_only() {
 /// be assumed valid at the moment of use.
 #[test]
 fn tls_config_load_fails_when_file_deleted_after_validate() {
-    let dir = std::env::temp_dir().join(format!("oz-tls-toctou-{}", std::process::id()));
+    let scratch = kasirmu_test_support::ScratchDir::new("oz-tls-toctou");
+    let dir = scratch.path().to_path_buf();
     fs::create_dir_all(&dir).unwrap();
     let cert_path = dir.join("cert.pem");
     let key_path = dir.join("key.pem");
@@ -171,8 +170,6 @@ fn tls_config_load_fails_when_file_deleted_after_validate() {
 
     let err = config.load_cert().unwrap_err();
     assert!(matches!(err, SecurityError::KeyUnavailable(_)));
-
-    fs::remove_dir_all(&dir).ok();
 }
 
 /// ALPN protocols with unusual contents (empty strings, NUL bytes,
@@ -222,7 +219,8 @@ fn tls_config_insecure_skip_verify_state_cycle() {
 /// the on-disk shape used by the sync-config persistence layer.
 #[test]
 fn tls_config_json_roundtrip() {
-    let dir = std::env::temp_dir().join(format!("oz-tls-json-{}", std::process::id()));
+    let scratch = kasirmu_test_support::ScratchDir::new("oz-tls-json");
+    let dir = scratch.path().to_path_buf();
     fs::create_dir_all(&dir).unwrap();
     let cert_path = dir.join("cert.pem");
     let key_path = dir.join("key.pem");
@@ -247,8 +245,6 @@ fn tls_config_json_roundtrip() {
     assert_eq!(restored.ca_path, original.ca_path);
     assert_eq!(restored.insecure_skip_verify, original.insecure_skip_verify);
     assert_eq!(restored.alpn_protocols, original.alpn_protocols);
-
-    fs::remove_dir_all(&dir).ok();
 }
 
 /// `Default::default()` for `TlsConfig` (triggered by serde

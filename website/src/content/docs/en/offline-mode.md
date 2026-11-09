@@ -6,7 +6,8 @@ order: 7
 updated: "2026-08-16"
 ---
 
-<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE — 0 findings (0 major, 0 minor, 0 ambiguous) · First audit stamp this page has carried. Full audit against HEAD; every anchor re-derived rather than read. VERIFIED: the page's central claim — every change written locally first, then queued and drained on reconnect — matches the offline queue implementation (crates/kasirmu-core/src/db/offline/). The queue screen is real and manager-gated (ui/src/features/offline/register.tsx registers route 'offline-queue' with requiredRole: 'manager'), which is what the parenthetical "(manager)" says. "Sync All" is the app's own button (ui/src/features/offline/OfflineQueueScreen.tsx:339 rendering offline-queue-sync-all = "Sync All" at shared-ui/locales/offline.ftl:8), with aria-label offline-queue-sync-all-label. The pending/synced/failed tri-state is real (:44-48 mapping to status-pending/status-synced/status-failed). Quarantine and requeue are real — remote items quarantined after repeated pull-application failures (:133-140) with requeueRemoteFailureScoped, which is the "requeued once the cause is fixed" claim. Conflict resolution is LWW as the page says: platform/sync/src/conflict.rs dispatches per entity (version LWW for reference data, sale-status DAG rank for sales, created-at LWW as fallback) and the page's "latest change wins for each record" is the correct user-level summary. The inline SVG is a docs-flow figure with role="img" and an aria-label (the same class the sibling offline-mode/cloud-sync pages use). NOT re-measured: an actual offline-to-online drain on a live register, the conflict count surfacing, and the pull-to-refresh gesture. -->
+<!- - Audit stamp: 2026-10-19 · docs-auditor · status: ACCURATE AFTER REPAIR (2 findings) · Full audit at HEAD; the 2026-10-11 stamp below is kept verbatim as prior evidence. · FINDING 1 (major), "How it works": "once connected, the queue drains IN ORDER and the cloud confirms each item" — the drain order is by SyncPriority, not arrival: `crates/kasirmu-core/src/offline.rs` declares Critical=sales/voids, Normal=stock/inventory, Low=settings, and `order_for_push()` (:212) sorts on `(priority, created_at, id)`, so a later sale sends before an earlier settings change. `crates/kasirmu-bridge/src/offline.rs` reaches it through the shared rule (comment at :358). Corrected to name the tiers. · FINDING 2 (major), "The offline queue": the same "drains in order" sentence, same falsehood, plus the same page section — repaired to "by priority (SyncPriority …), oldest first within each tier". Two sites because the sentence appears twice; one edit each. · VERIFIED AND LEFT ALONE: the status screen really shows pending/synced/failed/conflicts plus last-synced and oldest-pending (shared-ui/locales/offline.ftl:12-25, rendered by ui/src/features/offline/OfflineQueueScreen.tsx:421-430); "Sync All" is a real button (offline-queue-sync-all, offline.ftl:8); the drain is genuinely AUTOMATIC and needs no user action — a 30-second sync daemon runs from `platform_startup::spawn_daemon("sync daemon", …)` (apps/desktop-tauri/src/lib.rs:468) on DEFAULT_SYNC_INTERVAL = 30s (platform/sync/src/daemon.rs:35); the manager gate on the queue screen (ui/src/features/offline/register.tsx `requiredRole: 'manager'`); the paid-plan framing (SubscriptionTier::supports_cloud_sync false for Free at crates/kasirmu-core/src/subscription/tier.rs:209-214, and offline-queue-plan-required "Cloud sync requires a paid plan" offline.ftl:20). · AMBIGUOUS, not changed: "the latest change wins for each record" stays as the page's user-level summary; platform/sync/src/conflict.rs is per-entity (version LWW, sale-status DAG rank, created-at LWW fallback), which this sentence does not contradict. · NOT re-measured: a live offline→online drain, and the conflict count surfacing on a running register. -->
+
 
 ## How it works
 
@@ -40,8 +41,8 @@ updated: "2026-08-16"
 </svg>
 
 Every change is written to the device's local database first. While offline
-it waits in the queue; once connected, the queue drains in order and the
-cloud confirms each item.
+it waits in the queue; once connected, the queue drains — sales and voids
+first, then stock changes, then settings — and the cloud confirms each item.
 
 ## Nothing stops at the counter
 
@@ -52,8 +53,10 @@ database first. A lost connection never blocks a transaction.
 
 Every change — a sale, a shift event, a stock movement, a settings update —
 is appended to the outbound queue. When connectivity returns, the queue
-drains in order and the server acknowledges each item. Every item is tracked
-as pending, synced, or failed, so nothing disappears silently.
+drains by priority (`SyncPriority` — sales and voids, then stock changes,
+then settings), oldest first within each tier, and the server acknowledges
+each item. Every item is tracked as pending, synced, or failed, so nothing
+disappears silently.
 
 ## Checking the queue
 
@@ -77,4 +80,4 @@ plan without sync, the offline queue keeps working exactly the same — sales
 are safe locally and drain the moment you upgrade. See
 [Cloud Sync](../cloud-sync/) for what syncs and how to check its status.
 
-> last audited 11-10-26 by docs-auditor
+> last audited 19-10-26 by docs-auditor

@@ -591,6 +591,20 @@ export default function TabletAppShell() {
 
   // Fullscreen workspaces — render without the tab bar.
   if (activeWorkspace === 'restaurant-pos') {
+    if (currentRoute === 'kds') {
+      return (
+        <div className="workspace-fullscreen">
+          <StorageBanner />
+          <MemoBanner kds />
+          <div className="kds-workspace">
+            <LazyBoundary>
+              <KdsScreen onBack={() => handleNavigate('pos')} />
+            </LazyBoundary>
+          </div>
+          {settingsModal}
+        </div>
+      );
+    }
     return (
       <div className="workspace-fullscreen">
         <StorageBanner />
@@ -604,6 +618,20 @@ export default function TabletAppShell() {
   }
 
   if (activeWorkspace === 'store-pos') {
+    if (currentRoute === 'kds') {
+      return (
+        <div className="workspace-fullscreen">
+          <StorageBanner />
+          <MemoBanner kds />
+          <div className="kds-workspace">
+            <LazyBoundary>
+              <KdsScreen onBack={() => handleNavigate('pos')} />
+            </LazyBoundary>
+          </div>
+          {settingsModal}
+        </div>
+      );
+    }
     return (
       <div className="workspace-fullscreen">
         <StorageBanner />

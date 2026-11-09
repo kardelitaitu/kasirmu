@@ -270,7 +270,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// Re-read 23-09-26: 342, with the floor raised to it in the same pass that absorbed the
 /// three `desktop_link` email sign-in commands — 92 debt rows, up from 89. The floor, this
 /// total and `DEBT_CEILING` all move together; the generator writes only this number.
-pub const REGISTERED_TOTAL: usize = 428;
+pub const REGISTERED_TOTAL: usize = 437;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 ///
@@ -308,7 +308,7 @@ pub const REGISTERED_TOTAL: usize = 428;
 /// session exists, and the device proves itself to the licence server with its own
 /// stored credentials (the api_key), exactly as `license::activate_license` does — a
 /// session permission here would guard a door no session can reach. The reason is
-/// recorded in docs/records/JOURNAL.md, which is what this pin asks of a rise.
+/// recorded in docs/records/journal/JOURNAL.md, which is what this pin asks of a rise.
 ///
 /// RAISED from 88 to 89 by the tablet file-picker pass (b-full, 2026-09-20):
 /// `auth::has_users` joined the ledger as class 1 (`no_session_resolution`).
@@ -319,7 +319,7 @@ pub const REGISTERED_TOTAL: usize = 428;
 /// one-for-one. The row is what the sweep measures; the registration itself
 /// was authored in another lane and travelled into `lib.rs` on an owner
 /// ruling, so **this entry records the absorb and does not author the door** —
-/// the same standing as the QRIS-auto absorb in docs/records/JOURNAL.md.
+/// the same standing as the QRIS-auto absorb in docs/records/journal/JOURNAL.md.
 /// Nothing else in that pass moved the count: the seven commands registered
 /// alongside it (`data::*`, `avatars::*` writes, `products_images::*`) are all
 /// `Gated` shims over `kasirmu-bridge` and added no rows.
@@ -329,7 +329,7 @@ pub const REGISTERED_TOTAL: usize = 428;
 /// (ADR #56 §2.5 / §5 Q1): device-code pairing runs before any staff account exists.
 /// 94 -> 95 with `setup::get_preset_features` (`6ac851dd4`): the setup wizard reads the
 /// store-type presets BEFORE any staff session exists, the class the `desktop_link::*` and
-/// `setup::provision_device` rows above already occupy. Recorded in docs/records/JOURNAL.md.
+/// `setup::provision_device` rows above already occupy. Recorded in docs/records/journal/JOURNAL.md.
 /// 95 -> 92 with C17 (2026-09-22): the three unscoped branding setters shed their rows by
 /// DELETION, the same move T11 made for `settings::set_hardware_settings`. Their
 /// session-scoped twins were already registered and the UI had already moved to them

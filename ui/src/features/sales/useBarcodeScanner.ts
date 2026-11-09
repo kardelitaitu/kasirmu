@@ -105,8 +105,9 @@ export function useBarcodeScanner({
 
       // T21 (b2): `lookup_by_barcode` is registered in neither shell -- the tablet has an
       // unregistered body and the desktop has no body at all -- so the fallback half could only
-      // answer "command not found". PosScreen.tsx:290 and RetailPosScreen.tsx:842 already call the
-      // scoped twin directly; this hook was the last production caller of the unscoped one.
+      // answer "command not found". PosScreen and RetailPosScreen already call the scoped twin
+      // (`lookupByBarcodeScoped`) directly; this hook was the last production caller of the
+      // unscoped one.
       // A scan with no session has no store to look up against, so it reports not-found, which is
       // the same outcome the `catch` below already gave for a failed lookup.
       if (!sessionToken) {

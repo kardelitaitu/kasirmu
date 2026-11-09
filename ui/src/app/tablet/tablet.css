@@ -24,25 +24,46 @@
 
 /* ── Transition animations ────────────────────────────────────── */
 
+/* OPACITY ONLY — deliberately no `transform: scale()` (removed 2026-10-15).
+ *
+ * WHY THE SCALE HAD TO GO. These keyframes are applied with `both` fill, so the
+ * element RETAINS the `to` frame forever. A `transform` declaration is not
+ * `none` after the animation ends -- it resolves to `matrix(1, 0, 0, 1, 0, 0)`
+ * -- and a transformed element becomes the CONTAINING BLOCK for its absolutely
+ * positioned descendants and a composited, clipped layer for their paint.
+ *
+ * Measured in the running app (walking up from the order-type pill in the
+ * restaurant cart): indicator -> slider `overflow:hidden` -> cart panel
+ * `overflow:hidden` -> pos-screen `overflow:hidden` -> .workspace-fullscreen
+ * `overflow:hidden` AND `transform: matrix(...)`. So an animated child sat four
+ * clipped layers deep inside a permanently transformed ancestor, and on the
+ * Android tablet that re-rasterisation resolved the pill's CLAMPED border-radius
+ * against a mid-flight box -- the pill visibly snapped SQUARE and then rounded
+ * again. Desktop Chrome resolves the radius from the settled box, which is why
+ * the defect never reproduced there.
+ *
+ * The 2% scale was decorative and is barely perceptible on a full-screen page
+ * swap; the fade is the visible part and is preserved exactly. Removing it
+ * deletes the containing block, the composited clip layer and the
+ * re-rasterisation path for EVERY animated descendant of a workspace -- not just
+ * the one pill that surfaced this.
+ *
+ * The desktop twin lives in AppLayout.css and must stay in step. */
 @keyframes ws-page-enter {
   from {
     opacity: 0;
-    transform: scale(0.98);
   }
   to {
     opacity: 1;
-    transform: scale(1);
   }
 }
 
 @keyframes ws-page-exit {
   from {
     opacity: 1;
-    transform: scale(1);
   }
   to {
     opacity: 0;
-    transform: scale(0.98);
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import { withFluent, withFluentLocale } from '@/i18n/test-utils';
 import LicenseSettings, { shouldPollLicense } from '@/features/settings/LicenseSettings';
@@ -34,6 +34,16 @@ vi.mock('@/api/license', () => ({
   resumeSubscriptionScoped: (token: string) => mockResumeSubscriptionScoped(token),
 }));
 
+// The tablet shell registers NEITHER pause_subscription command (nor the resume pair),
+// so `LicenseSettings` guards both handlers and keeps its buttons behind
+// `actionsAvailable = !isTabletShell()`. Pin the guard, not the markup: with the shell
+// mocked to tablet the scoped command must never be invoked, because on a real device
+// it would be rejected as an unknown command and rendered as a pause FAILURE.
+const shell = { tablet: false };
+vi.mock('@/utils/shellKind', () => ({
+  isTabletShell: () => shell.tablet,
+  isDesktopShell: () => !shell.tablet,
+}));
 vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: mockAddToast }),
 }));
@@ -166,6 +176,7 @@ describe('LicenseSettings — EN', () => {
 
   describe('License payload display', () => {
     beforeEach(() => {
+      shell.tablet = false;
       mockGetLicenseStatus.mockResolvedValue({
         payload: JSON.stringify(makePayload()),
         tier: 'pro',
@@ -184,6 +195,19 @@ describe('LicenseSettings — EN', () => {
       const activeValue = document.querySelector('.settings-license-value--active');
       expect(activeValue).toBeInTheDocument();
       expect(activeValue?.textContent?.toLowerCase()).toContain('active');
+    });
+
+    // THE TABLET REGISTERS NEITHER PAUSE COMMAND. With the shell mocked to tablet the
+    // pause/resume buttons are not rendered at all (`actionsAvailable`), so the path is
+    // already closed; the handler guards are the belt. What this case pins is that the
+    // unregistered command is never invoked, which is the property that survives someone
+    // later rendering the buttons unconditionally.
+    it('does not invoke pauseSubscriptionScoped on the tablet shell', async () => {
+      shell.tablet = true;
+      await renderWithFluent(<LicenseSettings />);
+      expect(screen.queryByRole('button', { name: /pause/i })).toBeNull();
+      expect(mockPauseSubscriptionScoped).not.toHaveBeenCalled();
+      expect(mockPauseSubscription).not.toHaveBeenCalled();
     });
 
     it('renders expiry date', async () => {
@@ -299,6 +323,48 @@ describe('LicenseSettings — EN', () => {
         expect(mockPauseSubscriptionScoped).toHaveBeenCalledWith(HARNESS_SESSION_TOKEN, 1);
         expect(mockPauseSubscription).not.toHaveBeenCalled();
       });
+    });
+
+    it('pauses ONCE when the survey confirm is double-tapped', async () => {
+      // A billing call plus its status re-read. The replay asks the subscription server to
+      // pause twice and then lets the losing run write serverStatus, so the card can show
+      // the state of the call that lost. \`pausing\` is STATE: both taps read it false.
+      mockPauseSubscription.mockResolvedValue(undefined);
+      mockCheckLicenseStatus.mockResolvedValue({ tier: 'pro', active: true });
+      mockGetLicenseStatus.mockResolvedValue({
+        payload: JSON.stringify(makePayload({ status: 'active' })),
+        tier: 'pro',
+        status: 'active',
+      });
+      await renderWithFluent(<LicenseSettings />);
+      fireEvent.click(screen.getByText(/pause subscription/i));
+
+      const confirm = await screen.findByText(/confirm pause/i);
+      await act(async () => {
+        fireEvent.click(confirm);
+        fireEvent.click(confirm);
+      });
+
+      await waitFor(() => expect(mockPauseSubscriptionScoped).toHaveBeenCalledTimes(1));
+    });
+
+    it('resumes ONCE when Resume is double-tapped', async () => {
+      mockResumeSubscription.mockResolvedValue(undefined);
+      mockCheckLicenseStatus.mockResolvedValue({ tier: 'pro', active: true });
+      mockGetLicenseStatus.mockResolvedValue({
+        payload: JSON.stringify(makePayload({ status: 'paused' })),
+        tier: 'pro',
+        status: 'paused',
+      });
+      await renderWithFluent(<LicenseSettings />);
+
+      const resumeBtn = screen.getByText(/resume subscription/i);
+      await act(async () => {
+        fireEvent.click(resumeBtn);
+        fireEvent.click(resumeBtn);
+      });
+
+      await waitFor(() => expect(mockResumeSubscriptionScoped).toHaveBeenCalledTimes(1));
     });
 
     it('calls resumeSubscription when Resume clicked', async () => {

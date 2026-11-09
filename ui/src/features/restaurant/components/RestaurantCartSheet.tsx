@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
+import { useRef } from 'react';
 import { useLocalization } from '@fluent/react';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { bareTableNumber } from '@/features/sales/utils/tableLabel';
 import './RestaurantCartSheet.css';
 
@@ -36,18 +37,20 @@ export function RestaurantCartSheet({
 
   const { shouldRender, exiting, requestClose } = useExitAnimation(open, onClose, 200);
 
-  // Close on Escape key press
-  useEffect(() => {
-    if (!open) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        requestClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, requestClose]);
+  // Focus management AND Escape, through the shared hook. The sheet is the restaurant
+  // POS tablet's whole cart surface and declares aria-modal="true", but it used to
+  // handle Escape by hand and nothing else: focus stayed on the page behind it, and
+  // Tab walked into the menu the sheet is covering. useFocusTrap adds autofocus, Tab
+  // cycling and the body-scroll lock, and calls the same requestClose on Escape.
+  // Every sibling sales dialog uses it (ItemModifierModal:253, SplitBillModal:37,
+  // PromotionsModal:66, RefundModal:176, PriceOverrideModal:176,
+  // StockShortfallDialog:115).
+  //
+  // `open && !exiting` rather than `shouldRender`: during the exit fade the panel is
+  // still mounted but must no longer own the keyboard, or a second Escape would
+  // re-enter requestClose while the first is still animating.
+  const panelRef = useRef<HTMLElement>(null);
+  useFocusTrap(panelRef, open && !exiting, requestClose);
 
   if (!shouldRender) return null;
 
@@ -62,6 +65,7 @@ export function RestaurantCartSheet({
         data-testid="restaurant-cart-sheet-backdrop"
       />
       <section
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label={l10n.getString('restaurant-cart-sheet-title')}
@@ -74,7 +78,7 @@ export function RestaurantCartSheet({
         </div>
 
         {/* Header */}
-        <div className="restaurant-cart-sheet-header">
+        <header className="restaurant-cart-sheet-header">
           <div className="restaurant-cart-sheet-title-group">
             <h2 className="restaurant-cart-sheet-title">
               {l10n.getString('restaurant-cart-sheet-title')}
@@ -112,7 +116,7 @@ export function RestaurantCartSheet({
               <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
-        </div>
+        </header>
 
         {/* Body (hosts CartPanel) */}
         <div className="restaurant-cart-sheet-body">

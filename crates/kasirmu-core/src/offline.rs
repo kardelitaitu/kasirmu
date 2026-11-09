@@ -2,6 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Default maximum number of pending outbox items to push in a single sync batch (ADR #59 / O-M03).
+pub const DEFAULT_MAX_OUTBOX_BATCH_ITEMS: usize = 100;
+
 /// Sync priority tier for offline queue items (P-2 spec §Priority tiers).
 ///
 /// Lower numeric values indicate higher priority. Items are sorted by
@@ -92,6 +95,9 @@ pub struct OfflineQueueItem {
     /// self-originated".
     #[serde(default)]
     pub origin_terminal_id: Option<String>,
+    /// Optional sale ID associated with this mutation for O(1) point-probe idempotency (O-M04).
+    #[serde(default)]
+    pub sale_id: Option<String>,
 }
 
 /// Status of an offline queue item.
@@ -147,6 +153,7 @@ impl OfflineQueueItem {
             tenant_id: String::from("default"),
             priority: SyncPriority::Normal,
             origin_terminal_id: None,
+            sale_id: None,
         }
     }
 
@@ -210,9 +217,27 @@ impl OfflineQueueItem {
 /// synced or failed. So this takes `&mut` and reorders the caller's own
 /// vector rather than returning a parallel sorted copy.
 pub fn order_for_push(items: &mut [OfflineQueueItem]) {
-    items.sort_by(|a, b| {
-        (a.priority, &a.created_at, &a.id).cmp(&(b.priority, &b.created_at, &b.id))
-    });
+    // The comparison is `compare_for_push`, the ONE key, held directly below
+    // and reused by any caller that has to sort indexes rather than values.
+    <[OfflineQueueItem]>::sort_by(items, compare_for_push);
+}
+
+/// Compare two queue items by THE transmit key: `priority`, then
+/// `created_at`, then `id`. This is the ONE comparison — [`order_for_push`]
+/// sorts with it, and any caller that has to order indexes instead of values
+/// uses the same function rather than writing the tuple out again.
+///
+/// **Public for exactly that reason.** `platform/sync::build_batches` needs
+/// the transmit order of a backlog it must not copy, so it sorts an index
+/// vector with this comparison. Exposing one comparison keeps C49's "one
+/// definition" promise; a second copy of the key at a call site is the
+/// divergent-twin failure that rule exists to prevent.
+///
+/// Every caller sorts through this one function, so the tuple below is the
+/// only place the key exists.
+#[must_use]
+pub fn compare_for_push(a: &OfflineQueueItem, b: &OfflineQueueItem) -> std::cmp::Ordering {
+    (a.priority, &a.created_at, &a.id).cmp(&(b.priority, &b.created_at, &b.id))
 }
 
 #[cfg(test)]

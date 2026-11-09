@@ -74,6 +74,8 @@ export function UpdateSettingsCard() {
   const [pendingCount, setPendingCount] = useState(0);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [syncingOffline, setSyncingOffline] = useState(false);
+  /** Synchronous mirror of `syncingOffline` — see the re-entry guard in `handleSyncOffline`. */
+  const syncingOfflineRef = useRef(false);
 
   // Unlisten ref for download events
   const unlistenRef = useRef<UnlistenFn | null>(null);
@@ -126,7 +128,7 @@ export function UpdateSettingsCard() {
         }
       } else {
         setStep('error');
-        setErrorMessage('In-app updates are Android-only');
+        setErrorMessage(l10n.getString('settings-updater-android-only'));
       }
     } catch (err: unknown) {
       setStep('error');
@@ -187,7 +189,7 @@ export function UpdateSettingsCard() {
         setStep('ready');
       } else {
         setStep('error');
-        setErrorMessage('In-app updates are Android-only');
+        setErrorMessage(l10n.getString('settings-updater-android-only'));
       }
     } catch (err: unknown) {
       if (unlistenRef.current) {
@@ -262,6 +264,12 @@ export function UpdateSettingsCard() {
 
   const handleSyncOffline = useCallback(async () => {
     if (!sessionToken) return;
+    // Re-entry guard. retry_offline_sync is safe to replay, but this handler reads the
+    // remaining count AFTER it and closes the modal / fires the deferred action on zero --
+    // so a replay can run the operator's queued action twice, or re-open work the first
+    // run had already settled. The state flag is stale inside one tick.
+    if (syncingOfflineRef.current) return;
+    syncingOfflineRef.current = true;
     setSyncingOffline(true);
     try {
       await retryOfflineSyncScoped(sessionToken);
@@ -277,6 +285,7 @@ export function UpdateSettingsCard() {
     } catch {
       // keep modal open so user can choose to proceed anyway
     } finally {
+      syncingOfflineRef.current = false;
       setSyncingOffline(false);
     }
   }, [sessionToken, pendingAction]);
@@ -381,7 +390,7 @@ export function UpdateSettingsCard() {
 
             {updateInfo.releaseNotes && (
               <div className="update-release-notes">
-                <div className="update-notes-title">Changelog</div>
+                <div className="update-notes-title">{l10n.getString('update-notes-title')}</div>
                 <div className="update-notes-content">{updateInfo.releaseNotes}</div>
               </div>
             )}

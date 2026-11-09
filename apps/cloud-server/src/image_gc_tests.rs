@@ -48,7 +48,13 @@ fn gc_removes_files_when_present() {
     let conn = kasirmu_core::migrations::fresh_db();
     let store = kasirmu_core::Store::new(&conn);
 
-    let tmp = std::env::temp_dir().join(format!("oz-gc-{}", uuid::Uuid::new_v4()));
+    // A `ScratchDir` guard, bound for the whole test: the file is written into
+    // this directory, GC'd, and asserted gone afterwards, so the guard has to
+    // outlive every use. The old `kasirmu_test_support::scratch_dir` returned a
+    // `PathBuf` that is never deleted, which leaked one `oz-gc-*` directory per
+    // run; `ScratchDir` removes the directory when it drops.
+    let scratch = kasirmu_test_support::ScratchDir::new("oz-gc");
+    let tmp = scratch.path().to_path_buf();
     std::fs::create_dir_all(&tmp).unwrap();
 
     // Write a file that will be GC'd.

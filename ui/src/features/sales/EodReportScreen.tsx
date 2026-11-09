@@ -23,10 +23,34 @@ import { useToast } from '@/components/Toast';
 import './EodReportScreen.css';
 
 /**
+ * Format human-readable payment method label, localized when available.
+ */
+export function formatPaymentMethodLabel(
+  method: string,
+  l10n?: { getString: (id: string) => string | null },
+): string {
+  // `l10n` is OPTIONAL here, so the helper keeps its own guard: with no
+  // localization object there is nothing to resolve through. When one IS
+  // supplied, requiredLocalized decides — it returns the key rather than
+  // English if the message is missing, so the two shapes cannot disagree.
+  if (method === 'piutang_collection') {
+    return l10n
+      ? requiredLocalized(l10n, 'eod-payment-piutang-collections')
+      : 'eod-payment-piutang-collections';
+  }
+  if (method === 'pay_later') {
+    return l10n ? requiredLocalized(l10n, 'eod-payment-pay-later') : 'eod-payment-pay-later';
+  }
+  return method.charAt(0).toUpperCase() + method.slice(1).replace(/_/g, ' ');
+}
+
+/**
  * The two Fluent keys that label a non-zero cash difference, ONE definition
- * each. They were spelled inline at both render sites below (was :154 and :187
- * at tip b2247947e) — 2 keys x 2 sites = 4 copies, while each key is declared
- * once per bundle (locales/sales.ftl:479, sales.id.ftl:464). A rename that
+ * each. They were spelled inline at both render sites below (was line 154 and
+ * line 187 at tip b2247947e) — 2 keys x 2 sites = 4 copies, while each key is
+ * once per bundle (`eod-tag-over` / `eod-tag-short` in `shared-ui/locales/sales.ftl`
+ * and `sales.id.ftl` — anchored by key name, not by line: the numbers here pointed at
+ * `void-orders-line-total` and a prose comment). A rename that
  * landed on three of four copies would render a raw id, and Fluent's getString
  * returns null on a miss, which React renders as NOTHING: the tag would simply
  * vanish from a cash-reconciliation figure.
@@ -66,7 +90,7 @@ export const EOD_TAG_KEYS = {
  * under yesterday by the old filter.
  *
  * The fix is not a bigger date comparison, it is WHICH day is being asked for.
- * `build_eod_report` (crates/kasirmu-bridge/src/history.rs:398) draws every
+ * `build_eod_report` (crates/kasirmu-bridge/src/history.rs) draws every
  * figure in the report from `Store::export_daily_summary`, which buckets by the
  * store's UTC offset -- and its own comment says the header and body must share
  * ONE day definition or "the header and the body of one sheet could describe
@@ -407,8 +431,14 @@ export default function EodReportScreen() {
       body += line('');
       for (const pmt of r.payment_breakdown) {
         const pct = r.total_revenue > 0 ? Math.round((pmt.total / r.total_revenue) * 100) : 0;
-        const label = pmt.method.charAt(0).toUpperCase() + pmt.method.slice(1);
+        const label = formatPaymentMethodLabel(pmt.method, l10n);
         body += line(`${label.padEnd(12)} ${String(pmt.count).padStart(3)} tx  ${money(pmt.total).padStart(12)}  ${String(pct).padStart(2)}%`);
+      }
+      if ((r.receivable_collections_total ?? 0) > 0) {
+        body += sep;
+        body += line('  PIUTANG COLLECTIONS');
+        const colLabel = requiredLocalized(l10n, 'eod-payment-piutang-collections');
+        body += line(`${colLabel.padEnd(12)} ${String(r.receivable_collections_count ?? 1).padStart(3)} tx  ${money(r.receivable_collections_total ?? 0).padStart(12)}`);
       }
       body += sep;
 
@@ -508,7 +538,10 @@ export default function EodReportScreen() {
 
       // Payment breakdown
       for (const pmt of r.payment_breakdown) {
-        rows.push([t('eod-csv-row-payment', { method: pmt.method }), money(pmt.total)]);
+        rows.push([t('eod-csv-row-payment', { method: formatPaymentMethodLabel(pmt.method, l10n) }), money(pmt.total)]);
+      }
+      if ((r.receivable_collections_total ?? 0) > 0) {
+        rows.push([t('eod-summary-piutang-collections'), money(r.receivable_collections_total ?? 0)]);
       }
 
       // Hourly breakdown
@@ -521,7 +554,8 @@ export default function EodReportScreen() {
       // same filter below, with a comment saying so. The CSV omitted it, which made
       // the one export a restaurant hands its accountant the only surface that did
       // not reconcile the drawer. The data was already in scope: the parent derives
-      // `todayClosed` for print at :429, and this reuses closedShiftsOnStoreDay so
+      // `todayClosed` for print (the parent's `closedShiftsOnStoreDay` derivation), and this
+      // reuses the same call so
       // the CSV cannot reconcile a different set of drawers than the sheet.
       const closed = closedShiftsOnStoreDay(shiftsRef.current, storeTz);
       if (closed.length > 0) {
@@ -571,6 +605,15 @@ export default function EodReportScreen() {
     setShowCloseModal(true);
   }, []);
 
+  // Re-entry guard. `closingShift` is React state and commits on the NEXT render, so the
+  // second dispatch of a real double tap still enters this handler. `close_shift` refuses a
+  // shift that is already closed under an IMMEDIATE transaction (db/shifts.rs:193-198,
+  // "shift is already closed"), so the replay is REFUSED -- and the catch reports
+  // `pos-close-shift-failed`, telling the cashier the close FAILED over a shift that closed.
+  // Taken after the balance validation above, which returns before the `finally` that clears
+  // it.
+  const closeShiftPendingRef = useRef(false);
+
   const handleConfirmCloseShift = useCallback(async () => {
     if (!closeShiftTarget) return;
     const cur = report?.currency ?? 'USD';
@@ -579,6 +622,8 @@ export default function EodReportScreen() {
       setCloseShiftError(requiredLocalized(l10n, 'shift-invalid-balance'));
       return;
     }
+    if (closeShiftPendingRef.current) return;
+    closeShiftPendingRef.current = true;
     setClosingShift(true);
     setCloseShiftError(null);
     try {
@@ -598,6 +643,7 @@ export default function EodReportScreen() {
     } catch (err) {
       setCloseShiftError(l10nErrorMessage(err, l10n, 'pos-close-shift-failed'));
     } finally {
+      closeShiftPendingRef.current = false;
       setClosingShift(false);
     }
   }, [closeShiftTarget, report?.currency, closingBalance, sessionToken, shiftNotes, l10n, addToast, load]);
@@ -860,7 +906,7 @@ export default function EodReportScreen() {
                       <div key={pmt.method} className="eod-report-payment-row">
                         <div className="eod-report-payment-info">
                           <span className="eod-report-payment-method">
-                            {pmt.method.charAt(0).toUpperCase() + pmt.method.slice(1)}
+                            {formatPaymentMethodLabel(pmt.method, l10n)}
                           </span>
                           <Localized id="eod-payment-count" vars={{ count: pmt.count }}>
                             <span className="eod-report-payment-count">{pmt.count} transactions</span>
@@ -884,6 +930,23 @@ export default function EodReportScreen() {
                       </div>
                     );
                   })}
+                  {(report.receivable_collections_total ?? 0) > 0 && (
+                    <div className="eod-report-payment-row eod-report-payment-row--receivable">
+                      <div className="eod-report-payment-info">
+                        <span className="eod-report-payment-method">
+                          <Localized id="eod-payment-piutang-collections">
+                            <span>Piutang Collections</span>
+                          </Localized>
+                        </span>
+                        <Localized id="eod-payment-count" vars={{ count: report.receivable_collections_count ?? 0 }}>
+                          <span className="eod-report-payment-count">{report.receivable_collections_count ?? 0} transactions</span>
+                        </Localized>
+                      </div>
+                      <div className="eod-report-payment-amount">
+                        <span className="eod-report-payment-total">{money(report.receivable_collections_total ?? 0)}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </Card>
@@ -973,6 +1036,14 @@ export default function EodReportScreen() {
                   </Localized>
                   <span className="eod-report-summary-value">{report.payment_breakdown.length}</span>
                 </div>
+                {(report.receivable_collections_total ?? 0) > 0 && (
+                  <div className="eod-report-summary-item">
+                    <Localized id="eod-summary-piutang-collections">
+                      <span className="eod-report-summary-label">Piutang Collections</span>
+                    </Localized>
+                    <span className="eod-report-summary-value">{money(report.receivable_collections_total ?? 0)}</span>
+                  </div>
+                )}
               </div>
             </Card>
           )}
@@ -988,7 +1059,7 @@ export default function EodReportScreen() {
             setCloseShiftError(null);
           }
         }}
-        title={l10n.getString('eod-close-modal-title') ?? 'Close Active Shift'}
+        title={requiredLocalized(l10n, 'eod-close-modal-title')}
       >
         {closeShiftTarget && (
           <div>

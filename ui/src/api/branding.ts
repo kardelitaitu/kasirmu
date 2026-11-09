@@ -52,7 +52,8 @@ export const pickLogoFile = (): Promise<string | null> =>
 /**
  * Pick a logo file resolved from a session token. ADR #7.
  *
- * pick_logo_file_scoped (branding.rs:271) enforces SETTINGS_EDIT before delegating; the unscoped
+ * `pick_logo_file_scoped` in apps/desktop-tauri/src/commands/branding.rs enforces
+ * SETTINGS_EDIT before delegating; the unscoped
  * command takes only an AppHandle, so it opens a native file dialog and checks no permission at
  * all. This was the only function in this file with no token-taking twin -- its four siblings all
  * route through _scoped, and the caller (AppearanceSettings.tsx:134) already holds a

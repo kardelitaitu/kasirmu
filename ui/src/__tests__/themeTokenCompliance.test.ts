@@ -1170,7 +1170,7 @@ function familyRefsInValue(value: string): string[] {
  * declared. Nothing asked the other direction: a family that IS declared and is
  * named by no stack in the app ships its woff2 to every customer and paints
  * nothing. That is not hypothetical weight -- one variable subset family costs
- * roughly 150 KB, `scripts/check-bundle.mjs:102-103` filters to `.js` and `.css`
+ * roughly 150 KB, `scripts/check-bundle.mjs:97-98` filters to `.js` and `.css`
  * and cannot see a font file at all (recorded in this plan's out-of-fence notes),
  * and an @import is one line to add in a commit whose subject is something else.
  *
@@ -2981,7 +2981,9 @@ const DISAGREEING_TAIL_BASELINE: Array<[string, string, number]> = [
   ["--color-accent-subtle", "ui/src/features/design/DevToolbar.css", 4],
   ["--color-accent-subtle-fg", "ui/src/features/locations/MultiStoreDashboardScreen.css", 1],
   ["--color-bg", "ui/src/theme/reset.css", 1],
-  ["--color-bg-hover", "ui/src/components/ConnectionStatus.css", 1],
+  // Round 158: the ConnectionStatus.css entry left with the sheet. The component was
+  // replaced by StatusBar (mounted at AppLayout.tsx:396 and four auth screens) and had
+  // no importer; its only remaining references were CSS-inventory rows like this one.
   ["--color-bg-hover", "ui/src/features/auth/StaffLoginScreen.css", 1],
   ["--color-bg-hover", "ui/src/features/sales/EodReportScreen.css", 2],
   ["--color-bg-hover", "ui/src/features/sales/widgets/widgets.css", 1],
@@ -3005,7 +3007,6 @@ const DISAGREEING_TAIL_BASELINE: Array<[string, string, number]> = [
   ["--color-danger", "ui/src/theme/components.css", 1],
   ["--color-danger-bg", "ui/src/components/FastPINOverlay.css", 1],
   ["--color-danger-bg", "ui/src/features/inventory/StockCountDetail.css", 1],
-  ["--color-danger-bg", "ui/src/features/products/ProductManagementScreen.css", 1],
   ["--color-danger-bg", "ui/src/features/sales/CartPanelLineItem.css", 1],
   ["--color-danger-bg", "ui/src/features/settings/AppearanceSettings.css", 1],
   ["--color-danger-bg", "ui/src/features/settings/FeatureToggleScreen.css", 1],
@@ -3234,6 +3235,14 @@ function lhWhere(key: string): string {
  * flex centring, and neither control is a flex row today. Counted rather than
  * expanded by a wildcard: the freeze is per (value @ sheet) pair, so a third site
  * here still fails.
+ *
+ * Restated 2026-10-18: `1 @ ui/src/features/restaurant/RestaurantMenu.css` 2 -> 3.
+ * The restaurant shortcut-help panel's close button (:645) carries `line-height: 1`
+ * for the same reason the 2026-09-29 note gives for the sibling two: it is the
+ * single-glyph `×` in a fixed-height box, and it has no flex row to centre with.
+ * This is the round that made the restaurant shortcut manifest reachable — the five
+ * `labelId`s existed in both locales and in no renderer, so the keys worked with no
+ * way to discover them — and the panel's close control is the one glyph it adds.
  */
 const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1", "ui/src/components/QrisQrDisplay.css", 1],
@@ -3250,7 +3259,6 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1.3", "ui/src/features/design/DesignSystem.css", 1],
   ["1.6", "ui/src/features/design/TooltipPreview.css", 1],
   ["1.4", "ui/src/features/inventory/LocationPicker.css", 1],
-  ["1", "ui/src/features/inventory/StockAlertPanel.css", 1],
   ["1", "ui/src/features/kds/components/KdsProductPickerModal.css", 1],
   ["1.35", "ui/src/features/kds/components/ModifierBadge.css", 1],
   // 1.35 in this sheet (RestaurantSettingsScreens.css:1312/1380/1433, the compact
@@ -3287,13 +3295,11 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1.6", "ui/src/features/memo/MemosScreen.css", 1],
   ["1", "ui/src/features/products/BundleManagementScreen.css", 1],
   ["1", "ui/src/features/products/ProductLookupScreen.css", 1],
-  ["1", "ui/src/features/products/ProductManagementScreen.css", 1],
-  ["1rem", "ui/src/features/products/ProductManagementScreen.css", 1],
   ["1", "ui/src/features/promotions/PromotionManagementScreen.css", 1],
   ["1", "ui/src/features/reports/CustomReportScreen.css", 1],
   ["1", "ui/src/features/reports/DashboardScreen.css", 1],
   ["1", "ui/src/features/reports/MenuEngineeringScreen.css", 1],
-  ["1", "ui/src/features/restaurant/RestaurantMenu.css", 2],
+  ["1", "ui/src/features/restaurant/RestaurantMenu.css", 3],
   ["1", "ui/src/features/retail/RetailPosScreen.css", 10],
   // 3 -> 2 on 2026-10-07, named step: .retail-product-name carried
   // `line-height: 1.2` and was struck with the rest of the orphaned retail block
@@ -3309,7 +3315,12 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   // flex-centred button whose height is padding + content, and `normal` (~1.2)
   // would grow it. No --leading-* step is 1, so deleting the declaration would be
   // a visual change rather than a token adoption; it is listed here instead.
-  ["1", "ui/src/features/sales/CartPanel.css", 1],
+  // 1 -> 2 on 2026-10-19: 82a0dc983c added the order-type dropdown trigger
+  // (`pos-cart-order-type-menu-trigger`, :853) as a second `line-height: 1` in this
+  // sheet, beside the pill at :1010. Both are single-line controls boxed to a fixed
+  // height, so the step is 1 by the same reason the other compact chips use it --
+  // a taller line box would make them grow with the font instead of the shell.
+  ["1", "ui/src/features/sales/CartPanel.css", 2],
   ["1.4", "ui/src/features/sales/CartPanel.css", 2],
   ["1", "ui/src/features/sales/CartPanelCourseBar.css", 2],
   ["1", "ui/src/features/sales/CartPanelFooterTotals.css", 1],
@@ -3317,7 +3328,8 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   // (:163, :486) beside the original at :541. 1.3 is not a --leading-* step
   // (condensed 1.2 / tight 1.25 / snug 1.4 / normal 1.5 / relaxed 1.625), so
   // there is no token to adopt and the freeze is restated instead.
-  ["1.3", "ui/src/features/sales/CartPanelLineItem.css", 3],
+  // 3 -> 0 on 2026-10-19: 5c31a401b cleaned up modifier tags in CartPanelLineItem.css,
+  // adopting tokens and dropping hardcoded line-height 1.3.
   ["1.6", "ui/src/features/sales/EodReportScreen.css", 1],
   ["1", "ui/src/features/sales/PaymentModal.css", 3],
   // The ["1.4", …, 1] row was REMOVED 2026-10-08, not moved: both of its sites
@@ -3363,7 +3375,13 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1.25rem", "ui/src/features/settings/SettingsNavTree.css", 1],
   ["1.4", "ui/src/features/settings/SettingsNavTree.css", 1],
   ["1", "ui/src/features/settings/SettingsPage.css", 1],
-  ["1.4", "ui/src/features/settings/SettingsPage.css", 3],
+  // Restated 2026-10-25 (round 157): 3 -> 2. Round 157 deleted the partial copy of the
+  // .settings-license-value family from SettingsPage.css, whose `line-height: 1.4` was one
+  // of these three. That copy had no renderer left once AboutSection.tsx (labelled DEAD on
+  // 2026-09-15 by 13348f9aec) was deleted in the same round; LicenseSettings.css:27 owns the
+  // family and still declares its own 1.4, counted under its own entry. The remaining two
+  // sites in this sheet are untouched.
+  ["1.4", "ui/src/features/settings/SettingsPage.css", 2],
   ["1", "ui/src/features/settings/SettingsScopeTag.css", 1],
   ["1", "ui/src/features/setup/components/LiveSetupPreview.css", 2],
   // The two line-height literals in ui/src/features/setup/SetupWizard.css left with

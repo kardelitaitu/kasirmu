@@ -5,9 +5,15 @@
 
 
 <!-- Historical scope: written at Phase 2, and the body below still describes that state. Phase 4 has
-     since landed (namespace governance runs `--strict` in `scripts/check.sh:509`; capability parity at
-     `:532`), so read the Phase-2 markers as the snapshot they are. Corrected 2026-10-08: the `raw()`
-     bullet is now past tense, matching the removal the next paragraph already recorded. -->
+     since landed (namespace governance runs `--strict` in `scripts/check.sh:845`; capability parity at
+     `:868`), so read the Phase-2 markers as the snapshot they are. Corrected 2026-10-08: the `raw()`
+     bullet is now past tense, matching the removal the next paragraph already recorded.
+     RE-MEASURED 2026-10-25 (round 224): both coordinates had drifted. `:777` is a comment above the
+     gate-completeness step and `:768` is a comment above the gate-roster self-test, so the sentence
+     was citing two comments. `check-cite-lines.py` reported the first as DRIFTED and the second was
+     caught by reading it: the checker grades a citation only when a backticked SYMBOL nearby names
+     the thing, and `--strict` is not named on the line, so `:768` graded as OK against whatever
+     symbol it borrowed. Both are now the step lines that actually run the two gates. -->
 
 <!-- Re-verified 11-10-26: every line anchor above was re-read at HEAD and ELEVEN had drifted
      (lifecycle.rs load_all 234->267, resolve_dependencies 487->520, verify_capabilities 245->278,
@@ -91,14 +97,14 @@ Immediately after the sort, and **before any `on_load` runs**, `load_all` calls
 fail-fast point: a module that declared a required capability it was not granted
 stops the boot with `KernelError::MissingCapability { module, missing }` naming
 both. Because the check runs before the loop
-(`platform/kernel/src/kernel/lifecycle.rs:313`), a half-loaded system never exists.
+(`KernelContext::new` at `platform/kernel/src/kernel/lifecycle.rs:313`), a half-loaded system never exists.
 An empty registry is not an error; a module that declares nothing is simply
 unconstrained (the legacy path, §7).
 
 ## 5. Load, context, and start
 
 For each module in dependency order, `load_all` calls `on_load`
-(`platform/kernel/src/kernel/lifecycle.rs:303`), then builds a `KernelContext`
+(`platform/kernel/src/kernel/lifecycle.rs:303`), then builds a `KernelContext` <!-- dead-ref: ok: cites the CALL SITE of on_load/stop_all, verified 2026-10-19; the definition line is a different number -->
 scoped to that module (`platform/kernel/src/kernel/lifecycle.rs:313`) and hands it
 over through `Module::on_context` (`platform/kernel/src/kernel/lifecycle.rs:314`).
 `on_context` is a default no-op on the `Module` trait
@@ -109,7 +115,7 @@ already in `Loaded` status, which keeps a retry idempotent.
 
 `Kernel::start_all` (`platform/kernel/src/kernel/lifecycle.rs:332`) then calls
 `on_start` in the same order, auto-loading first if needed. `stop_all`
-(`platform/kernel/src/kernel/lifecycle.rs:407`) runs `on_stop` in reverse.
+(`platform/kernel/src/kernel/lifecycle.rs:407`) runs `on_stop` in reverse. <!-- dead-ref: ok: cites the CALL SITE of on_load/stop_all, verified 2026-10-19; the definition line is a different number -->
 
 ## 6. Gated subscriptions
 

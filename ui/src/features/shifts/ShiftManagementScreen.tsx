@@ -57,6 +57,15 @@ export default function ShiftManagementScreen() {
   // partial unique index (migrations/20261011_open_shift_uniqueness.sql) would
   // refuse that write, but the operator would be told the wrong reason.
   const [activeShiftUnknown, setActiveShiftUnknown] = useState(false);
+/**
+ * The shift-LIST read did not answer.
+ *
+ * Same contract as `activeShiftUnknown`, one read over: `[]` answers both "no shifts have
+ * ever been opened" and "we could not ask", and only the flag keeps them apart. The list
+ * read is what feeds the history table, so without it an unanswered read would render an
+ * empty history -- a claim that the store has no history.
+ */
+const [shiftsUnknown, setShiftsUnknown] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // ── Modals ────────────────────────────────────────────────────────
@@ -91,12 +100,30 @@ export default function ShiftManagementScreen() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setShiftsUnknown(false);
     try {
-      const [allShifts, active] = await Promise.all([
-        listShiftsScoped(sessionToken),
+      const [allShiftsRead, active] = await Promise.all([
+        // The LIST read goes through settleRead like its sibling below. As a bare await it
+        // could reject the whole Promise.all, which aborted this try block BEFORE
+        // `active.ok` was ever evaluated -- so `activeShiftUnknown` stayed false and the
+        // screen fell through to the no-active banner below (the `shift-mgmt-no-active`
+        // card), whose only affordance is
+        // Open Shift. That is the exact wrong action the guard above exists to prevent:
+        // opening a second shift against one the database still holds open. A failed list
+        // read says nothing about the drawer, so it must not be read as a claim about it.
+        settleRead('shifts', listShiftsScoped(sessionToken)),
         settleRead('active_shift', getActiveShiftScoped(sessionToken)),
       ]);
-      setShifts(allShifts);
+      if (!allShiftsRead.ok) {
+        // The list could not be asked. `shiftsUnknown` names that below; the
+        // active-shift read still answers on its own and is applied here so the
+        // drawer state the screen DOES know about is not thrown away with the list.
+        setShiftsUnknown(true);
+        setShifts([]);
+      } else {
+        setShiftsUnknown(false);
+        setShifts(allShiftsRead.value);
+      }
       if (active.ok) {
         setActiveShift(active.value);
         setActiveShiftUnknown(false);
@@ -105,6 +132,14 @@ export default function ShiftManagementScreen() {
         // nothing, and a read that failed. Only the flag keeps them apart, and
         // the no-active banner below is gated on it so a transient failure can
         // never invite the cashier to open a shift that is already open.
+        //
+        // DROP THE OLD FIGURES. The active-shift card (gated on `activeShift`) and the
+        // unknown card (gated on `activeShiftUnknown`) are INDEPENDENT, so setting the
+        // flag alone stacked a stale "Active Shift" card — opening balance, sales, cash —
+        // above a "Failed to load shifts" card. Those numbers read as current exactly when
+        // the screen has just admitted it cannot read them. The list branch above clears
+        // its own value for the same reason; this branch did not.
+        setActiveShift(null);
         setActiveShiftUnknown(true);
       }
     } catch {
@@ -132,9 +167,9 @@ export default function ShiftManagementScreen() {
         setReportUnknown(false);
       } else {
         // A refusal is an expected outcome, not a malfunction:
-        // crates/kasirmu-core/src/db/shifts.rs:382-392 answers NotFound when the
-        // shift row is gone, and the bridge passes that through
-        // (crates/kasirmu-bridge/src/shifts.rs:462-483). It is still not an
+        // `Store::get_shift_report` in crates/kasirmu-core/src/db/shifts.rs answers NotFound when
+        // the shift row is gone, and the bridge passes that through
+        // (`get_shift_report_scoped` in crates/kasirmu-bridge/src/shifts.rs). It is still not an
         // answer about the drawer, so it becomes `unknown` rather than `null`.
         setShiftReport(null);
         setReportUnknown(true);
@@ -152,6 +187,14 @@ export default function ShiftManagementScreen() {
 
   // ── Open shift ────────────────────────────────────────────────────
 
+  // Re-entry guard. NOTE, and it is a correction to this commit's own premise: the
+  // backend ALREADY refuses a second open -- the partial unique index
+  // `idx_shifts_open_per_user` (migrations/20261011_open_shift_uniqueness.sql) holds one
+  // open row per user, and `open_shift` counts before inserting. So this is
+  // defence-in-depth, NOT the fix for a live defect. What it does remove is the
+  // ERROR the replay would otherwise raise on a shift that opened fine.
+  const openShiftPendingRef = useRef(false);
+
   const handleOpenShift = useCallback(async () => {
     // SHIFT-03 + MONEY-02 + MONEY-05: opening balance is entered in major units
     // scaled by the active currency's exponent. Reject fractional input for
@@ -164,6 +207,8 @@ export default function ShiftManagementScreen() {
     }
     const safeBalance = balance;
 
+    if (openShiftPendingRef.current) return;
+    openShiftPendingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -174,11 +219,19 @@ export default function ShiftManagementScreen() {
     } catch (err) {
       setError(l10nErrorMessage(err, l10n, 'shift-open-error'));
     } finally {
+      openShiftPendingRef.current = false;
       setSaving(false);
     }
   }, [openingBalance, currency, sessionToken, load, l10n]);
 
   // ── Close shift ───────────────────────────────────────────────────
+
+  // Re-entry guard, and again defence-in-depth rather than a defect fix:
+  // `close_shift` updates `WHERE id = ?14` with no status predicate
+  // (crates/kasirmu-core/src/db/shifts.rs:312-319), so a replay OVERWRITES the same
+  // row instead of creating a second one -- idempotent by construction. The guard
+  // removes a redundant round trip, not a duplicate.
+  const closeShiftPendingRef = useRef(false);
 
   const handleCloseShift = useCallback(async () => {
     if (!activeShift) return;
@@ -189,6 +242,8 @@ export default function ShiftManagementScreen() {
       return;
     }
 
+    if (closeShiftPendingRef.current) return;
+    closeShiftPendingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -204,6 +259,7 @@ export default function ShiftManagementScreen() {
     } catch (err) {
       setError(l10nErrorMessage(err, l10n, 'shift-close-error'));
     } finally {
+      closeShiftPendingRef.current = false;
       setSaving(false);
     }
   }, [activeShift, closingBalance, currency, shiftNotes, sessionToken, l10n]);
@@ -227,6 +283,19 @@ export default function ShiftManagementScreen() {
   // satisfy the checker rather than to describe a real case.
   const parsedPayout = parseBalanceInput(payoutAmount.trim(), currency);
 
+  // Re-entry guard for the payout write. `handleCreatePayout` awaits the IPC call and
+  // shares one `saving` flag with the open/close handlers, so nothing in the handler itself
+  // stops a second submit. Core's compare-and-set refuses a payout only against a CLOSED
+  // shift (crates/kasirmu-core/src/db/cash_payouts.rs:60-73), so two submits against an
+  // OPEN shift BOTH succeed, and `CashPayout::new` mints a fresh UUID per call
+  // (crates/kasirmu-core/src/cash_payout.rs:35): the drawer ends short by DOUBLE the
+  // removal, with no row to reconcile the duplicate against.
+  //
+  // A ref, not the `saving` state: React commits a useState flag on its next render, which is
+  // AFTER the second dispatch in the same task. MEASURED -- two clicks in one batch both
+  // reach this handler (ShiftManagementScreen.test.tsx 'records a safe drop once').
+  const payoutPendingRef = useRef(false);
+
   const handleCreatePayout = useCallback(async () => {
     if (!activeShift) return;
     const trimmed = payoutAmount.trim();
@@ -237,6 +306,8 @@ export default function ShiftManagementScreen() {
     }
     const reason = payoutReason.trim() || 'safe drop';
 
+    if (payoutPendingRef.current) return;
+    payoutPendingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -248,14 +319,21 @@ export default function ShiftManagementScreen() {
     } catch (err) {
       setError(l10nErrorMessage(err, l10n, 'shift-payout-error'));
     } finally {
+      payoutPendingRef.current = false;
       setSaving(false);
     }
-    // sessionToken is read at :182 by createCashPayoutScoped -- this moves cash out of a shift,
-    // so it is the most consequential of the remaining sites. With the token missing, a payout
-    // submitted after a cashier hot-swap presented the destroyed session: the write failed and
-    // surfaced as a generic retryable error, so the operator would press Save again on a form
-    // that could not succeed until the screen remounted. :186 also awaits load(), which now
-    // refreshes against the same session as the write.
+    // sessionToken is read by the `createCashPayoutScoped` call in this handler -- this moves
+    // cash out of a shift, so it is the most consequential of the remaining sites. With the
+    // token missing, a payout submitted after a cashier hot-swap presented the destroyed
+    // session: the write failed and surfaced as a generic retryable error, so the operator
+    // would press Save again on a form that could not succeed until the screen remounted.
+    // The `await load()` after it now refreshes against the same session as the write.
+    // (Anchored by expression: the numbers this note carried pointed at comments.)
+    //
+    // ⚠️ The sibling cites in this file are Rust paths at specific lines, and they were NOT
+    // re-measured in this pass — they name `crates/kasirmu-core/src/db/shifts.rs`,
+    // `kasirmu-bridge/src/shifts.rs`, `db/cash_payouts.rs` and `cash_payout.rs`, which a
+    // line-guard cannot check across the language boundary. They need a Rust-side audit.
   }, [activeShift, payoutAmount, payoutReason, currency, load, l10n, sessionToken]);
 
   // ── Format time/date helpers ───────────────────────────────────────
@@ -515,7 +593,20 @@ export default function ShiftManagementScreen() {
               <h2 className="shift-mgmt-table-title">Shift History</h2>
             </Localized>
 
-            {shifts.length === 0 ? (
+            {/* An unanswered list read must not render the empty state: "no shifts"
+                is a claim about the store, and "we could not ask" is a different one. */}
+            {shiftsUnknown ? (
+              <div className="shift-mgmt-empty">
+                <div className="shift-mgmt-modal-error" role="alert">
+                  <Localized id="shift-load-error">
+                    <span>Failed to load shifts</span>
+                  </Localized>
+                </div>
+                <Button variant="secondary" onClick={load}>
+                  <Localized id="retry"><span>Retry</span></Localized>
+                </Button>
+              </div>
+            ) : shifts.length === 0 ? (
               <div className="shift-mgmt-empty">
                 <EmptyState
                   icon={<NoShiftsIcon />}
@@ -636,7 +727,6 @@ export default function ShiftManagementScreen() {
                     step="any"
                     className="shift-mgmt-input"
                     min="0"
-                    placeholder={minorUnitExponent(currency) > 0 ? "e.g. 50.00" : "e.g. 50000"}
                     value={openingBalance}
                     onChange={(e) => setOpeningBalance(e.target.value)}
                     aria-label={l10n.getString('shift-field-opening-balance')}

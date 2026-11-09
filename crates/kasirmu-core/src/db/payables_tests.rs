@@ -444,3 +444,44 @@ fn payable_overflow_is_stopped_by_the_schema_constraint_not_by_the_guard() {
         "a refused payment must leave paid_minor exactly where the last accepted one put it"
     );
 }
+
+#[test]
+fn ap_aging_report_buckets() {
+    let conn = fresh();
+    seed_supplier(&conn, "sup-1");
+    seed_supplier(&conn, "sup-2");
+    let s = store(&conn);
+
+    let _p1 = s.create_payable(&np("sup-1", 100_000, None)).unwrap();
+    let p2 = s.create_payable(&np("sup-1", 200_000, None)).unwrap();
+    let p3 = s.create_payable(&np("sup-2", 300_000, None)).unwrap();
+    let p4 = s.create_payable(&np("sup-2", 400_000, None)).unwrap();
+
+    // Backdate p2 (36 days), p3 (77 days), p4 (123 days) from 2026-10-21
+    conn.execute(
+        "UPDATE payables SET created_at = '2026-09-15 00:00:00' WHERE id = ?1",
+        params![p2.id],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE payables SET created_at = '2026-08-05 00:00:00' WHERE id = ?1",
+        params![p3.id],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE payables SET created_at = '2026-06-20 00:00:00' WHERE id = ?1",
+        params![p4.id],
+    )
+    .unwrap();
+
+    let report = s
+        .get_ap_aging_report("default", Some("2026-10-21"))
+        .unwrap();
+    assert_eq!(report.as_of_date, "2026-10-21");
+    assert_eq!(report.summary.current_minor, 100_000);
+    assert_eq!(report.summary.days_31_60_minor, 200_000);
+    assert_eq!(report.summary.days_61_90_minor, 300_000);
+    assert_eq!(report.summary.days_over_90_minor, 400_000);
+    assert_eq!(report.summary.total_outstanding_minor, 1_000_000);
+    assert_eq!(report.vendors.len(), 2);
+}

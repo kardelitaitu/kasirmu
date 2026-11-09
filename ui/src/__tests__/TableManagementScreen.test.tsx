@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { renderWithWorkspace, MOCK_SESSION_TOKEN } from '@/test-utils';
 import userEvent from '@testing-library/user-event';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
@@ -23,6 +23,8 @@ const {
   mockHoldCart,
   mockDeleteHeldCart,
   mockPrintSalesReceipt,
+  mockGetSetting,
+  mockSetSetting,
 } = vi.hoisted(() => ({
   mockListTables: vi.fn(),
   mockListSections: vi.fn(),
@@ -36,6 +38,8 @@ const {
   mockHoldCart: vi.fn(),
   mockDeleteHeldCart: vi.fn(),
   mockPrintSalesReceipt: vi.fn(),
+  mockGetSetting: vi.fn(),
+  mockSetSetting: vi.fn(),
 }));
 
 vi.mock('@/api/sales', async (importOriginal) => {
@@ -67,6 +71,11 @@ vi.mock('@/api/tables', () => ({
   updateTableScoped: (_token: string, table: Table) => mockUpdateTable(table),
   deleteTable: (_token: string, id: string) => mockDeleteTable(id),
   deleteTableScoped: (_token: string, id: string) => mockDeleteTable(id),
+}));
+
+vi.mock('@/api/settings', () => ({
+  getSettingScoped: (...args: unknown[]) => mockGetSetting(...args),
+  setSettingScoped: (...args: unknown[]) => mockSetSetting(...args),
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -127,12 +136,16 @@ describe('TableManagementScreen', () => {
     mockHoldCart.mockReset();
     mockDeleteHeldCart.mockReset();
     mockPrintSalesReceipt.mockReset();
+    mockGetSetting.mockReset();
+    mockSetSetting.mockReset();
     mockListTables.mockResolvedValue([]);
     mockListSections.mockResolvedValue([]);
     mockListOpenBills.mockResolvedValue([]);
     mockHoldCart.mockResolvedValue({ id: 'new-held-id' });
     mockDeleteHeldCart.mockResolvedValue(undefined);
     mockPrintSalesReceipt.mockResolvedValue({ printed: true });
+    mockGetSetting.mockResolvedValue(null);
+    mockSetSetting.mockResolvedValue(undefined);
     mockUpdateTableStatus.mockImplementation((_token: string, id: string, status: string) =>
       Promise.resolve(makeTable({ id, status })),
     );
@@ -299,13 +312,16 @@ describe('TableManagementScreen', () => {
     mockListTables.mockResolvedValue([
       makeTable({ shape: 'circle' }),
       makeTable({ id: 't-2', shape: 'rectangle' }),
+      makeTable({ id: 't-3', shape: 'booth' }),
     ]);
     renderScreen();
     await waitFor(() => {
       const circleBtn = document.querySelector('.tables-table--circle');
       const rectBtn = document.querySelector('.tables-table--rectangle');
+      const boothBtn = document.querySelector('.tables-table--booth');
       expect(circleBtn).toBeDefined();
       expect(rectBtn).toBeDefined();
+      expect(boothBtn).toBeDefined();
     });
   });
 
@@ -890,6 +906,253 @@ describe('TableManagementScreen', () => {
       expect(mockReleaseTable).toHaveBeenCalledWith(MOCK_SESSION_TOKEN, 't-1');
       expect(mockUpdateTableStatus).toHaveBeenCalledWith(MOCK_SESSION_TOKEN, 't-2', 'occupied');
     });
+
+    // THE ORDER, asserted where the happy path already runs. A success-path case
+    // says nothing about ordering on its own: the failure case below is what proves
+    // the delete is survivable, and this line is what proves the fix is an ORDERING
+    // and not just "the delete still happens".
+    //
+    // `invocationCallOrder` is the repo's existing technique for this
+    // (useSound.test.tsx:259). It is asserted on the success path too because a
+    // future refactor could reintroduce the unsafe order without changing which
+    // calls happen — only when.
+    expect(mockHoldCart.mock.invocationCallOrder[0]!).toBeLessThan(
+      mockDeleteHeldCart.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('moves the tab ONCE when the confirm is double-tapped', async () => {
+    // The most expensive replay on this screen: the move is create-first, delete-second,
+    // so a second run holds a SECOND copy of the bill under the destination name and
+    // then deletes the original -- leaving duplicate open bills, the exact trade the
+    // create-first order documents as hand-resolvable.
+    const table1 = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    const table2 = makeTable({ id: 't-2', name: 'Table 2', status: 'available' });
+    mockListTables.mockResolvedValue([table1, table2]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1', label: 'Table 1', item_count: 1, total_minor: 25000,
+        currency: 'IDR', created_at: '2026-10-12T00:00:00Z', bill_type: 'open_bill', customer_name: null,
+      },
+    ]);
+    mockGetHeldCart.mockResolvedValue({
+      id: 'bill-1',
+      label: 'Table 1',
+      cart_data: JSON.stringify({
+        lines: [{ sku: 'SKU-1', name: 'Mie Goreng', qty: 1, unit_price: { minor_units: 25000, currency: 'IDR' } }],
+      }),
+      item_count: 1, total_minor: 25000, currency: 'IDR', created_at: '2026-10-12T00:00:00Z',
+      bill_type: 'open_bill', customer_name: null, deduction_location_id: null,
+    });
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-move-table-btn')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-move-table-btn'));
+    await waitFor(() => expect(screen.getByTestId('tables-move-confirm-btn')).toBeDefined());
+
+    const confirmBtn = screen.getByTestId('tables-move-confirm-btn');
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+      fireEvent.click(confirmBtn);
+    });
+
+    await waitFor(() => expect(mockHoldCart).toHaveBeenCalledTimes(1));
+  });
+
+  it('preserves deduction_location_id when moving an active table tab', async () => {
+    const table1 = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    const table2 = makeTable({ id: 't-2', name: 'Table 2', status: 'available' });
+    mockListTables.mockResolvedValue([table1, table2]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1',
+        item_count: 1,
+        total_minor: 25000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:00:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ]);
+    mockGetHeldCart.mockResolvedValue({
+      id: 'bill-1',
+      label: 'Table 1',
+      cart_data: JSON.stringify({
+        lines: [
+          { sku: 'SKU-1', name: 'Mie Goreng', qty: 1, unit_price: { minor_units: 25000, currency: 'IDR' } },
+        ],
+      }),
+      item_count: 1,
+      total_minor: 25000,
+      currency: 'IDR',
+      created_at: '2026-10-12T00:00:00Z',
+      bill_type: 'open_bill',
+      customer_name: null,
+      deduction_location_id: 'loc-kitchen-bar',
+    });
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-move-table-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-move-table-btn'));
+    await waitFor(() => expect(screen.getByTestId('tables-move-confirm-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-move-confirm-btn'));
+    await waitFor(() => {
+      expect(mockHoldCart).toHaveBeenCalledWith(
+        expect.objectContaining({
+          label: 'Table 2',
+          bill_type: 'open_bill',
+          deduction_location_id: 'loc-kitchen-bar',
+        }),
+      );
+    });
+  });
+
+  // ── The move must not delete the bill before the new one exists ─────────────
+  //
+  // WHY: `handleMoveTable` ran DELETE -> HOLD. If the hold then failed there was
+  // nothing left to recover: the open bill was gone, and the toast said only "move
+  // failed", so the operator had no way to know the tab had been destroyed rather
+  // than merely not moved.
+  //
+  // `usePosHeldCarts` already settled the direction for this same data — read its
+  // "does NOT report a tab as updated when deleting the previous record FAILS"
+  // case — so this screen was the outlier, not the convention.
+  //
+  // The assertion that matters is the NEGATIVE one. `mockDeleteHeldCart` must NOT
+  // have been called at all: that is what makes a failed hold survivable. Asserting
+  // only the error toast would pass against the old order, because the old order
+  // toasts the same thing — after it has already done the damage.
+  it('KEEPS the original bill when the hold for the new table fails', async () => {
+    const table1 = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    const table2 = makeTable({ id: 't-2', name: 'Table 2', status: 'available' });
+    mockListTables.mockResolvedValue([table1, table2]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1',
+        item_count: 1,
+        total_minor: 25000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:00:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ]);
+    mockGetHeldCart.mockResolvedValue({
+      id: 'bill-1',
+      label: 'Table 1',
+      cart_data: JSON.stringify({
+        lines: [
+          { sku: 'SKU-1', name: 'Mie Goreng', qty: 1, unit_price: { minor_units: 25000, currency: 'IDR' } },
+        ],
+      }),
+      item_count: 1,
+      total_minor: 25000,
+      currency: 'IDR',
+      created_at: '2026-10-12T00:00:00Z',
+      bill_type: 'open_bill',
+      customer_name: null,
+      deduction_location_id: null,
+    });
+    // The move cannot place the bill on the new table.
+    mockHoldCart.mockRejectedValueOnce(new Error('database is locked'));
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-move-table-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-move-table-btn'));
+    await waitFor(() => expect(screen.getByTestId('tables-move-confirm-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-move-confirm-btn'));
+    await waitFor(() => expect(mockHoldCart).toHaveBeenCalled());
+
+    // The bill is untouched — this is the assertion the fix exists for.
+    expect(mockDeleteHeldCart).not.toHaveBeenCalled();
+    // Nor were the tables touched, so the floor plan still describes reality.
+    expect(mockReleaseTable).not.toHaveBeenCalled();
+    expect(mockUpdateTableStatus).not.toHaveBeenCalled();
+  });
+
+  // ── A PARTIAL failure must still refresh and close ──────────────────
+  //
+  // The case above is the clean one: the FIRST write fails, so nothing changed.
+  // This is the messy one the create-first ordering creates — the hold SUCCEEDS
+  // and only a later step fails, so the bill already exists at the destination
+  // when the toast says "move failed".
+  //
+  // `loadTables()` used to sit on the success path only, so the floor plan kept
+  // rendering the PRE-move state under a failure toast, with the dialog still
+  // open over it. The operator retries against a plan the backend has moved on
+  // from, which is what turns one duplicate bill into two.
+  it('refreshes the floor plan and closes the dialog when the move half-commits', async () => {
+    const table1 = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    const table2 = makeTable({ id: 't-2', name: 'Table 2', status: 'available' });
+    mockListTables.mockResolvedValue([table1, table2]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1',
+        item_count: 1,
+        total_minor: 25000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:00:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ]);
+    mockGetHeldCart.mockResolvedValue({
+      id: 'bill-1',
+      label: 'Table 1',
+      cart_data: JSON.stringify({
+        lines: [
+          { sku: 'SKU-1', name: 'Mie Goreng', qty: 1, unit_price: { minor_units: 25000, currency: 'IDR' } },
+        ],
+      }),
+      item_count: 1,
+      total_minor: 25000,
+      currency: 'IDR',
+      created_at: '2026-10-12T00:00:00Z',
+      bill_type: 'open_bill',
+      customer_name: null,
+      deduction_location_id: null,
+    });
+    // The hold SUCCEEDS (the bill now exists at Table 2); the RELEASE is what
+    // fails, which is the half-committed state this case is about.
+    mockHoldCart.mockResolvedValue({ id: 'bill-2' });
+    mockDeleteHeldCart.mockResolvedValue(undefined);
+    mockReleaseTable.mockRejectedValueOnce(new Error('table is locked'));
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-move-table-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-move-table-btn'));
+    await waitFor(() => expect(screen.getByTestId('tables-move-confirm-btn')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-move-confirm-btn'));
+
+    // Reachability: the release really was attempted, or this measures nothing.
+    await waitFor(() => expect(mockReleaseTable).toHaveBeenCalled());
+
+    // The floor plan was re-read despite the failure, so it describes the data the
+    // backend now holds rather than the pre-move layout.
+    await waitFor(() =>
+      expect(mockListTables.mock.calls.length).toBeGreaterThan(1),
+    );
+
+    // And the dialog is gone, so a second attempt cannot be issued from a stale view.
+    await waitFor(() =>
+      expect(screen.queryByTestId('tables-move-confirm-btn')).toBeNull(),
+    );
   });
 
   it('toggles arrange mode on and off', async () => {
@@ -1074,6 +1337,160 @@ describe('TableManagementScreen', () => {
       );
       expect(mockReleaseTable).toHaveBeenCalledWith(MOCK_SESSION_TOKEN, 't-1');
     });
+
+    // Same ordering invariant as the move case above, on the path where getting it
+    // wrong costs TWO tables' bills rather than one.
+    expect(mockHoldCart.mock.invocationCallOrder[0]!).toBeLessThan(
+      mockDeleteHeldCart.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('preserves deduction_location_id and combines guestCount when merging tables', async () => {
+    const table1 = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    const table2 = makeTable({ id: 't-2', name: 'Table 2', status: 'occupied' });
+    mockListTables.mockResolvedValue([table1, table2]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1',
+        item_count: 1,
+        total_minor: 25000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:00:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+      {
+        id: 'bill-2',
+        label: 'Table 2',
+        item_count: 1,
+        total_minor: 35000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:10:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ]);
+    mockGetHeldCart.mockImplementation((id: string) => {
+      if (id === 'bill-1') {
+        return Promise.resolve({
+          id: 'bill-1',
+          label: 'Table 1',
+          cart_data: JSON.stringify({
+            lines: [{ sku: 'SKU-1', name: 'Mie Goreng', qty: 1, unit_price: { minor_units: 25000, currency: 'IDR' } }],
+            guestCount: '2',
+          }),
+          item_count: 1,
+          total_minor: 25000,
+          currency: 'IDR',
+          created_at: '2026-10-12T00:00:00Z',
+          bill_type: 'open_bill',
+          customer_name: null,
+          deduction_location_id: 'loc-station-kitchen',
+        });
+      }
+      return Promise.resolve({
+        id: 'bill-2',
+        label: 'Table 2',
+        cart_data: JSON.stringify({
+          lines: [{ sku: 'SKU-2', name: 'Es Teh', qty: 1, unit_price: { minor_units: 35000, currency: 'IDR' } }],
+          guestCount: '3',
+        }),
+        item_count: 1,
+        total_minor: 35000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:10:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+        deduction_location_id: null,
+      });
+    });
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-merge-table-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-merge-table-btn'));
+    await waitFor(() => expect(screen.getByTestId('tables-merge-confirm-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-merge-confirm-btn'));
+    await waitFor(() => {
+      expect(mockHoldCart).toHaveBeenCalledWith(
+        expect.objectContaining({
+          label: 'Table 2',
+          item_count: 2,
+          total_minor: 60000,
+          deduction_location_id: 'loc-station-kitchen',
+        }),
+      );
+    });
+
+    const holdCall = mockHoldCart.mock.calls.find((call) => call[0]?.label === 'Table 2');
+    expect(holdCall).toBeDefined();
+    const parsedData = JSON.parse(holdCall![0].cart_data);
+    expect(parsedData.guestCount).toBe('5');
+  });
+
+  // The merge deleted BOTH bills before creating the combined one, so a failed hold
+  // lost two tables' open bills at once. Same fix and same assertion shape as the move
+  // case above: the negative check on the deletes is what proves the fix.
+  it('KEEPS BOTH bills when the combined hold fails', async () => {
+    const table1 = makeTable({ id: 't-1', name: 'Table 1', status: 'occupied' });
+    const table2 = makeTable({ id: 't-2', name: 'Table 2', status: 'occupied' });
+    mockListTables.mockResolvedValue([table1, table2]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-1',
+        label: 'Table 1',
+        item_count: 1,
+        total_minor: 25000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:00:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+      {
+        id: 'bill-2',
+        label: 'Table 2',
+        item_count: 2,
+        total_minor: 50000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:10:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+      },
+    ]);
+    mockGetHeldCart.mockImplementation((id: string) =>
+      Promise.resolve({
+        id,
+        label: `Table ${id.slice(-1)}`,
+        cart_data: JSON.stringify({ lines: [] }),
+        item_count: 1,
+        total_minor: 25000,
+        currency: 'IDR',
+        created_at: '2026-10-12T00:00:00Z',
+        bill_type: 'open_bill',
+        customer_name: null,
+        deduction_location_id: null,
+      }),
+    );
+    mockHoldCart.mockRejectedValueOnce(new Error('database is locked'));
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-merge-table-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-merge-table-btn'));
+    await waitFor(() => expect(screen.getByTestId('tables-merge-confirm-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-merge-confirm-btn'));
+    await waitFor(() => expect(mockHoldCart).toHaveBeenCalled());
+
+    // Neither bill may be removed — the combined cart does not exist yet.
+    expect(mockDeleteHeldCart).not.toHaveBeenCalled();
+    expect(mockReleaseTable).not.toHaveBeenCalled();
   });
 
   it('displays conflict banner and allows takeover when active tab has a foreign lease', async () => {
@@ -1162,6 +1579,53 @@ describe('TableManagementScreen', () => {
     });
   });
 
+  // ── A PARTIAL reservation failure must close the form ────────────────
+  //
+  // `holdCartScoped` runs BEFORE `updateTableStatusScoped`, so the catch can fire
+  // with the reservation bill already written. Everything that made the success
+  // visible sat below it: the table never entered the pool, the plan was never
+  // re-read, and `setReserveModal(null)` never ran — so the form stayed OPEN with
+  // the guest's name still typed in it.
+  //
+  // The operator reads an error plus an open form as "it did not save" and presses
+  // Reserve again. That is exactly the duplicate reservation bill the re-entry guard
+  // in this handler exists to prevent, arriving through the failure branch instead
+  // of a double submit — and the guard does not catch it, because the first attempt
+  // genuinely finished.
+  it('closes the reserve form when the status write fails after the bill was created', async () => {
+    const table = makeTable({ id: 't-1', name: 'Table 1', status: 'available', capacity: 4 });
+    mockListTables.mockResolvedValue([table]);
+    // The bill is created; the STATUS write is what fails.
+    mockHoldCart.mockResolvedValue({ id: 'bill-new' });
+    mockUpdateTableStatus.mockRejectedValueOnce(new Error('database is locked'));
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+
+    await waitFor(() => expect(screen.getByTestId('tables-open-reserve-btn')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-open-reserve-btn'));
+    await waitFor(() => expect(screen.getByLabelText(/Guest Name/i)).toBeDefined());
+    await userEvent.type(screen.getByLabelText(/Guest Name/i), 'Dr. Alice');
+
+    await userEvent.click(screen.getByTestId('tables-reserve-confirm-btn'));
+
+    // Reachability: the status write really was attempted, or this measures nothing.
+    await waitFor(() => expect(mockUpdateTableStatus).toHaveBeenCalled());
+
+    // The form is gone, so the guest name cannot be submitted a second time against
+    // a reservation that already exists.
+    await waitFor(() =>
+      expect(screen.queryByTestId('tables-reserve-confirm-btn')).toBeNull(),
+    );
+    // And exactly ONE reservation bill was written.
+    expect(mockHoldCart).toHaveBeenCalledTimes(1);
+    // The plan was re-read, so it reflects what the backend now holds.
+    await waitFor(() =>
+      expect(mockListTables.mock.calls.length).toBeGreaterThan(1),
+    );
+  });
+
   it('renders reservation details in floorplan card and detail drawer for reserved table', async () => {
     const table = makeTable({ id: 't-1', name: 'Table 1', status: 'reserved' });
     mockListTables.mockResolvedValue([table]);
@@ -1177,6 +1641,24 @@ describe('TableManagementScreen', () => {
         customer_name: 'Sarah Connor',
       },
     ]);
+    mockGetHeldCart.mockResolvedValue({
+      id: 'bill-res-1',
+      label: 'Table 1 · Res: Sarah Connor (20:00) [4p]',
+      cart_data: JSON.stringify({
+        customerName: 'Sarah Connor',
+        phone: '081234567890',
+        partySize: 4,
+        reservationTime: '20:00',
+        notes: 'VIP guest - quiet corner requested',
+      }),
+      item_count: 0,
+      total_minor: 0,
+      currency: 'IDR',
+      created_at: new Date().toISOString(),
+      bill_type: 'open_bill',
+      customer_name: 'Sarah Connor',
+      deduction_location_id: null,
+    });
 
     renderScreen();
     await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
@@ -1191,6 +1673,78 @@ describe('TableManagementScreen', () => {
 
     expect(screen.getByTestId('tables-reservation-card').textContent).toContain('Sarah Connor');
     expect(screen.getByTestId('tables-reservation-card').textContent).toContain('20:00 (4p)');
+    await waitFor(() => {
+      expect(screen.getByTestId('tables-reservation-card').textContent).toContain('081234567890');
+      expect(screen.getByTestId('tables-reservation-card').textContent).toContain('VIP guest - quiet corner requested');
+    });
+  });
+
+  it('preserves pre-ordered lines, partySize, notes and deduction_location_id when seating reserved guests', async () => {
+    const table = makeTable({ id: 't-1', name: 'Table 1', status: 'reserved' });
+    mockListTables.mockResolvedValue([table]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-res-1',
+        label: 'Table 1 · Res: Sarah Connor (20:00) [4p]',
+        item_count: 2,
+        total_minor: 75000,
+        currency: 'IDR',
+        created_at: new Date().toISOString(),
+        bill_type: 'open_bill',
+        customer_name: 'Sarah Connor',
+      },
+    ]);
+    mockGetHeldCart.mockResolvedValue({
+      id: 'bill-res-1',
+      label: 'Table 1 · Res: Sarah Connor (20:00) [4p]',
+      cart_data: JSON.stringify({
+        lines: [{ sku: 'SKU-STEAK', name: 'Ribeye Steak', qty: 2, unit_price: { minor_units: 37500, currency: 'IDR' } }],
+        customerName: 'Sarah Connor',
+        partySize: 4,
+        guestCount: '4',
+        notes: 'Nut allergy',
+        phone: '081299998888',
+      }),
+      item_count: 2,
+      total_minor: 75000,
+      currency: 'IDR',
+      created_at: new Date().toISOString(),
+      bill_type: 'open_bill',
+      customer_name: 'Sarah Connor',
+      deduction_location_id: 'loc-vip-kitchen',
+    });
+
+    renderWithWorkspace(
+      <LocalizationProvider l10n={l10n}>
+        <TableManagementScreen />
+      </LocalizationProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-seat-guests-btn')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-seat-guests-btn'));
+
+    await waitFor(() => {
+      expect(mockHoldCart).toHaveBeenCalledWith(
+        expect.objectContaining({
+          label: 'Table 1 (Sarah Connor)',
+          bill_type: 'open_bill',
+          deduction_location_id: 'loc-vip-kitchen',
+          item_count: 2,
+          total_minor: 75000,
+        }),
+      );
+    });
+
+    const holdCall = mockHoldCart.mock.calls.find((call) => call[0]?.label === 'Table 1 (Sarah Connor)');
+    expect(holdCall).toBeDefined();
+    const parsedData = JSON.parse(holdCall![0].cart_data);
+    expect(parsedData.guestCount).toBe('4');
+    expect(parsedData.notes).toBe('Nut allergy');
+    expect(parsedData.orderType).toBe('dine_in');
+    expect(parsedData.lines).toHaveLength(1);
+    expect(parsedData.lines[0].sku).toBe('SKU-STEAK');
   });
 
   it('seats reserved guests when Seat Guests is clicked, transitioning status to occupied and calling onSelectTable', async () => {
@@ -1230,6 +1784,467 @@ describe('TableManagementScreen', () => {
       );
       expect(onSelectTable).toHaveBeenCalledWith('Table 1');
     });
+  });
+
+  // ── Seating must not destroy the reservation before its replacement exists ──
+  //
+  // THE SAME DEFECT ROUND 292 FIXED FOR MOVE AND MERGE, on the third handler in this
+  // file that replaces a held cart. `handleSeatReservedGuests` converts a reservation's
+  // bill into an open bill by deleting and re-creating it — and it ran DELETE first:
+  //
+  //     await deleteHeldCartScoped(sessionToken, reservationBill.id);   // reservation gone
+  //     await holdCartScoped(sessionToken, { ... });                    // replacement
+  //
+  // A rejected hold (locked DB, dropped IPC, lapsed session) therefore destroyed the
+  // reservation with nothing to recreate it, while the catch toasts only "seat failed".
+  // The operator sees a party who is no longer booked AND no longer seated.
+  //
+  // Round 292 fixed the move and merge handlers and recorded this one as unexamined —
+  // its own "next" section named `releaseTableScoped` instead. Found by reading the
+  // file's held-cart writes rather than trusting that list.
+  //
+  // The discriminating assertion is the NEGATIVE one: the delete must not have run at
+  // all. Asserting only the error toast would pass against the old order, which toasts
+  // the same message — after the damage.
+  it('KEEPS the reservation when the hold that seats the party fails', async () => {
+    const table = makeTable({ id: 't-1', name: 'Table 1', status: 'reserved' });
+    mockListTables.mockResolvedValue([table]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-res-1',
+        label: 'Table 1 · Res: Sarah Connor (20:00) [4p]',
+        item_count: 0,
+        total_minor: 0,
+        currency: 'IDR',
+        created_at: new Date().toISOString(),
+        bill_type: 'open_bill',
+        customer_name: 'Sarah Connor',
+      },
+    ]);
+    // Converting the reservation into an open bill cannot complete.
+    mockHoldCart.mockRejectedValueOnce(new Error('database is locked'));
+
+    renderWithWorkspace(
+      <LocalizationProvider l10n={l10n}>
+        <TableManagementScreen />
+      </LocalizationProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-seat-guests-btn')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-seat-guests-btn'));
+
+    await waitFor(() => expect(mockHoldCart).toHaveBeenCalled());
+
+    // The reservation survives — this is the assertion the ordering fix exists for.
+    expect(mockDeleteHeldCart).not.toHaveBeenCalled();
+    // And the table is not marked occupied, so the floor plan still describes reality.
+    expect(mockUpdateTableStatus).not.toHaveBeenCalled();
+  });
+
+  // ── A refused floor-plan move must not leave the table where it was dropped ──
+  //
+  // The drag split is across TWO handlers: `handlePointerMoveTable` (:863-887) writes the
+  // snapped position into `tables`/`tablePool` on every move, and `handlePointerUpTable`
+  // (:889-910) is what persists it. `tablesRef.current = tables` (:127) always mirrors that
+  // OPTIMISTIC state, and :899 reads the position to save FROM the ref.
+  //
+  // So when `updateTableScoped` is refused:
+  //   * the toast fires (:904) and the operator is told, but
+  //   * the table stays VISUALLY at the dropped position (:1132-1133 renders
+  //     `left: t.pos_x%; top: t.pos_y%` straight from state), and
+  //   * `tablesRef` still holds the refused coordinates, so a retry re-sends the payload
+  //     that was just rejected.
+  //
+  // The floor plan then disagrees with the server — and for table management that means the
+  // server can believe a table is somewhere the plan does not show it.
+  it('returns the table to its saved position when the move write is refused', async () => {
+    mockListTables.mockResolvedValue([makeTable({ id: 't-1', name: 'T1', pos_x: 10, pos_y: 10 })]);
+    mockUpdateTable.mockRejectedValue(new Error('locked'));
+
+    renderScreen();
+    await waitFor(() => expect(screen.getAllByText('T1').length).toBeGreaterThan(0));
+
+    // Enter arrange mode.
+    await userEvent.click(screen.getByText('Arrange Tables'));
+
+    const table = document.querySelector('.tables-table') as HTMLElement;
+    expect(table, 'the floor plan did not render a table').not.toBeNull();
+    const before = table!.style.left;
+    expect(before, 'fixture did not render the seeded left offset').toBe('10%');
+
+    // jsdom reports a zero-size bounding rect, and `handlePointerMoveTable` bails on
+    // `rect.width <= 0` (:867) before it writes anything. Give the floorplan a real
+    // box so the drag actually moves, which is the precondition this test needs.
+    const floorplan = document.querySelector('.tables-floorplan') as HTMLElement;
+    expect(floorplan, 'the floor plan container was not found').not.toBeNull();
+    floorplan!.getBoundingClientRect = () =>
+      ({ x: 0, y: 0, top: 0, left: 0, bottom: 600, right: 800, width: 800, height: 600 }) as DOMRect;
+
+    // Drag: pointerDown → pointerMove → pointerUp.
+    fireEvent.pointerDown(table!, { clientX: 100, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(table!, { clientX: 400, clientY: 300, pointerId: 1 });
+    fireEvent.pointerUp(table!, { clientX: 400, clientY: 300, pointerId: 1 });
+
+    // Preconditions: the drag must have MOVED it and the write must have been attempted.
+    expect(mockUpdateTable, 'the drag never issued a move write').toHaveBeenCalled();
+    const moved = document.querySelector('.tables-table') as HTMLElement;
+    expect(moved.style.left, 'the drag did not move the table on screen').not.toBe(before);
+
+
+    // THE ASSERTION: the table must not stay where it was dropped. Its rendered
+    // position comes straight from state, so this is the observable contract.
+    await waitFor(() => {
+      const now = (document.querySelector('.tables-table') as HTMLElement).style.left;
+      expect(now, 'the floor plan kept a position the server refused').toBe(before);
+    });
+  });
+
+  // ── A double submit on Add Table must not create two tables ───────────
+  //
+  // `handleSaveTableModal` now takes an atomic `savePendingRef` before its first await
+  // (round 173). It previously carried `if (tableModalSaving) return`, which reads React
+  // STATE — the value from the render that built this closure — so on the second dispatch
+  // of one double submit it was still `false` and both writes went out. MEASURED: with the
+  // ref disabled and the state check left in place, this case fails with
+  // `expected 2 to be 1`, which is why the state flag was not a guard.
+  //
+  // The button is no defence either: `state={tableModalSaving ? 'processing' : 'ready'}`
+  // and Button's `isDisabled = disabled || isProcessing` (Button.tsx:72) gate the BUTTON,
+  // and the FORM is `onSubmit={handleSaveTableModal}`, so pressing Enter in a text field
+  // submits directly and never consults it.
+  //
+  // The backend cannot catch it either: `create_table` (kasirmu-core/src/db/tables.rs:130)
+  // is a plain INSERT that mints a fresh UUID per call, with no uniqueness on `name`. Two
+  // submits make two tables with the same name, and the operator then has to work out
+  // which one the floor plan reads from.
+  it('creates only ONE table when the Add Table form is submitted twice', async () => {
+    mockListTables.mockResolvedValue([]);
+    // Pending for the whole test: the first submit is still in flight when the second
+    // lands, which is the only arrangement that can produce two writes from one form.
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((res) => { release = res; });
+    mockCreateTable.mockReset();
+    mockCreateTable.mockImplementation((() =>
+      gate.then(() => makeTable({ id: 't-new', name: 'T1' }))) as never);
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByTestId('tables-add-table-btn')).toBeInTheDocument());
+    await userEvent.click(screen.getByTestId('tables-add-table-btn'));
+
+    // Fill the name the handler requires (`if (!tableModal || !tableModal.name.trim()) return`).
+    const nameInput = await waitFor(() => {
+      const form = document.querySelector('.tables-modal-form');
+      expect(form, 'the add-table modal did not open').not.toBeNull();
+      const input = form!.querySelector('input[type="text"], input:not([type])');
+      expect(input, 'no name field in the add-table modal').not.toBeNull();
+      return input as HTMLInputElement;
+    });
+    fireEvent.change(nameInput, { target: { value: 'T1' } });
+
+    // Two submits with NO await between them — the form path, which is what pressing
+    // Enter twice in the name field produces.
+    const form = document.querySelector('.tables-modal-form') as HTMLFormElement;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(mockCreateTable).toHaveBeenCalled());
+    expect(
+      mockCreateTable.mock.calls.length,
+      'a double submit created more than one table',
+    ).toBe(1);
+
+    release?.();
+  });
+
+  // ── A double submit on Reserve must not create two reservations ────────
+  //
+  // `handleConfirmReservation` (:743) is the reserve form's `onSubmit` (:1880) and has no
+  // `reservingTable` re-entry check. The Reserving BUTTON is guarded —
+  // `disabled={!reserveModal.guestName.trim() || reservingTable}` (:1957) — but pressing
+  // Enter in the name field submits the form natively and never consults the button.
+  //
+  // Worse than the Add Table case: this handler's first write is `holdCartScoped` (:773),
+  // which CREATES a held cart / open bill. A double submit leaves two open bills against
+  // one table.
+  it('creates only ONE reservation when the Reserve form is submitted twice', async () => {
+    mockListTables.mockResolvedValue([makeTable({ id: 't-1', name: 'T1', status: 'available' })]);
+
+    // Pending for the whole test: the first submit is still in flight when the second
+    // lands, which is the only arrangement that can produce two writes from one form.
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((res) => { release = res; });
+    mockHoldCart.mockReset();
+    mockHoldCart.mockImplementation((() => gate.then(() => ({ id: 'held-res' }))) as never);
+
+    renderScreen();
+    await waitFor(() => expect(screen.getAllByText('T1').length).toBeGreaterThan(0));
+
+    // Open the table detail, then the Reserve action.
+    await userEvent.click(screen.getAllByText('T1')[0]!);
+    // The Reserve action carries a testid (:1421); its accessible name is "Mark Reserved",
+    // not /reserve/i, so a role query would miss it.
+    const reserveBtn = await waitFor(() => {
+      const b = document.querySelector('[data-testid="tables-open-reserve-btn"]');
+      expect(b, 'the Reserve action was not found').not.toBeNull();
+      return b as HTMLElement;
+    });
+    await userEvent.click(reserveBtn);
+
+    // Fill the guest name the handler requires.
+    const nameInput = await waitFor(() => {
+      const el = document.querySelector('#reserve-modal-name');
+      expect(el, 'the reserve modal did not open').not.toBeNull();
+      return el as HTMLInputElement;
+    });
+    fireEvent.change(nameInput, { target: { value: 'Ada' } });
+
+    // Two submits with NO await between them — the form path, which is what pressing
+    // Enter twice in the name field produces.
+    const form = document.querySelector('.tables-modal-form') as HTMLFormElement;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(mockHoldCart).toHaveBeenCalled());
+    expect(
+      mockHoldCart.mock.calls.length,
+      'a double submit created more than one reservation',
+    ).toBe(1);
+
+    release?.();
+  });
+
+  // ── Open-bill read failure must not read as "no open bills" ────────
+  //
+  // `listOpenBillsScoped` was `.catch(() => [])` inside the floor-plan load.
+  // An empty list is a CLAIM — every table is free — and `openBills` is what
+  // marks a table occupied and what the reservation path reads when it converts
+  // a booking into a tab. So a FAILED read rendered a running tab as a free
+  // table, and a cashier could seat a walk-in over it.
+
+  it('says nothing about tabs when the bills read succeeds', async () => {
+    // The NEGATIVE half, on its own so it cannot pass for the wrong reason: with
+    // a healthy bills read the banner must not appear at all.
+    mockListTables.mockResolvedValue([makeTable()]);
+    mockListOpenBills.mockResolvedValue([
+      { id: 'bill-1', label: 'Table 1', customer_name: '', total_minor: 5000, currency: 'USD' },
+    ]);
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Table 1')).toBeDefined());
+
+    expect(
+      screen.queryByText(/Could not check which tables have an open tab/i),
+    ).toBeNull();
+    expect(screen.queryByText(/Could not load the floor plan/i)).toBeNull();
+    // And the bill DID bind to the table, so the read was genuinely exercised.
+    expect(document.querySelector('.tables-table--has-bill')).not.toBeNull();
+  });
+
+  it('says the open tabs could not be checked when the bills read fails', async () => {
+    mockListTables.mockResolvedValue([makeTable()]);
+    mockListOpenBills.mockRejectedValue(new Error('ipc down'));
+    renderScreen();
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Could not check which tables have an open tab/i),
+      ).toBeDefined(),
+    );
+    // It must NOT claim the floor plan failed — the plan loaded fine.
+    expect(screen.queryByText(/Could not load the floor plan/i)).toBeNull();
+    // The floor plan is still usable: the table still renders.
+    expect(screen.getByText('Table 1')).toBeDefined();
+  });
+
+  it('does not render an occupied table as free when the bills read fails', async () => {
+    // The consequence, not just the banner: before the fix the failed read
+    // resolved to [], so this table showed as available while it had a live tab.
+    mockListTables.mockResolvedValue([makeTable()]);
+    mockListOpenBills.mockRejectedValue(new Error('ipc down'));
+    renderScreen();
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Could not check which tables have an open tab/i),
+      ).toBeDefined(),
+    );
+    // The unverified state is surfaced rather than silently asserted as free.
+    expect(document.querySelector('.tables-error')?.['textContent']).toMatch(
+      /open tab/i,
+    );
+  });
+
+  it('opens Manage Sections modal, adds a section, and displays it in section bar', async () => {
+    mockListTables.mockResolvedValue([makeTable()]);
+    mockListSections.mockResolvedValue(['Main']);
+    renderScreen();
+
+    await waitFor(() => expect(screen.getByTestId('tables-manage-sections-btn')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-manage-sections-btn'));
+
+    await waitFor(() => expect(screen.getByTestId('tables-new-section-input')).toBeDefined());
+    await userEvent.type(screen.getByTestId('tables-new-section-input'), 'Patio');
+    await userEvent.click(screen.getByTestId('tables-add-section-btn'));
+
+    await waitFor(() => expect(screen.getAllByText('Patio').length).toBeGreaterThanOrEqual(1));
+  });
+
+  // ── A rename in flight must not drop a section added during it ────────────
+  //
+  // `handleRenameSection` (TableManagementScreen.tsx:101) awaits one
+  // `updateTableScoped` per table in the section (:1316-1320) and only THEN reads
+  // `sections` to build the replacement:
+  //
+  //   const updated = sections.map((s) => (s === oldName ? trimmed : s));  // :1322
+  //   setSections(updated);                                               // :1323
+  //
+  // `sections` is the RENDER closure, captured before those awaits, and `setSections`
+  // REPLACES the array rather than updating it. `handleAddSection` (:1276) can run in
+  // that window -- it is a separate control on the same modal and nothing disables it
+  // while a rename is in flight -- so a section added during the rename is absent from
+  // `updated` and is DROPPED with no message.
+  //
+  // This is the round-201 `handleSendToKitchen` shape, which is why
+  // scripts/check-state-closure-after-await.py exists and flags exactly this line.
+  // `handleDeleteSection` (:1376) has the same body shape.
+  it('keeps a section added while a rename is in flight', async () => {
+    mockListTables.mockResolvedValue([makeTable()]);
+    mockListSections.mockResolvedValue(['Main', 'Patio']);
+    renderScreen();
+
+    await waitFor(() => expect(screen.getByTestId('tables-manage-sections-btn')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-manage-sections-btn'));
+    await waitFor(() => expect(screen.getByTestId('tables-new-section-input')).toBeDefined());
+
+    // Hold the rename's table write open, so the add below lands inside its await.
+    let releaseRename: ((v: unknown) => void) | undefined;
+    const heldRename = new Promise((resolve) => { releaseRename = resolve; });
+    mockUpdateTable.mockImplementationOnce(() => heldRename as never);
+
+    // Start the rename (Main -> Utama).
+    const renameBtn = screen.getByTestId('tables-rename-section-Main');
+    await userEvent.click(renameBtn);
+    // The rename input carries no testid; its row does. Scoped to the section item so
+    // it cannot match the add-section input below it.
+    const row = screen.getByTestId('tables-manage-section-Main');
+    const renameInput = row.querySelector('input') as HTMLInputElement;
+    await userEvent.clear(renameInput);
+    await userEvent.type(renameInput, 'Utama');
+    // Save is a button in the edit row, not an Enter key.
+    await userEvent.click(within(row).getByRole('button', { name: /^save$/i }));
+
+    // While that is in flight, add a third section.
+    await userEvent.type(screen.getByTestId('tables-new-section-input'), 'Teras');
+    await userEvent.click(screen.getByTestId('tables-add-section-btn'));
+    await waitFor(() => expect(screen.getAllByText('Teras').length).toBeGreaterThanOrEqual(1));
+
+    // Release the rename and let it settle.
+    releaseRename?.(makeTable());
+    await waitFor(() => expect(screen.getAllByText('Utama').length).toBeGreaterThanOrEqual(1));
+
+    // The section added mid-rename must survive the rename's replacement array.
+    expect(
+      screen.queryAllByText('Teras').length,
+      'the rename replaced `sections` from its pre-await closure, dropping the section ' +
+        'added while it was in flight',
+    ).toBeGreaterThanOrEqual(1);
+
+    // ...and the PERSISTED value must carry it too. The old body read `sections` from
+    // its pre-await closure, so the write stored the array WITHOUT 'Teras' -- the section
+    // vanished on the next reload even where the UI still showed it. Only the RENAME's
+    // write is checked: the add's own write also lands on this mock, and its payload is
+    // the add path's subject, not this case's.
+    await waitFor(() => expect(mockSetSetting).toHaveBeenCalled());
+    const renameWrite = mockSetSetting.mock.calls
+      .map((c) => c[2])
+      .filter((v) => typeof v === 'string' && v.includes('Utama'))
+      .pop();
+    expect(
+      renameWrite,
+      'the rename never persisted its section list, so the rename is lost on reload',
+    ).toBeDefined();
+    expect(
+      JSON.parse(renameWrite as string),
+      'the rename persisted its stale pre-await section list, dropping the section added ' +
+        'while it was in flight -- that section is lost on the next reload',
+      // 'Main' became 'Utama'; the point is that 'Teras' is present at all.
+    ).toEqual(['Utama', 'Patio', 'Teras']);
+  });
+  it('allows selecting a table in arrange mode and adjusting shape and dimensions via inspector', async () => {
+    mockListTables.mockResolvedValue([makeTable()]);
+    renderScreen();
+
+    await waitFor(() => expect(screen.getByTestId('tables-arrange-mode-btn')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-arrange-mode-btn'));
+
+    // Click table to select in arrange mode
+    await userEvent.click(screen.getByText('Table 1').closest('button')!);
+
+    await waitFor(() => expect(screen.getByTestId('tables-arrange-inspector')).toBeDefined());
+    expect(screen.getByTestId('tables-resize-handle-Table 1')).toBeDefined();
+
+    // Adjust shape
+    await userEvent.click(screen.getByTestId('tables-arrange-shape-square'));
+    expect(mockUpdateTable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 't-1',
+        shape: 'square',
+      }),
+    );
+
+    // Adjust size
+    await userEvent.click(screen.getByTestId('tables-arrange-width-inc'));
+    expect(mockUpdateTable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 't-1',
+      }),
+    );
+  });
+
+  it('allows 1-tap quick cleaning of a table in cleaning state', async () => {
+    await openTableDetail(makeTable({ status: 'cleaning' }));
+
+    await waitFor(() => expect(screen.getByTestId('tables-mark-cleaned-btn')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-mark-cleaned-btn'));
+
+    expect(mockUpdateTableStatus).toHaveBeenCalledWith(MOCK_SESSION_TOKEN, 't-1', 'available');
+  });
+
+  it('allows quick seating a walk-in party of 4 directly from detail panel', async () => {
+    await openTableDetail(makeTable({ status: 'available' }));
+
+    await waitFor(() => expect(screen.getByTestId('tables-quick-seat-4')).toBeDefined());
+    await userEvent.click(screen.getByTestId('tables-quick-seat-4'));
+
+    expect(mockHoldCart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bill_type: 'open_bill',
+        customer_name: 'Walk-in [4p]',
+      }),
+    );
+    expect(mockUpdateTableStatus).toHaveBeenCalledWith(MOCK_SESSION_TOKEN, 't-1', 'occupied');
+  });
+
+  it('renders joined table badge on floor plan when table has joined tag in bill', async () => {
+    mockListTables.mockResolvedValue([makeTable({ id: 't-2', name: 'Table 2', status: 'occupied' })]);
+    mockListOpenBills.mockResolvedValue([
+      {
+        id: 'bill-2',
+        label: 'Table 2',
+        customer_name: 'Table 2 [+T1]',
+        item_count: 2,
+        total_minor: 50000,
+        currency: 'IDR',
+        created_at: new Date().toISOString(),
+        bill_type: 'open_bill',
+      },
+    ]);
+
+    renderScreen();
+
+    await waitFor(() => expect(screen.getByTestId('tables-joined-tag-Table 2')).toBeDefined());
+    expect(screen.getByTestId('tables-joined-tag-Table 2').textContent).toMatch(/\+T.*1/);
   });
 });
 

@@ -67,3 +67,5 @@ Each earlier round fixed what the failure looked like rather than what it was:
 
 The cause is a single line of production code (`enabled:`) and a test that used the wrong
 machinery for its workspace. **Reading `enabled` first would have found it in round 88.**
+
+> last audited 14-10-26 by docs-auditor

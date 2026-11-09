@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
-import { type CourseId, type ModifierSelection, type Product, getProductModifierGroups } from '@/types/domain';
+import { requiredLocalized } from '@/components/requiredLocalized';
+import { type CourseId, type ModifierSelection, type Product, getProductModifierGroups, isRestaurantMenuItem } from '@/types/domain';
 import { useLocalization } from '@fluent/react';
 import { useProducts } from '@/features/products/useProducts';
 import { useAuth } from '@/contexts/AuthContext';
@@ -78,9 +79,11 @@ function key(uid: string, name: string) {
 // built, and the note was never updated:
 //
 //   * the server key is `restaurant.unavailable.<locationId>` (`unavailableSettingKey`);
-//   * the fetch effect below rehydrates from it and flips `unavailableLoadedRef` ONLY
-//     on a successful read, so a failed read leaves the gate shut and the write effect
-//     cannot push `[]` over the real list (the guard at :488);
+//   * the fetch effect below rehydrates from it and flips `unavailableLoadedRef` on a
+//     successful read, so a failed read leaves the gate shut and the write effect
+//     cannot push `[]` over the real list (the guard at :517). The visibility re-poll
+//     flips it too, so a transient first-read failure does not disarm 86 persistence
+//     for the life of the mount;
 //   * `refetchUnavailable` re-polls on tab visibility, so another terminal's 86 turns
 //     up within a second or two of refocusing;
 //   * localStorage (`saveUnavailable`) is now the offline write-through cache.
@@ -206,7 +209,7 @@ export default function RestaurantMenu({
   const sidebarRef = useRef<HTMLDivElement>(null);
   const sidebarButtonRef = useRef<HTMLButtonElement>(null);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
-  const [menuRoot, setMenuRoot] = useState<HTMLDivElement | null>(null);
+  const [menuRoot, setMenuRoot] = useState<HTMLElement | null>(null);
 
   const [addedSku, setAddedSku] = useState<string | null>(null);
   const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -216,11 +219,19 @@ export default function RestaurantMenu({
   // "the local set was successfully read back from the server", NOT "the
   // read was attempted" — until it is true, `unavailable` is untrusted
   // (it is only the empty seed) and pushing it would overwrite the real
-  // 86'd list with `[]`. It is flipped ONLY in the `.then` of a
-  // successful `getSettingScoped`; every other path (no token, no API,
+  // 86'd list with `[]`. It is flipped in the `.then` of ANY successful
+  // `getSettingScoped` — both the initial fetch AND the visibility re-poll
+  // (`refetchUnavailable`). The re-poll matters: while only the initial fetch
+  // could flip it, a first read that failed shut the gate for the life of the
+  // mount, so the recovery path could load the server list into the UI while
+  // every subsequent edit stayed local. Every other path (no token, no API,
   // rejected read, cancelled read) deliberately leaves it false.
   const unavailableLoadedRef = useRef(false);
   const [customizingProduct, setCustomizingProduct] = useState<Product | null>(null);
+  const customizingModifierGroups = useMemo(
+    () => (customizingProduct ? getProductModifierGroups(customizingProduct) : []),
+    [customizingProduct],
+  );
 
   useEffect(() => {
     if (!sessionToken || typeof locationsApi.getPrimaryLocationScoped !== 'function') return;
@@ -334,7 +345,24 @@ export default function RestaurantMenu({
     if (!sessionToken || typeof settingsApi.getSettingScoped !== 'function') return;
     settingsApi.getSettingScoped(sessionToken, unavailableSettingKey)
       .then((raw) => {
-        if (!raw) return;
+        if (!raw) {
+          // A SUCCESSFUL read that returned nothing. The server list is empty, which is
+          // a real answer: this terminal has now seen the authoritative state, so the
+          // write gate may open. Without this the recovery path below could only ever
+          // re-arm persistence for a NON-empty remote list.
+          unavailableLoadedRef.current = true;
+          return;
+        }
+        // OPEN THE GATE ON THE RECOVERY PATH TOO. This is the fix for the defect this
+        // comment replaces: the gate was set ONLY by the initial fetch, so a first read
+        // that failed shut it permanently. The re-poll (`refetchUnavailable`) would then
+        // load the authoritative list into the UI while the gate the initial fetch sets
+        // stayed shut, leaving the terminal able to DISPLAY the 86 list and unable to persist
+        // any edit to it — the F5 cross-terminal feature silently dead after one
+        // transient failure, which is precisely the failure this effect exists to
+        // recover from. Reaching here means a read SUCCEEDED, so the empty-seed-clobbers-
+        // the-server hazard the gate guards against (see the empty-seed note above) cannot occur.
+        unavailableLoadedRef.current = true;
         try {
           const arr = JSON.parse(raw);
           if (Array.isArray(arr)) {
@@ -537,12 +565,28 @@ export default function RestaurantMenu({
 
   // Restaurant and retail are separate workspaces. Products tagged for restaurant
   // that are active are shown on the selling grid.
+  //
+  // The canonical guard, not a hand-rolled comparison. The old spelling accepted
+  // `'standard'` and `'both'` — values that exist in NEITHER the union
+  // (`Product.productType` is `'retail' | 'restaurant' | 'service'`, domain.ts:150) nor
+  // the database: migration 20261020_product_type_check.sql backfills every legacy /
+  // NULL / `both` row to `'retail'` and closes the set to those three. The only reason
+  // two impossible comparisons sat here for years is the `as string` cast that
+  // bypassed the checker — the tell that the expression was never validated.
+  //
+  // `!p.productType` went with them for the same reason: a persisted product can no
+  // longer be null/absent, so that arm could only ever match an unpersisted object and
+  // therefore decided nothing.
+  //
+  // `'service'` IS included here, deliberately. It is the third value of the closed set
+  // and it is backend-supported — `products_stock_query.rs:403` reads `is_service` and
+  // skips stock deduction — but it belonged to NO grid: this one took `'restaurant'`
+  // only and RetailPosScreen's took `'retail'` only, so a service item could be created
+  // from ProductManagementScreen and then never added to a sale in EITHER workspace.
+  // A corkage fee or a per-head charge is a restaurant line as much as a retail one,
+  // and the server already knows it has no stock to deduct.
   const isRestaurantProduct = useCallback(
-    (p: Product) =>
-      p.productType === 'restaurant' ||
-      !p.productType ||
-      (p.productType as string) === 'standard' ||
-      (p.productType as string) === 'both',
+    (p: Product) => isRestaurantMenuItem(p) || p.productType === 'service',
     [],
   );
 
@@ -600,6 +644,20 @@ export default function RestaurantMenu({
     setPreferencesOpen(false);
   }, [persistMenuPreference]);
 
+  // Both of these were INLINE ARROWS at the <MenuItemGrid> call site, so they were a new
+  // function on every render of this screen — which is every keystroke in the search box
+  // and every 86 toggle. That defeats any memo on the grid regardless of what the grid
+  // does with them. Named and stabilised here so `MenuItemGrid`'s own memo can apply.
+  const handleGridRetry = useCallback(() => {
+    if (sessionError) retrySessionToken?.();
+    reload();
+  }, [sessionError, retrySessionToken, reload]);
+
+  const handleClearFilter = useCallback(() => {
+    setSearchQuery('');
+    setActiveCategory('All');
+  }, []);
+
   const filtered = useMemo(() => {
     let result = restaurantProducts;
     if (effectiveCategory !== 'All') result = result.filter((p) => p.category === effectiveCategory);
@@ -624,13 +682,14 @@ export default function RestaurantMenu({
   }, [effectiveCategory, restaurantProducts, searchQuery, pinned, sortMode, popularityCounts]);
 
   return (
-    <div
+    <section
       ref={setMenuRoot}
       className={`restaurant-menu ${menuOpen ? 'restaurant-menu--sidebar-open' : ''}${hasFloatingCartBar ? ' restaurant-menu--has-floating-bar' : ''}`}
       style={{ '--card-size': cardSize, '--font-size': fontSize } as React.CSSProperties}
+      aria-label={requiredLocalized(l10n, 'restaurant-menu-items-aria')}
     >
       {/* ── Header row: sidebar + preferences hamburger + search ── */}
-      <div className="restaurant-header">
+      <header className="restaurant-header">
         <div className="restaurant-header-left">
           <button
             type="button"
@@ -667,7 +726,7 @@ export default function RestaurantMenu({
           contextMenuOpenRef={contextMenuOpenRef}
           popoverRef={hamburgerDropdownRef}
         />
-      </div>
+      </header>
 
       {/* Crash isolation (F9). The sidebar is a panel over a LIVE sale: a throw
           inside it must not take the POS screen with it, or the cashier loses the
@@ -688,40 +747,41 @@ export default function RestaurantMenu({
         />
       </LocalizedErrorBoundary>
 
-      {/* ── Category pills ─────────────────────────── */}
-      <MenuCategoryTabBar
-        options={categoryOptions}
-        active={effectiveCategory}
-        onSelect={setActiveCategory}
-        metaMap={catMetaMap}
-      />
+      {/* ── Category pills area ─────────────────────── */}
+      <nav className="restaurant-categories-area" aria-label={requiredLocalized(l10n, 'restaurant-categories-aria')}>
+        <MenuCategoryTabBar
+          options={categoryOptions}
+          active={effectiveCategory}
+          onSelect={setActiveCategory}
+          metaMap={catMetaMap}
+        />
+      </nav>
 
-      {/* ── Product grid ───────────────────────────── */}
+      {/* ── Product grid area ───────────────────────── */}
       {/* Crash isolation (F9). This is the whole ordering surface: a throw in a grid
           row used to propagate past RestaurantMenu into PosScreen and unmount the
           POS screen, taking the cart with it mid-service. `resetKeys` clears the
           caught error when the item list changes, so a bad row does not brick the
           grid for the rest of the shift. */}
-      <LocalizedErrorBoundary onReset={reload} resetKeys={[String(filtered.length), effectiveCategory]}>
-      <MenuItemGrid
-        loading={loading || isTransientSessionError}
-        error={isTransientSessionError ? null : (sessionError ?? error)}
-        onRetry={() => {
-          if (sessionError) retrySessionToken?.();
-          reload();
-        }}
-        items={filtered}
-        hasActiveFilter={effectiveCategory !== 'All' || searchQuery.trim().length > 0}
-        onClearFilter={() => { setSearchQuery(''); setActiveCategory('All'); }}
-        pinned={pinned}
-        unavailable={unavailable}
-        colors={colors}
-        catMetaMap={catMetaMap}
-        addedSku={addedSku}
-        onAdd={handleItemAdd}
-        onContextMenu={handleContextMenu}
-      />
-      </LocalizedErrorBoundary>
+      <div className="restaurant-grid-area">
+        <LocalizedErrorBoundary onReset={reload} resetKeys={[String(filtered.length), effectiveCategory]}>
+        <MenuItemGrid
+          loading={loading || isTransientSessionError}
+          error={isTransientSessionError ? null : (sessionError ?? error)}
+          onRetry={handleGridRetry}
+          items={filtered}
+          hasActiveFilter={effectiveCategory !== 'All' || searchQuery.trim().length > 0}
+          onClearFilter={handleClearFilter}
+          pinned={pinned}
+          unavailable={unavailable}
+          colors={colors}
+          catMetaMap={catMetaMap}
+          addedSku={addedSku}
+          onAdd={handleItemAdd}
+          onContextMenu={handleContextMenu}
+        />
+        </LocalizedErrorBoundary>
+      </div>
 
       {/* ── Context menu ─────────────────────────────── */}
       {contextMenu && (
@@ -749,12 +809,12 @@ export default function RestaurantMenu({
           productName={customizingProduct.name}
           basePriceMinor={customizingProduct.price.minor_units}
           currency={customizingProduct.price.currency}
-          groups={getProductModifierGroups(customizingProduct)}
+          groups={customizingModifierGroups}
           onConfirm={handleConfirmModifiers}
           onClose={() => setCustomizingProduct(null)}
         />
         </LocalizedErrorBoundary>
       )}
-    </div>
+    </section>
   );
 }

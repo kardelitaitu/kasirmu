@@ -57,7 +57,7 @@ fn get_profile_not_found_when_terminal_does_not_exist() {
 /// `terminal_profiles.profile_type` carries
 /// `CHECK (profile_type IN ('counter_pos', 'kds_kiosk', 'customer_display', 'unrestricted'))`
 /// and nothing else validates it: the store binds a raw `&str`, the bridge checks
-/// only that it is non-empty (`terminals.rs:703`), and the UI types it as
+/// only that it is non-empty (`kasirmu-bridge/src/terminals.rs:688`), and the UI types it as
 /// `profileType: string` with no screen constraining it.
 ///
 /// So a value outside the vocabulary reaches SQLite and comes back as a raw

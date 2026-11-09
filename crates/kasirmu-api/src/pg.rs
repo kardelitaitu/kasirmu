@@ -1,5 +1,5 @@
 //! Postgres data layer for the kasirmu-api REST handlers (Phase 1.2 of
-//! `docs/archived/2026-08-15-unify-auth-and-sync.md`).
+//! `docs/records/audits/2026-08-15-unify-auth-and-sync.md`).
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-api slice B: pg deep read)
 crate: kasirmu-api | status: SAFE | lint: CLEAN
@@ -130,7 +130,10 @@ pub use terminals::{register_terminal, verify_terminal_credentials};
 
 #[path = "pg/products.rs"]
 mod products;
-pub use products::{adjust_stock, create_product, get_product, list_missing_hashes, list_products};
+pub use products::{
+    DEFAULT_PRODUCT_PAGE_LIMIT, MAX_PRODUCT_PAGE_LIMIT, ProductPage, adjust_stock, create_product,
+    get_product, list_missing_hashes, list_products, list_products_page,
+};
 
 // ── Sales ─────────────────────────────────────────────────────────────
 #[path = "pg/sales.rs"]

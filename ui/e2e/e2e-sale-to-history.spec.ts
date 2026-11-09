@@ -83,31 +83,34 @@ test.describe('Critical Path: Sale → Sales History', () => {
       }
     }
 
-    // Click the Complete Sale button by its label and wait for the modal to close.
+    // Click the Complete Sale button by its label.
     const completeBtn = page.getByRole('button', { name: /complete/i });
     await expect(completeBtn).toBeEnabled({ timeout: 5_000 });
     await completeBtn.click();
-    await expect(page.locator('[data-testid="payment-modal"]')).toBeHidden({ timeout: 10_000 });
 
-    // ── Step 5: Dismiss receipt preview if shown ────────────────────
-    // The receipt preview auto-dismisses; guard the click so a detached element
-    // during the close animation doesn't fail the test.
+    // ── Step 5: Dismiss the receipt preview, THEN wait for the modal ──
+    //
+    // ORDER MATTERS, and the original had it backwards. The receipt preview is
+    // rendered INSIDE [data-testid="payment-modal"] — measured 2026-10-17:
+    //   { modalPresent: true, paperPresent: true, paperInsideModal: true,
+    //     paperParent: 'receipt-preview' }
+    // So the modal is necessarily still visible while the receipt is up, and
+    // waiting for it to be hidden BEFORE dismissing the receipt can only time out.
+    // That is exactly how this test failed: `toBeHidden` polled 24 times against a
+    // dialog whose only child was the receipt the test had not yet closed.
+    //
+    // Fixing the order also removes the need for the guarded click: the receipt
+    // is a guaranteed consequence of a committed sale, so it is awaited, not probed.
     const receiptPaper = page.locator('.receipt-preview-paper');
-    if (await receiptPaper.isVisible({ timeout: 5_000 }).catch(() => false)) {
-      for (const sel of [
-        'button:has-text("Skip"), button:has-text("Lewati")',
-        'button:has-text("Print"), button:has-text("Cetak")',
-        'button:has-text("Close"), button:has-text("Done"), button:has-text("Selesai")',
-      ]) {
-        const btn = page.locator(sel).first();
-        if (await btn.isVisible().catch(() => false)) {
-          await btn.click({ timeout: 2_000 }).catch(() => {});
-          break;
-        }
-      }
-      // Wait for the receipt to finish closing regardless.
-      await receiptPaper.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {});
-    }
+    await expect(receiptPaper, 'a committed sale must show its receipt').toBeVisible({
+      timeout: 10_000,
+    });
+    // `Skip` is the non-printing exit; it is the first action in the receipt bar.
+    await page.locator('button:has-text("Skip")').first().click();
+    await receiptPaper.waitFor({ state: 'hidden', timeout: 8_000 });
+
+    // The modal closes with the receipt, so this now means what it says.
+    await expect(page.locator('[data-testid="payment-modal"]')).toBeHidden({ timeout: 10_000 });
 
     // ── Step 6: Verify cart is empty (sale completed) ───────────────
     // After a successful sale the cart should have zero line items.

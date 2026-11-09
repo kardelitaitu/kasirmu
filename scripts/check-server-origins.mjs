@@ -10,6 +10,7 @@
 // Usage:  node scripts/check-server-origins.mjs
 // Exit:   0 fresh (one ok: line), 1 drift (findings), 2 could not read/parse.
 
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +25,64 @@ function read(rel) {
     console.error('error: cannot read ' + rel + ': ' + e.message);
     process.exit(2);
   }
+}
+
+// --probe-read: used ONLY by the self-test, to grade the refusal. read() answers with a
+// process exit, so the branch cannot be observed in-process -- and it was the branch the
+// sabotage sweep found unproven (2026-11-06): every case above grades a predicate that
+// takes text already in hand, and the self-test exits before the gate reads a single file.
+// A read() that tolerated the error (catch -> return '') would return quietly, this probe
+// would exit 0, and the gate would grade an empty string as a fresh tree. The flag exits
+// before any other work, so it cannot recurse into the gate.
+if (process.argv.includes('--probe-read')) {
+  read(process.argv[process.argv.indexOf('--probe-read') + 1]);
+  process.exit(0);
+}
+
+// --self-test: prove the PREDICATES still decide, before the gate runs them.
+//
+// The gate's answer is a conjunction of ~12 check() calls over parsed text. Nothing
+// proved any of them could return false, so a admits() that started answering true
+// unconditionally would have made the whole gate vacuous while still printing its ok
+// line. Measured 2026-10-23: drifting MAIN_SERVER_ORIGIN produced 8 findings and exit
+// 1, so the gate was alive -- this pins that it stays alive.
+//
+// Runs BEFORE any file is read, so it needs no checkout and cannot be affected by one --
+// the probe spawns this file with --probe-read, which exits before the gate reads anything.
+if (process.argv.includes('--self-test')) {
+  const cases = [];
+  const want = (name, got, expect) => {
+    if (got !== expect) cases.push(name + ': expected ' + expect + ', got ' + got);
+  };
+  // Exact origin admitted.
+  want('an exact origin is admitted', admits(" 'self' https://license.kasir.mu", 'license.kasir.mu'), true);
+  // Wildcard suffix admitted.
+  want('a wildcard suffix is admitted', admits(' https://*.kasir.mu', 'license.kasir.mu'), true);
+  // A different host is NOT admitted -- the property that makes the gate mean anything.
+  want('a foreign origin is refused', admits(" 'self' https://evil.example.test", 'license.kasir.mu'), false);
+  // The suffix match must not be fooled by a lookalike registered domain.
+  want('a lookalike suffix is refused', admits(' https://*.notkasir.mu', 'license.kasir.mu'), false);
+  // Loopback detection, which the release-CSP arm relies on.
+  want('localhost is detected', /localhost|127\.0\.0\.1/.test(' http://localhost:3080'), true);
+  want('a clean directive has no loopback', /localhost|127\.0\.0\.1/.test(' https://kasir.mu'), false);
+  // read() -- the refusal. The child process is this same file with a flag that exits
+  // before the gate, so no checkout is read and the recursion is one level deep (the docker
+  // gate's --self-test recursion hung because it re-ran the whole script, not a probe).
+  const probe = spawnSync(
+    process.execPath,
+    [fileURLToPath(import.meta.url), '--probe-read', 'no/such/probe-origin.txt'],
+    { encoding: 'utf8' },
+  );
+  want('read() refuses a missing file', probe.status, 2);
+  want('the refusal names the file',
+    (probe.stderr || '').includes('cannot read no/such/probe-origin.txt'), true);
+
+  if (cases.length) {
+    console.error('SELF-TEST WRONG: ' + cases.join('; '));
+    process.exit(2);
+  }
+  console.log('SELF-TEST OK (8 cases: 6 predicates + 1 child probe in 2 halves, no checkout read)');
+  process.exit(0);
 }
 
 const SOURCE = 'crates/kasirmu-core/src/server_origin.rs';
@@ -65,8 +124,9 @@ for (const file of ['apps/desktop-tauri/tauri.conf.json', 'apps/mobile-tauri/tau
     check(admits(directive, host(MAIN)), file + ' (' + key + '): connect-src does not admit ' + MAIN);
     check(admits(directive, host(FALLBACK)), file + ' (' + key + '): connect-src does not admit ' + FALLBACK);
     if (key === 'csp') {
+      const nonIpc = directive.replace(/https:\/\/ipc\.localhost/g, '');
       check(
-        !/localhost|127\.0\.0\.1/.test(directive),
+        !/localhost|127\.0\.0\.1/.test(nonIpc),
         file + ' (csp): release connect-src names a loopback origin: ' + directive.trim(),
       );
     }

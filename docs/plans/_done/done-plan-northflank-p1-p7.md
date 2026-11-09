@@ -1,0 +1,163 @@
+<!-- Acceptance verified 2026-10-26: python scripts/verify-dockerfile-workspace.py (exit 0; both Dockerfile.server and Dockerfile.unified validated across all 44 workspace members), scripts/docker-entrypoint.sh:16 fallback su quoting verified, apps/unified/healthcheck.sh jq usage verified, and docs/operations/runbook.md §8 (DATABASE_URL, PG scaling, logging, build times) verified. Earned done- prefix per AGENTS.md §7.4. -->
+<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (0 major, 5 minor) · Re-audit of a completion record whose SUBSTANCE holds and whose every coordinate had drifted. All seven items (P1-P7) are genuinely SHIPPED, re-verified individually rather than inherited: P1's PG note is at runbook §8 (:484-489, was cited :469-478); P2's checker now DOES validate Dockerfile.unified (scripts/verify-dockerfile-workspace.py:46 carries the "ops/docker/Dockerfile.unified" entry, which the plan's own P2 condition says it does not — that condition is now historical); P3's DATABASE_URL row is at :448 (was :435); P4's build-time note is at :762-768 (was :716-724) and still says 15 minutes on 4-core/16GB; P5's jq is in the image and healthcheck.sh carries 9 jq references; P6's section is §8.6 at :797-936 (was cited :750-780); P7's entrypoint fix is verbatim at scripts/docker-entrypoint.sh:16, \`exec su -s /bin/sh ozpos -c 'exec "$@"' -- "$@"\`. · THE ONE CITATION THAT HAD MOVED ROOMS: the cutover procedure the plan points at three times is now docs/records/audits/2026-08-15-unify-auth-and-sync.md — docs/archived/ was retired to a tombstone on 2026-10-02 and its contents went to docs/records/{audits,superseded,campaigns}/. Repointed. · WHY THE LINE NUMBERS ARE LEFT AS CORRECTED RATHER THAN AS EVIDENCE: unlike a design record, this file's citations are EVIDENCE COLUMN entries backing a "SHIPPED" verdict, so a reader following one lands in the runbook; a stale one is a wrong answer, not a dated reading. The §8 heading the plan names is now at :407 and the section has grown to 937 lines. · VERIFIED AND LEFT ALONE: the seven P-conditions themselves, the strategies, and the effect statements are the document's own content and were not re-measured — whether the deployment works is the deploy procedure's job. \`Dockerfile.unified:19\` (P1) and \`:148\` (P5) were not re-read (they are code, not doc). · NOT re-measured: the deployment, the seven items' runtime behaviour, or any verification output. · Prior 2026-09-29 body retained verbatim below. -->
+
+<!-- Merged prior stamp (2026-09-29), kept as plain text — delimiters stripped: Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 157 lines, with no prior stamp, footer or marker. Its status line claims one hundred percent complete and verified across seven items, the strongest completeness claim a plan document can make and therefore the one most worth examining. · IT IS WORTH EXAMINING BECAUSE THE SUBJECT IS THE ONE MOST LIKELY TO HAVE CHANGED. The hosted deployment is operated by several agents in this repository — this campaign alone has had to reason about a retired workflow, a restored one, and a verification script — and a deployment plan is exactly the artefact that goes stale while the thing it describes keeps moving. · WHAT THE AUDIT ESTABLISHED IS NARROWER THAN THE CLAIM, and saying so is the point. The deployment itself, the seven items, and their verification are the original work: confirming that a container built and shipped is the job of the deploy procedure, not of a documentation audit. What a reader can take from this stamp is that the document is current as of the date it names, that it declares its branch, and that it is not a plan awaiting work — a distinction that matters when a reader arrives looking for something still to be done and finds a completion record instead. · A NOTE ON THE DIRECTORY THIS SITS IN, which the reader should not miss. The file lives under the active-plans directory while describing completed work, and the root guide's convention is that a plan earns a done marker in its FILENAME only when its own acceptance command has run and passed. So a completed plan under the active directory is not a contradiction — it is a plan whose acceptance has been verified but whose rename has not happened. A reader deciding whether to act on a plan should read the status line first and the directory second, and this stamp records that because the two can disagree without either being wrong. · NOT re-measured: the deployment, the seven items, or any verification output. · No stamp existed; this is the first. -->
+# Northflank Cloud Deployment — P1–P7 Plan
+
+> **Status: 100% COMPLETE & VERIFIED (all P1–P7 shipped).**
+> **Date:** 2026-09-29 · **Branch:** `0.0.40`
+> All 7 items in this plan have been executed, verified, and wired:
+> - **P1:** PG scaling path documented in runbook §8 (`docs/operations/runbook.md:484-489`).
+> - **P2:** Dockerfile prime stage covers unified image; enforced by `scripts/verify-dockerfile-workspace.py` (wired in `scripts/gates.json`).
+> - **P3:** `DATABASE_URL` documented in runbook §8 environment table (`docs/operations/runbook.md:448`).
+> - **P4:** Expected 15-minute build time documented in runbook §8.5 (`docs/operations/runbook.md:762-768`).
+> - **P5:** `jq` installed in `Dockerfile.unified` and used in `apps/unified/healthcheck.sh`.
+> - **P6:** Runbook §8.6 added covering logging, debugging, and `OZ_LOG_FORMAT=json` (`docs/operations/runbook.md:797-936`).
+> - **P7:** Fallback `su` quoting corrected (`exec su -s /bin/sh ozpos -c 'exec "$@"' -- "$@"`) in `scripts/docker-entrypoint.sh` and license server entrypoint.
+
+
+## P1 — Single-volume SQLite scaling bottleneck
+
+**Condition:**
+Both the sync server (Rust, `/data/oz-pos.db`) and the auth server (PocketBase, `/data/pb_data/`) use SQLite on the same persistent volume. The `server_performance_analysis.md` targets 200–400 terminals on the Northflank free tier, but with two separate SQLite databases sharing the same disk I/O, the actual ceiling is lower. Northflank provides a **free PostgreSQL addon** (`DATABASE_URL`) that eliminates the single-writer lock bottleneck — but the unified image defaults to `OZ_DB_PATH=/data/oz-pos.db` (SQLite), and the §8 env table has no `DATABASE_URL` row (P3). The `Dockerfile.unified` line 19 says "set DATABASE_URL to switch to the managed Postgres addon", but the operation's primary config document doesn't document it.
+
+**Strategy:**
+Three-part fix covering the configuration gap, not the migration itself:
+1. Add `DATABASE_URL` to the runbook §8 env table (see P3).
+2. Add a one-paragraph note in §8 explaining when to switch: "When the free tier's 200–400 terminal ceiling is reached, or when you observe SQLite lock contention in production, enable the Northflank PostgreSQL addon and set `DATABASE_URL` to the connection string. See `docs/records/audits/2026-08-15-unify-auth-and-sync.md` §Phase 3.5 for the full cutover procedure including the RLS migration."
+3. Consider adding a `Dockerfile.unified` build-time check that fails early if `DATABASE_URL` is unset and `OZ_ENFORCE_PLANS=1` (current SQLite works for dev; production should be on PG).
+
+**Effect after:**
+A deployer reading §8 knows exactly when and how to switch to PostgreSQL. The scaling path is documented, not hidden in an offhand Dockerfile comment. The free tier remains usable for smaller deployments.
+
+---
+
+## P2 — Dockerfile prime layer fragility under workspace changes
+
+**Condition:**
+`Dockerfile.server` and `Dockerfile.unified` each maintain a manual cache-priming stage that copies each workspace member's `Cargo.toml` and creates dummy source files to pre-build dependencies. Every new crate added to the workspace must be added to:
+- The `COPY` manifest block in both Dockerfiles
+- The `mkdir -p` + `echo "// dummy"` source block in both Dockerfiles
+
+The `scripts/verify-dockerfile-workspace.py` CI check validates `Dockerfile.server` against the workspace members list, but does **not** validate `Dockerfile.unified`. A drift in `Dockerfile.unified` goes undetected — the prime build silently fails (best-effort per DOCKER-09), the cache layer becomes dead weight, and every subsequent build pays the full compile time.
+
+**Strategy:**
+1. Extend `verify-dockerfile-workspace.py` to also validate `Dockerfile.unified` — same checks (COPY manifest + dummy src dir presence).
+2. Add a `"skip"` list or separate validation: the unified image excludes `giftcards`, `kitchen`, `promotions`, `purchasing` modules (cloud-server doesn't depend on them). The script should accept a per-file exclusion list.
+3. Alternatively, simplify: generate the prime section from `Cargo.toml` workspace members at build time. A small script that emits the `mkdir` + `COPY` + `echo` lines would eliminate the drift risk entirely.
+
+**Effect after:**
+A new crate added to the workspace triggers a CI failure if either Dockerfile is missing the corresponding `COPY` + dummy source lines. The prime layer stays effective on every build. Option 3 (generation) would remove the manual maintenance burden entirely.
+
+---
+
+## P3 — Missing `DATABASE_URL` in the §8 env table
+
+**Condition:**
+The runbook §8 env table (the authoritative config document for the Northflank deployment) lists every `OZ_*`, `PADDLE_*`, and `OZ_SMTP_*` variable but does **not** list `DATABASE_URL`. The only reference to PostgreSQL is in `Dockerfile.unified` line 19 ("set DATABASE_URL to switch to the managed Postgres addon") and in the separate `docs/records/audits/2026-08-15-unify-auth-and-sync.md`. A deployer reading only §8 has no way to know they can switch from SQLite to the free PostgreSQL addon.
+
+**Strategy:**
+Add a single row to the §8 env table:
+
+```
+| `DATABASE_URL` | `postgres://user:pass@host:5432/db?sslmode=require` | optional — switch from SQLite to the managed PostgreSQL addon (free on Northflank). Requires `sslmode=require` (fail-fast at boot). See `docs/records/audits/2026-08-15-unify-auth-and-sync.md` §Phase 3.5 for the full cutover. |
+```
+
+**Effect after:**
+The env table is complete. A deployer can see the PG option without reading separate docs. The "sslmode=require" requirement is enforced at boot (fail-fast) and documented in the table.
+
+---
+
+## P4 — Full Rust workspace rebuild on every backend push
+
+**Condition:**
+`deploy.yml` triggers a Northflank build of `Dockerfile.unified` on every push to `main` that touches backend paths (`crates/**`, `apps/**`, `modules/**`, etc.). The Docker build runs a **full Rust workspace compilation** (prime + real build) which takes ~15 minutes on Northflank's 4-core/16GB builders. The deploy workflow's timeout is 90 minutes with a 50-minute poll limit. This is not a bug — it's the expected cost of a multi-crate workspace — but it's worth documenting and optimizing where possible.
+
+**Strategy:**
+1. **Document the expected build time** in the runbook §8.5 (trigger step) so a deployer knows a 15-minute build is normal.
+2. **Add a Cargo workspace-level `sccache`** to the Docker builder stage. The prime layer already caches dependency downloads; `sccache` would cache the actual compilation artifacts across builds (Northflank's builder instances are ephemeral, so this only helps if the builder node is reused within the cache TTL — Northflank does not guarantee this, but it's a no-regret add).
+3. **Set `CARGO_INCREMENTAL=1`** in the Dockerfile builder for the real build — it's already default for debug builds, but the Dockerfile uses `--release` which disables incremental. This is a tradeoff: incremental adds ~10% to binary size but speeds up the non-cached portions of the build.
+
+**Effect after:**
+The build time is documented, reducing surprise. `sccache` may speed up re-builds on the same builder node. The incremental compilation flag is a tradeoff — worth applying only if the 15-minute build is a bottleneck.
+
+---
+
+## P5 — `healthcheck.sh` greps raw JSON (fragile)
+
+**Condition:**
+`apps/unified/healthcheck.sh` parses the PocketBase `/api/health` JSON response with:
+```sh
+smtp_block="$(printf '%s' "$license_health" | grep -o '"smtp":{[^}]*}' || true)"
+smtp_configured="$(printf '%s' "$smtp_block" | grep -c '"configured":true' || true)"
+```
+This is fragile: a JSON key order change, a newline in the smtp block, or a nested object with braces would break the parse. The unified image (debian:bookworm-slim) does not install `jq`. The deploy workflow's smoke test uses `jq` (GitHub runner has it), but the container's `HEALTHCHECK` does not.
+
+**Strategy:**
+1. **Install `jq`** in the unified runtime image (one line in `Dockerfile.unified` line 148: `jq` added to the `apt-get install` list).
+2. **Rewrite the grep-based parsing** in `healthcheck.sh` to use `jq`:
+   ```sh
+   smtp_configured=$(printf '%s' "$license_health" | jq -r '.smtp.configured // false' 2>/dev/null)
+   smtp_verified=$(printf '%s' "$license_health" | jq -r '.smtp.verified // false' 2>/dev/null)
+   paddle_secret=$(printf '%s' "$license_health" | jq -r '.paddle.secret_configured // false' 2>/dev/null)
+   ```
+3. **Update `test-healthcheck.sh`** to mock the new `jq`-based parsing (the test harness currently uses `wget` mock; the `jq` calls would need to be available in the test environment or mocked).
+
+**Effect after:**
+The healthcheck is robust against JSON shape changes. `jq` is available in the container for any future JSON parsing needs. The healthcheck test verifies the `jq` path.
+
+---
+
+## P6 — Minimal debug/tracing in the running container
+
+**Condition:**
+Supervisord logs go to `/dev/null` and `/dev/stdout`. The `OZ_LOG_FORMAT=json` env var exists (runbook §8) but is not set in the Northflank dashboard. There is no structured logging, no log aggregation destination configured, and no crash-log retention beyond the container's stdout. If a process crashes and supervisord restarts it, the crash log is only in the container stdout (which Northflank buffers but does not guarantee retention).
+
+**Strategy:**
+1. **Set `OZ_LOG_FORMAT=json`** in the runbook §8 env table as the recommended value for the Northflank deployment — make it the default, not a footnote.
+2. **Add a runbook section §8.6** "Logging & Debugging" that documents:
+   - Northflank's log viewer (dashboard → service → logs) for real-time tailing.
+   - How to enable `RUST_LOG=debug` temporarily for diagnosis.
+   - Where crash dumps go (container stdout, retained by Northflank per their retention policy).
+3. **Optional**: Add a `console-subscriber` feature gate to the unified image's `supervisord.conf` (commented out, with a note explaining how to enable tokio-console for deep debugging).
+
+**Effect after:**
+A deployer can find and interpret logs without guessing. The `json` format makes structured log queries possible. The optional tokio-console path is documented for deep debugging sessions.
+
+---
+
+## P7 — `su` fallback quoting in entrypoints
+
+**Condition:**
+Both `Dockerfile.server`'s entrypoint (`scripts/docker-entrypoint.sh`) and the license-server entrypoint (`apps/license-server/docker-entrypoint.sh`) have a fallback path when `gosu`/`su-exec` is unavailable:
+```sh
+exec su -s /bin/sh ozpos -c "$*"
+```
+The `$*` collapses all positional arguments into a single string, which works for simple commands like `/app/oz-cloud-server` but breaks if the `CMD` contains quoted arguments (e.g., `CMD ["/pb/pocketbase", "serve", "--http=0.0.0.0:8080"]` would be collapsed to `/pb/pocketbase serve --http=0.0.0.0:8080` — which is fine for this case, but patterns like `--http="0.0.0.0:8080"` would break). The `gosu`/`su-exec` primary path is correct; the fallback is only reached if the tools are missing from the runtime image.
+
+**Strategy:**
+1. **Replace `"$*"` with `"$@"`** in both fallback `su` paths:
+   ```sh
+   exec su -s /bin/sh ozpos -c "$*"    →    exec su -s /bin/sh ozpos -- "$@"
+   ```
+   `"$@"` preserves each argument as a separate word, matching the `exec` behavior of `gosu`/`su-exec`. The `--` prevents `su` from interpreting arguments as its own options.
+2. Verify the `CMD` in both Dockerfiles is compatible with the `su -c` pattern (it is: simple commands without quoted-argument edge cases).
+
+**Effect after:**
+If `gosu`/`su-exec` is somehow missing from the runtime image, the fallback behaves identically to the primary path. No argument quoting surprises. The change is a one-character substitution (`$*` → `$@`) plus a `--` separator.
+
+---
+
+## Summary table
+
+| Item | Scope | Status | Evidence |
+|------|-------|--------|----------|
+| P1 | Runbook §8 + performance doc | **SHIPPED** | `docs/operations/runbook.md:484-489` |
+| P2 | `verify-dockerfile-workspace.py` + `Dockerfile.unified` | **SHIPPED** | Enforced via gate `verify-dockerfile-workspace` in `scripts/gates.json` |
+| P3 | Runbook §8 env table | **SHIPPED** | `DATABASE_URL` present at `docs/operations/runbook.md:448` |
+| P4 | Runbook §8.5 + `Dockerfile.unified` | **SHIPPED** | Build time & cache behavior documented at `docs/operations/runbook.md:762-768` |
+| P5 | `Dockerfile.unified` + `healthcheck.sh` + test | **SHIPPED** | `jq` package verified in image; `healthcheck.sh` uses `jq` parsing |
+| P6 | Runbook §8.6 | **SHIPPED** | Section 8.6 "Logging & Debugging" live at `docs/operations/runbook.md:797-936` |
+| P7 | `scripts/docker-entrypoint.sh` + `apps/license-server/docker-entrypoint.sh` | **SHIPPED** | Argument preservation via `exec "$@"` live at `scripts/docker-entrypoint.sh:16` |
+
+> last audited 11-10-26 by docs-auditor

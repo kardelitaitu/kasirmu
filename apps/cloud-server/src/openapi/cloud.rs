@@ -95,7 +95,15 @@ pub(super) fn build_cloud_schemas() -> Value {
                 // Nullable on purpose: a pre-existing row has no recorded origin,
                 // and null means unknown — never an empty string. See
                 // `20261007_sync_origin_and_effect_key.sql`.
-                "origin_terminal_id": { "type": ["string", "null"], "description": "Terminal that originated this mutation, when its producer knew it; serialised as null when unknown. Consumers must treat null as not proven self-originated, never as not self-originated" }
+                "origin_terminal_id": { "type": ["string", "null"], "description": "Terminal that originated this mutation, when its producer knew it; serialised as null when unknown. Consumers must treat null as not proven self-originated, never as not self-originated" },
+                // O-M04 (20261023_offline_queue_sale_id.sql): the sale a queue
+                // row is about, denormalised out of `payload` so the settlement
+                // path can probe `sale_id = ?` through an index instead of
+                // substring-scanning every pending payload. Nullable because an
+                // action that concerns no sale (a settings change, a shift close)
+                // has none to record, and because rows written before that
+                // migration backfilled to null.
+                "sale_id": { "type": ["string", "null"], "description": "Sale this queue item is about, denormalised from the payload for indexed idempotency probes. Serialised as null for actions that concern no sale, and for rows predating the backfill" }
             }
         },
         "SyncPushRequest": {

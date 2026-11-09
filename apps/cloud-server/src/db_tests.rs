@@ -128,7 +128,7 @@ fn connect_sqlite_rejects_windows_path_on_unix() {
 
 #[test]
 fn sqlite_from_path_creates_db() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::ScratchDir::new("cloud-db");
     let path = dir.path().join("test.db");
     let path_str = path.to_str().unwrap();
     let pool = DbPool::connect_sqlite(path_str).unwrap();
@@ -141,7 +141,7 @@ fn sqlite_from_path_creates_db() {
 /// the default is never opened, and fail on a fresh clone that has no var/.
 #[test]
 fn sqlite_creates_a_missing_parent_directory() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::ScratchDir::new("cloud-db");
     let nested = dir.path().join("var").join("nested").join("kasir.db");
     assert!(
         !nested.parent().unwrap().exists(),
@@ -158,16 +158,42 @@ fn sqlite_creates_a_missing_parent_directory() {
 
 /// A bare filename has an empty Path::parent(); create_dir_all("") fails, so the
 /// guard has to hold or every such open dies.
+///
+/// O-T12: this used to call `std::env::set_current_dir` — another process-global
+/// mutation — with NO serialisation at all, so a test running beside it could
+/// create its own relative-path database inside this test's scratch directory
+/// and race the `set_current_dir` back. Not any more: `CWD_LOCK` is held for the
+/// duration, so no other test in this binary can resolve a relative path while
+/// the process CWD is moved, and knowing which directory `"bare.db"` lands in
+/// is what makes the assertion below meaningful again — without the lock it
+/// passed only because no other test happened to need a relative path during
+/// the window.
 #[test]
 fn sqlite_accepts_a_bare_filename_with_no_parent() {
-    let dir = tempfile::tempdir().unwrap();
+    let _cwd = CWD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = kasirmu_test_support::ScratchDir::new("cloud-db");
+    let bare = dir.path().join("bare.db");
     let cwd = std::env::current_dir().unwrap();
+    // `CWD_LOCK` is held for the whole window and restored below.
     std::env::set_current_dir(dir.path()).unwrap();
-    let result = DbPool::connect_sqlite("bare.db");
-    std::env::set_current_dir(cwd).unwrap();
-    let pool = result.unwrap();
-    assert!(pool.is_sqlite());
-    assert!(dir.path().join("bare.db").exists());
+    // The RELATIVE spelling is what the original test exercised: with no
+    // component before the filename, `Path::parent()` is `Some("")` and
+    // `create_dir_all("")` would fail — the guard at `db.rs` `connect_sqlite`
+    // is what keeps this open alive. The connection is dropped before the
+    // directory is inspected: WAL leaves `bare.db-wal`/`-shm` behind, and
+    // `ScratchDir::drop` refuses to remove a non-empty directory (that refusal
+    // is why this test cleans up by hand).
+    let relative = DbPool::connect_sqlite("bare.db");
+    // The CWD is restored before `CWD_LOCK` is released.
+    std::env::set_current_dir(&cwd).unwrap();
+    let relative = relative.unwrap();
+    assert!(relative.is_sqlite());
+    drop(relative);
+    assert!(
+        bare.exists(),
+        "a bare filename must still create the database in the current directory"
+    );
+    std::fs::remove_file(&bare).unwrap();
 }
 
 #[tokio::test]
@@ -233,42 +259,66 @@ async fn require_tls_accepts_sslmode_require_and_fails_on_connection() {
     );
 }
 
-/// Serializes env-var-dependent tests since `std::env::set_var` is
-/// process-global and tokio runs tests in parallel.
-static ENV_LOCK: std::sync::LazyLock<tokio::sync::Mutex<()>> =
-    std::sync::LazyLock::new(|| tokio::sync::Mutex::new(()));
+/// Serialises the ONE test that moves the process working directory.
+///
+/// The process CWD is global like the environment is, so any test that
+/// resolves a relative path while another is `set_current_dir`-ing observes
+/// the wrong directory. A plain `std::sync::Mutex` is enough — this guard is
+/// never held across an `await` — and unlike `#[serial]` it is specific to the
+/// resource being shared.
+static CWD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-#[serial(pg_rls_cutover)]
-#[serial]
-#[tokio::test]
-async fn from_env_defaults_to_sqlite() {
-    let _guard = ENV_LOCK.lock().await;
-    // SAFETY: env var mutations are serialized via ENV_LOCK (held by _guard)
-    // to prevent data races on the process-global environment. The Mutex guard
-    // ensures exclusive access; the environment is restored in reverse order.
-    unsafe { std::env::set_var("DATABASE_URL", "") };
-    unsafe { std::env::set_var("OZ_DB_PATH", ":memory:") };
-    let pool = DbPool::from_env().await.unwrap();
-    assert!(pool.is_sqlite());
-    // SAFETY: Same ENV_LOCK serialization as above. These restore env vars
-    // to their prior state (empty/unset) before the guard is released.
-    unsafe { std::env::remove_var("DATABASE_URL") };
-    unsafe { std::env::remove_var("OZ_DB_PATH") };
+/// A `CloudServerConfig::from_lookup` stand-in for the process environment.
+///
+/// Values are read from `vars`; every other name — and every name mapped to
+/// `None` — reads as UNSET, exactly like a variable that is not exported.
+fn fake_env(
+    vars: &'static [(&'static str, Option<&'static str>)],
+) -> impl Fn(&str) -> Option<String> {
+    move |name| {
+        vars.iter()
+            .find(|(k, _)| *k == name)
+            .and_then(|(_, v)| *v)
+            .map(str::to_string)
+    }
 }
 
+/// No `DATABASE_URL` means SQLite; `OZ_DB_PATH` picks the file.
+///
+/// O-T12: this used to `set_var` the two process-global variables under BOTH
+/// a `tokio::sync::Mutex` and `#[serial]`, because a concurrent test in this
+/// binary could otherwise observe the transient value. `from_lookup` replaces
+/// the environment with a local value, so there is nothing left to race on and
+/// no lock to hold; the assertions are the ones this test always made.
 #[serial(pg_rls_cutover)]
-#[serial]
+#[tokio::test]
+async fn from_env_defaults_to_sqlite() {
+    let lookup = fake_env(&[("DATABASE_URL", None), ("OZ_DB_PATH", Some(":memory:"))]);
+    let config = CloudServerConfig::from_lookup(lookup).expect("config should parse");
+    // The detection rule itself: no DATABASE_URL is SQLite, not Postgres.
+    assert!(config.database_url.is_none());
+    assert_eq!(config.db_path, ":memory:");
+    let pool = DbPool::from_config(&config).await.unwrap();
+    assert!(pool.is_sqlite());
+}
+
+/// A `postgres://` `DATABASE_URL` is routed to PostgreSQL, not SQLite.
+///
+/// O-T12: same injection as [`from_env_defaults_to_sqlite`] — see the note
+/// there. The assertions are unchanged from the `set_var` version.
+#[serial(pg_rls_cutover)]
 #[tokio::test]
 async fn from_env_detects_postgres_url() {
-    let _guard = ENV_LOCK.lock().await;
-    // SAFETY: ENV_LOCK (held by _guard) serializes access to the process-global
-    // environment. The set_var is paired with a remove_var before the guard drops.
-    unsafe { std::env::set_var("DATABASE_URL", "postgresql://localhost:5432/test") };
+    let lookup = fake_env(&[("DATABASE_URL", Some("postgresql://localhost:5432/test"))]);
+    let config = CloudServerConfig::from_lookup(lookup).expect("config should parse");
+    assert_eq!(
+        config.database_url.as_deref(),
+        Some("postgresql://localhost:5432/test"),
+        "DATABASE_URL must survive into the config verbatim"
+    );
     // max_attempts=1 skips the 30+ seconds of production retry backoff on a
     // dead port — the test only asserts the URL is routed to PostgreSQL.
-    let pool = DbPool::from_env_with_retries(1).await;
-    // SAFETY: Restores the environment — see SAFETY note on set_var above.
-    unsafe { std::env::remove_var("DATABASE_URL") };
+    let pool = DbPool::from_config_with_retries(&config, 1).await;
     // Should attempt connection but fail
     assert!(pool.is_err());
     let msg = pool.unwrap_err().to_string();
@@ -429,14 +479,27 @@ async fn pg_integration_pool_get_fails_fast_when_exhausted() {
     let held = pool.get().await.expect("first get should succeed");
 
     // A second get must time out (deadpool `wait_timeout` = 5s) rather
-    // than wait forever. Wrap in an outer 15s guard so a regression that
-    // removes the timeout fails the test instead of hanging the suite.
+    // than wait forever. Wrap in an outer guard so a regression that
+    // removes the timeout FAILS the test instead of hanging the suite.
+    //
+    // O-T12: the guard and the bound are the same number on purpose. They
+    // used to be 15s and 12s, which let a pool that ignores `wait_timeout`
+    // burn 12s of the suite before failing — 2.4x the deadline under test
+    // for no added information. The bounded work here is one
+    // `wait_timeout(5s)` (`db.rs`, the pool builder), so anything beyond
+    // 5s + ~1s of scheduler and CI noise is already a lost timeout; 6s is
+    // that budget with the guard expressed as `elapsed` itself, plus a
+    // half-time floor so a get that fails instantly is not mistaken for a
+    // wait.
+    const WAIT_TIMEOUT_LIMIT: std::time::Duration = std::time::Duration::from_secs(6);
     let start = std::time::Instant::now();
-    let result = tokio::time::timeout(std::time::Duration::from_secs(15), pool.get()).await;
+    let result = tokio::time::timeout(WAIT_TIMEOUT_LIMIT, pool.get()).await;
 
     let elapsed = start.elapsed();
     let err = match result {
-        Err(_) => panic!("pool.get() blocked beyond the 15s guard — wait_timeout lost"),
+        Err(_) => panic!(
+            "pool.get() blocked beyond {WAIT_TIMEOUT_LIMIT:?} (wait_timeout is 5s) — wait_timeout lost"
+        ),
         Ok(Err(e)) => e,
         Ok(Ok(_)) => panic!("second get succeeded despite max_size(1) — pool not exhausted"),
     };
@@ -445,8 +508,15 @@ async fn pg_integration_pool_get_fails_fast_when_exhausted() {
         msg.contains("Timeout") || msg.contains("waiting for a slot"),
         "expected a wait timeout, got: {msg}"
     );
+    // The error must be the TIMEOUT, not a fast failure of some other kind:
+    // it has to have waited at least half the 5s deadline. This restores the
+    // lower half of what the old 12s bound could still catch.
     assert!(
-        elapsed < std::time::Duration::from_secs(12),
+        elapsed >= std::time::Duration::from_millis(2500),
+        "the wait should last ~5s (wait_timeout), but it returned in {elapsed:?}"
+    );
+    assert!(
+        elapsed < WAIT_TIMEOUT_LIMIT,
         "wait timeout took too long: {elapsed:?}"
     );
 

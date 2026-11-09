@@ -20,4 +20,8 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-tempfile = { workspace = true }
+# The one definition of the scratch-directory root, and of the Windows TEMP trap
+# it exists to avoid: an ordinary user can CREATE inside C:\WINDOWS\TEMP but
+# cannot DELETE from it, so a fixture there is never cleaned up and a stale one
+# makes the next create fail with PermissionDenied (os error 5).
+kasirmu-test-support = { path = "../../crates/kasirmu-test-support" }

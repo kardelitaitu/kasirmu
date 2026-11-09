@@ -1,5 +1,6 @@
 import { useLocalization } from '@fluent/react';
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { l10nErrorMessage } from '@/utils/app-error';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import Tooltip from '@/app/Tooltip';
 
 import {
@@ -40,6 +41,9 @@ export function SyncConflictsPanel({
   const [error, setError] = useState<string | null>(null);
   const [requeueingId, setRequeueingId] = useState<string | null>(null);
   const [requeueingAll, setRequeueingAll] = useState(false);
+  /** Synchronous mirrors of the requeue flags — see the guards in the handlers below. */
+  const requeueingAllRef = useRef(false);
+  const requeuePendingRef = useRef(new Set<string>());
   const [requeueProgress, setRequeueProgress] = useState<{ current: number; total: number } | null>(null);
   const [expandedPayloadId, setExpandedPayloadId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -58,11 +62,13 @@ export function SyncConflictsPanel({
       const deadCount = list.filter((f) => f.deadLettered).length;
       onCountChange?.(deadCount);
     } catch (e) {
-      setError(String(e));
+      // Was `String(e)` -- the third raw-rejection site in this panel. A list that
+      // failed to load must not print the backend's sentence into a role="alert".
+      setError(l10nErrorMessage(e, l10n, 'sync-conflicts-load-failed'));
     } finally {
       setLoading(false);
     }
-  }, [sessionToken, onCountChange]);
+  }, [sessionToken, onCountChange, l10n]);
 
   useEffect(() => {
     void load();
@@ -70,6 +76,10 @@ export function SyncConflictsPanel({
 
   async function handleRequeue(itemId: string) {
     if (!sessionToken) return;
+    // Per-ROW guard: two DIFFERENT items must requeue concurrently, so this is a set of
+    // ids, not a boolean. A replay of the same row only re-reports its status.
+    if (requeuePendingRef.current.has(itemId)) return;
+    requeuePendingRef.current.add(itemId);
     setRequeueingId(itemId);
     setError(null);
     try {
@@ -77,28 +87,58 @@ export function SyncConflictsPanel({
       await load();
       onRequeueSuccess?.();
     } catch (e) {
-      setError(String(e));
+      // Was `String(e)`: the raw IPC rejection reached a role="alert" verbatim.
+      setError(l10nErrorMessage(e, l10n, 'sync-conflicts-requeue-failed'));
     } finally {
+      requeuePendingRef.current.delete(itemId);
       setRequeueingId(null);
     }
   }
 
   async function handleRequeueAll(items: RemoteSyncFailureDto[]) {
     if (!sessionToken || items.length === 0) return;
+    // Re-entry guard: the replay walks the SAME list a second time, so every row is
+    // requeued twice and the `requeueProgress` bar restarts at 1 of N mid-run.
+    if (requeueingAllRef.current) return;
+    requeueingAllRef.current = true;
     setRequeueingAll(true);
     setError(null);
+    // A per-item failure does NOT abort the batch. The backend refuses an item that is
+    // no longer dead-lettered with CoreError::NotFound (remote.rs:192-195 — "a request to
+    // requeue an item that is already being retried must not be a silent no-op"), which
+    // is a NORMAL outcome here: the operator requeued it from the row button a moment
+    // before, or a previous cycle already claimed it. The old loop let that single
+    // refusal throw out of the whole walk, so the remaining N-of-N items were never
+    // attempted and the operator saw only a raw error string.
+    let failed = 0;
+    let lastError: unknown = null;
     try {
       let index = 0;
       for (const item of items) {
         index++;
         setRequeueProgress({ current: index, total: items.length });
-        await requeueRemoteFailureScoped(sessionToken, item.itemId);
+        try {
+          await requeueRemoteFailureScoped(sessionToken, item.itemId);
+        } catch (e) {
+          failed += 1;
+          lastError = e;
+        }
       }
       await load();
       onRequeueSuccess?.();
+      // Report the PARTIAL result rather than pretending the batch succeeded. A stale
+      // item is not an operator error worth a failure banner, but silently requeueing
+      // 8 of 10 and saying nothing is worse.
+      if (failed > 0) {
+        setError(
+          l10nErrorMessage(lastError, l10n, 'sync-conflicts-requeue-partial') +
+            ` (${failed}/${items.length})`,
+        );
+      }
     } catch (e) {
-      setError(String(e));
+      setError(l10nErrorMessage(e, l10n, 'sync-conflicts-requeue-failed'));
     } finally {
+      requeueingAllRef.current = false;
       setRequeueingAll(false);
       setRequeueProgress(null);
     }
@@ -240,7 +280,7 @@ export function SyncConflictsPanel({
                             data-testid={`payload-view-${f.itemId}`}
                           >
                             <div className="sync-conflicts-payload-header">
-                              <span className="sync-conflicts-payload-title">JSON Payload</span>
+                              <span className="sync-conflicts-payload-title">{l10n.getString('sync-conflicts-payload-title')}</span>
                               <button
                                 type="button"
                                 className="sync-conflicts-copy-btn"

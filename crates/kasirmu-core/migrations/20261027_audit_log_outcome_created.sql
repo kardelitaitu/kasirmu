@@ -1,0 +1,27 @@
+-- 20261027_audit_log_outcome_created.sql
+-- Covering index for the outcome-filtered audit screen (O-M69).
+--
+-- `Store::list_audit_entries_page` / `list_audit_entries_export_filtered` filter the
+-- log through `build_audit_where` (crates/kasirmu-core/src/db/audit.rs), which appends
+-- `outcome = ?N` when the caller asks for it, then orders the page by
+-- `created_at DESC, id DESC`.
+--
+-- Before this migration `audit_log` carried indexes on `action`, `created_at`,
+-- `(target_type, target_id)` and `user_id` — NONE leads with `outcome`. Measured with
+-- EXPLAIN QUERY PLAN over 5,000 seeded rows + ANALYZE:
+--
+--   outcome filter -> SCAN audit_log | USE TEMP B-TREE FOR ORDER BY
+--   no filter      -> SCAN audit_log USING INDEX idx_audit_log_created_at
+--
+-- So ADDING the outcome predicate made the plan WORSE than not filtering: it gave up
+-- the index-only walk for a full table scan plus a temp sort. Every audit screen
+-- filtered to 'failure' read the entire log.
+--
+-- The index leads on `outcome` (two values, 'success' by default and 'failure' the
+-- thing auditors filter FOR), then matches the ORDER BY exactly (both DESC), so the
+-- page is served by a seek with no sort. Measured after: SEARCH audit_log USING
+-- COVERING INDEX (outcome=?) for BOTH values, and the temp B-tree is gone.
+-- `id` is in the index because it is the tiebreaker in the ORDER BY and part of the
+-- keyset cursor (`created_at < ? OR (created_at = ? AND id < ?)`).
+CREATE INDEX IF NOT EXISTS idx_audit_log_outcome_created
+    ON audit_log(outcome, created_at DESC, id DESC);

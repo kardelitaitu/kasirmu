@@ -29,7 +29,12 @@ while the `migration` row declared the bare label "migration", the resolver repo
 `migration smoke test` as claimed by prefix while `migration idempotency` was claimed by
 nothing at all. Demanding an exact claim is what makes the omission visible.
 
-The tree satisfies that today — 120 of 120 steps claimed exactly, 0 by prefix alone —
+The tree satisfies that today (re-measured 2026-11-08 after this file's widening:
+226 steps seen including the 38 indented ones the old column-0 anchor never saw,
+216 unique labels claimed exactly, 6 labels classified without a row and 4
+alternate-pair labels classified for the uniqueness rule through gates.json's
+classified_check_sh_steps key, 0 by prefix alone; the count grows as check.sh
+grows, so read it as a date-stamped measurement, not a constant) —
 so this gate starts green, which is the property round 109 established a new gate needs.
 
 WHAT ELSE THE ROSTER CLAIMS, and where each is checked (audited 2026-10-05, round 153).
@@ -76,8 +81,14 @@ ROOT = Path(__file__).resolve().parent.parent
 CHECK_SH = ROOT / "scripts" / "check.sh"
 GATES_JSON = ROOT / "scripts" / "gates.json"
 
-# `step "<name>" <retry-cmd> <cmd>` — the name is the first quoted field.
-STEP_RE = re.compile(r'(?m)^step\s+"([^"]+)"')
+# `step "<name>" <retry-cmd> <cmd>` — the name is the first quoted field. The anchor
+# allows leading whitespace: until 2026-11-08 it was column-0 only, which made every
+# step inside a conditional block invisible to this checker -- 38 of check.sh's 226
+# steps, including real gates (ui lint, ui typecheck, ui test), measured by the
+# round-143 probe (target/probe-indented-steps.py). The deliberately unrowed labels
+# and the deliberate branch-alternate labels this exposes are excused through
+# gates.json's classified_check_sh_steps key, not by restoring the blindness.
+STEP_RE = re.compile(r'(?m)^\s*step\s+"([^"]+)"')
 
 
 def check_steps(text: str) -> list[str]:
@@ -145,7 +156,7 @@ def ci_findings_in(ci: dict, workflow_text: str) -> list[str]:
     return out
 
 
-def ci_claim_findings(manifest: dict) -> list[str]:
+def ci_claim_findings(manifest: dict, root: Path | None = None) -> list[str]:
     """Gates whose `ci` block names a workflow, job or step that does not exist.
 
     The roster makes a finer claim than a `runners` label: a gate can say WHICH workflow
@@ -155,12 +166,13 @@ def ci_claim_findings(manifest: dict) -> list[str]:
     looks at `runners`.
     """
     out: list[str] = []
+    workflows = (root or ROOT) / ".github" / "workflows"
     for gate in manifest.get("gates", []):
         ci = gate.get("ci") or {}
         wf, job = ci.get("workflow"), ci.get("job")
         if not wf or not job:
             continue
-        path = WORKFLOWS / wf
+        path = workflows / wf
         if not path.is_file():
             out.append("%s: ci.workflow %r does not exist" % (gate.get("id"), wf))
             continue
@@ -202,10 +214,54 @@ def declared_labels(manifest: dict) -> list[str]:
     return out
 
 
-def unclaimed(steps: list[str], labels: list[str]) -> list[str]:
-    """Steps no label names EXACTLY. Prefix matching is deliberately NOT used."""
+def unclaimed(steps: list[str], labels: list[str],
+              classified: dict[str, str] | None = None) -> list[str]:
+    """Steps no label names EXACTLY. Prefix matching is deliberately NOT used.
+
+    `classified` excuses steps the manifest explicitly records as deliberately
+    without a row (installs, test-runner invocations) -- the excuse is per-label
+    and lives beside the gate rows it qualifies, so a NEW unrowed step surfaces
+    instead of silently inheriting the older excuses."""
     known = set(labels)
-    return [s for s in steps if s not in known]
+    excused = classified or {}
+    return [s for s in steps if s not in known and s not in excused]
+
+
+def duplicate_steps(steps: list[str],
+                    classified: dict[str, str] | None = None) -> list[str]:
+    """Labels declared more than once in check.sh.
+
+    Uniqueness is NOT implied by the coverage rule above and was missing until
+    2026-10-23: `unclaimed()` builds a SET of labels, so two steps sharing a name are
+    silently collapsed to one and BOTH read as claimed. A duplicated step then runs its
+    command twice on every matrix pass -- wasting the time the duplicate shares, and, when
+    the second copy was added by mistake, making the file claim a coverage it does not
+    have (one command, described as two).
+
+    Measured the day it was found: `scoped coverage self-test` appeared at two line
+    numbers with two different explanatory comments, and every gate was green. A
+    label recorded in gates.json's classified_check_sh_steps key -- deliberate
+    branch alternates, two mutually exclusive branches sharing one label -- is
+    exempt, so ONE manifest classification carries one reason for both axes.
+    """
+    seen: dict[str, int] = {}
+    excused = classified or {}
+    for one in steps:
+        seen[one] = seen.get(one, 0) + 1
+    return sorted(name for name, count in seen.items()
+                  if count > 1 and name not in excused)
+
+
+def stale_classifications(steps: list[str], classified: dict[str, str]) -> list[str]:
+    """Classified labels that no longer name any check.sh step.
+
+    The classification is an EXCUSE, and an excuse for a step that is gone is not
+    documentation, it is residue: the next genuinely unrowed step added under the
+    same name would inherit a reason written for a different decision. Fail the
+    gate instead, so a renamed or deleted step forces the classification to be
+    re-read at the moment it stops being true."""
+    known = set(steps)
+    return sorted(k for k in classified if k not in known)
 
 
 # A miniature workflow used by the ci-block cases above. Two jobs, and the step that
@@ -224,7 +280,7 @@ STEP_TEXT = (
 )
 
 
-def selftest_findings(manifest: dict) -> list[str]:
+def selftest_findings(manifest: dict, root: Path | None = None) -> list[str]:
     """Gates whose `self_test` command does not name a script that exists and takes the flag.
 
     Three gates record the exact command that proves them. Nothing read it: verify-selftests-
@@ -247,7 +303,7 @@ def selftest_findings(manifest: dict) -> list[str]:
         if not m:
             out.append("%s: self_test names no script under scripts/: %r" % (gid, command))
             continue
-        target = ROOT / m.group(1)
+        target = (root or ROOT) / m.group(1)
         if not target.is_file():
             out.append("%s: self_test runs %s, which does not exist" % (gid, m.group(1)))
         elif "--self-test" not in target.read_text(encoding="utf-8", errors="replace"):
@@ -337,10 +393,80 @@ def _self_test() -> int:
          "python3 --self-test", 1),
         ("a command naming a missing script is a finding",
          "python3 scripts/no-such-checker.py --self-test", 1),
-        ("a script that does not declare the flag is a finding",
-         "python3 scripts/verify-docker-all.sh --self-test", 1),
+        # NOT a real script name. This case used to name scripts/verify-docker-all.sh,
+         # and went red the day that script GAINED a --self-test: the premise "this file
+         # does not declare the flag" was a property of the tree, not of the rule, so the
+         # case rotted the moment the tree improved. A checker's cases must not depend on
+         # the current state of the thing they are checking. The name below can never
+         # exist, so the premise is permanent.
+         ("a script that does not declare the flag is a finding",
+          "python3 scripts/this-script-must-never-exist.py --self-test", 1),
     ]
+    # The UNIQUENESS rule, which the coverage rule cannot express: unclaimed() builds a
+    # set, so two steps sharing a label both read as claimed.
+
     bad = 0
+    dup_cases = [
+        ("no duplicates is clean", ["a", "b", "c"], 0),
+        ("one label twice is a finding", ["a", "b", "a"], 1),
+        ("two labels twice is two findings", ["a", "a", "b", "b"], 2),
+        ("three of one label is ONE finding", ["a", "a", "a"], 1),
+        ("an empty roster has no duplicates", [], 0),
+    ]
+    for name, labels, want in dup_cases:
+        got = len(duplicate_steps(labels))
+        if got != want:
+            bad += 1
+            print("  %-52s FAIL want=%d got=%d" % (name, want, got))
+        else:
+            print("  %-52s ok" % name)
+    # The INDENTED-step widening, on the measured blind spot: the column-0 anchor
+    # made every conditional-block step invisible to this checker (38 steps,
+    # measured 2026-11-08), including real gates.
+    re_cases = [
+        ("a column-0 step is seen", 'step "x" c c' + chr(10), ["x"]),
+        ("an indented step is seen",
+         'if true; then' + chr(10) + '    step "nested" c c' + chr(10) + 'fi' + chr(10),
+         ["nested"]),
+    ]
+    for name, text, want in re_cases:
+        got = check_steps(text)
+        if got != want:
+            bad += 1
+            print("  %-52s FAIL want=%r got=%r" % (name, want, got))
+        else:
+            print("  %-52s ok" % name)
+    # The classification axis: a deliberately unrowed step, and a deliberate pair
+    # of branch alternates, are excused ONLY through the manifest key -- and a
+    # classification naming a vanished step is itself a finding.
+    cls_cases = [
+        ("a classified step is excused from the claim check",
+         ["a", "b"], ["a"], {"b": "install"}, 0),
+        ("an unclassified step is still unclaimed",
+         ["a", "b"], ["a"], {}, 1),
+        ("an excused alternate pair reads clean",
+         ["a", "a"], ["a"], {"a": "branch alternates"}, 0),
+        ("an unexcused duplicate is still a finding",
+         ["a", "a"], ["a"], {}, 1),
+    ]
+    for name, st, lb, cl, want in cls_cases:
+        got = len(unclaimed(st, lb, cl)) + len(duplicate_steps(st, cl))
+        if got != want:
+            bad += 1
+            print("  %-52s FAIL want=%d got=%d" % (name, want, got))
+        else:
+            print("  %-52s ok" % name)
+    stale_cases = [
+        ("a live classification is not stale", ["a"], {"a": "why"}, 0),
+        ("a classification for a vanished step is stale", [], {"ghost": "why"}, 1),
+    ]
+    for name, st, cl, want in stale_cases:
+        got = len(stale_classifications(st, cl))
+        if got != want:
+            bad += 1
+            print("  %-52s FAIL want=%d got=%d" % (name, want, got))
+        else:
+            print("  %-52s ok" % name)
     for name, labels, want in cases:
         got = len(unclaimed(steps, labels))
         if got != want:
@@ -377,33 +503,222 @@ def _self_test() -> int:
             print("  %-52s ok" % name)
     print("SELF-TEST %s (%d cases, no files touched)"
           % ("FAILED" if bad else "OK",
-             len(cases) + len(ci_cases) + len(st_cases) + len(schema_cases)))
-    return 1 if bad else 0
+             len(cases) + len(ci_cases) + len(st_cases) + len(schema_cases)
+             + len(dup_cases) + len(re_cases) + len(cls_cases) + len(stale_cases)))
+    if bad:
+        return 1
+    return shell_ladder()
 
 
-def main() -> int:
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard for the ladder (the r228 lesson, re-measured from the
+    other side: rung 9 drives --self-test through argv, which chains this
+    ladder again via _self_test's tail. The guard turns that one nested call
+    into a printed skip instead of a recursion -- measured 2026-11-09 as a
+    RecursionError before the guard existed).
+    """
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        print("  (ladder re-entry from a nested --self-test: skipped)")
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """r229: the root contract, graded on fixture trees through main(argv, root).
+
+    Each rung's fixture is a throwaway directory with a miniature check.sh
+    and gates.json (plus a workflow file where a rung grades ci blocks), so
+    every report arm fires on exactly one fabricated defect. Rung 8 is the
+    refusal floor: a tree without the evidence files is refused rc 2, never
+    graded hollow.
+    """
+    import contextlib
+    import io
+    import json as _json
+    import tempfile
+
+    def run(root_dir, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root_dir))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    def build(tmp, *, steps=(), labels=(), classified=None, extra_gate=None,
+              workflows=None, write_evidence=True):
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix="mini%d_" % next(rung_n)))
+        manifest = {"gates": [{"id": "g1", "label": "G1", "status": "required",
+                               "runners": {"check.sh": list(labels)}}]}
+        if extra_gate is not None:
+            manifest["gates"].append(extra_gate)
+        if classified is not None:
+            manifest["classified_check_sh_steps"] = classified
+        if write_evidence:
+            sc = base / "scripts"
+            sc.mkdir(parents=True)
+            (sc / "check.sh").write_text(
+                "".join('step "%s" run_cmd\n' % st for st in steps),
+                encoding="utf-8", newline="\n")
+            (sc / "gates.json").write_text(_json.dumps(manifest, indent=1),
+                                           encoding="utf-8", newline="\n")
+        for name, text in (workflows or {}).items():
+            wf = base / ".github" / "workflows"
+            wf.mkdir(parents=True, exist_ok=True)
+            (wf / name).write_text(text, encoding="utf-8", newline="\n")
+        return base
+
+    rung_n = iter(range(1000))
+    shell = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: a step no roster row claims
+        root = build(tmp, steps=("ghost step", "alpha"), labels=("alpha",))
+        rc, said = run(root)
+        if rc != 1 or "no gates.json row names it" not in said \
+                or "ghost step" not in said:
+            print("  x rung 1: an unclaimed step must fail rc 1 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: a fully-claimed miniature greens with its counts named
+        root = build(tmp, steps=("alpha", "beta"), labels=("alpha", "beta"))
+        rc, said = run(root)
+        if rc != 0 or "checked 2 check.sh step(s) against 2 declared" not in said \
+                or "OK: every check.sh step is named" not in said:
+            print("  x rung 2: a fully claimed fixture must green "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: the duplicate arm -- one step declared twice in check.sh
+        root = build(tmp, steps=("alpha", "alpha"), labels=("alpha",))
+        rc, said = run(root)
+        if rc != 1 or "declared more than once in check.sh" not in said:
+            print("  x rung 3: a duplicated step must fail "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: the same duplicate excused by a classification
+        root = build(tmp, steps=("alpha", "alpha"), labels=("alpha",),
+                     classified={"alpha": "branch alternates"})
+        rc, said = run(root)
+        if rc != 0 or "checked 1 classified step(s)" not in said:
+            print("  x rung 4: a classified duplicate must green "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: a classification naming no step any more is stale
+        root = build(tmp, steps=("alpha",), labels=("alpha",),
+                     classified={"ghost": "gone"})
+        rc, said = run(root)
+        if rc != 1 or "stale classification: 'ghost'" not in said:
+            print("  x rung 5: a stale classification must fail "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 6: an unknown gate field removes a claim silently -- it fails
+        root = build(tmp, steps=("alpha",), labels=("alpha",),
+                     extra_gate={"id": "bad", "label": "B", "status": "required",
+                                 "runner": {"check.sh": ["alpha"]}})
+        rc, said = run(root)
+        if rc != 1 or "unknown field" not in said:
+            print("  x rung 6: an unknown field must fail "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 7: a ci block naming a step the workflow does not have
+        root = build(tmp, steps=("alpha",), labels=("alpha",),
+                     extra_gate={"id": "ci1", "label": "C", "status": "required",
+                                 "runners": {"check.sh": ["alpha"]},
+                                 "ci": {"workflow": "ci.yml", "job": "real-job",
+                                        "step": "Nope"}},
+                     workflows={"ci.yml": "jobs:\n  real-job:\n    steps:\n"
+                                          "      - name: Real Step\n"})
+        rc, said = run(root)
+        if rc != 1 or "bad ci claim" not in said:
+            print("  x rung 7: a bad ci claim must fail "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 8: the refusal floor -- no evidence files, refused rc 2
+        root = build(tmp, write_evidence=False)
+        rc, said = run(root)
+        if rc != 2 or "does not exist" not in said:
+            print("  x rung 8: a tree without evidence must refuse rc 2 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 9: --self-test dispatch flows through the argv parameter
+        root = build(tmp)
+        rc, said = run(root, "--self-test")
+        if rc != 0 or "SELF-TEST OK" not in said \
+                or "ladder re-entry" not in said:
+            print("  x rung 9: --self-test through argv must pass rc 0 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("GATE-COMPLETENESS SHELL LADDER OK (%d cases through argv and root, no repository file touched)" % shell)
+    return 0
+
+
+def main(argv=None, root=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--self-test", action="store_true",
                     help="run the extractor cases and exit; touches no files")
-    args = ap.parse_args()
+    # r229: the r166 contract. argv is explicit; a root kwarg names the tree
+    # to grade from code and overrides the module ROOT default. The tool has
+    # one evidence tree (check.sh + gates.json + the workflow files), so root
+    # is threaded as a parameter into the two filesystem-reading walkers
+    # instead of re-binding the module globals.
+    args = ap.parse_args(argv)
     if args.self_test:
         return _self_test()
 
-    for path in (CHECK_SH, GATES_JSON):
+    if root is not None:
+        root = Path(root).resolve()
+    else:
+        root = ROOT
+    check_sh = root / "scripts" / "check.sh"
+    gates_json = root / "scripts" / "gates.json"
+    for path in (check_sh, gates_json):
         if not path.is_file():
             print("refused: %s does not exist" % path)
             return 2
 
-    steps = check_steps(CHECK_SH.read_text(encoding="utf-8", errors="replace"))
-    manifest = json.loads(GATES_JSON.read_text(encoding="utf-8"))
+    steps = check_steps(check_sh.read_text(encoding="utf-8", errors="replace"))
+    manifest = json.loads(gates_json.read_text(encoding="utf-8"))
     labels = declared_labels(manifest)
-    missing = unclaimed(steps, labels)
-    ci_bad = ci_claim_findings(manifest)
-    st_bad = selftest_findings(manifest)
+    classified = manifest.get("classified_check_sh_steps") or {}
+    if not isinstance(classified, dict) or not all(
+            isinstance(k, str) and k.strip()
+            and isinstance(v, str) and v.strip()
+            for k, v in classified.items()):
+        print("refused: classified_check_sh_steps must map non-empty step labels "
+              "to non-empty reasons")
+        return 2
+    stale = stale_classifications(steps, classified)
+    missing = unclaimed(steps, labels, classified)
+    dupes = duplicate_steps(steps, classified)
+    ci_bad = ci_claim_findings(manifest, root)
+    st_bad = selftest_findings(manifest, root)
     schema_bad = schema_findings(manifest)
 
+    for name in stale:
+        print("  stale classification: %r -- names no check.sh step any more" % name)
     for name in missing:
         print("  unclaimed step: %r -- no gates.json row names it" % name)
+    for name in dupes:
+        print("  duplicated step: %r -- declared more than once in check.sh" % name)
     for line in ci_bad:
         print("  bad ci claim: %s" % line)
     for line in st_bad:
@@ -412,12 +727,25 @@ def main() -> int:
         print("  unknown field: %s" % line)
     print("checked %d check.sh step(s) against %d declared runner label(s)"
           % (len(steps), len(labels)))
+    print("checked %d classified step(s): unrowed-by-decision or branch alternates"
+          % len(classified))
     print("checked the ci block of %d gate(s) against the workflow files"
           % sum(1 for g in manifest.get("gates", []) if (g.get("ci") or {}).get("job")))
     print("checked the self_test command of %d gate(s)"
           % sum(1 for g in manifest.get("gates", []) if g.get("self_test")))
     print("checked the field vocabulary: %d gate field(s), %d runners.* key(s), %d ci.* key(s)"
           % (len(GATE_FIELDS), len(RUNNER_FIELDS), len(CI_FIELDS)))
+    if dupes:
+        print("FAIL: %d step label(s) declared more than once. A duplicate runs its command"
+              " twice and makes the file claim a coverage it does not have." % len(dupes))
+        return 1
+
+    if stale:
+        print("FAIL: %d classified step(s) name no step any more. A stale excuse "
+              "inherits its reason onto whatever is next added under that name."
+              % len(stale))
+        return 1
+
     if ci_bad or st_bad or schema_bad:
         print("FAIL: %d bad ci claim(s), %d bad self_test claim(s), %d unknown field(s). A wrong"
               " job name tells an auditor a gate is enforced somewhere it is not; an"
@@ -431,7 +759,8 @@ def main() -> int:
               "manifest -- so it can never be reported as required-but-unenforced."
               % len(missing))
         return 1
-    print("OK: every check.sh step is named by a gates.json runner label")
+    print("OK: every check.sh step is named by a gates.json runner label, "
+          "or classified without one")
     return 0
 
 

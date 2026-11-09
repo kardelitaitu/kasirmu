@@ -79,6 +79,8 @@ halaman tetap bebas JavaScript dan CSP tidak pernah berubah. Jika blok
 
 ```mermaid
 flowchart LR
+    accTitle: Alur webhook Paddle
+    accDescr: Diagram alir checkout memicu webhook Paddle dan pencetakan lisensi.
     A[Checkout] --> B[Paddle webhook]
     B --> C{Lisensi ada?}
     C -- ya --> D[Tanpa aksi — event terulang]
@@ -89,6 +91,8 @@ flowchart LR
 
 ```mermaid
 sequenceDiagram
+    accTitle: Urutan aktivasi lisensi
+    accDescr: Diagram sekuens klien POS mengaktifkan kunci ke license server.
     participant POS as Klien POS
     participant L as License server
     POS->>L: activate(kunci)
@@ -144,4 +148,17 @@ atau `updated` antar lokal. `updated` kedua lokal bergerak bersama setiap
 kali konten berubah — itulah sinyal kesegaran halaman, jadi mengedit
 halaman tanpa membarukannya adalah drift.
 
-> last audited 11-10-26 by docs-auditor
+>
+> **Pemeriksaan ini SUDAH ditegakkan** — sejak 2026-10-19. Ia berjalan di
+> `scripts/check.sh` (langkah `doc parity`), terdaftar di `scripts/gates.json`
+> sebagai `doc-parity`, dan berjalan di CI sebagai langkah
+> `dev-ci.yml#static-gates` bernama `Website locale parity`. Sebelumnya tidak ada
+> yang memanggilnya, padahal halaman ini sendiri menyuruh kontributor
+> menjalankannya — dicatat di sini karena panduan yang menunjuk pemeriksaan yang
+> tidak ditegakkan adalah cara celah itu bertahan. Status hijaunya terbukti:
+> halaman uji yang ditambahkan di `en/` tanpa pasangan `id/` membuat pemeriksa
+> keluar dengan kode 1, dan kembali lulus setelah halaman uji itu dihapus.
+> Skrip gagal bila pasangan hilang dan hanya MEMPERINGATKAN perbedaan jumlah
+> judul atau `updated`, karena itu variasi terjemahan yang wajar, bukan drift.
+> Jalankan setelah menambah, mengganti nama, atau menghapus halaman; jalur pada
+> perintah di atas relatif terhadap `website/`.

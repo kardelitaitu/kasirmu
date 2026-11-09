@@ -186,68 +186,6 @@ export const adjustStock = (args: AdjustStockArgs): Promise<number> =>
 export const adjustStockScoped = (sessionToken: string, args: AdjustStockArgs): Promise<number> =>
   loggedInvoke<number>('adjust_stock_scoped', { sessionToken, args });
 
-// ── Product Variants ──────────────────────────────────────────────
-
-/** A product variant linked to a parent product. */
-export interface ProductVariantDto {
-  id: string;
-  parent_sku: string;
-  name: string;
-  sku: string;
-  price: { minor_units: number; currency: string } | null;
-  barcode: string | null;
-  sort_order: number;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-/** Arguments for creating a new product variant. */
-export interface CreateProductVariantArgs {
-  parentSku: string;
-  name: string;
-  sku: string;
-  priceMinor?: number | null;
-  currency?: string | null;
-  barcode?: string | null;
-  sortOrder?: number;
-  isActive?: boolean;
-}
-
-/** Arguments for updating an existing product variant. */
-export interface UpdateProductVariantArgs {
-  sku: string;
-  name?: string;
-  priceMinor?: number | null;
-  currency?: string | null;
-  barcode?: string | null;
-  sortOrder?: number;
-  isActive?: boolean;
-}
-
-/** List all variants for a given parent product SKU (session-scoped — ADR #7). */
-export const listProductVariants = (sessionToken: string, parentSku: string): Promise<ProductVariantDto[]> =>
-  loggedInvoke<ProductVariantDto[]>('list_product_variants_scoped', { sessionToken, parentSku });
-
-/** Get a single product variant by its SKU (session-scoped — ADR #7). */
-export const getProductVariant = (sessionToken: string, sku: string): Promise<ProductVariantDto | null> =>
-  loggedInvoke<ProductVariantDto | null>('get_product_variant_scoped', { sessionToken, sku });
-
-/** Create a new product variant (session-scoped — ADR #7). */
-export const createProductVariant = (sessionToken: string, args: CreateProductVariantArgs): Promise<{ sku: string }> =>
-  loggedInvoke<{ sku: string }>('create_product_variant_scoped', { sessionToken, args });
-
-/** Update an existing product variant (session-scoped — ADR #7). */
-export const updateProductVariant = (sessionToken: string, args: UpdateProductVariantArgs): Promise<{ sku: string }> =>
-  loggedInvoke<{ sku: string }>('update_product_variant_scoped', { sessionToken, args });
-
-/** Delete a product variant by SKU (session-scoped — ADR #7). */
-export const deleteProductVariant = (sessionToken: string, sku: string): Promise<void> =>
-  loggedInvoke('delete_product_variant_scoped', { sessionToken, sku });
-
-/** Delete a product variant by SKU (scoped). */
-export const deleteProductVariantScoped = (sessionToken: string, sku: string): Promise<void> =>
-  loggedInvoke('delete_product_variant_scoped', { sessionToken, sku });
 
 // ── Categories ────────────────────────────────────────────────────
 

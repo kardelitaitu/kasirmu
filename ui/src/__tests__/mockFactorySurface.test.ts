@@ -47,6 +47,33 @@
 // Run: cd ui && npx vitest run src/__tests__/mockFactorySurface.test.ts
 
 import { describe, expect, it } from 'vitest';
+import { readFileSync, readdirSync } from 'node:fs';
+import { resolve, join } from 'node:path';
+
+/**
+ * Every identifier CALLED from a non-test file under `ui/src`.
+ *
+ * Built by scanning rather than by importing: the question is "does any production
+ * component name this function", and a name is reachable the moment it appears in a call
+ * position — whether or not the call is currently exercised by a test.
+ */
+const productionCallers: Set<string> = (() => {
+  const out = new Set<string>();
+  const walk = (dir: string): void => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, e.name);
+      if (e.isDirectory()) {
+        if (e.name === '__tests__' || e.name === 'node_modules' || e.name === 'dev-mock') continue;
+        walk(full);
+      } else if (/\.tsx?$/.test(e.name) && !/\.test\./.test(e.name)) {
+        const src = readFileSync(full, 'utf8');
+        for (const m of src.matchAll(/\b([a-zA-Z_]\w*)\s*\(/g)) out.add(m[1]!);
+      }
+    }
+  };
+  walk(resolve(__dirname, '..'));
+  return out;
+})();
 
 import * as currencyApi from '@/api/currency';
 import * as customersApi from '@/api/customers';
@@ -169,13 +196,33 @@ const KNOWN_DEAD: Record<string, string[]> = {
     // the factory was cleaned in the same pass.
   ],
   '@/api/products <- createProductsApiMock': [
-    'createCategory', 'deleteCategory', 'updateCategory',
+    // Round 194 deleted the variant wrappers with VariantManagementScreen; round 195
+    // removed the five mock definitions that had been answering them. A mock for an
+    // export the module no longer has is DEAD, and this registry is where that is
+    // declared rather than silently tolerated. Deleting the wrappers and the mocks in
+    // different rounds is why there are seven names here rather than eight: this file
+    // moved twice in two rounds, and each move is a visible edit on purpose.
+    'createCategory',
+    'createProductVariant',
+    'deleteCategory',
+    'deleteProductVariant',
+    'getProductVariant',
+    'listProductVariants',
+    'updateCategory',
+    'updateProductVariant',
   ],
   '@/api/hardware <- createHardwareApiMock': [
     'displayClear', 'displayShow', 'listDisplays',
   ],
   '@/api/products <- createRetailProductsApiMock': [
-    'createCategory', 'deleteCategory', 'updateCategory',
+    'createCategory',
+    'createProductVariant',
+    'deleteCategory',
+    'deleteProductVariant',
+    'getProductVariant',
+    'listProductVariants',
+    'updateCategory',
+    'updateProductVariant',
   ],
   '@/api/currency <- createRetailCurrencyApiMock': [
     'listCurrencies', 'listExchangeRates',
@@ -218,6 +265,13 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // from SalesHistoryScreen.tsx (:567, :591), so the gap was a live throw rather
   // than a cosmetic omission: a suite routing through the factory hit the
   // proxy-less undefined the moment the stamp modal or the pengganti button ran.
+  //
+  // 2026-10-25 (round 147): 'setLineCourseScoped' never APPEARED here. It was
+  // added to @/api/sales by the coursing feature and the factory was left alone,
+  // so the gap was live rather than recorded — and this file stayed green because
+  // its baseline was transcribed when the map was written, not regenerated. The
+  // factory now defines it. The lesson is the one already at :228: the baseline
+  // has to be GENERATED, because a hand-kept list only rots where someone looks.
   '@/api/sales    <- createSalesApiMock': [
     'completeSaleWithResolvedShortfalls', 'lookupSaleByReceiptBarcodeScoped',
     'overrideCartDeductionLocation', 'overrideLinePriceScoped',
@@ -236,6 +290,10 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // PosScreenCoreFlow that error was uncaught during a DOM event dispatch, putting the
   // screen into its error boundary. Removing it here is the deletion direction this map
   // forces a visible edit for.
+  // `setSetting` STAYS on this gap list (the module still exports it, the factory
+  // still does not mock it) but left the REACHABLE map below after the gift-card
+  // span: every production call site migrated to setSettingScoped/setSettingsScoped,
+  // so the plain name is now an unreachable gap -- coverage debt, not a live call.
   '@/api/settings <- createSettingsApiMock': [
     'getDeploymentInfo', 'getHardwareSettingsScoped',
     'getSetting', 'onSettingsUpdated', 'seedDefaultRolesScoped',
@@ -243,7 +301,7 @@ const KNOWN_GAPS: Record<string, string[]> = {
   ],
   // 10 names.
   '@/api/products <- createProductsApiMock': [
-    'createCategoryScoped', 'deleteCategoryScoped', 'deleteProductVariantScoped',
+    'createCategoryScoped', 'deleteCategoryScoped',
     'getProductTrackSerialScoped', 'listWarehouseProductsAtLocation',
     'productsClearImageScoped', 'productsListImagesScoped', 'productsSetImageScoped',
     'recordProductSearchScoped', 'updateCategoryScoped',
@@ -285,13 +343,15 @@ const KNOWN_GAPS: Record<string, string[]> = {
   '@/api/hardware <- createHardwareApiMock': [
     'ScannerError', 'discoverHardwareScoped', 'displayClearScoped',
     'displayShowScoped', 'listDisplaysScoped', 'listScannersScoped',
-    'openCashDrawerScoped', 'printEdcSettlementSlipScoped', 'printReceiptScoped',
+    'openCashDrawerScoped', 'printEdcSettlementSlipScoped', 'printKasbonSettlementSlipScoped', 'printReceiptScoped',
     'printSalesReceiptScoped', 'readScaleWeight', 'readScaleWeightScoped',
     'startScannerScoped', 'stopScannerScoped',
   ],
-  // 8 names.
+  // 7 names. `createCategoryScoped` was on this list until the retail category-persistence
+  // fix (round 52) gave the factory a real mock for it: the gap and the defect were the
+  // same omission, which is why nothing ever noticed categories were never written.
   '@/api/products <- createRetailProductsApiMock': [
-    'createCategoryScoped', 'deleteCategoryScoped', 'deleteProductVariantScoped',
+    'deleteCategoryScoped',
     'listWarehouseProductsAtLocation', 'productsClearImageScoped',
     'productsListImagesScoped', 'productsSetImageScoped', 'updateCategoryScoped',
   ],
@@ -343,5 +403,98 @@ describe('mock factory surface conforms to the module it replaces', () => {
       const live = Object.keys(c.mock).filter((k) => k in c.real);
       expect(live.length, `${c.label} defines no live export at all`).toBeGreaterThan(0);
     }
+  });
+
+  // ── The gap list is a COVERAGE map, not a parking lot ────────────────────
+  //
+  // `KNOWN_GAPS` is asserted for equality above, so it is accurate. What it did not say is
+  // which of its names are REACHABLE: a gap name with a production caller is a call that a
+  // suite routing through this factory would hit as `undefined`.
+  //
+  // That distinction is not academic. In round 52, `createCategoryScoped` sat on the retail
+  // products gap list while `RetailPosScreen` was supposed to call it — and the screen never
+  // called it at all, so a new retail category was never persisted. The gap and the defect
+  // were the same omission: the factory's silence meant no test could make the call, so
+  // nothing noticed the call was missing.
+  //
+  // This case does NOT fail on a reachable gap — plenty are legitimate and documented
+  // per-entry in KNOWN_GAPS. It REQUIRES each one to be recorded here, so the next reader
+  // sees "these gaps are live calls" rather than "these gaps are paperwork". Changing either
+  // set fails the assertion and demands a visible edit.
+  it('records which gap names are reachable from production code', () => {
+    const REACHABLE: Record<string, string[]> = {
+      '@/api/shifts   <- createShiftsApiMock': [
+        'createCashPayoutScoped', 'getShiftReportScoped',
+      ],
+      '@/api/sales    <- createSalesApiMock': [
+        'completeSaleWithResolvedShortfalls', 'lookupSaleByReceiptBarcodeScoped',
+        'overrideCartDeductionLocation', 'overrideLinePriceScoped',
+        'previewPromotedTotalFromLinesScoped',
+      ],
+      '@/api/settings <- createSettingsApiMock': [
+        'getDeploymentInfo', 'getHardwareSettingsScoped', 'getSetting',
+        'onSettingsUpdated', 'setSettingsScoped',
+      ],
+      '@/api/products <- createProductsApiMock': [
+        'createCategoryScoped', 'deleteCategoryScoped', 'listWarehouseProductsAtLocation',
+        'productsClearImageScoped', 'productsListImagesScoped', 'productsSetImageScoped',
+        'recordProductSearchScoped', 'updateCategoryScoped',
+      ],
+      '@/api/kds      <- createKdsApiMock': [
+        'getKdsOrderLinesScoped', 'getKdsRoutingRulesScoped', 'listKdsDevicesScoped',
+        'printKdsChitScoped', 'publishCourseFiredScoped', 'registerKdsDeviceScoped',
+        'saveKdsRoutingRulesScoped', 'updateKdsLineItemStatusScoped',
+        'updateKdsOrderItemsScoped',
+      ],
+      '@/api/reports  <- createReportsApiMock': [
+        'getBasketSizeTrend', 'getCategoryForecast', 'getCategoryPopularity',
+        'getCategoryPopularityTrend', 'getCustomerSplit', 'getDiscountsSummary',
+        'getHourlyOccupancy', 'getInventoryTrend', 'getInventoryTurnover',
+        'getPaymentMethodBreakdown', 'getSaleLineMarginsScoped', 'getTableTurnover',
+        'getVoidedItems', 'getVoidedSalesSummary',
+      ],
+      '@/api/hardware <- createHardwareApiMock': [
+        'discoverHardwareScoped', 'displayClearScoped', 'displayShowScoped',
+        'listDisplaysScoped', 'listScannersScoped', 'openCashDrawerScoped',
+        'printKasbonSettlementSlipScoped',
+        'printReceiptScoped', 'readScaleWeightScoped', 'startScannerScoped',
+        'stopScannerScoped',
+      ],
+      '@/api/customers <- createRetailCustomersApiMock': [
+        'getCustomerHistoryScoped', 'searchCustomersScoped',
+      ],
+      // The retail currency factory lists pure helpers as gaps too, and production calls
+      // them — the exchange-rate screen formats and converts through this module.
+      '@/api/currency <- createRetailCurrencyApiMock': [
+        'convertMinorUnits', 'createExchangeRateScoped', 'deleteExchangeRateScoped',
+        'exchangeRateToDecimal', 'formatExchangeRate', 'getLatestExchangeRateScoped',
+        'reciprocalMillionths',
+      ],
+      // The retail products factory is missing five more names that production DOES call,
+      // all of them from EditProductModal and the warehouse console.
+      '@/api/products <- createRetailProductsApiMock': [
+        'deleteCategoryScoped', 'listWarehouseProductsAtLocation',
+        'productsClearImageScoped', 'productsListImagesScoped', 'productsSetImageScoped',
+        'updateCategoryScoped',
+      ],
+    };
+
+    const measured: Record<string, string[]> = {};
+    for (const [label, names] of Object.entries(KNOWN_GAPS)) {
+      const reachable = names.filter((name) => productionCallers.has(name)).sort();
+      if (reachable.length) measured[label] = reachable;
+    }
+    const expected: Record<string, string[]> = {};
+    for (const [label, names] of Object.entries(REACHABLE)) {
+      if (names.length) expected[label] = [...names].sort();
+    }
+    expect(
+      measured,
+      'the set of REACHABLE gap names changed. A name appearing here means a production ' +
+      'component calls something this factory does not mock, so any suite routing through ' +
+      'it hits `undefined` at that call — see the round-52 retail category case. A name ' +
+      'disappearing means the caller went away or the factory gained the key; update the ' +
+      'gap list and this map together.',
+    ).toEqual(expected);
   });
 });

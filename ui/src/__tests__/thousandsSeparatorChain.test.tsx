@@ -26,6 +26,12 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { SettingsProvider, useSettings } from '@/contexts/SettingsContext';
 import { formatMoney } from '@/types/domain';
 import { getThousandsSep } from '@/utils/storage';
+import type * as SettingsApi from '@/api/settings';
+import type * as OfflineApi from '@/api/offline';
+import type * as CurrencyApi from '@/api/currency';
+import type * as BrandingApi from '@/api/branding';
+import type * as SystemApi from '@/api/system';
+import type * as TerminalsApi from '@/api/terminals';
 
 const { mockStoreSettings } = vi.hoisted(() => ({
   mockStoreSettings: {
@@ -39,7 +45,7 @@ const { mockStoreSettings } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/api/settings', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/api/settings')>();
+  const actual = await importOriginal<typeof SettingsApi>();
   return {
     ...actual,
     getStoreSettingsScoped: () => Promise.resolve({ ...mockStoreSettings }),
@@ -47,7 +53,7 @@ vi.mock('@/api/settings', async (importOriginal) => {
   };
 });
 vi.mock('@/api/offline', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/api/offline')>();
+  const actual = await importOriginal<typeof OfflineApi>();
   return {
     ...actual,
     getSyncSettingsScoped: () => Promise.resolve(null),
@@ -55,15 +61,15 @@ vi.mock('@/api/offline', async (importOriginal) => {
   };
 });
 vi.mock('@/api/currency', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/api/currency')>();
+  const actual = await importOriginal<typeof CurrencyApi>();
   return { ...actual, listCurrenciesScoped: () => Promise.resolve([]) };
 });
 vi.mock('@/api/branding', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/api/branding')>();
+  const actual = await importOriginal<typeof BrandingApi>();
   return { ...actual, getBrandSettingsScoped: () => Promise.resolve(null) };
 });
 vi.mock('@/api/system', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/api/system')>();
+  const actual = await importOriginal<typeof SystemApi>();
   return {
     ...actual,
     getVersionScoped: () => Promise.resolve(null),
@@ -71,7 +77,7 @@ vi.mock('@/api/system', async (importOriginal) => {
   };
 });
 vi.mock('@/api/terminals', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/api/terminals')>();
+  const actual = await importOriginal<typeof TerminalsApi>();
   return { ...actual, listTerminalsScoped: () => Promise.resolve([]) };
 });
 

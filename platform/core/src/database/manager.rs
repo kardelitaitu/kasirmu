@@ -43,6 +43,8 @@ pub struct StoreDatabaseManager {
     data_dir: PathBuf,
     /// Lazily-opened per-store databases, keyed by store_id.
     store_dbs: Arc<Mutex<HashMap<String, Arc<Mutex<Connection>>>>>,
+    /// Per-store initialization locks to prevent concurrent migrations of the same store (O-H22).
+    init_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
     /// Migration definitions applied to every new store database.
     migrations: &'static [Migration],
 }
@@ -57,6 +59,7 @@ impl StoreDatabaseManager {
         Self {
             data_dir,
             store_dbs: Arc::new(Mutex::new(HashMap::new())),
+            init_locks: Arc::new(Mutex::new(HashMap::new())),
             migrations,
         }
     }
@@ -69,21 +72,75 @@ impl StoreDatabaseManager {
     ///
     /// If the file doesn't exist, creates it with all migrations applied.
     /// Migrations are always run on open to recover from partial failures.
-    /// The Mutex guard is held for the entire check-then-insert span, preventing TOCTOU races.
+    ///
+    /// O-H22: The global `store_dbs` mutex is held only for cache lookup and
+    /// insert. File creation and migrations run outside the global lock, serialized
+    /// per store_id via a dedicated per-store initialization lock so other stores
+    /// can look up connections or run migrations concurrently.
     pub fn open_store(&self, store_id: &str) -> Result<Arc<Mutex<Connection>>, PlatformError> {
-        let mut store_dbs = self
-            .store_dbs
-            .lock()
-            .map_err(|e| PlatformError::Internal(format!("store db lock poisoned: {e}")))?;
-        if let Some(conn_arc) = store_dbs.get(store_id) {
-            return Ok(conn_arc.clone());
+        // Fast path: connection already open and cached.
+        {
+            let store_dbs = self
+                .store_dbs
+                .lock()
+                .map_err(|e| PlatformError::Internal(format!("store db lock poisoned: {e}")))?;
+            if let Some(conn_arc) = store_dbs.get(store_id) {
+                return Ok(conn_arc.clone());
+            }
         }
+
+        // Validate the path before acquiring locks or touching the filesystem.
+        self.checked_store_db_path(store_id)?;
+
+        // Per-store init lock: serializes concurrent initializations of the SAME store,
+        // while allowing other stores to be looked up or initialized concurrently.
+        let store_init_lock = {
+            let mut init_locks = self
+                .init_locks
+                .lock()
+                .map_err(|e| PlatformError::Internal(format!("store init lock poisoned: {e}")))?;
+            init_locks
+                .entry(store_id.to_owned())
+                .or_insert_with(|| Arc::new(Mutex::new(())))
+                .clone()
+        };
+
+        let _guard = store_init_lock
+            .lock()
+            .map_err(|e| PlatformError::Internal(format!("per-store init lock poisoned: {e}")))?;
+
+        // Double check: another thread may have finished opening while we waited.
+        {
+            let store_dbs = self
+                .store_dbs
+                .lock()
+                .map_err(|e| PlatformError::Internal(format!("store db lock poisoned: {e}")))?;
+            if let Some(conn_arc) = store_dbs.get(store_id) {
+                return Ok(conn_arc.clone());
+            }
+        }
+
         let conn = self.open_or_create_connection(store_id).map_err(|e| {
             tracing::error!(store_id, error = %e, "failed to open store database");
             e
         })?;
         let conn_arc = Arc::new(Mutex::new(conn));
-        store_dbs.insert(store_id.to_owned(), conn_arc.clone());
+
+        {
+            let mut store_dbs = self
+                .store_dbs
+                .lock()
+                .map_err(|e| PlatformError::Internal(format!("store db lock poisoned: {e}")))?;
+            store_dbs.insert(store_id.to_owned(), conn_arc.clone());
+        }
+
+        // Clean up per-store lock entry if no other thread is waiting on it.
+        if let Ok(mut init_locks) = self.init_locks.lock()
+            && Arc::strong_count(&store_init_lock) <= 2
+        {
+            init_locks.remove(store_id);
+        }
+
         Ok(conn_arc)
     }
 
@@ -132,6 +189,20 @@ impl StoreDatabaseManager {
     /// Creates the file, sets pragmas, and runs all migrations.
     /// Idempotent — safe to call multiple times.
     pub fn create_store_db(&self, store_id: &str) -> Result<(), PlatformError> {
+        let store_init_lock = {
+            let mut init_locks = self
+                .init_locks
+                .lock()
+                .map_err(|e| PlatformError::Internal(format!("store init lock poisoned: {e}")))?;
+            init_locks
+                .entry(store_id.to_owned())
+                .or_insert_with(|| Arc::new(Mutex::new(())))
+                .clone()
+        };
+        let _guard = store_init_lock
+            .lock()
+            .map_err(|e| PlatformError::Internal(format!("per-store init lock poisoned: {e}")))?;
+
         let _conn = self.open_or_create_connection(store_id)?;
         Ok(())
     }
@@ -236,6 +307,20 @@ impl StoreDatabaseManager {
                 "refused to delete store database: unsafe store id {store_id:?}"
             )));
         }
+
+        let store_init_lock = {
+            let mut init_locks = self
+                .init_locks
+                .lock()
+                .map_err(|e| PlatformError::Internal(format!("store init lock poisoned: {e}")))?;
+            init_locks
+                .entry(store_id.to_owned())
+                .or_insert_with(|| Arc::new(Mutex::new(())))
+                .clone()
+        };
+        let _guard = store_init_lock
+            .lock()
+            .map_err(|e| PlatformError::Internal(format!("per-store lock poisoned: {e}")))?;
 
         self.close_store(store_id);
 

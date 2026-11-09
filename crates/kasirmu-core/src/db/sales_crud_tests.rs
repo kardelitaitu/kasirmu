@@ -9,7 +9,7 @@
 use super::*;
 use crate::migrations;
 use crate::{Cart, CartLine, SaleStatus, Sku};
-use rusqlite::Connection;
+use rusqlite::{Connection, params};
 
 fn store(conn: &Connection) -> Store<'_> {
     Store::new(conn)
@@ -98,23 +98,58 @@ fn a_transition_that_lost_the_race_reports_the_conflict() {
     // pre-fix unconditional UPDATE returns `Ok` on the first attempt, which
     // panics immediately rather than retrying.
     for _attempt in 0..8 {
-        let dir = std::env::temp_dir().join(format!("oz_sale_race_{}", uuid::Uuid::now_v7()));
-        let conn = fresh_file(&dir);
+        // Every attempt owns its own guarded directory; the guard deletes it
+        // when this iteration's scope ends (on the early return too).
+        let scratch = kasirmu_test_support::ScratchDir::new("sale-race");
+        let dir = scratch.path();
+        let conn = fresh_file(dir);
         let sale_id = seed_pending_sale(&conn);
         let db_path = dir.join("kasir.db");
 
-        // B moves the sale forward and holds the write lock for a fixed beat,
-        // then commits. The beat is what keeps the check-then-act window open:
-        // A (below) runs on the main thread the instant `locked` arrives, so
-        // its read lands well inside it, and its write then blocks on B's lock
-        // until the commit lands.
+        // B moves the sale forward and then HOLDS the write lock until A says
+        // it is blocked on it — no timer (O-T15).
         //
-        // B releases on its own timer rather than on a signal from A, because
-        // A cannot signal mid-call: it is blocked inside `update_sale_status`.
-        // Running A on the *main* thread is what makes this deterministic —
-        // a spawned A could be descheduled past B's commit, which turns the
-        // expected conflict into a plain invalid-transition `Validation`.
+        // The window used to be a fixed 300 ms sleep. That made the test a bet
+        // on wall-clock behaviour it does not control: on a stalled host A's
+        // read could land after B's commit (the restage loop was the cover for
+        // that), and the sleep was paid in full on every attempt even when the
+        // window had already been used.
+        //
+        // What the test needs is not "300 ms" but three ORDERED events:
+        //   1. B has taken the write lock and its uncommitted `completed` is
+        //      invisible to readers (`locked` — already the case);
+        //   2. A has read `pending` and is now blocked on B's lock, so its
+        //      write cannot have landed yet (`a_is_waiting` — new);
+        //   3. only then does B commit, releasing the lock A waits on.
+        // Step 3 is driven by A's own busy handler, which fires exactly when A
+        // has done its read and is waiting for the lock — that is the proof A is
+        // INSIDE the check-then-act window, and it replaces the 300 ms guess
+        // with a fact. A first attempt that never waits (it read after the
+        // commit) restages, as before.
+        //
+        // A cannot signal mid-call, so the handler signals for it: it runs on
+        // A's own thread, inside `update_sale_status`, after the status read and
+        // before the UPDATE. Running A on the *main* thread is what keeps the
+        // read ahead of B's commit.
+        static A_IS_WAITING: std::sync::atomic::AtomicBool =
+            std::sync::atomic::AtomicBool::new(false);
+        A_IS_WAITING.store(false, std::sync::atomic::Ordering::SeqCst);
+
+        // A's busy handler is a plain `fn` — rusqlite takes a function POINTER,
+        // so it cannot capture the sender — so it signals through this mailbox.
+        static A_WAITING_TX: std::sync::Mutex<Option<std::sync::mpsc::Sender<()>>> =
+            std::sync::Mutex::new(None);
+        fn note_a_is_waiting(_attempts: i32) -> bool {
+            if !A_IS_WAITING.swap(true, std::sync::atomic::Ordering::SeqCst)
+                && let Some(tx) = A_WAITING_TX.lock().unwrap().as_ref()
+            {
+                let _ = tx.send(());
+            }
+            true
+        }
+
         let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+        let (a_waiting_tx, a_waiting_rx) = std::sync::mpsc::channel();
         let mover = {
             let db_path = db_path.clone();
             let sale_id = sale_id.clone();
@@ -130,24 +165,48 @@ fn a_transition_that_lost_the_race_reports_the_conflict() {
                 )
                 .unwrap();
                 locked_tx.send(()).unwrap();
-                // Hold the window open long enough for A's read to land inside
-                // it, then commit — releasing the lock A is blocked on.
-                std::thread::sleep(std::time::Duration::from_millis(300));
+                // Block until A's busy handler reports it is waiting on this
+                // lock. Bounded (5 s, matching A's own busy_timeout) so a bug
+                // that makes A never wait FAILS here rather than hanging.
+                let a_waited = a_waiting_rx
+                    .recv_timeout(std::time::Duration::from_secs(5))
+                    .is_ok();
+                // Release anyway: if A never waited, its call has already
+                // finished and the outcome is classified below (a `Validation`
+                // restages, a `Conflict` cannot happen without a real wait).
                 tx.commit().unwrap();
+                a_waited
             })
         };
         locked_rx.recv().unwrap();
 
         // A is the caller that observed `pending` and is mid-transition.
+        //
+        // The busy handler is a plain `fn` (rusqlite's `busy_handler` takes a
+        // function POINTER, so a closure cannot capture the sender). It reports
+        // through a `static` mailbox, `A_WAITING_TX`, which is only read here on
+        // the connection A owns: the static cannot race because the test binds
+        // one connection's events at a time.
         let conn_a = Connection::open(&db_path).unwrap();
         conn_a.pragma_update(None, "busy_timeout", "5000").unwrap();
+        A_WAITING_TX.lock().unwrap().replace(a_waiting_tx);
+        conn_a.busy_handler(Some(note_a_is_waiting)).unwrap();
         let outcome = Store::new(&conn_a).update_sale_status(&sale_id, SaleStatus::Active);
-        mover.join().unwrap();
+        let a_waited = mover.join().unwrap();
 
         match outcome {
             // The intended interleaving: A read `pending`, B committed, A's
             // compare-and-set matched nothing.
             Err(CoreError::Conflict { .. }) => {
+                // A reached its write and found it could not match, so it must
+                // have been blocked on B's lock first — the overlap this test
+                // exists to force. Without it the "conflict" would be an
+                // ordinary "row moved earlier" refusal, not a lost race.
+                assert!(
+                    a_waited,
+                    "the losing transition must have BLOCKED on B's write lock \
+                     before reporting Conflict; it never entered the window"
+                );
                 // The decisive assertion: B's transition is still on disk.
                 let after = Connection::open(&db_path).unwrap();
                 assert_eq!(
@@ -155,14 +214,11 @@ fn a_transition_that_lost_the_race_reports_the_conflict() {
                     "completed",
                     "the losing transition overwrote the winner"
                 );
-                let _ = std::fs::remove_dir_all(&dir);
                 return;
             }
             // A read too late — B had already committed, so there was no race
             // left to lose. Restage.
-            Err(CoreError::Validation { .. }) => {
-                let _ = std::fs::remove_dir_all(&dir);
-            }
+            Err(CoreError::Validation { .. }) => {}
             // The pre-fix behaviour: the losing transition succeeded and
             // silently discarded the winner's `completed`.
             Ok(sale) => panic!(
@@ -186,8 +242,10 @@ fn a_transition_that_lost_the_race_reports_the_conflict() {
 /// no-overwrite property for the committed case.
 #[test]
 fn a_committed_competing_transition_is_not_overwritten() {
-    let dir = std::env::temp_dir().join(format!("oz_sale_cas_{}", uuid::Uuid::now_v7()));
-    let conn = fresh_file(&dir);
+    // The guard owns the directory and deletes it on drop.
+    let scratch = kasirmu_test_support::ScratchDir::new("sale-cas");
+    let dir = scratch.path();
+    let conn = fresh_file(dir);
     let sale_id = seed_pending_sale(&conn);
 
     // A second connection, the shape a second terminal or a sync replay
@@ -225,8 +283,6 @@ fn a_committed_competing_transition_is_not_overwritten() {
         .unwrap();
     assert_eq!(after, before, "the refused call still bumped the version");
     assert_eq!(stored_status(&other, &sale_id), "active");
-
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 // -- a sale header that cannot be read must not map to a plausible default --

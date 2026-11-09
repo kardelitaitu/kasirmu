@@ -56,8 +56,11 @@ INLINE_DUMMY_MEMBERS = {"apps/desktop-tauri", "apps/mobile-tauri"}
 SKIP_MEMBERS = {"tools/fuzz", "tools/fuzz/hfuzz"}
 
 
-def workspace_members() -> list[str]:
-    text = CARGO_TOML.read_text(encoding="utf-8")
+def workspace_members(root=None) -> list[str]:
+    """r199: the workspace reader follows the contract root."""
+    base = ROOT if root is None else Path(root).resolve()
+    toml = CARGO_TOML if root is None else base / "Cargo.toml"
+    text = toml.read_text(encoding="utf-8")
     m = re.search(r"\[workspace\]\s*(.*?)(?:\n\[|\Z)", text, re.S)
     if not m:
         sys.exit("error: could not locate [workspace] section in Cargo.toml")
@@ -73,8 +76,8 @@ def workspace_members() -> list[str]:
         if '*' in pat or '?' in pat:
             # Use Path.glob on the workspace root to resolve the pattern.
             hits = sorted(
-                p.relative_to(ROOT).as_posix()
-                for p in ROOT.glob(pat)
+                p.relative_to(base).as_posix()
+                for p in base.glob(pat)
                 if p.is_dir()
             )
             if hits:
@@ -86,9 +89,14 @@ def workspace_members() -> list[str]:
     return sorted(set(expanded))
 
 
-def workspace_package_value(key: str) -> str:
-    """Read a scalar string value from `[workspace.package]` in the root Cargo.toml."""
-    text = CARGO_TOML.read_text(encoding="utf-8")
+def workspace_package_value(key: str, root=None) -> str:
+    """Read a scalar string value from `[workspace.package]` in the root Cargo.toml.
+
+    r199: follows the contract root; called per main() invocation rather than
+    at import, so a root other than this checkout reads ITS version.
+    """
+    toml = CARGO_TOML if root is None else Path(root).resolve() / "Cargo.toml"
+    text = toml.read_text(encoding="utf-8")
     m = re.search(r"\[workspace\.package\]\s*(.*?)(?:\n\[|\Z)", text, re.S)
     if not m:
         sys.exit("error: could not locate [workspace.package] section in Cargo.toml")
@@ -99,16 +107,14 @@ def workspace_package_value(key: str) -> str:
     return km.group(1)
 
 
-WS_VERSION = workspace_package_value("version")
-WS_EDITION = workspace_package_value("edition")
-
-
 def dockerfile_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def check_dockerfile(name: str, members: list[str]) -> list[str]:
-    path = ROOT / name
+def check_dockerfile(name: str, members: list[str], root=None,
+                     ws_version: str = "", ws_edition: str = "") -> list[str]:
+    base = ROOT if root is None else Path(root).resolve()
+    path = base / name
     if not path.exists():
         return [f"{name}: Dockerfile not found"]
     dockerfile = dockerfile_text(path)
@@ -137,7 +143,7 @@ def check_dockerfile(name: str, members: list[str]) -> list[str]:
             if dummy_line is None:
                 errors.append(f"{name}: {member}: expected inline dummy Cargo.toml printf in cache stage")
                 continue
-            for key, val in (("version", WS_VERSION), ("edition", WS_EDITION)):
+            for key, val in (("version", ws_version), ("edition", ws_edition)):
                 if f"\\n{key} = \"{val}\"" not in dummy_line:
                     errors.append(
                         f"{name}: {member}: inline dummy {key} must be '{val}' "
@@ -247,14 +253,26 @@ def apt_divergence(texts: dict[str, str]) -> list[str]:
     return findings
 
 
-def main() -> int:
-    members = workspace_members()
+def main(argv=None, root=None) -> int:
+    """r199: argv and root parameterized, the r166..r198 contract -- the
+    workspace manifest, the glob expansion and both Dockerfiles resolve
+    under the contract root; the version/edition the inline dummies are
+    graded against come from THAT manifest, not this checkout's."""
+    members = workspace_members(root)
+    ws_version = workspace_package_value("version", root)
+    ws_edition = workspace_package_value("edition", root)
+    base = ROOT if root is None else Path(root).resolve()
     all_errors: list[str] = []
 
     for name in DOCKERFILES:
-        all_errors.extend(check_dockerfile(name, members))
+        all_errors.extend(check_dockerfile(name, members, base, ws_version, ws_edition))
 
-    texts = {name: (ROOT / name).read_text(encoding="utf-8") for name in DOCKERFILES}
+    # A Dockerfile already reported missing above must not crash the apt
+    # comparison: divergence is graded over the files that EXIST, and the
+    # missing one has already earned its finding.
+    texts = {name: t for name in DOCKERFILES
+             if (base / name).is_file()
+             for t in [(base / name).read_text(encoding="utf-8")]}
     apt_findings = apt_divergence(texts)
     apt_drift = [f for f in apt_findings if "[exempt:" not in f]
 
@@ -319,11 +337,150 @@ def self_test() -> int:
     elif "NOT by b" not in found[0]:
         failures.append(f"divergence does not name the missing file: {found[0]}")
 
+    # The workspace reader -- the priming build's member list comes out of it, so a
+    # gutted one must turn the self-test red. CARGO_TOML and ROOT are patched to a
+    # throwaway workspace for the duration; restored in finally.
+    global CARGO_TOML, ROOT
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        crates = root / "crates"
+        (crates / "alpha").mkdir(parents=True)
+        (crates / "beta").mkdir()
+        (root / "Cargo.toml").write_text(
+            '[workspace]\n'
+            'members = [\n'
+            '    "crates/*",\n'
+            ']\n',
+            encoding="utf-8")
+        _saved_root, _saved_toml = ROOT, CARGO_TOML
+        try:
+            ROOT, CARGO_TOML = root, root / "Cargo.toml"
+            got = workspace_members()
+            if got != ["crates/alpha", "crates/beta"]:
+                failures.append(f"workspace_members: expected the two globbed crates, got {got!r}")
+        finally:
+            ROOT, CARGO_TOML = _saved_root, _saved_toml
+
+    # r199: the shell -- main() graded through argv and a contract root, the
+    # r166..r198 pattern. The fixture is a throwaway workspace (two globbed
+    # crates, one inline-dummy app, one skipped fuzz workspace) plus both
+    # Dockerfiles; the graded dummy version comes from THAT manifest.
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+    shell = 0
+    NL = chr(10)
+    BSN = chr(92) + "n"          # the two-character backslash-n a printf carries
+    MANIFEST = (
+        "[workspace]" + NL
+        + "members = [" + NL
+        + "    " + chr(34) + "crates/*" + chr(34) + "," + NL
+        + "    " + chr(34) + "apps/desktop-tauri" + chr(34) + "," + NL
+        + "    " + chr(34) + "tools/fuzz" + chr(34) + "," + NL
+        + "]" + NL + NL
+        + "[workspace.package]" + NL
+        + "version = " + chr(34) + "0.0.41" + chr(34) + NL
+        + "edition = " + chr(34) + "2021" + chr(34) + NL
+    )
+    def make_df(extra_apt=(), cover_all=True, dummy_version="0.0.41", with_main=True):
+        lines = ["FROM debian:bookworm-slim AS builder"]
+        lines.append("RUN apt-get install -y --no-install-recommends " + chr(92))
+        lines.append("    libssl-dev " + chr(92))
+        for extra in extra_apt:
+            lines.append("    " + extra + " " + chr(92))
+        covered = ["crates/alpha", "crates/beta"] if cover_all else ["crates/alpha"]
+        for member in covered:
+            lines.append("COPY " + member + "/Cargo.toml " + member + "/")
+            lines.append("RUN mkdir -p " + member + "/src")
+        if dummy_version is not None:
+            lines.append(
+                "RUN printf '[package]" + BSN + "name = " + chr(34) + "desktop" + chr(34) + BSN
+                + "version = " + chr(34) + dummy_version + chr(34) + BSN
+                + "edition = " + chr(34) + "2021" + chr(34) + BSN + "' "
+                + "> apps/desktop-tauri/Cargo.toml")
+            if with_main:
+                lines.append("RUN printf 'fn main() {}' > apps/desktop-tauri/src/main.rs")
+        return NL.join(lines) + NL
+    def write_tree(**kw):
+        (base / "ops" / "docker").mkdir(parents=True, exist_ok=True)
+        for member in ("crates/alpha", "crates/beta", "apps/desktop-tauri"):
+            (base / member).mkdir(parents=True, exist_ok=True)
+        (base / "tools" / "fuzz").mkdir(parents=True, exist_ok=True)
+        (base / "Cargo.toml").write_text(MANIFEST, encoding="utf-8")
+        (base / "ops" / "docker" / "Dockerfile.server").write_text(make_df(**kw), encoding="utf-8")
+        (base / "ops" / "docker" / "Dockerfile.unified").write_text(make_df(**kw), encoding="utf-8")
+    def run():
+        out, err = _io.StringIO(), _io.StringIO()
+        try:
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                rc = main(root=base)
+        except SystemExit as se:
+            return se.code, out.getvalue() + err.getvalue()
+        return rc, out.getvalue() + err.getvalue()
+    with _tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        shell += 1
+        write_tree()
+        rc, text = run()
+        if rc != 0 or "OK: all 4 workspace members" not in text:
+            print("  x a fully covered fixture must read OK over 4 members (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        shell += 1
+        write_tree(cover_all=False)
+        rc, text = run()
+        if rc != 1 or "missing 'COPY crates/beta/Cargo.toml'" not in text:
+            print("  x a forgotten member must fail as DOCKER-09 drift (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        shell += 1
+        write_tree(dummy_version="0.0.34")
+        rc, text = run()
+        if rc != 1 or "inline dummy version must be '0.0.41'" not in text:
+            print("  x a stale dummy version must fail naming the bump (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        shell += 1
+        write_tree(with_main=False)
+        rc, text = run()
+        if rc != 1 or "expected inline dummy src" not in text:
+            print("  x a missing dummy src must fail (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        shell += 1
+        write_tree()
+        (base / "ops" / "docker" / "Dockerfile.server").write_text(
+            make_df(extra_apt=("ripgrep",)), encoding="utf-8")
+        rc, text = run()
+        if rc != 1 or "DOCKER-10 drift" not in text or "ripgrep" not in text:
+            print("  x an apt asymmetry must fail naming the package (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        shell += 1
+        write_tree()
+        (base / "ops" / "docker" / "Dockerfile.server").write_text(
+            make_df(extra_apt=("libudev-dev",)), encoding="utf-8")
+        rc, text = run()
+        if rc != 0 or "deliberate apt asymmetry" not in text:
+            print("  x an exempted asymmetry must read OK with a NOTE (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        shell += 1
+        write_tree()
+        (base / "ops" / "docker" / "Dockerfile.server").unlink()
+        rc, text = run()
+        if rc != 1 or "Dockerfile not found" not in text:
+            print("  x a missing Dockerfile must fail rc 1 (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
     for f in failures:
         print(f"SELFTEST FAIL: {f}")
     if failures:
         return 1
-    print("OK: apt-divergence self-test passed.")
+    print("OK: apt-divergence self-test passed; main() shell graded "
+          "(%d cases through argv and root)" % shell)
     return 0
 
 

@@ -4,7 +4,7 @@
 // store cards with primary badge, and data rendering.
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import MultiStoreDashboardScreen from '@/features/locations/MultiStoreDashboardScreen';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -18,11 +18,15 @@ const mockListStores = vi.fn();
 const mockListTerminals = vi.fn();
 const mockGetPrefix = vi.fn();
 const mockSetPrefix = vi.fn();
+// Both were bare `vi.fn()` with no alias, so no test could arrange on a REFUSED
+// Set-Primary or Delete — which is why their `catch { // silently fail }` went unnoticed.
+const mockSetPrimary = vi.fn();
+const mockDeleteStore = vi.fn();
 
 vi.mock('@/api/locations', () => ({
   listLocationsScoped: () => mockListStores(),
-  setPrimaryLocationScoped: vi.fn(),
-  deleteLocationProfileScoped: vi.fn(),
+  setPrimaryLocationScoped: (...args: unknown[]) => mockSetPrimary(...args),
+  deleteLocationProfileScoped: (...args: unknown[]) => mockDeleteStore(...args),
   getLocationTicketPrefixScoped: (...args: unknown[]) => mockGetPrefix(...args),
   setLocationTicketPrefixScoped: (...args: unknown[]) => mockSetPrefix(...args),
 }));
@@ -106,6 +110,8 @@ describe('MultiStoreDashboardScreen', () => {
     mockListTerminals.mockReset();
     mockGetPrefix.mockReset();
     mockSetPrefix.mockReset();
+    mockSetPrimary.mockReset().mockResolvedValue({ id: 'store-2' });
+    mockDeleteStore.mockReset().mockResolvedValue(undefined);
     mockListStores.mockResolvedValue(sampleStores);
     mockListTerminals.mockResolvedValue(sampleTerminals);
     mockGetPrefix.mockResolvedValue(null);
@@ -204,6 +210,65 @@ describe('MultiStoreDashboardScreen', () => {
     expect(screen.queryByText('location-limit-upgrade-premium')).not.toBeInTheDocument();
   });
 
+
+  // ── The two mutations reported NOTHING on failure ────────────────────
+  //
+  // `handleSetPrimary` (:71) and `handleDelete` (:82) both end in `catch { // silently
+  // fail }`. Both are consequential: Set as Primary decides which store the dashboard and
+  // the workspace treat as the default one, and Delete removes a store profile outright.
+  //
+  // The state setters run AFTER the await, so a refusal leaves the row unmodified — which
+  // is why these were not the optimistic-update shape. What the operator got instead was a
+  // click that did nothing with no explanation: no toast, no inline error, nothing. The
+  // next move is to click again.
+  it('says so when Set as Primary is refused', async () => {
+    mockSetPrimary.mockRejectedValue(new Error('locked'));
+
+    render(<MultiStoreDashboardScreen />);
+    // "Set as Primary" only renders for a NON-primary store (:312), so wait for
+    // Downtown, not Main Street — which is the primary in this fixture.
+    await waitFor(() => expect(screen.getByText('Downtown')).toBeInTheDocument(),
+      { timeout: 3000 });
+
+    // By TEXT, not accessible name: this file's l10n mock returns the raw key, so the
+    // `aria-label` on the button is "multi-store-btn-set-primary-label" with the store
+    // name substituted — which a /set as primary/i name query cannot match.
+    await userEvent.click(screen.getByText('Set as Primary'));
+
+    await waitFor(() => {
+      expect(mockSetPrimary).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      const shown = Array.from(
+        document.querySelectorAll('.toast, [role="alert"], [role="status"]'),
+      ).map((n) => n.textContent ?? '').join(' | ');
+      expect(shown, 'a refused Set-Primary produced no message at all').not.toBe('');
+    });
+  });
+
+  it('says so when a store Delete is refused', async () => {
+    mockDeleteStore.mockRejectedValue(new Error('has dependents'));
+
+    render(<MultiStoreDashboardScreen />);
+    await waitFor(() => expect(screen.getByText('Main Street')).toBeInTheDocument(),
+      { timeout: 3000 });
+
+    // By text — see the Set-Primary case for why a name query cannot match here.
+    await userEvent.click(screen.getByText('Delete'));
+
+    await waitFor(() => {
+      expect(mockDeleteStore).toHaveBeenCalled();
+    });
+    // The row is still there (the setter runs after the await), so the ONLY feedback
+    // available is a message.
+    expect(screen.getByText('Main Street')).toBeInTheDocument();
+    await waitFor(() => {
+      const shown = Array.from(
+        document.querySelectorAll('.toast, [role="alert"], [role="status"]'),
+      ).map((n) => n.textContent ?? '').join(' | ');
+      expect(shown, 'a refused Delete produced no message at all').not.toBe('');
+    });
+  });
   // ── Locations → Topology entry points (§"Locations and Topology
   //    navigation") ──────────────────────────────────────────────
   // The dashboard only ROUTES: Configure topology deep-links into the
@@ -353,6 +418,36 @@ describe('MultiStoreDashboardScreen', () => {
       // The confirmation renders the normalized prefix — what future
       // tickets will actually carry (echo MAIN123, not typed 'main ').
       expect(within(dialog).getByRole('status').textContent).toMatch(/MAIN123/);
+    });
+
+    it('sends one prefix write when the save button is double-tapped', async () => {
+      // Why a replay matters even though the backend write is an idempotent
+      // UPDATE ... WHERE id = ?: two in-flight writes ECHO into the same
+      // `prefixSaved`, so the operator can be shown the value from the tap
+      // that lost, and two failures report "the save failed" for a save that
+      // landed. The `prefixBusy` state flag cannot refuse the second tap --
+      // both clicks run before React re-renders with the button disabled.
+      mockGetPrefix.mockResolvedValue(null);
+      mockSetPrefix.mockResolvedValue('MAIN');
+      render(<MultiStoreDashboardScreen />);
+      await waitFor(() => {
+        expect(screen.getByText('Main Street')).toBeInTheDocument();
+      }, { timeout: 3000 });
+
+      await userEvent.click(screen.getAllByRole('button', { name: 'multi-store-btn-details-label' })[0]!);
+      const dialog = screen.getByRole('dialog');
+      const input = await within(dialog).findByLabelText('Prefix');
+      await userEvent.type(input, 'main');
+
+      const saveBtn = within(dialog).getByRole('button', { name: 'multi-store-prefix-save-aria' });
+      await act(async () => {
+        fireEvent.click(saveBtn);
+        fireEvent.click(saveBtn);
+      });
+
+      await waitFor(() => {
+        expect(mockSetPrefix).toHaveBeenCalledTimes(1);
+      });
     });
   });
 });

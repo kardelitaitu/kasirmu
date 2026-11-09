@@ -1,5 +1,5 @@
 //! Staff command unit tests (Wave-B test relocation: moved out of
-//! `apps/desktop-tauri/src/commands/staff_tests.rs`).
+//! `apps/desktop-client/src/commands/staff_tests.rs`, since renamed to desktop-tauri).
 //!
 //! Mounted at the foot of `staff.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the DTOs, the scoped operations and the pub
@@ -423,7 +423,7 @@ async fn scoped_create_staff_allows_owner_session() {
         &ctx,
     )
     .await;
-    // Release: staff.rs:1080 verifies the seeded row signature BEFORE the tier gate
+    // Release: staff.rs:663 verifies the seeded row signature BEFORE the tier gate
     // and before any write, so this refusal is not the staff-quota answer the
     // fixture is about and there is no DTO to read.
     if !seeded_row_reaches_a_paid_tier() {
@@ -460,7 +460,7 @@ async fn scoped_create_staff_blocked_at_free_tier_staff_limit() {
     .await;
 
     // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
-    // row verifies in BOTH profiles, so staff.rs:1080 proceeds past the
+    // row verifies in BOTH profiles, so staff.rs:663 proceeds past the
     // signature in both and the QUOTA verdict below is asserted in both. This
     // arm is reached only when the row exists but does not verify - then the
     // signature gate refuses FIRST, the free tier 1-staff limit is never
@@ -505,7 +505,7 @@ async fn scoped_create_staff_allowed_with_headroom_tier() {
         &ctx,
     )
     .await;
-    // Release: staff.rs:1080 verifies the seeded row signature BEFORE the tier gate
+    // Release: staff.rs:663 verifies the seeded row signature BEFORE the tier gate
     // and before any write, so this refusal is not the staff-quota answer the
     // fixture is about and there is no DTO to read.
     if !seeded_row_reaches_a_paid_tier() {
@@ -1311,7 +1311,7 @@ async fn scoped_staff_commands_use_global_identity_db_for_any_store() {
         &ctx,
     )
     .await;
-    // Release: staff.rs:1080 verifies the seeded row signature BEFORE the tier gate
+    // Release: staff.rs:663 verifies the seeded row signature BEFORE the tier gate
     // and before any write, so this refusal is not the staff-quota answer the
     // fixture is about and there is no DTO to read.
     if !seeded_row_reaches_a_paid_tier() {

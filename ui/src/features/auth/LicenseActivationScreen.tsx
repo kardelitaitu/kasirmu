@@ -61,6 +61,8 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
   const [emailCode, setEmailCode] = useState('');
   const [emailPassword, setEmailPassword] = useState('');
   const [emailBusy, setEmailBusy] = useState(false);
+  /** Synchronous mirror of `emailBusy`, SHARED by the three email steps above. */
+  const emailBusyRef = useRef(false);
   /** Per-flow failure, rendered beside the control that caused it. */
   const [emailError, setEmailError] = useState<string | null>(null);
   const [pairingSession, setPairingSession] = useState<PairingSessionStart | null>(null);
@@ -71,6 +73,8 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
+  /** Synchronous mirror of `loading` — see the re-entry guard in `handleActivate`. */
+  const loadingRef = useRef(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(initialError ?? null);
   // The banner names the rule ("Enter a valid email") but not the control it
   // refers to, so with two fields on screen the user has to guess which one to
@@ -141,6 +145,11 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
    * there is no separate signup step to fall into.
    */
   const sendEmailCode = useCallback(async () => {
+    // Re-entry guard, shared by all three email steps: a second send delivers a SECOND
+    // sign-in code (the one the operator is reading stops matching), and the two submits
+    // both call onActivated against a device the first already linked.
+    if (emailBusyRef.current) return;
+    emailBusyRef.current = true;
     setEmailBusy(true);
     setEmailError(null);
     try {
@@ -150,12 +159,15 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
     } catch (err) {
       setEmailError(l10nErrorMessage(err, l10n, 'auth-email-failed'));
     } finally {
+      emailBusyRef.current = false;
       setEmailBusy(false);
     }
   }, [emailAddress, l10n]);
 
   /** Spend the code; a proved address links the device and finishes the step. */
   const submitEmailCode = useCallback(async () => {
+    if (emailBusyRef.current) return;
+    emailBusyRef.current = true;
     setEmailBusy(true);
     setEmailError(null);
     try {
@@ -165,11 +177,14 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
     } catch (err) {
       setEmailError(l10nErrorMessage(err, l10n, 'auth-email-failed'));
     } finally {
+      emailBusyRef.current = false;
       setEmailBusy(false);
     }
   }, [emailAddress, emailCode, l10n, onActivated, refreshSubscription]);
 
   const submitEmailPassword = useCallback(async () => {
+    if (emailBusyRef.current) return;
+    emailBusyRef.current = true;
     setEmailBusy(true);
     setEmailError(null);
     try {
@@ -179,6 +194,7 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
     } catch (err) {
       setEmailError(l10nErrorMessage(err, l10n, 'auth-email-failed'));
     } finally {
+      emailBusyRef.current = false;
       setEmailBusy(false);
     }
   }, [emailAddress, emailPassword, l10n, onActivated, refreshSubscription]);
@@ -269,14 +285,20 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
       return;
     }
 
+    // Re-entry guard, after every validation. activate_license RECORDS a licence against
+    // the device fingerprint; a replay is refused by the one-licence-per-device rule and
+    // that refusal lands in the catch as auth-activation-error over an activation that
+    // succeeded -- on the screen a merchant sees once, at setup.
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
     try {
       // C47: shell-guarded, and the guard is load-bearing rather than decorative.
       //
       // The tablet shell registers NONE of the three commands this path needs:
       // activate_license, get_machine_id and get_hardware_fingerprint are desktop-only
-      // (apps/desktop-tauri/src/lib.rs:1261, :1267, :1269 — the tablet's commands::license
-      // surface is get_license_status / check_license_status alone, and its activation
+      // (registered in apps/desktop-tauri/src/lib.rs as `commands::license::activate_license`,
+      // `get_machine_id` and `get_hardware_fingerprint` — the tablet’s commands::license
       // path is device pairing). Unguarded, a tablet submit is rejected as an unknown
       // command and the catch below reports a generic activation failure the operator
       // cannot act on: the C40 shape, on the licensing screen.
@@ -322,12 +344,19 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
       }
     } catch (err: unknown) {
       const message = l10nErrorMessage(err, l10n, 'auth-activation-error');
-      
-      addToast({ 
-        type: 'error', 
+
+      // PERSIST IT TOO. The `success === false` branch above sets `errorMsg`, which
+      // stays on the form; this branch only raised a toast, which auto-dismisses. A
+      // transport failure (licence server unreachable — an invoke that REJECTS rather
+      // than resolving false) therefore left the form looking exactly like a submit
+      // that merely re-enabled its button, with no record of what went wrong.
+      setErrorMsg(message);
+      addToast({
+        type: 'error',
         message,
       });
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   };
@@ -375,7 +404,7 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
       </div>
       <div className="license-activation-layout">
         <div className="license-activation-hero">
-          <img src="/256x256.png" alt="kasir.mu Logo" className="license-activation-logo" />
+          <img src="/256x256.png" alt={l10n.getString('license-activation-logo-alt')} className="license-activation-logo" />
         </div>
         
         <div className="license-activation-card">
@@ -619,8 +648,15 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
               aria-selected={authMode === 'pair'}
               className={`license-mode-tab ${authMode === 'pair' ? 'active' : ''}`}
               onClick={() => {
+                // ONLY set the mode. The effect above owns the fetch and gates it on
+                // `authMode === 'pair' && !pairingSession && !pairingLoading && !pairingError`.
+                // Calling loadPairingSession here as well ran it BEFORE this render
+                // committed, when `pairingLoading` was still false — so the effect then
+                // saw a stale "not loading" and started a SECOND device-pairing session.
+                // A failure in the click-time copy also set `pairingError`, which the
+                // effect's copy immediately cleared, hiding the error and minting a
+                // second live pairing code.
                 setAuthMode('pair');
-                if (!pairingSession) void loadPairingSession();
               }}
             >
               <Localized id="auth-tab-pair-device">Pair with Phone</Localized>

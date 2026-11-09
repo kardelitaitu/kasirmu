@@ -1,6 +1,6 @@
 //! Unit tests for the settings bridge module.
 //!
-//! Relocated from `apps/desktop-tauri/src/commands/settings_tests.rs` (Wave E /
+//! Relocated from `apps/desktop-client/src/commands/settings_tests.rs`, since renamed to desktop-tauri (Wave E /
 //! EW1). The shell's `AppState::for_test` is replaced by the headless
 //! `TestBridge` harness ([`crate::testing`]); the conn-taking `run_*`
 use super::*;
@@ -1640,7 +1640,7 @@ fn batch_write_of_two_ordinary_keys_lands_both() {
 // Every test above calls `run_set_settings_batch` with a BARE connection, a
 // shape the product never uses. `set_settings_scoped` opens its own
 // `unchecked_transaction` and runs the loop INSIDE it
-// (crates/kasirmu-bridge/src/settings.rs:1264-1266). A loop that opens a transaction
+// (crates/kasirmu-bridge/src/settings.rs:900-903). A loop that opens a transaction
 // of its own therefore nests, and SQLite rejects the second BEGIN — the same
 // class `crates/kasirmu-bridge/src/setup.rs:100-106` documents for
 // `Settings::set_batch`. These two tests reproduce the command's shape.
@@ -2254,22 +2254,25 @@ async fn scoped_settings_writer_denies_a_settings_edit_holder_out_of_scope() {
 // These tests drive the real `get_hardware_settings` over a `TestBridge`, with a
 // unique temp base dir per case so the profile file is a real file on disk.
 
-/// A unique base directory for one hardware-settings test, and the terminal id it
-/// is keyed by. The directory is left for the OS temp cleaner, matching
-/// `inventory_tests::unique_store_dir` (this crate's fence forbids manifest edits,
-/// so `tempfile` is avoided here on the same reasoning).
-fn hw_base_dir() -> std::path::PathBuf {
-    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    std::env::temp_dir().join(format!(
-        "kasirmu-bridge-hw-{}-{}-{}",
-        std::process::id(),
-        nanos,
-        SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    ))
+/// A unique base directory for one hardware-settings test, with the `ScratchDir`
+/// guard that owns it.
+///
+/// Rooted under `target/test-scratch` -- `std::env::temp_dir()` resolves to the
+/// MACHINE-level `C:\WINDOWS\TEMP` on this project's Windows machines, a
+/// directory an ordinary user can create in but not delete from, so a stale
+/// `kasirmu-bridge-hw-*` entry made the create itself fail with `os error 5`.
+/// The per-call UUID of `ScratchDir::new` replaces the pid/nanos/counter triple,
+/// and `target/` is writable and gitignored.
+///
+/// The guard is returned alongside the path rather than dropped here (the
+/// `(PathBuf, ScratchDir)` shape `testing::unique_store_dir` established): the
+/// test writes the profile file and then drives `get_hardware_settings` over it,
+/// so a guard bound in this function would delete the directory mid-test. It
+/// also stops the leak the bare `scratch_dir` path caused -- one
+/// `kasirmu-bridge-hw-*` directory per case, per run, forever.
+fn hw_base_dir() -> (std::path::PathBuf, kasirmu_test_support::ScratchDir) {
+    let scratch = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-hw");
+    (scratch.path().to_path_buf(), scratch)
 }
 
 /// A profile with an unmistakable printer device path, so a value read back can be
@@ -2307,7 +2310,7 @@ async fn seed_hw_row(
 /// TODO 4e box 1: once a row exists, the JSON file is never consulted.
 #[tokio::test]
 async fn hw_db_row_wins_over_json_file() {
-    let base = hw_base_dir();
+    let (base, _scratch) = hw_base_dir();
     let tb = crate::testing::TestBridge::new().with_terminal_id("t-db-wins");
     let ctx = tb.ctx();
 
@@ -2325,7 +2328,7 @@ async fn hw_db_row_wins_over_json_file() {
 /// then takes the row, so a later file edit cannot change the resolved profile.
 #[tokio::test]
 async fn hw_json_seeds_a_missing_row_once() {
-    let base = hw_base_dir();
+    let (base, _scratch) = hw_base_dir();
     let tb = crate::testing::TestBridge::new().with_terminal_id("t-seed-once");
     let ctx = tb.ctx();
 
@@ -2359,7 +2362,7 @@ async fn hw_json_seeds_a_missing_row_once() {
 /// seed the row, and the row then wins over a later file.
 #[tokio::test]
 async fn hw_legacy_settings_seed_a_missing_row() {
-    let base = hw_base_dir();
+    let (base, _scratch) = hw_base_dir();
     let tb = crate::testing::TestBridge::new().with_terminal_id("t-legacy-seed");
     let ctx = tb.ctx();
 
@@ -2387,7 +2390,7 @@ async fn hw_legacy_settings_seed_a_missing_row() {
 /// stays authoritative, and the caller gets defaults instead of a superseded file.
 #[tokio::test]
 async fn hw_unreadable_row_does_not_fall_back_to_file() {
-    let base = hw_base_dir();
+    let (base, _scratch) = hw_base_dir();
     let tb = crate::testing::TestBridge::new().with_terminal_id("t-bad-row");
     let ctx = tb.ctx();
 
@@ -2417,7 +2420,7 @@ async fn hw_unreadable_row_does_not_fall_back_to_file() {
 /// it returns is the type's defaults.
 #[tokio::test]
 async fn hw_no_source_returns_defaults_and_pins_a_row() {
-    let base = hw_base_dir();
+    let (base, _scratch) = hw_base_dir();
     let tb = crate::testing::TestBridge::new().with_terminal_id("t-nothing");
     let ctx = tb.ctx();
 
@@ -2441,4 +2444,39 @@ async fn hw_no_source_returns_defaults_and_pins_a_row() {
         "the legacy branch seeds a row even from defaults, so the id is pinned \
          to one row from the first read on",
     );
+}
+
+// ── BR-S6: set_setting session verification tests ───────────────────
+
+#[tokio::test]
+async fn set_setting_refuses_spoofed_identity_without_active_session() {
+    let tb = crate::testing::TestBridge::new();
+    let ctx = tb.ctx();
+
+    let err = set_setting(&ctx, "store.name", "Attacker Store", "spoofed-user")
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, BridgeError::InvalidSession),
+        "expected InvalidSession for actor without live session, got {err:?}",
+    );
+}
+
+#[tokio::test]
+async fn set_setting_accepts_user_with_active_session_and_permission() {
+    let tb = crate::testing::TestBridge::new();
+    let token = tb.token_granting(permissions::SETTINGS_EDIT).await;
+    let ctx = tb.ctx();
+    let session = ctx.resolve_session(&token).expect("must resolve session");
+
+    set_setting(&ctx, "store.name", "Verified Store", &session.user_id)
+        .await
+        .expect("must succeed with valid active session and permission");
+
+    let read_back = {
+        let conn = ctx.db.lock().await;
+        let store = kasirmu_core::db::Store::new(&conn);
+        store.get_setting("store.name").unwrap()
+    };
+    assert_eq!(read_back.as_deref(), Some("Verified Store"));
 }

@@ -188,47 +188,63 @@ impl CloudServerConfig {
     /// Returns `Err(message)` when validation fails so the caller can log
     /// and exit cleanly instead of panicking.
     pub fn from_env() -> Result<Self, String> {
-        let redirect_only = env_bool("OZ_REDIRECT_ONLY");
-        let sync_redirect_url = std::env::var("OZ_SYNC_REDIRECT_URL").ok();
+        Self::from_lookup(|name| std::env::var(name).ok())
+    }
+
+    /// Build configuration from an injectable variable lookup — the whole of
+    /// `from_env` with the process environment replaced by `lookup`.
+    ///
+    /// This exists so a test can exercise the DETECTION rules (`DATABASE_URL`
+    /// present / absent, `OZ_DB_PATH` set / unset) without mutating the
+    /// process-global environment. Mutating it forces every such test to take
+    /// a process-wide lock and `serial_test::serial` on top, because a
+    /// concurrent test in the same binary would otherwise observe the
+    /// transient value; `lookup` makes the "environment" a local value, so
+    /// such a test needs no lock at all.
+    ///
+    /// Semantics are identical to `from_env` — `Ok(Some(v))` is an exported
+    /// value, `None` is an unset one. Production never calls this directly;
+    /// it calls `from_env`.
+    pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> Result<Self, String> {
+        let redirect_only = env_bool_via(&lookup, "OZ_REDIRECT_ONLY");
+        let sync_redirect_url = lookup("OZ_SYNC_REDIRECT_URL");
 
         if redirect_only && sync_redirect_url.is_none() {
             return Err("OZ_REDIRECT_ONLY=true requires OZ_SYNC_REDIRECT_URL to be set".into());
         }
 
-        let port: u16 = std::env::var("OZ_API_PORT")
-            .ok()
+        let port: u16 = lookup("OZ_API_PORT")
             .and_then(|p| p.parse().ok())
             .unwrap_or(3099);
 
-        let log_format = match std::env::var("OZ_LOG_FORMAT").as_deref() {
-            Ok("json") => LogFormat::Json,
+        let log_format = match lookup("OZ_LOG_FORMAT").as_deref() {
+            Some("json") => LogFormat::Json,
             _ => LogFormat::Plain,
         };
 
-        let enforce_plans = env_bool("OZ_ENFORCE_PLANS");
-        let production = env_bool("OZ_PRODUCTION");
+        let enforce_plans = env_bool_via(&lookup, "OZ_ENFORCE_PLANS");
+        let production = env_bool_via(&lookup, "OZ_PRODUCTION");
 
         // An empty string must not enable key gating: `docker compose`
         // passes `OZ_ADMIN_KEY` through as `""` when the host variable
         // is absent.
-        let admin_key = std::env::var("OZ_ADMIN_KEY").ok().filter(|k| !k.is_empty());
-        let api_secret = std::env::var("OZ_API_SECRET")
-            .ok()
-            .filter(|s| !s.is_empty());
+        let admin_key = lookup("OZ_ADMIN_KEY").filter(|k| !k.is_empty());
+        let api_secret = lookup("OZ_API_SECRET").filter(|s| !s.is_empty());
 
-        let database_url = std::env::var("DATABASE_URL").ok();
+        let database_url = lookup("DATABASE_URL");
         // Program state lives under var/ so the repo root stays clean and
         // scripts/verify-root-policy.py keeps its no-patterns allowlist honest.
         // The parent directory is created in Db::connect_sqlite, not here, so
         // that reading this config never touches the filesystem.
-        let db_path = std::env::var("OZ_DB_PATH").unwrap_or_else(|_| "var/kasir.db".into());
-        let require_tls = resolve_require_tls(env_bool("OZ_DB_REQUIRE_TLS"), production);
-        let db_pool_size = env_usize("OZ_DB_POOL_SIZE", 8);
+        let db_path = lookup("OZ_DB_PATH").unwrap_or_else(|| "var/kasir.db".into());
+        let require_tls =
+            resolve_require_tls(env_bool_via(&lookup, "OZ_DB_REQUIRE_TLS"), production);
+        let db_pool_size = env_usize_via(&lookup, "OZ_DB_POOL_SIZE", 8);
         // Schema application is on by default; only an explicit `0`/`false`/
         // `off` disables it (the opposite of `env_bool`, where unset means
         // false). `OZ_APPLY_SCHEMA=0` is the post-cutover deployment shape.
         let apply_schema = !matches!(
-            std::env::var("OZ_APPLY_SCHEMA")
+            lookup("OZ_APPLY_SCHEMA")
                 .as_deref()
                 .map(str::trim)
                 .unwrap_or("1"),
@@ -236,38 +252,31 @@ impl CloudServerConfig {
         );
 
         validate_production(production, api_secret.as_deref(), admin_key.as_deref())?;
+        warn_plan_gating_disabled(production, enforce_plans);
 
         // Read the acquirer *after* the production flag exists locally, so the
         // same value that reaches the wire is the value the warnings below are
         // about. Hard ordering rule: warnings never `return Err` — refusing
         // here would break a legitimate single-tenant production deployment,
         // which is not this file's call.
-        let midtrans_qris_acquirer =
-            parse_qris_acquirer(std::env::var("MIDTRANS_QRIS_ACQUIRER").ok());
+        let midtrans_qris_acquirer = parse_qris_acquirer(lookup("MIDTRANS_QRIS_ACQUIRER"));
         warn_qris_acquirer_pitfalls(production, midtrans_qris_acquirer.as_deref());
 
-        let admin_email = std::env::var("OZ_ADMIN_EMAIL")
-            .ok()
+        let admin_email = lookup("OZ_ADMIN_EMAIL")
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "adikaradwiatmaja@gmail.com".to_string());
-        let smtp_host = std::env::var("OZ_SMTP_HOST")
-            .ok()
+        let smtp_host = lookup("OZ_SMTP_HOST")
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
-        let smtp_port: u16 = std::env::var("OZ_SMTP_PORT")
-            .ok()
+        let smtp_port: u16 = lookup("OZ_SMTP_PORT")
             .and_then(|p| p.parse().ok())
             .unwrap_or(587);
-        let smtp_user = std::env::var("OZ_SMTP_USER")
-            .ok()
+        let smtp_user = lookup("OZ_SMTP_USER")
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
-        let smtp_password = std::env::var("OZ_SMTP_PASSWORD")
-            .ok()
-            .filter(|s| !s.is_empty());
-        let smtp_from = std::env::var("OZ_SMTP_FROM")
-            .ok()
+        let smtp_password = lookup("OZ_SMTP_PASSWORD").filter(|s| !s.is_empty());
+        let smtp_from = lookup("OZ_SMTP_FROM")
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "no-reply@kasir.mu".to_string());
@@ -284,17 +293,15 @@ impl CloudServerConfig {
             log_format,
             redirect_only,
             sync_redirect_url,
-            stripe_webhook_secret: std::env::var("STRIPE_WEBHOOK_SECRET").ok(),
-            square_webhook_signature_key: std::env::var("SQUARE_WEBHOOK_SIGNATURE_KEY").ok(),
-            square_webhook_url: std::env::var("SQUARE_WEBHOOK_URL").ok(),
-            midtrans_server_key: std::env::var("MIDTRANS_SERVER_KEY")
-                .ok()
-                .filter(|k| !k.is_empty()),
-            midtrans_sandbox: env_bool("MIDTRANS_SANDBOX"),
+            stripe_webhook_secret: lookup("STRIPE_WEBHOOK_SECRET"),
+            square_webhook_signature_key: lookup("SQUARE_WEBHOOK_SIGNATURE_KEY"),
+            square_webhook_url: lookup("SQUARE_WEBHOOK_URL"),
+            midtrans_server_key: lookup("MIDTRANS_SERVER_KEY").filter(|k| !k.is_empty()),
+            midtrans_sandbox: env_bool_via(&lookup, "MIDTRANS_SANDBOX"),
             midtrans_qris_acquirer,
             production,
             api_secret,
-            redis_url: std::env::var("OZ_REDIS_URL").ok().filter(|s| !s.is_empty()),
+            redis_url: lookup("OZ_REDIS_URL").filter(|s| !s.is_empty()),
             admin_email,
             smtp_host,
             smtp_port,
@@ -319,12 +326,13 @@ impl CloudServerConfig {
     }
 }
 
-/// Parse a boolean environment variable.
+/// Parse a boolean variable from an injectable lookup — the primitive
+/// [`CloudServerConfig::from_lookup`] is built from.
 ///
 /// Returns `true` for `"1"`, `"true"` (case-insensitive), or `"on"`
 /// (case-insensitive). Everything else (including unset) returns `false`.
-fn env_bool(name: &str) -> bool {
-    std::env::var(name)
+fn env_bool_via(lookup: &impl Fn(&str) -> Option<String>, name: &str) -> bool {
+    lookup(name)
         .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "on" | "ON"))
         .unwrap_or(false)
 }
@@ -414,12 +422,43 @@ fn warn_qris_acquirer_pitfalls(production: bool, acquirer: Option<&str>) {
     }
 }
 
-/// Parse a positive integer environment variable.
+/// Warn when a production build will run with plan gating OFF.
+///
+/// `OZ_ENFORCE_PLANS` is an ordinary `env_bool`, so an unset (or misspelled,
+/// or `0`/`false`) value disables the sync plan gate entirely. That is the
+/// correct default for development — the flag exists so dev and test keep
+/// working — but in production it silently turns a paid feature boundary into
+/// an open one, and the failure is invisible: every request succeeds.
+///
+/// **Warned, never refused.** `validate_production` deliberately refuses only
+/// the two credentials whose absence is an open door (`OZ_API_SECRET`,
+/// `OZ_ADMIN_KEY`); refusing here would break a legitimate production
+/// deployment that has not started selling plans yet, which is not this
+/// file's call. The warning names the exact variable so an operator reading
+/// startup logs can see the gate is open.
+/// The RULE behind [`warn_plan_gating_disabled`], split out so a test can pin it.
+///
+/// Separating the predicate from the `tracing::warn!` call is deliberate: a test
+/// that observes a log line is testing the subscriber wiring, not the rule. This
+/// function is the whole decision, and the warning above it is just the side
+/// effect of it being true.
+const fn should_warn_plan_gating_disabled(production: bool, enforce_plans: bool) -> bool {
+    production && !enforce_plans
+}
+
+fn warn_plan_gating_disabled(production: bool, enforce_plans: bool) {
+    if should_warn_plan_gating_disabled(production, enforce_plans) {
+        tracing::warn!(
+            "OZ_ENFORCE_PLANS is not enabled while OZ_PRODUCTION=1: the sync plan gate is OPEN, so tenants on the free plan (or with no plan row) are NOT rejected. Set OZ_ENFORCE_PLANS=1 to enforce it. Warned, not refused: a production deployment that has not started selling plans yet is legitimate."
+        );
+    }
+}
+/// Parse a positive integer from an injectable lookup.
 ///
 /// Returns `default` when the variable is unset, empty, or not a positive
 /// integer — the pool must always have at least one connection.
-fn env_usize(name: &str, default: usize) -> usize {
-    parse_usize(std::env::var(name).as_deref().unwrap_or(""), default)
+fn env_usize_via(lookup: &impl Fn(&str) -> Option<String>, name: &str, default: usize) -> usize {
+    parse_usize(lookup(name).as_deref().unwrap_or(""), default)
 }
 
 /// Parse a positive integer from a string, falling back to `default`.

@@ -1,0 +1,5 @@
+{
+  "description": "Outstanding test assertions that name a real Fluent message id where real copy could render. Ratcheted by scripts/check-raw-key-assertions.py; the file may only shrink. Each entry asserts that the UI shows its own translation key.",
+  "total": 0,
+  "entries": []
+}

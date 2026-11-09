@@ -1,0 +1,212 @@
+.receive-po-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: var(--color-bg-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal-nested);
+  padding: var(--space-6);
+  backdrop-filter: blur(2px);
+}
+
+.receive-po-modal {
+  background-color: var(--color-bg-surface);
+  color: var(--color-fg);
+  border-radius: var(--radius-xl);
+  width: 100%;
+  max-width: 520px;
+  box-shadow: var(--shadow-xl);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  animation: receivePoModalFadeIn 0.15s ease-out;
+}
+
+@keyframes receivePoModalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Reduced motion: the fade-in is decorative, so drop it entirely rather than
+   shorten it. The modal still appears — only the entrance animation goes. */
+@media (prefers-reduced-motion: reduce) {
+  .receive-po-modal {
+    animation: none;
+  }
+}
+
+.receive-po-header {
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.receive-po-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  margin: 0;
+}
+
+.receive-po-close-btn {
+  background: transparent;
+  border: none;
+  font-size: var(--text-2xl);
+  line-height: var(--leading-condensed);
+  color: var(--color-fg-secondary);
+  cursor: pointer;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.receive-po-close-btn:hover {
+  color: var(--color-fg);
+  background-color: var(--color-bg-hover);
+}
+
+.receive-po-body {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.receive-po-summary {
+  background-color: var(--color-bg-secondary);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.receive-po-summary-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--text-base);
+}
+
+.receive-po-summary-label {
+  color: var(--color-fg-secondary);
+}
+
+.receive-po-summary-value {
+  font-weight: var(--font-weight-medium);
+}
+
+.receive-po-summary-value--amount {
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+}
+
+.receive-po-terms-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.receive-po-terms-label {
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--text-md);
+}
+
+.receive-po-terms-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.receive-po-term-card {
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3_5);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  transition: all 0.15s ease;
+  background-color: var(--color-bg-surface);
+}
+
+.receive-po-term-card:hover {
+  border-color: var(--color-primary-soft);
+}
+
+.receive-po-term-card--selected {
+  border-color: var(--color-primary);
+  background-color: var(--color-primary-soft);
+}
+
+.receive-po-term-title {
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--text-md);
+}
+
+.receive-po-term-desc {
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+}
+
+.receive-po-on-account-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  background-color: var(--color-bg-secondary);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+}
+
+.receive-po-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1_5);
+}
+
+.receive-po-field-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-secondary);
+}
+
+.receive-po-input {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
+  background-color: var(--color-bg-surface);
+  color: var(--color-fg);
+}
+
+.receive-po-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+.receive-po-error {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--color-danger-bg);
+  color: var(--color-danger-700);
+  font-size: var(--text-sm);
+  border: 1px solid var(--color-danger-border);
+}
+
+.receive-po-footer {
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}

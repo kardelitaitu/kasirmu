@@ -24,28 +24,32 @@ import {
   it,
   vi,
 } from 'vitest';
+import type {
+  TopologyEditorGraphState} from '@/features/locations/nodeTopologyEditorState';
 import {
-  TopologyEditorGraphState,
   topologyEditorGraphReducer,
 } from '@/features/locations/nodeTopologyEditorState';
 import {
   act,
   renderHook,
 } from '@testing-library/react';
+import type {
+  TopologyDragState} from '@/features/locations/nodeTopologyEditorDragState';
 import {
-  TopologyDragState,
   initialTopologyDragState,
   topologyDragReducer,
   useTopologyEditorDrag,
 } from '@/features/locations/nodeTopologyEditorDragState';
+import type {
+  TopologySaveState} from '@/features/locations/nodeTopologyEditorSaveState';
 import {
-  TopologySaveState,
   initialTopologySaveState,
   topologySaveReducer,
   useTopologyEditorSaveLifecycle,
 } from '@/features/locations/nodeTopologyEditorSaveState';
+import type {
+  TopologyHoverState} from '@/features/locations/nodeTopologyEditorHoverState';
 import {
-  TopologyHoverState,
   initialTopologyHoverState,
   topologyHoverReducer,
   useTopologyEditorHover,
@@ -57,21 +61,24 @@ import {
   SELECTION_ANNOUNCE_SETTLE_MS,
   useTopologyEditorAnnouncements,
 } from '../features/locations/nodeTopologyEditorAnnouncements';
+import type {
+  TopologySelectionState} from '@/features/locations/nodeTopologyEditorSelectionState';
 import {
-  TopologySelectionState,
   initialTopologySelectionState,
   topologySelectionReducer,
   useTopologyEditorSelection,
 } from '@/features/locations/nodeTopologyEditorSelectionState';
-import {
+import type {
   TopologyConnectionState,
-  TopologyPickerState,
+  TopologyPickerState} from '@/features/locations/nodeTopologyEditorConnectionState';
+import {
   initialTopologyConnectionState,
   topologyConnectionReducer,
   useTopologyEditorConnection,
 } from '@/features/locations/nodeTopologyEditorConnectionState';
+import type {
+  TopologyRestoreSeed} from '@/features/locations/nodeTopologyEditorRestoreState';
 import {
-  TopologyRestoreSeed,
   useTopologyEditorRestoreSeed,
 } from '@/features/locations/nodeTopologyEditorRestoreState';
 

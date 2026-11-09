@@ -30,8 +30,8 @@ interface KdsDraftState {
  * The card's fallback for an UNSET key, taken from the model the runtime uses.
  *
  * This was a second hand-written copy of the same five default values. It is not
- * decorative: `:105`, `:109` and `:114` fall back to it when a key has never been
- * written, so the number shown here is the number the operator will get — and the
+ * decorative: the three `clamp*Threshold` helpers below fall back to it when a key has
+ * never been written, so the number shown here is the number the operator will get —
  * KDS board reads its own copy (`kdsSettingsModel.DEFAULT_SETTINGS`) for the same
  * case. Changing one default without the other would make Settings display a value
  * the board does not use. Derived now, so the two cannot disagree.
@@ -152,10 +152,16 @@ export function WorkspaceKdsSettings({
       setOriginalsLoaded(true);
     });
     // The suppression on the previous line was hiding this: the effect reads sessionToken five
-    // times (:79-:83) and its deps listed only the one-way latch originalsLoaded. eslint could
-    // not report it, which is why the sweep's count understated the class -- the real total was
-    // 11, not 10. Latching on the token makes a store switch re-seed; originalsLoaded stays for
-    // the dirty memo at :67, and the touchedRef guard in the .then() is already built for re-entry.
+    // times in its `Promise.all` argument list and its deps listed only the one-way latch
+    // originalsLoaded. eslint could not report it, which is why the sweep’s count understated
+    // the class -- the real total was 11, not 10. Latching on the token makes a store switch
+    // re-seed; originalsLoaded stays for the `dirty` memo (its `useMemo` deps), and the
+    // touchedRef guard in the .then() is already there.
+    // ⚠️ The five reads live in the `Promise.all` argument list of this effect's load
+    // (`getSettingScoped(…)` calls that take the token) — NOT in the range this note used to
+    // cite, which held the `originalsLoadedForRef` assignment and the `dirty` useMemo and
+    // contains no `sessionToken` at all. The COUNT was right and the RANGE was wrong, which is
+    // the shape a line-check cannot see: the range resolved, inside the right file.
     // The suppression that used to sit here is GONE (2026-10-12) because it was
     // stale: it was written for the old deps array, and once that array listed
     // sessionToken and reloadNonce the rule had nothing left to report. A disable
@@ -184,8 +190,8 @@ export function WorkspaceKdsSettings({
         // 1-5 column stepper (fcfddf79). The read path (L90) and the control
         // (L269/L270) were converted; this write-back was not. setSettingsScoped takes
         // Record<string, string> and the Rust command deserializes
-        // HashMap<String, String> (commands/settings.rs:1054), so a bare number here
-        // failed serde for the WHOLE batch -- every KDS setting save errored, not just
+  // HashMap<String, String> (the `entries` parameter of `set_settings_scoped`), so a
+  // bare number here failed serde for the WHOLE batch -- every KDS setting save errored,
         // the density one, because all five keys go in a single call.
         'kds.density': String(draft.density),
       });
@@ -207,7 +213,8 @@ export function WorkspaceKdsSettings({
     } finally {
       setSaving(false);
     }
-  // sessionToken is read at :125 by setSettingsScoped. `userId` was already listed and is a
+  // sessionToken is read by the `setSettingsScoped(sessionToken ?? null, …)` call in the save
+  // path. `userId` was already listed and is a
   // different value, so it never covered the token -- saving after a store switch wrote to the
   // previous store (or failed on the destroyed session) while the UI reported success. `userId` is
   // now gone from this array: nothing in the component read it, and its only "use" was this entry.

@@ -152,3 +152,65 @@ fn payment_result_constructors() {
     assert!(confirmed.success);
     assert_eq!(confirmed.phase, PaymentPhase::Confirmed);
 }
+
+#[test]
+fn tender_state_lifecycle_transitions() {
+    // String parsing & formatting
+    let s = TenderState::Unconfirmed;
+    assert_eq!(s.as_str(), "unconfirmed");
+    assert_eq!(format!("{s}"), "unconfirmed");
+    assert_eq!(
+        TenderState::parse_str("unconfirmed"),
+        Some(TenderState::Unconfirmed)
+    );
+    assert_eq!(
+        TenderState::parse_str("settled"),
+        Some(TenderState::Settled)
+    );
+    assert_eq!(TenderState::parse_str("unknown_state"), None);
+
+    // Initial state determination (ADR-64 D4 Rules 1, 2, 3)
+    assert_eq!(
+        TenderState::initial_state_for_method("cash", false),
+        TenderState::Settled
+    );
+    assert_eq!(
+        TenderState::initial_state_for_method("CASH", true),
+        TenderState::Settled
+    );
+    assert_eq!(
+        TenderState::initial_state_for_method("card", false),
+        TenderState::Unconfirmed
+    );
+    assert_eq!(
+        TenderState::initial_state_for_method("card", true),
+        TenderState::Confirmed
+    );
+    assert_eq!(
+        TenderState::initial_state_for_method("qris_manual", false),
+        TenderState::Unconfirmed
+    );
+    assert_eq!(
+        TenderState::initial_state_for_method("open_bill", false),
+        TenderState::Pending
+    );
+
+    // Terminal rule (Rule 4)
+    assert!(TenderState::Failed.is_terminal());
+    assert!(TenderState::Voided.is_terminal());
+    assert!(TenderState::Disputed.is_terminal());
+    assert!(!TenderState::Settled.is_terminal());
+    assert!(!TenderState::Unconfirmed.is_terminal());
+
+    // Transition checks
+    assert!(!TenderState::Failed.can_transition_to(TenderState::Settled));
+    assert!(!TenderState::Voided.can_transition_to(TenderState::Confirmed));
+    assert!(!TenderState::Disputed.can_transition_to(TenderState::Settled));
+
+    // Valid forward transitions
+    assert!(TenderState::Unconfirmed.can_transition_to(TenderState::Confirmed));
+    assert!(TenderState::Unconfirmed.can_transition_to(TenderState::Settled));
+    assert!(TenderState::Unconfirmed.can_transition_to(TenderState::Failed));
+    assert!(TenderState::Confirmed.can_transition_to(TenderState::Settled));
+    assert!(TenderState::Settled.can_transition_to(TenderState::Refunded));
+}

@@ -76,7 +76,19 @@ test('Print Bill offers itself only for a table with a bill', async ({ page }) =
   ).toHaveCount(0);
 
   // And a BILLED one does — the pair is what pins the gate rather than the button.
-  await page.keyboard.press('Escape');
+  //
+  // CLOSE THE PANEL WITH ITS OWN CONTROL. A Close button is what an operator presses, and
+  // this case is about reaching a BILLED tile rather than about the dismissal key.
+  //
+  // ⚠️ The reasoning that used to sit here was WRONG and is corrected 2026-10-18. It claimed
+  // Escape "is owned by the SHELL, not by the detail panel" and that the panel "is NOT an
+  // ARIA modal (`isAnyAriaModalOpen()` is false for it), so it could never claim Escape".
+  // The panel IS an ARIA modal (`TableManagementScreen.tsx:1972`) and its focus trap DOES
+  // handle Escape. The real defect was order: `PosScreen`'s Escape cascade runs first and
+  // closed the whole table view along with the panel (`.tables-table` 12 -> 0). That is fixed
+  // and pinned in `restaurant-tables-toolbar.spec.ts`. This Close button stays because it is
+  // the better affordance to test the billed-tile transition with.
+  await page.getByRole('button', { name: 'Close' }).click();
   await openBilledTable(page);
   await expect(page.locator('[data-testid="tables-print-bill-btn"]')).toBeVisible({
     timeout: TIMEOUT,

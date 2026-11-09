@@ -69,3 +69,5 @@ surface the 2026-10-12 record used.
 | Full suite | 12,657 passed, 0 failed (no source changed) |
 | Tree | `ui/src` clean but for another lane's file; scratch scripts deleted |
 | Vite | stopped after the pass |
+
+> last audited 14-10-26 by docs-auditor

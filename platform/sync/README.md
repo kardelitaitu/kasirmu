@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE — 0 findings · Full re-audit; the 2026-08-29 stamp is retained as original evidence below. · Every anchor re-verified against the tree: all nine cited source files exist (`src/{queue,transport,replication,conflict,daemon,pg_daemon,pg_transport}.rs`, `tests/pg_integration.rs`); the §Usage snippet is correct that `SyncConfig` comes from `kasirmu_core` and is NOT re-exported by `platform_sync` (it is imported `use kasirmu_core::sync_client::SyncConfig;` at `platform/sync/src/lib.rs:59`, and `platform/sync/src/lib.rs:18`'s own crate doc example is the one place that still shows the wrong path — code-side, left for its author); `SyncEngine` (`lib.rs:143`) and `run_sync_cycle` exist; `nudge()` exists on both daemons (`daemon.rs:797`, `pg_daemon.rs:770`); the debounce is 1_500 ms on each (`WAKEUP_DEBOUNCE` daemon.rs:46, `PG_WAKEUP_DEBOUNCE` pg_daemon.rs:46); the intervals are 60–120 s randomized for HTTP (`daemon.rs:624`) and a flat 60 s for PG (`DEFAULT_PG_SYNC_INTERVAL` pg_daemon.rs:33); the wakeup arrives as a third `tokio::sync::Notify` `select!` arm (`daemon.rs:666`, `pg_daemon.rs:232`); and the wiring claim is exact — `apps/desktop-tauri/src/commands/pos.rs:324-325` calls both daemons' `nudge()` guarded by `if result.is_ok()` after `complete_sale_scoped`, while the tablet selects on an `Arc<Notify>` `sync_wakeup` field (`apps/mobile-tauri/src/lib.rs:661`). · The §Architecture tree remains illustrative (the real layout is flat `src/` files), as the prior stamp already records. · NOT re-measured: the live PostgreSQL retention/recovery contracts, which need the ignored `pg_integration` harness and a database. -->
+<!- - Audit stamp: 2026-10-19 · docs-auditor · status: ACCURATE AFTER REPAIR (2 minor) · Re-audit of the 2026-10-11 pass, whose evidence is retained verbatim after the FIXED block below. · MINOR 1: §Architecture's tree listed only `queue.rs`, `pg_transport.rs`, `replication.rs`, `conflict.rs` while the closing sentence of the same block said `queue/` and `crdt/` are "the only subdirectories here" — the tree never showed either. Both added (`queue/appliers.rs` is real: `pub mod appliers;` at `platform/sync/src/queue.rs:45`); the flat-file claim itself was true and is unchanged. · MINOR 2: §Usage imports `kasirmu_core::{SyncConfig, db::Store}`; the path resolves only because `crates/kasirmu-core/src/lib.rs:370-377` re-exports `SyncConfig` from `sync_client`, and that is now named so the next reader does not have to trust the blanket form. · The 2026-10-11 claim that the crate's own doc example mis-paths the import STILL HOLDS (`platform/sync/src/lib.rs:18`, `# use platform_sync::{SyncEngine, SyncConfig};`) and remains a code-side item, not repaired here. · VERIFIED AND LEFT ALONE at HEAD: all nine cited source files exist; `SyncEngine` (`platform/sync/src/lib.rs:143`) and `run_sync_cycle` (:594) exist; `nudge()` at `daemon.rs:797` and `pg_daemon.rs:770`; `WAKEUP_DEBOUNCE` 1_500 ms (`daemon.rs:46`) and `PG_WAKEUP_DEBOUNCE` (`pg_daemon.rs`); `DEFAULT_PG_SYNC_INTERVAL` 60 s (`pg_daemon.rs:33`); the wiring (`apps/desktop-tauri/src/commands/pos.rs:324-325`, tablet `sync_wakeup` in `apps/mobile-tauri/src/lib.rs:652-658`); the crate name `platform-sync` and the `PG_SYNC_TEST_URL` harness (`tests/pg_integration.rs`, two `#[ignore]`d tests). · Prior evidence, verbatim: the 2026-08-29 stamp is retained as original evidence below. · Every anchor re-verified against the tree: all nine cited source files exist (`src/{queue,transport,replication,conflict,daemon,pg_daemon,pg_transport}.rs`, `tests/pg_integration.rs`); the §Usage snippet is correct that `SyncConfig` comes from `kasirmu_core` and is NOT re-exported by `platform_sync` (it is imported `use kasirmu_core::sync_client::SyncConfig;` at `platform/sync/src/lib.rs:59`, and `platform/sync/src/lib.rs:18`'s own crate doc example is the one place that still shows the wrong path — code-side, left for its author); `SyncEngine` (`lib.rs:143`) and `run_sync_cycle` exist; `nudge()` exists on both daemons (`daemon.rs:797`, `pg_daemon.rs:770`); the debounce is 1_500 ms on each (`WAKEUP_DEBOUNCE` daemon.rs:46, `PG_WAKEUP_DEBOUNCE` pg_daemon.rs:46); the intervals are 60–120 s randomized for HTTP (`daemon.rs:624`) and a flat 60 s for PG (`DEFAULT_PG_SYNC_INTERVAL` pg_daemon.rs:33); the wakeup arrives as a third `tokio::sync::Notify` `select!` arm (`daemon.rs:666`, `pg_daemon.rs:232`); and the wiring claim is exact — `apps/desktop-tauri/src/commands/pos.rs:324-325` calls both daemons' `nudge()` guarded by `if result.is_ok()` after `complete_sale_scoped`, while the tablet selects on an `Arc<Notify>` `sync_wakeup` field (`apps/mobile-tauri/src/lib.rs:661`). · The §Architecture tree remains illustrative (the real layout is flat `src/` files), as the prior stamp already records. · NOT re-measured: the live PostgreSQL retention/recovery contracts, which need the ignored `pg_integration` harness and a database. -->
 
 <!-- STAMP MERGED INTO THIS ONE (2026-10-11) — superseded bodies kept verbatim:
 
@@ -46,11 +46,16 @@ removed by the caller after the run (`docker stop kasirmu-pg-sync-tdd`).
 
 ```
 platform/sync/
-├── queue/       — Local change log (wraps kasirmu-core offline_queue table)
-├── transport/   — HTTP client for communicating with remote sync server
-├── replication/ — Push + pull orchestration
-└── conflict/    — Conflict resolution strategies (LWW initially)
+├── queue.rs          — Local change log (wraps kasirmu-core offline_queue table); queue/ holds its helpers
+│   └── appliers.rs   — Remote-item appliers (ApplyOutcome, ResolvedItem)
+├── pg_transport.rs   — HTTP/PG client for communicating with the remote sync server
+├── replication.rs    — Push + pull orchestration
+├── conflict.rs       — Conflict resolution strategies (LWW initially); crdt/ holds the CRDT types
+└── crdt/             — CRDT types (clock_store, delta_mutation, lamport, push_stamp, version_vector)
 ```
+
+These are flat files, not directories: `transport/` never existed as a path (the transport
+lives in `pg_transport.rs`), and `queue/` and `crdt/` are the only subdirectories here.
 
 ## Usage
 
@@ -61,6 +66,9 @@ use kasirmu_core::{SyncConfig, db::Store};
 let engine = SyncEngine::new(config);
 let result = engine.run_sync_cycle(&store).await?;
 ```
+
+`SyncConfig` is not re-exported by `platform_sync`; `kasirmu_core` re-exports it from
+`sync_client` (`crates/kasirmu-core/src/lib.rs:370-377`).
 
 ## Event-Triggered Wakeup (SYNC-EW)
 
@@ -87,4 +95,4 @@ successful `complete_sale_scoped`. The tablet uses an `Arc<Notify>` field on
 `AppState` (`sync_wakeup`) that the inline sync daemon in `apps/mobile-tauri/src/lib.rs`
 selects on.
 
-> last audited 11-10-26 by docs-auditor
+> last audited 19-10-26 by docs-auditor

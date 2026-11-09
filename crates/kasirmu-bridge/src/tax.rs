@@ -439,12 +439,17 @@ pub fn run_list_category_tax_rates(
     let store = Store::new(db);
     let categories = store.list_categories()?;
 
-    let mut rows = Vec::new();
-    for cat in &categories {
-        let ids = store.get_category_tax_rates(&cat.id)?;
-        if !ids.is_empty() {
+    // O-M17: batch-load tax rates for all categories in one query
+    let category_ids: Vec<String> = categories.iter().map(|c| c.id.clone()).collect();
+    let mut rate_map = store.get_category_tax_rates_batch(&category_ids)?;
+
+    let mut rows = Vec::with_capacity(categories.len());
+    for cat in categories {
+        if let Some(ids) = rate_map.remove(&cat.id)
+            && !ids.is_empty()
+        {
             rows.push(CategoryTaxRateRow {
-                category_id: cat.id.clone(),
+                category_id: cat.id,
                 tax_rate_ids: ids,
             });
         }

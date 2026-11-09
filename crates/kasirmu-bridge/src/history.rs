@@ -401,6 +401,15 @@ pub struct EodReport {
     pub discount_total: i64,
     /// Hourly Breakdown.
     pub hourly_breakdown: Vec<SalesByHourRow>,
+    /// Number of customer receivable collections (piutang payments) settled today.
+    #[serde(default)]
+    pub receivable_collections_count: i64,
+    /// Sum of customer receivable collections (piutang payments) in minor units settled today.
+    #[serde(default)]
+    pub receivable_collections_total: i64,
+    /// Breakdown of receivable collections by tender method (e.g. cash, bank_transfer).
+    #[serde(default)]
+    pub receivable_breakdown: Vec<PaymentBreakdown>,
 }
 
 #[derive(Debug, Serialize)]
@@ -448,6 +457,19 @@ fn build_eod_report(db: &rusqlite::Connection) -> Result<EodReport, BridgeError>
     // describe two different days.
     let breakdown = store.export_eod_breakdown()?;
     let voids = store.export_eod_voids()?;
+    let collections = store.export_eod_receivable_collections()?;
+
+    let receivable_breakdown: Vec<PaymentBreakdown> = collections
+        .iter()
+        .map(|r| PaymentBreakdown {
+            method: r.method.clone(),
+            count: r.collection_count,
+            total: r.total_minor,
+        })
+        .collect();
+
+    let receivable_collections_count: i64 = collections.iter().map(|c| c.collection_count).sum();
+    let receivable_collections_total: i64 = collections.iter().map(|c| c.total_minor).sum();
 
     // Payment breakdown — the same rows the totals are summed from.
     let payment_rows: Vec<PaymentBreakdown> = breakdown
@@ -481,6 +503,9 @@ fn build_eod_report(db: &rusqlite::Connection) -> Result<EodReport, BridgeError>
         discount_count,
         discount_total,
         hourly_breakdown: hourly,
+        receivable_collections_count,
+        receivable_collections_total,
+        receivable_breakdown,
     })
 }
 

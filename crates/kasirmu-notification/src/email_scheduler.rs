@@ -81,7 +81,7 @@ async fn try_send_scheduled(
     let (bundle, store_name) = {
         let conn = db.lock().await;
         let store = Store::new(&conn);
-        let name = kasirmu_core::Settings::get(store.conn, "store.name")
+        let name = kasirmu_core::Settings::get(store.conn(), "store.name")
             .ok()
             .flatten()
             .unwrap_or_else(|| "kasir.mu Store".to_string());
@@ -131,31 +131,33 @@ async fn send_email_via_smtp(
 
     let transport = email_sender::build_smtp_transport(config)?;
 
+    let from_addr: lettre::message::Mailbox = config
+        .from
+        .parse()
+        .map_err(|e| format!("Invalid from address: {e}"))?;
+
+    // O-M53: build singleparts and multipart body once above the recipient loop so large HTML
+    // and text bodies are not repeatedly cloned per recipient.
+    let text_part = lettre::message::SinglePart::builder()
+        .header(lettre::message::header::ContentType::TEXT_PLAIN)
+        .body(email.text_body.clone());
+    let html_part = lettre::message::SinglePart::builder()
+        .header(lettre::message::header::ContentType::TEXT_HTML)
+        .body(email.html_body.clone());
+    let multipart = lettre::message::MultiPart::alternative()
+        .singlepart(text_part)
+        .singlepart(html_part);
+
     for recipient in to {
+        let to_addr: lettre::message::Mailbox = recipient
+            .parse()
+            .map_err(|e| format!("Invalid recipient '{recipient}': {e}"))?;
+
         let msg = lettre::Message::builder()
-            .from(
-                config
-                    .from
-                    .parse()
-                    .map_err(|e| format!("Invalid from address: {e}"))?,
-            )
-            .to(recipient
-                .parse()
-                .map_err(|e| format!("Invalid recipient '{recipient}': {e}"))?)
+            .from(from_addr.clone())
+            .to(to_addr)
             .subject(&email.subject)
-            .multipart(
-                lettre::message::MultiPart::alternative()
-                    .singlepart(
-                        lettre::message::SinglePart::builder()
-                            .header(lettre::message::header::ContentType::TEXT_PLAIN)
-                            .body(email.text_body.clone()),
-                    )
-                    .singlepart(
-                        lettre::message::SinglePart::builder()
-                            .header(lettre::message::header::ContentType::TEXT_HTML)
-                            .body(email.html_body.clone()),
-                    ),
-            )
+            .multipart(multipart.clone())
             .map_err(|e| format!("Failed to build email: {e}"))?;
 
         transport

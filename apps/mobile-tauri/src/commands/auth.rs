@@ -453,39 +453,38 @@ pub async fn create_session(
         return Err(AppError::Invalid("Invalid or expired picker ticket".into()));
     }
 
-    // SaaS-3 L194: optional Organization (legal entity) scoping.
-    // org_id is a routing hint only — fail-closed validation derives the
-    // session real authority from the user assignment. The org must be in the
-    // device-local enumerated set and the user assignment must cover it.
-    let org_label: Option<String> = match args.org_id.as_ref().filter(|o| !o.is_empty()) {
-        Some(org_id) => {
-            let db = state.db.lock().await;
-            let store = kasirmu_core::db::Store::new(&db);
-            let entity = store
-                .get_legal_entity("default", org_id)?
-                .ok_or_else(|| AppError::Invalid("Unknown organization".into()))?;
-            let covered =
-                store.assignment_covers_resource(&args.user_id, ScopeType::LegalEntity, org_id)?;
-            if !covered.unwrap_or(false) {
-                tracing::warn!(
-                    user_id = %args.user_id,
-                    org_id = %org_id,
-                    "session creation denied — assignment does not cover organization"
-                );
-                return Err(AppError::Invalid(
-                    "User does not have access to this organization".into(),
-                ));
-            }
-            Some(entity.name)
-        }
-        None => None,
-    };
-
-    // Server-side authorization: verify the user has a valid role assignment
-    // for the requested workspace instance (ADR #4 / ADR #7).
-    {
+    // SaaS-3 L194 & Server-side authorization (O-M31):
+    // Validate organization scoping (if specified) and verify workspace instance
+    // access under a single database lock.
+    let org_label: Option<String> = {
         let db = state.db.lock().await;
         let store = kasirmu_core::db::Store::new(&db);
+
+        let label = match args.org_id.as_ref().filter(|o| !o.is_empty()) {
+            Some(org_id) => {
+                let entity = store
+                    .get_legal_entity("default", org_id)?
+                    .ok_or_else(|| AppError::Invalid("Unknown organization".into()))?;
+                let covered = store.assignment_covers_resource(
+                    &args.user_id,
+                    ScopeType::LegalEntity,
+                    org_id,
+                )?;
+                if !covered.unwrap_or(false) {
+                    tracing::warn!(
+                        user_id = %args.user_id,
+                        org_id = %org_id,
+                        "session creation denied — assignment does not cover organization"
+                    );
+                    return Err(AppError::Invalid(
+                        "User does not have access to this organization".into(),
+                    ));
+                }
+                Some(entity.name)
+            }
+            None => None,
+        };
+
         if !store.verify_instance_access(
             &args.role_id,
             &args.user_id,
@@ -502,7 +501,9 @@ pub async fn create_session(
                 "User does not have access to this workspace instance".into(),
             ));
         }
-    }
+
+        label
+    };
 
     // Uphold the authorization invariant before the session exists: every
     // scoped command authorizes the session user in the STORE DB, and a store
@@ -758,11 +759,13 @@ pub async fn switch_organization(
     let current = state.resolve_session(&session_token)?;
     let user_id = current.user_id.clone();
 
-    // 2. Enumerated-list-only: the org must be one this device knows.
-    let org_name = {
+    // 2-5. Verify org, assignment, PIN and tenant integrity under a SINGLE DB lock (O-M31).
+    let (org_name, role_id) = {
         let db = state.db.lock().await;
         let store = kasirmu_core::db::Store::new(&db);
-        store
+
+        // 2. Enumerated-list-only: the org must be one this device knows.
+        let org_name = store
             .get_legal_entity("default", &org_id)?
             .map(|le| le.name)
             .ok_or_else(|| {
@@ -772,13 +775,9 @@ pub async fn switch_organization(
                     "organization switch denied — org not in device-local enumerated set"
                 );
                 AppError::Invalid("Unknown organization".into())
-            })?
-    };
+            })?;
 
-    // 3. Assignment gate (fail-closed — mirrors the impersonation guard).
-    {
-        let db = state.db.lock().await;
-        let store = kasirmu_core::db::Store::new(&db);
+        // 3. Assignment gate (fail-closed — mirrors the impersonation guard).
         let covered =
             store.assignment_covers_resource(&user_id, ScopeType::LegalEntity, &org_id)?;
         if !covered.unwrap_or(false) {
@@ -791,12 +790,8 @@ pub async fn switch_organization(
                 "User does not have access to this organization".into(),
             ));
         }
-    }
 
-    // 4. FULL re-authentication — no credential carryover.
-    let role_id = {
-        let db = state.db.lock().await;
-        let store = kasirmu_core::db::Store::new(&db);
+        // 4. FULL re-authentication — no credential carryover.
         let user = store
             .get_user(&user_id)?
             .ok_or_else(|| AppError::Invalid("user not found".into()))?;
@@ -810,16 +805,14 @@ pub async fn switch_organization(
             );
             return Err(AppError::Invalid("invalid PIN".into()));
         }
-        user.role_id.clone()
-    };
 
-    // 5. Defense-in-depth: re-run tenant integrity on the active DB.
-    {
-        let db = state.db.lock().await;
-        kasirmu_core::db::Store::new(&db)
+        // 5. Defense-in-depth: re-run tenant integrity on the active DB.
+        store
             .check_tenant_integrity()
             .map_err(|e| AppError::Internal(format!("tenant integrity check: {e}")))?;
-    }
+
+        (org_name, user.role_id)
+    };
 
     // 6. INVALIDATE the old token FIRST, then mint the new session.
     state.invalidate_session(&session_token);

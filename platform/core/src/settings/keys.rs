@@ -342,7 +342,7 @@ pub const NON_EXPORTABLE_DEVICE_KEYS: &[&str] =
 /// namespace (`raw.rs`, `IngestPolicyKind::admits`), so it can only refuse names
 /// its author thought to name - while the applied key is the payload's own
 /// string, read verbatim at platform/sync/src/queue.rs:525-536 and written
-/// through a bare INSERT into the GLOBAL identity database (queue.rs:395 ->
+/// through a bare INSERT into the GLOBAL identity database (queue.rs:397 ->
 /// daemon_tick.rs:292). Nothing signs or MACs an item (queue.rs:10-12: the
 /// sender is not an authority), so any peer in the tenant, or the server
 /// operator, can name these six today. The sharpest is not spelled like a

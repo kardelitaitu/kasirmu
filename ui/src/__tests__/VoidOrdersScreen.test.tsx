@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluent } from '@/__tests__/test-utils/render';
 import salesFtl from '@/locales/sales.ftl?raw';
@@ -40,24 +40,24 @@ const mockVoidSale = voidSaleScoped as ReturnType<typeof vi.fn>;
 
 const sampleSales = [
   {
-    id: 'ORD-001', createdAt: '2026-07-05T10:00:00Z', status: 'Active',
+    id: 'ORD-001', createdAt: '2026-07-05T10:00:00Z', status: 'active',
     total: { minor_units: 35000, currency: 'IDR' }, lineCount: 3,
     paymentMethod: 'CASH', userId: 'user-1',
   },
   {
-    id: 'ORD-002', createdAt: '2026-07-05T11:00:00Z', status: 'Completed',
+    id: 'ORD-002', createdAt: '2026-07-05T11:00:00Z', status: 'completed',
     total: { minor_units: 50000, currency: 'IDR' }, lineCount: 2,
     paymentMethod: 'CARD', userId: 'user-1',
   },
   {
-    id: 'ORD-003', createdAt: '2026-07-05T12:00:00Z', status: 'Voided',
+    id: 'ORD-003', createdAt: '2026-07-05T12:00:00Z', status: 'voided',
     total: { minor_units: 12000, currency: 'IDR' }, lineCount: 1,
     paymentMethod: 'CASH', userId: 'user-1',
   },
 ];
 
 const sampleDetail = {
-  id: 'ORD-001', createdAt: '2026-07-05T10:00:00Z', status: 'Active',
+  id: 'ORD-001', createdAt: '2026-07-05T10:00:00Z', status: 'active',
   total: { minor_units: 35000, currency: 'IDR' },
   subtotal: { minor_units: 35000, currency: 'IDR' },
   taxTotal: { minor_units: 0, currency: 'IDR' },
@@ -195,6 +195,51 @@ describe('VoidOrdersScreen', () => {
     });
   });
 
+  it('voids a sale once for a double click while the first is in flight', async () => {
+    // `void_sale` is a compare-and-set (`WHERE id = ?2 AND status = 'active'`,
+    // sales_lifecycle.rs:903-914), so the replay is REFUSED -- and the catch reports
+    // `void-orders-error-void`, telling the cashier the void failed over a sale that was
+    // voided. Worse on this screen: the sale is GONE from the active list, so they cannot
+    // tell whether the first tap worked.
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    let releaseVoid: ((v: unknown) => void) | undefined;
+    mockVoidSale.mockImplementation(
+      () => new Promise((resolve) => { releaseVoid = resolve; }),
+    );
+    const user = userEvent.setup();
+
+    await renderWithFluent(<VoidOrdersScreen />, salesFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getByText(/ORD-001/)).toBeInTheDocument();
+    });
+
+    await user.click(screen.getAllByRole('button', { name: /^view/i })[0]!);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^cancel$/i })).toBeInTheDocument();
+    });
+    await user.selectOptions(screen.getByDisplayValue(/Select a reason/i), 'cancelled-by-customer');
+
+    const confirmBtn = screen.getByRole('button', { name: /confirm void/i }) as HTMLButtonElement;
+    // fireEvent inside one act(), not two user.click()s: userEvent awaits its own act(),
+    // which flushes the pending chain so the first void would have settled and the clicks
+    // would never overlap. The disabled flag React set is dropped for the second click so
+    // the atomic guard is what is measured, not the DOM.
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+      confirmBtn.removeAttribute('disabled');
+      fireEvent.click(confirmBtn);
+    });
+
+    expect(
+      mockVoidSale.mock.calls.length,
+      'a double click on Confirm Void sent the void twice; the CAS refuses the replay and ' +
+        'the operator is told the void failed over a sale that was voided',
+    ).toBe(1);
+
+    releaseVoid?.({});
+  });
+
   it('calls voidSale when Confirm Void is clicked with a reason', async () => {
     mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
     mockGetSaleScoped.mockResolvedValue(sampleDetail);
@@ -277,9 +322,46 @@ describe('VoidOrdersScreen', () => {
       mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
       await renderWithFluent(<VoidOrdersScreen />, salesFtl, sharedFtl);
       await waitFor(() => {
-        expect(mockListSalesScoped).toHaveBeenCalledWith('session-1');
+        expect(mockListSalesScoped).toHaveBeenCalled();
       });
+      expect(mockListSalesScoped.mock.calls[0]?.[0]).toBe('session-1');
       expect(mockListSales).not.toHaveBeenCalled();
+    });
+    // The fallback used to be `active` -- the label of the state this screen exists to make
+    // voidable. A status the UI cannot name would therefore have looked like the one row an
+    // operator is hunting for. The wire carries exactly four spellings
+    // (foundation/src/enums.rs:40), so the floor only fires on drift, and drift is precisely
+    // when a confident-looking label is worst.
+    it('labels an unrecognised status as unknown, never as active', async () => {
+      const odd = [{ ...sampleSales[0], id: 'ORD-ODD', status: 'refunded' }];
+      mockListSalesScoped.mockResolvedValue({ sales: odd, salesHistoryCapped: false });
+      await renderWithFluent(<VoidOrdersScreen />, salesFtl, sharedFtl);
+      await waitFor(() => {
+        expect(document.querySelectorAll('tbody tr').length).toBe(1);
+      });
+      const row = document.querySelectorAll('tbody tr')[0];
+      expect(row?.textContent).toContain('Unknown status');
+      expect(row?.textContent).not.toContain('Active');
+    });
+
+    // Unbounded by omission: `list_sales_with_history_cap_bounded` appends LIMIT only when a
+    // limit is given (sales_crud.rs:308-314), so calling the scoped command with no limit read
+    // every sale in the tier window while SalesHistoryScreen read at most 500 from the same
+    // store. Asserting the ARGUMENT, not just the call, is what makes the omission visible --
+    // a `toHaveBeenCalledWith('session-1')` assertion passed happily on the unbounded call.
+    it('passes a finite limit so the session read is bounded like the history screen', async () => {
+      mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+      await renderWithFluent(<VoidOrdersScreen />, salesFtl, sharedFtl);
+      await waitFor(() => {
+        expect(mockListSalesScoped).toHaveBeenCalled();
+      });
+      const firstCall = mockListSalesScoped.mock.calls[0];
+      expect(firstCall).toBeDefined();
+      const [, limit, offset] = firstCall as unknown as [string, number?, number?];
+      expect(typeof limit).toBe('number');
+      expect(limit).toBe(500);
+      // A ceiling, not a page: no offset, or the screens own client-side filters would miss rows.
+      expect(offset).toBeUndefined();
     });
 
     it('loads sale detail through get_sale_scoped when opened with an initial id', async () => {

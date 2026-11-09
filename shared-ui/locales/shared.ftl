@@ -329,8 +329,13 @@ nav-tables = Tables
 nav-promotions = Promotions
 nav-suppliers = Suppliers
 nav-purchase-orders = Purchase Orders
+nav-vendor-bills = Vendor Bills
 nav-stock-transfers = Stock Transfers
 nav-stock-counts = Stock Counts
+# Sidebar label for the inventory transaction log (round 161).
+nav-inventory-log = Transaction Log
+# Sidebar label for the low-stock threshold screen (round 168).
+nav-inventory-thresholds = Low-Stock Thresholds
 nav-custom-report = Custom Report
 nav-pos = POS
 app-sidebar-subtitle = Point of Sale
@@ -388,19 +393,10 @@ workspace-card-unpin-aria = Unpin { $name }
 # page registering layout="landscape-locked"; keep the child text the id string
 # resolves to in step with the fallback in AppShell/TabletAppShell.
 layout-rotate-to-landscape = Rotate your device to landscape for the full layout.
-layout-rotate-to-landscape-aria =
-    .aria-label = Rotate to landscape
 
 # Status Bar
-status-bar-connected = Backend connected
-status-bar-disconnected = Backend disconnected
 # Sync connection status
-status-bar-sync-connected = Cloud sync connected
-status-bar-sync-disconnected = Cloud sync disconnected
-status-bar-sync-checking = Checking cloud sync connection…
 # License status (login screen)
-staff-login-license-active = License active
-staff-login-license-inactive = License inactive
 # P1-3: Tooltip for conflict count badge in StatusBar
 statusbar-conflict-count = { $count } sync conflict(s) resolved
 # SYNC-12: StatusBar visible labels + ARIA (localized at the render boundary)
@@ -593,7 +589,6 @@ barcode-input-aria = Barcode input
 submit-barcode-aria = Submit barcode
 select-course-aria = Select course
 revert-changes-aria = Revert changes
-add-sample-line-aria = Add a sample line
 previous-page-aria = Previous page
 next-page-aria = Next page
 results-per-page-aria = Results per page
@@ -606,10 +601,6 @@ refund-line-items-aria = Refund line items
 orders-aria = Orders
 back-to-orders-aria = Back to orders list
 order-line-items-aria = Order line items
-decrease-card-size-aria = Decrease card size
-increase-card-size-aria = Increase card size
-decrease-font-size-aria = Decrease font size
-increase-font-size-aria = Increase font size
 primary-colour-picker-aria = Primary colour picker
 colour-hex-aria = Colour hex value
 reset-colour-aria = Reset colour to default
@@ -648,6 +639,14 @@ workspace-home-shifts-title = Shifts
 workspace-home-shifts-desc = Manage staff shifts and schedules
 workspace-home-promotions-title = Promotions
 workspace-home-promotions-desc = Create and manage promotions
+# The page's own <h1>. The design has no visible page title -- the header holds
+# the OrgSelector and the sections carry their own headers -- so this is rendered
+# visually hidden (.workspace-sr-only). It is not decoration: axe's
+# `page-has-heading-one` requires a level-one heading, and without this the rule
+# reported "Page should contain a level-one heading" in axe's INCOMPLETE bucket,
+# which jest-axe's toHaveNoViolations() does not read at all (measured
+# 2026-10-26: WorkspaceHome had 0 h1 and 7 h2, and every a11y suite was green).
+workspace-home-page-title = Workspaces
 workspace-home-workspaces-section = Workspaces
 workspace-home-tools-section = Tools
 # Tools group headers — the agreed information architecture
@@ -670,46 +669,25 @@ workspace-home-memo-desc = Write notices for terminals and locations
 workspace-home-add-workspace = Add Workspace
 workspace-home-add-workspace-desc = Configure workspaces in the topology editor
 workspace-home-add-workspace-aria = Add workspace via topology editor
+# The two quick-start workspace cards on the workspace picker. Their titles and
+# descriptions were JSX literals at WorkspaceHome.tsx:888-921 while every other
+# string on that screen came from this bundle.
+workspace-home-retail-pos = Retail POS
+workspace-home-retail-pos-desc = Barcode retail POS terminal
+workspace-home-restaurant-pos = Restaurant POS
+workspace-home-restaurant-pos-desc = Dining and table service POS
 workspace-home-reports-aria = Open Reports
 workspace-home-shortcut-open = Open
 
 # Warehouse workspace
 warehouse-title = Warehouse Inventory
-warehouse-location = Location
-warehouse-no-location-title = No warehouse location
 warehouse-no-location-desc = This workspace is not bound to a warehouse location. Configure it in the topology editor.
 warehouse-empty-title = No products
-warehouse-empty-desc = No inventory-tracked products found at this location.
 warehouse-load-error = Failed to load warehouse inventory.
+# Shown instead of the grid on a shell with no per-location stock read. Not an
+# error -- there is nothing to retry.
+warehouse-stock-desktop-only = Per-location stock levels need the desktop app.
 warehouse-adjust-error = Failed to adjust stock.
-warehouse-col-sku = SKU
-warehouse-col-name = Name
-warehouse-col-category = Category
-warehouse-col-qty = Qty
-warehouse-col-cost = Cost
-warehouse-col-actions = Actions
-warehouse-products-count = products
-warehouse-low-stock-alerts = low stock alerts
-warehouse-search-placeholder = Search by name or SKU…
-warehouse-search-aria = Search products
-warehouse-filter-category = Filter by category
-warehouse-filter-stock = Filter by stock status
-warehouse-all-categories = All categories
-warehouse-stock-all = All stock
-warehouse-stock-in = In stock
-warehouse-stock-out = Out of stock
-warehouse-stock-low = Low stock
-warehouse-no-results = No products match your search.
-warehouse-stat-total = Total
-warehouse-stat-out-of-stock = Out of stock
-warehouse-stat-low-stock = Low stock
-warehouse-btn-adjust = Adjust
-warehouse-adjust-title = Adjust Stock
-warehouse-adjust-current = Current stock
-warehouse-adjust-delta-label = Quantity change (use + to add, − to remove)
-warehouse-adjust-reason-label = Reason
-warehouse-adjust-reason-placeholder = e.g. stock count, damage, return
-warehouse-adjust-confirm = Confirm
 warehouse-adjust-cancel = Cancel
 warehouse-mode-tabs-aria = Warehouse mode
 
@@ -738,7 +716,6 @@ warehouse-session-line-qty = Qty
 warehouse-session-line-picked = Picked
 warehouse-session-complete-receive = Complete Receive
 warehouse-session-complete-send = Complete Send
-warehouse-session-print = Print
 warehouse-session-clear = Clear
 
 warehouse-fn-receive = Receive
@@ -754,27 +731,21 @@ warehouse-shortcut-close = Close
 
 warehouse-popup-receive-title = Incoming session
 warehouse-popup-send-title = Outgoing session
-warehouse-popup-count-title = Count session
 warehouse-popup-close = Close
 
 warehouse-send-destination = Send to…
 warehouse-send-destination-aria = Choose destination
 warehouse-send-confirmed = Sent! { $number } — { $count } items to { $destination }
-warehouse-send-verify-hint = Scan each item to verify it is picked
-warehouse-send-unpicked = { $count } line{ $count ->
-  [one]  not picked
- *[other] s not picked
 }
 
 warehouse-receive-source-po = Receive from purchase order
 warehouse-receive-source-transfer = Receive from transfer
 warehouse-receive-no-transfers = No in-transit transfers
 warehouse-receive-no-pos = No approved purchase orders
+warehouse-receive-load-failed = Could not load the list — close and try again
 warehouse-receive-confirmed = Received! { $number } — { $count } items
 warehouse-receive-expected = Expected
-warehouse-receive-received = Received
 warehouse-receive-damaged = Damaged
-warehouse-receive-short = Short
 
 warehouse-count-create = Start Count
 warehouse-count-type = Count type
@@ -788,3 +759,173 @@ warehouse-count-back = Back
 warehouse-count-complete = Complete Count
 warehouse-count-complete-success = Count complete — { $count } adjustments posted
 warehouse-count-error = Count failed
+
+# ── Design → Tooltip Preview (dev showcase page) ─────────────────────
+# The page is reachable by every user: 'tooltips' is absent from
+# ROUTE_FEATURE (hooks/useFeatures.ts:59), and only two routes are gated.
+tp-page-title = Tooltip Preview
+tp-section-positions = Positions
+tp-section-positions-desc = Tooltips can be positioned on any side of the trigger element. The default is right.
+tp-position-right = Right
+tp-position-top = Top
+tp-position-bottom = Bottom
+tp-position-left = Left
+tp-tooltip-right = Tooltip on the right (default)
+tp-tooltip-top = Tooltip above the trigger
+tp-tooltip-bottom = Tooltip below the trigger
+tp-tooltip-left = Tooltip on the left of the trigger
+tp-section-delay = Show / Hide Delay
+tp-section-delay-desc = The show delay prevents tooltips from flashing during cursor passes. Default is 400ms show, 100ms hide.
+tp-trigger-instant = Instant
+tp-trigger-default-ms = Default (400ms)
+tp-tooltip-instant = Instant show (0ms delay, 100ms hide)
+tp-tooltip-fast = Fast show (200ms delay, 50ms hide)
+tp-tooltip-default-ms = Default show (400ms delay, 100ms hide)
+tp-tooltip-slow = Slow reveal (800ms delay)
+tp-tooltip-very-slow = Very slow (1200ms delay)
+tp-section-maxwidth = Max Width
+tp-section-maxwidth-desc = Control the tooltip bubble width with the maxWidth prop. Default is 280px. Content wraps automatically.
+tp-trigger-280 = Default (280px)
+tp-tooltip-160 = Narrow tooltip — 160px max
+tp-tooltip-280 = Default width — 280px max. This is the standard tooltip width used throughout the app.
+tp-tooltip-400 = Wide tooltip — 400px max. Useful for longer descriptions that need more horizontal space to read comfortably.
+tp-section-multiline = Multi-line Content
+tp-section-multiline-desc = Tooltip text wraps naturally with white-space: normal. Use an escaped newline in strings or JSX line breaks for structured content.
+tp-trigger-short = Short
+tp-trigger-wrapping = Wrapping
+tp-trigger-structured = Structured
+tp-label-single-line = Single line
+tp-label-auto-wrapping = Auto-wrapping
+tp-label-with-breaks = With newline breaks
+tp-tooltip-short = Short description — ideal for nav items and icon labels.
+tp-tooltip-wrapping = Medium description that wraps to multiple lines when the content is longer than the max width allows for natural readability.
+tp-tooltip-structured-line1 = Line one: Order ID #2847
+tp-tooltip-structured-line2 = Line two: 4 items • { $amount }
+tp-tooltip-structured-line3 = Line three: Priority: High
+tp-section-content-types = Content Types
+tp-section-content-types-desc = The content prop accepts any ReactNode — plain text, formatted strings, or JSX elements.
+tp-trigger-text = Text
+tp-trigger-jsx = JSX
+tp-trigger-rich = Rich
+tp-tooltip-plain = Plain text tooltip — the most common use case.
+tp-tooltip-jsx = Info: Gateway is online
+tp-tooltip-rich-title = Status Details
+tp-tooltip-rich-body = Online · Last sync: 2s ago · Queue: 0
+tp-section-edge = Edge Cases
+tp-section-edge-desc = Tooltips work with any focusable element — buttons, icon-only buttons, inline text, spans, and custom components.
+tp-tooltip-icon-collapse = Icon button — collapse sidebar
+tp-tooltip-icon-bell = Icon button — notifications
+tp-tooltip-icon-settings = Icon button — settings
+tp-tooltip-badge = Small badge with tooltip
+tp-trigger-beta = Beta
+tp-tooltip-inline = Inline text trigger — dotted underline
+tp-trigger-inline = inline trigger
+tp-section-production = Production Usage
+tp-section-production-desc = This is how Tooltip is used in the app sidebar — nav items wrapped with Tooltip, showing labels on hover in collapsed mode.
+tp-label-collapsed = Collapsed sidebar (60px)
+tp-label-expanded = Expanded sidebar (220px)
+tp-label-status-bar = Status Bar elements
+tp-tooltip-connected = Backend connected
+tp-tooltip-switch-workspace = Switch Workspace
+tp-label-workspace = Workspace
+
+# ── Design → Design System showcase ──────────────────────────────────
+# Reached at route 'design', which is NOT in ROUTE_FEATURE
+# (hooks/useFeatures.ts:59 gates only sales and stock-transfers), so this
+# page renders for every tenant. The *-title / *-label values are Fluent KEYS
+# passed as props to Section/Swatch/SwatchRow, which render them through
+# <Localized>; the fallback text is the element's own child.
+ds-section-colors = Colors
+ds-section-typography = Typography
+ds-section-spacing = Spacing
+ds-section-shadows = Shadows
+ds-section-radius = Border Radius
+ds-section-buttons = Buttons
+ds-section-forms = Form Elements
+ds-section-badges = Badges
+ds-section-spinners = Spinners
+ds-section-skeleton = Skeleton Loading
+ds-section-toasts = Toast Notifications
+ds-section-empty = Empty State
+ds-section-error = Error State
+ds-swatch-row-neutral = Neutral
+ds-swatch-row-primary = Primary (Emerald)
+ds-swatch-row-semantic = Semantic
+ds-swatch-row-backgrounds = Backgrounds
+ds-swatch-row-text = Text
+ds-swatch-row-borders = Borders
+ds-swatch-row-accent = Accent
+ds-swatch-success = Success
+ds-swatch-warning = Warning
+ds-swatch-danger = Danger
+ds-swatch-info = Info
+ds-swatch-bg = Base
+ds-swatch-bg-elevated = Elevated
+ds-swatch-bg-surface = Surface
+ds-swatch-bg-input = Input
+ds-swatch-fg-primary = Primary
+ds-swatch-fg-body = Body
+ds-swatch-fg-secondary = Secondary
+ds-swatch-fg-tertiary = Tertiary
+ds-swatch-fg-disabled = Disabled
+ds-swatch-border = Default
+ds-swatch-border-hover = Hover
+ds-swatch-border-strong = Strong
+ds-swatch-border-focus = Focus
+ds-swatch-accent = Default
+ds-swatch-accent-hover = Hover
+ds-swatch-accent-active = Active
+ds-swatch-accent-subtle = Subtle
+ds-type-pangram = The quick brown fox jumps over the lazy dog
+ds-type-body-14 = The quick brown fox jumps over the lazy dog — 14px body
+ds-type-body-12 = The quick brown fox jumps over the lazy dog — 12px small
+ds-type-body-10 = The quick brown fox jumps over the lazy dog — 10px extra small
+ds-type-weight = Weight:
+ds-type-weight-list = Normal · Medium · Semibold · Bold
+ds-type-mono = Mono:
+ds-type-link = Link:
+ds-type-link-text = Clickable link
+ds-btn-primary = Primary
+ds-btn-secondary = Secondary
+ds-btn-danger = Danger
+ds-btn-ghost = Ghost
+ds-btn-disabled = Disabled
+ds-form-text-input = Text input
+ds-form-placeholder = Placeholder text
+ds-form-select = Select
+ds-form-option-1 = Option 1
+ds-form-option-2 = Option 2
+ds-form-option-3 = Option 3
+ds-form-textarea = Textarea
+ds-form-textarea-placeholder = Write something…
+ds-badge-variants-md = Variants (md)
+ds-badge-sizes-sm = Sizes (sm)
+ds-badge-default = Default
+ds-badge-success = Success
+ds-badge-warning = Warning
+ds-badge-danger = Danger
+ds-badge-info = Info
+ds-spinner-sizes = Sizes
+ds-spinner-with-label = With label
+ds-spinner-loading = Loading…
+ds-spinner-saving = Saving…
+ds-skeleton-variants = Variants
+ds-toast-trigger = Trigger toasts
+ds-toast-show-success = Show Success
+ds-toast-show-error = Show Error
+ds-toast-show-warning = Show Warning
+ds-toast-show-info = Show Info
+ds-toast-success-msg = Operation completed successfully
+ds-toast-error-msg = Something went wrong
+ds-toast-warning-msg = Please check your input
+ds-toast-info-msg = This is an informational message
+ds-empty-title = Nothing here yet
+ds-empty-desc = Get started by adding your first item
+ds-empty-action = Add Product
+ds-error-title = Something went wrong
+ds-error-message = An unexpected error occurred. Please try again.
+ds-error-retry = Retry
+
+# Round 212 — the licence activation hero image's alt text. "kasir.mu" is a
+# brand name and stays; the descriptor after it is copy.
+license-activation-logo-alt = kasir.mu Logo

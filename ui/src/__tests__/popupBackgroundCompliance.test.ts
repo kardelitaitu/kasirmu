@@ -510,13 +510,11 @@ describe('popup surfaces have visible backgrounds', () => {
     // so 'features/sales/CartPanel.css' cannot credit 'features/sales/CartPanelLineItem.css'
     // and a moved directory cannot pass as the sheet it replaced.
     const SHEETS_BASELINE: [string, number][] = [
-      ["components/ConnectionStatus.css",9],
       ["components/ErrorBoundary.css",7],
       ["components/ExitSurveyModal.css",11],
       ["components/FastPINOverlay.css",49],
       ["components/GatewayStatusBadge.css",5],
       ["components/ImpersonationBanner.css",4],
-      ["components/MachineIdStatus.css",5],
       ["components/OrgSelector.css",7],
       ["components/OrgSwitcher.css",15],
       ["components/PermissionDenied.css",10],
@@ -547,7 +545,6 @@ describe('popup surfaces have visible backgrounds', () => {
       ["features/inventory/InventoryAdjustmentScreen.css",52],
       ["features/inventory/LocationPicker.css",31],
       ["features/inventory/ShiftBar.css",22],
-      ["features/inventory/StockAlertPanel.css",28],
       ["features/inventory/StockCountBadge.css",5],
       ["features/inventory/StockCountDetail.css",38],
       ["features/inventory/StockCountForm.css",13],
@@ -555,7 +552,6 @@ describe('popup surfaces have visible backgrounds', () => {
       ["features/inventory/StockCountsScreen.css",25],
       ["features/inventory/ThresholdConfigScreen.css",16],
       ["features/inventory/TransactionLogScreen.css",32],
-      ["features/inventory/TransitAuditScreen.css",18],
       ["features/kds/ExpoScreen.css",59],
       ["features/kds/KdsCompletedView.css",6],
       ["features/kds/KdsScreen.css",336],
@@ -578,7 +574,6 @@ describe('popup surfaces have visible backgrounds', () => {
       ["features/offline/OfflineQueueScreen.css",62],
       ["features/products/BundleManagementScreen.css",35],
       ["features/products/ProductLookupScreen.css",58],
-      ["features/products/ProductManagementScreen.css",66],
       ["features/promotions/PromotionManagementScreen.css",37],
       ["features/purchasing/PurchaseOrderForm.css",26],
       ["features/purchasing/PurchaseOrdersScreen.css",31],

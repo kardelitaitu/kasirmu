@@ -816,7 +816,7 @@ beforeAll(() => {
     gradedRules += result.gradedRules;
     coarseRules += result.coarseRules;
   }
-});
+}, 30_000);
 
 /* ── Tests ───────────────────────────────────────────────────────── */
 

@@ -5,6 +5,8 @@ import type { usePosState } from '../usePosState';
 import { requiredLocalized } from '@/components';
 import { plainErrorMessage } from '@/utils/app-error';
 import { triggerInteraction } from '@/utils/interaction';
+import { devLog } from '@/utils/devLog';
+import { isTabletShell } from '@/utils/shellKind';
 import { useAnimatedUndoStack } from '@/hooks/useAnimatedUndoStack';
 import type { Promotion } from '@/api/promotions';
 import {
@@ -13,6 +15,7 @@ import {
   getCartDeductionLocationScoped,
   overrideCartDeductionLocation,
   overrideLinePriceScoped,
+  setLineCourseScoped,
 } from '@/api/sales';
 import type { ShiftDto } from '@/api/shifts';
 import type { CartId, CartLine, CourseId, ModifierSelection, Product } from '@/types/domain';
@@ -23,6 +26,21 @@ type AddToast = ReturnType<typeof useToast>['addToast'];
 type PosState = ReturnType<typeof usePosState>;
 /** Structural twin of the caller's useRef(l10n) result — non-null current. */
 type L10nRef = { current: Parameters<typeof requiredLocalized>[0] };
+
+/**
+ * A cart line removed from the sale, held on the undo stack together with the
+ * index it occupied so Undo can put it BACK rather than on top.
+ *
+ * This exists because `CartLine` is position-free: the list order IS the
+ * position, so a bare line cannot be restored to its original spot. See
+ * `handleRemoveLine` for the measurement that made the difference visible.
+ */
+interface RemovedLine {
+  /** The line that was removed. */
+  line: CartLine;
+  /** Index the line held in `lines` at removal time. */
+  index: number;
+}
 
 export interface UsePosCartActionsParams {
   sessionToken: string;
@@ -39,7 +57,7 @@ export interface UsePosCartActionsParams {
   /** Bundle ref, threaded so the unbound-cart toast keeps its localised text. */
   l10nRef: L10nRef;
   addProduct: PosState['addProduct'];
-  updateQty: PosState['updateQty'];
+  changeQty: PosState['changeQty'];
   updateLinePrice: PosState['updateLinePrice'];
   removeLine: PosState['removeLine'];
   setLines: PosState['setLines'];
@@ -72,9 +90,8 @@ export function usePosCartActions({
   shiftUnavailableRef,
   l10nRef,
   addProduct,
-  updateQty,
+  changeQty,
   updateLinePrice,
-  removeLine,
   setLines,
   setDiscount,
   discountInput,
@@ -109,9 +126,15 @@ export function usePosCartActions({
         // `?? locId` below is the degradation this code always intended, and it can only happen if
         // the name was never fetched. A cart that exists must be returned as existing.
         try {
-          const info = sessionToken
-            ? await getCartDeductionLocationScoped(sessionToken, newCartId)
-            : await getCartDeductionLocation(newCartId);
+          // The ambient name is TABLET-only; desktop registers only the scoped twin.
+          // `sessionToken` is an empty string when there is no session, so a bare
+          // truthiness test sent the desktop down the ambient branch and the invoke was
+          // rejected as an unknown command. Gate on the shell as well. Same defect and
+          // same fix as PosScreen.tsx:910 -- found by scripts/verify-ipc-parity.py.
+          const info =
+            sessionToken || !isTabletShell()
+              ? await getCartDeductionLocationScoped(sessionToken, newCartId)
+              : await getCartDeductionLocation(newCartId);
           setDeductionLocationName(info?.locationName ?? locId);
           if (info?.overriddenAt) setDeductionOverridden(true);
         } catch {
@@ -189,13 +212,24 @@ export function usePosCartActions({
     }
   }, [cartId, sessionToken, addToast, l10nRef]);
 
+  // DELTA, not an absolute quantity — the same fix as RetailPosScreen.handleIncreaseQty.
+  //
+  // `updateQty(id, line.qty - 1)` was wrong TWICE over:
+  //   1. two taps in one React batch both close over the same rendered `line.qty`, so both
+  //      write the same value and the second press is lost;
+  //   2. on a qty-1 line it computes `updateQty(id, 0)`, which usePosState REJECTS
+  //      (`if (qty <= 0) return`, usePosState.ts:139) — so the decrease button did nothing
+  //      at all rather than removing the line.
+  //
+  // `changeQty` resolves the delta inside the `setLines` updater against the committed
+  // state, and drops the line when it reaches zero.
   const handleDecreaseQty = useCallback((line: CartLine) => {
-    updateQty(line.id, line.qty - 1);
-  }, [updateQty]);
+    changeQty(line.id, -1);
+  }, [changeQty]);
 
   const handleIncreaseQty = useCallback((line: CartLine) => {
-    updateQty(line.id, line.qty + 1);
-  }, [updateQty]);
+    changeQty(line.id, 1);
+  }, [changeQty]);
 
   const handleOverrideConfirm = useCallback(async (newPriceMinor: number, _authorizingUserId: string) => {
     if (!overrideTarget) return;
@@ -207,10 +241,24 @@ export function usePosCartActions({
     }
     try {
       await overrideLinePriceScoped(sessionToken, cId, overrideTarget.id, newPriceMinor);
-      updateLinePrice(overrideTarget.id, {
+      // READ THE RESULT. `updateLinePrice` returns `false` and writes nothing when the
+      // price's currency differs from the cart's anchor. The server has ALREADY
+      // accepted the override by this point, so ignoring it means the total the
+      // cashier watches does not match what the backend holds — the worst of the
+      // three call sites, because the sale was recorded and the preview was not.
+      const applied = updateLinePrice(overrideTarget.id, {
         minor_units: newPriceMinor,
         currency: overrideTarget.unit_price.currency,
       });
+      if (!applied) {
+        // The localized string IS the message here. `plainErrorMessage` is for a
+        // backend error shape; passing a synthetic Error to it just returns the
+        // fallback, so it would be ceremony.
+        addToast({
+          message: requiredLocalized(l10nRef.current, 'pos-toast-line-price-currency-mismatch'),
+          type: 'error',
+        });
+      }
     } catch (err) {
       // The FALLBACK is what the cashier sees when the backend sent no message, so
       // it is localized too — plainErrorMessage's second argument is user-visible.
@@ -243,7 +291,7 @@ export function usePosCartActions({
     setShowPromotions(false);
     const names = selected.map((p) => p.name).join(', ');
     if (selected.length > 0) {
-      addToast({ message: l10nRef.current.getString('pos-promotions-applied', { name: names }) || names, type: 'success' });
+      addToast({ message: requiredLocalized(l10nRef.current, 'pos-promotions-applied', { name: names }), type: 'success' });
     }
   }, [addToast, l10nRef, setAppliedPromotions, setShowPromotions]);
 
@@ -255,27 +303,54 @@ export function usePosCartActions({
   // CartLineItem 200ms exit timer that prevents concurrent pushes
   // from landing during the fade on the component layer. MAX size
   // 5 so the cashier can recover from a batch of mistakes.
-  const animatedUndoStack = useAnimatedUndoStack<CartLine>({
+  const animatedUndoStack = useAnimatedUndoStack<RemovedLine>({
     maxSize: 5,
-    getId: (line) => String(line.id),
+    // Keyed on the line id so the race-safety id-set check in the hook is
+    // unchanged by the extra `index` the wrapper carries.
+    getId: (removed) => String(removed.line.id),
   });
 
   // Push a removed cart line onto the undo stack so the cashier
   // can recover up to the last 5 removes via the floating pill.
+  //
+  // ⚠️ THE INDEX IS CAPTURED HERE, and it is the whole point of `RemovedLine`.
+  // `handleUndoRemove` used to re-insert with `[popped, ...prev]` — always the
+  // TOP — because `CartLine` is position-free (types/domain.ts:109-128) and the
+  // undo stack stored the bare line. Measured: removing the 3rd of 3 lines and
+  // pressing Undo produced [removed, 1st, 3rd] instead of [1st, removed, 3rd],
+  // so the ticket order changed underneath the waiter.
+  //
+  // The index is read INSIDE the updater, so it is the index against the
+  // committed list rather than against whatever the row rendered with — the same
+  // committed-state discipline `changeQty` uses.
   const handleRemoveLine = useCallback((line: CartLine) => {
-    removeLine(line.id);
-    animatedUndoStack.push(line);
-  }, [removeLine, animatedUndoStack]);
+    let removedIndex = -1;
+    setLines((prev) => {
+      removedIndex = prev.findIndex((l) => l.id === line.id);
+      return prev.filter((l) => l.id !== line.id);
+    });
+    // -1 means the line was not in the committed list (a double-remove off a
+    // stale row). Clamped to 0 on restore, which is the old behaviour and the
+    // only sensible reading when no position was recorded.
+    animatedUndoStack.push({ line, index: Math.max(0, removedIndex) });
+  }, [setLines, animatedUndoStack]);
 
-  // Pop the top of the undo stack and re-insert the line into the
-  // cart. When the pop empties the stack, the hook schedules the
+  // Pop the top of the undo stack and re-insert the line at the index it was
+  // removed from. When the pop empties the stack, the hook schedules the
   // fade so the pill unmounts via the exit keyframe instead of
   // snapping away.
   const handleUndoRemove = useCallback(() => {
     const popped = animatedUndoStack.pop();
     if (popped === undefined) return;
     triggerInteraction('undo-cart');
-    setLines((prev) => [popped, ...prev]);
+    setLines((prev) => {
+      const restored = [...prev];
+      // Clamp: lines may have been removed or reordered while this sat on the
+      // stack (it holds up to 5), so the recorded index can exceed the list.
+      const at = Math.min(Math.max(0, popped.index), restored.length);
+      restored.splice(at, 0, popped.line);
+      return restored;
+    });
   }, [animatedUndoStack, setLines]);
 
   // Dismiss the pill via the race-safe exit fade. Concurrent
@@ -284,9 +359,41 @@ export function usePosCartActions({
   const handleDismissUndo = useCallback(() => {
     animatedUndoStack.dismiss();
   }, [animatedUndoStack]);
+  /**
+   * Persist a line's course to the backend cart, so coursing survives an app
+   * restart. The device-local `assignCourse` in `usePosState` runs first and is
+   * what the UI renders; this mirrors it onto the server cart.
+   *
+   * BEST-EFFORT BY DESIGN. `set_line_course_scoped` needs a cart that exists and
+   * `SALES_PROCESS`, and a cashier mid-service must never be blocked from putting
+   * a course on a line because a sync failed -- the local assignment has already
+   * happened and is correct for this shift. A failure is swallowed for the same
+   * reason the deduction-name lookup is: the screen keeps working, and the next
+   * successful assign re-syncs. It is NOT silent to a developer -- `devLog` records
+   * it, the same convention the rest of this file uses.
+   */
+  const syncLineCourse = useCallback(
+    async (lineId: string, courseId: string) => {
+      if (!cartId) return;
+      try {
+        await setLineCourseScoped(sessionToken, {
+          cartId,
+          lineId,
+          // The device-side convention is that '' means "clear" (the course
+          // chip's None option); the backend's is `None`. Translate here rather
+          // than at the call site so the two vocabularies meet in one place.
+          course: courseId === '' ? null : courseId,
+        });
+      } catch (err) {
+        devLog.warn('pos-course', `course sync failed for line ${lineId}: ${String(err)}`);
+      }
+    },
+    [cartId, sessionToken],
+  );
+
   return {
     overrideTarget,
-    setOverrideTarget,
+    syncLineCourse,    setOverrideTarget,
     showFastPINOverlay,
     setShowFastPINOverlay,
     setCartId,

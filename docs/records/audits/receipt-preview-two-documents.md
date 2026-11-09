@@ -49,3 +49,5 @@ projects** on the chit case. Restored, blank diff.
 | `RestaurantReceiptsScreen.tsx` | blank diff after the restore |
 | `tsc` / `eslint` | 0 / 0 |
 | Full UI suite | 12,693 passed |
+
+> last audited 14-10-26 by docs-auditor

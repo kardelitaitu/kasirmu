@@ -22,6 +22,14 @@ vi.mock('@fluent/react', () => ({
 vi.mock('@/components', () => ({
   requiredLocalized: (_l10n: unknown, id: string) => id,
 }));
+// `ShiftBar` (mounted into WarehouseConsole in round 164) reads `useAuth`, and the shared
+// `renderWithProviders` helper supplies Brand/Theme/Toast/Zoom but NOT AuthProvider. Mocking
+// `useAuth` directly is the established workaround -- 86 other suites do the same -- and it is
+// safer than widening the helper for every component that happens to read a session.
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ session: null, user: null }),
+}));
+
 
 describe('warehouse shortcut parity', () => {
   // 1. Manifest integrity ──────────────────────────────────────
@@ -108,6 +116,14 @@ describe('warehouse shortcut parity', () => {
       }
     }
   });
+
+  // ⚠️ This test CANNOT FAIL, and that is worth stating rather than discovering.
+  // `ACTIVE_SHORTCUT_ACTIONS` is DERIVED from `WAREHOUSE_SHORTCUTS`
+  // (warehouseShortcuts.ts:61-63), so asserting the set matches the manifest asserts
+  // A ⊆ A. Measured: deleting the real `case 'print':` handler from
+  // WarehouseConsole.tsx — killing F5 outright — left all nine tests in this file
+  // GREEN. The behavioural check lives in warehouseShortcutWiring.test.tsx, which
+  // drives the keydown path and asserts an observable effect.
 
   // 4. F11 is shell-owned, not re-bound ─────────────────────────
 

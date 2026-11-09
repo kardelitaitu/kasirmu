@@ -47,3 +47,5 @@ rather than sweeping the whole surface.
 | Clickable `div`/`span` without `role`/`tabIndex` | **0** |
 | Scanner false positives | 2, both identified and excluded |
 | Tree | no source changed this round |
+
+> last audited 14-10-26 by docs-auditor

@@ -11,10 +11,11 @@ import {
 import { useToast } from '@/components/Toast';
 import { requiredLocalized, EmptyState } from '@/components';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { useOptionalCurrency } from '@/contexts/CurrencyContext';
 import { NoGiftCardsIcon } from '@/components/EmptyStateIllustrations';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { asArray } from '@/utils/ipc-payload';
-import { formatMoney } from '@/types/domain';
+import { formatMoney, parseMoneyInput } from '@/types/domain';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
@@ -40,6 +41,11 @@ export default function GiftCardsScreen() {
   const { l10n } = useLocalization();
   const { sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
+  // The store's currency, used to read the top-up amount. Each CARD carries its own
+  // currency from the API for display, but the amount the operator TYPES is in the
+  // store's — that is the only currency the till is ringing up in.
+  const currencyCtx = useOptionalCurrency();
+  const currency = currencyCtx?.currency ?? 'IDR';
   // Dates follow the active Fluent locale (not the browser default).
   const numLocale = [...l10n.bundles][0]?.locales[0] ?? 'en-US';
   const [cards, setCards] = useState<GiftCardWithTransactions[]>([]);
@@ -52,9 +58,14 @@ export default function GiftCardsScreen() {
   const [topUpAmount, setTopUpAmount] = useState('');
   const [topUpError, setTopUpError] = useState('');
   const { addToast } = useToast();
+  // A rejected read used to be reported only by an auto-dismissing toast, so the
+  // render fell through to the empty state and claimed there are no gift cards,
+  // on a screen whose whole purpose is showing balances the store owes customers.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const filter: GiftCardFilter = {};
       if (search.trim()) filter.search = search.trim();
@@ -63,6 +74,9 @@ export default function GiftCardsScreen() {
       setCards(asArray<typeof result[number]>(result));
     } catch {
       addToast({ message: requiredLocalized(l10n, 'gift-cards-error-load'), type: 'error' });
+      // Keep the cards already on screen: a failed refresh must not delete the
+      // balances the operator was reading.
+      setLoadError(requiredLocalized(l10n, 'gift-cards-error-load'));
     } finally {
       setLoading(false);
     }
@@ -83,24 +97,49 @@ export default function GiftCardsScreen() {
     }
   }, [load, addToast, l10n, sessionToken]);
 
-  const handleTopUp = useCallback(async (cardNumber: string) => {
-    // Reject non-integers (e.g. "500.5") rather than silently truncating.
-    const raw = topUpAmount.trim();
-    const amount = Number(raw);
-    if (raw === '' || !Number.isInteger(amount) || amount <= 0) {
+  const handleTopUp = useCallback(async (cardNumber: string, cardCurrency: string) => {
+    // Currency-aware: the typed value is MAJOR units, so "50" is $50.00 (5000 minor)
+    // on a 2-exponent currency and Rp 50 (50 minor) on IDR. Reading it as raw minor
+    // units under-issued by 100x on a USD till — the same defect the issue form had.
+    // `parseMoneyInput` rejects the over-precision and non-numeric cases the old
+    // `Number.isInteger` guard caught, so its result is the whole validation.
+    // CURRENCY GUARD, the same one the tender panel got (round 244). `amount_minor` is a
+    // DENOMINATION, not a value: the operator types in the STORE's currency (:48), while
+    // `top_up_gift_card` (crates/kasirmu-core/src/db/gift_cards.rs:560) credits the CARD's
+    // balance and stamps the ledger note with `parse_currency(&card.currency)` (:642).
+    // Typed 50 on an IDR till against a KWD card, that is 50 fils (0.050 KWD) instead of
+    // 50 KWD: a 1000x under-credit written into stored value.
+    //
+    // CORE NOW REFUSES THIS TOO (measured 2026-10-26). `refuse_currency_mismatch` is
+    // called at gift_cards.rs:589, after the status check so a frozen card still reports
+    // its status. So this guard is no longer the only line of defence -- it is the one
+    // that produces a message the operator can act on, before the round trip. Keeping
+    // both is deliberate: the core guard is the correctness one, this is the UX one.
+    // Converting instead of refusing would need a rate and an owner ruling.
+    if (cardCurrency !== currency) {
+      setTopUpError(
+        l10n.getString('gift-cards-payment-currency-mismatch', {
+          cardCurrency,
+          saleCurrency: currency,
+        }),
+      );
+      return;
+    }
+    const amount = parseMoneyInput(topUpAmount, currency);
+    if (amount === null || amount <= 0) {
       setTopUpError(l10n.getString('gift-cards-topup-invalid'));
       return;
     }
     setTopUpError('');
     try {
-      await topUpGiftCard(sessionToken, cardNumber, amount);
+      await topUpGiftCard(sessionToken, cardNumber, amount, currency);
       setTopUpCardId(null);
       setTopUpAmount('');
       await load();
     } catch (err) {
       setTopUpError(l10nErrorMessage(err, l10n, 'gift-cards-error-topup'));
     }
-  }, [topUpAmount, load, l10n, sessionToken]);
+  }, [topUpAmount, load, l10n, sessionToken, currency]);
 
   return (
     <div className="gift-cards-page">
@@ -137,6 +176,15 @@ export default function GiftCardsScreen() {
         </select>
       </div>
 
+      {loadError && (
+        <div className="gift-cards-load-error" role="alert">
+          <span>{loadError}</span>
+          <button type="button" className="gift-cards-load-retry" onClick={load}>
+            <Localized id="retry"><span>Retry</span></Localized>
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="gift-cards-loading-skeleton" aria-hidden="true">
           <div className="gift-cards-header">
@@ -165,7 +213,7 @@ export default function GiftCardsScreen() {
             ))}
           </div>
         </div>
-      ) : cards.length === 0 ? (
+      ) : cards.length === 0 && loadError ? null : cards.length === 0 ? (
         <Card shadow="sm">
           <EmptyState
             region="table"
@@ -248,13 +296,13 @@ export default function GiftCardsScreen() {
                         className="gift-card-topup-input"
                         id="gift-card-topup-amount"
                         name="gift-card-topup-amount"
-                        placeholder={requiredLocalized(l10n, 'gift-cards-topup-placeholder')}
+                        placeholder={requiredLocalized(l10n, 'gift-cards-topup-placeholder', { currency })}
                         value={topUpAmount}
                         onChange={(e) => { setTopUpAmount(e.target.value); setTopUpError(''); }}
                         aria-label={requiredLocalized(l10n, 'gift-cards-topup-aria')}
                       />
                       <Localized id="gift-cards-confirm-topup">
-                        <Button variant="primary" onClick={() => handleTopUp(gc.card.card_number)}>
+                        <Button variant="primary" onClick={() => handleTopUp(gc.card.card_number, gc.card.currency)}>
                           <span>Confirm Top-Up</span>
                         </Button>
                       </Localized>

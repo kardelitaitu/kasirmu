@@ -118,15 +118,68 @@ pub const KNOWN_SCALES: &[(u16, u16, &str)] = &[
     (0x0000, 0x0000, "Generic HID POS Scale"),
 ];
 
-/// Enumerate USB devices whose interface class matches `class`.
-pub fn probe_by_class(class: u8) -> Result<Vec<UsbDeviceInfo>, HalError> {
+/// Process-wide `rusb` context.
+///
+/// A fresh `rusb::Context` costs a `libusb_init` + `libusb_exit` pair, which
+/// re-initialises the whole backend — it is the expensive part of a connect,
+/// not the enumeration that follows. `rusb::Context` is `Clone + Send + Sync`
+/// (it is an `Arc` around the raw handle), and `libusb` is documented as safe
+/// to use from multiple threads against one context, so one context is shared
+/// for the life of the process and never dropped.
+static USB_CONTEXT: std::sync::OnceLock<Context> = std::sync::OnceLock::new();
+
+/// Borrow the process-wide USB context, creating it on first use.
+fn shared_context() -> Result<&'static Context, HalError> {
+    if let Some(context) = USB_CONTEXT.get() {
+        return Ok(context);
+    }
     let context =
         Context::new().map_err(|e| HalError::Usb(format!("failed to create USB context: {e}")))?;
+    // If another thread won the race, the loser's context is simply dropped.
+    let _ = USB_CONTEXT.set(context);
+    USB_CONTEXT
+        .get()
+        .ok_or_else(|| HalError::Usb("failed to create USB context".to_owned()))
+}
+
+/// Enumerate USB devices whose interface class matches `class`.
+///
+/// This is a thin filter over `probe_classes` and walks the bus once.
+pub fn probe_by_class(class: u8) -> Result<Vec<UsbDeviceInfo>, HalError> {
+    let results = probe_classes(&[class]).unwrap_or_default();
+    Ok(results.into_iter().map(|c| c.info).collect())
+}
+
+/// Enumerate USB devices having at least one interface whose class is in
+/// `classes`, with the bus walked exactly ONCE.
+///
+/// Every interface setting is visited in the order libusb reports it, so the
+/// result is the concatenation of what one per-class walk would have produced
+/// for each class. Each kept interface opens its device to read the three
+/// string descriptors — the expensive part of enumeration — so callers that
+/// need several classes must call this once, not once per class.
+///
+/// Only the initial context creation / device-list failures are errors;
+/// per-device and per-interface failures are skipped, as they always were.
+pub(crate) fn probe_classes(classes: &[u8]) -> Result<Vec<Classified>, HalError> {
+    let mut results = Vec::new();
+    walk_bus(classes, &mut |class, info| {
+        results.push(Classified { class, info })
+    })?;
+    Ok(results)
+}
+
+/// Visit every USB interface setting whose class is in `classes`, in bus
+/// order, handing each one to `visit`.
+///
+/// This is the single bus walk. Splitting the walk from the accumulation lets
+/// `probe_all` partition in memory with no extra enumeration and keeps the
+/// per-device fail-soft behaviour in one place.
+fn walk_bus(classes: &[u8], visit: &mut impl FnMut(u8, UsbDeviceInfo)) -> Result<(), HalError> {
+    let context = shared_context()?;
     let devices = context
         .devices()
         .map_err(|e| HalError::Usb(format!("failed to list USB devices: {e}")))?;
-
-    let mut results = Vec::new();
 
     for device in devices.iter() {
         let desc = match device.device_descriptor() {
@@ -141,7 +194,7 @@ pub fn probe_by_class(class: u8) -> Result<Vec<UsbDeviceInfo>, HalError> {
 
         for interface in config.interfaces() {
             for setting in interface.descriptors() {
-                if setting.class_code() != class {
+                if !classes.contains(&setting.class_code()) {
                     continue;
                 }
 
@@ -173,7 +226,8 @@ pub fn probe_by_class(class: u8) -> Result<Vec<UsbDeviceInfo>, HalError> {
                 };
 
                 let (category, label) = classify_device(desc.vendor_id(), desc.product_id());
-                results.push(UsbDeviceInfo {
+                let class = setting.class_code();
+                let info = UsbDeviceInfo {
                     vid: desc.vendor_id(),
                     pid: desc.product_id(),
                     manufacturer,
@@ -184,29 +238,57 @@ pub fn probe_by_class(class: u8) -> Result<Vec<UsbDeviceInfo>, HalError> {
                     endpoint_out: ep_out,
                     category,
                     label,
-                });
+                };
+                visit(class, info);
             }
         }
     }
 
-    Ok(results)
+    Ok(())
 }
 
-/// Probe for USB HID barcode scanners matching [`KNOWN_SCANNERS`].
+/// One enumerated interface setting together with the class it matched on.
 ///
-/// Returns an empty vec (not an error) when no hardware is found — this
-/// lets the system fall back to the mock driver.
-pub fn probe_scanners() -> Result<Vec<UsbDeviceInfo>, HalError> {
-    let mut results = probe_by_class(CLASS_HID).unwrap_or_default();
+/// The class is not part of [`UsbDeviceInfo`] (that struct is public and
+/// serde-stable), so the internal walk hands it back alongside the record and
+/// the partition steps below can tell a vendor-specific scanner interface
+/// from a HID one without re-walking the bus.
+#[derive(Clone)]
+pub(crate) struct Classified {
+    class: u8,
+    info: UsbDeviceInfo,
+}
+
+/// Interface classes `probe_scanners` looks at: HID first, then the
+/// vendor-specific class some scanners expose instead.
+const SCANNER_CLASSES: &[u8] = &[CLASS_HID, CLASS_VENDOR_SPECIFIC];
+/// Interface classes `probe_printers` looks at.
+const PRINTER_CLASSES: &[u8] = &[CLASS_PRINTER];
+/// Interface classes `probe_scales` looks at.
+const SCALE_CLASSES: &[u8] = &[CLASS_HID];
+
+/// Partition an already-enumerated scanner-class list into scanner results.
+fn scanners_from(enumerated: Vec<Classified>) -> Vec<UsbDeviceInfo> {
+    // HID results first, in bus order; vendor-specific interfaces are kept in
+    // a separate list so they can be appended AFTER all HID results — the
+    // order the original two-walk implementation produced.
+    let mut results: Vec<UsbDeviceInfo> = Vec::new();
+    let mut vendor_results: Vec<UsbDeviceInfo> = Vec::new();
+
+    for Classified { class, info } in enumerated {
+        if class == CLASS_VENDOR_SPECIFIC {
+            vendor_results.push(info);
+        } else {
+            results.push(info);
+        }
+    }
 
     // Also check vendor-specific class for devices not exposing HID class
-    if let Ok(vendor_devices) = probe_by_class(CLASS_VENDOR_SPECIFIC) {
-        for dev in vendor_devices {
-            if KNOWN_SCANNERS.contains(&(dev.vid, dev.pid))
-                && !results.iter().any(|r| r.vid == dev.vid && r.pid == dev.pid)
-            {
-                results.push(dev);
-            }
+    for dev in vendor_results {
+        if KNOWN_SCANNERS.contains(&(dev.vid, dev.pid))
+            && !results.iter().any(|r| r.vid == dev.vid && r.pid == dev.pid)
+        {
+            results.push(dev);
         }
     }
 
@@ -221,12 +303,12 @@ pub fn probe_scanners() -> Result<Vec<UsbDeviceInfo>, HalError> {
     }
 
     results.retain(|d| KNOWN_SCANNERS.contains(&(d.vid, d.pid)));
-    Ok(results)
+    results
 }
 
-/// Probe for USB receipt printers matching [`KNOWN_PRINTERS`].
-pub fn probe_printers() -> Result<Vec<UsbDeviceInfo>, HalError> {
-    let results = probe_by_class(CLASS_PRINTER).unwrap_or_default();
+/// Filter + label an already-enumerated printer-class list.
+fn printers_from(enumerated: Vec<Classified>) -> Vec<UsbDeviceInfo> {
+    let results: Vec<UsbDeviceInfo> = enumerated.into_iter().map(|c| c.info).collect();
     let filtered: Vec<_> = results
         .into_iter()
         .filter(|d| KNOWN_PRINTERS.contains(&(d.vid, d.pid)))
@@ -238,12 +320,12 @@ pub fn probe_printers() -> Result<Vec<UsbDeviceInfo>, HalError> {
             d
         })
         .collect();
-    Ok(filtered)
+    filtered
 }
 
-/// Probe for weight scales matching [`KNOWN_SCALES`].
-pub fn probe_scales() -> Result<Vec<UsbDeviceInfo>, HalError> {
-    let results = probe_by_class(CLASS_HID).unwrap_or_default();
+/// Filter + label an already-enumerated HID-class list.
+fn scales_from(enumerated: Vec<Classified>) -> Vec<UsbDeviceInfo> {
+    let results: Vec<UsbDeviceInfo> = enumerated.into_iter().map(|c| c.info).collect();
     let filtered: Vec<_> = results
         .into_iter()
         .filter(|d| {
@@ -266,22 +348,70 @@ pub fn probe_scales() -> Result<Vec<UsbDeviceInfo>, HalError> {
             d
         })
         .collect();
-    Ok(filtered)
+    filtered
+}
+
+/// Probe for USB HID barcode scanners matching [`KNOWN_SCANNERS`].
+///
+/// Returns an empty vec (not an error) when no hardware is found — this
+/// lets the system fall back to the mock driver.
+pub fn probe_scanners() -> Result<Vec<UsbDeviceInfo>, HalError> {
+    let results = probe_classes(SCANNER_CLASSES).unwrap_or_default();
+    Ok(scanners_from(results))
+}
+
+/// Probe for USB receipt printers matching [`KNOWN_PRINTERS`].
+pub fn probe_printers() -> Result<Vec<UsbDeviceInfo>, HalError> {
+    let results = probe_classes(PRINTER_CLASSES).unwrap_or_default();
+    Ok(printers_from(results))
+}
+
+/// Probe for weight scales matching [`KNOWN_SCALES`].
+pub fn probe_scales() -> Result<Vec<UsbDeviceInfo>, HalError> {
+    let results = probe_classes(SCALE_CLASSES).unwrap_or_default();
+    Ok(scales_from(results))
 }
 
 /// Probe all known USB devices (scanners, printers, scales) and return a
 /// unified list. Each result has its `category` and `label` populated.
+///
+/// The bus is walked ONCE — every interface of every relevant class is
+/// collected — and the three categories are partitioned in memory afterwards.
+/// The output is scanners, then printers, then scales: the same order, and
+/// the same three lists, that calling each `probe_*` function in turn gave.
 pub fn probe_all() -> Result<Vec<UsbDeviceInfo>, HalError> {
     let mut all = Vec::new();
-    if let Ok(scanners) = probe_scanners() {
-        all.extend(scanners);
+
+    let enumerated =
+        probe_classes(&[CLASS_HID, CLASS_VENDOR_SPECIFIC, CLASS_PRINTER]).unwrap_or_default();
+
+    // Scanners only ever look at HID and vendor-specific interfaces, printers
+    // only at printer-class ones; the HID list is shared with scales, as it
+    // was when the two callers each enumerated the HID class.
+    let mut hid: Vec<Classified> = Vec::new();
+    let mut vendor: Vec<Classified> = Vec::new();
+    let mut printer_class: Vec<Classified> = Vec::new();
+    for c in enumerated {
+        match c.class {
+            CLASS_PRINTER => printer_class.push(c),
+            CLASS_VENDOR_SPECIFIC => vendor.push(c),
+            _ => hid.push(c),
+        }
     }
-    if let Ok(printers) = probe_printers() {
-        all.extend(printers);
-    }
-    if let Ok(scales) = probe_scales() {
-        all.extend(scales);
-    }
+
+    // Scanner order: all HID interfaces in bus order, then the vendor-specific
+    // ones that `scanners_from` merges in.
+    let mut scanner_input = Vec::with_capacity(hid.len() + vendor.len());
+    scanner_input.extend(hid.iter().map(|c| Classified {
+        class: c.class,
+        info: c.info.clone(),
+    }));
+    scanner_input.extend(vendor);
+    all.extend(scanners_from(scanner_input));
+
+    all.extend(printers_from(printer_class));
+    all.extend(scales_from(hid));
+
     Ok(all)
 }
 
@@ -317,13 +447,19 @@ pub fn classify_device(vid: u16, pid: u16) -> (DeviceCategory, String) {
 }
 
 /// Helper to open a USB device and claim an interface.
+///
+/// The enumeration this performs is fresh on EVERY call — the device list is
+/// built, searched and dropped here, so a device that has been unplugged is
+/// simply absent and yields [`HalError::NotFound`], never a stale-handle
+/// failure. What is reused is the `libusb` context ([static `USB_CONTEXT`]),
+/// which is the expensive `libusb_init` half of the old per-connect cost.
+/// Replugging therefore works: nothing about the previous connection is kept.
 pub fn open_device(
     vid: u16,
     pid: u16,
     interface: u8,
 ) -> Result<rusb::DeviceHandle<rusb::Context>, HalError> {
-    let context =
-        Context::new().map_err(|e| HalError::Usb(format!("failed to create USB context: {e}")))?;
+    let context = shared_context()?;
 
     let device = context
         .devices()

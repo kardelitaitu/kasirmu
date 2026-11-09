@@ -29,6 +29,7 @@ tauri-build = { workspace = true }
 indexmap = { workspace = true }
 
 [dev-dependencies]
+kasirmu-test-support = { path = "../../crates/kasirmu-test-support" }
 tauri = { workspace = true, features = ["test"] }
 rand = { workspace = true }
 serde = { workspace = true }

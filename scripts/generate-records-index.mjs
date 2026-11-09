@@ -637,15 +637,32 @@ function main(argv) {
       console.log('ok: docs/records/README.md matches the generator (' + summary + ')');
       return 0;
     }
+    // ── Diff by content, not by position (RI-2) ──────────────────────────
+    // This used to compare g[i] to c[i] index by index and seed the count with
+    // |g.length - c.length|. One inserted row near the top of a sorted group
+    // shifts every line after it, so a nine-line real change was reported as
+    // hundreds of "differing lines" and the first ten shown pairs were noise.
+    // A drift report nobody can read is a report nobody acts on, and the exit
+    // code alone does not tell a reader WHICH row moved.
+    //
+    // Longest common prefix + longest common suffix is enough here: the index
+    // is generated in stable sorted groups, so real drift is a small block
+    // somewhere in the middle, not an interleaving. The middle is then exactly
+    // the removed lines followed by the added lines — no pairing heuristics
+    // and no position arithmetic that can silently miscount.
     const g = gen.split('\n');
     const c = committed.split('\n');
-    let differing = Math.abs(g.length - c.length);
-    const shown = [];
-    for (let i = 0; i < Math.min(g.length, c.length); i++) {
-      if (g[i] === c[i]) continue;
-      differing++;
-      if (shown.length < 10) shown.push('  - ' + c[i] + '\n  + ' + g[i]);
-    }
+    let head = 0;
+    while (head < g.length && head < c.length && g[head] === c[head]) head++;
+    let tail = 0;
+    while (
+      tail < g.length - head &&
+      tail < c.length - head &&
+      g[g.length - 1 - tail] === c[c.length - 1 - tail]
+    ) tail++;
+    const removed = c.slice(head, c.length - tail);
+    const added = g.slice(head, g.length - tail);
+    const differing = removed.length + added.length;
     console.error(
       'error: docs/records/README.md has drifted from the generator (' +
         differing +
@@ -653,10 +670,16 @@ function main(argv) {
         g.length +
         ' generated vs ' +
         c.length +
-        ' committed). Generated is authoritative.\n' +
+        ' committed; first difference at line ' +
+        (head + 1) +
+        '). Generated is authoritative.\n' +
         'Never hand-edit the index — run: node scripts/generate-records-index.mjs',
     );
-    for (const pair of shown) console.error(pair);
+    const LIMIT = 10;
+    for (const line of removed.slice(0, LIMIT)) console.error('  - ' + line);
+    if (removed.length > LIMIT) console.error('  - … ' + (removed.length - LIMIT) + ' more removed line(s)');
+    for (const line of added.slice(0, LIMIT)) console.error('  + ' + line);
+    if (added.length > LIMIT) console.error('  + … ' + (added.length - LIMIT) + ' more added line(s)');
     return 1;
   }
 

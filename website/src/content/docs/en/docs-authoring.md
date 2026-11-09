@@ -77,6 +77,8 @@ as plain text, the renderer is not wired into `astro.config.mjs` yet.
 
 ```mermaid
 flowchart LR
+    accTitle: Paddle webhook flow
+    accDescr: Flowchart showing how checkout triggers a Paddle webhook and handles license minting.
     A[Checkout] --> B[Paddle webhook]
     B --> C{License exists?}
     C -- yes --> D[No-op — replayed event]
@@ -87,6 +89,8 @@ flowchart LR
 
 ```mermaid
 sequenceDiagram
+    accTitle: License activation sequence
+    accDescr: Sequence diagram of POS client activating a key against the license server.
     participant POS as POS client
     participant L as License server
     POS->>L: activate(key)
@@ -138,5 +142,17 @@ It fails when a counterpart is missing, and warns on heading-count or
 `updated` drift between locales. The `updated` frontmatter of both locales
 moves together whenever content changes — it is the page's freshness
 signal, so editing a page without bumping it is itself drift.
+
+> **This check IS enforced** — as of 2026-10-19. It runs in `scripts/check.sh`
+> (step `doc parity`), is registered in `scripts/gates.json` as `doc-parity`, and
+> runs in CI as `dev-ci.yml#static-gates` step `Website locale parity`. Before that
+> it was invoked by nothing, while this very page told contributors to run it —
+> recorded here because a guide that points at an unenforced check is how that gap
+> survives. The green is earned: a probe page added under `en/` with no `id/` twin
+> made the checker exit 1, and it passed again once the probe was removed.
+> It fails on a missing counterpart and only WARNS on heading-count or `updated`
+> divergence, which is legitimate translation variance rather than drift. Run it
+> after adding, renaming, or removing a page; the path in the command above is
+> relative to `website/`.
 
 > last audited 11-10-26 by docs-auditor

@@ -15,7 +15,7 @@ scripts = ["test.lua"]
 allow_network = false
 allow_filesystem = false
 "#;
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let path = dir.path().join("plugin.toml");
     std::fs::write(&path, toml).unwrap();
     let manifest = PluginManifest::load(&path).unwrap();
@@ -26,7 +26,7 @@ allow_filesystem = false
 
 #[test]
 fn load_invalid_manifest_fails() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let path = dir.path().join("plugin.toml");
     std::fs::write(&path, "not: valid: toml").unwrap();
     assert!(PluginManifest::load(&path).is_err());
@@ -37,7 +37,7 @@ fn load_invalid_manifest_fails() {
 #[test]
 fn minimal_manifest_only_name_and_version() {
     let toml = "[plugin]\nname = \"minimal\"\nversion = \"0.1.0\"\n";
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let path = dir.path().join("plugin.toml");
     std::fs::write(&path, toml).unwrap();
     let manifest = PluginManifest::load(&path).unwrap();
@@ -74,7 +74,7 @@ allow_network = false
 allow_filesystem = false
 allow_http = false
 "#;
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let path = dir.path().join("plugin.toml");
     std::fs::write(&path, toml).unwrap();
     let manifest = PluginManifest::load(&path).unwrap();
@@ -101,7 +101,7 @@ fn load_with_capability_flag(flag: &str) -> Result<PluginManifest, PluginError> 
     let toml = format!(
         "[plugin]\nname = \"capped\"\nversion = \"1.0.0\"\n\n[permissions]\n{flag} = true\nrequired_permissions = [\"cart:read\"]\n",
     );
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let path = dir.path().join("plugin.toml");
     std::fs::write(&path, toml).unwrap();
     PluginManifest::load(&path)
@@ -148,7 +148,7 @@ allow_filesystem = false
 allow_http = false
 required_permissions = ["cart:read"]
 "#;
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let path = dir.path().join("plugin.toml");
     std::fs::write(&path, toml).unwrap();
     PluginManifest::load(&path).expect("explicit false must not fail the manifest");
@@ -157,7 +157,7 @@ required_permissions = ["cart:read"]
 #[test]
 fn manifest_capabilities_default_to_empty() {
     let toml = "[plugin]\nname = \"no-caps\"\nversion = \"1.0.0\"\n";
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let path = dir.path().join("plugin.toml");
     std::fs::write(&path, toml).unwrap();
     let manifest = PluginManifest::load(&path).unwrap();
@@ -169,7 +169,7 @@ fn manifest_capabilities_default_to_empty() {
 #[test]
 fn manifest_permissions_default_to_false() {
     let toml = "[plugin]\nname = \"safe\"\nversion = \"1.0.0\"\n";
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let path = dir.path().join("plugin.toml");
     std::fs::write(&path, toml).unwrap();
     let manifest = PluginManifest::load(&path).unwrap();
@@ -232,7 +232,7 @@ version = "1.0.0"
 [permissions]
 required_permissions = ["cart:read", "super:admin"]
 "#;
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let path = dir.path().join("plugin.toml");
     std::fs::write(&path, toml).unwrap();
     let err = PluginManifest::load(&path).unwrap_err();
@@ -246,7 +246,7 @@ fn invalid_plugin_name_format_is_rejected() {
         let toml = format!(
             "[plugin]\nname = \"{bad}\"\nversion = \"1.0.0\"\n\n[permissions]\nrequired_permissions = [\"cart:read\"]\n"
         );
-        let dir = tempfile::tempdir().unwrap();
+        let dir = kasirmu_test_support::tempdir();
         let path = dir.path().join("plugin.toml");
         std::fs::write(&path, toml).unwrap();
         let err = PluginManifest::load(&path).unwrap_err();
@@ -263,7 +263,7 @@ fn overlong_plugin_name_is_rejected() {
     let toml = format!(
         "[plugin]\nname = \"{long}\"\nversion = \"1.0.0\"\n\n[permissions]\nrequired_permissions = [\"cart:read\"]\n"
     );
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let path = dir.path().join("plugin.toml");
     std::fs::write(&path, toml).unwrap();
     assert!(PluginManifest::load(&path).is_err());
@@ -275,7 +275,7 @@ fn valid_kebab_case_name_is_accepted() {
         let toml = format!(
             "[plugin]\nname = \"{good}\"\nversion = \"1.0.0\"\n\n[permissions]\nrequired_permissions = [\"cart:read\"]\n"
         );
-        let dir = tempfile::tempdir().unwrap();
+        let dir = kasirmu_test_support::tempdir();
         let path = dir.path().join("plugin.toml");
         std::fs::write(&path, toml).unwrap();
         PluginManifest::load(&path)
@@ -289,7 +289,7 @@ fn invalid_semver_is_rejected() {
         let toml = format!(
             "[plugin]\nname = \"my-plugin\"\nversion = \"{bad}\"\n\n[permissions]\nrequired_permissions = [\"cart:read\"]\n"
         );
-        let dir = tempfile::tempdir().unwrap();
+        let dir = kasirmu_test_support::tempdir();
         let path = dir.path().join("plugin.toml");
         std::fs::write(&path, toml).unwrap();
         let err = PluginManifest::load(&path).unwrap_err();
@@ -306,7 +306,7 @@ fn valid_semver_with_prerelease_is_accepted() {
         let toml = format!(
             "[plugin]\nname = \"my-plugin\"\nversion = \"{good}\"\n\n[permissions]\nrequired_permissions = [\"cart:read\"]\n"
         );
-        let dir = tempfile::tempdir().unwrap();
+        let dir = kasirmu_test_support::tempdir();
         let path = dir.path().join("plugin.toml");
         std::fs::write(&path, toml).unwrap();
         PluginManifest::load(&path)
@@ -327,7 +327,7 @@ hooks = ["bad hook name!"]
 [permissions]
 required_permissions = ["cart:read"]
 "#;
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let path = dir.path().join("plugin.toml");
     std::fs::write(&path, toml).unwrap();
     let err = PluginManifest::load(&path).unwrap_err();
@@ -346,7 +346,7 @@ version = "1.0.0"
 [permissions]
 required_permissionss = ["cart:read"]
 "#;
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let path = dir.path().join("plugin.toml");
     std::fs::write(&path, toml).unwrap();
     let err = PluginManifest::load(&path).unwrap_err();
@@ -363,7 +363,7 @@ fn typo_in_plugin_meta_field_name_is_rejected() {
 name = "test-plugin"
 versoin = "1.0.0"
 "#;
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let path = dir.path().join("plugin.toml");
     std::fs::write(&path, toml).unwrap();
     let err = PluginManifest::load(&path).unwrap_err();
@@ -383,7 +383,7 @@ version = "1.0.0"
 [capabilities]
 scritps = ["main.lua"]
 "#;
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let path = dir.path().join("plugin.toml");
     std::fs::write(&path, toml).unwrap();
     let err = PluginManifest::load(&path).unwrap_err();
@@ -403,7 +403,7 @@ version = "1.0.0"
 [permissions]
 allow_netwrk = false
 "#;
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let path = dir.path().join("plugin.toml");
     std::fs::write(&path, toml).unwrap();
     let err = PluginManifest::load(&path).unwrap_err();
@@ -416,7 +416,7 @@ allow_netwrk = false
 #[test]
 fn manifest_debug_output() {
     let toml = "[plugin]\nname = \"debug-manifest\"\nversion = \"1.0.0\"\n";
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let path = dir.path().join("plugin.toml");
     std::fs::write(&path, toml).unwrap();
     let manifest = PluginManifest::load(&path).unwrap();

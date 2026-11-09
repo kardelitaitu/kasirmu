@@ -305,7 +305,6 @@ fn run_get_product_track_serial_batch(store: &Store<'_>, skus: &[String]) -> Vec
 // ── Delete product ──────────────────────────────────────────────────
 
 /// Session-scoped variant of `adjust_stock`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn adjust_stock_scoped(
     session_token: String,
@@ -329,8 +328,7 @@ pub async fn adjust_stock_scoped(
         let db_guard = conn_arc
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        let db = &*db_guard;
-        let store = kasirmu_core::db::Store::new(&db).with_terminal_id(tid);
+        let store = kasirmu_core::db::Store::new(&db_guard).with_terminal_id(tid);
         #[allow(deprecated)]
         store.adjust_stock(&args.sku, args.delta)?
     };
@@ -396,7 +394,6 @@ pub async fn adjust_stock_scoped(
 /// Enterprise (`:212`), i.e. **unlimited**. So 10k is the realistic ceiling on
 /// Premium and this deferral is honest there; on Enterprise the read is
 /// genuinely unbounded and the sibling method above is the fix that matters.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn list_products_scoped(
     session_token: String,
@@ -404,18 +401,18 @@ pub async fn list_products_scoped(
     offset: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<Vec<ProductDto>, AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
-    let db_guard = conn_arc
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let db = &*db_guard;
-    let mut products = run_list_products(&db)?;
+    let mut products = {
+        let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+        let db_guard = conn_arc
+            .lock()
+            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+        run_list_products(&db_guard)?
+    };
     let (start, end) = page_window(products.len(), limit, offset);
     Ok(products.drain(start..end).collect())
 }
 
 /// Fetch warehouse-tracked products only (excludes services) resolved from a session token. ADR #7.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn list_warehouse_products_scoped(
     session_token: String,
@@ -425,12 +422,10 @@ pub async fn list_warehouse_products_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let db = &*db_guard;
-    run_list_warehouse_products(&db)
+    run_list_warehouse_products(&db_guard)
 }
 
 /// Look up a single product by barcode resolved from a session token. ADR #7.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn lookup_by_barcode_scoped(
     session_token: String,
@@ -442,15 +437,10 @@ pub async fn lookup_by_barcode_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let db = &*db_guard;
-    let _store = Store::new(&db);
-    let result = run_lookup_by_barcode(&db, &barcode);
-    drop(db);
-    result
+    run_lookup_by_barcode(&db_guard, &barcode)
 }
 
 /// Look up a single product by SKU resolved from a session token. ADR #7.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn lookup_product_by_sku_scoped(
     session_token: String,
@@ -462,15 +452,10 @@ pub async fn lookup_product_by_sku_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let db = &*db_guard;
-    let _store = Store::new(&db);
-    let result = run_lookup_product_by_sku(&db, &sku);
-    drop(db);
-    result
+    run_lookup_product_by_sku(&db_guard, &sku)
 }
 
 /// Create product resolved from a session token. ADR #7.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn create_product_scoped(
     session_token: String,
@@ -510,8 +495,7 @@ pub async fn create_product_scoped(
         let db_guard = conn_arc
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        let db = &*db_guard;
-        let store = Store::new(&db);
+        let store = Store::new(&db_guard);
 
         store.enforce_product_quota(
             &Entitlements::from_subscription(&sub, UsageCounts::default()).tier,
@@ -578,7 +562,6 @@ pub async fn create_product_scoped(
 }
 
 /// Update product resolved from a session token. ADR #7.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn update_product_scoped(
     session_token: String,
@@ -601,8 +584,7 @@ pub async fn update_product_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let db = &*db_guard;
-    let store = Store::new(&db);
+    let store = Store::new(&db_guard);
 
     let currency: kasirmu_core::Currency = args
         .currency
@@ -632,7 +614,6 @@ pub async fn update_product_scoped(
 }
 
 /// Check whether a product tracks serial numbers resolved from a session token. ADR #7.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_product_track_serial_scoped(
     session_token: String,
@@ -640,18 +621,17 @@ pub async fn get_product_track_serial_scoped(
     state: State<'_, AppState>,
 ) -> Result<bool, AppError> {
     let (_session, conn_arc) = state.resolve_scope(&session_token)?;
-    let db_guard = conn_arc
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let db = &*db_guard;
-    let store = Store::new(&db);
-    let track_serial = store.get_product_track_serial(&sku)?.unwrap_or(false);
-    drop(db);
+    let track_serial = {
+        let db_guard = conn_arc
+            .lock()
+            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+        let store = Store::new(&db_guard);
+        store.get_product_track_serial(&sku)?.unwrap_or(false)
+    };
     Ok(track_serial)
 }
 
 /// Check serial-tracking flags for many SKUs in one round trip resolved from a session token. ADR #7.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_product_track_serial_batch_scoped(
     session_token: String,
@@ -659,18 +639,17 @@ pub async fn get_product_track_serial_batch_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<SerialTrackRow>, AppError> {
     let (_session, conn_arc) = state.resolve_scope(&session_token)?;
-    let db_guard = conn_arc
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let db = &*db_guard;
-    let store = Store::new(&db);
-    let rows = run_get_product_track_serial_batch(&store, &skus);
-    drop(db);
+    let rows = {
+        let db_guard = conn_arc
+            .lock()
+            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+        let store = Store::new(&db_guard);
+        run_get_product_track_serial_batch(&store, &skus)
+    };
     Ok(rows)
 }
 
 /// Record an acted-upon product search for the popularity index resolved from a session token. ADR #7.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn record_product_search_scoped(
     session_token: String,
@@ -678,23 +657,19 @@ pub async fn record_product_search_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let (_session, conn_arc) = state.resolve_scope(&session_token)?;
-    let db_guard = conn_arc
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let db = &*db_guard;
-    let store = Store::new(&db);
-    match store.record_product_search(&sku) {
-        Ok(()) => {}
-        Err(e) => {
+    {
+        let db_guard = conn_arc
+            .lock()
+            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+        let store = Store::new(&db_guard);
+        if let Err(e) = store.record_product_search(&sku) {
             tracing::warn!(sku = %sku, error = %e, "product search signal not recorded");
         }
     }
-    drop(db);
     Ok(())
 }
 
 /// Delete product resolved from a session token. ADR #7.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn delete_product_scoped(
     session_token: String,
@@ -709,8 +684,7 @@ pub async fn delete_product_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let db = &*db_guard;
-    let store = Store::new(&db);
+    let store = Store::new(&db_guard);
     store.delete_product(&args.sku)?;
     Ok(())
 }
@@ -718,7 +692,6 @@ pub async fn delete_product_scoped(
 // ── Recipe / BOM commands ───────────────────────────────────────────
 
 /// Look up recipe ingredients for a composite product, store-scoped.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_recipe_scoped(
     session_token: String,
@@ -727,14 +700,14 @@ pub async fn get_recipe_scoped(
 ) -> Result<Vec<RecipeItemDto>, AppError> {
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::PRODUCTS_READ).await?;
-    let conn_arc = state.resolve_store(&session_token)?;
-    let db_guard = conn_arc
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let db = &*db_guard;
-    let store = Store::new(&db);
-    let details = store.get_recipe_details(&parent_product_id)?;
-    drop(db_guard);
+    let details = {
+        let conn_arc = state.resolve_store(&session_token)?;
+        let db_guard = conn_arc
+            .lock()
+            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+        let store = Store::new(&db_guard);
+        store.get_recipe_details(&parent_product_id)?
+    };
 
     Ok(details
         .into_iter()
@@ -752,7 +725,6 @@ pub async fn get_recipe_scoped(
 }
 
 /// Set or update the recipe for a composite product, store-scoped.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn set_recipe_scoped(
     session_token: String,
@@ -761,12 +733,6 @@ pub async fn set_recipe_scoped(
 ) -> Result<Vec<RecipeItemDto>, AppError> {
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::PRODUCTS_UPDATE).await?;
-    let conn_arc = state.resolve_store(&session_token)?;
-    let db_guard = conn_arc
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let db = &*db_guard;
-    let store = Store::new(&db);
 
     let inputs: Vec<kasirmu_core::recipe::RecipeIngredientInput> = args
         .ingredients
@@ -778,8 +744,14 @@ pub async fn set_recipe_scoped(
         })
         .collect();
 
-    let details = store.set_recipe(&args.parent_product_id, &inputs)?;
-    drop(db_guard);
+    let details = {
+        let conn_arc = state.resolve_store(&session_token)?;
+        let db_guard = conn_arc
+            .lock()
+            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+        let store = Store::new(&db_guard);
+        store.set_recipe(&args.parent_product_id, &inputs)?
+    };
 
     Ok(details
         .into_iter()
@@ -797,7 +769,6 @@ pub async fn set_recipe_scoped(
 }
 
 /// Delete the recipe for a composite product, store-scoped.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn delete_recipe_scoped(
     session_token: String,
@@ -806,14 +777,14 @@ pub async fn delete_recipe_scoped(
 ) -> Result<usize, AppError> {
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::PRODUCTS_UPDATE).await?;
-    let conn_arc = state.resolve_store(&session_token)?;
-    let db_guard = conn_arc
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let db = &*db_guard;
-    let store = Store::new(&db);
-    let count = store.delete_recipe(&parent_product_id)?;
-    drop(db_guard);
+    let count = {
+        let conn_arc = state.resolve_store(&session_token)?;
+        let db_guard = conn_arc
+            .lock()
+            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+        let store = Store::new(&db_guard);
+        store.delete_recipe(&parent_product_id)?
+    };
     Ok(count)
 }
 

@@ -306,7 +306,24 @@ impl Store<'_> {
             |row| row.get(0),
         )?;
 
-        let expected_cash = shift.opening_balance_minor + total_cash - cash_refunds - total_payouts;
+        // Include cash collected from customer receivables (piutang / kasbon)
+        // during this shift. Cash paid by customers toward their debts physically enters
+        // the cash drawer and must feed expected cash to prevent false shortage/overage.
+        let receivable_cash: i64 = tx
+            .query_row(
+                "SELECT COALESCE(SUM(amount_minor), 0)
+                 FROM receivable_payments
+                 WHERE method = 'cash'
+                   AND (recorded_by = ?1 OR recorded_by IS NULL)
+                   AND paid_at >= ?2 AND paid_at <= ?3",
+                params![shift.user_id, shift.opened_at, now],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
+        let expected_cash = shift.opening_balance_minor + total_cash + receivable_cash
+            - cash_refunds
+            - total_payouts;
         let cash_difference = closing_balance_minor - expected_cash;
 
         tx.execute(

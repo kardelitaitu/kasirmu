@@ -1,5 +1,5 @@
 //! Unit tests for the branding DTOs and logo-path validation (test
-//! relocation: moved out of `apps/desktop-tauri/src/commands/branding_tests.rs`).
+//! relocation: moved out of `apps/desktop-client/src/commands/branding_tests.rs`, since renamed to desktop-tauri).
 //!
 //! Mounted at the foot of `branding.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves `BrandSettingsDto` and `ALLOWED_LOGO_EXTENSIONS`
@@ -198,9 +198,15 @@ fn validate_logo_allows_svg() {
 // `branding.rs` left this file's 10 tests GREEN, so a security check could be
 // removed with nothing objecting.
 //
-// These use `tempfile` to satisfy the canonicalisation the real function needs,
-// and call the REAL `validate_logo_path` — the replica stays for the cheap
-// extension cases, but nothing here depends on it.
+// These need a real filesystem to satisfy the canonicalisation the real function
+// does, and they call the REAL `validate_logo_path` -- the replica stays for the
+// cheap extension cases, but nothing here depends on it. The fixtures are
+// `ScratchDir` guards under `target/test-scratch` (each test creates,
+// canonicalises and asserts on its directory inside one body, so Drop cleans it
+// up). They used to be `tempfile::tempdir()`, which resolves to the
+// MACHINE-level `C:\WINDOWS\TEMP` on this project's Windows machines, where an
+// ordinary user can create but not delete -- so a leftover fixture both never
+// cleaned up and, once stale, failed its own create with `os error 5`.
 
 /// Write a file inside `dir` and return its path as a string.
 fn file_in(dir: &std::path::Path, name: &str) -> String {
@@ -212,7 +218,7 @@ fn file_in(dir: &std::path::Path, name: &str) -> String {
 /// A path INSIDE the app data dir with an allowed extension is accepted.
 #[test]
 fn validate_logo_path_accepts_a_file_inside_app_data() {
-    let app_data = tempfile::tempdir().expect("temp dir");
+    let app_data = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-branding-inside");
     let logo = file_in(app_data.path(), "logo.png");
     let ok = validate_logo_path(&Ok(app_data.path().to_path_buf()), &logo)
         .expect("a png inside app data must be accepted");
@@ -228,8 +234,8 @@ fn validate_logo_path_accepts_a_file_inside_app_data() {
 /// readable image on the host is a valid "logo".
 #[test]
 fn validate_logo_path_refuses_a_path_outside_app_data() {
-    let app_data = tempfile::tempdir().expect("app data dir");
-    let elsewhere = tempfile::tempdir().expect("another dir");
+    let app_data = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-branding-appdata");
+    let elsewhere = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-branding-elsewhere");
     let logo = file_in(elsewhere.path(), "logo.png");
     let err = validate_logo_path(&Ok(app_data.path().to_path_buf()), &logo)
         .expect_err("a png OUTSIDE app data must be refused");
@@ -247,7 +253,7 @@ fn validate_logo_path_refuses_a_path_outside_app_data() {
 /// through the traversal, so only the post-canonicalisation comparison catches it.
 #[test]
 fn validate_logo_path_refuses_a_traversal_out_of_app_data() {
-    let root = tempfile::tempdir().expect("root");
+    let root = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-branding-traversal");
     let app_data = root.path().join("appdata");
     let evil = root.path().join("evil");
     std::fs::create_dir_all(&app_data).expect("mkdir appdata");
@@ -267,7 +273,7 @@ fn validate_logo_path_refuses_a_traversal_out_of_app_data() {
 /// app data is refused — both through the REAL function.
 #[test]
 fn validate_logo_path_extension_rules_hold_through_the_real_function() {
-    let app_data = tempfile::tempdir().expect("temp dir");
+    let app_data = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-branding-ext");
     let good = file_in(app_data.path(), "logo.svg");
     assert!(validate_logo_path(&Ok(app_data.path().to_path_buf()), &good).is_ok());
 
@@ -283,7 +289,7 @@ fn validate_logo_path_extension_rules_hold_through_the_real_function() {
 /// An empty path clears the logo and needs no filesystem.
 #[test]
 fn validate_logo_path_allows_the_empty_clear_path() {
-    let app_data = tempfile::tempdir().expect("temp dir");
+    let app_data = kasirmu_test_support::ScratchDir::new("kasirmu-bridge-branding-empty");
     let ok = validate_logo_path(&Ok(app_data.path().to_path_buf()), "").expect("empty clears");
     assert!(ok.is_empty());
 }

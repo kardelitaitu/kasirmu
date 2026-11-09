@@ -88,11 +88,17 @@ pub struct TenantQuotaViolation {
     pub allowed_cap: i64,
 }
 
+/// Per-tenant map of condition key to the instant of the last recorded alert.
+type TenantConditionAlerts = HashMap<Arc<str>, Instant>;
+
+/// Alert cooldown table: tenant id mapped to its condition-key cooldown entries.
+type AlertCooldownMap = HashMap<Arc<str>, TenantConditionAlerts>;
+
 /// Thread-safe in-memory cooldown state tracker.
-/// Key is `(tenant_id, condition_key)`.
+/// Key is `(tenant_id, condition_key)` partitioned into nested maps with `Arc<str>` keys.
 #[derive(Clone, Default)]
 pub struct QuotaAlertState {
-    last_alerts: Arc<Mutex<HashMap<(String, String), Instant>>>,
+    last_alerts: Arc<Mutex<AlertCooldownMap>>,
 }
 
 impl QuotaAlertState {
@@ -104,19 +110,39 @@ impl QuotaAlertState {
     }
 
     /// Check whether an alert for `(tenant_id, condition)` is currently suppressed by cooldown.
+    ///
+    /// O-M28: Uses borrowed `&str` lookups against `Arc<str>` keys with zero heap allocations.
     pub async fn is_suppressed(&self, tenant_id: &str, condition: &str, now: Instant) -> bool {
         let guard = self.last_alerts.lock().await;
-        if let Some(&last) = guard.get(&(tenant_id.to_string(), condition.to_string())) {
-            now.duration_since(last) < ALERT_COOLDOWN
-        } else {
-            false
+        if let Some(conditions) = guard.get(tenant_id)
+            && let Some(&last) = conditions.get(condition)
+        {
+            return now.saturating_duration_since(last) < ALERT_COOLDOWN;
         }
+        false
     }
 
     /// Record that an alert was sent, starting the 7-day cooldown window.
+    ///
+    /// O-M28: Prunes expired cooldown entries on insertion so state does not grow
+    /// unbounded with tenant churn.
     pub async fn record_alert(&self, tenant_id: &str, condition: &str, now: Instant) {
         let mut guard = self.last_alerts.lock().await;
-        guard.insert((tenant_id.to_string(), condition.to_string()), now);
+        // Prune expired cooldowns across all tenants on insert
+        guard.retain(|_, conditions| {
+            conditions.retain(|_, &mut last| now.saturating_duration_since(last) < ALERT_COOLDOWN);
+            !conditions.is_empty()
+        });
+        guard
+            .entry(Arc::from(tenant_id))
+            .or_default()
+            .insert(Arc::from(condition), now);
+    }
+
+    /// Number of active tenant entries in the cooldown map (used for tests and metrics).
+    #[cfg(test)]
+    pub async fn active_tenant_count(&self) -> usize {
+        self.last_alerts.lock().await.len()
     }
 }
 
@@ -401,7 +427,7 @@ pub async fn count_tenant_staff_pg(
 ///
 /// What makes this a finding rather than a footnote: products and users DO
 /// reach PostgreSQL — via the copier's `DEFAULT_TABLES` and via
-/// crates/kasirmu-api/src/pg.rs:868,1430 (INSERT INTO users / products). Those
+/// crates/kasirmu-api/src/pg/users.rs:78 and pg/products.rs:664
 /// two axes are live and meaningful. locations is the only counted axis with no
 /// PG writer and no copy entry.
 ///

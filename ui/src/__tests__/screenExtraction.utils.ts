@@ -262,7 +262,7 @@ export function extractUsedClassNames(tsx: string): Set<string> {
  *   1. an accumulator local (let cardClass = ... plus two cardClass += ...) at
  *      features/products/ProductLookupScreen.tsx:495-497, applied at :501;
  *   2. a conditional inside a template held in a local (const logoClass = ...) at
- *      features/auth/StaffLoginScreen.tsx:345, applied at :352 and :359;
+ *      features/auth/StaffLoginScreen.tsx:107, applied at :114 and :121;
  *   3. a function returning class literals, named from an interpolation: getRoleColor
  *      at features/workspaces/WorkspaceHome.tsx:172-186, applied at :247;
  *   4. an UPPER_SNAKE map indexed in a template: WS_COLORS at

@@ -116,7 +116,7 @@ export default function TransactionLogScreen() {
     <div className="log-container">
       <div className="log-header">
         <Localized id="inv-log-title">
-          <h2 className="log-title">Inventory Transaction Log</h2>
+          <h1 className="log-title">Inventory Transaction Log</h1>
         </Localized>
       </div>
 
@@ -270,7 +270,37 @@ export default function TransactionLogScreen() {
                     <td>{locationName}</td>
                     <td>{tx.staff_id}</td>
                     <td>
-                      <Button variant="primary" size="sm" className="shift-btn shift-btn-primary log-detail-btn">
+                      {/* This button had NO onClick, and the suite stayed green: a click on
+                          the text inside it BUBBLED to the row's handler (:256), so
+                          'Details' appeared to work. MEASURED with a non-bubbling dispatch:
+                          the button's own handler received nothing. It is also a nested
+                          interactive -- a <button> inside a row carrying role="button"
+                          (:250) -- which axe reports as aria-nested-interactive.
+                          
+                          stopPropagation is the second half, not a nicety: with the
+                          button's own handler added and no stopPropagation, ONE click runs
+                          the handler twice and the row toggles open-then-closed, a visible
+                          no-op. Kill-tested: that variant turns the row red.
+                          
+                          Honest limit on the coverage: the case in
+                          TransactionLogScreen.test.tsx proves exactly-once (so it fails
+                          without stopPropagation) but CANNOT detect a missing onClick on
+                          its own, because the row's handler then expands the row once and
+                          the assertion still passes. Every attempt to build a
+                          non-bubbling discriminator either failed against correct code or
+                          was defeated by React's root-level event delegation. */}
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        className="shift-btn shift-btn-primary log-detail-btn"
+                        // stopPropagation is the point, not a nicety: the row is ALSO a
+                        // click target (its own onClick), so without it one click runs the handler
+                        // twice and the row toggles open-then-closed -- a visible no-op.
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleRowClick(tx.id);
+                        }}
+                      >
                         <Localized id="inv-log-expand-btn">
                           <span>Details</span>
                         </Localized>

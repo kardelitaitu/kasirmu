@@ -15,6 +15,8 @@ export interface Table {
   section: string;
   active: boolean;
   sort_order: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 /** List all tables, optionally filtered by section (session-scoped — ADR #7). */

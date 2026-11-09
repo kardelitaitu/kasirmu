@@ -825,12 +825,13 @@ fn init_sql_creates_complete_schema_surface() {
     // the per-terminal first-run record (ADR #56 §2.1). Count measured, not
     // guessed: the whole
     // registry was replayed through sqlite3 and sqlite_master counted.
+    // 20261021_receivables.sql adds receivables and receivable_payments (+2).
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'",
         ),
-        127,
+        129,
         "table surface drifted"
     );
     assert_eq!(
@@ -917,7 +918,27 @@ fn init_sql_creates_complete_schema_surface() {
         // entirely. It mirrors idx_inv_shifts_active_per_user_location, which
         // has guarded inventory_shifts the same way since the init schema. That
         // file ships no table and no trigger, so the other two pins stand.
-        189,
+        // 20261021_receivables.sql adds 5: tenant+status, customer, partial
+        // due-date on receivables, and payments-by-receivable, payments-by-tenant
+        // on receivable_payments (+5).
+        // 20261023_offline_queue_sale_id.sql adds 2: idx_offline_queue_sale_pending
+        // (covering point-probe on sale_id) and idx_offline_queue_status_action (+2).
+        // 20261024_refunds_analytics_index.sql adds 2:
+        // idx_refunds_currency_created_date (the date(created_at) expression
+        // index the three revenue report CTEs seek on) and
+        // idx_refunds_processed_by_created_at (the bare created_at range the
+        // shift-close reconciliation seeks on). No table, no trigger.
+        // 20261025_product_activity_created_at.sql adds 1:
+        // idx_product_activity_created_at on product_activity(created_at, sku, event_type)
+        // for O-M68 covering range search on unrestricted window popularity recomputes (+1).
+        // 20261027_audit_log_outcome_created.sql adds 1:
+        // idx_audit_log_outcome_created on audit_log(outcome, created_at DESC, id DESC)
+        // for O-M69, so the outcome-filtered audit page seeks instead of scanning (+1).
+        // 20261028_offline_queue_legacy_sale_probe.sql adds 1:
+        // idx_offline_queue_legacy_sale_probe, a PARTIAL index on
+        // offline_queue(action, status, payload) WHERE sale_id IS NULL, serving the
+        // legacy branch of the outbox idempotency probe (+1).
+        201,
         "index surface drifted"
     );
     assert_eq!(
@@ -1012,6 +1033,322 @@ fn offline_queue_query_uses_status_or_tenant_status_index() {
     );
 }
 
+/// The revenue reports aggregate refunds through a CTE that filters
+/// `DATE(refunds.created_at, tz) BETWEEN ?1 AND ?2`. `refunds` shipped with
+/// exactly one index — `idx_refunds_sale_id` — so before
+/// `20261024_refunds_analytics_index.sql` every revenue report, for any date
+/// range, SCANNED the whole refunds table (measured, not inferred).
+/// `idx_refunds_currency_created_date` is the expression index built for that
+/// shape; prove the planner actually SEARCHes through it.
+///
+/// The seed and the ANALYZE are load-bearing: on an EMPTY table SQLite may pick
+/// a scan of any index it likes, which makes the assertion vacuous. With 500
+/// realistic rows and statistics, a plan that scans is a plan that scans.
+#[test]
+fn revenue_refund_cte_uses_refunds_currency_created_date_index() {
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+
+    // One completed sale to hang the refunds off (refunds.sale_id is NOT NULL
+    // with an FK), and one sale line so refund_lines has a real parent.
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at)
+         VALUES ('plan-sale-1', 100000, 'MUR', 1, 'completed', '2026-03-01T10:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position, cost_minor)
+         VALUES ('plan-line-1', 'plan-sale-1', 'PLAN-SKU', 1, 1000, 1000, 'MUR', 1, 500)",
+        [],
+    )
+    .unwrap();
+
+    // 500 refunds, each with a line, over 2026. THREE ingredients are
+    // load-bearing and each was found by bisection — change any and the plan
+    // test goes quietly vacuous:
+    //  * ~500 rows with statistics, not an empty table (an empty table plans
+    //    however SQLite likes);
+    //  * two PROCESSORS, so idx_refunds_processed_by_created_at offers the
+    //    planner a real alternative to the expression index;
+    //  * refund_lines populated, so the cost subquery is not optimised away.
+    {
+        let tx = conn.transaction().unwrap();
+        for i in 0..500i64 {
+            let day = (i % 300) + 1;
+            let currency = if i % 3 == 0 { "MUR" } else { "USD" };
+            let processor = if i % 2 == 0 {
+                "plan-user-1"
+            } else {
+                "plan-user-2"
+            };
+            tx.execute(
+                "INSERT INTO refunds (id, sale_id, total_minor, currency, processed_by, created_at)
+                 VALUES (?1, 'plan-sale-1', ?2, ?3, ?4, ?5)",
+                rusqlite::params![
+                    format!("plan-refund-{i}"),
+                    1000i64 + i,
+                    currency,
+                    processor,
+                    format!(
+                        "2026-{:02}-{:02}T{:02}:00:00.000Z",
+                        (day % 12) + 1,
+                        (day % 28) + 1,
+                        i % 24
+                    ),
+                ],
+            )
+            .unwrap();
+            tx.execute(
+                "INSERT INTO refund_lines (id, refund_id, sale_line_id, sku, qty, unit_minor, line_minor, currency)
+                 VALUES (?1, ?2, 'plan-line-1', 'PLAN-SKU', 1, 100, 100, ?3)",
+                rusqlite::params![format!("plan-refund-line-{i}"), format!("plan-refund-{i}"), currency],
+            )
+            .unwrap();
+        }
+        tx.commit().unwrap();
+    }
+    conn.execute_batch("ANALYZE").unwrap();
+
+    // The exact predicate the three revenue CTEs use (revenue.rs daily/weekly/
+    // monthly all spell it this way).
+    fn plan_for(conn: &rusqlite::Connection, sql: &str, args: &[&dyn rusqlite::ToSql]) -> String {
+        let mut stmt = conn.prepare(sql).unwrap();
+        stmt.query_map(args, |r| r.get::<_, String>(3))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+            .join("\n")
+    }
+
+    // The SQL under test is the PRODUCTION text, imported rather than retyped:
+    // a plan test that keeps its own copy of the query stays green when the
+    // real one is reshaped back into the scanning form.
+    use crate::db::reports::revenue::{DAILY_REVENUE_SQL, MONTHLY_REVENUE_SQL, WEEKLY_REVENUE_SQL};
+
+    let as_plan = |sql: &str| format!("EXPLAIN QUERY PLAN {sql}");
+
+    let tz_zero: [&dyn rusqlite::ToSql; 3] = [&"2026-01-01", &"2026-12-31", &"-0 hours"];
+    let tz_shifted: [&dyn rusqlite::ToSql; 3] = [&"2026-01-01", &"2026-12-31", &"+4 hours"];
+    let wide_range: [&dyn rusqlite::ToSql; 3] = [&"2000-01-01", &"2099-12-31", &"-0 hours"];
+    let daily_plan = as_plan(DAILY_REVENUE_SQL);
+    let report_plans = [
+        ("daily", plan_for(&conn, &daily_plan, &tz_zero)),
+        (
+            "weekly",
+            plan_for(&conn, &as_plan(WEEKLY_REVENUE_SQL), &tz_zero),
+        ),
+        (
+            "monthly",
+            plan_for(&conn, &as_plan(MONTHLY_REVENUE_SQL), &tz_zero),
+        ),
+        (
+            "daily (store offset +4 hours)",
+            plan_for(&conn, &daily_plan, &tz_shifted),
+        ),
+        (
+            "daily (range covering the table)",
+            plan_for(&conn, &daily_plan, &wide_range),
+        ),
+    ];
+
+    for (label, plan) in &report_plans {
+        // `SCAN rf1 USING INDEX idx_refunds_currency_created_date` is the
+        // whole index and NOT the table — an index-only walk is the win. What
+        // must never appear is `SCAN rf1` with no index: the table scan that
+        // made every report read all of refunds.
+        assert!(
+            plan.contains("USING INDEX idx_refunds_currency_created_date"),
+            "{label}: revenue refund CTE did not use \
+             idx_refunds_currency_created_date; plan:\n{plan}"
+        );
+        assert!(
+            !plan.contains("SCAN rf1\n") && !plan.lines().any(|line| line.trim() == "SCAN rf1"),
+            "{label}: revenue refund CTE must not scan the refunds table; plan:\n{plan}"
+        );
+    }
+
+    // The shift-close queries filter a BARE created_at range leading on
+    // processed_by, which the date() expression index cannot serve.
+    let shift_plan = plan_for(
+        &conn,
+        "EXPLAIN QUERY PLAN
+         SELECT COALESCE(SUM(r.total_minor), 0)
+           FROM refunds r
+          WHERE r.processed_by = ?1 AND r.created_at >= ?2 AND r.created_at <= ?3",
+        &[&"plan-user-1", &"2026-01-01", &"2026-12-31"],
+    );
+    assert!(
+        shift_plan.contains("idx_refunds_processed_by_created_at"),
+        "shift-close refunds query did not use idx_refunds_processed_by_created_at; plan:\n{shift_plan}"
+    );
+    assert!(
+        !shift_plan.contains("SCAN r"),
+        "shift-close refunds query must SEARCH refunds, not SCAN it; plan:\n{shift_plan}"
+    );
+}
+
+/// O-M68: the unrestricted activity window query in `recompute_all_popularity`
+/// must execute an index range SEARCH via `idx_product_activity_created_at`,
+/// not a table-wide index SCAN.
+///
+/// Like `revenue_refund_cte_uses_refunds_currency_created_date_index`, the seed
+/// distribution is load-bearing: with realistic history (older activity outside
+/// the 30-day window plus recent activity inside), the planner uses the covering
+/// range index to inspect only the recent fraction of the ledger.
+#[test]
+fn popularity_activity_window_uses_created_at_covering_index() {
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+
+    // 800 older rows from 2025 and 200 recent rows from 2026
+    {
+        let tx = conn.transaction().unwrap();
+        for i in 0..800i64 {
+            let sku = format!("SKU-{}", i % 20);
+            let etype = if i % 2 == 0 { "search" } else { "edit" };
+            tx.execute(
+                "INSERT INTO product_activity (id, sku, event_type, created_at, tenant_id)
+                 VALUES (?1, ?2, ?3, '2025-01-01T12:00:00.000Z', 'default')",
+                rusqlite::params![format!("old-act-{i}"), sku, etype],
+            )
+            .unwrap();
+        }
+        for i in 0..200i64 {
+            let sku = format!("SKU-{}", i % 20);
+            let etype = if i % 2 == 0 { "search" } else { "edit" };
+            tx.execute(
+                "INSERT INTO product_activity (id, sku, event_type, created_at, tenant_id)
+                 VALUES (?1, ?2, ?3, datetime('now', '-5 days'), 'default')",
+                rusqlite::params![format!("new-act-{i}"), sku, etype],
+            )
+            .unwrap();
+        }
+        tx.commit().unwrap();
+    }
+    conn.execute_batch("ANALYZE").unwrap();
+
+    let mut stmt = conn
+        .prepare(
+            "EXPLAIN QUERY PLAN
+             SELECT sku, event_type, strftime('%Y-%m-%d', created_at) AS day, COUNT(*) AS cnt
+             FROM product_activity
+             WHERE created_at >= datetime('now', ?1)
+             GROUP BY sku, event_type, day",
+        )
+        .unwrap();
+    let plan = stmt
+        .query_map(["-30 days"], |r| r.get::<_, String>(3))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+        .join("\n");
+
+    assert!(
+        plan.contains("SEARCH") && plan.contains("idx_product_activity_created_at"),
+        "popularity activity window query did not use idx_product_activity_created_at range search; plan:\n{plan}"
+    );
+}
+
+/// O-M69: the OUTCOME-FILTERED audit page must SEEK, not scan.
+///
+/// `list_audit_entries_page` builds `WHERE` at run time through `build_audit_where`
+/// (`db/audit.rs`), so this is one of the queries the query-plan probe cannot see:
+/// the SQL does not exist as a string until the call is assembled. That is exactly
+/// where the defect hid.
+///
+/// Before `20261027_audit_log_outcome_created.sql`, `audit_log` had indexes on
+/// `action`, `created_at`, `(target_type, target_id)` and `user_id` — none leading
+/// with `outcome`. Measured: the outcome-filtered page planned `SCAN audit_log` plus
+/// a temp B-tree sort, while the UNFILTERED page at least walked
+/// `idx_audit_log_created_at`. Adding the filter made the plan worse than omitting it.
+///
+/// Both values of `outcome` are asserted, because the index only earns its keep if it
+/// serves the common one (`success`) as well as the rare one (`failure`).
+#[test]
+fn audit_page_filtered_by_outcome_seeks_instead_of_scanning() {
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+
+    // 5,000 rows with failures rare (1 in 100): the shape a real log has, and the
+    // shape that makes the planner weigh a scan at all.
+    {
+        let tx = conn.transaction().unwrap();
+        for i in 0..5_000i64 {
+            tx.execute(
+                "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at)
+                 VALUES (?1, 'u1', 'login', 'user', ?2, '{}', ?3, ?4)",
+                rusqlite::params![
+                    format!("plan-audit-{i:06}"),
+                    format!("t{i}"),
+                    if i % 100 == 0 { "failure" } else { "success" },
+                    format!("2026-{:02}-{:02}T10:00:00.000Z", (i % 12) + 1, (i % 28) + 1),
+                ],
+            )
+            .unwrap();
+        }
+        tx.commit().unwrap();
+    }
+    conn.execute_batch("ANALYZE").unwrap();
+
+    // THE FIRST PAGE IS THE SCAN, not the cursor pages. Measured on this schema
+    // before `20261027`:
+    //   cursor + outcome     -> SEARCH audit_log USING INDEX idx_audit_log_created_at
+    //   FIRST page + outcome -> SCAN audit_log | USE TEMP B-TREE FOR ORDER BY
+    // The cursor clause (created_at < ?) gives the planner something to range on, so
+    // only the FIRST page was a full scan -- and that is the page every user lands on.
+    // Asserting the cursor form alone would have tested the healthy path and passed
+    // for the wrong reason. That mistake was made, caught by falsification, and fixed
+    // here: both shapes are asserted, for both values of outcome.
+    let first_page =
+        "SELECT id, user_id, action, target_type, target_id, details, outcome, created_at
+               FROM audit_log
+              WHERE outcome = ?1
+              ORDER BY created_at DESC, id DESC LIMIT ?2";
+    let keyset_page =
+        "SELECT id, user_id, action, target_type, target_id, details, outcome, created_at
+               FROM audit_log
+              WHERE outcome = ?1
+                AND (created_at < ?2 OR (created_at = ?2 AND id < ?3))
+              ORDER BY created_at DESC, id DESC LIMIT ?4";
+
+    for outcome in ["failure", "success"] {
+        let q1 = format!("EXPLAIN QUERY PLAN {first_page}");
+        let p1 = conn
+            .prepare(&q1)
+            .unwrap()
+            .query_map(rusqlite::params![outcome, 51], |r| r.get::<_, String>(3))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+            .join("\n");
+        assert!(
+            p1.contains("idx_audit_log_outcome_created"),
+            "first page, outcome = {outcome}: did not use idx_audit_log_outcome_created; plan:\n{p1}"
+        );
+        assert!(
+            !p1.lines().any(|l| l.trim() == "SCAN audit_log"),
+            "first page, outcome = {outcome} must not scan audit_log; plan:\n{p1}"
+        );
+
+        let q2 = format!("EXPLAIN QUERY PLAN {keyset_page}");
+        let p2 = conn
+            .prepare(&q2)
+            .unwrap()
+            .query_map(
+                rusqlite::params![outcome, "2026-07-01T00:00:00.000Z", "m", 51],
+                |r| r.get::<_, String>(3),
+            )
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+            .join("\n");
+        assert!(
+            p2.contains("idx_audit_log_outcome_created"),
+            "keyset page, outcome = {outcome}: did not use idx_audit_log_outcome_created; plan:\n{p2}"
+        );
+    }
+}
 /// Simulate the documented existing-dev-DB upgrade path. A pre-reset
 /// database carries legacy `schema_migrations` rows (now absent from the
 /// registry) and has already been seeded. Running the incremental
@@ -1112,7 +1449,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'"
         ),
-        127,
+        129,
         "table surface must be unchanged after upgrade"
     );
 }
@@ -3726,6 +4063,7 @@ fn payments_method_check_and_gateway_status_constraints_enforced() {
         "open_bill",
         "credit",
         "pay_later",
+        "gift_card",
         "other",
     ];
 
@@ -3748,6 +4086,39 @@ fn payments_method_check_and_gateway_status_constraints_enforced() {
         assert!(
             res.is_err(),
             "invalid method {invalid} must be rejected by CHECK constraint"
+        );
+    }
+    // The gift-card tender is deliberately ABSENT from the CHECK, and saying so
+    // here is the mechanical half of a three-part blocker. The gift-card payment
+    // panel (renderer layer) is complete and nothing mounts it because a gift payment
+    // cannot be recorded: this constraint refuses every spelling an author is
+    // likely to try. Round 217 added these to the invalid arm -- before that the
+    // list held only `bitcoin`, `cheque`, `stripe_direct`, `CASH` and the empty
+    // string, so a migration that SMUGGLED a gift member in would have kept the
+    // suite green and quietly unblocked one third of the record.
+    //
+    // WHICH FILE OWNS THE CONSTRAINT is not obvious and was measured: the method
+    // list appears in BOTH 20261017_payments_method_check.sql and
+    // 20261018_gateway_status_adr64_vocabulary.sql, and the later one REBUILDS the
+    // table, so 20261018 is the live definition. The first mutation probe added
+    // 'gift' to 20261017 and this test stayed GREEN -- a mutation that proves
+    // nothing if you read its colour instead of its target. Adding it to 20261018
+    // reddens exactly this assert. Any future change to the method set has to
+    // touch the latest rebuild, not the earliest statement of it.
+    // 'gift_card' is now a valid method (unblocked per Q1 Option A).
+    // Alternative informal spellings remain rejected by the constraint.
+    for invalid_gift_spelling in ["gift", "giftcard", "gift_cards"] {
+        let res = conn.execute(
+            "INSERT INTO payments (id, sale_id, method, amount_minor, currency, created_at)
+             VALUES (?1, 'sale-pm-test', ?2, 1000, 'IDR', '2026-10-02T00:00:00.000Z')",
+            rusqlite::params![
+                format!("pay-gift-{invalid_gift_spelling}"),
+                invalid_gift_spelling
+            ],
+        );
+        assert!(
+            res.is_err(),
+            "{invalid_gift_spelling} must be REFUSED by the method CHECK"
         );
     }
 
@@ -4000,4 +4371,62 @@ fn the_reconcile_writes_the_row_the_baseline_seeds() {
         row_shape(&seeded),
         "the reconcile and the seed must write the same row"
     );
+}
+
+/// The shared snapshot cache must never carry a test's writes.
+///
+/// `fresh_db` persists a migrated snapshot to `target/test-scratch` so that
+/// PROCESSES (nextest forks one per test) stop re-running the 68-migration chain
+/// each time -- measured 440.66 ms per chain against 1.05 ms per clone, which
+/// took a full nextest run of kasirmu-core from 294.89 s to 48.52 s.
+///
+/// That cache is exactly the thing this test has to guard: if a future edit made
+/// it shared AND writable, two tests would silently read each other's rows and
+/// the failures would land in whichever test ran second, far from the cause.
+/// So the invariant is asserted directly on the file.
+#[test]
+fn fresh_db_cache_holds_no_business_rows() {
+    // Force the cache into existence.
+    let conn = fresh_db();
+    // One query, discarded on purpose: it forces the snapshot to be USED, so the file
+    // graded below is the one a test would really get. The assertions are about the
+    // cache file's contents, not this count -- clippy 1.98 was right that the binding
+    // was dead.
+    conn.query_row("SELECT COUNT(*) FROM settings", [], |r| r.get::<_, i64>(0))
+        .unwrap();
+    drop(conn);
+
+    let path = crate::migrations::test_db_snapshot::snapshot_cache_path();
+    assert!(
+        path.is_file(),
+        "fresh_db must publish its snapshot cache file at {}",
+        path.display()
+    );
+
+    let file = rusqlite::Connection::open(&path).expect("the cache file must open");
+    let migrations: i64 = file
+        .query_row("SELECT COUNT(*) FROM schema_migrations", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        migrations,
+        ALL.len() as i64,
+        "the cache must hold exactly the embedded migration set"
+    );
+    // The graded half: the cache is a template, never a shared database.
+    for table in [
+        "settings",
+        "locations",
+        "workspace_instances",
+        "products",
+        "sales",
+    ] {
+        let n: i64 = file
+            .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
+            .unwrap_or(0);
+        assert_eq!(
+            n, 0,
+            "the snapshot cache must hold no rows in {table}; a shared mutable \
+             cache would leak one test's writes into another"
+        );
+    }
 }

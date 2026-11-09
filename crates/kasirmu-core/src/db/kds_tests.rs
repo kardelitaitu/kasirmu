@@ -1,7 +1,7 @@
 use super::*;
 use crate::migrations;
 use crate::{Cart, CartLine, Money, Sale, Sku};
-use rusqlite::Connection;
+use rusqlite::{Connection, params};
 
 /// A provisioned store database.
 ///
@@ -39,6 +39,72 @@ fn price(minor: i64) -> Money {
     }
 }
 
+/// The 24-field boilerplate `Sale` every KDS test seeds before it can insert a
+/// `kds_orders` row (the table carries `REFERENCES sales(id)`, so a sale row is a
+/// prerequisite, not the subject of the test).
+///
+/// Hoisted in O-T07 from fourteen copy-pasted literals. Every collapsed site was
+/// field-for-field identical to this shape; the only things that ever varied were
+/// `id`, `created_at`/`updated_at`, `status` and the `total`/`subtotal`/`line_count`
+/// triple, which is why the chain has one parameter per dimension:
+///
+/// * `test_sale(id)` — the 12 sites whose id was the only real difference;
+/// * `test_sale_with_total(id, total_minor)` — `e2e_enrollment_flow_register_validate_route_ack`,
+///   the one site that carried `price(1200)`/`price(1200)`/`1` for `total`/`subtotal`/
+///   `line_count`. The three move together so the row stays self-consistent;
+/// * `test_sale_typed(id, status, total_minor)` — `make_active_sale`, where `Active` is
+///   the point of the fixture, so the status is passed through rather than normalised.
+///
+/// On timestamps: the collapsed sites split into `created_at: now.clone()`,
+/// `updated_at: now` and `created_at: now.clone()`, `updated_at: now.clone()`, and every
+/// one of them read the clock ONCE into a local `now` before building the literal. The
+/// helper does the same, so the values are the same string and no caller observed the
+/// sale's distance-from-the-call — only its own captured `now`. `make_active_sale` and
+/// `display_number_is_per_store` (which used literal ids) are the two sites whose ids
+/// were not `Uuid::now_v7()`.
+fn test_sale(id: &str) -> Sale {
+    test_sale_with_total(id, 0)
+}
+
+/// [`test_sale`] with a non-zero header total. `total`, `subtotal` and `line_count`
+/// move TOGETHER, so the row stays self-consistent: the one call site
+/// (`e2e_enrollment_flow_register_validate_route_ack`) that used `price(1200)` for
+/// both money fields and `1` for `line_count` keeps exactly those values.
+fn test_sale_with_total(id: &str, total_minor: i64) -> Sale {
+    test_sale_typed(id, crate::SaleStatus::Completed, total_minor)
+}
+
+/// [`test_sale`] with an explicit `status`. The only caller is `make_active_sale`,
+/// whose whole point is an `Active` sale — the status is the fixture, so it stays a
+/// parameter rather than being normalised to `Completed`.
+fn test_sale_typed(id: &str, status: crate::SaleStatus, total_minor: i64) -> Sale {
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    Sale {
+        id: id.to_owned(),
+        status,
+        total: price(total_minor),
+        currency: usd(),
+        line_count: i64::from(total_minor != 0),
+        payment_method: None,
+        tendered_minor: None,
+        discount_percent: 0,
+        discount_label: None,
+        user_id: None,
+        created_at: now.clone(),
+        updated_at: now,
+        subtotal: price(total_minor),
+        tax_total: price(0),
+        customer_id: None,
+        base_currency: None,
+        base_total_minor: None,
+        tender_rate_millionths: None,
+        tip_minor: 0,
+        service_charge_minor: 0,
+        lines: vec![],
+        version: 1,
+    }
+}
+
 fn seed_product(conn: &Connection, sku: &str, name: &str) {
     let s = store(conn);
     s.create_product(sku, name, price(500), None, None, 100, Some("restaurant"))
@@ -53,31 +119,7 @@ fn create_and_get_kds_order() {
 
     // Create a minimal sale.
     let sale_id = uuid::Uuid::now_v7().to_string();
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let test_sale = Sale {
-        id: sale_id.clone(),
-        status: crate::SaleStatus::Completed,
-        total: price(0),
-        currency: usd(),
-        line_count: 0,
-        payment_method: None,
-        tendered_minor: None,
-        discount_percent: 0,
-        discount_label: None,
-        user_id: None,
-        created_at: now.clone(),
-        updated_at: now,
-        subtotal: price(0),
-        tax_total: price(0),
-        customer_id: None,
-        base_currency: None,
-        base_total_minor: None,
-        tender_rate_millionths: None,
-        tip_minor: 0,
-        service_charge_minor: 0,
-        lines: vec![],
-        version: 1,
-    };
+    let test_sale = test_sale(&sale_id);
     s.create_sale(&test_sale).unwrap();
 
     let order = s
@@ -120,31 +162,7 @@ fn get_kds_order_by_sale() {
     seed_product(&conn, "TEA", "Tea");
 
     let sale_id = uuid::Uuid::now_v7().to_string();
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let test_sale = Sale {
-        id: sale_id.clone(),
-        status: crate::SaleStatus::Completed,
-        total: price(0),
-        currency: usd(),
-        line_count: 0,
-        payment_method: None,
-        tendered_minor: None,
-        discount_percent: 0,
-        discount_label: None,
-        user_id: None,
-        created_at: now.clone(),
-        updated_at: now,
-        subtotal: price(0),
-        tax_total: price(0),
-        customer_id: None,
-        base_currency: None,
-        base_total_minor: None,
-        tender_rate_millionths: None,
-        tip_minor: 0,
-        service_charge_minor: 0,
-        lines: vec![],
-        version: 1,
-    };
+    let test_sale = test_sale(&sale_id);
     s.create_sale(&test_sale).unwrap();
 
     let order = s
@@ -171,31 +189,7 @@ fn update_kds_status_sets_timestamps() {
     let s = store(&conn);
 
     let sale_id = uuid::Uuid::now_v7().to_string();
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let test_sale = Sale {
-        id: sale_id.clone(),
-        status: crate::SaleStatus::Completed,
-        total: price(0),
-        currency: usd(),
-        line_count: 0,
-        payment_method: None,
-        tendered_minor: None,
-        discount_percent: 0,
-        discount_label: None,
-        user_id: None,
-        created_at: now.clone(),
-        updated_at: now,
-        subtotal: price(0),
-        tax_total: price(0),
-        customer_id: None,
-        base_currency: None,
-        base_total_minor: None,
-        tender_rate_millionths: None,
-        tip_minor: 0,
-        service_charge_minor: 0,
-        lines: vec![],
-        version: 1,
-    };
+    let test_sale = test_sale(&sale_id);
     s.create_sale(&test_sale).unwrap();
 
     let order = s
@@ -282,8 +276,9 @@ fn update_kds_status_race_cannot_overwrite_a_competing_transition() {
         true
     }
 
-    let dir = std::env::temp_dir().join(format!("oz_kds_race_{}", uuid::Uuid::now_v7()));
-    std::fs::create_dir_all(&dir).unwrap();
+    // The guard owns the directory and deletes it on drop.
+    let scratch = kasirmu_test_support::ScratchDir::new("kds-race");
+    let dir = scratch.path();
     let db_path = dir.join("kasir.db");
     let order_id = {
         let file_conn = {
@@ -443,31 +438,7 @@ fn seed_completed_sale_to_kds(s: &Store<'_>) -> (KdsOrder, Sale) {
     let conn = s.conn;
     seed_product(conn, "KDS-SKU", "Burger");
     let sale_id = uuid::Uuid::now_v7().to_string();
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let sale = Sale {
-        id: sale_id.clone(),
-        status: crate::SaleStatus::Completed,
-        total: price(0),
-        currency: usd(),
-        line_count: 0,
-        payment_method: None,
-        tendered_minor: None,
-        discount_percent: 0,
-        discount_label: None,
-        user_id: None,
-        created_at: now.clone(),
-        updated_at: now,
-        subtotal: price(0),
-        tax_total: price(0),
-        customer_id: None,
-        base_currency: None,
-        base_total_minor: None,
-        tender_rate_millionths: None,
-        tip_minor: 0,
-        service_charge_minor: 0,
-        lines: vec![],
-        version: 1,
-    };
+    let sale = test_sale(&sale_id);
     s.create_sale(&sale).unwrap();
     // No restaurant lines → complete_sale_to_kds returns nothing; create a
     // KDS order directly so the status machine can be exercised.
@@ -492,31 +463,7 @@ fn update_kds_status_invalid() {
     let s = store(&conn);
 
     let sale_id = uuid::Uuid::now_v7().to_string();
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let test_sale = Sale {
-        id: sale_id.clone(),
-        status: crate::SaleStatus::Completed,
-        total: price(0),
-        currency: usd(),
-        line_count: 0,
-        payment_method: None,
-        tendered_minor: None,
-        discount_percent: 0,
-        discount_label: None,
-        user_id: None,
-        created_at: now.clone(),
-        updated_at: now,
-        subtotal: price(0),
-        tax_total: price(0),
-        customer_id: None,
-        base_currency: None,
-        base_total_minor: None,
-        tender_rate_millionths: None,
-        tip_minor: 0,
-        service_charge_minor: 0,
-        lines: vec![],
-        version: 1,
-    };
+    let test_sale = test_sale(&sale_id);
     s.create_sale(&test_sale).unwrap();
 
     let order = s
@@ -551,33 +498,9 @@ fn list_kds_orders_with_status_filter() {
 
     let sale_id1 = uuid::Uuid::now_v7().to_string();
     let sale_id2 = uuid::Uuid::now_v7().to_string();
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
     for sid in [&sale_id1, &sale_id2] {
-        let test_sale = Sale {
-            id: sid.clone(),
-            status: crate::SaleStatus::Completed,
-            total: price(0),
-            currency: usd(),
-            line_count: 0,
-            payment_method: None,
-            tendered_minor: None,
-            discount_percent: 0,
-            discount_label: None,
-            user_id: None,
-            created_at: now.clone(),
-            updated_at: now.clone(),
-            subtotal: price(0),
-            tax_total: price(0),
-            customer_id: None,
-            base_currency: None,
-            base_total_minor: None,
-            tender_rate_millionths: None,
-            tip_minor: 0,
-            service_charge_minor: 0,
-            lines: vec![],
-            version: 1,
-        };
+        let test_sale = test_sale(sid);
         s.create_sale(&test_sale).unwrap();
     }
 
@@ -623,33 +546,9 @@ fn get_kds_queue_returns_pending_and_preparing() {
     let sale_id1 = uuid::Uuid::now_v7().to_string();
     let sale_id2 = uuid::Uuid::now_v7().to_string();
     let sale_id3 = uuid::Uuid::now_v7().to_string();
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
     for sid in [&sale_id1, &sale_id2, &sale_id3] {
-        let test_sale = Sale {
-            id: sid.clone(),
-            status: crate::SaleStatus::Completed,
-            total: price(0),
-            currency: usd(),
-            line_count: 0,
-            payment_method: None,
-            tendered_minor: None,
-            discount_percent: 0,
-            discount_label: None,
-            user_id: None,
-            created_at: now.clone(),
-            updated_at: now.clone(),
-            subtotal: price(0),
-            tax_total: price(0),
-            customer_id: None,
-            base_currency: None,
-            base_total_minor: None,
-            tender_rate_millionths: None,
-            tip_minor: 0,
-            service_charge_minor: 0,
-            lines: vec![],
-            version: 1,
-        };
+        let test_sale = test_sale(sid);
         s.create_sale(&test_sale).unwrap();
     }
 
@@ -741,33 +640,9 @@ fn display_number_increments_per_day() {
 
     let sale_id1 = uuid::Uuid::now_v7().to_string();
     let sale_id2 = uuid::Uuid::now_v7().to_string();
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
     for sid in [&sale_id1, &sale_id2] {
-        let test_sale = Sale {
-            id: sid.clone(),
-            status: crate::SaleStatus::Completed,
-            total: price(0),
-            currency: usd(),
-            line_count: 0,
-            payment_method: None,
-            tendered_minor: None,
-            discount_percent: 0,
-            discount_label: None,
-            user_id: None,
-            created_at: now.clone(),
-            updated_at: now.clone(),
-            subtotal: price(0),
-            tax_total: price(0),
-            customer_id: None,
-            base_currency: None,
-            base_total_minor: None,
-            tender_rate_millionths: None,
-            tip_minor: 0,
-            service_charge_minor: 0,
-            lines: vec![],
-            version: 1,
-        };
+        let test_sale = test_sale(sid);
         s.create_sale(&test_sale).unwrap();
     }
 
@@ -810,36 +685,9 @@ fn display_number_is_per_store() {
     let conn = fresh();
     let s = store(&conn);
 
-    let mk_sale = |sid: &str| {
-        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        Sale {
-            id: sid.to_string(),
-            status: crate::SaleStatus::Completed,
-            total: price(0),
-            currency: usd(),
-            line_count: 0,
-            payment_method: None,
-            tendered_minor: None,
-            discount_percent: 0,
-            discount_label: None,
-            user_id: None,
-            created_at: now.clone(),
-            updated_at: now,
-            subtotal: price(0),
-            tax_total: price(0),
-            customer_id: None,
-            base_currency: None,
-            base_total_minor: None,
-            tender_rate_millionths: None,
-            tip_minor: 0,
-            service_charge_minor: 0,
-            lines: vec![],
-            version: 1,
-        }
-    };
-    s.create_sale(&mk_sale("store-a-sale-1")).unwrap();
-    s.create_sale(&mk_sale("store-a-sale-2")).unwrap();
-    s.create_sale(&mk_sale("store-b-sale-1")).unwrap();
+    s.create_sale(&test_sale("store-a-sale-1")).unwrap();
+    s.create_sale(&test_sale("store-a-sale-2")).unwrap();
+    s.create_sale(&test_sale("store-b-sale-1")).unwrap();
 
     // Store A gets two tickets today.
     let a1 = s
@@ -898,31 +746,7 @@ fn kds_status_check_rejects_invalid_status_on_insert() {
     let s = store(&conn);
 
     let sale_id = uuid::Uuid::now_v7().to_string();
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let test_sale = Sale {
-        id: sale_id.clone(),
-        status: crate::SaleStatus::Completed,
-        total: price(0),
-        currency: usd(),
-        line_count: 0,
-        payment_method: None,
-        tendered_minor: None,
-        discount_percent: 0,
-        discount_label: None,
-        user_id: None,
-        created_at: now.clone(),
-        updated_at: now,
-        subtotal: price(0),
-        tax_total: price(0),
-        customer_id: None,
-        base_currency: None,
-        base_total_minor: None,
-        tender_rate_millionths: None,
-        tip_minor: 0,
-        service_charge_minor: 0,
-        lines: vec![],
-        version: 1,
-    };
+    let test_sale = test_sale(&sale_id);
     s.create_sale(&test_sale).unwrap();
 
     // Attempt a raw INSERT with an invalid status — should fail the CHECK constraint.
@@ -949,36 +773,12 @@ fn kds_status_check_rejects_invalid_status_on_insert() {
 fn kds_status_check_accepts_valid_statuses() {
     let conn = fresh();
     let s = store(&conn);
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
     // Insert orders with each valid status. Each needs its own sale_id
     // because kds_orders.sale_id has a UNIQUE constraint.
     for status in &["pending", "preparing", "ready", "served", "cancelled"] {
         let sale_id = uuid::Uuid::now_v7().to_string();
-        let test_sale = Sale {
-            id: sale_id.clone(),
-            status: crate::SaleStatus::Completed,
-            total: price(0),
-            currency: usd(),
-            line_count: 0,
-            payment_method: None,
-            tendered_minor: None,
-            discount_percent: 0,
-            discount_label: None,
-            user_id: None,
-            created_at: now.clone(),
-            updated_at: now.clone(),
-            subtotal: price(0),
-            tax_total: price(0),
-            customer_id: None,
-            base_currency: None,
-            base_total_minor: None,
-            tender_rate_millionths: None,
-            tip_minor: 0,
-            service_charge_minor: 0,
-            lines: vec![],
-            version: 1,
-        };
+        let test_sale = test_sale(&sale_id);
         s.create_sale(&test_sale).unwrap();
 
         let order_id = uuid::Uuid::now_v7().to_string();
@@ -1008,36 +808,12 @@ fn update_kds_status_nonexistent_order_fails() {
 fn get_kds_queue_excludes_served_and_cancelled() {
     let conn = fresh();
     let s = store(&conn);
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
     // Create 4 orders with different statuses.
     let mut ids = Vec::new();
     for st in &["pending", "preparing", "served", "cancelled"] {
         let sale_id = uuid::Uuid::now_v7().to_string();
-        let test_sale = Sale {
-            id: sale_id.clone(),
-            status: crate::SaleStatus::Completed,
-            total: price(0),
-            currency: usd(),
-            line_count: 0,
-            payment_method: None,
-            tendered_minor: None,
-            discount_percent: 0,
-            discount_label: None,
-            user_id: None,
-            created_at: now.clone(),
-            updated_at: now.clone(),
-            subtotal: price(0),
-            tax_total: price(0),
-            customer_id: None,
-            base_currency: None,
-            base_total_minor: None,
-            tender_rate_millionths: None,
-            tip_minor: 0,
-            service_charge_minor: 0,
-            lines: vec![],
-            version: 1,
-        };
+        let test_sale = test_sale(&sale_id);
         s.create_sale(&test_sale).unwrap();
         let order = s
             .create_kds_order(CreateKdsOrderInput {
@@ -1084,34 +860,10 @@ fn get_kds_queue_excludes_served_and_cancelled() {
 fn get_kds_queue_with_zone_filter() {
     let conn = fresh();
     let s = store(&conn);
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
     for zone in &["grill", "salad"] {
         let sale_id = uuid::Uuid::now_v7().to_string();
-        let test_sale = Sale {
-            id: sale_id.clone(),
-            status: crate::SaleStatus::Completed,
-            total: price(0),
-            currency: usd(),
-            line_count: 0,
-            payment_method: None,
-            tendered_minor: None,
-            discount_percent: 0,
-            discount_label: None,
-            user_id: None,
-            created_at: now.clone(),
-            updated_at: now.clone(),
-            subtotal: price(0),
-            tax_total: price(0),
-            customer_id: None,
-            base_currency: None,
-            base_total_minor: None,
-            tender_rate_millionths: None,
-            tip_minor: 0,
-            service_charge_minor: 0,
-            lines: vec![],
-            version: 1,
-        };
+        let test_sale = test_sale(&sale_id);
         s.create_sale(&test_sale).unwrap();
         s.create_kds_order(CreateKdsOrderInput {
             sale_id,
@@ -1139,35 +891,11 @@ fn get_kds_queue_with_zone_filter() {
 fn get_kds_queue_empty_zone_returns_unzoned_orders() {
     let conn = fresh();
     let s = store(&conn);
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
     // One order with zone, one without.
     for (suffix, zone) in &[("zoned", Some("grill")), ("unzoned", None)] {
         let sale_id = uuid::Uuid::now_v7().to_string();
-        let test_sale = Sale {
-            id: sale_id.clone(),
-            status: crate::SaleStatus::Completed,
-            total: price(0),
-            currency: usd(),
-            line_count: 0,
-            payment_method: None,
-            tendered_minor: None,
-            discount_percent: 0,
-            discount_label: None,
-            user_id: None,
-            created_at: now.clone(),
-            updated_at: now.clone(),
-            subtotal: price(0),
-            tax_total: price(0),
-            customer_id: None,
-            base_currency: None,
-            base_total_minor: None,
-            tender_rate_millionths: None,
-            tip_minor: 0,
-            service_charge_minor: 0,
-            lines: vec![],
-            version: 1,
-        };
+        let test_sale = test_sale(&sale_id);
         s.create_sale(&test_sale).unwrap();
         s.create_kds_order(CreateKdsOrderInput {
             sale_id,
@@ -1631,34 +1359,18 @@ fn get_kds_order_by_sale_not_found() {
 fn list_kds_orders_ordered_by_received_at_desc() {
     let conn = fresh();
     let s = store(&conn);
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
-    // Create two orders with distinct timing (sleep to separate timestamps).
+    // Create two orders with distinct timing.
+    //
+    // NO SLEEP (O-T16). `create_kds_order` stamps `received_at` itself
+    // (`kds.rs:151`, millisecond precision), so the old `sleep(5ms)` between the
+    // two inserts was a guess at clock behaviour this test does not control: 5ms
+    // does not GUARANTEE two distinct stamps on a coarse clock, and a run that
+    // got equal stamps had an ordering decided by SQLite, not by the test.
+    // `received_at` is not a parameter of `CreateKdsOrderInput`, so the values are
+    // pinned with two targeted UPDATEs instead — deterministic, no wall clock.
     let sale_id1 = uuid::Uuid::now_v7().to_string();
-    let ts1 = Sale {
-        id: sale_id1.clone(),
-        status: crate::SaleStatus::Completed,
-        total: price(0),
-        currency: usd(),
-        line_count: 0,
-        payment_method: None,
-        tendered_minor: None,
-        discount_percent: 0,
-        discount_label: None,
-        user_id: None,
-        created_at: now.clone(),
-        updated_at: now.clone(),
-        subtotal: price(0),
-        tax_total: price(0),
-        customer_id: None,
-        base_currency: None,
-        base_total_minor: None,
-        tender_rate_millionths: None,
-        tip_minor: 0,
-        service_charge_minor: 0,
-        lines: vec![],
-        version: 1,
-    };
+    let ts1 = test_sale(&sale_id1);
     s.create_sale(&ts1).unwrap();
     let o1 = s
         .create_kds_order(CreateKdsOrderInput {
@@ -1673,33 +1385,8 @@ fn list_kds_orders_ordered_by_received_at_desc() {
         })
         .unwrap();
 
-    std::thread::sleep(std::time::Duration::from_millis(5));
-
     let sale_id2 = uuid::Uuid::now_v7().to_string();
-    let ts2 = Sale {
-        id: sale_id2.clone(),
-        status: crate::SaleStatus::Completed,
-        total: price(0),
-        currency: usd(),
-        line_count: 0,
-        payment_method: None,
-        tendered_minor: None,
-        discount_percent: 0,
-        discount_label: None,
-        user_id: None,
-        created_at: now.clone(),
-        updated_at: now.clone(),
-        subtotal: price(0),
-        tax_total: price(0),
-        customer_id: None,
-        base_currency: None,
-        base_total_minor: None,
-        tender_rate_millionths: None,
-        tip_minor: 0,
-        service_charge_minor: 0,
-        lines: vec![],
-        version: 1,
-    };
+    let ts2 = test_sale(&sale_id2);
     s.create_sale(&ts2).unwrap();
     let o2 = s
         .create_kds_order(CreateKdsOrderInput {
@@ -1714,11 +1401,38 @@ fn list_kds_orders_ordered_by_received_at_desc() {
         })
         .unwrap();
 
+    // Write the timestamps the assertion is about. The FIRST order gets the
+    // LATER stamp and the SECOND the earlier one, so a passing result cannot be
+    // satisfied by insertion order or rowid: only `ORDER BY received_at DESC`
+    // puts `o1` first.
+    let mut set_received_at = conn
+        .prepare("UPDATE kds_orders SET received_at = ?1 WHERE id = ?2")
+        .unwrap();
+    assert_eq!(
+        set_received_at
+            .execute(params!["2025-01-02T00:00:00.000Z", o1.id])
+            .unwrap(),
+        1,
+        "the first order must be stamped for real"
+    );
+    assert_eq!(
+        set_received_at
+            .execute(params!["2025-01-01T00:00:00.000Z", o2.id])
+            .unwrap(),
+        1,
+        "the second order must be stamped for real"
+    );
+    drop(set_received_at);
+
     let all = s.list_kds_orders(None).unwrap();
     assert_eq!(all.len(), 2);
-    // Most recent first.
-    assert_eq!(all[0].id, o2.id);
-    assert_eq!(all[1].id, o1.id);
+    // Most recent first — guaranteed by the two explicit stamps above.
+    assert_eq!(
+        all[0].received_at, "2025-01-02T00:00:00.000Z",
+        "the order with the later received_at must come first"
+    );
+    assert_eq!(all[0].id, o1.id);
+    assert_eq!(all[1].id, o2.id);
 }
 
 // ── update_kds_order_items tests ─────────────────────────────────
@@ -1727,32 +1441,8 @@ fn list_kds_orders_ordered_by_received_at_desc() {
 fn update_kds_order_items_updates_summary_and_count() {
     let conn = fresh();
     let s = store(&conn);
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let sale_id = uuid::Uuid::now_v7().to_string();
-    let test_sale = Sale {
-        id: sale_id.clone(),
-        status: crate::SaleStatus::Completed,
-        total: price(0),
-        currency: usd(),
-        line_count: 0,
-        payment_method: None,
-        tendered_minor: None,
-        discount_percent: 0,
-        discount_label: None,
-        user_id: None,
-        created_at: now.clone(),
-        updated_at: now,
-        subtotal: price(0),
-        tax_total: price(0),
-        customer_id: None,
-        base_currency: None,
-        base_total_minor: None,
-        tender_rate_millionths: None,
-        tip_minor: 0,
-        service_charge_minor: 0,
-        lines: vec![],
-        version: 1,
-    };
+    let test_sale = test_sale(&sale_id);
     s.create_sale(&test_sale).unwrap();
 
     let order = s
@@ -2357,31 +2047,7 @@ fn seed_kds_order_at(
 ) -> crate::KdsOrder {
     // Create a sale first (FK requirement).
     let sale_id = uuid::Uuid::now_v7().to_string();
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let sale = crate::Sale {
-        id: sale_id.clone(),
-        status: crate::SaleStatus::Completed,
-        total: price(0),
-        currency: usd(),
-        line_count: 0,
-        payment_method: None,
-        tendered_minor: None,
-        discount_percent: 0,
-        discount_label: None,
-        user_id: None,
-        created_at: now.clone(),
-        updated_at: now,
-        subtotal: price(0),
-        tax_total: price(0),
-        customer_id: None,
-        base_currency: None,
-        base_total_minor: None,
-        tender_rate_millionths: None,
-        tip_minor: 0,
-        service_charge_minor: 0,
-        lines: vec![],
-        version: 1,
-    };
+    let sale = test_sale(&sale_id);
     s.create_sale(&sale).unwrap();
 
     let id = uuid::Uuid::now_v7().to_string();
@@ -2968,31 +2634,7 @@ fn e2e_enrollment_flow_register_validate_route_ack() {
 
     // 7. Create a sale and KDS order.
     let sale_id = uuid::Uuid::now_v7().to_string();
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let sale = crate::Sale {
-        id: sale_id.clone(),
-        status: crate::SaleStatus::Completed,
-        total: price(1200),
-        currency: usd(),
-        line_count: 1,
-        payment_method: None,
-        tendered_minor: None,
-        discount_percent: 0,
-        discount_label: None,
-        user_id: None,
-        created_at: now.clone(),
-        updated_at: now,
-        subtotal: price(1200),
-        tax_total: price(0),
-        customer_id: None,
-        base_currency: None,
-        base_total_minor: None,
-        tender_rate_millionths: None,
-        tip_minor: 0,
-        service_charge_minor: 0,
-        lines: vec![],
-        version: 1,
-    };
+    let sale = test_sale_with_total(&sale_id, 1200);
     s.create_sale(&sale).unwrap();
 
     let kds_order = s
@@ -3078,31 +2720,7 @@ fn e2e_enrollment_flow_register_validate_route_ack() {
 // ── S3: sale-lifecycle ↔ KDS ticket reconciliation ─────────────────
 
 fn make_active_sale(s: &Store<'_>, sale_id: &str) {
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let test_sale = Sale {
-        id: sale_id.to_owned(),
-        status: crate::SaleStatus::Active,
-        total: price(0),
-        currency: usd(),
-        line_count: 0,
-        payment_method: None,
-        tendered_minor: None,
-        discount_percent: 0,
-        discount_label: None,
-        user_id: None,
-        created_at: now.clone(),
-        updated_at: now,
-        subtotal: price(0),
-        tax_total: price(0),
-        customer_id: None,
-        base_currency: None,
-        base_total_minor: None,
-        tender_rate_millionths: None,
-        tip_minor: 0,
-        service_charge_minor: 0,
-        lines: vec![],
-        version: 1,
-    };
+    let test_sale = test_sale_typed(sale_id, crate::SaleStatus::Active, 0);
     s.create_sale(&test_sale).unwrap();
 }
 

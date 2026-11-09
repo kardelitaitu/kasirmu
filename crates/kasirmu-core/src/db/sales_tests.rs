@@ -777,6 +777,67 @@ fn void_sale_completed_cannot_be_voided() {
     assert!(matches!(err, CoreError::Validation { field, .. } if field == "status"));
 }
 
+/// A second void on an already-voided sale must be REFUSED, not re-applied.
+///
+/// The guard is in `void_sale` (sales_lifecycle.rs:896-904 pre-check plus the
+/// `WHERE id = ?2 AND status = 'active'` compare-and-set at :915-919). The two
+/// neighbouring cases pin only that a PENDING and a COMPLETED sale are refused; nothing
+/// pinned the re-void, which is the shape a double-clicked Void button produces.
+///
+/// It matters because the void path WRITES: an audit entry (:916-922) and a void outbox
+/// row (`void_sale_writes_one_void_outbox_row`, sales_lifecycle_tests.rs:234). A second
+/// pass that slipped through the status guard would append a duplicate audit trail — the
+/// record a dispute is settled from — even though the money effect is nil.
+#[test]
+fn void_sale_refuses_a_second_void_and_writes_no_extra_audit_row() {
+    let conn = fresh();
+    let s = store(&conn);
+    let cart = make_cart();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+    s.update_sale_status(&sale.id, SaleStatus::Active).unwrap();
+
+    // The first void is legitimate.
+    s.void_sale(&sale.id, "user-1", "first").unwrap();
+    let audit_after_first = count_void_audit_rows(&s, &sale.id);
+    // Liveness: if the counter reads zero, the equality below is vacuous — it would pass
+    // whether or not a second entry were appended.
+    assert!(
+        audit_after_first > 0,
+        "the audit counter saw no void entry at all, so the duplicate check is vacuous",
+    );
+
+    // The second must be refused on status, not silently re-applied.
+    let err = s.void_sale(&sale.id, "user-1", "second").unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "status"),
+        "a re-void must be refused by the status guard, got: {err:?}",
+    );
+
+    assert_eq!(
+        count_void_audit_rows(&s, &sale.id),
+        audit_after_first,
+        "a refused re-void must not append a second audit entry",
+    );
+}
+
+/// How many audit rows record a void of `sale_id`.
+///
+/// Counted rather than fetched so the assertion is about the DUPLICATE, which is the
+/// thing a double-fire would add.
+fn count_void_audit_rows(s: &Store, sale_id: &str) -> i64 {
+    s.conn
+        .query_row(
+            // The action string is `sale.void` (sales_lifecycle.rs:924), not `void`: a
+            // first draft used the latter and read 0, which the liveness assertion below
+            // is what caught.
+            "SELECT COUNT(*) FROM audit_log WHERE target_id = ?1 AND action = 'sale.void'",
+            rusqlite::params![sale_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0)
+}
+
 // ── Export with data ─────────────────────────────────────────
 
 #[test]
@@ -1001,6 +1062,37 @@ fn export_eod_breakdown_reconciles_with_the_daily_summary() {
         cash_sale.total.minor_units + card_sale.total.minor_units,
         "revenue is the two completed sales — not the void, and not the refund"
     );
+}
+
+#[test]
+fn export_eod_receivable_collections_aggregates_today() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let rec_id = uuid::Uuid::now_v7().to_string();
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    conn.execute_batch(&format!(
+        "INSERT INTO customers (id, name, created_at, updated_at)
+         VALUES ('cust-1', 'Alice', '{now}', '{now}');
+         INSERT INTO receivables (id, tenant_id, customer_id, source, reference, amount_minor, paid_minor, currency, status, note, created_at, updated_at)
+         VALUES ('{rec_id}', 'default', 'cust-1', 'pos', 'INV-001', 10000, 10000, 'IDR', 'paid', '', '{now}', '{now}');
+         INSERT INTO receivable_payments (id, tenant_id, receivable_id, amount_minor, currency, method, paid_at, note)
+         VALUES ('pay-1', 'default', '{rec_id}', 6000, 'IDR', 'cash', '{now}', 'Payment 1'),
+                ('pay-2', 'default', '{rec_id}', 4000, 'IDR', 'bank_transfer', '{now}', 'Payment 2');"
+    ))
+    .unwrap();
+
+    let collections = s.export_eod_receivable_collections().unwrap();
+    assert_eq!(collections.len(), 2);
+    let cash = collections.iter().find(|c| c.method == "cash").unwrap();
+    assert_eq!(cash.total_minor, 6000);
+    assert_eq!(cash.collection_count, 1);
+    let transfer = collections
+        .iter()
+        .find(|c| c.method == "bank_transfer")
+        .unwrap();
+    assert_eq!(transfer.total_minor, 4000);
+    assert_eq!(transfer.collection_count, 1);
 }
 
 #[test]
@@ -3473,8 +3565,10 @@ fn void_pending_sale_with_recipe_restores_ingredient_stock() {
 #[test]
 fn concurrent_complete_sale_serialized_by_begin_immediate() {
     // Use a file-based DB so two connections can access it concurrently.
-    let dir = std::env::temp_dir().join(format!("oz_concurrent_{}", uuid::Uuid::now_v7()));
-    std::fs::create_dir_all(&dir).unwrap();
+    // The guard owns the directory and deletes it on drop; it must outlive
+    // every thread that opens the file below.
+    let scratch = kasirmu_test_support::ScratchDir::new("sale-concurrent");
+    let dir = scratch.path();
     let db_path = dir.join("test.db");
 
     // Clone the schema from a fresh_db() snapshot into the file DB.
@@ -3553,9 +3647,6 @@ fn concurrent_complete_sale_serialized_by_begin_immediate() {
         matches!(loser, CoreError::Validation { field, .. } if *field == "stock"),
         "loser must fail the stock check, got: {loser:?}"
     );
-
-    // Clean up.
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// True when a `CoreError` wraps a SQLite busy/locked failure — the
@@ -5446,4 +5537,193 @@ fn complete_sale_with_resolved_shortfalls_propagates_db_error_when_checking_stoc
         matches!(err, CoreError::Db(_)),
         "expected CoreError::Db, got {err:?}"
     );
+}
+
+// ── Payment-rail re-validation at checkout (plan safety rule 2) ─────
+//
+// `payment-methods-plan.md` safety rule 2: "the backend checkout command
+// re-validates against the effective config -- never trust the UI". These two
+// cases are the pair that matters: a configured site REFUSES a tender it does
+// not offer, and an unconfigured site still completes the sale, because
+// "unconfigured" is not "disabled" and a new store must be able to trade.
+
+#[test]
+fn checkout_refuses_a_tender_the_site_does_not_offer() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product_with_stock(&conn, "COFFEE", 10);
+
+    // A market with one rail, and a site that does not list `cash`.
+    s.conn
+        .execute(
+            "INSERT INTO legal_entities (id, tenant_id, name, legal_name, registration_number, \
+             tax_id, status, country_code, locale, timezone, currency, created_at, updated_at) \
+             VALUES ('ent-1', 'default', 'ent-1', '', '', '', 'active', 'ID', '', '', '', \
+             '2026-09-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+    // The checkout resolves its site from `get_default_location_id()`, which is the
+    // FROZEN canonical UUID -- not "whichever locations row exists". Seeding that
+    // exact row is what makes this test grade the enforcement rather than a
+    // location the checkout never asks about.
+    s.conn
+        .execute(
+            "INSERT INTO locations (id, name, tenant_id, legal_entity_id) \
+             VALUES (?1, 'Site', 'default', 'ent-1')",
+            rusqlite::params![crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+        )
+        .unwrap();
+    s.replace_local_payment_methods(
+        "legal_entity",
+        "ent-1",
+        &[crate::db::payment_methods::NewPaymentRail {
+            rail_code: "qris".into(),
+            label: "QRIS".into(),
+            is_enabled: true,
+            parameters: "{}".into(),
+        }],
+        "2026-09-01T00:00:00.000Z",
+    )
+    .unwrap();
+
+    let sale = make_single_line_sale("COFFEE", 1, 350);
+    let err = s
+        .complete_sale_deduction_with_locations(&sale, None, &[], &tender(350), "u", None, &[])
+        .expect_err("cash is not on this site's rail surface");
+    match err {
+        crate::error::CoreError::Validation { field, message } => {
+            assert_eq!(field, "payment_method");
+            assert!(
+                message.contains("cash"),
+                "names the refused rail: {message}"
+            );
+        }
+        other => panic!("expected a validation refusal, got {other:?}"),
+    }
+}
+
+#[test]
+fn an_unconfigured_site_still_completes_a_cash_sale() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product_with_stock(&conn, "COFFEE", 10);
+    // No legal entity link, no rail rows anywhere: the floor case.
+    let sale = make_single_line_sale("COFFEE", 1, 350);
+    let result = s
+        .complete_sale_deduction_with_locations(&sale, None, &[], &tender(350), "u", None, &[])
+        .expect("an unconfigured store must still be able to sell");
+    assert_eq!(result.status, SaleStatus::Pending);
+}
+
+// ── tier gating at checkout (plan safety rule 4) ─────────────────────
+
+#[test]
+fn checkout_refuses_dynamic_qris_on_a_free_tier() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product_with_stock(&conn, "COFFEE", 10);
+    // A site that DOES offer qris: only the tier can be the reason for refusal.
+    s.conn
+        .execute(
+            "INSERT INTO legal_entities (id, tenant_id, name, legal_name, registration_number, \
+             tax_id, status, country_code, locale, timezone, currency, created_at, updated_at) \
+             VALUES ('ent-1', 'default', 'ent-1', '', '', '', 'active', 'ID', '', '', '', \
+             '2026-09-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+    s.conn
+        .execute(
+            "INSERT INTO locations (id, name, tenant_id, legal_entity_id) \
+             VALUES (?1, 'Site', 'default', 'ent-1')",
+            rusqlite::params![crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+        )
+        .unwrap();
+    s.replace_local_payment_methods(
+        "legal_entity",
+        "ent-1",
+        &[crate::db::payment_methods::NewPaymentRail {
+            rail_code: "qris".into(),
+            label: "QRIS".into(),
+            is_enabled: true,
+            parameters: "{}".into(),
+        }],
+        "2026-09-01T00:00:00.000Z",
+    )
+    .unwrap();
+
+    let sale = make_single_line_sale("COFFEE", 1, 350);
+    let free = crate::subscription::SubscriptionTier::Free;
+    // Tender QRIS itself, which the site DOES offer: the only remaining reason to
+    // refuse is the tier, so this grades rule 4 rather than rule 2.
+    let qris_tender = vec![crate::PaymentSplitArg {
+        method: "qris".into(),
+        amount_minor: 350,
+        gateway_reference: None,
+        gateway_status: None,
+        gateway_response: None,
+        idempotency_key: None,
+    }];
+    let err = s
+        .complete_sale_deduction_with_locations_and_tier(
+            &sale,
+            None,
+            &[],
+            &qris_tender,
+            "u",
+            None,
+            &[],
+            Some(&free),
+        )
+        .expect_err("a Free tier does not include dynamic QRIS");
+    match err {
+        crate::error::CoreError::Validation { field, message } => {
+            assert_eq!(field, "payment_method");
+            assert!(
+                message.contains("tier"),
+                "the refusal must name the TIER, not the site surface: {message}"
+            );
+        }
+        other => panic!("expected a validation refusal, got {other:?}"),
+    }
+    // The control: the same sale on a tier that DOES include QRIS completes, so the
+    // refusal above is the tier and not something else in the checkout.
+    let plus = crate::subscription::SubscriptionTier::Plus;
+    let sale2 = make_single_line_sale("COFFEE", 1, 350);
+    s.complete_sale_deduction_with_locations_and_tier(
+        &sale2,
+        None,
+        &[],
+        &qris_tender,
+        "u",
+        None,
+        &[],
+        Some(&plus),
+    )
+    .expect("Plus includes dynamic QRIS");
+}
+
+#[test]
+fn a_free_tier_store_with_no_rail_surface_still_sells_cash() {
+    // Rule 4 must not combine with rule 2's "unconfigured" case into a store that
+    // cannot trade at all: no surface + Free tier + cash must complete.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product_with_stock(&conn, "COFFEE", 10);
+    let sale = make_single_line_sale("COFFEE", 1, 350);
+    let free = crate::subscription::SubscriptionTier::Free;
+    let result = s
+        .complete_sale_deduction_with_locations_and_tier(
+            &sale,
+            None,
+            &[],
+            &tender(350),
+            "u",
+            None,
+            &[],
+            Some(&free),
+        )
+        .expect("a Free store with no rails configured must still take cash");
+    assert_eq!(result.status, SaleStatus::Pending);
 }

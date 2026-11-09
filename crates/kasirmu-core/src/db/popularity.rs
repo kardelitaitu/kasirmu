@@ -413,12 +413,15 @@ impl Store<'_> {
         }
 
         // Only the top categories' points survive (the charts stay small).
+        // Pre-parse the category means cache once before the points loop (O-M02).
+        let cached_means = self.all_category_means()?;
+        let global_mean = cached_means.get("").copied().unwrap_or((0.0, 0.0, 0.0));
         let mut points: Vec<CategoryTrendPoint> = Vec::new();
         for ((period_start, cat), (units, txns, searches, edits)) in agg {
             if !rank.contains_key(&cat) {
                 continue;
             }
-            let (ms, mq, me) = self.category_means(&cat)?.unwrap_or((0.0, 0.0, 0.0));
+            let (ms, mq, me) = cached_means.get(&cat).copied().unwrap_or(global_mean);
             let score = crate::popularity::score_from_raw(
                 units as f64,
                 units as f64,
@@ -512,52 +515,48 @@ impl Store<'_> {
         }
 
         // Ranked products per category (score desc, SKU tiebreak).
-        let mut per_cat: HashMap<String, Vec<(String, String, f64)>> = HashMap::new();
-        {
+        // Uses SQLite's window function to prune each category to top_per_category
+        // directly in SQL rather than materialising the entire catalog into memory (O-M06).
+        if top_per_category > 0 {
             let mut stmt = self.conn.prepare(
-                "SELECT p.category_id, p.sku, p.name, p.popularity_score
-                 FROM products p
-                 ORDER BY p.category_id, p.popularity_score DESC, p.sku ASC",
+                "SELECT category_id, sku, name, popularity_score, rn FROM (
+                     SELECT p.category_id, p.sku, p.name, p.popularity_score,
+                            ROW_NUMBER() OVER (
+                                PARTITION BY p.category_id
+                                ORDER BY p.popularity_score DESC, p.sku ASC
+                            ) AS rn
+                     FROM products p
+                 ) WHERE rn <= ?1
+                 ORDER BY category_id, rn ASC",
             )?;
-            let rows = stmt.query_map([], |r| {
+            let rows = stmt.query_map(params![top_per_category], |r| {
                 Ok((
                     r.get::<_, Option<String>>(0)?,
                     r.get::<_, String>(1)?,
                     r.get::<_, String>(2)?,
                     r.get::<_, f64>(3)?,
+                    r.get::<_, i64>(4)?,
                 ))
             })?;
             for row in rows {
-                let (category, sku, name, score) = row?;
-                per_cat
-                    .entry(category.unwrap_or_default())
-                    .or_default()
-                    .push((sku, name, score));
-            }
-        }
-
-        for (key, rows) in per_cat {
-            let count = rows.len() as f64;
-            let top: Vec<CategoryTopProduct> = rows
-                .into_iter()
-                .take(top_per_category.max(0) as usize)
-                .enumerate()
-                .map(|(i, (sku, name, score))| CategoryTopProduct {
-                    sku,
-                    name,
-                    popularity_score: score,
-                    rank: i as i64 + 1,
-                    // Linear spread: best = 1.0, worst = 0.0 (1.0 when the
-                    // category holds a single product).
-                    percentile: if count > 1.0 {
-                        (count - 1.0 - i as f64) / (count - 1.0)
+                let (category, sku, name, score, rn) = row?;
+                let key = category.unwrap_or_default();
+                if let Some(cat) = cats.get_mut(&key) {
+                    let count = cat.product_count as f64;
+                    let i = (rn - 1) as f64;
+                    let percentile = if count > 1.0 {
+                        (count - 1.0 - i) / (count - 1.0)
                     } else {
                         1.0
-                    },
-                })
-                .collect();
-            if let Some(cat) = cats.get_mut(&key) {
-                cat.top_products = top;
+                    };
+                    cat.top_products.push(CategoryTopProduct {
+                        sku,
+                        name,
+                        popularity_score: score,
+                        rank: rn,
+                        percentile,
+                    });
+                }
             }
         }
 
@@ -661,6 +660,39 @@ impl Store<'_> {
             .unwrap_or(0.0))
     }
 
+    /// All cached category smoothing means mapped by category ID (O-M02).
+    ///
+    /// Reads and parses the `CATEGORY_MEANS` JSON blob once, enabling O(1) in-memory
+    /// lookups across loops without repeated database queries and JSON parsing.
+    fn all_category_means(&self) -> Result<HashMap<String, (f64, f64, f64)>, CoreError> {
+        let Some(raw) = self.read_setting(CATEGORY_MEANS)? else {
+            return Ok(HashMap::new());
+        };
+        let Ok(map) = serde_json::from_str::<serde_json::Value>(&raw) else {
+            return Ok(HashMap::new());
+        };
+        let Some(obj) = map.as_object() else {
+            return Ok(HashMap::new());
+        };
+        let mut out = HashMap::with_capacity(obj.len());
+        for (cat, entry) in obj {
+            let ms = entry
+                .get("sales")
+                .and_then(serde_json::Value::as_f64)
+                .unwrap_or(0.0);
+            let mq = entry
+                .get("search")
+                .and_then(serde_json::Value::as_f64)
+                .unwrap_or(0.0);
+            let me = entry
+                .get("edits")
+                .and_then(serde_json::Value::as_f64)
+                .unwrap_or(0.0);
+            out.insert(cat.clone(), (ms, mq, me));
+        }
+        Ok(out)
+    }
+
     /// Look up the cached smoothing means for a product's category.
     ///
     /// Returns the category's means when the per-category map (written by
@@ -670,29 +702,11 @@ impl Store<'_> {
     /// locally rebuilt cache, not a source of truth — but a database fault
     /// is an error, not a cache miss.
     fn category_means(&self, category: &str) -> Result<Option<(f64, f64, f64)>, CoreError> {
-        let Some(raw) = self.read_setting(CATEGORY_MEANS)? else {
+        let means = self.all_category_means()?;
+        if means.is_empty() {
             return Ok(None);
-        };
-        let Ok(map) = serde_json::from_str::<serde_json::Value>(&raw) else {
-            return Ok(None);
-        };
-        let Some(entry) = map.get(category).or_else(|| map.get("")) else {
-            return Ok(None);
-        };
-        Ok(Some((
-            entry
-                .get("sales")
-                .and_then(serde_json::Value::as_f64)
-                .unwrap_or(0.0),
-            entry
-                .get("search")
-                .and_then(serde_json::Value::as_f64)
-                .unwrap_or(0.0),
-            entry
-                .get("edits")
-                .and_then(serde_json::Value::as_f64)
-                .unwrap_or(0.0),
-        )))
+        }
+        Ok(means.get(category).or_else(|| means.get("")).copied())
     }
 
     /// Smoothing means for a single SKU: its category's cached means, else
@@ -766,6 +780,225 @@ impl Store<'_> {
             params![score, sku],
         )?;
         Ok(())
+    }
+
+    /// Recompute `popularity_score` for several SKUs in one grouped pass.
+    ///
+    /// **O-H01.** [`Store::recompute_popularity`] costs FIVE queries and one
+    /// full re-parse of the cached category-means JSON *per SKU*, and
+    /// `complete_sale` called it once per sold line — so an N-line sale paid 6N
+    /// queries plus N JSON parses on the hottest write path in the product.
+    /// This reads each signal family for the whole line set at once (four
+    /// queries total, independent of cart size) plus one JSON parse, then
+    /// writes the scores in a single transaction.
+    ///
+    /// The per-SKU semantics are unchanged on purpose: same window, same
+    /// `compute_score` inputs, same means lookup including its
+    /// `get(cat).or_else(get(""))` fallback, and a SKU with no sales rows still
+    /// resolves to an empty day-count vector rather than being skipped. Only the
+    /// number of round trips changes.
+    ///
+    /// Duplicate SKUs in `skus` are collapsed — a cart may legitimately contain
+    /// the same product on two lines, and recomputing it twice would be the very
+    /// waste this exists to remove.
+    pub fn recompute_popularity_batch(&self, skus: &[String]) -> Result<(), CoreError> {
+        let mut unique: Vec<&str> = skus.iter().map(String::as_str).collect();
+        unique.sort_unstable();
+        unique.dedup();
+        if unique.is_empty() {
+            return Ok(());
+        }
+
+        // One IN-list, reused by every signal query. Built from the SKU count
+        // rather than from the values, so no SKU text is ever spliced into SQL.
+        let placeholders = std::iter::repeat_n("?", unique.len())
+            .collect::<Vec<_>>()
+            .join(",");
+
+        let mut sales: HashMap<&str, Vec<DayCount>> = HashMap::new();
+        {
+            let sql = format!(
+                "SELECT sl.sku, strftime('%Y-%m-%d', s.created_at) AS day, SUM(sl.qty) AS qty
+                 FROM sale_lines sl JOIN sales s ON sl.sale_id = s.id
+                 WHERE s.status = 'completed' AND s.created_at >= datetime('now', ?)
+                   AND sl.sku IN ({placeholders})
+                 GROUP BY sl.sku, day"
+            );
+            let mut stmt = self.conn.prepare(&sql)?;
+            let mut bound: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(unique.len() + 1);
+            let window = window_modifier();
+            bound.push(&window);
+            for sku in &unique {
+                bound.push(sku);
+            }
+            let rows = stmt.query_map(bound.as_slice(), |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            })?;
+            for row in rows {
+                let (sku, day, qty) = row?;
+                let key = unique
+                    .iter()
+                    .copied()
+                    .find(|s| *s == sku.as_str())
+                    .unwrap_or_default();
+                sales.entry(key).or_default().push(DayCount {
+                    days_ago: days_ago(&day),
+                    count: qty,
+                });
+            }
+        }
+
+        let mut distinct: HashMap<&str, i64> = HashMap::new();
+        {
+            let sql = format!(
+                "SELECT sl.sku, COUNT(DISTINCT sl.sale_id)
+                 FROM sale_lines sl JOIN sales s ON sl.sale_id = s.id
+                 WHERE s.status = 'completed' AND s.created_at >= datetime('now', ?)
+                   AND sl.sku IN ({placeholders})
+                 GROUP BY sl.sku"
+            );
+            let mut stmt = self.conn.prepare(&sql)?;
+            let mut bound: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(unique.len() + 1);
+            let window = window_modifier();
+            bound.push(&window);
+            for sku in &unique {
+                bound.push(sku);
+            }
+            let rows = stmt.query_map(bound.as_slice(), |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+            })?;
+            for row in rows {
+                let (sku, cnt) = row?;
+                if let Some(key) = unique.iter().copied().find(|s| *s == sku.as_str()) {
+                    distinct.insert(key, cnt);
+                }
+            }
+        }
+
+        let mut searches: HashMap<&str, Vec<DayCount>> = HashMap::new();
+        let mut edits: HashMap<&str, Vec<DayCount>> = HashMap::new();
+        {
+            let sql = format!(
+                "SELECT sku, event_type, strftime('%Y-%m-%d', created_at) AS day, COUNT(*) AS cnt
+                 FROM product_activity
+                 WHERE created_at >= datetime('now', ?)
+                   AND sku IN ({placeholders})
+                 GROUP BY sku, event_type, day"
+            );
+            let mut stmt = self.conn.prepare(&sql)?;
+            let mut bound: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(unique.len() + 1);
+            let window = window_modifier();
+            bound.push(&window);
+            for sku in &unique {
+                bound.push(sku);
+            }
+            let rows = stmt.query_map(bound.as_slice(), |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                ))
+            })?;
+            for row in rows {
+                let (sku, etype, day, cnt) = row?;
+                let Some(key) = unique.iter().copied().find(|s| *s == sku.as_str()) else {
+                    continue;
+                };
+                let dc = DayCount {
+                    days_ago: days_ago(&day),
+                    count: cnt,
+                };
+                if etype == "search" {
+                    searches.entry(key).or_default().push(dc);
+                } else if etype == "edit" {
+                    edits.entry(key).or_default().push(dc);
+                }
+            }
+        }
+
+        // Category + the whole means cache, read ONCE for the batch. This is the
+        // parse that `sku_means` repeated per SKU; the fallback rule
+        // (`get(cat).or_else(get(""))`) is applied per SKU below, unchanged.
+        let means = self.all_category_means()?;
+        let mut categories: HashMap<&str, Option<String>> = HashMap::new();
+        {
+            let sql =
+                format!("SELECT sku, category_id FROM products WHERE sku IN ({placeholders})");
+            let mut stmt = self.conn.prepare(&sql)?;
+            let mut bound: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(unique.len());
+            for sku in &unique {
+                bound.push(sku);
+            }
+            let rows = stmt.query_map(bound.as_slice(), |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+            })?;
+            for row in rows {
+                let (sku, cat) = row?;
+                if let Some(key) = unique.iter().copied().find(|s| *s == sku.as_str()) {
+                    categories.insert(key, cat);
+                }
+            }
+        }
+
+        let empty: Vec<DayCount> = Vec::new();
+        let mut scored: Vec<(&str, f64)> = Vec::with_capacity(unique.len());
+        for sku in &unique {
+            let (mean_sales, mean_search, mean_edits) = {
+                let category = categories.get(sku).and_then(|c| c.as_deref());
+                let picked = match category {
+                    Some(cat) if !means.is_empty() => {
+                        means.get(cat).or_else(|| means.get("")).copied()
+                    }
+                    _ => None,
+                };
+                match picked {
+                    Some(m) => m,
+                    None => (
+                        self.read_mean(MEAN_SALES)?,
+                        self.read_mean(MEAN_SEARCH)?,
+                        self.read_mean(MEAN_EDITS)?,
+                    ),
+                }
+            };
+            let score = compute_score(
+                sales.get(sku).unwrap_or(&empty),
+                distinct.get(sku).copied().unwrap_or(0),
+                searches.get(sku).unwrap_or(&empty),
+                edits.get(sku).unwrap_or(&empty),
+                mean_sales,
+                mean_search,
+                mean_edits,
+            );
+            scored.push((sku, score));
+        }
+
+        // One transaction for the writes (AGENTS.md: DB writes inside a
+        // rusqlite transaction), and a prepared statement reused per row.
+        self.conn.execute_batch("BEGIN IMMEDIATE")?;
+        let result = (|| -> Result<(), CoreError> {
+            let mut stmt = self
+                .conn
+                .prepare_cached("UPDATE products SET popularity_score = ?1 WHERE sku = ?2")?;
+            for (sku, score) in &scored {
+                stmt.execute(params![score, sku])?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(()) => {
+                self.conn.execute_batch("COMMIT")?;
+                Ok(())
+            }
+            Err(e) => {
+                self.conn.execute_batch("ROLLBACK")?;
+                Err(e)
+            }
+        }
     }
 
     /// Full-catalog popularity pass: recompute every product's score and
@@ -946,20 +1179,21 @@ impl Store<'_> {
         write_setting_in_tx(&tx, MEAN_SALES, &mean_sales.to_string())?;
         write_setting_in_tx(&tx, MEAN_SEARCH, &mean_search.to_string())?;
         write_setting_in_tx(&tx, MEAN_EDITS, &mean_edits.to_string())?;
-        for (sku, category, sr, sv, qr, qv, er, ev) in products {
-            let key = category.unwrap_or_default();
-            let (ms, mq, me) =
-                cat_means
-                    .get(&key)
-                    .copied()
-                    .unwrap_or((mean_sales, mean_search, mean_edits));
-            let distinct = distinct.get(&sku).copied().unwrap_or(0) as f64;
-            let score =
-                crate::popularity::score_from_raw(sr, sv, distinct, qr, qv, er, ev, ms, mq, me);
-            tx.execute(
-                "UPDATE products SET popularity_score = ?1 WHERE sku = ?2",
-                params![score, sku],
-            )?;
+        {
+            let mut stmt =
+                tx.prepare_cached("UPDATE products SET popularity_score = ?1 WHERE sku = ?2")?;
+            for (sku, category, sr, sv, qr, qv, er, ev) in products {
+                let key = category.unwrap_or_default();
+                let (ms, mq, me) =
+                    cat_means
+                        .get(&key)
+                        .copied()
+                        .unwrap_or((mean_sales, mean_search, mean_edits));
+                let distinct = distinct.get(&sku).copied().unwrap_or(0) as f64;
+                let score =
+                    crate::popularity::score_from_raw(sr, sv, distinct, qr, qv, er, ev, ms, mq, me);
+                stmt.execute(params![score, sku])?;
+            }
         }
         tx.commit()?;
         Ok(())

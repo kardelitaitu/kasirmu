@@ -81,3 +81,5 @@ obstacle identified exactly: a navigation path, not missing code.
 | Mock KDS persistence | in-memory only; `oz-dev-mock:kds` absent on a fresh load |
 | Full suite | 12,665 passed, 0 failed |
 | Tree | clean but for another lane's file; scratch script deleted; Vite stopped |
+
+> last audited 14-10-26 by docs-auditor

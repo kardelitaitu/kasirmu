@@ -23,6 +23,7 @@ gift-cards-topup-invalid = Jumlah top-up harus positif
 gift-cards-payment-enter-number = Masukkan nomor kartu hadiah
 gift-cards-payment-not-found = Kartu hadiah tidak ditemukan
 gift-cards-payment-not-active = Kartu hadiah tidak aktif
+gift-cards-payment-currency-mismatch = Kartu ini dalam { $cardCurrency } dan tidak dapat dipakai untuk transaksi { $saleCurrency }
 gift-cards-payment-insufficient = Saldo kartu hadiah tidak mencukupi
 gift-cards-payment-title = Kartu Hadiah
 gift-cards-payment-total-due = Total tagihan: { $amount }
@@ -44,7 +45,8 @@ gift-cards-error-topup = Top-up gagal
 gift-cards-error-issue = Gagal menerbitkan kartu hadiah
 
 # Gift Cards — placeholders & aria
-gift-cards-topup-placeholder = Jumlah
+gift-cards-issue-amount-placeholder = Jumlah dalam { $currency }
+gift-cards-topup-placeholder = Jumlah dalam { $currency }
 gift-cards-topup-aria = Jumlah top-up
 gift-cards-issue-to-placeholder = Nama pelanggan
 

@@ -61,3 +61,5 @@ Round 90 audited the KDS offline layer's BOUNDS (dead-letter growth is bounded b
 restore semantics in round 78. What neither covered is whether any of them is store-scoped
 — i.e. whether switching stores can read another store's persisted value. That is the next
 shape to check, and it is the one with a user-visible consequence.
+
+> last audited 14-10-26 by docs-auditor

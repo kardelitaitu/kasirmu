@@ -43,6 +43,7 @@
  * opens — verbatim; only the nine call sites named in the props differ.
  */
 import { Localized, useLocalization } from '@fluent/react';
+import { requiredLocalized } from '@/components/requiredLocalized';
 import { formatMoney, type Money } from '@/types/domain';
 import type { PaymentMethod } from '@/api/types/payment';
 
@@ -71,6 +72,13 @@ export interface SplitTenderRowsProps {
   currency: string;
   /** splitTotals.remaining from useTenderMath, minor units, BigInt. */
   remainingMinor: bigint;
+  /**
+   * Per-row: the cashier typed an amount the parser REFUSED. Positional, matching
+   * `splits`. The sum treats a refused row as 0n, so without this the row is
+   * indistinguishable from a blank one and the Remaining line can read 0 while Complete
+   * stays disabled — with no explanation anywhere.
+   */
+  unreadableRows?: readonly boolean[];
   /** The shell's setSplitMode. */
   onSplitModeChange: (checked: boolean) => void;
   /** The shell's addSplit — allocates the id from the page's nextSplitId ref. */
@@ -106,6 +114,7 @@ export default function SplitTenderRows({
   splits,
   currency,
   remainingMinor,
+  unreadableRows = [],
   onSplitModeChange,
   onAddSplit,
   onRemoveSplit,
@@ -128,7 +137,7 @@ export default function SplitTenderRows({
                   </Localized>
                   <div className="payment-split-actions">
                     {onSplitWays && (
-                      <div className="payment-split-ways-group" role="group" aria-label={l10n.getString('payment-split-ways-label') || 'Split Ways'}>
+                      <div className="payment-split-ways-group" role="group" aria-label={requiredLocalized(l10n, 'payment-split-ways-label')}>
                         <span className="payment-split-ways-label">
                           <Localized id="payment-split-ways-label">
                             <span>Split:</span>
@@ -139,7 +148,7 @@ export default function SplitTenderRows({
                             key={count}
                             type="button"
                             className={`payment-split-way-btn ${splits.length === count ? 'payment-split-way-btn--active' : ''}`}
-                            aria-label={l10n.getString('payment-split-ways-aria', { count }) || `Split evenly ${count} ways`}
+                            aria-label={requiredLocalized(l10n, 'payment-split-ways-aria', { count })}
                             data-testid={`payment-split-ways-${count}`}
                             onClick={() => onSplitWays(count)}
                           >
@@ -172,7 +181,7 @@ export default function SplitTenderRows({
                 </div>
 
                 <div className="payment-split-rows">
-                  {splits.map((s) => (
+                  {splits.map((s, rowIndex) => (
                     <div key={s.id} className="payment-split-row">
                       <div className="payment-split-method-group">
                         {(['cash', 'card'] as const).map((m) => (
@@ -226,6 +235,13 @@ export default function SplitTenderRows({
                             />
                           </Localized>
                       </div>
+                      {unreadableRows[rowIndex] === true && (
+                        <span className="payment-split-unreadable" role="alert">
+                          <Localized id="payment-tender-unreadable">
+                            <span>Check the amount — use the store&apos;s usual thousands and decimal separators</span>
+                          </Localized>
+                        </span>
+                      )}
                       <button
                         type="button"
                         className="payment-split-remove"

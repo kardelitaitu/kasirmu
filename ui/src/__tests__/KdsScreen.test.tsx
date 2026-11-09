@@ -7,6 +7,7 @@ import { HardwareAccelProvider } from '@/contexts/HardwareAccelContext';
 import KdsScreen from '@/features/kds/KdsScreen';
 import kdsFtl from '@/locales/kds.ftl?raw';
 import type { KdsOrder } from '@/api/kds';
+import type * as TicketSlaModule from '@/features/kds/hooks/useTicketSla';
 
 // ── Zone-preference store (ZONE-TESTS) ──────────────────────────────
 // The real useKdsPreferences persists and notifies; this store mirrors
@@ -37,9 +38,10 @@ const { kdsZoneStore } = vi.hoisted(() => {
   };
 });
 
-const { mockGetKdsQueue, mockUpdateKdsStatus, mockListKdsOrdersScoped, mockGetKdsOrderLines, mockUpdateKdsOrderItems, mockListProducts, mockUseTicketSla, mockPlayAlert, mockSpeak, mockUseWorkspaceScope } = vi.hoisted(() => ({
+const { mockGetKdsQueue, mockUpdateKdsStatus, mockUpdateKdsLineItemStatus, mockListKdsOrdersScoped, mockGetKdsOrderLines, mockUpdateKdsOrderItems, mockListProducts, mockUseTicketSla, mockPlayAlert, mockSpeak, mockUseWorkspaceScope } = vi.hoisted(() => ({
   mockGetKdsQueue: vi.fn(),
   mockUpdateKdsStatus: vi.fn(),
+  mockUpdateKdsLineItemStatus: vi.fn(),
   mockListKdsOrdersScoped: vi.fn().mockResolvedValue([]),
   mockGetKdsOrderLines: vi.fn().mockResolvedValue([]),
   mockUpdateKdsOrderItems: vi.fn(),
@@ -109,6 +111,10 @@ vi.mock('@/api/kds', () => ({
   getKdsOrderLinesScoped: (_token: string, _orderId: string) => mockGetKdsOrderLines(),
   updateKdsOrderItemsScoped: (_token: string, args: unknown) =>
     mockUpdateKdsOrderItems(args),
+  // The per-ITEM status write. It was absent from this mock, so no test in the file
+  // could ever drive the item tap — which is how the asymmetry below went unnoticed.
+  updateKdsLineItemStatusScoped: (_token: string, id: string, status: string) =>
+    mockUpdateKdsLineItemStatus(id, status),
 }));
 
 vi.mock('@/api/products', () => ({
@@ -125,7 +131,7 @@ vi.mock('@/features/kds/hooks/useTicketSla', async (importOriginal) => ({
   // the real module: kdsThresholdMinutes.ts derives the UI minute ceilings
   // from them (2026-09-15 ruling), and KdsHeaderRight imports that helper, so
   // a whole-module mock here makes those names undefined at import time.
-  ...(await importOriginal<typeof import('@/features/kds/hooks/useTicketSla')>()),
+  ...(await importOriginal<typeof TicketSlaModule>()),
   useTicketSla: (..._args: unknown[]) => mockUseTicketSla(),
 }));
 
@@ -208,6 +214,29 @@ describe('KdsScreen', () => {
     await waitFor(() => {
       expect(screen.getByRole('region', { name: /kitchen display/i })).toBeDefined();
     });
+  });
+
+  // WHY THIS IS A DOM ASSERTION AND NOT AN AXE RUN.
+  //
+  // axe's `page-has-heading-one` cannot reach a verdict under jsdom -- a document
+  // WITH an <h1> and one WITHOUT both return `incomplete` / `error-occurred`
+  // (`document.elementFromPoint is not a function`). Measured 2026-10-27. So the
+  // structure is pinned directly.
+  //
+  // The KDS had NO page heading at all: no visible title, no screen-reader one.
+  // Its only headings were <h3>s inside the hamburger panel, so assistive tech got
+  // neither a page name nor an outline root -- while the sibling ExpoScreen carries
+  // an <h1> at ExpoScreen.tsx:451. Confirmed by mutation: flipping the <h1> back to
+  // <h2> left all 129 cases in this and the topology suite green.
+  it('names the page with a single level-one heading', async () => {
+    const { container } = renderScreen();
+    await waitFor(() => {
+      expect(container.querySelector('.kds-main')).not.toBeNull();
+    });
+    const h1s = Array.from(container.querySelectorAll('h1'));
+    expect(h1s, 'the KDS must carry exactly one level-one heading').toHaveLength(1);
+    expect(h1s[0]!.textContent?.trim(), 'an empty h1 satisfies a rule but not a reader')
+      .toBe('Kitchen Display');
   });
 
   it('renders the masonry order view (single layout)', async () => {
@@ -310,6 +339,62 @@ describe('KdsScreen', () => {
     // The offline banner should show instead of the raw error.
     await waitFor(() => {
       expect(document.querySelector('.kds-offline-banner')).not.toBeNull();
+    });
+  });
+
+  it('TELLS THE KITCHEN when a per-ITEM status write fails, instead of swallowing it (control: the ticket path already does)', async () => {
+    // Two taps on the same ticket, two different failure behaviours:
+    //
+    //   * advanceStatus (the ticket tap, KdsScreen.tsx:222) goes through
+    //     `wrapUpdate`, which on failure queues the action for retry, projects the
+    //     optimistic status into the offline cache AND raises the
+    //     `kds-offline-queued-update` banner.
+    //   * advanceItemStatus (the per-item tap, :250) is a bare try/catch with an empty
+    //     body. On failure NOTHING happens: no queue, no optimistic local advance, no
+    //     banner.
+    //
+    // The comment on that catch says 'the backend will emit kds:orders-changed on next
+    // poll' — but a poll repairs the DISPLAY, not the WRITE. The kitchen tapped 'this
+    // dish is done', the status dot did not move, and nothing said why. Cooks relaunch
+    // the app or tap again harder; the honest answer is 'not saved, we will retry'.
+    //
+    // This test drives the ITEM tap with a rejecting write and requires the same
+    // operator-facing signal the ticket path already gives.
+    mockGetKdsQueue.mockResolvedValue([makeOrder({ id: 'o-1', display_number: 101 })]);
+    mockGetKdsOrderLines.mockResolvedValue([
+      {
+        id: 'li-1',
+        order_id: 'o-1',
+        sku: 'BURGER',
+        display_name: 'Burger',
+        qty: 1,
+        course: 'main',
+        item_status: 'pending',
+        modifiers: [],
+        served_at: null,
+        created_at: new Date().toISOString(),
+      },
+    ]);
+    mockUpdateKdsLineItemStatus.mockRejectedValue(new Error('ipc down'));
+
+    renderScreen();
+
+    const itemRow = await waitFor(() => {
+      const el = document.querySelector('[data-testid="kds-order-card-101-item-li-1"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+
+    await userEvent.click(itemRow);
+
+    await waitFor(() => {
+      expect(mockUpdateKdsLineItemStatus).toHaveBeenCalled();
+    });
+
+    // The write failed, so the kitchen must be told — the same banner the ticket
+    // path shows. Silence here is the defect.
+    await waitFor(() => {
+      expect(document.body.textContent ?? '').toMatch(/queued|will sync|not saved|failed/i);
     });
   });
 

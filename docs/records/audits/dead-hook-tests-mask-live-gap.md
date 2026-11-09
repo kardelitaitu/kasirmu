@@ -69,3 +69,5 @@ which is a second thing to repoint.
 So the deliverable this round is the missing coverage plus the measurement that shows the gap
 was real. The dead-file removal is left as a scoped, evidence-backed next step rather than a
 deletion made on the assumption that tests without production consumers are worthless.
+
+> last audited 14-10-26 by docs-auditor

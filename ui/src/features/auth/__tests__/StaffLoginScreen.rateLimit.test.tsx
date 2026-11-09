@@ -66,14 +66,30 @@ vi.mock('@fluent/react', () => ({
     l10n: {
       getString: (id: string, args?: Record<string, unknown>) => {
         const map: Record<string, string> = {
-          'staff-login-error-not-found': 'User not found',
-          'staff-login-error-deactivated': 'Deactivated',
           'staff-login-error-connection': 'Connection error',
           'staff-login-attempts-remaining': `Attempts remaining: ${args?.['count']}`,
           'staff-login-lockout': `Locked for ${args?.['seconds']}s`,
           'clear-aria': 'Clear',
           'backspace-aria': 'Backspace',
           'username-aria': 'Username',
+          // Keys the screen renders that this stub map never carried. Values from
+          // shared-ui/locales/{staff,shared}.ftl: the three attribute-only messages
+          // empty '=' values are the continuation .aria-label / .placeholder lines.
+          'staff-login-clear': 'Clear',
+          'staff-login-clear-aria': 'Clear',
+          'staff-login-backspace-aria': 'Backspace',
+          'staff-login-close-aria': 'Close',
+          'staff-login-copyright': '© 2026 kasir.mu. All rights reserved.',
+          'staff-login-digit-aria': `${args?.['digit']}`,
+          'staff-login-keypad-aria': 'Numeric keypad',
+          'staff-login-next-aria': 'Next',
+          'staff-login-pin-aria': `PIN entry: ${args?.['length']} of ${args?.['max']} digits`,
+          'staff-login-pin-section-aria': 'PIN entry — type digits on your keyboard or use the on-screen keypad',
+          'staff-login-progress-aria': 'Login progress',
+          'staff-login-recent-label': 'Quick Login',
+          'staff-login-username-aria': 'Username',
+          'staff-login-username-placeholder': 'Username',
+          'staff-login-title': 'kasir.mu',
         };
         return (map as Record<string, string>)[id] || id;
       },

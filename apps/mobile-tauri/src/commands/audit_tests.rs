@@ -1,4 +1,5 @@
 use super::*;
+use kasirmu_test_support::tempdir;
 
 use crate::commands::testing::{assert_refused_by_the_tier_gate, seeded_row_reaches_a_paid_tier};
 
@@ -167,7 +168,7 @@ fn seeded_conn(tier_key: &str) -> rusqlite::Connection {
 /// An app whose `tok` session is the owner, with a real store DB behind it.
 fn app_for(tier_key: &str) -> tauri::App<tauri::test::MockRuntime> {
     let conn = seeded_conn(tier_key);
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);

@@ -31,6 +31,7 @@ fn sample_receipt() -> SalesReceipt {
         date: "01 Jan 2026".into(),
         receipt_number: "REC-001".into(),
         table_number: None,
+        customer_name: None,
         items: vec![
             LineItem {
                 name: "Milk 2%".into(),
@@ -65,6 +66,7 @@ fn sample_receipt() -> SalesReceipt {
             usd_money(2000),
             Some(usd_money(680)),
         )],
+        credit_terms: None,
         faktur_pajak: None,
     }
 }
@@ -447,6 +449,7 @@ fn sales_receipt_prints_idr_without_trailing_decimal() {
         date: "01 Jan 2026".into(),
         receipt_number: "REC-IDR".into(),
         table_number: None,
+        customer_name: None,
         items: vec![LineItem {
             name: "Paket Nasi".into(),
             quantity: 1,
@@ -459,6 +462,7 @@ fn sales_receipt_prints_idr_without_trailing_decimal() {
         tax: None,
         total: money(4_450_000),
         payments: vec![PaymentInfo::new("CASH", money(4_450_000), None)],
+        credit_terms: None,
         faktur_pajak: None,
     };
 
@@ -917,4 +921,73 @@ fn edc_settlement_slip_formats_expected_sections() {
     assert!(text.contains("14"));
     assert!(text.contains("SETTLEMENT SUCCESS"));
     assert!(text.contains("BATCH CLOSED"));
+}
+
+#[test]
+fn format_sales_receipt_with_credit_terms() {
+    let mut r = sample_receipt();
+    r.customer_name = Some("Budi Santoso".into());
+    r.payments = vec![PaymentInfo::new("PAY_LATER", usd_money(1320), None)];
+    r.credit_terms = Some(CreditTermsInfo {
+        customer_name: "Budi Santoso".into(),
+        customer_phone: Some("08123456789".into()),
+        due_date: Some("2026-11-20".into()),
+        outstanding_balance: Some(usd_money(2500)),
+    });
+
+    let data = format_sales_receipt(&r, &default_config());
+    let text = String::from_utf8_lossy(&data);
+    assert!(text.contains("Customer: Budi Santoso"));
+    assert!(text.contains("NOTA PIUTANG / KASBON"));
+    assert!(text.contains("Pelanggan   : Budi Santoso"));
+    assert!(text.contains("No. Telp    : 08123456789"));
+    assert!(text.contains("Jatuh Tempo : 2026-11-20"));
+    assert!(text.contains("TOTAL HUTANG:"));
+    assert!(text.contains("25.00"));
+    assert!(text.contains("Tanda Tangan Pelanggan:"));
+}
+
+#[test]
+fn format_kasbon_settlement_slip_output() {
+    let store = StoreInfo {
+        name: "Warung Kopi Mantap".into(),
+        address: "Jl. Sudirman 45, Jakarta".into(),
+        tax_id: Some("01.234.567.8-999.000".into()),
+        tax_id_label: Some("NPWP".into()),
+    };
+    let slip = KasbonSettlementReceipt {
+        store,
+        date: "2026-10-21 15:30".into(),
+        settlement_number: "PAY-REC-001".into(),
+        customer_name: "Ahmad Wijaya".into(),
+        customer_phone: Some("08198765432".into()),
+        receivable_reference: Some("REC-20261021-01".into()),
+        payment_method: "cash".into(),
+        previous_balance: idr_money(150_000),
+        amount_paid: idr_money(100_000),
+        remaining_balance: idr_money(50_000),
+        cashier_name: Some("Bambang".into()),
+        note: Some("Cicilan ke-1".into()),
+    };
+
+    let cfg = ReceiptConfig {
+        paper_width: PaperWidth::Standard,
+        grouping: ThousandSeparator::Dot,
+        ..default_config()
+    };
+    let data = format_kasbon_settlement_slip(&slip, &cfg);
+    let text = String::from_utf8_lossy(&data);
+    assert!(text.contains("Warung Kopi Mantap"));
+    assert!(text.contains("BUKTI PEMBAYARAN KASBON"));
+    assert!(text.contains("#PAY-REC-001"));
+    assert!(text.contains("Pelanggan   : Ahmad Wijaya"));
+    assert!(text.contains("No. Telp    : 08198765432"));
+    assert!(text.contains("No. Piutang : REC-20261021-01"));
+    assert!(text.contains("Metode      : CASH"));
+    assert!(text.contains("HUTANG AWAL:"));
+    assert!(text.contains("JUMLAH BAYAR:"));
+    assert!(text.contains("SISA PIUTANG:"));
+    assert!(text.contains("Kasir: Bambang"));
+    assert!(text.contains("Catatan: Cicilan ke-1"));
+    assert!(text.contains("bukti pembayaran yang sah"));
 }

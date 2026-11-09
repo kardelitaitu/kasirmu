@@ -14,7 +14,8 @@
  * settings.id.ftl. Error copy comes from the shared app-error map with
  * `settings-regional-error-*` fallbacks.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { requiredLocalized } from '@/components/requiredLocalized';
 import { Localized, useLocalization } from '@fluent/react';
 import { Card } from '@/components/Card';
 import SettingsSelect, { type SettingsSelectOption } from '@/features/settings/SettingsSelect';
@@ -73,6 +74,8 @@ export function RegionalSettingsCard() {
 
   const [currencies, setCurrencies] = useState<CurrencyDto[]>([]);
   const [saving, setSaving] = useState(false);
+  /** Synchronous mirror of `saving` — see the re-entry guard in `handleSave`. */
+  const savingRef = useRef(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -119,6 +122,11 @@ export function RegionalSettingsCard() {
 
   const handleSave = useCallback(async () => {
     if (!sessionToken || !config) return;
+    // Re-entry guard: set_regional_config writes the same keys with the same values, so a
+    // replay cannot corrupt them -- what it can do is share one \`saveError\` / \`saved\` pair
+    // between two in-flight writes, showing the operator the failure of the tap that raced.
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     setSaveError(null);
     setSaved(false);
@@ -139,6 +147,7 @@ export function RegionalSettingsCard() {
     } catch (err) {
       setSaveError(l10nErrorMessage(err, l10n, 'settings-regional-error-save'));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }, [sessionToken, config, locale, timezone, currency, countryCode, l10n]);
@@ -147,16 +156,16 @@ export function RegionalSettingsCard() {
   // shown so the select never silently rewrites them on save, but the
   // backend rejects re-selecting them — the option is labeled as legacy.
   const timezoneOptions: SettingsSelectOption[] = [
-    { value: '', label: l10n.getString('settings-regional-timezone-inherit') || 'Inherit (scope above)' },
+    { value: '', label: requiredLocalized(l10n, 'settings-regional-timezone-inherit') },
     ...REGIONAL_TIMEZONE_PRESETS.map((tz) => ({ value: tz, label: tz })),
-    { value: 'UTC', label: l10n.getString('settings-regional-timezone-utc') || 'UTC (legacy sentinel)' },
+    { value: 'UTC', label: requiredLocalized(l10n, 'settings-regional-timezone-utc') },
     ...(timezone && !REGIONAL_TIMEZONE_PRESETS.includes(timezone) && timezone !== 'UTC'
-      ? [{ value: timezone, label: `${timezone} — ${l10n.getString('settings-regional-timezone-legacy') || 'legacy value'}` }]
+      ? [{ value: timezone, label: `${timezone} — ${requiredLocalized(l10n, 'settings-regional-timezone-legacy')}` }]
       : []),
   ];
 
   const currencyOptions: SettingsSelectOption[] = [
-    { value: '', label: l10n.getString('settings-regional-currency-inherit') || 'Inherit (scope above)' },
+    { value: '', label: requiredLocalized(l10n, 'settings-regional-currency-inherit') },
     ...currencies.map((c) => ({ value: c.code, label: `${c.code} — ${c.name}` })),
   ];
 
@@ -218,7 +227,7 @@ export function RegionalSettingsCard() {
             type="text"
             value={locale}
             onChange={(e) => { setLocale(e.target.value); setSaved(false); }}
-            placeholder={l10n.getString('settings-regional-locale-placeholder') || 'e.g. id-ID — blank inherits'}
+            placeholder={requiredLocalized(l10n, 'settings-regional-locale-placeholder')}
             autoComplete="off"
             spellCheck={false}
           />
@@ -238,7 +247,7 @@ export function RegionalSettingsCard() {
             value={timezone}
             onChange={(v) => { setTimezone(v); setSaved(false); }}
             options={timezoneOptions}
-            ariaLabel={l10n.getString('settings-regional-timezone') || 'Timezone'}
+            ariaLabel={requiredLocalized(l10n, 'settings-regional-timezone')}
           />
           <p className="regional-settings-provenance">
             <Localized id={provenanceKey(config.timezone.scope)}>
@@ -256,8 +265,8 @@ export function RegionalSettingsCard() {
             value={currency}
             onChange={(v) => { setCurrency(v); setSaved(false); }}
             options={currencyOptions}
-            ariaLabel={l10n.getString('settings-regional-currency') || 'Currency'}
-            placeholder={l10n.getString('settings-regional-currency-placeholder') || 'e.g. IDR — blank inherits'}
+            ariaLabel={requiredLocalized(l10n, 'settings-regional-currency')}
+            placeholder={requiredLocalized(l10n, 'settings-regional-currency-placeholder')}
           />
           <p className="regional-settings-provenance">
             <Localized id={provenanceKey(config.currency.scope)}>
@@ -275,7 +284,7 @@ export function RegionalSettingsCard() {
             type="text"
             value={countryCode}
             onChange={(e) => { setCountryCode(e.target.value); setSaved(false); }}
-            placeholder={l10n.getString('settings-regional-country-placeholder') || 'e.g. ID — blank leaves the entity unchanged'}
+            placeholder={requiredLocalized(l10n, 'settings-regional-country-placeholder')}
             autoComplete="off"
             spellCheck={false}
             maxLength={2}

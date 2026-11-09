@@ -40,10 +40,16 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 const PORT = 9222;
+const ADB_BIN = process.env.ANDROID_HOME
+  ? `${process.env.ANDROID_HOME}/platform-tools/adb.exe`
+  : "C:/Users/Dika/AppData/Local/Android/Sdk/platform-tools/adb.exe";
+
+let activeDeviceSerial = "";
 
 /** Run adb and return stdout with CR stripped (adb emits CRLF on Windows). */
 function adb(...args) {
-  return execFileSync("adb", args, { encoding: "utf8" }).replace(/\r/g, "");
+  const flags = activeDeviceSerial ? ["-s", activeDeviceSerial] : [];
+  return execFileSync(ADB_BIN, [...flags, ...args], { encoding: "utf8" }).replace(/\r/g, "");
 }
 
 /**
@@ -60,6 +66,25 @@ function adbTolerant(...args) {
   }
 }
 
+function ensureDevice() {
+  for (let i = 0; i < 10; i++) {
+    try {
+      const out = execFileSync(ADB_BIN, ["devices"], { encoding: "utf8" });
+      const lines = out.split("\n").map(l => l.trim()).filter(l => l.endsWith("\tdevice") || l.endsWith(" device"));
+      if (lines.length > 0) {
+        activeDeviceSerial = lines[0].split(/\s+/)[0];
+        return;
+      }
+    } catch {}
+    try {
+      const target = process.env.ADB_DEVICE || process.env.ANDROID_ADB_DEVICE || "192.168.0.185:45487";
+      execFileSync(ADB_BIN, ["connect", target], { encoding: "utf8", timeout: 2000 });
+    } catch {}
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000);
+  }
+  throw new Error("ADB device not found");
+}
+
 /**
  * Point `tcp:PORT` at the running app's WebView devtools socket.
  * adb refuses the forward when no process holds the socket, which is the
@@ -67,6 +92,7 @@ function adbTolerant(...args) {
  * error rather than a connection reset later.
  */
 function prepareForward() {
+  ensureDevice();
   const pid = adbTolerant("shell", "pidof", "mu.kasir.mobile").trim();
   if (!pid) {
     throw new Error(

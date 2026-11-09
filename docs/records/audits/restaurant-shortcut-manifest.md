@@ -66,3 +66,5 @@ by splitting the `Shift+` prefix before the comparison.
 | FTL orphan lint | OK |
 | `tsc` / `eslint` (my files) | 0 / 0 |
 | Full UI suite | 12,678 passed |
+
+> last audited 14-10-26 by docs-auditor

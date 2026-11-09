@@ -389,3 +389,108 @@ fn module_result_error_downcast() {
     let root = err.root_cause();
     assert!(root.downcast_ref::<io::Error>().is_some());
 }
+// ── HandlerType::as_str is a COMPATIBILITY SURFACE ─────────────
+//
+// contracts.rs:154-157 says so in as many words: the string matches
+// `scripts/handler-classification.json` and "is the string a future generator
+// emits, so the spelling is a compatibility surface, not an internal detail".
+//
+// Nothing graded that claim. scripts/verify-namespace-governance.py fails when a
+// handler IMPL is missing from the registry, but it never compares the registry's
+// category keys against what as_str() returns -- so a typo in this match
+// ("command_contrbutor") would keep every gate green while every consumer of the
+// classification received a category that exists nowhere in the registry.
+//
+// The list below is the json's `categories` keys verbatim, and the test is
+// deliberately two-directional: a new variant with no registry row fails, and a
+// registry row nobody can produce from Rust fails. That is the difference between
+// pinning the spelling and merely exercising the function.
+
+#[test]
+fn handler_type_as_str_matches_the_classification_registry() {
+    // Verbatim from scripts/handler-classification.json -> "categories".
+    const REGISTRY: [&str; 6] = [
+        "command_contributor",
+        "projection_subscriber",
+        "query_facade",
+        "lifecycle",
+        "plugin_bridge",
+        "internal_helper",
+    ];
+    let every_variant = [
+        HandlerType::CommandContributor,
+        HandlerType::ProjectionSubscriber,
+        HandlerType::QueryFacade,
+        HandlerType::Lifecycle,
+        HandlerType::PluginBridge,
+        HandlerType::InternalHelper,
+    ];
+    let produced: Vec<&str> = every_variant.iter().map(|h| h.as_str()).collect();
+    assert_eq!(
+        produced, REGISTRY,
+        "HandlerType::as_str drifted from handler-classification.json; the registry is the contract"
+    );
+    // Every produced spelling must be snake_case: the registry keys are, and a
+    // camelCase leak would not be caught by the equality above if BOTH sides moved.
+    for s in &produced {
+        assert!(
+            s.chars().all(|c| c.is_ascii_lowercase() || c == '_'),
+            "{s} is not the snake_case the registry uses"
+        );
+    }
+}
+
+// ── The defaults a leaf module inherits ───────────────────────
+//
+// Module gives six overridable members. Five have defaults and only `id` is
+// required, so a leaf module inherits behaviour nobody wrote a test for. Three of
+// them were covered by the existing cases; `dependencies`, `namespace_grants` and
+// `handler_type` were never called at all, and each one widens or narrows a
+// boundary if the default changes:
+//   - `dependencies` decides which grants the kernel will accept (contracts.rs:87-91
+//     says a grant naming an undeclared dependency fails BOOT).
+//   - `namespace_grants` is the foreign-read set; a non-empty default would let every
+//     module read every namespace.
+//   - `handler_type` defaults to InternalHelper, "no cross-module contract".
+
+#[test]
+fn leaf_module_defaults_stay_narrow() {
+    let m = TestModule::new("leaf");
+    assert!(
+        m.dependencies().is_empty(),
+        "a leaf module must declare no dependencies; the kernel rejects grants for undeclared ones"
+    );
+    assert!(
+        m.namespace_grants().is_empty(),
+        "a leaf module must read no foreign namespace by default"
+    );
+    // `handler_type` belongs to EventHandler, not Module: TestHandler defers to the
+    // default, which is the case that matters (a handler that never classified
+    // itself must not silently claim a cross-module seam).
+    assert_eq!(
+        TestHandler::new().handler_type(),
+        HandlerType::InternalHelper,
+        "a handler that declares no type has no cross-module contract"
+    );
+}
+
+#[test]
+fn on_context_default_is_a_no_op() {
+    // A module that never asked for the platform context must not be handed one:
+    // the default is `fn on_context(&mut self, _ctx: &dyn ModuleContext) {}`, and
+    // an implementation is what opts IN. Calling it must simply not panic.
+    struct NoCaps;
+    impl ModuleContext for NoCaps {
+        fn has_capability(&self, _c: &str) -> bool {
+            false
+        }
+        fn granted_capabilities(&self) -> Vec<String> {
+            Vec::new()
+        }
+    }
+    let mut m = TestModule::new("ctxless");
+    m.on_context(&NoCaps);
+    // The no-op must not have moved the module's lifecycle state.
+    assert!(!m.started);
+    assert!(!m.stopped);
+}

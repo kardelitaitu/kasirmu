@@ -21,6 +21,7 @@
 //! collapsed into one clipped list.
 
 use super::*;
+use kasirmu_test_support::tempdir;
 
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
@@ -83,7 +84,7 @@ fn app_for(
     for id in holders {
         add_user(&conn, id, VIEWER);
     }
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);

@@ -1,5 +1,4 @@
 multi-store-dashboard-title = Dasbor Multi-Toko
-multi-store-dashboard-loading = Memuat dasbor…
 multi-store-stat-total-stores = Total Toko
 multi-store-stat-active-terminals = Terminal Aktif
 multi-store-stat-online-terminals = Terminal Daring
@@ -18,6 +17,10 @@ multi-store-label-terminals = Terminal
 multi-store-section-stores-overview = Ikhtisar toko
 multi-store-section-terminal-status = Status terminal
 multi-store-error-load = Gagal memuat data
+# Lihat `multi-store-error-set-primary` di multi-location.ftl: aksi ini sebelumnya gagal
+# tanpa pesan apa pun, sehingga klik tampak tidak berfungsi.
+multi-store-error-set-primary = Tidak dapat menjadikan toko ini sebagai utama — silakan coba lagi
+multi-store-error-delete = Tidak dapat menghapus toko ini — silakan coba lagi
 
 # ── Titik masuk Lokasi → Topologi (todo-global-saas-2 §"Locations and
 # Topology navigation") ──
@@ -33,6 +36,7 @@ multi-store-details-close-aria = Tutup detail lokasi
 # ── Topology Editor ──
 
 topology-builder-title = Builder Topologi Visual Toko & Workspace
+topology-editor-sections = Bagian editor
 
 topology-apply-changes = Terapkan Topologi
 # Konfirmasi popup
@@ -63,6 +67,7 @@ topology-rev-browser-title = Riwayat Deploy
 topology-rev-browser-close = Tutup riwayat deploy
 topology-rev-browser-loading = Memuat riwayat…
 topology-rev-browser-loading-one = Memuat 1 revisi…
+topology-rev-browser-error-detail = Revisi ini tidak dapat dimuat
 topology-rev-browser-empty = Belum ada yang diterapkan ke cabang ini.
 topology-rev-browser-no-note = Tanpa catatan
 topology-rev-browser-counts = { $nodes } node · { $wires } kabel
@@ -447,3 +452,8 @@ multi-store-prefix-error-save = Gagal menyimpan awalan tiket.
 # must explain itself instead of mounting an editor that cannot load or save.
 topology-tablet-unavailable-title = Penyuntingan topologi butuh desktop
 topology-tablet-unavailable-body = Menyusun tata letak toko dijalankan di aplikasi desktop. Tablet ini tetap bisa membuka Locations (baca-saja) dan semua layar kasir.
+
+# Centralized Web Topology Authoring (ADR-66 / Phase 4 & Phase 6)
+topology-web-managed-notice = Dikelola via Dashboard Web (Baca-Saja)
+topology-tablet-web-managed-title = Penyuntingan Topologi Terpusat
+topology-tablet-web-managed-body = Tata letak toko dikelola dari jarak jauh via Dashboard Web. Tablet ini berjalan dengan revisi terbaru yang disinkronkan.

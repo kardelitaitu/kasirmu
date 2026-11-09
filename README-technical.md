@@ -37,7 +37,7 @@ Modern POS systems often suffer from vendor lock-in, expensive subscriptions, cl
 - **Modular by design** — Independent modules for inventory, CRM, reporting, etc.
 - **Secure by default** — Encrypted `.kasirpkg` snapshots (whole-file `.db` backups are unencrypted), PAN masking, platform keychains
 - **Hardware abstraction** — Vendor-independent drivers for printers, scanners, displays, payment terminals, scales
-- **Enterprise-grade code quality** — 9,684 Rust `#[test]` functions (11,410 counting `#[tokio::test]` too) and 710 front-end test files (re-measured 2026-10-14; re-derive both, they move with every slice: `grep -rn --include='*.rs' -o '#\[test\]' . | wc -l` → 9,684; `grep -rnE --include='*.rs' -o '#\[(tokio::)?test\]' . | wc -l` → 11,410; `ls ui/src/**/*.test.* | wc -l` → 710). Note the two front-end bases differ and are not interchangeable: 654 is `ui/src/**/*.test.*` (what the command above counts); the `ui/src/__tests__/**/*` directory base adds every extra file in that directory and counted 628 against the older 623, so quote the base with the number. Quote the base with the number. Strict Clippy runs in CI (`dev-ci.yml#cargo-clippy`, `cargo clippy --workspace --all-targets -- -D warnings`) AND locally in `scripts/check.sh`; typed Money; transactional DB. The Vitest **case** total is not measured — it exists only in a run, and none is recorded here.
+- **Enterprise-grade code quality** — **9,532** Rust `#[test]` functions (**11,283** counting `#[tokio::test]` too) and **819** front-end test files, both re-measured 2026-10-11 over the tracked tree (`git ls-files '*.rs'`; `ls ui/src/**/*.test.* | wc -l`). Re-derive both — they move with every slice, and **quote the scope**: a bare recursive grep from a dev checkout reads 98 higher because it sweeps the gitignored `scratch/` directory, whose files are not shipped. The front-end base is `ui/src/**/*.test.*` and it excludes `.spec.*` entirely (0 live there; the 104 Playwright specs are under `ui/e2e/`). Strict Clippy runs in CI (`dev-ci.yml#cargo-clippy`, `cargo clippy --workspace --all-targets -- -D warnings`) AND locally in `scripts/check.sh`; typed Money; transactional DB. The Vitest **case** total is not measured — it exists only in a run, and none is recorded here.
 
 ---
 
@@ -110,7 +110,9 @@ kasir.mu/
 │   # Do not create it empty: that is how ui/src/frontend/ became a ghost (principle 2).
 │   #
 │   # Where per-OS difference actually lives — never a shell-named directory:
-│   #   #[cfg(target_os)]  → kasirmu-logging/{lib,eventlog}.rs · kasirmu-security/lib.rs   (3 files)
+│   #   #[cfg(target_os)]  → kasirmu-logging/lib.rs · kasirmu-security/lib.rs   (2 files; the
+│   #                          syslog/eventlog sinks were deleted 2026-09-29, so there is
+│   #                          no eventlog.rs to cite)
 │   #   target deps        → [target.'cfg(…)'.dependencies] in security / logging / core manifests
 │   #   tauri.conf.json    → bundle.targets · bundle.windows.nsis.installMode · android.minSdkVersion
 │   #   delivery           → gen/android · ops/packaging/linux/deb/ · ops/install/win/ · ops/docker/
@@ -133,10 +135,10 @@ kasir.mu/
 │   ├─ index.mobile.html     # unchanged — <script src="/src/main.mobile.tsx">
 │   └─ src/
 │       ├─ app/              # ← frontend/shell/        (11 files + 1 subdir)
-│       ├─ components/       # ← components/ (43 .tsx + 21 .css = 64 top-level files — `ls ui/src/components/*.tsx ui/src/components/*.css | wc -l`; `ls ui/src/components/* | wc -l` = 76 because it also expands the one subdirectory; MERGED WITH frontend/shared/, whose former 22 files are NOT re-derivable from this checkout because that directory no longer exists)
+│       ├─ components/       # ← components/ (45 .tsx + 21 .css = 66 top-level files — `ls ui/src/components/*.tsx ui/src/components/*.css | wc -l`; `ls ui/src/components/* | wc -l` = 72 because it also expands the one subdirectory; MERGED WITH frontend/shared/, whose former 22 files are NOT re-derivable from this checkout because that directory no longer exists)
 │       ├─ theme/            # ← frontend/themes/       (CSS binding only — values lift in P9b)
-│       ├─ registries/       # ← platform/ui/           (4 files: page/menu/widget registry + icon)
-│       ├─ api/              # unchanged (53 .ts files — `ls ui/src/api/*.ts | wc -l`)
+│       ├─ registries/       # ← platform/ui/           (5 entries: 3 registry dirs — page/menu/widget, each with an index.ts — plus icon.tsx)
+│       ├─ api/              # unchanged (56 .ts files — `ls ui/src/api/*.ts | wc -l`)
 │       ├─ features/         # unchanged (35 dirs + index.ts barrel)
 │       ├─ hooks/ utils/ contexts/ types/ i18n/ dev-mock/ __tests__/   # test-utils is a FILE (`ui/src/test-utils.tsx`), not a directory
 │       ├─ App.tsx           # unchanged
@@ -155,7 +157,7 @@ kasir.mu/
 │
 ├─ prototypes/               # ← dev/              (KDS PWA prototype: kds-pwa/, app.js, sw.js…)
 │
-├─ docs/                     # 17 subdirs (`ls -d docs/*/ | wc -l`), PLUS:
+├─ docs/                     # 12 subdirs (`ls -d docs/*/ | wc -l`), PLUS:
 │   └─ plans/                #   NO CHANGE — the root .md files are the owner's working files
 │                              #   and stay at the root. Includes this file and
 │                              #   DSH.md, which is also a root-name tool contract
@@ -216,12 +218,12 @@ See [docs/guides/developer/QUICKSTART.md](./docs/guides/developer/QUICKSTART.md)
 |---|---|
 | `npm run dev` | Development server |
 | `npm run dev:mobile` | Mobile development server |
-| `npm run check:all` | One command — `node ../scripts/check-ui.mjs` — chaining nine legs: ESLint → TypeScript → Unit tests (vitest) → i18n lint → FTL dedupe → Bundle budget → Bundle budget (mobile) → E2E* → Perf smoke (Playwright), then a `scripts/gates.json` self-audit* |
+| `npm run check:all` | One command — `node ../scripts/check-ui.mjs` — chaining **ten** legs: Data-testid compliance → ESLint → TypeScript → Unit tests (vitest) → i18n lint → FTL dedupe → Bundle budget → Bundle budget (mobile) → E2E* → Perf smoke (Playwright), then a `scripts/gates.json` self-audit*. `Data-testid compliance` runs FIRST and was missing from this list until 2026-10-11; count them with `grep -c "gate(" scripts/check-ui.mjs` → 10 |
 | `npm run build` | Production build |
 | `npm run build:mobile` | Mobile production build |
 | `npm run typecheck` | TypeScript validation |
 | `npm run lint` | ESLint + jsx-a11y |
-| `npm run test` | Vitest — 623 test files under `ui/src` (**On the two test-count bases** below) |
+| `npm run test` | Vitest — 819 test files under `ui/src` (**On the two test-count bases** below) |
 | `npm run e2e` | Full E2E suite: Docker → Vite → Playwright → cleanup |
 | `npm run e2e:headed` | E2E with browser visible |
 | `npm run e2e:api` | API integration tests only |
@@ -229,7 +231,7 @@ See [docs/guides/developer/QUICKSTART.md](./docs/guides/developer/QUICKSTART.md)
 | `npm run bundle:check` | Desktop bundle budget |
 | `npm run bundle:check:mobile` | Mobile bundle budget |
 
-> **On the two test-count bases.** `ls ui/src/**/*.test.* \| wc -l` = 623 is what the `npm run test` row reports; `ls ui/src/__tests__/**/* \| wc -l` = 628 counts every file in that directory including one `.json` fixture, and is a different number for a different reason. Both measured 2026-09-29. No **case** total is recorded anywhere — that number exists only in a run.
+> **On the two test-count bases.** `ls ui/src/**/*.test.* \| wc -l` = 819 is what the `npm run test` row reports; `ls ui/src/__tests__/**/* \| wc -l` = 628 counts every file in that directory including one `.json` fixture, and is a different number for a different reason. Both measured 2026-09-29. No **case** total is recorded anywhere — that number exists only in a run.
 
 ### Backend (root)
 
@@ -237,7 +239,7 @@ See [docs/guides/developer/QUICKSTART.md](./docs/guides/developer/QUICKSTART.md)
 |---|---|
 | `cargo fmt --all` | Format Rust code (CI checks it: the `Cargo fmt check` step in `dev-ci.yml` runs `cargo fmt --all -- --check` — cited by step name, not line number, because lines move) |
 | `cargo clippy --all-targets --all-features -- -D warnings` | Lint — CI runs the `--workspace --all-targets` lane, `--all-features` is local-only (**Clippy** below) |
-| `cargo test --workspace` | Run tests — 9,684 `#[test]` fns, 11,410 with `#[tokio::test]` (**Test count** below) |
+| `cargo test --workspace` | Run tests — 9,532 `#[test]` fns, 11,283 with `#[tokio::test]` (**Test count** below) |
 | `cargo test -p kasirmu-core --test integration` | Run consolidated core integration test suite (547 tests across 25 modules in 1 binary; e.g. `--test integration audit::` for scoped runs) |
 | `cargo test -p kasirmu-core --lib` | Fast unit iteration for `kasirmu-core` (skips integration binary) |
 | `bash scripts/check.sh` | The FULL local matrix (Rust + UI + migrations), run by hand — **not** what `git push` runs (**What a push runs** below) |
@@ -246,7 +248,7 @@ See [docs/guides/developer/QUICKSTART.md](./docs/guides/developer/QUICKSTART.md)
 
 **Clippy.** CI does run it: `dev-ci.yml#cargo-clippy`, path-gated on Rust changes (`if: needs.changes.outputs.rust == 'true'`), executing `cargo clippy --workspace --all-targets -- -D warnings` as its own job so a lint failure and a compile failure stay distinguishable verdicts. The one lane CI does **not** cover is `--all-features`, which is why `scripts/release.sh` and the step NAMED `clippy workspace` inside `scripts/check.sh` still run locally — re-find that step by name with `grep -n 'clippy workspace' scripts/check.sh`, because the `:44` this row once carried predates `ee5aacd46`, and a pointer verified today is false the next time anyone inserts a leg above it. **Changed 2026-09-29:** this note said clippy ran in no live workflow, on the strength of `grep -c clippy .github/workflows/*.yml` = 0 — true when measured, false from 2026-09-25 (C25), when the job landed.
 
-**Test count.** `grep -rn --include='*.rs' -o '#\[test\]' . \| wc -l` = **9,684** on 2026-10-14 (**11,410** if `#[tokio::test]` is counted with it — `grep -rnE --include='*.rs' -o '#\[(tokio::)?test\]' . \| wc -l`). The `#[test]`-only series is 8,280 (2026-09-15), 8,355 (2026-09-18), 8,695 (2026-09-23), 9,026 (2026-09-29), 9,378 (2026-10-08), 9,684 (2026-10-14) — quote the command, not the figure.
+**Test count.** Measured **2026-10-11 over the tracked tree**: `git ls-files '*.rs'` → **9,532** `#[test]` functions, **11,283** counting `#[tokio::test]`. The recipe matters more than the number: a bare `grep -rn --include='*.rs' '#\[test\]' .` from a developer checkout reads **98 higher** because it also sweeps the gitignored `scratch/` directory (plus 5 in `.workbuddy-ai/`) — those files are not shipped and must not be counted. The `#[test]`-only series is 8,280 (2026-09-15), 8,355 (2026-09-18), 8,695 (2026-09-23), 9,026 (2026-09-29), 9,378 (2026-10-08), 9,684 (2026-10-14, untracked-inclusive), 9,532 (2026-10-11, tracked) — quote the command AND its scope, not the figure.
 
 **What a push runs.** `.githooks/pre-push` invokes `scripts/run-pre-push.py` and nothing else (one call site, re-find it with `grep -n 'run-pre-push.py \$FLAGS' .githooks/pre-push`; the `:83-84` this row once carried moved to a lower line when `f5ec19201` widened the hook, which is why it is cited by pattern and not by number), and that script never calls `check.sh` (`grep -n check.sh .githooks/pre-push scripts/run-pre-push.py` exits 1, on the working copy and on the `HEAD` blob). What a push does run is a SUBSET of this matrix: the always-on Tier-0 static gates, then path-routed Tier-1 checks — `cargo check --workspace`, `cargo fmt --check`, `ui typecheck`, `ui vitest`, `analytics timezone invariance`, the three website checks and `lint-i18n` — with unrouted and dependency-blocked checks reported as skipped rather than passing (`scripts/run-pre-push.py`, `plan_area_tasks`).
 

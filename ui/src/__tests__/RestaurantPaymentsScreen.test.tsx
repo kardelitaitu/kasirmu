@@ -19,13 +19,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
 import RestaurantPaymentsScreen from '@/features/restaurant/screens/RestaurantPaymentsScreen';
 import productsFtl from '@/locales/products.ftl?raw';
 import settingsFtl from '@/locales/settings.ftl?raw';
 
 const FTL = [productsFtl, settingsFtl];
+
+// jsdom implements no layout, so `scrollIntoView` does not exist on an element.
+// `SettingsSelect` calls it to keep the active option in view when its list opens
+// (SettingsSelect.tsx:232), which is reached the moment this suite drives one of the
+// Stripe selects. Stubbed per-file, matching SettingsSelect.test.tsx:13 and
+// SegmentedTabs.test.tsx:21 — the repo's convention for this browser API.
+Element.prototype.scrollIntoView = vi.fn();
 
 /**
  * Read a message's ENGLISH value out of a raw FTL bundle.
@@ -40,6 +47,50 @@ function productsFtlLine(id: string): string {
   if (!line) throw new Error('no FTL entry for ' + id + ' — the key was renamed or removed');
   return line.slice((id + ' = ').length).trim();
 }
+
+// ── The Midtrans channel keys, read from the source rather than typed ────────
+//
+// The channel chips are generated from a six-entry array in the screen and addressed
+// by a TEMPLATE testid (`midtrans-channel-${ch.key}`), so their ids exist only at
+// runtime. A test that names them has to know the key strings — and a key string typed
+// into a test goes stale silently the day the source list changes.
+//
+// Parsing keeps the test honest in the direction that matters: adding a seventh channel
+// makes the parsed length rise, and the case that consumes this has an explicit length
+// assertion so it fails and asks to be re-read rather than silently widening.
+const PAYMENTS_SCREEN_PATH = path.resolve(
+  __dirname,
+  '../features/restaurant/screens/RestaurantPaymentsScreen.tsx',
+);
+
+function readChannelKeysFromSource(): string[] {
+  const src = fs.readFileSync(PAYMENTS_SCREEN_PATH, 'utf-8');
+  // Matches the array-literal shape the JSX uses: `{ key: 'gopay', label: l10n.getString(...)
+  const keys = [...src.matchAll(
+    /\{ key: '([a-z_0-9]+)', label: l10n\.getString\('restaurant-payment-midtrans-channel-/g,
+  )].flatMap((m) => m[1] ?? []);
+  return [...new Set(keys)];
+}
+
+/**
+ * Each channel's DEFAULT on-state, parsed from the same screen's `useState` seed.
+ *
+ * Needed because three channels start ON (gopay/shopeepay/bca_va) and three bank VAs
+ * start OFF. Asserting a chip's default without knowing which is which would pass
+ * against a default that had flipped — the guest_count class of bug this plan has
+ * recorded before, where a screen and its consumer disagreed about an unset value.
+ */
+const DEFAULT_CHANNELS: Record<string, boolean> = (() => {
+  const src = fs.readFileSync(PAYMENTS_SCREEN_PATH, 'utf-8');
+  const seed = src.match(/useState<Record<string, boolean>>\(\{([^}]*)\}\)/);
+  const body = seed?.[1] ?? '';
+  const out: Record<string, boolean> = {};
+  for (const m of body.matchAll(/([a-z_0-9]+):\s*(true|false)/g)) {
+    const key = m[1];
+    if (key !== undefined) out[key] = m[2] === 'true';
+  }
+  return out;
+})();
 
 // ── Mocks ─────────────────────────────────────────────────────────
 const mocks = vi.hoisted(() => ({
@@ -425,6 +476,25 @@ describe('RestaurantPaymentsScreen — EDC terminal', () => {
     expect(within(select).getByText(/Counter Lane 1/)).toBeInTheDocument();
   });
 
+  // The EDC list read used to be swallowed to [] with no flag — the identical
+  // mistake the gateway reads below it already avoid. A rejected
+  // list_edc_terminals_scoped then rendered an empty terminal list, a green
+  // "All changes saved" and an ENABLED Save, so saving wrote a blank/default
+  // EDC binding over the real one.
+  it('flags a failed EDC terminal read instead of showing an empty terminal list', async () => {
+    mocks.listEdc.mockRejectedValue(new Error('Server offline'));
+    await renderScreen();
+    await screen.findByText('GoPay');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restaurant-payments-load-error')).toBeInTheDocument();
+    });
+    // The screen must not claim everything is saved over a read that failed.
+    expect(screen.queryByText('All changes saved')).not.toBeInTheDocument();
+    // And Save must be refused, not offered over default values.
+    expect(screen.getByTestId('restaurant-payments-save-btn')).toBeDisabled();
+  });
+
   it('shows Test Connection only after a default EDC is chosen and runs a status query', async () => {
     const user = await import('@testing-library/user-event').then((m) => m.default);
     await renderScreen();
@@ -508,6 +578,50 @@ describe('RestaurantPaymentsScreen — save, dirty state & back', () => {
       expect(onSaved).toHaveBeenCalledTimes(1);
     });
     expect(screen.getByText('Settings saved successfully')).toBeInTheDocument();
+  });
+
+  it('does NOT clear the dirty flag or claim success when only a LATER write in the batch fails', async () => {
+    // `handleSave` fans four independent writes into one `Promise.all` (:794): the market
+    // rails, the Midtrans gateway, the Stripe gateway, and the hardware pref. A rejection
+    // in ANY of them lands in the same catch (:808) and shows the same error toast — which
+    // is correct. What was NOT correct is the success branch: it sits after `await`,
+    // so it runs only when every write resolved. The hazard is the ORDER of writes.
+    //
+    // The rails write is the one carrying the operator's actual toggle. When the FIRST
+    // write resolves and a LATER one rejects, the rails change HAS already landed
+    // server-side. The screen must therefore (a) not call onSaved, (b) not toast success,
+    // and (c) keep the form dirty so the operator can retry the part that did not land.
+    //
+    // This pins (a)-(c) against the one arrangement the existing suite does not cover:
+    // every current save test rejects the FIRST task (setMethods), so the batch never
+    // reaches a state where an earlier write succeeded and a later one failed.
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    const onSaved = vi.fn();
+    await renderScreen({ onSaved });
+
+    await screen.findByText('GoPay');
+    await user.click(screen.getByRole('switch', { name: 'Card' }));
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+
+    // The rails write SUCCEEDS; the Stripe gateway write (pushed after it) FAILS.
+    mocks.setMethods.mockResolvedValue([]);
+    mocks.setGateway.mockImplementation((_token: unknown, args: unknown) => {
+      const name = (args as { gatewayName?: string })?.gatewayName;
+      if (name === 'stripe') return Promise.reject(new Error('STRIPE_DOWN'));
+      return Promise.resolve({ id: 'gw-1' });
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to save settings. Please try again.')).toBeInTheDocument();
+    });
+
+    // (a) and (b): no false success.
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(screen.queryByText('Settings saved successfully')).not.toBeInTheDocument();
+    // (c): the part that did not land is still retryable — Save must stay enabled.
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
   });
 
   it('saves gateway credentials to setPaymentGatewayConfigScoped separately from market rails', async () => {
@@ -613,6 +727,44 @@ describe('RestaurantPaymentsScreen — save, dirty state & back', () => {
     expect(screen.queryByTestId('unsaved-dialog-discard')).toBeNull();
   });
 
+  // ── The KEYBOARD path, which every test above missed ─────────────────
+  //
+  // Every unsaved-changes case in this file drives the BACK BUTTON. Escape is the
+  // path an operator actually uses at a till, and it is not the same code path: the
+  // button calls `handleRequestBack` directly, while Escape goes through a
+  // `document`-level listener that competes with `PosScreen`'s own Escape cascade
+  // (`PosScreen.tsx:2002`). Measured 2026-10-18: all three restaurant sub-screens had
+  // ZERO Escape coverage, so the only thing asserting the race was the manual run.
+  it('opens the unsaved-changes dialog on Escape, not just on the back button', async () => {
+    const onBack = vi.fn();
+    await renderScreen({ onBack });
+
+    await screen.findByText('GoPay');
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await user.click(screen.getByRole('switch', { name: 'Card' }));
+
+    // Dispatch from an ELEMENT, not `document`: the handler calls `e.target.closest(...)`,
+    // and a document node has no `closest` — which threw a TypeError before this fix and
+    // made the first version of this test fail for a harness reason, not a product one.
+    fireEvent.keyDown(screen.getByTestId('restaurant-payments-back-btn'), { key: 'Escape' });
+
+    expect(
+      screen.getByTestId('unsaved-dialog-discard'),
+      'Escape must reach the screen own handler, not the parent cascade',
+    ).toBeInTheDocument();
+    expect(onBack, 'a dirty screen must not leave without asking').not.toHaveBeenCalled();
+  });
+
+  it('leaves immediately on Escape when there is nothing to lose', async () => {
+    const onBack = vi.fn();
+    await renderScreen({ onBack });
+
+    await screen.findByText('GoPay');
+    fireEvent.keyDown(screen.getByTestId('restaurant-payments-back-btn'), { key: 'Escape' });
+
+    expect(onBack).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('unsaved-dialog-discard')).toBeNull();
+  });
   it('does not render a back button when onBack is omitted', async () => {
     await renderScreen();
     await screen.findByText('GoPay');
@@ -789,10 +941,95 @@ describe('RestaurantPaymentsScreen — card controls and interactive elements', 
     const midtransVerified = productsFtlLine('restaurant-payment-midtrans-keys-valid')
       .replace('{ $env }', 'SANDBOX');
     expect(screen.getByText(midtransVerified)).toBeInTheDocument();
+  });
 
-    // Expand Stripe
-    const stripeToggle = screen.getByTestId('payment-card-toggle-stripe');
-    await user.click(stripeToggle);
+  // ── The Midtrans channel chips: all six, and the write that survives ─────────
+  //
+  // WHY: the case above asserts ONE channel's aria-pressed — the whole of the channel
+  // coverage. Six exist, and their testids are generated from a TEMPLATE
+  // (`midtrans-channel-${ch.key}`), so the only way to address five of them is to know
+  // the key strings — which nothing in the repo pins. Round 264 recorded the
+  // template-literal class as how the coverage scan once took a wrong reading on this
+  // very screen.
+  //
+  // And a chip that flips aria-pressed is not proof the operator's choice survives. The
+  // chips feed `updateRailParams('midtrans', { channels: next })`, and `handleSave`
+  // sanitises the result into the rail parameters via the `midtrans: ['channels']`
+  // allow-list. A toggle that stored the key wrongly — dropping it instead of writing
+  // `false` — would flip the button correctly and then have the load path re-seed the
+  // default `true`, silently restoring a channel the merchant turned off. Only the
+  // SAVED PAYLOAD shows which shape actually persists, which is what this reads.
+  //
+  // The key list is PARSED FROM THE SOURCE, not typed here: the ids are derived from
+  // data, so a seventh channel has to be asserted by a test that reads the array. The
+  // explicit length check is the signal to re-read rather than a silent widening.
+  it('derives all six channel chips from the source and persists every one of them', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('GoPay');
+    await user.click(screen.getByTestId('payment-card-toggle-midtrans'));
+
+    const CHANNEL_KEYS = readChannelKeysFromSource();
+    expect(
+      CHANNEL_KEYS.length,
+      'no channels parsed from the source — the parser is broken, so the case below is vacuous',
+    ).toBe(6);
+
+    // Every derived chip exists and starts in its DEFAULT state, so a chip that
+    // stopped rendering — or whose testid stopped matching its key — cannot pass.
+    for (const key of CHANNEL_KEYS) {
+      const chip = screen.getByTestId(`midtrans-channel-${key}`);
+      expect(chip, `${key} chip missing`).toBeInTheDocument();
+      expect(chip).toHaveAttribute('aria-pressed', String(DEFAULT_CHANNELS[key] ?? false));
+    }
+
+    // Flip EVERY channel exactly once, from whatever its default is, and record the
+    // resulting state. Three channels default ON (gopay/shopeepay/bca_va) and three
+    // default OFF, so "flip all to false" would be wrong for half of them — a flip
+    // from OFF lands on ON. Deriving the expected value from the default rather than
+    // hardcoding it keeps this honest for any default set, which is the point: the
+    // merchant's choice is what persists, not a hardcoded list.
+    const expectedAfterFlip: Record<string, boolean> = {};
+    for (const key of CHANNEL_KEYS) {
+      await user.click(screen.getByTestId(`midtrans-channel-${key}`));
+      expectedAfterFlip[key] = !DEFAULT_CHANNELS[key];
+    }
+    for (const key of CHANNEL_KEYS) {
+      expect(
+        screen.getByTestId(`midtrans-channel-${key}`),
+        `${key} did not flip from its default ${String(DEFAULT_CHANNELS[key])}`,
+      ).toHaveAttribute('aria-pressed', String(expectedAfterFlip[key]));
+    }
+
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => {
+      expect(mocks.setMethods).toHaveBeenCalledTimes(1);
+    });
+
+    // The durable write carries the FULL six-key map with the flipped values.
+    //
+    // `toEqual`, not `objectContaining`: a key DROPPED from the map is invisible to a
+    // partial matcher and is exactly the shape that would make a reload re-seed the
+    // default for that channel. This is the only assertion in the suite that sees it.
+    const payload = (mocks.setMethods.mock.calls[0]?.[2] ?? []) as Array<{
+      rail_code: string;
+      parameters: string;
+    }>;
+    const midtransRail = payload.find((r) => r.rail_code === 'midtrans');
+    expect(
+      midtransRail,
+      'no midtrans rail in the save payload — the chips wrote nowhere at all',
+    ).toBeDefined();
+    if (!midtransRail) return;
+    const savedParams = JSON.parse(midtransRail.parameters);
+    expect(savedParams.channels).toEqual(expectedAfterFlip);
+  });
+
+  it('interacts with Midtrans and Stripe configuration buttons via data-testid (continued)', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('GoPay');
+    await user.click(screen.getByTestId('payment-card-toggle-stripe'));
 
     const liveBtn = screen.getByTestId('stripe-mode-live');
     await user.click(liveBtn);
@@ -813,6 +1050,112 @@ describe('RestaurantPaymentsScreen — card controls and interactive elements', 
     const verifyKeysBtn = screen.getByTestId('stripe-verify-keys-btn');
     await user.click(verifyKeysBtn);
     expect(screen.getByText(/Stripe keys format valid/i)).toBeInTheDocument();
+  });
+
+  // ── The Stripe Card Reader and Currency selects ────────────────────────
+  //
+  // WHY THIS CASE EXISTS, and why it is not the same thing as the two suites that
+  // already surround it.
+  //
+  // These two controls were the LAST unasserted interactive ids on this screen, and
+  // they are the only pair the repo-wide scan reports as referenced by NOTHING — not
+  // by an e2e spec, not by a unit case. Every sibling control in the same card IS
+  // asserted somewhere (the mode segmented buttons, the two key inputs, the verify
+  // button, all five above), so the pair stood out rather than blending in.
+  //
+  // The surrounding coverage does NOT close them, and each existing suite stops one
+  // hop short of the wiring this case drives:
+  //
+  //   `paymentRailsParams.test.ts` proves the PURE sanitizer keeps `reader`/`currency`
+  //     and strips the credentials. It calls the function directly; it cannot see
+  //     whether any control is attached to it.
+  //   the save-payload cases prove `setLocalPaymentMethodsScoped` receives the drafts.
+  //     They toggle a rail and assert `rail_code`/`is_enabled`; none reads `parameters`.
+  //
+  // So a regression that disconnected either select's `onChange` from
+  // `updateRailParams` — the exact wiring these two lines exist to provide — would
+  // keep BOTH suites green while the operator's choice silently stopped persisting.
+  // This case asserts the whole chain instead: select -> rail params -> save payload,
+  // which is the only place the three hops are visible together.
+  //
+  // The destination is deliberate and is the thing worth pinning: reader and currency
+  // belong to the MARKET surface (`local_payment_methods.parameters`, allow-listed in
+  // paymentRailsLogic.ts), NOT to the encrypted gateway config. `handleSave`'s Stripe
+  // `configJson` carries only publishableKey/secretKey/mode. Asserting the rail
+  // parameters therefore also pins that split — if someone "fixes" this by moving the
+  // reader into the gateway config, the value disappears from the payload and this
+  // fails.
+  it('persists the Stripe Card Reader and Currency choices into the rail parameters', async () => {
+    const user = await import('@testing-library/user-event').then((m) => m.default);
+    await renderScreen();
+    await screen.findByText('GoPay');
+
+    // Stripe's card is collapsed by default; expand it to reach its controls.
+    await user.click(screen.getByTestId('payment-card-toggle-stripe'));
+
+    const readerSelect = screen.getByTestId('stripe-reader-select');
+    const currencySelect = screen.getByTestId('stripe-currency-select');
+
+    // Option LABELS come from the English bundle, not from literals typed here — the
+    // rule this file's header and `productsFtlLine()` already record (round 15: a
+    // typed literal survived a localization pass and made a green feature look broken).
+    const WISEPOS = productsFtlLine('restaurant-payment-reader-wisepos');
+    const S700 = productsFtlLine('restaurant-payment-reader-s700');
+    const IDR = productsFtlLine('restaurant-payment-currency-idr');
+    const USD = productsFtlLine('restaurant-payment-currency-usd');
+
+    // Defaults, read from the source's own useState seeds — asserted so a change to
+    // either default is a deliberate edit rather than a silent drift.
+    expect(readerSelect).toHaveTextContent(WISEPOS);
+    expect(currencySelect).toHaveTextContent(IDR);
+
+    // Drive the custom dropdown: click the trigger, then the option in the portal.
+    // `SettingsSelect` renders its list into document.body, not inside the container,
+    // so the option is found via the portal class the component owns.
+    async function choose(trigger: HTMLElement, label: string) {
+      await user.click(trigger);
+      const dropdown = document.querySelector('.ssel-dropdown')!;
+      const option = Array.from(dropdown.querySelectorAll('.ssel-option')).find(
+        (el) => el.textContent === label,
+      )!;
+      await user.click(option);
+    }
+
+    await choose(readerSelect, S700);
+    await choose(currencySelect, USD);
+
+    // The trigger reflects the choice...
+    expect(screen.getByTestId('stripe-reader-select')).toHaveTextContent(S700);
+    expect(screen.getByTestId('stripe-currency-select')).toHaveTextContent(USD);
+
+    // ...and choosing is an EDIT, so Save becomes reachable.
+    const saveBtn = screen.getByRole('button', { name: 'Save' });
+    expect(saveBtn).toBeEnabled();
+    await user.click(saveBtn);
+
+    await waitFor(() => {
+      expect(mocks.setMethods).toHaveBeenCalledTimes(1);
+    });
+
+    // The durable write carries both choices in the stripe rail's parameters bag.
+    //
+    // Narrowed with an explicit guard rather than a `!`: `Array.find` returns
+    // `T | undefined` and `expect(...).toBeTruthy()` does not narrow the static type, so
+    // the two reads below tripped TS2532 on the clean tree. The guard is also the
+    // assertion — it fails with the same message and for the same reason.
+    const payload = (mocks.setMethods.mock.calls[0]?.[2] ?? []) as Array<{
+      rail_code: string;
+      parameters: string;
+    }>;
+    const stripeRail = payload.find((r) => r.rail_code === 'stripe');
+    expect(stripeRail, 'no stripe rail in the save payload — the selects wrote nowhere').toBeDefined();
+    if (!stripeRail) return;
+    expect(JSON.parse(stripeRail.parameters)).toMatchObject({ reader: 'reader_s700', currency: 'USD' });
+
+    // And the credential split still holds: no provider secret rode along into the
+    // market surface. This is the property `sanitizeRailParams` exists to guarantee,
+    // asserted here at the call site rather than only on the pure function.
+    expect(stripeRail.parameters).not.toContain('sk_');
   });
 
   it('adds and removes a custom payment rail via the add custom rail card', async () => {

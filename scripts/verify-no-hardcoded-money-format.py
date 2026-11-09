@@ -432,7 +432,17 @@ def self_test() -> int:
         #     nothing, because an all-empty tree always leaves `starved` non-empty too.
         tree = _build_tree(tmp / "present-but-empty", {r: 0 for r in ROOTS})
         rc, out = _run_gate(tree)
-        root_named = str(tree) in out
+        # CASE-INSENSITIVE on purpose. The gate resolves the root itself and prints the
+        # path as the OS hands it back, which on Windows differs from `str(tree)` in
+        # LETTER CASE alone: `tempfile.mkdtemp()` yields `C:\WINDOWS\TEMP\tmpXXX\...`
+        # (the `%TEMP%` spelling) while the child resolves the same directory to
+        # `C:\Windows\Temp\tmpXXX\...`. A raw `in` test therefore reported this case
+        # as "root not named" with the root printed in full, and the gate went red on a
+        # correct refusal (measured 2026-10-23, check.sh step 31). Windows paths are
+        # case-insensitive, so comparing them case-sensitively asserts something the
+        # filesystem does not promise -- and the thing this case exists to pin is that
+        # the ROOT IS NAMED, not which of its spellings was used.
+        root_named = str(tree).lower() in out.lower()
         first = out.strip().splitlines()[0][:76] if out.strip() else "no output"
         verdict(
             rc == 2 and "REFUSED" in out and "walked nothing" in out and root_named,

@@ -120,12 +120,15 @@ pub struct User {
 /// The derived impl printed the credential verifier. Nothing formats a `User`
 /// with `{:?}` today, so this PREVENTS rather than repairs — exactly the
 /// posture `TenantSubscription`'s manual impl records for its own three
-/// secrets (`crates/kasirmu-core/src/subscription.rs:401-425`): the idiomatic
+/// secrets (`crates/kasirmu-core/src/subscription.rs:157-172`): the idiomatic
 /// future log line is `tracing::debug!(?user)`, and once the verifier is in a
 /// log file no front-end redaction can scrub it. The shape follows the
 /// tree's first such repair, `GiftCard`
-/// (`modules/loyalty/src/models.rs:127-144`), which redacts its PIN the same
-/// way. Every other field stays printed so the row remains debuggable, and
+/// (`foundation/src/loyalty.rs:122-138`). It redacted a `pin` field the same
+/// way until that field was removed on 2026-09-29 (see `subscription.rs:153-156`),
+/// so what remains of the precedent is the SHAPE -- a hand-written impl that
+/// stays readable field by field -- rather than a live redaction arm.
+/// Every other field stays printed so the row remains debuggable, and
 /// `TrashedUser` — which embeds this type and derives `Debug` — inherits the
 /// redaction rather than printing the hash through its own derive.
 impl std::fmt::Debug for User {

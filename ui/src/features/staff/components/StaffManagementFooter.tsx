@@ -124,7 +124,7 @@ export function StaffManagementFooter({
             className={loading ? 'staff-mgmt-footer-btn staff-mgmt-footer-btn--busy' : 'staff-mgmt-footer-btn'}
             onClick={loading ? undefined : onRefresh}
             disabled={loading}
-            aria-label="Refresh staff data"
+            aria-label={l10n.getString('staff-refresh-aria')}
             data-testid="staff-footer-refresh-btn"
           >
             <svg

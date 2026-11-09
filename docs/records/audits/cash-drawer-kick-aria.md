@@ -71,3 +71,5 @@ the store; this round proves the screen's route into it.
 | `aria-checked` count in the file | 2 of 2 switches, was 1 of 2 |
 | `tsc` / `eslint` | 0 / 0 |
 | Full UI suite | 12,693 passed |
+
+> last audited 14-10-26 by docs-auditor

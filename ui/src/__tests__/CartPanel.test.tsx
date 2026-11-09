@@ -53,7 +53,10 @@ const NO_EXIT: UseExitAnimationResult = {
   requestClose: noop,
 };
 
-const EMPTY_UNDO: AnimatedUndoStack<CartLine> = {
+// The cart hook now stacks `RemovedLine` (the line plus the index it held), so
+// Undo restores to the original POSITION rather than prepending. This fixture
+// mirrors that shape.
+const EMPTY_UNDO: AnimatedUndoStack<{ line: CartLine; index: number }> = {
   stack: [],
   isExiting: false,
   shouldRender: false,
@@ -143,7 +146,7 @@ describe('CartPanel — order type vs the table field', () => {
   // the open-bill payload) that ignored the order type. Those guards stop the
   // damage, but the FIELD itself is still offered and still honoured for DISPLAY
   // on every order type: the panel renders the bare table name in the active-tab
-  // banner (CartPanel.tsx:669) with no orderType check. So a cashier who switches
+  // banner (CartPanel.tsx:761) with no orderType check. So a cashier who switches
   // Dine-In -> Takeaway keeps a Table badge on an order that has no table.
   //
   // This pins the DISPLAY half, which the earlier fixes did not touch.
@@ -183,6 +186,87 @@ describe('CartPanel — order type vs the table field', () => {
       ).toBe(false);
       unmount();
     }
+  });
+
+  // ── New Tab must clear EVERYTHING the tab owned, not most of it ─────────
+  //
+  // The handler (`CartPanel.tsx:768-776`) clears `activeOpenBillId`, the table and the
+  // customer, and releases the lease — but NOT `appliedPromotions`. Promotions are not
+  // cosmetic: they ride to checkout as `promotionIds` (`PosScreen.tsx:2210`) and
+  // pre-select in the promotions modal (`:2249`). So starting a new tab after a
+  // discounted one carries that tab's discounts into the NEXT sale, and the operator
+  // has no reason to look — the cart is empty and the banner is gone.
+  //
+  // The sibling reset is the reference: `usePosHeldCarts` hold path (`:302-307`)
+  // clears `setAppliedPromotions([])` alongside exactly these fields. New Tab is the
+  // same reset with one line missing.
+  //
+  // Per this file's own discipline there was NO test for New Tab at all, which is
+  // how the omission survived.
+  it('New Tab clears the party size, like every other reset does', () => {
+    // ⚠️ THE ROUND-99 LESSON, APPLIED ONE FIELD FURTHER.
+    //
+    // Round 99 fixed New Tab to clear `appliedPromotions` by comparing it against the
+    // HOLD path, and named that path "the reference". Comparing them properly leaves
+    // ONE field the hold path clears and New Tab still does not:
+    //
+    //   hold  : resetCart(), setTableNumber(''), setCustomerName?.(''),
+    //           setGuestCount?.(''), setActiveOpenBillId(null), setAppliedPromotions([])
+    //   newTab: resetCart(), setTableNumber(''), setCustomerName?.(''),
+    //           setActiveOpenBillId?.(null), setAppliedPromotions([])
+    //
+    // `resetCart` already covers tip and service charge (usePosState.ts:398-406), so
+    // guestCount is the whole gap.
+    //
+    // Reachable and consequential: the field renders for dine-in
+    // (CartPanel.tsx:931-943), and the hold path's deps array (:324) shows
+    // `guestCount` is READ when saving a tab — so a leaked party size is PERSISTED
+    // onto the next order. Two of the three reset paths clear it: the after-sale
+    // reset (PosScreen.tsx:871) and the hold path. New Tab is the outlier.
+    const setGuestCount = vi.fn();
+    const { panel } = renderPanel({
+      ...restaurant,
+      lines: [makeLine('Espresso')],
+      tableNumber: 'Table 12',
+      orderType: 'dine_in',
+      activeOpenBillId: 'tab-1',
+      guestCount: '4',
+      setGuestCount,
+      appliedPromotions: [{ id: 'promo-1', name: 'Diskon 10%' } as never],
+      setAppliedPromotions: vi.fn(),
+    });
+
+    fireEvent.click(within(panel).getByTestId('pos-cart-new-tab-btn'));
+
+    expect(
+      setGuestCount,
+      'New Tab must drop the previous tab\'s party size — otherwise the next order '
+      + 'saves a guest count that belongs to a table the operator has already left',
+    ).toHaveBeenCalledWith('');
+  });
+
+  it('New Tab clears the promotions a resumed tab carried, not just its lines', () => {
+    // `setAppliedPromotions` is the REAL prop (CartPanelProps:290) — the earlier draft
+    // of this case invented an `onResetPromotions` name, which made it fail for the
+    // wrong reason before the fix and would have kept failing after it.
+    const setAppliedPromotions = vi.fn();
+    const { panel } = renderPanel({
+      ...restaurant,
+      lines: [makeLine('Espresso')],
+      tableNumber: 'Table 12',
+      orderType: 'dine_in',
+      activeOpenBillId: 'tab-1',
+      appliedPromotions: [{ id: 'promo-1', name: 'Diskon 10%' } as never],
+      setAppliedPromotions,
+    });
+
+    fireEvent.click(within(panel).getByTestId('pos-cart-new-tab-btn'));
+
+    expect(
+      setAppliedPromotions,
+      'New Tab must drop the previous tab\'s promotions, or they ride into the next '
+      + 'sale as promotionIds and pre-select in the promotions modal',
+    ).toHaveBeenCalledWith([]);
   });
 });
 
@@ -321,8 +405,45 @@ describe('CartPanel (smoke)', () => {
       lines: [makeLine('Espresso')],
       openBills: [{ id: 'bill-1' } as never],
     });
-    expect(restoFull.panel.querySelector('.pos-cart-course-bar')).not.toBeNull();
+    // ⚠️ THE PROBE IS THE SECTION, AND THE FIXTURE LINE IS NOT ENOUGH (corrected
+    // 2026-10-19). `.pos-cart-course-bar` is emitted unconditionally by
+    // CourseSelectorBar and never carried the gate; the panel's course-firing AREA is
+    // the section. But the section is also suppressed when NO line is on hold, and the
+    // default fixture line carries no `coursingStatus` — so "present once a line exists"
+    // only holds for a line that is actually coursing. Restated as it is really used.
+    // `renderPanel` resolves the panel by role+name across the WHOLE document, so the
+    // previous render must be torn down first or it reports "multiple region Cart".
     restoFull.unmount();
+    const restoCoursing = renderPanel({
+      activeWorkspace: 'restaurant-pos',
+      lines: [{ ...makeLine('Espresso'), courseId: 'main', coursingStatus: 'hold' } as never],
+      openBills: [{ id: 'bill-1' } as never],
+      courseFiringEnabled: true,
+    });
+    expect(restoCoursing.panel.querySelector('.pos-cart-course-bar-area')).not.toBeNull();
+    restoCoursing.unmount();
+
+    // The suppression rule, stated positively: with the store's `restaurant.course_firing`
+    // EXPLICITLY on (`true`), a cart with no held line renders no bar — a restored draft
+    // (every line `coursingStatus` undefined) has nothing to fire.
+    // `renderPanel` looks the panel up by role+name across the document, so tear down
+    // EVERY earlier render first or it reports "multiple region Cart".
+    restoFull.unmount();
+    const restoIdle = renderPanel({
+      activeWorkspace: 'restaurant-pos',
+      lines: [makeLine('Espresso')],
+      courseFiringEnabled: true,
+    });
+    expect(restoIdle.panel.querySelector('.pos-cart-course-bar-area')).toBeNull();
+    // …and it comes back the moment a line is on hold.
+    restoIdle.unmount();
+    const restoHeld = renderPanel({
+      activeWorkspace: 'restaurant-pos',
+      lines: [{ ...makeLine('Espresso'), courseId: 'main', coursingStatus: 'hold' } as never],
+      courseFiringEnabled: true,
+    });
+    expect(restoHeld.panel.querySelector('.pos-cart-course-bar-area')).not.toBeNull();
+    restoHeld.unmount();
     // Stock inquiry is retail-only: the same render without the restaurant
     // workspace gains it, and the badge now carries the count.
     const retail = renderPanel({ lines: [makeLine('Espresso')], openBills: [{ id: 'b' } as never] });
@@ -394,7 +515,7 @@ describe('CartPanel — restaurant cart-field gates (P1)', () => {
   });
 
   // The action bar (and so the Save Tab button) only mounts once a subtotal
-  // exists — `CartPanel.tsx:854` guards CartFooterTotals on `subtotal &&`.
+  // exists — `CartPanel.tsx:1083` guards CartFooterTotals on `subtotal &&`.
   // Every save-tab case therefore supplies one.
   const withSubtotal = () => ({ ...withFields(), subtotal: SUBTOTAL });
 
@@ -506,6 +627,69 @@ describe('CartPanel — restaurant cart-field gates (P1)', () => {
     }
   });
 
+  // ── The order-type slider has THREE ways in; only click was covered ───
+  //
+  // The control can be changed by (1) clicking a radio, (2) arrow keys, and (3)
+  // swiping the row. Only the labels were asserted, so the two INTERACTION paths were
+  // never exercised — and they are different code paths: the buttons call `setOrderType`
+  // directly, while the arrows and the swipe both go through `handleOrderTypeNext/Prev`,
+  // which clamp at the ends of `ORDER_TYPES`.
+  //
+  // This is the same shape rounds 191-193 kept finding: one control, several mechanics,
+  // one tested. The clamp in particular is only reachable through these two.
+  it('changes the order type with the ARROW keys, and clamps at both ends', () => {
+    const setOrderType = vi.fn();
+    // `orderType` is a CONTROLLED prop, so a recorded `setOrderType` does not change what
+    // the component sees. Each step therefore needs its OWN render with the value the
+    // parent would now be passing — and its own unmount, because this file has no
+    // auto-cleanup and repeated renders stack `role="region" name="Cart"` in one document.
+    //
+    // The handler is on the radiogroup div; a keydown on a focused CHILD button bubbles
+    // to it, which is how a keyboard user actually drives this.
+    const press = (orderType: 'dine_in' | 'takeaway' | 'delivery', key: string) => {
+      const { unmount } = renderPanel({ orderTypePromptEnabled: true, orderType, setOrderType });
+      fireEvent.keyDown(screen.getByRole('radiogroup'), { key });
+      unmount();
+    };
+
+    press('dine_in', 'ArrowRight');
+    expect(setOrderType, 'ArrowRight advances one order type').toHaveBeenLastCalledWith('takeaway');
+
+    setOrderType.mockClear();
+    press('takeaway', 'ArrowRight');
+    expect(setOrderType).toHaveBeenLastCalledWith('delivery');
+
+    // CLAMP at the LAST type: no next exists, so nothing is set. Without the guard the
+    // index would run off the end, and nothing else asserts this.
+    setOrderType.mockClear();
+    press('delivery', 'ArrowRight');
+    expect(setOrderType, 'the last order type has no next').not.toHaveBeenCalled();
+
+    // And the mirror at the other end: 'dine_in' is first, so ArrowLeft sets nothing.
+    setOrderType.mockClear();
+    press('dine_in', 'ArrowLeft');
+    expect(setOrderType, 'the first order type has no previous').not.toHaveBeenCalled();
+  });
+
+  it('changes the order type on a horizontal SWIPE, the touch path', () => {
+    // Distinct from the keyboard case: this goes through `useSwipe`, whose handlers
+    // are spread onto the row (`:838`). The gesture is the one an operator uses on a
+    // tablet, and it was the only path with no case at all.
+    const setOrderType = vi.fn();
+    const { container } = renderPanel({
+      orderTypePromptEnabled: true,
+      orderType: 'dine_in',
+      setOrderType,
+    });
+
+    const row = container.querySelector('.pos-cart-order-type-row');
+    expect(row, 'the swipe target must be mounted for this to mean anything').not.toBeNull();
+
+    fireEvent.touchStart(row!, { touches: [{ clientX: 200, clientY: 10 }] });
+    fireEvent.touchEnd(row!, { changedTouches: [{ clientX: 40, clientY: 10 }] });
+
+    expect(setOrderType, 'a left swipe advances the order type').toHaveBeenLastCalledWith('takeaway');
+  });
   it('renders the guest-count placeholder from the bundle, not a literal', () => {
     // The placeholder was hardcoded 'Pax' while the aria-label already read the
     // bundle's `pos-cart-guest-count-label` ("Guests") — two names for one field,

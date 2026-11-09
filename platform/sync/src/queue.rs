@@ -103,6 +103,11 @@ impl SyncQueue {
         store.mark_offline_synced(id)
     }
 
+    /// Mark multiple items as successfully synced in a single transaction (O-H21).
+    pub fn mark_synced_batch(&self, store: &Store<'_>, ids: &[String]) -> Result<(), CoreError> {
+        store.mark_offline_synced_batch(ids)
+    }
+
     /// Mark an item as failed with an error message.
     pub fn mark_failed(&self, store: &Store<'_>, id: &str, error: &str) -> Result<(), CoreError> {
         store.mark_offline_failed(id, error)

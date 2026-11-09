@@ -41,6 +41,8 @@ import { SETTINGS_SCREENS } from '@/features/settings/screens/registry';
 import { KEPT_SECTIONS } from '@/features/settings/hooks/useSettingsHashSection';
 import { INITIAL_LOAD_DEBOUNCE_MS, withSyncDefaults } from '@/contexts/SettingsContext';
 import { setShellKind } from '@/utils/shellKind';
+import type * as BrandingApi from '@/api/branding';
+import type * as AuthContextModule from '@/contexts/AuthContext';
 
 // KEPT_SECTIONS is imported, not copied: the sweep below compares it against the
 // nav items and the screen registry rather than adding a fourth list of the 14
@@ -52,7 +54,7 @@ import { setShellKind } from '@/utils/shellKind';
 // test-setup.ts installs: the load/save error-path tests need branding to go
 // through the per-file invokeMock so brand calls fail WITH the other commands.
 vi.mock('@/api/branding', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/api/branding')>()),
+  ...(await importOriginal<typeof BrandingApi>()),
 }));
 
 // ── Session under test: the role gate reads session.role_name ──────
@@ -75,7 +77,7 @@ const { authState, sessions } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/contexts/AuthContext', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/contexts/AuthContext')>()),
+  ...(await importOriginal<typeof AuthContextModule>()),
   useAuth: () => ({
     session: authState.session,
     pickerTicket: null,
@@ -115,7 +117,7 @@ const { invokeMock, defaultImpl, failCommands, failOnceCommands } = vi.hoisted((
       // currency: 'USD' matches get_default_currency below on purpose - the two
       // readers hit the SAME column (run_set_store_settings stamps
       // store.currency through Settings::set_default_currency,
-      // crates/kasirmu-bridge/src/settings.rs:1024), so a fixture that shows them
+      // crates/kasirmu-bridge/src/settings.rs:556), so a fixture that shows them
       // disagreeing hands Save one real diff to send on an untouched page and
       // the zero-write contract below stops being testable.
       return Promise.resolve({ name: '', address: '', taxId: '', currency: 'USD', branch: '' });
@@ -313,6 +315,7 @@ async function openShell() {
   renderPage();
   await waitFor(() => {
     expect(screen.getByTestId('settings-sidebar')).toBeInTheDocument();
+    expect(document.querySelector('.settings-page[data-initialized="true"]')).not.toBeNull();
   });
 }
 
@@ -400,17 +403,29 @@ describe('SettingsPage role gate', () => {
   });
 });
 
-describe('SettingsPage admin shell — flat 14-page IA', () => {
-  it('lists all 14 flat pages in the sidebar, defaulting to General', async () => {
+describe('SettingsPage admin shell — flat IA', () => {
+  it('lists every flat page in the sidebar, defaulting to General', async () => {
     await openShell();
 
     const sidebar = screen.getByTestId('settings-sidebar');
     const navButtons = Array.from(sidebar.querySelectorAll<HTMLButtonElement>('button.settings-nav-item'));
-    expect(navButtons).toHaveLength(14);
+    // Derived from NAV_ITEMS rather than a literal: a hardcoded count turns every
+    // legitimately added page into a test failure, and this suite's job is to assert
+    // that the sidebar matches the nav list -- not that the list has a particular length.
+    // (Round 155 added 'email-reports', which is what surfaced the literal.)
+    expect(navButtons).toHaveLength(NAV_ITEMS.length);
     expect(navButtons.map((b) => b.getAttribute('aria-label'))).toEqual(NAV_ITEMS.map((n) => navLabel(n.key)));
 
     // Default section renders the General placeholder and its breadcrumb.
-    expect(within(sectionRoot()).getByRole('heading', { level: 1, name: navLabel('general') })).toBeInTheDocument();
+    // AWAITED, not asserted synchronously: the section body is a React.lazy chunk,
+    // and the assertion used to win its race only because the chunk resolved inside
+    // the microtask the synchronous query ran on. Adding a fifteenth lazy screen
+    // changed that timing and the section was still showing `Loading...` here --
+    // a flaky assertion that happened to pass, not a passing one. waitFor states
+    // the real contract: the body arrives after the chunk resolves.
+    await waitFor(() => {
+      expect(within(sectionRoot()).getByRole('heading', { level: 1, name: navLabel('general') })).toBeInTheDocument();
+    });
     const topbar = document.querySelector('.settings-topbar') as HTMLElement;
     expect(within(topbar).getByRole('heading', { name: navLabel('general') })).toBeInTheDocument();
   });
@@ -498,6 +513,24 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
       // Migrated 2026-10-06: composes the real offline-queue screen with
       // `embedded`. .offline-queue-screen is its root and always renders.
       'offline-queue': ['offline-queue-screen'],
+
+      // Migrated 2026-10-25 (round 155): the screen registers as 'email-reports' and
+      // composes the existing EmailReportSettings component directly. Under the mocked
+      // IPC the schedule read rejects and the screen falls back to its defaults, which is
+      // the state that proves the body mounted: .settings-form is its root wrapper and
+      // the SMTP host field is always rendered once loading clears.
+      'email-reports': ['settings-form'],
+
+      // Round 158: the appearance screen composes the surviving AppearanceSettings
+      // component. .appearance-settings is its root wrapper; the zoom and acceleration
+      // controls inside read contexts AppProviders mounts, so the body renders with the
+      // mocked IPC.
+      'appearance': ['appearance-colour-row'],
+
+      // Round 159: the Local API screen composes sections/LocalApiSection, whose header
+      // Card renders on either shell (the tablet gets a notice in place of the controls),
+      // so .settings-section-title is what proves the body mounted.
+      'local-api': ['settings-section-title'],
       // Migrated 2026-10-06: composes the real GeneralSection, driven by
       // hooks/useStoreDraft. The form is the body; there is no wrapper class of
       // its own, so the marker is the store-name field the rebuild dropped.
@@ -576,7 +609,7 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
         });
       }
     }
-  });
+  }, 30000);
 
   it('honours an accepted deep-link section on mount and consumes the hash', async () => {
     window.location.hash = '#/settings/sync-status';

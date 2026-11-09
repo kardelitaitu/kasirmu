@@ -90,7 +90,7 @@ inv-shift-start-btn = Mulai Shift
 inv-shift-active-info = { $user } — { $location } — Dimulai { $time }
 inv-shift-end-btn = Akhiri Shift
 inv-shift-summary-title = Ringkasan Shift
-inv-shift-summary-performed = Transaksi yang dilakukan selama shift ini:
+inv-shift-summary-performed = Transaksi Anda di lokasi ini sejak shift ini dimulai:
 inv-shift-no-transactions = Tidak ada transaksi yang tercatat.
 
 # Inventory Shift — error toasts + a11y
@@ -120,7 +120,6 @@ inv-transit-transfer-label = Transfer #
 inv-transit-reversed-toast = Transfer stok berhasil dibatalkan
 inv-transit-error-load = Gagal memuat stok transit
 inv-transit-error-reverse = Gagal membatalkan transfer
-inv-transit-unknown = Tidak diketahui
 
 # Transaction Log
 inv-log-title = Log Transaksi Stok
@@ -182,24 +181,6 @@ inv-threshold-error-load = Gagal memuat data batas
 inv-threshold-error-save = Gagal menyimpan batas
 inv-threshold-error-delete = Gagal menghapus batas
 
-# Stock Alert Panel
-inv-alert-title = Panel Peringatan Stok
-inv-alert-badge-count = { $count } Peringatan Stok
-inv-alert-loading-aria = Memuat peringatan stok
-inv-alert-loading = Memuat peringatan...
-inv-alert-aria = Peringatan stok
-inv-alert-panel-aria = Panel peringatan stok
-inv-alert-empty = Tidak ada peringatan aktif
-inv-alert-time-now = Baru saja
-inv-alert-time-min = { $min }m lalu
-inv-alert-time-hr = { $hr }j lalu
-inv-alert-ack-aria = Tanggapi peringatan untuk { $name }
-inv-alert-ack = Tanggapi
-inv-alert-acking = ...
-inv-alert-stock-label = Stok
-inv-alert-threshold-label = Batas
-inv-alert-error-load = Gagal memuat peringatan
-inv-alert-error-ack = Gagal menanggapi
 
 # ── Location Picker ──
 loc-picker-label = Lokasi

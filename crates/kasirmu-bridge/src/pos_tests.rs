@@ -1,6 +1,6 @@
 //! Unit tests for the POS bridge module.
 //!
-//! Relocated from `apps/desktop-tauri/src/commands/pos_tests.rs` (Wave D /
+//! Relocated from `apps/desktop-client/src/commands/pos_tests.rs`, since renamed to desktop-tauri (Wave D /
 //! D-rel-1). The shell's `tauri::test` mock app is replaced by the headless
 //! `TestBridge` harness ([`crate::testing`]) and every scoped command call
 //! targets `kasirmu_bridge::pos` directly through a borrowed `BridgeCtx` — the
@@ -410,6 +410,7 @@ fn complete_sale_result_debug() {
         line_count: 2,
         receipt_number: None,
         statutory_number: None,
+        stock_warnings: vec![],
     };
     let debug = format!("{result:?}");
     assert!(debug.contains("sale-1"));
@@ -1040,6 +1041,315 @@ async fn store_pos_can_still_hold_a_plain_cart() {
     hold_cart_scoped(&bridge.ctx(), "tok", hold_args("hold"))
         .await
         .expect("the enforcement must not remove the plain hold from any terminal");
+}
+
+// ── The open-bill gate is on EVERY held-cart command, and this is the check ──
+//
+// Rounds 302 and 303 closed three gaps in a row, each one a command that shipped
+// without the workspace gate its siblings had. The module doc's own invariant listed only
+// the gated commands — "gates creation AND listing" — which is what made the ungated
+// ones look unremarkable. Prose drifted; it is now a table, and this pins the table.
+//
+// WHY A SOURCE SWEEP rather than more behavioural cases: the five commands each have
+// their own gate test already. What none of them can assert is that a SIXTH command
+// arriving tomorrow carries a gate at all — a behavioural test is written for commands
+// that exist. This one reads the module and fails when a command has no gate.
+//
+// A FLOOR, so the sweep cannot pass by finding nothing: the two rounds that closed these
+// gaps each ended with an ungated command present, and a scan whose subject vanished
+// reads exactly like a clean tree. Five is the number of commands today; if the count
+// drops the assertion below says so rather than quietly widening to zero.
+#[test]
+fn every_held_cart_command_carries_the_workspace_gate() {
+    let src = include_str!("pos/hold_orders.rs");
+    let flat: String = src.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    // The commands, paired with the gate each must spell. A command whose gate
+    // expression changes must be updated here — which is the point: the pairing is
+    // explicit and reviewable rather than implicit in prose.
+    // ⚠️ SCOPED PER FUNCTION, and the first version was not — which a kill-test caught.
+    //
+    // The initial sweep searched the WHOLE FILE for each gate string. Removing `get`'s
+    // gate therefore still passed, because `delete` spells the identical call and the
+    // file-wide search found it. Verified by deleting the gate and watching this stay
+    // green: a completeness check that cannot tell which function carries the gate is
+    // exactly the vacuous guard the chapter above warns about.
+    //
+    // Each command's body is therefore sliced out by name and searched alone.
+    let body_of = |name: &str| -> String {
+        let start = match src.find(&format!("pub async fn {name}")) {
+            Some(i) => i,
+            None => return String::new(),
+        };
+        // The next `pub async fn` (or the helper, or EOF) ends this one. Sliced on the
+        // declaration rather than on braces so a nested block cannot truncate it.
+        let rest = &src[start + 1..];
+        let end = rest
+            .find("\npub async fn ")
+            .or_else(|| rest.find("\nfn "))
+            .unwrap_or(rest.len());
+        rest[..end].split_whitespace().collect::<Vec<_>>().join(" ")
+    };
+
+    let commands: [(&str, &str); 5] = [
+        (
+            "hold_cart_scoped",
+            "BILL_TYPE_OPEN_BILL && !is_restaurant_pos_workspace",
+        ),
+        (
+            "list_held_carts_scoped",
+            "is_restaurant_pos_workspace(&session) {",
+        ),
+        (
+            "list_open_bills_scoped",
+            "!is_restaurant_pos_workspace(&session) {",
+        ),
+        (
+            "get_held_cart_scoped",
+            "refuse_cross_vertical_open_bill(&store, &session, &id)?",
+        ),
+        (
+            "delete_held_cart_scoped",
+            "refuse_cross_vertical_open_bill(&store, &session, &id)?",
+        ),
+    ];
+
+    for (cmd, gate) in commands {
+        let body = body_of(cmd);
+        assert!(
+            !body.is_empty(),
+            "{cmd} is no longer declared in the module — drop it from this list rather \
+             than leaving a floor that measures nothing"
+        );
+        assert!(
+            body.contains(gate),
+            "{cmd} no longer carries its workspace gate ({gate}) IN ITS OWN BODY. An \
+             open bill is a Restaurant POS concept: rounds 302 and 303 each found a \
+             command that lost this and served (or DESTROYED) a retail session's access."
+        );
+    }
+
+    // A FLOOR on the slice itself: five bodies must have been extracted, not one body
+    // five times. Without this a slicing bug that returned the last match for every
+    // name would pass everything above.
+    let bodies: Vec<String> = commands.iter().map(|(c, _)| body_of(c)).collect();
+    let distinct: std::collections::BTreeSet<&String> = bodies.iter().collect();
+    assert_eq!(
+        distinct.len(),
+        commands.len(),
+        "the per-command slices are not distinct, so one body is standing in for \
+         several and the scoping above is not actually scoped"
+    );
+
+    // AND THE DENOMINATOR: count the scoped commands in the module and compare. A sixth
+    // command cannot arrive ungraded, because it would raise this count above the list.
+    let declared = flat.matches("pub async fn ").count()
+        + flat.matches("pub fn is_restaurant_pos_workspace").count();
+    assert!(
+        declared > commands.len(),
+        "the module declares {declared} public functions but this list grades {} command(s) \
+         plus the predicate. A new command needs its gate AND an entry above.",
+        commands.len()
+    );
+}
+// A store-pos session must not READ or DELETE a restaurant open bill by id.
+//
+// ⚠️ MEASURED BEFORE THE FIX (round 303), and the measurement is the reason:
+//
+//     PROBE get_ok=true leaked=Some("{\"secret\":true}") delete_ok=true restaurant_still_has_it=false
+//
+// `get_held_cart_scoped` and `delete_held_cart_scoped` both took an arbitrary id with
+// only a permission check and no workspace gate, so a retail session could fetch the
+// restaurant's open bill — cart_data and all — and then DELETE it. The last field is
+// the one that matters: the restaurant's tab was gone.
+//
+// This is round 302's finding completed. That round gated the LIST so a store-pos
+// session could no longer enumerate open bills; the BY-ID pair stayed open, and
+// enumerating was never the requirement to reach them.
+//
+// The rule the UI already applies everywhere (the payment modal refuses the
+// open_bill tender off a restaurant terminal, RetailPosScreen filters open bills out of
+// its held-cart list) was therefore enforced on ONE layer and in THREE of five commands.
+// These two are the remainder.
+#[tokio::test]
+async fn store_pos_cannot_read_or_delete_an_open_bill_by_id() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+
+    let bridge = scoped_bridge_typed(
+        conn,
+        "tok-r",
+        "user-owner",
+        "role-owner",
+        "s1",
+        "restaurant-pos",
+    );
+    bridge.sessions().write().unwrap().insert(
+        "tok-s".into(),
+        SessionContext::new(
+            "user-owner".into(),
+            "role-owner".into(),
+            "terminal-1".into(),
+            "s1".into(),
+            "instance-1".into(),
+            "store-pos".into(),
+            None,
+            0,
+        ),
+    );
+
+    let id = hold_cart_scoped(
+        &bridge.ctx(),
+        "tok-r",
+        HoldCartArgs {
+            label: "Table 9".into(),
+            cart_data: "{\"secret\":true}".into(),
+            item_count: 1,
+            total_minor: 500,
+            currency: "USD".into(),
+            bill_type: BILL_TYPE_OPEN_BILL.into(),
+            customer_name: None,
+            deduction_location_id: None,
+        },
+    )
+    .await
+    .expect("restaurant may create an open bill");
+
+    // GET: refused, not merely empty. An empty answer would read as "no such tab"
+    // instead of "not yours", which is the distinction list_open_bills_scoped's doc
+    // already makes for the list.
+    let got = get_held_cart_scoped(&bridge.ctx(), "tok-s", id.id.clone()).await;
+    assert!(
+        matches!(got, Err(BridgeError::PermissionDenied(_))),
+        "a store-pos session must not read a restaurant open bill by id; got {got:?}",
+    );
+
+    // DELETE: refused, and the tab SURVIVES. This is the half that destroys data.
+    let del = delete_held_cart_scoped(&bridge.ctx(), "tok-s", id.id.clone()).await;
+    assert!(
+        matches!(del, Err(BridgeError::PermissionDenied(_))),
+        "a store-pos session must not delete a restaurant open bill; got {del:?}",
+    );
+    let still = list_open_bills_scoped(&bridge.ctx(), "tok-r")
+        .await
+        .unwrap();
+    assert!(
+        still.iter().any(|c| c.id == id.id),
+        "the restaurant's open bill must survive a refused delete",
+    );
+
+    // AND THE OVER-CORRECTION: the restaurant may still read and delete its OWN bill.
+    // A gate that blocked everyone would break the feature it protects.
+    let own = get_held_cart_scoped(&bridge.ctx(), "tok-r", id.id.clone()).await;
+    assert!(
+        matches!(own, Ok(Some(_))),
+        "restaurant-pos must still read its own open bill",
+    );
+    delete_held_cart_scoped(&bridge.ctx(), "tok-r", id.id.clone())
+        .await
+        .expect("restaurant-pos must still delete its own open bill");
+}
+// A store-pos session must NOT be handed another vertical's open bill by the general
+// held-cart list.
+//
+// ⚠️ MEASURED BEFORE THE FIX, and the measurement is why this case exists:
+//
+//     PROBE total=1 open_bills_visible=1 our_id_visible=true
+//
+// `list_held_carts_scoped` carried no workspace gate, and it returns
+// `Store::list_held_carts()` — an UNFILTERED query over every held cart, including
+// `open_bill` rows. So a store-pos session received the restaurant's open bill.
+//
+// The two commands that LOOK like the boundary were both gated: `hold_cart_scoped`
+// refuses to CREATE an open bill off a restaurant terminal, and `list_open_bills_scoped`
+// refuses to LIST them. The general list sits between them and had neither — the same
+// shape this session kept finding elsewhere: enforcement at two doors, absent at the third.
+//
+// WHAT MADE IT INVISIBLE: the retail screen filters the rows itself
+// (the retail POS screen: `carts.filter((c) => c.bill_type === 'hold')`). A front-end
+// filter is not an authorization boundary — it is a UI convenience that any other caller
+// of the same command (a new screen, a script, a future shell) inherits none of.
+#[tokio::test]
+async fn store_pos_does_not_see_open_bills_in_the_general_list() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+
+    // ONE bridge, TWO sessions differing only in type_key — the field the gate reads.
+    let bridge = scoped_bridge_typed(
+        conn,
+        "tok-r",
+        "user-owner",
+        "role-owner",
+        "s1",
+        "restaurant-pos",
+    );
+    bridge.sessions().write().unwrap().insert(
+        "tok-s".into(),
+        SessionContext::new(
+            "user-owner".into(),
+            "role-owner".into(),
+            "terminal-1".into(),
+            "s1".into(),
+            "instance-1".into(),
+            "store-pos".into(),
+            None,
+            0,
+        ),
+    );
+
+    let id = hold_cart_scoped(
+        &bridge.ctx(),
+        "tok-r",
+        HoldCartArgs {
+            label: "Table 9".into(),
+            cart_data: "{}".into(),
+            item_count: 1,
+            total_minor: 500,
+            currency: "USD".into(),
+            bill_type: BILL_TYPE_OPEN_BILL.into(),
+            customer_name: None,
+            deduction_location_id: None,
+        },
+    )
+    .await
+    .expect("restaurant may create an open bill");
+
+    let carts = list_held_carts_scoped(&bridge.ctx(), "tok-s")
+        .await
+        .unwrap();
+    assert!(
+        !carts.iter().any(|c| c.bill_type == "open_bill"),
+        "a store-pos session received an open bill from the general held-cart list",
+    );
+
+    // AND THE OVER-CORRECTION: a plain hold must still reach it. A fix that hid every
+    // row would break retail's own held carts, which is the capability this gate is
+    // protecting rather than removing.
+    hold_cart_scoped(
+        &bridge.ctx(),
+        "tok-s",
+        HoldCartArgs {
+            label: "Counter hold".into(),
+            cart_data: "{}".into(),
+            item_count: 1,
+            total_minor: 250,
+            currency: "USD".into(),
+            bill_type: "hold".into(),
+            customer_name: None,
+            deduction_location_id: None,
+        },
+    )
+    .await
+    .expect("store-pos may hold a plain cart");
+
+    let after = list_held_carts_scoped(&bridge.ctx(), "tok-s")
+        .await
+        .unwrap();
+    assert!(
+        after.iter().any(|c| c.label == "Counter hold"),
+        "the general list must still serve a store-pos session its own holds",
+    );
+    let _ = id;
 }
 
 #[tokio::test]
@@ -2306,7 +2616,12 @@ async fn publish_course_fired_rejects_unknown_sale_and_empty_course() {
 /// Write a one-plugin directory whose script is `lua` and whose manifest
 /// declares exactly `permissions`. Mirrors kasirmu-plugin's own fixture.
 fn plugin_dir(name: &str, lua: &str, permissions: &[&str]) -> tempfile::TempDir {
-    let dir = tempfile::tempdir().unwrap();
+    // A `tempfile::TempDir` is the harness's contract here (`plugin_dir`
+    // returns it and the three callers keep it alive across the plugin
+    // manager), so `tempdir_with_prefix` is the drop-in: same type, same
+    // auto-delete, but rooted under the writable `target/test-scratch`
+    // instead of `C:\WINDOWS\TEMP` on this project's Windows machines.
+    let dir = kasirmu_test_support::tempdir_with_prefix("kasirmu-bridge-plugin-");
     let plugin_dir = dir.path().join(name);
     std::fs::create_dir(&plugin_dir).unwrap();
     let perms = permissions

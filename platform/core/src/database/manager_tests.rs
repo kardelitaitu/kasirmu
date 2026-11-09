@@ -27,7 +27,7 @@ fn make_migrations() -> &'static [Migration] {
 }
 
 fn setup() -> (StoreDatabaseManager, TempDir) {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let manager = StoreDatabaseManager::new(dir.path().to_path_buf(), make_migrations());
     (manager, dir)
 }
@@ -346,7 +346,7 @@ fn open_store_propagates_error_not_silent_in_memory_fallback() {
     // Trigger the error by using a regular file as the data_dir —
     // create_dir_all inside open_or_create_connection will fail because
     // the "directory" is actually a file.
-    let dir = tempfile::tempdir().unwrap();
+    let dir = kasirmu_test_support::tempdir();
     let file_path = dir.path().join("blocker");
     std::fs::write(&file_path, b"block").unwrap();
     // Now file_path is a file, not a directory. When open_or_create_connection
@@ -406,4 +406,60 @@ fn open_refuses_a_store_id_that_would_escape_the_data_dir() {
     // The guard is not a wall in front of every id: the ordinary shape passes.
     assert!(StoreDatabaseManager::is_safe_store_id("store-alpha"));
     assert!(manager.checked_store_db_path("store-alpha").is_ok());
+}
+
+/// O-H22: Concurrent `open_store` calls on the SAME store must return the exact
+/// same cached connection Arc, with migrations executed only once.
+#[test]
+fn concurrent_open_store_same_id_returns_identical_connection() {
+    let (manager, _dir) = setup();
+    let manager = Arc::new(manager);
+    let mut handles = Vec::new();
+
+    for _ in 0..8 {
+        let m = Arc::clone(&manager);
+        handles.push(std::thread::spawn(move || {
+            m.open_store("store-concurrent-same").unwrap()
+        }));
+    }
+
+    let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+    let first = &results[0];
+    for other in &results[1..] {
+        assert!(
+            Arc::ptr_eq(first, other),
+            "all concurrent openers for the same store must receive the identical connection Arc"
+        );
+    }
+}
+
+/// O-H22: Concurrent `open_store` calls on DIFFERENT stores must proceed in parallel
+/// without blocking each other or deadlocking.
+#[test]
+fn concurrent_open_store_different_ids_all_succeed() {
+    let (manager, _dir) = setup();
+    let manager = Arc::new(manager);
+    let mut handles = Vec::new();
+
+    for i in 0..8 {
+        let m = Arc::clone(&manager);
+        handles.push(std::thread::spawn(move || {
+            let id = format!("store-concurrent-{i}");
+            let conn = m.open_store(&id).unwrap();
+            let c = conn.lock().unwrap();
+            let count: i64 = c
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='test_table'",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 1);
+        }));
+    }
+
+    for h in handles {
+        h.join().unwrap();
+    }
+    assert_eq!(manager.open_store_ids().len(), 8);
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AppearanceSettings } from '@/features/settings/AppearanceSettings';
 
@@ -64,6 +64,49 @@ vi.mock('@fluent/react', () => ({
           'pick-logo-aria': 'Pick logo file',
           'reset-appearance-aria': 'Reset all appearance settings',
           'save-appearance-aria': 'Save appearance',
+          // Visible copy this map used to answer with its raw key. It carried only the
+          // aria-labels, so every label, toast and confirm message rendered as an id.
+          // Values copied from shared-ui/locales/*.ftl (scripts/check-l10n-test-maps.py).
+          'appearance-follow-theme': 'Following theme colour',
+          'appearance-reset-all-confirm': 'Reset all appearance settings to their defaults? This cannot be undone.',
+          'appearance-reset-all-confirm-title': 'Reset Appearance',
+          'appearance-reset-all-failed': 'Failed to reset appearance settings',
+          'appearance-reset-all-success': 'Appearance settings reset to defaults',
+          'appearance-reset-colour': 'Reset to default',
+          'appearance-save-failed': 'Failed to save appearance settings',
+          'appearance-save-success': 'Appearance settings saved',
+          'appearance-zoom-100': '100% (Default)',
+          'appearance-zoom-125': '125%',
+          'appearance-zoom-150': '150%',
+          'appearance-zoom-200': '200%',
+          'appearance-zoom-auto': 'Automatic (Scale with screen)',
+          'settings-appearance-logo-desktop-only': 'Choosing a logo needs the desktop app. Colours and the store name can still be changed here.',
+          // Section headings, labels and preview copy, copied from settings.ftl.
+          'appearance-interface': 'Interface',
+          'appearance-branding': 'Branding',
+          'appearance-primary-colour': 'Primary Colour',
+          'appearance-logo': 'Store Logo',
+          'appearance-choose-logo': 'Choose Logo',
+          'appearance-store-name': 'Display Store Name',
+          'appearance-interface-zoom': 'Interface Zoom',
+          'appearance-hw-accel': 'Hardware Acceleration',
+          'appearance-hw-accel-hint':
+            'Disable if UI animations feel janky on low-end devices. Restart the app for the change to take full effect.',
+          'appearance-preview-heading': 'Preview',
+          'appearance-preview-btn-label': 'Primary Button',
+          'appearance-preview-btn-outline-label': 'Secondary',
+          'appearance-preview-badge-label': 'Live',
+          'appearance-store-name-fallback': 'kasir.mu',
+          'appearance-reset-all': 'Reset all to defaults',
+          // The .attr values of the aria/alt-only FTL messages (settings.ftl:514-556).
+          'appearance-primary-colour-picker-aria': 'Primary colour picker',
+          'appearance-colour-hex-aria': 'Colour hex value',
+          'appearance-reset-colour-aria': 'Reset colour to default',
+          'appearance-logo-alt': 'Store logo',
+          'appearance-choose-logo-aria': 'Pick logo file',
+          'appearance-hw-accel-aria': 'Toggle hardware acceleration',
+          'appearance-reset-all-aria': 'Reset all to defaults',
+          'appearance-save-aria': 'Save appearance',
         };
         return map[id] || id;
       },
@@ -541,6 +584,35 @@ describe('AppearanceSettings', () => {
     expect(mockClearAccentPalette).toHaveBeenCalled();
     // Instant local state → null (hex shows theme primary via mock).
     expect(screen.getByLabelText('Following theme colour — pick a colour to override')).toBeInTheDocument();
+  });
+
+  it('resets every brand field once when the confirm is double-tapped', async () => {
+    // The three setters are configured here rather than in beforeEach, because the
+    // reset's SECOND write happens only after the first has resolved.
+    mockSetBrandPrimaryColour.mockResolvedValue(undefined);
+    mockSetBrandStoreName.mockResolvedValue(undefined);
+    mockSetBrandLogoPath.mockResolvedValue(undefined);
+    mockGetBrandSettings.mockResolvedValue(defaultBrandResponse);
+    // The reset issues THREE sequential brand writes and then a toast per outcome. A
+    // replay interleaves them, so the operator can be told the reset failed after it had
+    // fully succeeded. \`resetting\` is STATE and both taps read it as false.
+    render(<AppearanceSettings />);
+    await waitFor(() => expect(screen.getByLabelText('Reset all appearance settings')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText('Reset all appearance settings'));
+    // The dialog here is the card's own Modal (its confirm action is rendered by the
+    // card), not the shared ConfirmDialog the other suites use.
+    const dialog = await screen.findByRole('dialog');
+    const confirmBtn = dialog.querySelectorAll('button')[dialog.querySelectorAll('button').length - 1] as HTMLButtonElement;
+    expect(confirmBtn, 'no confirm button inside the reset dialog').toBeTruthy();
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+      fireEvent.click(confirmBtn);
+    });
+
+    await waitFor(() => expect(mockSetBrandPrimaryColour).toHaveBeenCalledTimes(1));
+    expect(mockSetBrandStoreName).toHaveBeenCalledTimes(1);
+    expect(mockSetBrandLogoPath).toHaveBeenCalledTimes(1);
   });
 
   it('save with follow-theme persists the empty sentinel', async () => {

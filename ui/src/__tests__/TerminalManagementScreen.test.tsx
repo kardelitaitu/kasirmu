@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { ReactLocalization, LocalizationProvider } from '@fluent/react';
@@ -11,12 +11,16 @@ import terminalsFtl from '@/locales/terminals.ftl?raw';
 import type { TerminalDto } from '@/api/terminals';
 
 const { mockListTerminals, mockRegisterTerminal, mockDeleteTerminal,
-  mockListTerminalOverrides } =
+  mockListTerminalOverrides, mockSetTerminalOverride, mockGetDeviceBinding,
+  mockSetDeviceBinding } =
   vi.hoisted(() => ({
     mockListTerminals: vi.fn(),
     mockRegisterTerminal: vi.fn(),
     mockDeleteTerminal: vi.fn(),
     mockListTerminalOverrides: vi.fn(),
+    mockSetTerminalOverride: vi.fn(),
+    mockGetDeviceBinding: vi.fn(),
+    mockSetDeviceBinding: vi.fn(),
   }));
 
 vi.mock('@/api/terminals', () => ({
@@ -25,10 +29,10 @@ vi.mock('@/api/terminals', () => ({
   updateTerminalScoped: () => Promise.resolve({ id: 't-1' }),
   deleteTerminalScoped: (_sessionToken: string, id: string) => mockDeleteTerminal(_sessionToken, id),
   listTerminalOverridesScoped: (_sessionToken: string, id: string) => mockListTerminalOverrides(id),
-  setTerminalOverrideScoped: () => Promise.resolve(),
+  setTerminalOverrideScoped: (...args: unknown[]) => mockSetTerminalOverride(...args),
   deleteTerminalOverrideScoped: () => Promise.resolve(),
-  getDeviceBindingScoped: () => Promise.resolve({ bounded: false, boundStoreId: null, boundInstanceId: null, signatureValid: false }),
-  setDeviceBindingScoped: () => Promise.resolve(),
+  getDeviceBindingScoped: () => mockGetDeviceBinding(),
+  setDeviceBindingScoped: (...args: unknown[]) => mockSetDeviceBinding(...args),
   clearDeviceBindingScoped: () => Promise.resolve(),
 }));
 
@@ -100,6 +104,8 @@ describe('TerminalManagementScreen', () => {
     mockRegisterTerminal.mockResolvedValue({ id: 'new-t' });
     mockDeleteTerminal.mockResolvedValue(undefined);
     mockListWorkspacesForStoreScoped.mockResolvedValue([]);
+    mockGetDeviceBinding.mockResolvedValue({ bounded: false, boundStoreId: null, boundInstanceId: null, signatureValid: false });
+    mockSetTerminalOverride.mockResolvedValue(undefined);
   });
 
   it('renders the title', async () => {
@@ -185,6 +191,76 @@ describe('TerminalManagementScreen', () => {
     });
   });
 
+  it('says the instance list could not be read instead of showing an empty store', async () => {
+    // Opening Edit loads the store's workspace instances for the binding picker. A
+    // rejected read used to empty the list with no error, so the "— Select instance —"
+    // placeholder was identical to a store that genuinely has no instances and Bind
+    // stayed disabled with nothing explaining why.
+    mockListTerminals.mockResolvedValue([makeTerminal()]);
+    mockGetDeviceBinding.mockResolvedValue({
+      bounded: true, boundStoreId: 'store-1', boundInstanceId: 'inst-1', signatureValid: true,
+    });
+    mockListWorkspacesForStoreScoped.mockRejectedValue(new Error('ipc down'));
+    renderScreen();
+
+    await waitFor(() => expect(screen.getAllByText('Edit').length).toBeGreaterThanOrEqual(1));
+    await act(async () => {
+      await userEvent.click(screen.getAllByText('Edit')[0]!);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Failed to load this store/i)).toBeInTheDocument();
+    });
+  });
+
+  it('binds the terminal once when Bind is double-tapped', async () => {
+    // The upsert of one (terminal, store, instance) triple cannot bind twice; what a
+    // replay does is share ONE \`bindingError\` slot between two runs, so the second can
+    // report a failure over a binding that landed.
+    mockListTerminals.mockResolvedValue([makeTerminal()]);
+    mockGetDeviceBinding.mockResolvedValue({
+      bounded: false, boundStoreId: null, boundInstanceId: null, signatureValid: false,
+    });
+    // The picker's option VALUE is `instance_id`; a camelCase fixture renders an option
+    // whose value is undefined, so the select can never carry a usable instance id.
+    mockListWorkspacesForStoreScoped.mockResolvedValue([
+      { instance_id: 'inst-1', name: 'Register 1', type_key: 'retail' },
+    ]);
+    let release: (() => void) | undefined;
+    mockSetDeviceBinding.mockReturnValue(new Promise<void>((res) => { release = res; }));
+
+    renderScreen();
+    await waitFor(() => expect(screen.getAllByText('Edit').length).toBeGreaterThanOrEqual(1));
+    await act(async () => {
+      await userEvent.click(screen.getAllByText('Edit')[0]!);
+    });
+
+    const bindBtn = await screen.findByText(/^Bind Terminal$/i);
+    const button = bindBtn.closest('button') as HTMLButtonElement;
+    // The dialog preselects nothing; both pickers must carry a value before Bind arms.
+    // `listLocationsScoped` is the real IPC read here, so the store option comes from the
+    // harness's own fixture — select whatever it offers rather than assuming an id.
+    const storeSelect = screen.getByLabelText(/^Store$/i) as HTMLSelectElement;
+    const storeOption = Array.from(storeSelect.options).map((o) => o.value).find((v) => v !== '');
+    expect(storeOption, 'no store option to bind to').toBeTruthy();
+    fireEvent.change(storeSelect, { target: { value: storeOption } });
+
+    const instanceSelect = await waitFor(() => {
+      const el = screen.getByLabelText(/Workspace Instance/i) as HTMLSelectElement;
+      expect(Array.from(el.options).map((o) => o.value)).toContain('inst-1');
+      return el;
+    });
+    fireEvent.change(instanceSelect, { target: { value: 'inst-1' } });
+    expect(button.disabled, 'Bind must be armed before this case means anything').toBe(false);
+    act(() => {
+      fireEvent.click(button);
+      fireEvent.click(button);
+    });
+
+    release?.();
+    await waitFor(() => expect(mockSetDeviceBinding).toHaveBeenCalledTimes(1));
+  });
+
   it('opens delete confirmation modal on Delete click', async () => {
     mockListTerminals.mockResolvedValue([makeTerminal()]);
     renderScreen();
@@ -208,6 +284,28 @@ describe('TerminalManagementScreen', () => {
     await userEvent.click(confirmBtn);
 
     await waitFor(() => expect(mockDeleteTerminal).toHaveBeenCalledWith('tok-1', 't-1'));
+  });
+
+  it('deletes the terminal once when the confirm is double-tapped', async () => {
+    // The second delete reports the NotFound of a row the first already removed, as
+    // terminal-error-save over a delete that worked.
+    mockListTerminals.mockResolvedValue([makeTerminal()]);
+    let release: (() => void) | undefined;
+    mockDeleteTerminal.mockReturnValue(new Promise<void>((res) => { release = res; }));
+
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Front Counter')).toBeDefined());
+    await userEvent.click(screen.getAllByText('Delete')[0]!.closest('button')!);
+    await waitFor(() => expect(screen.getByText('Delete Terminal')).toBeDefined());
+
+    const confirmBtn = screen.getAllByText('Delete').slice(-1)[0]!.closest('button')!;
+    act(() => {
+      fireEvent.click(confirmBtn);
+      fireEvent.click(confirmBtn);
+    });
+
+    release?.();
+    await waitFor(() => expect(mockDeleteTerminal).toHaveBeenCalledTimes(1));
   });
 
   it('opens register modal when Register Terminal is clicked', async () => {
@@ -248,5 +346,97 @@ describe('TerminalManagementScreen', () => {
       expect(screen.getAllByText('Front Counter').length).toBeGreaterThanOrEqual(1);
     });
     expect(screen.queryByRole('note')).not.toBeInTheDocument();
+  });
+
+  // ── Feature-override toggles: in-flight guard ──────────────────────
+  //
+  // The override switch is a CONTROLLED checkbox whose `checked` derives from
+  // the `overrides` list. Two fast clicks before the refetch resolved both
+  // read the same stale `checked`, so both wrote the SAME `!currentEnabled` —
+  // the second click vanished and the switch snapped back to where it started.
+  // A manager toggling a terminal feature got the wrong end state.
+
+  /** Switch into edit mode on the one terminal, with one override row shown. */
+  async function openOverrides(enabled: boolean, overrides: Record<string, unknown>[] = []) {
+    mockListTerminals.mockResolvedValue([makeTerminal()]);
+    mockListTerminalOverrides.mockResolvedValue([
+      { terminalId: 't-1', feature: 'cloud-sync', enabled, createdAt: '', updatedAt: '' },
+      ...overrides,
+    ]);
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Front Counter')).toBeDefined());
+    await userEvent.click(screen.getAllByText('Edit')[0]!.closest('button')!);
+    const box = await waitFor(() => {
+      const el = screen.getByLabelText(/Override .*Cloud Sync/i) as HTMLInputElement;
+      // The load must have settled: the guard refuses clicks while it is in
+      // flight, so clicking earlier would measure the guard, not the write.
+      expect(el.disabled).toBe(false);
+      return el;
+    });
+    return box;
+  }
+
+  it('writes the toggle only once when a second click lands mid-round-trip', async () => {
+    let release!: () => void;
+    mockSetTerminalOverride.mockReturnValue(
+      new Promise<void>((res) => { release = () => res(); }),
+    );
+    const checkbox = await openOverrides(false);
+
+    expect(checkbox.checked).toBe(false);
+    await userEvent.click(checkbox);
+    // Reachability: the FIRST click must reach the write, or the guard is
+    // simply swallowing every toggle and this test measures nothing.
+    await waitFor(() => expect(mockSetTerminalOverride).toHaveBeenCalledTimes(1));
+    // The optimistic flip landed, so the switch already shows the new value.
+    expect(checkbox.checked).toBe(true);
+
+    // Second click while the first is still in flight — the control is frozen.
+    await userEvent.click(checkbox);
+    expect(mockSetTerminalOverride).toHaveBeenCalledTimes(1);
+
+    release();
+    await waitFor(() => expect(mockSetTerminalOverride).toHaveBeenCalledTimes(1));
+  });
+
+  it('sends the flipped value, not the stale one, and survives a rapid double click', async () => {
+    // The defect's signature: with no guard, both calls carry `true` because
+    // both read the same stale `checked === false`. Asserting the ARGUMENTS is
+    // what distinguishes "one write" from "two identical writes".
+    let release!: () => void;
+    mockSetTerminalOverride.mockReturnValue(
+      new Promise<void>((res) => { release = () => res(); }),
+    );
+    const checkbox = await openOverrides(false);
+
+    await userEvent.click(checkbox);
+    await userEvent.click(checkbox);
+
+    await waitFor(() => expect(mockSetTerminalOverride).toHaveBeenCalled());
+    const writes = mockSetTerminalOverride.mock.calls.filter(([, , , enabled]) => enabled === true);
+    expect(writes).toHaveLength(1);
+    release();
+  });
+
+  it('rolls the switch back when the override write fails', async () => {
+    // A deferred rejection, not `mockRejectedValue`: an immediately-rejecting
+    // promise lets React batch the optimistic set and the rollback into ONE
+    // render, so the intermediate `checked === true` is never observable and
+    // the mid-flight assertion below would fail against a CORRECT
+    // implementation. The deferred form is what makes the two states
+    // distinguishable.
+    let fail!: (e: Error) => void;
+    mockSetTerminalOverride.mockReturnValue(
+      new Promise<void>((_res, rej) => { fail = rej; }),
+    );
+    const checkbox = await openOverrides(false);
+
+    await userEvent.click(checkbox);
+    // Optimistic first…
+    await waitFor(() => expect(checkbox.checked).toBe(true));
+    // …then the failure undoes it, or the switch advertises a state the
+    // backend never stored.
+    await act(async () => { fail(new Error('offline')); });
+    await waitFor(() => expect(checkbox.checked).toBe(false));
   });
 });

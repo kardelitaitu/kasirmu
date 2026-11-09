@@ -15,6 +15,7 @@ use kasirmu_core::CoreErrorKind;
 use kasirmu_core::migrations;
 use kasirmu_core::regional::ConfigScope;
 use kasirmu_core::session::SessionContext;
+use kasirmu_test_support::tempdir;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager;
 
@@ -85,7 +86,7 @@ fn seed_owner(conn: &rusqlite::Connection) {
 /// AppState with a fresh migrated global DB and an isolated store-db dir
 /// (mirrors the locations_tests harness).
 fn flow_state(conn: rusqlite::Connection) -> AppState {
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     let path = temp_dir.keep();
     state.db_manager = StoreDatabaseManager::new(path, migrations::ALL);

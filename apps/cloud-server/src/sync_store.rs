@@ -2,18 +2,20 @@
 last audited 25-07-26 by RSA-Agent (cloud-server slice B: sync_store verified)
 crate: cloud-server | status: SAFE | lint: CLEAN
 findings: all queue reads tenant-scoped in SQL (WHERE tenant_id = ?1); push per-item outcomes with duplicate detection; CS-3 FIXED — the SQLite push_batch arm now runs in one transaction. PERF 2026-09: push_batch multi-row fast path — INSERT … ON CONFLICT (id) DO NOTHING RETURNING id in MULTIROW_CHUNK-sized statements (PG + SQLite), falling back to the per-item SAVEPOINT loop only when a non-unique data error aborts the statement; per-item outcomes preserved via returned-id multiset consumed in input order
-next: none | perf: multi-row fast path collapses N round trips into ~ceil(N/500)
+next: none | perf: push_batch multi-row fast path collapses N round trips into ~ceil(N/500); O-H10 conflict detection runs ONCE per page (one transaction, one GUC set, one chunked ANY/IN read, one chunked upsert) instead of once per item with three helpers each paying their own checkout — see sync_store/conflicts.rs
 */
 //! Sync data-store abstraction for the cloud server's sync function.
 //!
 //! This is the foundation of Phase 1.2 in
-//! `docs/archived/2026-08-15-unify-auth-and-sync.md`: the
+//! `docs/records/audits/2026-08-15-unify-auth-and-sync.md`: the
 //! whole POS data layer ([`kasirmu_core::Store`]) is a synchronous `rusqlite`
 //! borrow-wrapper used by desktop, tablet, *and* cloud clients, so it cannot
 //! be rewritten to Postgres. The cloud server therefore needs a **parallel
 //! async data layer** covering only the surface the sync function touches:
 //!
 //! - `offline_queue` (push / pull / pending count)
+//! - `sync_entity_vectors` / `sync_conflicts` (conflict detection, resolved
+//!   once per page — see `conflicts.rs` and the `DETECTION_CHUNK` contract)
 //! - `tenant_plans` (plan gating)
 //! - `products` / `tax_rates` / `users` (snapshot reference data)
 //!
@@ -31,10 +33,15 @@ next: none | perf: multi-row fast path collapses N round trips into ~ceil(N/500)
 //! as `i64` and treats `0` as `false`, anything non-zero as `true` — the
 //! same 0/1 convention SQLite uses.
 
-mod conflicts;
+pub(crate) mod conflicts;
 mod pg;
+mod plan_cache;
 mod sqlite;
 mod tenant;
+
+#[cfg(test)] // named only by `plan_cache_tests.rs` and `main_tests.rs`
+pub use plan_cache::MAX_CACHED_TENANTS;
+pub use plan_cache::PlanCache;
 
 use std::sync::Arc;
 
@@ -43,6 +50,8 @@ use rusqlite::{Connection, params};
 use tokio::sync::Mutex;
 
 use crate::conflict_resolution::{Decision, entity_id_of, extract_vector};
+use conflicts::DetectionInput;
+use platform_sync::crdt::VersionVector;
 
 // `get_tenant_plan` moved to `sync_store::tenant`, so no non-test code in this file
 // names `TenantPlan` any more; it stays test-only because `sync_store_tests.rs` is a
@@ -68,6 +77,15 @@ use sqlite::{
 /// SQLite at 32766; 9 columns per row × this batch keeps us far below both
 /// while still collapsing a whole push page into a handful of statements.
 const MULTIROW_CHUNK: usize = 500;
+
+/// Maximum entities per conflict-detection statement (O-H10).
+///
+/// Detection binds two or more parameters per entity in its batched reads
+/// (`entity_type IN (…), entity_id IN (…)`) and five to eleven per row in its
+/// batched writes, so this stays an order of magnitude below the same 32766
+/// SQLite / 65535 Postgres parameter caps. 500 matches the push page size, so
+/// a page of distinct entities costs ONE read and ONE write.
+pub(crate) const DETECTION_CHUNK: usize = 500;
 
 /// Open a Postgres connection scoped to `tenant_id` for RLS enforcement.
 ///
@@ -175,29 +193,14 @@ impl SyncStore {
         // detection error must never cost the tenant their pushed data. Items
         // without a vector (peers that predate vector support) are skipped
         // rather than guessed at.
-        for item in items {
-            let Some(vector) = extract_vector(&item.payload) else {
-                continue;
-            };
-            let entity_id = entity_id_of(&item.payload, &item.id);
-            match self
-                .detect_conflict(tenant_id, &item.action, &entity_id, &vector, &item.payload)
-                .await
-            {
-                Ok(Some(Decision::Flag { severity })) => {
-                    tracing::warn!(
-                        action = %item.action,
-                        entity_id = %entity_id,
-                        severity = severity.as_str(),
-                        "concurrent sync mutation flagged for review"
-                    );
-                }
-                Ok(_) => {}
-                Err(e) => {
-                    tracing::error!("conflict detection failed for {}: {e}", item.id);
-                }
-            }
-        }
+        //
+        // O-H10: ONE call for the whole page. Detection used to run per item
+        // through `detect_conflict`, which pays a pool checkout + transaction
+        // + tenant GUC for each of its three statements — ~10 round trips per
+        // pushed item, ~5,000 for a 500-item page. `detect_conflicts` pays a
+        // constant for the page and produces the same per-item decisions; see
+        // its doc for why the two are equivalent.
+        self.detect_page(tenant_id, items).await;
 
         match self {
             Self::Sqlite(conn) => {
@@ -216,8 +219,8 @@ impl SyncStore {
                 for item in items {
                     let outcome = match tx.execute(
                         "INSERT INTO offline_queue (id, action, payload, status, retry_count, \
-                         last_error, created_at, synced_at, tenant_id, origin_terminal_id)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                         last_error, created_at, synced_at, tenant_id, origin_terminal_id, sale_id)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                         params![
                             item.id,
                             item.action,
@@ -229,6 +232,7 @@ impl SyncStore {
                             item.synced_at,
                             tenant_id,
                             item.origin_terminal_id,
+                            item.sale_id,
                         ],
                     ) {
                         Ok(_) => PushOutcome::Accepted,
@@ -288,12 +292,13 @@ impl SyncStore {
                         &item.synced_at,
                         &tenant_id,
                         &item.origin_terminal_id,
+                        &item.sale_id,
                     ];
                     let outcome = match tx
                         .query_opt(
                             "INSERT INTO offline_queue (id, action, payload, status, retry_count, \
-                         last_error, created_at, synced_at, tenant_id, origin_terminal_id)
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                         last_error, created_at, synced_at, tenant_id, origin_terminal_id, sale_id)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                          ON CONFLICT (id) DO NOTHING
                          RETURNING id",
                             params,
@@ -342,6 +347,67 @@ impl SyncStore {
                 // The write path must COMMIT (drop would roll back the inserts).
                 tx.commit().await.map_err(|e| e.to_string())?;
                 Ok(results)
+            }
+        }
+    }
+
+    /// Run conflict detection over one push page and log what it found.
+    ///
+    /// Owns the policy that detection is **best-effort**: every error is
+    /// logged and swallowed, because a metadata failure must never cost the
+    /// tenant their pushed data. Kept out of `push_batch` so that method
+    /// stays the statement family it is documented to be.
+    ///
+    /// Bodies without a vector belong to peers that predate vector support;
+    /// they are skipped rather than guessed at, and the batch call simply
+    /// never sees them — so it cannot invent a history for them.
+    async fn detect_page(&self, tenant_id: &str, items: &[OfflineQueueItem]) {
+        let vectors: Vec<Option<VersionVector>> = items
+            .iter()
+            .map(|item| extract_vector(&item.payload))
+            .collect();
+        // The `entity_id` COLUMN each item is stamped under — the same
+        // `entity_id_of` the single-item form stamps with, and therefore the
+        // exact value the batch read queries for. It is NOT the queue item id:
+        // a vector named after the queue row would never be found again.
+        let entity_ids: Vec<String> = items
+            .iter()
+            .map(|item| entity_id_of(&item.payload, &item.id))
+            .collect();
+        let inputs: Vec<DetectionInput<'_>> = items
+            .iter()
+            .zip(&vectors)
+            .zip(&entity_ids)
+            .filter_map(|((item, vector), entity_id)| {
+                let vector = vector.as_ref()?;
+                Some(DetectionInput {
+                    entity_type: &item.action,
+                    entity_id,
+                    vector,
+                    payload: &item.payload,
+                })
+            })
+            .collect();
+        match self.detect_conflicts(tenant_id, &inputs).await {
+            Ok(decisions) => {
+                for (input, decision) in inputs.iter().zip(decisions) {
+                    if let Some(Decision::Flag { severity }) = decision {
+                        tracing::warn!(
+                            action = %input.entity_type,
+                            entity_id = %input.entity_id,
+                            severity = severity.as_str(),
+                            "concurrent sync mutation flagged for review"
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                // One line for the page rather than one per item: the failure
+                // is the page's, and its scope is what an operator needs.
+                tracing::error!(
+                    "conflict detection failed for a {} item push: {e}",
+                    inputs.len()
+                );
             }
         }
     }

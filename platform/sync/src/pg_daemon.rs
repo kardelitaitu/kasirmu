@@ -268,13 +268,11 @@ impl PgSyncDaemon {
                 // a failed read would skip the push and report a clean cycle while
                 // the durable backlog kept growing — indistinguishable from a
                 // healthy idle terminal. Propagate so it reaches `read_error`.
-                let mut pending = store.list_pending_offline().map_err(|e| {
-                    format!("could not read the offline queue; refusing to report an empty push list: {e}")
-                })?;
-                kasirmu_core::offline::order_for_push(&mut pending);
-                if pending.len() > crate::daemon::DEFAULT_MAX_OUTBOX_BATCH_ITEMS {
-                    pending.truncate(crate::daemon::DEFAULT_MAX_OUTBOX_BATCH_ITEMS);
-                }
+                let pending = store
+                    .list_pending_offline_for_push_bounded(crate::daemon::DEFAULT_MAX_OUTBOX_BATCH_ITEMS)
+                    .map_err(|e| {
+                        format!("could not read the offline queue; refusing to report an empty push list: {e}")
+                    })?;
                 // SYNC-01 parity: the durable pull anchor (since + composite
                 // cursor) survives restarts and advances only after a page
                 // applied — never re-derive it from the local queue's synced
@@ -483,6 +481,25 @@ impl PgSyncDaemon {
             // pending to push.
             let mut pull_since = pull_since;
             let mut pull_cursor = pull_cursor;
+            // O-H18: tick-scoped, not page-scoped. The ADR #6 summary rebuild
+            // is an aggregate over the ENTIRE delta ledger, so running it per
+            // page (as this loop used to) cost O(pages × all movements) for
+            // one tick's backlog. Instead each applied page reports whether it
+            // carried a `stock.movement`, this flag OR-folds those reports,
+            // and the rebuild runs at most ONCE after the loop — when every
+            // page of the tick has landed, exactly as correctness requires.
+            //
+            // Deliberately survives an error/early `break` below: the
+            // movements that DID apply are still in the ledger and still
+            // missing from `stock_summary`, so the rebuild after the loop runs
+            // over a partial tick too — partial correctness beats none. Where
+            // the loop broke on a retryable item the anchor was retained, so
+            // the next tick re-pulls that page at no extra cost; where it broke
+            // on a transport error the page did not apply at all, so there is
+            // nothing outstanding. A FAILED rebuild is the one case that must
+            // block forward progress, and it does: see after the loop, which
+            // puts the anchor back.
+            let mut tick_carried_movements = false;
             loop {
                 match transport
                     .pull_updates(pull_since.as_deref(), pull_cursor.as_deref())
@@ -496,7 +513,10 @@ impl PgSyncDaemon {
                         }
                         let db_clone = db.clone();
                         let items = pull_resp.items;
-                        let prev_since = pull_since;
+                        // Cloned, not moved: the tick-end summary rebuild below
+                        // restores this value if it fails, so the loop must
+                        // still own the anchor after handing it to the closure.
+                        let prev_since = pull_since.clone();
                         let prev_cursor = pull_cursor.clone();
                         // The closure needs the cursor to persist it with the
                         // anchor; the outer loop re-owns the original for the
@@ -510,7 +530,14 @@ impl PgSyncDaemon {
                             // retained and pagination stops so the next cycle
                             // re-pulls the same page (`?` early-returns None
                             // from the closure).
-                            let new_since = apply_pulled_page(
+                            //
+                            // The second half of the tuple is the page's
+                            // ADR #6 report: it carried a `stock.movement`,
+                            // so the derived `stock_summary` is now stale for
+                            // this tick. Only the per-page outcome is read
+                            // here; the rebuild itself happens once, outside
+                            // this loop (O-H18).
+                            let (new_since, page_carried_movements) = apply_pulled_page(
                                 &store,
                                 &items,
                                 prev_since.as_deref(),
@@ -560,11 +587,12 @@ impl PgSyncDaemon {
                                     "pg sync daemon: failed to persist pull anchor"
                                 );
                             }
-                            Some(new_since)
+                            Some((new_since, page_carried_movements))
                         })
                         .await;
                         match outcome {
-                            Ok(Some(new_since)) => {
+                            Ok(Some((new_since, page_carried_movements))) => {
+                                tick_carried_movements |= page_carried_movements;
                                 pull_since = Some(new_since);
                                 pull_cursor = next_cursor;
                                 if pull_cursor.is_none() {
@@ -632,6 +660,57 @@ impl PgSyncDaemon {
                         }
                         break;
                     }
+                }
+            }
+
+            // O-H18 / ADR #6: the ONE rebuild for this whole tick.
+            //
+            // Why here and why exactly once: every page that applied has
+            // already committed its ledger row and advanced its anchor, and a
+            // single `rebuild_stock_summary()` is an aggregate over the whole
+            // ledger — so one call after the last page is equivalent to one
+            // call after each page, minus the multiplicative cost. Nothing
+            // between the pages can make an earlier rebuild necessary: the
+            // apply path never reads `stock_summary`, and this loop is the only
+            // writer during the phase.
+            //
+            // The flag is the TICK's, not the last page's: a backlog whose
+            // final page carries no movement, or a tick that broke out early on
+            // an error after a movement page, still rebuilds. Skipping it there
+            // would advance the anchor over a stale on-hand cache — the data
+            // bug, not a missed optimisation.
+            //
+            // FAILURE: the rebuild is attempted regardless of `sync_error`.
+            // Movements applied before an error are real, so the summary is
+            // rebuilt from whatever reached the ledger (partial correctness
+            // beats none). If the rebuild FAILS, the durable anchor is restored
+            // to the value this tick captured — the pages committed ledger rows
+            // and advanced the anchor inside their own transactions, so the
+            // anchor is the only thing left that can force a retry. Restoring
+            // it to the start of the tick (not to the last good page) is
+            // deliberate: it is the coarse, always-safe choice. The re-pull
+            // costs at most one tick's pages and the idempotency ledger absorbs
+            // the replay, so the next tick retries both the failed page(s) and
+            // the derived-state rebuild — the same contract the per-page code
+            // had ("a rebuild failure retains the anchor").
+            if tick_carried_movements
+                && let Some(failure) =
+                    rebuild_tick_summary(db, pull_since.as_deref(), pull_cursor.as_deref()).await
+            {
+                let msg = failure.message();
+                match failure {
+                    TickRebuild::Restored => tracing::warn!(
+                        since = ?pull_since,
+                        cursor = ?pull_cursor,
+                        "pg sync daemon: stock summary rebuild failed — pull anchor restored so the next tick retries the rebuild"
+                    ),
+                    TickRebuild::RestoreFailed(_) => tracing::error!(
+                        error = msg,
+                        "pg sync daemon: stock summary rebuild failed AND the anchor restore failed; the next tick's summary rebuild must still run to heal the cache"
+                    ),
+                }
+                if sync_error.is_none() {
+                    sync_error = Some(msg);
                 }
             }
         }
@@ -784,6 +863,107 @@ impl Default for PgSyncDaemon {
     }
 }
 
+// O-H18: ONE rebuild per pull tick, not one per page.
+/// Why the post-loop summary rebuild of one tick failed, and whether the
+/// durable pull anchor could be restored so a later tick retries it.
+///
+/// Returned (as `Some`) only on failure; `None` from
+/// [`rebuild_tick_summary`] means "rebuilt, nothing to do".
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum TickRebuild {
+    /// The rebuild failed, the anchor was restored to the value the tick
+    /// started from, and the next tick will therefore re-pull and retry.
+    Restored,
+    /// The rebuild failed AND the anchor could not be restored. The summary
+    /// is still stale and the anchor still points past the movement pages, so
+    /// nothing triggers a re-pull — this carries the restore error so the
+    /// cycle reports both facts instead of only the first.
+    RestoreFailed(String),
+}
+
+impl TickRebuild {
+    /// The message this failure contributes to the tick's `last_error`.
+    fn message(&self) -> String {
+        match self {
+            Self::Restored => {
+                "stock summary rebuild failed; pull anchor restored for retry".to_string()
+            }
+            Self::RestoreFailed(e) => format!(
+                "stock summary rebuild failed and the pull anchor could not be restored ({e}); \
+                 the summary stays stale until the next movement page or a local sale"
+            ),
+        }
+    }
+}
+
+/// The ONE ADR #6 summary rebuild of a pull tick (O-H18).
+///
+/// Runs after the pull loop, once, when ANY page of the tick carried a
+/// `stock.movement` — so a backlog of N movement pages costs one whole-ledger
+/// aggregate instead of N. See the call site in `run_tick` for why the
+/// ordering is safe and why the flag is tick-scoped rather than per page.
+///
+/// # Returns
+///
+/// `None` when the rebuild succeeded (or there was nothing to rebuild);
+/// `Some([TickRebuild::Restored])` when it failed and the anchor was put back;
+/// `Some([TickRebuild::RestoreFailed])` when it failed and the anchor could
+/// not be put back.
+///
+/// Extracted from the inline loop so the failure contract is reachable from a
+/// unit test: the rebuild is an aggregate over the local ledger, and the only
+/// thing that makes it fail is a broken local schema.
+///
+/// On failure the durable pull anchor is RESTORED to `since`/`cursor` — the
+/// values this tick captured — because each page already committed its ledger
+/// rows and advanced the anchor inside its own transaction, leaving the anchor
+/// as the only mechanism that can force a retry. A restore failure is
+/// reported, never swallowed: `RestoreFailed` still reaches `last_error`.
+async fn rebuild_tick_summary(
+    db: &DbConnection,
+    since: Option<&str>,
+    cursor: Option<&str>,
+) -> Option<TickRebuild> {
+    let db_clone = db.clone();
+    let rebuilt = tokio::task::spawn_blocking(move || {
+        let conn = db_clone.blocking_lock();
+        Store::new(&conn).rebuild_stock_summary()
+    })
+    .await;
+    match rebuilt {
+        Ok(Ok(_)) => return None,
+        Ok(Err(e)) => {
+            tracing::error!(
+                error = %e,
+                "failed to rebuild stock summary after pg sync pull"
+            );
+        }
+        Err(e) => {
+            tracing::error!(
+                error = %e,
+                "stock summary rebuild panicked after pg sync pull"
+            );
+        }
+    }
+
+    // Best effort: if even this write fails the next tick's read phase still
+    // reports the ledger drift, so nothing is hidden — only the automatic
+    // retry is lost, and THAT is what gets reported.
+    let db_clone = db.clone();
+    let since_owned = since.map(str::to_owned);
+    let cursor_owned = cursor.map(str::to_owned);
+    let restored = tokio::task::spawn_blocking(move || {
+        let conn = db_clone.blocking_lock();
+        Store::new(&conn).set_sync_pull_state(since_owned.as_deref(), cursor_owned.as_deref())
+    })
+    .await;
+    match restored {
+        Ok(Ok(())) => Some(TickRebuild::Restored),
+        Ok(Err(e)) => Some(TickRebuild::RestoreFailed(e.to_string())),
+        Err(e) => Some(TickRebuild::RestoreFailed(format!("restore panicked: {e}"))),
+    }
+}
+
 /// Import a PostgreSQL snapshot, then move the durable pull anchor to the
 /// server's oldest retained boundary.
 ///
@@ -818,12 +998,15 @@ fn recover_pg_snapshot(
 /// `created_at` means a queue whose rows are never stamped still advances
 /// and is never re-pulled in full.
 ///
-/// ADR #6 parity with the SQLite daemon: when the page contains
-/// `stock.movement` items (which write ONLY the raw delta ledger — the
-/// apply path never touches `stock_summary`), the materialized summary is
-/// rebuilt from the ledger before the anchor advances, and a rebuild
-/// failure retains the anchor so the next cycle re-pulls the same page and
-/// retries the derived-state rebuild.
+/// ADR #6 (O-H18): an applied page REPORTS whether it carried a
+/// `stock.movement` item through the second half of its return value. Those
+/// items write ONLY the raw delta ledger — the apply path never touches
+/// `stock_summary` — so the caller must rebuild the materialized summary
+/// from the ledger. This function deliberately does NOT rebuild: it is the
+/// per-PAGE seam, and a rebuild here was O(pages × all movements) for one
+/// tick's backlog, because every page paid for a whole-ledger aggregate. The
+/// pull loop instead OR-folds the flag across every page it applies and does
+/// exactly one rebuild per tick, after the loop.
 ///
 /// SYNC-10 parity: a pulled `settings.update`/`settings.change` re-emits
 /// `SettingsUpdated` through `settings_sink` after its transaction commits
@@ -925,14 +1108,40 @@ fn apply_push_outcomes(
             }
         }
     }
+
+    // Parity with `daemon::apply_push_results` and `lib.rs apply_push_outcomes`:
+    // a short results vector leaves the trailing items queued (correct — they
+    // must never inherit a neighbour's verdict) but must not pass unremarked,
+    // or the cycle reports success over an unacknowledged tail.
+    if results.len() != pending.len() {
+        tracing::warn!(
+            outcomes = results.len(),
+            items = pending.len(),
+            "pg sync daemon: outcome count mismatch — trailing items stay queued"
+        );
+    }
 }
 
+/// # Returns
+///
+/// `Some((next_anchor, carried_movement))` — the anchor to persist, plus
+/// whether this page applied at least one `stock.movement` and therefore
+/// left the derived `stock_summary` stale. `None` means the anchor must be
+/// retained (retryable item failure); the caller stops paginating and leaves
+/// the rebuild to the next tick.
+///
+/// The flag is page-scoped, NOT tick-scoped: see the O-H18 note above. It is
+/// set unconditionally by ANY `stock.movement` item in the page, even if
+/// that item dead-letters or its ledger row turns out to be a replay — over-
+/// rebuilding is idempotent (the ledger is authoritative), whereas
+/// under-reporting would leave a stale on-hand cache behind an advanced
+/// anchor, which is the data bug the rebuild exists to prevent.
 fn apply_pulled_page(
     store: &Store<'_>,
     page: &[OfflineQueueItem],
     prev_since: Option<&str>,
     settings_sink: &SettingsChangedSink,
-) -> Option<String> {
+) -> Option<(String, bool)> {
     let queue = SyncQueue::new();
     let mut page_all_applied = true;
     let mut has_stock_movements = false;
@@ -994,17 +1203,9 @@ fn apply_pulled_page(
         return None;
     }
 
-    // ADR #6: rebuild the materialized stock_summary from the delta ledger
-    // before advancing the pull anchor. If the rebuild fails, the old anchor
-    // is retained so the next cycle can restore the derived state as well
-    // (replay is absorbed by the idempotency ledger).
-    if has_stock_movements && let Err(e) = store.rebuild_stock_summary() {
-        tracing::error!(
-            error = %e,
-            "failed to rebuild stock summary after pg sync pull"
-        );
-        return None;
-    }
+    // ADR #6 / O-H18: the rebuild itself is NOT here. Report the page's
+    // contribution and let the pull loop rebuild once for the whole tick;
+    // see the doc comment above and the loop's post-pull rebuild.
 
     // Monotonic anchor: take the later of the current anchor and the page's
     // newest `created_at` watermark — the composite cursor's first key, so
@@ -1017,7 +1218,9 @@ fn apply_pulled_page(
     // timestamps are fixed-format, so lexicographic ordering equals
     // chronological ordering here.
     let page_max = page.iter().map(|i| i.created_at.as_str()).max();
-    std::cmp::max(prev_since, page_max).map(str::to_owned)
+    std::cmp::max(prev_since, page_max)
+        .map(str::to_owned)
+        .map(|anchor| (anchor, has_stock_movements))
 }
 
 #[cfg(test)]

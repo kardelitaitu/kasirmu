@@ -1,5 +1,6 @@
 use super::*;
 use kasirmu_core::migrations;
+use kasirmu_test_support::tempdir;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {
@@ -574,7 +575,7 @@ fn run_set_device_binding_binds_the_global_row_the_boot_path_resolves() {
 /// terminal as a silent success.
 #[test]
 fn store_registered_terminal_is_not_found_for_an_unknown_id() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let state = AppState::for_test_with_db_manager(platform_core::StoreDatabaseManager::new(
         temp.path().to_path_buf(),
         migrations::ALL,
@@ -657,7 +658,7 @@ fn terminals_app(
 ) -> (tauri::App<tauri::test::MockRuntime>, tempfile::TempDir) {
     let conn = kasirmu_core::migrations::fresh_db();
     seed_identity(&conn);
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
         StoreDatabaseManager::new(temp.path().to_path_buf(), kasirmu_core::migrations::ALL);

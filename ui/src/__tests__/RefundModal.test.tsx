@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, screen, waitFor, fireEvent } from '@testing-library/react';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import salesFtl from '@/locales/sales.ftl?raw';
 
@@ -109,6 +109,50 @@ function doRefund(reason: string) {
 }
 
 describe('RefundModal', () => {
+  // A double click on Process Refund must not refund TWICE.
+  //
+  // `handleRefund` sets `processing` and awaits; `processing` is STATE, so React commits
+  // it on its next render -- after the second dispatch of a real double tap -- and the
+  // button's own disabled state is not authoritative in the same task.
+  //
+  // The backend does NOT refuse this. `process_refund` bounds a refund only by the
+  // CUMULATIVE refundable balance:
+  //   SELECT COALESCE(SUM(total_minor), 0) FROM refunds WHERE sale_id = ?1 ...
+  //   if already_refunded + refund.total > sale_total { Err }   -- refunds.rs:119-142
+  // So refunding 7000 of a 35000 sale accepts BOTH writes: 14000 <= 35000. The customer
+  // is refunded twice and the modal closes on the FIRST success, so the second is
+  // invisible. This is the MONEY arm of the class -- unlike the refused-replay screens
+  // (rounds 136-144), nothing downstream refuses the second write.
+  //
+  // SHAPE 3 (round 139): both clicks inside ONE act() batch, before React can re-render.
+  it('sends one refund for a double click while the first is in flight', async () => {
+    let releaseRefund: (v: unknown) => void = () => {};
+    const held = new Promise((resolve) => { releaseRefund = resolve; });
+    mockProcessRefund.mockImplementation(() => held as never);
+    renderWithFluentSync(<RefundModal {...defaultProps} />, salesFtl, refundFtl);
+
+    clickCheckbox(0);
+    fillReason('Wrong item');
+
+    const submitBtns = screen.getAllByRole('button', { name: /process refund/i });
+    const submitBtn = submitBtns[submitBtns.length - 1]!;
+    await act(async () => {
+      fireEvent.click(submitBtn);
+      // The disabled flag React set is not yet authoritative for a live double click;
+      // dropping it sends the second click to the handler the way a real one would.
+      submitBtn.removeAttribute('disabled');
+      fireEvent.click(submitBtn);
+    });
+
+    expect(
+      mockProcessRefund.mock.calls.length,
+      'a second click re-sent the refund while the first was in flight; the backend only ' +
+        'bounds the CUMULATIVE total, so this refunds the customer twice',
+    ).toBe(1);
+
+    releaseRefund({});
+    await act(async () => { await held; });
+  });
   it('renders null when not open', () => {
     const { container } = renderWithFluentSync(<RefundModal {...defaultProps} open={false} />, salesFtl, refundFtl);
     expect(container.innerHTML).toBe('');
@@ -179,6 +223,79 @@ describe('RefundModal', () => {
     expect(screen.getByText('1')).toBeInTheDocument();
   });
 
+  // ── Two taps on + must land as TWO units, and the MONEY must follow ────
+  //
+  // `updateQty` writes an ABSOLUTE value into `selectedLines`
+  // (`{ ...prev, [lineId]: qty }`, RefundModal.tsx:55), while the stepper computed
+  // `selectedQty + 1` from the row as it last rendered. Two clicks inside one React
+  // batch both closed over that snapshot, so both wrote the same number and the second
+  // tap was lost.
+  //
+  // THE MONEY IS THE POINT: the refunded amount is derived from `selectedQty` (:295),
+  // so a lost tap refunds less than the cashier asked for — a wrong CASH amount, not
+  // merely a wrong-looking stepper.
+  //
+  // The ceiling has to be ABOVE the batched result or `disabled={selectedQty >= line.qty}`
+  // (:289) refuses the second click at the DOM and the case would pass either way. The
+  // shared fixture's line-1 is qty 2 — exactly at the ceiling — so this case carries its own
+  // 5-unit line, starting at 1 after selection and stepping to 3.
+  //
+  // Same defect and same fix shape as rounds 89-91 (retail till, shared POS cart, KDS
+  // picker). MEASURED before the change: the amount read as a 2-unit refund.
+  it('counts two taps on + and refunds the matching amount (batched)', async () => {
+    const sale = {
+      ...mockSale,
+      lines: [
+        {
+          id: 'line-1',
+          sku: 'SKU-001',
+          name: 'Indomie Goreng',
+          qty: 5,
+          unit_price: { minor_units: 3500, currency: 'IDR' },
+          total_minor: 17500,
+          tax_amount: null,
+          tax_rate_id: null,
+        },
+      ],
+    } as unknown as typeof mockSale;
+    renderWithFluentSync(
+      <RefundModal {...defaultProps} sale={sale} />,
+      salesFtl,
+      refundFtl,
+    );
+
+    // Select the line, then step DOWN to a single unit so there is headroom to the
+    // ceiling of 5 — four taps down from the initial 5.
+    fireEvent.click(screen.getAllByRole('checkbox')[0]!);
+    const dec = screen.getByRole('button', { name: /decrease refund quantity/i });
+    for (let i = 0; i < 4; i += 1) fireEvent.click(dec);
+    expect(screen.getByText('1')).toBeInTheDocument();
+
+    // Two taps on + in ONE batch — the fast double-tap a cashier makes on a touch till.
+    const inc = screen.getByRole('button', { name: /increase refund quantity/i });
+    await act(async () => {
+      inc.click();
+      inc.click();
+    });
+
+    // 1 + 2 = 3 units, which is what the money below must match.
+    expect(
+      screen.getByText('3'),
+      'two batched taps produced fewer than two extra units, so the refund is short',
+    ).toBeInTheDocument();
+
+    // The count is the symptom; the AMOUNT is the injury. 3 of 5 units at 3500 each
+    // (total_minor 17500) is round(17500 * 3 / 5) = 10500 minor units. A lost tap
+    // would have left 7000 on screen while the cashier handed over cash for 10500.
+    // Both the line total and the modal footer render it, so match the footer by its
+    // class rather than letting a getAllBy weaken the claim.
+    const totals = screen.getAllByText(/10[.,]500/);
+    expect(totals.length).toBe(2);
+    expect(
+      document.querySelector('.refund-total-amount')?.textContent,
+      'the refundable total the cashier reads before confirming',
+    ).toMatch(/10[.,]500/);
+  });
   it('calls onClose when close button is clicked', async () => {
     const onClose = vi.fn();
     renderWithFluentSync(<RefundModal {...defaultProps} onClose={onClose} />, salesFtl, refundFtl);

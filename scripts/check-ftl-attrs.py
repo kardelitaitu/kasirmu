@@ -46,12 +46,28 @@ Exit 0 clean, 1 finding(s), 2 refused/self-test failure.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 LOCALES = REPO / 'shared-ui' / 'locales'
+
+#: Where fixtures are written when the host sets a temp variable. A host whose
+#: confinement denies files under its default temp (measured 2026-11-09 on the
+#: agent host: every write into a TemporaryDirectory is EPERM) can point this at
+#: a directory it allows; unset leaves tempfile's own default in force.
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root this file's fixtures are written under (None = system default)."""
+    import os
+    return next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+
 SCAN_ROOT = REPO / 'ui' / 'src'
 
 LOCALIZED = re.compile(r"<Localized\b")
@@ -101,9 +117,11 @@ def parse_bundle(path: Path) -> dict[str, set[str]]:
     return messages
 
 
-def load_en() -> dict[str, set[str]]:
+def load_en(locales=None) -> dict[str, set[str]]:
+    """r187: the bundle directory follows root (the r166..r186 contract)."""
+    locale_dir = LOCALES if locales is None else Path(locales)
     merged: dict[str, set[str]] = {}
-    for path in sorted(LOCALES.glob('*.ftl')):
+    for path in sorted(locale_dir.glob('*.ftl')):
         if path.name.endswith('.id.ftl'):
             continue
         for key, attrs in parse_bundle(path).items():
@@ -154,10 +172,13 @@ def scan_file(path: Path, en: dict[str, set[str]]) -> tuple[list[tuple[int, str,
     return findings, unresolved
 
 
-def scan_tree(root: Path, en: dict[str, set[str]]) -> tuple[list[str], int, int]:
+def scan_tree(root: Path, en: dict[str, set[str]], base=None) -> tuple[list[str], int, int]:
     findings: list[str] = []
     unresolved = 0
     scanned = 0
+    # r187: base is where the reported relative paths anchor -- it follows the
+    # same root as the scan, so a redirected run reports fixture-relative paths.
+    base = REPO if base is None else Path(base)
     for path in sorted(root.rglob('*')):
         if path.suffix not in ('.tsx', '.ts') or not path.is_file():
             continue
@@ -166,7 +187,7 @@ def scan_tree(root: Path, en: dict[str, set[str]]) -> tuple[list[str], int, int]
         scanned += 1
         hits, unres = scan_file(path, en)
         unresolved += unres
-        rel = path.relative_to(REPO).as_posix()
+        rel = path.relative_to(base).as_posix()
         for line, key, name in hits:
             findings.append(
                 "%s:%d  message '%s' defines no attribute '%s' -- the call site will"
@@ -201,7 +222,8 @@ def _self_test() -> int:
     ]
     import tempfile
     bad = 0
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as tmp:
         root = Path(tmp)
         for name, body, want_hits, want_unres in cases:
             f = root / 'case.tsx'
@@ -214,25 +236,196 @@ def _self_test() -> int:
                       % (name, want_hits, want_unres, len(hits), unres))
             else:
                 print('  %-46s ok' % name)
-    print('SELF-TEST %s (%d cases, no files touched)'
-          % ('FAILED' if bad else 'OK', len(cases)))
-    return 1 if bad else 0
+    # r187: main()'s shell -- argv and root graded against a tempdir fixture
+    # carrying BOTH inputs, the r166..r186 pattern. This gate needs no git
+    # repository (it rglobs, it does not ls-files), so a plain directory is
+    # the whole fixture. The refusal case is the redirect kill: a main that
+    # ignored root would scan the REAL tree (which exists) and return 0
+    # where the fixture demands 2.
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+    shell = 0
+    def _shell(files):
+        with _tempfile.TemporaryDirectory(dir=fixture_root(),
+                                           ignore_cleanup_errors=True) as td:
+            base = Path(td)
+            for rel, content in files.items():
+                dst = base / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_text(content, encoding='utf-8')
+            out, err = _io.StringIO(), _io.StringIO()
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                rc = main(argv=[], root=base)
+            return rc, out.getvalue() + err.getvalue()
+    BARE_FTL = 'k-bare = Enter a key\n'
+    ATTR_FTL = 'k-attr = Enter a key\n    .placeholder = API key\n'
+    SITE = '<Localized id="k-bare" attrs={{ placeholder: true }}><input /></Localized>\n'
+    shell += 1
+    rc, text = _shell({'shared-ui/locales/en.ftl': BARE_FTL, 'ui/src/App.tsx': SITE})
+    if rc != 1 or "ui/src/App.tsx:1" not in text or "k-bare" not in text:
+        print(f'  x an undefined attribute must be a finding naming file:line (rc={rc} text={text[-90:]!r})',
+              file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _shell({'shared-ui/locales/en.ftl': ATTR_FTL,
+                       'ui/src/App.tsx': SITE.replace('k-bare', 'k-attr')})
+    if rc != 0 or 'OK: every resolvable' not in text:
+        print(f'  x a defined attribute must be clean (rc={rc} text={text[-90:]!r})', file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _shell({'ui/src/App.tsx': SITE})
+    if rc != 2 or 'refused: expected' not in text:
+        print(f'  x a missing bundle directory must refuse rc 2 (rc={rc} text={text[-90:]!r})', file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _shell({'shared-ui/locales/en.ftl': ATTR_FTL,
+                       'ui/src/App.tsx': SITE.replace('id="k-bare"', 'id={SOME_KEY}')})
+    if rc != 0 or '1 attr site(s) unresolvable' not in text:
+        print(f'  x an unresolvable id must be counted, not skipped (rc={rc} text={text[-90:]!r})',
+              file=sys.stderr)
+        return 1
+    print('SELF-TEST %s (%d cases + %d shell cases)'
+          % ('FAILED' if bad else 'OK', len(cases), shell))
+    if bad:
+        return 1
+    return shell_ladder()
 
 
-def main() -> int:
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard for the ladder (r244 -- the r228 lesson).
+
+    Rung 5 drives --self-test through argv from INSIDE the ladder, and the
+    self-test ends in this call, so without the guard that nested run recurses.
+    """
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        print('  (ladder re-entry from a nested --self-test: skipped)')
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """r244: the root contract, graded on fixture ui/src + locales trees.
+
+    Rung 1 IS the killing rung, and this checker gives it an extra edge: the
+    fixture bundle DEFINES a key the fixture page does not request and omits
+    the attribute the page does request. A main() that ignored its root would
+    grade this repository instead, whose real bundle and real pages agree --
+    so a root-blind run cannot produce the finding rung 1 demands.
+
+    Rung 3 grades the resolver's dynamic half through main(): a conditional id
+    whose FIRST branch is fine and whose SECOND omits the attribute must still
+    be a finding. That is the exact shape of all three real defects, and
+    before this round no rung executed it end to end.
+    """
+    def build(tmp, files, label='fx'):
+        """A fixture root holding the given {relative path: text} files."""
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix=label + '_'))
+        for rel, text in files.items():
+            p = base / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text, encoding='utf-8', newline=chr(10))
+        return base
+
+    def run(root_dir, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root_dir))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    BARE = 'k-bare = Enter a key' + chr(10)
+    WITH_ATTR = ('k-bare = Enter a key' + chr(10)
+                 + '    .placeholder = API key' + chr(10))
+    SITE_BARE = ('<Localized id="k-bare" attrs={{ placeholder: true }}>'
+                 '<input /></Localized>' + chr(10))
+    SITE_COND = ("<Localized id={f ? 'k-attr' : 'k-bare'} "
+                 "attrs={{ placeholder: true }}><input /></Localized>" + chr(10))
+    ATTR_FTL = ('k-attr = Fine' + chr(10) + '    .placeholder = Fine' + chr(10)
+                + 'k-bare = Enter a key' + chr(10))
+
+    shell = 0
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as tmp:
+        # rung 1 -- the killing rung: the fixture's undefined attribute is named.
+        root = build(tmp, {'shared-ui/locales/en.ftl': BARE,
+                           'ui/src/App.tsx': SITE_BARE})
+        rc, said = run(root)
+        if rc != 1 or 'ui/src/App.tsx:1' not in said or 'k-bare' not in said:
+            print('  x rung 1: an undefined attribute must exit 1 naming file:line and '
+                  'the message (rc=%r said=%r)' % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2 -- defining the attribute clears the same site.
+        root = build(tmp, {'shared-ui/locales/en.ftl': WITH_ATTR,
+                           'ui/src/App.tsx': SITE_BARE})
+        rc, said = run(root)
+        if rc != 0 or 'OK: every resolvable' not in said:
+            print('  x rung 2: a defined attribute must exit 0 clean '
+                  '(rc=%r said=%r)' % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3 -- a conditional id checks BOTH branches end to end.
+        root = build(tmp, {'shared-ui/locales/en.ftl': ATTR_FTL,
+                           'ui/src/App.tsx': SITE_COND})
+        rc, said = run(root)
+        if rc != 1 or "message 'k-bare' defines no attribute" not in said:
+            print('  x rung 3: a conditional id must check its second branch too '
+                  '(rc=%r said=%r)' % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4 -- the refusal floor: no bundle directory under the fixture root.
+        root = build(tmp, {'ui/src/App.tsx': SITE_BARE})
+        rc, said = run(root)
+        if rc != 2 or 'refused: expected' not in said:
+            print('  x rung 4: a fixture without a bundle must refuse rc 2 '
+                  '(rc=%r said=%r)' % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5 -- --self-test dispatch flows through argv; re-entry is guarded.
+        root = build(tmp, {'shared-ui/locales/en.ftl': BARE,
+                           'ui/src/App.tsx': SITE_BARE})
+        rc, said = run(root, '--self-test')
+        if rc != 0 or 'SELF-TEST OK' not in said or 'ladder re-entry' not in said:
+            print('  x rung 5: --self-test through argv must pass rc 0 and skip the '
+                  'nested ladder (rc=%r said=%r)' % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print('FTL-ATTRS SHELL LADDER OK (%d cases through argv and root, '
+          'no repository file touched)' % shell)
+    return 0
+
+
+def main(argv=None, root=None) -> int:
+    """r187: argv and root parameterized, the r166..r186 contract -- root
+    redirects the bundle directory AND the scan tree together."""
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--self-test', action='store_true',
                     help='run the extractor cases and exit; touches no files')
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     if args.self_test:
         return _self_test()
 
-    if not LOCALES.is_dir() or not SCAN_ROOT.is_dir():
-        print('refused: expected %s and %s to exist' % (LOCALES, SCAN_ROOT))
+    base = REPO if root is None else Path(root).resolve()
+    locales = base / 'shared-ui' / 'locales'
+    scan_root = base / 'ui' / 'src'
+    if not locales.is_dir() or not scan_root.is_dir():
+        print('refused: expected %s and %s to exist' % (locales, scan_root))
         return 2
 
-    en = load_en()
-    findings, unresolved, scanned = scan_tree(SCAN_ROOT, en)
+    en = load_en(locales)
+    findings, unresolved, scanned = scan_tree(scan_root, en, base)
     for line in findings:
         print(line)
     print('scanned %d file(s) against %d EN message(s); %d attr site(s) unresolvable'
