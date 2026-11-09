@@ -9850,3 +9850,54 @@ ftl-orphans (r223) limits stand. Docker daemon still down (probed
 r159): E2E / llvm-cov / nextest-junit receipts remain PG-gated.
 Root-policy RED on the foreign todo.md (r174); core-size RED on the
 ADR-59 +64 (r181) -- both await their owning lanes.
+
+### Round 225 (2026-11-09) -- bundle-parity: the two-glob gate on fixtures, all six buckets reachable
+
+verify-bundle-parity.py read ROOT twice as paths (UI_SRC_DIR,
+LOCALE_DIR) and once as a join (ROOT / raw for --staged-only
+positionals) and once for rel paths. main(argv=None, root=None)
+resolves base and re-derives ui_src and locale_dir from it; the staged
+positional join and the relative_to() that feeds every file:line print
+follow. Six rungs, and the design note is that the fixture is the
+SMALLEST in the arc: one .ftl pair (demo.ftl / demo.id.ftl) plus one
+.tsx — because this gate's evidence is exactly "a locale pair and the
+tree that consumes it", so a complete fixture is four short strings,
+not a git repo.
+
+The rungs: the killing rung (a site missing from BOTH bundles fails
+rc 1 at "[ui/src/features/demo.tsx:2] missing-key-zz"; the checkout
+measures "0 missing key(s)." at rc 0 — rc-keyed kill, probe225
+confirmed), the complete pair reading clean, the id-only bucket firing
+on its own with its own label, --report-only printing the same finding
+at rc 0, --staged-only joining the positional under the FIXTURE and
+grading it strictly (rc 1, and the assertion checks that the
+informational "none are eligible" zero did NOT fire), and --scan-dirs
+naming no directory refusing rc 2 under the fixture's ui/src.
+
+Rung 5 deserves its note: --staged-only's no-eligible-files path exits 0
+by design ("nothing verified, no regression introduced"), which is the
+same shape as the hollow-corpus holes rounds 216 and 221 fixed elsewhere.
+Here it is NOT a hole — the gate says so loudly, on stderr, with the
+count of paths it dropped — but the rung asserts the ABSENCE of that
+zero anyway, because the two zeros (nothing-eligible vs. real verdict)
+must never be confusable in a rung either.
+
+Self-test reads "SELF-TEST OK (6 cases, no files touched)" plus the
+6-rung ladder; live run unchanged: "verify-bundle-parity: 0 missing
+key(s)." at exit 0.
+
+Honest limits: the ladder grades the default <Localized> surface only —
+getString, navkeys, key-fields, id-maps and dynamic literals are graded
+by the extractor self-test on synthetic strings (6 cases), not by a
+rung through main, because a fixture exercising all six surfaces is a
+fixture of the PATTERN, not of the seam, and the seam is what this arc
+moves; the programmatic-id count stays documented as approximate (its
+docstring says so); and --check-domain-pairs is untouched by the seam
+(it reads the same two locale globs, already re-derived). The
+scoped-reads (r213), retire (r214), state-closure (r216),
+fluent-families (r217), scratch-leaks (r218), shadow-copies (r219),
+chokepoints (r220), reentry-guards (r221), feature-registry (r222),
+ftl-orphans (r223), and unwrap-panic (r224) limits stand. Docker daemon
+still down (probed r159): E2E / llvm-cov / nextest-junit receipts
+remain PG-gated. Root-policy RED on the foreign todo.md (r174);
+core-size RED on the ADR-59 +64 (r181) — both await their owning lanes.
