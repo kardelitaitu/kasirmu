@@ -99,15 +99,17 @@ PRESET_WORD_RE = re.compile(r"\bpreset\b|\bOwner\b|\bManager\b|\bStaff\b|\bAdmin
 SELF_AWARE_RE = re.compile(r"is not a preset|not a preset line|inside `ALL_ENFORCED`", re.IGNORECASE)
 
 
-def inventory_span() -> tuple[int, int]:
+def inventory_span(src=None) -> tuple[int, int]:
     """Line numbers where ALL_ENFORCED starts and the file ends.
 
     Computed, not hardcoded: the whole point of this gate is that line numbers in
     this file move. A hardcoded span would pass forever after the first refactor.
+    r196: the source file follows the contract root.
     """
-    if not PRESETS_SRC.is_file():
-        raise SystemExit(f"SCAN BROKE: {PRESETS_SRC} not found")
-    lines = PRESETS_SRC.read_text(encoding="utf-8", errors="replace").splitlines()
+    src = PRESETS_SRC if src is None else Path(src)
+    if not src.is_file():
+        raise SystemExit(f"SCAN BROKE: {src} not found")
+    lines = src.read_text(encoding="utf-8", errors="replace").splitlines()
     for i, line in enumerate(lines, start=1):
         if "pub const ALL_ENFORCED" in line:
             return i, len(lines)
@@ -222,17 +224,23 @@ def table_detector_still_fires() -> bool:
         return False
     return all(not ungraded_table_citations(s) for s in must_pass)
 
-def scan() -> tuple[list[str], int]:
-    """Find offending doc lines. Returns (findings, files_read)."""
-    start, end = inventory_span()
+def scan(root=None) -> tuple[list[str], int]:
+    """Find offending doc lines. Returns (findings, files_read).
+
+    r196: the presets source and the docs tree follow the contract root
+    together -- a root redirecting the corpus but not the span source would
+    grade citations against a file that exists nowhere.
+    """
+    base = REPO if root is None else Path(root).resolve()
+    start, end = inventory_span(base / "platform" / "core" / "src" / "rbac_presets.rs")
     findings: list[str] = []
     read = 0
-    for root in DOC_ROOTS:
-        base = REPO / root
-        if not base.is_dir():
+    for root_name in DOC_ROOTS:
+        docs = base / root_name
+        if not docs.is_dir():
             continue
-        for path in sorted(base.rglob("*.md")):
-            rel = path.relative_to(REPO).as_posix()
+        for path in sorted(docs.rglob("*.md")):
+            rel = path.relative_to(base).as_posix()
             if rel.startswith(DOC_SKIP_PREFIXES):
                 continue
             read += 1
@@ -296,17 +304,101 @@ def self_test() -> int:
     if read == 0:
         bad.append("the live scan read 0 markdown files")
 
-    if bad:
-        sys.stderr.write("SELF-TEST WRONG:\n" + "\n".join(bad) + "\n")
-        return 2
-    print(f"SELF-TEST OK ({cases} cases; the last reads the real tree)")
+    # r196: the shell -- argv and root graded against a tempdir, the
+    # r166..r195 pattern. A synthetic presets file supplies the span; no git
+    # is needed because the scan is rglob-only.
+    import contextlib as _ctx
+    import io as _io
+    from pathlib import Path as _Path
+    import tempfile as _tempfile
+    shell = 0
+    PRESETS = ("//! synthetic rbac presets\n"
+               "pub const ROLE_PRESETS: &[RolePreset] = &[];\n"
+               "pub const ALL_ENFORCED: &[&str] = &[\n"
+               "    permissions::KEY_ONE,\n"
+               "    permissions::KEY_TWO,\n"
+               "];\n")
+    with _tempfile.TemporaryDirectory() as td:
+        def make(files):
+            base = _Path(td)
+            for rel, content in files.items():
+                dst = base / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_text(content, encoding="utf-8")
+            return base
+        def run(*extra, root=None):
+            out, err = _io.StringIO(), _io.StringIO()
+            try:
+                with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                    rc = main(argv=list(extra), root=root)
+            except SystemExit as se:
+                return se.code, out.getvalue() + err.getvalue()
+            return rc, out.getvalue() + err.getvalue()
+        shell += 1
+        base = make({"platform/core/src/rbac_presets.rs": PRESETS,
+                     "docs/note.md": "granted only to MANAGER/ADMIN/OWNER (rbac_presets.rs:4)\n"})
+        rc, text = run(root=base)
+        if rc != 1 or "READS THE CONSTANT INVENTORY AS A ROLE PRESET" not in text:
+            print("  x an inventory-span preset citation must fail rc 1 (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        if "docs/note.md:1" not in text:
+            print("  x the finding must name the doc and its line", file=sys.stderr)
+            return 1
+        shell += 1
+        make({"docs/note.md": "the inventory is not a preset line; see ALL_ENFORCED\n"})
+        rc, text = run(root=base)
+        if rc != 0 or "no doc reads the inventory as a preset" not in text:
+            print("  x a self-aware correction must read clean (rc=%r text=%r)" % (rc, text[-90:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        make({"docs/table.md": "| Guard | yes | crates/core/src/db/x.rs:249 |\n"})
+        rc, text = run(root=base)
+        if rc != 1 or "without backticks" not in text:
+            print("  x a bare table citation in a LIVE doc must be flagged (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # the same row under docs/records/ is rule-2 exempt -- a record is
+        # evidence of THEN, not a claim to grade
+        (base / "docs" / "table.md").unlink()
+        make({"docs/records/2026/table.md": "| Guard | yes | crates/core/src/db/x.rs:249 |\n"})
+        rc, text = run(root=base)
+        if rc != 0 or "no doc reads" not in text:
+            print("  x a dated record's bare table citation is exempt (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # no markdown at all is a broken scan, not a clean one -- every doc
+        # the ladder wrote so far must be gone, note.md included
+        for gone in sorted((base / "docs").rglob("*.md")):
+            gone.unlink()
+        rc, text = run(root=base)
+        if rc != 2 or "SCAN READ NOTHING" not in text:
+            print("  x zero markdown read must refuse rc 2, not pass (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # a missing span source is a SCAN BROKE refusal naming the path
+        (base / "platform" / "core" / "src" / "rbac_presets.rs").unlink()
+        rc, text = run(root=base)
+        if not (isinstance(rc, str) and "SCAN BROKE" in rc and "rbac_presets.rs" in rc):
+            print("  x a missing presets source must fail loudly (rc=%r)" % (rc,), file=sys.stderr)
+            return 1
+    if bad if False else False:
+        return 1
+    print(f"SELF-TEST OK ({cases} pure + {shell} shell cases; the last shell case "
+          "reads a synthetic tree, the pure ones the real one)")
     return 0
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r196: argv and root parameterized, the r166..r195 contract -- root
+    redirects the presets source AND the docs corpus together."""
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--self-test", action="store_true", help="run this checker's cases and exit")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     if args.self_test:
         return self_test()
 
@@ -317,7 +409,7 @@ def main() -> int:
         print("DETECTOR WENT DEAF: rule 2 no longer matches a bare table citation.", file=sys.stderr)
         return 2
 
-    findings, read = scan()
+    findings, read = scan(root)
     if read == 0:
         print("SCAN READ NOTHING: no markdown under docs/. Refusing to report clean.", file=sys.stderr)
         return 2
