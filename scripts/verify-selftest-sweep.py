@@ -293,6 +293,22 @@ def _shell_ladder_body() -> int:
     therefore also a COST rung -- a root-blind main would take minutes, not
     return a single verdict.
 
+    NOT PROVEN BY MUTATION, and stated rather than left to be assumed. r246's
+    scripts/prove-ladder-kills.py mutates root resolution and this ladder
+    SURVIVES, because `main()` resolves root TWICE: `checkers(root)` builds
+    the roster and `base` sets each subprocess's cwd. Mutating either one
+    alone leaves the other correct, so the sweep still reads the fixture and
+    still greens -- correctly. That is the harness's blind spot (it rewrites
+    one anchor), not a defect in the ladder: mutating BOTH makes the sweep read
+    the real tree. But that paired result must NOT be read as proof either, and
+    round 246 measured why: the real roster currently contains a FAILING
+    checker (verify-lane.sh exits 2), so a root-blind main returns rc 1 against
+    the fixture's all-green expectation for the WRONG REASON -- it is red
+    because the repository is red, not because the rung graded anything. The
+    rung would pass this mutation while ranking below every fixture case here.
+    So this ladder's kill is UNPROVEN, not merely undemonstrated, and that is
+    recorded rather than papered over with the accident that happens to work.
+
     Rung 3 grades the bucket boundary this file's own history is about: a
     checker that declares --self-test in a PROSE comment but rejects the flag
     must land in "FAILED ... FLAG REJECTED", never in a bucket of its own.

@@ -10945,3 +10945,54 @@ about whether a rung pins the behaviour it names; the substring defect in
 round 242 was a pinning bug that this harness caught only because it was
 root-adjacent. A rung can still be weak and pass here.
 
+### Round 247 (2026-11-09) -- the harness turned on this arc's own ladders, and one claim did not survive
+
+The round-246 harness was run against every ladder this arc shipped. The
+result is reported whole, including the parts that are not flattering.
+
+  * KILLED cleanly: check-pipeline-verdicts, check-ftl-attrs,
+    verify-settled-read-copies, verify-ui-coverage-floors. Their rung 1 does
+    grade the root contract.
+
+  * NO APPLICABLE MUTATION: check-dead-controls, check-orphan-prototype-files,
+    check-register-hygiene, verify-workflow-syntax, check-merged-lines,
+    check-fixture-ftl-keys, verify-shell-registration -- seven of the nine.
+    These checkers resolve their root in shapes the harness does not model
+    (a parameter named `register_path`, a `Path(root or ROOT)` inline, a
+    function-local base). Their ladders remain UNPROVEN by this method. The
+    earlier rounds documented these as killing rungs on the reasoning that a
+    root-blind main would grade the real tree differently -- reasoning that was
+    wrong twice already. It may still be right for these seven, but "may still
+    be right" is not what the earlier entries said, and this round does not
+    upgrade it.
+
+  * SURVIVED: verify-selftest-sweep.
+
+The sweep deserves its own paragraph because the first attempt to explain it
+away was wrong. The single-anchor mutant survived because `main()` resolves
+root TWICE -- `checkers(root)` builds the roster and `base` sets each
+subprocess's cwd -- so mutating either alone leaves the sweep correct. That
+looks like a harness blind spot, and the obvious repair is a paired mutation.
+Measured: the paired mutant returns rc 1, which looks like a kill. It is not.
+The real roster currently contains a failing checker (verify-lane.sh exits 2),
+so a root-blind sweep is red because THE REPOSITORY IS RED, not because rung 1
+graded the fixture. The rung would accept that mutant for the wrong reason --
+a kill by accident is not a proof, and a mutation that only dies while some
+unrelated checker is broken is worse than a mutation that never dies, because
+it will silently stop proving anything the day that checker is fixed.
+
+That correction is written into the ladder's own docstring rather than only
+into this register, so the next reader sees it where the claim was made.
+
+Measured: self-tests unchanged and green (sweep "5 cases + 4 shell cases"),
+live sweep gate unchanged. The seven unproven ladders are unchanged CODE and
+downgraded CLAIMS.
+
+Honest limits: this round produced no new contract coverage -- the census stays
+at 30 of 70 -- and its product is a correction, not a feature. The harness
+models five mutation shapes and will mislabel a checker whose root has two
+uses; that is exactly what happened here, and the fix was to report the
+ambiguity rather than to widen the table until the desired answer appeared.
+Seven ladders now carry "unproven" where they previously implied "proven".
+That is a worse-looking file and a truer one.
+
