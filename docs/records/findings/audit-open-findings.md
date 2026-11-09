@@ -8372,3 +8372,45 @@ mirroring the real renderability distribution. Docker daemon still down
 standing PG-gated gap. The root-policy gate remains RED on the foreign
 todo.md (r174) and verify-core-size RED on the ADR-59 +64 (r181), both
 awaiting their owning lanes.
+
+### Round 193 (2026-11-09) -- unsafe-safety joins the arc; the /target/ skip meets its only reachable shape
+
+The r166..r192 contract applied to the SAFETY-justification gate:
+main(argv, root) with base = ROOT or the resolved root, handed whole to
+scan(base) -- which already took a root and ran git grep with cwd=root, so
+this round is the smallest parameterization of the arc so far.
+
+Four shell cases, and the fixture class is NEW for the arc: tempdir GIT
+REPOSITORIES, because scan() lists sources with git grep and a plain
+directory lists nothing (the no-sources path would grade the wrong arm).
+A justified construct reads OK with its census; an unmarked construct
+fails rc 1 naming file:line; a prose-only file ("// no unsafe code here")
+yields the empty-population refusal rc 1 -- the grep matched, the scanner
+found nothing real; and an unmarked construct under a NESTED target/
+vanishes while the marked one at the root still counts.
+
+The last case found a live-shape fact worth recording: SKIP_PATH_PARTS
+matches "/target/" WITH a leading slash, but git grep prints root-relative
+paths, so a root-level target/ directory never carries one. The skip is
+reachable only for nested targets (crates/*/target/...), and even those
+are normally gitignored anyway -- the constant is closer to dead code than
+its comment suggests. The fixture grades the reachable nested shape and
+leaves the root-level blind spot recorded here for a deliberate fix
+(match r"^target/" too) rather than an unexamined constant widening.
+The same blind spot would surface as "no sources" -- exit 1, fail-closed
+-- which is the honest failure direction for a safety gate.
+
+Measured kill: the root-dropping main mutant dies on the OK case -- the
+real tree's 43 justified constructs print their own OK where the fixture
+demands a census of exactly one; the prose-only and unmarked cases would
+kill too. The capture carries the live census: unsafe-safety: OK (43
+construct(s), every one justified).
+
+Honest limits: the LOOKBACK=12 window's boundary (marker exactly 12 lines
+up) is graded only by the pre-existing scratch-repo case, not through
+main(); the "could not list sources" arm (git grep crashing) is graded by
+no case; the ATTRIBUTE_RE skip (deny/allow declarations) has no main()
+case. Docker daemon still down (probed r159): the E2E / llvm-cov /
+nextest-junit receipts remain the standing PG-gated gap. The root-policy
+gate remains RED on the foreign todo.md (r174) and verify-core-size RED on
+the ADR-59 +64 (r181), both awaiting their owning lanes.
