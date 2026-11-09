@@ -46,12 +46,28 @@ Exit 0 clean, 1 finding(s), 2 refused/self-test failure.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 LOCALES = REPO / 'shared-ui' / 'locales'
+
+#: Where fixtures are written when the host sets a temp variable. A host whose
+#: confinement denies files under its default temp (measured 2026-11-09 on the
+#: agent host: every write into a TemporaryDirectory is EPERM) can point this at
+#: a directory it allows; unset leaves tempfile's own default in force.
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root this file's fixtures are written under (None = system default)."""
+    import os
+    return next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+
 SCAN_ROOT = REPO / 'ui' / 'src'
 
 LOCALIZED = re.compile(r"<Localized\b")
@@ -206,7 +222,8 @@ def _self_test() -> int:
     ]
     import tempfile
     bad = 0
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as tmp:
         root = Path(tmp)
         for name, body, want_hits, want_unres in cases:
             f = root / 'case.tsx'
@@ -230,7 +247,8 @@ def _self_test() -> int:
     import tempfile as _tempfile
     shell = 0
     def _shell(files):
-        with _tempfile.TemporaryDirectory() as td:
+        with _tempfile.TemporaryDirectory(dir=fixture_root(),
+                                           ignore_cleanup_errors=True) as td:
             base = Path(td)
             for rel, content in files.items():
                 dst = base / rel
@@ -269,7 +287,124 @@ def _self_test() -> int:
         return 1
     print('SELF-TEST %s (%d cases + %d shell cases)'
           % ('FAILED' if bad else 'OK', len(cases), shell))
-    return 1 if bad else 0
+    if bad:
+        return 1
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard for the ladder (r244 -- the r228 lesson).
+
+    Rung 5 drives --self-test through argv from INSIDE the ladder, and the
+    self-test ends in this call, so without the guard that nested run recurses.
+    """
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        print('  (ladder re-entry from a nested --self-test: skipped)')
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """r244: the root contract, graded on fixture ui/src + locales trees.
+
+    Rung 1 IS the killing rung, and this checker gives it an extra edge: the
+    fixture bundle DEFINES a key the fixture page does not request and omits
+    the attribute the page does request. A main() that ignored its root would
+    grade this repository instead, whose real bundle and real pages agree --
+    so a root-blind run cannot produce the finding rung 1 demands.
+
+    Rung 3 grades the resolver's dynamic half through main(): a conditional id
+    whose FIRST branch is fine and whose SECOND omits the attribute must still
+    be a finding. That is the exact shape of all three real defects, and
+    before this round no rung executed it end to end.
+    """
+    def build(tmp, files, label='fx'):
+        """A fixture root holding the given {relative path: text} files."""
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix=label + '_'))
+        for rel, text in files.items():
+            p = base / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text, encoding='utf-8', newline=chr(10))
+        return base
+
+    def run(root_dir, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root_dir))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    BARE = 'k-bare = Enter a key' + chr(10)
+    WITH_ATTR = ('k-bare = Enter a key' + chr(10)
+                 + '    .placeholder = API key' + chr(10))
+    SITE_BARE = ('<Localized id="k-bare" attrs={{ placeholder: true }}>'
+                 '<input /></Localized>' + chr(10))
+    SITE_COND = ("<Localized id={f ? 'k-attr' : 'k-bare'} "
+                 "attrs={{ placeholder: true }}><input /></Localized>" + chr(10))
+    ATTR_FTL = ('k-attr = Fine' + chr(10) + '    .placeholder = Fine' + chr(10)
+                + 'k-bare = Enter a key' + chr(10))
+
+    shell = 0
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as tmp:
+        # rung 1 -- the killing rung: the fixture's undefined attribute is named.
+        root = build(tmp, {'shared-ui/locales/en.ftl': BARE,
+                           'ui/src/App.tsx': SITE_BARE})
+        rc, said = run(root)
+        if rc != 1 or 'ui/src/App.tsx:1' not in said or 'k-bare' not in said:
+            print('  x rung 1: an undefined attribute must exit 1 naming file:line and '
+                  'the message (rc=%r said=%r)' % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2 -- defining the attribute clears the same site.
+        root = build(tmp, {'shared-ui/locales/en.ftl': WITH_ATTR,
+                           'ui/src/App.tsx': SITE_BARE})
+        rc, said = run(root)
+        if rc != 0 or 'OK: every resolvable' not in said:
+            print('  x rung 2: a defined attribute must exit 0 clean '
+                  '(rc=%r said=%r)' % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3 -- a conditional id checks BOTH branches end to end.
+        root = build(tmp, {'shared-ui/locales/en.ftl': ATTR_FTL,
+                           'ui/src/App.tsx': SITE_COND})
+        rc, said = run(root)
+        if rc != 1 or "message 'k-bare' defines no attribute" not in said:
+            print('  x rung 3: a conditional id must check its second branch too '
+                  '(rc=%r said=%r)' % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4 -- the refusal floor: no bundle directory under the fixture root.
+        root = build(tmp, {'ui/src/App.tsx': SITE_BARE})
+        rc, said = run(root)
+        if rc != 2 or 'refused: expected' not in said:
+            print('  x rung 4: a fixture without a bundle must refuse rc 2 '
+                  '(rc=%r said=%r)' % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5 -- --self-test dispatch flows through argv; re-entry is guarded.
+        root = build(tmp, {'shared-ui/locales/en.ftl': BARE,
+                           'ui/src/App.tsx': SITE_BARE})
+        rc, said = run(root, '--self-test')
+        if rc != 0 or 'SELF-TEST OK' not in said or 'ladder re-entry' not in said:
+            print('  x rung 5: --self-test through argv must pass rc 0 and skip the '
+                  'nested ladder (rc=%r said=%r)' % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print('FTL-ATTRS SHELL LADDER OK (%d cases through argv and root, '
+          'no repository file touched)' % shell)
+    return 0
 
 
 def main(argv=None, root=None) -> int:

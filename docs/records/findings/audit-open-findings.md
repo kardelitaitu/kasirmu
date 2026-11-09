@@ -10798,3 +10798,36 @@ own. The corpus moves -- this round read 73 scripts where r188 recorded 71 --
 so the live-gate count is a measurement of THIS tree, not a stable constant,
 and no rung asserts it. Two subagents were given this round's neighbouring
 checkers; their work is separate and is not verified by anything here.
+
+### Round 244 (2026-11-09) -- ftl-attrs: the dynamic-id resolver graded end to end, for the first time
+
+check-ftl-attrs.py (307 lines) was the next census target, "missing ladder". It
+already took `root`; this round adds the guard and five rungs through
+`main(argv, root)`.
+
+Rung 1 kills with an extra edge over the earlier rounds: the fixture bundle
+DEFINES a key the fixture page never requests and OMITS the attribute the page
+does request. This repository's real bundle and real call sites agree (live:
+1575 files against 5791 messages, 0 unresolvable), so a root-blind main would
+print that agreement and could not produce the finding rung 1 demands.
+
+Rung 3 is this file's reason for existing, executed end to end for the first
+time. The three defects that motivated this gate were all behind
+`id={flag ? 'a' : 'b'}`, where the FIRST branch was fine and the SECOND was not
+-- a resolver that walks back to the nearest literal id finds the wrong message
+and reports 0. The detector case for this shape already existed, but nothing
+ran it through the sweep, so the path a reader actually relies on was ungraded.
+
+Measured: census 29 of 70 contracted (was 28). Ladder 5 rungs; self-test 5
+cases + 4 shell cases. Live gate unchanged: "scanned 1575 file(s) against 5791
+EN message(s); 0 attr site(s) unresolvable", "OK: every resolvable attrs
+request is defined on its message".
+
+Honest limits: the ladder grades the shell, both resolver directions and the
+refusal floor; it does not re-grade `blank_comments` or `parse_bundle`'s
+message split, which the five detector cases own. The unresolvable count is
+reported, not graded -- a site whose id comes from a JS variable is counted and
+skipped by design, so "0 unresolvable" on the live tree is a measurement of
+THIS tree and no rung pins it. The "0 attr site(s) unresolvable" half of the
+line is therefore a number this gate prints, not a property it has earned.
+
