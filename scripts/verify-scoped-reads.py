@@ -129,6 +129,8 @@ import os
 import re
 import subprocess
 import sys
+import contextlib
+import pathlib
 import shutil
 import tempfile
 import time
@@ -3478,13 +3480,135 @@ def self_test():
     failures += _api_exclusion_self_test()
     failures += _exclusion_predicate_self_test()
     failures += _schema_self_test()
+    failures += shell_ladder()
     print(f"  self-test: {'PASS' if failures == 0 else f'FAIL ({failures})'}")
     return 0 if failures == 0 else 1
 
 
-def main(argv=None):
+
+def shell_ladder():
+    """r211: six rungs through main(argv, root=fixture) -- the root contract.
+
+    argv stays empty on every rung: the tree is named by the PARAMETER, not by a
+    flag, which is the seam the arc's contract adds. Rung 1 is the killing rung --
+    the fixture's command exists only in the fixture, so a root-dropping main
+    grades the checkout's own clean desktop section and the verdict differs.
+    """
+    rung_n = iter(range(1000))
+    failures = 0
+    shell = 0
+    def run(*argv, root=None):
+        out, err = io.StringIO(), io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = main(argv=list(argv), root=root)
+        except SystemExit as se:
+            return se.code, out.getvalue(), err.getvalue()
+        return rc, out.getvalue(), err.getvalue()
+    def build(tmp, allow, *, uses=True, guards=False, with_ui=True, with_api=True):
+        root = pathlib.Path(tmp) / ("mini%d" % next(rung_n))
+        if with_ui:
+            (root / "ui/src/api/client").mkdir(parents=True, exist_ok=True)
+            (root / "ui/src/features/pos").mkdir(parents=True, exist_ok=True)
+            (root / "ui/src/api/client/products.ts").write_text(
+                "export const wv0_zz_gap_cmd = async (t: string) => "
+                "loggedInvoke<any>('zz_gap_cmd', { t });\n"
+                "export const wv0_zz_ok_cmd = async (t: string) => "
+                "loggedInvoke<any>('zz_ok_cmd', { t });\n", encoding="utf-8")
+            if with_api is False:
+                shutil.rmtree(root / "ui/src/api")
+            if uses:
+                (root / "ui/src/features/pos/Uses.tsx").write_text(
+                    "export const useIt = async (t: string) => "
+                    "{ await wv0_zz_gap_cmd(t); };\n", encoding="utf-8")
+            if guards:
+                (root / "ui/src/features/pos/Guards.tsx").write_text(
+                    "export const g = async (sessionToken: string, t: string) => {\n"
+                    "  return sessionToken\n"
+                    "    ? await wv0_zz_ok_cmdScoped(sessionToken, t)\n"
+                    "    : await wv0_zz_ok_cmd(t);\n"
+                    "};\n", encoding="utf-8")
+        (root / "scripts").mkdir(parents=True, exist_ok=True)
+        (root / "scripts/ipc-parity-allowlist.json").write_text(
+            json.dumps(allow, indent=2) + "\n", encoding="utf-8")
+        return root
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 (killing): a bare call of a fixture-only command -- rc 1, the
+        # verdict names the command, and every evidence source came from root
+        root = build(tmp, {"desktop": ["zz_gap_cmd"], "tablet": [],
+                           "dev_mock": [], "scoped_orphans": []})
+        rc, out, err = run(root=root)
+        if rc != 1 or "FAIL: 1 call site(s)" not in out \
+                or "zz_gap_cmd is not registered in that shell" not in out:
+            print("  x rung 1: an unguarded call must fail rc 1 naming the command "
+                  "(rc=%r tail=%r err=%r)" % (rc, out[-170:], err[-120:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: the ADR #7 ternary clears the same shape -- rc 0, clean, and the
+        # clearance line says which shell, file and command were cleared
+        root = build(tmp, {"desktop": ["zz_ok_cmd"], "tablet": [],
+                           "dev_mock": [], "scoped_orphans": []},
+                     uses=False, guards=True)
+        rc, out, err = run(root=root)
+        if rc != 0 or "clean for desktop." not in out \
+                or "cleared by the guard window: 1 (desktop 1)" not in out:
+            print("  x rung 2: a guarded call must pass rc 0 with a clearance line "
+                  "(rc=%r tail=%r)" % (rc, out[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: the allowlist the contract root names is missing -- refusal rc 2
+        root = build(tmp, {"desktop": ["zz_gap_cmd"], "tablet": [],
+                           "dev_mock": [], "scoped_orphans": []})
+        (root / "scripts/ipc-parity-allowlist.json").unlink()
+        rc, out, err = run(root=root)
+        if rc != 2 or "error:" not in err or "does not exist" not in err:
+            print("  x rung 3: a missing allowlist must refuse rc 2 (rc=%r err=%r)"
+                  % (rc, err[-170:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: parsed JSON that is a list -- refusal rc 2, the same family
+        root = build(tmp, [])
+        rc, out, err = run(root=root)
+        if rc != 2 or "not an object" not in err:
+            print("  x rung 4: a top-level list must refuse rc 2 (rc=%r err=%r)"
+                  % (rc, err[-170:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: no ui/src at all, WITH a name to grade -- the corpus refusal,
+        # reached only when there is something to grade (an empty section returns
+        # 0 before the walk, which rung 2's family already proves the other way)
+        root = build(tmp, {"desktop": ["zz_gap_cmd"], "tablet": [],
+                           "dev_mock": [], "scoped_orphans": []}, with_ui=False)
+        rc, out, err = run(root=root)
+        if rc != 2 or "corpus this gate grades is not there" not in err:
+            print("  x rung 5: a missing corpus with a name to grade must refuse "
+                  "rc 2 (rc=%r err=%r)" % (rc, err[-170:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 6: a corpus but no api layer -- the wrapper-surface refusal
+        root = build(tmp, {"desktop": ["zz_gap_cmd"], "tablet": [],
+                           "dev_mock": [], "scoped_orphans": []}, with_api=False)
+        rc, out, err = run(root=root)
+        if rc != 2 or "wrapper surface this gate grades is not there" not in err:
+            print("  x rung 6: a missing api layer must refuse rc 2 (rc=%r err=%r)"
+                  % (rc, err[-170:]), file=sys.stderr)
+            return 1
+        shell += 1
+    if shell != 6:
+        print("  x shell ladder counted %d rungs, expected 6" % shell, file=sys.stderr)
+        return 1
+    print("SCOPED-READS SHELL LADDER OK (6 cases through argv and root, no repository file touched)")
+    return 0
+
+
+def main(argv=None, root=None):
     # argv is a parameter, not only sys.argv, so --self-test can drive the real main() over
     # a probe allowlist and prove the wiring rather than prove a copy of the logic.
+    # r211: root is the arc's contract parameter -- the explicit-parameter form of
+    # --repo, threaded through the SAME validator so a wrong root is refused by the
+    # same handler, the same 'error:' voice and the same code. The named tree still
+    # grades against ITS OWN policy copy unless --allowlist says otherwise.
     ap = build_argparser()
     args = ap.parse_args(argv)
 
@@ -3499,10 +3623,14 @@ def main(argv=None):
         # the surfaces line already names the allowlist graded (inside the named tree
         # unless --allowlist says otherwise), and stdout's line layout is pinned
         # line-for-line by the self-test's refusal cases.
-        repo, how_repo = resolve_repo_flag(args.repo)
+        if root is not None:
+            repo, how_repo = resolve_repo_flag(root)
+            how_repo = "the contract root"
+        else:
+            repo, how_repo = resolve_repo_flag(args.repo)
         if args.allowlist:
             allowlist, how = resolve_allowlist(args.allowlist)
-        elif args.repo:
+        elif args.repo or root is not None:
             # The named tree grades against ITS OWN policy copy, the way audit()'s repo=
             # seam always implied; an explicit --allowlist still wins.
             allowlist = os.path.join(repo, "scripts", "ipc-parity-allowlist.json")
