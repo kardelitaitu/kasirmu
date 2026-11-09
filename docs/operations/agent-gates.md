@@ -1904,7 +1904,7 @@ is not:
 `verify-scoped-reads.py --shell tablet` prints `clean for tablet` at **exit 0** with **0 finding(s)**,
 and the visibility line on a bare `--shell desktop` run reports `tablet: 0 unguarded call site(s)
 across 0 file(s) and 0 command(s), 64 cleared` — the tablet half was repaired between `e6d211b98`
-(2026-09-16) and now. The wiring moved too: `scripts/check.sh:224` and
+(2026-09-16) and now. The wiring moved too: `scripts/check.sh:251` and
 `.github/workflows/dev-ci.yml:1718` run `--shell desktop,tablet`, so neither section is left
 ungraded by the required gate, and the "defaults to desktop, and that is what CI runs" bullet
 describes an older invocation rather than today's. The reasoning above is unchanged and still the
@@ -3285,7 +3285,7 @@ $ TEMP=<repo>/target/.tmp-check  python scripts/verify-agents-mirrors.py --self-
   count line: 39 green = 31 CAUGHT + 8 CLEAN; 1 red; exit 1
 ```
 
-`scripts/check.sh:387-388` sets `TMP` and `TEMP` to `$PWD/target/.tmp-check`. The mirrors
+`scripts/check.sh:417-418` sets `TMP` and `TEMP` to `$PWD/target/.tmp-check`. The mirrors
 self-test builds its fixtures with `tempfile.TemporaryDirectory()`, so under the matrix those live
 **inside the checkout**, and `committed_hook_text` runs `git show HEAD:.githooks/pre-commit` with
 `cwd=<fixture>`. Git walks UP from its cwd, so instead of failing it answered with the REAL

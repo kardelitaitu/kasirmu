@@ -32,7 +32,7 @@ Select the matching merchant category preset. **The provisionable presets are on
 - **F&B with service charge:** `ppn11_service5` — the same PPN 11% plus the seeded **Service 5%** row (`tax-service-5`, `rate_bps=500`).
 - **Tax-free:** `tax_free`.
 
-**PB1 / Pajak Restoran is NOT a provisionable preset.** `"PB1"` exists only as a *receipt descriptor* string on the tax-regime field (`crates/kasirmu-core/src/regional.rs:643`, `db/receipt_formats.rs:452`) — there is no PB1 rate row, and nothing seeds a 10%. A restaurant that must charge PB1 sets its own `tax_rates` row; the 10% here was this document's assumption, not a shipped default. (Corrected 11-10-26.)
+**PB1 / Pajak Restoran is NOT a provisionable preset.** `"PB1"` exists only as a *receipt descriptor* string on the `tax_regime` field (`crates/kasirmu-core/src/regional.rs:666`, `db/receipt_formats.rs:452`) — there is no PB1 rate row, and nothing seeds a 10%. A restaurant that must charge PB1 sets its own `tax_rates` row; the 10% here was this document's assumption, not a shipped default. (Corrected 11-10-26.)
 
 ### Step 4: Hardware Pairing & Thermal Printer Test Chit
 1. Connect 58mm or 80mm ESC/POS thermal printer via USB, Bluetooth, or LAN.
