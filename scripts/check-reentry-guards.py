@@ -480,7 +480,7 @@ def _handler_body(lines, start):
     return "\n".join(body)
 
 
-def scan_text(text):
+def scan_text(text, root=ROOT):
     """Same logic as scan_file, on an in-memory string (used by --self-test)."""
     import tempfile
     with tempfile.NamedTemporaryFile(
@@ -488,11 +488,13 @@ def scan_text(text):
         handle.write(text)
         path = handle.name
     try:
-        return scan_file(path)
+        return scan_file(path, root=root)
     finally:
         os.unlink(path)
 
-def scan_file(path):
+def scan_file(path, root=ROOT):
+    # r221: root is the r166 contract seam -- the reported file path is relative
+    # to the graded tree, so a fixture's candidate names a fixture file.
     with open(path, encoding="utf-8", errors="replace") as handle:
         lines = handle.read().splitlines()
     found = []
@@ -511,7 +513,7 @@ def scan_file(path):
         if not writes or not WRITE_NAME.search(name):
             continue
         found.append({
-            "file": os.path.relpath(path, ROOT).replace(os.sep, "/"),
+            "file": os.path.relpath(path, root).replace(os.sep, "/"),
             "line": i + 1,
             "flag": "set%s" % m.group(1),
             "handler": name,
@@ -531,17 +533,144 @@ def iter_sources(root):
             yield os.path.join(dirpath, name)
 
 
-def main():
+
+def shell_ladder() -> int:
+    """r221: the root contract, graded through main(argv, root) on fixture trees.
+
+    The fixture handler is the self-test's own proven shape (save / setSaving /
+    await createThing), so the ladder grades the PLUMBING, not the matcher:
+    that a fixture candidate is counted and named fixture-relatively, that a
+    ref-guarded fixture reads clean, that the REPORT-ONLY exit contract holds
+    (findings never fail a report-mode run), that a missing walk root refuses
+    rc 2 instead of passing vacuously, and that candidates aggregate across
+    files. Rung 1 is the killing rung -- see probe221 for why its kill is
+    output-keyed rather than rc-keyed.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    UNGUARDED = (
+        "const [saving, setSaving] = useState(false);\n"
+        "const save = useCallback(async () => {\n"
+        "  setSaving(true);\n"
+        "  await createThing();\n"
+        "  setSaving(false);\n"
+        "}, []);\n"
+    )
+    GUARDED = (
+        "const [saving, setSaving] = useState(false);\n"
+        "const pendingRef = useRef(false);\n"
+        "const save = useCallback(async () => {\n"
+        "  if (pendingRef.current) return;\n"
+        "  setSaving(true);\n"
+        "  await createThing();\n"
+        "  setSaving(false);\n"
+        "}, []);\n"
+    )
+
+    def run(root, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    rung_n = iter(range(1000))
+
+    def build(tmp, files, label=None):
+        base = tempfile.mkdtemp(dir=tmp, prefix=(label or ("mini%d_" % next(rung_n))))
+        for rel, text in files.items():
+            path = os.path.join(base, rel)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write("const x = 1;\n" + text)
+        return base
+
+    shell = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: one unguarded write, strict
+        root = build(tmp, {"ui/src/screens/PosScreen.tsx": UNGUARDED})
+        rc, said = run(root, "--strict")
+        if rc != 1 or "1 write handler(s)" not in said \
+                or "ui/src/screens/PosScreen.tsx" not in said \
+                or "save()" not in said or "createThing" not in said:
+            print("  x rung 1: a fixture candidate must fail rc 1, named "
+                  "fixture-relatively (rc=%r said=%r)" % (rc, said[-220:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: the ref-guarded twin reads clean -- the matcher's whole point
+        root = build(tmp, {"ui/src/screens/PosScreen.tsx": GUARDED})
+        rc, said = run(root, "--strict")
+        if rc != 0 or "0 candidate(s) in ui/src" not in said:
+            print("  x rung 2: a ref-guarded fixture must read clean rc 0 "
+                  "(rc=%r said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: REPORT-ONLY -- findings never fail a report-mode run
+        root = build(tmp, {"ui/src/screens/PosScreen.tsx": UNGUARDED})
+        rc, said = run(root)
+        if rc != 0 or "1 write handler(s)" not in said \
+                or "CANDIDATE, not a defect" not in said:
+            print("  x rung 3: report mode must exit 0 over a finding (rc=%r "
+                  "said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: a tree without ui/src refuses rc 2 -- the vacuous-pass fix.
+        # The decoy file sits OUTSIDE ui/src (first draft parked it at
+        # ui/src/features/Other.tsx, which CREATED the walk root and read rc 0
+        # with a finding -- the fixture built the thing it was refusing).
+        root = build(tmp, {"web/legacy/LegacyScreen.tsx": UNGUARDED})
+        rc, said = run(root)
+        if rc != 2 or "no source directory at" not in said \
+                or "nothing examined" not in said:
+            print("  x rung 4: a missing fixture ui/src must refuse rc 2 (rc=%r "
+                  "said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: candidates aggregate across files, each named its own
+        root = build(tmp, {"ui/src/screens/PosScreen.tsx": UNGUARDED,
+                           "ui/src/features/Cart.tsx": UNGUARDED})
+        rc, said = run(root, "--strict")
+        if rc != 1 or "2 write handler(s)" not in said \
+                or "ui/src/screens/PosScreen.tsx" not in said \
+                or "ui/src/features/Cart.tsx" not in said:
+            print("  x rung 5: two files must aggregate to 2 named candidates "
+                  "(rc=%r said=%r)" % (rc, said[-220:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("REENTRY-GUARDS SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
+    return 0
+
+
+def main(argv=None, root=None):
+    # r221: the r166 contract. argv is explicit; root names the tree to grade
+    # from code -- the walk and every reported path hang under it. None keeps
+    # the module's own ui/src.
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--strict", action="store_true", help="exit 1 on any candidate")
     parser.add_argument("--self-test", action="store_true", help="assert the matcher's shapes")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.self_test:
         return self_test()
 
+    base = ROOT if root is None else os.path.abspath(root)
+    scan_root = SCAN_ROOT if root is None else os.path.join(base, "ui", "src")
+    if not os.path.isdir(scan_root):
+        # r221: a missing walk root used to read as a vacuous clean pass ("0
+        # candidate(s)") -- the same empty-corpus hole state-closure fixed.
+        print("reentry-guards: no source directory at %s -- nothing examined"
+              % scan_root, file=sys.stderr)
+        return 2
+
     findings = []
-    for path in iter_sources(SCAN_ROOT):
-        findings.extend(scan_file(path))
+    for path in iter_sources(scan_root):
+        findings.extend(scan_file(path, root=base))
 
     if not findings:
         print("reentry-guards: 0 candidate(s) in ui/src")
@@ -612,7 +741,7 @@ def self_test():
         print("self-test: %d failure(s)" % failures)
         return 2
     print("self-test: all %d cases pass" % len(cases))
-    return 0
+    return shell_ladder()
 
 
 
