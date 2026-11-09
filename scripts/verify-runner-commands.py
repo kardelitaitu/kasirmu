@@ -42,6 +42,28 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+#: Where fixtures are written when the host sets a temp variable. A host whose
+#: confinement denies files under its default temp (measured 2026-11-09 on the
+#: agent host: every write into a TemporaryDirectory is EPERM) can point this at
+#: a directory it allows; unset leaves tempfile's own default in force.
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root this file's fixtures are written under (None = system default).
+
+    The makedirs is the r250 lesson: a scratch dir that was removed between runs
+    otherwise makes EVERY fixture die with FileNotFoundError before it grades
+    anything. exist_ok keeps the common case a no-op.
+    """
+    import os
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
+
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 # The live-workflow rule is shared; see scripts/_live_workflows.py. Only the WORKFLOWS
 # entry below is covered by it -- the other two are files, not a directory, and keep
@@ -238,7 +260,8 @@ def self_test() -> int:
     shell = 0
     def _fixture(files):
         import tempfile as _tempfile
-        with _tempfile.TemporaryDirectory() as td:
+        with _tempfile.TemporaryDirectory(dir=fixture_root(),
+                                           ignore_cleanup_errors=True) as td:
             base = Path(td)
             for rel, content in files.items():
                 dst = base / rel
@@ -283,6 +306,118 @@ def self_test() -> int:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
     print("SELF-TEST OK (9 cases + %d shell cases, one scratch tree removed)" % shell)
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard for the ladder (r250 -- the r228 lesson).
+
+    Rung 4 drives --self-test through argv from INSIDE the ladder, and the
+    self-test ends in this call, so without the guard that nested run recurses.
+    """
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        print("  (ladder re-entry from a nested --self-test: skipped)")
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """r250: the root contract, graded on fixture trees through main().
+
+    Rung 1 IS the killing rung, and it is the CENSUS arm -- not the dangling
+    arm. The census is what rung 1 asserts to the exact character, because the
+    two numbers in it are counts over the RUNNER SET, and the runner set is
+    derived from root too: a main() that ignored root would read this
+    checkout's 8 runners and its 508 references. Measured 2026-11-09, the live
+    print is
+
+        OK - 508 script reference(s) across 8 runner file(s) all resolve.
+
+    so the fixture's own reading ("OK - 1 script reference(s) across 1 runner
+    file(s) all resolve.") is a value the real tree cannot produce. The
+    dangling arm alone would NOT be a kill on the sweep half: the real tree
+    has zero dangling references, so a root-blind main reads it clean (rc 0)
+    and the fixture's rc 1 -- which is why rung 2 grades the clean arm.
+
+    Rung 3 is the refusal floor: an empty fixture has no runners, so the
+    reference count is 0 and the gate must refuse rc 2 rather than print a
+    clean it did not earn. A root-blind main reaches the real tree (508
+    references) and prints OK instead.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    def run(root_dir, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root_dir))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    def build(tmp, files, label="fx"):
+        """A fixture root holding the given {relative path: text} files."""
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix=label + "_"))
+        for rel, text in files.items():
+            dst = base / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_text(text, encoding="utf-8", newline="\n")
+        return base
+
+    CLEAN = {".github/workflows/a.yml": "run: python3 scripts/ok.py\n",
+             "scripts/ok.py": "# the target exists\n"}
+
+    shell = 0
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as tmp:
+        # rung 1 -- the killing rung: the census is the FIXTURE's, exactly.
+        root = build(tmp, CLEAN)
+        rc, said = run(root)
+        want = ("verify-runner-commands: OK \u2014 1 script reference(s) across "
+                "1 runner file(s) all resolve.")
+        if rc != 0 or want not in said:
+            print("  x rung 1: the census must count the fixture's one reference in "
+                  "its one runner, not this checkout's (rc=%r said=%r)"
+                  % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2 -- a dangling reference in the fixture fails, named.
+        root = build(tmp, {".github/workflows/a.yml": "run: python3 scripts/gone.py\n"})
+        rc, said = run(root)
+        if rc != 1 or "a.yml names scripts/gone.py" not in said:
+            print("  x rung 2: a dangling reference must exit 1 naming runner and path "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3 -- the refusal floor: a fixture with no runners has nothing to read.
+        root = build(tmp, {"README.md": "no runners here\n"})
+        rc, said = run(root)
+        if rc != 2 or "found NO script references" not in said or "OK" in said:
+            print("  x rung 3: a fixture without runners must refuse rc 2, never print OK "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4 -- --self-test dispatch flows through argv; re-entry is guarded.
+        root = build(tmp, CLEAN)
+        rc, said = run(root, "--self-test")
+        if rc != 0 or "SELF-TEST OK" not in said or "ladder re-entry" not in said:
+            print("  x rung 4: --self-test through argv must pass rc 0 and skip the "
+                  "nested ladder (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("RUNNER-COMMANDS SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
     return 0
 
 

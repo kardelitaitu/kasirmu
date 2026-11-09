@@ -11106,3 +11106,53 @@ idioms -- "NO APPLICABLE MUTATION" should be read as a prompt to look at the
 file, never as evidence about the checker. Nothing here proves a rung grades
 the RIGHT property, only that it notices when root is ignored.
 
+### Round 250 (2026-11-09) -- two contracts landed; the census now grades itself
+
+verify-runner-commands.py (324 -> 459 lines) gained a four-rung ladder, and
+scripts/census-checker-contracts.py -- the gate that grades every OTHER
+checker -- gained the contract it was demanding of them. Census 31 -> 33.
+
+RUNNER-COMMANDS. Rung 1 is the kill, and it is the CENSUS arm rather than the
+obvious dangling arm. Measured why: this tree has zero dangling references, so
+a root-blind main reads it clean and exits 0 -- a rung asserting "a dangling
+fixture exits 1" would fire against a mutant that never looked at the fixture
+at all. Rung 1 asserts the exact counts instead ("1 script reference(s) across
+1 runner file(s)"), which the real tree, at 508 across 8, cannot print. Rung 2
+grades the fail arm, rung 3 the refusal floor, rung 4 argv dispatch and ladder
+re-entry. Mutation: "every applicable mutation killed (2)".
+
+CENSUS. This file was the last un-contracted one for a structural reason: it
+graded its own repository. census() walked the real scripts/ and head_register()
+shelled out with cwd=ROOT, so a fixture ladder had nowhere to point. Both now
+take a root.
+
+A REAL DEFECT WAS FOUND WHILE BUILDING IT, and it is the round's most useful
+result. Rung 2 asserts that --next-round reads the FIXTURE register (round 7
+-> 8) and it failed with "HEAD is ahead (249) of working tree (7)": a fixture
+under .agents/ was being merged with THIS repository's round 249. The cause is
+that `git show` run inside a path that is not itself a repository does not
+fail -- git walks up the directory tree and answers from the enclosing
+checkout. head_register() now passes an explicit --git-dir/--work-tree
+scoped to the root it was given, so a fixture with no git of its own answers
+None, which is the honest answer for it. This was not a test artifact: any
+caller that pointed this function at a subdirectory would have graded the
+real history while believing it graded the fixture.
+
+Measured: census self-test "SELF-TEST OK (14 cases...)" plus
+"CENSUS-CHECKER-CONTRACTS SHELL LADDER OK (4 cases...)"; runner-commands
+"SELF-TEST OK (9 cases + 4 shell cases)" plus "4 cases through argv and root";
+live runner gate unmoved at "OK - 508 script reference(s) across 8 runner
+file(s)"; live census "33 of 70"; --next-round "250". Both new ladders report
+"every applicable mutation killed (2)".
+
+Honest limits: the subagent reports ops_bash was unusable throughout its run
+and that it used child_process instead -- the same failure I hit, and its
+outputs were re-run and reproduced here rather than accepted on report. Its
+"1 of 2" rung-1 rationale names a contamination risk (a real scripts/ok.py in
+this checkout) that I could not independently reproduce, so that claim is
+carried as the subagent's and not as a measurement of mine. The census count
+moved 31 -> 33 with two checkers contracted; that arithmetic is consistent but
+the two changes landed in one working tree and were not measured one at a
+time. Un-contracted remainder is 37, so this arc has roughly thirty rounds of
+work left at one checker per round.
+

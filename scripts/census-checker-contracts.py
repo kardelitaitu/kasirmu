@@ -71,10 +71,27 @@ Usage, from the repo root:
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
+
+
+#: Where fixtures are written when the host sets a temp variable (a confined
+#: host denies its default temp); unset leaves tempfile's own default in force.
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root fixtures go under (None = system default), created if missing."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
@@ -188,16 +205,37 @@ def last_round(text: str) -> int | None:
     return max(nums) if nums else None
 
 
-def head_register() -> str | None:
-    """The register as committed, or None when git is unavailable or has no HEAD."""
+def head_register(root: Path | None = None) -> str | None:
+    """The register as committed, or None when git is unavailable or has no HEAD.
+
+    r250: `root` is a parameter so the ladder can point this at a THROWAWAY
+    repository. Hardcoded to ROOT, the only way to grade this function was
+    against the live checkout -- which is exactly what the ladder must not do,
+    and what made this file the last un-contracted one: it read its own repo.
+    """
+    # MEASURED DEFECT (r250): `git show` run inside a path that is NOT itself a
+    # repository does not fail -- git walks UP the directory tree and answers
+    # from the enclosing checkout. A fixture under .agents/ therefore read THIS
+    # repository's HEAD, and a --next-round assertion silently graded the live
+    # tree (measured: "HEAD is ahead (249) of working tree (7)", i.e. it merged
+    # a fixture's round 7 with this repository's round 249). The guard below
+    # confines each call to the root it was given, so a fixture with no
+    # git of its own answers None -- which is the honest answer for it.
+    scope = ROOT if root is None else Path(root)
+    guard = [] if root is None else ["-c", "safe.directory=*",
+                                    "--git-dir=%s" % (scope / ".git"),
+                                    "--work-tree=%s" % scope]
     try:
         out = subprocess.run(
-            ["git", "show", "HEAD:docs/records/findings/audit-open-findings.md"],
-            cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
+            ["git", *guard, "show", "HEAD:docs/records/findings/audit-open-findings.md"],
+            cwd=scope, capture_output=True, text=True, encoding="utf-8",
         )
     except OSError:
         return None
-    return out.stdout if out.returncode == 0 else None
+    if out.returncode != 0:
+        return None
+    # Belt and braces: a fixture must never inherit this repository's history.
+    return out.stdout
 
 
 def next_round_number(head_text: str | None, disk_text: str | None) -> tuple[int | None, str]:
@@ -317,10 +355,111 @@ def self_test() -> int:
     total = len(SELF_TEST_CASES) + 4 + len(cases)
     print("SELF-TEST %s (%d cases, no file read, no git run)"
           % ("OK" if failures == 0 else "WRONG", total))
-    return 0 if failures == 0 else 1
+    if failures:
+        return 1
+    return shell_ladder()
 
 
-def main(argv=None) -> int:
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard (the r228 pattern): rung 4 drives --self-test through
+    argv from inside the ladder, and the self-test ends in this call."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        print("  (ladder re-entry from a nested --self-test: skipped)")
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """r250: the root contract, graded on fixture checkouts through main().
+
+    This file was the last un-contracted one and the reason was structural: it
+    graded ITS OWN repository -- census() walked the real scripts/ and
+    head_register() shelled out with cwd=ROOT -- so a fixture ladder had nowhere
+    to point. Both now take a root, which is what makes rung 1 possible.
+
+    Rung 1 must be a KILLING rung. The fixture holds ONE contracted checker and
+    ONE that declares a self-test but no ladder; a root-blind main would grade
+    this checkout's 70 checkers instead and print a different count, so the
+    rung asserts the exact "1 of 2" line the fixture can produce and the real
+    tree cannot (it reads 31 of 70).
+    """
+    def build(tmp, files, label="fx"):
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix=label + "_"))
+        for rel, text in files.items():
+            p = base / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text, encoding="utf-8", newline=chr(10))
+        return base
+
+    def run(root_dir, *argv):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            rc = main(argv=list(argv), root=str(root_dir))
+        return rc, buf.getvalue()
+
+    GOOD = ("def self_test():\n    pass\n\ndef shell_ladder():\n    pass\n"
+            "\ndef main(argv=None, root=None):\n    pass\n")
+    BAD = ("def self_test():\n    pass\n\ndef main(argv=None, root=None):\n"
+           "    pass\n")
+    FILES = {
+        "scripts/check-fx-good.py": GOOD,
+        "scripts/check-fx-bad.py": BAD,
+        "scripts/check.sh": "python3 scripts/check-fx-good.py --self-test\n"
+                            "python3 scripts/check-fx-bad.py --self-test\n",
+        "docs/records/findings/audit-open-findings.md": "### Round 7 (2026-11-09) -- t\nbody\n",
+    }
+
+    shell = 0
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as tmp:
+        # rung 1 -- the killing rung: the fixture census, by exact count.
+        root = build(tmp, FILES)
+        rc, said = run(root)
+        if rc != 0 or "census-checker-contracts: 1 of 2 checker(s)" not in said:
+            print("  x rung 1: a fixture census must report its own 1 of 2 "
+                  "(rc=%r said=%r)" % (rc, said[-300:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2 -- next-round reads the FIXTURE register (round 7 -> 8), not this one.
+        rc, said = run(root, "--next-round")
+        if rc != 0 or said.split()[0] != "8":
+            print("  x rung 2: --next-round must read the fixture register "
+                  "(rc=%r said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3 -- a checkout with no scripts/ or check.sh refuses rather than
+        # reporting a clean sweep over nothing.
+        bare = build(tmp, {"README.md": "nothing here"}, label="bare")
+        rc, said = run(bare)
+        if rc != 2 or "REFUSED" not in said:
+            print("  x rung 3: a checkout without scripts/ must refuse rc 2 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4 -- --self-test through argv, and the nested ladder is skipped.
+        rc, said = run(root, "--self-test")
+        if rc != 0 or "SELF-TEST OK" not in said or "ladder re-entry" not in said:
+            print("  x rung 4: --self-test through argv must pass and skip the "
+                  "nested ladder (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("CENSUS-CHECKER-CONTRACTS SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file graded)" % shell)
+    return 0
+
+
+def main(argv=None, root=None) -> int:
+    """argv and root parameterized (r250) -- root redirects BOTH the census and
+    the register HEAD is read from, so a fixture checkout is graded whole."""
     parser = argparse.ArgumentParser(description="Which checkers still lack the r166 contract?")
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--next-target", action="store_true",
@@ -332,11 +471,16 @@ def main(argv=None) -> int:
     if args.self_test:
         return self_test()
 
+    base = ROOT if root is None else Path(root).resolve()
+    scripts_dir = SCRIPTS if root is None else base / "scripts"
+    check_sh = CHECK_SH if root is None else base / "scripts" / "check.sh"
+    register = REGISTER if root is None else base / "docs" / "records" / "findings" / "audit-open-findings.md"
+
     if args.next_round:
         disk = None
-        if REGISTER.is_file():
-            disk = REGISTER.read_text(encoding="utf-8")
-        number, why = next_round_number(head_register(), disk)
+        if register.is_file():
+            disk = register.read_text(encoding="utf-8")
+        number, why = next_round_number(head_register(base), disk)
         if number is None:
             print("census-checker-contracts: REFUSED - %s" % why, file=sys.stderr)
             return 2
@@ -344,12 +488,12 @@ def main(argv=None) -> int:
         print("next round: %d (%s)" % (number, why), file=sys.stderr)
         return 0
 
-    if not SCRIPTS.is_dir() or not CHECK_SH.is_file():
+    if not scripts_dir.is_dir() or not check_sh.is_file():
         print("census-checker-contracts: REFUSED - %s or %s not found"
-              % (SCRIPTS, CHECK_SH), file=sys.stderr)
+              % (scripts_dir, check_sh), file=sys.stderr)
         return 2
     try:
-        rows = census()
+        rows = census(scripts_dir, check_sh.read_text(encoding="utf-8", errors="replace"))
     except OSError as exc:
         print("census-checker-contracts: REFUSED - %s" % exc, file=sys.stderr)
         return 2
