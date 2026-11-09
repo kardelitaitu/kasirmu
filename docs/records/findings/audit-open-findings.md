@@ -11156,3 +11156,42 @@ the two changes landed in one working tree and were not measured one at a
 time. Un-contracted remainder is 37, so this arc has roughly thirty rounds of
 work left at one checker per round.
 
+### Round 251 (2026-11-09) -- the mutation harness was grading itself through a wrong __file__
+
+Every checker in this arc resolves its default root as
+`Path(__file__).resolve().parents[1]`. scripts/prove-ladder-kills.py wrote its
+mutant to .agents/mutants/<stem>__mutant.py -- ONE LEVEL DEEPER than scripts/
+-- so inside the mutant that expression resolved to .agents/ instead of the
+repository. Measured: patching check-dead-controls produced
+
+  ValueError: 'C:\\dev\\kasirmu\\.agents\\scripts\\verify-lane.sh' is not in
+  the subpath of '...\\tmpdhwhi6o3\\fx_0qkys0tq'
+
+a crash from the harness's own file placement, not from the mutation. The
+harness could therefore report NO APPLICABLE MUTATION, SURVIVED, or RAISED for
+reasons that had nothing to do with the checker under test -- and some earlier
+rounds reasoned from exactly those outputs.
+
+Two repairs, both in the harness:
+  * the mutant keeps its checker's BASENAME and lives in a scratch subdirectory
+    of the same depth, so __file__ resolves as the real checker's does;
+  * the scratch tree is a TemporaryDirectory removed on exit instead of a fixed
+    .agents/mutants/ that every run left behind. The harness was littering the
+    tree it exists to inspect.
+
+Measured after the fix: check-pipeline-verdicts, check-ftl-attrs,
+verify-status-fallbacks, census-checker-contracts and check-dead-controls all
+still report "every applicable mutation killed", and check-dead-controls now
+fails rung 1 with a VERDICT ("rc=2 ... not trusting the tree scan") rather than
+raising ValueError. No leftovers in .agents/.
+
+Honest limits: this changes no checker and no verdict -- it repairs the
+instrument, which is the third instrument defect in three rounds after the
+suffix-match rung (242) and the cross-line anchor (248). The pattern is worth
+naming: each time I widened what the harness covered I introduced a way for it
+to be WRONG ABOUT ITSELF rather than merely incomplete, and the repairs were
+found by reading a crash rather than by any test I wrote. There is no rung in
+this repository that grades the harness, so it can regress silently; a proof
+that a known-bad checker is KILLED and a known-good one is NOT is the closest
+thing to a control, and that is a manual step today.
+

@@ -35,6 +35,7 @@ import contextlib
 import importlib.util
 import io
 import sys
+import tempfile
 from pathlib import Path
 
 MUTATIONS = (
@@ -146,9 +147,23 @@ def applicable(src):
 
 
 def run_mutant(checker, anchor, replacement, scratch, verbose):
-    """(killed, detail) -- load the mutant and call its ladder."""
+    """(killed, detail) -- load the mutant and call its ladder.
+
+    The mutant is written under the SAME BASENAME as its checker, deliberately.
+    Every checker in this arc computes its default root as
+    `Path(__file__).resolve().parents[1]`, so a mutant named
+    `<stem>__mutant.py` sitting one level up from scripts/ resolves parents[1]
+    to the WRONG directory -- .agents/ instead of the repository. Measured in
+    r251: that made the mutant raise
+    "'C:\\dev\\kasirmu\\.agents\\scripts\\verify-lane.sh' is not in the subpath of
+    ...", a crash from the harness's own file placement rather than from the
+    mutation. Keeping the basename in a sibling directory makes __file__ resolve
+    exactly as the real checker's does.
+    """
     src = checker.read_text(encoding="utf-8")
-    mutant = scratch / (checker.stem + "__mutant.py")
+    here = scratch / checker.stem
+    here.mkdir(parents=True, exist_ok=True)
+    mutant = here / checker.name
     mutant.write_text(src.replace(anchor, replacement), encoding="utf-8", newline=chr(10))
     spec = importlib.util.spec_from_file_location(mutant.stem, str(mutant))
     if spec is None or spec.loader is None:
@@ -193,14 +208,18 @@ def main(argv=None):
               "recognised shape, so its ladder cannot be proven this way." % checker.name)
         return 2
 
-    scratch = Path(__file__).resolve().parent.parent / ".agents" / "mutants"
-    scratch.mkdir(parents=True, exist_ok=True)
-    survived = []
-    for label, anchor, repl in muts:
-        killed, detail = run_mutant(checker, anchor, repl, scratch, args.verbose)
-        print("  %-32s %s  %s" % (label, "KILLED  " if killed else "SURVIVED", detail))
-        if not killed:
-            survived.append(label)
+    # A temporary scratch dir, removed on the way out. For a long time this was
+    # a fixed .agents/mutants/ that every run left behind: the harness littered
+    # the tree it was supposed to be inspecting, and the leftovers were itself
+    # error-prone (see run_mutant on why the basename matters).
+    with tempfile.TemporaryDirectory(prefix="prove-ladder-") as scratch_dir:
+        scratch = Path(scratch_dir)
+        survived = []
+        for label, anchor, repl in muts:
+            killed, detail = run_mutant(checker, anchor, repl, scratch, args.verbose)
+            print("  %-32s %s  %s" % (label, "KILLED  " if killed else "SURVIVED", detail))
+            if not killed:
+                survived.append(label)
     if survived:
         print("%s: %d of %d mutation(s) SURVIVED -> rung 1 is not proven:" % (checker.name, len(survived), len(muts)))
         for s in survived:
