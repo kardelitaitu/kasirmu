@@ -56,8 +56,21 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DOC = ROOT / "docs" / "guides" / "developer" / "api-reference.md"
-CHECKER = ROOT / ".agents" / "skills" / "docs-auditor" / "scripts" / "check-api-surface.py"
+
+
+def doc_path(root: Path = ROOT) -> Path:
+    """The page carrying the drift table, resolved under the tree being graded."""
+    return root / "docs" / "guides" / "developer" / "api-reference.md"
+
+
+def checker_path(root: Path = ROOT) -> Path:
+    """The surface checker whose measurement the table must print, under the same tree."""
+    return root / ".agents" / "skills" / "docs-auditor" / "scripts" / "check-api-surface.py"
+
+
+# Kept as names because readers grep them; both follow the default root.
+DOC = doc_path()
+CHECKER = checker_path()
 
 # Class label in the doc -> key in the checker's JSON output.
 BUCKETS = {
@@ -95,11 +108,17 @@ def parsed_rows(text: str) -> dict[str, int]:
     return found
 
 
-def measured() -> dict[str, int]:
-    """Run the surface checker and return its bucket sizes."""
+def measured(root: Path = ROOT) -> dict[str, int]:
+    """Run the surface checker BUILT FROM root and return its bucket sizes.
+
+    r230: root is a parameter rather than the ROOT global so a fixture tree can
+    carry its own stub checker, and the cwd moves with it -- a checker that
+    resolves anything relative to its cwd then sees the fixture, never this
+    checkout. Both halves must come from ONE root or the numbers are a chimera.
+    """
     out = subprocess.run(
-        [sys.executable, str(CHECKER), "--json"],
-        cwd=ROOT, capture_output=True, text=True,
+        [sys.executable, str(checker_path(root)), "--json"],
+        cwd=root, capture_output=True, text=True,
     )
     if out.returncode not in (0, 1):
         raise RuntimeError("check-api-surface.py exited %d: %s" % (out.returncode, out.stderr.strip()[:200]))
@@ -117,8 +136,13 @@ SELF_TEST_CASES = [
 ]
 
 
-def self_test() -> int:
-    """Pin the count reader and the label comparison; read no file, run no checker."""
+def self_test(run_ladder: bool = False) -> int:
+    """Pin the count reader and the label comparison; read no file, run no checker.
+
+    r230: run_ladder chains the fixture ladder, and only the EXPLICIT --self-test
+    dispatch passes it, so an in-process self_test() call from a caller that is
+    already grading cannot recurse into the ladder.
+    """
     failures = 0
     for label, cell, want in SELF_TEST_CASES:
         got = leading_count(cell)
@@ -145,26 +169,185 @@ def self_test() -> int:
 
     total = len(SELF_TEST_CASES) + 2
     print(f"self-test: {total - failures}/{total} checks pass")
-    return 0 if failures == 0 else 1
+    if failures:
+        return 1
+    if run_ladder:
+        return shell_ladder()
+    return 0
 
 
-def main(argv: list[str]) -> int:
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard for the ladder (r230).
+
+    Rung 7 drives --self-test through argv from INSIDE the ladder, so
+    self_test(run_ladder=True) would chain shell_ladder again forever. The
+    guard turns that one legitimately nested call into a printed skip -- the
+    r228 shape, kept here because this file needs the same rung.
+    """
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        print("  (ladder re-entry from a nested --self-test: skipped)")
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """r230: the root contract, graded on fixture trees through main.
+
+    Each rung is a throwaway tree holding a miniature api-reference.md and a
+    STUB surface checker, so the measurement is the fixture's own and no real
+    checkout is read. Rung 1 IS the killing rung: the page prints 86 while the
+    stub measures 0, so a root-dropping main grades THIS checkout's clean table
+    and exits 0, while the fixture must exit 1 naming both numbers.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    def run(root, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    labels = ("Marker wrong", "Listed but not registered anywhere",
+              "Listed and not defined as a command", "Registered but not listed")
+
+    def table(cells):
+        lines = ["> | Class | Count |"]
+        for label, cell in zip(labels, cells):
+            lines.append("> | %s | %s |" % (label, cell))
+        return "\n".join(lines) + "\n"
+
+    def stub(counts=(0, 0, 0, 0)):
+        return ("import json\nprint(json.dumps({'marker_wrong': %d, "
+                "'listed_not_registered': %d, 'listed_not_defined': %d, "
+                "'registered_not_listed': %d}))\n" % tuple(counts))
+
+    def build(tmp, doc_text=None, stub_text=None, label="fx"):
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix=label))
+        if doc_text is not None:
+            page = doc_path(base)
+            page.parent.mkdir(parents=True, exist_ok=True)
+            page.write_text(doc_text, encoding="utf-8", newline="\n")
+        check = checker_path(base)
+        check.parent.mkdir(parents=True, exist_ok=True)
+        check.write_text(stub_text if stub_text is not None else stub(),
+                         encoding="utf-8", newline="\n")
+        return base
+
+    shell = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: a page that prints a count nobody measured
+        root = build(tmp, doc_text=table(("0", "86", "0", "0")))
+        rc, said = run(root)
+        if rc != 1 or "the page prints 86, the measurement is 0" not in said \
+                or "Listed but not registered anywhere" not in said:
+            print("  x rung 1: a page row disagreeing with its measurement must "
+                  "fail rc 1 (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: history prose after the leading number is not part of the count
+        root = build(tmp, doc_text=table(("**0** (was 11)",
+                                          "**0 today** (86 on 08-09-26)",
+                                          "0", "**0**")))
+        rc, said = run(root)
+        if rc != 0 or "clean - 4 bucket row(s) match" not in said:
+            print("  x rung 2: a table whose leading numbers agree must green "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: no page under the fixture root at all
+        root = build(tmp, doc_text=None)
+        rc, said = run(root)
+        if rc != 2 or "BROKEN" not in said or "not found" not in said:
+            print("  x rung 3: a root without the page must refuse rc 2 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: a page that carries no parseable bucket row
+        root = build(tmp, doc_text="# api reference\nno table here yet\n")
+        rc, said = run(root)
+        if rc != 2 or "parsed no bucket rows" not in said:
+            print("  x rung 4: a page with no bucket rows must refuse rc 2 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: the measurement itself fails -- not a disagreement, an instrument
+        root = build(tmp, doc_text=table(("0", "0", "0", "0")),
+                     stub_text="import sys\nsys.exit(3)\n")
+        rc, said = run(root)
+        if rc != 2 or "BROKEN" not in said or "exited 3" not in said:
+            print("  x rung 5: a failing measurement must refuse rc 2 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 6: a measurement missing a bucket key cannot be graded against
+        root = build(tmp, doc_text=table(("0", "0", "0", "0")),
+                     stub_text="import json\nprint(json.dumps({'marker_wrong': 0}))\n")
+        rc, said = run(root)
+        if rc != 2 or "omits bucket" not in said:
+            print("  x rung 6: a measurement omitting a bucket must refuse rc 2 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 7: --self-test flows through argv, and the nested ladder skips
+        root = build(tmp, doc_text=table(("0", "0", "0", "0")))
+        rc, said = run(root, "--self-test")
+        if rc != 0 or "checks pass" not in said or "ladder re-entry" not in said:
+            print("  x rung 7: --self-test through argv must pass rc 0 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("API-DRIFT SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
+    return 0
+
+
+def main(argv=None, root=None) -> int:
+    """Grade the drift table; r230: argv explicit, root names the tree.
+
+    argv is the raw list (sys.argv[1:] when None) -- this file had no callers
+    passing anything else, so there was no parser shape to preserve. root is
+    resolved ONCE, and both the page and the checker derive from it: a fixture
+    supplies its own table AND its own measurement, so the played numbers and
+    the trusted numbers can never come from different trees.
+    """
     parser = argparse.ArgumentParser(description="The drift table must print the measured counts.")
     parser.add_argument("--self-test", action="store_true")
-    args = parser.parse_args(argv)
+    args = parser.parse_args(sys.argv[1:] if argv is None else list(argv))
 
     if args.self_test:
-        return self_test()
+        return self_test(run_ladder=True)
 
-    if not DOC.exists():
-        print("check-api-drift-table: BROKEN - %s not found" % DOC, file=sys.stderr)
+    base = Path(root).resolve() if root is not None else ROOT
+    doc = doc_path(base)
+
+    if not doc.exists():
+        print("check-api-drift-table: BROKEN - %s not found" % doc, file=sys.stderr)
         return 2
-    rows = parsed_rows(DOC.read_text(encoding="utf-8"))
+    rows = parsed_rows(doc.read_text(encoding="utf-8"))
     if not rows:
         print("check-api-drift-table: BROKEN - parsed no bucket rows from the table", file=sys.stderr)
         return 2
     try:
-        now = measured()
+        now = measured(base)
+        # A measurement missing a key is not a disagreement, it is a broken
+        # instrument: grading `rows` against it would KeyError or, worse, pass.
+        absent = [k for k in BUCKETS.values() if k not in now]
+        if absent:
+            raise RuntimeError("the measurement omits bucket(s): " + ", ".join(absent))
     except (RuntimeError, json.JSONDecodeError) as exc:
         print("check-api-drift-table: BROKEN - %s" % exc, file=sys.stderr)
         return 2

@@ -10141,3 +10141,66 @@ re-entry lesson now covers both loop directions. The scoped-reads
 down (probed r159): E2E / llvm-cov / nextest-junit receipts remain
 PG-gated. Root-policy RED on the foreign todo.md (r174); core-size RED
 on the ADR-59 +64 (r181) -- both await their owning lanes.
+
+### Round 230 (2026-11-09) -- api-drift-table: the page that believes whatever it last printed
+
+check-api-drift-table.py (194 lines, the smallest un-contracted checker
+by the arc's own "smallest first") is the one tool whose entire job is
+comparing a PRINTED number with a MEASURED one -- and its measurement
+was welded to the checkout: one ROOT global fed both the page and the
+subprocess that produces the numbers. The contract is therefore the
+narrowest in the arc: doc_path(root) and checker_path(root) derive both
+halves from ONE resolved root, so a fixture supplies its own table AND
+its own stub surface checker and the two can never come from different
+trees. That single-root rule matters more here than elsewhere: a
+page/measurement pair from different trees is exactly the chimera this
+file was born to catch (r46: the page said 86, the checker said 0, both
+green).
+
+The seam also fixed a real hole. main() read now[key] for every bucket
+the page printed, so a measurement that OMITTED a key crashed with
+KeyError rather than reporting an instrument failure; it now refuses
+rc 2 with "the measurement omits bucket(s): ...". A missing key is not
+a disagreement, and grading a row against an absent number is how a
+gate reports a clean verdict over a dead scan.
+
+Seven rungs, and rung 1 is the killing rung: the fixture page prints 86
+while its stub measures 0 and must exit 1 naming the label and both
+numbers; a root-dropping main grades THIS checkout, whose table matches
+its own measurement, and exits 0 (probe229, kill confirmed -- the probe
+asserts the fixture's positive verdict before comparing, the r226
+lesson applied). The rest: history prose after the leading number is
+not part of the count ("**0** (was 11)", "**0 today** (86 on
+08-09-26)" both read 0); a root without the page refuses rc 2; a page
+with no bucket row refuses rc 2; a stub that exits 3 refuses rc 2
+("exited 3") instead of being mistaken for a disagreement; the omitted
+bucket refuses rc 2; and --self-test flows through argv with the nested
+ladder skipped by the r228 re-entry guard, which this file needs for
+the same rung.
+
+Stub checkers, not real ones: the fixture's measurement is sixteen lines
+of Python printing a JSON dict, because running the real
+check-api-surface.py per rung would grade this checkout's command
+surface eight times over. The stub is the seam's instrument, and the
+seam is what this arc moves.
+
+Self-test unchanged at "self-test: 8/8 checks pass", now followed by
+the 7-rung ladder; live unchanged: "clean - 4 bucket row(s) match the
+measurement" at exit 0. verify-selftests-wired (104 of 106) and
+verify-selftest-sweep (101 across 103) both still green.
+
+Honest limits: the ladder grades the leading-int reader and the label
+normalisation only through the pre-existing 8 cases, not through a
+rung; the four-bucket map is asserted as a LENGTH ("four buckets
+declared"), so renaming a bucket key stays ungraded here and is the
+surface checker's to catch; and the stub's cwd dependence is asserted
+only as "the fixture's checker ran" -- a stub that resolved its own path
+absolutely would pass every rung. The r165-arc checker contract from
+scoped-reads (r213) through debt-ledger (r228) and its limits stand. The
+second arc's remaining targets are NOT enumerated in this repository --
+r228 named nine and recorded no list, so this round applied the stated
+"smallest first" rule to the un-contracted set rather than claiming to
+recover the original order. Docker daemon still down (probed r159):
+E2E / llvm-cov / nextest-junit receipts remain PG-gated. Root-policy RED
+on the foreign todo.md (r174); core-size RED on the ADR-59 +64 (r181) --
+both await their owning lanes.
