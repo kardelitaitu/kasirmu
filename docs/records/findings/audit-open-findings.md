@@ -11628,3 +11628,53 @@ the kill above is a hand proof that will not regress-detect. The subagent also
 reported that --self-test run from BELOW the repo root fails because REPO
 resolves relative to __file__; that is pre-existing and I did not reproduce it.
 
+### Round 262 (2026-11-09) -- the harness covered a third of what it claimed, and a new row lied
+
+Swept prove-ladder-kills.py over all 70 checkers instead of one at a time. The
+result had been known only piecemeal: 21 provable, 76 NO APPLICABLE MUTATION. A
+harness that can prove a third of the ladders it is pointed at cannot support the
+claim "every ladder is mutation-proof" that this arc has been repeating.
+
+WHY THE ROWS MISS. Read three of the shapes the table had no row for, each in a
+file that already carries main(root=...) and was therefore reachable in
+principle:
+  check-api-drift-table   base = Path(root).resolve() if root is not None else ROOT
+  check-chokepoints       base = repo_root() if root is None else os.path.abspath(root)
+  check-debt-ledger       root = Path(root).resolve()   (a bare re-binding)
+Each anchor was counted in its own file and occurs exactly once. All three rows
+added and each produces a kill: rc 1, "every applicable mutation killed (1)".
+Sweep after: 27 provable (up 6), 69 NO APPLICABLE, 10 other.
+
+THE NEW ROW LIED BEFORE IT WAS FIXED, and this is the part worth keeping. The
+"rebound root ignores root" row was first written anchored on
+    "    root = Path(root).resolve()"
+which also matches the FIRST HALF of
+    root = Path(root).resolve() if root is not None else ...
+a different shape whose else-clause sits on the next line. Splicing the
+replacement in front of that clause produced mutants that did not parse:
+  verify-core-size        SURVIVED  mutant failed to import: unexpected indent (line 304)
+  check-replay-fork       SURVIVED  no shell_ladder() on the mutated module
+  verify-flaky-quarantine SURVIVED  no shell_ladder() on the mutated module
+All three were reported as findings about the CHECKER. Two of those files do not
+contain a ladder at all, so the "finding" was that the harness had mangled a
+line. Anchoring on the complete line with its newline fixed it: check-debt-ledger
+still kills, the other two correctly return NO APPLICABLE MUTATION.
+
+This is the third distinct way this harness has produced a false result in this
+arc -- r249 recorded an import failure counted as SURVIVED, r256 a mis-shaped
+root, and now a substring anchor. The common cause is that a mutant which fails
+to execute is indistinguishable in the output from a mutant the ladder could not
+kill, and both are phrased as facts about the checker.
+
+Honest limits: the remaining 10 files that match a row but do not kill are NOT
+investigated here -- check-hardcoded-copy, check-rbac-citations,
+check-rust-doc-paths, verify-doc-uniqueness, verify-flaky-quarantine,
+verify-invoke-parity, verify-plugin-guide-parity, verify-root-policy,
+verify-unsafe-safety, and prove-ladder-kills.py itself, which matches its own
+anchor and is the harness rather than a checker. Some of that 10 are probably
+more substring hits of the kind just fixed; at least two are checkers whose
+ladder genuinely cannot reach the mutation. Distinguishing the two needs the
+same per-file read this round did for three rows, and was not done. The census
+stays at 37 of 70: this round hardened the proof tool, it did not contract a
+checker.
+

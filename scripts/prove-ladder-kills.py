@@ -148,6 +148,43 @@ MUTATIONS = (
         "repo = REPO if root is None else os.path.abspath(root)",
         "repo = REPO  # MUTANT: root ignored",
     ),
+    # r262: three shapes measured across the contracted checkers, each carrying a
+    # main(root=...) the table could not reach. A sweep of all 70 checkers put 76
+    # of them at NO APPLICABLE MUTATION while only 21 were provable -- a harness
+    # covering a third of the ladder it claims to grade is the same blind spot
+    # r248 and r256 each closed one row at a time. These three are the shapes
+    # that recur; each anchor was counted in ITS OWN file and occurs exactly
+    # once, which is the condition this table requires.
+    (
+        # The mirror image of the r248 row above: root on the LEFT. Both spellings
+        # appear in the tree and neither mutation covers the other.
+        "base resolves root",
+        "base = Path(root).resolve() if root is not None else ROOT",
+        "base = ROOT  # MUTANT: root ignored",
+    ),
+    (
+        "repo-root helper ignores root",
+        "base = repo_root() if root is None else os.path.abspath(root)",
+        "base = repo_root()  # MUTANT: root ignored",
+    ),
+    (
+        # A bare re-binding rather than a conditional: no ROOT constant appears at
+        # all, so every row above misses it. The replacement keeps the NAME so the
+        # mutant still imports.
+        #
+        # The anchor CARRIES ITS NEWLINE. Without it the text also matches the
+        # first half of "root = Path(root).resolve() if root is not None else ..."
+        # -- a different shape whose else-clause sits on the next line -- and
+        # splicing the replacement in front of that clause produced a mutant with
+        # an unexpected indent (verify-core-size) or one that never reached a
+        # ladder at all (check-replay-fork, verify-flaky-quarantine). Those were
+        # reported as SURVIVED, i.e. as a finding about the CHECKER, when the
+        # fault was in this table. Anchoring on the complete line is what makes
+        # the row mean what it says.
+        "rebound root ignores root",
+        "    root = Path(root).resolve()\n",
+        "    root = Path(__file__).resolve().parent.parent  # MUTANT: root ignored\n",
+    ),
 )
 
 
