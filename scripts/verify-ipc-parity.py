@@ -98,6 +98,14 @@ SHELLS = {
 
 ALLOWLIST_PATH = REPO_ROOT / "scripts" / "ipc-parity-allowlist.json"
 
+
+def _base(root=None) -> Path:
+    """r208: the r166..r207 contract's base resolution -- REPO_ROOT when no
+    root is passed, else the resolved contract root. Root redirects every
+    evidence source together: the UI scan trees, both shell libs, the
+    dev-mock tree, the allowlist file AND the shared schema module."""
+    return REPO_ROOT if root is None else Path(root).resolve()
+
 # The question "is this parsed document an allowlist at all" is answered in
 # scripts/allowlist-schema.py since 0454b542e4, shared with scripts/verify-scoped-reads.py,
 # because the repo holding two private definitions of valid is what let one file be GRADED by
@@ -136,11 +144,14 @@ COMMAND_FN_RE = re.compile(
 )
 
 
-def extract_ui_commands() -> dict[str, list[str]]:
-    """Return {command: [files that invoke it]} from production UI code."""
+def extract_ui_commands(root=None) -> dict[str, list[str]]:
+    """Return {command: [files that invoke it]} from production UI code.
+
+    r208: scanned under the contract root when one is passed."""
     found: dict[str, list[str]] = {}
+    top = _base(root)
     for scan_dir in UI_SCAN_DIRS:
-        base = REPO_ROOT / scan_dir
+        base = top / scan_dir
         if not base.is_dir():
             continue
         for path in base.rglob("*"):
@@ -148,7 +159,7 @@ def extract_ui_commands() -> dict[str, list[str]]:
                 continue
             if "__tests__" in path.parts:
                 continue
-            rel = path.relative_to(REPO_ROOT).as_posix()
+            rel = path.relative_to(top).as_posix()
             try:
                 text = path.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError) as exc:
@@ -442,11 +453,14 @@ def wrapper_reach(files: list[tuple[str, str]], cmd: str) -> dict[str, list[str]
     return out
 
 
-def ui_runtime_files() -> list[tuple[str, str]]:
-    """UI sources that can execute in a shipped build: no tests, no dev-mock."""
+def ui_runtime_files(root=None) -> list[tuple[str, str]]:
+    """UI sources that can execute in a shipped build: no tests, no dev-mock.
+
+    r208: scanned under the contract root when one is passed."""
     out: list[tuple[str, str]] = []
+    top = _base(root)
     for scan_dir in UI_SCAN_DIRS:
-        base = REPO_ROOT / scan_dir
+        base = top / scan_dir
         if not base.is_dir():
             continue
         for path in base.rglob("*"):
@@ -455,7 +469,7 @@ def ui_runtime_files() -> list[tuple[str, str]]:
             if "__tests__" in path.parts or "dev-mock" in path.parts:
                 continue
             try:
-                out.append((path.relative_to(REPO_ROOT).as_posix(),
+                out.append((path.relative_to(top).as_posix(),
                             path.read_text(encoding="utf-8")))
             except (OSError, UnicodeDecodeError):
                 continue
@@ -978,16 +992,19 @@ def _mock_code(text: str) -> str:
     )
 
 
-def read_dev_mock_sources() -> list[tuple[str, str]]:
-    """Every TS source under the dev-mock tree as (posix-relative path, text)."""
-    base = REPO_ROOT / DEV_MOCK_DIR_REL
+def read_dev_mock_sources(root=None) -> list[tuple[str, str]]:
+    """Every TS source under the dev-mock tree as (posix-relative path, text).
+
+    r208: walked under the contract root when one is passed."""
+    top = _base(root)
+    base = top / DEV_MOCK_DIR_REL
     if not base.is_dir():
         raise SystemExit(f"error: dev-mock tree missing: {DEV_MOCK_DIR_REL}")
     sources: list[tuple[str, str]] = []
     for path in sorted(base.rglob("*")):
         if not path.is_file() or path.suffix not in (".ts", ".tsx"):
             continue
-        rel = path.relative_to(REPO_ROOT).as_posix()
+        rel = path.relative_to(top).as_posix()
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError as exc:
@@ -1120,7 +1137,7 @@ def find_unreachable_mock_keys(
 
 
 
-def extract_dev_mock_answerable() -> tuple[set[str], set[str], dict[str, set[str]], str | None]:
+def extract_dev_mock_answerable(root=None) -> tuple[set[str], set[str], dict[str, set[str]], str | None]:
     """Names the browser dev-mock can serve.
 
     Returns (directly registered, aliasable, per-file names, file holding the alias pass).
@@ -1183,13 +1200,16 @@ def extract_dev_mock_answerable() -> tuple[set[str], set[str], dict[str, set[str
     whoever owns the flags, not for this gate to invent an answer to, so it is recorded here
     rather than fixed.
     """
-    per_file, alias_file = parse_dev_mock(read_dev_mock_sources())
+    per_file, alias_file = parse_dev_mock(read_dev_mock_sources(root))
     registered, aliasable = answerable_sets(per_file, alias_file)
     return registered, aliasable, per_file, alias_file
 
 
-def read_allowlist_text() -> str:
+def read_allowlist_text(path=None) -> str:
     """The file's bytes, waiting out the microsecond a rename is mid-flight.
+
+    r208: the path arrives as an argument (default ALLOWLIST_PATH) so a
+    contract root's allowlist is read through the same rename-patience.
 
     os.replace is atomic for the reader, not invisible: while the swap happens Windows denies
     an open of the target, and load_allowlist has no handler for that, so the bare run in
@@ -1205,9 +1225,10 @@ def read_allowlist_text() -> str:
     script-next-door readers, and one of them is in the refusal text precisely because it is
     not protected: see ALLOWLIST_READER_CALL_SITES.
     """
+    target = ALLOWLIST_PATH if path is None else Path(path)
     for attempt in range(READ_ATTEMPTS):
         try:
-            return ALLOWLIST_PATH.read_text(encoding="utf-8")
+            return target.read_text(encoding="utf-8")
         except PermissionError:
             if attempt + 1 == READ_ATTEMPTS:
                 raise AllowlistBusyError(
@@ -1265,7 +1286,7 @@ def refuse_unusable_allowlist(unusable: AllowlistUnusable) -> int:
     return 2
 
 
-def allowlist_schema():
+def allowlist_schema(root=None):
     """The shared schema module, imported by path, or an `AllowlistUnusable` naming the path.
 
     `spec_from_file_location` because the filename carries a hyphen, which no import statement
@@ -1277,7 +1298,7 @@ def allowlist_schema():
     be refused in words, it costs 2 like every other thing that never arrived. The cache is
     keyed by path so a self-test probe cannot be served a module imported for another path.
     """
-    path = str(ALLOWLIST_SCHEMA_PATH)
+    path = str(ALLOWLIST_SCHEMA_PATH if root is None else _base(root) / "scripts" / "allowlist-schema.py")
     cached = _SCHEMA_BY_PATH.get(path)
     if isinstance(cached, BaseException):
         raise cached
@@ -1307,8 +1328,10 @@ def allowlist_schema():
     return module
 
 
-def load_allowlist() -> dict:
+def load_allowlist(root=None) -> dict:
     """Read AND verify the shared allowlist, or refuse. It never hands back a guess.
+
+    r208: the allowlist lives under the contract root when one is passed.
 
     The floor is an OBJECT carrying each of `KNOWN_SECTIONS` (desktop, tablet, dev_mock,
     scoped_orphans) as a LIST, and since 0454b542e4 that question is answered by
@@ -1329,14 +1352,18 @@ def load_allowlist() -> dict:
     the empty shape either, since it invented two sections and silently dropped the other two
     -- and anything else went through as raw `json.loads` output.
     """
-    if not ALLOWLIST_PATH.exists():
+    al_path = ALLOWLIST_PATH if root is None else _base(root) / "scripts" / "ipc-parity-allowlist.json"
+    if not al_path.exists():
         raise AllowlistUnusable(
-            f"{ALLOWLIST_PATH.name} is not there, so this run has no allowlist -- an absent "
+            f"{al_path.name} is not there, so this run has no allowlist -- an absent "
             f"file is not an empty one. Three writer flags -- --write-allowlist, "
             f"--write-scoped-orphans and --write-dev-mock-gaps -- would each rewrite it from "
             f"what this run read, and a run that read nothing has nothing to preserve.")
     try:
-        text = read_allowlist_text()
+        # r208: zero-arg on the module default so the self-test's swapped-in
+        # zero-arg read stub (the drift harness) keeps its signature; the
+        # path is passed only when a contract root redirects the read.
+        text = read_allowlist_text(al_path) if root is not None else read_allowlist_text()
     except AllowlistBusyError:
         raise
     except UnicodeDecodeError as exc:
@@ -1345,17 +1372,17 @@ def load_allowlist() -> dict:
         # code 1 on a file nobody could read -- the same confusion verify-ftl-orphans.py
         # records for a locked bundle.
         raise AllowlistUnusable(
-            f"{ALLOWLIST_PATH.name} is not UTF-8 text ({exc}); whatever those bytes are, "
+            f"{al_path.name} is not UTF-8 text ({exc}); whatever those bytes are, "
             f"they are not an allowlist.") from None
     except OSError as exc:
         raise AllowlistUnusable(
-            f"{ALLOWLIST_PATH.name} would not open ({type(exc).__name__}: "
+            f"{al_path.name} would not open ({type(exc).__name__}: "
             f"{exc.strerror or exc})") from None
     try:
         payload = json.loads(text)
     except ValueError as exc:
         raise AllowlistUnusable(
-            f"{ALLOWLIST_PATH.name} is {len(text.encode('utf-8'))} bytes that are not JSON "
+            f"{al_path.name} is {len(text.encode('utf-8'))} bytes that are not JSON "
             f"({type(exc).__name__}: {exc}). A torn read is possible while a writer flag is "
             f"renaming onto it, and a torn read is a retry, not a verdict.") from None
     # IS THIS A DOCUMENT? Answered by the shared schema, not here, since 0454b542e4 -- the repo
@@ -1374,7 +1401,7 @@ def load_allowlist() -> dict:
     # rather than reduced to primary(), which keeps the claim a refusal makes whole: an operator
     # told to add scoped_orphans should also learn dev_mock is a string. Still one
     # AllowlistUnusable, still one handler, still exit 2, and no count anywhere on the line.
-    refusals = allowlist_schema().validate(payload, KNOWN_SECTIONS, ALLOWLIST_PATH.name)
+    refusals = allowlist_schema(root).validate(payload, KNOWN_SECTIONS, al_path.name)
     if refusals:
         raise AllowlistUnusable(" ".join(
             refusal.sentence for refusal in refusals))
@@ -1457,8 +1484,11 @@ def assert_allowlist_bytes(path: Path, written: bytes) -> None:
     ])
 
 
-def write_allowlist_payload(payload: dict) -> None:
+def write_allowlist_payload(payload: dict, path=None) -> None:
     """The ONE way this gate writes the allowlist file: LF endings, UTF-8, no escapes.
+
+    r208: the target arrives as an argument (default ALLOWLIST_PATH) so a
+    writer flag can land the fixture's allowlist, not only this checkout's.
 
     All three writer flags used to call ALLOWLIST_PATH.write_text(...) with an encoding and
     no newline argument, and Python text mode translates a newline into os.linesep -- on
@@ -1508,10 +1538,11 @@ def write_allowlist_payload(payload: dict) -> None:
     argument above fails the writer run that makes it instead of quietly re-emitting all 268
     lines of a file another lane owns as CRLF.
     """
-    ALLOWLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    target = ALLOWLIST_PATH if path is None else Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
     tmp = tempfile.NamedTemporaryFile(
         "w", encoding="utf-8", newline="\n", delete=False,
-        dir=str(ALLOWLIST_PATH.parent), prefix=ALLOWLIST_PATH.name + ".", suffix=".tmp")
+        dir=str(target.parent), prefix=target.name + ".", suffix=".tmp")
     tmp_path = Path(tmp.name)
     # The exact text this helper intends to land, kept so the guard below can compare BYTES
     # rather than re-serialising (a second json.dumps could differ from the first).
@@ -1528,10 +1559,10 @@ def write_allowlist_payload(payload: dict) -> None:
         assert_allowlist_bytes(tmp_path, written)
         for attempt in range(REPLACE_ATTEMPTS):
             try:
-                os.replace(tmp_path, ALLOWLIST_PATH)
+                os.replace(tmp_path, target)
                 # Proof half: the rename is the write, so read the TARGET back -- the file a
                 # reader will open -- and refuse unless it is byte-for-byte what was written.
-                assert_allowlist_bytes(ALLOWLIST_PATH, written)
+                assert_allowlist_bytes(target, written)
                 return
             except PermissionError:
                 # Windows denies a rename onto a file another process has open. Retry: the
@@ -1839,7 +1870,7 @@ def refuse_unwritten_allowlist(refusal: AllowlistWriteRefusal) -> int:
     return 2
 
 
-def update_allowlist(mutate, validated, label: str) -> list[str]:
+def update_allowlist(mutate, validated, label: str, root=None) -> list[str]:
     """The ONE place the write path opens this file: read, compare, mutate, replace.
 
     Returns entry-level FINDINGS (sentences, exit 1) or nothing; an empty list means it wrote.
@@ -1863,37 +1894,38 @@ def update_allowlist(mutate, validated, label: str) -> list[str]:
     is honest about being a refusal. A collision is rare and cheap to redo; a sealed-over edit
     is invisible.
     """
-    current = load_allowlist()
+    al_path = ALLOWLIST_PATH if root is None else _base(root) / "scripts" / "ipc-parity-allowlist.json"
+    current = load_allowlist(root)
     if validated is not None and current != validated:
         raise AllowlistWriteRefusal([
-            f"{label} did not write {ALLOWLIST_PATH.name}: the file changed after this run "
+            f"{label} did not write {al_path.name}: the file changed after this run "
             f"read and validated it, during the sweep between the two. Writing now would seal "
             f"an edit nobody validated and possibly overwrite one somebody did. Re-run the "
             f"command; if both edits are meant to exist, make them one edit."
         ])
-    problems = allowlist_shape_problems(current, ALLOWLIST_PATH)
+    problems = allowlist_shape_problems(current, al_path)
     if problems:
         return [
-            f"{label} did not write {ALLOWLIST_PATH.name}: what it just read is not a shape "
+            f"{label} did not write {al_path.name}: what it just read is not a shape "
             f"this gate accepts, and writing it back would make the problem permanent.",
             *problems,
         ]
     payload = dict(current)
     summary = mutate(payload)
     try:
-        write_allowlist_payload(payload)
+        write_allowlist_payload(payload, al_path)
     except AllowlistBusyError as busy:
         # Somebody else has the file open and never let go. The previous bytes are still on
         # disk, intact -- that is the whole content of this refusal, and it is not a verdict.
         raise AllowlistWriteRefusal(
-            [f"{label} did not write {ALLOWLIST_PATH.name}: {busy}"]) from None
+            [f"{label} did not write {al_path.name}: {busy}"]) from None
     except OSError as exc:
         # The other ways a write fails: the sibling temp would not be created, the directory
         # is not there or not writable, the swap raised something that is not a sharing denial.
         # Uncaught, each one escaped main() as a traceback, and an uncaught exception exits 1 --
         # the verdict code spent on a disk, not on a command.
         raise AllowlistWriteRefusal([
-            f"{label} could not write {ALLOWLIST_PATH.name}: the write itself failed "
+            f"{label} could not write {al_path.name}: the write itself failed "
             f"({type(exc).__name__}: {exc.strerror or exc}). Nothing was put in its place, so "
             f"the file on disk is the file that was already there."
         ]) from None
@@ -1947,7 +1979,7 @@ def write_or_refuse(run) -> int:
         return refuse_unusable_allowlist(unusable)
 
 
-def write_dev_mock_gaps(gaps: list[str], validated: dict | None = None) -> list[str]:
+def write_dev_mock_gaps(gaps: list[str], validated: dict | None = None, root=None) -> list[str]:
     """Seed/extend "dev_mock" from the current gaps, preserving reasons and other sections."""
     def mutate(payload: dict) -> str:
         before = allowlist_section(payload, "dev_mock")
@@ -1959,10 +1991,10 @@ def write_dev_mock_gaps(gaps: list[str], validated: dict | None = None) -> list[
             f"{sum(1 for _, reason in after if reason)} carrying a reason)"
         )
 
-    return update_allowlist(mutate, validated, "--write-dev-mock-gaps")
+    return update_allowlist(mutate, validated, "--write-dev-mock-gaps", root)
 
 
-def write_allowlist(missing: dict[str, set[str]], validated: dict | None = None) -> list[str]:
+def write_allowlist(missing: dict[str, set[str]], validated: dict | None = None, root=None) -> list[str]:
     """Seed/extend the two shell sections, additively, preserving every other section.
 
     This used to REPLACE both lists with sorted(measured gaps), which did two damaging
@@ -2001,10 +2033,10 @@ def write_allowlist(missing: dict[str, set[str]], validated: dict | None = None)
             + ")"
         )
 
-    return update_allowlist(mutate, validated, "--write-allowlist")
+    return update_allowlist(mutate, validated, "--write-allowlist", root)
 
 
-def write_scoped_orphans(orphans: set[str], validated: dict | None = None) -> list[str]:
+def write_scoped_orphans(orphans: set[str], validated: dict | None = None, root=None) -> list[str]:
     """Seed/extend the scoped_orphans section, preserving everything else.
 
     Read through section_names and written back through merge_section_entries, so an entry
@@ -2033,7 +2065,7 @@ def write_scoped_orphans(orphans: set[str], validated: dict | None = None) -> li
             f"({sum(1 for _, reason in written if reason)} carrying a reason)"
         )
 
-    return update_allowlist(mutate, validated, "--write-scoped-orphans")
+    return update_allowlist(mutate, validated, "--write-scoped-orphans", root)
 
 
 # ── C41: the shell-blind reachability leg ─────────────────────────────
@@ -4577,10 +4609,146 @@ def self_test() -> int:
         print(f"self-test: {len(failed)} FAILURE(S)", file=sys.stderr)
         return 1
     print("self-test: OK")
+    return shell_ladder()
+
+
+def shell_ladder() -> int:
+    """r208: main() graded through explicit argv AND a contract root -- the
+    r166..r207 pattern in its full form. The fixture tree is a miniature of
+    the real layout (both shell libs, a ui/src tree, a dev-mock tree, the
+    shared schema module copied from this checkout, an allowlist carrying
+    every KNOWN section); rung 1 demands a gap the real tree does not have,
+    so a root-dropping main is killed on the first rung against the clean
+    checkout."""
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+    import shutil as _shutil
+
+    rung_n = iter(range(1000))
+    def build_tree(tmp, api_text, desktop_extra="", tablet_handler=True,
+                   allowlist=None, with_schema=True):
+        root = Path(tmp) / ("mini%d" % next(rung_n))
+        (root / "ui/src/api/client").mkdir(parents=True, exist_ok=True)
+        (root / "ui/src/dev-mock/core").mkdir(parents=True, exist_ok=True)
+        (root / "apps/desktop-tauri/src").mkdir(parents=True, exist_ok=True)
+        (root / "apps/mobile-tauri/src").mkdir(parents=True, exist_ok=True)
+        (root / "scripts").mkdir(parents=True, exist_ok=True)
+        (root / "ui/src/api/client/products.ts").write_text(api_text, encoding="utf-8")
+        (root / "apps/desktop-tauri/src/lib.rs").write_text(
+            "generate_handler![\n    commands::sales::alpha,\n" + desktop_extra + "]\n",
+            encoding="utf-8")
+        if tablet_handler:
+            (root / "apps/mobile-tauri/src/lib.rs").write_text(
+                "generate_handler![\n    commands::sales::alpha,\n]\n", encoding="utf-8")
+        (root / "ui/src/dev-mock/tauri-api.ts").write_text(
+            "const handlers = {\n  'alpha': () => Promise.resolve(null),\n};\n",
+            encoding="utf-8")
+        (root / "ui/src/dev-mock/core/mockDispatcher.ts").write_text(
+            "// no alias pass in this fixture\n", encoding="utf-8")
+        _shutil.copy(ALLOWLIST_SCHEMA_PATH, root / "scripts" / "allowlist-schema.py")
+        if not with_schema:
+            (root / "scripts" / "allowlist-schema.py").unlink()
+        payload = allowlist if allowlist is not None else {
+            "desktop": [], "tablet": [], "dev_mock": [], "scoped_orphans": []}
+        (root / "scripts" / "ipc-parity-allowlist.json").write_text(
+            json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        return root
+
+    def run(root, *argv):
+        out, err = _io.StringIO(), _io.StringIO()
+        try:
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                rc = main(argv=list(argv), root=str(root))
+        except SystemExit as se:
+            return se.code, out.getvalue() + err.getvalue()
+        return rc, out.getvalue() + err.getvalue()
+
+    shell = 0
+    with _tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: the gap command 'beta' does not exist in
+        # this checkout, so a main that dropped its root reads the real
+        # (clean) tree and cannot produce this output
+        root = build_tree(tmp, "await loggedInvoke<void>('alpha');\n"
+                               "await invoke('beta');\n")
+        rc, text = run(root)
+        joined = text
+        if rc != 1 or "beta" not in joined or "FAIL:" not in joined:
+            print("  x rung 1: an unregistered UI invoke must FAIL rc 1 naming it "
+                  "(rc=%r tail=%r)" % (rc, joined[-160:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: parity clean -- only the registered name invoked
+        root = build_tree(tmp, "await loggedInvoke<void>('alpha');\n")
+        rc, text = run(root)
+        if rc != 0 or "FAIL:" in text or "IPC parity: OK" not in text:
+            print("  x rung 2: a parity-clean fixture must pass rc 0 (rc=%r tail=%r)"
+                  % (rc, text[-160:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: a stale allowlist entry -- the command came back
+        root = build_tree(tmp, "await loggedInvoke<void>('alpha');\n",
+                          allowlist={"desktop": ["alpha"], "tablet": [],
+                                     "dev_mock": [], "scoped_orphans": []})
+        rc, text = run(root)
+        if rc != 1 or "stale allowlist entry 'alpha'" not in text:
+            print("  x rung 3: a registered name still allowlisted must read stale rc 1 "
+                  "(rc=%r tail=%r)" % (rc, text[-160:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: --write-allowlist lands the measured gaps in the FIXTURE's
+        # allowlist, and the post-condition is read back inside the tree
+        root = build_tree(tmp, "await invoke('beta');\n")
+        rc, text = run(root, "--write-allowlist")
+        wrote = json.loads((root / "scripts" / "ipc-parity-allowlist.json")
+                           .read_text(encoding="utf-8"))
+        if rc != 0 or "allowlist written" not in text \
+                or "beta" not in wrote.get("desktop", []) \
+                or "beta" not in wrote.get("tablet", []):
+            print("  x rung 4: the writer must land beta in both shell sections "
+                  "(rc=%r wrote=%r)" % (rc, wrote), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: no allowlist at all under the contract root
+        root = build_tree(tmp, "await invoke('alpha');\n")
+        (root / "scripts" / "ipc-parity-allowlist.json").unlink()
+        rc, text = run(root)
+        if rc != 2 or "has no allowlist" not in text:
+            print("  x rung 5: an absent allowlist must refuse rc 2 (rc=%r tail=%r)"
+                  % (rc, text[-160:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 6: a shell lib missing under the contract root
+        root = build_tree(tmp, "await invoke('alpha');\n")
+        (root / "apps/mobile-tauri/src/lib.rs").unlink()
+        rc, text = run(root)
+        if rc != 2 or "shell lib missing" not in text:
+            print("  x rung 6: a missing shell lib must refuse rc 2 (rc=%r tail=%r)"
+                  % (rc, text[-160:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 7: the shared schema module is evidence too -- absent under the
+        # contract root, the gate must refuse in words, not traceback
+        root = build_tree(tmp, "await invoke('alpha');\n", with_schema=False)
+        rc, text = run(root)
+        if rc != 2 or "not usable as the shared allowlist schema" not in text:
+            print("  x rung 7: a missing schema module must refuse rc 2 (rc=%r tail=%r)"
+                  % (rc, text[-160:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("IPC-PARITY SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
     return 0
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r208: argv and root parameterized, the r166..r207 contract. Root
+    redirects EVERY evidence source together -- the UI scan trees, both
+    shell libs, the dev-mock tree, the allowlist file, and the shared
+    schema module it is validated against -- so the gate can be graded
+    against a fixture tree. parse_args(argv) per the arc's explicit-argv
+    rule: an in-process call must not inherit the caller's command line."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--self-test",
@@ -4607,7 +4775,7 @@ def main() -> int:
              "an operator hand-wrote, and exit (additive only -- it never removes an entry, "
              "so shrinking the list is a manual edit)",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.self_test:
         return self_test()
@@ -4628,13 +4796,15 @@ def main() -> int:
     # refuse to write if the file on disk has moved away from it, so the thing that reaches
     # disk is never something nobody looked at.
     try:
-        validated = load_allowlist()
+        validated = load_allowlist(root)
     except AllowlistUnusable as unusable:
         return refuse_unusable_allowlist(unusable)
     # Entry-level shape: the payload IS a usable allowlist now, so what is left here is a
     # wrong ENTRY inside a section this file can read -- a real finding about somebody's
     # exemption, and it keeps the FAIL/1 verdict convention of the findings below.
-    shape_problems = allowlist_shape_problems(validated, ALLOWLIST_PATH)
+    base = _base(root)
+    al_path = ALLOWLIST_PATH if root is None else base / "scripts" / "ipc-parity-allowlist.json"
+    shape_problems = allowlist_shape_problems(validated, al_path)
     if shape_problems:
         print(
             f"\nFAIL: allowlist shape, {len(shape_problems)} problem(s):", file=sys.stderr
@@ -4643,10 +4813,10 @@ def main() -> int:
             print(f"  - {problem}", file=sys.stderr)
         return 1
 
-    ui_commands = extract_ui_commands()
+    ui_commands = extract_ui_commands(root)
     handlers: dict[str, list[str]] = {}
     for shell, rel in SHELLS.items():
-        lib_path = REPO_ROOT / rel
+        lib_path = base / rel
         if not lib_path.exists():
             print(f"error: shell lib missing: {rel}", file=sys.stderr)
             return 2
@@ -4659,7 +4829,7 @@ def main() -> int:
                 missing[shell].add(command)
 
     if args.write_allowlist:
-        return write_or_refuse(lambda: write_allowlist(missing, validated))
+        return write_or_refuse(lambda: write_allowlist(missing, validated, root))
 
     allowlist = validated
     failures: list[str] = []
@@ -4672,15 +4842,15 @@ def main() -> int:
     all_orphans = sorted(set().union(*[set(v) for v in orphans.values()]))
     if args.write_scoped_orphans:
         return write_or_refuse(
-            lambda: write_scoped_orphans(set(all_orphans), validated))
+            lambda: write_scoped_orphans(set(all_orphans), validated, root))
 
     # Third direction: can the plain-browser dev-mock answer what the UI invokes?
     mock_registered, mock_aliasable, mock_per_file, mock_alias_file = (
-        extract_dev_mock_answerable())
+        extract_dev_mock_answerable(root))
     mock_answerable = mock_registered | mock_aliasable
     mock_gaps = sorted(c for c in ui_commands if c not in mock_answerable)
     if args.write_dev_mock_gaps:
-        return write_or_refuse(lambda: write_dev_mock_gaps(mock_gaps, validated))
+        return write_or_refuse(lambda: write_dev_mock_gaps(mock_gaps, validated, root))
 
     for command in sorted(set(all_orphans) - orphan_allow):
         shells = ", ".join(s for s in SHELLS if command in orphans[s])
@@ -4740,7 +4910,7 @@ def main() -> int:
     shell_blind = {}
     for shell in SHELLS:
         shell_blind[shell] = shell_blind_findings(
-            ui_runtime_files(), set(handlers[shell]), missing[shell]
+            ui_runtime_files(root), set(handlers[shell]), missing[shell]
         )
     all_blind = {}
     for shell in SHELLS:
@@ -4766,7 +4936,7 @@ def main() -> int:
     # A second read of the mock tree in this run. Ten small files, and the note below has to
     # describe the same bytes the answerable set was parsed from, which a shared variable
     # threaded across this function would buy at the cost of a longer reach.
-    midline_keys = find_midline_handler_keys(read_dev_mock_sources())
+    midline_keys = find_midline_handler_keys(read_dev_mock_sources(root))
     midline_paths = {
         name: sorted(path for path, names in midline_keys.items() if name in names)
         for name in {n for names in midline_keys.values() for n in names}
@@ -4817,7 +4987,7 @@ def main() -> int:
 
     for shell in SHELLS:
         unregistered = extract_unregistered(
-            shell, REPO_ROOT / SHELLS[shell], set(handlers[shell])
+            shell, base / SHELLS[shell], set(handlers[shell])
         )
         allowed_names = section_names(allowlist, shell)
         # Enforced now, not merely surfaced: an allowlisted name that is neither a gap this
