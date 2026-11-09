@@ -8811,3 +8811,42 @@ still down (probed r159): the E2E / llvm-cov / nextest-junit receipts
 remain the standing PG-gated gap. The root-policy gate remains RED on
 the foreign todo.md (r174) and verify-core-size RED on the ADR-59 +64
 (r181), both awaiting their owning lanes.
+
+### Round 203 (2026-11-09) -- topology-parity joins the arc; CWD-relative module paths gain a root
+
+The r166..r202 contract applied to the vendored-contract parity gate:
+_res(rel, root) resolves a module-level relative path against the
+contract root, an ABSOLUTE path passes through untouched -- which keeps
+the existing self-test's global-rebind fixtures working unchanged, since
+they hand check_contract_copies()/check_corpus() absolute temp paths.
+main(argv, root) resolves the vendored copy, the UI canonical, the ui/
+tree question and the matrix under ONE base together; the corpus read
+and the contract-source choice share it.
+
+Six shell cases over a full four-path fixture tree (vendored contract,
+UI canonical, ui/ tree, matrix): a parity-clean tree passes both phases
+("byte-identical" + "corpus covers 1 pairings"); differing copies fail
+rc 1 as DRIFT; a ui/ tree with no contract file fails as the
+compared-NOTHING case (the moved-file trap, distinct from a skip); a
+server-only checkout skips with the NOT FULLY VERIFIED coda -- the skip
+must be the LAST thing a caller reads, and the shell case grades that
+placement; a missing matrix fails naming the regeneration command; and
+a stale corpus schemaVersion fails as the corpus being stale.
+
+Measured kill: the root-dropping main resolves the module's relative
+paths against the CWD and grades the real checkout (2515-byte contract,
+7 pairings) on the first rung, which demands the fixture's 1 pairing --
+killed immediately; the probe is read-only. Capture:
+verify-topology-parity: OK -- corpus covers 7 pairings x 9 kinds (567
+verdicts) at schemaVersion 2, live.
+
+Honest limits: the first-divergence LINE number in the drift message is
+printed but not asserted by any case; the invalid-JSON corpus arm is
+pure-only (the shell fixture always writes valid JSON); phase 2's
+all-false and non-boolean row rules likewise stay pure-only -- the shell
+ladder grades the four-path WIRING and phase-1 verdicts, the corpus
+semantics were already pinned 10 ways. Docker daemon still down (probed
+r159): the E2E / llvm-cov / nextest-junit receipts remain the standing
+PG-gated gap. The root-policy gate remains RED on the foreign todo.md
+(r174) and verify-core-size RED on the ADR-59 +64 (r181), both awaiting
+their owning lanes.
