@@ -8725,3 +8725,52 @@ daemon still down (probed r159): the E2E / llvm-cov / nextest-junit
 receipts remain the standing PG-gated gap. The root-policy gate remains
 RED on the foreign todo.md (r174) and verify-core-size RED on the
 ADR-59 +64 (r181), both awaiting their owning lanes.
+
+### Round 201 (2026-11-09) -- rust-doc-paths joins the arc; the ladder's own argv slip proves the contract
+
+The r166..r200 contract applied to the path-citation gate: tracked(root),
+ever_existed(path, cache, root) -- git history queried in the CONTRACT
+root's repository -- and scan(files, tracked_set, history_cache, root)
+report relative paths and grade line citations under one base; main(argv,
+root) builds the corpus, the tracked set and the history cache from THAT
+root together, and the zero-corpus floor refusal names the base it
+actually scanned. The classifier self-test's ever_existed stubs gained
+the root parameter (a lambda and a def) rather than fighting scan().
+
+Seven shell cases over a scratch GIT repository (tracked() and
+ever_existed() both need git; the corpus floor is lowered to 2 for the
+ladder and restored for its own rung): a doc citing a TRACKED path reads
+clean over exactly 3 files; an absent path is the founding defect, rc 1;
+a line citation past EOF fails via the full-path arm; the same stale
+line grades via the bare-basename arm (libreal.rs unique in the fixture);
+a path that genuinely EXISTED (committed, then deleted, with a
+past-tense marker) is exempt -- and an INVENTED historical path fails rc
+1 under rule 2, the two arms the exemption's design says must disagree;
+and with the real floor restored, an empty root refuses rc 2 instead of
+printing clean.
+
+Measured kill: the root-dropping main scans the real checkout (1430
+files) and answers clean-1430 on the first rung, which demands the
+fixture's 3 -- killed immediately; the probe is read-only. Capture:
+check-rust-doc-paths: clean - 1430 .rs file(s) scanned, every cited
+path resolves.
+
+The ladder itself paid the contract's toll twice on the way in: its run()
+called main(root=...) withOUT argv, so parse_args(None) re-read sys.argv
+(--self-test) and recurred into self_test until RecursionError -- the
+r166 rule "explicit argv always" is not ceremony, it is what keeps an
+in-process call from inheriting the caller's command line; and two
+f.relative_to(ROOT) reads survived the first pass, surfacing only when
+the fixture's files sat outside the checkout. Both are ladder-fixture
+lessons, not live-code defects.
+
+Honest limits: the duplicate-basename SKIP arm (230 non-unique names
+skipped repo-wide) is graded by the pure cases only, not by the shell
+fixture (its names are deliberately unique); the rule-1 history exemption
+is graded only in the never-existed direction -- a fixture where the
+marker line ALSO resolves as a live tracked path would need a third
+file; the finding-REASON taxonomy is asserted by needle, not exhaustively.
+Docker daemon still down (probed r159): the E2E / llvm-cov / nextest-junit
+receipts remain the standing PG-gated gap. The root-policy gate remains
+RED on the foreign todo.md (r174) and verify-core-size RED on the ADR-59
++64 (r181), both awaiting their owning lanes.
