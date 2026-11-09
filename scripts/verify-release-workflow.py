@@ -619,9 +619,8 @@ def _shell_ladder_body() -> int:
                 or FX_EXT not in findings(said)[0]
                 or "no matrix target builds" not in said):
             print("  x rung 1: the FIXTURE must be VERDICTED rc 1 for exactly ONE "
-                  "finding naming its own %r inventory demand -- a root-blind main "
-                  "grades this repository's release.yml, which makes no such demand, "
-                  "and answers the pass line (rc=%r findings=%r)"
+                  "finding naming its own %r inventory demand -- a root-blind read "
+                  "cannot produce that word at all (rc=%r findings=%r)"
                   % (FX_EXT, rc, findings(said)), file=sys.stderr)
             return 1
         shell += 1
@@ -665,8 +664,7 @@ def _shell_ladder_body() -> int:
             return 1
         if rc != 0 or "release.yml validates" not in said:
             print("  x rung 3: a CLEAN fixture must be the silent pass an always-rc-1 "
-                  "arm cannot fake; a root-blind main grades this repository's own "
-                  "release.yml instead (rc=%r said=%r)" % (rc, said[-400:]),
+                  "arm cannot fake (rc=%r said=%r)" % (rc, said[-400:]),
                   file=sys.stderr)
             return 1
         shell += 1
@@ -698,6 +696,7 @@ def main(argv: list[str] | None = None, root: str | Path | None = None) -> int:
     redirects BOTH the release.yml read and every evidence source inside
     validate(), so a fixture cannot half-run against the real repository."""
     root_path = None if root is None else Path(root).resolve()
+    base = ROOT if root_path is None else root_path
     wf = WF if root_path is None else root_path / ".github" / "workflows" / "release.yml"
     args = sys.argv[1:] if argv is None else argv
     if "--self-test" in args:
