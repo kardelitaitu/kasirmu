@@ -9955,3 +9955,63 @@ limits stand. Docker daemon still down (probed r159): E2E / llvm-cov /
 nextest-junit receipts remain PG-gated. Root-policy RED on the foreign
 todo.md (r174); core-size RED on the ADR-59 +64 (r181) -- both await
 their owning lanes.
+
+### Round 227 (2026-11-09) -- namespace-governance: the last un-contracted tool, and the sibling whose baseline learned T3
+
+verify-namespace-governance.py (1942 lines, the largest in the survey)
+closes the arc list that began at r165: main(argv=None, root=None),
+argv explicit, a root kwarg that overrides --root exactly as --root
+overrides the default, every walker already root-parameterized (the
+tool had the flag since its 2026-10-23 landing). The six-rung ladder
+ends differently from its siblings, because this tool has TWO of its
+own floors: scan() refuses rc 2 when modules/ holds no production
+source ("nothing was graded" -- its own hollow-corpus defense, first
+live exercise here), and dependency_findings iterates manifests, not
+module dirs -- a fixture without modules/*/manifest.json has NO Rule 3
+surface at all, which the first rung-5 draft measured as
+undeclared_edges: 0 and now names in a comment. Rungs: the killing rung
+(an unmarked cross-vertical read in fixture SQL fails rc 1 through
+--json with the fixture path named), the benign fixture greening WITH
+"[population examined: 1 module source file(s)", the T3 rung (below),
+an unclassified EventHandler impl blocking rc 1 (Rule 2's registry-side
+of the census), the strict pair (a granted read passes by default rc 0;
+--strict promotes the undeclared-dependency note to a verdict rc 1,
+Phase 4 P4.5's first live exercise), and the empty-modules refusal.
+
+The round's real find is a DELIBERATE DIVERGENCE from the sibling
+contract. verify-architecture-boundaries.py's baseline excuses: a
+matched entry tracks the finding at exit 0 (r226 rung 4). THIS tool's
+baseline does not: apply_baseline's T3 rule (added with the grant
+marker work) demotes a baseline entry over an UNMARKED cross-vertical
+read to baseline_status "unmarked" and BLOCKS it, with remediation
+demanding the in-code marker -- "exceptions must be visible at the
+call site", not hidden in a JSON file. The ladder's rung 3 was first
+written to the sibling's semantics and measured WRONG (rc 1, frozen 0);
+it now pins the actual contract: an entry that matches still blocks,
+saying the marker is what is missing. Two sibling gates, two baseline
+philosophies, both now pinned by their own ladders.
+
+probe227 kills on a cleaner path than r226's: the mutant (root kwarg
+dropped, argv empty) grades the real checkout, whose frozen baseline
+holds at exit 0, while the fixture's unmarked read exits 1 -- rc-keyed,
+no wrong-tree refusal needed, and the probe asserts the fixture side's
+POSITIVE verdict (rc 1 + fixture path named) before comparing, so a
+both-sides refusal can never read as a kill. Live unchanged: "1 frozen
+cross-vertical edge(s), 0 new blocking finding(s), 0 stale baseline
+entry(ies), 0 informational finding(s)" over 55 module source files at
+exit 0.
+
+Honest limits: the rungs self-calibrate their table from THIS module's
+TABLE_TO_MODULE constant (scan consults the module-level map, not
+modules/ownership.json -- load_ownership feeds the emit/check-ownership
+pair, a different surface), so a ladder failure here says the map, not
+the ownership file; rung 5's granted path depends on the marker sitting
+within GRANT_MARKER_WINDOW=4 lines of its literal; --strict is now
+ladder-pinned but Phase 4 P4.5 promotion of REAL trees remains the
+owning lane's call; the census modes (--census/--emit-census) and the
+registry emit/check pair are not ladder-covered -- their self-test
+cases (18) hold. The scoped-reads (r213) through bundle-parity (r225)
+and architecture-boundaries (r226) limits stand. Docker daemon still
+down (probed r159): E2E / llvm-cov / nextest-junit receipts remain
+PG-gated. Root-policy RED on the foreign todo.md (r174); core-size RED
+on the ADR-59 +64 (r181) -- both await their owning lanes.
