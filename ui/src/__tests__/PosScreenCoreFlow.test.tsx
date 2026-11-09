@@ -930,7 +930,11 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     // the only window in which the race is observable. `.catch()` in the implementation
     // attaches here, so no unhandled rejection is produced.
     const pendingDelete = new Promise<unknown>(() => { /* deliberately never settles */ });
-    vi.mocked(salesApi.deleteHeldCartScoped).mockImplementationOnce(() => pendingDelete as never);
+    let readsWhenDeleteStarted = -1;
+    vi.mocked(salesApi.deleteHeldCartScoped).mockImplementationOnce(() => {
+      readsWhenDeleteStarted = vi.mocked(salesApi.listOpenBillsScoped).mock.calls.length;
+      return pendingDelete as never;
+    });
 
     // Charge -> tender -> Complete. The tender step is required: `method` defaults to
     // cash and `canComplete` needs `sufficient`, false until an amount is entered.
@@ -940,8 +944,6 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     const settle = screen.getByTestId('settle-button');
     await waitFor(() => expect((settle as HTMLButtonElement).disabled).toBe(false));
 
-    // Capture the read count RIGHT BEFORE the delete is triggered by completing payment.
-    const readsBefore = vi.mocked(salesApi.listOpenBillsScoped).mock.calls.length;
     await user.click(settle);
 
     // Dismiss the receipt, which is what releases `onComplete` (see the timing notes
@@ -994,7 +996,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       'the bill list was re-read WHILE the refused delete was still in flight — the ' +
         'refresh raced the write, so the list reflects pre-write state and the paid ' +
         'tab is invisible',
-    ).toBe(readsBefore);
+    ).toBe(readsWhenDeleteStarted);
   }, 20000);
 
   // ── A double Send-to-Kitchen must not dispatch twice ─────────────────────

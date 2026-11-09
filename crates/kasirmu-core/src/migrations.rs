@@ -821,7 +821,7 @@ pub fn fresh_db() -> rusqlite::Connection {
     let mut cloned = false;
     if snapshot_file.is_file() {
         // Fast path: clone from the shared file if valid and idle.
-        let try_clone = || -> rusqlite::Result<()> {
+        let mut try_clone = || -> rusqlite::Result<()> {
             let src = rusqlite::Connection::open(&snapshot_file)?;
             let backup = rusqlite::backup::Backup::new(&src, &mut fresh)?;
             backup.run_to_completion(100, std::time::Duration::from_millis(0), None)
