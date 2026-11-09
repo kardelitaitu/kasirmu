@@ -10550,3 +10550,47 @@ now honours TMPDIR/TMP/TEMP for its fixtures, and the ladder was run with an
 ABSOLUTE temp root because a relative one is joined twice by this file's
 fixture helper -- a scratch-harness artefact of the round, not a checker
 defect, and not fixed here.
+### Round 237 (2026-11-09) -- fixture-ftl-keys: root threaded through three walkers, and two refusals that taught the fixture's own shape
+
+check-fixture-ftl-keys.py (267 lines) was the next census target and the first
+in this arc needing BOTH parts: "missing ladder, root_param". It had no root
+parameter at all, so this round threads one through the three walkers rather
+than rebinding globals -- bundle_keys(root), production_blob(root), ghosts(root)
+and circular_error_mocks(root) each default to REPO, which is what keeps every
+existing self-test call byte-for-byte. Both detectors take it; the second arm
+(circular app-error mocks) is a distinct detector with its own regexes, so
+leaving it rooted on the real tree would have made half the ladder hollow.
+
+The ladder is six rungs and the first two failed, both times because the FIXTURE
+was wrong rather than the gate. Rung 1's stub wrote the entry as a one-line
+object literal -- "getString: (id) => ({ 'ghost-key': 'text' })" -- which
+FIXTURE_ENTRY_RE does not match, because the regex wants the quoted key at the
+start of a line after whitespace. The fixture therefore contained no entries at
+all and the rung hit the "no getString-stubbing test found" refusal instead of
+the ghost arm it names. The real suites write the entry on its own line, as this
+file's own self-test sample has always shown; the fixture now does too. Rung 2
+failed the same way.
+
+Rung 1 is still the killing rung -- a fixture ghost key must exit 1 naming it,
+where a root-ignoring main grades this checkout's 40 clean fixture files -- but
+the two failures are the round's real finding: a fixture is a claim about
+production shape, and a fixture shaped by convenience tests the walker against a
+tree production never produces. Both refusals the gate has (no bundles, no
+stubbing test) now have their own rungs, so the next fixture that omits either
+fails loudly instead of quietly grading the wrong arm.
+
+Measured: census 23 of 70 contracted (was 22) -- two parts earned at once; the
+file no longer appears in the un-contracted list; next target is
+verify-shell-registration.py at 278 lines. Ladder 6 rungs, self-test 4/4, both
+exit 0. Live gate unchanged: "check-fixture-ftl-keys: clean - 40 fixture
+file(s), every stubbed key resolves". Dependents unmoved: verify-selftests-wired
+105 of 107, verify-gate-completeness OK.
+
+Honest limits: the ladder grades the shell, the root threading and the refusal
+arms -- not the regex surface, which the four self-test checks own, and not the
+bundle parse, which reads this checkout's 5854 keys. FIXTURE_ENTRY_RE still
+requires the entry at a line start; a one-line object literal remains invisible
+to this gate, which is pinned as a MEASUREMENT (the fixture is shaped to match)
+rather than closed with a wider regex -- widening it here would change the
+gate's false-positive surface, and that is a decision for a round that measures
+it. The host confinement recorded since round 233 still applies.

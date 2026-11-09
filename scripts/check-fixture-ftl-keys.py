@@ -85,14 +85,38 @@ REPO = Path(__file__).resolve().parent.parent
 UI_SRC = REPO / "ui" / "src"
 LOCALES = REPO / "shared-ui" / "locales"
 
+#: Where fixtures are written when the host sets a temp variable. A host whose
+#: confinement denies files under its default temp (measured 2026-11-09 on the
+#: agent host: every write into a TemporaryDirectory is EPERM) can point this at
+#: a directory it allows; unset leaves tempfile's own default in force.
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root() -> str | None:
+    """The temp root this file's fixtures are written under (None = system default)."""
+    import os
+    return next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+
+
+def _base(root: Path | str | None) -> Path:
+    """The tree every scan reads. r237: root is a PARAMETER, not a rebinding --
+    the three walkers below take it so a fixture grades itself."""
+    return REPO if root is None else Path(root).resolve()
+
+
 FTL_KEY_RE = re.compile(r"^([a-zA-Z][a-zA-Z0-9_-]*)\s*=")
-FIXTURE_ENTRY_RE = re.compile(r"^\s*'([a-z][a-z0-9-]*[a-z0-9])'\s*:\s*'", re.M)
+# MULTILINE only makes ^ match at line starts; a quoted entry that is not
+# first on its line (measured r237: "{ 'ghost-key': 'text' }" inside an object
+# literal) is still an entry, so leading whitespace includes [ { and , --
+# the characters a key can legitimately follow on a builder line.
+FIXTURE_ENTRY_RE = re.compile(
+    r"^[\s[{,]*'([a-z][a-z0-9-]*[a-z0-9])'\s*:\s*'", re.M)
 
 
-def bundle_keys() -> set[str]:
-    """Every key declared across shared-ui/locales/*.ftl."""
+def bundle_keys(root: Path | str | None = None) -> set[str]:
+    """Every key declared across shared-ui/locales/*.ftl under `root`."""
     keys: set[str] = set()
-    for path in LOCALES.glob("*.ftl"):
+    for path in (_base(root) / "shared-ui" / "locales").glob("*.ftl"):
         for line in path.read_text(encoding="utf-8").splitlines():
             match = FTL_KEY_RE.match(line)
             if match:
@@ -100,10 +124,14 @@ def bundle_keys() -> set[str]:
     return keys
 
 
-def production_blob() -> str:
-    """All non-test ui/src source, concatenated (keys may be built at runtime)."""
+def production_blob(root: Path | str | None = None) -> str:
+    """All non-test ui/src source under `root`, concatenated (keys may be built
+    at runtime)."""
     parts: list[str] = []
-    for path in UI_SRC.rglob("*.ts*"):
+    src = _base(root) / "ui" / "src"
+    if not src.is_dir():
+        return ""
+    for path in src.rglob("*.ts*"):
         if "__tests__" in path.parts:
             continue
         parts.append(path.read_text(encoding="utf-8", errors="ignore"))
@@ -118,13 +146,17 @@ def fixture_entries(path: Path) -> list[str]:
     return [m.group(1) for m in FIXTURE_ENTRY_RE.finditer(text)]
 
 
-def ghosts() -> tuple[list[tuple[str, str]], int]:
-    """Return ([(key, file)], files_scanned)."""
-    keys = bundle_keys()
-    blob = production_blob()
+def ghosts(root: Path | str | None = None) -> tuple[list[tuple[str, str]], int]:
+    """Return ([(key, file)], files_scanned) for the tree under `root`."""
+    base = _base(root)
+    keys = bundle_keys(base)
+    blob = production_blob(base)
     found: list[tuple[str, str]] = []
     scanned = 0
-    for path in UI_SRC.rglob("*.test.ts*"):
+    src = base / "ui" / "src"
+    if not src.is_dir():
+        return found, 0
+    for path in src.rglob("*.test.ts*"):
         entries = fixture_entries(path)
         if not entries:
             continue
@@ -132,7 +164,7 @@ def ghosts() -> tuple[list[tuple[str, str]], int]:
         for key in entries:
             if key in keys or key in blob:
                 continue
-            found.append((key, path.relative_to(REPO).as_posix()))
+            found.append((key, path.relative_to(base).as_posix()))
     return sorted(set(found)), scanned
 
 
@@ -142,7 +174,7 @@ CIRCULAR_MOCK_RE = re.compile(
 CIRCULAR_LITERAL_RE = re.compile(r"l10nErrorMessage:\s*\([^)]*\)\s*=>\s*'([^']+)'")
 
 
-def circular_error_mocks() -> list[tuple[str, str]]:
+def circular_error_mocks(root: Path | str | None = None) -> list[tuple[str, str]]:
     """Return [(file, literal)] where a suite mocks app-error to return the copy it asserts.
 
     Round 38 found four of these (AnalyticsCardContent plus the three chart
@@ -153,8 +185,12 @@ def circular_error_mocks() -> list[tuple[str, str]]:
     it was testing its own stub. The real `l10nErrorMessage` never ran, so a
     change to the shipped copy would not have been noticed by any of them.
     """
+    base = _base(root)
     found: list[tuple[str, str]] = []
-    for path in UI_SRC.rglob("*.test.ts*"):
+    src = base / "ui" / "src"
+    if not src.is_dir():
+        return found
+    for path in src.rglob("*.test.ts*"):
         text = path.read_text(encoding="utf-8", errors="ignore")
         mock = CIRCULAR_MOCK_RE.search(text)
         if not mock:
@@ -164,7 +200,7 @@ def circular_error_mocks() -> list[tuple[str, str]]:
             continue
         value = literal.group(1)
         if text.count(value) > 1:
-            found.append((path.relative_to(REPO).as_posix(), value))
+            found.append((path.relative_to(base).as_posix(), value))
     return found
 
 
@@ -218,10 +254,158 @@ def self_test() -> int:
         print("  ok   circular-mock regex separates the two shapes")
     total = 4
     print(f"self-test: {total - failures}/{total} checks pass")
-    return 0 if failures == 0 else 1
+    if failures:
+        return 1
+    return shell_ladder()
 
 
-def main(argv: list[str]) -> int:
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard for the ladder (r237 -- the r228 lesson).
+
+    Rung 6 drives --self-test through argv from INSIDE the ladder, and the
+    self-test ends in this call, so without the guard that nested run would
+    recurse. The guard turns it into a printed skip.
+    """
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        print("  (ladder re-entry from a nested --self-test: skipped)")
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """r237: the root contract, graded on fixture trees through main().
+
+    Rung 1 IS the killing rung, and it is the GHOST arm: a fixture whose test
+    stubs a key that exists in no bundle and no production file must exit 1
+    naming it. A main() that ignored its root would grade this checkout --
+    measured clean at 40 fixture files this round -- and print "clean", so the
+    fixture is the only way to see the finding.
+
+    Rung 2 is the SECOND arm, which no root-contract rung had carried before:
+    the circular app-error mock. It is a distinct detector with its own
+    module-level regexes and its own report, and it now has to prove it reads
+    the fixture rather than the tree.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    def run(root_dir, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root_dir))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    def build(tmp, files, label="fx"):
+        """A fixture root holding the given {relative path: text} files."""
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix=label + "_"))
+        for rel, text in files.items():
+            p = base / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text, encoding="utf-8", newline="\n")
+        return base
+
+    FTL = "real-key = Real copy\n"
+    # The stub must contain the literal "getString" -- that is the gate's own
+    # condition for a file to be in scope, and a fixture that omits it would
+    # prove nothing (r237 measured exactly that: rung 1 first failed with
+    # "no getString-stubbing test found", the refusal arm, not the ghost arm).
+    # The entry placeholder must satisfy FIXTURE_ENTRY_RE, which requires a
+    # key of two or more characters: a one-letter placeholder made the fixture
+    # carry no entries at all and hit the refusal arm instead (measured r237).
+    # The entry sits on its own line, as the real fixtures write it
+    # (check-fixture-ftl-keys.py's own self-test sample:
+    # "          'settings-tax-id-pattern-hint': 'Enter a valid tax ID',").
+    # A one-line object literal does NOT match FIXTURE_ENTRY_RE -- measured r237,
+    # and that measurement is why this fixture is shaped like production.
+    STUB = ("const l10n = {\n"
+            "  getString: (id, args) => ({\n"
+            "    'KEY': 'text',\n"
+            "  })[id] ?? id,\n"
+            "};\n")
+    GHOST_SUITE = STUB.replace("KEY", "ghost-key")
+    GOOD_SUITE = STUB.replace("KEY", "real-key")
+
+    shell = 0
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as tmp:
+        # rung 1 -- the killing rung: a ghost key in the FIXTURE is reported.
+        root = build(tmp, {"shared-ui/locales/en.ftl": FTL,
+                           "ui/src/__tests__/A.test.tsx": GHOST_SUITE})
+        rc, said = run(root)
+        if rc != 1 or "ghost-key" not in said:
+            print("  x rung 1: a fixture ghost key must exit 1 naming it "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2 -- the second arm: a circular mock is reported from the fixture.
+        circular = ("vi.mock('@/utils/app-error', () => ({\n"
+                    "  l10nErrorMessage: () => 'An error occurred',\n"
+                    "}));\nconst m = 'An error occurred';\n"
+                    + GOOD_SUITE)
+        root = build(tmp, {"shared-ui/locales/en.ftl": FTL,
+                           "ui/src/__tests__/B.test.tsx": circular})
+        rc, said = run(root)
+        if rc != 1 or "circular app-error mock" not in said:
+            print("  x rung 2: a circular mock must exit 1 naming it "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3 -- a resolving key greens, with the fixture's own scan count.
+        root = build(tmp, {"shared-ui/locales/en.ftl": FTL,
+                           "ui/src/__tests__/C.test.tsx": GOOD_SUITE})
+        rc, said = run(root)
+        if rc != 0 or "clean - 1 fixture file(s)" not in said:
+            print("  x rung 3: a resolving key must exit 0 counting one file "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4 -- the refusal floor: no bundles under the fixture root.
+        root = build(tmp, {"ui/src/__tests__/C.test.tsx": GOOD_SUITE})
+        rc, said = run(root)
+        if rc != 2 or "no bundle keys read" not in said:
+            print("  x rung 4: a fixture without bundles must refuse rc 2 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5 -- the other refusal: bundles but no getString stub.
+        root = build(tmp, {"shared-ui/locales/en.ftl": FTL,
+                           "ui/src/__tests__/D.test.tsx": "const x = 1;\n"})
+        rc, said = run(root)
+        if rc != 2 or "no getString-stubbing test found" not in said:
+            print("  x rung 5: a fixture with no stubbing test must refuse rc 2 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 6 -- --self-test dispatch flows through argv; re-entry is guarded.
+        root = build(tmp, {"shared-ui/locales/en.ftl": FTL,
+                           "ui/src/__tests__/C.test.tsx": GOOD_SUITE})
+        rc, said = run(root, "--self-test")
+        if rc != 0 or "self-test:" not in said or "ladder re-entry" not in said:
+            print("  x rung 6: --self-test through argv must pass rc 0 and skip the "
+                  "nested ladder (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("FIXTURE-FTL-KEYS SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
+    return 0
+
+
+def main(argv: list[str] | None = None, root: Path | str | None = None) -> int:
+    """r237: root is the r166 contract -- a fixture tree can be graded from code.
+    Every walker takes it, so nothing here re-binds a module global."""
     parser = argparse.ArgumentParser(description="Fixtures must not invent Fluent keys.")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args(argv)
@@ -229,16 +413,16 @@ def main(argv: list[str]) -> int:
     if args.self_test:
         return self_test()
 
-    if not bundle_keys():
+    if not bundle_keys(root):
         print("check-fixture-ftl-keys: BROKEN - no bundle keys read", file=sys.stderr)
         return 2
 
-    found, scanned = ghosts()
+    found, scanned = ghosts(root)
     if scanned == 0:
         print("check-fixture-ftl-keys: BROKEN - no getString-stubbing test found", file=sys.stderr)
         return 2
 
-    circular = circular_error_mocks()
+    circular = circular_error_mocks(root)
     if circular:
         print(f"check-fixture-ftl-keys: {len(circular)} circular app-error mock(s):", file=sys.stderr)
         for path, literal in circular:
@@ -264,4 +448,4 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(main())
