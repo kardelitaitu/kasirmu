@@ -11530,3 +11530,57 @@ not regress-detect. The restored probe cases are graded only by the pure
 self-test, not by the ladder, so nothing in the mutation table covers them
 either.
 
+### Round 259 (2026-11-09) -- a guard against dropped cases was attempted and does not work
+
+Round 258 found that six assertions were deleted while the self-test still
+printed SELF-TEST OK, and said nothing in the repository compares a self-test
+inventory against its previous one. This round tried to build that comparison.
+It does not work, and the reason is worth recording so the next attempt is not
+the same attempt.
+
+THREE SIGNALS TRIED, each against verify-deployment.py where the regression is
+known (a loss the current file no longer exhibits, so the metric was evaluated
+across the regression commit itself):
+
+  1. PRINTED CASE COUNT. Parsed the "N cases" the self-test prints. Ambiguous:
+     verify-runner-commands prints "9 cases + 4 shell cases" and its ladder
+     prints "4 cases", so a first-match regex reads 9 for one file and 4 for
+     another that means the same thing; census-orphan-modules states no self-
+     test count at all and its "4 cases" is the LADDER. Compared across
+     817d4841d~1 and 817d4841d, the count is 6 named assertions in BOTH -- no
+     signal.
+  2. OK-LINE COUNT. Counted lines matching ^\s*ok. verify-deployment, verify-
+     runner-commands and verify-status-fallbacks emit ZERO such lines while
+     census-orphan-modules emits 12. Format-dependent, useless.
+  3. NAMED-ASSERTION INVENTORY (the promising one). Extracted the string
+     literal each want*/check*/expect* call is labelled with, 24 files carry
+     this shape, and sabotage-selftests alone yields 123 labels -- a real
+     inventory. Then measured across the actual regression:
+        817d4841d~1  named assertions: 6   want2 calls: 7
+        817d4841d    named assertions: 6   want2 calls: 7
+     IDENTICAL. The six restored assertions share their labels with the six
+     that never went away, so a name-based inventory cannot see the loss.
+
+What the regression DID change is raw token counts (Location 6 -> 7,
+"no listener" 1 -> 0), and token counts are exactly the brittle baseline that
+would fire on every reworded comment. Rejected rather than shipped.
+
+CONCLUSION: the property round 258 identified is real and there is no cheap
+static proxy for it. The six lost assertions were silent because they were
+BEHAVIOURAL -- they exercised probe() against a loopback server and asserted,
+per HEAD's own comment, "a dropped body/header, the HTTPError branch read as
+transport, a lost Location header, and a transport error that crashes instead
+of returning". Nothing that reads the FILE can know a behavioural case is
+unexercised; only running it can. A durable guard would have to execute each
+self-test and compare a per-case PASS/FAIL ledger against a baseline, which is
+a real instrument, not a parse.
+
+Honest limits: this round shipped NO code and the census stays at 36 of 70. It
+is a negative result, deliberately reported as one rather than dressed up as
+progress. The three rejected signals are recorded so the next agent does not
+spend a round discovering that a name-based inventory is blind to a renamed
+but equivalent set. One check performed here did clear a real doubt: the
+BIND/close/assert block for the transport branch survives at lines 236-241, so
+my round-258 restoration did not silently drop the "unreachable port" case --
+that token count fell only because a comment line went with it.
+
