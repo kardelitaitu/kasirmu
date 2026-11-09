@@ -3507,7 +3507,8 @@ def shell_ladder():
         except SystemExit as se:
             return se.code, out.getvalue(), err.getvalue()
         return rc, out.getvalue(), err.getvalue()
-    def build(tmp, allow, *, uses=True, guards=False, with_ui=True, with_api=True):
+    def build(tmp, allow, *, uses=True, guards=False, with_ui=True, with_api=True,
+              uses_call=True):
         root = pathlib.Path(tmp) / ("mini%d" % next(rung_n))
         if with_ui:
             (root / "ui/src/api/client").mkdir(parents=True, exist_ok=True)
@@ -3522,7 +3523,9 @@ def shell_ladder():
             if uses:
                 (root / "ui/src/features/pos/Uses.tsx").write_text(
                     "export const useIt = async (t: string) => "
-                    "{ await wv0_zz_gap_cmd(t); };\n", encoding="utf-8")
+                    "{ await wv0_zz_gap_cmd(t); };\n" if uses_call else
+                    "export const useIt = async (t: string) => "
+                    "{ await wv0_zz_ok_cmd(t); };\n", encoding="utf-8")
             if guards:
                 (root / "ui/src/features/pos/Guards.tsx").write_text(
                     "export const g = async (sessionToken: string, t: string) => {\n"
@@ -3622,10 +3625,54 @@ def shell_ladder():
                   % (rc, out[-220:]), file=sys.stderr)
             return 1
         shell += 1
-    if shell != 8:
-        print("  x shell ladder counted %d rungs, expected 8" % shell, file=sys.stderr)
+        # rung 9 (r213): an explicit --allowlist wins over the contract root --
+        # proven by OUTCOME on ONE fixture, run twice. The tree's own copy names
+        # the UNGUARDED command, so grading it fails rc 1; the flag's copy names
+        # only the GUARDED one, so the flag run passes rc 0. The allowlist is
+        # the list of commands to CHECK (it says the shell does not register
+        # them), not an exemption list -- the flip is which commands get
+        # audited, and both copies are non-empty so no early return masks it.
+        root = build(tmp, {"desktop": ["zz_gap_cmd"], "tablet": [],
+                           "dev_mock": [], "scoped_orphans": []},
+                     uses_call=True, guards=True)
+        (root / "flag-allowlist.json").write_text(
+            json.dumps({"desktop": ["zz_ok_cmd"], "tablet": [],
+                        "dev_mock": [], "scoped_orphans": []}, indent=2) + "\n",
+            encoding="utf-8")
+        rc, out, err = run(root=root)
+        if rc != 1 or "FAIL: 1 call site(s)" not in out:
+            print("  x rung 9: the tree's own copy must fail rc 1 on the "
+                  "unguarded command (rc=%r tail=%r)" % (rc, out[-180:]),
+                  file=sys.stderr)
+            return 1
+        rc, out, err = run("--allowlist", str(root / "flag-allowlist.json"),
+                           root=root)
+        if rc != 0 or "clean for desktop." not in out \
+                or "flag-allowlist.json (--allowlist)" not in out:
+            print("  x rung 9: the flag's copy must win, rc 0, and the surfaces "
+                  "line must name its file (rc=%r head=%r)" % (rc, out[:220:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 10 (r213): the SKIPPED section is red and the graded one is clean
+        # -- exit 0, the visibility line states desktop's unguarded count, and
+        # nothing in the run scores it (case 39's contract on a fixture)
+        root = build(tmp, {"desktop": ["zz_gap_cmd"], "tablet": ["zz_ok_cmd"],
+                           "dev_mock": [], "scoped_orphans": []},
+                     uses_call=True, guards=True)
+        rc, out, err = run("--shell", "tablet", root=root)
+        if rc != 0 or "clean for tablet." not in out \
+                or "desktop: 1 unguarded call site(s)" not in out \
+                or "cleared by the guard window: 1 (tablet 1)" not in out:
+            print("  x rung 10: a clean graded shell beside a red skipped one must "
+                  "exit 0 and state the red (rc=%r tail=%r)" % (rc, out[-240:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+    if shell != 10:
+        print("  x shell ladder counted %d rungs, expected 10" % shell, file=sys.stderr)
         return 1
-    print("SCOPED-READS SHELL LADDER OK (8 cases through argv and root, no repository file touched)")
+    print("SCOPED-READS SHELL LADDER OK (10 cases through argv and root, no repository file touched)")
     return 0
 
 
