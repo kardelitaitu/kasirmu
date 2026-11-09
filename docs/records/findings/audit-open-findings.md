@@ -11678,3 +11678,53 @@ same per-file read this round did for three rows, and was not done. The census
 stays at 37 of 70: this round hardened the proof tool, it did not contract a
 checker.
 
+### Round 262 (2026-11-09) -- ten results that read like findings and were not
+
+Round 261 left ten files matching a mutation row without a kill, explicitly
+uninspected. This round inspected them and found they were ONE fact, not ten.
+
+All nine non-harness files returned the identical detail:
+  "SURVIVED  no shell_ladder() on the mutated module"
+and none of the nine declares a shell_ladder at all (measured). The census had
+already been saying so -- it lists them as "missing ladder" among the 33
+un-contracted checkers -- but prove-ladder-kills did not: it BUILT a mutant,
+then reported "1 of 1 mutation(s) SURVIVED -> rung 1 is not proven", rc 1.
+
+That sentence is about the checker. The fact is about the file's SHAPE, and it
+is knowable before any mutant exists. main() now refuses up front:
+  "NO LADDER -- this file declares no shell_ladder(), so there is nothing to
+   prove; a mutant of it would report SURVIVED for a shape reason rather than a
+   grading one."  rc 2.
+This is the FOURTH time this harness has produced a false result this arc (r249
+import failure, r256 mis-rounded root, r261 substring anchor), and all four share
+one cause: a failure to EXECUTE and a failure to GRADE are printed with the same
+verb, so both read as verdicts on the checker.
+
+ONE NEW ROW, added only after its kill was measured. verify-selftests-wired
+resolves root as a four-line if/else pair:
+    if root is not None:
+        base_root = Path(root).resolve()
+    else:
+        base_root = ROOT
+Splitting that like the r261 one-liner row would leave a dangling else:, so the
+anchor spans all four lines. Hand-mutated first: rc 1 at RUNG 1 with "0 of 0
+checker(s) in scope" -- a verdict on the fixture, not a refusal. Only one file in
+the tree has this shape, so it is a narrow row by design and is documented as
+such rather than presented as a broad win.
+
+Sweep after both changes, all 70 checkers:
+  PROVEN 28 | NO LADDER 67 | NO APPLICABLE 10 | OTHER 1
+(the OTHER is prove-ladder-kills.py itself, which matches its own anchor and is
+the harness rather than a checker). Round 261 began at 21 PROVEN and 76 NO
+APPLICABLE; the 67 NO LADDER were previously being miscounted as the latter.
+
+Honest limits: 10 contracted checkers still cannot be proven (check-reentry-guards,
+check-scratch-leaks, check-state-closure-after-await, scan-unwrap-panic,
+verify-deployment, verify-fluent-dynamic-families, verify-ipc-parity,
+verify-scoped-reads, verify-test-shadow-copies, classify-finding-reachability).
+Three of those I contracted myself in earlier rounds, so their "hand proof"
+claims -- including mine -- remain unbacked by this harness. Their root shapes
+were inspected and mostly resolve from TMP_ENV or __file__ rather than a
+conditional, which no row models. The census stays at 37 of 70: this hardened
+the proof tool and changed no checker.
+

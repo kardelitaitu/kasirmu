@@ -185,6 +185,18 @@ MUTATIONS = (
         "    root = Path(root).resolve()\n",
         "    root = Path(__file__).resolve().parent.parent  # MUTANT: root ignored\n",
     ),
+    (
+        # An if/else PAIR, not a one-line conditional. Splitting it the way the
+        # row above does would leave a dangling `else:`; the anchor therefore
+        # spans all four lines and the replacement drops the branch entirely.
+        # Measured before adding: the mutant returns rc 1 at RUNG 1 with
+        # "0 of 0 checker(s) in scope" -- a verdict, not a refusal. Only one file
+        # in the tree has this shape, so it is a narrow row by design rather than
+        # one the sweep may expect to fire widely.
+        "base-root else block ignores root",
+        "if root is not None:\n        base_root = Path(root).resolve()\n    else:\n        base_root = ROOT",
+        "base_root = ROOT  # MUTANT: root ignored",
+    ),
 )
 
 
@@ -249,6 +261,17 @@ def main(argv=None):
         print("error: %s is not a file" % checker, file=sys.stderr)
         return 2
     src = checker.read_text(encoding="utf-8")
+    # A file with no ladder has nothing to prove, and saying so must not wait for
+    # a mutant to be built. Measured 2026-11-09: seven ladderless checkers each
+    # reported "1 of 1 mutation(s) SURVIVED -> rung 1 is not proven", which reads
+    # as a finding about the CHECKER. It is a statement about the file's shape,
+    # the same kind as "no applicable mutation" below, and it belongs here --
+    # before a mutant exists to be misread.
+    if "def shell_ladder" not in src:
+        print("%s: NO LADDER -- this file declares no shell_ladder(), so there is "
+              "nothing to prove; a mutant of it would report SURVIVED for a shape "
+              "reason rather than a grading one." % checker.name)
+        return 2
     muts = applicable(src)
     if not muts:
         print("%s: NO APPLICABLE MUTATION -- this file resolves no root of a "
