@@ -28,7 +28,7 @@
 | Beta Phase 1–2 | **complete** (fault injection, telemetry, packaging) | `todo-beta-testing-january-2027.md` §2 |
 | Beta Phase 3 | onboarding wizard done; recruitment + freeze open | same, §3 |
 | Root policy | **RED at plan start**: `todo.md` stray + 2 empty temp dirs — **closed same day (§1.2)** | `python scripts/verify-root-policy.py` |
-| Core size | **RED**: ADR-59 +64 over the ratchet | `python scripts/verify-core-size.py` |
+| Core size | **RED at plan start**: ADR-59 +64 over the ratchet — **closed same day (§1.3)** | `python scripts/verify-core-size.py` |
 
 The honest reading of that table: **the debt ledger is empty and the beta checklist is
 nearly empty**, which means the remaining risk is not "unfinished work items". It is
@@ -276,7 +276,7 @@ cd ui && npm run check:all
 ### Week 1
 - [ ] 1.1 PG-gated receipts re-recorded — counts:
 - [x] 1.2 Root-policy RED closed — **done 2026-11-09**: `todo.md` added to `ROOT_FILE_ALLOWLIST` (owner working plan, same class as `todo-review-type.md`) and the two empty temp dirs removed. `verify-root-policy.py` now prints "root policy: clean". This closes a RED that had stood since **r174** — the register footer carried "Root-policy RED on the foreign todo.md" for roughly 58 rounds, and that claim is now historical.
-- [ ] 1.3 Core-size RED resolved — route:
+- [x] 1.3 Core-size RED resolved — **route B taken**: a documented ratchet raise, not an extraction. Measured attribution in `scripts/core-size-baseline.json`: the whole +64 is `crates/kasirmu-core/src/regional.rs` from `54c474ddd` (ADR-59 Phase 2 SEA presets), with four 1-for-1 citation re-points netting zero. Extraction was refused on measurement, not preference: this gate counts production lines across the whole crate, so splitting a file cannot lower it — a fact that file already recorded twice. Ceiling `40809 → 40873`, `non_db_ceiling 13139 → 13203`, db unchanged at `27670` (partition 27670 + 13203 = 40873). Gate now: "measured 40873 vs ceiling 40873 (0 lines)".
 - [ ] 1.4 E2E baseline — result:
 
 ### Week 2
