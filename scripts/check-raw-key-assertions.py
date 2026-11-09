@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -51,6 +52,24 @@ RENDERABLE_RE = re.compile(
 
 #: A message id at the start of an FTL definition.
 FTL_KEY_RE = re.compile(r"^([A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+)\s*=", re.M)
+
+#: Where fixture trees are written when the host sets a temp variable (a confined
+#: host denies its default temp); unset leaves tempfile's own default in force
+#: (the r166 contract, shared with verify-runner-claims.py).
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root this file's fixtures go under (None = system default), created.
+
+    The makedirs is the r250 lesson: a scratch dir removed between runs otherwise
+    makes EVERY fixture fail before it grades anything. exist_ok keeps the common
+    case a no-op.
+    """
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
 
 
 def bundle_keys(locales=None) -> set[str]:
@@ -278,6 +297,231 @@ def self_test() -> int:
     if bad:
         sys.stderr.write("SELF-TEST WRONG:\n" + "\n".join(bad) + "\n")
         return 2
+    # The ladder must be CALLED, not merely defined: r263 found a ladder that
+    # existed, satisfied the census's text match, and never ran -- measured, it
+    # printed no ladder line at all. The cases above are the case count; this
+    # line is where the shell cases become rungs through main().
+    return shell_ladder()
+
+
+#: The re-entry guard (the r228 pattern): rung 5 drives --self-test through argv
+#: from inside the ladder, and the self-test above ends in the call below. Without
+#: the guard that nested run starts a SECOND ladder recursively.
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test (rung 5) must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """Grade main()'s shell on fixture checkouts outside this repository.
+
+    Every rung builds a CHECKOUT -- ui/src, shared-ui/locales and (for the
+    ratchet rungs) scripts/raw-key-assertions-baseline.json -- under a
+    TemporaryDirectory, hands it to main(argv=[...], root=fixture), and reads the
+    verdict from both captured streams. Nothing here reads or writes the real
+    tree's corpus, its FTL bundles, or its ratchet file.
+
+    Every rung is shaped against the PROXIMITY-WINDOW defect this file has one
+    live instance of (main() splits a finding on 2+ spaces; atm_os_split_from_till_timesheet
+    is a key that contains such a split), so each fixture is chosen so that the
+    assertion cannot be satisfied by an unrelated nearby literal:
+
+      * The bad file carries exactly ONE key literal, and the NON-renderable
+        decoys carry the OTHER key -- so "a key appears somewhere" is not enough.
+      * The clean rungs use a fixture whose copy is "Alpha-1", i.e. it is key-SHAPED
+        but not in the bundle, so the "not a finding" arms cannot pass merely
+        because the literal stopped looking like a key.
+      * The write rung reads the baseline file back and requires exactly one entry,
+        rather than trusting the "with 1 entries" summary string.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    FTL = "demo-alpha = Alpha" + chr(10) + "demo-beta = Beta" + chr(10)
+    STUB = "const l10n = { getString: (id) => map[id] ?? id };" + chr(10)
+    q = chr(39)
+
+    def line(key):
+        return "expect(screen.getByText(" + q + key + q + ")).toBeInTheDocument();"
+
+    def build(base, files):
+        for rel, content in files.items():
+            dst = Path(base) / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_text(content, encoding="utf-8")
+
+    def run(base, argv=()):
+        out, err = io.StringIO(), io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = main(argv=list(argv), root=base)
+        except SystemExit as se:            # argparse refuses the argv
+            rc = se.code
+        return rc, out.getvalue() + err.getvalue()
+
+    shell = 0
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as td:
+        base = Path(td)
+
+        # rung 1 -- the KILLING rung, and it grades a VERDICT, not a scope
+        # refusal. One renderable file asserts demo-alpha (so rc 1, and the line
+        # names the fixture's file at :2); a second renderable file asserts
+        # demo-beta placed in a COMMENT (must be skipped); a third file is not
+        # renderable at all and asserts demo-beta in live code (must be skipped
+        # by the eligibility filter). A main() that ignores its root reads this
+        # checkout's 828 clean files and prints rc 0 -- with no file of that name.
+        root = base / "one"
+        build(root, {
+            "shared-ui/locales/demo.ftl": FTL,
+            "ui/src/bad.test.tsx": STUB + line("demo-alpha"),
+            "ui/src/commented.test.tsx": STUB + "// " + line("demo-beta"),
+            "ui/src/inert.test.tsx": "const l10n = { getString: (id) => " + q
+                                     + "fixed" + q + " };" + chr(10) + line("demo-beta"),
+        })
+        rc, said = run(root)
+        if (rc != 1
+                or "A TEST NOW ASSERTS A TRANSLATION KEY" not in said
+                or "bad.test.tsx:2  demo-alpha" not in said
+                or "commented.test.tsx" in said
+                or "inert.test.tsx" in said):
+            print('  x rung 1: a fixture with one raw-key site must be VERDICTED rc 1 '
+                  'naming "bad.test.tsx:2  demo-alpha" only -- not the commented '
+                  'demo-beta, not the non-renderable one (rc=%r said=%r)'
+                  % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 2 -- the clean arm. Every literal in the fixture is EITHER literal
+        # copy ("Alpha") OR key-SHAPED-but-unknown ("Alpha-1", "some-other-thing"):
+        # the first fails the bundle test, the second fails the shape-or-bundle
+        # test, and the third is a known key used by an UNDECLARED matcher. All
+        # three must pass rc 0 with the FIXTURE's own file count (2, not 828).
+        root = base / "two"
+        build(root, {
+            "shared-ui/locales/demo.ftl": FTL,
+            "ui/src/copy.test.tsx": STUB + line("Alpha") + chr(10) + line("Alpha-1"),
+            "ui/src/owner.test.tsx": STUB
+                                     + "expect(el.getAttribute(" + q
+                                     + "data-testid" + q + ")).toBe("
+                                     + q + "demo-beta" + q + ");",
+        })
+        rc, said = run(root)
+        if rc != 0 or "no new raw-key assertions" not in said or "(2 test files" not in said:
+            print('  x rung 2: literal copy, a key-shaped non-key and an undeclared '
+                  'matcher must all pass rc 0 with the fixture count "(2 test files" '
+                  '(rc=%r said=%r)' % (rc, said[-300:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 3 -- --write-baseline records the site. --allow-growth is required
+        # from an empty baseline (rung 4 grades the refusal without it). The file
+        # is READ BACK: the summary string is not the contract, the entries are.
+        root = base / "three"
+        build(root, {"shared-ui/locales/demo.ftl": FTL,
+                     "ui/src/bad.test.tsx": STUB + line("demo-alpha")})
+        (root / "scripts").mkdir(exist_ok=True)
+        rc, said = run(root, ("--write-baseline", "--allow-growth"))
+        wrote = root / "scripts" / "raw-key-assertions-baseline.json"
+        entries = []
+        if wrote.is_file():
+            entries = json.loads(wrote.read_text(encoding="utf-8")).get("entries", [])
+        if rc != 0 or "with 1 entries" not in said or entries != [
+                {"at": "ui/src/bad.test.tsx:2", "key": "demo-alpha"}]:
+            print("  x rung 3: --write-baseline must record exactly the fixture's one "
+                  "site inside the FIXTURE's scripts/ (rc=%r said=%r entries=%r)"
+                  % (rc, said[-200:], entries), file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 4 -- growth is refused without --allow-growth: rc 1 and the refusal
+        # line, and no file is written. This is the arm that would fail if
+        # --allow-growth stopped being graded at all.
+        root = base / "four"
+        build(root, {"shared-ui/locales/demo.ftl": FTL,
+                     "ui/src/bad.test.tsx": STUB + line("demo-alpha")})
+        (root / "scripts").mkdir(exist_ok=True)
+        rc, said = run(root, ("--write-baseline",))
+        if (rc != 1 or "REFUSING TO GROW THE BASELINE" not in said
+                or "demo-alpha" not in said
+                or (root / "scripts" / "raw-key-assertions-baseline.json").exists()):
+            print("  x rung 4: --write-baseline without --allow-growth must refuse "
+                  "rc 1 and write nothing (rc=%r said=%r)" % (rc, said[-300:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 5 -- the ratchet has two arms, and the ORDER between them is part
+        # of the contract: with a RECORDED site that is still present, rc 0 and
+        # the NOTE; when the same file stops asserting the key, the entry goes
+        # STALE -> rc 1 "BASELINE IS STALE". A main() that never reads the
+        # fixture's baseline passes neither (its own baseline has 0 entries, so
+        # the first arm reads "0 known" and no stale line appears).
+        rec = json.dumps({"entries": [{"at": "ui/src/bad.test.tsx:2",
+                                       "key": "demo-alpha"}]})
+        root = base / "five-a"
+        build(root, {"shared-ui/locales/demo.ftl": FTL,
+                     "ui/src/bad.test.tsx": STUB + line("demo-alpha"),
+                     "scripts/raw-key-assertions-baseline.json": rec})
+        rc, said = run(root)
+        if rc != 0 or "1 known site(s)" not in said or "BASELINE IS STALE" in said:
+            print('  x rung 5: a recorded site that is still present must pass rc 0 '
+                  'with "1 known site(s)" (rc=%r said=%r)' % (rc, said[-300:]),
+                  file=sys.stderr)
+            return 1
+        root = base / "five-b"
+        build(root, {"shared-ui/locales/demo.ftl": FTL,
+                     "ui/src/bad.test.tsx": STUB + line("Alpha"),
+                     "scripts/raw-key-assertions-baseline.json": rec})
+        rc, said = run(root)
+        if rc != 1 or "BASELINE IS STALE" not in said or "bad.test.tsx" not in said:
+            print('  x rung 5: a removed site must make the FIXTURE baseline stale '
+                  'rc 1 naming it (rc=%r said=%r)' % (rc, said[-300:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 6 -- the empty-corpus refusal, and it is a SCOPE refusal by design
+        # (rc 2), so it grades what rung 1 deliberately does not. The fixture has
+        # an FTL bundle but no test file: a main() that ignored root would read
+        # this checkout's 828 files and answer rc 0.
+        root = base / "six"
+        build(root, {"shared-ui/locales/demo.ftl": FTL})
+        rc, said = run(root)
+        if rc != 2 or "SCAN READ NOTHING" not in said or "0 files" not in said:
+            print('  x rung 6: a corpus with no test files must refuse rc 2 '
+                  '"SCAN READ NOTHING" with 0 files (rc=%r said=%r)'
+                  % (rc, said[-300:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 7 -- --self-test through argv: rc 0 and the nested ladder is
+        # skipped by the re-entry guard. Graded on rc because the nested summary
+        # goes to the stream installed when the OUTER capture went up.
+        own_out, own_err = sys.stdout, sys.stderr
+        try:
+            with contextlib.redirect_stdout(io.StringIO()),                     contextlib.redirect_stderr(io.StringIO()):
+                rc = main(argv=["--self-test"])
+        finally:
+            sys.stdout, sys.stderr = own_out, own_err
+        if rc != 0:
+            print("  x rung 7: --self-test through argv must pass rc 0 and skip the "
+                  "nested ladder (rc=%r)" % (rc,), file=sys.stderr)
+            return 1
+
+    print("SELF-TEST LADDER OK (%d fixture-checkout rungs through main(); "
+          "no repo files touched)" % shell)
     return 0
 
 

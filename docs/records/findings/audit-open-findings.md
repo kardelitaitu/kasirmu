@@ -11913,3 +11913,45 @@ all 70; and I did not re-audit which of the 12 affected checkers had "killed bot
 claims already written into the register -- those earlier entries are now known to
 have overstated by one, and I have not corrected them individually.
 
+### Round 267 (2026-11-09) -- two reported defects that were not there
+
+check-raw-key-assertions gained a 6-rung ladder and is contracted (census 39 ->
+40 of 70). The subagent reported TWO pre-existing defects. Both were checked;
+both are wrong, and the way they are wrong is worth recording because each would
+have cost a round if believed.
+
+CLAIM 1: "argparse.parse_args strips os.path.basename(sys.argv[0]), which on
+Windows is python.exe, NOT the script, so --self-test dies with argparse rc 2
+before any pre-test runs." Measured: main() calls ap.parse_args(argv) with argv
+passed explicitly (line 535). Invoked directly, main(argv=["--self-test"])
+returns rc 0, prints the ladder line, and emits NO argparse error. A sweep of all
+70 checkers found only 3 that touch sys.argv at all (census-checker-contracts,
+check-api-drift-table, translate-stub) and all three guard it with "if argv is
+None". The "crash shape" was in the subagent's own probe, not in the checker.
+
+CLAIM 2: "scan() reads the corpus from REPO but main()'s live arm calls scan()
+with NO root argument." Measured: line 540 is "findings, read, eligible =
+scan(root)" -- root is passed. The nearby line 538 "base = REPO if root is None
+..." is used later for the baseline file (552, 570, 574, 577), which is why it
+exists. scan() also resolves its own root at line 93. Neither gap exists.
+
+What WAS real: prove-ladder-kills reported NO APPLICABLE MUTATION for this file,
+because it spells
+    base = REPO if root is None else Path(root).resolve()
+in BOTH scan() and main(). A bare anchor occurs twice, and applicable() wants
+exactly one occurrence, so no existing row applied; indentation alone matches
+twice as well. Added ONE row anchored on four lines -- scan()'s closing docstring
+plus the binding -- which is unique. Measured first: the mutant returns rc 1 at
+RUNG 1 on the VERDICT ("a fixture with one raw-key site must be VERDICTED ...
+naming bad.test.tsx:2"), not a refusal. That is a genuine verdict kill.
+
+Sweep after adding it: PROVEN 31 (was 28) | NO LADDER 64 | NO APPLICABLE 10 |
+OTHER 1 (the harness itself). Census 40 of 70.
+
+Honest limits: the subagent graded 7 rungs but I verified only the shape, the
+--self-test path, and the one mutation; the 6 rungs' individual assertions are
+unreviewed by me. I did not attempt to falsify its other claims (C4 owner, C8
+read-or) -- it said they were not isolated, and I did not re-derive them. The two
+false defects are recorded rather than silently dropped because a report that
+invents defects is the failure mode I have to be able to see.
+

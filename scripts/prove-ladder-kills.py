@@ -207,6 +207,19 @@ MUTATIONS = (
         "    root_path = None if root is None else Path(root).resolve()\n",
         "    root_path = None  # MUTANT: root ignored\n",
     ),
+    (
+        # A FOUR-LINE anchor, because the one line is not unique here: this file
+        # spells `base = REPO if root is None else Path(root).resolve()` in BOTH
+        # scan() and main(). Anchoring the bare line would match twice and the row
+        # would never apply (applicable() wants exactly one occurrence); anchoring
+        # by indentation matches twice as well. Including the closing docstring of
+        # scan() binds the row to the scan alone. Measured before adding: the
+        # mutant returns rc 1 at RUNG 1 on the VERDICT ("a fixture with one
+        # raw-key site must be VERDICTED ... naming bad.test.tsx:2"), not a refusal.
+        "scan-base ignores root",
+        '    ui/src, shared-ui/locales, and every reported relative path.\n    """\n    base = REPO if root is None else Path(root).resolve()\n    ui_src = base / "ui" / "src"',
+        '    ui/src, shared-ui/locales, and every reported relative path.\n    """\n    base = REPO  # MUTANT: root ignored\n    ui_src = base / "ui" / "src"',
+    ),
 )
 
 
