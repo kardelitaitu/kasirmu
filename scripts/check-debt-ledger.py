@@ -159,7 +159,6 @@ FILE_REF_RE = re.compile(r"`([A-Za-z0-9_./-]+\.(?:rs|ts|tsx|sql|go|ftl))(?::[0-9
 
 
 def entries_with_dead_file_refs(text: str, repo: Path | None = None) -> list[tuple[str, list[str]]]:
-    repo = repo or REPO
     """Entries whose FIRST citation names a file that no longer exists.
 
     This class is why the gate was extended: three entries were caught by hand on
@@ -174,6 +173,7 @@ def entries_with_dead_file_refs(text: str, repo: Path | None = None) -> list[tup
     files of which some are historical. The first citation of an OPEN entry is the
     one a worker would open first.
     """
+    repo = repo or REPO
     closed = entries_marked_inline(text)
     for heading, _body in sections(text):
         closed |= set(ID_RE.findall(heading))
