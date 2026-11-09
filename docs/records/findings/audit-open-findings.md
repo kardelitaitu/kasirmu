@@ -10594,3 +10594,44 @@ to this gate, which is pinned as a MEASUREMENT (the fixture is shaped to match)
 rather than closed with a wider regex -- widening it here would change the
 gate's false-positive surface, and that is a decision for a round that measures
 it. The host confinement recorded since round 233 still applies.
+### Round 238 (2026-11-09) -- shell-registration: a ladder over TWO shells and a table, and an alias that did not reach it
+
+verify-shell-registration.py (278 lines) was the next census target, "missing
+ladder". It already took `root`; this round adds five rungs on fixture trees
+through `main(argv, root)`.
+
+Rung 1 is the killing rung and it is a strong one, because this gate's real
+answer is not a refusal: measured this round, the checkout's two shells diverge
+and every divergence is explained -- "OK: 107 documented divergence(s), every
+one still real across 2 shells", exit 0. A main() that ignored its root would
+therefore print that same green against a fixture whose one-shell command has
+no entry at all. The fixture must exit 1 naming `desktop_only`.
+
+This gate's root redirects THREE inputs, not one -- two shell sources and the
+divergence table -- so the ladder grades the table side explicitly (rung 2:
+the same shells with the entry present must green, "1 documented
+divergence(s)"), and the two refusals that come from the shells themselves
+(rung 3: no table; rung 4: a shell source with no `generate_handler!` list).
+A ladder that only proved the table was read would have left the shell paths
+unproven, which is half of what "root redirects BOTH shell sources and the
+divergence table" claims.
+
+The ladder also caught a defect in this round's own scaffolding. It first ran
+with a NameError: `_tempfile` is imported INSIDE `self_test()`, not at module
+scope, so the helper the ladder added could not see it. Fixed by using the
+module-level `tempfile` import the file already had; noted here because the
+failure was real and the fix is a one-liner that a reader will otherwise
+wonder about.
+
+Measured: census 24 of 70 contracted (was 23); next target is
+check-dead-controls.py at 286 lines. Ladder 5 rungs, self-test PASS, both exit
+0. Live gate unchanged: "OK: 107 documented divergence(s)". Dependents
+unmoved: verify-selftests-wired 105 of 107, verify-gate-completeness OK.
+
+Honest limits: the ladder grades the three-input redirection and the exit
+mapping, not `handler_names`' bracket walk or its comment stripping -- those
+still have exactly the six self-test cases that existed before this round.
+Rung 4 accepts any refusal text containing "no generate_handler"; the message
+also names the file, which the rung does not check. Two executor outages hit
+this round (EXECUTOR_UNAVAILABLE, both self-clearing); the ladder output above
+is from the run after the last outage, not a re-reading of an earlier one.

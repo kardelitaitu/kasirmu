@@ -44,6 +44,19 @@ import json
 import os
 import re
 import sys
+import tempfile
+
+#: Where fixtures are written when the host sets a temp variable. A host whose
+#: confinement denies files under its default temp (measured 2026-11-09 on the
+#: agent host: every write into a TemporaryDirectory is EPERM) can point this at
+#: a directory it allows; unset leaves tempfile's own default in force.
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root this file's fixtures are written under (None = system default)."""
+    return next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+
 
 # The two shells and the generated-handler list in each. Relative to the repo root.
 SHELLS = {
@@ -202,7 +215,7 @@ def self_test() -> int:
     import tempfile
 
     def build(desktop, tablet, table):
-        root = tempfile.mkdtemp(prefix="oz-shell-reg-")
+        root = tempfile.mkdtemp(prefix="oz-shell-reg-", dir=fixture_root())
         for shell, body in (("desktop", desktop), ("tablet", tablet)):
             rel = SHELLS[shell]
             dst = os.path.join(root, rel)
@@ -228,9 +241,10 @@ def self_test() -> int:
     # the r166..r175 pattern. The table refusal and both verdicts go through
     # main's own exit mapping, which the audit() cases above do not reach.
     import contextlib as _ctxlib
+    import tempfile as _tempfile
     def _shell(files, argv=None):
         import tempfile
-        root = tempfile.mkdtemp(prefix="oz-shellreg-shell-")
+        root = tempfile.mkdtemp(prefix="oz-shellreg-shell-", dir=fixture_root())
         for rel, content in files.items():
             dst = os.path.join(root, rel)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
@@ -271,7 +285,123 @@ def self_test() -> int:
         print(f"    FAIL an unknown argument must exit 2 with usage (rc={rc} text={text[-60:]!r})")
 
     print(f"  self-test: {'PASS' if failures == 0 else f'FAIL ({failures})'}")
-    return 0 if failures == 0 else 1
+    if failures:
+        return 1
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard for the ladder (r238 -- the r228 lesson).
+
+    Rung 5 drives --self-test through argv from INSIDE the ladder, and the
+    self-test ends in this call, so without the guard that nested run would
+    recurse. The guard turns it into a printed skip.
+    """
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        print("  (ladder re-entry from a nested --self-test: skipped)")
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """r238: the root contract, graded on fixture shells through main().
+
+    Rung 1 IS the killing rung. This checkout's two shells DIVERGE and the
+    table explains every divergence (measured r238: exit 0, "OK: N documented
+    divergence(s)"), so a main() that ignored its root would report that green
+    against a fixture whose one-shell command has no entry at all. The fixture
+    must exit 1 naming `desktop_only`.
+
+    Rung 2 pins root on the TABLE side too: the same shells with the entry
+    present green, so a main that read the real table instead would be graded
+    by rung 1 (which it fails) rather than by this one.
+    """
+    import contextlib
+
+    def run(root_dir, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root_dir))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    def build(tmp, files):
+        """A fixture repo root holding the given {relative path: text} files."""
+        root = tempfile.mkdtemp(dir=tmp, prefix="fx_")
+        for rel, content in files.items():
+            dst = os.path.join(root, rel)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            with io.open(dst, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(content)
+        return root
+
+    DESK = "tauri::generate_handler![\ncommands::a::shared,\ncommands::a::desktop_only,\n]\n"
+    TABL = "tauri::generate_handler![\ncommands::a::shared,\n]\n"
+    TABLE = "scripts/shell-divergence.json"
+
+    shell = 0
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as tmp:
+        # rung 1 -- the killing rung: an unexplained divergence in the FIXTURE.
+        root = build(tmp, {SHELLS["desktop"]: DESK, SHELLS["tablet"]: TABL,
+                           TABLE: '{"shell_divergence": {}}'})
+        rc, said = run(root)
+        if rc != 1 or "desktop_only" not in said or "unexplained" not in said:
+            print("  x rung 1: an unexplained fixture divergence must exit 1 naming it "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2 -- the same fixture with the entry present greens from the fixture.
+        root = build(tmp, {SHELLS["desktop"]: DESK, SHELLS["tablet"]: TABL,
+                           TABLE: '{"shell_divergence": {"desktop_only": '
+                                  '{"reason": "desktop-only surface"}}}'})
+        rc, said = run(root)
+        if rc != 0 or "1 documented divergence(s)" not in said:
+            print("  x rung 2: an explained fixture divergence must exit 0 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3 -- the refusal floor: a fixture with no divergence table.
+        root = build(tmp, {SHELLS["desktop"]: DESK, SHELLS["tablet"]: TABL})
+        rc, said = run(root)
+        if rc != 2 or "divergence table not found" not in said:
+            print("  x rung 3: a missing fixture table must refuse rc 2 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4 -- a shell source with no handler list refuses, naming the file.
+        root = build(tmp, {SHELLS["desktop"]: "fn main() {}\n",
+                           SHELLS["tablet"]: TABL,
+                           TABLE: '{"shell_divergence": {}}'})
+        rc, said = run(root)
+        if rc != 2 or "no generate_handler" not in said:
+            print("  x rung 4: a fixture shell with no handler list must refuse rc 2 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5 -- --self-test dispatch flows through argv; re-entry is guarded.
+        root = build(tmp, {SHELLS["desktop"]: DESK, SHELLS["tablet"]: TABL,
+                           TABLE: '{"shell_divergence": {}}'})
+        rc, said = run(root, "--self-test")
+        if rc != 0 or "self-test: PASS" not in said or "ladder re-entry" not in said:
+            print("  x rung 5: --self-test through argv must pass rc 0 and skip the "
+                  "nested ladder (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("SHELL-REGISTRATION SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
+    return 0
 
 
 if __name__ == "__main__":
