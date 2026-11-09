@@ -120,36 +120,18 @@ pub(crate) fn write_snapshot_file(target: &std::path::Path) {
         return;
     }
     // Include PID in staging path so concurrent test processes never collide.
-    let pid = std::process::id();
     let staging = scratch_root().join(format!(
         "kasirmu-core-migrated-snapshot-{:016x}-{}.staging",
         migration_fingerprint(),
-        pid,
+        std::process::id(),
     ));
-    {
+    let save = || -> rusqlite::Result<()> {
         let src = build_snapshot_conn();
-        let mut file = match rusqlite::Connection::open(&staging) {
-            Ok(f) => f,
-            Err(_) => return,
-        };
-        let backup = match rusqlite::backup::Backup::new(&src, &mut file) {
-            Ok(b) => b,
-            Err(_) => {
-                let _ = std::fs::remove_file(&staging);
-                return;
-            }
-        };
-        if backup
-            .run_to_completion(100, std::time::Duration::from_millis(0), None)
-            .is_err()
-        {
-            let _ = std::fs::remove_file(&staging);
-            return;
-        }
-    }
-    if std::fs::rename(&staging, target).is_err() {
-        // Another process won the race, or the file is locked. Either way the
-        // in-memory path is correct; just do not leave the staging file behind.
+        let mut file = rusqlite::Connection::open(&staging)?;
+        let backup = rusqlite::backup::Backup::new(&src, &mut file)?;
+        backup.run_to_completion(100, std::time::Duration::from_millis(0), None)
+    };
+    if save().is_err() || std::fs::rename(&staging, target).is_err() {
         let _ = std::fs::remove_file(&staging);
     }
 }

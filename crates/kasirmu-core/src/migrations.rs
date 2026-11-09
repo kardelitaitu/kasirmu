@@ -821,17 +821,14 @@ pub fn fresh_db() -> rusqlite::Connection {
     let mut cloned = false;
     if snapshot_file.is_file() {
         // Fast path: clone from the shared file if valid and idle.
-        if let Ok(src) = rusqlite::Connection::open(&snapshot_file) {
-            if let Ok(backup) = rusqlite::backup::Backup::new(&src, &mut fresh) {
-                if backup
-                    .run_to_completion(100, std::time::Duration::from_millis(0), None)
-                    .is_ok()
-                {
-                    cloned = true;
-                }
-            }
-        }
-        if !cloned {
+        let try_clone = || -> rusqlite::Result<()> {
+            let src = rusqlite::Connection::open(&snapshot_file)?;
+            let backup = rusqlite::backup::Backup::new(&src, &mut fresh)?;
+            backup.run_to_completion(100, std::time::Duration::from_millis(0), None)
+        };
+        if try_clone().is_ok() {
+            cloned = true;
+        } else {
             // A torn, locked, or corrupt file must not fail a test: discard it.
             let _ = std::fs::remove_file(&snapshot_file);
         }
