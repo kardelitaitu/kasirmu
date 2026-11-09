@@ -9219,3 +9219,38 @@ clause for a root-named tree. Docker daemon still down (probed r159):
 E2E / llvm-cov / nextest-junit receipts remain PG-gated. Root-policy
 RED on the foreign todo.md (r174); core-size RED on the ADR-59 +64
 (r181) -- both await their owning lanes.
+
+### Round 212 (2026-11-09) -- scoped-reads ladder to eight: the how-clause and the second shell
+
+The two arms r211's honest-limits paragraph named as riding on
+in-process cases instead of rungs now have rungs. Rung 7 pins the
+surfaces line's how-clause for a root-named tree: "the contract root
+default (the named tree's own copy)" -- the sentence that tells the
+operator WHICH policy copy graded the tree, the exact sentence whose
+absence r211 declined to pin. Rung 8 is the second-shell run: --shell
+tablet on a fixture whose tablet section carries the unguarded call --
+the verdict names [tablet], the coverage ratio reads "(tablet 1 of
+1)", and the ungraded-visibility line states desktop's count ("desktop:
+0 unguarded call site(s)") without scoring it -- case 39's
+stated-never-scored contract, now graded on a fixture through the root
+parameter instead of only in-process against the checkout.
+
+Both rungs run with --shell or with nothing, never --repo: the tree is
+named by the parameter on every one of the eight rungs, which is the
+seam under test.
+
+Live re-measured while grading: --shell tablet on the checkout prints
+"clean for tablet." at exit 0 (the r208 corrected note's status,
+re-measured today), and the kill-proof probe re-confirms: the
+root-dropping main returns 0 where the fixture run returns 1.
+
+Honest limits: rung 8 pins desktop's visibility line only on the 0
+shape -- a fixture whose SKIPPED section is red is not graded (the
+line says the same sentence either way by construction, but no rung
+proves it); the how-clause for an EXPLICIT --allowlist beside a
+contract root is ungraded (the flag still wins by code reading, not by
+a rung); and the ladder still holds no busy-file rung for the 50-attempt
+retry window. Docker daemon still down (probed r159): E2E / llvm-cov /
+nextest-junit receipts remain PG-gated. Root-policy RED on the foreign
+todo.md (r174); core-size RED on the ADR-59 +64 (r181) -- both await
+their owning lanes.
