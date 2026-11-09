@@ -98,12 +98,28 @@ UI_ROOT = Path("ui/src")
 MATRIX = Path("crates/kasirmu-core/src/topologySemantics.matrix.json")
 
 
-def check_contract_copies() -> tuple[int, bool]:
+def _res(rel: Path, root) -> Path:
+    """r203: a module-level relative path resolved against the contract root.
+
+    An ABSOLUTE path (as the self-test's fixture rebinds use) passes through
+    untouched; a relative one is joined to `root` -- or, with no root handed,
+    to the working directory exactly as before the contract existed.
+    """
+    if rel.is_absolute():
+        return rel
+    base = Path.cwd() if root is None else Path(root).resolve()
+    return base / rel
+
+
+def check_contract_copies(root=None) -> tuple[int, bool]:
     """Phase 1: the two contract copies must be byte-identical.
 
     Returns `(exit_code, skipped)`. `skipped` is True in exactly one case —
     no `ui/` tree at all — where nothing was compared and 0 is still honest.
     """
+    VENDORED = _res(globals()["VENDORED"], root)
+    UI = _res(globals()["UI"], root)
+    UI_ROOT = _res(globals()["UI_ROOT"], root)
     if not VENDORED.exists():
         print(f"verify-topology-parity: missing vendored contract {VENDORED}")
         return 1, False
@@ -180,8 +196,9 @@ def expected_kinds(contract: dict) -> list[str]:
     return out
 
 
-def check_corpus(contract: dict) -> int:
+def check_corpus(contract: dict, root=None) -> int:
     """Phase 2: the generated verdict corpus must match the contract's shape."""
+    MATRIX = _res(globals()["MATRIX"], root)
     if not MATRIX.exists():
         print(
             f"verify-topology-parity: missing corpus {MATRIX}\n"
@@ -272,15 +289,21 @@ def check_corpus(contract: dict) -> int:
     return 0
 
 
-def main() -> int:
-    copies, copies_skipped = check_contract_copies()
-    source = UI if UI.exists() else VENDORED
+def main(argv=None, root=None) -> int:
+    """r203: argv and root parameterized, the r166..r202 contract -- the
+    vendored copy, the UI canonical, the ui/ tree question and the corpus
+    all resolve under the contract root together."""
+    base = Path.cwd() if root is None else Path(root).resolve()
+    copies, copies_skipped = check_contract_copies(base)
+    ui = _res(globals()["UI"], base)
+    vendored = _res(globals()["VENDORED"], base)
+    source = ui if ui.exists() else vendored
     try:
         contract = json.loads(source.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         print(f"verify-topology-parity: cannot read contract {source} — {exc}")
         return 1
-    corpus = check_corpus(contract)
+    corpus = check_corpus(contract, base)
     if copies_skipped:
         # A skipped comparison must be the LAST thing a caller reads. Phase 2
         # prints its own "OK — corpus covers …" line, and two lines above an
@@ -487,10 +510,97 @@ def self_test() -> int:
     finally:
         MATRIX = real_matrix
 
+    # r203: the shell -- main() graded through argv and a contract root, the
+    # r166..r202 pattern. The fixture is a full four-path tree (vendored
+    # contract, UI canonical, ui/ tree, matrix) under ONE tempdir root; a
+    # root-dropping main resolves the module's relative paths against the
+    # CWD and grades the real checkout instead.
+    shell = 0
+    import tempfile as _tempfile2
+    def build_tree(vendored_text, ui_text, matrix_text, ui_exists=True, ui_root=True):
+        t3 = Path(_tempfile2.mkdtemp())
+        vpath = t3 / "crates" / "kasirmu-core" / "src"
+        vpath.mkdir(parents=True)
+        (vpath / "topologySemantics.json").write_text(vendored_text, encoding="utf-8")
+        if ui_root:
+            upath = t3 / "ui" / "src" / "features" / "locations"
+            upath.mkdir(parents=True)
+            if ui_exists:
+                (upath / "topologySemantics.json").write_text(ui_text, encoding="utf-8")
+        if matrix_text is not None:
+            (vpath / "topologySemantics.matrix.json").write_text(matrix_text, encoding="utf-8")
+        return t3
+    def run3(root):
+        out, err = io.StringIO(), io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = main(argv=[], root=root)
+        except SystemExit as se:
+            return se.code, out.getvalue() + err.getvalue()
+        return rc, out.getvalue() + err.getvalue()
+    contract_min = {
+        "schemaVersion": 2,
+        "semanticPairings": [{"source": "store", "target": "product",
+                              "relationshipType": "sells"}],
+        "nodeKinds": ["store", "product"],
+    }
+    ctext = json.dumps(contract_min)
+    kinds_min = ["store", "product"]
+    grid = {f"{a}->{b}": True for a in kinds_min for b in kinds_min}
+    good_matrix = json.dumps({
+        "contractSchemaVersion": 2, "kinds": kinds_min,
+        "rows": [{"source": "store", "target": "product",
+                  "relationshipType": "sells", "verdicts": dict(grid)}],
+    })
+    shell += 1
+    td3 = build_tree(ctext, ctext, good_matrix)
+    rc, text = run3(td3)
+    if rc != 0 or "byte-identical" not in text or "corpus covers 1 pairings" not in text:
+        print("  x a parity-clean tree must pass both phases (rc=%r text=%r)"
+              % (rc, text[-100:]), file=sys.stderr)
+        return 1
+    shell += 1
+    td3 = build_tree(ctext, ctext.replace("2", "3"), good_matrix)
+    rc, text = run3(td3)
+    if rc != 1 or "DRIFT" not in text:
+        print("  x differing contract copies must fail rc 1 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    td3 = build_tree(ctext, ctext, good_matrix, ui_exists=False)
+    rc, text = run3(td3)
+    if rc != 1 or "compared NOTHING" not in text:
+        print("  x a ui tree with no contract must fail rc 1 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    td3 = build_tree(ctext, ctext, good_matrix, ui_root=False)
+    rc, text = run3(td3)
+    if rc != 0 or "NOT FULLY VERIFIED" not in text:
+        print("  x a server-only checkout must skip declaredly (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    td3 = build_tree(ctext, ctext, None)
+    rc, text = run3(td3)
+    if rc != 1 or "missing corpus" not in text:
+        print("  x a missing corpus must fail rc 1 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    stale = json.loads(good_matrix); stale["contractSchemaVersion"] = 1
+    td3 = build_tree(ctext, ctext, json.dumps(stale))
+    rc, text = run3(td3)
+    if rc != 1 or "the corpus is stale" not in text:
+        print("  x a stale corpus schemaVersion must fail rc 1 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (23 cases, no repository file touched)")
+    print("SELF-TEST OK (23 pure cases + %d shell cases through argv and root)"
+          % shell)
     return 0
 
 
