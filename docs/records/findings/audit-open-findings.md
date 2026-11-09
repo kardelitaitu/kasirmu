@@ -9009,3 +9009,57 @@ nextest-junit receipts remain the standing PG-gated gap. The
 root-policy gate remains RED on the foreign todo.md (r174) and
 verify-core-size RED on the ADR-59 +64 (r181), both awaiting their
 owning lanes.
+
+### Round 208 (2026-11-09) -- the heaviest gate joins the arc: ipc-parity's five evidence sources under one root
+
+The r166..r207 contract applied to the IPC parity gate, the largest
+checker in scripts/ (~5,300 lines, 28-case in-memory self-test, 198
+assertions). Root redirects EVERY evidence source together -- the
+principle the arc started with, now load-bearing in a file where the
+sources number five: the seven UI scan trees, both shell lib.rs files,
+the dev-mock tree, the allowlist file, AND the shared schema module the
+allowlist is validated against (allowlist_schema(root), cache already
+keyed by path). parse_args(argv) per the arc's explicit-argv rule; the
+three writer flags land their fixture's allowlist, not this checkout's
+(write_allowlist_payload gains a target path; update_allowlist re-reads
+under the same root, so the drift refusal still compares like against
+like).
+
+Seven shell cases over a miniature of the real layout (both shells, a
+ui/src tree, a dev-mock tree, the schema module copied from this
+checkout, a four-section allowlist): an unregistered UI invoke FAILs
+rc 1 naming the command; parity-clean passes rc 0; a registered name
+still carried in the allowlist reads stale rc 1; --write-allowlist
+lands the measured gap in BOTH fixture shell sections and the
+post-condition is read back INSIDE the tree; an absent allowlist
+refuses rc 2; a missing shell lib refuses rc 2; and the schema module
+itself -- evidence the previous rounds never had -- refuses rc 2 in
+words when absent under the contract root.
+
+The threading found one live coupling the arc's rule predicted: the
+28-case self-test's drift harness swaps in a ZERO-ARG read_allowlist_text
+stub, so the parameterized load_allowlist must call it with no arguments
+on the module-default path -- passing the resolved path positionally
+overwrote the stub's captured default and the drift case died twice
+(Path, then None, as the JSON document) before the zero-arg call on
+root-is-None was restored. A parameterization that changes a stub's
+calling convention is a behavioral change, not a refactor.
+
+Measured kill: the root-dropping main sweeps THIS checkout -- clean, no
+beta -- on rung 1, which demands a beta gap the real tree cannot
+produce; killed on the first rung; the probe is read-only. Capture:
+IPC parity: OK, live.
+
+Honest limits: the shell_blind direction (a cross-shell branching file)
+and the scoped_orphans direction are pure-pinned in the 28-case suite
+and have no fixture-tree rung -- both need a fixture with a _scoped
+command and a shell-branching call site, deferred as one piece; the
+dev-mock fixture is a one-file router with no extracted module and no
+alias pass, so the moved-code and alias-pass-absent regressions stay
+graded only by the in-memory suite; the gate NEXT DOOR
+(verify-scoped-reads.py) reads the same allowlist through its own
+--allowlist flag and is not parameterized this round. Docker daemon
+still down (probed r159): the E2E / llvm-cov / nextest-junit receipts
+remain the standing PG-gated gap. The root-policy gate remains RED on
+the foreign todo.md (r174) and verify-core-size RED on the ADR-59 +64
+(r181), both awaiting their owning lanes.
