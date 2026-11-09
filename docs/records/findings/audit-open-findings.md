@@ -10864,3 +10864,46 @@ skipped by design, so "0 unresolvable" on the live tree is a measurement of
 THIS tree and no rung pins it. The "0 attr site(s) unresolvable" half of the
 line is therefore a number this gate prints, not a property it has earned.
 
+### Round 245 (2026-11-09) -- two rungs that were not killing rungs, found by the subagents assigned to them
+
+Two checkers landed in rounds 242 and 243 with rung 1 documented as "the
+killing rung". Both subagents independently mutation-tested that claim instead
+of trusting it, and both were right to: one was overstated, one was false in a
+way the rung could not see.
+
+  * check-pipeline-verdicts.py rung 1 (r242) graded `targets()` honouring
+    root, but asserted only that the text CONTAINED "scripts/bad.sh:1". A
+    main() that swept the fixture correctly and derived its REPORTED paths
+    from ROOT still prints ".../v243/tmpXXXX/scripts/bad.sh:1", and the
+    asserted substring is a SUFFIX of that. Measured this round: mutating
+    `base` alone, leaving `targets(root)` honest, passed all five rungs.
+    The rung now requires the reported path to be fixture-relative -- an exact
+    line anchor -- and that mutant dies where it previously passed.
+
+  * verify-settled-read-copies.py (r243, delegated) rung 1 was tested by
+    mutation here rather than accepted on report: with `main()` patched to
+    ignore root entirely, the ladder returns rc 1 and names the real tree's
+    verdict ("OK -- 1575 file(s) swept") where the fixture demanded a finding.
+    That kill is real and the ladder was committed on that evidence.
+
+THE GENERAL LESSON, which is why this round exists at all: "the fixture is
+distinct from the real tree" is not the same claim as "the rung fails when
+root is ignored". Both rungs were written believing the first. Only the
+second is what makes a ladder a contract proof, and the difference between
+them is a substring-versus-anchor question that no amount of careful
+documentation catches -- it takes running the mutant.
+
+Measured: the base-only mutant goes rc 0 -> rc 1. The real checker is
+unmoved: self-test "9 detector cases + 4 verdict cases + 3 shell cases" and
+"PIPELINE-VERDICTS SHELL LADDER OK (5 cases ...)", live gate "OK - no
+condition reads a swallower's status (73 shell script(s) read)".
+
+Honest limits: the strengthened rung still does not catch every root-blind
+shape -- a main() that ignored root for the SWEEP but not for paths crashes on
+`relative_to` instead of failing cleanly, which kills the mutant for the
+wrong reason. That is a kill, but a crash is not a graded refusal, and this
+round records the distinction rather than claiming the rung is exhaustive.
+Round 243's entry was written before its code was verified and says so; it is
+left as written rather than retroactively adjusted, because a process record
+that gets rewritten after the fact stops being a record.
+

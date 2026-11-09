@@ -280,11 +280,19 @@ def shell_ladder() -> int:
 def _shell_ladder_body() -> int:
     """r242: the root contract, graded on fixture shell trees through main().
 
-    Rung 1 IS the killing rung. This checkout's 71 shell scripts are clean
-    (measured r242: exit 0, "no condition reads a swallower's status"), so a
-    main() that ignored its root would print that green against a fixture
+    Rung 1 kills a main() that ignores its root in the SWEEP. This checkout's
+    73 shell scripts are clean (measured r242: exit 0, "no condition reads a
+    swallower's status"), so such a main prints that green against a fixture
     whose only script carries the shipped bug. The fixture must exit 1 and
     name both the file and `tail` -- the swallower it actually read.
+
+    SCOPE, measured by mutation in r245 and narrower than r242 claimed. Rung 1
+    catches a root-blind `targets()`; it does NOT catch a main() that sweeps
+    the fixture correctly but derives its REPORTED paths from ROOT. Mutating
+    `base` alone (keeping `targets(root)`) passes all five rungs, because the
+    fixture's relative path is a suffix of the real one. Rung 1 is not a
+    complete root proof and does not claim to be one; closing that gap needs
+    an assertion on the path PREFIX, not the suffix.
 
     Rung 3 grades the OTHER direction of the same rule, which no rung had
     covered: a swallower that is not LAST is harmless ("tail -1 | grep -q x"),
@@ -324,9 +332,21 @@ def _shell_ladder_body() -> int:
         # rung 1 -- the killing rung: the fixture's bug is named, file and swallower.
         root = build(tmp, {"scripts/bad.sh": BUG})
         rc, said = run(root)
-        if rc != 1 or "scripts/bad.sh:1" not in said or NEEDLE not in said:
-            print("  x rung 1: a fixture swallower verdict must exit 1 naming file:line "
-                  "and the swallower (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+        # The prefix half, and the reason this rung is a real root proof: the
+        # path must be reported RELATIVE TO THE FIXTURE (exactly
+        # "scripts/bad.sh:1" at the start of a line). A main() that sweeps the
+        # fixture but derives paths from ROOT still passes the substring test
+        # above -- it prints "v243/tmpXXXX/scripts/bad.sh:1", and "scripts/bad.sh:1"
+        # is a suffix of that. Measured by mutation in r245: the base-only
+        # mutant survived all five rungs until this anchor was exact.
+        anchored = False
+        for ln in said.splitlines():
+            if ln.strip().startswith("scripts/bad.sh:1 "):
+                anchored = True
+        if rc != 1 or not anchored or NEEDLE not in said:
+            print("  x rung 1: a fixture swallower verdict must exit 1 with a "
+                  "FIXTURE-RELATIVE file:line and the swallower's name "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
             return 1
         shell += 1
         # rung 2 -- a clean fixture greens and counts the FIXTURE corpus.
