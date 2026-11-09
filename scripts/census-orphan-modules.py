@@ -49,6 +49,25 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UI_SRC = os.path.join(REPO, 'ui', 'src')
 
+#: Where fixtures are written when the host sets a temp variable. A host whose
+#: confinement denies files under its default temp can point this at a directory
+#: it allows; unset leaves tempfile's own default in force (the r166 contract).
+TMP_ENV = ('TMPDIR', 'TMP', 'TEMP')
+
+
+def fixture_root():
+    """The temp root this file's fixtures are written under (None = system default).
+
+    The makedirs is the r250 lesson: a scratch dir that was removed between runs
+    otherwise makes EVERY fixture die with FileNotFoundError before it grades
+    anything. exist_ok keeps the common case a no-op.
+    """
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
+
+
 SKIP_DIRS = {'__tests__', 'dev-mock', 'node_modules', 'dist', 'dist-mobile'}
 
 
@@ -58,10 +77,15 @@ def strip_comments(text):
     return re.sub(r'//[^\n]*', ' ', text)
 
 
-def production_files():
-    """{path: stripped text} for every shipping .ts/.tsx under ui/src."""
+def production_files(ui_src=None):
+    """{path: stripped text} for every shipping .ts/.tsx under ui/src.
+
+    The r166 root seam lands here: production_files is called with the ROOT
+    RESOLVED ui_src, so a fixture tree is scanned instead of this checkout's.
+    """
+    ui_src = UI_SRC if ui_src is None else ui_src
     out = {}
-    for dirpath, dirnames, filenames in os.walk(UI_SRC):
+    for dirpath, dirnames, filenames in os.walk(ui_src):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
         for name in filenames:
             if not name.endswith(('.ts', '.tsx')) or '.test.' in name:
@@ -140,8 +164,13 @@ def classify_module(path, texts, barrels, imported_barrels):
     return 'ORPHAN', 'no import, render, registration or imported barrel names it'
 
 
-def census(texts):
-    """[(verdict, relpath, evidence)] sorted ORPHAN-first."""
+def census(texts, ui_src=None):
+    """[(verdict, relpath, evidence)] sorted ORPHAN-first.
+
+    r166: the relative paths are reported against ui_src, so a fixture tree is
+    named by its own layout rather than by this checkout's.
+    """
+    ui_src = UI_SRC if ui_src is None else ui_src
     barrels = barrel_targets(texts)
     imported_barrels = set()
     for path, text in texts.items():
@@ -168,13 +197,17 @@ def census(texts):
         else:
             continue  # an ordinary lower-case .ts helper is not addressable by name
         verdict, evidence = classify_module(path, texts, barrels, imported_barrels)
-        rows.append((verdict, os.path.relpath(path, UI_SRC).replace(os.sep, '/'), evidence))
+        rows.append((verdict, os.path.relpath(path, ui_src).replace(os.sep, '/'), evidence))
     rows.sort(key=lambda r: (0 if r[0] == 'ORPHAN' else 1, r[1]))
     return rows
 
 
-def _self_test():
-    """The predicate on fabricated trees, including every false positive the first run made."""
+def self_test(root=None):
+    """The predicate on fabricated trees, including every false positive the first run made.
+
+    r166: ends in shell_ladder(), the root contract graded through argv; root is
+    the fixture root those rungs are written under.
+    """
     failures = 0
 
     def case(label, got, expected):
@@ -253,7 +286,8 @@ def _self_test():
     # reports 0 for every orphan -- which is what happened on this helper's first run and
     # would have been read as "no tests are wasted on dead code".
     import tempfile
-    with tempfile.TemporaryDirectory() as td:
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as td:
         # A dedicated suite imports the module, so its body names it.
         with open(os.path.join(td, 'Widget.test.tsx'), 'w', encoding='utf-8') as fh:
             fh.write("import Widget from '../Widget';\n"
@@ -268,8 +302,10 @@ def _self_test():
         case('a dedicated suite is counted by its two-extension name', cost['features/Widget.tsx'][0], 2)
         case('only the file whose CODE names it counts', cost['features/Widget.tsx'][1], 1)
 
-    print(f'  self-test: {"PASS" if failures == 0 else f"FAIL ({failures})"}')
-    return failures
+    print(f'  self-test: {"SELF-TEST OK" if failures == 0 else f"FAIL ({failures})"}')
+    if failures:
+        return failures
+    return shell_ladder(root)
 
 
 def test_cost(orphans, tests_dir):
@@ -313,16 +349,26 @@ def test_cost(orphans, tests_dir):
     return out
 
 
-def main(argv=None):
+def main(argv=None, root=None) -> int:
+    """r166: argv and root parameterized -- root redirects BOTH the module walk and
+    the test corpus, so a fixture tree is graded instead of this checkout."""
     parser = argparse.ArgumentParser(description=(__doc__ or '').splitlines()[0])
     parser.add_argument('--self-test', action='store_true')
     parser.add_argument('--strict', action='store_true', help='exit 1 when anything is orphaned')
     args = parser.parse_args(argv)
     if args.self_test:
-        return 1 if _self_test() else 0
-    rows = census(production_files())
+        return self_test()
+    repo = REPO if root is None else os.path.abspath(root)
+    ui_src = os.path.join(repo, 'ui', 'src')
+    if not os.path.isdir(ui_src):
+        # A census that found no modules must never read as a census that found
+        # none -- the refusal floor every sibling gate in this arc follows.
+        print(f'census-orphan-modules: {os.path.join("ui", "src")} not found under '
+              f'{repo}; refusing to report a clean census of nothing.', file=sys.stderr)
+        return 2
+    rows = census(production_files(ui_src), ui_src)
     orphans = [r for r in rows if r[0] == 'ORPHAN']
-    cost = test_cost(orphans, os.path.join(UI_SRC, '__tests__'))
+    cost = test_cost(orphans, os.path.join(ui_src, '__tests__'))
     print(f'census-orphan-modules: {len(rows)} component module(s) under ui/src')
     total_cases = 0
     for verdict, rel, evidence in orphans:
@@ -340,6 +386,155 @@ def main(argv=None):
     if args.strict and orphans:
         print(f'FAIL: {len(orphans)} component module(s) no production code reaches.')
         return 1
+    return 0
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder(root=None) -> int:
+    """Re-entry guard (the r228 pattern): rung 4 drives --self-test through argv
+    from inside the ladder, and the self-test ends in this call."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        print("  (ladder re-entry from a nested --self-test: skipped)")
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body(root)
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body(root=None) -> int:
+    """r166: the root contract, graded on fixture ui/src trees through main().
+
+    Rung 1 IS the killing rung, and it asserts an EXACT verdict line plus a
+    NEGATIVE finding. The positive half fixes both numbers the census prints to
+    the fixture's: measured on this checkout, the live verdict is
+    "census-orphan-modules: 419 component module(s) under ui/src" and
+    "  ORPHAN=1, LIVE=418", so neither "6 component module(s)" nor
+    "ORPHAN=1, LIVE=5" can be printed by a scan of the real tree. The negative
+    half is the half a refusal floor cannot reach: the fixture's ORPHAN is
+    Hookless.tsx, and the real AddonsMarketplace.tsx must NOT be reported. A
+    ladder that stopped at "the broken scope is refused" would die at a floor
+    that grades nothing; this rung fails a main() that honours root for the
+    SCOPE while the CHECK's own analysis still reads this checkout.
+
+    Rung 2 is the clean arm: every module reached by import/render/registration,
+    exit 0, ORPHAN=0. Rung 3 is the refusal floor -- a root with no ui/src must
+    refuse rc 2 and never print ORPHAN=; a root-blind main walks this checkout
+    and prints its verdict instead. Rung 4 drives --self-test through argv;
+    re-entry is guarded.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    def build(tmp, files, label="fx"):
+        """A fixture root holding the given {relative path: text} files."""
+        base = os.path.join(tempfile.mkdtemp(dir=tmp, prefix=label + "_"))
+        for rel, text in files.items():
+            dst = os.path.join(base, *rel.split("/"))
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            with open(dst, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(text)
+        return base
+
+    def run(root_dir, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root_dir))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    # SEVEN modules, ONE orphan. Three separate rules the predicate owns keep the
+    # rest LIVE -- static import (Widget into Host, Host into App, useThing into
+    # Host and Consumer), JSX render (Widget, Host, App), and a dynamic import
+    # (Consumer). The census reports EVERY unnamed module, so the fixture's entry
+    # points are named too: a .tsx carrying no JSX is exempt only by the
+    # lower-case-helper rule main.tsx fails, so main.tsx renders <App /> through
+    # createRoot rather than merely importing it. A fixture whose helpers were
+    # unnamed would print orphans for reasons unrelated to the rule under test.
+    # The one module nothing names is Hookless.tsx, and that name appears
+    # nowhere in this checkout -- which is what makes it a finding only a
+    # fixture scan can produce.
+    MIXED = {
+        "ui/src/main.tsx": ("import { App } from './App';" + chr(10)
+                            + "createRoot(document.body).render(<App />);" + chr(10)
+                            + "export const boot = App;" + chr(10)),
+        "ui/src/Widget.tsx": "export default function Widget() { return null; }" + chr(10),
+        "ui/src/Host.tsx": ("import Widget from './Widget';" + chr(10)
+                            + "import { useThing } from './useThing';" + chr(10)
+                            + "export const Host = () => { useThing(); return <Widget />; }" + chr(10)),
+        "ui/src/useThing.ts": "export function useThing() { return 1; }" + chr(10),
+        "ui/src/Consumer.tsx": ("import { useThing } from './useThing';" + chr(10)
+                                + "export const Consumer = () => useThing();" + chr(10)),
+        "ui/src/Hookless.tsx": "export default function Hookless() { return null; }" + chr(10),
+        "ui/src/App.tsx": ("import { Host } from './Host';" + chr(10)
+                           + "const C = lazy(() => import('./Consumer'));" + chr(10)
+                           + "export const App = () => <Host />;" + chr(10)),
+    }
+
+    # Every module reachable: Widget by import and render, Screen dynamically,
+    # and the host by the entry module -- same entry rule as MIXED.
+    CLEAN = {
+        "ui/src/Widget.tsx": "export default function Widget() { return null; }" + chr(10),
+        "ui/src/Host.tsx": ("import Widget from './Widget';" + chr(10)
+                            + "export const Host = () => <Widget />;" + chr(10)),
+        "ui/src/Screen.tsx": "export function Screen() { return null; }" + chr(10),
+        "ui/src/reg.ts": ("const S = lazy(() => import('./Screen'));" + chr(10)
+                          + "registerPage({ component: Screen });" + chr(10)),
+        "ui/src/main.tsx": ("import { Host } from './Host';" + chr(10)
+                            + "createRoot(document.body).render(<Host />);" + chr(10)),
+    }
+
+    shell = 0
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as tmp:
+        # rung 1 -- the killing rung: the verdict is the FIXTURE's, exactly, and
+        # the finding is the fixture's too.
+        fx_root = build(tmp, MIXED)
+        rc, said = run(fx_root)
+        want_count = "census-orphan-modules: 6 component module(s) under ui/src"
+        want_verdict = "ORPHAN=1, LIVE=5"
+        if (rc != 0 or want_count not in said or want_verdict not in said
+                or "ORPHAN  Hookless.tsx" not in said or "AddonsMarketplace" in said):
+            print("  x rung 1: the verdict and the finding must both be the fixture's "
+                  "(6 modules, Hookless.tsx orphaned, no AddonsMarketplace) "
+                  "(rc=%r said=%r)" % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2 -- the clean arm: every fixture module is reached, exit 0.
+        fx_root = build(tmp, CLEAN)
+        rc, said = run(fx_root)
+        if (rc != 0 or "census-orphan-modules: 3 component module(s)" not in said
+                or "ORPHAN=0, LIVE=3" not in said):
+            print("  x rung 2: a clean fixture must exit 0 reporting ORPHAN=0, LIVE=3 "
+                  "(rc=%r said=%r)" % (rc, said[-300:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3 -- the refusal floor: no ui/src under this root.
+        fx_root = build(tmp, {"README.md": "no ui here" + chr(10)}, label="bare")
+        rc, said = run(fx_root)
+        if rc != 2 or "not found" not in said or "ORPHAN=" in said:
+            print("  x rung 3: a root without ui/src must refuse rc 2 and print no "
+                  "verdict (rc=%r said=%r)" % (rc, said[-300:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4 -- --self-test dispatch flows through argv; re-entry is guarded.
+        fx_root = build(tmp, CLEAN)
+        rc, said = run(fx_root, "--self-test")
+        if rc != 0 or "SELF-TEST OK" not in said or "ladder re-entry" not in said:
+            print("  x rung 4: --self-test through argv must pass rc 0 and skip the "
+                  "nested ladder (rc=%r said=%r)" % (rc, said[-300:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("CENSUS-ORPHAN-MODULES SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file graded)" % shell)
     return 0
 
 

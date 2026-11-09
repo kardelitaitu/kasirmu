@@ -11388,3 +11388,47 @@ which tree is read) and both returned rc 0 -- the third time in this arc that a
 mutation which changed nothing almost read as a finding, and the reason the
 structural argument was used instead of more mutants.
 
+### Round 256 (2026-11-09) -- the shape the mutation table could not see
+
+scripts/census-orphan-modules.py gained the contract (census 34 -> 35 of 70)
+and, on the way, exposed a hole in the harness rather than in itself.
+
+Its root resolution is `repo = REPO if root is None else os.path.abspath(root)`.
+No row of the mutation table modelled that shape, so
+  python scripts/prove-ladder-kills.py scripts/census-orphan-modules.py
+printed "NO APPLICABLE MUTATION" and the ladder was proven by hand instead.
+A hand proof is a real result, but it does not regress-detect: nothing would
+notice if the rung stopped killing tomorrow.
+
+The subagent declined to add the shape itself, on the correct ground that
+widening the table until the answer appears is what that file explicitly
+refuses. That judgement was right and this round made the same change
+deliberately, as its own act, with the shape added because a real checker
+genuinely uses it -- not to make one run go green.
+
+Measured after adding "repo abspath ignores root":
+  census-orphan-modules.py: every applicable mutation killed (1)   [was NO APPLICABLE]
+A sweep of seven other contracted checkers shows no verdict changed: all still
+report "every applicable mutation killed" with no SURVIVED row, so the new
+anchor is not matching inside files where it would weaken the table.
+
+The ladder itself is verdict-level, confirmed by the subagent with a mutant that
+keeps the scope honest (repo still resolved from root, so no refusal) and flips
+the finding to the real tree: rung 1 exits 1 because the counts came from the
+fixture (6 modules, ORPHAN=1, LIVE=5) while the FINDING was this checkout's.
+That is the anti-refusal-floor property round 253 worried about, tested and
+holding here.
+
+Live verdict unchanged: "census-orphan-modules: 419 component module(s) under
+ui/src", ORPHAN=1, LIVE=418, rc 0. Self-test "12 ok lines" plus
+"CENSUS-ORPHAN-MODULES SHELL LADDER OK (4 cases ...)".
+
+Honest limits: one new anchor covers one shape; the table still holds 15 exact
+strings, so the next checker with an unmodelled resolution will hit the same
+NO APPLICABLE wall and the same temptation. The subagent also reported that
+scripts/sabotage-selftests.py --self-test fails on this tree for reasons
+unrelated to this change (four self-tested scripts missing from its census, and
+a "RUNNERS = (" block it expects in verify-selftests-wired.py). I did not
+reproduce or investigate that; it is recorded as reported, not verified, and
+may belong to another session's in-flight work.
+

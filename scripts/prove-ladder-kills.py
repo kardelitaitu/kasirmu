@@ -138,6 +138,16 @@ MUTATIONS = (
         'wf_dir = None if root is None else Path(root).resolve() / ".github" / "workflows"',
         "wf_dir = None  # MUTANT: root ignored",
     ),
+    # r256: an abspath() resolution under a `repo` binding. census-orphan-modules
+    # reported NO APPLICABLE MUTATION for a long time because the table had no
+    # row for this shape; its ladder was proven by hand instead, which does not
+    # regress-detect. The anchor is the single line that CHOOSES the value, so
+    # the replacement cannot break a continuation.
+    (
+        "repo abspath ignores root",
+        "repo = REPO if root is None else os.path.abspath(root)",
+        "repo = REPO  # MUTANT: root ignored",
+    ),
 )
 
 
