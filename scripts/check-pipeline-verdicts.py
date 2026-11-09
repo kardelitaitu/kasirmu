@@ -427,11 +427,26 @@ def main(argv=None, root=None) -> int:
         return self_test()
     bad: list[str] = []
     scanned = 0
-    base = ROOT if root is None else Path(root).resolve()
+    base_root = ROOT if root is None else Path(root).resolve()
+    base = base_root
+    # Reported paths anchor on the scanned root. Kept as a separate name from
+    # `base` because the mutation harness rewrites root resolution and the two
+    # must be able to disagree without crashing (r246).
     for p in targets(root):
         scanned += 1
-        bad.extend(findings_in(p.read_text(encoding="utf-8", errors="replace"),
-                               p.relative_to(base).as_posix()))
+        # r246: the relative path is computed against the SCANNED path's own
+        # root, not against `base`. When the two disagree the old form raised
+        # `ValueError: not in the subpath of` -- a crash, not a verdict, and a
+        # crash is not a graded refusal. Measured by scripts/prove-ladder-kills.py,
+        # whose "sweep ignores root" mutant produced exactly that traceback.
+        try:
+            shown = p.relative_to(base_root).as_posix()
+        except ValueError:
+            # The scanned path is not under the anchor, which means the sweep
+            # and the reported paths disagree about their root. Report the
+            # path as-is rather than raising: a crash is not a verdict.
+            shown = str(p)
+        bad.extend(findings_in(p.read_text(encoding="utf-8", errors="replace"), shown))
     if scanned == 0:
         sys.stderr.write(
             "error: read no .sh file under %s, so this run graded nothing and its verdict "

@@ -10907,3 +10907,41 @@ Round 243's entry was written before its code was verified and says so; it is
 left as written rather than retroactively adjusted, because a process record
 that gets rewritten after the fact stops being a record.
 
+### Round 246 (2026-11-09) -- a mutation harness, because reasoning about rungs has now failed twice
+
+Rounds 242 and 245 both shipped rungs documented as "the killing rung" that
+were not: one asserted a substring that a root-blind main could incidentally
+satisfy, the other crashed instead of refusing. Both were found by someone
+else running a mutant, never by re-reading the code. Twice is a pattern, so
+this round replaces the habit with a tool.
+
+scripts/prove-ladder-kills.py reads a checker, applies each root-blind
+mutation whose anchor occurs exactly once, loads the mutant as a module, calls
+its shell_ladder() directly, and requires a non-zero return. Three outcomes
+are kept distinct because they mean different things: KILLED (returns
+non-zero), SURVIVED (returns zero -- the rung does not grade what it claims),
+and RAISED (the mutant crashes). The last is NOT counted as a kill: a crash is
+not a graded refusal, and treating it as one would let a rung pass by
+exploding rather than by grading.
+
+First run, three ladders: check-ftl-attrs and verify-settled-read-copies kill
+their applicable mutation cleanly. check-pipeline-verdicts killed two of three
+but RAISED on "sweep ignores root" -- the traceback buried in round 245's own
+honest-limits paragraph. The cause was real and independent of the test:
+`p.relative_to(base)` assumed the scanned path is always under the anchor, so
+when the two disagreed the gate died with ValueError. It now falls back to the
+absolute path, and that mutant is KILLED with rc 1.
+
+Measured: all three ladders "every applicable mutation killed". Live gate
+unmoved: "OK - no condition reads a swallower's status (73 shell script(s)
+read)"; self-test "9 detector cases + 4 verdict cases + 3 shell cases".
+
+Honest limits: the harness knows five mutation shapes. A checker that resolves
+its root some other way reports "NO APPLICABLE MUTATION" (exit 2) rather than a
+pass, so absence of proof is never reported as proof -- but that also means
+coverage is partial by construction and most of the ~40 un-contracted checkers
+will hit that branch. It grades ONE property (root-blindness) and says nothing
+about whether a rung pins the behaviour it names; the substring defect in
+round 242 was a pinning bug that this harness caught only because it was
+root-adjacent. A rung can still be weak and pass here.
+
