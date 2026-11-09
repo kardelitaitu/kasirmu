@@ -9901,3 +9901,57 @@ ftl-orphans (r223), and unwrap-panic (r224) limits stand. Docker daemon
 still down (probed r159): E2E / llvm-cov / nextest-junit receipts
 remain PG-gated. Root-policy RED on the foreign todo.md (r174);
 core-size RED on the ADR-59 +64 (r181) — both await their owning lanes.
+
+### Round 226 (2026-11-09) -- architecture-boundaries: the tool that already had --root, and a probe that refuses to pass vacuously
+
+verify-architecture-boundaries.py is the arc's special case: it already
+took --root, its five walkers all take (root, scope), and its census
+floor already separates fixture runs (metadata-file) from real ones.
+The r166 contract here is therefore CALLABILITY -- main(argv=None,
+root=None), argv explicit, a root kwarg that overrides --root exactly
+as --root overrides the default -- and the ladder's job is to prove the
+kwarg moves every walker together. Six rungs: the killing rung (a
+fixture invoke bypass fails rc 1 through --json with the fixture path
+named), the clean fixture greening WITH its zero population named
+("[population examined: 0 crate(s)" -- the denominator this file's own
+docstring fought for), --report-only saying NOT JUDGING at rc 0, a
+baseline entry tracking the finding at rc 0 (the entry's target is
+computed by the SAME extractor the finding comes from, so recorded debt
+and fresh findings provably share one key), the same entry reading
+STALE rc 1 over a tree whose finding is gone, and a REAL one-crate
+cargo workspace -- no metadata fixture -- refused rc 2 by the census
+floor ("names only 1 crate(s)"), the floor's first live exercise since
+its 2026-10-23 landing.
+
+Two catches, both recorded because both were caught by the harnesses
+refusing to lie. First, the probe: its first draft wrote the fixture
+metadata with a %r-quoted string, which is not JSON -- both true and
+mutant sides then refused rc 2, and a naive "rc differs" assertion
+would still have failed, but the probe's real guard is that it asserts
+the true side's POSITIVE verdict (rc 1 with the fixture file named)
+before comparing. A probe that can pass on two refusals is not a probe.
+Second, the measured kill path: the committed probe keeps the fixture
+metadata on the mutant, so the kwarg-dropping main pairs the fixture
+graph with this checkout's root and check_graph_root itself refuses the
+wrong-tree pairing (mutant rc 2, fixture rc 1). The kill is real but it
+lands through the graph-root guard, not the default-root route the
+docstring first sketched -- the probe file records the measured path.
+
+Self-test reads "SELF-TEST OK (18 cases, no files touched)" plus the
+6-rung ladder; live unchanged: "0 tracked transitional finding(s), 0
+new/expired blocking finding(s)" over 41 crates / 603 edges at exit 0.
+
+Honest limits: rung 6 assumes cargo on PATH (same assumption the
+git-fixture rungs make about git); the graph-root kill depends on both
+sides resolving the same tempfile string (Windows short-path forms
+could break the equality -- the probe prints what it compared); --strict
+stays parsed-never-read, the docstring's own declared limit; and the
+node suite in scripts/__tests__/ keeps driving --root its own way,
+untouched. The scoped-reads (r213), retire (r214), state-closure (r216),
+fluent-families (r217), scratch-leaks (r218), shadow-copies (r219),
+chokepoints (r220), reentry-guards (r221), feature-registry (r222),
+ftl-orphans (r223), unwrap-panic (r224), and bundle-parity (r225)
+limits stand. Docker daemon still down (probed r159): E2E / llvm-cov /
+nextest-junit receipts remain PG-gated. Root-policy RED on the foreign
+todo.md (r174); core-size RED on the ADR-59 +64 (r181) -- both await
+their owning lanes.
