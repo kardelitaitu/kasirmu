@@ -559,15 +559,15 @@ def self_test() -> int:
            "}\n")
 
     rung_n = iter(range(1000))
-    def build_tree(tmp, *, mention=False, todo=False):
+    def build_tree(tmp, *, mention=False, todo=False, mod_text=None):
         root = pathlib.Path(tmp) / ("mini%d" % next(rung_n))
         (root / "apps/mobile-tauri/src/commands").mkdir(parents=True, exist_ok=True)
         (root / "ui/src/api/client").mkdir(parents=True, exist_ok=True)
         (root / "scripts").mkdir(parents=True, exist_ok=True)
         (root / "apps/mobile-tauri/src/lib.rs").write_text(
             "generate_handler![\n    commands::sales::alpha,\n]\n", encoding="utf-8")
-        (root / "apps/mobile-tauri/src/commands/sales.rs").write_text(MOD,
-                                                                     encoding="utf-8")
+        (root / "apps/mobile-tauri/src/commands/sales.rs").write_text(
+            mod_text if mod_text is not None else MOD, encoding="utf-8")
         (root / "ui/src/api/client/products.ts").write_text(
             "await invoke('alpha');\n", encoding="utf-8")
         (root / "scripts/ipc-parity-allowlist.json").write_text(json.dumps(
@@ -681,6 +681,68 @@ def self_test() -> int:
         if rc != 2 or "not retirement candidates" not in text:
             print("  x rung 7: --only with a registered name must refuse rc 2 "
                   "(rc=%r tail=%r)" % (rc, text[-170:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 8 (r210): the stale-prose report -- a hand-written comment in
+        # ANOTHER module naming a candidate is reported, not refused, and the
+        # report names the file and line
+        root = build_tree(tmp)
+        (root / "apps/mobile-tauri/src/commands/other.rs").write_text(
+            "// dead_two used to be called from the pending-sale path\n"
+            "pub fn helper() {\n    let _x = 1;\n}\n", encoding="utf-8")
+        rc, text = run(root, "--shell", "tablet", "--module", "sales")
+        if rc != 0 or "stale prose naming a retired fn, 1 line(s)" not in text \
+                or "other.rs:1" not in text:
+            print("  x rung 8: a comment naming a candidate must be reported with "
+                  "file and line (rc=%r tail=%r)" % (rc, text[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 9 (r210): the bare-prose abort -- a surviving line that reads as
+        # an English sentence without a /// marker stops the write BEFORE it
+        # happens, and the post-condition is that nothing was written
+        root = build_tree(tmp, mod_text=MOD + "/*\nAnother sentence ends here.\n*/\n")
+        rc, text = run(root, "--shell", "tablet", "--module", "sales", "--apply",
+                       "--only", "dead_one,dead_two,dead_three")
+        back = (root / "apps/mobile-tauri/src/commands/sales.rs").read_text(
+            encoding="utf-8")
+        if rc != 2 or "prose without a /// prefix" not in text:
+            print("  x rung 9: a bare sentence in the result must abort rc 2 "
+                  "(rc=%r tail=%r)" % (rc, text[-170:]), file=sys.stderr)
+            return 1
+        if "pub fn dead_one" not in back:
+            print("  x rung 9: the abort must precede the write -- the file is "
+                  "unchanged (head=%r)" % back[:160], file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 10 (r210): the overlap abort -- a fn defined INSIDE another fn's
+        # body makes the two spans collide, and the tool refuses to guess which
+        # lines to delete
+        root = build_tree(tmp, mod_text=(
+            "#[tauri::command]\n"
+            "pub async fn alpha(session: String) -> String {\n"
+            "    let _ = session;\n"
+            "    \"alpha\".to_string()\n"
+            "}\n"
+            "\n"
+            "#[tauri::command]\n"
+            "pub fn outer_one() -> String {\n"
+            "    #[tauri::command]\n"
+            "    pub fn inner_two() -> String {\n"
+            "        \"in\".to_string()\n"
+            "    }\n"
+            "    \"out\".to_string()\n"
+            "}\n"))
+        rc, text = run(root, "--shell", "tablet", "--module", "sales", "--apply",
+                       "--only", "outer_one,inner_two")
+        back = (root / "apps/mobile-tauri/src/commands/sales.rs").read_text(
+            encoding="utf-8")
+        if rc != 2 or "spans overlap" not in text:
+            print("  x rung 10: nested fn spans must abort rc 2 (rc=%r tail=%r)"
+                  % (rc, text[-170:]), file=sys.stderr)
+            return 1
+        if "pub fn outer_one" not in back:
+            print("  x rung 10: the abort must precede the write -- the file is "
+                  "unchanged (head=%r)" % back[:160], file=sys.stderr)
             return 1
         shell += 1
 
