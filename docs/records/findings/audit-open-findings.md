@@ -12119,3 +12119,48 @@ instead of returning: git ls-files exit 128'); that is pre-existing at HEAD and
 unfixed here. verify-ipc-parity's --self-test takes 57.5s (measured, twice), which
 is what made a full sweep look like a hang under a 20s cap. Census 42 -> 43 of 70.
 
+### Round 272 (2026-11-09) -- the EXEC 'fault' that was the harness's own address
+
+check-orphan-prototype-files had been the ONE non-green file in every sweep: the
+harness printed
+    repo root ignores root   EXEC   ladder RAISED instead of returning:
+    Command '['git', 'ls-files']' returned non-zero exit status 128
+and exited 3 HARNESS FAULT. It was recorded as pre-existing and left alone for two
+rounds. It is not a checker defect.
+
+MEASURED, same checker, same code, only TMPDIR changed:
+    TMPDIR=C:/Windows/Temp              -> rc 3, EXEC, 2 mutations could not run
+    TMPDIR=<checkout>/.agents/plktmp    -> rc 0, 'every applicable mutation killed (2)'
+
+WHY: prove-ladder-kills.py copies the checker to its scratch dir and loads it, so
+the copy's REPO_ROOT is the PARENT OF THE SCRATCH DIR. The ladder's fixtures are
+scratch GIT REPOSITORIES -- build() runs 'git init' inside each -- and they are
+created under fixture_root(). With TMPDIR on C:/Windows/Temp the scratch lands at
+C:/Windows/Temp/<random>, REPO_ROOT computes to C:\Windows, and the fixture's own
+git init/resolve then fails. The rung raises before it can return a verdict, and the
+harness faithfully reports 'could not execute'.
+
+Rounds of this arc have now hit the same wall from three directions: TMPDIR inside
+the checkout corrupts no-git fixtures (r270), TMPDIR outside it can corrupt
+git-repo fixtures (here), and a fixture that inherits ambient state grades the
+ambient state. The harness's measurement depends on WHERE it runs, and it never
+says so.
+
+I TRIED A FIX AND REVERTED IT: pointing the ladder's scratch_root at REPO_ROOT
+instead of fixture_root(). It still failed rc 3 outside the repo, because the
+mutant's REPO_ROOT is C:\Windows and the fix moved the fixtures to the same wrong
+place. Reverted to the committed bytes; 'git status' confirmed clean at the file.
+Reporting a tautological fix as a fix would have been the r263 failure again.
+
+Also this round: verify-doc-uniqueness got its ladder (5 rungs). I corrected a
+fixture bug in it before committing -- 'build(base/'four', {OTHER: ...})' passed the
+file CONTENT as the path key and raised OSError [Errno 22]; the key is
+'docs/notes.md'. Verified: mutant dies on a VERDICT at rung 1, anchor occurs once,
+live run clean.
+
+Honest limits: the orphan-prototype EXEC is NOT fixed. Under an in-repo scratch it
+is rc 0 with both mutations killed, and under an out-of-repo scratch it is rc 3 --
+so the right fix is probably for prove-ladder-kills.py to build its scratch inside
+the checkout it is grading, which I did not attempt here. Any sweep I run with
+TMPDIR=C:/Windows/Temp therefore understates that one file. Census 43 -> 44 of 70.
+
