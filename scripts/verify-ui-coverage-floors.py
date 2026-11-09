@@ -335,10 +335,21 @@ def _shell_ladder_body() -> int:
         # rung 5 -- one shortfall fires, naming ONLY the metric that fell.
         root = build(tmp, {"scripts/coverage-floors.json": FLOORS,
                            "coverage/ui/coverage-summary.json": SUM_LOW})
+        # r241 (review): the original operand was `"lines" not in said`, which
+        # could never fail -- main() prints an ok/FAIL table for ALL FOUR
+        # metrics before the findings, so "lines" is always present. The rung
+        # now grades what its message claims: branches FELL and is marked FAIL,
+        # while lines stayed at 60.0 and is marked ok. The falling metric must
+        # be the only FAIL row, which is the isolation the case is named for.
         rc, said = run(root)
-        if rc != 1 or "branches" not in said or "lines" not in said:
-            print("  x rung 5: a shortfall must exit 1 naming the metric "
-                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+        fails = [ln for ln in said.splitlines()
+                 if ln.strip().startswith(("FAIL  ", "ok    "))]
+        graded_fails = [ln for ln in fails if ln.strip().startswith("FAIL")]
+        if rc != 1 or "branches" not in said or len(graded_fails) != 1 \
+                or len(fails) != 4:
+            print("  x rung 5: a shortfall must exit 1 with branches the ONLY grading "
+                  "metric below its floor (rc=%r fail-rows=%r rows=%d said=%r)"
+                  % (rc, graded_fails, len(fails), said[-240:]), file=sys.stderr)
             return 1
         shell += 1
         # rung 6 -- --self-test dispatch flows through argv; re-entry is guarded.

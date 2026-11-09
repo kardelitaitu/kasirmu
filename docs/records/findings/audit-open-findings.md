@@ -10708,3 +10708,58 @@ the report is a floor on orphans rather than an exact count -- the ladder
 does not narrow that. Like the rounds before it, the host confinement still
 denies writes under Python's default temp, so the fixtures honour
 TMPDIR/TMP/TEMP; on a host that permits the default this changes nothing.
+### Round 241 (2026-11-09) -- selftest-sweep: a ladder that must not run the roster, plus two rung defects an independent review found
+
+verify-selftest-sweep.py (303 lines) was the next census target, "missing
+ladder". It is the only checker in this arc whose `main()` SPAWNS processes --
+one per roster entry -- so its ladder is designed backwards from that cost:
+every rung keeps the fixture roster to one or two one-line scripts, and rung 1
+is simultaneously the killing rung and the cost proof, because a root-blind
+main() would run all ~101 real self-tests rather than return a verdict.
+
+Five rungs through `main(argv, root)`: a failing fixture checker fails the
+sweep (rung 1), a passing roster greens counting the FIXTURE (rung 2), a
+rejected flag stays a FAILURE carrying "FLAG REJECTED" rather than a bucket of
+its own (rung 3, the 2026-09-29 lesson, now executed through the roster path
+that actually decides the summary line), `--self-test` dispatch through argv
+with the ladder guard silent (rung 4), and a roster declaring nothing refusing
+rc 2 (rung 5).
+
+TWO DEFECTS IN EARLIER ROUNDS' RUNGS, found by an independent review of round
+233-240 and fixed here rather than left recorded:
+
+  1. check-merged-lines.py rung 3 asserted a bare "REFUSED" token, which a
+     refusal with ANY wording satisfied -- it graded "something went wrong",
+     not "this gate refused for this reason". It now asserts the real message,
+     "is not a directory".
+  2. verify-ui-coverage-floors.py rung 5 asserted `"lines" not in said`, which
+     could never fail: main() prints an ok/FAIL table for all four metrics
+     before the findings, so "lines" is always present. The rung now counts the
+     graded table rows and requires exactly four rows with exactly one FAIL --
+     the isolation its own name claims.
+
+The review also confirmed the root contract is genuinely load-bearing for all
+six checkers: with each `main()` neutered to drop its root argument, every
+ladder's rung 1 failed and named the real tree's measurement instead.
+
+A THIRD finding is recorded as a limit rather than fixed: the TMPDIR/TMP/TEMP
+fixture-root helper this arc added is INERT on this host -- `env -u TMPDIR -u
+TMP -u TEMP python scripts/check-merged-lines.py --self-test` passes on the
+default temp. The helper is a capability, not a demonstrated fix, and the
+register entries that called it one were overstating it.
+
+Measured: census 27 of 70 contracted (was 26). Ladder 5 rungs; self-test 5
+cases + 4 shell cases, exit 0. Dependents unchanged.
+
+Honest limits: the live roster sweep was MEASURED RED in this round -- 90
+passed, 11 FAILED -- and that result is not attributable to this change. Every
+one of the eleven passes when run alone (check-merged-lines.py, re-run
+immediately after, printed both OK lines and exited 0), and the same run also
+reported checkers this arc never touched (check-bundle.mjs,
+check-updater-compat.mjs, verify-doc-uniqueness.py, verify-feature-registry.py,
+verify-ps-syntax.py, verify-shell-syntax.py). The likely cause is the roster's
+8-way parallel subprocesses competing for this host's temp and CPU; the sweep's
+own docstring assumed independent subprocesses, and on this host they are not
+independent of the temp path. Filed as an observation, not a verdict -- a
+sweep result that flips between isolated and parallel runs is the "bad oracle"
+its own docstring warns against, and diagnosing it is a round of its own.

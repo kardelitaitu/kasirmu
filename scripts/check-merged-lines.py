@@ -265,8 +265,12 @@ def _shell_ladder_body() -> int:
         # rung 3 -- the refusal floor: no ui/src under the fixture root.
         base = Path(tempfile.mkdtemp(dir=tmp, prefix="empty_"))
         rc, said = run(base)
-        if rc != 2 or "REFUSED" not in said:
-            print("  x rung 3: a fixture without ui/src must refuse rc 2 "
+        # r241 (review): asserted on the ACTUAL refusal text, not a bare
+        # "REFUSED" token. A main that refused with any other wording still
+        # satisfied the old operand, so the rung graded "something went wrong"
+        # rather than "this gate refused for this reason".
+        if rc != 2 or "is not a directory" not in said:
+            print("  x rung 3: a fixture without ui/src must refuse rc 2 naming why "
                   "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
             return 1
         shell += 1

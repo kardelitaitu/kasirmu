@@ -34,13 +34,30 @@ Exit 0 every declared self-test passed, 1 at least one did not, 2 nothing was fo
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import re
 import subprocess
 import sys
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+#: Where fixtures are written when the host sets a temp variable. A host whose
+#: confinement denies files under its default temp (measured 2026-11-09 on the
+#: agent host: every write into a TemporaryDirectory is EPERM) can point this at
+#: a directory it allows; unset leaves tempfile's own default in force.
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root this file's fixtures are written under (None = system default)."""
+    import os
+    return next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+
+
 # THREE DIRECTORIES, THREE EXTENSIONS. Measured 2026-10-24: the sweep covered
 # scripts/*.{py,mjs} only -- 65 checkers -- while 24 MORE declared the same flag and
 # were never run by it: 7 .sh checkers beside the .py ones, 6 in website/scripts and
@@ -196,7 +213,8 @@ def self_test() -> int:
         import contextlib as _ctx
         import io as _io
         import tempfile as _tempfile
-        with _tempfile.TemporaryDirectory() as td:
+        with _tempfile.TemporaryDirectory(dir=fixture_root(),
+                                             ignore_cleanup_errors=True) as td:
             base = Path(td)
             for name, body in checkers:
                 # the roster reads root/scripts, so the fixture nests there
@@ -239,6 +257,120 @@ def self_test() -> int:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
     print(f"SELF-TEST OK (5 cases + {shell} shell cases, {len(found)} checker(s) would be swept)")
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard for the ladder (r241 -- the r228 lesson).
+
+    This checker sweeps SUBPROCESSES, so re-entry is not merely a stack
+    concern: a nested sweep would run the whole roster from inside the ladder.
+    Rung 4 drives --self-test through argv from inside the ladder; without the
+    guard that nested run recurses, and the guard turns it into a printed skip
+    before any process is spawned.
+    """
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        print("  (ladder re-entry from a nested --self-test: skipped)")
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """r241: the root contract, graded on fixture rosters through main().
+
+    Every rung keeps the FIXTURE roster to one or two one-line scripts. That
+    matters more here than anywhere else in this arc: `main()` spawns a
+    process per checker, so a rung that let the roster fall back to the real
+    tree would run all ~103 self-tests from inside the ladder. Rung 1 is
+    therefore also a COST rung -- a root-blind main would take minutes, not
+    return a single verdict.
+
+    Rung 3 grades the bucket boundary this file's own history is about: a
+    checker that declares --self-test in a PROSE comment but rejects the flag
+    must land in "FAILED ... FLAG REJECTED", never in a bucket of its own.
+    That distinction was the 2026-09-29 lesson and it already had a self-test
+    case, but no case ran it through the ROSTER, which is the path that
+    decides the summary line a reader actually trusts.
+    """
+    def build(tmp, scripts, label="fx"):
+        """A fixture root whose scripts/ holds the given [(name, body)] roster."""
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix=label + "_"))
+        (base / "scripts").mkdir(parents=True, exist_ok=True)
+        for name, body in scripts:
+            (base / "scripts" / name).write_text(body, encoding="utf-8")
+        return base
+
+    def run(root_dir, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root_dir))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    HEADER = "import sys" + chr(10) + 'if "--self-test" in sys.argv[1:]:' + chr(10)
+    OKC = (HEADER + "    print('fixture ok')" + chr(10) + "    sys.exit(0)" + chr(10)
+           + "sys.exit(1)" + chr(10))
+    BADC = HEADER + "    sys.exit(3)" + chr(10) + "sys.exit(0)" + chr(10)
+    USEC = ("import argparse" + chr(10) + '# "--self-test" in prose only' + chr(10)
+            + "argparse.ArgumentParser().parse_args()" + chr(10) + "print('ran')" + chr(10))
+
+    shell = 0
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as tmp:
+        # rung 1 -- the killing rung: a FAILING fixture checker must fail the sweep.
+        root = build(tmp, [("check-fx-bad.py", BADC)])
+        rc, said = run(root)
+        if rc != 1 or "0 passed, 1 FAILED" not in said or "check-fx-bad.py" not in said:
+            print("  x rung 1: a failing fixture self-test must fail the sweep rc 1 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2 -- a passing fixture greens and counts the FIXTURE roster only.
+        root = build(tmp, [("check-fx-ok.py", OKC), ("check-fx-none.py", "print(1)")])
+        rc, said = run(root)
+        if rc != 0 or "1 self-test(s)" not in said or "1 declare none" not in said:
+            print("  x rung 2: a passing fixture roster must green counting one "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3 -- a rejected flag stays a FAILURE carrying its reason.
+        root = build(tmp, [("check-fx-usage.py", USEC)])
+        rc, said = run(root)
+        if rc != 1 or "FLAG REJECTED" not in said:
+            print("  x rung 3: a rejected flag must be a failure with its reason "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4 -- --self-test dispatch flows through argv; re-entry is guarded,
+        # and the guard must fire BEFORE any subprocess is spawned.
+        root = build(tmp, [("check-fx-ok.py", OKC)])
+        rc, said = run(root, "--self-test")
+        if rc != 0 or "SELF-TEST OK" not in said or "ladder re-entry" not in said:
+            print("  x rung 4: --self-test through argv must pass rc 0 and skip the "
+                  "nested ladder (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5 -- the refusal floor: a roster where nothing declares the flag.
+        root = build(tmp, [("check-fx-none.py", "print(1)")])
+        rc, said = run(root)
+        if rc != 2 or "no checker declares" not in said:
+            print("  x rung 5: a roster declaring nothing must refuse rc 2 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("SELFTEST-SWEEP SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
     return 0
 
 
