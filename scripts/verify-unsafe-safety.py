@@ -237,8 +237,67 @@ def self_test() -> int:
     if failures:
         print(f"self-test: FAIL ({len(failures)})")
         return 1
+    # r193: main()'s shell -- argv and root graded against tempdir GIT
+    # repositories (scan() uses git grep, so plain directories will not do),
+    # the r166..r192 pattern. The prose-only and unmarked cases both kill a
+    # root-dropping main: the real tree has justified constructs everywhere,
+    # so it returns 0 against want 1.
+    import contextlib as _ctx
+    import io as _io
+    shell = 0
+    def _shell(files):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            for rel, content in files.items():
+                dst = base / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_text(content, encoding="utf-8")
+            subprocess.run(["git", "init", "-q"], cwd=base, check=True)
+            subprocess.run(["git", "add", "."], cwd=base, check=True)
+            out, err = _io.StringIO(), _io.StringIO()
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                rc = main(argv=[], root=base)
+            return rc, out.getvalue() + err.getvalue()
+    MARKED = ("fn f() {" + chr(10)
+              + "    // SAFETY: the API contract guarantees non-null." + chr(10)
+              + "    let x = unsafe { bar() };" + chr(10)
+              + "}" + chr(10))
+    UNMARKED = ("fn g() {" + chr(10)
+                + "    let y = unsafe { foo() };" + chr(10)
+                + "}" + chr(10))
+    PROSE = "// no unsafe code here, honest" + chr(10)
+    shell += 1
+    rc, text = _shell({"probe.rs": MARKED})
+    if rc != 0 or "(1 construct(s), every one justified)" not in text:
+        print("  x a justified construct must read OK with its census (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _shell({"probe.rs": UNMARKED})
+    if rc != 1 or "probe.rs:2" not in text or "lack a " not in text:
+        print("  x an unmarked construct must fail naming file:line (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _shell({"probe.rs": PROSE})
+    if rc != 1 or "no unsafe constructs found anywhere" not in text:
+        print("  x prose-only matches give an EMPTY population, rc 1 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    # the /target/ skip is graded through main: an unmarked construct under a
+    # NESTED target/ must vanish, while the marked one at the root still counts.
+    # (git grep prints root-relative paths, so a root-level target/ never
+    # carries the leading slash the constant matches -- nested is the shape
+    # the constant actually guards.)
+    rc, text = _shell({"probe.rs": MARKED, "crates/demo/target/skip.rs": UNMARKED})
+    if rc != 0 or "(1 construct(s), every one justified)" not in text:
+        print("  x a construct under /target/ must be skipped (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
     print("self-test: all cases passed -- reports an unmarked construct, "
-          "accepts a documented group, and does not count prose")
+          "accepts a documented group, does not count prose, and grades its "
+          "own shell exits (%d shell cases)" % shell)
     return 0
 
 
@@ -255,17 +314,21 @@ def _has_finding(lines: list[str], idx: int) -> bool:
     return not any(SAFETY_RE.search(w) for w in window)
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r193: argv and root parameterized, the r166..r192 contract -- the
+    scanned tree is the contract root (git grep runs with cwd=root and every
+    path resolves under it)."""
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--self-test", action="store_true",
                     help="prove both directions on synthetic sources, then exit")
-    ns = ap.parse_args()
+    ns = ap.parse_args(argv)
 
     if ns.self_test:
         return self_test()
+    base = ROOT if root is None else Path(root).resolve()
 
     try:
-        findings, seen = scan(ROOT)
+        findings, seen = scan(base)
     except subprocess.CalledProcessError as e:
         print(f"FAIL  could not list sources: {e}", file=sys.stderr)
         return 1
