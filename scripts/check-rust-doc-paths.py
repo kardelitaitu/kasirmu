@@ -105,12 +105,16 @@ def tracked(root: Path = ROOT) -> set:
     return set(out.stdout.splitlines())
 
 
-def ever_existed(path: str, cache: dict) -> bool:
-    """Whether the path appears in history at all -- added or deleted."""
+def ever_existed(path: str, cache: dict, root: Path = ROOT) -> bool:
+    """Whether the path appears in history at all -- added or deleted.
+
+    r201: history is queried in the contract root's repository, not this
+    file's -- a fixture's own history is the only history it has.
+    """
     if path not in cache:
         out = subprocess.run(
             ["git", "log", "--all", "--diff-filter=AD", "--format=%h", "-n", "1", "--", path],
-            cwd=ROOT, capture_output=True, text=True,
+            cwd=root, capture_output=True, text=True,
         )
         cache[path] = bool(out.stdout.strip())
     return cache[path]
@@ -164,7 +168,7 @@ def basename_index(tracked_set):
     return index
 
 
-def scan(files, tracked_set, history_cache):
+def scan(files, tracked_set, history_cache, root: Path = ROOT):
     findings = []
     bare_index = basename_index(tracked_set)
     for f in files:
@@ -194,7 +198,7 @@ def scan(files, tracked_set, history_cache):
                 if any(t.endswith("/" + path) for t in tracked_set):
                     continue
                 historical = bool(HISTORY_RE.search(line))
-                if historical and ever_existed(path, history_cache):
+                if historical and ever_existed(path, history_cache, root):
                     continue
                 if historical:
                     why = ("a historical path that NEVER existed -- a move cannot be recorded "
@@ -202,7 +206,7 @@ def scan(files, tracked_set, history_cache):
                 else:
                     why = "names a path that does not exist"
                 findings.append({
-                    "file": f.relative_to(ROOT).as_posix(),
+                    "file": f.relative_to(root).as_posix(),
                     "line": n,
                     "path": path,
                     "why": why,
@@ -227,10 +231,10 @@ def scan(files, tracked_set, history_cache):
                 first = int(m.group(2))
                 last = int(m.group(3)) if m.group(3) else first
                 findings.append({
-                    "file": f.relative_to(ROOT).as_posix(),
+                    "file": f.relative_to(root).as_posix(),
                     "line": n,
                     "path": "%s:%d%s" % (m.group(1), first, ("-%d" % last) if last != first else ""),
-                    "why": line_citation_problem(Path(ROOT) / resolved, first, last),
+                    "why": line_citation_problem(Path(root) / resolved, first, last),
                 })
             for m in LINE_CITE_RE.finditer(line):
                 cited = m.group(1)
@@ -244,30 +248,34 @@ def scan(files, tracked_set, history_cache):
                 first = int(m.group(2))
                 last = int(m.group(3)) if m.group(3) else first
                 findings.append({
-                    "file": f.relative_to(ROOT).as_posix(),
+                    "file": f.relative_to(root).as_posix(),
                     "line": n,
                     "path": "%s:%d%s" % (cited, first, ("-%d" % last) if last != first else ""),
-                    "why": line_citation_problem(Path(ROOT) / cited, first, last),
+                    "why": line_citation_problem(Path(root) / cited, first, last),
                 })
     return [x for x in findings if x["why"]]
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r201: argv and root parameterized, the r166..r200 contract -- the
+    corpus, the tracked set and the git history all resolve under the
+    contract root together."""
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--self-test", action="store_true",
                     help="run the classifier cases and exit; reads no file")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     if args.self_test:
         return self_test()
+    base = ROOT if root is None else Path(root).resolve()
 
     # Every directory that holds Rust. Seven .rs files live under tools/ and two under
     # scripts/; leaving them out would have made the census 1419 of 1428 and the claim
     # "every cited path resolves" quietly narrower than it sounds.
     files = []
     for top in ("crates", "apps", "modules", "platform", "foundation", "scripts", "tools"):
-        base = ROOT / top
-        if base.is_dir():
-            files.extend(sorted(base.rglob("*.rs")))
+        top_dir = base / top
+        if top_dir.is_dir():
+            files.extend(sorted(top_dir.rglob("*.rs")))
     files = [f for f in files if "target" not in f.parts]
     # THE FLOOR. A corpus of zero prints "clean" and exits 0, and the seven directory
     # names above are the only thing standing between this gate and a silent nothing.
@@ -281,10 +289,10 @@ def main() -> int:
         print("check-rust-doc-paths: REFUSED - only %d .rs file(s) found under %s. "
               "A real tree holds roughly 1430, so this is a broken corpus (a moved "
               "directory, a wrong cwd, or a bad ROOT), not a clean tree."
-              % (len(files), ROOT), file=sys.stderr)
+              % (len(files), base), file=sys.stderr)
         return 2
-    tset = tracked()
-    findings = scan(files, tset, {})
+    tset = tracked(base)
+    findings = scan(files, tset, {}, base)
     if findings:
         print("check-rust-doc-paths: %d finding(s):" % len(findings))
         for f in findings:
@@ -363,7 +371,7 @@ def self_test() -> int:
     asked: list[str] = []
     real_ever_existed = globals()["ever_existed"]
 
-    def recording_ever_existed(path: str, cache: dict) -> bool:
+    def recording_ever_existed(path: str, cache: dict, root=None) -> bool:
         asked.append(path)
         return False  # "this path is in no commit" -- the invented-path verdict
 
@@ -381,7 +389,7 @@ def self_test() -> int:
     # A marked path that IS in history is exempt: the branch has both answers, and only
     # the False one above was pinned. A detector that reported every historical line
     # would redden the repository on its own doc comments.
-    globals()["ever_existed"] = lambda path, cache: True
+    globals()["ever_existed"] = lambda path, cache, root=None: True
     try:
         exempt = scan([_F("//! relocated from crates/moved/src/lib.rs\n")], tracked_present, {})
     finally:
@@ -458,10 +466,118 @@ def self_test() -> int:
         want("tracked() does not answer with another checkout's paths",
              "Cargo.toml" in tracked(_repo), False)
 
+    # r201: the shell -- main() graded through argv and a contract root, the
+    # r166..r200 pattern. The fixture is a scratch GIT repository (tracked()
+    # and ever_existed() both need git) with a two-file corpus, so the
+    # corpus floor is lowered for the ladder and restored for its own case.
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+    shell = 0
+    saved_floor = globals()["MIN_RUST_FILES"]
+    globals()["MIN_RUST_FILES"] = 2
+    with _tempfile.TemporaryDirectory() as tdp:
+        base = Path(tdp)
+        repo = base
+        (repo / "crates" / "real" / "src").mkdir(parents=True)
+        (repo / "crates" / "gone" / "src").mkdir(parents=True)
+        (repo / "crates" / "real" / "src" / "lib.rs").write_text(
+            "//! live module\n" + "pub fn f() {}\n", encoding="utf-8")
+        (repo / "crates" / "real" / "src" / "libreal.rs").write_text(
+            "//! helper module\n" + "pub fn g() {}\n", encoding="utf-8")
+        (repo / "crates" / "gone" / "src" / "lib.rs").write_text(
+            "//! dead module\n", encoding="utf-8")
+        doc = repo / "crates" / "real" / "src" / "doc.rs"
+        def git(*a):
+            return subprocess.run(["git", "-C", str(repo)] + list(a),
+                                  capture_output=True, text=True)
+        assert git("init", "-q").returncode == 0
+        git("config", "user.name", "probe")
+        git("config", "user.email", "probe@example.invalid")
+        git("add", "-A")
+        git("commit", "-q", "-m", "seed")
+        git("rm", "-q", "-r", "crates/gone")
+        git("commit", "-q", "-m", "drop gone")
+        def run():
+            out, err = _io.StringIO(), _io.StringIO()
+            try:
+                with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                    rc = main(argv=[], root=repo)
+            except SystemExit as se:
+                return se.code, out.getvalue() + err.getvalue()
+            return rc, out.getvalue() + err.getvalue()
+        # (S1) a clean tree whose doc cites a TRACKED path parses clean
+        shell += 1
+        doc.write_text("//! mirrors crates/real/src/lib.rs exactly\n", encoding="utf-8")
+        rc, text = run()
+        if rc != 0 or "clean - 3 .rs file(s) scanned" not in text:
+            print("  x a tracked path citation must read clean (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        # (S2) a doc naming an ABSENT path is the founding defect
+        shell += 1
+        doc.write_text("//! mirrors crates/phantom/src/lib.rs exactly\n", encoding="utf-8")
+        rc, text = run()
+        if rc != 1 or "names a path that does not exist" not in text:
+            print("  x an absent path must fail rc 1 (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        # (S3) a line citation past EOF -- full path form
+        shell += 1
+        doc.write_text("//! see crates/real/src/lib.rs:99\n", encoding="utf-8")
+        rc, text = run()
+        if rc != 1 or "cites line 99 but the file has 2" not in text:
+            print("  x a past-EOF line citation must fail (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        # (S4) the SAME via the bare-basename arm: libreal.rs is unique here
+        shell += 1
+        doc.write_text("//! see libreal.rs:99\n", encoding="utf-8")
+        rc, text = run()
+        if rc != 1 or "cites line 99 but the file has 2" not in text:
+            print("  x a bare basename citation must resolve and grade (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        # (S5) the history exemption: a path that EXISTED (committed, then
+        # deleted) under a past-tense marker is allowed
+        shell += 1
+        doc.write_text("//! relocated from crates/gone/src/lib.rs\n", encoding="utf-8")
+        rc, text = run()
+        if rc != 0 or "clean - 3 .rs file(s)" not in text:
+            print("  x a real historical move must be exempt (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+        # (S6) rule 2: a move cannot be recorded FROM a path that never existed
+        shell += 1
+        doc.write_text("//! relocated from crates/never/src/lib.rs\n", encoding="utf-8")
+        rc, text = run()
+        if rc != 1 or "NEVER existed" not in text:
+            print("  x an invented historical path must fail (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+    globals()["MIN_RUST_FILES"] = saved_floor
+    # (S7) the zero-corpus floor: with the real floor restored, an empty
+    # root refuses rc 2 instead of printing clean
+    shell += 1
+    with _tempfile.TemporaryDirectory() as tdp2:
+        rc, text = None, ""
+        out, err = _io.StringIO(), _io.StringIO()
+        try:
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                rc = main(argv=[], root=Path(tdp2))
+        except SystemExit as se:
+            rc = se.code
+        text = out.getvalue() + err.getvalue()
+        if rc != 2 or "REFUSED - only" not in text:
+            print("  x a sub-floor corpus must refuse rc 2 (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (25 cases; one scratch repository, no checkout read)")
+    print("SELF-TEST OK (25 pure cases + %d shell cases over a scratch git "
+          "repository, no checkout read)" % shell)
     return 0
 
 
