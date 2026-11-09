@@ -156,7 +156,7 @@ def ci_findings_in(ci: dict, workflow_text: str) -> list[str]:
     return out
 
 
-def ci_claim_findings(manifest: dict) -> list[str]:
+def ci_claim_findings(manifest: dict, root: Path | None = None) -> list[str]:
     """Gates whose `ci` block names a workflow, job or step that does not exist.
 
     The roster makes a finer claim than a `runners` label: a gate can say WHICH workflow
@@ -166,12 +166,13 @@ def ci_claim_findings(manifest: dict) -> list[str]:
     looks at `runners`.
     """
     out: list[str] = []
+    workflows = (root or ROOT) / ".github" / "workflows"
     for gate in manifest.get("gates", []):
         ci = gate.get("ci") or {}
         wf, job = ci.get("workflow"), ci.get("job")
         if not wf or not job:
             continue
-        path = WORKFLOWS / wf
+        path = workflows / wf
         if not path.is_file():
             out.append("%s: ci.workflow %r does not exist" % (gate.get("id"), wf))
             continue
@@ -279,7 +280,7 @@ STEP_TEXT = (
 )
 
 
-def selftest_findings(manifest: dict) -> list[str]:
+def selftest_findings(manifest: dict, root: Path | None = None) -> list[str]:
     """Gates whose `self_test` command does not name a script that exists and takes the flag.
 
     Three gates record the exact command that proves them. Nothing read it: verify-selftests-
@@ -302,7 +303,7 @@ def selftest_findings(manifest: dict) -> list[str]:
         if not m:
             out.append("%s: self_test names no script under scripts/: %r" % (gid, command))
             continue
-        target = ROOT / m.group(1)
+        target = (root or ROOT) / m.group(1)
         if not target.is_file():
             out.append("%s: self_test runs %s, which does not exist" % (gid, m.group(1)))
         elif "--self-test" not in target.read_text(encoding="utf-8", errors="replace"):
@@ -504,24 +505,198 @@ def _self_test() -> int:
           % ("FAILED" if bad else "OK",
              len(cases) + len(ci_cases) + len(st_cases) + len(schema_cases)
              + len(dup_cases) + len(re_cases) + len(cls_cases) + len(stale_cases)))
-    return 1 if bad else 0
+    if bad:
+        return 1
+    return shell_ladder()
 
 
-def main() -> int:
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard for the ladder (the r228 lesson, re-measured from the
+    other side: rung 9 drives --self-test through argv, which chains this
+    ladder again via _self_test's tail. The guard turns that one nested call
+    into a printed skip instead of a recursion -- measured 2026-11-09 as a
+    RecursionError before the guard existed).
+    """
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        print("  (ladder re-entry from a nested --self-test: skipped)")
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """r229: the root contract, graded on fixture trees through main(argv, root).
+
+    Each rung's fixture is a throwaway directory with a miniature check.sh
+    and gates.json (plus a workflow file where a rung grades ci blocks), so
+    every report arm fires on exactly one fabricated defect. Rung 8 is the
+    refusal floor: a tree without the evidence files is refused rc 2, never
+    graded hollow.
+    """
+    import contextlib
+    import io
+    import json as _json
+    import tempfile
+
+    def run(root_dir, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root_dir))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    def build(tmp, *, steps=(), labels=(), classified=None, extra_gate=None,
+              workflows=None, write_evidence=True):
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix="mini%d_" % next(rung_n)))
+        manifest = {"gates": [{"id": "g1", "label": "G1", "status": "required",
+                               "runners": {"check.sh": list(labels)}}]}
+        if extra_gate is not None:
+            manifest["gates"].append(extra_gate)
+        if classified is not None:
+            manifest["classified_check_sh_steps"] = classified
+        if write_evidence:
+            sc = base / "scripts"
+            sc.mkdir(parents=True)
+            (sc / "check.sh").write_text(
+                "".join('step "%s" run_cmd\n' % st for st in steps),
+                encoding="utf-8", newline="\n")
+            (sc / "gates.json").write_text(_json.dumps(manifest, indent=1),
+                                           encoding="utf-8", newline="\n")
+        for name, text in (workflows or {}).items():
+            wf = base / ".github" / "workflows"
+            wf.mkdir(parents=True, exist_ok=True)
+            (wf / name).write_text(text, encoding="utf-8", newline="\n")
+        return base
+
+    rung_n = iter(range(1000))
+    shell = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: a step no roster row claims
+        root = build(tmp, steps=("ghost step", "alpha"), labels=("alpha",))
+        rc, said = run(root)
+        if rc != 1 or "no gates.json row names it" not in said \
+                or "ghost step" not in said:
+            print("  x rung 1: an unclaimed step must fail rc 1 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: a fully-claimed miniature greens with its counts named
+        root = build(tmp, steps=("alpha", "beta"), labels=("alpha", "beta"))
+        rc, said = run(root)
+        if rc != 0 or "checked 2 check.sh step(s) against 2 declared" not in said \
+                or "OK: every check.sh step is named" not in said:
+            print("  x rung 2: a fully claimed fixture must green "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: the duplicate arm -- one step declared twice in check.sh
+        root = build(tmp, steps=("alpha", "alpha"), labels=("alpha",))
+        rc, said = run(root)
+        if rc != 1 or "declared more than once in check.sh" not in said:
+            print("  x rung 3: a duplicated step must fail "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: the same duplicate excused by a classification
+        root = build(tmp, steps=("alpha", "alpha"), labels=("alpha",),
+                     classified={"alpha": "branch alternates"})
+        rc, said = run(root)
+        if rc != 0 or "checked 1 classified step(s)" not in said:
+            print("  x rung 4: a classified duplicate must green "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: a classification naming no step any more is stale
+        root = build(tmp, steps=("alpha",), labels=("alpha",),
+                     classified={"ghost": "gone"})
+        rc, said = run(root)
+        if rc != 1 or "stale classification: 'ghost'" not in said:
+            print("  x rung 5: a stale classification must fail "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 6: an unknown gate field removes a claim silently -- it fails
+        root = build(tmp, steps=("alpha",), labels=("alpha",),
+                     extra_gate={"id": "bad", "label": "B", "status": "required",
+                                 "runner": {"check.sh": ["alpha"]}})
+        rc, said = run(root)
+        if rc != 1 or "unknown field" not in said:
+            print("  x rung 6: an unknown field must fail "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 7: a ci block naming a step the workflow does not have
+        root = build(tmp, steps=("alpha",), labels=("alpha",),
+                     extra_gate={"id": "ci1", "label": "C", "status": "required",
+                                 "runners": {"check.sh": ["alpha"]},
+                                 "ci": {"workflow": "ci.yml", "job": "real-job",
+                                        "step": "Nope"}},
+                     workflows={"ci.yml": "jobs:\n  real-job:\n    steps:\n"
+                                          "      - name: Real Step\n"})
+        rc, said = run(root)
+        if rc != 1 or "bad ci claim" not in said:
+            print("  x rung 7: a bad ci claim must fail "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 8: the refusal floor -- no evidence files, refused rc 2
+        root = build(tmp, write_evidence=False)
+        rc, said = run(root)
+        if rc != 2 or "does not exist" not in said:
+            print("  x rung 8: a tree without evidence must refuse rc 2 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 9: --self-test dispatch flows through the argv parameter
+        root = build(tmp)
+        rc, said = run(root, "--self-test")
+        if rc != 0 or "SELF-TEST OK" not in said \
+                or "ladder re-entry" not in said:
+            print("  x rung 9: --self-test through argv must pass rc 0 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("GATE-COMPLETENESS SHELL LADDER OK (%d cases through argv and root, no repository file touched)" % shell)
+    return 0
+
+
+def main(argv=None, root=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--self-test", action="store_true",
                     help="run the extractor cases and exit; touches no files")
-    args = ap.parse_args()
+    # r229: the r166 contract. argv is explicit; a root kwarg names the tree
+    # to grade from code and overrides the module ROOT default. The tool has
+    # one evidence tree (check.sh + gates.json + the workflow files), so root
+    # is threaded as a parameter into the two filesystem-reading walkers
+    # instead of re-binding the module globals.
+    args = ap.parse_args(argv)
     if args.self_test:
         return _self_test()
 
-    for path in (CHECK_SH, GATES_JSON):
+    if root is not None:
+        root = Path(root).resolve()
+    else:
+        root = ROOT
+    check_sh = root / "scripts" / "check.sh"
+    gates_json = root / "scripts" / "gates.json"
+    for path in (check_sh, gates_json):
         if not path.is_file():
             print("refused: %s does not exist" % path)
             return 2
 
-    steps = check_steps(CHECK_SH.read_text(encoding="utf-8", errors="replace"))
-    manifest = json.loads(GATES_JSON.read_text(encoding="utf-8"))
+    steps = check_steps(check_sh.read_text(encoding="utf-8", errors="replace"))
+    manifest = json.loads(gates_json.read_text(encoding="utf-8"))
     labels = declared_labels(manifest)
     classified = manifest.get("classified_check_sh_steps") or {}
     if not isinstance(classified, dict) or not all(
@@ -534,8 +709,8 @@ def main() -> int:
     stale = stale_classifications(steps, classified)
     missing = unclaimed(steps, labels, classified)
     dupes = duplicate_steps(steps, classified)
-    ci_bad = ci_claim_findings(manifest)
-    st_bad = selftest_findings(manifest)
+    ci_bad = ci_claim_findings(manifest, root)
+    st_bad = selftest_findings(manifest, root)
     schema_bad = schema_findings(manifest)
 
     for name in stale:
