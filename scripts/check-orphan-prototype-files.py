@@ -55,6 +55,8 @@ this was written.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import re
 import subprocess
 import sys
@@ -63,6 +65,18 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TREE = "prototypes"
+
+#: Where fixtures are written when the host sets a temp variable. A host whose
+#: confinement denies files under its default temp (measured 2026-11-09 on the
+#: agent host: every write into a TemporaryDirectory is EPERM) can point this at
+#: a directory it allows; unset leaves tempfile's own default in force.
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root this file's fixtures are written under (None = system default)."""
+    import os
+    return next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
 
 def tracked_files(root: Path = REPO_ROOT) -> list[str]:
     """Tracked paths under TREE in `root`, via git, so build output and gitignored copies
@@ -167,7 +181,8 @@ def self_test() -> int:
     # THE CORPUS HALF (added 2026-11-06, round 35). Every case above hands orphans() a
     # hand-written file list, so tracked_files() was never called and a gutted body
     # survived the sabotage sweep. It reads git, so the fixture is a scratch repository.
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as tmp:
         scratch = Path(tmp)
         (scratch / TREE).mkdir()
         (scratch / TREE / "a.js").write_text("console.log(1);\n", encoding="utf-8")
@@ -187,7 +202,8 @@ def self_test() -> int:
     import contextlib as _ctx
     shell = 0
     def _shell(files, argv=None):
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                         ignore_cleanup_errors=True) as tmp:
             scratch = Path(tmp)
             for rel, content in files.items():
                 dst = scratch / rel
@@ -225,6 +241,121 @@ def self_test() -> int:
         return 1
     print(f"SELF-TEST OK ({len(SELF_TEST_CASES)} detector cases + 1 corpus case"
           f" + {shell} shell cases)")
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard for the ladder (r240 -- the r228 lesson).
+
+    Rung 4 drives --self-test through argv from INSIDE the ladder, and the
+    self-test ends in this call, so without the guard that nested run would
+    recurse. This file ALSO has an r174 recursion trap -- main() preflights
+    `self_test()` only when `root is None`, because the shell cases reach
+    main() with a scratch root. The two guards are independent: that one stops
+    the preflight, this one stops the tail.
+    """
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        print("  (ladder re-entry from a nested --self-test: skipped)")
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """r240: the root contract, graded on scratch git repositories through main().
+
+    Rung 1 IS the killing rung, and this checker makes it unusually sharp: the
+    fixture's orphan is named `proto-ladder-orphan.js`, so a main() that
+    ignored its root would scan THIS checkout's corpus and could never find
+    that name in it. The rung demands the report NAME the file, which a
+    root-blind run cannot produce even by accident.
+
+    Rung 3 grades the report-only default against --strict: the same orphan
+    exits 0 without the flag and 1 with it. Before this round only the strict
+    half was executed, so the "0 always (report only)" half of the exit
+    contract had no case at all.
+    """
+    scratch_root = fixture_root()
+
+    def build(tmp, files, label="fx"):
+        """A scratch git repository holding the given {relative path: text} files."""
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix=label + "_"))
+        for rel, text in files.items():
+            p = base / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text, encoding="utf-8", newline=chr(10))
+        subprocess.run(["git", "init", "-q"], cwd=base, check=True)
+        subprocess.run(["git", "add", "."], cwd=base, check=True)
+        return base
+
+    def run(root_dir, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=Path(root_dir))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    ORPHAN = "prototypes/proto-ladder-orphan.js"
+    NAMED = "prototypes/proto-ladder-named.js"
+
+    shell = 0
+    with tempfile.TemporaryDirectory(dir=scratch_root,
+                                     ignore_cleanup_errors=True) as tmp:
+        # rung 1 -- the killing rung: a fixture orphan is reported by NAME.
+        root = build(tmp, {ORPHAN: "console.log(1);\n"})
+        rc, said = run(root)
+        if "proto-ladder-orphan.js" not in said or "1 orphan(s) among 1" not in said:
+            print("  x rung 1: a fixture orphan must be reported by name "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2 -- a name mentioned in another tracked file clears it.
+        root = build(tmp, {NAMED: "console.log(1);\n",
+                           "reader.html": '<script src="proto-ladder-named.js"></script>\n'})
+        rc, said = run(root)
+        if rc != 0 or "0 orphan(s) among 1" not in said:
+            print("  x rung 2: a named fixture file must read as referenced "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3 -- report-only vs --strict over the SAME orphan.
+        root = build(tmp, {ORPHAN: "console.log(1);\n"})
+        rc_plain, said_plain = run(root)
+        rc_strict, said_strict = run(root, "--strict")
+        if rc_plain != 0 or rc_strict != 1 or "1 orphan(s) among 1" not in said_strict:
+            print("  x rung 3: the same orphan must exit 0 plain and 1 strict "
+                  "(plain rc=%r strict rc=%r said=%r)"
+                  % (rc_plain, rc_strict, said_strict[-160:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4 -- --self-test dispatch flows through argv; re-entry is guarded.
+        root = build(tmp, {ORPHAN: "console.log(1);\n"})
+        rc, said = run(root, "--self-test")
+        if rc != 0 or "SELF-TEST OK" not in said or "ladder re-entry" not in said:
+            print("  x rung 4: --self-test through argv must pass rc 0 and skip the "
+                  "nested ladder (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5 -- the refusal floor: a repo with no tracked prototypes/ file.
+        root = build(tmp, {"loose.js": "outside the tree\n"})
+        rc, said = run(root)
+        if rc != 2 or "git lists no tracked file" not in said:
+            print("  x rung 5: a repo without prototypes/ must refuse rc 2 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("ORPHAN-PROTOTYPE-FILES SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
     return 0
 
 

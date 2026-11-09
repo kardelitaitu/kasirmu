@@ -10674,3 +10674,37 @@ corpus count and the design exemption -- not `full_tag`'s bracket walk or
 `in_comment`, which the nine detector cases own. The "ancestor check not
 automated" wording in the report stands: this gate still cannot tell INERT
 from RESCUED at runtime, and the ladder does not claim otherwise.
+### Round 240 (2026-11-09) -- orphan-prototype-files: a ladder on scratch git repositories, and the report-only half of the exit contract
+
+check-orphan-prototype-files.py (287 lines) was the next census target,
+"missing ladder". It already took `root`; this round adds the ladder -- five
+rungs through `main(argv, root)`, each on a scratch `git init` repository,
+because this gate's corpus comes from `git ls-files` rather than from a walk.
+
+Rung 1 is the killing rung and it is the sharpest in this arc. The fixture
+orphan is named `proto-ladder-orphan.js`, a name that appears NOWHERE in this
+repository; a main() that ignored its root would scan the real corpus and
+could never print that name back. The rung demands the report NAME the file,
+so a root-blind run cannot satisfy it even by accident -- unlike the earlier
+rounds, where the killing rung had to rely on a verdict differing.
+
+Rung 3 closes a contract hole no case covered: the exit code is "0 always
+(report only) unless --strict". Only the strict half was ever executed (the
+existing shell case passes --strict), so a mutant that always returned 1 on
+an orphan would have survived every case in the file. The rung now runs the
+SAME orphan both ways and requires 0 then 1.
+
+Measured: census 26 of 70 contracted (was 25); next target is
+verify-selftest-sweep.py at 303 lines. Ladder 5 rungs, self-test 5 detector +
+1 corpus + 3 shell cases, both exit 0. Live gate unchanged: "0 orphan(s)
+among 10 deployed file(s)", exit 0. Dependents unmoved: verify-selftests-wired
+105 of 107, verify-gate-completeness OK.
+
+Honest limits: the ladder grades the shell, both exit modes and the
+root-relative corpus; it does not re-grade `orphans()`' arithmetic, which the
+five detector cases own. The gate's stated LIMIT still stands and is not
+addressed here: a basename mentioned only in prose counts as referenced, so
+the report is a floor on orphans rather than an exact count -- the ladder
+does not narrow that. Like the rounds before it, the host confinement still
+denies writes under Python's default temp, so the fixtures honour
+TMPDIR/TMP/TEMP; on a host that permits the default this changes nothing.
