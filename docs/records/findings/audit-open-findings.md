@@ -11338,3 +11338,53 @@ isolates the mechanism settles it. I have now mis-measured this property once
 in each direction, which is reason to distrust the remaining twelve until each
 is probed the same way.
 
+### Round 255 (2026-11-09) -- the split is structural, and only five checkers can even have it
+
+Round 254 corrected one floor classification and said the remaining twelve
+should be probed the same way. This round found a cheaper and stronger answer
+than twelve probes: count how many places each checker resolves root.
+
+A "scope-honest, analysis-blind" mutant is only CONSTRUCTIBLE when a checker
+resolves root more than once -- one site feeding the scope and another feeding
+the analysis. Measured across the 18 classified checkers:
+
+  13 resolve root in ONE place (<=1 "root is None else" branch):
+    check-fixture-ftl-keys, check-ftl-attrs, check-merged-lines,
+    check-register-hygiene, verify-bundle-parity, verify-feature-registry,
+    verify-shell-registration, verify-ui-coverage-floors,
+    verify-website-assets, verify-runner-commands, verify-settled-read-copies,
+    verify-shell-syntax, verify-ftl-orphans.
+  For these the scope and the analysis move together by construction. There is
+  no mutant that honours root for one and ignores it for the other, so the
+  weakness round 253 described CANNOT exist in them. Their rung 1 is as strong
+  as a single-root design allows.
+
+  5 resolve it in two or more places:
+    census-checker-contracts (6), check-dead-controls (3),
+    verify-status-fallbacks (4), check-pipeline-verdicts (2),
+    check-orphan-prototype-files (2).
+  These are the only files where the round-253 hazard is real -- and exactly one
+  of them, verify-status-fallbacks, is the file round 254 proved actually has a
+  verdict-level rung 1.
+
+Verified the mechanism on check-merged-lines by reading main(): a single
+root_path feeds both the os.walk scan (lines 340-353) and the relative_path
+used in every finding. A wrong root means no files are reached, hence the floor
+kill, hence no possible split.
+
+So round 253's "13 of 18 are floor kills, and a split could slip past" overstated
+the exposure. The accurate statement: 13 checkers cannot have the split
+structurally; of the 5 that can, one is proven to catch it and the other 4 are
+unprobed.
+
+Honest limits: one-root-per-checker is read from a text pattern, not from
+proving that no other path reaches the analysis; a checker could re-derive the
+real tree inside a helper without matching "root is None else", and
+check-register-hygiene reports 0 such branches while still taking a root, so
+the pattern is not even exhaustive. The 4 unprobed multi-root checkers remain a
+genuine open question, not a closed one. Two probe mutants attempted this round
+were inert (one added an unused local, one re-bound a value without changing
+which tree is read) and both returned rc 0 -- the third time in this arc that a
+mutation which changed nothing almost read as a finding, and the reason the
+structural argument was used instead of more mutants.
+
