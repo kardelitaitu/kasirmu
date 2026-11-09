@@ -21,7 +21,6 @@ import tablesFtl from '@/locales/tables.ftl?raw';
 import RetailPosScreen from '@/features/retail/RetailPosScreen';
 import type { CourseId, LineId, Sku } from '@/types/domain';
 import type { HeldCartRow } from '@/api/sales';
-
 // ── Mock modules ──────────────────────────────────────────────────
 
 vi.mock('@/features/sales/usePosState', async () => {
@@ -212,7 +211,7 @@ describe('RetailPosScreen — interactions', () => {
 
   it('opens quantity picker on long-press of a product button', async () => {
     await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
-    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('Indomie Goreng').length).toBeGreaterThan(0));
     const productBtn = screen.getByText('Indomie Goreng').closest('button')!;
     fireEvent.pointerDown(productBtn);
     await act(async () => { await new Promise(r => setTimeout(r, 500)); });
@@ -238,7 +237,7 @@ describe('RetailPosScreen — interactions', () => {
 
   it('calls addProduct when confirming quantity via long-press', async () => {
     await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
-    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('Indomie Goreng').length).toBeGreaterThan(0));
     const productBtn = screen.getByText('Indomie Goreng').closest('button')!;
     fireEvent.pointerDown(productBtn);
     await act(async () => { await new Promise(r => setTimeout(r, 500)); });
@@ -273,7 +272,7 @@ describe('RetailPosScreen — interactions', () => {
       retailProducts.map((p) => (p.sku === 'SKU-001' ? { ...p, stock_qty: null } : p)),
     );
     await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
-    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('Indomie Goreng').length).toBeGreaterThan(0));
 
     const productBtn = screen.getByText('Indomie Goreng').closest('button')!;
     fireEvent.pointerDown(productBtn);
@@ -305,7 +304,7 @@ describe('RetailPosScreen — interactions', () => {
       retailProducts.map((p) => (p.sku === 'SKU-001' ? { ...p, stock_qty: null } : p)),
     );
     await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
-    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('Indomie Goreng').length).toBeGreaterThan(0));
 
     const productBtn = screen.getByText('Indomie Goreng').closest('button')!;
     fireEvent.pointerDown(productBtn);
@@ -325,7 +324,7 @@ describe('RetailPosScreen — interactions', () => {
 
   it('adds product on single tap of a product button', async () => {
     await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
-    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('Indomie Goreng').length).toBeGreaterThan(0));
     const productBtn = screen.getByText('Indomie Goreng').closest('button')!;
     fireEvent.pointerDown(productBtn);
     fireEvent.pointerUp(productBtn);
@@ -337,7 +336,7 @@ describe('RetailPosScreen — interactions', () => {
 
   it('announces the added product via the screen-reader live region', async () => {
     await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
-    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('Indomie Goreng').length).toBeGreaterThan(0));
 
     // The visually-hidden live region is always mounted inside #retail-main
     const announceRegion = screen.getByTestId('retail-sr-announce');
@@ -1094,7 +1093,7 @@ describe('RetailPosScreen — interactions', () => {
     vi.mocked(salesApi.listHeldCartsScoped).mockResolvedValue(heldCarts);
 
     await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
-    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('Indomie Goreng').length).toBeGreaterThan(0));
 
     // F4 with a held cart id → handleResume opens the held carts list
     await userEvent.keyboard('{F4}');
@@ -1263,7 +1262,7 @@ describe('RetailPosScreen — interactions', () => {
 
   it('restores product grid scroll position after returning from a sub-view', async () => {
     await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
-    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('Indomie Goreng').length).toBeGreaterThan(0));
 
     // The scroll container is the product grid — set a non-zero scrollTop
     const grid = screen.getByTestId('product-grid-scroll');
@@ -1428,7 +1427,7 @@ describe('RetailPosScreen — interactions', () => {
     ]);
 
     await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
-    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('Indomie Goreng').length).toBeGreaterThan(0));
 
     await waitFor(() => {
       expect(document.querySelector('.retail-reminder-row--held-cart')).not.toBeNull();
@@ -1451,7 +1450,7 @@ describe('RetailPosScreen — interactions', () => {
     ]);
 
     await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
-    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('Indomie Goreng').length).toBeGreaterThan(0));
 
     // An EMPTY cart: F4 here is a browse gesture, not an "update my tab" gesture.
     const posState = await import('@/features/sales/usePosState');
@@ -1591,8 +1590,8 @@ describe('RetailPosScreen — interactions', () => {
       created_at: '2026-01-01T00:00:00Z', bill_type: 'hold', customer_name: null,
     }))) as never);
 
-    renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
-    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(screen.getAllByText('Indomie Goreng').length).toBeGreaterThan(0));
 
     // Hold/Resume is the function-bar button labelled "Hold" (RetailFnBar.tsx:69-71,
     // key `pos-cart-hold`) — NOT the first .retail-fn-btn, which is Pay.
@@ -1612,7 +1611,7 @@ describe('RetailPosScreen — interactions', () => {
       'a double-click on Hold issued more than one hold write',
     ).toBe(1);
 
-    release?.();
+    await act(async () => { release?.(); });
   });
   it('does not leave an unsaved product on screen when the add is refused', async () => {
     // `@/api/products` is fully mocked, so the mock is reached through vi.mocked rather
@@ -1624,8 +1623,8 @@ describe('RetailPosScreen — interactions', () => {
 
     // Render with the same bundle set the other cases use: `catFtl` carries the category
     // names the grid's action bar depends on, so without it the row never appears.
-    renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
-    await waitFor(() => expect(screen.getByText('Indomie Goreng')).toBeInTheDocument());
+    await renderWithProviders(<RetailPosScreen />, salesFtl, productsFtl, tablesFtl, catFtl);
+    await waitFor(() => expect(screen.getAllByText('Indomie Goreng').length).toBeGreaterThan(0));
 
     // Open the add-product modal through the grid's own control.
     // RetailProductGrid.tsx:590-599 — the label is `retail-add-product-btn-aria`,

@@ -122,7 +122,8 @@ const PRODUCT_SELECT: &str = "SELECT p.id, p.sku, p.name, p.price_minor, p.curre
      p.is_active, p.default_supplier_id, p.popularity_score, p.image_hash, \
      c.name AS category_name, \
      COALESCE(sk.ss_qty, i.qty) AS stock_qty, \
-     sk.ss_has_rows AS stock_has_location_rows \
+     sk.ss_has_rows AS stock_has_location_rows, \
+     sk.ss_qty AS ss_qty \
      FROM products p \
      LEFT JOIN categories c ON p.category_id = c.id \
      LEFT JOIN inventory i ON p.id = i.product_id \
