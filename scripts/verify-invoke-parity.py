@@ -408,16 +408,99 @@ def self_test() -> int:
           any("alpha_scoped" in x and "session_token" in x for x in v), True)
 
     print()
+    # r202: the shell -- main() graded through argv and a contract root, the
+    # r166..r201 pattern. The fixture is the same two-shell tree the pure
+    # cases build, now graded THROUGH main() so the SHELLS/API_DIR rebuild
+    # and the summary line are exercised, not just run_check().
+    import contextlib as _ctx
+    import io as _io
+    shell = 0
+    def run2(arglist):
+        out, err = _io.StringIO(), _io.StringIO()
+        try:
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                rc = main(argv=list(arglist), root=td)
+        except SystemExit as se:
+            return se.code, out.getvalue() + err.getvalue()
+        return rc, out.getvalue() + err.getvalue()
+    def build2(api_ts, lib=None, drop_lib=False, drop_api=False, lib_empty=False):
+        t2 = Path(tempfile.mkdtemp())
+        for side in ("desktop-tauri", "mobile-tauri"):
+            (t2 / "apps" / side / "src" / "commands").mkdir(parents=True)
+            if not drop_lib:
+                (t2 / "apps" / side / "src" / "lib.rs").write_text(
+                    lib if lib is not None else lib_text, encoding="utf-8")
+            (t2 / "apps" / side / "src" / "commands" / "alpha.rs").write_text(
+                alpha_rs, encoding="utf-8")
+        if not drop_api:
+            api2 = t2 / "ui" / "src" / "api"
+            api2.mkdir(parents=True)
+            (api2 / "f.ts").write_text(api_ts, encoding="utf-8")
+        return t2
+    lib_text = (
+        "tauri::generate_handler![\n"
+        "  commands::alpha::alpha_scoped,\n"
+        "]"
+    )
+    empty_lib = "tauri::generate_handler![\n]"
+    shell += 1
+    td = build2(good_ts)
+    rc, text = run2([])
+    if rc != 0 or "2 invoke(s)" not in text or "0 violation(s)" not in text:
+        print("  x a clean fixture must report 2 invokes, 0 violations (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    td = build2(good_ts + no_token_ts)
+    rc, text = run2([])
+    if rc != 1 or "payload carries no sessionToken" not in text:
+        print("  x a missing sessionToken must fail rc 1 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    td = build2(good_ts + no_token_ts, lib=empty_lib)
+    rc, text = run2([])
+    if rc != 1 or "parsed as empty" not in text:
+        print("  x an empty handler list must fail rc 1 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    td = build2(good_ts, drop_lib=True)
+    rc, text = run2([])
+    if rc != 1 or "lib.rs not found for shell" not in text:
+        print("  x a missing lib.rs must fail rc 1 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    td = build2(good_ts, drop_api=True)
+    rc, text = run2([])
+    if rc != 1 or "api dir not found" not in text:
+        print("  x a missing api dir must fail rc 1 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    # the self-test refusal must survive main() too
+    shell += 1
+    rc, text = run2(["--anything-else"])
+    if rc != 2 or "unrecognized arguments" not in text and "unrecognized" not in text:
+        print("  x an unknown flag must refuse rc 2 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+
     if failed:
         print(f"  {len(failed)} self-test case(s) FAILED:")
         for f in failed:
             print(f"    {f}")
         return 1
-    print("  all self-test cases passed")
+    print(f"  all self-test cases passed; main() shell graded "
+          f"({shell} cases through argv and root)")
     return 0
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r202: argv and root parameterized, the r166..r201 contract -- BOTH
+    shell trees (lib.rs + commands/, recursively) and the ui api dir are
+    rebuilt under the contract root, never half of them."""
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except (AttributeError, ValueError):
@@ -432,16 +515,26 @@ def main() -> int:
     parser.add_argument(
         "--self-test", action="store_true",
         help="Run the synthetic-fixture self-test and exit.")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.self_test:
         return self_test()
 
-    violations, checked = run_check(SHELLS, API_DIR)
+    base = REPO_ROOT if root is None else Path(root).resolve()
+    shells = {
+        shell: (
+            base / "apps" / f"{name}-tauri" / "src" / "lib.rs",
+            base / "apps" / f"{name}-tauri" / "src" / "commands",
+        )
+        for shell, name in (("desktop", "desktop"), ("tablet", "mobile"))
+    }
+    api_dir = base / "ui" / "src" / "api"
+
+    violations, checked = run_check(shells, api_dir, base)
     print(
         f"verify-invoke-parity: {checked} invoke(s) across "
-        f"{len(list(API_DIR.glob('*.ts')))} api file(s), "
-        f"{len(SHELLS)} shell(s)."
+        f"{len(list(api_dir.glob('*.ts')))} api file(s), "
+        f"{len(shells)} shell(s)."
     )
     if violations:
         print(f"verify-invoke-parity: {len(violations)} violation(s):")
