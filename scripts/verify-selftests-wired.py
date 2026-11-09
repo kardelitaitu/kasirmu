@@ -89,33 +89,34 @@ SCRIPT_DIR = ROOT / "scripts"
 # Every directory that holds a checker following the verify-*/check-* convention. The
 # list, not a single directory: the docs-auditor and website checkers are checkers by the
 # same convention and were being skipped entirely (10 of them declare a --self-test).
-CHECKER_DIRS = (
-    ROOT / "scripts",
-    ROOT / ".agents" / "skills" / "docs-auditor" / "scripts",
-    ROOT / "website" / "scripts",
+_CHECKER_DIR_SPECS = (
+    "scripts",
+    ".agents" + "/skills/docs-auditor/scripts",
+    "website/scripts",
 )
+CHECKER_DIRS = tuple(ROOT / spec for spec in _CHECKER_DIR_SPECS)
 # Every place a self-test can legitimately be invoked from. A gate that only knows
 # about CI would call every check.sh-only self-test dead, and check.sh is a real
 # runner even though it is manual.
-RUNNERS = (
-    ROOT / ".github" / "workflows",
-    ROOT / "scripts" / "check.sh",
-    ROOT / "scripts" / "check.ps1",
-    ROOT / ".githooks" / "pre-commit",
+_RUNNER_SPECS = (
+    ".github" + "/workflows",
+    "scripts/check.sh",
+    "scripts/check.ps1",
+    ".githooks/pre-commit",
     # The push-side hook. It names no checker today (measured 2026-11-07:
     # zero verify-*/check-* or --self-test lines), but the census gate scans it
     # for wiring, and a self-test wired into it tomorrow would be reported
     # uncalled by THIS gate if the hook stayed invisible here -- the
     # false-finding failure mode that gets a gate muted. Added by round 74's
     # runner-list reconciliation, which works both ways.
-    ROOT / ".githooks" / "pre-push",
+    ".githooks/pre-push",
     # A runner can be a SCRIPT whose job is to run self-tests. `check-auditor-selftests.sh`
     # loops over eight docs-auditor checkers and passes --self-test to each; it is invoked
     # by check.sh and by dev-ci.yml, so every one of those eight IS wired. Leaving it out
     # of this list reported six of them as uncalled the moment the checker scope was
     # widened to their directory -- a false finding, which is the failure mode that gets
     # a gate muted. Found 2026-10-23 by widening CHECKER_DIRS.
-    ROOT / "scripts" / "check-auditor-selftests.sh",
+    "scripts/check-auditor-selftests.sh",
     # The website's npm scripts. Its checkers are invoked from package.json -- precheck
     # runs check-password-policy.mjs and vitest, check:seo runs check-seo.mjs -- and
     # NOTHING in check.sh or a workflow names them, because the website builds itself.
@@ -123,13 +124,14 @@ RUNNERS = (
     # the same false finding check-auditor-selftests.sh was added to stop: a runner that
     # exists being reported as a missing one gets gates muted. Found 2026-10-23 while
     # wiring check-password-policy.mjs's self-test into precheck.
-    ROOT / "website" / "package.json",
+    "website/package.json",
     # The UI's npm scripts, for the same reason. check-ui.mjs is invoked ONLY as
     # `node ../scripts/check-ui.mjs` from ui/package.json's check:all — nothing in
     # check.sh or a workflow names it, because it is the aggregator those call.
     # Without this entry its self-test reads as UNCALLED while it is wired.
-    ROOT / "ui" / "package.json",
+    "ui/package.json",
 )
+RUNNERS = tuple(ROOT / spec for spec in _RUNNER_SPECS)
 # verify-* and check-*. `generate-*` is deliberately absent: `generate-latest-json.mjs`
 # declares a --self-test and has three callers, but it is a GENERATOR that accepts a flag
 # rather than a checker, and it is the only such script -- admitting the prefix would add
@@ -153,7 +155,7 @@ SCRIPT_RE = re.compile(r"^(?:verify|check|classify|census)-[A-Za-z0-9_-]+\.(?:py
 CALL_RE = re.compile(r"([A-Za-z0-9_-]+)\.(?:py|mjs|sh)\s+--self-test")
 
 
-def checkers() -> list[Path]:
+def checkers(base_root=ROOT) -> list[Path]:
     """Every checker file this gate audits, as a path relative to ROOT.
 
     **A PATH, not a basename.** The scope was bare names while it covered a single
@@ -173,12 +175,13 @@ def checkers() -> list[Path]:
     website) were never audited at all.
     """
     found: list[Path] = []
-    for base in CHECKER_DIRS:
+    for spec in _CHECKER_DIR_SPECS:
+        base = base_root / spec
         if not base.is_dir():
             continue
         for p in sorted(base.iterdir()):
             if p.is_file() and SCRIPT_RE.match(p.name):
-                found.append(p.relative_to(ROOT))
+                found.append(p.relative_to(base_root))
     return found
 
 
@@ -190,9 +193,9 @@ def declares_in(text: str) -> bool:
     return bool(re.search(r"""["']--self-test["']""", strip_full_line_comments(text)))
 
 
-def declares_selftest(rel: Path) -> bool:
+def declares_selftest(rel: Path, base_root=ROOT) -> bool:
     try:
-        text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
+        text = (base_root / rel).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
     return declares_in(text)
@@ -236,9 +239,9 @@ def in_attic(p: Path) -> bool:
     return "attic" in {q.lower() for q in p.parts}
 
 
-def runner_text() -> str:
+def runner_text(paths=RUNNERS) -> str:
     parts: list[str] = []
-    for r in RUNNERS:
+    for r in paths:
         if r.is_dir():
             for p in sorted(r.rglob("*.yml")) + sorted(r.rglob("*.yaml")):
                 # .github/workflows/attic/ holds RETIRED workflows, and GitHub never
@@ -330,14 +333,14 @@ def sibling_from_text(text: str) -> "str | None":
     return None
 
 
-def sibling_declared(rel: Path) -> "str | None":
+def sibling_declared(rel: Path, base_root=ROOT) -> "str | None":
     """The sibling this checker declares, when that sibling EXISTS on disk."""
     try:
-        text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
+        text = (base_root / rel).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
     sib = sibling_from_text(text)
-    if sib is None or not (ROOT / sib).is_file():
+    if sib is None or not (base_root / sib).is_file():
         return None
     return sib
 
@@ -375,7 +378,7 @@ def sibling_wired_only_by_print(sib_rel: str, text: str) -> bool:
     return all(PRINT_FORM.match(ln) for ln in hits)
 
 
-def uncalled_from(text: str) -> list[str]:
+def uncalled_from(text: str, base_root=ROOT) -> list[str]:
     """The census core: entries whose declared self-test no runner invokes.
 
     `called()` still matches on the BASENAME because that is what CALL_RE extracts from a
@@ -396,20 +399,26 @@ def uncalled_from(text: str) -> list[str]:
     report whose separators flip with the OS quotes inconsistently.
     """
     out: list[str] = []
-    for rel in checkers():
-        if declares_selftest(rel):
+    for rel in checkers(base_root):
+        if declares_selftest(rel, base_root):
             if not called(rel.name, text):
                 out.append(rel.as_posix())
             continue
-        sib = sibling_declared(rel)
+        sib = sibling_declared(rel, base_root)
         if sib is not None and not sibling_called(sib, text):
             out.append(rel.as_posix() + " (sibling " + sib + " uncalled)")
     return out
 
 
-def uncalled_selftests() -> list[str]:
-    """Checkers that declare a self-test no runner invokes, as relative paths."""
-    return uncalled_from(runner_text())
+def uncalled_selftests(base_root=ROOT) -> list[str]:
+    """Checkers that declare a self-test no runner invokes, as relative paths.
+
+    base_root (r230): the r166 contract -- a caller-named tree re-derives the
+    checker dirs and runner paths from the same specs the module constants
+    use, so a fixture grades its own miniature tree.
+    """
+    paths = tuple(base_root / spec for spec in _RUNNER_SPECS)
+    return uncalled_from(runner_text(paths), base_root)
 
 
 def harness_census_dirs(text: str) -> list[str]:
@@ -428,12 +437,12 @@ def harness_census_dirs(text: str) -> list[str]:
     return re.findall(r'"([^"]+)"', block.group(1))
 
 
-def runner_files() -> list:
+def runner_files(paths=RUNNERS) -> list:
     """Every runner FILE: RUNNERS entries that are files, plus the .y*ml under
     directory entries (the workflows dir). Round-93: the full-path precision
     cases need per-file texts, which runner_text()'s single blob cannot key."""
     out = []
-    for entry in RUNNERS:
+    for entry in paths:
         if entry.is_file():
             out.append(entry)
         elif entry.is_dir():
@@ -669,7 +678,7 @@ def self_test() -> int:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
     print(f"SELF-TEST OK ({want_inventory(Path(__file__).read_text(encoding='utf-8'))} cases, no files touched)")
-    return 0
+    return shell_ladder()
 
 
 def uncalled_report(live: list[str]) -> str:
@@ -718,21 +727,185 @@ def wired_ok_line(declared: int, total: int, rest: "list[str] | None" = None) ->
     return line + " Every checker in scope declares a self-test of its own."
 
 
-def main() -> int:
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard for the ladder (the r228+r229 lesson, applied from rung
+    one this time: rung 8 drives --self-test through argv, which chains this
+    ladder again via self_test's tail. The guard turns that one nested call
+    into a printed skip instead of a recursion).
+    """
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        print("  (ladder re-entry from a nested --self-test: skipped)")
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """r230: the root contract, graded on fixture trees through main(argv, root).
+
+    Each rung's fixture is a throwaway directory holding a miniature checker
+    (a docstring carrying the quoted --self-test declaration) and the runner
+    files the gate reads, so every verdict arm fires on exactly one fabricated
+    tree. Rung 7 pins the vacuous edge honestly: a tree with NO checkers
+    reports 0 of 0 and exits 0 -- the OK line is the evidence, not a green
+    hidden behind it.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    def run(root_dir, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root_dir))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    CHECKER = (
+        '"""check-foo.py miniature checker.\n'
+        'Declares its own --self-test: the quoted flag below is a LIVE line.\n'
+        '"""\n'
+        'import sys\n'
+        'if "--self-test" in sys.argv:\n'
+        '    raise SystemExit(0)\n'
+    )
+    SIBLING_CHK = (
+        '"""check-bar.py miniature checker.\n'
+        'SELF-TEST: python3 scripts/test-bar.py\n'
+        '"""\n'
+    )
+    SIBLING = "print('sibling cases run here')\n"
+
+    def build(tmp, files):
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix="mini%d_" % next(rung_n)))
+        for rel, text in files.items():
+            q = base / rel
+            q.parent.mkdir(parents=True, exist_ok=True)
+            q.write_text(text, encoding="utf-8", newline="\n")
+        return base
+
+    rung_n = iter(range(1000))
+    shell = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: a declared self-test no runner invokes
+        root = build(tmp, {"scripts/check-foo.py": CHECKER})
+        rc, said = run(root)
+        if rc != 1 or "invoked by no runner" not in said \
+                or "scripts/check-foo.py" not in said:
+            print("  x rung 1: an uncalled self-test must fail rc 1 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: the same checker wired by check.sh greens with its census
+        root = build(tmp, {"scripts/check-foo.py": CHECKER,
+                           "scripts/check.sh": "python3 scripts/check-foo.py --self-test\n"})
+        rc, said = run(root)
+        if rc != 0 or "1 of 1 checker(s) in scope" not in said \
+                or "Every checker in scope declares a self-test of its own." not in said:
+            print("  x rung 2: a wired checker must green with its census "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: the sibling arm -- pointer declared, sibling never invoked
+        root = build(tmp, {"scripts/check-bar.py": SIBLING_CHK,
+                           "scripts/test-bar.py": SIBLING})
+        rc, said = run(root)
+        if rc != 1 or "(sibling scripts/test-bar.py uncalled)" not in said:
+            print("  x rung 3: a sibling rot must fail rc 1 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: the same sibling wired by a bare runner line
+        root = build(tmp, {"scripts/check-bar.py": SIBLING_CHK,
+                           "scripts/test-bar.py": SIBLING,
+                           "scripts/check.sh": "python3 scripts/test-bar.py\n"})
+        rc, said = run(root)
+        if rc != 0 or "1 of 1 checker(s) in scope" not in said:
+            print("  x rung 4: a wired sibling must green "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: a runner may be a SCRIPT -- check-auditor-selftests.sh counts
+        root = build(tmp, {"scripts/check-foo.py": CHECKER,
+                           "scripts/check-auditor-selftests.sh":
+                               "python3 scripts/check-foo.py --self-test\n"})
+        rc, said = run(root)
+        # the runner-script ITSELF matches SCRIPT_RE (check-*), so it is also
+        # audited as a checker that declares nothing -- and the OK line must
+        # NAME it, not absorb it silently (the round-135 misread, in miniature)
+        if rc != 0 or "1 of 2 checker(s) in scope" not in said \
+                or "Declaring none of their own: scripts/check-auditor-selftests.sh." not in said:
+            print("  x rung 5: a script runner must wire the flag and be named "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 6: an attic workflow never counts as a caller
+        root = build(tmp, {"scripts/check-foo.py": CHECKER,
+                           ".github/workflows/attic/nightly.yml":
+                               "python3 scripts/check-foo.py --self-test\n"})
+        rc, said = run(root)
+        if rc != 1 or "invoked by no runner" not in said:
+            print("  x rung 6: an attic caller must not rescue the flag "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 7: the vacuous edge pinned, not hidden -- no checkers, 0 of 0
+        root = build(tmp, {})
+        rc, said = run(root)
+        if rc != 0 or "0 of 0 checker(s) in scope" not in said:
+            print("  x rung 7: an empty tree must read 0 of 0 rc 0 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 8: --self-test dispatch flows through the argv parameter
+        root = build(tmp, {})
+        rc, said = run(root, "--self-test")
+        if rc != 0 or "SELF-TEST OK" not in said \
+                or "ladder re-entry" not in said:
+            print("  x rung 8: --self-test through argv must pass rc 0 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("SELFTESTS-WIRED SHELL LADDER OK (%d cases through argv and root, no repository file touched)" % shell)
+    return 0
+
+
+def main(argv=None, root=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--self-test", action="store_true",
                     help="Run this checker's cases and exit.")
-    args = ap.parse_args()
+    # r230: the r166 contract. argv is explicit; a root kwarg names the tree
+    # to grade from code. The tree's evidence lives in checker dirs and runner
+    # paths derived from the same specs as the module constants, so the kwarg
+    # re-derives them instead of re-binding globals.
+    args = ap.parse_args(argv)
     if args.self_test:
         return self_test()
 
-    live = uncalled_selftests()
-    all_checkers = checkers()
+    if root is not None:
+        base_root = Path(root).resolve()
+    else:
+        base_root = ROOT
+    live = uncalled_selftests(base_root)
+    all_checkers = checkers(base_root)
     total = len(all_checkers)
     declared = sum(1 for n in all_checkers
-                   if declares_selftest(n) or sibling_declared(n) is not None)
+                   if declares_selftest(n, base_root)
+                   or sibling_declared(n, base_root) is not None)
     rest = [n.as_posix() for n in all_checkers
-            if not declares_selftest(n) and sibling_declared(n) is None]
+            if not declares_selftest(n, base_root)
+            and sibling_declared(n, base_root) is None]
     if live:
         print(uncalled_report(live))
         return 1
