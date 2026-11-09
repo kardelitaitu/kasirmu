@@ -746,6 +746,64 @@ def self_test() -> int:
             return 1
         shell += 1
 
+        # rung 11 (r214): the DESKTOP twin idiom -- "Scoped variant of `x`
+        # (ADR #7)." -- matches the same rewrite as the tablet spelling; the
+        # count says 1 of 1 and the applied file carries the rewritten sentence
+        root = build_tree(tmp, mod_text=MOD.replace(
+            "/// Session-scoped variant of `dead_one`.",
+            "/// Scoped variant of `dead_one` (ADR #7)."))
+        rc, text = run(root, "--shell", "tablet", "--module", "sales", "--apply",
+                       "--only", "dead_one")
+        back = (root / "apps/mobile-tauri/src/commands/sales.rs").read_text(
+            encoding="utf-8")
+        if rc != 0 or "twin doc lines rewritten: 1 (of 1 retired fns)" not in text:
+            print("  x rung 11: the desktop twin spelling must rewrite, counted "
+                  "(rc=%r tail=%r)" % (rc, text[-190:]), file=sys.stderr)
+            return 1
+        # the harvest strips the twin line's trailing period, so the rewritten
+        # sentence reads "... does a thing resolved from ..." -- measured, then
+        # pinned; do not "fix" the needle to what the source suggests
+        if "Scoped variant of `dead_one`" in back \
+                or "Dead one does a thing resolved from a session token. ADR #7." not in back:
+            print("  x rung 11: the desktop twin line must be replaced by the dead "
+                  "fn's own prose (head=%r)" % back[:240], file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 12 (r214): the residue REPORT's 40-line cap -- 41 residue lines
+        # print 40 and a "... and 1 more" tail, and the count line says 41
+        root = build_tree(tmp)
+        (root / "apps/mobile-tauri/src/commands/other.rs").write_text(
+            "".join("// residue note %d mentions dead_two\n" % n
+                    for n in range(1, 42)), encoding="utf-8")
+        rc, text = run(root, "--shell", "tablet", "--module", "sales")
+        if rc != 0 or "stale prose naming a retired fn, 41 line(s)" not in text \
+                or "... and 1 more" not in text:
+            print("  x rung 12: 41 residue lines must print the cap and the tail "
+                  "(rc=%r tail=%r)" % (rc, text[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 13 (r214): the dirty-file refusal, LIVE -- the fixture IS a git
+        # repo, the module is modified after the commit, and --apply refuses
+        # before computing any range
+        root = build_tree(tmp)
+        def _git(*a):
+            return subprocess.run(["git", *a], cwd=str(root), check=True,
+                                  capture_output=True, text=True)
+        _git("init", "-q")
+        _git("-c", "user.email=r214@example.invalid", "-c", "user.name=r214",
+             "add", "-A")
+        _git("-c", "user.email=r214@example.invalid", "-c", "user.name=r214",
+             "commit", "-q", "-m", "fixture")
+        (root / "apps/mobile-tauri/src/commands/sales.rs").write_text(
+            MOD + "// touched after the commit\n", encoding="utf-8")
+        rc, text = run(root, "--shell", "tablet", "--module", "sales", "--apply",
+                       "--only", "dead_one,dead_two,dead_three")
+        if rc != 2 or "is dirty in another lane" not in text:
+            print("  x rung 13: a live-dirty module must refuse rc 2 (rc=%r "
+                  "tail=%r)" % (rc, text[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+
     print("RETIRE SHELL LADDER OK (%d cases through argv and root, "
           "no repository file touched)" % shell)
     return 0
