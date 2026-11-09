@@ -10077,6 +10077,20 @@ namespace-governance (r227) limits stand. Docker daemon still down
 Root-policy RED on the foreign todo.md (r174); core-size RED on the
 ADR-59 +64 (r181) -- both await their owning lanes.
 
+#### Round 228, addendum -- where the "nine" now lives
+
+r228 named nine un-contracted checkers and recorded no list; r230 searched HEAD, 80+
+refs, the reflog, the stash and 129 unreachable blobs and could not recover it, then
+had to guess its own target. The authoritative field is now a command, not a memory:
+
+    python3 scripts/census-checker-contracts.py            # the backlog, smallest first
+    python3 scripts/census-checker-contracts.py --next-target
+    python3 scripts/census-checker-contracts.py --next-round
+
+The "nine" was a cost/value judgement over a 48-wide field and no filter reproduces
+it -- do not re-derive it from the count. Record the census command and its output in
+the round entry instead. Full reasoning: round 232.
+
 ### Round 229 (2026-11-09) -- gate-completeness: the exact-claim gate, and the r228 lesson re-measured from the other side
 
 verify-gate-completeness.py (593 lines) is the gate that caught the
@@ -10205,7 +10219,7 @@ E2E / llvm-cov / nextest-junit receipts remain PG-gated. Root-policy RED
 on the foreign todo.md (r174); core-size RED on the ADR-59 +64 (r181) --
 both await their owning lanes.
 
-### Round 230 (2026-11-09) -- selftests-wired: the wiring gate on fixture trees, and a rung that taught its own scope rule
+### Round 231 (2026-11-09) -- selftests-wired: the wiring gate on fixture trees, and a rung that taught its own scope rule
 
 verify-selftests-wired.py (744 lines) is the gate whose OWN birth is this
 arc's founding story: measured 2026-09-29, NINE of 24 declared self-tests
@@ -10271,3 +10285,85 @@ Root-policy RED on the foreign todo.md (r174); core-size RED on the ADR-59
 +64 (r181) -- both await their owning lanes. Docker daemon still down
 (probed r159): E2E / llvm-cov / nextest-junit receipts remain PG-gated.
 The scoped-reads (r213) through gate-completeness (r229) limits stand.
+
+### Round 232 (2026-11-09) -- a census for a population nobody could re-derive, and the collision it caught while being built
+
+r228 opened a second arc over "nine un-contracted checkers" and named the
+rule (smallest first) but recorded no list. This round is the fix for the
+class, not for the number: the field is now DERIVED, and each round cites
+the command that produced its target instead of a figure no reader can
+re-derive. Two consequences worth stating plainly, because both are the
+arc's own lesson arriving from the outside.
+
+First, the "nine" is not recoverable as a list and never was a measurement.
+Searched before building anything: HEAD, 80+ refs, reflog (no lost commits),
+stash (empty), target/, .agents/, and the 129 unreachable blobs a `git fsck`
+sweep turned up -- zero hits. And no mechanical filter reproduces nine: at
+r227, 48 checkers had a self-test and no ladder; 48 were wired and ladderless;
+16 of those had no `root` kwarg and 32 had one; the docs-auditor skill held
+12. Every rule yields a different number, none yields nine. So the nine was a
+COST/VALUE judgement over a 48-wide field, and the honest artefact is the
+field plus a repeatable ordering -- not a reconstruction of the judgement.
+census-checker-contracts.py therefore reports the population, the denominator,
+and the smallest owed row, and exits 0 on any length of backlog (r109's rule:
+a new gate starts green; a 50-item list must not fail a push).
+
+Second, and measured rather than designed: the census is a population
+classifier, and its own first draft was wrong in the direction it exists to
+prevent. It excluded three fully wired, self-tested checkers --
+census-orphan-modules.py, check-ftl-attrs.py, classify-finding-reachability.py
+-- because they spell the flag `'--self-test'` in SINGLE quotes and the
+classifier tested only double. That shrank the denominator silently, which is
+precisely the defect its docstring cites from verify-selftests-wired.py's
+round-135 misread. Both quote styles are now accepted and the case is pinned
+in the self-test. The population rule was also chosen to make the two
+sanctioned exemptions fall out BY CONSTRUCTION rather than by a name table
+that would rot: a checker declaring no in-file self-test is excluded (that is
+how check-replay-fork.py, whose cases live in a sibling file since r177, and
+census-sync-ingest-admits.py, which claims no runner authority, drop out), and
+those exclusions are COUNTED AND NAMED in the report, never absorbed. After
+the quote fix the outside-population list is exactly those two -- an
+independent agreement with verify-selftests-wired.py's own documented shapes,
+which is the cross-check that says the classifier is not merely self-consistent.
+
+The round also carries the first executable answer to r229/r230's numbering
+race. `--next-round` reads BOTH sources -- the register in HEAD and the one in
+the working tree -- and claims max+1, because the number a new entry must beat
+is the higher of what another lane sees and what you may already have drafted.
+Measured live, and this is not hypothetical: while this round was being built
+another lane committed its own "Round 230" (d37497378), leaving HEAD RED with
+duplicate 230s and register hygiene failing at HEAD. The duplicate was resolved
+by number, not by preference -- the entry committed later became 231, which is
+both the chronological order and the only ordering that keeps the log
+consecutive without moving either block. This round is 232 because
+`--next-round` said so. register hygiene now also runs in pre-push Tier 0
+(scripts/run-pre-push.py): it was previously only in the full check.sh matrix
+and CI, so neither lane that produced the duplicate could have been stopped
+before the push.
+
+Wiring: a census is not a gate. check.sh gets its two steps, and gates.json
+gets them as classified_check_sh_steps with the reason inline -- no gates.json
+gate row and no CI job, because a permanently-green report does not need a
+verdict, and verify-gate-completeness.py graded the classification in both
+directions (it refused the entries until check.sh actually declared the steps,
+which is the stale-excuse guard doing its job).
+
+Live at r232: 18 of 70 checkers declaring a self-test carry the full contract
+(self_test + ladder + root_param + wired), 52 un-contracted, next target
+scripts/check-register-hygiene.py at 195 lines. Self-test: 14 cases, no file
+read and no git run. verify-selftests-wired stays green at 105 of 107 in scope.
+
+Honest limits: the census grades SHAPE, not quality -- a ladder that proves
+nothing and a self-test that cannot fail both count as contracted, and
+verify-selftests-wired.py plus each checker's own ladder own those questions;
+the population is `.py` only, so `.mjs`/`.sh` checkers (18 of them) are outside
+the denominator for a reason this file states rather than a permanence it
+claims; `root_param` is a substring test on main()'s signature, so a main that
+accepts `root` and ignores it reads as contracted; and `--next-round` is a
+convention, not a lock -- two lanes can still both run it in the same second
+and both take the same number, which is exactly why register hygiene now
+reaches pre-push rather than pre-commit only. The r165-arc contract limits from
+scoped-reads (r213) through selftests-wired (r231) stand. Docker daemon still
+down (probed r159): E2E / llvm-cov / nextest-junit receipts remain PG-gated.
+Root-policy RED on the foreign todo.md (r174); core-size RED on the ADR-59 +64
+(r181) -- both await their owning lanes.
