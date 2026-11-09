@@ -8510,3 +8510,48 @@ present, so no import-guard arm exists to grade. Docker daemon still down
 standing PG-gated gap. The root-policy gate remains RED on the foreign
 todo.md (r174) and verify-core-size RED on the ADR-59 +64 (r181), both
 awaiting their owning lanes.
+
+### Round 196 (2026-11-09) -- rbac-citations joins the arc; the refusal case must empty the WHOLE fixture
+
+The r166..r195 contract applied to the two-rule citation gate:
+inventory_span(src) takes the presets source; scan(root) resolves that
+source AND the docs corpus from one base -- a root redirecting the corpus
+but not the span source would grade citations against a file that exists
+nowhere, the half-redirect shape the arc exists to forbid. main(argv,
+root) hands scan() the root directly.
+
+Six shell cases over a synthetic presets file (a three-line ALL_ENFORCED
+span; the gate computes it per run, so the fixture only needs the
+declaration): an in-span preset citation fails rc 1 naming doc and line;
+a self-aware correction line reads clean; a bare table citation in a LIVE
+doc is flagged as ungradeable; the SAME row under docs/records/ is
+rule-2 exempt (a record is evidence of THEN) and reads clean; zero
+markdown read refuses rc 2 instead of reporting a vacuous pass; and a
+missing span source is a SCAN BROKE refusal naming the path. No git
+fixture is needed -- the scan is rglob-only, the fifth checker in the arc
+to prove that.
+
+The round's fixture lesson: A REFUSAL CASE MUST EMPTY THE WHOLE FIXTURE.
+The zero-read case first deleted only the records table and still read
+1 file -- docs/note.md from the case-2 rewrite was still on disk -- and
+the gate rightly answered OK on it. The check was wrong, not the gate;
+the case now rglob-deletes everything under docs/ before asserting the
+refusal. A refusal graded over a fixture that is not actually in the
+refusing state is a tautology with a red result.
+
+Measured kill: the root-dropping main scans the real corpus (795 files),
+finds no offender, answers OK rc 0 on the very first rung that demands
+rc 1 -- killed before any later case could run; the probe is read-only
+besides. Capture: OK: no doc reads the inventory as a preset (795
+file(s) read).
+
+Honest limits: the FILE_THEN_COORD_RE attribution arm (bare :N attributed
+to the nearest preceding file name) is graded only by the pure
+detector_still_fires cases, not through main(); DOC_SKIP_PREFIXES
+(mdBook build output) has no fixture case -- a generated copy in the
+fixture tree would be needed to grade the skip; the 795-file live
+corpus number is a snapshot, not an invariant. Docker daemon still down
+(probed r159): the E2E / llvm-cov / nextest-junit receipts remain the
+standing PG-gated gap. The root-policy gate remains RED on the foreign
+todo.md (r174) and verify-core-size RED on the ADR-59 +64 (r181), both
+awaiting their owning lanes.
