@@ -55,6 +55,21 @@ verify-selftests-wired.py owns "is the flag called"; each checker's own ladder o
 whether it proves anything. This file owns one question: which checkers have all four
 parts, and which is the smallest that does not?
 
+One gap worth naming, because it produced a real miss (r263): has_ladder() is a TEXT
+MATCH -- it sees the name anywhere in the file. A shell_ladder() that is DEFINED and
+called by nobody therefore satisfies the "ladder" part while running nothing, and
+verify-runner-claims.py sat in that state through the round that contracted it:
+"--self-test" printed its case line and no ladder line at all. The census reported it
+as contracted the whole time, which is worse than reporting it missing.
+
+A static reachability check was considered and measured, not adopted. Over the 70
+census files on 2026-11-09 it found 33 reachable and 0 unreachable -- including the
+broken one, because that file's own text contains a call-shaped mention of
+shell_ladder elsewhere. A grep for "shell_ladder()" cannot tell a call in self_test
+from a mention in a docstring or a ladder that calls a sibling. The honest position is
+that this census cannot see the difference, and a checker that RAN the self-test and
+looked for the ladder's output line can. Recording the limit beats a green tick.
+
 EXIT CODES -- and why 0 on a non-empty list
     0  always, when the census ran. A 40-plus-item list is not a regression, it is the
        backlog; failing on it would make this gate red every day until the arc ends, so
