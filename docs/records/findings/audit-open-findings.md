@@ -10015,3 +10015,64 @@ and architecture-boundaries (r226) limits stand. Docker daemon still
 down (probed r159): E2E / llvm-cov / nextest-junit receipts remain
 PG-gated. Root-policy RED on the foreign todo.md (r174); core-size RED
 on the ADR-59 +64 (r181) -- both await their owning lanes.
+
+### Round 228 (2026-11-09) -- debt-ledger: the checker that re-runs its self-test on every grade
+
+check-debt-ledger.py opens the second arc (nine checkers still
+un-contracted after r165's list closed at r227; smallest first). Its
+shape forced the contract into the file's own idiom: there is NO
+argparse -- main() read sys.argv[1:] raw -- so argv is now the raw list
+(sys.argv[1:] when None), and root flows as PARAMETERS into git() and
+entries_with_dead_file_refs rather than by mutating the module REPO
+global; the choice is not taste, the file's own self-test patches that
+global with global REPO for its plumbing cases, and a parameter read at
+call time (cwd=repo or REPO) keeps that patch working byte-for-byte.
+
+The round's find is structural, and it was found by the harness
+crashing, not by a review: THIS tool's main() re-runs the rule
+self-test on EVERY grade -- the "RULES WENT DEAF" guard, built because
+each of its five predicates has been wrong once -- so the arc's
+standard chain (self_test ends with return shell_ladder()) recurses
+forever: rung calls main, main re-runs the self-test, self-test chains
+the ladder again. Measured as a RecursionError hundreds of frames deep
+before any rung ran. The fix keeps the chain only in the EXPLICIT
+--self-test dispatch (self_test(run_ladder=True)) and adds a re-entry
+guard that turns the one legitimately nested call -- rung 8 driving
+--self-test through argv from inside the ladder -- into a printed skip.
+A sibling arc lesson inverted: the previous eleven ladders were
+chained safely only because their mains ran the self-test ONCE.
+
+The eight-rung ladder gives each of the five report arms its own rung
+that fires exactly that arm (summary-table Total, dead-only refs,
+closing-commit-without-section, section-over-undefined-id, gutted
+body), plus the missing-journal refusal, the --self-test dispatch
+through argv, and the killing rung FIRST (a closing commit over a
+section-less journal, rc 1, the O-H01 shape the file was born for).
+Three rung corrections were measured, not assumed: the run() helper
+initially captured no stdout (said='' while rc was right -- output
+capture is part of the harness, and the failure print proved it); a
+fixture id O-Z99 is not a tier at all (ID_RE is [HMLT]) and read as
+"names no entry id at all" instead of the header-less case (O-T99 used);
+and the section() helper's 60-x anti-gutting padding defeated rung 6's
+own fixture until the gutted body went raw.
+
+probe228 kills on the cleanest path in the arc: the mutant grades the
+real checkout (165-entry frozen ledger, exit 0) while the fixture's
+closing commit without a section exits 1; the probe asserts the
+fixture's positive verdict before comparing. Fixture git repos commit
+with inline -c identity so no global git config is trusted. Live
+unchanged: "165 entries defined, 122 sections, every closing commit has
+its section" at exit 0.
+
+Honest limits: the rules-deaf guard re-runs the plumbing cases per rung
+(eight tempdir git inits per ladder pass -- fast, but the cost is
+real); the 4000-commit log cap is unchanged and a ledger whose history
+exceeds it grades a window, as before; the ladder does not grade the
+self-test's internals beyond the dispatch; fixture identity -c flags
+mean a host with broken git still shows rungs 1-2 skipping (git()
+returns empty on failure -- the file's own degraded mode, unchanged).
+The scoped-reads (r213) through architecture-boundaries (r226) and
+namespace-governance (r227) limits stand. Docker daemon still down
+(probed r159): E2E / llvm-cov / nextest-junit receipts remain PG-gated.
+Root-policy RED on the foreign todo.md (r174); core-size RED on the
+ADR-59 +64 (r181) -- both await their owning lanes.
