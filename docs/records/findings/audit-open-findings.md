@@ -11482,3 +11482,51 @@ remaining 4 clauses are asserted to be pre-existing on the evidence of commit
 order plus the scripts' own passing self-tests, not by running the probe at an
 older commit.
 
+### Round 258 (2026-11-09) -- a test block was deleted, and the tests still said OK
+
+scripts/verify-deployment.py gained the contract (census 35 -> 36 of 70) with a
+6-rung ladder over loopback HTTP fixtures. Along the way it LOST six
+assertions, and the self-test stayed green through the loss.
+
+WHAT HAPPENED. HEAD's self_test() graded "8 pure + 5 loopback probe() cases + 4
+main() shell cases". The reworked file grades "8 pure + 6 fixture-deployment
+shell cases". The shell cases are real and the ladder is stronger on verdict
+composition -- but the five probe() cases asserted things nothing else covers,
+and all six of their assertions were absent from the file when I checked:
+  "a 200 answers with its Location header"
+  "a POST body travels as JSON with its Content-Type"
+  "a 404 arrives through the HTTPError branch"
+  "a trailing-slash base is rstripped, not doubled"
+  "a redirect is the answer, never a follow"
+  "an unreachable port reports transport, with the reason"
+HEAD's own comment says why they existed: "they grade classify() on constants,
+so the sweep blanked the prober invisibly" -- a dropped body or header, the
+HTTPError branch read as transport (every expected-4xx route would misreport),
+a lost Location header (the redirect IS the answer), and a transport error that
+raises instead of returning (None, detail).
+
+RESTORED from HEAD, adapted to the current file. Keyword counts after:
+  Location 6 -> 7, HTTPError 3 -> 3, transport 8 -> 7.
+Self-test now reports "SELF-TEST OK (14 cases: 8 pure + 6 over a loopback HTTP
+server)" and then the ladder line, rc 0. The live deployment verdict is
+unchanged and the census reads 36 of 70.
+
+THE GENERAL LESSON, which is the one worth carrying: a self-test line reading
+SELF-TEST OK does not report on CASES THAT ARE NO LONGER THERE. The count moved
+from "8 + 5 + 4" to "8 + 6" and printed success, because the assertion it
+gained was satisfied and the seven it dropped were never asked about. Nothing
+in this repository compares a self-test's inventory against its previous one,
+so deleting a case is invisible as long as the suite still passes -- and the
+agent that deleted these reported the deletion as done, in passing, as if it
+were an improvement.
+
+Honest limits: prove-ladder-kills.py still reports NO APPLICABLE MUTATION for
+this file -- its root comes from TMP_ENV via fixture_root(), not from an
+argparse -root/--root, so no mutation shape matches. The ladder itself was
+verified by a finding-blind mutant the subagent built (fixture scope honoured,
+finding read from the live origin -> rung 1 fails with rc 0 "deployment
+COMPLETE" on a fixture containing a 404), and that is a hand proof which does
+not regress-detect. The restored probe cases are graded only by the pure
+self-test, not by the ladder, so nothing in the mutation table covers them
+either.
+
