@@ -8969,3 +8969,43 @@ still down (probed r159): the E2E / llvm-cov / nextest-junit receipts
 remain the standing PG-gated gap. The root-policy gate remains RED on
 the foreign todo.md (r174) and verify-core-size RED on the ADR-59 +64
 (r181), both awaiting their owning lanes.
+
+### Round 207 (2026-11-09) -- badge text-path tool gains its first self-test, on a font built in-process
+
+The r166..r206 contract applied to the SVG badge generator in its
+no-checkout form (like r206): the tool's evidence is the caller's font
+file and geometry on argv, it reads no repository path, so there is no
+root to redirect -- root is accepted by signature and ignored. The
+load-bearing half HERE is explicit argv PLUS a real usage refusal: main
+used to die on sys.argv[1:6] with a bare ValueError/IndexError and no
+message; it now refuses rc 2 with "got N argument(s)" and a second rc 2
+for non-numeric geometry.
+
+Six shell cases grade main() against a fixture font BUILT with
+fontTools inside the tempdir (upem 1000, glyph A advance 600, glyph B
+advance 500, triangle contours) -- no system font, no checkout file: a
+valid call renders rc 0 with ink in `d` and advance exactly 7.2;
+tracking widens BETWEEN glyphs only -- a single glyph's trailing
+tracking is exactly the final letter-space that is not ink (the
+ladder's author got this wrong first and the tool was right: the
+one-glyph-with-tracking case expects 7.2, and an "AB" case expects 7.2
++ 2 + 6.0 = 15.2, arithmetic the first draft also botched by a factor
+of ten before the printed path proved it); a missing glyph refuses
+naming the character; short argv refuses rc 2 with the count;
+non-numeric size refuses rc 2.
+
+Measured kill: the argv-dropping main re-reads sys.argv (still holding
+--self-test) and dies unpacking -- killed on the first rung; no network,
+no checkout file. Capture: the tool had NO self-test at all before this
+round -- wired-count impact lands in the next wired sweep.
+
+Honest limits: the VARIABLE-font arm (fvar present -> instantiate at
+wght) is graded by reading only -- building a variable fixture font
+needs fontTools.varLib, deferred as its own question; the .notdef glyph
+is present but never rendered; multi-glyph label coverage beyond "AB"
+is not exercised (kerning is not read by this tool by design -- hmtx
+only). Docker daemon still down (probed r159): the E2E / llvm-cov /
+nextest-junit receipts remain the standing PG-gated gap. The
+root-policy gate remains RED on the foreign todo.md (r174) and
+verify-core-size RED on the ADR-59 +64 (r181), both awaiting their
+owning lanes.
