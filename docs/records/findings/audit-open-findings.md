@@ -8463,3 +8463,50 @@ nowhere. Docker daemon still down (probed r159): the E2E / llvm-cov /
 nextest-junit receipts remain the standing PG-gated gap. The root-policy
 gate remains RED on the foreign todo.md (r174) and verify-core-size RED
 on the ADR-59 +64 (r181), both awaiting their owning lanes.
+
+### Round 195 (2026-11-09) -- sign-plugin joins the arc; a quote character as a whole fixture lesson
+
+The r166..r194 contract applied to the plugin signing TOOL (a developer
+operator tool, not a gate -- offline RSA, keys supplied, never fetched).
+main(argv, root): a RELATIVE --key or plugin_dir resolves against the
+contract root; absolute paths pass through. root changes where the key
+and the plugin are looked up, nothing else -- the operations themselves
+were already offline and pure.
+
+Six shell cases as a SIGNING LADDER over one tempdir: generate a 2048-bit
+key (file existence asserted inside the with); sign a plugin and find the
+detached plugin.toml.sig beside plugin.toml; --check verifies the fresh
+signature; ONE tampered script byte flips the digest and --check fails rc
+1 with signature MISMATCH -- the property the whole tool exists to
+guarantee, graded as an exit path; a shapeless manifest fails loudly
+(missing plugin.name) instead of signing something wrong; and the missing
+--key FLAG is an argparse refusal rc 2. The last case was first written
+against the wrong refusal: a missing key FILE is a FileNotFoundError from
+load_key, not a refusal -- argparse only refuses the absent flag, and the
+graded exit is the one main controls (the flag check), not the library's.
+
+The named lesson: THE FIXTURE'S QUOTE CHARACTER IS PART OF THE FIXTURE.
+The manifest was written with single quotes; read_manifest strips DOUBLE
+quotes only, so id/version carried baked-in quote chars and scripts:
+printed [\'discount.lua\'] with a path that could never exist -- the
+signature "succeeded" over a plugin carrying no scripts. The digest was
+well-formed; the fixture was lying. One chr() choice changed three cases
+at once.
+
+The kill is deliberately structured: the key path is ABSOLUTE inside the
+tree and the plugin dir RELATIVE -- a root-dropping main resolves the
+plugin dir against the real repo, where demo-plugin does not exist, and
+dies on the no-plugin.toml refusal BEFORE it could write any key or
+signature into the real tree. Measured kill: rc=\'no plugin.toml in
+C:\\dev\\kasirmu\\demo-plugin\' on the signing rung.
+
+Honest limits: the Rust cross-check arm of --self-test remains an
+instruction to run cargo test, not an executed comparison (unchanged from
+before this round); the collect_scripts skip-missing mirror and the
+_parse_array empty-shape arms have no main() case; --print-public-key is
+graded only implicitly through the sign rung's output. cryptography 50.0.0
+present, so no import-guard arm exists to grade. Docker daemon still down
+(probed r159): the E2E / llvm-cov / nextest-junit receipts remain the
+standing PG-gated gap. The root-policy gate remains RED on the foreign
+todo.md (r174) and verify-core-size RED on the ADR-59 +64 (r181), both
+awaiting their owning lanes.
