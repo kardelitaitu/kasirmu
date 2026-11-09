@@ -9428,3 +9428,54 @@ daemon still down (probed r159): E2E / llvm-cov / nextest-junit
 receipts remain PG-gated. Root-policy RED on the foreign todo.md
 (r174); core-size RED on the ADR-59 +64 (r181) -- both await their
 owning lanes.
+
+### Round 217 (2026-11-09) -- fluent-dynamic-families: the seam kwarg, and rungs generated FROM the live table
+
+verify-fluent-dynamic-families.py already carried half the arc
+contract -- a positional root flag, --self-test that reads no file, and
+the 2026-09-29 refusal family (zero bundles, zero ids, empty family
+list). What it lacked was the PROGRAMMATIC seam: main(argv) was
+positional-only, and the self-test drove the helpers (read_keys,
+family_findings, gap_count, vacuous_reason) but never main() itself, so
+the wiring between "the cases pass" and "the gate runs" was ungraded.
+main() is now main(argv=None, root=None) with the scoped-reads
+precedence -- positional flag, then kwarg, then the script's own tree.
+
+The ladder is 5 rungs, and its fixtures are GENERATED from the live
+FAMILIES table: a bundle holding every id the table can build is the
+clean case, and dropping one id from EN is exactly one named gap. That
+generation is the point -- a hand-written fixture goes stale the day a
+family is added or removed (the "setup feature label" deletion taught
+that), while a fixture derived from the table tracks it. Rung 1 is the
+killing rung (EN missing analytics-month-jan, rc 1, named; probe217
+re-proven live -- the seam-dropping main grades the checkout's complete
+bundles at rc 0, "KILL CONFIRMED"); rung 2 is the complete-bundle clean;
+rungs 3-4 grade BOTH empty-set refusals through the seam (zero FILES,
+and files that yield ZERO EN ids -- the case the zero-file guard alone
+would pass clean over nothing); rung 5 grades the precedence: the
+positional flag names a refusal tree, the kwarg a complete one, and the
+refusal tree's verdict comes back.
+
+Rung 5's first draft "failed" at rc 0 -- because the draft handed the
+FLAG a complete tree, the flag won, and correctly graded a clean
+bundle. The precedence was never broken; the fixture was. Measured,
+then pinned, with the draft's mistake recorded in the rung comment --
+the same rule as r214's harvest-period needle and r216's --json
+severity.
+
+Self-test now reads "SELF-TEST OK (32 cases, one scratch tree removed)"
+plus the 5-rung ladder; live run unchanged: "0 bounded family/families
+with gaps." at exit 0.
+
+Honest limits: the empty-FAMILIES refusal stays unreachable through the
+seam (main always compares the module's own table) and is graded only on
+the helper directly (R7) -- a rung for it would need a seam that does
+not exist; the fixture generation assumes every family id is unique
+across the table (true today; a duplicate would make the clean fixture
+double-define a key, which Fluent tolerates but the count would not);
+and the UNBOUNDED exemption report is graded on live tables, not on a
+fixture whose exempt ids exist. The scoped-reads (r213), retire (r214),
+and state-closure (r216) limits stand. Docker daemon still down (probed
+r159): E2E / llvm-cov / nextest-junit receipts remain PG-gated.
+Root-policy RED on the foreign todo.md (r174); core-size RED on the
+ADR-59 +64 (r181) -- both await their owning lanes.
