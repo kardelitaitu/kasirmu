@@ -8600,3 +8600,43 @@ daemon is still down (probed r159), so the E2E / llvm-cov / nextest-junit
 receipts remain the standing PG-gated gap. The root-policy gate remains
 RED on the foreign todo.md (r174) and verify-core-size RED on the
 ADR-59 +64 (r181), both awaiting their owning lanes.
+
+### Round 198 (2026-11-09) -- ps-syntax joins the arc; the tracked scope is a claim, so grade it
+
+The r166..r197 contract applied to the PowerShell parse gate:
+targets(root) resolves the corpus under the contract root for BOTH scope
+paths together -- the git ls-files path and the no-git walk -- and
+main(argv, root) reports broken files as ROOT-RELATIVE paths. A root
+redirecting the walk but not the git scope, or vice versa, would grade a
+corpus assembled from two different trees; both follow one base.
+
+Five shell cases through argv and root. The walk scope: two entry points
+found across scripts/ and ops/install/win/; a broken script fails rc 1
+naming its root-relative path with the 1-of-3 summary; a broken .ps1
+inside node_modules/ is OUT of scope (the vendored skip applies in the
+walk) and the gate reads clean; an empty corpus refuses rc 2 rather than
+passing vacuously. The tracked scope, graded for the first time: git init
++ one tracked good file, and an UNTRACKED broken file beside it -- the
+gate must report OK over exactly 1 entry point, because tracked-only is
+the gate's stated scope and an untracked broken script is not in the
+graded population. The broken fixture's defect is a backtick before a
+closing quote -- the very defect this gate was born from -- written via
+chr(96) per the arc's lexing rule.
+
+Measured kill: the root-dropping main walks the REAL corpus and answers
+OK over 27 entry points on the first rung, which demands the fixture's 2
+-- killed before any later case. The probe is read-only: the pure
+section's scratch file is deleted in its finally before the ladder runs.
+Capture: verify-ps-syntax: OK -- 27 PowerShell entry point(s) parse.
+
+Honest limits: the no-host refusal (rc 2, neither pwsh nor powershell
+present) has no shell case -- host_command() probes the real PATH and
+the ladder cannot starve it without monkeypatching; it stays graded only
+by inspection. The docstring's "24 of the 26" scope claim is STALE
+against the measured 27 tracked .ps1 at this round -- recorded here
+rather than silently fixed, since a docstring number is a claim about
+history, not a live value. Docker daemon still down (probed r159): the
+E2E / llvm-cov / nextest-junit receipts remain the standing PG-gated
+gap. The root-policy gate remains RED on the foreign todo.md (r174) and
+verify-core-size RED on the ADR-59 +64 (r181), both awaiting their
+owning lanes.
