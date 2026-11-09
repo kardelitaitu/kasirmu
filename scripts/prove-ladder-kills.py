@@ -305,9 +305,21 @@ def run_mutant(checker, anchor, replacement, scratch, verbose):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("checker")
+    # r269: `checker` is nargs="?" so --self-test can be reached at all. It was
+    # required until now, which made self_test() unreachable from the command line:
+    # running "prove-ladder-kills.py --self-test" failed with "the following
+    # arguments are required: checker" and the cases never ran. A self-test nothing
+    # can invoke is the same shape as a ladder nothing calls (r263) -- present, green
+    # by absence, and counted by whatever looks for the name.
+    ap.add_argument("checker", nargs="?")
+    ap.add_argument("--self-test", action="store_true")
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args(argv)
+
+    if args.self_test:
+        return self_test()
+    if not args.checker:
+        ap.error("checker is required unless --self-test is given")
 
     checker = Path(args.checker)
     if not checker.is_file():

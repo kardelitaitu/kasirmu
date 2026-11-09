@@ -11955,3 +11955,43 @@ read-or) -- it said they were not isolated, and I did not re-derive them. The tw
 false defects are recorded rather than silently dropped because a report that
 invents defects is the failure mode I have to be able to see.
 
+### Round 268 (2026-11-09) -- the self-test nothing could call
+
+While checking that r266's dedupe still held, I ran
+    python scripts/prove-ladder-kills.py --self-test
+and got:  usage: prove-ladder-kills.py [-h] [--verbose] checker
+          error: the following arguments are required: checker
+
+The seven cases added in r263 had NEVER run from the command line. `checker` was
+a required positional, so argparse refused the flag before main() could dispatch
+it, and the only way the cases had ever executed was by calling self_test()
+directly from a probe script -- which is exactly how I tested them then, and why
+this went unnoticed for five rounds.
+
+That is r263's defect one level up: a ladder that is defined but never called,
+now a self-test that is defined but never callable. Both were "present" to any
+check that greps for the name, and neither ran. The register entry for r263 even
+claims the cases were "mutated against" -- they were, through the same direct call,
+so the claim is true but was never once true of the shipped entry point.
+
+Fixed: `checker` is nargs="?", --self-test dispatches to self_test(), and a
+missing checker without the flag still errors rc 2. Verified after:
+    --self-test            -> rc 0, "self-test: OK (7 harness cases ...)"
+    (no argument)          -> rc 2, "checker is required unless --self-test is given"
+    --help                 -> lists both flags
+    check-raw-key-assertions.py  -> every applicable mutation killed (1)
+    verify-runner-claims.py      -> every applicable mutation killed (1)
+    scripts/nope.py        -> "is not a file", rc 2
+
+Also re-measured the r266 dedupe invariant: 22 rows, 21 distinct anchors, 0 of 70
+files double-counted. Added a THIRD copy of the duplicated anchor in a scratch
+copy and confirmed applicable() still collapses to 1, so the dedupe is not a
+two-row special case.
+
+Honest limits: this round produced no new contracted checker -- census stays 40 of
+70, and the next target (verify-plugin-guide-parity.py) is delegated but unlanded.
+I found this by accident while doing something else; nothing in the census, the
+harness sweep, or the register would have reported it, which is the point. I did
+not re-check whether any OTHER checker's self-test is equally unreachable from its
+command line -- that sweep is not done.
+
