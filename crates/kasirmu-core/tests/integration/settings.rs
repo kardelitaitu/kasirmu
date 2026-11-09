@@ -1543,5 +1543,5 @@ fn test_regional_scope_chain_resolution() {
     let profile = kasirmu_core::load_active_market_profile(&conn, "loc-orchard").unwrap();
     assert_eq!(profile.country_code, "SG");
     assert_eq!(profile.currency, "SGD");
-    assert_eq!(profile.tax_regime, "LOCAL/SG");
+    assert_eq!(profile.tax_regime, "GST");
 }

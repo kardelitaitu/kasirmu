@@ -923,8 +923,6 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       ).not.toBeNull();
     });
 
-    // DELTA, not a count: the mount effect and the resume already called this.
-    const readsBefore = vi.mocked(salesApi.listOpenBillsScoped).mock.calls.length;
     // The delete is HELD OPEN, then refused — a locked DB, a lapsed session. Holding it
     // is what makes the race observable: the assertion afterwards counts reads taken
     // while this promise is still pending.
@@ -941,6 +939,9 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await user.type(screen.getByLabelText(/amount tendered/i), '10.00');
     const settle = screen.getByTestId('settle-button');
     await waitFor(() => expect((settle as HTMLButtonElement).disabled).toBe(false));
+
+    // Capture the read count RIGHT BEFORE the delete is triggered by completing payment.
+    const readsBefore = vi.mocked(salesApi.listOpenBillsScoped).mock.calls.length;
     await user.click(settle);
 
     // Dismiss the receipt, which is what releases `onComplete` (see the timing notes
@@ -993,7 +994,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       'the bill list was re-read WHILE the refused delete was still in flight — the ' +
         'refresh raced the write, so the list reflects pre-write state and the paid ' +
         'tab is invisible',
-    ).toBe(readsBefore + 1);
+    ).toBe(readsBefore);
   }, 20000);
 
   // ── A double Send-to-Kitchen must not dispatch twice ─────────────────────

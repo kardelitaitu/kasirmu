@@ -965,7 +965,7 @@ impl SyncStore {
              ON CONFLICT (tenant_id, entity_type, entity_id)
              DO UPDATE SET vector = excluded.vector,
                            last_payload = excluded.last_payload,
-                           updated_at = now()",
+                           updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
             &[&tenant_id, &entity_type, &entity_id, &json, &write.payload],
         )
         .await
@@ -1003,7 +1003,7 @@ impl SyncStore {
              ON CONFLICT (tenant_id, entity_type, entity_id)
              DO UPDATE SET vector = excluded.vector,
                            last_payload = excluded.last_payload,
-                           updated_at = now()",
+                           updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
             &[&tenant_id, &types, &ids, &vectors, &payloads],
         )
         .await

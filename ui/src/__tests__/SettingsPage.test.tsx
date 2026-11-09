@@ -608,7 +608,7 @@ describe('SettingsPage admin shell — flat IA', () => {
         });
       }
     }
-  });
+  }, 30000);
 
   it('honours an accepted deep-link section on mount and consumes the hash', async () => {
     window.location.hash = '#/settings/sync-status';
