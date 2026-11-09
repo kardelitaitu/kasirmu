@@ -115,25 +115,37 @@ pub(crate) fn build_snapshot_conn() -> rusqlite::Connection {
 pub(crate) fn write_snapshot_file(target: &std::path::Path) {
     use std::sync::atomic::{AtomicBool, Ordering};
     static WRITING: AtomicBool = AtomicBool::new(false);
-    // Only one thread writes; the others continue with the in-memory copy. A
-    // second writer would just reproduce the same bytes, so skipping it is free.
+    // Only one thread writes per process; the others continue with the in-memory copy.
     if WRITING.swap(true, Ordering::SeqCst) {
         return;
     }
-    let staging = target.with_extension("staging");
+    // Include PID in staging path so concurrent test processes never collide.
+    let pid = std::process::id();
+    let staging = scratch_root().join(format!(
+        "kasirmu-core-migrated-snapshot-{:016x}-{}.staging",
+        migration_fingerprint(),
+        pid,
+    ));
     {
         let src = build_snapshot_conn();
-        // INVARIANT: `staging` sits beside `target` inside the gitignored
-        // `target/test-scratch`, which `scratch_root()` creates before returning. Both
-        // the directory and its writability are established by that call, so a failure
-        // here means the checkout's build directory was removed mid-run.
-        let mut file = rusqlite::Connection::open(&staging)
-            .expect("staging snapshot file must be creatable in the scratch root");
-        let backup = rusqlite::backup::Backup::new(&src, &mut file)
-            .expect("backup into the staging file cannot fail");
-        backup
+        let mut file = match rusqlite::Connection::open(&staging) {
+            Ok(f) => f,
+            Err(_) => return,
+        };
+        let backup = match rusqlite::backup::Backup::new(&src, &mut file) {
+            Ok(b) => b,
+            Err(_) => {
+                let _ = std::fs::remove_file(&staging);
+                return;
+            }
+        };
+        if backup
             .run_to_completion(100, std::time::Duration::from_millis(0), None)
-            .expect("page copy into the staging file cannot fail");
+            .is_err()
+        {
+            let _ = std::fs::remove_file(&staging);
+            return;
+        }
     }
     if std::fs::rename(&staging, target).is_err() {
         // Another process won the race, or the file is locked. Either way the

@@ -860,7 +860,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     vi.mocked(salesApi.listOpenBillsScoped).mockResolvedValue([
       {
         id: 'bill-1',
-        label: 'Meja 3',
+        label: 'Tab 1',
         item_count: 1,
         total_minor: 700,
         currency: 'USD',
@@ -871,7 +871,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     ] as never);
     vi.mocked(salesApi.getHeldCartScoped).mockResolvedValue({
       id: 'bill-1',
-      label: 'Meja 3',
+      label: 'Tab 1',
       item_count: 1,
       total_minor: 700,
       currency: 'USD',

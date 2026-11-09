@@ -818,24 +818,27 @@ pub fn fresh_db() -> rusqlite::Connection {
     // test in this crate could run anyway.
     let mut fresh = rusqlite::Connection::open_in_memory().unwrap();
 
+    let mut cloned = false;
     if snapshot_file.is_file() {
-        // Fast path: clone from the shared file.
-        let src = if let Ok(c) = rusqlite::Connection::open(&snapshot_file) {
-            c
-        } else {
-            // A torn or locked file must not fail a test: rebuild it.
-            let _ = std::fs::remove_file(&snapshot_file);
-            test_db_snapshot::build_snapshot_conn()
-        };
-        {
-            let backup = rusqlite::backup::Backup::new(&src, &mut fresh)
-                .expect("backup from the cached snapshot cannot fail");
-            backup
-                .run_to_completion(100, std::time::Duration::from_millis(0), None)
-                .expect("page copy from the cached snapshot cannot fail");
+        // Fast path: clone from the shared file if valid and idle.
+        if let Ok(src) = rusqlite::Connection::open(&snapshot_file) {
+            if let Ok(backup) = rusqlite::backup::Backup::new(&src, &mut fresh) {
+                if backup
+                    .run_to_completion(100, std::time::Duration::from_millis(0), None)
+                    .is_ok()
+                {
+                    cloned = true;
+                }
+            }
         }
-    } else {
-        // Cold cache: build the snapshot, then persist it for other processes.
+        if !cloned {
+            // A torn, locked, or corrupt file must not fail a test: discard it.
+            let _ = std::fs::remove_file(&snapshot_file);
+        }
+    }
+
+    if !cloned {
+        // Cold cache or corrupt file: clone from in-memory snapshot, then persist.
         // INVARIANT: this Mutex is never held across code that can panic while holding
         // it -- the guarded body only runs a rusqlite backup, whose failures are handled
         // by the `expect`s below rather than by unwinding. A poisoned lock here therefore
