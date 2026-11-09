@@ -10076,3 +10076,68 @@ namespace-governance (r227) limits stand. Docker daemon still down
 (probed r159): E2E / llvm-cov / nextest-junit receipts remain PG-gated.
 Root-policy RED on the foreign todo.md (r174); core-size RED on the
 ADR-59 +64 (r181) -- both await their owning lanes.
+
+### Round 229 (2026-11-09) -- gate-completeness: the exact-claim gate, and the r228 lesson re-measured from the other side
+
+verify-gate-completeness.py (593 lines) is the gate that caught the
+core-size ratchet running unrostered for months: every step "..." in
+check.sh must be claimed EXACTLY by a gates.json label (exact, not
+prefix -- the migration-smoke-test lesson this file's header carries).
+main(argv=None, root=None): argv explicit through argparse, a root
+kwarg that overrides the module ROOT default, threaded as a PARAMETER
+into the two filesystem-reading walkers (ci_claim_findings' WORKFLOWS
+lookup and selftest_findings' ROOT lookup) rather than by re-binding
+module globals -- the self-test calls both walkers bare, and a default
+read at call time keeps every one of its 34 cases byte-for-byte.
+
+The nine-rung ladder gives every report arm its own fabricated defect:
+the killing rung (a "ghost step" no roster row claims, rc 1), the
+fully-claimed miniature greening with its counts named ("checked 2
+check.sh step(s) against 2 declared runner label(s)"), the duplicate
+arm (one step declared twice -- unclaimed()'s label SET silently
+collapses two same-named steps, so exact-claim alone cannot see it),
+the same duplicate excused by a classified_check_sh_steps entry,
+a stale classification, an unknown gate field ("a renamed key removes
+a claim silently -- every check still exits 0", the schema arm), a ci
+block naming a step the workflow file does not have, the refusal floor
+(a tree without evidence files, rc 2, never graded hollow), and the
+--self-test dispatch through argv.
+
+And the r228 lesson was re-measured, from the OTHER side: on the debt
+ledger the recursion came from main re-running its self-test during a
+normal grade; HERE the recursion came from the ladder itself -- rung 9
+drives --self-test through argv, which chains the ladder again through
+_self_test's tail. Measured as a RecursionError hundreds of frames
+deep BEFORE the guard existed (the same crash shape, the same fix, a
+different entry path), and the re-entry guard is now standard harness
+equipment: the nested call prints "(ladder re-entry from a nested
+--self-test: skipped)" and rung 9 asserts that print, so the skip is
+evidence, not a silent swallow. A harness lesson worth its own line:
+ANY tool whose self-test tail can chain the ladder needs the guard,
+whichever side of the call graph the loop closes on.
+
+Two measured corrections this round: my first docstring insertion
+closed two docstrings early (SyntaxError -- unterminated string literal
+at the orphaned continuation line; the parameter notes now live in
+main's comment, where a one-line change belongs), and the first guard
+run reproduced the recursion exactly as r228 predicted it could.
+
+probe229 kills cleanly: the mutant grades the real checkout (rc 0)
+while the fixture's ghost step exits 1 with the unclaimed-step report
+naming it; the positive-verdict guard holds. Live unchanged at exit 0:
+"checked 228 check.sh step(s) against 234 declared runner label(s)" --
+the header's 2026-11-08 measurement said 226 steps and predicted the
+count would grow with check.sh; it has. Read as a date-stamped
+measurement, as the file itself insists.
+
+Honest limits: the ladder does not grade the self-test's internals
+beyond dispatch, nor the declared-runner-counts rule (self-test-only
+surface, unchanged); the workflow-file parser is exercised on one
+two-line YAML shape, not the repo's real workflow files; the
+classified-excuse rung pins the branch-alternates wording only as an
+opaque key -- the reason text is not validated by anyone. The r228
+re-entry lesson now covers both loop directions. The scoped-reads
+(r213) through debt-ledger (r228) limits stand. Docker daemon still
+down (probed r159): E2E / llvm-cov / nextest-junit receipts remain
+PG-gated. Root-policy RED on the foreign todo.md (r174); core-size RED
+on the ADR-59 +64 (r181) -- both await their owning lanes.
