@@ -10996,3 +10996,62 @@ ambiguity rather than to widen the table until the desired answer appeared.
 Seven ladders now carry "unproven" where they previously implied "proven".
 That is a worse-looking file and a truer one.
 
+### Round 248 (2026-11-09) -- status-fallbacks laddered, and the harness taught to see seven more shapes
+
+verify-status-fallbacks.py (308 lines) was the census head. Five rungs through
+main(argv, root), plus the guard. The fixture is unfindable in this repository
+by construction: its status family is synthetic (fixture-status-*), while the
+REAL state vocabulary (pending, failed, ...) is deliberately closed and
+borrowed, because a fallback that does not name a real state is not this
+gate's defect. So rung 1 demands a name a root-blind main could never print.
+
+Rung 3 is the one worth having: both honest conventions -- an `unknown`
+fallback and a neutral tone -- now run through main() end to end. Before this
+round they were graded only by findings_in(), so a gate that flagged EVERY
+default would have passed every case in the file.
+
+THE HARNESS WAS THE LIMIT, NOT THE LADDERS. Round 247 reported seven of this
+arc's ladders as UNPROVEN for want of a modelled mutation shape. That was a
+shortfall in scripts/prove-ladder-kills.py, not evidence about the checkers:
+the table knew five shapes and each of these files resolves its root its own
+way. Widened with four exact-shape anchors measured from the files themselves:
+
+  * "source scan ignores root" (ui = UI if root is None else ...) -- new
+  * "helper returns constant" (return REPO if root is None else ...) -- proves
+    check-fixture-ftl-keys
+  * "abspath root ignored" (repo = os.path.abspath(root) if ... else \\) --
+    proves verify-shell-registration
+  * "inline base ignores root" -- the round-246 shape, unchanged
+
+PROVEN now: check-pipeline-verdicts, check-ftl-attrs,
+verify-settled-read-copies, verify-ui-coverage-floors (2 mutations),
+verify-status-fallbacks, check-fixture-ftl-keys, verify-shell-registration.
+That is seven ladders with a measured kill, up from four.
+
+Two harness defects were caught by running it, and both are recorded because
+each would have produced a confident wrong answer: (a) a cross-line anchor
+built a mutant that could not import, which the harness reported as SURVIVED --
+it now distinguishes import failure from a surviving rung; (b) an anchor that
+spans a backslash continuation was rewritten to keep the continuation intact,
+because replacing the pair produced invalid Python. Also fixed here: a ladder
+run pointed TMPDIR at a directory a previous run had deleted, and every fixture
+then failed with FileNotFoundError -- fixture_root() now creates it, so a
+missing scratch directory cannot masquerade as a broken checker.
+
+Measured: census 31 of 70 (was 30). status-fallbacks self-test "3 defects
+detected, 3 honest shapes accepted, 3 _read cases, 3 shell cases" plus
+"STATUS-FALLBACKS SHELL LADDER OK (5 cases ...)"; live gate "OK (no default
+names a concrete status)".
+
+Honest limits: five ladders REMAIN UNPROVEN (check-dead-controls,
+check-orphan-prototype-files, check-register-hygiene, verify-workflow-syntax,
+check-merged-lines) because each resolves its root in a shape still not
+modelled; their kills stay asserted rather than measured, and the register
+says so instead of counting them as proven. verify-selftest-sweep survives a
+single-anchor mutation for the reason recorded in round 247 (root resolved
+twice, and its paired mutation greens by accident while an unrelated checker is
+red). Widening the table is not free of risk: every anchor I add is a claim
+that a mutation of that shape is faithful, and I have no way to prove that from
+inside the harness -- only by reading the file the anchor came from, which is
+what was done here and is still a human judgement.
+

@@ -63,6 +63,43 @@ MUTATIONS = (
         "base_root = ROOT if root is None else Path(root).resolve()",
         "base_root = ROOT  # MUTANT: root ignored",
     ),
+    # r248: a root consumed directly inside a helpers' body, e.g.
+    # `ui = UI if root is None else base / "ui" / "src"` in _sources(root).
+    # The first seven ladders this arc shipped resolved root in shapes the
+    # table did not model, so they reported NO APPLICABLE MUTATION and their
+    # kills stayed asserted rather than proven. Widening the table is the
+    # correct response to that -- unlike widening it until a hoped-for answer
+    # appears, which round 247 refused.
+    (
+        "source scan ignores root",
+        'ui = UI if root is None else base / "ui" / "src"',
+        'ui = UI  # MUTANT: root ignored',
+    ),
+    (
+        "inline base ignores root",
+        "base = ROOT if root is None else Path(root).resolve()",
+        "base = ROOT  # MUTANT: root ignored",
+    ),
+    # r248: the remaining shapes, one per checker that previously reported NO
+    # APPLICABLE MUTATION. Each anchor is the exact expression that appears
+    # exactly once in its file; a mutation that matches nothing is never
+    # invented, because a guessed anchor would report a false NO APPLICABLE
+    # and quietly shrink what this harness claims to cover.
+    (
+        "helper returns constant",
+        "return REPO if root is None else Path(root).resolve()",
+        "return REPO  # MUTANT: root ignored",
+    ),
+    (
+        # The expression spans a backslash continuation, so the anchor is the
+        # single line that CHOOSES root -- replacing it with a constant keeps
+        # the continuation intact. A cross-line anchor produced a mutant that
+        # failed to import and was reported as SURVIVED; that was the harness
+        # lying, not a finding, and it is why import errors are not kills.
+        "abspath root ignored",
+        "repo = os.path.abspath(root) if root is not None else \\",
+        "repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) if True else \\",
+    ),
 )
 
 
