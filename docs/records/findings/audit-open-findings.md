@@ -9639,3 +9639,52 @@ and shadow-copies (r219) limits stand. Docker daemon still down
 (probed r159): E2E / llvm-cov / nextest-junit receipts remain
 PG-gated. Root-policy RED on the foreign todo.md (r174); core-size RED
 on the ADR-59 +64 (r181) -- both await their owning lanes.
+
+### Round 221 (2026-11-09) -- reentry-guards: a report-only gate joins the seam, and its kill is output-keyed
+
+check-reentry-guards.py ran on two globals (ROOT, SCAN_ROOT) and
+main() took no argv. main() is now main(argv=None, root=None):
+scan_file(path, root=ROOT) reports paths relative to the graded tree,
+the walk root is resolved under the fixture, and a MISSING walk root
+now refuses rc 2 ("no source directory at ... -- nothing examined")
+instead of reading as a vacuous clean pass -- the same empty-corpus
+hole state-closure fixed, in a gate whose whole product is a list.
+
+The round's real finding is in probe221's docstring: the kill is
+OUTPUT-keyed because this checkout itself carries one candidate (the
+known report-only RED) -- so under --strict a root-dropping main ALSO
+exits 1 and no rc assertion can see the seam. The probe instead pins
+the identity of the evidence: the true run's report must NAME
+ui/src/screens/PosScreen.tsx and the mutant's must NOT. A probe that
+cannot distinguish rc values must distinguish provenance, or it
+proves nothing.
+
+The ladder is 5 rungs on the self-test's own proven handler shape:
+the killing rung (fixture candidate rc 1 under --strict, named
+fixture-relatively), the ref-guarded twin reading clean rc 0, the
+REPORT-ONLY exit contract pinned (findings never fail a report-mode
+run -- "CANDIDATE, not a defect" with rc 0), the missing-walk-root
+refusal rc 2, and two-file aggregation (count 2, each file its own
+line). Rung 4's first draft parked its decoy file at
+ui/src/features/Other.tsx -- which CREATED the walk root it was
+supposed to omit and read rc 0 with a finding; the fixture had built
+the thing it was refusing. Moved outside ui/src, with the draft's
+error recorded in the rung comment.
+
+Self-test reads "self-test: all 4 cases pass" plus the 5-rung ladder;
+live run unchanged: "1 write handler(s) whose only guard is a state
+flag." at exit 0, report-only.
+
+Honest limits: the tool's own docstring holds -- it is a heuristic
+over text, it misses guards written as anything but <name>Ref.current,
+and its one live candidate stays a CANDIDATE, owner's call; the rc-2
+refusal is new exit behavior (previously a missing tree read clean)
+and is documented in the message itself; and the rung-4 lesson is
+recorded because a fixture that builds its own refusal condition is a
+class of mistake, not a typo. The scoped-reads (r213), retire (r214),
+state-closure (r216), fluent-families (r217), scratch-leaks (r218),
+shadow-copies (r219), and chokepoints (r220) limits stand. Docker
+daemon still down (probed r159): E2E / llvm-cov / nextest-junit
+receipts remain PG-gated. Root-policy RED on the foreign todo.md
+(r174); core-size RED on the ADR-59 +64 (r181) -- both await their
+owning lanes.
