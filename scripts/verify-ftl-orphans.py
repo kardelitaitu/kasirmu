@@ -100,15 +100,19 @@ class UnreadableSource(Exception):
     """
 
 
-def _rel(path: Path) -> str:
-    """The ROOT-relative posix path, for a message a reader can cd to."""
+def _rel(path: Path, base: Path = ROOT) -> str:
+    """The ROOT-relative posix path, for a message a reader can cd to.
+
+    r223: base is the r166 seam -- under a fixture root the message names a
+    fixture path.
+    """
     try:
-        return path.relative_to(ROOT).as_posix()
+        return path.relative_to(base).as_posix()
     except ValueError:
         return path.as_posix()
 
 
-def _read(path: Path, errors: str = "replace") -> str:
+def _read(path: Path, errors: str = "replace", base: Path = ROOT) -> str:
     """One file's text. A read that fails is never allowed to reach an exit code.
 
     Before this, every content read in the file was a bare `read_text`, and on a tree where
@@ -140,7 +144,7 @@ def _read(path: Path, errors: str = "replace") -> str:
     try:
         return path.read_text(encoding="utf-8", errors=errors)
     except OSError as exc:
-        where = f"`{_rel(path)}` ({type(exc).__name__}: {exc.strerror or exc})"
+        where = f"`{_rel(path, base)}` ({type(exc).__name__}: {exc.strerror or exc})"
         if where not in UNREADABLE:
             UNREADABLE.append(where)
         if not _REPORT_UNREADABLE:
@@ -148,7 +152,7 @@ def _read(path: Path, errors: str = "replace") -> str:
         return ""
 
 
-def _refusal(mode: str) -> int:
+def _refusal(mode: str, base: Path = ROOT) -> int:
     """Exit 2 for a hard mode whose corpus would not open -- the hollow-ROOT voice, reused.
 
     `census()` and `self_test()` already print `error: cannot run <mode> here: <what>
@@ -160,7 +164,7 @@ def _refusal(mode: str) -> int:
     for line in UNREADABLE or [f"{mode} scope"]:
         print(f"error: cannot run {mode} here: {line} -- the file would not open, so the keys it "
               f"declares and any reference it holds are unknown to this run (looked under "
-              f"ROOT={ROOT}). Nothing was checked, so this refusal is not an orphan verdict -- a "
+              f"ROOT={base}). Nothing was checked, so this refusal is not an orphan verdict -- a "
               f"file that will not open is usually another session mid-write, and a busy file is "
               f"not evidence about anybody's keys. Re-run it once the writer is done.",
               file=sys.stderr)
@@ -188,10 +192,11 @@ def _report_unreadable() -> None:
               f"candidates. Re-run when the tree is quiet.")
 
 
-def declared_keys() -> dict[str, str]:
+def declared_keys(base: Path = ROOT) -> dict[str, str]:
     """{key: declaring file} across the English bundles."""
+    locales_dir = base / "shared-ui" / "locales"
     out: dict[str, str] = {}
-    for f in sorted(LOCALES.glob("*.ftl")):
+    for f in sorted(locales_dir.glob("*.ftl")):
         if f.name.endswith(".id.ftl"):
             continue
         for m in KEY_DECL.finditer(_read(f)):
@@ -199,7 +204,7 @@ def declared_keys() -> dict[str, str]:
     return out
 
 
-def ui_blob(census: bool = False) -> str:
+def ui_blob(census: bool = False, base: Path = ROOT) -> str:
     """UI source, minus the surfaces that are never a reference to a live key.
 
     `census=True` re-admits `__tests__`; see `UI_EXCLUDES_CENSUS` for the measurement that
@@ -210,15 +215,15 @@ def ui_blob(census: bool = False) -> str:
     """
     excludes = UI_EXCLUDES_CENSUS if census else UI_EXCLUDES
     parts = []
-    for path in ROOT.glob("ui/src/**/*.ts*"):
-        rel = path.relative_to(ROOT).as_posix()
+    for path in base.glob("ui/src/**/*.ts*"):
+        rel = path.relative_to(base).as_posix()
         if any(x in rel for x in excludes):
             continue
         parts.append(_read(path))
     return "\n".join(parts)
 
 
-def intra_bundle_refs(names: set[str]) -> set[str]:
+def intra_bundle_refs(names: set[str], base: Path = ROOT) -> set[str]:
     """Keys referenced by OTHER messages, terms, or attributes in any .ftl file.
 
     All 25 domain files concatenate into one bundle per locale, so a key declared in one
@@ -226,7 +231,8 @@ def intra_bundle_refs(names: set[str]) -> set[str]:
     orphan. The declaration line itself is stripped before the search so a key does not
     count as referencing itself.
     """
-    joined = "\n".join(_read(f) for f in sorted(LOCALES.glob("*.ftl")))
+    joined = "\n".join(_read(f, base=base)
+                       for f in sorted((base / "shared-ui" / "locales").glob("*.ftl")))
     hits: set[str] = set()
     for name in names:
         stripped = re.sub(r"^" + re.escape(name) + r"\s*=.*$", "", joined, flags=re.M)
@@ -273,18 +279,18 @@ def source_tokens(source: str) -> set[str]:
     return set(KEY_TOKEN.findall(source))
 
 
-def referenced(names: set[str], census: bool = False) -> set[str]:
+def referenced(names: set[str], census: bool = False, base: Path = ROOT) -> set[str]:
     """Names that have some plausible reference: literal, intra-bundle, or composed."""
-    source = ui_blob(census=census)
+    source = ui_blob(census=census, base=base)
     tokens = source_tokens(source)
     live = names & tokens
-    live |= intra_bundle_refs(names)
+    live |= intra_bundle_refs(names, base=base)
     prefixes = composed_prefixes(source)
     live |= {n for n in names if any(n == p or n.startswith(p + "-") for p in prefixes)}
     return live
 
 
-def staged_diff() -> str | None:
+def staged_diff(base: Path = ROOT) -> str | None:
     """The staged diff under ui/src, or None when git could not produce one.
 
     None is a REFUSAL condition, not an empty set. `git diff --cached` reports a usage or
@@ -298,11 +304,11 @@ def staged_diff() -> str | None:
     try:
         proc = subprocess.run(
             cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-            cwd=ROOT, check=True)
+            cwd=base, check=True)
     except Exception as exc:  # no git on PATH, no repository at ROOT, or a non-zero exit
         # The words below are git's own, quoted from its stderr -- a complaint about the
         # command or the checkout, not this gate's verdict on anyone's keys.
-        print(f"error: cannot read the staged diff (`{' '.join(cmd)}` in {ROOT}): {exc}",
+        print(f"error: cannot read the staged diff (`{' '.join(cmd)}` in {base}): {exc}",
               file=sys.stderr)
         raw = getattr(exc, "stderr", "") or ""
         if isinstance(raw, bytes):
@@ -345,7 +351,7 @@ def changes_from_diff(diff: str) -> tuple[set[str], set[str], set[str]]:
     return added_en, added_id, removed_refs
 
 
-def load_allowlist() -> dict:
+def load_allowlist(base: Path = ROOT) -> dict:
     """The allowlist, or nothing at all when it would not open.
 
     Read through the same `_read()` as every other file here, because it has the same
@@ -357,16 +363,17 @@ def load_allowlist() -> dict:
     readable but is not valid JSON still raises, unchanged -- a defect in a committed file
     is not a race with a writer, and it is not this gate's sentence to soften.
     """
-    if not ALLOWLIST_PATH.exists():
+    allowlist_path = base / "scripts" / "ftl-orphan-allowlist.json"
+    if not allowlist_path.exists():
         return {}
     before = len(UNREADABLE)
-    text = _read(ALLOWLIST_PATH, errors="strict")
+    text = _read(allowlist_path, errors="strict", base=base)
     if len(UNREADABLE) > before:
         return {}
     return json.loads(text)
 
 
-def bundle_keys(suffix: str) -> set[str]:
+def bundle_keys(suffix: str, base: Path = ROOT) -> set[str]:
     """Every key declared across one locale's whole set of domain files.
 
     Global rather than per-file on purpose: all 25 domain files are concatenated into one
@@ -375,7 +382,7 @@ def bundle_keys(suffix: str) -> set[str]:
     strictly would report crossings as one-sided when the runtime resolves them fine.
     """
     names: set[str] = set()
-    for f in sorted(LOCALES.glob("*.ftl")):
+    for f in sorted((base / "shared-ui" / "locales").glob("*.ftl")):
         is_id = f.name.endswith(".id.ftl")
         if (suffix == "id") != is_id:
             continue
@@ -384,7 +391,7 @@ def bundle_keys(suffix: str) -> set[str]:
     return names
 
 
-def id_only_keys() -> set[str]:
+def id_only_keys(base: Path = ROOT) -> set[str]:
     """Keys in the Indonesian bundle with no English definition anywhere.
 
     Reported as cleanup debt, NOT gated. An earlier version of this file claimed a reference
@@ -398,10 +405,10 @@ def id_only_keys() -> set[str]:
     there: it flags only one-sided keys that would actually render a raw identifier to a user,
     and stays quiet about the 75 unreferenced dead translations that are untidy but harmless.
     """
-    return bundle_keys("id") - bundle_keys("en")
+    return bundle_keys("id", base=base) - bundle_keys("en", base=base)
 
 
-def hollow_root_reason() -> str | None:
+def hollow_root_reason(base: Path = ROOT) -> str | None:
     """Say why ROOT is not a checkout of this project, or None when it plainly is.
 
     `--census` derives every number it prints from `Path.glob`, which yields nothing rather than
@@ -421,14 +428,15 @@ def hollow_root_reason() -> str | None:
     0` in its starve check is an unobservable disjunct: a census that declared zero files is not a
     census of zero orphans.
     """
-    if not LOCALES.is_dir():
+    locales_dir = base / "shared-ui" / "locales"
+    if not locales_dir.is_dir():
         return "the required directory `shared-ui/locales` is missing"
-    if not any(LOCALES.glob("*.ftl")):
+    if not any(locales_dir.glob("*.ftl")):
         return "`shared-ui/locales` holds no `.ftl` bundle"
     return None
 
 
-def census() -> int:
+def census(base: Path = ROOT) -> int:
     """Report whole-tree orphan candidates without blocking.
 
     Refuses BEFORE counting when the locale surface cannot be found at all; see
@@ -442,21 +450,21 @@ def census() -> int:
     "the sheet printed", never "the tree is clean". The two modes that gate a commit do not
     carry this trade; they refuse.
     """
-    hollow = hollow_root_reason()
+    hollow = hollow_root_reason(base)
     if hollow:
-        print(f"error: cannot run --census here: {hollow} (looked under ROOT={ROOT}); nothing was "
+        print(f"error: cannot run --census here: {hollow} (looked under ROOT={base}); nothing was "
               f"counted, so this refusal is not an orphan verdict.", file=sys.stderr)
         return 2
-    names = set(declared_keys())
-    owner = declared_keys()
+    names = set(declared_keys(base))
+    owner = declared_keys(base)
     # census=True: a deletion list must not call a test-pinned key an orphan. See
     # UI_EXCLUDES_CENSUS -- the narrow surface here is how 175 candidates came to include
     # keys that 2 i18n tests depend on (2026-10-26).
-    live = referenced(names, census=True)
+    live = referenced(names, census=True, base=base)
     dead = names - live
-    allow = set(load_allowlist().get("census", []))
+    allow = set(load_allowlist(base).get("census", []))
     unaccounted = sorted(dead - allow)
-    id_only = id_only_keys()
+    id_only = id_only_keys(base)
     # Every read this sheet is built from has now happened, so this is the first moment the
     # gap can be named BEFORE any number that gap makes wrong. Nothing else in this function
     # reads a file, and nothing after it does either.
@@ -479,13 +487,13 @@ def census() -> int:
     return 0
 
 
-def check_staged() -> int:
+def check_staged(base: Path = ROOT) -> int:
     """The blocking check: what this commit adds and what it stops referencing.
 
     Three exits, and only one of them is a verdict: 0 when the scope was read and held
     nothing, 1 when it held a problem, 2 when the scope could not be read at all.
     """
-    diff = staged_diff()
+    diff = staged_diff(base)
     if diff is None:
         # An unreadable index is not an empty one, so this prints no verdict and does not
         # exit 0. The hook treats it as the hard fail it already treats a FAIL as.
@@ -499,13 +507,13 @@ def check_staged() -> int:
         return 0
     added_en, added_id, removed_refs = changes_from_diff(diff)
     added_keys = added_en | added_id
-    names = set(declared_keys())
-    allow = set(load_allowlist().get("staged", []))
+    names = set(declared_keys(base))
+    allow = set(load_allowlist(base).get("staged", []))
     problems: list[str] = []
 
     # 1. Keys this commit introduces must be reachable.
     if added_keys:
-        live = referenced(added_keys)
+        live = referenced(added_keys, base=base)
         for k in sorted(added_keys - live - allow):
             problems.append(
                 f"added key '{k}' has no reference in production UI, no consuming message in "
@@ -517,7 +525,7 @@ def check_staged() -> int:
     for k in removed_refs & names:
         if k in added_keys:
             continue
-        if k not in referenced({k}):
+        if k not in referenced({k}, base=base):
             stranded.add(k)
     for k in sorted(stranded - allow):
         problems.append(
@@ -535,7 +543,7 @@ def check_staged() -> int:
     # translations that are untidy but harmless. Blocking here would also reject a legitimate
     # sequence -- adding the Indonesian message in one commit and the English in the next.
     # So the count is surfaced as a signal and nothing more.
-    one_sided = added_id & id_only_keys()
+    one_sided = added_id & id_only_keys(base)
 
     print(
         f"staged-only: {len(added_keys)} key(s) added ({len(added_en)} en / {len(added_id)} id), "
@@ -731,10 +739,126 @@ def self_test() -> int:
         print(f"self-test: {failures} FAILURE(S)", file=sys.stderr)
         return 1
     print(f"self-test: OK (9 directions exercised, {len(one_sided)} one-sided keys detected)")
+    return shell_ladder()
+
+
+
+def shell_ladder() -> int:
+    """r223: the root contract, graded on fixture git repositories.
+
+    The gate's evidence is a STAGED diff plus the tree that diff lands in, so
+    each rung builds a git fixture whose index carries the change under test
+    and whose working copy answers the live-reference question. Rung 1 is the
+    killing rung: an added key with no reference must fail rc 1; a
+    root-dropping main grades THIS checkout, whose index is clean under
+    shared-ui/locales and ui/src, and returns 0.
+    """
+    import contextlib
+    import io
+    import json as _json
+    import tempfile
+
+    def run(root, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    def git(root, *args):
+        return subprocess.run(["git", "-C", str(root)] + list(args),
+                              capture_output=True, text=True,
+                              encoding="utf-8").returncode
+
+    def build(tmp, *, staged=None, code="getString('sales-title');",
+              allowlist=None, locales=True, label=None):
+        base = Path(tempfile.mkdtemp(dir=tmp,
+                                     prefix=(label or ("mini%d_" % next(rung_n)))))
+        if locales:
+            loc = base / "shared-ui" / "locales"
+            loc.mkdir(parents=True)
+            (loc / "shared.ftl").write_text(
+                "sales-title = Sales\n", encoding="utf-8", newline="\n")
+            (loc / "shared.id.ftl").write_text(
+                "sales-title = Penjualan\n", encoding="utf-8", newline="\n")
+        demo = base / "ui" / "src" / "demo.ts"
+        demo.parent.mkdir(parents=True, exist_ok=True)
+        demo.write_text(code + "\n", encoding="utf-8", newline="\n")
+        if allowlist is not None:
+            scripts = base / "scripts"
+            scripts.mkdir(parents=True, exist_ok=True)
+            (scripts / "ftl-orphan-allowlist.json").write_text(
+                _json.dumps(allowlist), encoding="utf-8", newline="\n")
+        git(base, "init", "-q")
+        git(base, "-c", "user.email=fx@example", "-c", "user.name=fx", "add", "-A")
+        git(base, "-c", "user.email=fx@example", "-c", "user.name=fx",
+            "commit", "-q", "-m", "c1")
+        for rel, text in (staged or {}).items():
+            path = base / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8", newline="\n")
+            git(base, "add", "--", rel)
+        return base
+
+    STAGED_ORPHAN = ("sales-title = Sales\nnew-orphan-key-zz = Ghost\n")
+    rung_n = iter(range(1000))
+
+    shell = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: a key orphaned on arrival
+        root = build(tmp, staged={"shared-ui/locales/shared.ftl": STAGED_ORPHAN})
+        rc, said = run(root, "--staged-only")
+        if rc != 1 or "FAIL: 1 orphan problem(s)" not in said \
+                or "orphaned on arrival" not in said or "new-orphan-key-zz" not in said:
+            print("  x rung 1: an unreferenced added key must fail rc 1 (rc=%r "
+                  "said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: the same key, allowlisted with a reason, reads clean
+        root = build(tmp, allowlist={"staged": ["new-orphan-key-zz"]},
+                     staged={"shared-ui/locales/shared.ftl": STAGED_ORPHAN})
+        rc, said = run(root, "--staged-only")
+        if rc != 0 or "ftl orphans: OK" not in said:
+            print("  x rung 2: an allowlisted key must read clean rc 0 (rc=%r "
+                  "said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: removing the last reference strands the key behind it
+        root = build(tmp, staged={"ui/src/demo.ts": "getString('other-thing');\n"})
+        rc, said = run(root, "--staged-only")
+        if rc != 1 or "removes the last reference to 'sales-title'" not in said:
+            print("  x rung 3: a deleted reference must strand its key rc 1 (rc=%r "
+                  "said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: --census reports the whole fixture, informationally, rc 0
+        root = build(tmp)
+        rc, said = run(root, "--census")
+        if rc != 0 or "info[census]: 1 declared en keys, 1 referenced, " \
+                "0 candidates" not in said:
+            print("  x rung 4: a consistent fixture must census clean rc 0 (rc=%r "
+                  "said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: a tree without shared-ui/locales refuses rc 2, naming the
+        # fixture's root -- not the checkout's
+        root = build(tmp, locales=False)
+        rc, said = run(root, "--census")
+        if rc != 2 or "cannot run --census here" not in said \
+                or "shared-ui/locales" not in said or "looked under ROOT=" not in said:
+            print("  x rung 5: a hollow fixture must refuse rc 2 (rc=%r said=%r)"
+                  % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("FTL-ORPHANS SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
     return 0
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
     """Pick the mode, set the read contract, and hold the ONE unreadable-source handler.
 
     `_REPORT_UNREADABLE` is decided here and nowhere else, because the question -- what does
@@ -756,7 +880,14 @@ def main() -> int:
                         help="report whole-tree orphan candidates informationally")
     parser.add_argument("--self-test", action="store_true",
                         help="exercise the diff parsers and prove the checks can fail")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    # r223: the r166 contract. argv is explicit; root names the tree to grade
+    # from code -- every evidence source (locale glob, ui walk, allowlist, the
+    # staged diff's cwd, rel-path prints) hangs under base. self_test keeps
+    # grading THIS checkout's real tables on purpose (its directions need
+    # known-live keys like the analytics-month family), so base is not passed
+    # to it; the ladder is the fixture-graded half.
+    base = ROOT if root is None else Path(root).resolve()
     global _REPORT_UNREADABLE
     if args.self_test:
         mode, run = "--self-test", self_test
@@ -766,11 +897,11 @@ def main() -> int:
     else:
         mode, run = "--staged-only", check_staged
     try:
-        return run()
+        return run() if run is self_test else run(base)
     except UnreadableSource:
         # The path is already in UNREADABLE -- _read() recorded it before raising. What
         # escapes here is a sentence naming it, and the 2 that says no verdict was reached.
-        return _refusal(mode)
+        return _refusal(mode, base)
 
 
 if __name__ == "__main__":
