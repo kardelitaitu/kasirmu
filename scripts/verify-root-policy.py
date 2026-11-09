@@ -38,6 +38,26 @@ import sys
 import tempfile
 from pathlib import Path, PurePath
 
+#: Where fixture trees are written when the host sets a temp variable (a confined
+#: host denies its default temp); unset leaves tempfile's own default in force
+#: (the r166 contract, shared with verify-plugin-guide-parity.py and
+#: verify-runner-claims.py).
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root this file's fixtures go under (None = system default), created.
+
+    The makedirs is the r250 lesson: a scratch dir removed between runs otherwise
+    makes EVERY fixture fail before it grades anything. exist_ok keeps the common
+    case a no-op.
+    """
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
+
+
 ROOT = Path(__file__).resolve().parent.parent
 
 # §5 Pile A (tool discovery by filename at the root) + the four human entry
@@ -341,6 +361,209 @@ def self_test() -> int:
             print(f"  - {f}")
         return 1
     print("  self-test: all cases passed")
+    # r285: the ladder must be CALLED, not merely defined -- and it must be the
+    # LAST thing self_test() does. The seven cases above are the case COUNT and
+    # stay exactly as they were; this line is where they become rungs. r263
+    # measured the failure this guards against: a ladder that existed, satisfied
+    # the census TEXT match, and never ran at all.
+    return shell_ladder()
+
+
+#: The re-entry guard (the r228 pattern, shared with verify-plugin-guide-parity.py
+#: and verify-runner-claims.py): rung 4 drives a nested --self-test through
+#: main(), whose self-test arm now ends in the call above. Without the guard that
+#: nested run starts a SECOND ladder recursively.
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test (rung 4) must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        # SILENT, and that is load-bearing rather than tidy. A line here would
+        # land in the nested run's captured streams -- which EXISTING case 10
+        # already reads -- and the rung asserting on the ladder line would then
+        # match the GUARD'S OWN note instead of the rung's. Measured r285, after
+        # three wrong guesses at the cause: once this note was the only thing
+        # RUNG 4 could see, it passed a page in which rungs 1-3 never spoke.
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """Grade main()'s shell on fixture trees outside this repository.
+
+    Every rung builds a synthetic root under a TemporaryDirectory beneath
+    fixture_root(), hands it to main(argv=[...], root=fixture), and reads the
+    verdict from both captured streams. Nothing here reads or writes the real
+    tree.
+
+    WHY THE NAMES ARE SYNTHETIC. The two listed cases are the killing rung, r285,
+    and the empty-dir killing rung, ghost -- names that do not exist in this
+    checkout and never will. That matters because this checker READS A SCOPE, not
+    a corpus of names: a root-ignoring main() does not crash or go blank, it
+    grades THIS repository. Measured r285 with the harness's own placement
+    (<scratch>/scripts/verify-root-policy.py, so its __file__-derived ROOT is the
+    scratch dir):
+
+      * --self-test printed "root policy: clean - allowlist holds, no empty
+        directories" for the STRAY fixture -- i.e. the mutant's answer to a
+        fixture holding r285 is "clean", which the clean fixture also produces.
+      * the existing cases caught it anyway: "a stray root file must exit 1
+        naming it (rc=0 text='root policy: clean ...')" and "a missing root must
+        exit 2 (rc=0)".
+
+    So a rung that only asserts rc 0 or the word "clean" would be passed by a
+    mutant. RUNG 1 is therefore built to change the fixture's verdict, not merely
+    to announce itself.
+
+    WHAT THIS LADDER DOES AND DOES NOT PROVE, measured r285 rather than assumed.
+    With a main() that ignores its root argument, RUNG 1 dies on the VERDICT
+    (rc 1 but "N finding(s)" is not 1 -- it is the real repository's report).
+    RUNG 5, the scope refusal, is the rung a root-blind main() cannot reach at
+    all: it exits 1 instead of 2, because this checkout exists and the absent
+    fixture path is never looked at. That refusal rung is the one that names the
+    FIXTURE's path, so it is also the one that cannot be satisfied by grading
+    this checkout.
+
+    Each assertion is chosen so an unrelated line cannot satisfy it:
+
+      * rung 1 anchors on the finding's CLASS and its count ("1 finding(s)"), not
+        on a bare filename -- the name appears in the allowlist comment blocks of
+        this very file, and a mutant that graded this repository would have to
+        produce exactly this count line to counterfeit it.
+      * rung 2 anchors on the SAME fixture widening to exactly 2 and NAMING the
+        second class, so a check() that dropped the empty-dir walk (and still
+        exited 1 on rung 1's stray file) fails here -- rung 1 alone cannot see it.
+      * rung 3 anchors on the roster being reported at ZERO from a NON-EMPTY tree.
+        A main() that returned 0 whenever the sweep found nothing -- the quiet
+        way to lose the allowlist check -- matches rung 1's clean twin.
+      * rung 4 requires the nested self-test to pass WITHOUT running a ladder
+        ("LADDER OK" must be ABSENT -- measured r285: the nested run inherits the
+        outer flag through the enclosing cell and correctly skips it).
+      * rung 5 is the SCOPE REFUSAL, kept separate from the verdict rungs on
+        purpose: it requires the message to name the FIXTURE's path, so a main()
+        that ignored its root -- and would name this checkout and still exit 2 --
+        cannot satisfy it.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    NL = chr(10)
+
+    def grade(base, argv=()):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = main(argv=list(argv), root=base)
+        return rc, out.getvalue() + err.getvalue()
+
+    shell = 0
+
+    # ONE tree manages its own lifetime around the rung that grades a missing
+    # root -- that rung is handed a path INSIDE it and requires the path to be
+    # absent, so everything else has to be absent too.
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as td:
+        base = Path(td)
+
+        # rung 1 -- the KILLING rung, and it grades a VERDICT, not a scope refusal.
+        # One stray root file makes the fixture dense, so the report cannot read as
+        # an empty roster. A main() that ignored its root grades THIS checkout --
+        # measured r285: it answered "clean" -- so it fails on both the rc and the
+        # count.
+        root = base / "one"
+        root.mkdir()
+        (root / "r285").write_text("scratch", encoding="utf-8")
+        rc, said = grade(root)
+        if (rc != 1
+                or "root policy: 1 finding(s):" not in said
+                or "stray root file: r285 " not in said
+                or "clean" in said):
+            print("  x rung 1: a fixture with one stray root file must be VERDICTED "
+                  "rc 1 as exactly 1 finding naming it (rc=%r said=%r)"
+                  % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 2 -- the SECOND detector. The empty-dir walk is a separate loop over
+        # the same root, and a check() that lost it still exits 1 on rung 1. Adding
+        # one empty directory to THAT tree must move the count 1 -> 2 and name the
+        # second class. The anchor is "directory: ghost -", not "ghost" alone: the
+        # bare name is already the text of EXISTING case 4's own fixture text, so a
+        # bare-name assertion could be counterfeited by that case's failure.
+        (root / "ghost").mkdir()
+        rc, said = grade(root)
+        if (rc != 1
+                or "root policy: 2 finding(s):" not in said
+                or "stray root file: r285 " not in said
+                or "directory: ghost - " not in said):
+            print("  x rung 2: a fixture that adds one empty directory must VERDICT "
+                  "rc 1 as exactly 2 findings naming both classes (rc=%r said=%r)"
+                  % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 3 -- the roster reported at ZERO from a NON-EMPTY tree that is CLEAN
+        # IN BOTH CLASSES. `ghost` goes because an empty directory is a finding in
+        # its own right (measured r285: leaving it made this rung report
+        # "1 finding(s): empty directory: ghost"); the DIRECTORY `one` stays, so
+        # "clean" cannot be reached by an early return on an empty sweep. This is
+        # the allowlist leg's clean twin.
+        (root / "r285").unlink()
+        (root / "ghost").rmdir()
+        rc, said = grade(root)
+        if rc != 0 or "root policy: clean - allowlist holds" not in said:
+            print("  x rung 3: a non-empty fixture with neither class present must "
+                  "report the roster clean at rc 0 (rc=%r said=%r)"
+                  % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # Back to the DIRTY shape for rung 4: rung 3 has now proven the clean arm
+        # really is clean, so the nested self-test below cannot be passed by a
+        # main() that ignores which kind of root it was handed.
+        (root / "r285").write_text("scratch", encoding="utf-8")
+
+        # rung 4 -- the one rung that drives a nested --self-test through argv. The
+        # re-entry guard is what stops that nested run starting a second ladder;
+        # without it this rung recurses. Both the case line AND the ladder line are
+        # graded: r263's finding was a self-test that printed its cases and no
+        # ladder at all, and an assertion on the case line alone is blind to it.
+        #   The ladder-line clause was TRIED AND REMOVED, measured r285: the
+        #   nested run bubbles the OUTER run's _LADDER_RUNNING down through the
+        #   enclosing function's cell, so it correctly SKIPS the ladder and never
+        #   reaches its final print. Asserting on that line made rung 4 fail
+        #   permanently. Only the case line can survive into the nested run.
+        rc, said = grade(root, ("--self-test",))
+        if (rc != 0
+                or "self-test: all cases passed" not in said
+                or "self-test FAILED" in said
+                or "Traceback" in said
+                or "LADDER OK" in said):
+            print("  x rung 4: a nested --self-test through argv must pass with the "
+                  "re-entry guard active and PRINT the ladder line (rc=%r said=%r)"
+                  % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 5 -- the SCOPE REFUSAL. A path INSIDE the managed tree that was never
+        # created, not a scratch copy: it grades exit 2 and requires the message to
+        # name the FIXTURE's path, so a main() that ignored its root -- and would
+        # name this checkout and still exit 2 -- cannot satisfy it.
+        absent = base / "absent"
+        rc, said = grade(absent)
+        if rc != 2 or "repo root not found" not in said or str(absent.resolve()) not in said:
+            print("  x rung 5: an absent fixture root must refuse rc 2 naming the "
+                  "FIXTURE's path, not this checkout's (rc=%r said=%r)"
+                  % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        shell += 1
+    print("LADDER OK (%d shell rungs through main(): stray verdict, empty-dir "
+          "second detector, clean roster, nested --self-test, scope refusal)" % shell)
     return 0
 
 

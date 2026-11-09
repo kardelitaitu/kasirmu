@@ -12033,3 +12033,47 @@ files it reported as dirty (migrations.rs, PosScreenCoreFlow.test.tsx) had
 cleaned themselves by the time I committed; I confirmed they are clean and did
 not touch them. Census 41 of 70; 29 un-contracted checkers remain.
 
+### Round 270 (2026-11-09) -- five self-tests that failed because of where I put the temp dir
+
+Before the root-policy ladder landed I swept every --self-test in the census and got
+six red out of 64. Five of those six were MY fault, and the mechanism is worth
+recording because it silently invalidates a whole class of fixture.
+
+WHAT I DID: set TMPDIR/TMP/TEMP to a directory INSIDE the checkout (.agents/r286),
+the pattern used all arc for scratch. Fixtures then land inside the repo.
+
+WHAT THAT BREAKS, measured:
+    git -C <fixture-inside-repo> ls-files -z     -> rc 0, 0 entries
+    git -C <fixture-outside-repo> ls-files -z    -> rc 128
+Every checker that treats "git ls-files failed" as the signal to fall back to a
+filesystem walk instead sees a SUCCESSFUL empty repo, so the fallback never runs. 11
+checkers shell out to git ls-files. The no-git path is precisely the one those
+fixtures exist to exercise, so the fixtures graded nothing while looking green-ish.
+
+Proof it was the environment, not the code: rerunning the same five with TMPDIR set
+to C:/Windows/Temp returned rc 0 for all five:
+    verify-ps-syntax, verify-shell-syntax, verify-doc-uniqueness,
+    verify-feature-registry, check-debt-ledger
+
+I nearly recorded five regressions. What stopped me was that verify-ps-syntax failed
+the same way when run from the COMMITTED blob (git show HEAD:...) -- if the failure
+had been in my uncommitted work I would have "fixed" code that was never broken.
+
+This is the arc's recurring lesson in a new place: the harness grades the thing, and
+a fixture that inherits ambient state grades the ambient state. A TMPDIR inside the
+checkout is a corrupted fixture root, not a checker defect -- and the symptom
+(empty result, no error) is exactly the shape that reads as a pass.
+
+ALSO CLEANED: the subagent's plain run reported "root policy: 88 finding(s)", all
+empty directories under .agents/ (main242, r268, r269, r285, r286). It called those
+"pre-existing/environmental". Some were mine from this and earlier rounds. After
+removing them the live run is "root policy: clean - allowlist holds, no empty
+directories" (rc 0), so the 88 was local debris, not a repo condition.
+
+Honest limits: I did not re-run the full 64-checker sweep under the corrected TMPDIR,
+so I do not know whether the three that HANG (verify-agents-mirrors,
+verify-ftl-orphans, verify-ipc-parity) hang for the same reason or a real one --
+unexamined. The 20s per-item timeout may also have mislabelled a merely slow
+checker as hanging. Census 41 -> 42 of 70 via the root-policy ladder (verified:
+its mutant dies on a VERDICT at rung 1, anchor occurs once, live run clean).
+
