@@ -55,6 +55,8 @@ report that could not have examined anything (no .ftl, or no bounded family).
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import re
 import shutil
 import sys
@@ -422,10 +424,117 @@ def self_test() -> int:
         print("SELF-TEST WRONG (" + str(len(bad)) + "/" + str(n) + " cases)")
         return 2
     print("SELF-TEST OK (" + str(n) + " cases, one scratch tree removed)")
+    return shell_ladder()
+
+
+
+def shell_ladder() -> int:
+    """r217: the root seam, graded through main(argv, root) on fixture bundles.
+
+    The fixture's .ftl files are GENERATED from the live FAMILIES table, so the
+    rungs survive family edits: a bundle holding every id the table can build is
+    clean, and dropping one id from the EN bundle is exactly one named gap. Rung 1
+    is the killing rung: a root-dropping main grades THIS checkout's real bundles,
+    which are complete, and returns 0 where the fixture returns 1.
+
+    The empty-family-list refusal (vacuous_reason with an empty table) stays
+    unreachable through the seam -- main() always compares the module's own
+    FAMILIES -- and is graded by R7 on the helper directly; recorded as a limit.
+    """
+
+    def run(root, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    def fluent(ids):
+        return "".join(k + " = X\n" for k in sorted(ids))
+
+    def all_ids():
+        return sorted(p + v for _, p, vs in FAMILIES for v in vs)
+
+    rung_n = iter(range(1000))
+
+    def build(tmp, *, drop_en=None, en_comment_only=False):
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix=("mini%d_" % next(rung_n))))
+        loc = base / "shared-ui" / "locales"
+        loc.mkdir(parents=True)
+        ids = all_ids()
+        en_text = ("# comment only, no keys\n" if en_comment_only else fluent(
+            [i for i in ids if i != drop_en]))
+        (loc / "shared.ftl").write_text(en_text, encoding="utf-8", newline="\n")
+        (loc / "shared.id.ftl").write_text(fluent(ids), encoding="utf-8", newline="\n")
+        return base
+
+    shell = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: one id absent from EN, present in ID --
+        # the likeliest real regression, named by the gap line, rc 1
+        root = build(tmp, drop_en="analytics-month-jan")
+        rc, said = run(root)
+        if rc != 1 or "1 bounded family/families with gaps." not in said \
+                or "missing en: analytics-month-jan" not in said:
+            print("  x rung 1: one EN-missing id must be one named gap rc 1 "
+                  "(rc=%r tail=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: a bundle holding EVERY id the live table can build is clean
+        root = build(tmp)
+        rc, said = run(root)
+        if rc != 0 or "0 bounded family/families with gaps." not in said:
+            print("  x rung 2: complete generated bundles must read clean rc 0 "
+                  "(rc=%r tail=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: an empty locales directory is the zero-bundle refusal, rc 2
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix=("mini%d_" % next(rung_n))))
+        (base / "shared-ui" / "locales").mkdir(parents=True)
+        rc, said = run(base)
+        if rc != 2 or "no *.ftl bundle" not in said:
+            print("  x rung 3: zero bundles must be refused rc 2 (rc=%r said=%r)"
+                  % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: a bundle file that yields ZERO EN ids (comment-only shared.ftl)
+        # is the empty-set refusal too -- n_files is 1, so the zero-file guard
+        # alone would have printed a clean pass over nothing
+        root = build(tmp, en_comment_only=True)
+        rc, said = run(root)
+        if rc != 2 or "yielded ZERO ids" not in said or "English" not in said:
+            print("  x rung 4: a comment-only EN bundle must be refused rc 2 "
+                  "(rc=%r said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: the positional root FLAG still wins over the seam kwarg, the
+        # documented precedence -- the FLAG names a refusal tree (empty locales),
+        # the kwarg a complete one, and the refusal tree's verdict is what comes
+        # back. First draft handed the flag a complete tree and the rung "failed"
+        # at rc 0: the flag won and correctly graded a clean bundle. The fixture,
+        # not the precedence, was wrong -- the same measured-then-pinned rule.
+        flag_root = Path(tempfile.mkdtemp(dir=tmp, prefix=("mini%d_" % next(rung_n))))
+        (flag_root / "shared-ui" / "locales").mkdir(parents=True)
+        seam_root = build(tmp)
+        rc, said = run(seam_root, str(flag_root))
+        if rc != 2 or "no *.ftl bundle" not in said:
+            print("  x rung 5: the positional root must beat the seam kwarg "
+                  "(rc=%r said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("FLUENT-FAMILIES SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
     return 0
 
 
-def main(argv: list[str]) -> int:
+def main(argv: list[str] | None = None, root: str | None = None) -> int:
+    # r217: the r166 seam. argv is explicit so a caller can pass a fixture's flags
+    # without sys.argv leaking in; the root KWARG names the tree to grade from code.
+    # Precedence is the positional flag's, then the kwarg's, then the script's own
+    # tree -- the same order scoped-reads uses (--allowlist wins, tree copy second).
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("root", nargs="?", help="repo root (default: the tree this file lives in)")
     ap.add_argument("--self-test", action="store_true",
@@ -434,8 +543,9 @@ def main(argv: list[str]) -> int:
     if args.self_test:
         return self_test()
 
-    root = Path(args.root).resolve() if args.root else DEFAULT_ROOT
-    locales = root / "shared-ui" / "locales"
+    base = (Path(args.root).resolve() if args.root
+            else Path(root).resolve() if root else DEFAULT_ROOT)
+    locales = base / "shared-ui" / "locales"
     en, id_, n_files = load_bundles(locales)
 
     reason = vacuous_reason(n_files, FAMILIES)
