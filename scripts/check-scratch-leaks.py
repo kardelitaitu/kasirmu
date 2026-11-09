@@ -48,9 +48,12 @@ Usage, from the repo root:
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import json
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -79,25 +82,28 @@ BUDGET_DESCRIPTION = (
 )
 
 
-def scan() -> dict[str, int]:
+def scan(tree: Path = REPO) -> dict[str, int]:
     """Count unguarded `scratch_dir` call sites, and record how many files were read.
 
     The read count matters: "0 sites" and "0 files read" print the same sentence,
     so a renamed SCAN_ROOT would leave the gate printing OK over an empty scan.
     Measured 2026-10-23 by pointing every root at a nonexistent directory.
+    r218: tree is the r166 contract root -- every SCAN_ROOT hangs under it and
+    every reported path is relative to it, so a fixture's verdict names fixture
+    files and the scan never touches the checkout the tool file lives in.
     """
     global FILES_READ
     counts: dict[str, int] = {}
     found_any = False
     for root in SCAN_ROOTS:
-        base = REPO / root
+        base = Path(tree) / root
         if not base.is_dir():
             continue
         for path in base.rglob("*.rs"):
             # The helper's OWN crate declares and tests the helper; counting it
             # would make the budget depend on its documentation. This is the
             # file every caller is told to read, so it is exempt by path.
-            rel = path.relative_to(REPO).as_posix()
+            rel = path.relative_to(tree).as_posix()
             if rel == "crates/kasirmu-test-support/src/lib.rs":
                 continue
             # A thin wrapper that exists ONLY to delegate to the shared helper is
@@ -113,7 +119,7 @@ def scan() -> dict[str, int]:
             hits = count_leaks_in_text(text)
             if hits:
                 found_any = True
-                counts[path.relative_to(REPO).as_posix()] = hits
+                counts[path.relative_to(tree).as_posix()] = hits
     # NOTE ON "found nothing". An earlier version treated zero as a broken scan
     # and exited 2. That was right while 30 real sites existed, and became WRONG
     # the moment they were migrated: zero is now the goal, not a fault, and a
@@ -248,7 +254,7 @@ def detector_still_sees_a_call() -> bool:
     return True
 
 
-def find_dropped_guards() -> list[str]:
+def find_dropped_guards(tree: Path = REPO) -> list[str]:
     """Find functions that build a ScratchDir and return only its PATH.
 
     This is the defect that made twelve recovery tests fail on 2026-10-23. A
@@ -271,14 +277,14 @@ def find_dropped_guards() -> list[str]:
     """
     findings: list[str] = []
     for root in SCAN_ROOTS:
-        base = REPO / root
+        base = Path(tree) / root
         if not base.is_dir():
             continue
         for path in base.rglob("*.rs"):
             text = path.read_text(encoding="utf-8", errors="replace")
             if "ScratchDir::new" not in text:
                 continue
-            rel = path.relative_to(REPO).as_posix()
+            rel = path.relative_to(tree).as_posix()
             for match in re.finditer(r"\bfn\s+\w+\s*\(", text):
                 body_start = text.find("{", match.start())
                 if body_start == -1:
@@ -394,10 +400,132 @@ def self_test() -> int:
     # Counted, not hardcoded: a case that runs but is not counted reads as coverage
     # it is not -- the same failure as a gate that cannot fail.
     print("SELF-TEST OK (%d cases; the last two read the real tree)" % cases)
+    return shell_ladder()
+
+
+
+def shell_ladder() -> int:
+    """r218: the root contract, graded on fixtures through main(argv, root).
+
+    The fixture carries BOTH evidence sources the gate reads -- source under the
+    SCAN_ROOT names and its own scripts/scratch-leak-budget.json -- so the seam
+    moves them together, the r213 rule. Rung 1 is the killing rung: a
+    root-dropping main scans THIS checkout against the REAL budget, which is
+    clean, and returns 0 where the fixture returns 1. Rung 5 proves --update
+    writes the FIXTURE's budget and leaves the real one byte-identical.
+    """
+
+    def run(root, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    def budget(path_str, cap):
+        return {"description": BUDGET_DESCRIPTION, "total": cap,
+                "files": {path_str: cap} if cap else {}}
+
+    def build(tmp, *, src="unguarded", cap=0):
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix=("mini%d_" % next(rung_n))))
+        (base / "scripts").mkdir(parents=True, exist_ok=True)
+        rel = "crates/demo/src/lib.rs"
+        if src == "unguarded":
+            text = 'fn t() { let d = scratch_dir("x"); use_it(&d); }\n'
+        elif src == "dropped":
+            # the EXACT textual shape find_dropped_guards hunts: a guard bound
+            # to a local, then `return <name>.path().to_path_buf` -- the value
+            # outlives the guard, the guard deletes the directory at the brace
+            text = ('fn make() -> std::path::PathBuf {\n'
+                    '    let scratch = ScratchDir::new("p");\n'
+                    '    std::fs::create_dir_all(scratch.path()).ok();\n'
+                    '    return scratch.path().to_path_buf();\n'
+                    '}\n')
+        else:
+            text = "fn clean() { let d = scratch_dir(\"x\"); std::fs::remove_dir_all(&d).ok(); }\n"
+        (base / "crates" / "demo" / "src").mkdir(parents=True, exist_ok=True)
+        (base / "crates" / "demo" / "src" / "lib.rs").write_text(
+            text, encoding="utf-8", newline="\n")
+        (base / "scripts" / "scratch-leak-budget.json").write_text(
+            json.dumps(budget(rel, cap), indent=2) + "\n", encoding="utf-8")
+        return base
+
+    rung_n = iter(range(1000))
+
+    shell = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: one unguarded call against a budget of 0
+        root = build(tmp, cap=0)
+        rc, said = run(root)
+        if rc != 1 or "NEW UNGUARDED SCRATCH DIRECTORY SITE(S):" not in said \
+                or "crates/demo/src/lib.rs: 1 unguarded call(s), budget 0" not in said:
+            print("  x rung 1: an over-budget file must fail rc 1, named "
+                  "fixture-relative (rc=%r said=%r)" % (rc, said[-200:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: the same file under a budget of 1 is within budget -- the
+        # budget is the committed allowance, not a pass over nothing
+        root = build(tmp, cap=1)
+        rc, said = run(root)
+        if rc != 0 or "OK: no file exceeds its unguarded-site budget" not in said:
+            print("  x rung 2: a within-budget file must read OK rc 0 (rc=%r "
+                  "said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: the dropped-guard shape is found in the FIXTURE's tree and
+        # reported even while the budget is clean
+        root = build(tmp, src="dropped")
+        rc, said = run(root)
+        if rc != 1 or "GUARD DROPPED BEFORE ITS VALUE IS RETURNED:" not in said \
+                or "crates/demo/src/lib.rs" not in said:
+            print("  x rung 3: a dropped ScratchDir guard must fail rc 1 named "
+                  "fixture-relative (rc=%r said=%r)" % (rc, said[-200:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: a fixture without its OWN budget file refuses -- the budget
+        # lookup moved with the root, so a fixture cannot read the real one
+        root = build(tmp)
+        (root / "scripts" / "scratch-leak-budget.json").unlink()
+        rc, said = run(root)
+        if rc != 2 or "budget file missing" not in said \
+                or "scratch-leak-budget.json" not in said:
+            print("  x rung 4: a missing fixture budget must refuse rc 2 (rc=%r "
+                  "said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: --update writes the FIXTURE's budget from the fixture's scan,
+        # and the REAL budget file is byte-identical before and after -- a
+        # budget rewrite that escaped the fixture would be the cross-tree write
+        # the whole seam exists to prevent
+        root = build(tmp, cap=0)
+        real_budget = REPO / "scripts" / "scratch-leak-budget.json"
+        before = real_budget.read_bytes()
+        rc, said = run(root, "--update")
+        after = real_budget.read_bytes()
+        wrote = json.loads((root / "scripts" / "scratch-leak-budget.json")
+                           .read_text(encoding="utf-8"))
+        if rc != 0 or "budget written: 1 site(s) across 1 file(s)" not in said \
+                or wrote.get("total") != 1 or before != after:
+            print("  x rung 5: --update must write the fixture's budget and "
+                  "leave the real one untouched (rc=%r said=%r)" % (rc, said[-190:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("SCRATCH-LEAKS SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
     return 0
 
 
-def main() -> int:
+def main(argv=None, root=None):
+    # r218: the r166 contract. argv is explicit; root names the tree to scan AND
+    # where the budget file lives -- the fixture carries both, so the seam moves
+    # every evidence source together (the r213 rule). A root-dropping main scans
+    # the checkout and reads the real budget no matter what fixture was built.
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
         "--self-test",
@@ -409,9 +537,12 @@ def main() -> int:
         action="store_true",
         help="rewrite the budget from the current tree (only after migrating sites)",
     )
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     if args.self_test:
         return self_test()
+
+    tree = REPO if root is None else Path(root).resolve()
+    budget_path = tree / "scripts" / "scratch-leak-budget.json"
 
     # A gate that grades a detector nobody re-checks is this project's most
     # repeated failure. Grade the detector over synthetic source FIRST: if the
@@ -430,7 +561,7 @@ def main() -> int:
         print("pass vacuously. Fix CALL_RE before trusting any result.", file=sys.stderr)
         return 2
 
-    counts = scan()
+    counts = scan(tree)
     total = sum(counts.values())
 
     # THE CENSUS FLOOR. "0 sites" and "0 files read" print the same sentence. Measured
@@ -449,10 +580,10 @@ def main() -> int:
     # Second defect class, same root cause: a guard that never reaches the value
     # it was created for. Checked BEFORE the budget so it reports even when the
     # budget is at zero (which it now is).
-    dropped = find_dropped_guards()
+    dropped = find_dropped_guards(tree)
 
     if args.update:
-        BUDGET_FILE.write_text(
+        budget_path.write_text(
             json.dumps(
                 {
                     "description": BUDGET_DESCRIPTION,
@@ -467,10 +598,10 @@ def main() -> int:
         print(f"budget written: {total} site(s) across {len(counts)} file(s)")
         return 0
 
-    if not BUDGET_FILE.is_file():
-        print(f"SCAN BROKE: budget file missing: {BUDGET_FILE}", file=sys.stderr)
+    if not budget_path.is_file():
+        print(f"SCAN BROKE: budget file missing: {budget_path}", file=sys.stderr)
         return 2
-    budget = json.loads(BUDGET_FILE.read_text(encoding="utf-8"))
+    budget = json.loads(budget_path.read_text(encoding="utf-8"))
     allowed: dict[str, int] = budget.get("files", {})
 
     regressions: list[str] = []
