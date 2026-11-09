@@ -9122,3 +9122,50 @@ that none ever could. Docker daemon still down (probed r159): the E2E /
 llvm-cov / nextest-junit receipts remain the standing PG-gated gap.
 Root-policy RED on the foreign todo.md (r174) and verify-core-size RED
 on the ADR-59 +64 (r181), both awaiting their owning lanes.
+
+### Round 210 (2026-11-09) -- the retire shell's declared limits, graded: residue report, bare prose, colliding spans
+
+The three arms r209's honest-limits paragraph named as rung-less are
+now rungs. Rung 8: a hand-written comment in ANOTHER module naming a
+candidate is REPORTED, not refused -- "stale prose naming a retired fn,
+1 line(s)" with the file and line -- and the run still exits 0, because
+the report is a census, not a verdict. Rung 9: a surviving line that
+reads as an English sentence without a /// marker aborts rc 2 BEFORE
+the write, with the post-condition read back inside the tree -- the
+file still carries the fn the apply was about to delete. Rung 10: a
+command fn defined inside another command fn's body makes the two
+deletion spans collide, and the tool refuses to guess which lines to
+delete -- rc 2, file unchanged.
+
+Rung 10's first draft taught the fixture author the tool's own
+vocabulary: command_fns_in sees ATTRIBUTE-bearing fns, so a nested
+helper without #[tauri::command] is invisible to the candidate set --
+not a gap in the tool (an unattributed nested fn generates no IPC
+command and is out of this gate's brief) but a fact about what "command
+fn" means here. The graded shape is two ATTRIBUTED fns whose spans
+collide, which is the real hazard: span_of stops at the first
+column-zero-brace line, so the nested fn's own brace ends its parent's
+span mid-body, and the overlap check is what stands between that shape
+and a write that deletes the wrong lines.
+
+Rungs 9 and 10 both assert the refusal PRECEDES the write by reading
+the file back -- the same post-condition shape r209's rung 3 uses on
+the success path, now on two refusal paths.
+
+Measured kill re-confirmed on the grown ladder: the root-dropping main
+still aborts rc 2 on the real checkout's missing ladder_probe.rs at
+rung 1. Live dry run unchanged: "nothing to retire in offline.rs: 9
+command fns, all registered, UI-named, or called". Ladder now 10 cases;
+the shell ladder total across the arc's tools stands at 5+4+6+7+10.
+
+Honest limits: the residue arm is graded on the REPORT line only -- the
+40-line cap and the "... and N more" tail are ungraded; the twin-doc
+rewrite arm is graded on one surviving twin, not on the desktop's
+"(ADR #7)" spelling the matcher also accepts; and the dirty-file
+refusal (git_dirty) is graded only by its ABSENCE -- no rung runs the
+tool inside a real git repo with a dirty module, because the fixture
+trees are deliberately git-less, so the refusal's live direction rests
+on the recorded real-tree refusals. Docker daemon still down (probed
+r159): E2E / llvm-cov / nextest-junit receipts remain PG-gated.
+Root-policy RED on the foreign todo.md (r174); core-size RED on the
+ADR-59 +64 (r181) -- both await their owning lanes.
