@@ -211,8 +211,29 @@ MUTATIONS = (
 
 
 def applicable(src):
-    """The mutations whose anchor occurs exactly once in `src`."""
-    return [m for m in MUTATIONS if src.count(m[1]) == 1]
+    """The mutations whose anchor occurs exactly once in `src`.
+
+    DE-DUPLICATED BY ANCHOR. The table carries two rows with identical anchors
+    ("scan base ignores root" at the top and "inline base ignores root" further
+    down, both spelling `base = ROOT if root is None else Path(root).resolve()`)
+    and the same replacement -- a genuine duplicate, not two shapes. They used to
+    be returned twice, so a file matching that one anchor reported "2 of 2
+    mutation(s) killed", which reads as two independent mutants surviving
+    independent evidence when it is one mutation run twice. Measured 2026-11-09:
+    12 of the 70 checkers were double-counted that way.
+
+    Collapsing here rather than deleting a row keeps the table's history intact
+    (the second row records a shape that was added deliberately) while making the
+    COUNT honest, which is the only thing the caller prints.
+    """
+    seen = set()
+    out = []
+    for m in MUTATIONS:
+        if src.count(m[1]) != 1 or m[1] in seen:
+            continue
+        seen.add(m[1])
+        out.append(m)
+    return out
 
 
 def run_mutant(checker, anchor, replacement, scratch, verbose):
@@ -348,6 +369,13 @@ def self_test() -> int:
 
     want("applicable() is a MUTATIONS subset",
          set(applicable("x = 1")) <= set(MUTATIONS), True)
+    # Duplicate rows must not double-count. The table really does hold two rows
+    # with the same anchor; applicability is keyed on the ANCHOR, so a file
+    # matching it once is one mutation, not two.
+    anchor = "base = ROOT if root is None else Path(root).resolve()"
+    got = applicable(anchor)
+    want("a duplicated anchor yields ONE mutation", len(got), 1)
+    want("...and it is the right one", got[0][1] if got else None, anchor)
     # r261: a one-line anchor must not match the first half of a longer
     # conditional. The check above grades two STRING LITERALS, which is not the
     # same as grading the table -- measured 2026-11-09: with the literals fixed
@@ -381,8 +409,8 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("self-test: OK (5 harness cases: anchor shape, ladder guard, "
-          "three-valued mutant outcome)")
+    print("self-test: OK (7 harness cases: anchor shape, duplicate-anchor "
+          "collapse, ladder guard, three-valued mutant outcome)")
     return 0
 
 

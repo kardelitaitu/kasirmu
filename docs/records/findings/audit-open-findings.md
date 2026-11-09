@@ -11871,3 +11871,45 @@ sound but the count flatters itself, and that is an artefact of the table, not o
 the checker. I verified the grep defect and the control, and did not review the 5
 rungs line by line. Census 39 of 70; 31 un-contracted checkers remain.
 
+### Round 266 (2026-11-09) -- one mutation counted twice on twelve checkers
+
+Round 265 ended by noting that prove-ladder-kills applied TWO rows with
+identical anchors to verify-unsafe-safety, so "2 of 2 killed" was one shape
+counted twice. This round measured how far that went:
+
+  rows: 21 | distinct anchors: 20 | duplicated anchors: 1
+  files double-counted: 12 of 70
+
+The duplicate is real, not two similar shapes: "scan base ignores root" (row 1)
+and "inline base ignores root" (row 5) carry the SAME anchor AND the same
+replacement ("base = ROOT if root is None else Path(root).resolve()"). applicable()
+returned both, run_mutant ran the same mutation twice, and main() printed
+"2 of 2 mutation(s) killed" -- which reads as two independent mutants surviving
+independent evidence.
+
+That matters because the printed count is the only thing anyone reads. A file
+proven by one real mutation was indistinguishable from a file proven by two, so
+the harness was crediting coverage it did not have -- the same overstatement as
+r261's NO APPLICABLE sweep, one layer down.
+
+Fixed by collapsing on the ANCHOR inside applicable(), not by deleting the row:
+the second row records a shape someone added deliberately, and removing it would
+lose that. A file matching the duplicated anchor now reports "(1)". Measured
+after: 0 of 70 double-counted, and every previously-killing file still kills
+(census-checker-contracts, verify-runner-claims, verify-selftests-wired,
+verify-unsafe-safety all rc 0).
+
+Two self-test cases added -- a duplicated anchor yields ONE mutation, and it is
+the right one -- and mutated against: removing the dedupe turns them red
+("expected 1, got 2", rc 2). The case COUNT line was stale in the same commit it
+was printed from (it still said 5 after I added two cases); corrected to 7. That
+is the r258 lesson again, this time caught within the round rather than later.
+
+NOT corrected, and now stated: the duplicated row is still in the table. The
+deduped output cannot tell a reader that rows 1 and 5 are identical, so anyone
+editing the table may add a third copy of the same anchor and see no change.
+Honest limits: I verified the count change and the four spot-checked files, not
+all 70; and I did not re-audit which of the 12 affected checkers had "killed both"
+claims already written into the register -- those earlier entries are now known to
+have overstated by one, and I have not corrected them individually.
+
