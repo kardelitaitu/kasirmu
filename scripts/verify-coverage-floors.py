@@ -470,14 +470,16 @@ def _shell_ladder_body() -> int:
     mistake for a result -- measured 2026-11-09, not assumed.
 
     WHAT IS GRADED.
-      * rung 1  the KILLING rung: a fixture whose DEFAULT paths (relative to the
-                root) hold a healthy report must grade OK. A main() that resolves
-                against ROOT instead reads this checkout, where coverage-probe.json
-                does not exist, and refuses -- so the rung fails on the SCOPE
-                REFUSAL a root-blind main produces, not on an accident.
-      * rung 2  the opposite direction: the same default paths holding a
-                REGRESSED report must fail rc 1 naming platform-sync, i.e. it
-                reads the fixture it was handed and not the one before it.
+      * rung 1  the KILLING rung, and it grades a VERDICT. The fixture's DEFAULT
+                paths (relative to the root) hold a REGRESSED report, and the rung
+                requires the FAIL verdict NAMING platform-sync. A main() that
+                resolves against ROOT instead reads this checkout, which has no
+                report at all, and refuses -- and a refusal FAILS this rung.
+                (This rung first asked for the healthy OK line. A root-blind
+                mutant then died on the refusal, which grades nothing: r274.)
+      * rung 2  the POSITIVE floor: the same default paths holding a HEALTHY report
+                must grade OK, so an arm that simply always answers rc 1 passes
+                rung 1 and dies here.
       * rung 3  RELATIVE argv paths follow the root too.
       * rung 4  an ABSOLUTE --json outside the root still wins over the root, so
                 the seam is a default rather than a cage.
