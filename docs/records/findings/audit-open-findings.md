@@ -8774,3 +8774,40 @@ Docker daemon still down (probed r159): the E2E / llvm-cov / nextest-junit
 receipts remain the standing PG-gated gap. The root-policy gate remains
 RED on the foreign todo.md (r174) and verify-core-size RED on the ADR-59
 +64 (r181), both awaiting their owning lanes.
+
+### Round 202 (2026-11-09) -- invoke-parity joins the arc; the fixture rebuilds both shells, not half
+
+The r166..r201 contract applied to the session-token/currency payload
+gate: main(argv, root) rebuilds BOTH shell trees -- desktop and tablet,
+lib.rs plus commands/ recursively -- and the ui api dir under the
+contract root, never one shell and not the other. run_check() was
+already parameterized (shells, api_dir, root); the module-level SHELLS
+and API_DIR built from REPO_ROOT at import were the only half-rooted
+surface, and the summary line's api-file count read the same frozen
+path.
+
+Seven shell cases over the two-shell fixture, graded THROUGH main() so
+the rebuild and the summary line are exercised: a clean fixture reports
+"2 invoke(s) ... 0 violation(s)"; a missing sessionToken fails rc 1;
+an EMPTY generate_handler fails rc 1 (parsed as empty -- a lib.rs whose
+layout drifted must not pass as a zero-command shell); a missing lib.rs
+fails naming the shell; a missing api dir fails; and the strict-
+argument refusal survives main() (unknown flag, argparse rc 2).
+
+Measured kill: the root-dropping main rebuilds the real checkout and
+reports 534 invoke(s) on the first rung, which demands the fixture's 2 --
+killed immediately; the probe is read-only. Capture:
+verify-invoke-parity: 534 invoke(s) across 58 api file(s), 2 shell(s) --
+0 violation(s) live.
+
+Honest limits: the currency class is graded through run_check() by the
+pure cases but has no main()-level shell case of its own (the ladder
+reuses the token fixture); the param-order independence and the
+subdirectory-rglob arm likewise stay pure-only -- the ladder grades the
+WIRING (root rebuild, summary line, refusals), the classifier semantics
+were already pinned; the _payload_text balanced-brace scanner's
+template-literal edge is documented as ungraded by design. Docker daemon
+still down (probed r159): the E2E / llvm-cov / nextest-junit receipts
+remain the standing PG-gated gap. The root-policy gate remains RED on
+the foreign todo.md (r174) and verify-core-size RED on the ADR-59 +64
+(r181), both awaiting their owning lanes.
