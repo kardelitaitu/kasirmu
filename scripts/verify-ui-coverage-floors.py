@@ -55,6 +55,7 @@ choice.
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import sys
 from pathlib import Path
@@ -63,6 +64,18 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SUMMARY = ROOT / "coverage" / "ui" / "coverage-summary.json"
 DEFAULT_FLOORS = ROOT / "scripts" / "coverage-floors.json"
 METRICS = ("lines", "statements", "functions", "branches")
+
+#: Where fixtures are written when the host sets a temp variable. A host whose
+#: confinement denies files under its default temp (measured 2026-11-09 on the
+#: agent host: every write into a TemporaryDirectory is EPERM) can point this at
+#: a directory it allows; unset leaves tempfile's own default in force.
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root() -> str | None:
+    """The temp root this file's fixtures are written under (None = system default)."""
+    import os
+    return next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
 
 
 def load_floors(path: Path) -> dict[str, float]:
@@ -142,7 +155,8 @@ def self_test() -> int:
     # on 2026-11-06. A body of `return {}` would have passed every metric vacuously.
     import tempfile
 
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as tmp:
         good = Path(tmp) / "floors.json"
         good.write_text(json.dumps({"ui_floors": {"lines": 85.7, "branches": 76}}), encoding="utf-8")
         if load_floors(good) != {"lines": 85.7, "branches": 76.0}:
@@ -175,7 +189,8 @@ def self_test() -> int:
     import tempfile as _tempfile
     shell = 0
     def _shell(files, argv=None):
-        with _tempfile.TemporaryDirectory() as td:
+        with _tempfile.TemporaryDirectory(dir=fixture_root(),
+                                           ignore_cleanup_errors=True) as td:
             base = Path(td)
             for rel, content in files.items():
                 dst = base / rel
@@ -214,6 +229,140 @@ def self_test() -> int:
         print(f"  x floors without a ui_floors map must refuse rc 2 (rc={rc})", file=sys.stderr)
         return 1
     print(f"  shell: {shell} case(s) behave through main()")
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard for the ladder (r236 -- the r228 lesson).
+
+    Rung 6 drives --self-test through argv from INSIDE the ladder, and the
+    self-test ends in this call, so without the guard that nested run would
+    recurse. The guard turns it into a printed skip.
+    """
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        print("  (ladder re-entry from a nested --self-test: skipped)")
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """r236: the root contract, graded on fixture trees through main().
+
+    The summary path is the dangerous one, because unlike the other checkers
+    in this arc the real checkout's summary EXISTS. A main() that ignored its
+    root would grade this repository's own report against the fixture's
+    floors and return a plausible verdict instead of refusing -- which is why
+    rung 1 is not "a shortfall fires" but "a fixture with NO summary must
+    refuse exit 2", the arm that cannot be satisfied by reading the real tree.
+
+    Rungs also pin what an EXPLICIT --summary/--floors does under a root, the
+    override the docstring promises but no case reached before this round.
+    """
+    import contextlib
+    import tempfile
+
+    def run(root_dir, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root_dir))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    def build(tmp, files, label="fx"):
+        """A fixture root holding the given {relative path: text} files."""
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix=label + "_"))
+        for rel, text in files.items():
+            p = base / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text, encoding="utf-8", newline="\n")
+        return base
+
+    FLOORS = json.dumps({"ui_floors": {"lines": 50, "statements": 50,
+                                       "functions": 50, "branches": 50}})
+    SUM_OK = json.dumps({"total": {m: {"pct": 60.0} for m in METRICS}})
+    SUM_LOW = json.dumps({"total": {m: {"pct": 40.0 if m == "branches" else 60.0}
+                                   for m in METRICS}})
+
+    shell = 0
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as tmp:
+        # rung 1 -- the killing rung: no summary under the fixture root must
+        # REFUSE, which a root-ignoring main cannot do (the real one exists).
+        root = build(tmp, {"scripts/coverage-floors.json": FLOORS})
+        rc, said = run(root)
+        if rc != 2 or "cannot read the coverage summary" not in said:
+            print("  x rung 1: a fixture without a summary must refuse rc 2 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2 -- a summary that exists but carries no total block refuses.
+        root = build(tmp, {"scripts/coverage-floors.json": FLOORS,
+                           "coverage/ui/coverage-summary.json": "{}"})
+        rc, said = run(root)
+        if rc != 2 or "not a usable coverage summary" not in said:
+            print("  x rung 2: a summary without a total block must refuse rc 2 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3 -- floors without a ui_floors map refuse, naming the manifest.
+        root = build(tmp, {"scripts/coverage-floors.json": json.dumps({}),
+                           "coverage/ui/coverage-summary.json": SUM_OK})
+        rc, said = run(root)
+        if rc != 2 or "cannot read the floors manifest" not in said:
+            print("  x rung 3: floors without ui_floors must refuse rc 2 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4 -- a fixture at its floors greens, graded from the FIXTURE.
+        root = build(tmp, {"scripts/coverage-floors.json": FLOORS,
+                           "coverage/ui/coverage-summary.json": SUM_OK})
+        rc, said = run(root)
+        if rc != 0 or "OK (every metric" not in said:
+            print("  x rung 4: a fixture at its floors must exit 0 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5 -- one shortfall fires, naming ONLY the metric that fell.
+        root = build(tmp, {"scripts/coverage-floors.json": FLOORS,
+                           "coverage/ui/coverage-summary.json": SUM_LOW})
+        rc, said = run(root)
+        if rc != 1 or "branches" not in said or "lines" not in said:
+            print("  x rung 5: a shortfall must exit 1 naming the metric "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 6 -- --self-test dispatch flows through argv; re-entry is guarded.
+        root = build(tmp, {"scripts/coverage-floors.json": FLOORS,
+                           "coverage/ui/coverage-summary.json": SUM_OK})
+        rc, said = run(root, "--self-test")
+        if rc != 0 or "self-test: OK" not in said or "ladder re-entry" not in said:
+            print("  x rung 6: --self-test through argv must pass rc 0 and skip the "
+                  "nested ladder (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 7 -- an explicit --summary wins over the fixture root, as promised.
+        elsewhere = build(tmp, {"rep.json": SUM_LOW}, label="rep")
+        root = build(tmp, {"scripts/coverage-floors.json": FLOORS,
+                           "coverage/ui/coverage-summary.json": SUM_OK})
+        rc, said = run(root, "--summary", str(elsewhere / "rep.json"))
+        if rc != 1:
+            print("  x rung 7: an explicit --summary must override the root's default "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("UI-COVERAGE-FLOORS SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
     return 0
 
 def main(argv=None, root=None) -> int:

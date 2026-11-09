@@ -10510,3 +10510,43 @@ TMPDIR/TMP/TEMP for its fixtures too. Rung 7 asserts the scan line is absent
 under --quiet by substring, so a future line that happens to contain the word
 "scanned" would fail the rung for the right reason but a misleading message --
 left as measured rather than generalised.
+### Round 236 (2026-11-09) -- ui-coverage-floors: the ladder whose killing rung is a REFUSAL, not a finding
+
+verify-ui-coverage-floors.py (263 lines) was the next census target, "missing
+ladder". It took `root` already; this round adds seven rungs on fixture trees
+through `main(argv, root)`.
+
+The interesting part is which rung kills. In the three checkers this arc
+contracted before it, the killing rung was a fixture defect that must exit 1
+-- a gap, an unparseable workflow, a merged line. Here the dangerous
+root-dropping main would not produce a wrong VERDICT, it would produce a
+plausible one: this repository's `coverage/ui/coverage-summary.json` exists
+and passes its floors (measured this round: 87.74 / 85.12 / 82.69 / 78.04
+against 85.7 / 83.1 / 80.7 / 76.0), so a main that ignored its root would
+grade the REAL report against the fixture's floors and return something
+believable. Rung 1 is therefore the missing-input arm: a fixture root with
+floors but no summary must exit 2 "cannot read the coverage summary", which
+no root-ignoring main can print.
+
+Rungs 2 and 3 complete the refusal floor -- a summary that opens but carries
+no total block, and a floors manifest with no ui_floors map, both exit 2
+naming the input. Rung 7 pins a promise the docstring makes and no case
+reached: an explicit `--summary` still wins over the root's default, tested
+by pointing the flag at a second fixture that must fire.
+
+Measured: census 22 of 70 contracted (was 21); the file no longer appears in
+the un-contracted list; next target is check-fixture-ftl-keys.py at 267 lines
+(it needs root_param too, not only a ladder). Ladder 7 rungs, self-test 8 + 4
+shell cases, both exit 0. Live gate: "ui-coverage-floors: OK (every metric at
+or above its floor)". Dependents unmoved: verify-selftests-wired 105 of 107,
+verify-gate-completeness OK.
+
+Honest limits: the ladder grades `main()`'s shell and the two inputs'
+refusal arms, not `grade()`'s per-metric arithmetic, which the eight self-test
+cases own. It says nothing about per-file coverage or the Playwright-only
+flows the docstring excludes -- those exclusions are unchanged and ungraded
+here. The host confinement recorded since round 233 still applies; this file
+now honours TMPDIR/TMP/TEMP for its fixtures, and the ladder was run with an
+ABSOLUTE temp root because a relative one is joined twice by this file's
+fixture helper -- a scratch-harness artefact of the round, not a checker
+defect, and not fixed here.
