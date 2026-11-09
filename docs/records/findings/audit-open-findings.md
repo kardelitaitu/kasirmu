@@ -8414,3 +8414,52 @@ case. Docker daemon still down (probed r159): the E2E / llvm-cov /
 nextest-junit receipts remain the standing PG-gated gap. The root-policy
 gate remains RED on the foreign todo.md (r174) and verify-core-size RED on
 the ADR-59 +64 (r181), both awaiting their owning lanes.
+
+### Round 194 (2026-11-09) -- exhaustive-deps joins the arc; the fixture must speak the file name's language
+
+The r166..r193 contract applied to the stale-closure ratchet:
+run_eslint(ui) redirects the UI tree -- binary resolution AND cwd together,
+never half (a root redirecting the binary but not the working directory
+would lint a tree that exists nowhere) -- load_baseline(state) and the
+--set-baseline write follow the same root, and main(argv, root) hands them
+all one base. The self-test's UI-global repointing dance is gone: the
+scratch tree is passed explicitly.
+
+Six shell cases over a tempdir ui/ carrying a FAKE project-local eslint:
+an over-cap count fails rc 1 naming the cap; below-cap reads ok with the
+lowering suggestion; --set-baseline records the measured count (graded
+twice -- once through rc, once by reading the written file inside the
+tempdir with, per the fixture rules); a usage-error lint (exit 2) fails
+closed on the run itself before any number is believed; and a missing
+linter refuses with the friendly path. The real cap is 0 (ratcheted there
+2026-10-22), so the live line reads 0/0/cap 0 -- the ladder needed caps
+fitted to the fixture, not the real tree.
+
+The round's named lesson: THE FIXTURE MUST SPEAK THE FILE NAME'S
+LANGUAGE. My first ladder wrote sh syntax into eslint.cmd -- on Windows
+the .cmd twin is executed by cmd.exe, which ran the sh body with echo on
+and printed its quotes; measure() then saw two rule mentions against one
+warning and failed closed with the inconsistent-parse refusal. The
+pre-existing fake-linter section already knew this (its .cmd/.sh twins
+differ); the shell ladder had to learn it, and the spy that found it is
+recorded here: a subprocess.run wrapper printing the file bytes at
+execution time. Two fixture rules re-proven the hard way: placeholder
+directories must EXIST before a gate writes (scripts/), and --set-baseline
+still LOADS the cap first, so the fixture carries a baseline even when
+the next act is to overwrite it.
+
+Measured kill: the root-dropping main mutant dies on the over-cap rung --
+it lints the real tree, gets 0/0/cap 0, returns 0 where the fixture
+demands 1; it dies BEFORE reaching --set-baseline, so the real baseline
+file is never touched by the probe. Capture: warnings total: 0
+exhaustive-deps: 0 cap: 0 (clean).
+
+Honest limits: the deps>warnings arithmetic guard is graded by the
+pre-existing pure case only, not through main(); the empty-output clean
+case (eslint 9 prints no summary on zero findings) likewise stays a pure
+measure() case -- no fixture exercises main() end-to-end on a truly
+silent linter; the offenders listing truncation (150 chars) is asserted
+nowhere. Docker daemon still down (probed r159): the E2E / llvm-cov /
+nextest-junit receipts remain the standing PG-gated gap. The root-policy
+gate remains RED on the foreign todo.md (r174) and verify-core-size RED
+on the ADR-59 +64 (r181), both awaiting their owning lanes.
