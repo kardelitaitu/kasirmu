@@ -9479,3 +9479,55 @@ and state-closure (r216) limits stand. Docker daemon still down (probed
 r159): E2E / llvm-cov / nextest-junit receipts remain PG-gated.
 Root-policy RED on the foreign todo.md (r174); core-size RED on the
 ADR-59 +64 (r181) -- both await their owning lanes.
+
+### Round 218 (2026-11-09) -- scratch-leaks joins the contract: the budget file moves WITH the root
+
+check-scratch-leaks.py reads TWO evidence sources -- source under the
+SCAN_ROOT names, and scripts/scratch-leak-budget.json -- and until this
+round both were module globals. main() is now
+main(argv=None, root=None), and the root moves BOTH together (the r213
+rule, stated where the fixture teaches it): scan(tree) hangs every
+SCAN_ROOT under the fixture and reports fixture-relative paths,
+find_dropped_guards(tree) walks the fixture, and the budget lookup and
+--update WRITE land in the fixture's scripts/ directory. That last one
+matters most: --update is a WRITE tool, and rung 5 proves the rewrite
+hits the fixture's budget while the real
+scripts/scratch-leak-budget.json is byte-identical before and after --
+a budget rewrite that escaped a fixture would be the cross-tree write
+the whole seam exists to prevent.
+
+The ladder is 5 rungs: the killing rung (one unguarded call against a
+fixture budget of 0 -- the root-dropping main scans the checkout
+against the real budget, clean, rc 0; probe218 re-proven live, "KILL
+CONFIRMED"), the same file within a budget of 1 (the budget is a
+committed allowance, not a pass over nothing), the dropped-guard shape
+found in the fixture even with a clean budget (rc 1, named
+fixture-relative), a fixture WITHOUT its own budget file refusing rc 2
+(the lookup moved with the root, so a fixture cannot read the real
+one), and the --update write-scoping proof.
+
+Rung 3's first fixture did not trip the detector: it wrapped the path
+in a local struct constructor, S(...), while find_dropped_guards hunts
+the EXACT textual shapes -- Self(name.path()) or
+return name.path().to_path_buf -- that the 2026-10-23 recovery-test
+defect actually had. The fixture now carries the return form, with the
+shape noted in the rung comment; the detector's textuality is a limit,
+not a bug (a dataflow analysis is the alternative the docstring
+already rules out on cost).
+
+Self-test reads "SELF-TEST OK (4 cases; the last two read the real
+tree)" plus the 5-rung ladder; live run unchanged: "OK: no file
+exceeds its unguarded-site budget" at exit 0.
+
+Honest limits: the per-file budget caps COUNTS, not correctness -- a
+file with 3 budgeted unguarded sites still leaks 3 directories per
+run, by the gate's own design; rung 5's byte-identity check covers the
+real budget file only, not the real tree (the fixture scan cannot
+write to the real tree, and proving it would require running --update
+here, which is exactly the write the rung exists to contain); and the
+REMOVAL_RE exemption stays coarse by design. The scoped-reads (r213),
+retire (r214), state-closure (r216), and fluent-families (r217) limits
+stand. Docker daemon still down (probed r159): E2E / llvm-cov /
+nextest-junit receipts remain PG-gated. Root-policy RED on the foreign
+todo.md (r174); core-size RED on the ADR-59 +64 (r181) -- both await
+their owning lanes.
