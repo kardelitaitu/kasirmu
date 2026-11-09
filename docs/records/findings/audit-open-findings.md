@@ -10635,3 +10635,42 @@ Rung 4 accepts any refusal text containing "no generate_handler"; the message
 also names the file, which the rung does not check. Two executor outages hit
 this round (EXECUTOR_UNAVAILABLE, both self-clearing); the ladder output above
 is from the run after the last outage, not a re-reading of an earlier one.
+### Round 239 (2026-11-09) -- dead-controls: a ladder beside an existing guard, and two guards that must not substitute for each other
+
+check-dead-controls.py (286 lines) was the next census target, "missing
+ladder". Unlike the six checkers this arc contracted before it, this one was
+already substantially shell-graded: r175 gave it four cases through
+`main(argv, root)`, and it carries its own `_IN_SHELL` re-entry guard. The
+census grades the ladder FORM, so what this round adds is the
+`_LADDER_RUNNING` guard and `shell_ladder()` / `_shell_ladder_body()`
+structure with five rungs.
+
+The interesting design point is that the file now has TWO re-entry guards
+and neither is redundant. `_IN_SHELL` exists because main() runs self_test()
+as a PREFLIGHT before every sweep, so a shell case calling main() would
+otherwise re-enter the self-test forever. `_LADDER_RUNNING` exists because
+the self-test's TAIL now calls the ladder, and rung 4 drives --self-test
+through argv from inside it. One guards the file's head, the other its tail;
+rung 4 asserts the ladder guard is silent on re-entry, and the preflight path
+is unchanged. Collapsing them into one flag would make rung 4 either recurse
+or skip the whole ladder, so the comment in `shell_ladder()` says why.
+
+Rung 1 kills: this checkout's features tree sweeps clean (measured r239: 0
+candidates over 317 files, exit 0), so a root-blind main() would print that
+same clean sweep against a fixture holding a dead button. Rung 3 grades the
+design/ exemption, which main() keys on the ROOT-RELATIVE path -- the module
+comment at :260 records that coupling and no case executed it before.
+
+Measured: census 25 of 70 contracted (was 24); next target is
+check-orphan-prototype-files.py at 287 lines. Ladder 5 rungs, self-test
+9 detector + 4 verdict + 4 shell cases, both exit 0. Live sweep unchanged:
+"0 candidate(s) with no handler ... (317 file(s) read)", exit 0. Dependents
+unmoved: verify-selftests-wired 105 of 107, verify-gate-completeness OK.
+
+Honest limits: the preflight means a --self-test run prints the self-test
+twice and runs the ladder twice; that is the r175 design, not something this
+round introduced, and it is left alone. The ladder grades the shell, the
+corpus count and the design exemption -- not `full_tag`'s bracket walk or
+`in_comment`, which the nine detector cases own. The "ancestor check not
+automated" wording in the report stands: this gate still cannot tell INERT
+from RESCUED at runtime, and the ladder does not claim otherwise.

@@ -41,6 +41,17 @@ import sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SCAN_ROOT = os.path.join(ROOT, "ui", "src", "features")
+
+#: Where fixtures are written when the host sets a temp variable. A host whose
+#: confinement denies files under its default temp (measured 2026-11-09 on the
+#: agent host: every write into a TemporaryDirectory is EPERM) can point this at
+#: a directory it allows; unset leaves tempfile's own default in force.
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root this file's fixtures are written under (None = system default)."""
+    return next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
 BTN_RE = re.compile(r"<(?:Button|button)\b")
 QUOTES = ('"', '`')
 #: Only the type="submit" ATTRIBUTE drives a form. A bare "submit" substring
@@ -191,7 +202,8 @@ def self_test():
     else:
       def _shell(files):
         global _IN_SHELL
-        with tempfile.TemporaryDirectory() as td:
+        with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                             ignore_cleanup_errors=True) as td:
             root = Path(td)
             for rel, content in files.items():
                 f = root / rel
@@ -219,7 +231,8 @@ def self_test():
       if rc != 0 or "0 candidate(s)" not in text:
         bad.append("a design showcase button must be exempt, not reported (rc=%d text=%r)"
                    % (rc, text[-120:]))
-      with tempfile.TemporaryDirectory() as td:
+      with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                           ignore_cleanup_errors=True) as td:
         out, err = _io.StringIO(), _io.StringIO()
         with _ctxlib.redirect_stdout(out), _ctxlib.redirect_stderr(err):
             _IN_SHELL = True
@@ -235,6 +248,123 @@ def self_test():
         return 2
     print("SELF-TEST OK (%d detector cases + 4 verdict cases + 4 shell cases)"
           % len(SELF_TEST_CASES))
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder():
+    """Re-entry guard for the ladder (r239 -- the r228 lesson).
+
+    Rung 4 drives --self-test through argv from INSIDE the ladder, and the
+    self-test ends in this call, so without the guard that nested run would
+    recurse. This file already carries a `_IN_SHELL` guard for its own shell
+    cases; the two are independent, and neither substitutes for the other:
+    `_IN_SHELL` stops main()'s PREFLIGHT from re-entering self_test(), while
+    this one stops the self-test's TAIL from re-entering the ladder.
+    """
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        print("  (ladder re-entry from a nested --self-test: skipped)")
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body():
+    """r239: the root contract, graded on fixture features trees through main().
+
+    Rung 1 IS the killing rung. This checkout's features tree currently sweeps
+    with no candidate (measured r239: exit 0 over 317 files), so a main() that
+    ignored its root would print a clean sweep against a fixture holding an
+    inert button. The fixture must exit 1 naming `x/Screen.tsx:1`.
+
+    Rung 3 pins the exemption this gate's own history is about: the design/
+    showcase exemption is matched against the ROOT-relative path, which main()
+    computes with `ROOT if root is None else root`. A main that resolved the
+    relative path against ROOT while sweeping the fixture would still exempt
+    (the fixture path contains no /design/), but one that skipped the
+    exemption entirely would report it -- the rung fails either way if the
+    rule drifts, and the module comment at :260 says why that coupling exists.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    def run(root_dir, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root_dir))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    def build(tmp, files, label="fx"):
+        """A fixture root holding the given {relative path: text} .tsx files."""
+        base = tempfile.mkdtemp(dir=tmp, prefix=label + "_")
+        for rel, text in files.items():
+            p = os.path.join(base, rel)
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "w", encoding="utf-8", newline=chr(10)) as fh:
+                fh.write(text)
+        return base
+
+    GOOD = "export const A = () => <Button onClick={go()}>ok</Button>\n"
+    INERT = "export const A = () => <Button>Details</Button>\n"
+    SHOWCASE = "export const D = () => <Button>show</Button>\n"
+
+    shell = 0
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as tmp:
+        # rung 1 -- the killing rung: the fixture's inert button is reported.
+        root = build(tmp, {"ui/src/features/x/Screen.tsx": INERT})
+        rc, said = run(root)
+        if rc != 1 or "x/Screen.tsx:1" not in said:
+            print("  x rung 1: an inert fixture button must exit 1 naming file:line "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2 -- a handled button sweeps clean, counting the fixture's corpus.
+        root = build(tmp, {"ui/src/features/x/Screen.tsx": GOOD})
+        rc, said = run(root)
+        if rc != 0 or "0 candidate(s)" not in said or "1 file(s) read" not in said:
+            print("  x rung 2: a handled fixture button must exit 0 counting one file "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3 -- the design exemption is keyed on the root-relative path.
+        root = build(tmp, {"ui/src/features/design/Show.tsx": SHOWCASE,
+                           "ui/src/features/x/Screen.tsx": GOOD})
+        rc, said = run(root)
+        if rc != 0 or "2 file(s) read" not in said:
+            print("  x rung 3: a design/ showcase must be exempt but still counted "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4 -- --self-test dispatch flows through argv; re-entry is guarded.
+        root = build(tmp, {"ui/src/features/x/Screen.tsx": GOOD})
+        rc, said = run(root, "--self-test")
+        if rc != 0 or "SELF-TEST OK" not in said or "ladder re-entry" not in said:
+            print("  x rung 4: --self-test through argv must pass rc 0 and skip the "
+                  "nested ladder (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5 -- the refusal floor: no features tree under the fixture root.
+        empty = tempfile.mkdtemp(dir=tmp, prefix="empty_")
+        rc, said = run(empty)
+        if rc != 2 or "read no .tsx" not in said:
+            print("  x rung 5: an empty corpus must refuse rc 2 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("DEAD-CONTROLS SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
     return 0
 
 
