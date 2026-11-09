@@ -30,11 +30,14 @@ Exit 0 all parse, 1 at least one does not, 2 could not run the parser.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -77,8 +80,13 @@ def is_shell(path: Path) -> bool:
     return any(k in head.decode("utf-8", "replace") for k in ("sh", "bash"))
 
 
-def targets() -> list[Path]:
-    """Every first-party shell file in the repo, not just scripts/ and .githooks/.
+def targets(root: Path = ROOT) -> list[Path]:
+    """Every first-party shell file under the contract root, not just scripts/ and .githooks/.
+
+    r215: root carries the r166 contract -- the default is the real checkout,
+    and a fixture root makes every evidence source (git ls-files base, walk
+    base) move TOGETHER, so the gate grades the fixture and never the tree
+    the tool file happens to live in.
 
     The first version of this gate scanned two directories and I wrote that limitation
     into its own docstring as a KNOWN GAP -- the same mistake the self-test meta-gate had
@@ -101,7 +109,7 @@ def targets() -> list[Path]:
     out: list[Path] = []
     tracked: set[str] | None = None
     try:
-        r = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z"],
+        r = subprocess.run(["git", "-C", str(root), "ls-files", "-z"],
                            capture_output=True, text=True, check=True)
         tracked = {p for p in r.stdout.split("\0") if p}
     except (OSError, subprocess.CalledProcessError):
@@ -117,12 +125,12 @@ def targets() -> list[Path]:
         # run as root during package install and uninstall, where a parse error breaks
         # the install. A shebang is a FACT about the file; a .sh suffix is a habit.
         for rel in sorted(tracked):
-            p = ROOT / rel
+            p = root / rel
             if p.is_file() and not rel.endswith(".sample") and is_shell(p):
                 out.append(p)
         return sorted(out)
 
-    for dirpath, dirnames, filenames in os.walk(ROOT):
+    for dirpath, dirnames, filenames in os.walk(root):
         # d != ".git", NOT d.startswith(".git"): the prefix form also swallows
         # ".githooks", which is where four of the shell scripts live (commit-msg,
         # post-commit, pre-commit, pre-push). That made this fallback find 56 where the
@@ -222,7 +230,7 @@ def parser_for(path: Path) -> list[str]:
     return [_interpreter("sh"), "-n"]
 
 
-def check(path: Path) -> tuple[bool, str]:
+def check(path: Path, root: Path = ROOT) -> tuple[bool, str]:
     # Forward slashes, always. The Windows-native form C:\\dev\\... reaches Git-bash's
     # /bin/bash with its separators eaten (C:devkasirmu...) and the parser then reports a
     # MISSING FILE rather than a syntax error -- a failure this gate must never
@@ -235,10 +243,10 @@ def check(path: Path) -> tuple[bool, str]:
     # tolerated C:\\... and bash -n did not. A repo-relative path has no drive letter
     # to mangle and is the one form every shell accepts on every platform, so that is
     # what is passed. cwd is ROOT, so the relative path resolves correctly.
-    rel = path.relative_to(ROOT).as_posix()
+    rel = path.relative_to(root).as_posix()
     cmd = parser_for(path) + [rel]
     try:
-        r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True,
+        r = subprocess.run(cmd, cwd=root, capture_output=True, text=True,
                            errors="replace")
     except OSError as exc:
         return False, f"could not run {cmd[0]}: {exc}"
@@ -252,7 +260,7 @@ def check(path: Path) -> tuple[bool, str]:
     # the retry or never worked, and a real syntax error reproduces every time.
     reason = (r.stderr or r.stdout or "").strip()
     if not _looks_like_parse_output(reason):
-        r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True,
+        r = subprocess.run(cmd, cwd=root, capture_output=True, text=True,
                            errors="replace")
         if r.returncode == 0:
             return True, ""
@@ -560,22 +568,117 @@ def self_test() -> int:
     return 0
 
 
-def main() -> int:
+
+def shell_ladder() -> int:
+    """r215: the root contract, graded on fixtures through main(argv, root).
+
+    Every rung names the tree by the root parameter; a root-dropping main
+    grades THIS checkout instead, which parses clean, so rung 1's rc 1 kills
+    it. A fixture is deliberately repo-less, so every rung rides the
+    filesystem fallback of targets() (is_shell + the VENDORED skip) -- the
+    branch the 2026-09-29 edit deleted unnoticed, which only a deliberate
+    exercise of THIS path caught.
+    """
+
+    def run(root, *argv):
+        out, err = io.StringIO(), io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = main(argv=list(argv), root=str(root))
+        except SystemExit as se:
+            return se.code, out.getvalue() + err.getvalue()
+        return rc, out.getvalue() + err.getvalue()
+
+    rung_n = iter(range(1000))
+
+    def build(tmp, *, broken=False, sample=False, bashy=False):
+        root = Path(tmp) / ("mini%d" % next(rung_n))
+        (root / "scripts").mkdir(parents=True, exist_ok=True)
+        (root / "scripts/good.sh").write_text("#!/bin/sh\necho ok\n",
+                                              encoding="utf-8", newline="\n")
+        if broken:
+            (root / "scripts/broken.sh").write_text("#!/bin/sh\nif true; then\n",
+                                                    encoding="utf-8", newline="\n")
+        if sample:
+            (root / ".githooks").mkdir(parents=True, exist_ok=True)
+            (root / ".githooks/pre-commit.sample").write_text(
+                "#!/bin/sh\nif true; then\n", encoding="utf-8", newline="\n")
+        if bashy:
+            (root / "scripts/bashy.sh").write_text(
+                "#!/usr/bin/env bash\narr=(one two three)\necho \"${arr[1]}\"\n",
+                encoding="utf-8", newline="\n")
+        return root
+
+    shell = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: broken.sh exists only in the fixture, so
+        # a root-dropping main grades the real checkout, parses IT clean, and
+        # returns 0 where the fixture returns 1
+        root = build(tmp, broken=True)
+        rc, text = run(root)
+        if rc != 1 or "PARSE ERROR in scripts/broken.sh" not in text:
+            print("  x rung 1: a fixture parse error must fail rc 1, named "
+                  "root-relative (rc=%r tail=%r)" % (rc, text[-170:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: a clean fixture parses, counted through the root
+        root = build(tmp)
+        rc, text = run(root)
+        if rc != 0 or "1 shell entry point(s) parse" not in text:
+            print("  x rung 2: one good script must read OK rc 0 (rc=%r "
+                  "tail=%r)" % (rc, text[-170:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: a BROKEN .githooks/*.sample is documentation of a hook the
+        # repo does not run -- excluded by name, so the fixture stays green
+        root = build(tmp, sample=True)
+        rc, text = run(root)
+        if rc != 0 or "1 shell entry point(s) parse" not in text:
+            print("  x rung 3: a broken .sample must be excluded, fixture "
+                  "green (rc=%r tail=%r)" % (rc, text[-170:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: the shebang is honoured -- a bash-only array parses under
+        # bash -n and must not be reported against /bin/sh
+        root = build(tmp, bashy=True)
+        rc, text = run(root)
+        if rc != 0 or "2 shell entry point(s) parse" not in text:
+            print("  x rung 4: a bash-shebang file must parse under bash rc 0 "
+                  "(rc=%r tail=%r)" % (rc, text[-170:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("SHELL-SYNTAX SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
+    return 0
+
+
+def main(argv: list[str] | None = None, root: str | None = None) -> int:
+    # r215: the r166 contract. argv is explicit (a caller must be able to pass
+    # a fixture's verdict line without sys.argv leaking in); root names the
+    # tree to grade, and it moves EVERY evidence source together -- targets(),
+    # check()'s cwd and the relative path in the PARSE ERROR print all derive
+    # from one base, so no rung can pass while grading the wrong tree.
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--self-test", action="store_true",
                     help="Run this checker's cases and exit.")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     if args.self_test:
-        return self_test()
+        rc = self_test()
+        if rc:
+            return rc
+        return shell_ladder()
 
+    base = ROOT if root is None else Path(root).resolve()
     found = False
     checked = 0
-    for p in targets():
+    for p in targets(base):
         checked += 1
-        ok, why = check(p)
+        ok, why = check(p, base)
         if not ok:
             found = True
-            print(f"verify-shell-syntax: PARSE ERROR in {p.relative_to(ROOT).as_posix()}")
+            print(f"verify-shell-syntax: PARSE ERROR in {p.relative_to(base).as_posix()}")
             for line in why.splitlines()[:6]:
                 print("    " + line)
     if found:
