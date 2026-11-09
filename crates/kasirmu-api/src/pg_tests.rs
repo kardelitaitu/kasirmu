@@ -2600,7 +2600,7 @@ async fn pg_list_products_returns_a_product_with_no_stock_summary_row() {
     };
 
     let tenant = unique_id("pg-nostock");
-    let sku = unique_id("PG-NOSTOCK-SKU");
+    let sku = unique_id("PG-NOSTOCK");
     let currency: Currency = "USD".parse().unwrap();
 
     // initial_stock 0 writes NO stock_summary and NO inventory row.

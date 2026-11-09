@@ -868,6 +868,8 @@ jobs:
     if: needs.changes.outputs.docs == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       # Blocking: the router decides whether every other job runs, so a routing
       # bug that silently skips a suite is the one failure mode this workflow
       # must never allow. The test extracts the real body, so it cannot drift

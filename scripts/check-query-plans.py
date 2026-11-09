@@ -120,6 +120,8 @@ def build_env() -> dict[str, str]:
     if temp.is_dir():
         env.setdefault("TEMP", str(temp))
         env.setdefault("TMP", str(temp))
+    if not shutil.which("sccache"):
+        env["RUSTC_WRAPPER"] = ""
     return env
 
 

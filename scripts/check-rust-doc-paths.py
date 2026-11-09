@@ -105,6 +105,11 @@ def tracked(root: Path = ROOT) -> set:
     return set(out.stdout.splitlines())
 
 
+def is_shallow(root: Path = ROOT) -> bool:
+    out = subprocess.run(["git", "rev-parse", "--is-shallow-repository"], cwd=root, capture_output=True, text=True)
+    return out.stdout.strip() == "true"
+
+
 def ever_existed(path: str, cache: dict, root: Path = ROOT) -> bool:
     """Whether the path appears in history at all -- added or deleted.
 
@@ -112,6 +117,8 @@ def ever_existed(path: str, cache: dict, root: Path = ROOT) -> bool:
     file's -- a fixture's own history is the only history it has.
     """
     if path not in cache:
+        if is_shallow(root):
+            return True
         out = subprocess.run(
             ["git", "log", "--all", "--diff-filter=AD", "--format=%h", "-n", "1", "--", path],
             cwd=root, capture_output=True, text=True,
