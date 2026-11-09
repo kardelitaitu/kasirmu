@@ -10430,3 +10430,44 @@ cases, which the self-test owns. LIMITS_FLOOR is still 114 by measurement, not
 by policy: this entry is above the floor and carries a limits paragraph
 because the convention requires it, not because a checker can tell the
 difference between an honest one and a present one.
+### Round 234 (2026-11-09) -- workflow-syntax: a ladder whose fixtures are workflows, and the attic rule graded at last
+
+`census-checker-contracts.py` named the next target: verify-workflow-syntax.py
+(213 lines, "missing ladder"). It already took `root`, so this round adds only
+the ladder -- seven rungs, each a fixture `.github/workflows` tree graded
+through `main(argv, root)`.
+
+Rung 1 is the killing rung, and the reason is specific to this gate: the
+repository's own five workflows all parse, so a main() that ignored its root
+would grade them, print "5 live workflow(s) parse" and exit 0 against an
+unparseable fixture. The fixture must exit 1 naming `dev-ci.yml`, and a
+root-dropping main cannot produce that line. Rungs 2 and 3 then separate the
+two kinds of green: a parseable workflow counts, and valid YAML that declares
+no jobs is rejected rather than reported as parsing -- the "most misleading
+possible green" the docstring names.
+
+Two rungs extend coverage the self-test never had. Rung 4 builds a fixture
+with a GOOD live workflow beside a BROKEN one under `workflows/attic/`: the
+attic exclusion was stated in the module docstring as a decision rather than
+an omission, and until this round nothing executed it -- the rule was prose.
+Rung 5 is its pair: a top-level `.yaml` IS live, which is exactly the
+disagreement between the six historical copies of the glob that
+`scripts/_live_workflows.py` exists to end. Both now fail if the shared rule
+is ever changed in a way the six copies would have drifted into.
+
+Measured: census 20 of 70 contracted (was 19); the file no longer appears in
+the un-contracted list; next target is check-merged-lines.py at 226 lines.
+Ladder: 7 rungs, exit 0. Self-test 11 cases unchanged (5 + 1 + 5), exit 0.
+Live gate: "verify-workflow-syntax: OK -- 5 live workflow(s) parse and declare
+jobs." Dependents unmoved: verify-selftests-wired 105 of 107,
+verify-gate-completeness OK, verify-ci-docs-drift 0 drift items.
+
+Honest limits: the same host confinement that round 233 recorded still denies
+writes inside Python's default temp, so both files now honour TMPDIR/TMP/TEMP
+for their fixture root with best-effort cleanup -- on a host that permits the
+default temp this changes nothing. The ladder grades `main()`'s shell and the
+live-set rule; it does not re-grade PyYAML's parser or the seven cases in
+self_test(), which that function owns. Rung 5 pins that .yaml is LIVE, not
+that every checker importing the shared rule agrees -- the other importers are
+graded by their own files, and `_live_workflows` itself is outside this
+round's scope.
