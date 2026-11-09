@@ -8686,3 +8686,42 @@ case. Docker daemon still down (probed r159): the E2E / llvm-cov /
 nextest-junit receipts remain the standing PG-gated gap. The root-policy
 gate remains RED on the foreign todo.md (r174) and verify-core-size RED
 on the ADR-59 +64 (r181), both awaiting their owning lanes.
+
+### Round 200 (2026-11-09) -- flaky-quarantine joins the arc; a data-driven resolver keeps its identity
+
+The r166..r199 contract applied to AUDIT-27 CI-09, with one deliberate
+twist the gate's own history dictates: main(argv, root) keeps
+resolve_root() as the root=None behavior -- this gate already learned
+(r19x lineage, its ROOT RESOLUTION section) that the script's location
+is not evidence that a repository is there, so an EXPLICIT root wins
+outright but the data-driven resolution remains the default rather than
+being replaced by a script-relative constant. An explicit root with no
+manifest refuses rc 1 naming the contract root -- a fixture handing a
+root without the manifest is a broken handoff, not a clean scan.
+
+Nine shell cases over a scratch tree with an EXPLICIT root: a clean
+single-entry manifest PASSes with the entry count printed; --report
+still gates and prints the INFO line; an expired entry fails rc 1 with
+the date; a missing required field fails naming the field; a free-text
+issue ref fails (must be a URL or #NN); an unparseable manifest fails;
+an empty corpus behind a manifest is the read-nothing refusal; a
+manifest-less contract root refuses; and the strict-argument rule --
+this file's founding lesson, where --self-test once fell through to a
+green PASS over a surface nobody tested -- is graded through main() with
+an unknown dashed flag refusing rc 2.
+
+Measured kill: the root-dropping main falls back to resolve_root(),
+grades THIS repo (0 entries, 1421-file corpus), and PASSes on the first
+rung, which demands the fixture's single entry -- killed immediately;
+the probe is read-only. Capture: PASS: quarantine manifest valid
+(0 entries, none expired) -- root ... 1421 candidate .rs file(s).
+
+Honest limits: the corpus count is a COUNT, not a membership check --
+no case proves a quarantined test id corresponds to a real test; the
+expiry comparison is graded only against yesterday/tomorrow boundaries,
+not the equal-today edge (expiry == today is NOT expired, asserted only
+by reading the code); --report's failure-side line has no case. Docker
+daemon still down (probed r159): the E2E / llvm-cov / nextest-junit
+receipts remain the standing PG-gated gap. The root-policy gate remains
+RED on the foreign todo.md (r174) and verify-core-size RED on the
+ADR-59 +64 (r181), both awaiting their owning lanes.
