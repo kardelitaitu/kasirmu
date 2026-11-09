@@ -9169,3 +9169,53 @@ on the recorded real-tree refusals. Docker daemon still down (probed
 r159): E2E / llvm-cov / nextest-junit receipts remain PG-gated.
 Root-policy RED on the foreign todo.md (r174); core-size RED on the
 ADR-59 +64 (r181) -- both await their owning lanes.
+
+### Round 211 (2026-11-09) -- the gate next door takes the contract: scoped-reads root and six shell rungs
+
+The thread r208 named twice as "the gate NEXT DOOR ... is not
+parameterized this round" is closed. scripts/verify-scoped-reads.py --
+the third reader of scripts/ipc-parity-allowlist.json -- now carries
+main(argv=None, root=None): root threads through the SAME
+resolve_repo_flag validator --repo uses, so a wrong root is refused by
+the same handler, the same "error:" voice and the same exit 2, not by
+a new branch; the named tree still grades against ITS OWN policy copy
+unless --allowlist says otherwise. The r208 gap is named in the code
+where it was closed: the contract root is the explicit-parameter form
+of --repo, and both seams resolve inside the try, ahead of the walk.
+
+The ladder adds six rungs driven with EMPTY argv -- the tree is named
+by the parameter, which is exactly the seam being graded. Rung 1 is
+the killing rung: a bare call of a fixture-only command, rc 1, the
+verdict naming the command and the file:line. Rungs 3-6 grade the four
+refusal arms at the refusal code: allowlist missing, allowlist a
+top-level list, ui/src absent WITH a name to grade, and the api layer
+absent. Measured kill: the root-dropping main (probe211.py) grades the
+checkout's own desktop section -- clean today at rc 0 -- where the
+fixture run returns 1.
+
+One measured surprise changed rung 5's design: with an EMPTY desktop
+section and no ui/src at all, the run returns 0 -- the corpus guard is
+only reached when there is something to grade. That is not a defect
+(there is genuinely nothing to grade, and the section-empty early
+return predates the root seam) but it is a fact a fixture author meets
+on the first draft: the corpus refusal rung needs a non-empty section,
+and the rung comment records why.
+
+Needle honesty: the rung-1 verdict sentence is "FAIL: 1 call site(s)
+of commands the graded shell does not register, with no guard pattern
+matched in the window" -- not the "FAIL: N unguarded ambient IPC
+call(s)" phrasing the module docstring uses for the concept. The
+docstring names the idea, main() names the sentence; the ladder pins
+the sentence, read off measured output before pinning.
+
+Honest limits: the ungraded-shell line (case 39) and the clearance
+ratio (case 38) are graded by their existing in-process cases, not by
+ladder rungs; the --shell flag's own arms ride on cases 11-12 and no
+ladder rung names a second shell; the retry window (50 attempts, 1 ms)
+is graded by its simulated-denial cases, and no ladder rung holds the
+file busy. The root seam grades the named tree's own policy copy by
+construction, but no rung asserts the surfaces line's exact "how"
+clause for a root-named tree. Docker daemon still down (probed r159):
+E2E / llvm-cov / nextest-junit receipts remain PG-gated. Root-policy
+RED on the foreign todo.md (r174); core-size RED on the ADR-59 +64
+(r181) -- both await their owning lanes.
