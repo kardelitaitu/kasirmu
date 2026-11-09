@@ -10763,3 +10763,38 @@ own docstring assumed independent subprocesses, and on this host they are not
 independent of the temp path. Filed as an observation, not a verdict -- a
 sweep result that flips between isolated and parallel runs is the "bad oracle"
 its own docstring warns against, and diagnosing it is a round of its own.
+
+### Round 242 (2026-11-09) -- pipeline-verdicts: the ladder grades both directions of a positional rule
+
+check-pipeline-verdicts.py (305 lines) was the next census target, "missing
+ladder". It already took `root`; this round adds five rungs through
+`main(argv, root)`.
+
+Rung 1 kills: this checkout's 73 shell scripts are clean (measured r242:
+"no condition reads a swallower's status", exit 0), so a root-blind main would
+print that green against a fixture whose only script carries the shipped bug.
+The rung demands BOTH the file:line and the swallower's name, because the
+detector's whole claim is positional -- "conditions on the status of `tail`".
+
+Rung 3 is the one that matters most, and it is the reason this ladder is not
+just a root proof: it grades the OTHER direction of the same rule. A
+swallower that is NOT last is harmless (`tail -1 | grep -q x`), because the
+pipeline's status is then grep's. A detector that flagged any swallower
+anywhere would pass rung 1 and fail rung 3. Before this round that
+distinction lived only in a detector-level case, never in a sweep.
+
+Also removed: an unreachable second `return 0` after the self-test's return,
+which had been dead since it was written. It was inert, not harmful -- but the
+self-test's tail now has to reach the ladder, and leaving a dead return above
+the live one is how the next reader concludes the ladder never runs.
+
+Measured: census 28 of 70 contracted (was 27). Ladder 5 rungs; self-test 9
+detector + 4 verdict + 3 shell cases. Live gate unchanged: "OK - no condition
+reads a swallower's status (73 shell script(s) read)".
+
+Honest limits: the ladder grades position and the refusal floor, not
+`last_command`'s quote-aware pipeline split, which the nine detector cases
+own. The corpus moves -- this round read 73 scripts where r188 recorded 71 --
+so the live-gate count is a measurement of THIS tree, not a stable constant,
+and no rung asserts it. Two subagents were given this round's neighbouring
+checkers; their work is separate and is not verified by anything here.

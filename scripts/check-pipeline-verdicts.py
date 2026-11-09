@@ -37,11 +37,27 @@ EXIT CODES
 
 from __future__ import annotations
 
+import contextlib
+import io
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+#: Where fixtures are written when the host sets a temp variable. A host whose
+#: confinement denies files under its default temp (measured 2026-11-09 on the
+#: agent host: every write into a TemporaryDirectory is EPERM) can point this at
+#: a directory it allows; unset leaves tempfile's own default in force.
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root this file's fixtures are written under (None = system default)."""
+    import os
+    return next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+
 
 #: Shell scripts where a shell verdict is read. check.sh decides whether the whole
 #: matrix passes, so it is the one that matters most.
@@ -197,7 +213,8 @@ def self_test() -> int:
     import tempfile as _tempfile
     shell = 0
     def _shell(files):
-        with _tempfile.TemporaryDirectory() as td:
+        with _tempfile.TemporaryDirectory(dir=fixture_root(),
+                                           ignore_cleanup_errors=True) as td:
             base = Path(td)
             for rel, content in files.items():
                 dst = base / rel
@@ -232,7 +249,122 @@ def self_test() -> int:
         return 2
     print("SELF-TEST OK (%d detector cases + 4 verdict cases + %d shell cases)"
           % (len(CASES), shell))
-    return 0
+    # The dead second `return 0` that used to sit here is gone: it was
+    # unreachable, and this round needs the tail to reach the ladder.
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard for the ladder (r242 -- the r228 lesson).
+
+    Rung 5 drives --self-test through argv from INSIDE the ladder, and the
+    self-test ends in this call, so without the guard that nested run would
+    recurse. Note this file also dispatches --self-test at __main__ before
+    main() is reached; the ladder calls main() directly, so the guard covers
+    the path the ladder actually uses.
+    """
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        print("  (ladder re-entry from a nested --self-test: skipped)")
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """r242: the root contract, graded on fixture shell trees through main().
+
+    Rung 1 IS the killing rung. This checkout's 71 shell scripts are clean
+    (measured r242: exit 0, "no condition reads a swallower's status"), so a
+    main() that ignored its root would print that green against a fixture
+    whose only script carries the shipped bug. The fixture must exit 1 and
+    name both the file and `tail` -- the swallower it actually read.
+
+    Rung 3 grades the OTHER direction of the same rule, which no rung had
+    covered: a swallower that is not LAST is harmless ("tail -1 | grep -q x"),
+    because the pipeline's status is then grep's. A detector that flagged any
+    swallower anywhere would pass rung 1 and fail here.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    def build(tmp, files, label="fx"):
+        """A fixture root holding the given {relative path: text} shell scripts."""
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix=label + "_"))
+        for rel, text in files.items():
+            p = base / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text, encoding="utf-8", newline=chr(10))
+        return base
+
+    def run(root_dir, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root_dir))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    BUG = "if s=$(myprog | tail -1); then\n  echo hi\nfi\n"
+    MIDDLE = "if s=$(myprog | tail -1 | grep -q x); then\n  echo hi\nfi\n"
+    CLEAN = "if [ -n \"$a\" ]; then\n  echo hi\nfi\n"
+    NEEDLE = "conditions on the status of " + chr(96) + "tail" + chr(96)
+
+    shell = 0
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as tmp:
+        # rung 1 -- the killing rung: the fixture's bug is named, file and swallower.
+        root = build(tmp, {"scripts/bad.sh": BUG})
+        rc, said = run(root)
+        if rc != 1 or "scripts/bad.sh:1" not in said or NEEDLE not in said:
+            print("  x rung 1: a fixture swallower verdict must exit 1 naming file:line "
+                  "and the swallower (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2 -- a clean fixture greens and counts the FIXTURE corpus.
+        root = build(tmp, {"scripts/ok.sh": CLEAN})
+        rc, said = run(root)
+        if rc != 0 or "(1 shell script(s) read)" not in said:
+            print("  x rung 2: a clean fixture must exit 0 counting one script "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3 -- position matters: a swallower NOT last is harmless.
+        root = build(tmp, {"scripts/mid.sh": MIDDLE})
+        rc, said = run(root)
+        if rc != 0 or "(1 shell script(s) read)" not in said:
+            print("  x rung 3: a swallower in the middle must not be a finding "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4 -- the refusal floor: no .sh under the fixture root.
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix="empty_"))
+        (base / "README.md").write_text("no shell scripts\n", encoding="utf-8")
+        rc, said = run(base)
+        if rc != 2 or "read no .sh file" not in said:
+            print("  x rung 4: a fixture without .sh must refuse rc 2 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5 -- --self-test dispatch flows through argv; re-entry is guarded.
+        root = build(tmp, {"scripts/ok.sh": CLEAN})
+        rc, said = run(root, "--self-test")
+        if rc != 0 or "SELF-TEST OK" not in said or "ladder re-entry" not in said:
+            print("  x rung 5: --self-test through argv must pass rc 0 and skip the "
+                  "nested ladder (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("PIPELINE-VERDICTS SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
     return 0
 
 
