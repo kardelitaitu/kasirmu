@@ -3487,7 +3487,9 @@ def self_test():
 
 
 def shell_ladder():
-    """r211: six rungs through main(argv, root=fixture) -- the root contract.
+    """r211: rungs through main(argv, root=fixture) -- the root contract; r212
+    added 7-8 (the surfaces line's how-clause for a root-named tree, and a
+    second-shell run whose ungraded-visibility line names the section skipped).
 
     argv stays empty on every rung: the tree is named by the PARAMETER, not by a
     flag, which is the seam the arc's contract adds. Rung 1 is the killing rung --
@@ -3595,10 +3597,35 @@ def shell_ladder():
                   % (rc, err[-170:]), file=sys.stderr)
             return 1
         shell += 1
-    if shell != 6:
-        print("  x shell ladder counted %d rungs, expected 6" % shell, file=sys.stderr)
+        # rung 7 (r212): the surfaces line names HOW the tree was chosen -- a
+        # root-named tree grades its OWN policy copy, and the sentence says so
+        root = build(tmp, {"desktop": ["zz_gap_cmd"], "tablet": [],
+                           "dev_mock": [], "scoped_orphans": []})
+        rc, out, err = run(root=root)
+        if rc != 1 or "the contract root default (the named tree's own copy)" not in out:
+            print("  x rung 7: the surfaces line must name the contract root's "
+                  "own-copy clause (rc=%r head=%r)" % (rc, out[:220:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 8 (r212): a second shell -- tablet named, desktop skipped -- the
+        # verdict is tablet's, the coverage ratio reads tablet, and the
+        # ungraded-visibility line states desktop's count without scoring it
+        root = build(tmp, {"desktop": [], "tablet": ["zz_gap_cmd"],
+                           "dev_mock": [], "scoped_orphans": []})
+        rc, out, err = run("--shell", "tablet", root=root)
+        if rc != 1 or "[tablet] zz_gap_cmd is not registered in that shell" not in out \
+                or "(tablet 1 of 1)" not in out \
+                or "desktop: 0 unguarded call site(s)" not in out:
+            print("  x rung 8: a tablet run must fail rc 1, read tablet's ratio and "
+                  "state desktop's ungraded count (rc=%r tail=%r)"
+                  % (rc, out[-220:]), file=sys.stderr)
+            return 1
+        shell += 1
+    if shell != 8:
+        print("  x shell ladder counted %d rungs, expected 8" % shell, file=sys.stderr)
         return 1
-    print("SCOPED-READS SHELL LADDER OK (6 cases through argv and root, no repository file touched)")
+    print("SCOPED-READS SHELL LADDER OK (8 cases through argv and root, no repository file touched)")
     return 0
 
 
