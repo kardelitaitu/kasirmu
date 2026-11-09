@@ -65,11 +65,15 @@ CLOSING_VERBS = ("resolve", "fix", "close", "finish")
 SECTION_RE = re.compile(r"^## (?:\u00a711[A-Z]*|11\.)\s.*$", re.MULTILINE)
 
 
-def git(*args: str) -> str:
-    """Run a git command from the repo root and return stdout (empty on failure)."""
+def git(*args: str, repo: Path | None = None) -> str:
+    """Run a git command from the repo root and return stdout (empty on failure).
+
+    repo (r228): a caller-named tree overrides the module REPO default. The
+    default is read at CALL time, so the self-test's REPO patch keeps working.
+    """
     out = subprocess.run(
         ["git", *args],
-        cwd=REPO,
+        cwd=repo or REPO,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -154,7 +158,8 @@ def entries_marked_inline(text: str) -> set[str]:
 FILE_REF_RE = re.compile(r"`([A-Za-z0-9_./-]+\.(?:rs|ts|tsx|sql|go|ftl))(?::[0-9][0-9-]*)?"+"`")
 
 
-def entries_with_dead_file_refs(text: str) -> list[tuple[str, list[str]]]:
+def entries_with_dead_file_refs(text: str, repo: Path | None = None) -> list[tuple[str, list[str]]]:
+    repo = repo or REPO
     """Entries whose FIRST citation names a file that no longer exists.
 
     This class is why the gate was extended: three entries were caught by hand on
@@ -189,12 +194,12 @@ def entries_with_dead_file_refs(text: str) -> list[tuple[str, list[str]]]:
         # Only flag when EVERY graded ref is missing: one surviving path means the
         # entry is still anchored somewhere a reader can reach.
         # A bare filename is relative to the full path cited beside it.
-        dirs = [str((REPO / r).parent.relative_to(REPO)) for r in refs if "/" in r]
+        dirs = [str((repo / r).parent.relative_to(repo)) for r in refs if "/" in r]
         missing = []
         for r in refs:
-            if (REPO / r).exists():
+            if (repo / r).exists():
                 continue
-            if "/" not in r and any((REPO / d / r).exists() for d in dirs):
+            if "/" not in r and any((repo / d / r).exists() for d in dirs):
                 continue
             missing.append(r)
         if missing and len(missing) == len(refs):
@@ -250,8 +255,14 @@ SECTION_CASES = (
 )
 
 
-def self_test() -> int:
-    """Run the rule cases; report EVERY failure rather than stopping at the first."""
+def self_test(run_ladder: bool = False) -> int:
+    """Run the rule cases; report EVERY failure rather than stopping at the first.
+
+    r228: run_ladder chains the shell ladder only from the EXPLICIT
+    --self-test dispatch. main()'s rules-deaf guard re-runs this self-test
+    on EVERY grade, so an unconditional chain would recurse (measured
+    2026-11-09 as a RecursionError before the guard existed).
+    """
     bad: list[str] = []
     for subject, expected in SUBJECT_CASES:
         got = is_closing_subject(subject)
@@ -382,6 +393,8 @@ def self_test() -> int:
     # reads as coverage it is not -- the same shape as a gate that cannot fail.
     print("SELF-TEST OK (%d cases, no file read)"
           % (len(SUBJECT_CASES) + len(INLINE_CASES) + len(SECTION_CASES) + 1 + 4 + 6 + extra))
+    if run_ladder:
+        return shell_ladder()
     return 0
 
 
@@ -452,9 +465,177 @@ def table_findings(text: str) -> list[str]:
     return out
 
 
-def main() -> int:
-    if "--self-test" in sys.argv[1:]:
-        return self_test()
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard for the ladder (r228, measured).
+
+    This tool's main() re-runs the rule self-test on EVERY grade -- the
+    "RULES WENT DEAF" guard -- so a ladder chained to self_test() recurses
+    forever: a rung calls main(), main re-runs self_test, self_test chains
+    the ladder again (measured 2026-11-09 as a RecursionError). The chain
+    therefore lives only in the EXPLICIT --self-test dispatch
+    (self_test(run_ladder=True)), and this guard turns the one legitimately
+    nested call -- rung 8 driving --self-test through argv from inside the
+    ladder -- into a printed skip instead of a recursion.
+    """
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        print("  (ladder re-entry from a nested --self-test: skipped)")
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """r228: the root contract, graded on fixture repositories through main.
+
+    Each rung's fixture is a throwaway git repo holding a miniature
+    todo-optimize-crates.md and (where the rung needs one) a closing commit
+    written with inline -c identity, so no global git config is trusted. The
+    five report arms (table, dead refs, missing sections, unknown sections,
+    gutted bodies) each get a rung that fires exactly that arm; rung 7 is the
+    missing-journal refusal; rung 8 drives the --self-test dispatch through
+    argv itself.
+    """
+    import contextlib
+    import io
+    import subprocess as _sp
+    import tempfile
+
+    def run(root_dir, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root_dir))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    def mkrepo(tmp, journal=None, commits=()):
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix="mini%d_" % next(rung_n)))
+        if journal is not None:
+            (base / "todo-optimize-crates.md").write_text(
+                journal, encoding="utf-8", newline="\n")
+        for msg in commits:
+            _sp.run(["git", "init", "-q"], cwd=base, capture_output=True)
+            _sp.run(["git", "add", "-A"], cwd=base, capture_output=True)
+            _sp.run(["git", "-c", "user.email=l@l", "-c", "user.name=L",
+                     "commit", "-q", "-m", msg], cwd=base, capture_output=True)
+        return base
+
+    def table(hd, hc, total_d, total_c):
+        return "\n".join([
+            "| Tier | Defined | Marked closed | Still open |",
+            "|---|---|---|---|",
+            "| **High** | %d | **%d** | **0** |" % (hd, hc),
+            "| Medium | 0 | 0 | 0 |",
+            "| Low | 0 | 0 | 0 |",
+            "| Test (O-T) | 0 | 0 | 0 |",
+            "| **Total** | **%d** | **%d** | **0** |" % (total_d, total_c),
+        ])
+
+    def section(heading, body):
+        return heading + "\n" + body + "\n" + ("x" * 60) + "\n"
+
+    SECTION_HEAD = "## \u00a711AA -- O-H01 resolved: the thing"
+    rung_n = iter(range(1000))
+    shell = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: a closing commit with no section
+        root = mkrepo(tmp,
+                      journal=table(1, 0, 1, 0) + "\n\n**O-H01 the thing**\nbody prose here.\n",
+                      commits=("fix(core): resolve O-H01 the thing",))
+        rc, said = run(root)
+        if rc != 1 or "closed by a commit with no section" not in said \
+                or "O-H01" not in said:
+            print("  x rung 1: a closing commit over a section-less journal "
+                  "must fail rc 1 (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: entry + marker + section + truthful table greens
+        root = mkrepo(tmp, journal=table(1, 1, 1, 1) + "\n\n**O-H01 the thing**\nPAID.\n\n"
+                      + section(SECTION_HEAD, "resolved body."))
+        rc, said = run(root)
+        if rc != 0 or "OK - 1 entries defined, 1 sections" not in said:
+            print("  x rung 2: a consistent miniature journal must green "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: the summary-table arm -- a carried-forward Total fails
+        root = mkrepo(tmp, journal=(table(1, 1, 1, 1) + "\n\n**O-H01 the thing**\nPAID.\n\n"
+                      + section(SECTION_HEAD, "resolved body.")).replace(
+                      "| **Total** | **1** | **1** |", "| **Total** | **9** | **9** |"))
+        rc, said = run(root)
+        if rc != 1 or "Total row says 9 defined / 9 closed" not in said:
+            print("  x rung 3: a drifted Total must fail with the recompute "
+                  "action (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: the dead-ref arm -- an open entry citing only a ghost file
+        root = mkrepo(tmp, journal=table(1, 0, 1, 0) + "\n\n**O-H02 dead**\n"
+                      "See \x60crates/ghost-does-not-exist/src/lib.rs\x60 for the story.\n")
+        rc, said = run(root)
+        if rc != 1 or "cite file(s) that no longer exist" not in said \
+                or "crates/ghost-does-not-exist/src/lib.rs" not in said:
+            print("  x rung 4: an open entry over dead-only refs must fail "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: the unknown-section arm -- a section naming an undefined id
+        root = mkrepo(tmp, journal=table(1, 0, 1, 0) + "\n\n**O-H03 real**\nbody prose here.\n\n"
+                      + section("## \u00a711BB -- O-T99 ghost resolved: nothing", "unrelated body."))
+        rc, said = run(root)
+        if rc != 1 or "which has no entry header" not in said:
+            print("  x rung 5: a section over an undefined id must fail "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 6: the gutted-body arm -- a section deleted down to a bare ---
+        root = mkrepo(tmp, journal=table(1, 1, 1, 1) + "\n\n**O-H04 gutted**\nbody prose here.\n\n"
+                      + "## \u00a711CC -- O-H04 resolved: thing\n---\n")  # raw: no padding, so it IS gutted
+        rc, said = run(root)
+        if rc != 1 or "effectively empty body" not in said:
+            print("  x rung 6: a gutted section must fail (rc=%r said=%r)"
+                  % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 7: no journal in the fixture tree at all
+        root = mkrepo(tmp)
+        rc, said = run(root)
+        if rc != 1 or "todo-optimize-crates.md not found" not in said:
+            print("  x rung 7: a root without the journal must refuse rc 1 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 8: --self-test dispatch flows through the argv parameter
+        root = mkrepo(tmp)
+        rc, said = run(root, "--self-test")
+        if rc != 0 or "SELF-TEST OK" not in said \
+                or "ladder re-entry" not in said:
+            print("  x rung 8: --self-test through argv must pass rc 0 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("DEBT-LEDGER SHELL LADDER OK (%d cases through argv and root, no repository file touched)" % shell)
+    return 0
+
+
+def main(argv=None, root=None) -> int:
+    # r228: the r166 contract, in this file's own idiom -- there is no
+    # argparse to thread, so argv is the raw list (sys.argv[1:] when None)
+    # and root replaces the module REPO/LEDGER pair for the duration of the
+    # grade, flowing into git() and the dead-ref walker as parameters. The
+    # self-test already patched the REPO global for the same reason.
+    args = sys.argv[1:] if argv is None else list(argv)
+    if "--self-test" in args:
+        return self_test(run_ladder=True)
     # Grade the four predicates BEFORE grading the journal. Each of them has been wrong
     # once already; a rule that stops matching reports a clean ledger over a dead scan.
     rc = self_test()
@@ -462,8 +643,14 @@ def main() -> int:
         sys.stderr.write("RULES WENT DEAF: not trusting the ledger report below.\n")
         return rc
 
+    if root is not None:
+        root = Path(root).resolve()
+    else:
+        root = REPO
+    ledger = root / "todo-optimize-crates.md"
+
     try:
-        text = LEDGER.read_text(encoding="utf-8")
+        text = ledger.read_text(encoding="utf-8")
     except FileNotFoundError:
         print("check-debt-ledger: todo-optimize-crates.md not found")
         return 1
@@ -473,7 +660,7 @@ def main() -> int:
     inline_marked = entries_marked_inline(text)
 
     # Check 1: a closing commit must have its section.
-    log = git("log", "--format=%h\x01%s", "-n", "4000")
+    log = git("log", "--format=%h\x01%s", "-n", "4000", repo=root)
     missing: dict[str, list[str]] = {}
     for line in log.splitlines():
         if "\x01" not in line:
@@ -504,7 +691,7 @@ def main() -> int:
     ]
 
     # Check 4: an open entry whose graded citations all point at deleted files.
-    dead_refs = entries_with_dead_file_refs(text)
+    dead_refs = entries_with_dead_file_refs(text, repo=root)
 
     # Check 5: the summary table agrees with the file. Nothing read it before, so it
     # drifted 22 entries behind while every gate stayed green.
