@@ -374,7 +374,7 @@ def scan_file(path: Path) -> list[dict]:
     return findings
 
 
-def resolve_roots(named: list[str]) -> tuple[list[str], list[str], list[str]]:
+def resolve_roots(named: list[str], base: Path | None = None) -> tuple[list[str], list[str], list[str]]:
     """Split what --roots was handed into (usable, blank, missing) BEFORE the walk.
 
     Three buckets because the three causes read differently to whoever typed them: a blank
@@ -395,15 +395,22 @@ def resolve_roots(named: list[str]) -> tuple[list[str], list[str], list[str]]:
     for root in named:
         if not root.strip():
             blank.append(root)
-        elif Path(root).is_dir():
-            usable.append(root)
+            continue
+        candidate = Path(root)
+        if not candidate.is_absolute() and base is not None:
+            # r224: the r166 seam -- a relative root resolves against the tree
+            # being graded, and the usable name carries that tree's path, so a
+            # fixture's findings name fixture files.
+            candidate = base / root
+        if candidate.is_dir():
+            usable.append(root if base is None else str(candidate))
         else:
             missing.append(root)
     return usable, blank, missing
 
 
 def refuse_nothing_to_scan(
-    named: list[str], blank: list[str], missing: list[str]
+    named: list[str], blank: list[str], missing: list[str], base: Path | None = None
 ) -> int:
     """No named root resolved to a directory, so there is no verdict to print. Exit 2.
 
@@ -434,7 +441,7 @@ def refuse_nothing_to_scan(
     if blank:
         print(f"  named but blank             : {len(blank)} value(s)")
     print("  roots that resolved         : 0")
-    print(f"  working directory           : {Path.cwd()}")
+    print(f"  working directory           : {Path.cwd() if base is None else base}")
     print(
         f"  default roots (NOT scanned) : {', '.join(ROOTS)} - to scan those, run without "
         "--roots; a list that named no root is never answered by scanning everything."
@@ -451,7 +458,7 @@ def refuse_nothing_to_scan(
     return 2
 
 
-def tried_path_for(token: str) -> str:
+def tried_path_for(token: str, base: Path | None = None) -> str:
     """Where a named root was actually looked for, so a refusal can print it.
 
     An absolute token is used as given; a relative one is resolved against the working
@@ -461,7 +468,10 @@ def tried_path_for(token: str) -> str:
     """
     path = Path(token)
     try:
-        return str(path if path.is_absolute() else (Path.cwd() / path).resolve())
+        if path.is_absolute():
+            return str(path)
+        origin = Path.cwd() if base is None else base
+        return str((origin / path).resolve())
     except OSError:
         return str(path)
 
@@ -480,7 +490,8 @@ def root_set_is_starved(
 
 
 def starved_root_report(
-    named: list[str], usable: list[str], blank: list[str], missing: list[str]
+    named: list[str], usable: list[str], blank: list[str], missing: list[str],
+    base: Path | None = None,
 ) -> list[str]:
     """The refusal's lines, built as data so `--self-test` can assert on the text.
 
@@ -496,7 +507,7 @@ def starved_root_report(
     ]
     for token in missing:
         lines.append(f"  refused, not a directory   : {token!r}")
-        lines.append(f"  path tried for it          : {tried_path_for(token)}")
+        lines.append(f"  path tried for it          : {tried_path_for(token, base)}")
     for token in blank:
         lines.append(f"  refused, named no directory: {token!r}")
         lines.append(
@@ -505,7 +516,7 @@ def starved_root_report(
             "narrow"
         )
     lines.append(f"  roots that DID resolve      : {', '.join(usable)}")
-    lines.append(f"  working directory           : {Path.cwd()}")
+    lines.append(f"  working directory           : {Path.cwd() if base is None else base}")
     lines.append(
         "  why exit 2 and not 1        : 1 is this gate's FINDING voice, a real scan of a "
         "real corpus that found an undocumented panic. This run scanned no corpus at all."
@@ -519,14 +530,15 @@ def starved_root_report(
 
 
 def refuse_starved_roots(
-    named: list[str], usable: list[str], blank: list[str], missing: list[str]
+    named: list[str], usable: list[str], blank: list[str], missing: list[str],
+    base: Path | None = None,
 ) -> int:
     """Refuse a partially starved root set on stderr, and scan nothing. Exit 2.
 
     stderr because this is an operator-facing error about a command line, and the refusal
     that the empty list gets goes to stdout only for the reason documented there.
     """
-    for line in starved_root_report(named, usable, blank, missing):
+    for line in starved_root_report(named, usable, blank, missing, base):
         print(line, file=sys.stderr)
     return 2
 
@@ -792,15 +804,110 @@ def self_test() -> int:
         "--allow-recoverable N raises the ceiling, --fail-on-recoverable is inert, and a "
         "partially starved root set refuses while a complete one still scans"
     )
+    return shell_ladder()
+
+
+
+def shell_ladder() -> int:
+    """r224: the root contract, graded on fixture trees through main(argv, root).
+
+    The gate's evidence is a root list resolved against a base, walked for
+    .rs files. A fixture must carry ALL FOUR default roots or the gate's own
+    all-or-nothing rule refuses it -- which rung 4 exercises deliberately
+    with a --roots list that names one missing token. Rung 1 is the killing
+    rung; see probe224 for which side the kill lands on.
+    """
+    import contextlib
+    import io
+
+    def run(root, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    def build(tmp, *, rust=None, label=None):
+        base = tempfile.mkdtemp(dir=tmp, prefix=(label or ("mini%d_" % next(rung_n))))
+        for d in ("crates", "apps", "platform", "modules"):
+            (Path(base) / d).mkdir(parents=True, exist_ok=True)
+        if rust is not None:
+            demo = Path(base) / "crates" / "demo" / "src" / "lib.rs"
+            demo.parent.mkdir(parents=True, exist_ok=True)
+            demo.write_text(rust, encoding="utf-8", newline="\n")
+        return base
+
+    BARE = "fn go(x: Option<u8>) -> u8 {\n    x.unwrap()\n}\n"
+    rung_n = iter(range(1000))
+
+    shell = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: one bare unwrap, strict default
+        root = build(tmp, rust=BARE)
+        rc, said = run(root)
+        if rc != 1 or "panic-inventory FAIL: 1 recoverable" not in said \
+                or "lib.rs:2: unwrap()" not in said:
+            print("  x rung 1: a bare fixture unwrap must fail rc 1, named with "
+                  "its line (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: a documented invariant is inventory, not a finding
+        root = build(tmp, rust="// SAFETY: INVARIANT: literal cannot be None\n"
+                               + BARE)
+        rc, said = run(root)
+        if rc != 0 or "# total: 1 production unwrap/expect calls" not in said:
+            print("  x rung 2: a documented unwrap must read green rc 0 (rc=%r "
+                  "said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: --allow-recoverable 1 is a ceiling, not an amnesty
+        root = build(tmp, rust=BARE + "fn go2(x: Option<u8>) -> u8 {\n"
+                                      "    x.unwrap()\n}\n")
+        rc, said = run(root, "--allow-recoverable", "1")
+        if rc != 1 or "2 recoverable unwrap/expect" not in said \
+                or "forgives 1" not in said:
+            print("  x rung 3: 2 recoverable vs N=1 must still red (rc=%r "
+                  "said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: a --roots list with one missing token refuses rc 2, naming
+        # the bad token and the path tried under the FIXTURE
+        root = build(tmp, rust=BARE)
+        rc, said = run(root, "--roots", "crates", "nope")
+        if rc != 2 or "resolved only PARTIALLY" not in said or "'nope'" not in said:
+            print("  x rung 4: a starved root list must refuse rc 2 (rc=%r "
+                  "said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: roots that resolve and hold no .rs are a TRUE GREEN -- the
+        # zero that says "scanned and clean", never the refusal's zero
+        root = build(tmp)
+        rc, said = run(root)
+        if rc != 0 or "# total: 0 production unwrap/expect calls" not in said:
+            print("  x rung 5: an empty-but-real scan must true-green rc 0 "
+                  "(rc=%r said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("UNWRAP-PANIC SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
     return 0
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    # r224: the r166 contract. argv is explicit; root names the tree to grade
+    # from code -- relative --roots resolve under it, the walk and every
+    # printed path hang under it, and the refusal messages say which tree
+    # they looked under. None keeps this checkout, byte-for-byte.
     parser = build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.self_test:
         return self_test()
+
+    base = None if root is None else Path(root).resolve()
 
     if args.allow_recoverable is not None and args.allow_recoverable < 0:
         return refuse_negative_tolerance(args.allow_recoverable)
@@ -810,16 +917,16 @@ def main() -> int:
     # has no corpus, and a gate with no corpus must not print a count. Only the names that
     # really are directories get scanned, and the default ROOTS is never reinstated as a
     # fallback — "you asked for nothing" is not the same request as "scan everything".
-    roots_to_scan, blank_roots, missing_roots = resolve_roots(args.roots)
+    roots_to_scan, blank_roots, missing_roots = resolve_roots(args.roots, base=base)
     if not roots_to_scan:
-        return refuse_nothing_to_scan(args.roots, blank_roots, missing_roots)
+        return refuse_nothing_to_scan(args.roots, blank_roots, missing_roots, base=base)
     # The case that refusal never covered: SOME roots resolved and some did not. Scanning
     # the survivors and exiting 0 printed a count over a holed corpus -- measured at 96 of
     # 136 production calls for `--roots crates nope` -- and a number that looks complete is
     # exactly what a clean scan looks like. Refuse before the walk, as above.
     if root_set_is_starved(roots_to_scan, blank_roots, missing_roots):
         return refuse_starved_roots(
-            args.roots, roots_to_scan, blank_roots, missing_roots
+            args.roots, roots_to_scan, blank_roots, missing_roots, base=base
         )
 
     all_findings: list[dict] = collect_findings(roots_to_scan)
