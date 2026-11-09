@@ -409,6 +409,13 @@ def main():
             "verify-scoped-authorization (H-1b)",
             [bash, "scripts/verify-scoped-authorization.sh", "--strict"],
         ),
+        # Round 232: the round log is shared append-only state, and two lanes both
+        # taking "last + 1" produced a duplicate r229 in this very session. The
+        # hygiene gate already detects a duplicate or a gap, but until now it ran
+        # only in the full check.sh matrix and in CI -- not before a push. Cheap
+        # (a pure regex classifier, no network, no file writes) and it fails with
+        # the two round numbers named, so the remedy is in the output.
+        ("register hygiene", [py, "scripts/check-register-hygiene.py"]),
     ]
 
     for label, cmd in static_gates:
