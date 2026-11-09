@@ -391,7 +391,129 @@ def self_test():
     return failures
 
 
-def main(argv):
+
+def shell_ladder() -> int:
+    """r220: the root contract, graded on fixture GIT repositories.
+
+    Unlike the rest of the arc's fixtures, these are real work trees -- git init,
+    an empty HEAD commit, then either untracked files (working-tree mode) or
+    committed ones (--range mode). The killing rung is rung 1: an untracked
+    command file with no companions is incomplete, and --strict must exit 1; a
+    root-dropping main grades THIS checkout, which is currently quiet, and exits
+    0. Rung 5 grades --range against the fixture's own history, proving the git
+    base moves with the root and not just the working tree.
+    """
+    import contextlib
+    import io
+
+    def run(root, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    def git(root, *args):
+        res = subprocess.run(["git", "-C", root] + list(args),
+                             capture_output=True, text=True, encoding="utf-8")
+        return res.returncode
+
+    def build(tmp, *, commits=(), untracked=(), label=None):
+        base = tempfile.mkdtemp(dir=tmp, prefix=(label or ("mini%d_" % next(rung_n))))
+        if git(base, "init", "-q") != 0:
+            raise RuntimeError("git init failed in " + base)
+        commit_args = ["-c", "user.email=fx@example", "-c", "user.name=fx",
+                       "commit", "-q", "--allow-empty", "-m", "init"]
+        if git(base, *commit_args) != 0:
+            raise RuntimeError("empty HEAD commit failed in " + base)
+        # fixture values are LINE LISTS, the self-test's own dict shape -- the
+        # rule's trigger_added regexes match per added LINE, so the lines must
+        # land as separate lines, not one blob
+        for rel, lines in commits:
+            path = os.path.join(base, rel)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write("\n".join(lines) + "\n")
+            if git(base, "add", "-A") != 0 or git(
+                    base, "-c", "user.email=fx@example", "-c", "user.name=fx",
+                    "commit", "-q", "-m", "c2") != 0:
+                raise RuntimeError("fixture commit failed in " + base)
+        for rel, lines in untracked:
+            path = os.path.join(base, rel)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write("\n".join(lines) + "\n")
+        return base
+
+    rung_n = iter(range(1000))
+    COMMAND = {"apps/mobile-tauri/src/commands/data.rs":
+               ["#[tauri::command]", "    gate(permissions::X);"]}
+    COMPANIONS = {"apps/mobile-tauri/capabilities/mobile.json": ["{}"],
+                  "apps/desktop-tauri/tests/gate_audit.rs": ["x"],
+                  "scripts/ipc-parity-allowlist.json": ["{}"]}
+
+    shell = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: an unaccompanied IPC command, strict
+        root = build(tmp, untracked=COMMAND.items())
+        rc, said = run(root, "--strict")
+        if rc != 1 or "[ipc-command]" not in said or "[census-pin]" not in said \
+                or "NOT in this diff" not in said \
+                or "2 rule(s) need a companion" not in said:
+            print("  x rung 1: an unaccompanied command must be incomplete rc 1 "
+                  "under --strict (rc=%r said=%r)" % (rc, said[-220:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: the same command WITH its companion files in the same diff
+        root = build(tmp, untracked={**COMMAND, **COMPANIONS}.items())
+        rc, said = run(root, "--strict")
+        if rc != 0 or "all touched chokepoints carry their companions." not in said:
+            print("  x rung 2: an accompanied command must read complete rc 0 "
+                  "(rc=%r said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: --ack census-pin accepts exactly that rule and only that one
+        root = build(tmp, untracked=COMMAND.items())
+        rc, said = run(root, "--strict", "--ack", "census-pin")
+        if rc != 1 or "accepted:  --ack census-pin" not in said \
+                or "1 rule(s) need a companion" not in said:
+            print("  x rung 3: --ack census-pin must accept only census-pin "
+                  "(rc=%r said=%r)" % (rc, said[-220:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: a website file touches no chokepoint surface -- quiet even strict
+        root = build(tmp, untracked={"website/src/components/AccountView.tsx":
+                                     ["const effectiveTier = 'free';"]}.items())
+        rc, said = run(root, "--strict")
+        if rc != 0 or "no chokepoint surface touched" not in said:
+            print("  x rung 4: an off-surface diff must stay quiet rc 0 (rc=%r "
+                  "said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: --range grades the fixture's own history -- the git base moves
+        # with the root, not just the working-tree read
+        root = build(tmp, commits=COMMAND.items())
+        rc, said = run(root, "--range", "HEAD~1..HEAD", "--strict")
+        if rc != 1 or "check-chokepoints: HEAD~1..HEAD" not in said \
+                or "[ipc-command]" not in said:
+            print("  x rung 5: --range must diff the FIXTURE's history rc 1 "
+                  "(rc=%r said=%r)" % (rc, said[-220:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("CHOKEPOINTS SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
+    return 0
+
+
+def main(argv=None, root=None):
+    # r220: the r166 contract. argv is explicit; root names the WORK TREE to
+    # grade from code -- a fixture git repo. None keeps repo_root(), which asks
+    # git for this process's cwd. collect_diff, evaluate and run_gate already
+    # take the root as a parameter, so the seam is one branch wide.
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--range", dest="range_spec", default=None,
                         help="commit range, e.g. HEAD~3..HEAD (default: working tree vs HEAD)")
@@ -406,10 +528,12 @@ def main(argv):
         print("  check-chokepoints self-test")
         failures = self_test()
         print("  self-test: %s" % ("PASS" if not failures else "FAIL (%d)" % failures))
-        return 2 if failures else 0
+        if failures:
+            return 2
+        return shell_ladder()
 
-    root = repo_root()
-    blocks, incomplete = evaluate(root, args.range_spec, set(args.ack))
+    base = repo_root() if root is None else os.path.abspath(root)
+    blocks, incomplete = evaluate(base, args.range_spec, set(args.ack))
     print("check-chokepoints: %s" % (args.range_spec or "working tree vs HEAD"))
     if not blocks:
         print("  no chokepoint surface touched -- nothing to carry.")
