@@ -38,6 +38,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UI = os.path.join(REPO, "ui")
@@ -47,15 +48,23 @@ SUMMARY_RE = re.compile(r"(\d+)\s+problems?\s+\((\d+)\s+errors?,\s*(\d+)\s+warni
 RULE_RE = re.compile(r"react-hooks/exhaustive-deps")
 
 
-def load_baseline() -> int:
-    with open(STATE, encoding="utf-8") as fh:
+def load_baseline(state=None) -> int:
+    """r194: the ratchet file follows the contract root."""
+    path = STATE if state is None else state
+    with open(path, encoding="utf-8") as fh:
         return int(json.load(fh)["max_exhaustive_deps"])
 
 
-def run_eslint() -> tuple[int, str]:
-    """Invoke the project-local eslint over the whole UI tree and return (exit_code, output)."""
+def run_eslint(ui=None) -> tuple[int, str]:
+    """Invoke the project-local eslint over the whole UI tree and return (exit_code, output).
+
+    r194: the UI tree follows the contract root -- binary resolution and
+    cwd together, never half (a root redirecting the binary but not the
+    working directory would lint a tree that exists nowhere).
+    """
+    ui_root = UI if ui is None else str(ui)
     bin_eslint = os.path.join(
-        UI, "node_modules", ".bin", "eslint.cmd" if os.name == "nt" else "eslint"
+        ui_root, "node_modules", ".bin", "eslint.cmd" if os.name == "nt" else "eslint"
     )
     if not os.path.exists(bin_eslint):
         raise SystemExit(
@@ -68,7 +77,7 @@ def run_eslint() -> tuple[int, str]:
         # longer part of core ESLint in this version: they exit 2 with a usage error, which is
         # exactly the "tool did not run but reported a number" trap this script is built to refuse.
         [bin_eslint, "."],
-        cwd=UI,
+        cwd=ui_root,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -155,7 +164,6 @@ def self_test() -> int:
     global is repointed for them and restored). The real eslint is never invoked: the
     self-test would then depend on node_modules and take as long as the gate itself.
     """
-    global UI
     bad: list[str] = []
 
     def want(name: str, got, expect) -> None:
@@ -234,8 +242,9 @@ def self_test() -> int:
                      "exit 1\n")
         os.chmod(os.path.join(bin_dir, "eslint"), 0o755)
         try:
-            UI = scratch
-            code, output = run_eslint()
+            # r194: the scratch tree is passed EXPLICITLY -- the UI-global
+            # repointing-and-restoring dance is gone with the contract
+            code, output = run_eslint(scratch)
             case("run_eslint captures the fake linter's exit code", code, 1)
             case("it runs IN the repointed UI (marker typed) and keeps stderr",
                  (MARKER in output, "STDERR-PING" in output), (True, True))
@@ -243,9 +252,8 @@ def self_test() -> int:
 
             bare = os.path.join(scratch, "bare")
             os.makedirs(bare)
-            UI = bare
             try:
-                run_eslint()
+                run_eslint(bare)
                 bad.append("missing eslint: expected the SystemExit refusal, got a value")
             except SystemExit:
                 pass
@@ -253,39 +261,163 @@ def self_test() -> int:
                 bad.append("missing eslint: expected the SystemExit refusal, got "
                            + type(exc).__name__)
         finally:
-            UI = real_ui
+            pass
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 
+    # r194: main()'s shell -- argv and root graded against a tempdir fixture
+    # carrying a ui/ tree with a FAKE project-local eslint, the r166..r193
+    # pattern. The over-cap and missing-eslint cases kill a root-dropping
+    # main: the real tree runs its real eslint clean under the real cap, so
+    # it returns 0 where the fixture demands 1 or the refusal.
+    import contextlib as _ctx
+    import io as _io
+    from pathlib import Path  # r194: this module is os.path-native otherwise
+    shell = 0
+    STUB = ("#!/bin/sh" + chr(10)
+            + "echo \"c.tsx 1:7 warning Hook has a missing dependency react-hooks/exhaustive-deps\"" + chr(10)
+            + "echo \"1 problem (0 errors, 1 warnings)\"" + chr(10)
+            + "exit 0" + chr(10))
+    STUB2 = ("#!/bin/sh" + chr(10)
+             + "echo \"eslint: config error\"" + chr(10)
+             + "exit 2" + chr(10))
+    # the .cmd twin needs BATCH syntax -- an sh body under a .cmd name prints
+    # its quotes and mangles the summary line (the fixture must speak the
+    # language of the file name the runner will actually execute)
+    STUB_CMD = ("@echo off\r\n"
+                + "echo c.tsx 1:7 warning Hook has a missing dependency react-hooks/exhaustive-deps\r\n"
+                + "echo 1 problem (0 errors, 1 warnings)\r\n"
+                + "exit /b 0\r\n")
+    STUB2_CMD = ("@echo off\r\n"
+                 + "echo eslint: config error\r\n"
+                 + "exit /b 2\r\n")
+    def _shell(files, argv=()):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            for rel, content in files.items():
+                dst = base / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_text(content, encoding="utf-8")
+            (base / "scripts").mkdir(parents=True, exist_ok=True)  # the gate writes here
+            bin_eslint = base / "ui" / "node_modules" / ".bin" / ("eslint.cmd" if os.name == "nt" else "eslint")
+            bin_eslint.parent.mkdir(parents=True, exist_ok=True)
+            if os.name == "nt":
+                bin_eslint.write_text(STUB2_CMD if "usage" in argv else STUB_CMD, encoding="utf-8")
+            else:
+                bin_eslint.write_text(STUB2 if "usage" in argv else STUB, encoding="utf-8")
+            try:
+                os.chmod(bin_eslint, 0o755)
+            except OSError:
+                pass
+            cap = 0 if "cap0" in argv else 2
+            (base / "scripts" / "exhaustive-deps-baseline.json").write_text(
+                '{"max_exhaustive_deps": ' + str(cap) + '}', encoding="utf-8")
+            out, err = _io.StringIO(), _io.StringIO()
+            try:
+                with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                    rc = main(argv=list(argv and [a for a in argv if not a.startswith(("cap0", "usage"))]), root=base)
+            except SystemExit as se:
+                return se.code, out.getvalue() + err.getvalue()
+            return rc, out.getvalue() + err.getvalue()
+    shell += 1
+    rc, text = _shell({"ui/src/c.tsx": "// linted\n"}, argv=("cap0",))
+    if rc != 1 or "exceed the cap of 0" not in text:
+        print("  x an over-cap count must fail naming the cap (rc=%r text=%r)" % (rc, text[-90:]),
+              file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _shell({"ui/src/c.tsx": "// linted\n"})
+    if rc != 0 or "below cap -- consider lowering it to 1" not in text:
+        print("  x a below-cap count must read ok with the suggestion (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _shell({"ui/src/c.tsx": "// linted\n"}, argv=("--set-baseline",))
+    if rc != 0 or "baseline set to 1" not in text:
+        print("  x --set-baseline must record the current count (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    # the post-condition lives INSIDE the tempdir with, per the fixture rules
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        for rel, content in {"ui/src/c.tsx": "// linted\n"}.items():
+            dst = base / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_text(content, encoding="utf-8")
+        bin_eslint = base / "ui" / "node_modules" / ".bin" / ("eslint.cmd" if os.name == "nt" else "eslint")
+        bin_eslint.parent.mkdir(parents=True, exist_ok=True)
+        bin_eslint.write_text(STUB_CMD if os.name == "nt" else STUB, encoding="utf-8")
+        try:
+            os.chmod(bin_eslint, 0o755)
+        except OSError:
+            pass
+        # main() LOADS the cap before --set-baseline can write one: the fixture
+        # must already carry a baseline, exactly like the real tree does
+        (base / "scripts").mkdir(parents=True, exist_ok=True)
+        (base / "scripts" / "exhaustive-deps-baseline.json").write_text(
+            '{"max_exhaustive_deps": 5}', encoding="utf-8")
+        rc = main(argv=["--set-baseline"], root=base)
+        written = json.loads((base / "scripts" / "exhaustive-deps-baseline.json").read_text(encoding="utf-8"))
+        if written.get("max_exhaustive_deps") != 1:
+            print("  x the baseline file must carry the measured count, got %r" % (written,),
+                  file=sys.stderr)
+            return 1
+    shell += 1
+    rc, text = _shell({}, argv=("usage",))
+    if not (isinstance(rc, str) and rc.startswith("eslint exited 2")):
+        print("  x a usage-error lint must fail closed on the run itself (rc=%r)" % (rc,),
+              file=sys.stderr)
+        return 1
+    shell += 1
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)  # a ui/ with NO eslint binary at all
+        (base / "scripts").mkdir(parents=True, exist_ok=True)
+        (base / "scripts" / "exhaustive-deps-baseline.json").write_text(
+            '{"max_exhaustive_deps": 2}', encoding="utf-8")
+        try:
+            main(argv=[], root=base)
+            print("  x a missing linter must refuse, not pass", file=sys.stderr)
+            return 1
+        except SystemExit as se:
+            if "eslint not found" not in str(se.code):
+                print("  x the missing-linter refusal must name the path (rc=%r)" % (se.code,),
+                      file=sys.stderr)
+                return 1
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (10 cases: 6 pure + 4 through a fake eslint, one scratch tree removed)")
+    print("SELF-TEST OK (10 cases: 6 pure + 4 through a fake eslint + %d shell cases, "
+          "one scratch tree removed)" % shell)
     return 0
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r194: argv and root parameterized, the r166..r193 contract -- root
+    redirects the UI tree AND the ratchet file together."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--set-baseline", action="store_true", help="record the current count as the cap")
     ap.add_argument("--self-test", action="store_true",
                     help="Run this checker's measure() cases and exit. Pure: reads no file.")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     if args.self_test:
         return self_test()
+    base = Path(REPO) if root is None else Path(root).resolve()
 
-    code, output = run_eslint()
+    code, output = run_eslint(base / "ui")
     # eslint exits 1 when there are problems and 2 on a usage/config error; both mean the number
     # below may be garbage, so surface it. Exit 0 is the only fully clean case.
     if code == 2:
         raise SystemExit(f"eslint exited 2 (usage or config error), output:\n{output[:600]}")
 
     warnings, deps = measure(output, code)
-    baseline = load_baseline()
+    baseline = load_baseline(base / "scripts" / "exhaustive-deps-baseline.json")
     print(f"  warnings total: {warnings}   exhaustive-deps: {deps}   cap: {baseline}")
 
     if args.set_baseline:
-        with open(STATE, "w", encoding="utf-8", newline="\n") as fh:
+        with open(base / "scripts" / "exhaustive-deps-baseline.json", "w",
+                  encoding="utf-8", newline="\n") as fh:
             json.dump(
                 {
                     "max_exhaustive_deps": deps,
