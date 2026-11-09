@@ -27,7 +27,7 @@
 | Docker daemon | **UP** (was down at the last probe, r159) | `docker info` |
 | Beta Phase 1–2 | **complete** (fault injection, telemetry, packaging) | `todo-beta-testing-january-2027.md` §2 |
 | Beta Phase 3 | onboarding wizard done; recruitment + freeze open | same, §3 |
-| Root policy | **RED**: `todo.md` stray + 2 empty temp dirs | `python scripts/verify-root-policy.py` |
+| Root policy | **RED at plan start**: `todo.md` stray + 2 empty temp dirs — **closed same day (§1.2)** | `python scripts/verify-root-policy.py` |
 | Core size | **RED**: ADR-59 +64 over the ratchet | `python scripts/verify-core-size.py` |
 
 The honest reading of that table: **the debt ledger is empty and the beta checklist is
@@ -275,7 +275,7 @@ cd ui && npm run check:all
 
 ### Week 1
 - [ ] 1.1 PG-gated receipts re-recorded — counts:
-- [ ] 1.2 Root-policy RED closed
+- [x] 1.2 Root-policy RED closed — **done 2026-11-09**: `todo.md` added to `ROOT_FILE_ALLOWLIST` (owner working plan, same class as `todo-review-type.md`) and the two empty temp dirs removed. `verify-root-policy.py` now prints "root policy: clean". This closes a RED that had stood since **r174** — the register footer carried "Root-policy RED on the foreign todo.md" for roughly 58 rounds, and that claim is now historical.
 - [ ] 1.3 Core-size RED resolved — route:
 - [ ] 1.4 E2E baseline — result:
 

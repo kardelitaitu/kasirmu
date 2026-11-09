@@ -88,6 +88,14 @@ ROOT_FILE_ALLOWLIST = frozenset({
 
     "done-todo-open-debt-program.md", "todo-review-type.md",
 
+    # Added 2026-11-09 (plan-next-30-days.md §1.2). This file was TRACKED and had been
+    # flagged by this gate since r174 -- "Root-policy RED on the foreign todo.md" in the
+    # register footer, carried in every round entry for ~58 rounds. It is the owner's
+    # working plan at the root, which is exactly the class the comment above names; the
+    # omission was an oversight, not a judgement, and the gate's own message invites the
+    # fix ("add it to ROOT_FILE_ALLOWLIST if it belongs"). It belongs.
+    "todo.md",
+
     # Owner plan docs, same class as the two above: named individually on purpose,
     # because the allowlist is names-not-patterns so adding one is a decision.
     "done-todo-android-4gb-optimization-audit.md", "todo-optimize-crates.md",
