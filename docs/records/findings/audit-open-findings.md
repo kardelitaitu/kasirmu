@@ -8850,3 +8850,38 @@ r159): the E2E / llvm-cov / nextest-junit receipts remain the standing
 PG-gated gap. The root-policy gate remains RED on the foreign todo.md
 (r174) and verify-core-size RED on the ADR-59 +64 (r181), both awaiting
 their owning lanes.
+
+### Round 204 (2026-11-09) -- dedupe-ftl joins the arc; a mutating tool gets a fixture root
+
+The r166..r203 contract applied to the Fluent deduplicator, a tool that
+WRITES: main(argv, root) resolves shared-ui/locales under the contract
+root, so the destructive apply path is graded against a throwaway tree
+instead of this checkout's 48-file bundle. parse_args(argv) replaces the
+sys.argv read, per the arc's explicit-argv rule.
+
+Five shell cases over a scratch locales tree: a duplicate key with a
+multi-line continuation reports "would dedupe 1 file(s), 5 -> 3 lines"
+rc 1 in dry-run; a clean bundle passes rc 0; APPLY mode rewrites, exits
+0, and the post-condition is read back INSIDE the fixture -- the
+duplicate and its continuation gone, the first-wins block intact (a
+mutating tool's evidence is the disk, not its own summary line, the
+lesson its module docstring already carries); a root without
+shared-ui/locales refuses rc 1; an empty locales dir refuses rc 1.
+
+Measured kill: the root-dropping main dedupes THIS checkout's real
+locales and answers "no duplicates found" on the first rung, which
+demands a 1-file dry-run report -- killed immediately; the probe is
+read-only. Capture: dedupe-ftl: no duplicates found in any .ftl file,
+live.
+
+Honest limits: the Fluent section-marker limitation documented in the
+docstring ([[ Section ]] at column 0 treated as continuation) remains
+ungraded -- the fixture has no section markers, matching the repo
+today; the --dry-run rc 1 gate semantics are graded for the duplicate
+direction only (a dry-run over a tree where a DIFFERENT file has the
+duplicate is not distinguished); the .id.ftl glob arm is exercised
+implicitly (glob shape) but no fixture asserts an .id.ftl file is
+picked up. Docker daemon still down (probed r159): the E2E / llvm-cov /
+nextest-junit receipts remain the standing PG-gated gap. The root-policy
+gate remains RED on the foreign todo.md (r174) and verify-core-size RED
+on the ADR-59 +64 (r181), both awaiting their owning lanes.
