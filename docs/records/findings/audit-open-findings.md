@@ -8287,3 +8287,43 @@ unreadable drift count) is graded by no case. Docker daemon still down
 standing PG-gated gap. The root-policy gate remains RED on the foreign
 todo.md (r174) and verify-core-size RED on the ADR-59 +64 (r181), both
 awaiting their owning lanes.
+
+### Round 191 (2026-11-09) -- runner-commands joins the arc; the runner set and every resolution are one root
+
+The r166..r190 contract applied to the dangling-runner-reference gate.
+live_runner_files(root) re-derives all FOUR runners (workflows directory,
+check.sh, check.ps1, the pre-commit hook) together from the contract root
+-- never half, per the r172 class: a root redirecting the workflows but
+not the hook would grade a tree that exists nowhere. dangling(files,
+base) resolves each scripts/... reference against the SAME root the
+runners came from, which is the round's structural point: a runner set
+from one tree with resolutions against another is the false-clean the
+gate exists to prevent, expressed in miniature.
+
+Four shell cases, no git repository (the runner set is globbed and the
+resolution is an exists() check): a resolving reference reads OK with the
+census (1 reference across 1 runner file); a dangling reference fails rc
+1 naming runner and path; a runner corpus with no commands REFUSES rc 2
+-- the found-nothing rule, graded through main for the first time; and a
+comment-only runner (the pre-commit documentation shape, found live
+2026-10-23) adds no reference while the real step on another runner still
+counts. The fixture had to carry the REFERENCED SCRIPT ITSELF -- my first
+draft created scripts/ and named scripts/ok.py without writing it, and
+the OK case died as a dangling case: an exists() gate is about the target,
+not the naming.
+
+Measured kill: the root-dropping main mutant, dying on the first OK case
+-- the real tree's 504 resolving references grade rc 0 where the fixture
+demands the census of exactly one reference across exactly one file; the
+dangling case would kill too (the fixture's missing file never goes
+missing under the real tree). The refusal case kills on its own.
+
+Honest limits: the attic skip and the yml/yaml duality are graded only by
+the pre-existing scratch-tree cases, not by the new main() cases; the
+PowerShell $pythonCommand spelling reaches main() only through the live
+tree (no fixture names check.ps1); the "unreadable" branch of dangling()
+is graded by no case anywhere. Docker daemon still down (probed r159):
+the E2E / llvm-cov / nextest-junit receipts remain the standing PG-gated
+gap. The root-policy gate remains RED on the foreign todo.md (r174) and
+verify-core-size RED on the ADR-59 +64 (r181), both awaiting their owning
+lanes.
