@@ -10204,3 +10204,70 @@ recover the original order. Docker daemon still down (probed r159):
 E2E / llvm-cov / nextest-junit receipts remain PG-gated. Root-policy RED
 on the foreign todo.md (r174); core-size RED on the ADR-59 +64 (r181) --
 both await their owning lanes.
+
+### Round 230 (2026-11-09) -- selftests-wired: the wiring gate on fixture trees, and a rung that taught its own scope rule
+
+verify-selftests-wired.py (744 lines) is the gate whose OWN birth is this
+arc's founding story: measured 2026-09-29, NINE of 24 declared self-tests
+were invoked by no runner at all -- including this file's ancestors. Its
+evidence tree is the widest of the gates contract so far: three checker
+directories (scripts/, the docs-auditor skill, website/scripts) and eight
+runner paths (workflows dir, check.sh, check.ps1, two git hooks, the
+auditor's own runner script, and two package.json npm-scripts files).
+
+The threading is the first where the root kwarg could not just override one
+global: CHECKER_DIRS and RUNNERS are module constants derived from ROOT at
+import. The refactor puts their CONTENTS in spec tuples and derives both
+constants from ROOT through the specs -- so the constants keep their exact
+values (the self-test's 38 cases, including the runner-existence assertions,
+are untouched) and a fixture root re-derives the same shapes from the same
+single source. checkers(base_root), runner_text(paths), declares_selftest
+(rel, base_root), sibling_declared(rel, base_root) and uncalled_from(text,
+base_root) all default to the module constants, so every self-test call
+stays byte-for-byte.
+
+Eight rungs: the killing rung (a declared flag no runner invokes, rc 1 with
+the uncalled report naming the path), the same checker wired by a
+miniature check.sh greening with its counted census ("1 of 1 checker(s) in
+scope" -- counted, not typed, per the file's own round-102 rule), the
+SIBLING arm (a docstring pointer to scripts/test-bar.py that exists but
+that no runner invokes -- "(sibling scripts/test-bar.py uncalled)", the
+exact rot the 2026-11-08 extension closes), the sibling wired by a bare
+runner line, a script-runner rung, the attic trap (a retired workflow under
+.github/workflows/attic/ keeping its .y*ml suffix must NOT rescue the flag
+-- how verify-flaky-quarantine once looked wired), the vacuous edge pinned
+honestly (a tree with NO checkers reads "0 of 0 checker(s) in scope" rc 0
+-- the OK line is the evidence), and the --self-test dispatch through argv
+with the re-entry guard applied from rung one this round, per the r228 and
+r229 lessons.
+
+And rung 5 failed into a REAL finding about the gate's shape: the fixture's
+scripts/check-auditor-selftests.sh wired the flag fine -- but the census
+read "1 of 2", because the runner-script ITSELF matches SCRIPT_RE
+(check-*.sh) and is therefore also audited as a checker that declares
+nothing. My first assertion ("1 of 1") was wrong; the gate was right. The
+correct behavior is the one the docstring already names: the OK line must
+NAME the non-declaring script ("Declaring none of their own:
+scripts/check-auditor-selftests.sh.") instead of absorbing it silently --
+the very prose gap a round-135 register entry misread as three unwired
+checkers. The rung now pins the naming, so the gate's own history is one of
+its enforced cases. Measured twice: a wrong expectation can be a probe of
+the tool, not only a bug in it.
+
+probe230 kills cleanly: the mutant grades the real checkout (rc 0, 104 of
+106) while the fixture's declared-but-uncalled checker exits 1 with the
+report naming it. Live unchanged at exit 0: "verify-selftests-wired: OK -
+104 of 106 checker(s) in scope declare a self-test and every one is
+invoked by a runner."
+
+Honest limits: the ladder does not grade the print-form acceptance
+(wired_only_by_print: 11 call sites, zero live print-forms measured
+2026-11-08 -- a latent guard, exercised only through self-test), nor
+collisions_of/collided_audited (the basename-collision census), nor the
+full-line comment stripper beyond what the declaration rungs exercise; the
+spec-derivation refactor touches a load-bearing constant pair and its
+safety rests on the 38 self-test cases plus the unchanged live output line.
+Root-policy RED on the foreign todo.md (r174); core-size RED on the ADR-59
++64 (r181) -- both await their owning lanes. Docker daemon still down
+(probed r159): E2E / llvm-cov / nextest-junit receipts remain PG-gated.
+The scoped-reads (r213) through gate-completeness (r229) limits stand.
