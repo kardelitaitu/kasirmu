@@ -128,7 +128,7 @@ const PRODUCT_SELECT: &str = "SELECT p.id, p.sku, p.name, p.price_minor, p.curre
      LEFT JOIN categories c ON p.category_id = c.id \
      LEFT JOIN inventory i ON p.id = i.product_id \
      LEFT JOIN LATERAL ( \
-         SELECT true AS ss_has_rows, SUM(ss.qty)::bigint AS ss_qty \
+         SELECT bool_or(true) AS ss_has_rows, SUM(ss.qty)::bigint AS ss_qty \
          FROM stock_summary ss WHERE ss.item_id = p.id \
      ) sk ON TRUE";
 
