@@ -12199,3 +12199,39 @@ debris, and this session has already had to clean up agent scratch twice. I also
 did not re-run the sweep from a different TMPDIR to confirm the fix is
 address-independent rather than merely working from this one.
 
+### Round 274 (2026-11-09) -- rung 1 that died on a refusal, in a ladder whose own doc said so
+
+verify-coverage-floors got a 6-rung ladder. Its rung 1 was labelled 'the KILLING
+rung' and its docstring stated the intended kill mechanism plainly: 'a root-blind
+main reads this checkout ... and REFUSES -- so the rung fails on the SCOPE REFUSAL
+a root-blind main produces, not on an accident.'
+
+That is exactly the shape this arc's kill criterion forbids. A mutation that dies
+on a scope refusal has not shown that rung 1 detects the defect; it has shown the
+mutant could not start. Reproduced on the mutant before changing anything:
+    x rung 1: ... (rc=1 said='lude kasirmu-bridge \\n    --json --output-path C:...')
+i.e. the 'generate one with' refusal, not a verdict.
+
+The fix is to make BOTH readings reach the grading code. Rung 1 now puts a
+REGRESSED report at the fixture's default path and asks for the FAIL verdict
+naming the fixture's own crate (platform-sync). Correct root -> names it;
+root-blind -> reads this checkout, which has no report at all -> refuses -> the
+rung fails and says so. Rung 2 flipped to the positive floor (healthy report must
+grade OK), so an arm that always answers 1 still dies.
+
+MEASURED after: mutant rc=1 failing rung 1 with no 'cannot read' anywhere in the
+failure, so it is a verdict. self-test green (6 rungs), census 44 -> 45, prove
+KILLED, live run rc=1 unchanged (no coverage-probe.json exists in the tree).
+
+WORTH NAMING: the subagent that wrote the ladder reported the refusal as a
+feature and explained how it proved the fixture was scanned. It was right about
+the labels and wrong about the conclusion -- a rung can be well-constructed and
+still fail to kill for the reason its own text claims. Reading the ladder's
+docstring was enough to spot it; running the mutant is what proved it.
+
+Honest limits: rung 1 now grades the FAIL arm and rung 2 the OK arm, so the two
+together cover both directions, but nothing here exercises a fixture root that is
+a RELATIVE path (rung 3 covers relative argv paths, not a relative root). The live
+run remains rc 1 for want of a coverage report -- that predates this round and is
+not something the ladder can or should fix.
+
