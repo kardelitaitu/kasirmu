@@ -11238,3 +11238,54 @@ refusal floor is weaker evidence than the harness's "KILLED" suggests, and that
 is true of every checker whose root is consumed before its first comparison --
 I have not measured how many of the 34 are in that position.
 
+### Round 253 (2026-11-09) -- measured: 13 of 18 kills land at the refusal floor, not at a verdict
+
+Round 252 recorded a suspicion and left it unmeasured: "a rung that dies at the
+refusal floor is weaker evidence than KILLED suggests -- I have not measured how
+many checkers are in that position." This round measured it.
+
+METHOD. Each contracted checker's first applicable root-blind mutation was run
+and the resulting rung-1 failure line captured. The classification is what that
+line says the mutant died of:
+  * FLOOR -- rc 2 and a scope refusal ("REFUSED - ... not found", "scan dir
+    not found", "no production UI file under ..."). The mutant never graded
+    anything; it failed to open the fixture.
+  * VERDICT -- the checker ran, graded a corpus, and reached the WRONG
+    conclusion (rc 0 clean over the real tree, or a finding attributed to the
+    fixture).
+
+MEASURED, 18 checkers in a position to be classified:
+  * 13 die at the FLOOR: census-checker-contracts, check-dead-controls,
+    check-fixture-ftl-keys, check-ftl-attrs, check-merged-lines,
+    check-register-hygiene, check-pipeline-verdicts, verify-bundle-parity,
+    verify-feature-registry, verify-shell-registration,
+    verify-status-fallbacks, verify-ui-coverage-floors, verify-website-assets.
+  * 4 die at a VERDICT: verify-runner-commands, verify-settled-read-copies,
+    verify-shell-syntax, verify-ftl-orphans.
+  * 1 (check-orphan-prototype-files) kills at RUNG 2, not rung 1 -- its rung 1
+    survives the mutation entirely.
+
+WHAT THIS MEANS, stated plainly. "every applicable mutation killed" is true of
+all of them and is a much weaker statement than it reads. For 13 checkers the
+mutant is caught because a root-blind main points at the scratch directory
+where the expected subdirectory does not exist -- so the rung proves the
+fixture is REFUSED, not that the checker's finding logic ran against it. A
+main that ignored root for the FINDING but honoured it for the SCOPE would
+still die at the floor and would still be called killed.
+
+Rung 1 in these files is therefore a scope-honoured check, not a logic check,
+and the earlier rounds that described such rungs as "the killing rung" were
+describing a weaker property than the phrase implies. The four VERDICT cases
+are the ones whose rung 1 actually exercises a comparison.
+
+Honest limits: this is a one-mutation, one-rung measurement over 18 checkers,
+and the FLOOR/VERDICT split is my reading of a failure string, not a machine
+fact -- a refusal that quotes a computed value would classify as FLOOR under
+this rule even when a comparison produced it. Ten of the 34 contracted
+checkers are absent from the table: some raise on import (AttributeError,
+ModuleNotFoundError) under the harness mutant, and some have no applicable
+mutation at all. Nothing here was fixed this round: the point was to find out
+whether the concern was real, and it is, for most of the arc. A rung that dies
+at the floor should eventually be rewritten to assert a verdict, which is a
+future round's work per checker, not a single repair.
+
