@@ -11432,3 +11432,53 @@ a "RUNNERS = (" block it expects in verify-selftests-wired.py). I did not
 reproduce or investigate that; it is recorded as reported, not verified, and
 may belong to another session's in-flight work.
 
+### Round 257 (2026-11-09) -- I broke the sabotage probe myself, and told myself it was pre-existing
+
+Round 256 recorded, as "reported, not verified", a subagent claim that
+scripts/sabotage-selftests.py --self-test was red for reasons unrelated to its
+work. This round verified it. The claim was half right and half wrong in the
+way that matters most: the RecursionError it described IS environmental (a
+scratch tree under .agents/ mirrors into itself), but its attribution of the
+remaining failures to "a PRE-EXISTING condition" was wrong -- the largest
+cluster was caused by me.
+
+WHAT I BROKE. 84b1f8da7 replaced the literal block
+  RUNNERS = ( "scripts/check.sh", ... )
+with
+  RUNNERS = tuple(ROOT / spec for spec in _RUNNER_SPECS)
+scripts/sabotage-selftests.py:711 looked for the literal "RUNNERS = (" text and
+refused when absent. So my refactor made that parser report the block MISSING,
+which cascaded into eight "is no longer in verify-selftests-wired's RUNNERS"
+clauses. The runner list was intact the whole time and
+verify-selftests-wired.py stayed green at 105 of 107; only the probe went blind.
+
+THE FIX, and a second defect found while writing it. The parser now accepts
+either shape ("RUNNERS = (" or "_RUNNER_SPECS = ("). Building the fixture for
+that exposed an INDEPENDENT hole: it matched only double-quoted tokens, so a
+block written with single quotes parsed to zero entries and refused nothing --
+entries=0, refused=0, measured. That is precisely the round-82 failure mode
+(entries lost silently, so the two sides disagree without anyone noticing)
+arriving through quoting instead of through a splat. Both quote styles now parse.
+
+Measured after the fix: live file parses 8 entries, 0 refused; the legacy
+RUNNERS shape parses 2 entries, 0 refused (was 0/0 before the quote fix, i.e.
+silently empty); a file with no block still refuses and names both shapes.
+All eight RUNNERS clauses are gone from the self-test output.
+
+STILL RED, and genuinely not mine: "census misses self-tested script(s):
+scripts/dedupe-ftl.py, retire-legacy-commands.py,
+strip-topology-token-fallbacks.py, tier-badge-text-path.py", plus a fixed
+expectation of 38 partner entries where the live count is not 38. Those four
+scripts DO declare their self-tests (measured: each --self-test exits 0) and
+three of them are referenced by check.sh or a hook, so the failure is the
+probe's own stale fixture against a repo that has moved on. Left alone.
+
+Honest limits: this is the second time this arc that a green edge (the wired
+checker) held while a probe pointed at the same file went red -- the probe was
+right that SOMETHING changed and wrong about what. I believed the subagent's
+"pre-existing" framing because it arrived with my own scepticism still
+attached, and the actual cause was a commit of mine from an earlier round. The
+remaining 4 clauses are asserted to be pre-existing on the evidence of commit
+order plus the scripts' own passing self-tests, not by running the probe at an
+older commit.
+

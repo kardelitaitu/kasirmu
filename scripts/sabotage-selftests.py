@@ -708,15 +708,35 @@ def _parse_other_runners(text: str) -> tuple[set[str], list[str]]:
     today; this makes the next one loud. Every block line yields either an
     entry or a refusal naming its line.
     """
-    if "RUNNERS = (" not in text:
-        return set(), ["verify-selftests-wired.py no longer has a RUNNERS = ( block"]
-    block = text.split("RUNNERS = (", 1)[1].split("\n)", 1)[0]
+    # The partner has carried this list in TWO shapes, and this parser must read
+    # both. It used to look only for the literal "RUNNERS = (" block; when
+    # verify-selftests-wired.py was refactored (84b1f8da7) to
+    # `RUNNERS = tuple(ROOT / spec for spec in _RUNNER_SPECS)` the same paths
+    # moved into _RUNNER_SPECS and this parser went blind -- reporting the block
+    # as MISSING while the runner list was intact and every entry still
+    # resolved. That single change turned this whole self-test red for a
+    # refactor that broke nothing, which is the false finding the round-82 note
+    # below exists to prevent, arriving from the other side. Both shapes quote
+    # their paths one per line, so one parse serves both.
+    if "RUNNERS = (" in text:
+        block = text.split("RUNNERS = (", 1)[1].split("\n)", 1)[0]
+    elif "RUNNER_SPECS = (" in text:
+        block = text.split("RUNNER_SPECS = (", 1)[1].split("\n)", 1)[0]
+    else:
+        return set(), ["verify-selftests-wired.py no longer has a RUNNERS = ( "
+                       "or _RUNNER_SPECS = ( block"]
     entries: set[str] = set()
     refused: list[str] = []
     for i, ln in enumerate(block.splitlines(), 1):
         if not ln.strip() or ln.lstrip().startswith("#"):
             continue
-        toks = re.findall(r'"([^"]+)"', ln)
+        # BOTH quote styles. The parser read only double quotes, so a block
+        # written with single quotes parsed to ZERO entries and refused
+        # nothing -- measured on a fixture: entries=0 refused=0. That is the
+        # round-82 failure mode (entries lost silently) arriving through
+        # quoting rather than through a splat, and it is why the refusal path
+        # below must stay total.
+        toks = re.findall(r'"([^"]+)"', ln) or re.findall(r"'([^']+)'", ln)
         if toks:
             entries.add("/".join(toks))
         else:
