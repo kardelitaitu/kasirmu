@@ -53,26 +53,35 @@ RENDERABLE_RE = re.compile(
 FTL_KEY_RE = re.compile(r"^([A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+)\s*=", re.M)
 
 
-def bundle_keys() -> set[str]:
-    """Every message id defined in the English bundles."""
+def bundle_keys(locales=None) -> set[str]:
+    """Every message id defined in the English bundles. r192: the bundle
+    directory follows the contract root."""
+    locales = LOCALES if locales is None else Path(locales).resolve()
     keys: set[str] = set()
-    for f in sorted(LOCALES.glob("*.ftl")):
+    for f in sorted(locales.glob("*.ftl")):
         if f.name.endswith(".id.ftl"):
             continue
         keys.update(FTL_KEY_RE.findall(f.read_text(encoding="utf-8", errors="replace")))
     return keys
 
 
-def scan() -> tuple[list[str], int, int]:
-    """Findings, test files read, files where the bug is possible at all."""
-    keys = bundle_keys()
+def scan(root=None) -> tuple[list[str], int, int]:
+    """Findings, test files read, files where the bug is possible at all.
+
+    r192: the corpus and the bundles follow the contract root together --
+    ui/src, shared-ui/locales, and every reported relative path.
+    """
+    base = REPO if root is None else Path(root).resolve()
+    ui_src = base / "ui" / "src"
+    locales = base / "shared-ui" / "locales"
+    keys = bundle_keys(locales)
     if not keys:
-        raise SystemExit(f"SCAN BROKE: no keys in {LOCALES}")
+        raise SystemExit(f"SCAN BROKE: no keys in {locales}")
     findings: list[str] = []
     read = 0
     eligible = 0
     tests = sorted(
-        p for p in UI_SRC.rglob("*")
+        p for p in ui_src.rglob("*")
         if p.is_file() and (p.name.endswith(".test.ts") or p.name.endswith(".test.tsx"))
     )
     for test in tests:
@@ -81,7 +90,7 @@ def scan() -> tuple[list[str], int, int]:
         if not RENDERABLE_RE.search(text):
             continue
         eligible += 1
-        rel = test.relative_to(REPO).as_posix() if test.is_relative_to(REPO) else test.name
+        rel = test.relative_to(base).as_posix() if test.is_relative_to(base) else test.name
         for lineno, line in enumerate(text.split(chr(10)), 1):
             # A COMMENT is not an assertion. The scanner is line-based, so an
             # explanatory note that spells out toContain('some-key') -- exactly the
@@ -111,10 +120,12 @@ def scan() -> tuple[list[str], int, int]:
     return findings, read, eligible
 
 
-def _read_baseline() -> list[dict]:
-    if not BASELINE_PATH.is_file():
+def _read_baseline(base=None) -> list[dict]:
+    """r192: the ratchet file follows the contract root."""
+    path = BASELINE_PATH if base is None else Path(base).resolve() / "scripts" / BASELINE_PATH.name
+    if not path.is_file():
         return []
-    return json.loads(BASELINE_PATH.read_text(encoding="utf-8")).get("entries", [])
+    return json.loads(path.read_text(encoding="utf-8")).get("entries", [])
 
 
 def _split(line: str) -> tuple[str, str]:
@@ -136,11 +147,14 @@ def self_test() -> int:
     import shutil
     import tempfile
 
+    # r192: the synthetic tree nests under the contract root -- ui/src and
+    # shared-ui/locales -- and scan() is called WITH the root, so the old
+    # globals-repointing dance (UI_SRC/LOCALES reassigned and restored) is gone.
     root = Path(tempfile.mkdtemp(prefix="rawkey-selftest-"))
-    saved = (globals()["UI_SRC"], globals()["LOCALES"])
     try:
-        (root / "locales").mkdir()
-        (root / "locales" / "demo.ftl").write_text(
+        (root / "shared-ui" / "locales").mkdir(parents=True)
+        (root / "ui" / "src").mkdir(parents=True)
+        (root / "shared-ui" / "locales" / "demo.ftl").write_text(
             "demo-alpha = Alpha" + chr(10) + "demo-beta = Beta" + chr(10), encoding="utf-8"
         )
         stub = "const l10n = { getString: (id) => map[id] ?? id };" + chr(10)
@@ -161,12 +175,9 @@ def self_test() -> int:
             # noprovider carries its OWN stub: prepending the raw-id one would make
             # it renderable and turn its must-not-flag case into a false alarm.
             text = body if name == "noprovider.test.tsx" else (stub + body)
-            (root / name).write_text(text + chr(10), encoding="utf-8")
-        globals()["UI_SRC"] = root
-        globals()["LOCALES"] = root / "locales"
-        findings, read, eligible = scan()
+            (root / "ui" / "src" / name).write_text(text + chr(10), encoding="utf-8")
+        findings, read, eligible = scan(root=root)
     finally:
-        globals()["UI_SRC"], globals()["LOCALES"] = saved
         shutil.rmtree(root, ignore_errors=True)
 
     cases += 1
@@ -187,9 +198,82 @@ def self_test() -> int:
     if eligible_live == 0:
         bad.append("the live scan found 0 renderable files -- the empty-population refusal")
 
+    # r192: main()'s shell -- argv and root graded against a tempdir fixture,
+    # the r166..r191 pattern, as a five-step ladder over one tree: a new site
+    # fails, --write-baseline records it, the re-run passes the ratchet, a
+    # removal leaves the file stale, and a corpus with nothing refuses rc 2.
+    # The new-site and empty-corpus cases kill a root-dropping main: the real
+    # tree scans 828 files clean, so the finding never appears (rc 0) and the
+    # refusal never fires (rc 0).
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+    shell = 0
+    def _shell(tree, extra=()):
+        with _tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            for rel, content in tree.items():
+                dst = base / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_text(content, encoding="utf-8")
+            (base / "scripts").mkdir(exist_ok=True)
+            argv = ["--write-baseline"] if "write" in extra else []
+            if "growth" in extra:
+                argv.append("--allow-growth")
+            out, err = _io.StringIO(), _io.StringIO()
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                rc = main(argv=argv, root=base)
+            return rc, out.getvalue() + err.getvalue()
+    FTL = "demo-alpha = Alpha" + chr(10) + "demo-beta = Beta" + chr(10)
+    BADTX = ("const l10n = { getString: (id) => map[id] ?? id };" + chr(10)
+             + "expect(screen.getByText(" + chr(39) + "demo-alpha" + chr(39)
+             + ")).toBeInTheDocument();")
+    shell += 1
+    rc, text = _shell({"shared-ui/locales/demo.ftl": FTL, "ui/src/bad.test.tsx": BADTX})
+    if rc != 1 or "A TEST NOW ASSERTS A TRANSLATION KEY" not in text or "bad.test.tsx" not in text:
+        print("  x a new raw-key site must fail rc 1 (rc=%r text=%r)" % (rc, text[-90:]),
+              file=sys.stderr)
+        return 1
+    shell += 1
+    # from an EMPTY baseline, writing is growth -- --allow-growth is part of the
+    # graded contract, not a workaround
+    rc, text = _shell({"shared-ui/locales/demo.ftl": FTL, "ui/src/bad.test.tsx": BADTX},
+                      extra=("write", "growth"))
+    if rc != 0 or "with 1 entries" not in text:
+        print("  x --write-baseline must record the site rc 0 (rc=%r text=%r)" % (rc, text[-90:]),
+              file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _shell({"shared-ui/locales/demo.ftl": FTL, "ui/src/bad.test.tsx": BADTX,
+                       "scripts/raw-key-assertions-baseline.json":
+                           '{"entries": [{"at": "ui/src/bad.test.tsx:2", "key": "demo-alpha"}]}'})
+    if rc != 0 or "1 known site(s)" not in text:
+        print("  x a recorded site must pass the ratchet rc 0 (rc=%r text=%r)" % (rc, text[-90:]),
+              file=sys.stderr)
+        return 1
+    shell += 1
+    # the stale rung still needs a READABLE corpus -- and one with NO new site,
+    # because the new-site check outranks stale: the file stays but asserts
+    # literal copy now, so current is empty and the recorded site is stale
+    BADTX2 = ("const l10n = { getString: (id) => map[id] ?? id };" + chr(10)
+              + "expect(screen.getByText(" + chr(39) + "Alpha" + chr(39)
+              + ")).toBeInTheDocument();")
+    rc, text = _shell({"shared-ui/locales/demo.ftl": FTL, "ui/src/bad.test.tsx": BADTX2,
+                       "scripts/raw-key-assertions-baseline.json":
+                           '{"entries": [{"at": "ui/src/bad.test.tsx:2", "key": "demo-alpha"}]}'})
+    if rc != 1 or "BASELINE IS STALE" not in text:
+        print("  x a removed site must make the baseline stale rc 1 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
+    shell += 1
+    rc, text = _shell({"shared-ui/locales/demo.ftl": FTL})
+    if rc != 2 or "SCAN READ NOTHING" not in text:
+        print("  x a corpus with no test files must refuse rc 2 (rc=%r text=%r)"
+              % (rc, text[-90:]), file=sys.stderr)
+        return 1
     print(
-        "SELF-TEST %s (%d cases; live: %d test files, %d renderable, %d finding(s))"
-        % ("OK" if not bad else "FAILED", cases, read_live, eligible_live, len(live))
+        "SELF-TEST %s (%d cases + %d shell cases; live: %d test files, %d renderable, %d finding(s))"
+        % ("OK" if not bad else "FAILED", cases, shell, read_live, eligible_live, len(live))
     )
     if bad:
         sys.stderr.write("SELF-TEST WRONG:\n" + "\n".join(bad) + "\n")
@@ -197,16 +281,19 @@ def self_test() -> int:
     return 0
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r192: argv and root parameterized, the r166..r191 contract -- root
+    redirects the test corpus, the bundles, and the ratchet file together."""
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--self-test", action="store_true")
     ap.add_argument("--write-baseline", action="store_true")
     ap.add_argument("--allow-growth", action="store_true")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     if args.self_test:
         return self_test()
+    base = REPO if root is None else Path(root).resolve()
 
-    findings, read, eligible = scan()
+    findings, read, eligible = scan(root)
     if read == 0 or eligible == 0:
         print(
             "SCAN READ NOTHING: %d files, %d renderable. Refusing to report clean."
@@ -218,7 +305,7 @@ def main() -> int:
     current = {_split(f) for f in findings}
 
     if args.write_baseline:
-        prior = {(_split_entry(e)) for e in _read_baseline()}
+        prior = {(_split_entry(e)) for e in _read_baseline(base)}
         grown = sorted(current - prior)
         if grown and not args.allow_growth:
             print("", file=sys.stderr)
@@ -236,13 +323,14 @@ def main() -> int:
             "total": len(current),
             "entries": [{"at": a, "key": k} for a, k in sorted(current)],
         }
-        BASELINE_PATH.write_text(
+        baseline_path = base / "scripts" / BASELINE_PATH.name
+        baseline_path.write_text(
             json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
-        print("wrote %s with %d entries" % (BASELINE_PATH.relative_to(REPO), len(current)))
+        print("wrote %s with %d entries" % (baseline_path.relative_to(base), len(current)))
         return 0
 
-    known = {(_split_entry(e)) for e in _read_baseline()}
+    known = {(_split_entry(e)) for e in _read_baseline(base)}
     # ZERO is the target state, not a ratchet against a ceiling. The sweep on
     # 2026-11-07 converted every site, so the baseline is empty; if it ever stops
     # being empty, this gate should say so loudly rather than quietly allow it.
