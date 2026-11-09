@@ -9338,3 +9338,45 @@ scoped-reads ladder's r213 limits stand. Docker daemon still down
 (probed r159): E2E / llvm-cov / nextest-junit receipts remain
 PG-gated. Root-policy RED on the foreign todo.md (r174); core-size RED
 on the ADR-59 +64 (r181) -- both await their owning lanes.
+
+### Round 215 (2026-11-09) -- the r166 contract reaches the cheapest gate: verify-shell-syntax
+
+main() grew the contract -- main(argv=None, root=None) -- and the
+parameter moves every evidence source together: targets() runs
+git ls-files against the root and walks it in the fallback, check()
+resolves its repo-relative script path and cwd from the same base, and
+the PARSE ERROR print derives its root-relative name from it too. One
+base, so no rung can pass while grading the wrong tree. The self-test
+now chains the new shell ladder (4 rungs) after its 15 cases.
+
+The ladder's rungs: a fixture parse error fails rc 1 with the file
+named root-relative (the killing rung); a clean fixture counts its one
+entry point at rc 0; a BROKEN .githooks/*.sample is excluded by name
+-- documentation of a hook the repo does not run, exactly the scope
+rule the docstring argues, now graded through a fixture where the
+sample really is broken; and a bash-only array literal parses under
+its own shebang, so a bash-shebang file is not reported against
+/bin/sh.
+
+Two things the ladder grades by accident of design, on purpose: a
+fixture is deliberately repo-less, so every rung rides the FILESYSTEM
+FALLBACK of targets() -- the branch the 2026-09-29 edit deleted
+unnoticed (the VENDORED tuple gone with it), which only a deliberate
+exercise caught; and the killing rung's kill was re-proven live
+(probe215: root-dropping main grades the checkout, 65 files parse, rc
+0, where the fixture returns 1 -- "KILL CONFIRMED"). The git path of
+targets() is graded only by the live run on this checkout, which read
+"OK -- 65 shell entry point(s) parse" at exit 0.
+
+Honest limits: a fixture with ZERO shell files vacuously passes ("0
+shell entry point(s) parse", rc 0) -- that is this gate's documented
+exit contract (0 all parse), not a corpus refusal like scoped-reads';
+the ladder does not grade a parser-spawn failure (rc 2 "could not run
+sh"), which needs a PATH the ladder cannot safely manufacture on this
+host; and the shebang-honouring rung proves bash is picked, not that a
+BAD bash diagnostic survives _looks_like_parse_output's retry. The
+scoped-reads (r213) and retire (r214) limits stand. Docker daemon
+still down (probed r159): E2E / llvm-cov / nextest-junit receipts
+remain PG-gated. Root-policy RED on the foreign todo.md (r174);
+core-size RED on the ADR-59 +64 (r181) -- both await their owning
+lanes.
