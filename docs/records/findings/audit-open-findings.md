@@ -11055,3 +11055,54 @@ that a mutation of that shape is faithful, and I have no way to prove that from
 inside the harness -- only by reading the file the anchor came from, which is
 what was done here and is still a human judgement.
 
+### Round 249 (2026-11-09) -- the last five unproven ladders were a gap in the tool, not the checkers
+
+Round 247 reported five ladders as UNPROVEN and round 248 proved three more by
+widening the mutation table. This round finished the set. Five anchors were
+added, each read from the file it targets and each verified to occur exactly
+once:
+
+  * "scan-root ignores root" -- check-dead-controls composes its scan root
+    inline through os.path.join(os.path.abspath(root), "ui", ...)
+  * "workflow dir ignores root" -- verify-workflow-syntax resolves a
+    SUBDIRECTORY (root/.github/workflows) rather than the root itself
+  * "root_path ignores root" -- check-merged-lines names it root_path and
+    composes per-directory bases from it
+  * "register path ignores root" -- check-register-hygiene never names its
+    root "root" at all: since r233 it is `register_path`, and the anchor is
+    the two-line None-default that replaces it
+  * "subprocess cwd ignores root" -- check-orphan-prototype-files passes root
+    as the cwd of a `git ls-files` subprocess
+
+ALL FIVE KILL. The census did not move this round -- no checker was added --
+but the number of ladders with a MEASURED kill went from seven to twelve of
+thirteen.
+
+The finding worth recording is what the five had in common. Each was reported
+"NO APPLICABLE MUTATION", and in every case the natural reading -- that these
+checkers are hard to test -- was false. They are ordinary checkers that
+happen to resolve their root in their own idiom: a subdirectory, a differently
+named parameter, a subprocess cwd. The tool knew five spellings of one
+concept and called everything else unprovable. Rounds 247 and 248 each
+downgraded a checker's claim on the strength of that silence; the correct
+response was to read the source, not to doubt the checker.
+
+The last holdout is verify-selftest-sweep, whose single-anchor mutant survives
+for the reason recorded in round 247 (root resolved twice; its paired mutation
+greens by accident while an unrelated checker is red). That one is a genuine
+limit of one-anchor mutation and is left as an honest exception rather than
+made green by an anchor that would misrepresent it.
+
+Measured: twelve ladders "every applicable mutation killed", including
+check-orphan-prototype-files and verify-ui-coverage-floors at two mutations
+each. No checker behaviour changed this round -- only the evidence for claims
+already in the register.
+
+Honest limits: adding an anchor still asserts that the mutation is FAITHFUL,
+and the harness cannot verify that from inside; the check was to read each
+expression in its file, which remains a human judgement and can be wrong. The
+table is now thirteen anchors long and will keep needing additions for new
+idioms -- "NO APPLICABLE MUTATION" should be read as a prompt to look at the
+file, never as evidence about the checker. Nothing here proves a rung grades
+the RIGHT property, only that it notices when root is ignored.
+

@@ -80,6 +80,29 @@ MUTATIONS = (
         "base = ROOT if root is None else Path(root).resolve()",
         "base = ROOT  # MUTANT: root ignored",
     ),
+    (
+        "repo root ignores root",
+        "base = REPO_ROOT if root is None else Path(root).resolve()",
+        "base = REPO_ROOT  # MUTANT: root ignored",
+    ),
+    (
+        "root_path ignores root",
+        "root_path = ROOT if root is None else Path(root).resolve()",
+        "root_path = ROOT  # MUTANT: root ignored",
+    ),
+    # r249: the two checkers that do not name their root "root" at all.
+    # check-register-hygiene's root is `register_path` (r233), and
+    # check-orphan-prototype-files passes `root` to a subprocess's cwd.
+    (
+        "register path ignores root",
+        "    if register_path is None:\n        register_path = REGISTER",
+        "    register_path = REGISTER  # MUTANT: root ignored",
+    ),
+    (
+        "subprocess cwd ignores root",
+        "        cwd=root,\n        capture_output=True,",
+        "        cwd=REPO_ROOT,  # MUTANT: root ignored\n        capture_output=True,",
+    ),
     # r248: the remaining shapes, one per checker that previously reported NO
     # APPLICABLE MUTATION. Each anchor is the exact expression that appears
     # exactly once in its file; a mutation that matches nothing is never
@@ -99,6 +122,20 @@ MUTATIONS = (
         "abspath root ignored",
         "repo = os.path.abspath(root) if root is not None else \\",
         "repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) if True else \\",
+    ),
+    # r249: three more shapes, each read from its own file rather than guessed.
+    # `scan_root` (check-dead-controls), a subdirectory composed inline
+    # (verify-workflow-syntax), and a two-line resolution whose first line
+    # chooses root while the second composes from it (check-merged-lines).
+    (
+        "scan-root ignores root",
+        'scan_root = SCAN_ROOT if root is None else os.path.join(os.path.abspath(root), "ui", "src", "features")',
+        "scan_root = SCAN_ROOT  # MUTANT: root ignored",
+    ),
+    (
+        "workflow dir ignores root",
+        'wf_dir = None if root is None else Path(root).resolve() / ".github" / "workflows"',
+        "wf_dir = None  # MUTANT: root ignored",
     ),
 )
 
