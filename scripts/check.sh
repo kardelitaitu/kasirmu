@@ -1310,6 +1310,12 @@ step "register hygiene self-test" "python3 scripts/check-register-hygiene.py --s
 
 step "self-tests wired" "python3 scripts/verify-selftests-wired.py" python3 scripts/verify-selftests-wired.py
 step "self-tests wired self-test" "python3 scripts/verify-selftests-wired.py --self-test" python3 scripts/verify-selftests-wired.py --self-test
+# The arc's backlog, made derivable (round 232). Round 228 opened a second arc over
+# "nine un-contracted checkers" and recorded no list; r230 proved it unrecoverable and
+# had to guess its own target. This census exits 0 always -- it is a report, not a
+# verdict -- so it is classified rather than owed a gates.json row and a CI job.
+step "checker contract census" "python3 scripts/census-checker-contracts.py" python3 scripts/census-checker-contracts.py
+step "checker contract census self-test" "python3 scripts/census-checker-contracts.py --self-test" python3 scripts/census-checker-contracts.py --self-test
 step "deployment verification" "python3 scripts/verify-deployment.py" python3 scripts/verify-deployment.py
 step "deployment verification self-test" "python3 scripts/verify-deployment.py --self-test" python3 scripts/verify-deployment.py --self-test
 # The four parsers' own cases, beside the gate they prove. Pure regexes plus a

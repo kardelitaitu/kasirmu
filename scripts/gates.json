@@ -2305,7 +2305,11 @@
       "id": "flake-receipt-junit",
       "label": "test workspace flake receipt (junit)",
       "status": "required",
-      "runners": { "check.sh": [ "test workspace flake receipt (junit)" ] },
+      "runners": {
+        "check.sh": [
+          "test workspace flake receipt (junit)"
+        ]
+      },
       "_note": "Added 2026-11-08: the step grades the nextest JUnit report for bought-back flakes (verify-pg-tests-ran.py --nextest-junit) and had no row -- invisible to verify-gate-completeness.py because STEP_RE anchored at column 0 while the step sits inside the nextest branch, and prefix-hidden in verify-ci-docs-drift.py behind the 'test workspace' needle: the exact omission shape these checks exist to close. Local-runner-only by design: the cargo-test fallback emits no JUnit report, so the step cannot run there; the checker's own proof is the pg-receipt-selftest row."
     }
   ],
@@ -2319,6 +2323,8 @@
     "coverage floors": "branch alternates, not duplicates: the CHECK_FROM resume-skip stub (command true) and the real llvm-cov run share the label across mutually exclusive branches (if/elif/else, measured 2026-11-08)",
     "coverage floors self-test": "branch alternates, same shape as coverage floors",
     "ui coverage floors": "branch alternates, same shape as coverage floors (ui guard)",
-    "ui coverage floors self-test": "branch alternates, same shape as coverage floors (ui guard)"
+    "ui coverage floors self-test": "branch alternates, same shape as coverage floors (ui guard)",
+    "checker contract census": "census, not a gate -- it reports the un-contracted backlog and exits 0 by design (round 109's rule: a new gate starts green); a 50-item list must not fail a push. Round 232: replaces the unrecorded 'nine' of r228 with a derivable field.",
+    "checker contract census self-test": "census, not a gate -- the pure classifier and the round-derivation cases beside the census they prove."
   }
 }
