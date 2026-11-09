@@ -294,9 +294,10 @@ fn parse_stored_vector(stored: Option<String>) -> Option<VersionVector> {
 /// key is compared against what this one left — which is what a sequential
 /// per-item loop would have read back.
 fn fold(plan: &mut Plan, key: &(String, String), write: Option<EntityWrite>) {
-    let Some(step) = plan.get_mut(key) else {
-        return;
-    };
+    let step = plan.entry(key.clone()).or_insert_with(|| PlanStep {
+        state: (None, None),
+        write: None,
+    });
     if let Some(write) = write {
         step.state = (
             Some(serde_json::to_string(&write.merged).unwrap_or_else(|_| "{}".to_string())),
@@ -601,7 +602,18 @@ impl SyncStore {
         items: &[DetectionInput<'_>],
     ) -> Result<Vec<Option<Decision>>, String> {
         let entities = unique_entities(items);
-        let mut plan: Plan = Plan::with_capacity(entities.len());
+        let mut plan: Plan = entities
+            .iter()
+            .map(|key| {
+                (
+                    key.clone(),
+                    PlanStep {
+                        state: (None, None),
+                        write: None,
+                    },
+                )
+            })
+            .collect();
         for chunk in entities.chunks(super::DETECTION_CHUNK) {
             let (types, ids): (Vec<&str>, Vec<&str>) =
                 chunk.iter().map(|(t, i)| (t.as_str(), i.as_str())).unzip();
@@ -617,13 +629,9 @@ impl SyncStore {
                 .await
                 .map_err(|e| e.to_string())?;
             for row in &rows {
-                plan.insert(
-                    (row.get(0), row.get(1)),
-                    PlanStep {
-                        state: (Some(row.get(2)), Some(row.get(3))),
-                        write: None,
-                    },
-                );
+                if let Some(step) = plan.get_mut(&(row.get(0), row.get(1))) {
+                    step.state = (Some(row.get(2)), Some(row.get(3)));
+                }
             }
         }
 

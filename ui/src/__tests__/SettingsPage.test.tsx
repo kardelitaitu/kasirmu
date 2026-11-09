@@ -315,6 +315,7 @@ async function openShell() {
   renderPage();
   await waitFor(() => {
     expect(screen.getByTestId('settings-sidebar')).toBeInTheDocument();
+    expect(document.querySelector('.settings-page[data-initialized="true"]')).not.toBeNull();
   });
 }
 

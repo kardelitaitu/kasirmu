@@ -472,7 +472,7 @@ function SettingsPageContent() {
   // ── Main render ──────────────────────────────────────────────
 
   return (
-    <div className="settings-page" onContextMenu={(e) => e.preventDefault()}>
+    <div className="settings-page" data-initialized={initialized} onContextMenu={(e) => e.preventDefault()}>
       {/* ── Top bar (child owns the context menu + breadcrumb; search/save state threaded) ── */}
       <SettingsTopbar
         activeSection={activeSection}
