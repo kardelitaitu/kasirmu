@@ -8555,3 +8555,48 @@ corpus number is a snapshot, not an invariant. Docker daemon still down
 standing PG-gated gap. The root-policy gate remains RED on the foreign
 todo.md (r174) and verify-core-size RED on the ADR-59 +64 (r181), both
 awaiting their owning lanes.
+
+### Round 197 (2026-11-09) -- coverage-floors joins the arc; a fixture name is a path, not a wish
+
+The r166..r196 contract applied to the coverage ratchet: main(argv, root)
+resolves the DEFAULT report and floors manifest under the contract root,
+and RELATIVE --json/--floors arguments follow it too (absolute pass
+through). Root changes where the inputs are read; the grading math -- the
+sum-not-average rule, the ungated workspace figure, the
+None-is-not-zero distinction -- is untouched, exactly as the arc demands.
+
+Six shell cases through argv and root, no git: the DEFAULT paths (no argv
+paths at all) grade a healthy synthetic report OK; a RELATIVE regression
+report fails rc 1 naming platform-sync and the deliberate-lowering
+epilogue; a missing report is the named refusal with the regen command;
+an empty report fails as a broken run rather than reading as 0% and
+gating everything; a missing floors manifest refuses; a manifest
+declaring no floors refuses the same way (the ValueError path the pure
+cases grade, now through main). No git fixture is needed -- the gate
+reads two JSON files, the sixth rglob-free proof.
+
+The round's fixture lesson: A FIXTURE NAME IS A PATH, NOT A WISH. The
+regression case passed --floors floors.json while the fixture had been
+written to scripts/coverage-floors.json -- the default LOCATION. The
+refusal that came back was the checker behaving correctly about a
+manifest that genuinely was not there. The ladder now passes the real
+relative path. The adjacent rule holds: the DEFAULTS case must be its
+own case (no argv paths), because the defaults are exactly what a
+root-dropping main would silently move.
+
+Measured kill: the root-dropping main resolves the default report
+against the real repo, where the fixture does not exist, and the
+default-paths rung dies on the cannot-read refusal -- captured:
+default report+floors under the root must grade OK (rc=1 ... cannot
+read the coverage report ...). Killed before any later case.
+
+Honest limits: the workspace-total informational line is asserted by the
+pure cases only; the epilogue's scripts/coverage-floors.json _measured
+pointer is not graded (no case opens the manifest to check the
+documentation). The gate itself remains live-only at the coverage layer:
+this checker grades a REPORT, and the report's producer (cargo llvm-cov)
+is not exercised here -- unchanged from before the round, and the Docker
+daemon is still down (probed r159), so the E2E / llvm-cov / nextest-junit
+receipts remain the standing PG-gated gap. The root-policy gate remains
+RED on the foreign todo.md (r174) and verify-core-size RED on the
+ADR-59 +64 (r181), both awaiting their owning lanes.
