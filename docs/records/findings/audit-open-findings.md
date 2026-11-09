@@ -9531,3 +9531,58 @@ stand. Docker daemon still down (probed r159): E2E / llvm-cov /
 nextest-junit receipts remain PG-gated. Root-policy RED on the foreign
 todo.md (r174); core-size RED on the ADR-59 +64 (r181) -- both await
 their owning lanes.
+
+### Round 219 (2026-11-09) -- shadow-copies: both passes move with the root, and rung 4 caught the draft leaving one behind
+
+verify-test-shadow-copies.py ran on module globals -- TEST_DIR, PROD_DIRS
+-- with a self-test that monkey-patched them. main() is now
+main(argv=None, root=None), and root moves EVERY evidence source: the
+production walk (collect_prod/collect_prod_consts take the resolved
+dir list), both test-file passes, and every path printed in findings
+(rel to the graded root, so a fixture's verdict names fixture files).
+The monkey-patch contract is preserved -- the seam overrides only when
+root is given, so the existing 7 self-test cases run unchanged.
+
+The rung that mattered: rung 4 (a same-value const copy) failed in the
+FIRST draft at rc 0 with "shadows=0" -- because the draft re-pointed
+the FUNCTION pass to the fixture but left the CONST pass iterating the
+TEST_DIR global, so the fixture's const copy was invisible while the
+REAL checkout's tests were silently the ones being scanned. That is
+the exact all-evidence-sources-together bug this arc's seam exists to
+make visible, caught live by its own ladder. The fix comment names the
+rule: both passes move with the root or neither does.
+
+The ladder is 5 rungs on the self-test's own proven computeTax body
+(similarity 1.000 as a byte copy -- the ladder grades the plumbing,
+not the threshold): the killing rung (rc 1, "1 shadow copy", both
+paths fixture-relative; probe219 re-proven live, "KILL CONFIRMED" --
+the seam-dropping main scans the checkout at rc 0), the import
+exemption (same-named local with a real import reads OK rc 0), --json
+(RETURNING its verdict rc 1 with a parseable fixture-relative payload
+-- pinned in the rung comment as DELIBERATELY DIFFERENT from
+check-state-closure-after-await's json branch, which falls through to
+--strict; the two must never be silently "aligned"), the const pass
+(exact value equality, no similarity, with a benign non-colliding
+function in the fixture because examined==0 refuses before any const
+prints), and the missing __tests__ dir refusal rc 2.
+
+Also: the module docstring carried its "WHAT IT DELIBERATELY DOES NOT
+DO" section TWICE, byte-identical (verified equal before deleting the
+second copy) -- a copy-paste relic, and a small irony in a gate whose
+entire subject is duplicated copies.
+
+Self-test reads "SELF-TEST: PASS" plus the 5-rung ladder; live run
+unchanged: "verify-test-shadow-copies: OK" at exit 0.
+
+Honest limits: the seam grades the plumbing, not the threshold (the
+0.50 gap is the docstring's measured derivation, untouched here); the
+known blind spots stand (renamed copies, unnamed expressions); and a
+fixture whose test file has NO functions still refuses EMPTY
+POPULATION before the const pass can speak -- the rung-4 fixture's
+benign helper documents the shape, but a test file that is const-only
+by design has no rung. The scoped-reads (r213), retire (r214),
+state-closure (r216), fluent-families (r217), and scratch-leaks (r218)
+limits stand. Docker daemon still down (probed r159): E2E / llvm-cov /
+nextest-junit receipts remain PG-gated. Root-policy RED on the foreign
+todo.md (r174); core-size RED on the ADR-59 +64 (r181) -- both await
+their owning lanes.
