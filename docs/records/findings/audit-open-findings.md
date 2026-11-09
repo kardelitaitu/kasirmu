@@ -9586,3 +9586,56 @@ limits stand. Docker daemon still down (probed r159): E2E / llvm-cov /
 nextest-junit receipts remain PG-gated. Root-policy RED on the foreign
 todo.md (r174); core-size RED on the ADR-59 +64 (r181) -- both await
 their owning lanes.
+
+### Round 220 (2026-11-09) -- chokepoints: fixture GIT repositories, range diffs included
+
+check-chokepoints.py already took main(argv), and its evidence layer
+(collect_diff, evaluate, run_gate) already took root as a parameter --
+the seam was one branch wide: main(argv=None, root=None) with
+base = repo_root() if root is None else abspath(root). The interesting
+part is what the FIXTURES had to be: this gate's evidence is a git
+DIFF, so its ladder is the arc's first whose fixtures are real scratch
+WORK TREES -- git init, an --allow-empty HEAD commit (working-tree
+mode diffs against HEAD, which does not exist before the first commit
+and refuses), then untracked files for the working-tree read or
+committed ones for --range. Rung 5 grades --range HEAD~1..HEAD against
+the fixture's own history: the git base moves with the root, not just
+the working-tree read -- the same "every evidence source together"
+rule as r218's budget file, applied to the VCS instead of the
+filesystem.
+
+Five rungs: the killing rung (an unaccompanied command file,
+--strict, rc 1, both ipc-command and census-pin named; probe220
+re-proven live -- the seam-dropping main grades the checkout, quiet,
+rc 0, "KILL CONFIRMED"), the same command WITH its companions reading
+complete rc 0, --ack census-pin accepting exactly that rule
+("1 rule(s) need a companion" remains), an off-surface website file
+staying quiet even under --strict, and the range-mode proof. Rung 2
+incidentally grades that a gate which cannot run in the fixture
+(verify-ipc-parity.py does not exist there) reports SKIPPED instead of
+failing the run -- the report-only design the docstring states.
+
+Two fixture bugs caught before the first green run, both instructive:
+the writer handed line LISTS (the self-test's own dict shape) to
+write(), and the c2 commit command was assembled with a [:-1] slice
+that dropped -m, sending git to an editor it cannot open in a ladder.
+Both fixed; neither touched the tool's logic.
+
+Self-test reads "self-test: PASS" plus the 5-rung ladder; live run
+unchanged at exit 0 ("working tree vs HEAD", quiet at commit time).
+
+Honest limits: the killing probe depends on the checkout being quiet
+at probe time -- if another lane's uncommitted change left a
+chokepoint incomplete, the mutant's rc would equal the fixture's and
+the probe would fail LOUDLY rather than grade wrong (the assertion is
+mut_rc != 1, not == 0); gate VERDICTS inside a fixture are only ever
+SKIPPED (no gate command exists in a scratch tree), so the
+gate-ran-and-failed branch is graded nowhere -- it is report-only by
+design and never touches the exit code; and the fixture repos carry
+the minimum two commits, so merge-base semantics of more complex
+ranges are ungraded. The scoped-reads (r213), retire (r214),
+state-closure (r216), fluent-families (r217), scratch-leaks (r218),
+and shadow-copies (r219) limits stand. Docker daemon still down
+(probed r159): E2E / llvm-cov / nextest-junit receipts remain
+PG-gated. Root-policy RED on the foreign todo.md (r174); core-size RED
+on the ADR-59 +64 (r181) -- both await their owning lanes.
