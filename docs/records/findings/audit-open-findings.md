@@ -9295,3 +9295,46 @@ daemon still down (probed r159): E2E / llvm-cov / nextest-junit
 receipts remain PG-gated. Root-policy RED on the foreign todo.md
 (r174); core-size RED on the ADR-59 +64 (r181) -- both await their
 owning lanes.
+
+### Round 214 (2026-11-09) -- the retire ladder to thirteen: residue cap, desktop twin idiom, a LIVE dirty refusal
+
+The three arms r210's honest-limits paragraph named are now rungs.
+Rung 11 grades the DESKTOP twin idiom -- "Scoped variant of \`x\`
+(ADR #7)." -- against the same rewrite the tablet spelling rides: the
+count line reads "twin doc lines rewritten: 1 (of 1 retired fns)" and
+the applied file carries the dead fn's own prose resolved from a
+session token. Rung 12 grades the residue REPORT's 40-line cap: 41
+planted comment lines naming a candidate print 40 entries and a
+"... and 1 more" tail, with the count line saying 41 -- the census is
+capped, the number is not. Rung 13 grades the dirty-file refusal LIVE:
+the fixture is itself a git repository (git init + commit inside the
+tempdir), the module is modified after the commit, and --apply refuses
+rc 2 -- "is dirty in another lane" -- before computing any range. The
+r210 limit said the refusal was graded only by its ABSENCE because the
+fixtures were deliberately git-less; one rung now makes a fixture that
+is not.
+
+One measured needle: the twin-doc rewrite prints "Dead one does a
+thing resolved from a session token. ADR #7." -- the harvest strips
+the twin line's trailing period, so the first draft's needle (written
+from the source's f-string, with the period kept) missed. The needle
+is pinned to the measured sentence and the rung comment says not to
+"fix" it back to what the source suggests -- the same
+measured-then-pinned rule r211's verdict sentence followed.
+
+Ladder: 13 rungs, killing rung still first, and the measured kill
+re-confirmed (root-dropping main aborts on the checkout's missing
+ladder_probe.rs). Live dry run unchanged: "nothing to retire in
+offline.rs: 9 command fns, all registered, UI-named, or called".
+
+Honest limits: rung 13 exercises the dirty refusal on the fixture's
+own fresh repository, not on THIS checkout's -- the recorded real-tree
+refusals remain the only evidence about this repo's own lanes, and a
+rung that dirtied a real file here would be the exact cross-lane
+hazard the check exists to prevent; the "... and N more" tail is
+graded at 41 lines only, not at a deeper count; and the desktop-idiom
+rung grades one rewritten line where the real batch rewrote six. The
+scoped-reads ladder's r213 limits stand. Docker daemon still down
+(probed r159): E2E / llvm-cov / nextest-junit receipts remain
+PG-gated. Root-policy RED on the foreign todo.md (r174); core-size RED
+on the ADR-59 +64 (r181) -- both await their owning lanes.
