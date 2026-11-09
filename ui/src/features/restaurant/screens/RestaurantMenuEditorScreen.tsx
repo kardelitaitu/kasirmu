@@ -928,7 +928,7 @@ export default function RestaurantMenuEditorScreen({
   //
   // This handler owns Escape for the editor, but for a long time it never got the
   // chance to run. `PosScreen` mounts its OWN Escape cascade for the restaurant
-  // workspace (`PosScreen.tsx:2068`, re-measured 2026-10-19; the note said :1996), which
+  // workspace (`PosScreen.tsx:2069`, re-measured 2026-10-19; the note said :1996), which
   // treats the menu editor as a sub-screen
   // and closes the whole thing. Both listeners were on the same bubble phase, so
   // whichever was registered first on `document` won, and that was PosScreen — this

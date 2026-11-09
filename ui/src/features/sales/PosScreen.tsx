@@ -1265,6 +1265,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   );
 
   const [sendingToKitchen, setSendingToKitchen] = useState(false);
+  const sendingToKitchenRef = useRef(false);
 
   const hasUndispatchedItems = useMemo(
     () => lines.some((l) => (l.qty - (l.dispatchedQty ?? 0)) > 0),
@@ -1348,6 +1349,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   dispatchKitchenDeltaRef.current = handleDispatchKitchenDelta;
 
   const handleSendToKitchen = useCallback(async () => {
+    if (sendingToKitchenRef.current) return;
     if (!sessionToken) {
       // Reported, not dropped. See handleDispatchKitchenDelta above.
       addToast({ message: requiredLocalized(l10n, 'pos-toast-auth-required'), type: 'warning' });
@@ -1377,6 +1379,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       addToast({ message: requiredLocalized(l10n, 'pos-toast-kitchen-print-failed'), type: 'warning' });
     }
 
+    sendingToKitchenRef.current = true;
     setSendingToKitchen(true);
     try {
       await handleDispatchKitchenDelta(deltaLines);
@@ -1561,6 +1564,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         type: 'error',
       });
     } finally {
+      sendingToKitchenRef.current = false;
       setSendingToKitchen(false);
     }
   }, [lines, sessionToken, handleDispatchKitchenDelta, setLines, tableNumber, customerName, guestCount, activeOpenBillId, discountPercent, discountLabel, tipPercent, serviceChargeEnabled, serviceChargePercent, orderType, subtotal, activeCurrency, setActiveOpenBillId, loadOpenBills, addToast, l10n, deductionLocationIdRef, autoPrintKitchen]);

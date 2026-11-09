@@ -1121,17 +1121,6 @@ const SCREENS: ScreenEntry[] = [
     name: 'SettingsSelect',
     tsx: 'settings/SettingsSelect.tsx',
     css: ['settings/SettingsSelect.css'],
-    // Cited, not muted: this component's markup uses .sr-only, which is defined in
-    // theme/components.css:1492, a sheet both entry points import (main.tsx:7
-    // desktop, main.mobile.tsx:4 tablet). It is not composed at runtime, so a
-    // knownDynamicFragments entry here would assert something false and then hide the
-    // name from case 3 forever. No additionalTsx either: all nine ssel-* names have
-    // exactly one consumer, this component -- measured with the guard's own extractors,
-    // dead-against-own 0, dead-against-features/settings 0, dead tree-wide 0 -- and
-    // locations/TopologyScreen.tsx, the only other file that names the component at :28,
-    // renders <SettingsSelect> at :747 and :918 without using a single ssel-* class.
-    // A sibling that merely shares a surface is not what that field claims.
-    parentCss: ['../theme/components.css'],
   },
 
   {
