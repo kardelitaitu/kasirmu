@@ -929,15 +929,16 @@ describe('NodeTopologyEditor — undo history cap', () => {
   // This case drives 51 adds + 50 undos synchronously: 5.4 s on an idle runner,
   // which the 10 s global testTimeout (ui/vite.config.ts) does not cover under
   // full-suite load, so the cap budget is raised here, not the assertions.
-  it('caps the undo stack at 50 entries, evicting the oldest', { timeout: 60_000 }, () => {
+  it('caps the undo stack at 50 entries, evicting the oldest', { timeout: 120_000 }, () => {
     renderEditor();
     const initial = getNodeCount(); // retail preset: 3
 
     // 51 node adds — each pushes one history entry; the cap (pushHistory
     // evicts when length > 50, so the stack holds at most 50) drops the
     // oldest, which is the snapshot of the ORIGINAL pre-edit state.
+    const addBtn = screen.getByText('+ Store Node');
     for (let i = 0; i < 51; i++) {
-      fireEvent.click(screen.getByText('+ Store Node'));
+      fireEvent.click(addBtn);
     }
     expect(getNodeCount()).toBe(initial + 51);
 

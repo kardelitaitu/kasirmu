@@ -197,7 +197,9 @@ export default defineConfig(({ command }) => ({
     // If an OOM is seen again, capture the free-memory figure and the worker
     // count in the same run — those are what distinguished the real contention
     // case above from this non-finding.
-    maxWorkers: 16,
+    // In CI (2 vCPUs on ubuntu-latest), 16 workers cause severe CPU starvation,
+    // especially under v8 coverage where execution is 3-5x slower.
+    maxWorkers: process.env.CI ? 4 : 16,
     minWorkers: 2,
     // maxConcurrency stays at its default: it bounds tests per worker, and
     // the files-with-many-tests case it was added for is already served by
@@ -216,13 +218,13 @@ export default defineConfig(({ command }) => ({
 
     // Per-test timeout (ms). Default 5000 is fine for most tests;
     // DataManagementScreen (55 tests, ~225ms each) is the heaviest
-    // file and stays well within this budget. Bumped to 10s for CI
+    // file and stays well within this budget. Bumped to 10s (20s in CI) for
     // headroom on slow runners.
-    testTimeout: 10_000,
+    testTimeout: process.env.CI ? 20_000 : 10_000,
 
     // Per-hook timeout (ms) for beforeEach / afterEach. Default 5000
-    // is generous — no test file has hooks that take longer.
-    hookTimeout: 5_000,
+    // is generous — bumped to 15s in CI to prevent false timeouts under coverage.
+    hookTimeout: process.env.CI ? 15_000 : 5_000,
 
     // ── Coverage ────────────────────────────────────────────────────────
     //

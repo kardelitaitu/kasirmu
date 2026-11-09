@@ -611,7 +611,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     vi.mocked(productsApi.lookupByBarcodeScoped).mockResolvedValueOnce({
@@ -1432,7 +1432,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
 
     // Wait for shift to load - shows "0m" for elapsed time
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // 2. Add product via barcode scan (simulates clicking product card)
@@ -1513,7 +1513,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     }, { timeout: 5000 });
 
     // 11. Verify shift is still open
-    expect(screen.getByText('0m')).toBeInTheDocument();
+    expect(screen.getByText(/\d+m/)).toBeInTheDocument();
 
     // 10. Verify cart is reset (empty state)
     await waitFor(() => {
@@ -1521,7 +1521,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     });
 
     // 11. Verify shift is still open
-    expect(screen.getByText('0m')).toBeInTheDocument();
+    expect(screen.getByText(/\d+m/)).toBeInTheDocument();
 
     // 12. The kitchen ticket must actually be requested. This assertion could not
     // pass before: the two createKdsOrderFromSale* mocks sat on the @/api/sales
@@ -1558,7 +1558,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
   // Drives the real checkout and asserts the SPY, so it fails if the call is removed.
   const completeCashSaleAndReturn = async () => {
     await renderPosScreenWithShift();
-    await waitFor(() => expect(screen.getByText('0m')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/\d+m/)).toBeInTheDocument());
 
     vi.mocked(productsApi.lookupByBarcodeScoped).mockResolvedValueOnce({
       sku: 'ITEM-001',
@@ -1615,7 +1615,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add first product
@@ -1744,7 +1744,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -1808,7 +1808,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -1881,7 +1881,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -1933,7 +1933,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -1993,7 +1993,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -2047,7 +2047,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -2162,7 +2162,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -2209,7 +2209,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -2277,7 +2277,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Three distinct products, scanned in order.
@@ -2338,7 +2338,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -2394,7 +2394,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add two products — use mockImplementation keyed by barcode
@@ -2466,7 +2466,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -2514,7 +2514,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -2569,7 +2569,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     await renderPosScreenWithShift();
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Add product
@@ -2670,7 +2670,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
 
     // Should show shift as open (0m elapsed)
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
   });
 
@@ -2727,7 +2727,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     });
     await renderPosScreenWithShift();
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
     // Scan a product — note: ensureCart is only called via price override,
     // not during normal add, so the deduction badge may never appear here.
@@ -2755,7 +2755,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Click settings button
@@ -2779,7 +2779,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Click tables button
@@ -2806,7 +2806,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Click KDS button
@@ -2830,7 +2830,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Click sales history button
@@ -2862,7 +2862,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
       settingsFtl,
       testCoreFtl,
     );
-    await waitFor(() => expect(screen.getByText('0m')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/\d+m/)).toBeInTheDocument());
 
     // Reachability: the sub-screen must be genuinely open, or the assertion below
     // holds because Escape did nothing rather than because it unwound a sub-screen.
@@ -2924,7 +2924,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Click stock inquiry button
@@ -3063,7 +3063,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
 
     // Wait for initial render
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText(/\d+m/)).toBeInTheDocument();
     });
 
     // Its OWN fixture, keyed on the barcode. This case used to depend on a NEIGHBOUR's

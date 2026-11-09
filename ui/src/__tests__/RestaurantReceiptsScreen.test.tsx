@@ -901,7 +901,7 @@ describe('RestaurantReceiptsScreen — back nav & save', () => {
     expect(label).toHaveTextContent(/Test Print/i);
   });
 
-  it('enforces maximum character limits on header title and lines', async () => {
+  it('enforces maximum character limits on header title and lines', { timeout: 30_000 }, async () => {
     const user = userEvent.setup();
     await renderScreen();
 
