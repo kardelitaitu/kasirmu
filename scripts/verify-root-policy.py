@@ -127,6 +127,13 @@ ROOT_FILE_ALLOWLIST = frozenset({
     # its own acceptance command ran and passed (3543 core tests, all governance
     # gates green), which is what §7.4 says earns the `done-` prefix.
     "plan-c1-install-key-s2b-s2c.md",
+    # The owner's 30-day plan written 2026-11-09 (the beta runway: 2026-11-09 to
+    # 2026-12-09, ending six days before the 2026-12-15 code freeze). Same class as
+    # the entries above: a tracked plan doc at the root carrying the `plan-` token
+    # its §7.4 exemption requires. Added in the commit that creates the file, which
+    # is what this gate's own docstring asks for -- the allowlist entry and the file
+    # land together or the gate is red in between.
+    "plan-next-30-days.md",
     # The 2026-10-12 plan-doc sweep. Fourteen tracked plan documents at the root
     # that were never added to this list, plus one STALE entry: `todo-android-
     # updater.md` was renamed to `done-todo-android-updater.md` when its own
