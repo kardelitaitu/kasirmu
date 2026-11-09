@@ -11289,3 +11289,52 @@ whether the concern was real, and it is, for most of the arc. A rung that dies
 at the floor should eventually be rewritten to assert a verdict, which is a
 future round's work per checker, not a single repair.
 
+### Round 254 (2026-11-09) -- one of the thirteen "floor" kills was misclassified, and the rule was the problem
+
+Round 253 classified 13 of 18 ladder kills as dying at the REFUSAL FLOOR, by
+reading the rung-1 failure string. That rule was too coarse and this round
+proved it wrong on at least one file.
+
+THE TEST. For verify-status-fallbacks the question a floor-kill cannot answer
+is: would a main() that honours root for the SCOPE but ignores it for the
+FINDING survive? A mutant was built to do exactly that -- _sources(root) still
+reads the fixture, so the refusal floor is never reached, but the per-file
+finding is taken from this checkout's ui/ instead of the fixture's file.
+Measured: the ladder returns rc 1 with
+  "x rung 1: a dishonest fallback must exit 1 naming file:line and the value
+   (rc=0 said='status-fallbacks: OK (no default names a concrete status)')"
+i.e. rung 1 DOES exercise the detector, and this file was never a floor kill.
+The earlier classification was wrong because the refusal message also quotes
+the fixture path, and the classifier looked for a refusal rather than for
+whether a comparison produced the number.
+
+TWO OF MY OWN MUTANTS WERE INERT BEFORE THIS ONE, and both were caught by
+running them rather than by reading them: the first added an unused flag
+(rc 0, proving nothing); the second rewrote the grading line to
+`findings_in(_m) if True else []`, which evaluates the truthy branch and
+changes nothing -- it also returned rc 0 and would have been read as "the
+ladder does not catch finding-blindness". That is the second time in this arc
+that a mutation which changed nothing nearly became a conclusion. The
+harness rule it violates is already in the file: an anchor must occur exactly
+once AND the mutant must actually differ in behaviour, which cannot be
+checked by inspection alone.
+
+The other three re-checked this round ARE genuine floor kills: check-ftl-attrs
+("refused: expected .../shared-ui/..."), verify-ui-coverage-floors ("cannot
+read the floors manifest") and check-pipeline-verdicts ("read no .sh file
+under ...") all fail at rc 2 without grading a corpus.
+
+So round 253's headline number stands for those files but not for all 13: the
+correct statement is that AT LEAST 12 of 18 are floor kills, and
+verify-status-fallbacks is a verdict kill. The classification needs re-doing
+per file with a scope-honest/finding-blind mutant, roughly one mutation per
+checker; that was not attempted for the remaining nine.
+
+Honest limits: this round corrected a measurement rather than shipping a
+change. The census stays at 34 of 70 and no checker was altered. The lesson
+repeats the arc's most expensive one -- a classifier that reads a failure
+MESSAGE is classifying a string, not a mechanism, and only a mutant that
+isolates the mechanism settles it. I have now mis-measured this property once
+in each direction, which is reason to distrust the remaining twelve until each
+is probed the same way.
+
