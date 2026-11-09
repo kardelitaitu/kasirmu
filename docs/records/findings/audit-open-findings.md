@@ -10167,7 +10167,7 @@ gate reports a clean verdict over a dead scan.
 Seven rungs, and rung 1 is the killing rung: the fixture page prints 86
 while its stub measures 0 and must exit 1 naming the label and both
 numbers; a root-dropping main grades THIS checkout, whose table matches
-its own measurement, and exits 0 (probe229, kill confirmed -- the probe
+its own measurement, and exits 0 (probe230, kill confirmed -- the probe
 asserts the fixture's positive verdict before comparing, the r226
 lesson applied). The rest: history prose after the leading number is
 not part of the count ("**0** (was 11)", "**0 today** (86 on
