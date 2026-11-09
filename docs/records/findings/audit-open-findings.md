@@ -9688,3 +9688,56 @@ daemon still down (probed r159): E2E / llvm-cov / nextest-junit
 receipts remain PG-gated. Root-policy RED on the foreign todo.md
 (r174); core-size RED on the ADR-59 +64 (r181) -- both await their
 owning lanes.
+
+### Round 222 (2026-11-09) -- feature-registry: the seam was already 90% there, and rung 2 pins the repair that defines the gate
+
+verify-feature-registry.py is the arc's first tool whose evidence layer
+was ALREADY root-parameterized -- collect(), grade_registry(),
+committed_text() and extract_registration_features() all take root,
+leftovers of the 2026-10 committed-bytes repair that built them
+fixture-first. The seam is main's argv/root kwargs plus its existence
+checks: main(argv=None, root=None) resolves base and checks
+base / RUST_FEATURES_REL instead of the module globals, so a missing
+fixture registry is refused rc 2 naming the FIXTURE's path.
+
+The ladder is 5 rungs on fixture GIT repos, and rung 2 is the round's
+centre: the working copy ADDS the key HEAD lacks, and the verdict does
+not move (rc 1 stays rc 1, labels say HEAD:) -- the committed-bytes
+contract itself, which the docstring measured in 2026-10 as an edit
+that turned a red gate green before the repair. It had never been a
+rung until now. The others: the killing rung (a committed incomplete
+pair, rc 1, both gaps named with the site file's fixture-relative
+path; probe222 re-proven live, "KILL CONFIRMED" against the clean
+checkout), --report-only printing the same findings at rc 0, the
+no-git fallback SAID OUT LOUD (rc 0 with NOTICES and the
+"(working copy, HEAD unreadable)" label), and the missing-registry
+refusal rc 2.
+
+Two fixture drafts failed before the green run, both recorded:
+mkdtemp returns str (r219's lesson, re-learned at the / operator), and
+rung 4's first tree was INTERNALLY inconsistent -- site registering
+'analytics' with registries that lack it -- so the fallback correctly
+graded the working copy and returned rc 1, failing the rung for a
+reason that had nothing to do with the fallback. The fixture now
+registers 'sales', which both registries define; the lesson is that a
+fallback rung must first make the tree consistent, or it grades the
+fallback and the tree at once.
+
+Self-test reads "self-test: 0 failure(s)" plus the 5-rung ladder;
+live run unchanged: "verify-feature-registry: 0 issue(s)." at exit 0,
+registries graded from HEAD.
+
+Honest limits: the rung-2 contract holds only for the two REGISTRIES
+-- the registration sites still grade from the working copy (the
+docstring's named consequence stands: a key HEAD registers and the
+working copy deleted is invisible), and the ladder does not change
+that; the fallback's "HEAD parsed to 0 keys" branch is graded by the
+existing self-test, not by a rung; and the git-fixture approach
+assumes git is on PATH (the no-git rung covers the fallback, not a
+broken git). The scoped-reads (r213), retire (r214), state-closure
+(r216), fluent-families (r217), scratch-leaks (r218), shadow-copies
+(r219), chokepoints (r220), and reentry-guards (r221) limits stand.
+Docker daemon still down (probed r159): E2E / llvm-cov / nextest-junit
+receipts remain PG-gated. Root-policy RED on the foreign todo.md
+(r174); core-size RED on the ADR-59 +64 (r181) -- both await their
+owning lanes.
