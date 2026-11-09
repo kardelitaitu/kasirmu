@@ -8327,3 +8327,48 @@ the E2E / llvm-cov / nextest-junit receipts remain the standing PG-gated
 gap. The root-policy gate remains RED on the foreign todo.md (r174) and
 verify-core-size RED on the ADR-59 +64 (r181), both awaiting their owning
 lanes.
+
+### Round 192 (2026-11-09) -- raw-key-assertions joins the arc; the ratchet gets its five-step ladder
+
+The r166..r191 contract applied to the raw-key gate. scan(root) redirects
+the test corpus (ui/src), the bundles (shared-ui/locales), and every
+reported relative path together; bundle_keys(locales) and
+_read_baseline(base) follow the same root, and --write-baseline writes
+base/scripts/raw-key-assertions-baseline.json -- the corpus, the key
+vocabulary, and the ratchet file are one redirect, never half.
+
+The synthetic fixture's globals-repointing dance died with the contract:
+UI_SRC and LOCALES were reassigned and restored around scan(), which is
+exactly the mechanism the contract makes unnecessary -- the fixture now
+NESTS (ui/src + shared-ui/locales under the root) and scan() is called
+WITH the root. The four detector cases are unchanged in meaning.
+
+Five shell cases as a LADDER over one tree, the first fixture in the arc
+to grade a ratchet's whole life: a new site fails rc 1; --write-baseline
+records it rc 0 -- and from an EMPTY baseline that write is GROWTH, so
+--allow-growth is part of the graded contract, not a workaround (the
+ladder found this before the kill did); the re-run passes rc 0 with the
+recorded site counted; a removal with no new sites leaves the baseline
+STALE rc 1; and a corpus with no test files refuses rc 2. Two of those
+rungs were learned the hard way inside the round: the stale rung first
+hit the scan-read-nothing refusal (a corpus must exist to be stale), then
+the new-site check (a different key is a NEW finding, which outranks
+stale -- the rung now asserts literal copy, current empty, recorded site
+stale). The precedence itself -- new beats stale in the output -- is now
+visible in a graded exit path.
+
+Measured kill: the root-dropping main mutant dies on the new-site rung --
+the real tree scans 828 files clean and prints its own OK line where the
+fixture demands a finding; the empty-corpus refusal would kill too. The
+capture carries the real census: OK: no new raw-key assertions (828 test
+files, 100 renderable, 0 known site(s)).
+
+Honest limits: the SCAN BROKE arm (bundle directory unreadable) is graded
+by no case; _split_entry and the growth-refusal message text are asserted
+only through the write rung's rc, not its prose; the live population is
+exercised only through the live scan (828 files), not through a fixture
+mirroring the real renderability distribution. Docker daemon still down
+(probed r159): the E2E / llvm-cov / nextest-junit receipts remain the
+standing PG-gated gap. The root-policy gate remains RED on the foreign
+todo.md (r174) and verify-core-size RED on the ADR-59 +64 (r181), both
+awaiting their owning lanes.
