@@ -57,6 +57,7 @@ Exit 0 clean, 1 finding(s), 2 self-test or usage failure.
 from __future__ import annotations
 
 import argparse
+import io
 import os
 import re
 import sys
@@ -65,6 +66,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCAN_ROOTS = ["ui/src"]
 SKIP_DIRS = {"node_modules", "target", ".git", "dist", "build"}
+
+#: Where fixtures are written when the host sets a temp variable. A host whose
+#: confinement denies files under its default temp (measured 2026-11-09 on the
+#: agent host: every write into a TemporaryDirectory is EPERM) can point this at
+#: a directory it allows; unset leaves tempfile's own default in force.
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root() -> str | None:
+    """The temp root this file's fixtures are written under (None = system default)."""
+    return next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
 
 # first half ends a statement, second half begins a declaration
 STMT_DECL = re.compile(
@@ -137,7 +149,8 @@ def _self_test() -> int:
     import tempfile as _tempfile
     shell = 0   # the shell cases below count themselves; the OK line must not guess
     def _shell(files):
-        with _tempfile.TemporaryDirectory() as td:
+        with _tempfile.TemporaryDirectory(dir=fixture_root(),
+                                           ignore_cleanup_errors=True) as td:
             base = Path(td)
             for rel, content in files.items():
                 dst = base / rel
@@ -158,7 +171,8 @@ def _self_test() -> int:
         bad += 1
         print("  %-52s FAIL (rc=%d text=%r)" % ("a clean fixture through main() exits 0", rc, text[-80:]))
     shell += 1
-    with _tempfile.TemporaryDirectory() as td:
+    with _tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as td:
         out, err = _io.StringIO(), _io.StringIO()
         with _ctxlib.redirect_stdout(out), _ctxlib.redirect_stderr(err):
             rc = main(argv=[], root=td)
@@ -168,7 +182,139 @@ def _self_test() -> int:
 
     print("SELF-TEST %s (%d matcher cases + %d shell cases, no repo files touched)"
           % ("FAILED" if bad else "OK", len(cases), shell))
-    return 1 if bad else 0
+    return 1 if bad else shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard for the ladder (r235 -- the r228 lesson).
+
+    Rung 8 drives --self-test through argv from INSIDE the ladder, and the
+    self-test ends in this call, so without the guard that nested run would
+    recurse. The guard turns it into a printed skip.
+    """
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        print("  (ladder re-entry from a nested --self-test: skipped)")
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """r235: the root contract, graded on fixture ui/src trees through main().
+
+    Rung 1 IS the killing rung. `ui/src` in this checkout currently carries no
+    merged statement, so a main() that ignored its root would scan the real
+    tree, print "no merged statements found" and exit 0 against a fixture that
+    contains one. The fixture must exit 1 naming `ui/src/x/A.tsx:1`.
+
+    Rungs 4 and 5 grade the SCOPE decisions the docstring argues for, which no
+    case executed before this round: a merged line outside `ui/src` is not
+    scanned (the round-125 measurement that kept the gate TypeScript-only),
+    and a file under a SKIP_DIR is never read even when it is inside one.
+    """
+    import contextlib
+    import tempfile
+
+    def run(root_dir, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root_dir))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    def build(tmp, files, label="fx"):
+        """A fixture root holding the given {relative path: text} source files."""
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix=label + "_"))
+        for rel, text in files.items():
+            p = base / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text, encoding="utf-8", newline="\n")
+        return base
+
+    MERGED = "  const a = useRef(0);  useEffect(() => {\n"
+    CLEAN = "  const a = useRef(0);\n  useEffect(() => {\n"
+
+    shell = 0
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as tmp:
+        # rung 1 -- the killing rung: the fixture's merge is what gets reported.
+        root = build(tmp, {"ui/src/x/A.tsx": MERGED})
+        rc, said = run(root)
+        if rc != 1 or "ui/src/x/A.tsx:1" not in said:
+            print("  x rung 1: a merged fixture line must exit 1 naming it "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2 -- a clean fixture greens, and the scan count is the fixture's.
+        root = build(tmp, {"ui/src/x/Clean.tsx": CLEAN})
+        rc, said = run(root)
+        if rc != 0 or "scanned 1 .ts/.tsx file(s)" not in said:
+            print("  x rung 2: a clean fixture must exit 0 counting one file "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3 -- the refusal floor: no ui/src under the fixture root.
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix="empty_"))
+        rc, said = run(base)
+        if rc != 2 or "REFUSED" not in said:
+            print("  x rung 3: a fixture without ui/src must refuse rc 2 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4 -- scope: the same merge outside ui/src is not this gate's job.
+        root = build(tmp, {"ui/src/x/Clean.tsx": CLEAN, "others/B.tsx": MERGED})
+        rc, said = run(root)
+        if rc != 0 or "scanned 1 .ts/.tsx" not in said:
+            print("  x rung 4: a merge outside ui/src must not be scanned "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5 -- SKIP_DIR: node_modules under ui/src is never read.
+        root = build(tmp, {"ui/src/x/Clean.tsx": CLEAN,
+                           "ui/src/node_modules/dep/C.tsx": MERGED})
+        rc, said = run(root)
+        if rc != 0 or "scanned 1 .ts/.tsx" not in said:
+            print("  x rung 5: a file under node_modules must never be read "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 6 -- a file that is not .ts/.tsx is not scanned even when merged.
+        root = build(tmp, {"ui/src/x/notes.md": MERGED, "ui/src/x/A.tsx": CLEAN})
+        rc, said = run(root)
+        if rc != 0 or "scanned 1 .ts/.tsx" not in said:
+            print("  x rung 6: only .ts/.tsx is in scope "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 7 -- --quiet keeps the verdict and the exit code, drops the count.
+        root = build(tmp, {"ui/src/x/A.tsx": MERGED})
+        rc, said = run(root, "--quiet")
+        if rc != 1 or "scanned" in said or "ui/src/x/A.tsx:1" not in said:
+            print("  x rung 7: --quiet must stay exit 1 naming the file, without the "
+                  "scan line (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 8 -- --self-test dispatch flows through argv; re-entry is guarded.
+        root = build(tmp, {"ui/src/x/Clean.tsx": CLEAN})
+        rc, said = run(root, "--self-test")
+        if rc != 0 or "SELF-TEST OK" not in said or "ladder re-entry" not in said:
+            print("  x rung 8: --self-test through argv must pass rc 0 and skip the "
+                  "nested ladder (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("MERGED-LINES SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
+    return 0
 
 
 def main(argv=None, root=None) -> int:

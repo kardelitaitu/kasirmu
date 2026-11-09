@@ -10471,3 +10471,42 @@ self_test(), which that function owns. Rung 5 pins that .yaml is LIVE, not
 that every checker importing the shared rule agrees -- the other importers are
 graded by their own files, and `_live_workflows` itself is outside this
 round's scope.
+### Round 235 (2026-11-09) -- merged-lines: the scope rules executed at last, and a gate whose fixtures prove it reads its root
+
+check-merged-lines.py (226 lines) was the next census target, "missing ladder".
+It already took `root`, so this round adds the ladder -- eight rungs on
+fixture `ui/src` trees through `main(argv, root)`.
+
+Rung 1 is the killing rung, and this gate makes it unusually easy to state:
+`ui/src` currently carries NO merged statement (measured this round: 1575
+files scanned, zero findings), so a main() that ignored its root would scan the
+real tree, print "no merged statements found" and exit 0 -- against a fixture
+containing exactly one merge. The fixture must exit 1 naming
+`ui/src/x/A.tsx:1`, and only a root-reading main can.
+
+Three rungs grade decisions the module docstring argues at length and nothing
+had ever executed. Rung 4 pins SCOPE: a merged line outside `ui/src` is not
+scanned, which is the round-125 measurement (the generator wrote .rs/.py/.sh
+too, yet a sweep found the damage only in TypeScript) that kept this gate from
+widening. Rung 5 pins SKIP_DIR: a merged file under `ui/src/node_modules` is
+never read. Rung 6 pins the suffix rule: a merged `.md` is out of scope. Each
+of these was prose before this round; each is now a case that fails if the
+rule drifts. Rung 7 pins `--quiet`: the verdict and exit code survive, the
+scan line does not.
+
+Measured: census 21 of 70 contracted (was 20); the file no longer appears in
+the un-contracted list; next target is verify-ui-coverage-floors.py at 263
+lines. Ladder: 8 rungs, exit 0. Self-test unchanged at 7 matcher + 3 shell
+cases. Live gate unchanged: "scanned 1575 .ts/.tsx file(s) under ui/src / no
+merged statements found", exit 0. Dependents unmoved: verify-selftests-wired
+105 of 107, verify-gate-completeness OK.
+
+Honest limits: the ladder grades `main()`'s shell, the scope rules and the
+exit contract -- not `scan_source`'s regex surface, which the seven matcher
+cases own; a fixture cannot prove a pattern is COMPLETE, only that this
+file's two-sided shape still catches what it caught. The host confinement that
+rounds 233-234 recorded still applies, and this file now honours
+TMPDIR/TMP/TEMP for its fixtures too. Rung 7 asserts the scan line is absent
+under --quiet by substring, so a future line that happens to contain the word
+"scanned" would fail the rung for the right reason but a misleading message --
+left as measured rather than generalised.
