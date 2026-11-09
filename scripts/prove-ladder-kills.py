@@ -197,6 +197,16 @@ MUTATIONS = (
         "if root is not None:\n        base_root = Path(root).resolve()\n    else:\n        base_root = ROOT",
         "base_root = ROOT  # MUTANT: root ignored",
     ),
+    (
+        # A TERNARY that yields None rather than a fallback constant: the root
+        # is optional for this checker (None means "scan this checkout"), so the
+        # mutation must pin it to None rather than to REPO. Measured before
+        # adding: rc 1 at RUNG 1 with "1 claim(s) assert CI enforcement that
+        # does not exist" naming the fixture script -- a verdict, not a refusal.
+        "root_path ignores root",
+        "    root_path = None if root is None else Path(root).resolve()\n",
+        "    root_path = None  # MUTANT: root ignored\n",
+    ),
 )
 
 
@@ -206,7 +216,16 @@ def applicable(src):
 
 
 def run_mutant(checker, anchor, replacement, scratch, verbose):
-    """(killed, detail) -- load the mutant and call its ladder.
+    """(outcome, detail) -- load the mutant and call its ladder.
+
+    The outcome is one of three, NOT a boolean. Measured 2026-11-09 why that
+    matters: a mutant that cannot IMPORT and a mutant its ladder grades as
+    passing both returned False, so main() printed "rung 1 is not proven" for
+    each. The first says this harness broke the file; the second says the
+    checker's ladder is too weak -- opposite claims about opposite parties, and
+    four separate false results this arc (r249, r256, r261, r262) came from
+    typing them the same. EXEC is therefore its own value and main() reports it
+    as a harness fault rather than a finding about the checker.
 
     The mutant is written under the SAME BASENAME as its checker, deliberately.
     Every checker in this arc computes its default root as
@@ -226,20 +245,20 @@ def run_mutant(checker, anchor, replacement, scratch, verbose):
     mutant.write_text(src.replace(anchor, replacement), encoding="utf-8", newline=chr(10))
     spec = importlib.util.spec_from_file_location(mutant.stem, str(mutant))
     if spec is None or spec.loader is None:
-        return False, "could not load the mutant"
+        return "EXEC", "could not load the mutant"
     mod = importlib.util.module_from_spec(spec)
     buf = io.StringIO()
     try:
         spec.loader.exec_module(mod)
     except Exception as exc:
-        return False, "mutant failed to import: %s" % exc
+        return "EXEC", "mutant failed to import: %s" % exc
     if not hasattr(mod, "shell_ladder"):
-        return False, "no shell_ladder() on the mutated module"
+        return "EXEC", "no shell_ladder() on the mutated module"
     try:
         with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
             rc = mod.shell_ladder()
     except Exception as exc:
-        return False, "ladder RAISED instead of returning: %s" % exc
+        return "EXEC", "ladder RAISED instead of returning: %s" % exc
     said = buf.getvalue()
     if verbose:
         print(said[-800:])
@@ -247,7 +266,7 @@ def run_mutant(checker, anchor, replacement, scratch, verbose):
     detail = "rc=%r" % (rc,)
     if killed and "rung 1" not in said:
         detail += " (no failure line names rung 1)"
-    return killed, detail
+    return ("KILLED" if killed else "SURVIVED"), detail
 
 
 def main(argv=None):
@@ -285,17 +304,85 @@ def main(argv=None):
     with tempfile.TemporaryDirectory(prefix="prove-ladder-") as scratch_dir:
         scratch = Path(scratch_dir)
         survived = []
+        broke = []
         for label, anchor, repl in muts:
-            killed, detail = run_mutant(checker, anchor, repl, scratch, args.verbose)
-            print("  %-32s %s  %s" % (label, "KILLED  " if killed else "SURVIVED", detail))
-            if not killed:
+            outcome, detail = run_mutant(checker, anchor, repl, scratch, args.verbose)
+            print("  %-32s %-9s %s" % (label, outcome, detail))
+            if outcome == "SURVIVED":
                 survived.append(label)
+            elif outcome == "EXEC":
+                broke.append(label)
+        if broke:
+            # Not a finding about the checker. This harness built a mutant that
+            # could not run, which is a fault HERE, and reporting it as "not
+            # proven" is how four false results happened.
+            print("%s: HARNESS FAULT -- %d mutation(s) could not execute: %s"
+                  % (checker.name, len(broke), ", ".join(broke)))
+            print("    A mutant that does not run proves nothing about the ladder; "
+                  "fix the anchor, not the checker.")
+            return 3
     if survived:
         print("%s: %d of %d mutation(s) SURVIVED -> rung 1 is not proven:" % (checker.name, len(survived), len(muts)))
         for s in survived:
             print("    " + s)
         return 1
     print("%s: every applicable mutation killed (%d)" % (checker.name, len(muts)))
+    return 0
+
+
+def self_test() -> int:
+    """Grade this harness on the four ways it has produced a false result.
+
+    Each case below is a shape that actually happened in this arc, not a
+    hypothetical. The harness is the ONE tool here whose errors get reported as
+    findings about other files, so it is the tool most worth grading -- and
+    until now it had no self-test at all (the census never asked, because its
+    SCRIPT_RE matches verify-/check-/classify-/census- prefixes and this file is
+    named none of those).
+    """
+    bad = []
+
+    def want(name, got, expect):
+        if got != expect:
+            bad.append("%s: expected %r, got %r" % (name, expect, got))
+
+    want("applicable() is a MUTATIONS subset",
+         set(applicable("x = 1")) <= set(MUTATIONS), True)
+    # r261: a one-line anchor must not match the first half of a longer
+    # conditional. The check above grades two STRING LITERALS, which is not the
+    # same as grading the table -- measured 2026-11-09: with the literals fixed
+    # but the entry's newline stripped, these cases still passed while the row
+    # had the very defect they describe. The assertion therefore reads the REAL
+    # entry and requires every row whose anchor ends a line to carry that
+    # newline, so the table itself is what is graded.
+    conditional = ("    root = Path(root).resolve() if root is not None else ROOT"
+                   + chr(10))
+    rebound = [a for label, a, _r in MUTATIONS if label == "rebound root ignores root"]
+    want("the rebound-root row exists", len(rebound), 1)
+    want("the rebound-root anchor is newline-terminated",
+         rebound[0].endswith(chr(10)), True)
+    want("that row does NOT fire inside a conditional",
+         conditional.count(rebound[0]), 0)
+    # r262: a ladderless file must be refused before a mutant exists.
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        bare = d / "check-bare.py"
+        bare.write_text("X = 1" + chr(10), encoding="utf-8")
+        want("a file with no ladder declares none",
+             "def shell_ladder" in bare.read_text(encoding="utf-8"), False)
+        # r249: a mutant that cannot import is a HARNESS fault, not a survive.
+        broken = d / "check-broken.py"
+        broken.write_text("def shell_ladder(:" + chr(10), encoding="utf-8")
+        outcome, detail = run_mutant(
+            broken, "def shell_ladder(:", "def shell_ladder():", d, False)
+        want("a mutant that cannot import is EXEC, not SURVIVED",
+             outcome, "EXEC")
+        want("...and names the import failure", "import" in detail, True)
+    if bad:
+        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
+        return 2
+    print("self-test: OK (5 harness cases: anchor shape, ladder guard, "
+          "three-valued mutant outcome)")
     return 0
 
 

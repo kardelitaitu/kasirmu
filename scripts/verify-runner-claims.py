@@ -45,6 +45,7 @@ Exit 0 every positive claim holds, 1 at least one does not, 2 the scan saw nothi
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -56,6 +57,24 @@ ROOT = Path(__file__).resolve().parent.parent
 # pretends to be a fixed one.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _live_workflows import live_workflow_files as _live_workflow_files  # noqa: E402
+
+#: Where the ladder's fixtures are written when the host sets a temp variable (a
+#: confined host denies its default temp); unset leaves tempfile's own default in
+#: force (the r166 contract, shared with verify-deployment.py / census-checker-contracts.py).
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root this file's ladder fixtures are written under (None = system default).
+
+    The makedirs is the r250 lesson: a scratch dir removed between runs otherwise makes
+    EVERY fixture die with FileNotFoundError before it grades anything. exist_ok keeps
+    the common case a no-op.
+    """
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
 
 # A positive enforcement claim. Two shapes, because prose uses both:
 #   "... is enforced by scripts/verify-x.py in CI"
@@ -306,6 +325,196 @@ def self_test() -> int:
         return 2
     print("SELF-TEST OK (%d cases, incl. 3 shell cases; no repo files touched)"
           % (12 + 1 + 3))
+    # r263: the ladder below was ADDED without this call, so it existed, the
+    # census counted it, and nothing ever ran it -- measured: "--self-test"
+    # printed the case line and no ladder line at all. A ladder that is never
+    # invoked is dead code carrying a contract's name, which is worse than a
+    # missing one because the census reads it as present.
+    return shell_ladder()
+
+
+#: The re-entry guard (the r228 pattern): rung 5 drives --self-test through argv from
+#: inside the ladder, and self_test() ends in the call below.
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test (rung 5) must not run a SECOND ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """r266: the root contract, graded on fixture repos driven through main().
+
+    Every rung builds a fixture CHECKOUT -- a .github/workflows/ feed and prose files
+    that carry claims -- and hands it to main(argv=[...], root=fixture), capturing both
+    streams. Nothing here writes to, or reads a verdict from, the real repository: the
+    claim sentences are FIXTURE-SHAPED BY DESIGN and name scripts that do not exist.
+
+    What the rungs grade is main()'s VERDICT COMPOSITION: which sentence is quoted,
+    which rc that earns, and whether the fixture -- not this checkout -- decided it.
+
+    Rung 1 is the killing rung, and it grades a VERDICT, not a refusal. Its fixture
+    names alpha.py, beta.sh: alpha.py IS invoked by the fixture workflow (so the
+    fixture's name does NOT collide with anything this checkout has) and beta.sh is
+    not. The required line is "1 claim(s) assert CI enforcement that does not exist:"
+    with exactly ONE quoted detail, "beta.sh", and NOT alpha.py -- which is one this
+    checkout cannot print. Measured 2026-11-09 the real repo prints "OK - 10
+    CI-enforcement claim(s) checked, all hold.", so a main() whose CLAIMS half ignores
+    the fixture and reads the real repo instead reports ten claims that all hold and
+    fails this rung on the count, on the rc, and on the missing detail. The rc-2
+    refusal is excluded as the pass shape (the fixture's live set is not empty, so
+    rc 2 here is a defect, not a scope refusal).
+
+    Rungs 2-5 are the sister verdicts: a fixture whose only claim is live exits 0 with
+    the OK line and the FIXTURE's count, a fixture with no live workflow refuses with
+    rc 2, a SUPERSEDED record is not graded, and argv --self-test passes without
+    re-entering the ladder.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    WORKFLOW = ("on: push" + chr(10) + "jobs:" + chr(10) + "  g:" + chr(10)
+                + "    steps:" + chr(10) + "      - run: python scripts/alpha.py" + chr(10))
+
+    def build(root, workflow, prose, extra=()):
+        """A fixture checkout: one workflow feed plus the prose files that claim."""
+        wf = Path(root) / ".github" / "workflows"
+        wf.mkdir(parents=True, exist_ok=True)
+        if workflow is not None:
+            (wf / "a.yml").write_text(workflow, encoding="utf-8")
+        (Path(root) / "docs").mkdir(parents=True, exist_ok=True)
+        for name, text in prose.items():
+            (Path(root) / "docs" / name).write_text(text, encoding="utf-8")
+        for name, text in extra:
+            (Path(root) / name).write_text(text, encoding="utf-8")
+
+    def run_over(root):
+        """main() against one fixture, both streams captured, argv and root explicit."""
+        out = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+                rc = main(argv=[], root=root)
+        except SystemExit as se:
+            rc = se.code
+        return rc, out.getvalue()
+
+    shell = 0
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as tmp:
+        # rung 1 -- the killing rung: ONE false claim among two, and it is beta.sh.
+        root = Path(tmp) / "one"
+        build(root, WORKFLOW, {"c.md": "alpha is enforced by scripts/alpha.py in CI.\n"
+                                         "beta is enforced by scripts/beta.sh in CI.\n"})
+        rc, said = run_over(root)
+        if (rc != 1
+                or "1 claim(s) assert CI enforcement that does not exist:" not in said
+                or said.count("beta.sh is claimed to run in CI") < 1
+                or "alpha.py is claimed to run in CI" in said
+                or "all hold" in said):
+            print('  x rung 1: a fixture with one false claim must read "1 claim(s) '
+                  'assert CI enforcement that does not exist:" naming beta.sh only '
+                  '(rc=%r said=%r)' % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 2 -- the clean arm: the fixture's only claim is live, so rc 0 and the
+        # summary counts the FIXTURE's one claim, not this checkout's ten.
+        root = Path(tmp) / "two"
+        build(root, WORKFLOW, {"c.md": "alpha is enforced by scripts/alpha.py in CI.\n"})
+        rc, said = run_over(root)
+        if rc != 0 or "1 CI-enforcement claim(s) checked, all hold" not in said:
+            print('  x rung 2: a fixture whose only claim is live must read '
+                  '"1 CI-enforcement claim(s) checked, all hold" rc 0 (rc=%r said=%r)'
+                  % (rc, said[-300:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 3 -- no live workflow: refuse with rc 2 rather than call every claim a
+        # violation. This reuses the shape the shell cases above already assert, here
+        # as a rung so a gutting of the refusal floor is caught twice.
+        root = Path(tmp) / "three"
+        build(root, None, {"c.md": "alpha is enforced by scripts/alpha.py in CI.\n"})
+        rc, said = run_over(root)
+        if rc != 2 or "Refusing" not in said:
+            print('  x rung 3: an empty live set must refuse with exit 2 (rc=%r said=%r)'
+                  % (rc, said[-300:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 4 -- the HISTORICAL exemption, graded as the PREDICATE plus its CONTROL.
+        #
+        # SCOPE NOTE, and it is a finding: the SUPERSEDED / HISTORICAL RECORD marker is
+        # gated in scanned_files() on membership of (ROOT / "docs" / "records"), where
+        # ROOT is THIS FILE's checkout -- not the root being scanned. Two consequences,
+        # both measured while writing this rung: under a fixture root that membership is
+        # never true, so no fixture can watch the marker suppress anything; and because
+        # Path.resolve() short-circuits at the first existing parent, the gate is only
+        # correct when the marker path is inside the real repo to begin with. A rung
+        # asserting "a SUPERSEDED fixture file is not graded" would therefore pass
+        # against a checker with the exemption deleted -- it would prove nothing, and
+        # this file does not ship such a rung. Making the binding root-relative is a
+        # behaviour change for the live repo and is NOT made here.
+        #
+        # What IS gradeable is that the marker and its control disagree: the same
+        # sentence must be claim-shaped WITHOUT the marker (so the marker is what
+        # suppresses it) and the marker must match the record that carries it. A gutted
+        # SUPERSEDED regexp, or a HISTORICAL rule that swallows every sentence, is red
+        # here.
+        marked = "SUPERSEDED 2026-01-01" + chr(10) \
+                 + "ghost is enforced by scripts/ghost.py in CI." + chr(10)
+        if not SUPERSEDED.search(marked):
+            print('  x rung 4: the SUPERSEDED marker must match a record carrying it '
+                  '-- a gutted marker regexp exempts nothing', file=sys.stderr)
+            return 1
+        if not claims_in("ghost is enforced by scripts/ghost.py in CI."):
+            print('  x rung 4: the unmarked control must read as a claim, or the '
+                  'marker is not what suppresses it', file=sys.stderr)
+            return 1
+        # And the live fixture path still has to pass with a records/ file present,
+        # which keeps main() honest about not tripping over that directory.
+        root = Path(tmp) / "four"
+        build(root, WORKFLOW, {"c.md": "alpha is enforced by scripts/alpha.py in CI.\n"})
+        (root / "docs" / "records").mkdir(parents=True, exist_ok=True)
+        (root / "docs" / "records" / "note.md").write_text(
+            "a memory, not a claim about CI." + chr(10), encoding="utf-8")
+        rc, said = run_over(root)
+        if rc != 0 or "all hold" not in said:
+            print('  x rung 4: the live claim must still pass with a records/ file '
+                  'present (rc=%r said=%r)' % (rc, said[-300:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 5 -- argv --self-test through main(): rc 0, and self_test() ends at the
+        # ladder's re-entry guard instead of running a second ladder. Graded on the
+        # exit code, because a nested run's summary is written to the stream installed
+        # when the OUTER capture went up and is not witnessable from inside a rung.
+        own_stdout, own_stderr = sys.stdout, sys.stderr
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                rc = main(argv=["--self-test"])
+        except SystemExit as se:
+            rc = se.code
+        finally:
+            # A nested run leaves ITS stream installed; restore the one this rung was
+            # entered with so it never lends main() a closed buffer.
+            sys.stdout, sys.stderr = own_stdout, own_stderr
+        if rc != 0:
+            print('  x rung 5: --self-test through argv must pass rc 0 and skip the '
+                  'nested ladder (rc=%r)' % (rc,), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("SELF-TEST LADDER OK (%d fixture-checkout rungs through main())" % shell)
     return 0
 
 

@@ -11728,3 +11728,59 @@ were inspected and mostly resolve from TMP_ENV or __file__ rather than a
 conditional, which no row models. The census stays at 37 of 70: this hardened
 the proof tool and changed no checker.
 
+### Round 263 (2026-11-09) -- a ladder that ran nothing, and the harness got its own self-test
+
+verify-runner-claims gained a 196-line ladder this round (196 insertions, 0
+deletions -- checked with git diff --numstat, because an earlier round silently
+dropped six assertions). It was wrong in a way the census could not see:
+shell_ladder() was DEFINED at line 336 and CALLED BY NOBODY. self_test() printed
+its 16 cases and returned 0. Measured: "--self-test" emitted the case line and no
+ladder line at all.
+
+The census grades the ladder part by finding "def shell_ladder". A ladder that is
+never invoked satisfies that test and runs nothing, which is WORSE than a missing
+ladder -- a missing one is reported, this one is counted as present. Fixed by
+making self_test() end in "return shell_ladder()"; it now prints:
+  SELF-TEST OK (16 cases, incl. 3 shell cases; no repo files touched)
+  SELF-TEST LADDER OK (5 fixture-checkout rungs through main())
+
+Separately the harness got its first self-test. It had none -- the census never
+asked, because SCRIPT_RE matches verify-/check-/classify-/census- prefixes and
+"prove-ladder-kills.py" is none of those. That absence is the real reason this
+one tool produced four false results this arc (r249, r256, r261, r262) while
+every other checker was being held to a contract.
+
+Two changes, both graded:
+  1. run_mutant now returns KILLED / SURVIVED / EXEC instead of a boolean. A
+     mutant that cannot import and a mutant its ladder grades as passing BOTH
+     used to return False, so main() printed "rung 1 is not proven" for each --
+     opposite claims about opposite parties. EXEC is now its own value and main()
+     reports it as "HARNESS FAULT", rc 3.
+  2. self_test() with 5 cases, each one a shape that actually happened here.
+
+The self-test was then mutated against itself, which is the only thing that
+makes a self-test worth having. Re-introducing the r249 bug (import failure read
+as SURVIVED) was caught: rc 2, naming the case. Re-introducing the r261 bug
+(newline stripped from the anchor) was NOT caught at first -- the case graded two
+STRING LITERALS rather than the table, so the literals stayed correct while the
+actual MUTATIONS entry was broken. Rewritten to read the real entry; the mutant
+then failed rc 2 with two named cases. That is the r258 lesson in a new place:
+a test that grades a copy of the thing is not grading the thing.
+
+One new row, measured before adding: verify-runner-claims resolves root as a
+TERNARY yielding None ("root_path = None if root is None else Path(root).resolve()"),
+which no existing row matched. A mutant pinning it to None returns rc 1 at RUNG 1
+with "1 claim(s) assert CI enforcement that does not exist" naming the fixture
+script -- a verdict, not a refusal. KILLED.
+
+Census 37 -> 38 of 70 (verify-runner-claims contracted).
+
+Honest limits: the ladder for this file is 5 rungs and I reviewed its shape, not
+each assertion; the 16-case count is unchanged but I did not diff every case
+against HEAD beyond the numstat (0 deletions), so "nothing was lost" rests on
+the diff shape rather than on a case-by-case read. The 10 contracted checkers that
+prove-ladder-kills still cannot reach are unchanged. Writing scratch copies under
+.agents/ makes verify-runner-claims report 42 false claims, because it scans .py
+files and found my copies of its own test strings -- not a checker bug, but a
+reminder that its verdict is only meaningful over a clean tree.
+
