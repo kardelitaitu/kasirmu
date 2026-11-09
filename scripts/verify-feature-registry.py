@@ -308,7 +308,151 @@ def surface_lines(res: dict) -> list[str]:
     ]
 
 
-def main() -> int:
+
+def shell_ladder() -> int:
+    """r222: the root contract, graded on fixture GIT repositories.
+
+    These fixtures exercise the gate's defining repair -- registries graded as
+    COMMITTED -- so each one is a git repo whose HEAD is complete or not, and
+    whose working copy may disagree with HEAD. Rung 2 is the round's centre:
+    the working copy ADDS the missing key and the verdict does not move,
+    because the registries grade from HEAD. Rung 1 is the killing rung: a
+    root-dropping main grades THIS checkout, which is clean at HEAD (0
+    issue(s)), and returns 0 where the fixture returns 1.
+    """
+    import contextlib
+    import io
+
+    def run(root, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    def git(root, *args):
+        res = subprocess.run(["git", "-C", root] + list(args),
+                             capture_output=True, text=True, encoding="utf-8")
+        return res.returncode
+
+    RUST = ("pub fn feature_key(f: Feature) -> &'static str {\n"
+            "    match f {\n"
+            "        Feature::Sales => \"sales\",\n"
+            "        Feature::Inventory => \"inventory\",\n"
+            "    }\n"
+            "}\n")
+    FRONT = ("export const FEATURES = {\n"
+             "  SALES: 'sales',\n"
+             "  INVENTORY: 'inventory',\n"
+             "} as const;\n")
+    SITE = "registerPage(\"demo\", { feature: 'analytics' });\n"
+
+    def build(tmp, *, git_init=True, work_extra="", site_key="analytics", label=None):
+        base = Path(tempfile.mkdtemp(dir=tmp,
+                                     prefix=(label or ("mini%d_" % next(rung_n)))))
+        files = {
+            "crates/kasirmu-core/src/features.rs": RUST,
+            "ui/src/hooks/useFeatures.ts": FRONT,
+            "ui/src/features/demo.tsx": SITE.replace("analytics", site_key),
+        }
+        for rel, text in files.items():
+            path = base / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8", newline="\n")
+        if git_init:
+            if git(base, "init", "-q") != 0:
+                raise RuntimeError("git init failed")
+            git(base, "-c", "user.email=fx@example", "-c", "user.name=fx",
+                "add", "-A")
+            if git(base, "-c", "user.email=fx@example", "-c", "user.name=fx",
+                   "commit", "-q", "-m", "c1") != 0:
+                raise RuntimeError("fixture commit failed")
+        if work_extra:
+            # the working copy ADDS the key HEAD does not have -- the edit a
+            # lane would make mid-pair, graded against bytes no commit contains
+            (base / "crates/kasirmu-core/src/features.rs").write_text(
+                RUST + work_extra, encoding="utf-8", newline="\n")
+            (base / "ui/src/hooks/useFeatures.ts").write_text(
+                FRONT.replace("  INVENTORY: 'inventory',\n",
+                              "  INVENTORY: 'inventory',\n  ANALYTICS: 'analytics',\n"),
+                encoding="utf-8", newline="\n")
+        return base
+
+    ANALYTICS_RUST = '        Feature::Analytics => "analytics",\n'
+    rung_n = iter(range(1000))
+
+    shell = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: HEAD registers a key it does not define
+        root = build(tmp)
+        rc, said = run(root)
+        if rc != 1 or "2 issue(s)." not in said or "missing IN RUST" not in said \
+                or "[ui/src/features/demo.tsx:1] analytics" not in said:
+            print("  x rung 1: a committed incomplete pair must fail rc 1 with "
+                  "both gaps named (rc=%r said=%r)" % (rc, said[-220:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: THE committed-bytes contract -- the working copy fixes both
+        # registries on disk and the verdict does not move, because the
+        # registries grade from HEAD; measured 2026-10 before the repair, when
+        # exactly this edit turned a red gate green
+        root = build(tmp, work_extra=ANALYTICS_RUST)
+        rc, said = run(root)
+        if rc != 1 or "2 issue(s)." not in said \
+                or "registries graded from:" not in said \
+                or "-> HEAD:" not in said:
+            print("  x rung 2: an uncommitted working-copy fix must NOT change "
+                  "the verdict (rc=%r said=%r)" % (rc, said[-220:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: --report-only prints the same findings and always exits 0
+        root = build(tmp, work_extra=ANALYTICS_RUST)
+        rc, said = run(root, "--report-only")
+        if rc != 0 or "2 issue(s)." not in said:
+            print("  x rung 3: --report-only must print findings and exit 0 "
+                  "(rc=%r said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: no git in sight -- the documented fallback, SAID OUT LOUD.
+        # The tree is CONSISTENT on disk (site registers 'sales', which both
+        # registries define): the first draft left 'analytics' in the site, the
+        # fallback correctly graded the working copy, and the rung read rc 1
+        # with 2 issues -- the fallback was never the thing under test.
+        root = build(tmp, git_init=False, site_key="sales")
+        rc, said = run(root)
+        if rc != 0 or "NOTICES" not in said \
+                or "(working copy, HEAD unreadable)" not in said:
+            print("  x rung 4: a no-git fixture must fall back with a notice, "
+                  "rc 0 (rc=%r said=%r)" % (rc, said[-220:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: a tree without the Rust registry refuses rc 2, naming the
+        # fixture's path -- not the checkout's
+        root = build(tmp, git_init=False)
+        (root / "crates/kasirmu-core/src/features.rs").unlink()
+        rc, said = run(root)
+        if rc != 2 or "Rust features file not found" not in said \
+                or str(root) not in said:
+            print("  x rung 5: a missing fixture registry must refuse rc 2 with "
+                  "the fixture path (rc=%r said=%r)" % (rc, said[-220:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("FEATURE-REGISTRY SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
+    return 0
+
+
+def main(argv=None, root=None) -> int:
+    # r222: the r166 contract. argv is explicit; root names the tree to grade
+    # from code. collect(), grade_registry(), committed_text() and
+    # extract_registration_features() already take root as a parameter -- the
+    # seam is main's existence checks plus the one call.
     parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument(
         "--verbose",
@@ -325,20 +469,23 @@ def main() -> int:
         action="store_true",
         help="Grade a throwaway tree with HEAD supplied by hand, and prove each check fires.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.self_test:
         return self_test()
 
-    if not RUST_FEATURES_PATH.is_file():
-        print(f"error: Rust features file not found: {RUST_FEATURES_PATH}", file=sys.stderr)
+    base = ROOT if root is None else Path(root).resolve()
+    rust_path = base / RUST_FEATURES_REL
+    frontend_path = base / FRONTEND_FEATURES_REL
+    if not rust_path.is_file():
+        print(f"error: Rust features file not found: {rust_path}", file=sys.stderr)
         return 2
-    if not FRONTEND_FEATURES_PATH.is_file():
-        print(f"error: Frontend features file not found: {FRONTEND_FEATURES_PATH}", file=sys.stderr)
+    if not frontend_path.is_file():
+        print(f"error: Frontend features file not found: {frontend_path}", file=sys.stderr)
         return 2
 
     notices: list[str] = []
-    res = collect(ROOT, notices=notices)
+    res = collect(base, notices=notices)
     rust_keys = res["rust_keys"]
     frontend_keys = res["frontend_keys"]
     registration_sites = res["sites"]
@@ -664,7 +811,9 @@ def self_test() -> int:
                   + " case(s) never reached a verdict")
             failures += 1
     print("self-test: " + str(failures) + " failure(s)")
-    return 1 if failures else 0
+    if failures:
+        return 1
+    return shell_ladder()
 
 
 if __name__ == "__main__":
