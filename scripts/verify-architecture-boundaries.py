@@ -1420,10 +1420,136 @@ def self_test() -> int:
         print("SELF-TEST WRONG: " + "; ".join(cases), file=sys.stderr)
         return 2
     print("SELF-TEST OK (18 cases, no files touched)")
+    return shell_ladder()
+
+
+
+def shell_ladder() -> int:
+    """r226: the root contract, graded on fixture trees through main(argv, root).
+
+    This tool already had --root (the node fixture suite drives it that way),
+    so the seam added here is callability, and the ladder's job is to prove
+    the kwarg moves every walker together. Fixtures supply a metadata JSON --
+    the tool's own fixture route, which also exempts them from the census
+    floor; rung 6 is the exception that proves the floor: a REAL one-crate
+    cargo workspace with no --metadata-file is refused rc 2. Rung 1 is the
+    killing rung: a root-dropping main grades THIS checkout, which measures
+    its tracked transitional debt at exit 0.
+    """
+    import contextlib
+    import io
+    import json as _json
+
+    DEMO_CODE = ("import { invoke } from '@tauri-apps/api/core';\n"
+                 "export const x = () => invoke<number>('a_scoped', {});\n")
+
+    def run(root_dir, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root_dir))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    def build(tmp, *, ui_code=None, baseline=None, cargo=False, label=None):
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix=(label or ("mini%d_" % next(rung_n)))))
+        (base / "scripts").mkdir(parents=True)
+        (base / "ui" / "src").mkdir(parents=True)
+        (base / "scripts" / "architecture-boundaries-baseline.json").write_text(
+            _json.dumps({"entries": baseline or []}), encoding="utf-8", newline="\n")
+        (base / "meta.json").write_text(
+            _json.dumps({"packages": [], "workspace_root": str(base)}),
+            encoding="utf-8", newline="\n")
+        if ui_code is not None:
+            demo = base / "ui" / "src" / "features" / "demo.ts"
+            demo.parent.mkdir(parents=True, exist_ok=True)
+            demo.write_text(ui_code, encoding="utf-8", newline="\n")
+        if cargo:
+            (base / "Cargo.toml").write_text(
+                '[workspace]\nmembers = ["demo"]\nresolver = "2"\n',
+                encoding="utf-8", newline="\n")
+            demo = base / "demo"
+            (demo / "src").mkdir(parents=True)
+            (demo / "Cargo.toml").write_text(
+                '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n',
+                encoding="utf-8", newline="\n")
+            (demo / "src" / "lib.rs").write_text("pub fn one() {}\n",
+                                                 encoding="utf-8", newline="\n")
+        return base
+
+    rung_n = iter(range(1000))
+    shell = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: a direct invoke in a fixture feature file
+        root = build(tmp, ui_code=DEMO_CODE)
+        rc, said = run(root, "--metadata-file", str(root / "meta.json"), "--json")
+        if rc != 1 or '"rule": "ui-direct-invoke"' not in said \
+                or '"judging": true' not in said:
+            print("  x rung 1: a fixture invoke bypass must fail rc 1 in json "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: the clean fixture is a REAL green that names its zero population
+        root = build(tmp)
+        rc, said = run(root, "--metadata-file", str(root / "meta.json"))
+        if rc != 0 or "0 new/expired blocking finding(s)" not in said \
+                or "[population examined: 0 crate(s)" not in said:
+            print("  x rung 2: a clean fixture must green with its population "
+                  "named (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: --report-only on the violating fixture says NOT JUDGING
+        root = build(tmp, ui_code=DEMO_CODE)
+        rc, said = run(root, "--metadata-file", str(root / "meta.json"), "--report-only")
+        if rc != 0 or "NOT JUDGING" not in said:
+            print("  x rung 3: --report-only must print NOT JUDGING at rc 0 "
+                  "(rc=%r said=%r)" % (rc, said[-200:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: a baseline entry whose target the SAME extractor computes
+        # tracks the finding -- recorded debt and fresh finding share one key
+        calls = find_invoke_calls(DEMO_CODE)
+        if not calls:
+            print("  x rung 4: extractor found no call in its own demo code",
+                  file=sys.stderr)
+            return 1
+        entry = {"rule": "ui-direct-invoke", "path": "ui/src/features/demo.ts",
+                 "target": calls[0][1], "reason": "ladder fixture",
+                 "owner": "ladder", "introduced": "2026-11-01",
+                 "expires": "2026-12-01"}
+        root = build(tmp, ui_code=DEMO_CODE, baseline=[entry])
+        rc, said = run(root, "--metadata-file", str(root / "meta.json"), "--json")
+        if rc != 0 or '"tracked": 1' not in said or '"blocking": 0' not in said:
+            print("  x rung 4: a matching baseline entry must track rc 0 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: the same entry over a tree with NO finding reads stale rc 1
+        root = build(tmp, baseline=[entry])
+        rc, said = run(root, "--metadata-file", str(root / "meta.json"), "--json")
+        if rc != 1 or '"stale": 1' not in said:
+            print("  x rung 5: an unmatched baseline entry must read stale rc 1 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 6: a REAL one-crate cargo workspace, no --metadata-file, hits
+        # the census floor -- the tool refuses to call one crate a real tree
+        root = build(tmp, cargo=True)
+        rc, said = run(root)
+        if rc != 2 or "names only 1 crate(s)" not in said:
+            print("  x rung 6: a one-crate real workspace must be refused by "
+                  "the floor rc 2 (rc=%r said=%r)" % (rc, said[-240:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("ARCH-BOUNDARIES SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
     return 0
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
     configure_streams()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report-only", action="store_true", help="Report findings but do not fail for policy violations. The printed line then says NOT JUDGING, because its exit 0 is not a pass.")
@@ -1434,10 +1560,18 @@ def main() -> int:
     parser.add_argument("--baseline-file", type=Path, help="Baseline JSON path (defaults to <root>/scripts/architecture-boundaries-baseline.json).")
     parser.add_argument("--self-test", action="store_true",
                         help="Run the census-floor cases and exit. Pure: no file is read, none is written.")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.self_test:
         return self_test()
-    root = (args.root or Path(__file__).resolve().parent.parent).resolve()
+    # r226: the r166 contract. argv is explicit; a root kwarg names the tree to
+    # grade from code and overrides --root exactly as --root overrides the
+    # default. None keeps today's behavior byte-for-byte. This tool ALREADY had
+    # --root and root-parameterized walkers -- the seam added here is
+    # callability, and the ladder proves the kwarg moves every walker together.
+    if root is not None:
+        root = Path(root).resolve()
+    else:
+        root = (args.root or Path(__file__).resolve().parent.parent).resolve()
     baseline_path = (args.baseline_file or root / "scripts" / "architecture-boundaries-baseline.json").resolve()
     metadata_path = args.metadata_file.resolve() if args.metadata_file else None
     try:
