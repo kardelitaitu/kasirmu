@@ -11584,3 +11584,47 @@ BIND/close/assert block for the transport branch survives at lines 236-241, so
 my round-258 restoration did not silently drop the "unreachable port" case --
 that token count fell only because a comment line went with it.
 
+### Round 260 (2026-11-09) -- a rung that could not do the job said so, and the ladder still kills
+
+scripts/classify-finding-reachability.py gained the contract (census 36 -> 37).
+The interesting part is a refusal to meet the letter of the brief.
+
+THE INSTRUCTION WAS "rung 1 must kill a finding-blind mutant", where such a
+mutant honours root for the SCOPE and ignores it for the ANALYSIS. A mutant was
+built exactly so -- the fixture walk and read_findings stay on the fixture while
+the corpus handed to report() comes from graded_ui_src(None), i.e. this
+checkout. Measured: the ladder returns rc 1 and the failure is
+  "x rung 2: a fixture whose export its own shell registers must read
+   REACHABLE, exit 0"
+Rung 1 SURVIVES it, and the reason is structural rather than an oversight: rung
+1's fixture is a LONE module that nothing names, so DEAD is the correct verdict
+whether the analysis reads the fixture or this checkout -- both corpora agree,
+and no assertion on rung 1 can distinguish them. Making rung 1 "kill" it would
+have meant weakening the fixture until a wrong answer looked wrong.
+
+So rung 2 carries the kill, deliberately: the same module PLUS one consumer
+that registers it, where reading the wrong corpus inverts REACHABLE into DEAD
+and the rung fires. The file documents this in its docstring rather than
+leaving the ordering unexplained.
+
+VERIFIED HERE, not accepted on report: the mutant returns rc 1 with the rung 2
+line and NO rung 1 failure -- rung 1 passes silently, exactly as claimed. The
+unmutated ladder returns rc 0. Live verdict unchanged:
+"classify-finding-reachability: 0 finding(s) from verify-scoped-reads", rc 0.
+Self-test case count 11 before and 11 after: no existing case was deleted,
+which was the round-258 failure mode and was therefore measured explicitly.
+
+ONE BEHAVIOUR CHANGE OUTSIDE THE LADDER, called out by the subagent and
+confirmed here: main() previously classified a root with no ui/src file by file
+and printed an all-UNRESOLVED report with rc 0. It now refuses with
+"FAIL: ui/src not found under <root>; nothing to classify" and rc 2, measured.
+That is the right direction -- a missing tree is not a clean bill of health --
+but it is a change any caller passing a partial root would notice.
+
+Honest limits: prove-ladder-kills.py reports NO APPLICABLE MUTATION (this file
+resolves "REPO = dirname(dirname(abspath(__file__)))" and "base = REPO if root
+is None else os.path.abspath(root)", a shape the table still does not model), so
+the kill above is a hand proof that will not regress-detect. The subagent also
+reported that --self-test run from BELOW the repo root fails because REPO
+resolves relative to __file__; that is pre-existing and I did not reproduce it.
+
