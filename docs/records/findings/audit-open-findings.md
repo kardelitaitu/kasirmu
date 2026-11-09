@@ -12077,3 +12077,45 @@ unexamined. The 20s per-item timeout may also have mislabelled a merely slow
 checker as hanging. Census 41 -> 42 of 70 via the root-policy ladder (verified:
 its mutant dies on a VERDICT at rung 1, anchor occurs once, live run clean).
 
+### Round 271 (2026-11-09) -- the anchor that was a comment, and the checker whose root was advisory
+
+Two defects, one shape: the harness and the ladder were both grading something
+adjacent to what they claimed.
+
+1. prove-ladder-kills.py reported check-page-headings as '1 of 1 mutation(s)
+SURVIVED' -- i.e. as a broken ladder. It was not. The anchor
+    base = ROOT if root is None else Path(root).resolve()
+occurred exactly once and that occurrence was a COMMENT (line 87, documenting
+the shape). Mutating a comment changes no behaviour, so the mutant survived, and
+the verdict sent the next reader off to fix a ladder that was fine. Mutating the
+real binding killed it at rc 1.
+Fix: applicable() now counts an anchor only where it is not entirely commented
+out, so a comment-only match is NOT APPLICABLE (exit 2) instead of a survivor.
+
+2. check-page-headings' root was advisory. main() accepted root and recorded it
+in _ROOT, but scan_base() read the constant, so rung 1 graded THIS checkout --
+55 real screens, all headed, rc 0 -- while its own fixture held a heading-less
+page. The rung passed by scanning the wrong tree. Fixed by threading root through
+scan_base and asking an explicit DELEGATING_WRAPPERS entry before inferring
+delegation from a one-level import walk (the second fix is what rung 3 actually
+measured; before it the rung named an import that was never its table child).
+
+MEASURED, and this is the part worth keeping: my first two attempts at (1) were
+worse than the bug. Dedenting the anchor to compare it made a bare
+'    root = Path(root).resolve()' row match 'base_root = Path(root).resolve()' at
+column 0, inventing an applicable mutation and REDDENING two checkers that were
+green at HEAD (verify-runner-commands, verify-selftests-wired). Indentation is
+load-bearing in an anchor: the mutator splices the replacement at the anchor's own
+column. A third attempt passed a string where a list of lines was expected and
+every count came back 0 -- a silent zero that reads as 'anchor not present' rather
+than as a bug.
+
+Verified after the final version: full sweep of 64 checkers shows 0 regressions
+against HEAD (29 KILLED-ALL, 34 NO APPLICABLE, 1 EXEC), and 29 files IMPROVED --
+including the two I had broken and repaired.
+
+Honest limits: check-orphan-prototype-files still reports EXEC ('ladder RAISED
+instead of returning: git ls-files exit 128'); that is pre-existing at HEAD and
+unfixed here. verify-ipc-parity's --self-test takes 57.5s (measured, twice), which
+is what made a full sweep look like a hang under a 20s cap. Census 42 -> 43 of 70.
+

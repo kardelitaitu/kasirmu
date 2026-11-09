@@ -238,15 +238,65 @@ def applicable(src):
     Collapsing here rather than deleting a row keeps the table's history intact
     (the second row records a shape that was added deliberately) while making the
     COUNT honest, which is the only thing the caller prints.
+
+    A COMMENT IS NOT CODE. Round 269 measured check-page-headings reporting
+    "1 of 1 mutation(s) SURVIVED" while its ladder was in fact sound: the anchor
+    "base = ROOT if root is None else Path(root).resolve()" occurred exactly once,
+    and that occurrence was a COMMENT (line 87, documenting the shape) -- the real
+    binding spells "return ROOT if _ROOT is None else Path(_ROOT).resolve()" in
+    scan_base(). Mutating a comment changes no behaviour, so the mutant survived,
+    and the harness read that as a ladder defect. A row whose only match is
+    commented out must count as NOT APPLICABLE, not as a survivor: the second
+    verdict sends someone to fix a ladder that is fine.
+
+    Mutating the real binding instead (line 346) kills this ladder at rc 1, which
+    is what proved the ladder was never the problem.
     """
     seen = set()
     out = []
     for m in MUTATIONS:
-        if src.count(m[1]) != 1 or m[1] in seen:
+        hits = _code_occurrences(src, m[1])
+        if hits != 1 or m[1] in seen:
             continue
         seen.add(m[1])
         out.append(m)
     return out
+
+
+def _code_occurrences(src, anchor):
+    """How many times `anchor` occurs somewhere that is not ENTIRELY a comment.
+
+    Whitespace and comment-only lines are dropped from both sides before matching,
+    then the anchor is counted in the surviving text. A multi-line anchor therefore
+    still matches when its own lines are code (check-raw-key-assertions anchors on
+    four lines, one of which is a docstring closing), while an anchor that exists
+    ONLY inside a comment -- the r269 check-page-headings case -- matches nothing.
+
+    Narrowing this to "the line does not contain a #" was tried first and measured
+    wrong: it broke check-raw-key-assertions and verify-runner-claims, whose
+    multi-line anchors carry a trailing comment or a #-bearing string on one line.
+    Stripping comments line-wise is the version that leaves both intact.
+    """
+    def strip(lines):
+        # INDENTATION IS KEPT. test_apply()/the mutator splice the replacement in
+        # front of the anchor at the anchor's own column, and one row here is a
+        # bare "    root = Path(root).resolve()" -- dedenting made that row match
+        # "base_root = Path(root).resolve()" at column 0, inventing an applicable
+        # mutation and breaking two checkers that were green at HEAD (measured
+        # 2026-11-09: verify-runner-commands and verify-selftests-wired).
+        out = []
+        for line in lines:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            out.append(line.rstrip())
+        return "\n".join(out)
+
+    # src is a STRING; strip() iterates its argument, so it must be split first.
+    # Passing it whole iterated characters and every count came back 0 -- measured,
+    # and it is the kind of silent zero that reads as "anchor not present" rather
+    # than as a bug.
+    return strip(src.splitlines()).count(strip(anchor.splitlines()))
 
 
 def run_mutant(checker, anchor, replacement, scratch, verbose):
@@ -401,6 +451,12 @@ def self_test() -> int:
     got = applicable(anchor)
     want("a duplicated anchor yields ONE mutation", len(got), 1)
     want("...and it is the right one", got[0][1] if got else None, anchor)
+    # A row matching only a COMMENT must be inapplicable, not a survivor.
+    commented = "# " + anchor
+    want("a comment-only anchor is NOT applicable", applicable(commented), [])
+    # ...and a real line plus a comment copy still counts once.
+    mixed = "#   " + anchor + chr(10) + anchor + chr(10)
+    want("a commented copy does not double a real match", len(applicable(mixed)), 1)
     # r261: a one-line anchor must not match the first half of a longer
     # conditional. The check above grades two STRING LITERALS, which is not the
     # same as grading the table -- measured 2026-11-09: with the literals fixed
@@ -434,8 +490,8 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("self-test: OK (7 harness cases: anchor shape, duplicate-anchor "
-          "collapse, ladder guard, three-valued mutant outcome)")
+    print("self-test: OK (8 harness cases: anchor shape, duplicate-anchor "
+          "collapse, comment-only anchors, ladder guard, three-valued mutant outcome)")
     return 0
 
 
