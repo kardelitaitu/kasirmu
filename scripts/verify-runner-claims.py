@@ -183,7 +183,13 @@ def scanned_files(root=None) -> list[Path]:
     # correct it (stamped, as that file now is) or to say plainly that it is superseded.
     # A file that carries its own supersession note is evidence and is skipped; anything
     # else in docs/records/ is graded.
-    records = (ROOT / "docs" / "records").resolve()
+    #
+    # r268: bind the exemption to the root BEING SCANNED, not to this file's own
+    # checkout. Measured 2026-11-09: with the constant, a fixture root never
+    # satisfied the membership test, so the SUPERSEDED gate fired only for the real
+    # repo -- a marker that silently does nothing under any other root, which is
+    # exactly the shape a rung would have to grade and could not.
+    records = (((ROOT if root is None else root) / "docs" / "records")).resolve()
     kept: list[Path] = []
     for p in out:
         if records not in p.resolve().parents:
@@ -452,20 +458,18 @@ def _shell_ladder_body() -> int:
 
         # rung 4 -- the HISTORICAL exemption, graded as the PREDICATE plus its CONTROL.
         #
-        # SCOPE NOTE, and it is a finding: the SUPERSEDED / HISTORICAL RECORD marker is
-        # gated in scanned_files() on membership of (ROOT / "docs" / "records"), where
-        # ROOT is THIS FILE's checkout -- not the root being scanned. Two consequences,
-        # both measured while writing this rung: under a fixture root that membership is
-        # never true, so no fixture can watch the marker suppress anything; and because
-        # Path.resolve() short-circuits at the first existing parent, the gate is only
-        # correct when the marker path is inside the real repo to begin with. A rung
-        # asserting "a SUPERSEDED fixture file is not graded" would therefore pass
-        # against a checker with the exemption deleted -- it would prove nothing, and
-        # this file does not ship such a rung. Making the binding root-relative is a
-        # behaviour change for the live repo and is NOT made here.
+        # SCOPE NOTE, originally a finding and now a fix (r268): the SUPERSEDED /
+        # HISTORICAL RECORD marker WAS gated on membership of (ROOT / "docs" /
+        # "records"), where ROOT is THIS FILE's checkout rather than the root being
+        # scanned. Under a fixture root that membership was never true, so the marker
+        # silently suppressed nothing for any scan but the real repo's -- a gate that
+        # does nothing unless you are already inside the repo it was written for.
+        # scanned_files() now binds it to the root being scanned, which makes the
+        # fixture arm below MEANINGFUL: with the defect present, the marked file would
+        # be graded and this rung would go red.
         #
-        # What IS gradeable is that the marker and its control disagree: the same
-        # sentence must be claim-shaped WITHOUT the marker (so the marker is what
+        # Also gradeable, and graded first: the marker and its control disagree. The
+        # same sentence must be claim-shaped WITHOUT the marker (so the marker is what
         # suppresses it) and the marker must match the record that carries it. A gutted
         # SUPERSEDED regexp, or a HISTORICAL rule that swallows every sentence, is red
         # here.
@@ -479,6 +483,23 @@ def _shell_ladder_body() -> int:
             print('  x rung 4: the unmarked control must read as a claim, or the '
                   'marker is not what suppresses it', file=sys.stderr)
             return 1
+        # r268: the marker must actually SUPPRESS under a fixture root. This arm was
+        # impossible to write before the binding was made root-relative; it is the only
+        # assertion that grades the exemption rather than the regexp.
+        root = Path(tmp) / "four-b"
+        build(root, WORKFLOW, {"c.md": "alpha is enforced by scripts/alpha.py in CI.\n"})
+        rec = root / "docs" / "records"
+        rec.mkdir(parents=True, exist_ok=True)
+        (rec / "old.md").write_text(
+            "| SUPERSEDED 2026-01-01 |" + chr(10)
+            + "ghost is enforced by scripts/ghost.py in CI." + chr(10), encoding="utf-8")
+        rc, said = run_over(root)
+        if rc != 0 or "ghost.py" in said:
+            print('  x rung 4: a SUPERSEDED record under the SCANNED root must be '
+                  'skipped, not graded (rc=%r said=%r)' % (rc, said[-300:]),
+                  file=sys.stderr)
+            return 1
+
         # And the live fixture path still has to pass with a records/ file present,
         # which keeps main() honest about not tripping over that directory.
         root = Path(tmp) / "four"

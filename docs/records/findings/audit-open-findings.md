@@ -11784,3 +11784,48 @@ prove-ladder-kills still cannot reach are unchanged. Writing scratch copies unde
 files and found my copies of its own test strings -- not a checker bug, but a
 reminder that its verdict is only meaningful over a clean tree.
 
+### Round 264 (2026-11-09) -- the exemption that only worked inside its own repo
+
+A subagent added the verify-runner-claims ladder and reported two findings. Both
+were checked; one was right, one was wrong, and the wrong one matters more.
+
+WRONG: it reported that the harness schema row "root_path ignores root" kills at
+rung 1 on the rc-2 REFUSAL rather than a verdict, and that rung 1 structurally
+cannot produce a verdict. Measured directly: the mutant output contains the
+verdict detail ("beta.sh is claimed to run in CI"), does NOT contain "Refusing",
+and reports alpha.py as false too -- alpha.py being the one script its fixture
+workflow DOES invoke. That last difference is the real kill: the clean checker
+names beta.sh only, the mutant also names alpha.py, which is precisely a claims
+half that ignored the fixture. The row stands.
+
+RIGHT, and now fixed: scanned_files() bound the SUPERSEDED / HISTORICAL exemption
+to (ROOT / "docs" / "records") -- THIS FILE's checkout -- rather than the root
+being scanned (line 186). Effects, both measured:
+  - a fixture root never satisfies the membership test, so the marker suppressed
+    nothing outside the real repo; a SUPERSEDED fixture file was still graded and
+    reported (reproduced: rc 1, ghost.py graded);
+  - since Path.resolve() short-circuits at the first existing parent, the constant
+    equals the scanned path's own parent whenever the path is already under the
+    real repo -- so the gate was correct ONLY where it was already true.
+
+Bound to the scanned root instead. The live verdict is unchanged ("10
+CI-enforcement claim(s) checked, all hold"), which is the evidence the change is
+a scope fix and not a relaxation.
+
+That fix made a previously impossible assertion possible, and it is now rung 4:
+a SUPERSEDED record under the SCANNED root must be skipped, not graded. Before the
+fix this rung could not exist -- the subagent wrote, correctly, that such a rung
+"would pass against a checker with the exemption deleted". It now fails in exactly
+that case: re-introducing the old binding turns rung 4 red (rc 1, named). That is
+the difference between a test and a decoration, and it is why the fix was worth
+making rather than only reporting.
+
+Limits of this round: every "30 claim(s) assert" run I saw was an artefact of my
+own scratch copies under .agents/ -- the checker scans .py files and finds its own
+test strings in them. Cleaned before each measurement; the real number is 10 and
+all hold. I did not audit the 5 rungs line by line, only the two that failed and
+the one I changed. I also briefly misread a stale scratch module as proof the
+mutant was clean (mtime ordering), and re-measured before believing it.
+
+Census unchanged at 38 of 70.
+
