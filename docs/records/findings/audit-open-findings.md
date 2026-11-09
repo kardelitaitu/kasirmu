@@ -11995,3 +11995,41 @@ harness sweep, or the register would have reported it, which is the point. I did
 not re-check whether any OTHER checker's self-test is equally unreachable from its
 command line -- that sweep is not done.
 
+### Round 269 (2026-11-09) -- a contract that is real, and a process note worth keeping
+
+verify-plugin-guide-parity gained a 6-rung ladder and is contracted (census 40 ->
+41 of 70). So far in this arc the seventh delegated ladder in a row has needed
+some part of its report checked rather than taken; this one needed nothing
+corrected. Recorded because a run of correct reports is evidence too, and because
+the one thing worth keeping from it is a process failure it reported on itself.
+
+VERIFIED rather than accepted:
+  - live verdict unchanged: "0 drift item(s)" (rc 0)
+  - --self-test rc 0, both lines print (11 cases + the 6-rung LADDER line)
+  - census 40 -> 41 of 70
+  - prove-ladder-kills rc 0, 1 mutation killed
+  - the mutant really dies on a VERDICT, not a refusal: loaded from
+    <repo>/scripts/ so REPO resolves, it returns rc 1 at rung 1 naming
+    "MISSING oz.probe_missing_binding", with no "guide not found" and no refusal
+    branch in the output. The anchor occurs exactly once in this file.
+
+The subagent's own caveat is the useful part: it lost 12 minutes to a phantom
+("guide not found" from mutated copies that the real file passed) and traced it,
+correctly, to its reproduction harness -- a copy placed outside <repo>/scripts/
+resolves ROOT to that scratch directory, so the checker looked for a guide that
+was not there. The checker was never wrong. Two earlier agents this arc hit the
+same property from the other side (scratch copies under .agents/ corrupting
+verify-runner-claims, whose scan finds its own test strings there). This file is
+therefore one of those whose scratch must satisfy ROOT == __file__.parents[1]::
+the probe has to live in scripts/ and be deleted in the same step. Done that way
+here, and scripts/ was verified clean afterwards.
+
+Honest limits: I verified the verdict kill, the live run, --self-test, the census
+count and the anchor uniqueness. I did NOT review the 6 rungs' other assertions
+(rungs 2-6: informational, second source, report-only, phantom + nested
+--self-test, scope refusal) line by line, and I did not attempt to falsify the
+subagent's claim that each fails for its stated reason. The two concurrent-lane
+files it reported as dirty (migrations.rs, PosScreenCoreFlow.test.tsx) had
+cleaned themselves by the time I committed; I confirmed they are clean and did
+not touch them. Census 41 of 70; 29 un-contracted checkers remain.
+
