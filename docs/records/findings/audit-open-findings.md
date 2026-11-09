@@ -8640,3 +8640,49 @@ E2E / llvm-cov / nextest-junit receipts remain the standing PG-gated
 gap. The root-policy gate remains RED on the foreign todo.md (r174) and
 verify-core-size RED on the ADR-59 +64 (r181), both awaiting their
 owning lanes.
+
+### Round 199 (2026-11-09) -- dockerfile-workspace joins the arc; the fixture finds the crash the live tree never shows
+
+The r166..r198 contract applied to DOCKER-09/10: workspace_members(root)
+and workspace_package_value(key, root) read the contract root's manifest
+and expand its globs there; main(argv, root) grades both Dockerfiles and
+compares their apt sets under one base, and the version/edition the
+inline dummies are graded against come from THAT manifest -- a fixture
+whose manifest says 0.0.41 must not be judged by this checkout's values,
+which were previously computed at IMPORT time (module-level WS_VERSION)
+and frozen for every caller.
+
+Seven shell cases over a throwaway workspace (two globbed crates, one
+inline-dummy app, one skipped fuzz workspace): full coverage reads OK
+over exactly 4 members; a forgotten member fails as DOCKER-09 drift
+naming the missing COPY; a stale dummy version (0.0.34) fails naming the
+bump; a missing dummy src fails; an apt asymmetry fails as DOCKER-10
+naming the package; the SAME asymmetry with an APT_PARITY_EXEMPT package
+reads OK with the deliberate-asymmetry NOTE; and a missing Dockerfile
+fails rc 1 with Dockerfile not found.
+
+The last case found a REAL crash the live tree never shows: main read
+both Dockerfile texts UNCONDITIONALLY for the apt comparison, so a
+missing file died with FileNotFoundError AFTER check_dockerfile had
+already (correctly) reported it missing -- the checker crashed instead of
+returning its own graded rc 1. Fixed: the apt comparison reads only the
+files that exist; the missing one has already earned its finding. This
+is the arc's first LIVE-CODE FIX found by a shell ladder, not just a
+graded exit.
+
+Measured kill: the root-dropping main grades the real tree (44 members,
+consistent) and answers OK on the first rung, which demands the
+fixture's 4 -- killed before any later case; the probe is read-only.
+Capture: OK: all 44 workspace members are represented in
+ops/docker/Dockerfile.server's cache stage.
+
+Honest limits: the glob-fallback arm (a pattern matching nothing stays
+literal) is graded by the pure case only; the SKIP_MEMBERS arm
+(tools/fuzz) is exercised by the fixture but never asserted negatively
+(a case proving a skipped member's absence does not fail) would need a
+member listed ONLY in SKIP -- the fixture covers it implicitly;
+DOCKERFILES' exclusion sets remain empty and the exclusion arm has no
+case. Docker daemon still down (probed r159): the E2E / llvm-cov /
+nextest-junit receipts remain the standing PG-gated gap. The root-policy
+gate remains RED on the foreign todo.md (r174) and verify-core-size RED
+on the ADR-59 +64 (r181), both awaiting their owning lanes.
