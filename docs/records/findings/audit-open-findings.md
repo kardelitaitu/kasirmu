@@ -9254,3 +9254,44 @@ retry window. Docker daemon still down (probed r159): E2E / llvm-cov /
 nextest-junit receipts remain PG-gated. Root-policy RED on the foreign
 todo.md (r174); core-size RED on the ADR-59 +64 (r181) -- both await
 their owning lanes.
+
+### Round 213 (2026-11-09) -- scoped-reads to ten rungs: the flag wins by outcome, a red section is stated not scored
+
+Rungs 9 and 10 close the two rung-less arms r212 declared. Rung 9
+grades "an explicit --allowlist still wins" BY OUTCOME: one fixture,
+two copies of the policy, run twice through the root parameter. The
+tree's own copy names the UNGUARDED command, so grading it fails rc 1;
+the flag's copy names only the GUARDED one, so the flag run passes rc
+0, and the surfaces line names the flag's file. The first draft had
+the flip backwards -- it assumed the allowlist EXEMPTS commands, when
+the docstring says the opposite: the file lists the commands a shell
+does not register, and listing one is what makes the gate AUDIT its
+call sites. An empty flag section also cannot carry the rung: it hits
+the empty-section early return r211 measured, which returns 0 before
+any walk. Both facts are written where the rung reads them.
+
+Rung 10 grades the skipped-section-red shape: --shell tablet on a
+fixture whose tablet command is guarded (clean, rc 0) while the
+UNGRADED desktop section holds an unguarded call. The visibility line
+states it -- "desktop: 1 unguarded call site(s) across 1 file(s) and
+1 command(s), 0 cleared" -- and the exit code stays 0. Case 39's
+stated-never-scored contract, now through the root seam on a fixture
+whose red is manufactured rather than the checkout's.
+
+Ladder: 10 rungs, every one naming the tree by the root parameter.
+Measured kill re-confirmed (probe211: root-dropping main returns 0
+where the fixture returns 1); live bare run re-measured: "clean for
+desktop." at exit 0 over 669 files.
+
+Honest limits: rung 9 proves precedence with one outcome pair, not
+with every flag/root combination (a flag naming a MISSING file beside
+a root is the resolve_allowlist refusal path and rides on cases 1 of
+the aiming group); rung 10's visibility count is asserted on the 1
+shape only, and the tool's independent re-audit of the skipped section
+is trusted from case 39's cross-check rather than re-pinned here. The
+retire tool's residue 40-line cap, desktop twin-doc spelling, and
+git_dirty live-repo refusal remain ungraded from r210's limits. Docker
+daemon still down (probed r159): E2E / llvm-cov / nextest-junit
+receipts remain PG-gated. Root-policy RED on the foreign todo.md
+(r174); core-size RED on the ADR-59 +64 (r181) -- both await their
+owning lanes.
