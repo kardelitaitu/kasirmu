@@ -397,7 +397,20 @@ def main(argv=None):
     # a fixed .agents/mutants/ that every run left behind: the harness littered
     # the tree it was supposed to be inspecting, and the leftovers were itself
     # error-prone (see run_mutant on why the basename matters).
-    with tempfile.TemporaryDirectory(prefix="prove-ladder-") as scratch_dir:
+    # The scratch tree is built INSIDE the checkout, not under the ambient temp
+    # root. A mutant resolves its own REPO_ROOT as
+    # Path(__file__).resolve().parents[1] -- the directory ABOVE its scratch
+    # directory -- so with TMPDIR on C:/Windows/Temp that computes to C:\Windows,
+    # which is not a git work tree. Ladders whose fixtures are scratch
+    # repositories then fail their own 'git init' and RAISE instead of returning
+    # a verdict, and the harness reports HARNESS FAULT for a defect it created.
+    # Measured 2026-11-09 on check-orphan-prototype-files: rc 3 EXEC with
+    # TMPDIR=C:/Windows/Temp, rc 0 "every applicable mutation killed (2)" with the
+    # scratch under the checkout. This is the same class as r270 and r272 -- the
+    # harness's measurement depended on addresses none of it named -- and the fix
+    # is to give it the address it already assumes.
+    with tempfile.TemporaryDirectory(prefix=".prove-ladder-",
+                                     dir=str(checker.parent.parent)) as scratch_dir:
         scratch = Path(scratch_dir)
         survived = []
         broke = []

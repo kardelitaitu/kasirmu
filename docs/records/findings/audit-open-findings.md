@@ -12164,3 +12164,38 @@ so the right fix is probably for prove-ladder-kills.py to build its scratch insi
 the checkout it is grading, which I did not attempt here. Any sweep I run with
 TMPDIR=C:/Windows/Temp therefore understates that one file. Census 43 -> 44 of 70.
 
+### Round 273 (2026-11-09) -- give the harness the address it already assumes
+
+The round-272 finding was that check-orphan-prototype-files reported HARNESS FAULT
+(rc 3, 'git ls-files exit 128') only when TMPDIR sat outside the checkout. The
+suspicion there was that prove-ladder-kills.py should build its scratch INSIDE the
+tree it grades. That is what this round implemented, and it fixes the fault.
+
+WHY IT WAS BROKEN: run_mutant writes the mutant to <scratch>/<stem>/<name>.py and
+loads it from there. Every checker in this arc computes its default root as
+Path(__file__).resolve().parents[1] -- the directory ABOVE its scratch directory.
+With tempfile.TemporaryDirectory(prefix='prove-ladder-') and TMPDIR on
+C:/Windows/Temp, that computes to C:\Windows: not a git work tree. Ladders whose
+fixtures are themselves git repositories then fail their own 'git init' and RAISE,
+and the harness reported a fault it had created.
+
+MEASURED before -> after, same file, same TMPDIR (C:/Windows/Temp):
+    before: rc 3  EXEC  repo root ignores root / subprocess cwd ignores root
+    after:  rc 0  KILLED rc=1 / KILLED rc=1, 'every applicable mutation killed (2)'
+
+Full sweep of 64 checkers after the change: 31 KILLED-ALL, 0 EXEC, 0 SURVIVED,
+0 TIMEOUT; 33 NO APPLICABLE. Every entry that changed direction is an improvement.
+
+The arc's recurring lesson now has a third face. r270: TMPDIR inside the checkout
+corrupted no-git fixtures. r272: TMPDIR outside it corrupted git-repo fixtures.
+Here: the harness's own file placement chose the address for the checker it was
+grading, and nothing in either file said so. A measurement is only as good as the
+assumptions its address encodes.
+
+Honest limits: the scratch now lives under the checkout and is removed by the
+TemporaryDirectory context manager, but I did not add a check that asserts it is
+gone after a crashed run -- a kill -9 mid-sweep would leave .prove-ladder-*
+debris, and this session has already had to clean up agent scratch twice. I also
+did not re-run the sweep from a different TMPDIR to confirm the fix is
+address-independent rather than merely working from this one.
+
