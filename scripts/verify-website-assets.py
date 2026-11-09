@@ -62,6 +62,26 @@ import re
 import sys
 from pathlib import Path
 
+#: Where fixtures are written when the host sets a temp variable. A host whose
+#: confinement denies files under its default temp (measured 2026-11-09 on the
+#: agent host: every write into a TemporaryDirectory is EPERM) can point this at
+#: a directory it allows; unset leaves tempfile's own default in force.
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root this file's fixtures are written under (None = system default).
+
+    The makedirs is the r250 lesson: a scratch dir that was removed between runs
+    otherwise makes EVERY fixture die with FileNotFoundError before it grades
+    anything. exist_ok keeps the common case a no-op.
+    """
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
+
+
 # Repo root resolved script-relative, never anchored to a checkout path
 # (AGENTS.md: "Never anchor to a hardcoded checkout").
 ROOT = Path(__file__).resolve().parent.parent
@@ -148,12 +168,19 @@ def main(argv: list[str] | None = None, root: str | Path | None = None) -> int:
     assets = root_path / "website" / "src" / "assets"
     src_dir = root_path / "website" / "src"
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    # r172/r251: the flag lives here, not only in the __main__ block, so that a
+    # --self-test driven through argv from the ladder dispatches to the cases
+    # instead of reaching the first scan (which would read the fixture tree).
+    ap.add_argument("--self-test", action="store_true",
+                    help="run this checker's cases and exit; touches no repository file")
     ap.add_argument("--max-bytes", type=int, default=100 * 1024,
                     help="size budget per asset (default 102400)")
     ap.add_argument("--allow-raster-svg", default="",
                     help="comma-separated filenames exempt from the base64 check")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args(argv)
+    if args.self_test:
+        return self_test()
 
     if not assets.is_dir():
         print(f"verify-website-assets: {assets.relative_to(root_path)} not found", file=sys.stderr)
@@ -275,7 +302,8 @@ def self_test() -> int:
     import io as _io
     import tempfile
     def _shell(args, files):
-        with tempfile.TemporaryDirectory() as td:
+        with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                         ignore_cleanup_errors=True) as td:
             root = Path(td)
             (root / "website" / "src" / "assets").mkdir(parents=True)
             for rel, content in files.items():
@@ -312,7 +340,8 @@ def self_test() -> int:
     if rc != 0 or "orphan check SKIPPED" not in text or "orphans NOT assessed" not in text:
         bad.append("a dynamic resolver must downgrade the orphan rule, not red the run "
                    "(rc=%d text=%r)" % (rc, text[-200:]))
-    with tempfile.TemporaryDirectory() as td:
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                         ignore_cleanup_errors=True) as td:
         out, err = _io.StringIO(), _io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             rc = main(argv=[], root=td)
@@ -324,7 +353,142 @@ def self_test() -> int:
         return 2
     print("SELF-TEST OK (%d cases, incl. 6 shell cases; fixtures are tempdirs)"
           % (13 + 6))
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard for the ladder (r244/r250 -- the r228 lesson).
+
+    Rung 5 drives --self-test through argv from INSIDE the ladder, and the
+    self-test ends in this call, so without the guard that nested run recurses.
+    """
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        print("  (ladder re-entry from a nested --self-test: skipped)")
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """r251: the root contract, graded on fixture website/src trees through main().
+
+    Rung 1 IS the killing rung, and it grades the CENSUS line rather than either
+    scan, because the census is the one printed value composed from BOTH halves
+    of the redirect at once: the asset count comes from <root>/website/src/assets
+    and the orphan-rule branch from the dynamic-resolver walk of
+    <root>/website/src. Measured 2026-11-09 (r251), the live print on this
+    checkout is
+
+        === Website Asset Check === (8 file(s), budget 102,400 B)
+
+    "AssetCheck ... 1 file(s) ..." would NOT be a kill: "file(s)" matches any
+    count including 8, and the budget half ("budget 102,400 B") is identical in
+    every run. Rung 1 therefore fixes the count at 1 and asserts the WHOLE
+    sentence "=== Website Asset Check === (1 file(s),
+    budget 102,400 B)", a string this checkout cannot print because it prints 8.
+    A main() that ignored root would read 8 files and fail here. The orphan rule
+    runs static in this rung (no dynamic resolver), so the count is also a count
+    of files actually COMPARED against a reference set; a root-blind scan would
+    walk this checkout's real imports instead and report the fixture's asset
+    ORPHAN, flipping rc to 1 as well.
+
+    Rung 2 is the clean arm: the same asset with a literal import is exit 0 with
+    the fully graded verdict. Rung 3 is the refusal floor: a fixture with no
+    assets dir must refuse rc 2 and never print OK -- a root-blind main finds
+    this checkout's assets dir and prints the clean verdict instead.
+    Rung 4 grades the downgrade end to end: because parse_args runs before the
+    refusal check the opening line still prints under a root with no assets dir,
+    and it must name the FIXTURE's one skip site.
+    Rung 5 drives --self-test through argv; re-entry is guarded.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    def build(tmp, files, label="fx"):
+        """A fixture root holding the given {relative path: text} files."""
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix=label + "_"))
+        for rel, text in files.items():
+            dst = base / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_text(text, encoding="utf-8", newline=chr(10))
+        return base
+
+    def run(root_dir, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root_dir))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    VECTOR = '<svg viewBox="0 0 1 1"><path d="M0 0"/></svg>' + chr(10)
+    # One asset, one literal import. The ?url suffix is deliberate: the
+    # specifier is not the filename, and the reference scan must strip the
+    # suffix to see the import at all -- the same edge this file's cases pin.
+    CLEAN = {"website/src/assets/logo.svg": VECTOR,
+             "website/src/page.astro": "import logo from '../assets/logo.svg?url'" + chr(10)}
+
+    shell = 0
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as tmp:
+        # rung 1 -- the killing rung: the census is the FIXTURE's, exactly.
+        root = build(tmp, CLEAN)
+        rc, said = run(root)
+        want = "=== Website Asset Check === (1 file(s), budget 102,400 B)"
+        if rc != 0 or want not in said:
+            print("  x rung 1: the census must count the fixture's one asset under its "
+                  "root, not this checkout's eight (rc=%r said=%r)" % (rc, said[-240:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2 -- the clean arm: all three rules grade, exit 0.
+        root = build(tmp, CLEAN)
+        rc, said = run(root)
+        if rc != 0 or "OK" not in said or "or orphaned assets" not in said:
+            print("  x rung 2: a clean fixture must exit 0 with the full graded verdict "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3 -- the refusal floor: no assets dir under the fixture root.
+        root = build(tmp, {"website/src/page.astro": "export const x = 1" + chr(10)})
+        rc, said = run(root)
+        if rc != 2 or "verify-website-assets:" not in said or "OK" in said:
+            print("  x rung 3: a fixture without an assets dir must refuse rc 2, never "
+                  "print OK (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4 -- the downgrade: one dynamic resolver disables the orphan rule,
+        # and the opening line counts the FIXTURE's skip site.
+        root = build(tmp, {**CLEAN,
+                           "website/src/dyn.ts": "const m = import.meta.glob('../assets/*')" + chr(10)})
+        rc, said = run(root)
+        if rc != 0 or "=== Website Asset Check === (1 file(s)" not in said or "SKIPPED: 1" not in said:
+            print("  x rung 4: a dynamic resolver must print the fixture's own skip note "
+                  "and still exit 0 (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5 -- --self-test dispatch flows through argv; re-entry is guarded.
+        root = build(tmp, CLEAN)
+        rc, said = run(root, "--self-test")
+        if rc != 0 or "SELF-TEST OK" not in said or "ladder re-entry" not in said:
+            print("  x rung 5: --self-test through argv must pass rc 0 and skip the "
+                  "nested ladder (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("WEBSITE-ASSETS SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
     return 0
+
 
 
 if __name__ == "__main__":

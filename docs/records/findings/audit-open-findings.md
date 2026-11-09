@@ -11195,3 +11195,46 @@ this repository that grades the harness, so it can regress silently; a proof
 that a known-bad checker is KILLED and a known-good one is NOT is the closest
 thing to a control, and that is a manual step today.
 
+### Round 252 (2026-11-09) -- website assets laddered; the harness kill was real but shallow
+
+scripts/verify-website-assets.py (333 lines) gained the contract: census 33 ->
+34 of 70. Five rungs through main(argv, root); the live gate is byte-for-byte
+unchanged ("=== Website Asset Check === (8 file(s), budget 102,400 B)" ... "OK:
+no oversized, raster-in-svg, or orphaned assets", rc 0).
+
+RUNG 1 ASSERTS A WHOLE SENTENCE, NOT A COUNT. The fixture prints
+"=== Website Asset Check === (1 file(s), budget 102,400 B)" while this tree
+prints "(8 file(s)". The budget half is identical in both, so a substring
+assertion on "budget 102,400 B" would pass against a root-blind main -- the
+same trap as round 242. The rung requires the complete census line.
+
+The subagent reporting on this found something worth keeping:
+scripts/prove-ladder-kills.py's "root_path ignores root" mutation points
+root_path at the scratch directory, so the mutant dies at the rc 2
+ASSET-DIRECTORY REFUSAL before the census is ever compared. The kill is real,
+but it exercises the refusal floor rather than the census arm. Reproduced here
+with a hand-built mutant that pins src_dir to ROOT while assets follow root:
+the ladder returns rc 1 naming ORPHAN "logo.svg ... no literal import anywhere
+under website/src", i.e. the census arm kills on its own. Both halves hold;
+only the first was ever proven automatically.
+
+Also measured while doing that: the file's colour escapes are malformed
+("\x1b[0;31mVIOLATION\x1b[0m" -- no trailing "m" on the reset). That is a
+pre-existing cosmetic wart, left alone here and recorded rather than silently
+fixed inside a contract commit.
+
+main() carried no --self-test flag at all: only the __main__ block inspected
+sys.argv. Adding the flag and dispatching through parse_args made rung 5
+possible and brought the file in line with check-ftl-attrs and its siblings.
+
+Measured: self-test "19 cases, incl. 6 shell cases" plus "WEBSITE-ASSETS SHELL
+LADDER OK (5 cases through argv and root, no repository file touched)"; census
+"34 of 70"; verify-selftests-wired unchanged at 105 of 107.
+
+Honest limits: the automatic harness proof for this checker covers the refusal
+arm only; the census-arm kill is a hand-built mutant I ran once, not a shape
+the harness models, so it will not regress-detect. A rung that dies at the
+refusal floor is weaker evidence than the harness's "KILLED" suggests, and that
+is true of every checker whose root is consumed before its first comparison --
+I have not measured how many of the 34 are in that position.
+
