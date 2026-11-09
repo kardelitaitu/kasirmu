@@ -12235,3 +12235,36 @@ a RELATIVE path (rung 3 covers relative argv paths, not a relative root). The li
 run remains rc 1 for want of a coverage report -- that predates this round and is
 not something the ladder can or should fix.
 
+### Round 275 (2026-11-09) -- a ladder required to kill on a verdict, and the docstring that outlived its fix
+
+verify-release-workflow got a 4-rung ladder. Because r274 had just found a rung
+that 'killed' a mutant with a scope refusal, this round's brief stated the
+requirement up front: the killing rung must make BOTH readings reach the grading
+code, so a root-blind mutant produces a WRONG VERDICT about the fixture (naming a
+fixture-only string) instead of a refusal.
+
+VERIFIED ON THE MUTANT, not taken on report: rc=1 failing rung 1 with
+'... a root-blind main grades this repository's release.yml, which ...', and a
+regex scan of the failure text for not found / cannot read / no such file returns
+FALSE. It is a verdict. self-test green (4 rungs), census 45 -> 46, prove KILLED
+on both anchors, live run unchanged.
+
+Second thread this round: r274's fix left verify-coverage-floors' DOCSTRING still
+arguing the retired design -- 'the rung fails on the SCOPE REFUSAL a root-blind
+main produces, not on an accident'. The code was corrected and the prose that
+explains the code was not, which is how a later editor reinstates a defect they
+were told was intentional. Rewritten to describe what now happens; verified the
+ladder still passes afterwards.
+
+Process note: I let the subagent finish rather than editing the same file
+concurrently. Mid-run the self-test failed on rung 2 and then on rung 1, and both
+were transient states of an unfinished edit -- the same shape as the false
+'broken' reading I would have committed to if I had judged it at 22:12 instead of
+22:15.
+
+Honest limits: the ladder has 4 rungs and does not exercise an absent workflow
+file, so the refusal for a missing release.yml is untested. The fixture's GOOD
+template also carries a 'run-on: ubuntu-latest' typo beside the real 'runs-on:'
+-- harmless to these rungs, since nothing grades that key, but it will mislead
+the next reader of that template.
+
