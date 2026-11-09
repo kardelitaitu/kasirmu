@@ -55,10 +55,13 @@ def load_leg():
     return vip
 
 
-def git_dirty(path: pathlib.Path) -> str:
+def git_dirty(path: pathlib.Path, base: pathlib.Path = REPO) -> str:
+    """r209: dirtiness is asked of the contract root's repo. Under a fixture
+    root there is no git repo, so git answers with an error and an empty
+    stdout -- which reads as clean, exactly what a throwaway tree is."""
     out = subprocess.run(
-        ["git", "status", "--porcelain", "--", path.relative_to(REPO).as_posix()],
-        capture_output=True, text=True, cwd=REPO, check=False,
+        ["git", "status", "--porcelain", "--", path.relative_to(base).as_posix()],
+        capture_output=True, text=True, cwd=base, check=False,
     )
     return out.stdout.strip()
 
@@ -100,7 +103,7 @@ def prose_flags(lines: list[str]) -> list[bool]:
     return flags
 
 
-def plan_mentions(name: str) -> list[str]:
+def plan_mentions(name: str, base: pathlib.Path = REPO) -> list[str]:
     """Lines in the repo's work-order files that name `name` -- the decision gate.
 
     A test reference is not the only reason a dead command is owed an argument. On
@@ -112,7 +115,7 @@ def plan_mentions(name: str) -> list[str]:
     the durable records this programme writes its deferrals into.
     """
     hits: list[str] = []
-    for path in sorted(REPO.glob("todo-*.md")):  # REPO, the module constant; `vip` is a local import
+    for path in sorted(base.glob("todo-*.md")):  # the contract root, r209; `vip` is a local import
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -139,7 +142,12 @@ def path_refs(name: str, sources: list[tuple[str, str]]) -> list[str]:
     what a bare path means is a human call, not a regex's. Prose is excluded (a comment
     naming a retired fn is reported separately), as is the signature line itself.
     """
-    word = re.compile(r"(?<![\w:])" + re.escape(name) + r"\b")
+    # r209: the lookbehind now rejects only a WORD-CHAR prefix. The old
+    # (?<![\w:]) also rejected a colon -- which is to say it read straight
+    # through every QUALIFIED path mention (commands::sales::dead_two), the
+    # exact form a handler-path take uses, and called the name uncalled on
+    # evidence that was on disk. Backtick/quote/space prefixes still hit.
+    word = re.compile(r"(?<!\w)" + re.escape(name) + r"\b")
     call = re.compile(re.escape(name) + r"\s*\(")
     hits: list[str] = []
     for label, text in sources:
@@ -198,8 +206,18 @@ def verify_on_disk(mod: pathlib.Path, planned: str, spans, attrs_after: int) -> 
     return problems
 
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r209: argv and root parameterized, the r166..r208 contract. A tool
+    whose evidence flows through a leg is HALF-rooted unless the leg takes
+    the same root -- verify-ipc-parity was parameterized first, r208.
+    Root redirects every evidence source together: the shell lib, the
+    module file, the UI scan the leg performs, the allowlist the tool
+    reads raw, and the todo-*.md work orders the decision gate reads.
+    parse_args(argv) per the arc's explicit-argv rule. The leg module
+    itself still loads from this checkout -- its CODE is infrastructure,
+    not evidence."""
     vip = load_leg()
+    base = REPO if root is None else pathlib.Path(root).resolve()
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--shell", default="tablet", choices=tuple(vip.SHELLS))
     ap.add_argument("--module", required=True, help="file name under commands/, no extension")
@@ -208,15 +226,15 @@ def main() -> int:
     ap.add_argument("--only", default="", help="comma-separated subset of candidates to retire")
     ap.add_argument("--allow-tests", action="store_true",
                     help="permit retiring names that only a test still references")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
-    lib = REPO / vip.SHELLS[args.shell]
+    lib = base / vip.SHELLS[args.shell]
     src = lib.parent
     mod = src / "commands" / f"{args.module}.rs"
     if not mod.exists():
         print(f"abort: no such module {mod}", file=sys.stderr)
         return 2
-    if (dirty := git_dirty(mod)) and not args.force:
+    if (dirty := git_dirty(mod, base)) and not args.force:
         print(f"abort: {args.module}.rs is dirty in another lane, so ranges computed now "
               f"would not match the tree that gets committed:\n  {dirty}", file=sys.stderr)
         return 2
@@ -233,7 +251,7 @@ def main() -> int:
         pass
 
     registered = set(vip.extract_handlers(lib))
-    ui = set(vip.extract_ui_commands().keys())
+    ui = set(vip.extract_ui_commands(root).keys())
     prod = [(p.relative_to(src).as_posix(), p.read_text(encoding="utf-8", errors="replace"))
             for p in sorted(src.rglob("*.rs")) if not p.name.endswith("_tests.rs")]
     tests = [(p.name, p.read_text(encoding="utf-8", errors="replace"))
@@ -254,7 +272,8 @@ def main() -> int:
     # unscoped name load-bearing for a scoped one. Read the whole file, not a parsed subset,
     # and read it through the gate's own function rather than a forked parser: the fork is
     # what produced the shape mismatch above.
-    allowlist_lines = vip.read_allowlist_text().splitlines()
+    al_path = base / "scripts" / "ipc-parity-allowlist.json"
+    allowlist_lines = vip.read_allowlist_text(al_path).splitlines()
     # The two kinds of allowlist presence are not the same fact, and conflating them cost a
     # round: an ENTRY is a parsed member of `desktop`/`tablet`/`scoped_orphans`/`dev_mock`,
     # while a MENTION is the name appearing in the file's free text -- usually the giant
@@ -265,7 +284,7 @@ def main() -> int:
     # because the round-23 apply was stopped by a comment this lane had written itself, hours
     # after cleaning the entries.
     try:
-        _al = json.loads((REPO / "scripts" / "ipc-parity-allowlist.json").read_text(encoding="utf-8"))
+        _al = json.loads(al_path.read_text(encoding="utf-8"))
         al_entries = {(e.get("name") if isinstance(e, dict) else e)
                       for sec in ("desktop", "tablet", "scoped_orphans", "dev_mock")
                       for e in (_al.get(sec) or [])}
@@ -315,7 +334,7 @@ def main() -> int:
         for b in bare:
             print(f"    PATH MENTION (not a call, so a human reads it): {b}")
         path_hits.extend((name, b) for b in bare)
-        plan = plan_mentions(name)
+        plan = plan_mentions(name, base)
         for pl in plan[:4]:
             print(f"    PLAN MENTION (a written decision may hang on this name): {pl}")
         if plan and not (args.only and name in wanted):
@@ -392,8 +411,12 @@ def main() -> int:
         # it visible. Count what a rewrite claims to have done, always.
         old = re.compile(r"^[ \t]*/// (?:Session-)?[Ss]coped variant of `" + re.escape(name)
                          + r"`(?: \(ADR #7\))?\.[ \t]*$", re.M)
-        base = raw[0].upper() + raw[1:] if raw else name.replace("_", " ")
-        new = f"/// {base} resolved from a session token. ADR #7."
+        # doc_base, never base: r209 made main carry the contract root in
+        # base, and this loop's old local silently clobbered it -- the ladder
+        # tripped the very print it feeds (mod.relative_to(base)), the same
+        # family as the stale lib_path / text shadowings recorded above.
+        doc_base = raw[0].upper() + raw[1:] if raw else name.replace("_", " ")
+        new = f"/// {doc_base} resolved from a session token. ADR #7."
         out, n = old.subn(new, out)
         rewritten += n
     print(f"  twin doc lines rewritten: {rewritten} (of {len(spans)} retired fns)")
@@ -480,15 +503,191 @@ def main() -> int:
     # the disk is. Failure here is exit 3, not a warning: the tree is now in an unknown state.
     problems = verify_on_disk(mod, out, spans, attrs_after)
     if problems:
-        print(f"!! WRITE DID NOT LAND AS PLANNED in {mod.relative_to(REPO).as_posix()}:")
+        print(f"!! WRITE DID NOT LAND AS PLANNED in {mod.relative_to(base).as_posix()}:")
         for p in problems:
             print(f"   - {p}")
         return 3
-    print(f"VERIFIED on disk: {mod.relative_to(REPO).as_posix()} is now "
+    print(f"VERIFIED on disk: {mod.relative_to(base).as_posix()} is now "
           f"{len(out.splitlines())} lines, {len(spans)} command fn(s) absent, "
           f"{attrs_after} attributes remain")
     return 0
 
 
+def self_test() -> int:
+    """r209: the shell -- main() graded through argv and a contract root, the
+    r166..r208 pattern. The fixture is a miniature shell tree; the leg runs
+    INSIDE it with the same root, so the retirement verdict is earned from
+    the fixture's own registration and UI evidence. No git repo exists
+    under the fixture, so the dirty check reads clean, and no repository
+    file is touched."""
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+
+    MOD = ("#[tauri::command]\n"
+           "pub async fn alpha(session: String) -> String {\n"
+           "    let _ = session;\n"
+           "    \"alpha\".to_string()\n"
+           "}\n"
+           "\n"
+           "/// Dead one does a thing.\n"
+           "#[tauri::command]\n"
+           "pub fn dead_one(session: String) -> String {\n"
+           "    let _ = session;\n"
+           "    \"one\".to_string()\n"
+           "}\n"
+           "\n"
+           "/// Session-scoped variant of \x60dead_one\x60.\n"
+           "#[tauri::command]\n"
+           "pub fn dead_one_scoped(session: String) -> String {\n"
+           "    let _ = session;\n"
+           "    \"scoped\".to_string()\n"
+           "}\n"
+           "\n"
+           "/// Dead two does another thing.\n"
+           "#[tauri::command]\n"
+           "pub fn dead_two(session: String) -> String {\n"
+           "    let _ = session;\n"
+           "    \"two\".to_string()\n"
+           "}\n"
+           "\n"
+           "/// Dead three is pending a decision.\n"
+           "#[tauri::command]\n"
+           "pub fn dead_three(session: String) -> String {\n"
+           "    let _ = session;\n"
+           "    \"three\".to_string()\n"
+           "}\n")
+
+    rung_n = iter(range(1000))
+    def build_tree(tmp, *, mention=False, todo=False):
+        root = pathlib.Path(tmp) / ("mini%d" % next(rung_n))
+        (root / "apps/mobile-tauri/src/commands").mkdir(parents=True, exist_ok=True)
+        (root / "ui/src/api/client").mkdir(parents=True, exist_ok=True)
+        (root / "scripts").mkdir(parents=True, exist_ok=True)
+        (root / "apps/mobile-tauri/src/lib.rs").write_text(
+            "generate_handler![\n    commands::sales::alpha,\n]\n", encoding="utf-8")
+        (root / "apps/mobile-tauri/src/commands/sales.rs").write_text(MOD,
+                                                                     encoding="utf-8")
+        (root / "ui/src/api/client/products.ts").write_text(
+            "await invoke('alpha');\n", encoding="utf-8")
+        (root / "scripts/ipc-parity-allowlist.json").write_text(json.dumps(
+            {"_comment": "probe", "desktop": [], "tablet": [],
+             "dev_mock": [], "scoped_orphans": []}, indent=2) + "\n",
+            encoding="utf-8")
+        if mention:
+            (root / "apps/mobile-tauri/src/commands/other.rs").write_text(
+                "pub fn helper() {\n    let _x = commands::dead_two;\n}\n",
+                encoding="utf-8")
+        if todo:
+            (root / "todo-T20.md").write_text(
+                "keep \x60dead_three\x60 until the ADR #48 ruling lands\n",
+                encoding="utf-8")
+        return root
+
+    def run(root, *argv):
+        out, err = _io.StringIO(), _io.StringIO()
+        try:
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                rc = main(argv=list(argv), root=str(root))
+        except SystemExit as se:
+            return se.code, out.getvalue() + err.getvalue()
+        return rc, out.getvalue() + err.getvalue()
+
+    shell = 0
+    with _tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: module ladder_probe exists only in the
+        # fixture, so a root-dropping main aborts on the real checkout's
+        # missing file instead of planning the fixture's two retirements
+        root = build_tree(tmp)
+        (root / "apps/mobile-tauri/src/commands/ladder_probe.rs").write_text(
+            MOD, encoding="utf-8")
+        rc, text = run(root, "--shell", "tablet", "--module", "ladder_probe")
+        if rc != 0 or "4 of 5 command fns" not in text \
+                or "dry run: nothing written" not in text:
+            print("  x rung 1: two retirements must be planned rc 0 in dry run "
+                  "(rc=%r tail=%r)" % (rc, text[-170:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: everything registered -> nothing to retire
+        root = build_tree(tmp)
+        (root / "apps/mobile-tauri/src/commands/clean.rs").write_text(
+            "#[tauri::command]\npub async fn alpha(session: String) -> String {\n"
+            "    let _ = session;\n    \"a\".to_string()\n}\n", encoding="utf-8")
+        rc, text = run(root, "--shell", "tablet", "--module", "clean")
+        if rc != 0 or "nothing to retire" not in text:
+            print("  x rung 2: a fully-registered module must read nothing to retire "
+                  "(rc=%r tail=%r)" % (rc, text[-170:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: --apply writes, and the post-condition is read back INSIDE
+        # the tree: dead fns gone, the twin doc rewritten in the dead fn's own
+        # words, the registered alpha intact
+        root = build_tree(tmp)
+        rc, text = run(root, "--shell", "tablet", "--module", "sales", "--apply",
+                       "--only", "dead_one,dead_two,dead_three")
+        back = (root / "apps/mobile-tauri/src/commands/sales.rs").read_text(
+            encoding="utf-8")
+        if rc != 0 or "VERIFIED on disk" not in text:
+            print("  x rung 3: the apply must verify on disk rc 0 (rc=%r tail=%r)"
+                  % (rc, text[-170:]), file=sys.stderr)
+            return 1
+        if "dead_two" in back or "dead_three" in back:
+            print("  x rung 3: the dead fns must be absent from the applied file "
+                  "(head=%r)" % back[:220], file=sys.stderr)
+            return 1
+        if "twin doc lines rewritten: 1 (of 3 retired fns)" not in text:
+            print("  x rung 3: the surviving twin's doc must be rewritten, counted "
+                  "(tail=%r)" % text[-200:], file=sys.stderr)
+            return 1
+        if "resolved from a session token. ADR #7." not in back:
+            print("  x rung 3: the twin doc must be rewritten from the dead fn's prose "
+                  "(head=%r)" % back[:280], file=sys.stderr)
+            return 1
+        if "pub async fn alpha" not in back or "pub fn dead_one_scoped" not in back:
+            print("  x rung 3: the registered fn and surviving twin must remain "
+                  "(head=%r)" % back[:220], file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: a bare path mention (no paren) stops --apply without --force
+        root = build_tree(tmp, mention=True)
+        rc, text = run(root, "--shell", "tablet", "--module", "sales", "--apply")
+        if rc != 2 or "path mention" not in text:
+            print("  x rung 4: a bare path mention must stop --apply rc 2 (rc=%r tail=%r)"
+                  % (rc, text[-170:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: a work-order file naming a candidate stops --apply
+        root = build_tree(tmp, todo=True)
+        # no --only: passing the name yourself IS the documented human act
+        # that waives the decision gate, so the gate is graded without it
+        rc, text = run(root, "--shell", "tablet", "--module", "sales", "--apply")
+        if rc != 2 or "work-order file" not in text:
+            print("  x rung 5: a plan-named candidate must stop --apply rc 2 "
+                  "(rc=%r tail=%r)" % (rc, text[-170:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 6: a module that does not exist under the contract root
+        root = build_tree(tmp)
+        rc, text = run(root, "--shell", "tablet", "--module", "absent")
+        if rc != 2 or "no such module" not in text:
+            print("  x rung 6: a missing module must refuse rc 2 (rc=%r tail=%r)"
+                  % (rc, text[-170:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 7: --only naming a non-candidate refuses to guess
+        root = build_tree(tmp)
+        rc, text = run(root, "--shell", "tablet", "--module", "sales",
+                       "--only", "alpha")
+        if rc != 2 or "not retirement candidates" not in text:
+            print("  x rung 7: --only with a registered name must refuse rc 2 "
+                  "(rc=%r tail=%r)" % (rc, text[-170:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("RETIRE SHELL LADDER OK (%d cases through argv and root, "
+          "no repository file touched)" % shell)
+    return 0
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(self_test() if "--self-test" in sys.argv[1:] else main())
