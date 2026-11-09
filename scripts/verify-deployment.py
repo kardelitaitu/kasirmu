@@ -178,12 +178,20 @@ def self_test() -> int:
     print('SELF-TEST OK (%d cases: %d pure + %d over a loopback HTTP server)' % (len(cases) + n_net, len(cases), n_net))
     return 0
 
-def main() -> int:
+def main(argv=None, root=None) -> int:
+    """r206: argv parameterized, the r166..r205 contract -- with one honest
+    difference. This tool's evidence source is the --base URL it probes,
+    not any checkout path: CHECKS are fixed route names appended to the
+    caller's base, and the tool reads no repository file. So there is no
+    root to redirect; root is accepted and ignored by signature, and the
+    contract's load-bearing half HERE is explicit argv -- an in-process
+    call must not inherit the caller's command line (with sys.argv still
+    holding --self-test, a ladder call would recurse, not probe)."""
     ap = argparse.ArgumentParser()
     ap.add_argument('--self-test', action='store_true')
     ap.add_argument('--base', action='append', default=[],
                     help='base URL; repeatable. Defaults to both compiled origins.')
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
     if a.self_test:
         return self_test()
     bases = a.base or ['https://license.kasir.mu']
@@ -241,6 +249,109 @@ def main() -> int:
         print('  Remaining hand step: sign in on a real tablet and confirm terminal.issued=true.')
         return 0
     return 1
+
+def _ladder_shell() -> int:
+    """r206: main() graded through explicit argv against a LOOPBACK http.server
+    (the r166..r205 pattern, in its no-checkout form): real HTTP, real
+    sockets, no DNS, no TLS, no external network. A deploy verdict is earned
+    per route from the statuses the fixture answers."""
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+    shell = 0
+    # Every CHECKS path, answered with a status that path EXPECTS -- the
+    # deployment-complete fixture.
+    ANSWERS = {
+        '/api/health': 200,
+        '/api/v1/web/request-otp': 400,
+        '/api/v1/web/me': 401,
+        '/api/v1/web/identities': 401,
+        '/api/v1/desktop/link/email/request': 400,
+        '/api/v1/desktop/link/email/consume': 400,
+        '/api/v1/desktop/link/google/start': 400,
+        '/api/sync/snapshot': 401,
+        '/api/v1/terminals': 401,
+        '/api/v1/web/oauth/google/start': 302,
+        '/api/v1/web/oauth/google/callback': 400,
+    }
+    def serve(overrides):
+        resp = dict(ANSWERS)
+        resp.update(overrides)
+        srv = http.server.HTTPServer(('127.0.0.1', 0), type('H', (http.server.BaseHTTPRequestHandler,), {
+            'log_message': lambda self, *a2: None,
+        }))
+        def _one(self2):
+            length = int(self2.headers.get('Content-Length') or 0)
+            if length:
+                self2.rfile.read(length)
+            self2.send_response(resp.get(self2.path, 404))
+            self2.end_headers()
+        hcls = srv.RequestHandlerClass
+        hcls.do_GET = _one
+        hcls.do_POST = _one
+        t = threading.Thread(target=srv.serve_forever, daemon=True)
+        t.start()
+        return srv, 'http://127.0.0.1:%d' % srv.server_port
+    def run(srv, base):
+        out, err = _io.StringIO(), _io.StringIO()
+        try:
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                rc = main(argv=['--base', base])
+        except SystemExit as se:
+            return se.code, out.getvalue() + err.getvalue()
+        except RecursionError:
+            return 'RECURSED', out.getvalue() + err.getvalue()
+        return rc, out.getvalue() + err.getvalue()
+    # the real sleeps stay: 1.5s per probe keeps the ladder honest about
+    # pacing; ~17s per full sweep is the price of a real verdict chain
+    shell += 1
+    srv, base = serve({})
+    try:
+        rc, text = run(srv, base)
+        if rc != 0 or 'deployment COMPLETE' not in text:
+            print('  x every-route-configured must read COMPLETE (rc=%r text=%r)'
+                  % (rc, text[-110:]), file=sys.stderr)
+            return 1
+    finally:
+        srv.shutdown(); srv.server_close()
+    shell += 1
+    srv, base = serve({'/api/v1/desktop/link/google/start': 404})
+    try:
+        rc, text = run(srv, base)
+        if rc != 1 or 'deployment INCOMPLETE: 1 route(s) absent' not in text:
+            print('  x one 404 route must read INCOMPLETE rc 1 (rc=%r text=%r)'
+                  % (rc, text[-110:]), file=sys.stderr)
+            return 1
+    finally:
+        srv.shutdown(); srv.server_close()
+    shell += 1
+    srv, base = serve({'/api/health': 503})
+    try:
+        rc, text = run(srv, base)
+        if rc != 1 or 'still rolling out' not in text:
+            print('  x a 503 rollout must be named, not reported broken (rc=%r text=%r)'
+                  % (rc, text[-110:]), file=sys.stderr)
+            return 1
+    finally:
+        srv.shutdown(); srv.server_close()
+    shell += 1
+    srv, base = serve({'/api/v1/web/identities': 500})
+    try:
+        rc, text = run(srv, base)
+        if rc != 1 or 'deployment BROKEN' not in text:
+            print('  x an unexpected status must read BROKEN rc 1 (rc=%r text=%r)'
+                  % (rc, text[-110:]), file=sys.stderr)
+            return 1
+    finally:
+        srv.shutdown(); srv.server_close()
+    print('SELF-TEST OK (8 pure + 5 loopback probe() cases + %d main() shell '
+          'cases over a loopback HTTP server)' % shell)
+    return 0
+
+
+def self_test() -> int:
+    return _ladder_shell()
+
 
 if __name__ == '__main__':
     sys.exit(main())
