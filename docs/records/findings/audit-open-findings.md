@@ -9796,3 +9796,57 @@ more" tail). The scoped-reads (r213), retire (r214), state-closure
 llvm-cov / nextest-junit receipts remain PG-gated. Root-policy RED on
 the foreign todo.md (r174); core-size RED on the ADR-59 +64 (r181) --
 both await their owning lanes.
+
+### Round 224 (2026-11-09) -- unwrap-panic: the root list itself becomes the seam, and a fixture must carry all four roots
+
+scan-unwrap-panic.py resolved --roots against the process cwd, walked
+from there, and its refusals printed Path.cwd() as the "working
+directory". main(argv=None, root=None) resolves base once: relative
+--roots resolve under the graded tree, the usable names carry that
+tree's paths (so a fixture's findings name fixture files), the walk and
+the tried-path lines hang under it, and the refusal messages say which
+tree they looked under. With no --roots and no root kwarg, every byte
+of the live run is unchanged: measured before and after the edit,
+"# total: 169 production unwrap/expect calls" at exit 0, all
+documented invariants.
+
+One subtlety the design had to respect: with a root kwarg and the
+DEFAULT root list (crates apps platform modules), a fixture that lacks
+any of the four is REFUSED by the gate's own all-or-nothing rule -- the
+docstring's partial-starvation repair applies to fixtures too, and
+happily so. Every rung's build() therefore creates all four roots, and
+rung 4 exercises the refusal deliberately: --roots crates nope refuses
+rc 2, naming 'nope' and the path tried under the fixture.
+
+The ladder is 5 rungs: the killing rung (a bare unwrap in a fixture
+crate fails rc 1 with "lib.rs:2: unwrap()"; the checkout measures 169
+calls, all documented, so a root-dropping main exits 0 -- rc-keyed
+kill, probe224 confirmed), a documented invariant reading green at rc 0
+with "# total: 1", --allow-recoverable 1 proving it is a CEILING not an
+amnesty (2 recoverable vs N=1 still red, "forgives 1" in the words),
+the partial-starvation refusal rc 2, and a true green -- roots that
+resolve and hold no .rs file scan to "# total: 0" at rc 0, the zero
+that says "scanned and clean" and never the refusal's zero.
+
+This round went green on the first full run -- no fixture drafts died.
+Worth recording precisely because it did: the r219/r222/r223 rounds
+each lost a rung to a fixture draft error, and the difference here was
+one thing only -- the docstring's own all-or-nothing rule was read
+BEFORE writing build(), so the fixtures were designed around the gate's
+measured contract instead of discovering it at run time. Read the
+refusal rules before building the thing they refuse.
+
+Honest limits: the invariant-comment classifier is a heuristic
+(comments "on the same line or the line above", its own docstring), and
+the ladder pins only the shape it names; the ladder's rung 4 asserts
+the bad token, not the full resolved path under the fixture (resolve()
+case normalization on Windows makes the exact string brittle, and the
+token is the part a reader acts on); and the 169-call inventory is
+measured, not graded -- the rung fixture counts are the graded part.
+The scoped-reads (r213), retire (r214), state-closure (r216),
+fluent-families (r217), scratch-leaks (r218), shadow-copies (r219),
+chokepoints (r220), reentry-guards (r221), feature-registry (r222), and
+ftl-orphans (r223) limits stand. Docker daemon still down (probed
+r159): E2E / llvm-cov / nextest-junit receipts remain PG-gated.
+Root-policy RED on the foreign todo.md (r174); core-size RED on the
+ADR-59 +64 (r181) -- both await their owning lanes.
