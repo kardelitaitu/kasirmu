@@ -3030,3 +3030,166 @@ async fn daemon_with_an_empty_queue_issues_no_push_request() {
     );
     assert_eq!(status.read().await.last_pushed, 0);
 }
+
+/// Stress test for SQLite offline queue retry intervals, exponential backoff, and heartbeat telemetry metrics.
+#[tokio::test]
+async fn daemon_telemetry_heartbeat_stress_queue_retry_intervals_and_metrics() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let state_attempts = attempts.clone();
+
+    let listener = tokio::net::TcpListener::bind("localhost:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    async fn handle_push(
+        State(attempts): State<Arc<AtomicUsize>>,
+        Json(items): Json<Vec<kasirmu_core::offline::OfflineQueueItem>>,
+    ) -> impl IntoResponse {
+        let attempt = attempts.fetch_add(1, Ordering::SeqCst);
+        if attempt < 2 {
+            // First 2 attempts fail with 503 Service Unavailable (intermittent cloud drop)
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "server temporarily unavailable",
+            )
+                .into_response()
+        } else {
+            // Cloud server recovered: accept all queued items
+            Json(PushResponse {
+                results: vec![PushOutcome::Accepted; items.len()],
+            })
+            .into_response()
+        }
+    }
+
+    async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
+        Json(PullResponse {
+            items: vec![],
+            next_cursor: None,
+        })
+    }
+
+    let app = Router::new()
+        .route("/api/sync/push", post(handle_push))
+        .route("/api/sync/pull", post(handle_pull))
+        .with_state(state_attempts);
+
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    let url = format!("http://localhost:{port}");
+
+    let db = setup_db();
+    let db_setup = db.clone();
+    let url_setup = url.clone();
+    const TOTAL_ITEMS: usize = 35;
+
+    tokio::task::spawn_blocking(move || {
+        let conn = db_setup.blocking_lock();
+        let store = Store::new(&conn);
+        Settings::set_sync_enabled(&conn, true).unwrap();
+        Settings::set_sync_server_url(&conn, &url_setup).unwrap();
+        Settings::set_sync_terminal_id(&conn, "term-stress-01").unwrap();
+
+        for i in 1..=TOTAL_ITEMS {
+            let action = if i % 3 == 0 {
+                "stock.movement"
+            } else if i % 2 == 0 {
+                "sale.create"
+            } else {
+                "register.shift"
+            };
+            store
+                .enqueue_offline(action, &format!(r#"{{"item_index":{i},"qty":1}}"#))
+                .unwrap();
+        }
+    })
+    .await
+    .unwrap();
+
+    let status = Arc::new(RwLock::new(DaemonStatus::default()));
+
+    // ── Cycle 1: First Attempt (Fails 503) ──
+    daemon_tick::run_tick(&db, &status, &noop_settings_sink()).await;
+    {
+        let s = status.read().await;
+        assert_eq!(
+            s.last_pushed, 0,
+            "no items should be recorded as pushed on 503"
+        );
+        assert_eq!(
+            s.pending_count, TOTAL_ITEMS as i64,
+            "all items remain pending in queue"
+        );
+        assert!(s.last_error.is_some(), "last_error must record failure");
+        assert!(
+            s.last_sync_at.is_some(),
+            "heartbeat timestamp must be updated on failure"
+        );
+    }
+
+    // Verify backoff computation for 1 consecutive failure
+    let backoff_1 = compute_backoff(1);
+    assert!(
+        backoff_1.as_millis() <= 4_000,
+        "1 failure max backoff is 4000ms"
+    );
+
+    // ── Cycle 2: Second Attempt (Fails 503) ──
+    daemon_tick::run_tick(&db, &status, &noop_settings_sink()).await;
+    {
+        let s = status.read().await;
+        assert_eq!(s.last_pushed, 0);
+        assert_eq!(s.pending_count, TOTAL_ITEMS as i64);
+        assert!(s.last_error.is_some());
+    }
+
+    // Verify backoff computation for 2 consecutive failures
+    let backoff_2 = compute_backoff(2);
+    assert!(
+        backoff_2.as_millis() <= 8_000,
+        "2 failures max backoff is 8000ms"
+    );
+
+    // ── Cycle 3: Third Attempt (Recovers, Succeeded) ──
+    daemon_tick::run_tick(&db, &status, &noop_settings_sink()).await;
+    {
+        let s = status.read().await;
+        assert_eq!(
+            s.last_pushed, TOTAL_ITEMS,
+            "all queued items pushed upon recovery"
+        );
+        assert_eq!(s.pending_count, 0, "queue is drained");
+        assert!(s.last_error.is_none(), "error cleared on recovery");
+        assert!(
+            s.last_sync_at.is_some(),
+            "fresh heartbeat timestamp stamped"
+        );
+    }
+
+    // Verify local DB state
+    let (pending_in_db, all_items) = tokio::task::spawn_blocking({
+        let db = db.clone();
+        move || {
+            let conn = db.blocking_lock();
+            let store = Store::new(&conn);
+            (
+                store.pending_offline_count().unwrap(),
+                store.list_all_offline().unwrap(),
+            )
+        }
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(pending_in_db, 0, "pending count in sqlite must be 0");
+    assert_eq!(all_items.len(), TOTAL_ITEMS);
+    for item in all_items {
+        assert_eq!(
+            item.status,
+            kasirmu_core::offline::OfflineQueueStatus::Synced
+        );
+    }
+}
