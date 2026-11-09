@@ -10799,6 +10799,39 @@ so the live-gate count is a measurement of THIS tree, not a stable constant,
 and no rung asserts it. Two subagents were given this round's neighbouring
 checkers; their work is separate and is not verified by anything here.
 
+### Round 243 (2026-11-09) -- settled-read-copies: a ladder delegated to a subagent, and the report that refused to invent a target
+
+verify-settled-read-copies.py (306 lines) was delegated to a subagent rather
+than authored here. This entry records the round's DECISIONS, not a
+verification of the subagent's code: at the time of writing that work was
+still in progress and nothing in this file asserts its correctness. The
+subagent's own measured output is the evidence, and it carries its own
+census movement.
+
+WHAT WAS DECIDED, AND ONE MISTAKE WORTH KEEPING. The first delegation of this
+round named scripts/verify-env-vars.py and told the subagent that the file
+already carried a self-test and a root parameter. That file DOES NOT EXIST and
+never has -- confirmed independently: `git log -- scripts/verify-env-vars.py`
+is empty, and no *env*.py checker exists under scripts/ at all (the env-adjacent
+files are go-env.sh, msvc-env.sh and validate-env.mjs). The only "verify-env-vars"
+string anywhere in the tree is the one in the delegation brief itself.
+
+The subagent declined to act and reported the discrepancy rather than creating
+a file to satisfy the brief. That refusal is the correct behaviour and is the
+reason this round cost one wasted delegation instead of a fabricated checker:
+an agent told that a missing file "has X already" is being handed a premise
+that cannot be checked against reality, and the cheap wrong move -- write the
+file with the asterisks filled in -- would have produced a plausible-looking
+gate nobody asked for. The re-delegation named a file that exists and told the
+subagent to confirm with a read before touching anything.
+
+Honest limits: this entry is a PROCESS record, not a measurement. It reports
+no rung count, no live-gate line and no census delta for the delegated work,
+because those numbers were not available when it was written and inventing a
+placeholder for them would be worse than the gap. The lesson recorded -- state
+only premises the target file can confirm -- is one this round learned by
+paying for it, which is why it is written down rather than left implicit.
+
 ### Round 244 (2026-11-09) -- ftl-attrs: the dynamic-id resolver graded end to end, for the first time
 
 check-ftl-attrs.py (307 lines) was the next census target, "missing ladder". It
