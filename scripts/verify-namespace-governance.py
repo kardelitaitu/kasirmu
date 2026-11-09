@@ -1312,7 +1312,148 @@ def emit_census(root: Path, entries: list[dict[str, Any]]) -> int:
         print(f"| `{name}` (`{site}`) | {entry.get('category', '')} | {topic} | `{site}` | {note} | {status} |")
     return 0
 
-def main() -> int:
+
+def shell_ladder() -> int:
+    """r227: the root contract, graded on fixture trees through main(argv, root).
+
+    Fixtures carry a benign or violating module file; the operative table map
+    is THIS module's TABLE_TO_MODULE (scan() consults the module constant, so
+    the rungs self-calibrate their table and target from it instead of naming
+    a checkout-specific table). Rung 1 is the killing rung: a root-dropping
+    main grades THIS checkout, whose frozen baseline holds at exit 0. Rung 6
+    is scan()'s own floor: an empty modules/ is refused, never a hollow green.
+    """
+    import contextlib
+    import io
+    import json as _json
+    import tempfile
+
+    def run(root_dir, *argv):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv=list(argv), root=str(root_dir))
+        except SystemExit as se:
+            return se.code, buf.getvalue()
+        return rc, buf.getvalue()
+
+    CROSS = next(t for t, m in TABLE_TO_MODULE.items() if m != "inventory")
+    OWNER = TABLE_TO_MODULE[CROSS]
+
+    def build(tmp, *, code=None, handlers=None, grant=False, baseline=None, label=None):
+        base = Path(tempfile.mkdtemp(dir=tmp, prefix=(label or ("mini%d_" % next(rung_n)))))
+        (base / "scripts").mkdir(parents=True)
+        inv = base / "modules" / "inventory" / "src"
+        inv.mkdir(parents=True)
+        # Rule 3 iterates manifests, not module dirs: without one the
+        # undeclared-dependency surface does not run at all
+        (base / "modules" / "inventory" / "manifest.json").write_text(
+            _json.dumps({"dependencies": []}), encoding="utf-8", newline="\n")
+        (base / "scripts" / "namespace-governance-baseline.json").write_text(
+            _json.dumps({"entries": baseline or []}), encoding="utf-8", newline="\n")
+        (base / "scripts" / "handler-classification.json").write_text(
+            _json.dumps({"handlers": [{"name": h, "category": "domain"}
+                                       for h in (handlers or [])]}),
+            encoding="utf-8", newline="\n")
+        if code is not None:
+            head = ("// namespace: cross-vertical read %s granted (T3: ladder lookup)\n"
+                    % CROSS) if grant else ""
+            (inv / "repo.rs").write_text(
+                head + "pub fn all(ctx: &Ctx) -> Vec<Row> {\n"
+                       "    ctx.sql(\"SELECT id FROM %s WHERE ok = 1\")\n}\n" % CROSS,
+                encoding="utf-8", newline="\n")
+        return base
+
+    HANDLER_CODE = "impl EventHandler<StockAdjusted> for StockAdjustedHandler {}\n"
+    rung_n = iter(range(1000))
+    shell = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        # rung 1 IS the killing rung: a cross-vertical table in fixture SQL
+        root = build(tmp, code="SQL")
+        rc, said = run(root, "--json")
+        if rc != 1 or '"blocking": 1' not in said \
+                or '"rule": "cross-vertical-sql"' not in said \
+                or "modules/inventory/src/repo.rs" not in said:
+            print("  x rung 1: a fixture cross-vertical read must fail rc 1 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 2: one benign module file greens WITH its population named
+        root = build(tmp, code="BENIGN")
+        (root / "modules" / "inventory" / "src" / "repo.rs").write_text(
+            "pub fn ping() -> u32 { 7 }\n", encoding="utf-8", newline="\n")
+        rc, said = run(root)
+        if rc != 0 or "0 new blocking finding(s)" not in said \
+                or "[population examined: 1 module source file(s)" not in said:
+            print("  x rung 2: a benign fixture must green with its population "
+                  "named (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 3: T3 -- a baseline entry alone no longer excuses a
+        # cross-vertical read. The entry (self-calibrated from the SAME
+        # extractor, so recorded debt and fresh finding share one key) matches,
+        # but without the in-code grant marker the finding BLOCKS as "unmarked"
+        # and the remediation names the marker, not the access.
+        root = build(tmp, code="SQL")
+        scope = new_scope()
+        findings = module_sql_findings(root, scope)
+        if not findings:
+            print("  x rung 3: extractor found no finding in its own fixture",
+                  file=sys.stderr)
+            return 1
+        entry = {"rule": findings[0]["rule"], "path": findings[0]["path"],
+                 "target": findings[0]["target"],
+                 "reason": "ladder fixture"}
+        root = build(tmp, code="SQL", baseline=[entry])
+        rc, said = run(root, "--json")
+        if rc != 1 or '"blocking": 1' not in said \
+                or '"baseline_status": "unmarked"' not in said \
+                or "Add an in-code grant marker" not in said:
+            print("  x rung 3: an unmarked read with a baseline entry must "
+                  "block as unmarked (rc=%r said=%r)" % (rc, said[-240:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 4: Rule 2 -- an unclassified EventHandler impl blocks
+        root = build(tmp, handlers=[])
+        (root / "modules" / "inventory" / "src" / "events.rs").write_text(
+            HANDLER_CODE, encoding="utf-8", newline="\n")
+        rc, said = run(root, "--json")
+        if rc != 1 or '"blocking": 1' not in said:
+            print("  x rung 4: an unclassified handler must block rc 1 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 5: a granted cross-vertical read passes by default but --strict
+        # promotes the undeclared-dependency note to a verdict (Phase 4 P4.5)
+        root = build(tmp, code="SQL", grant=True)
+        rc, said = run(root, "--json")
+        if rc != 0 or '"blocking": 0' not in said:
+            print("  x rung 5a: a granted read must pass by default rc 0 "
+                  "(rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        rc, said = run(root, "--json", "--strict")
+        if rc != 1 or '"blocking": 1' not in said:
+            print("  x rung 5b: --strict must promote the note to a verdict "
+                  "rc 1 (rc=%r said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+        # rung 6: scan()'s own floor -- an empty modules/ is refused rc 2,
+        # never a hollow green
+        root = build(tmp)
+        rc, said = run(root)
+        if rc != 2 or "nothing was graded" not in said:
+            print("  x rung 6: an empty modules/ must refuse rc 2 (rc=%r "
+                  "said=%r)" % (rc, said[-240:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("NAMESPACE-GOVERNANCE SHELL LADDER OK (%d cases through argv and "
+          "root, no repository file touched)" % shell)
+    return 0
+
+
+def main(argv=None, root=None) -> int:
     configure_streams()
     parser = argparse.ArgumentParser(description="Verify soft namespace-governance rules.")
     parser.add_argument("--report-only", action="store_true", help="Report findings but never fail. The printed line says NOT JUDGING.")
@@ -1330,10 +1471,18 @@ def main() -> int:
     parser.add_argument("--emit-capabilities", action="store_true", help="Rewrite every module manifest capabilities set from the ownership map + dependencies.")
     parser.add_argument("--emit-registry", action="store_true", help="Regenerate scripts/handler-classification.json from the Rust handler_type declarations.")
     parser.add_argument("--check", action="store_true", help="Fail when the committed registry drifts from the Rust handler_type declarations.")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.self_test:
         return self_test()
-    root = (args.root or Path(__file__).resolve().parent.parent).resolve()
+    # r227: the r166 contract. argv is explicit; a root kwarg names the tree to
+    # grade from code and overrides --root exactly as --root overrides the
+    # default. None keeps today's behavior byte-for-byte. The tool already had
+    # --root and root-parameterized walkers -- the seam added here is
+    # callability, and the ladder proves the kwarg moves every walker together.
+    if root is not None:
+        root = Path(root).resolve()
+    else:
+        root = (args.root or Path(__file__).resolve().parent.parent).resolve()
     baseline_path = (args.baseline_file or root / "scripts" / "namespace-governance-baseline.json").resolve()
     classification_path = (args.classification_file or root / "scripts" / "handler-classification.json").resolve()
     if args.check_ownership:
@@ -1935,7 +2084,7 @@ def self_test() -> int:
             print(f"  {failure}", file=sys.stderr)
         return 1
     print("verify-namespace-governance: self-test ok")
-    return 0
+    return shell_ladder()
 
 
 if __name__ == "__main__":
