@@ -293,16 +293,22 @@ fn parse_stored_vector(stored: Option<String>) -> Option<VersionVector> {
 /// Record one item's decision in the plan, so a later item naming the same
 /// key is compared against what this one left — which is what a sequential
 /// per-item loop would have read back.
-fn fold(plan: &mut Plan, key: &(String, String), write: Option<EntityWrite>) {
+///
+/// An unresolved conflict (`Flag`) does NOT advance `step.state`: the conflict
+/// remains open and subsequent mutations in the batch must be evaluated against
+/// the baseline stored state rather than being treated as stale.
+fn fold(plan: &mut Plan, key: &(String, String), write: Option<EntityWrite>, is_flag: bool) {
     let step = plan.entry(key.clone()).or_insert_with(|| PlanStep {
         state: (None, None),
         write: None,
     });
     if let Some(write) = write {
-        step.state = (
-            Some(serde_json::to_string(&write.merged).unwrap_or_else(|_| "{}".to_string())),
-            Some(write.payload.clone()),
-        );
+        if !is_flag {
+            step.state = (
+                Some(serde_json::to_string(&write.merged).unwrap_or_else(|_| "{}".to_string())),
+                Some(write.payload.clone()),
+            );
+        }
         // Last planned write wins; a stale item never clears it.
         step.write = Some(write);
     }
@@ -562,7 +568,8 @@ impl SyncStore {
                 stored_vector.clone(),
                 stored_payload.clone(),
             );
-            fold(&mut plan, &key, write);
+            let is_flag = matches!(decision, Decision::Flag { .. });
+            fold(&mut plan, &key, write, is_flag);
             decisions.push((decision, stored_vector, stored_payload));
         }
 
@@ -646,7 +653,8 @@ impl SyncStore {
                 stored_vector.clone(),
                 stored_payload.clone(),
             );
-            fold(&mut plan, &key, write);
+            let is_flag = matches!(decision, Decision::Flag { .. });
+            fold(&mut plan, &key, write, is_flag);
             decisions.push((decision, stored_vector, stored_payload));
         }
 

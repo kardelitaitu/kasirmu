@@ -423,7 +423,20 @@ fn sweep_reports_files_it_could_not_remove() {
 fn an_unrepresentable_cutoff_declines_the_sweep() {
     let (_scratch, dir) = temp_dir("bad-clock");
     let ancient = backdated(&dir, "kasirmu.old", 0);
-    let now: Box<dyn Fn() -> SystemTime + Send + Sync> = Box::new(|| SystemTime::UNIX_EPOCH);
+    // Find the platform's minimum representable SystemTime so that
+    // `now().checked_sub(retention)` underflows on all platforms (Windows, Linux, etc.).
+    let min_time = {
+        let mut current = SystemTime::UNIX_EPOCH;
+        let mut step = Duration::from_secs(1 << 62);
+        while step.as_secs() > 0 {
+            if let Some(prev) = current.checked_sub(step) {
+                current = prev;
+            }
+            step = Duration::from_secs(step.as_secs() / 2);
+        }
+        current
+    };
+    let now: Box<dyn Fn() -> SystemTime + Send + Sync> = Box::new(move || min_time);
     let retainer = Retainer::with_interval(
         dir.clone(),
         "kasirmu",
