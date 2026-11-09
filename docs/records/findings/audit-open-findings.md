@@ -9741,3 +9741,58 @@ Docker daemon still down (probed r159): E2E / llvm-cov / nextest-junit
 receipts remain PG-gated. Root-policy RED on the foreign todo.md
 (r174); core-size RED on the ADR-59 +64 (r181) -- both await their
 owning lanes.
+
+### Round 223 (2026-11-09) -- ftl-orphans: eleven globals become one base, and the leak a rung caught
+
+verify-ftl-orphans.py had the widest evidence layer of any tool in the
+arc so far -- ROOT, LOCALES and ALLOWLIST_PATH read as module globals
+from eleven functions, plus a cwd in the git call. Every one now takes
+base: Path = ROOT (the r166 seam), and main(argv=None, root=None)
+resolves it once and hands it to check_staged/census and to _refusal.
+self_test deliberately does NOT receive base: its nine directions grade
+THIS checkout's real tables on purpose (the analytics-month rescue, the
+known one-sided keys, the known intra-bundle case), so the ladder is the
+fixture-graded half and the directions stay where their fixtures live.
+
+The ladder is 5 rungs on fixture GIT repos -- this gate's evidence is a
+STAGED diff plus the tree it lands in, so each fixture's index carries
+the change under test: the killing rung (a key orphaned on arrival, rc 1
+with "orphaned on arrival" and the key named), the same key allowlisted
+reading clean rc 0, the stranded direction (a staged code edit removes
+the last reference and the key behind it strands, rc 1), --census on a
+consistent fixture reading "1 declared en keys, 1 referenced,
+0 candidates" at rc 0, and the hollow-root refusal rc 2 with
+"looked under ROOT=" in the sentence.
+
+The round's real catch is in the first green run's shadow: rung 3
+measured "1 removed reference(s) resolved, 0 stranded" where 1 stranded
+was the contract. The debug harness (staged_diff / changes_from_diff /
+ui_blob / referenced called piecewise on the fixture) isolated it to one
+line: referenced() still called intra_bundle_refs(names) on the DEFAULT
+base -- so the fixture's verdict was being partially read out of the
+REAL checkout's bundles, where sales-title happens to be referenced.
+Rung 1 had passed only because new-orphan-key-zz is referenced nowhere
+in either tree; rung 3 was the first rung whose fixture key differs
+between the two trees, and it caught the leak exactly there. The lesson
+is the seam's own law: every evidence source moves together, and a rung
+can only prove that if its fixture key has a DIFFERENT fate in the
+fixture than in the checkout it is being compared against.
+
+Self-test reads "self-test: OK (9 directions exercised, 55 one-sided
+keys detected)" plus the 5-rung ladder; live --staged-only unchanged:
+"nothing staged under ui/src; nothing to verify." at exit 0.
+
+Honest limits: the ladder's mutant kill reads the real checkout's
+SHARED index at probe time -- another agent's staged orphan could change
+the mutant's rc, which the probe states in its docstring rather than
+papering over; the _read()-refusal path (UnreadableSource → rc 2) is
+graded by the existing self-test's contract, not by a rung, because a
+fixture file that will not open is not constructible portably here; and
+the census's 25-candidate print cap stays as measured (the "... and N
+more" tail). The scoped-reads (r213), retire (r214), state-closure
+(r216), fluent-families (r217), scratch-leaks (r218), shadow-copies
+(r219), chokepoints (r220), reentry-guards (r221), and feature-registry
+(r222) limits stand. Docker daemon still down (probed r159): E2E /
+llvm-cov / nextest-junit receipts remain PG-gated. Root-policy RED on
+the foreign todo.md (r174); core-size RED on the ADR-59 +64 (r181) --
+both await their owning lanes.
