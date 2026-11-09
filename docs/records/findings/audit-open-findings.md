@@ -9063,3 +9063,62 @@ still down (probed r159): the E2E / llvm-cov / nextest-junit receipts
 remain the standing PG-gated gap. The root-policy gate remains RED on
 the foreign todo.md (r174) and verify-core-size RED on the ADR-59 +64
 (r181), both awaiting their owning lanes.
+
+### Round 209 (2026-11-09) -- the leg parameterized first, then the tool on top: retire-legacy-commands under the contract
+
+The tool deferred since the arc began because its evidence flows
+through a leg is now itself parameterized: main(argv=None, root=None)
+in scripts/retire-legacy-commands.py, with the leg call sites threaded
+-- vip.extract_ui_commands(root), vip.read_allowlist_text(al_path under
+the root), the shell lib, the module file, git_dirty's repo, and the
+todo-*.md work orders the decision gate reads. The arc's ordering claim
+("a tool whose evidence flows through a leg is HALF-rooted unless the
+leg takes the same root") is now literally load-bearing: r208's
+parameterization of verify-ipc-parity is the only reason this round was
+possible. The leg module still loads from this checkout -- its CODE is
+infrastructure, not evidence.
+
+Seven shell cases over a miniature shell tree (registered alpha, four
+dead fns, a surviving scoped twin, the allowlist, no git repo so the
+dirty check reads clean): a dry run plans the retirements rc 0; a
+fully-registered module reads nothing to retire; --apply verifies on
+disk with the post-condition read back INSIDE the tree -- dead fns
+absent, the surviving twin's doc rewritten in the dead fn's own words
+("resolved from a session token. ADR #7."), the registered fn intact;
+a path mention stops --apply rc 2; a work-order-named candidate stops
+--apply rc 2; a missing module refuses rc 2; --only naming a
+non-candidate refuses to guess rc 2.
+
+The ladder earned its keep before it was green, twice. First, the
+twin-rewrite loop's own local -- base = raw[0].upper() + ... -- silently
+clobbered the contract root the new main carries in the same name, and
+the VERIFIED print tripped on a string ("not in the subpath of 'Dead two
+does another thing'"): the exact shadowing family the tool's own
+comments document from 2026-09-16 (stale lib_path, loop-bound text),
+re-created by the parameterization itself and caught by the fixture
+before commit. Renamed to doc_base. Second, rung 4 exposed a LIVE
+detection gap, not a harness artifact: path_refs' lookbehind
+(?<![\w:]) rejected a COLON before the name, so a qualified path
+mention -- commands::sales::dead_two, the exact form a handler-path
+take uses -- was invisible, and the tool called the name uncalled on
+evidence that was on disk. Fixed to reject only a word-char prefix
+(?<!\w); the refusal direction only widens.
+
+Measured kill: the root-dropping main asks THIS checkout for module
+ladder_probe, which exists only in the fixture -- abort rc 2
+("no such module ...ladder_probe.rs") at rung 1, killed on the first
+rung; the probe is read-only. Live dry run on the real tree unchanged:
+"nothing to retire in offline.rs: 9 command fns, all registered,
+UI-named, or called".
+
+Honest limits: the residue (stale-prose) scan is exercised only by its
+absence in the fixture -- no rung carries a hand-written comment naming
+a retired fn, so the residue REPORT arm stays graded only by the real
+runs recorded in this register; the bare-English-prose abort and the
+overlap-spans abort have no rung; the gate's widening (path_refs) is
+not separately measured against the real tree -- the real dry run still
+reads "nothing to retire", which shows no NEW refusal fires today, not
+that none ever could. Docker daemon still down (probed r159): the E2E /
+llvm-cov / nextest-junit receipts remain the standing PG-gated gap.
+Root-policy RED on the foreign todo.md (r174) and verify-core-size RED
+on the ADR-59 +64 (r181), both awaiting their owning lanes.
