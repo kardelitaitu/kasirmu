@@ -760,3 +760,90 @@ fn regional_tax_regime_resolution_rules() {
     assert_eq!(regional_tax_regime_for_country("DE"), "LOCAL/DE");
     assert_eq!(regional_tax_regime_for_country("us"), "LOCAL/US");
 }
+
+#[test]
+fn statutory_tax_rate_bps_sea_standard_rates() {
+    // All six SEA Phase 2 markets return their published standard statutory rate.
+    assert_eq!(
+        statutory_tax_rate_bps_for_country("ID", StatutoryTaxCategory::Standard),
+        Some(1100)
+    );
+    assert_eq!(
+        statutory_tax_rate_bps_for_country("SG", StatutoryTaxCategory::Standard),
+        Some(900)
+    );
+    assert_eq!(
+        statutory_tax_rate_bps_for_country("MY", StatutoryTaxCategory::Standard),
+        Some(800)
+    );
+    assert_eq!(
+        statutory_tax_rate_bps_for_country("TH", StatutoryTaxCategory::Standard),
+        Some(700)
+    );
+    assert_eq!(
+        statutory_tax_rate_bps_for_country("PH", StatutoryTaxCategory::Standard),
+        Some(1200)
+    );
+    assert_eq!(
+        statutory_tax_rate_bps_for_country("VN", StatutoryTaxCategory::Standard),
+        Some(1000)
+    );
+}
+
+#[test]
+fn statutory_tax_rate_bps_id_reduced_is_pb1() {
+    // Indonesia has a distinct reduced rate (PB1 10%) for the hospitality/restaurant levy.
+    assert_eq!(
+        statutory_tax_rate_bps_for_country("ID", StatutoryTaxCategory::Reduced),
+        Some(1000)
+    );
+    // Other markets return the standard rate when Reduced is requested (no distinct tier).
+    assert_eq!(
+        statutory_tax_rate_bps_for_country("SG", StatutoryTaxCategory::Reduced),
+        Some(900)
+    );
+    assert_eq!(
+        statutory_tax_rate_bps_for_country("VN", StatutoryTaxCategory::Reduced),
+        Some(1000)
+    );
+}
+
+#[test]
+fn statutory_tax_rate_bps_zero_rated_always_zero() {
+    for cc in &["ID", "SG", "MY", "TH", "PH", "VN", "DE", "US", ""] {
+        assert_eq!(
+            statutory_tax_rate_bps_for_country(cc, StatutoryTaxCategory::ZeroRated),
+            Some(0),
+            "ZeroRated must always be 0 regardless of market (got non-zero for '{cc}')"
+        );
+    }
+}
+
+#[test]
+fn statutory_tax_rate_bps_case_insensitive() {
+    // Country codes should resolve regardless of capitalisation.
+    assert_eq!(
+        statutory_tax_rate_bps_for_country("id", StatutoryTaxCategory::Standard),
+        Some(1100)
+    );
+    assert_eq!(
+        statutory_tax_rate_bps_for_country("sg", StatutoryTaxCategory::Standard),
+        Some(900)
+    );
+}
+
+#[test]
+fn statutory_tax_rate_bps_unmapped_returns_none() {
+    assert_eq!(
+        statutory_tax_rate_bps_for_country("DE", StatutoryTaxCategory::Standard),
+        None
+    );
+    assert_eq!(
+        statutory_tax_rate_bps_for_country("", StatutoryTaxCategory::Standard),
+        None
+    );
+    assert_eq!(
+        statutory_tax_rate_bps_for_country("US", StatutoryTaxCategory::Reduced),
+        None
+    );
+}
