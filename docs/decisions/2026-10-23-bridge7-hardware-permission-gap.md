@@ -1,8 +1,8 @@
 ---
 title: BRIDGE-7 — the hardware commands take a session but name no permission
 date: 2026-10-23
-status: OPEN — awaiting an owner ruling
-owners: []
+status: CLOSED — ruled Option B on 2026-11-10
+owners: [BK, Dika]
 ---
 
 # BRIDGE-7: device commands are open to any authenticated operator
@@ -92,3 +92,17 @@ make "ungated" a stated fact rather than an oversight, and that purpose is worki
 Adopt A, B or C above; implement it; then convert the corresponding `// ungated-ok:` markers to a
 `ctx.require_session_permission(...)` call (A, B) or reword them to cite this record (C). The
 `_scoped`-authorization gate re-runs on every matrix pass and will keep the count honest either way.
+
+---
+
+## Closure — 2026-11-10
+
+**Option B adopted and shipped.**
+- `print_kasbon_settlement_slip_scoped` is gated on `permissions::RECEIVABLES_VIEW` via
+  `ctx.require_session_permission(&session, permissions::RECEIVABLES_VIEW)`.
+- Unit test `print_kasbon_settlement_slip_requires_receivables_view` added to
+  `crates/kasirmu-bridge/src/hardware_tests.rs`, proving unauthorized sessions receive
+  `BridgeError::PermissionDenied`.
+- The remaining ten device commands are confirmed session-authenticated and carry no cross-customer
+  PII, with comments updated to cite this ruling.
+- Status: **CLOSED**.
