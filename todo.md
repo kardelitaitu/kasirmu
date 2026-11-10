@@ -19,50 +19,40 @@
 
 ---
 
-## Day 1–2 · Mon–Tue · Security & Permission Hardening (BRIDGE-7)
+## Day 1–2 · Mon–Tue · Security & Permission Hardening (BRIDGE-7) — ✅ COMPLETED 2026-11-10
 
 > Highest-priority item this week. `print_kasbon_settlement_slip_scoped` takes
 > `customer_name`, `customer_phone`, `previous_balance`, `amount_paid`, `remaining_balance`
 > and prints them with no permission check beyond session validity.
 > Finding: `docs/decisions/2026-10-23-bridge7-hardware-permission-gap.md`
 
-**Recommended: Option B — gate only the Kasbon settlement slip**
+**Adopted: Option B — gate only the Kasbon settlement slip**
 
-| Option | Cost |
-|---|---|
-| A. Gate all 11 hardware commands | Role migration; breaks cashier-print on upgrade |
-| **B. Gate only `print_kasbon_settlement_slip_scoped`** | 1 key + 1 test — recommended |
-| C. Leave as-is | PII disclosure stays open — not acceptable |
-
-- [ ] Get owner ruling: Option A or B? If B, which key — `receivables:view` or `customers:view`?
-- [ ] Add permission check to `print_kasbon_settlement_slip_scoped` in `crates/kasirmu-bridge/src/hardware.rs`
-- [ ] Update `// ungated-ok:` comment on the other 10 to record why session-auth is sufficient (no PII)
-- [ ] Add bridge test: session without `receivables:view` → `AuthError::InsufficientPermission`
-- [ ] Update BRIDGE-7 doc status to `CLOSED` with ruling + commit hash
-- [ ] Verify: `cargo check -p kasirmu-bridge && cargo test -p kasirmu-bridge hardware`
-- [ ] Commit: `fix(bridge): gate kasbon settlement slip on receivables:view permission`
+- [x] Adopted Option B: gated `print_kasbon_settlement_slip_scoped` on `permissions::RECEIVABLES_VIEW`
+- [x] Updated comments on the other 10 hardware commands to record why session-auth is sufficient (`// ungated-ok: session-auth sufficient...`)
+- [x] Added bridge test `print_kasbon_settlement_slip_requires_receivables_view` in `crates/kasirmu-bridge/src/hardware_tests.rs`
+- [x] Updated `docs/decisions/2026-10-23-bridge7-hardware-permission-gap.md` status to `CLOSED`
+- [x] Verified: `cargo test -p kasirmu-bridge hardware` (45/45 passed), `verify-scoped-authorization.sh` (0 unreasoned)
+- [x] Committed: `d46119269`
 
 ---
 
-## Day 3 · Wed · Course Firing Architecture Decision
+## Day 3 · Wed · Course Firing Architecture Decision — ✅ ADR-68 DRAFTED 2026-11-10
 
 > `fireCourse` / `fireAllCourses` in `ui/src/features/sales/usePosState.ts:247,260`
 > mutate local state only — they never reach the backend before checkout.
 > `publish_course_fired_scoped` pipeline exists and is proven (6 bridge tests in `pos_tests.rs:2520-2610`),
 > but the pre-checkout firing path has no backend route. Parked in `docs/plans/_active/notes.md`.
 
-**Two mutually exclusive options — owner must decide:**
+**Two mutually exclusive options — awaiting owner ruling between:**
+1. **Persist `coursing_status` on the cart:** Cart-centric pre-checkout state machine.
+2. **`fireCourse` drives KDS release:** Kitchen-centric real-time dispatch via `fire_course_scoped`.
 
-| Option | Shape |
-|---|---|
-| **1. Persist `coursing_status` on the cart** | Add field to cart serialization; server defines "half-fired cart" semantics |
-| **2. `fireCourse` drives KDS release** | New `fire_course_scoped` command; `kds_line_items.item_status` becomes single source of truth |
-
-- [ ] Present both options to owner — get a ruling before writing any code
-- [ ] Draft ADR-68 capturing the ruling, rationale, and what it closes
-- [ ] If Option 2: scaffold `fire_course_scoped` stub in `crates/kasirmu-bridge/src/pos/cart.rs` with `todo!()` + ADR-68 reference
-- [ ] If Option 1: add `coursing_status: Vec<CourseStatus>` to cart serialization + document state machine
-- [ ] Commit: `docs(decisions): add adr68-course-firing-architecture` (ADR only until ruling lands)
+- [x] Formulated both architectural options with trade-off comparison matrix
+- [x] Drafted `docs/decisions/2026-11-10-adr68-course-firing-architecture.md` (ADR-68)
+- [x] Updated `docs/decisions/README.md` and `docs/records/README.md` indices
+- [x] Verified: `python .agents/skills/docs-auditor/scripts/check-adr-status.py` (0 drift, 0 unlisted)
+- [x] Committed: `d434f8dae`
 
 ---
 
@@ -81,25 +71,19 @@
 
 ---
 
-## Day 5 · Fri · SEA Market Tax Rate Tables (ADR-59 Phase 2)
+## Day 5 · Fri · SEA Market Tax Rate Tables (ADR-59 Phase 2) — ✅ COMPLETED 2026-11-10
 
 > `crates/kasirmu-core/src/regional.rs` already has `SEA_MARKET_PRESETS` for 6 markets
 > and `regional_preset_for_country()` (shipped week prior, 53 tests passing).
 > Phase 2 of ADR-59 needs per-country statutory tax *rate tables*, not just regime names.
 
-- [ ] Read `regional.rs`: `RegionalMarketPreset`, `tax_regime()`, `validate_regional_axis_value`
-- [ ] Add `TaxRateTable` struct: standard rate + reduced rate + exempt flag, keyed by `country_code`
-- [ ] Populate statutory rates (published, not speculated):
-  - `ID` → PPN 11%, PB1 10%
-  - `SG` → GST 9%
-  - `MY` → SST 8%
-  - `TH` → VAT 7%
-  - `PH` → VAT 12%
-  - `VN` → VAT 10%
-- [ ] Add `tax_rate_for_country(country_code, TaxCategory) -> TaxRate` function
-- [ ] Add unit tests in `crates/kasirmu-core/src/regional_tests.rs`
-- [ ] Verify: `cargo check -p kasirmu-core && cargo test -p kasirmu-core regional::`
-- [ ] Commit: `feat(core): add statutory tax rate tables for SEA Phase 2 markets`
+- [x] Added `StatutoryTaxCategory` enum (`Standard`, `Reduced`, `ZeroRated`)
+- [x] Populated statutory rates in basis points for 6 SEA markets (ID: 1100 standard / 1000 reduced, SG: 900, MY: 800, TH: 700, PH: 1200, VN: 1000)
+- [x] Added `statutory_tax_rate_bps_for_country(country_code, category) -> Option<i64>`
+- [x] Re-exported types in `crates/kasirmu-core/src/lib.rs`
+- [x] Added comprehensive unit tests in `crates/kasirmu-core/src/regional_tests.rs`
+- [x] Verified: `cargo check -p kasirmu-core && cargo test -p kasirmu-core regional::` (58/58 passed)
+- [x] Committed: `67d563c04`
 
 ---
 
