@@ -74,6 +74,7 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 | 65 | compliance | [ADR-65: The Compliance Chain — where fiscal integrity attaches, and the three seams a second market will exercise](../decisions/2026-10-02-adr65-compliance-chain.md) | Proposed (2026-10-02) — the anchor point is decided; no chain, no certification module and no second locale is built |
 | 66 | topology | [ADR-66: Centralized Topology Authoring — Desired-State Authority Model, Signed-Revision Contract, and Multi-Store Eligi…](../decisions/2026-10-22-adr66-centralized-topology-authoring-authority-model.md) | Ratified (2026-10-22) — ratifies D1–D5 and establishes the architectural contract for done-plan-topology-web-authoring.md |
 | 67 | architecture | [ADR-67: The core-size ratchet — what it can and cannot measure, and the ruling it needs](../decisions/2026-10-24-adr67-core-size-ratchet-measurement.md) | D2 Implemented (2026-10-24, 4054871f9) — the two-budget split is live and graded on both halves; D1 and D3 await an owner ruling |
+| 68 | pos | [ADR-68: Course Firing Architecture — Cart Pre-Checkout Persistence vs KDS Event Pipeline](../decisions/2026-11-10-adr68-course-firing-architecture.md) | PROPOSED — awaiting owner ruling between Option 1 and Option 2 |
 
 ### Research Notes
 
