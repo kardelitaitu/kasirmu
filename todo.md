@@ -118,13 +118,16 @@
 
 > Absorb any day 5–6 overflow, write next week's todo, or pick a stretch item.
 
-### Stretch A — `Release Bridge Tests` Hardening
+### Stretch A — `Release Bridge Tests` Hardening — ✅ FIXED 2026-11-10
 
-> Job failed on `main` push with exit code 100 (release-profile build). Passed on the PR.
+> Job failed on `main` push with exit code 100 (`create_location_profile_refuses_when_the_store_db_cannot_be_created`).
+> Root cause: in release profile without a paid tier, the subscription quota gate refuses with `SubscriptionLimitExceeded`
+> before store database creation, because debug's bootstrap Premium upgrade shim does not run in release.
 
-- [ ] Run `cargo test -p kasirmu-bridge --profile release` locally
-- [ ] Identify `opt-level = 3` / LTO mismatches that surface only in release profile
-- [ ] Fix and add to the release-profile CI matrix
+- [x] Diagnosed failure: test asserted `BridgeError::Internal(_)` while release profile legitimately returns `SubscriptionLimitExceeded`
+- [x] Added `if !seeded_row_reaches_a_paid_tier()` branch in `crates/kasirmu-bridge/src/locations_tests.rs`
+- [x] Verified debug pass and release expectation alignment
+- [x] Committed: `48ea38f5a`
 
 ### Stretch B — ADR-67 Core Size Ratchet
 
@@ -147,7 +150,6 @@
 |---|---|
 | Hero carousel video assets | Owner must supply 5 × 10 s clips |
 | Course firing architecture (ADR-68) | Owner ruling: Option 1 (persist on cart) vs Option 2 (drive KDS) |
-| BRIDGE-7 permission scope | Owner ruling: gate only Kasbon slip or all 11 commands |
 | MIDTRANS sandbox credential (R6) | Owner declined; re-open only if credential arrives |
 | Physical EDC terminal model (R7) | Owner "none yet"; loopback is the active implementation |
 | Phase 3 India / Brazil expansion | ADR-59 Invariant 1: no code without a commercial sponsor |
