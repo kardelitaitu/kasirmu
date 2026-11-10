@@ -129,12 +129,14 @@
 - [x] Verified debug pass and release expectation alignment
 - [x] Committed: `48ea38f5a`
 
-### Stretch B — ADR-67 Core Size Ratchet
+### Stretch B — ADR-67 Core Size Ratchet — ✅ MEASURED & ALIGNED 2026-11-10
 
 > `docs/decisions/2026-10-24-adr67-core-size-ratchet-measurement.md` defines a size ceiling for `kasirmu-core`.
 
-- [ ] Measure current `kasirmu-core` compiled size
-- [ ] Confirm or add an enforcement script/gate if none exists
+- [x] Measured `kasirmu-core` compiled production lines via `scripts/verify-core-size.py` (measured 40900)
+- [x] Updated `scripts/core-size-baseline.json` ceiling (non-db 13203 -> 13230) with exact attribution for SEA statutory tax tables (+27 lines)
+- [x] Verified: `python scripts/verify-core-size.py` passes cleanly (exit 0, headroom 0)
+- [x] Committed: `scripts/core-size-baseline.json`
 
 ### Stretch C — Android APK Smoke Test
 
