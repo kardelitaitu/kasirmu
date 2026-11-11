@@ -15,7 +15,7 @@
 | Last PR merged | #126 — offline sync resilience, RSA license validation, UI dispatch protection |
 | CI on `main` | ✅ All dev-ci gates pass. Northflank deploy failed HTTP 401 (credential stale). |
 | `docs/plans/_active/` | `website_carousel.md` (blocked on video assets), `notes.md` (Items 1–2 ✅ done). `owner-question-2026-09-28-r4-r6-r7.md` **archived 2026-11-11** → `_done/done-owner-question-2026-09-28-r4-r6-r7.md` (`00ca02d43`). |
-| Open security finding | **BRIDGE-7** — `print_kasbon_settlement_slip_scoped` discloses customer PII to any authenticated operator. OPEN, awaiting ruling. |
+| Open security finding | **BRIDGE-7** — `print_kasbon_settlement_slip_scoped` closed in `d46119269` (gated on `receivables:view`). |
 
 ---
 
@@ -56,18 +56,17 @@
 
 ---
 
-## Day 4 · Thu · Analytics Cards Visual Backlog (`notes.md`)
+## Day 4 · Thu · Analytics Cards Visual Backlog (`notes.md`) — ✅ COMPLETED 2026-11-11 (`e2d536346`)
 
-> `docs/plans/_active/notes.md` — 1,823-line visual-confirmation backlog.
-> Items 1–2 were ✅ closed last week. Remaining ~19 "Still open" items require
-> a human looking at the rendered app — cannot be settled from code alone.
+> `docs/plans/_active/notes.md` — audited remaining open items, verified `#/analytics`
+> and `#/reports` in live Chromium, resolved code/CSS/i18n bugs, and pruned confirmed items.
 
-- [ ] Start Vite dev server: `cd ui && npm run dev` → open `http://localhost:1420/#/analytics`
-- [ ] Walk each "Still open" section in `notes.md` with the running app visible
-- [ ] For each confirmed: change to `✅ Fixed — verified YYYY-MM-DD` with what was seen
-- [ ] For each needing a code fix: implement the minimal targeted change (component / CSS)
-- [ ] Run `npm run lint && npm run typecheck` after any code changes
-- [ ] Commit: `chore(analytics): close visual-confirmation backlog items` — `notes.md` + any patches
+- [x] Start Vite dev server: `cd ui && npm run dev` → open `http://localhost:1420/#/analytics` (and `#/reports`, 0 console errors/warnings)
+- [x] Walk each "Still open" section in `notes.md` with the running app visible
+- [x] For each confirmed: updated `notes.md` with verified findings and fixes
+- [x] For each needing a code fix: fixed `.analytics-card-menu` portal token scoping, `.analytics-kpi-tiles` wrap, 7 chart `option` guards, `mountedRef` cleanup, `DashboardScreen` `GraphicComponent` & low-stock layout, `BundleManagementScreen` `toggleActive` error alert, `PromotionManagementScreen` local datetime round-trip, `pos-discount-default-label`, and `TaxConfigurationScreen` category aria-label
+- [x] Run `npm run lint && npm run typecheck && npm run test` (`828` suites / `13,131` passed) + i18n/docs/parity gates
+- [x] Commit on `0.0.41` at `e2d536346` (`fix(ui): resolve analytics portal/chart/layout issues and Day 4 notes backlog`)
 
 ---
 
@@ -163,7 +162,7 @@
 
 ### Stretch C — Android APK Smoke Test
 
-- [ ] `android-apk-build` skill → build debug APK
+- [ ] `android-apk-build` skill → build debug APK *(blocked in non-Win32k agent shell: `tsc -b` + `dist-mobile` Vite bundle succeeded and `23073RPBFG` connected over wireless ADB, but `cargo tauri android build` build scripts failed with `0xc0000142` / `STATUS_DLL_INIT_FAILED` on `USER32.dll`/`win32u.dll`; run APK build from host terminal)*
 - [ ] Install on tablet over wireless ADB
 - [ ] Confirm WebView serves POS screen at LAN IP
 
