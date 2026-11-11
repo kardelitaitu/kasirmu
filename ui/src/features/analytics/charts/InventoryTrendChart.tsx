@@ -41,5 +41,6 @@ export function InventoryTrendChart({ data, prev, compare, expanded, getString }
       }] : []),
     ],
   }) : null), [data, prev, compare, getString]);
-  return <ReactEChartsCore echarts={echarts} option={option!} style={{ height: chartHeight('inventory', expanded) }} notMerge />;
+  if (!option) return null;
+  return <ReactEChartsCore echarts={echarts} option={option} style={{ height: chartHeight('inventory', expanded) }} notMerge />;
 }

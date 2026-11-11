@@ -222,12 +222,17 @@ export default function BundleManagementScreen() {
   }, [load, l10n, sessionToken]);
 
   const toggleActive = useCallback(async (b: BundleWithItems) => {
-    await updateBundle(sessionToken, {
-      bundle: { ...b.bundle, active: !b.bundle.active },
-      items: b.items,
-    });
-    await load();
-  }, [load, sessionToken]);
+    setDeleteError(null);
+    try {
+      await updateBundle(sessionToken, {
+        bundle: { ...b.bundle, active: !b.bundle.active },
+        items: b.items,
+      });
+      await load();
+    } catch {
+      setDeleteError(l10n.getString('bundles-error-save'));
+    }
+  }, [load, l10n, sessionToken]);
 
   return (
     <div className="bundle-mgmt">

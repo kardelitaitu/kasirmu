@@ -40,5 +40,6 @@ export function TablesTrendChart({ data, prev, compare, expanded, getString }: T
       }] : []),
     ],
   }) : null), [data, prev, compare, getString]);
-  return <ReactEChartsCore echarts={echarts} option={option!} style={{ height: chartHeight('tables', expanded) }} notMerge />;
+  if (!option) return null;
+  return <ReactEChartsCore echarts={echarts} option={option} style={{ height: chartHeight('tables', expanded) }} notMerge />;
 }

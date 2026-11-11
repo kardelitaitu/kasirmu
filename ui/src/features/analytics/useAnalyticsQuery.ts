@@ -18,7 +18,7 @@
 //! fetcher on every re-render — an infinite retry loop that hammered the
 //! backend with no user-visible result.
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { analyticsDataCache } from './analytics-cache';
 
 export type QueryStatus = 'loading' | 'ready' | 'error';
@@ -89,6 +89,13 @@ export function useAnalyticsQuery<T>(
 ): AnalyticsQueryResult<T> {
   const [, forceRender] = useState(0);
   const inflight = useRef<string | null>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // Disabled queries (e.g. the previous-period baseline while comparison
   // mode is off) never fetch and report a neutral loading state.
@@ -109,12 +116,12 @@ export function useAnalyticsQuery<T>(
           analyticsDataCache.set(key, value);
           inflight.current = null;
           failures.delete(key);
-          forceRender((n) => n + 1); // next render reads the fresh hit
+          if (mountedRef.current) forceRender((n) => n + 1); // next render reads the fresh hit
         },
         (err) => {
           inflight.current = null;
           failures.set(key, err);
-          forceRender((n) => n + 1);
+          if (mountedRef.current) forceRender((n) => n + 1);
         },
       );
     }
@@ -157,12 +164,12 @@ export function useAnalyticsQuery<T>(
         analyticsDataCache.set(key, value);
         inflight.current = null;
         failures.delete(key);
-        forceRender((n) => n + 1); // next render reads the cache hit
+        if (mountedRef.current) forceRender((n) => n + 1); // next render reads the cache hit
       },
       (err) => {
         inflight.current = null;
         failures.set(key, err);
-        forceRender((n) => n + 1);
+        if (mountedRef.current) forceRender((n) => n + 1);
       },
     );
     return { data: null, status: 'loading', error: null };

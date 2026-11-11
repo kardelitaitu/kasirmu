@@ -37,5 +37,6 @@ export function PaymentMixChart({ segs, pcts, expanded, getString }: PaymentMixC
       data: [pcts[i]],
     })),
   }) : null), [segs, pcts, getString]);
-  return <ReactEChartsCore echarts={echarts} option={option!} style={{ height: chartHeight('payments', expanded) }} notMerge />;
+  if (!option) return null;
+  return <ReactEChartsCore echarts={echarts} option={option} style={{ height: chartHeight('payments', expanded) }} notMerge />;
 }

@@ -1235,3 +1235,4 @@ restaurant-shortcuts-help-close-aria = Tutup pintasan papan tombol
 # "pcs / kg / box" adalah petunjuk satuan yang ditimpa operator.
 retail-edit-unit-placeholder = pcs / kg / box
 retail-edit-rack-placeholder = A-01
+pos-discount-default-label = Diskon { $pct }%

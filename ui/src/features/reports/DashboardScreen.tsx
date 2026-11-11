@@ -23,7 +23,7 @@ import ReactEChartsCore from 'echarts-for-react/lib/core';
 import * as echarts from 'echarts/core';
 import { BarChart, LineChart, PieChart, HeatmapChart } from 'echarts/charts';
 import {
-  GridComponent, TooltipComponent, LegendComponent, VisualMapComponent,
+  GridComponent, TooltipComponent, LegendComponent, VisualMapComponent, GraphicComponent,
 } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import {
@@ -40,7 +40,7 @@ import './DashboardScreen.css';
 
 echarts.use([
   BarChart, LineChart, PieChart, HeatmapChart,
-  GridComponent, TooltipComponent, LegendComponent, VisualMapComponent,
+  GridComponent, TooltipComponent, LegendComponent, VisualMapComponent, GraphicComponent,
   CanvasRenderer,
 ]);
 

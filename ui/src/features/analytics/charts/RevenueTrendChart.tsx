@@ -44,5 +44,6 @@ export function RevenueTrendChart({ data, prev, compare, expanded, fmt, getStrin
       }] : []),
     ],
   }) : null), [data, prev, compare, fmt, getString]);
-  return <ReactEChartsCore echarts={echarts} option={option!} style={{ height: chartHeight('revenue', expanded) }} notMerge />;
+  if (!option) return null;
+  return <ReactEChartsCore echarts={echarts} option={option} style={{ height: chartHeight('revenue', expanded) }} notMerge />;
 }

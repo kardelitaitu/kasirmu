@@ -1275,3 +1275,4 @@ restaurant-shortcuts-help-close-aria = Close keyboard shortcuts
 # "pcs / kg / box" is a unit HINT the operator types over, so it is copy.
 retail-edit-unit-placeholder = pcs / kg / box
 retail-edit-rack-placeholder = A-01
+pos-discount-default-label = { $pct }% Discount

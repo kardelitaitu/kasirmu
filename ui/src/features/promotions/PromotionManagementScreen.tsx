@@ -40,6 +40,15 @@ function formatDate(iso: string, locale: string): string {
   return d.toLocaleDateString(locale);
 }
 
+/** Format an ISO UTC timestamp as local `YYYY-MM-DDTHH:mm` for `<input type="datetime-local">`. */
+function toDatetimeLocalValue(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.substring(0, 16);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 const emptyForm = (): Promotion => ({
   id: '',
   name: '',
@@ -423,12 +432,12 @@ function PromotionManagementScreenContent() {
                 <div className="promo-mgmt-field promo-mgmt-field--horizontal">
                   {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
                   <label htmlFor="promo-field-starts-at"><Localized id="promotions-field-starts-at"><span>Starts At</span></Localized></label>
-                  <input id="promo-field-starts-at" type="datetime-local" value={form.starts_at ? form.starts_at.substring(0, 16) : ''} onChange={(e) => setForm((prev) => ({ ...prev, starts_at: e.target.value ? new Date(e.target.value).toISOString() : null }))} aria-label={l10n.getString('promotions-field-starts-at')} />
+                  <input id="promo-field-starts-at" type="datetime-local" value={toDatetimeLocalValue(form.starts_at)} onChange={(e) => setForm((prev) => ({ ...prev, starts_at: e.target.value ? new Date(e.target.value).toISOString() : null }))} aria-label={l10n.getString('promotions-field-starts-at')} />
                 </div>
                 <div className="promo-mgmt-field promo-mgmt-field--horizontal">
                   {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
                   <label htmlFor="promo-field-ends-at"><Localized id="promotions-field-ends-at"><span>Ends At</span></Localized></label>
-                  <input id="promo-field-ends-at" type="datetime-local" value={form.ends_at ? form.ends_at.substring(0, 16) : ''} onChange={(e) => setForm((prev) => ({ ...prev, ends_at: e.target.value ? new Date(e.target.value).toISOString() : null }))} aria-label={l10n.getString('promotions-field-ends-at')} />
+                  <input id="promo-field-ends-at" type="datetime-local" value={toDatetimeLocalValue(form.ends_at)} onChange={(e) => setForm((prev) => ({ ...prev, ends_at: e.target.value ? new Date(e.target.value).toISOString() : null }))} aria-label={l10n.getString('promotions-field-ends-at')} />
                 </div>
 
                 <div className="promo-mgmt-field promo-mgmt-field--horizontal">

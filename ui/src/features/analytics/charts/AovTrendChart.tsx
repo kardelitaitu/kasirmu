@@ -45,5 +45,6 @@ export function AovTrendChart({ buckets, prevBuckets, compare, expanded, fmt, ge
       }] : []),
     ],
   }) : null), [buckets, prevBuckets, compare, fmt, getString]);
-  return <ReactEChartsCore echarts={echarts} option={option!} style={{ height: chartHeight('aov', expanded) }} notMerge />;
+  if (!option) return null;
+  return <ReactEChartsCore echarts={echarts} option={option} style={{ height: chartHeight('aov', expanded) }} notMerge />;
 }
