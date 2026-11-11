@@ -14,7 +14,7 @@
 |---|---|
 | Last PR merged | #126 — offline sync resilience, RSA license validation, UI dispatch protection |
 | CI on `main` | ✅ All dev-ci gates pass. Northflank deploy failed HTTP 401 (credential stale). |
-| `docs/plans/_active/` | `website_carousel.md` (blocked on video assets), `owner-question-2026-09-28-r4-r6-r7.md` (answered), `notes.md` (Items 1–2 ✅ done). |
+| `docs/plans/_active/` | `website_carousel.md` (blocked on video assets), `notes.md` (Items 1–2 ✅ done). `owner-question-2026-09-28-r4-r6-r7.md` **archived 2026-11-11** → `_done/done-owner-question-2026-09-28-r4-r6-r7.md` (`00ca02d43`). |
 | Open security finding | **BRIDGE-7** — `print_kasbon_settlement_slip_scoped` discloses customer PII to any authenticated operator. OPEN, awaiting ruling. |
 
 ---
@@ -98,11 +98,34 @@
 - [ ] Update GitHub Actions secret: `gh secret set KASIRMU_NORTHFLANK_API_TOKEN --body "<token>"`
 - [ ] Re-trigger the deploy job and confirm it reaches the "Wait for build to conclude" step
 
-### 6b — Plans Folder Housekeeping
+### 6b — Plans Folder Housekeeping — ✅ COMPLETED 2026-11-11
 
-- [ ] Archive `docs/plans/_active/owner-question-2026-09-28-r4-r6-r7.md` to `docs/plans/_done/done-owner-question-2026-09-28-r4-r6-r7.md` — all answers recorded 2026-09-29, file is now purely historical
-- [ ] Run `python scripts/verify-doc-uniqueness.py && python scripts/verify-agents-mirrors.py`
-- [ ] Commit: `docs(plans): archive answered owner-question r4-r6-r7`
+- [x] Archive `docs/plans/_active/owner-question-2026-09-28-r4-r6-r7.md` to `docs/plans/_done/done-owner-question-2026-09-28-r4-r6-r7.md` — all answers recorded 2026-09-29, file is now purely historical. Moved with `git mv`; an ARCHIVED note naming the earning (all four questions answered, Q1 option (a) executed, Q2/R6 declined, Q3/R7 "none yet", Q4 recorded) was prepended so the `done-` prefix is earned rather than merely applied (AGENTS.md §7.4).
+- [x] Ran `python scripts/verify-doc-uniqueness.py` → rc 0, "no duplicate authoritative documents"; `python scripts/verify-agents-mirrors.py` → rc 0, "every policed mirror (1) agrees with the repo"
+- [x] Committed: `00ca02d43` — `docs(plans): archive answered owner-question r4-r6-r7` (1 file changed, 7 insertions, R095 rename)
+
+### 6d — Ladder Campaign Census Correction — ✅ MEASURED 2026-11-11
+
+> Every round since r265 closed with "Census N of 70". That denominator was a
+> count of `scripts/*.py` taken before r265's own scope widening, and was never
+> re-derived after the roster grew to include `website/scripts/` and
+> `.agents/skills/docs-auditor/scripts/` plus the `.mjs`/`.sh` checkers.
+
+- [x] Re-measured the real roster at HEAD: **102** checkers declare `--self-test`, of which **48** carry a ladder marker (38 in `scripts/`, 11 in `.agents/skills/docs-auditor/`, 5 in `website/scripts/`). Recorded as round 276 in `docs/records/findings/audit-open-findings.md`.
+- [x] Committed with the round-277 batch: `d87bbd4e3`
+
+### 6e — `verify-core-size` Ladder (round 277) — ✅ CONTRACTED & PROVEN 2026-11-11
+
+> `scripts/verify-core-size.py` had 31 rule cases and no `shell_ladder()`. The
+> rule cases grade helpers; none graded that `main()` grades the root it is
+> handed — the exact defect r265–r275 found in five sibling checkers.
+
+- [x] Added `shell_ladder()`: 7 rungs / 15 assertions. Rung 1 kills on a VERDICT (fixture one line over its ceiling → correct main exits 1 naming the fixture's delta; root-blind main grades this checkout, which sits at its own ceiling, and exits 0). Rung 2 is the positive floor. Rungs 3–7 cover the fixture's own ceiling, the db/ budget message, the modularity budget, a missing baseline, and `--emit-baseline`.
+- [x] Fixed `scripts/prove-ladder-kills.py`: `applicable()` normalized its match while `run_mutant()` spliced raw, so a no-op `str.replace()` built an unmutated copy and reported it as SURVIVED. Added `_spliceable_occurrences()` (raw count over comment-stripped source), an EXEC refusal in `run_mutant()`, and a "conditional root ignores root" row for the two-line binding.
+- [x] Verified: `python scripts/verify-core-size.py --self-test` → 31/31 rule cases + 15/15 rungs, rc 0; live run rc 0 (measured 40900 = ceiling 40900, headroom 0)
+- [x] Verified the kill: `python scripts/prove-ladder-kills.py scripts/verify-core-size.py` → "every applicable mutation killed (1)", "conditional root ignores root KILLED rc=1"
+- [x] Verified no regression: full sweep of the 44 laddered checkers → 36 KILLED-ALL, 0 EXEC, 0 SURVIVED, 8 NO APPLICABLE (rc 2, honest "cannot reach that shape"); the six checkers contracted in r270–r275 re-run individually, all still fully killed
+- [x] Committed: `d87bbd4e3` — `test(gates): contract verify-core-size with a seven-rung ladder` (3 files, 375 insertions)
 
 ### 6c — Website Carousel Video Asset Reminder
 
