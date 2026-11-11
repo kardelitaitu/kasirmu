@@ -220,7 +220,48 @@ MUTATIONS = (
         '    ui/src, shared-ui/locales, and every reported relative path.\n    """\n    base = REPO if root is None else Path(root).resolve()\n    ui_src = base / "ui" / "src"',
         '    ui/src, shared-ui/locales, and every reported relative path.\n    """\n    base = REPO  # MUTANT: root ignored\n    ui_src = base / "ui" / "src"',
     ),
+    # r276: a CONDITIONAL whose two branches span TWO lines. The "rebound root
+    # ignores root" row above anchors on a bare `    root = Path(root).resolve()`
+    # and cannot reach this shape: here that text is followed by ` if root is not
+    # None else (`, so the raw substring is absent while the normalized count is
+    # 1 -- which is exactly the mismatch that made this harness report SURVIVED
+    # for a checker whose ladder does kill. The anchor is the complete two-line
+    # binding, so the replacement cannot leave a dangling `else` or an
+    # unexpected indent. Measured before adding: the mutant returns rc 1 at
+    # RUNG 1 on the VERDICT ("an over-ceiling fixture exits 1: got 0, want 1"),
+    # with no refusal or traceback anywhere in its output.
+    (
+        "conditional root ignores root",
+        '    root = Path(root).resolve() if root is not None else (\n        args.root or Path(__file__).resolve().parent.parent)',
+        '    root = Path(__file__).resolve().parent.parent  # MUTANT: root ignored',
+    ),
 )
+
+
+def _spliceable_occurrences(src, anchor):
+    """How many times `anchor` occurs in `src` on a line that is not a comment.
+
+    WHY THIS IS SEPARATE FROM _code_occurrences (r276). That function normalizes
+    both sides -- it drops blank and comment-only lines and rstrips every line --
+    before counting, which is the right test for "does this anchor name real
+    code". It is NOT the right test for "can run_mutant() splice it", because
+    run_mutant() calls a raw str.replace(). The two disagree in exactly one
+    direction that matters: an anchor whose own trailing newline is absent from
+    the file normalizes to a match while the raw substring is absent, so
+    str.replace() is a NO-OP and the "mutant" is a byte-identical copy of the
+    checker. Its ladder then passes exactly as the real one does and the harness
+    reports SURVIVED -- a finding about the CHECKER for a fault in the table.
+    Measured 2026-11-11 on verify-core-size, whose root binding is a conditional
+    spanning two lines: the hand-built mutant died on a VERDICT at rung 1 with
+    rc=1, while this harness said "1 of 1 mutation(s) SURVIVED".
+
+    Counting raw occurrences of the anchor in the comment-stripped SOURCE (not
+    in a normalized copy of it) keeps the comment-only exclusion AND requires the
+    bytes the mutator needs. A commented copy therefore does not double a real
+    match, which is the property the harness self-test pins.
+    """
+    live = [line for line in src.splitlines() if not line.strip().startswith("#")]
+    return "\n".join(live).count(anchor)
 
 
 def applicable(src):
@@ -256,7 +297,17 @@ def applicable(src):
     out = []
     for m in MUTATIONS:
         hits = _code_occurrences(src, m[1])
-        if hits != 1 or m[1] in seen:
+        # r276: BOTH tests must pass. `hits` is the comment-aware count the
+        # r269 work introduced; `src.count` is the raw count run_mutant()'s
+        # str.replace() actually needs. They disagree whenever the anchor's own
+        # trailing newline is absent from the file -- a row ending in chr(10)
+        # against a binding that continues onto the next line -- and a row that
+        # passes only the first test builds a NO-OP mutant that then reports
+        # SURVIVED. Requiring both means such a row is simply not applicable,
+        # which is the honest answer: this harness cannot mutate that shape with
+        # that anchor. The r276 "conditional root ignores root" row exists to
+        # cover the shape the bare-newline row cannot reach.
+        if hits != 1 or _spliceable_occurrences(src, m[1]) != 1 or m[1] in seen:
             continue
         seen.add(m[1])
         out.append(m)
@@ -323,6 +374,27 @@ def run_mutant(checker, anchor, replacement, scratch, verbose):
     exactly as the real checker's does.
     """
     src = checker.read_text(encoding="utf-8")
+    # r276: the anchor must be LITERALLY present before a mutant is built.
+    #
+    # applicable() decides what is applicable from _code_occurrences(), which
+    # normalizes BOTH sides (drops blank and comment-only lines, rstrips each
+    # line) before counting. run_mutant() splices with a raw str.replace(). When
+    # the anchor's own trailing newline is not present in the file -- the
+    # "rebound root ignores root" row ends in chr(10) and verify-core-size's
+    # binding is a conditional spanning two lines -- the normalized count is 1
+    # while the raw count is 0, so str.replace() is a NO-OP: the "mutant" is a
+    # byte-identical copy of the checker, its ladder passes exactly as the real
+    # one does, and the harness reports SURVIVED -- a finding about the CHECKER
+    # for a fault in this table. Measured 2026-11-11 on verify-core-size: the
+    # hand-built mutant (splicing the real two-line binding) died on a VERDICT
+    # at rung 1 with rc=1, while this harness said '1 of 1 mutation(s)
+    # SURVIVED'. That is the r249/r256/r261/r262 shape again -- a harness
+    # reporting its own defect as a checker finding -- and EXEC is the outcome
+    # this file already reserves for it.
+    if src.count(anchor) != 1:
+        return "EXEC", ("anchor is not literally present (raw count %d, normalized "
+                        "count 1) -- this harness would build an unmutated copy"
+                        % src.count(anchor))
     here = scratch / checker.stem
     here.mkdir(parents=True, exist_ok=True)
     mutant = here / checker.name

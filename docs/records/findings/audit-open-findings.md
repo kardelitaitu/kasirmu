@@ -12268,3 +12268,115 @@ template also carries a 'run-on: ubuntu-latest' typo beside the real 'runs-on:'
 -- harmless to these rungs, since nothing grades that key, but it will mislead
 the next reader of that template.
 
+
+### Round 276 (2026-11-11) -- the census denominator was a third of the roster
+
+Every round since r265 has closed with a census line of the form "Census N of 70".
+That denominator is wrong, and it has been wrong in the direction that flatters the
+campaign: it makes the remaining work look smaller than it is.
+
+MEASURED at HEAD `00ca02d43`, over the roster verify-selftest-sweep.py actually
+grades (its own CHECKER_DIRS: scripts/, website/scripts/, .agents/skills/docs-auditor/
+scripts/, three extensions .py/.mjs/.sh):
+
+    checkers declaring --self-test : 102
+    of those, with a ladder        :  48
+    of those, without a ladder     :  54
+      scripts/                     :  38
+      .agents/skills/docs-auditor/ :  11
+      website/scripts/             :   5
+
+So the honest figure is 48 of 102, not 46 of 70. The 70 was a count of scripts/*.py
+taken before r265's own scope widening (the sweep docstring records that widening
+from 65 to 89 checkers on 2026-10-24, and the .agents and website directories were
+folded in at the same time). The census was never re-derived after the roster grew,
+so each round added a real checker to a numerator whose denominator had stopped
+tracking the population it was supposed to describe.
+
+WHY THIS MATTERS MORE THAN A TYPO: a census is the campaign's only progress signal.
+"24 left" and "54 left" are different amounts of work, and the smaller number is the
+one that would let a future reader declare this arc nearly finished when it is
+slightly over half done. This is the same defect class the arc keeps finding in the
+checkers themselves -- a measurement that grades something adjacent to what it
+claims -- arriving in the campaign's own bookkeeping.
+
+The count above is reproducible with one command over the roster this file's sibling
+verify-selftest-sweep.py defines; it is not a hand tally.
+
+Honest limits: "has a ladder" is detected by the presence of a rung/ladder marker in
+the file, which is a weaker test than the real one (a ladder that prove-ladder-kills
+actually KILLS on). Some of the 48 will not survive that stronger test. The true
+denominator for "contracted" is therefore at most 48, and the 54 is a firm lower
+bound on the work remaining rather than an exact figure.
+
+
+### Round 277 (2026-11-11) -- verify-core-size gets a 7-rung ladder, and the harness that graded it was lying
+
+`scripts/verify-core-size.py` declared a `--self-test` (31 rule cases) and no
+`shell_ladder()`. The rule cases grade helpers -- the masker, the test-module
+stripper, `is_test_file`, `measure`, `fail`. Not one of them graded the thing the
+gate is FOR: that `main()`, handed a root, grades THAT root. A checker whose
+`main()` ignores its root passes all 31 and then grades the developer's own
+checkout in production.
+
+ADDED: `shell_ladder()` with 7 rungs / 15 assertions. Rung 1 is the killing rung
+and it kills on a VERDICT, not a refusal (the r274 rule): the fixture sits one
+line over its ceiling, so a correct main exits 1 naming the fixture's delta while
+a root-blind main grades this checkout -- which sits exactly at its own ceiling --
+and exits 0. Rung 2 is the positive floor (an arm that always answers 1 dies
+there). Rungs 3-7 cover the fixture's own ceiling, the db/ budget's own message,
+the modularity budget, a missing baseline, and `--emit-baseline` writing the
+fixture's baseline.
+
+THE MECHANISM THAT MAKES RUNG 1 A VERDICT: the baseline is passed as an ABSOLUTE
+`--baseline-file`. Measured 2026-11-11: with the baseline left at its default
+(`root / scripts / BASELINE_NAME`), a root-blind main resolves root to the
+MUTANT's own parent -- a temp dir with no `scripts/` in it -- and main CRASHES on
+`write_text` instead of returning a verdict. A rung that kills on a crash has not
+shown that it detects the defect. An absolute path is read identically by a
+correct main and a root-blind one, so the mutant reaches the grading code and
+answers about the WRONG TREE.
+
+THEN THE HARNESS LIED, and this is the part worth keeping. `prove-ladder-kills.py`
+reported `1 of 1 mutation(s) SURVIVED -> rung 1 is not proven`. It was not a
+finding about the ladder. `applicable()` decides applicability from
+`_code_occurrences()`, which NORMALIZES both sides (drops blank and comment-only
+lines, rstrips each line) before counting; `run_mutant()` splices with a raw
+`str.replace()`. The "rebound root ignores root" row ends in `chr(10)` and this
+file's root binding is a conditional spanning two lines, so the normalized count
+was 1 while the raw count was 0 -- `str.replace()` was a NO-OP, the "mutant" was a
+byte-identical copy of the checker, its ladder passed exactly as the real one
+does, and the harness reported the pass as a SURVIVOR. Proved by hand before
+touching anything: splicing the real two-line binding gave rc=1 failing rung 1
+with `an over-ceiling fixture exits 1: got 0, want 1` and no refusal text anywhere
+in the output.
+
+TWO FIXES to the harness:
+1. `applicable()` now requires BOTH the comment-aware count AND a new
+   `_spliceable_occurrences()` count -- raw occurrences in the comment-stripped
+   source, which is what the mutator actually needs. A row that passes only the
+   first test is now inapplicable instead of producing a no-op mutant.
+2. `run_mutant()` refuses to build a mutant whose anchor is not literally present,
+   returning EXEC ("this harness would build an unmutated copy") rather than
+   letting a no-op splice be reported as a checker finding.
+3. A new row, "conditional root ignores root", anchors the complete two-line
+   binding so the shape the bare-newline row cannot reach is still provable.
+
+The first version of fix (1) was `src.count(m[1]) != 1`, and the harness's OWN
+self-test caught it: raw counting double-counts a commented copy, so
+"a commented copy does not double a real match" went from 1 to 0. That is the
+self-test doing its job on a change to the harness that owns it.
+
+MEASURED after: harness self-test OK (8 cases); `verify-core-size` KILLED on
+"conditional root ignores root" rc=1; full sweep of the 44 laddered checkers gives
+36 KILLED-ALL, 0 EXEC, 0 SURVIVED, 8 NO APPLICABLE (rc 2 -- the honest "this
+harness cannot reach that shape", unchanged in kind from before). The six checkers
+contracted in r270-r275 were re-run individually and all still report every
+applicable mutation killed, so the applicability change caused no regression.
+
+Honest limits: the 8 NO APPLICABLE files are still unproven by this harness, and
+that number did not move. `verify-core-size`'s ladder does not exercise a relative
+`--root`, and rung 6's missing-baseline case passes an absolute path, so the
+default-path refusal is not covered. The census in r276 said "has a ladder" is a
+weaker test than "kills"; this round is one file moving from the weaker claim to
+the stronger one, and 44 laddered checkers is still the population, not 102.
