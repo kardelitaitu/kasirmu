@@ -12403,3 +12403,25 @@ MEASURED:
 - `python scripts/check-rbac-citations.py --self-test` -> OK (4 pure + 7 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/check-rbac-citations.py` -> "repo base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 48 -> 49 of 70 (21 un-contracted remaining, next target `verify-ps-syntax.py`).
+
+
+### Round 279 (2026-11-13) -- verify-ps-syntax gains a 6-rung ladder and proves against scan base mutation
+
+`scripts/verify-ps-syntax.py` had 9 pure test cases in `self_test()` and an inline
+5-case shell block lacking a dedicated `shell_ladder()` and re-entry guard.
+
+ADDED:
+- `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
+  Rung 1 (killing rung): broken script fails rc 1 with root-relative path.
+  Rung 2 (clean arm): walk scope finds ok.ps1 and install.ps1, exits 0.
+  Rung 3: vendored trees (node_modules) outside walk scope, exits 0.
+  Rung 4: nested `--self-test` passes rc 0 through argv under re-entry guard.
+  Rung 5: zero .ps1 under root refuses rc 2.
+  Rung 6: tracked scope: git init + git add ok.ps1, untracked-bad.ps1 ignored, exits 0.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+- Disambiguated `target_root` in `targets()` so `base = ROOT if root is None else Path(root).resolve()` in `main()` is the unique spliceable anchor for mutation testing.
+
+MEASURED:
+- `python scripts/verify-ps-syntax.py --self-test` -> OK (9 pure + 6 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-ps-syntax.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 49 -> 50 of 70 (20 un-contracted remaining, next target `verify-exhaustive-deps.py`).
