@@ -55,7 +55,7 @@ const emptyForm = (): Promotion => ({
   name: '',
   description: '',
   promo_type: 'percentage',
-  value_minor: 0,
+  value_minor: 10,
   min_qty: null,
   trigger_sku: null,
   reward_sku: null,
@@ -151,8 +151,13 @@ function PromotionManagementScreenContent() {
   // both apply at checkout -- a discount given twice, with no error to notice.
   const savePendingRef = useRef(false);
 
+  const isValueValid =
+    form.promo_type === 'fixed_amount'
+      ? form.value_minor > 0
+      : form.value_minor >= 1 && form.value_minor <= 100;
+
   const handleSave = useCallback(async () => {
-    if (!form.name.trim()) return;
+    if (!form.name.trim() || !isValueValid) return;
     if (savePendingRef.current) return;
     savePendingRef.current = true;
     setSaving(true);
@@ -184,7 +189,7 @@ function PromotionManagementScreenContent() {
       savePendingRef.current = false;
       setSaving(false);
     }
-  }, [form, modalMode, load, closeModal, addToast, l10n, sessionToken]);
+  }, [form, isValueValid, modalMode, load, closeModal, addToast, l10n, sessionToken]);
 
   const confirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
@@ -387,14 +392,23 @@ function PromotionManagementScreenContent() {
                 <div className="promo-mgmt-field promo-mgmt-field--horizontal">
                   {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
                   <label htmlFor="promo-field-value"><Localized id="promotions-value"><span>Value</span></Localized></label>
-                  <input id="promo-field-value" type="number" min={0} value={form.value_minor} onChange={(e) => {
-                    // Whole number only — ignore fractional in-progress input
-                    // instead of silently truncating it via parseInt.
-                    const v = Number(e.target.value);
-                    if (e.target.value === '' || (Number.isInteger(v) && v >= 0)) {
-                      setForm((prev) => ({ ...prev, value_minor: e.target.value === '' ? 0 : v }));
-                    }
-                  }} aria-label={l10n.getString('promotions-field-value')} />
+                  <input
+                    id="promo-field-value"
+                    type="number"
+                    min={1}
+                    max={form.promo_type === 'fixed_amount' ? undefined : 100}
+                    value={form.value_minor}
+                    aria-invalid={!isValueValid}
+                    onChange={(e) => {
+                      // Whole number only — ignore fractional in-progress input
+                      // instead of silently truncating it via parseInt.
+                      const v = Number(e.target.value);
+                      if (e.target.value === '' || (Number.isInteger(v) && v >= 0)) {
+                        setForm((prev) => ({ ...prev, value_minor: e.target.value === '' ? 0 : v }));
+                      }
+                    }}
+                    aria-label={l10n.getString('promotions-field-value')}
+                  />
                 </div>
 
                 {form.promo_type === 'buy_x_get_y' && (
@@ -473,7 +487,7 @@ function PromotionManagementScreenContent() {
                 <Button variant="ghost" onClick={modalExit.requestClose} disabled={saving}>Cancel</Button>
               </Localized>
               <Localized id="save">
-                <Button variant="primary" loading={saving} disabled={!form.name.trim()} onClick={handleSave}>Save</Button>
+                <Button variant="primary" loading={saving} disabled={!form.name.trim() || !isValueValid} onClick={handleSave}>Save</Button>
               </Localized>
             </div>
           </div>

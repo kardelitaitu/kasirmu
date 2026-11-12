@@ -242,7 +242,7 @@ export default function GiftCardsScreen() {
                     {l10n.getString(`gift-cards-status-${gc.card.status}`, null, gc.card.status)}
                   </span>
                   <span className="gift-card-balance">
-                    {formatMoney({ minor_units: gc.card.current_balance_minor, currency: gc.card.currency })}
+                    {formatMoney({ minor_units: gc.card.current_balance_minor, currency: gc.card.currency }, numLocale)}
                   </span>
                   <span className={`gift-card-expand ${expandedId === gc.card.id ? 'expanded' : ''}`}>
                     &#9660;
@@ -255,7 +255,7 @@ export default function GiftCardsScreen() {
                   <div className="gift-card-info-grid">
                     <div className="gift-card-info-item">
                       <Localized id="gift-cards-info-initial-balance"><span className="gift-card-info-label">Initial Balance</span></Localized>
-                      <span>{formatMoney({ minor_units: gc.card.initial_balance_minor, currency: gc.card.currency })}</span>
+                      <span>{formatMoney({ minor_units: gc.card.initial_balance_minor, currency: gc.card.currency }, numLocale)}</span>
                     </div>
                     <div className="gift-card-info-item">
                       <Localized id="gift-cards-info-issued"><span className="gift-card-info-label">Issued</span></Localized>
@@ -339,9 +339,9 @@ export default function GiftCardsScreen() {
                               </td>
                               <td className={`gift-card-txn-amount ${txn.amount_minor < 0 ? 'negative' : 'positive'}`}>
                                 {txn.amount_minor > 0 ? '+' : ''}
-                                {formatMoney({ minor_units: Math.abs(txn.amount_minor), currency: gc.card.currency })}
+                                {formatMoney({ minor_units: Math.abs(txn.amount_minor), currency: gc.card.currency }, numLocale)}
                               </td>
-                              <td>{formatMoney({ minor_units: txn.balance_after_minor, currency: gc.card.currency })}</td>
+                              <td>{formatMoney({ minor_units: txn.balance_after_minor, currency: gc.card.currency }, numLocale)}</td>
                               <td className="gift-card-txn-notes">{txn.notes}</td>
                               <td className="gift-card-txn-date">{formatDate(txn.created_at, numLocale)}</td>
                             </tr>

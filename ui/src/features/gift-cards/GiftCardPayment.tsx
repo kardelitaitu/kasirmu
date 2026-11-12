@@ -46,6 +46,7 @@ export default function GiftCardPayment({
   onComplete,
 }: GiftCardPaymentProps) {
   const { l10n } = useLocalization();
+  const numLocale = [...l10n.bundles][0]?.locales[0] ?? 'en-US';
   const [cardInput, setCardInput] = useState('');
   const [loading, setLoading] = useState(false);
   /** Synchronous mirror of `loading` — see the re-entry guard in `handleApply`. */
@@ -143,9 +144,9 @@ export default function GiftCardPayment({
         <Localized id="gift-cards-payment-title">
           <h3 className="gift-card-payment-title">Gift Card</h3>
         </Localized>
-        <Localized id="gift-cards-payment-total-due" vars={{ amount: formatMoney({ minor_units: totalMinor, currency }) }}>
+        <Localized id="gift-cards-payment-total-due" vars={{ amount: formatMoney({ minor_units: totalMinor, currency }, numLocale) }}>
           <p className="gift-card-payment-subtitle">
-            Total due: {formatMoney({ minor_units: totalMinor, currency })}
+            Total due: {formatMoney({ minor_units: totalMinor, currency }, numLocale)}
           </p>
         </Localized>
       </div>
@@ -178,7 +179,7 @@ export default function GiftCardPayment({
               <span>Available Balance</span>
             </Localized>
             <span className="gift-card-payment-balance-amount">
-              {formatMoney({ minor_units: cardBalance.minor, currency: cardBalance.currency })}
+              {formatMoney({ minor_units: cardBalance.minor, currency: cardBalance.currency }, numLocale)}
             </span>
           </div>
           <div className="gift-card-payment-balance-row">
@@ -186,7 +187,7 @@ export default function GiftCardPayment({
               <span>To Apply</span>
             </Localized>
             <span className="gift-card-payment-balance-amount">
-              {formatMoney({ minor_units: Math.min(totalMinor, cardBalance.minor), currency })}
+              {formatMoney({ minor_units: Math.min(totalMinor, cardBalance.minor), currency }, numLocale)}
             </span>
           </div>
         </div>

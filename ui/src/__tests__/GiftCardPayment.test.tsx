@@ -37,8 +37,8 @@ describe('GiftCardPayment', () => {
 
   it('shows total due amount', () => {
     renderWithFluentSync(<GiftCardPayment {...defaultProps} />, giftCardsFtl);
-    // 100000 IDR minor = Rp 100.000 — formatMoney (exp 0) renders no decimal tail.
-    expect(screen.getByText(/Rp 100\.000/)).toBeInTheDocument();
+    // 100000 IDR minor = Rp 100,000 in en-US bundle locale (formatMoney respects numLocale)
+    expect(screen.getByText(/Rp 100,000/)).toBeInTheDocument();
   });
 
   it('does not call API when card number is empty', async () => {

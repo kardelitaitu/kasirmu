@@ -431,18 +431,18 @@ and `gift-cards.ftl` / `sales.ftl`.
   replaced with `Number` + `Number.isInteger`.
 - ✅ **Browser-locale dates** — issue/expiry/transaction dates now use the
   active Fluent locale instead of `toLocaleDateString()`'s browser default.
+- ✅ **`formatMoney` active Fluent locale threaded** — gift-card balances,
+  initial balance, transaction amounts, and tender total-due/available/applied
+  in `GiftCardsScreen.tsx` and `GiftCardPayment.tsx` now pass `numLocale`
+  so English-locale users see comma grouping ("Rp 50,000") instead of default
+  Indonesian dot grouping ("Rp 50.000").
 
 ## Still open
 
-1. **`formatMoney` default locale is `id-ID`** — the gift-card balances/totals
-   call `formatMoney` without a locale, so English-locale users see Indonesian
-   grouping ("Rp 50.000"). Systemic across the app; worth a dedicated pass that
-   threads the active Fluent locale into `formatMoney` call sites (and reconciles
-   with the per-store receipt `decimalSep` override).
-2. **Hardcoded `currency: 'IDR'` + `created_by: 'staff'`** in
+1. **Hardcoded `currency: 'IDR'` + `created_by: 'staff'`** in
    `IssueGiftCardModal` — likely intentional until multi-currency gift cards and
    real operator identity land.
-3. **`gift-cards-loading` orphan** (in `sales.ftl`) — the screen uses a skeleton.
+2. **`gift-cards-loading` orphan** (in `sales.ftl`) — the screen uses a skeleton.
 
 ---
 
@@ -733,19 +733,21 @@ Audit of `PromotionManagementScreen.tsx`, `PurchaseOrderForm.tsx`,
   `aria-hidden`, CSS-class only) deleted from both purchasing bundles. The
   `po-status-*` keys are read dynamically via `id={\`po-status-${s}\`}` — kept.
 
+- ✅ **Client-side promotion value validation** — `handleSave` and Save button
+  in `PromotionManagementScreen.tsx` enforce valid `value_minor` (1..=100 for
+  percentage and buy_x_get_y, > 0 for fixed_amount); value input sets min/max
+  and `aria-invalid`.
+
 ## Verification
 
 - typecheck ✅ · lint 0 errors ✅ · i18n lint clean · bundle parity 0 missing ·
   FTL dedupe clean ✅
-- PromotionManagementScreen 18/18, PurchaseOrderForm + PurchaseOrdersScreen
+- PromotionManagementScreen 22/22, PurchaseOrderForm + PurchaseOrdersScreen
   35/35 ✅
 
 ## Still open
 
-1. **No client-side value validation** — `handleSave` only requires a name; a
-  percentage promo of 0% or a fixed_amount of 0 saves fine. Backend may
-  reject; worth an inline check.
-2. **Raw minor-unit inputs** — the promo value/min-order fields present raw
+1. **Raw minor-unit inputs** — the promo value/min-order fields present raw
   minor units (5000 = $50.00) rather than a formatted amount; consistent with
   the existing table display but not ideal UX.
 

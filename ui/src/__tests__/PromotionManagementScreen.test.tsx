@@ -205,11 +205,48 @@ describe('PromotionManagementScreen', () => {
     await user.click(screen.getByText('Add Promotion'));
 
     const valueInput = await screen.findByLabelText('Value') as HTMLInputElement;
+    await user.clear(valueInput);
     await user.type(valueInput, '12.5');
 
     // Fractional keystrokes are ignored — the field must not silently
     // truncate 12.5 to 12 via parseInt.
     expect(valueInput.value).toBe('12');
+  });
+
+  it('disables Save when value is invalid (0 or > 100 for percentage)', async () => {
+    mockListPromotions.mockResolvedValue([]);
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByText('No promotions yet.')).toBeTruthy();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByText('Add Promotion'));
+
+    const nameInput = (await screen.findByLabelText('Name')) as HTMLInputElement;
+    await user.type(nameInput, 'Test Promo');
+
+    const valueInput = (await screen.findByLabelText('Value')) as HTMLInputElement;
+    const saveBtn = screen.getByText('Save').closest('button')!;
+
+    // Starts enabled because default value is 10
+    expect(saveBtn).not.toBeDisabled();
+
+    // 0 is invalid for percentage (1..=100 required)
+    await user.clear(valueInput);
+    await user.type(valueInput, '0');
+    expect(saveBtn).toBeDisabled();
+
+    // > 100 is invalid for percentage
+    await user.clear(valueInput);
+    await user.type(valueInput, '150');
+    expect(saveBtn).toBeDisabled();
+
+    // 25 is valid
+    await user.clear(valueInput);
+    await user.type(valueInput, '25');
+    expect(saveBtn).not.toBeDisabled();
   });
 
   it('closes the add modal with Cancel', async () => {
