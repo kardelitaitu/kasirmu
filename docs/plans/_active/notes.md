@@ -40,7 +40,7 @@ with ✅, so this file stays a live index rather than a stale backlog.
   `analyticsDataCache` deterministically for zero-flash initial render, guarded
   against infinite retry and validated against `useAnalyticsQuery.test.ts` (5/5 PASS).
 
-## Still open — verify in the UI
+## Verified in the UI (all items fixed)
 
 ### 3. ✅ Unvalidated cache cast + fragile partition parsing (fixed)
 
@@ -1845,5 +1845,14 @@ not rulings, remain there.
   - `grep -n 'fireCourse' ui/src/features/sales/usePosState.ts` -> two lines: the declaration at `:247` and the return at `:429`. Note the declaration is `const fireCourse = useCallback(` -- a TypeScript arrow, so a `fn fireCourse` pattern finds nothing and would read as "already gone". The body is `setLines` only.
   - `grep -n 'fire' crates/kasirmu-core/src/kds.rs` -> **zero hits**: there is no course-release path on the KDS side either, which is what ruling (2) would have to build.
 - **Filed by:** the round-142 lane while looking for the sibling of its own round-141 fix, 2026-10-25 at HEAD `ec0e0b0aa`. No file edited, no ruling taken; this exists so the next lane does not brief it as a bug and quietly pick ruling (1) because it is the smaller diff.
+- **RESOLVED & IMPLEMENTED 2026-11-13 (ADR-68, Option 1 adopted at `e32457b0d`):**
+  ADR-68 formulated both options with trade-offs. The owner adopted Option 1
+  (Cart-Level State Persistence). `foundation::CartLine` gained `coursing_status: Option<String>`
+  (persisting `"hold"` on course assignment, dropped on clear, and updated to `"fired"` on
+  fire). Bridge `SetLineCourseArgs` and mobile `pos.rs` IPC accept `coursing_status`,
+  and `PosScreen.tsx` wraps `fireCourse` / `fireAllCourses` with `fireCourseAndSync` /
+  `fireAllCoursesAndSync` to mirror the fired state to the backend pre-checkout.
+  Pinned by 48 new unit tests in `foundation/src/cart_tests.rs`, 159 bridge pos tests,
+  and 54 UI coursing vitests.
 
 > last audited 11-10-26 by docs-auditor
