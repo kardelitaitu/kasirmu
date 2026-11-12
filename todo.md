@@ -91,7 +91,7 @@
 ### 6a — Northflank Credential Rotation (HTTP 401)
 
 > CI job `Deploy Backend (Northflank)` failed with HTTP 401 on the `main` merge run.
-> See: `docs/decisions/deploy-northflank` skill for the rotation procedure.
+> See: `.agents/skills/deploy-northflank/SKILL.md` for the rotation procedure.
 
 - [ ] Rotate the Northflank API token in the Northflank dashboard
 - [ ] Update GitHub Actions secret: `gh secret set KASIRMU_NORTHFLANK_API_TOKEN --body "<token>"`
@@ -132,7 +132,7 @@
 > Encode specs (VP9/H.264, 1280×720 desktop, 960×540 mobile, 15 fps) are in
 > `docs/plans/_active/website_carousel.md` §6. Integration steps are in §7.
 
-- [ ] Remind owner: drop clips into `website/public/videos/hero/` when ready
+- [ ] Remind owner: drop 5 × 10 s clips into hero videos folder when ready (specs in `docs/plans/_active/website_carousel.md` §6)
 
 ---
 

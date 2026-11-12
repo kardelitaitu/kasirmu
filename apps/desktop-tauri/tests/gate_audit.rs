@@ -170,7 +170,7 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
         8,
         &["GIFTCARDS_ISSUE", "GIFTCARDS_MANAGE", "GIFTCARDS_REDEEM"],
     ),
-    ("hardware", 1, &["PAYMENTS_CASH"]),
+    ("hardware", 2, &["PAYMENTS_CASH", "RECEIVABLES_VIEW"]),
     ("health", 0, &[]),
     // 2026-09-29: re-measured alongside the edc row. history.rs carries 7 gate
     // calls now (:73,:187,:262,:281,:303,:324,:382) — the two SALES_PROCESS

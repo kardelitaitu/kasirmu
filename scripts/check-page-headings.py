@@ -550,7 +550,7 @@ def _shell_ladder_body() -> int:
     # prefix is added at the build() boundary, so the constants stay readable as
     # the exact lines the verdict must print. Built WITHOUT a leading separator:
     # one would make Path() absolute and drop the fixture root entirely.
-    UI = "ui" + chr(92) + "src" + chr(92)
+    UI = "ui/src"
     REGISTER = "features/zz-fixpage/register.tsx"
     SCREEN = "features/zz-fixpage/ZzFixpageScreen.tsx"
     S1 = "features/zz-fixpage/S1.tsx"
@@ -561,7 +561,7 @@ def _shell_ladder_body() -> int:
 
     def build(base, files):
         for rel, content in files.items():
-            dst = Path(base) / (rel if rel == PAGE else UI + rel)
+            dst = Path(base) / (rel if rel == PAGE else Path(UI) / rel)
             dst.parent.mkdir(parents=True, exist_ok=True)
             dst.write_text(content, encoding="utf-8")
 
