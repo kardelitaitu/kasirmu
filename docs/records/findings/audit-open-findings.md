@@ -12380,3 +12380,26 @@ that number did not move. `verify-core-size`'s ladder does not exercise a relati
 default-path refusal is not covered. The census in r276 said "has a ladder" is a
 weaker test than "kills"; this round is one file moving from the weaker claim to
 the stronger one, and 44 laddered checkers is still the population, not 102.
+
+
+### Round 278 (2026-11-13) -- check-rbac-citations gains a 7-rung ladder and proves against repo base mutation
+
+`scripts/check-rbac-citations.py` had 4 pure test cases in `self_test()` and a mini
+in-line shell test that was un-laddered and missing a re-entry guard.
+
+ADDED:
+- `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 7 rungs:
+  Rung 1 (killing rung): throwaway tree with inventory citation fails rc 1 with
+  exact doc and line attribution.
+  Rung 2: self-aware correction passes rc 0.
+  Rung 3: bare table citation in live doc flagged rc 1.
+  Rung 4: dated records table citation is exempt rc 0.
+  Rung 5: nested `--self-test` passes rc 0 under re-entry guard.
+  Rung 6: empty markdown corpus refuses rc 2.
+  Rung 7: missing presets source fails loudly with rc 2 / SCAN BROKE.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+
+MEASURED:
+- `python scripts/check-rbac-citations.py --self-test` -> OK (4 pure + 7 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/check-rbac-citations.py` -> "repo base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 48 -> 49 of 70 (21 un-contracted remaining, next target `verify-ps-syntax.py`).
