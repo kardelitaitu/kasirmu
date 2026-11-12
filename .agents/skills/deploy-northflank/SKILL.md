@@ -229,4 +229,4 @@ Either way, record which image is live afterwards — the next deploy will silen
 9. **Changing `OZ_ADMIN_EMAIL` after first boot.** It is write-once: admin sessions resolve
    through it, and a change orphans every existing admin session.
 
-> last audited 11-10-26 by docs-auditor
+> last audited 12-11-26 by skill-drift-guard

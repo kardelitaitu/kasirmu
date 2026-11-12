@@ -975,4 +975,4 @@ non-blank visible line is the document's own title, not a stray `-->` or merge-n
 write a comment-open token literally inside a comment (not even to explain this hazard), and
 never nest a preserved stamp — quote its text, or wrap the whole region in one comment.
 
-> last audited 11-10-26 by docs-auditor
+> last audited 12-11-26 by skill-drift-guard

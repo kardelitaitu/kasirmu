@@ -283,4 +283,4 @@ python scripts/diagnose-pr.py <PR_NUMBER>
 | `CI Docs Drift` | Undocumented script or workflow | `python scripts/verify-ci-docs-drift.py` |
 | `Skill Drift Tests` | Stale audit date or broken ref | `bash .agents/skills/skill-drift-guard/scripts/detect.sh` |
 
-> last audited 11-10-26 by docs-auditor
+> last audited 12-11-26 by skill-drift-guard

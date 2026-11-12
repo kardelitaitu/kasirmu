@@ -99,4 +99,4 @@ bodies and assert on the one that carries the properties — "the first body" is
 Follow the liveness-by-injection rule: after writing the guard, break the declaration and watch the
 test fail with its own message before you trust it.
 
-> last audited 11-10-26 by docs-auditor
+> last audited 12-11-26 by skill-drift-guard

@@ -228,4 +228,4 @@ If this passes locally, the PR is ready. For the full local matrix in one comman
 
 ---
 
-> last audited 11-10-26 by docs-auditor
+> last audited 12-11-26 by skill-drift-guard

@@ -216,5 +216,5 @@ rendered DOM; and a `location.reload()` closes the CDP target
   `:73`. The EBUSY workaround and both traps above remain accurate as written — they describe
   device/sandbox behaviour that is not re-measurable from the tree.*
 
-> last audited 11-10-26 by docs-auditor
+> last audited 12-11-26 by skill-drift-guard
 > amended 2026-10-07 by Budak-Korporat (adb EBUSY / direct-WebSocket workaround)

@@ -547,4 +547,4 @@ The drift guard should be self-extending: every discovery becomes a new check, s
 
 ---
 
-> last audited 08-11-26 by DSH
+> last audited 12-11-26 by skill-drift-guard

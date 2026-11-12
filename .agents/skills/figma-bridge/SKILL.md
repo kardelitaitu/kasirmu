@@ -171,4 +171,4 @@ For every text node in the Figma tree:
 3. **Empty selection**:
    - Call `list_files` to ensure correct `fileKey`, or instruct the user to click on the desired frame/component in Figma before re-calling `get_selection`.
 
-> last audited 11-10-26 by docs-auditor
+> last audited 12-11-26 by skill-drift-guard

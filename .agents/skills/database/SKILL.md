@@ -453,4 +453,4 @@ staged-scoped form is what the hook uses; the whole-tree form is what CI uses.
 
 ---
 
-> last audited 23-10-26 by Budak-Korporat
+> last audited 12-11-26 by skill-drift-guard

@@ -299,4 +299,4 @@ npm run check:all            # lint → typecheck → test → i18n → E2E (Doc
 
 ---
 
-> last audited 08-11-26 by docs-auditor
+> last audited 12-11-26 by skill-drift-guard
