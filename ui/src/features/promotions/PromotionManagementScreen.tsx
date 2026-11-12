@@ -21,6 +21,7 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
+import { formatMoney } from '@/types/domain';
 import './PromotionManagementScreen.css';
 
 type ModalMode = 'add' | 'edit' | null;
@@ -291,7 +292,13 @@ function PromotionManagementScreenContent() {
                       <span>{p.promo_type}</span>
                     </Localized>
                   </td>
-                  <td>{p.promo_type === 'percentage' ? `${p.value_minor}%` : p.value_minor}</td>
+                  <td>
+                    {p.promo_type === 'percentage' || p.promo_type === 'buy_x_get_y'
+                      ? `${p.value_minor}%`
+                      : p.promo_type === 'fixed_amount'
+                        ? formatMoney({ minor_units: p.value_minor, currency: 'IDR' }, numLocale)
+                        : p.value_minor}
+                  </td>
                   <td>
                     <label className="promo-mgmt-toggle" aria-label={l10n.getString('promotions-toggle-active', { name: p.name })}>
                       <input

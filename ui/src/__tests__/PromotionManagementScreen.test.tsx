@@ -143,13 +143,23 @@ describe('PromotionManagementScreen', () => {
     });
   });
 
-  it('shows fixed amount value without percent sign', async () => {
+  it('shows fixed amount value formatted as currency', async () => {
     mockListPromotions.mockResolvedValue([makePromo({ promo_type: 'fixed_amount', value_minor: 5000 })]);
     renderScreen();
 
     await waitFor(() => {
       expect(screen.getByText('Fixed Amount')).toBeTruthy();
-      expect(screen.getByText('5000')).toBeTruthy();
+      expect(screen.getByText('Rp 5,000')).toBeTruthy();
+    });
+  });
+
+  it('shows buy_x_get_y reward discount as percentage', async () => {
+    mockListPromotions.mockResolvedValue([makePromo({ promo_type: 'buy_x_get_y', value_minor: 100 })]);
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByText('Buy X Get Y')).toBeTruthy();
+      expect(screen.getByText('100%')).toBeTruthy();
     });
   });
 

@@ -12,7 +12,7 @@
 
 | Area | Status |
 |---|---|
-| Last PR merged | #126 — offline sync resilience, RSA license validation, UI dispatch protection |
+| Last PR merged | #127 — SEA Phase 2 tax tables, BRIDGE-7 fix, analytics UI backlog, and gate ladders |
 | CI on `main` | ✅ All dev-ci gates pass. Northflank deploy failed HTTP 401 (credential stale). |
 | `docs/plans/_active/` | `website_carousel.md` (blocked on video assets), `notes.md` (Items 1–2 ✅ done). `owner-question-2026-09-28-r4-r6-r7.md` **archived 2026-11-11** → `_done/done-owner-question-2026-09-28-r4-r6-r7.md` (`00ca02d43`). |
 | Open security finding | **BRIDGE-7** — `print_kasbon_settlement_slip_scoped` closed in `d46119269` (gated on `receivables:view`). |

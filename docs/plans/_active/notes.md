@@ -466,10 +466,10 @@ Audit of `PromotionManagementScreen.tsx` + `promotions.ftl` / `promotions.id.ftl
    — added `toDatetimeLocalValue` helper in `PromotionManagementScreen.tsx` for
    local wall-clock round-tripping of `starts_at` / `ends_at` in
    `<input type="datetime-local">`.
-3. **`value` column display** — for `fixed_amount` / `buy_x_get_y` the raw
-   `value_minor` integer is shown without currency formatting; for
-   `percentage` it renders `{n}%`. Confirm the intended display for non-
-   percentage types.
+3. ~~**`value` column display**~~ **✅ Fixed — verified 2026-11-12** — formatted
+   `fixed_amount` through `formatMoney({ minor_units: p.value_minor, currency: 'IDR' }, numLocale)`
+   and `percentage` / `buy_x_get_y` through `${p.value_minor}%` in
+   `PromotionManagementScreen.tsx`.
 
 ---
 
