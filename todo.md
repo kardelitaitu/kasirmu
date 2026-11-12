@@ -37,22 +37,25 @@
 
 ---
 
-## Day 3 · Wed · Course Firing Architecture Decision — ✅ ADR-68 DRAFTED 2026-11-10
+## Day 3 · Wed · Course Firing Architecture Decision — ✅ COMPLETED 2026-11-13 (Option 1 Adopted)
 
 > `fireCourse` / `fireAllCourses` in `ui/src/features/sales/usePosState.ts:247,260`
-> mutate local state only — they never reach the backend before checkout.
-> `publish_course_fired_scoped` pipeline exists and is proven (6 bridge tests in `pos_tests.rs:2520-2610`),
-> but the pre-checkout firing path has no backend route. Parked in `docs/plans/_active/notes.md`.
+> mutated local state only — they never reached the backend before checkout.
+> ADR-68 proposed two options; owner adopted Option 1 (Cart-Level State Persistence).
 
-**Two mutually exclusive options — awaiting owner ruling between:**
-1. **Persist `coursing_status` on the cart:** Cart-centric pre-checkout state machine.
-2. **`fireCourse` drives KDS release:** Kitchen-centric real-time dispatch via `fire_course_scoped`.
+**Adopted: Option 1 — Cart-Level State Persistence**
 
 - [x] Formulated both architectural options with trade-off comparison matrix
 - [x] Drafted `docs/decisions/2026-11-10-adr68-course-firing-architecture.md` (ADR-68)
-- [x] Updated `docs/decisions/README.md` and `docs/records/README.md` indices
-- [x] Verified: `python .agents/skills/docs-auditor/scripts/check-adr-status.py` (0 drift, 0 unlisted)
-- [x] Committed: `d434f8dae`
+- [x] Owner ruling: Option 1 adopted
+- [x] Added `coursing_status: Option<String>` to `CartLine` in `foundation/src/cart.rs` with `#[serde(default)]` and `set_coursing_status` helper
+- [x] Added unit tests in `foundation/src/cart_tests.rs` (610/610 passing)
+- [x] Extended `SetLineCourseArgs` and `run_set_line_course_unchecked` in `crates/kasirmu-bridge/src/pos/cart.rs` and `apps/mobile-tauri/src/commands/pos.rs` to persist coursing status
+- [x] Added bridge unit tests in `crates/kasirmu-bridge/src/pos_tests.rs` (159/159 passing)
+- [x] Extended `setLineCourseScoped` in `ui/src/api/sales.ts` and dev-mock handler in `ui/src/dev-mock/handlers/sales.ts`
+- [x] Updated `syncLineCourse` in `usePosCartActions.ts` and `fireCourseAndSync` / `fireAllCoursesAndSync` in `PosScreen.tsx`
+- [x] Updated `docs/decisions/README.md` and `docs/records/README.md` indices (0 drift)
+- [x] Verified: `check-adr-status.py` (0 drift), `cargo test -p foundation`, `cargo test -p kasirmu-bridge pos::tests`, UI vitest (54/54 passing)
 
 ---
 
@@ -173,7 +176,7 @@
 | Item | Blocker |
 |---|---|
 | Hero carousel video assets | Owner must supply 5 × 10 s clips |
-| Course firing architecture (ADR-68) | Owner ruling: Option 1 (persist on cart) vs Option 2 (drive KDS) |
+| Course firing architecture (ADR-68) | ✅ Resolved 2026-11-13 (Option 1 adopted & implemented) |
 | MIDTRANS sandbox credential (R6) | Owner declined; re-open only if credential arrives |
 | Physical EDC terminal model (R7) | Owner "none yet"; loopback is the active implementation |
 | Phase 3 India / Brazil expansion | ADR-59 Invariant 1: no code without a commercial sponsor |

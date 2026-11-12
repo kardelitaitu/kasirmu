@@ -177,6 +177,24 @@ describe('usePosCartActions — coursing is persisted, not just rendered', () =>
       cartId: 'cart-1',
       lineId: 'line-1',
       course: 'main',
+      coursingStatus: 'hold',
+    });
+  });
+
+  it('sends explicit coursing status to the backend cart when firing', async () => {
+    const p = params('tok');
+    const { result } = await renderHookInAct(() => usePosCartActions(p));
+    await act(async () => {
+      await result.current.ensureCart('IDR');
+    });
+    await act(async () => {
+      await result.current.syncLineCourse('line-1', 'main', 'fired');
+    });
+    expect(deductionApiMocks.setLineCourseScoped).toHaveBeenCalledWith('tok', {
+      cartId: 'cart-1',
+      lineId: 'line-1',
+      course: 'main',
+      coursingStatus: 'fired',
     });
   });
 
@@ -196,6 +214,7 @@ describe('usePosCartActions — coursing is persisted, not just rendered', () =>
       cartId: 'cart-1',
       lineId: 'line-1',
       course: null,
+      coursingStatus: null,
     });
   });
 

@@ -371,6 +371,7 @@ pub async fn set_line_course_scoped(
         &args.cart_id,
         &args.line_id,
         args.course.as_deref(),
+        args.coursing_status.as_deref(),
     )
     .map_err(Into::into)
 }

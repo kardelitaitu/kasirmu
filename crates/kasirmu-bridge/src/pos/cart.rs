@@ -404,6 +404,12 @@ pub struct SetLineCourseArgs {
     /// `foundation::cart::normalize_course` (legacy "drinks" → "beverage").
     #[serde(default)]
     pub course: Option<String>,
+    /// Optional restaurant coursing status (e.g. "hold", "fired"). (ADR-68)
+    /// When specified, updates the line's coursing status. When None and a
+    /// course is being assigned, defaults to "hold" if previously unset.
+    /// When course is cleared, coursing status is cleared.
+    #[serde(default)]
+    pub coursing_status: Option<String>,
 }
 
 /// Assign (or clear) the restaurant course on an active cart line.
@@ -426,7 +432,13 @@ pub async fn set_line_course_scoped(
     let db = conn
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    run_set_line_course_unchecked(&db, &args.cart_id, &args.line_id, args.course.as_deref())
+    run_set_line_course_unchecked(
+        &db,
+        &args.cart_id,
+        &args.line_id,
+        args.course.as_deref(),
+        args.coursing_status.as_deref(),
+    )
 }
 
 /// The cart/line mutation behind set_line_course_scoped, with no permission
@@ -436,25 +448,33 @@ pub fn run_set_line_course_unchecked(
     cart_id: &CartId,
     line_id: &LineId,
     course: Option<&str>,
+    coursing_status: Option<&str>,
 ) -> Result<(), BridgeError> {
     let store = Store::new(db);
     let mut cart = store
         .load_active_cart(cart_id)?
         .ok_or_else(|| BridgeError::Invalid(format!("cart not found: {cart_id}")))?;
 
-    let assigned = {
+    let (assigned_course, assigned_status) = {
         let line = cart
             .lines_mut()
             .iter_mut()
             .find(|l| l.id == *line_id)
             .ok_or_else(|| BridgeError::Invalid(format!("line not found: {line_id}")))?;
         line.set_course(course);
-        line.course.clone()
+        if let Some(status) = coursing_status {
+            line.set_coursing_status(Some(status));
+        } else if line.course.is_some() && line.coursing_status.is_none() {
+            line.set_coursing_status(Some("hold"));
+        } else if line.course.is_none() {
+            line.set_coursing_status(None);
+        }
+        (line.course.clone(), line.coursing_status.clone())
     };
 
     store.save_active_cart(&cart, None)?;
 
-    tracing::info!(%cart_id, %line_id, course = ?assigned, "line course assigned");
+    tracing::info!(%cart_id, %line_id, course = ?assigned_course, coursing_status = ?assigned_status, "line course assigned");
     Ok(())
 }
 

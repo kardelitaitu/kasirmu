@@ -895,5 +895,53 @@ fn cart_line_deserializes_without_course_for_legacy_carts() {
     )
     .unwrap();
     assert_eq!(line.course, None);
+    assert_eq!(line.coursing_status, None);
     assert_eq!(line.sku.as_str(), "COFFEE");
+}
+
+#[test]
+fn set_coursing_status_assigns_normalizes_and_clears() {
+    let mut line = CartLine::new(
+        Sku::new("STEAK"),
+        1,
+        Money {
+            minor_units: 1500,
+            currency: usd(),
+        },
+    );
+    assert_eq!(line.coursing_status(), None);
+    line.set_coursing_status(Some("hold"));
+    assert_eq!(line.coursing_status(), Some("hold"));
+    assert_eq!(line.coursing_status.as_deref(), Some("hold"));
+
+    // Case normalization and trimming
+    line.set_coursing_status(Some("  FIRED  "));
+    assert_eq!(line.coursing_status(), Some("fired"));
+
+    // Empty or None clears
+    line.set_coursing_status(Some(""));
+    assert_eq!(line.coursing_status(), None);
+    line.set_coursing_status(Some("hold"));
+    line.set_coursing_status(None);
+    assert_eq!(line.coursing_status(), None);
+}
+
+#[test]
+fn cart_line_roundtrips_coursing_status() {
+    let mut line = CartLine::new(
+        Sku::new("STEAK"),
+        1,
+        Money {
+            minor_units: 1500,
+            currency: usd(),
+        },
+    );
+    line.set_course(Some("main"));
+    line.set_coursing_status(Some("hold"));
+
+    let json = serde_json::to_string(&line).unwrap();
+    let deserialized: CartLine = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(deserialized.course.as_deref(), Some("main"));
+    assert_eq!(deserialized.coursing_status(), Some("hold"));
 }

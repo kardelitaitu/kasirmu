@@ -2346,10 +2346,26 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // nothing and would be the only hook in this region.
   const assignCourseAndSync = (lineId: LineId, courseId: CourseId) => {
     assignCourse(lineId, courseId);
-    void syncLineCourse(lineId, courseId);
+    void syncLineCourse(lineId, courseId, courseId === '' ? null : 'hold');
+  };
+  const fireCourseAndSync = (courseId: CourseId) => {
+    fireCourse(courseId);
+    for (const line of lines) {
+      if (line.courseId === courseId && line.coursingStatus === 'hold') {
+        void syncLineCourse(line.id, line.courseId, 'fired');
+      }
+    }
+  };
+  const fireAllCoursesAndSync = () => {
+    fireAllCourses();
+    for (const line of lines) {
+      if (line.courseId && line.coursingStatus === 'hold') {
+        void syncLineCourse(line.id, line.courseId, 'fired');
+      }
+    }
   };
   const cartLineRows = {
-    lines, fireCourse, fireAllCourses, assignCourse: assignCourseAndSync, setCartLineRef,
+    lines, fireCourse: fireCourseAndSync, fireAllCourses: fireAllCoursesAndSync, assignCourse: assignCourseAndSync, setCartLineRef,
     handleRemoveLine, handleDecreaseQty, handleIncreaseQty,
     updateLineNote,
     onEditModifiers: handleEditModifiers,

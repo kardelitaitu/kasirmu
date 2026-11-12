@@ -2,13 +2,13 @@
 num: 68
 area: pos
 title: "ADR-68: Course Firing Architecture — Cart Pre-Checkout Persistence vs KDS Event Pipeline"
-status: PROPOSED — awaiting owner ruling between Option 1 and Option 2
+status: ACCEPTED — Option 1 (Cart-Level State Persistence)
 ---
 
 # ADR-68: Course Firing Architecture — Cart Pre-Checkout Persistence vs KDS Event Pipeline
 
-**Status:** PROPOSED — awaiting owner ruling between Option 1 and Option 2  
-**Date:** 2026-11-10  
+**Status:** ACCEPTED — Option 1 (Cart-Level State Persistence)  
+**Date:** 2026-11-10 (Adopted 2026-11-13)  
 **Recorded against:** branch `0.0.41`  
 **Related:** ADR-63 (event sink seam), `docs/plans/_active/notes.md` (coursing gap finding), `crates/kasirmu-bridge/src/pos/cart.rs`, `ui/src/features/sales/usePosState.ts`.  
 **Tags:** pos, kitchen, kds, coursing, events  
@@ -36,8 +36,8 @@ Currently, the coursing lifecycle in `kasir.mu` exhibits an architectural asymme
 
 The system requires an authoritative product ruling to decide what "firing a course" actually means in the software architecture:
 
-### Option 1: Cart-Level State Persistence (POS-Centric)
-* **Design:** Add `coursing_status: Option<String>` (e.g. `"unfired"`, `"fired"`) to `CartLine` serialization in `foundation/src/cart.rs` and the local cart store.
+### Option 1: Cart-Level State Persistence (POS-Centric) — ADOPTED
+* **Design:** Add `coursing_status: Option<String>` (e.g. `"hold"`, `"fired"`) to `CartLine` serialization in `foundation/src/cart.rs` and the local cart store.
 * **Semantics:** Firing a course is a pre-checkout state machine on the cart. Fired status survives app reloads and tablet disconnects.
 * **Trade-offs:**
   - ✅ Smallest diff; isolated to POS cart persistence.
@@ -65,8 +65,10 @@ The system requires an authoritative product ruling to decide what "firing a cou
 
 ---
 
-## 4. Proposed Execution Path
+## 4. Execution & Implementation
 
-Upon owner selection:
-- If **Option 1**: Update `foundation/src/cart.rs` line models, add migration/serialization fields, and update `usePosState.ts` to sync with local cart store.
-- If **Option 2**: Add `fire_course_scoped` IPC bridge handler, implement course-level release in `kasirmu-core::kds`, and bind `CourseSelectorBar.tsx` Fire button to invoke the command.
+**Adopted: Option 1 (Cart-Level State Persistence)**:
+- Added `coursing_status: Option<String>` to `CartLine` in `foundation/src/cart.rs` with `#[serde(default)]` and `set_coursing_status` helper.
+- Extended `SetLineCourseArgs` and `run_set_line_course_unchecked` in `crates/kasirmu-bridge/src/pos/cart.rs` and `apps/mobile-tauri/src/commands/pos.rs` to persist coursing status changes.
+- Updated `setLineCourseScoped` in `ui/src/api/sales.ts` and `syncLineCourse` in `usePosCartActions.ts`.
+- Wrapped `fireCourse` and `fireAllCourses` in `PosScreen.tsx` with `fireCourseAndSync` / `fireAllCoursesAndSync` to mirror pre-checkout fired state onto the cart store.

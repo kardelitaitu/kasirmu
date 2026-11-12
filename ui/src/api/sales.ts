@@ -205,7 +205,7 @@ export const getCartDeductionLocationScoped = (
  */
 export const setLineCourseScoped = (
   sessionToken: string,
-  args: { cartId: string; lineId: string; course: string | null },
+  args: { cartId: string; lineId: string; course: string | null; coursingStatus?: string | null },
 ): Promise<void> =>
   loggedInvoke<void>('set_line_course_scoped', { sessionToken, args });
 /** ADR #7: Add a line to a cart in the store resolved from a session token. */
