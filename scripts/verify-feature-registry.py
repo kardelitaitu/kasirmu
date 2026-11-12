@@ -436,7 +436,7 @@ def shell_ladder() -> int:
         (root / "crates/kasirmu-core/src/features.rs").unlink()
         rc, said = run(root)
         if rc != 2 or "Rust features file not found" not in said \
-                or str(root) not in said:
+                or str(root.resolve()) not in said:
             print("  x rung 5: a missing fixture registry must refuse rc 2 with "
                   "the fixture path (rc=%r said=%r)" % (rc, said[-220:]),
                   file=sys.stderr)
