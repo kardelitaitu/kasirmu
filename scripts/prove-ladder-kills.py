@@ -235,6 +235,19 @@ MUTATIONS = (
         '    root = Path(root).resolve() if root is not None else (\n        args.root or Path(__file__).resolve().parent.parent)',
         '    root = Path(__file__).resolve().parent.parent  # MUTANT: root ignored',
     ),
+    # r278: a binding that is NOT unique on its own line. verify-commit-subjects
+    # spells `root_path = ROOT if root is None else Path(root).resolve()` THREE
+    # times -- in git(), in check_range() and in main() -- so the bare anchor can
+    # never apply (applicable() requires exactly one occurrence) and the file
+    # reported NO APPLICABLE MUTATION. Including the closing docstring of main()
+    # binds the row to main() alone, which is the binding the root contract is
+    # about. Measured before adding: the mutant returns rc 1 at RUNG 1 on a
+    # VERDICT, not a refusal.
+    (
+        "main root_path ignores root",
+        '    half-run against the real repository\'s history."""\n    root_path = ROOT if root is None else Path(root).resolve()',
+        '    half-run against the real repository\'s history."""\n    root_path = ROOT  # MUTANT: root ignored',
+    ),
 )
 
 

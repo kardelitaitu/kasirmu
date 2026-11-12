@@ -195,7 +195,11 @@ def hook_intro(root=None) -> str | None:
 
 def check_range(rng: str, floor: str | None = "auto", root=None) -> tuple[int, int, list[str], list[str]]:
     root_path = ROOT if root is None else Path(root).resolve()
-    hook_text = io.open(root_path / HOOK, encoding="utf-8", errors="replace").read()
+    # r278: same guard as main() -- an absent hook is a refusal, not a crash.
+    try:
+        hook_text = io.open(root_path / HOOK, encoding="utf-8", errors="replace").read()
+    except OSError as exc:
+        raise GitUnreadable(f"{HOOK} under {root_path}") from exc
     pattern = re.compile(hook_pattern(hook_text))
     exemptions = hook_exemptions(hook_text)
 
@@ -271,7 +275,17 @@ def main(argv: list[str] | None = None, root: str | Path | None = None) -> int:
         print("  need --range <a..b> or --base <sha>", file=sys.stderr)
         return 2
 
-    hook_text = io.open(root_path / HOOK, encoding="utf-8", errors="replace").read()
+    # r278: an ABSENT hook is a refusal, not a crash. Measured 2026-11-11: this
+    # read was unguarded, so a main() pointed at a root with no .githooks/
+    # raised FileNotFoundError out of main() -- a traceback where the file's own
+    # exit contract promises 2 for "could not be read at all". A checker that
+    # crashes on a missing input cannot report a verdict about anything, and a
+    # ladder grading it cannot tell "wrong answer" from "could not start".
+    try:
+        hook_text = io.open(root_path / HOOK, encoding="utf-8", errors="replace").read()
+    except OSError as exc:
+        print(f"  REFUSED: cannot read {HOOK} under {root_path}: {exc}", file=sys.stderr)
+        return 2
     types = hook_types(hook_text)
     # Three exits, and only two of them are verdicts: 0 when the range was read and every
     # subject in it conformed, 1 when it was read and did not, 2 when it could not be read
@@ -452,7 +466,211 @@ def self_test() -> int:
             bad.append(f"a merge commit must be exempt yet counted (rc={rc} text={text[-120:]!r})")
 
     print(f"\n  {'self-test: rule extraction, matching, plumbing and shell all correct' if not bad else str(len(bad)) + ' failure(s): ' + '; '.join(bad)}")
-    return 1 if bad else 0
+    if bad:
+        return 1
+    # r278: the ladder must be CALLED, not merely defined (the r263 lesson).
+    return shell_ladder()
+
+
+#: Re-entry guard: a rung must not start a second ladder recursively.
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """The rung ladder: every rung drives main() over a throwaway git repo.
+
+    WHY A LADDER AND NOT MORE RULE CASES. self_test() grades the extractor, the
+    matcher and the git plumbing, and its `_shell` cases already drive main()
+    over a fixture repo. What none of them grade is the ROOT CONTRACT: that
+    main(), handed a root, reads THAT root's hook and THAT root's history. A
+    main() whose root binding is ignored passes every case above and then grades
+    the developer's own checkout in production -- the defect r265..r277 found in
+    six sibling checkers.
+
+    RUNG 1 IS THE KILLING RUNG, and it must kill on a VERDICT rather than on a
+    refusal (the r274 rule). The fixture's hook accepts a type the REAL hook
+    rejects (`wibble`), and the fixture's corpus carries a commit using it. A
+    correct main() reads the fixture's hook, accepts `wibble(x): ...`, and exits
+    0. A root-blind main() reads THIS repository's hook instead, which has no
+    `wibble` type, and exits 1 naming the fixture's commit -- a WRONG VERDICT
+    about the fixture, not a crash and not a scope refusal. Rung 1 asserts the
+    absence of refusal text as well, so a future edit cannot quietly convert the
+    kill back into a refusal.
+    """
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _ladder_body() -> int:
+    import contextlib
+    import shutil
+    import tempfile
+
+    cases = 0
+    failures = 0
+
+    def rung(name: str, got, want) -> None:
+        nonlocal cases, failures
+        cases += 1
+        if got != want:
+            failures += 1
+            print(f"  x {name}: got {got!r}, want {want!r}", file=sys.stderr)
+
+    if not shutil.which("git"):
+        print("verify-commit-subjects ladder: SKIPPED (git unavailable)", file=sys.stderr)
+        return 0
+
+    # THE HOOK TEMPLATE IS BUILT HERE, NOT READ FROM A PATH, and that is
+    # deliberate. Measured 2026-11-11: resolving it as
+    # `Path(__file__).resolve().parent.parent / HOOK` makes the LADDER itself
+    # root-blind -- under prove-ladder-kills.py the mutant's __file__ is a temp
+    # directory, so the ladder raised FileNotFoundError before any rung could
+    # return a verdict, and a rung that kills on a crash proves nothing (the r274
+    # rule). The ladder's own fixtures must not depend on where the file sits;
+    # the ROOT CONTRACT is graded by main() reading the FIXTURE's hook, which is
+    # what rung 1 measures.
+    #
+    # The template carries the same rule shape the real .githooks/commit-msg
+    # enforces, plus `wibble` -- a type the real hook rejects. That difference is
+    # the mechanism of rung 1: it makes the fixture's RULE observably different
+    # from this repository's, so a main() that reads the wrong hook answers
+    # differently instead of crashing.
+    fixture_hook = (
+        "#!/bin/bash\n"
+        "set -uo pipefail\n"
+        "MSG_FILE=\"$1\"\n"
+        "SUBJECT=$(head -n 1 \"$MSG_FILE\")\n"
+        "case \"$SUBJECT\" in\n"
+        "    \"Merge \"*|\"Revert \"*|\"fixup!\"*|\"squash!\"*|\"amend!\"*)\n"
+        "        exit 0\n"
+        "        ;;\n"
+        "esac\n"
+        "TYPES='feat|fix|docs|style|refactor|perf|test|ci|chore|audit|build|wibble'\n"
+        "PATTERN=\"^($TYPES)(\\([^()]+\\))?!?: .+\"\n"
+        "if printf '%s' \"$SUBJECT\" | grep -qE \"$PATTERN\"; then\n"
+        "    exit 0\n"
+        "fi\n"
+        "exit 1\n"
+    )
+    # The STRICT hook is the same template WITHOUT `wibble`, so rung 3 can show
+    # that the fixture's hook is what main() read rather than a constant.
+    strict_hook = fixture_hook.replace("|wibble", "")
+    rung("the two fixture hooks really do differ", strict_hook != fixture_hook, True)
+
+    # MAKE THE KILL A VERDICT RATHER THAN A REFUSAL (the r274 rule).
+    #
+    # A root-blind main() reads `ROOT / HOOK`, where ROOT is
+    # Path(__file__).resolve().parent.parent. Under prove-ladder-kills.py the
+    # mutant's __file__ is a scratch directory, so that path has no hook at all
+    # and main() REFUSES (exit 2) before it can grade anything -- measured
+    # 2026-11-11. A rung that kills on a refusal has not shown that it detects
+    # the defect; it has shown the mutant could not start.
+    #
+    # Writing the STRICT hook at that location, only when nothing is already
+    # there, gives the root-blind mutant a real rule to read: it then accepts
+    # the fixture's corpus against the WRONG rule and returns a wrong VERDICT
+    # (exit 1 naming the fixture's commit) instead of refusing. For the real
+    # checker this is a no-op -- this repository's .githooks/commit-msg exists,
+    # so nothing is written and the live tree is untouched. For the mutant it
+    # lands inside the harness's own scratch directory, which is removed on the
+    # way out.
+    ladder_root = Path(__file__).resolve().parent.parent
+    planted = ladder_root / HOOK
+    if not planted.exists():
+        planted.parent.mkdir(parents=True, exist_ok=True)
+        planted.write_text(strict_hook, encoding="utf-8")
+
+    def mkrepo(subjects, hook_text):
+        g = Path(tempfile.mkdtemp())
+        subprocess.run(["git", "init", "-q"], cwd=g, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "t@example.test"],
+                       cwd=g, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "T"], cwd=g, capture_output=True)
+        (g / ".githooks").mkdir()
+        (g / ".githooks" / "commit-msg").write_text(hook_text, encoding="utf-8")
+        for msg in subjects:
+            subprocess.run(["git", "add", "-A"], cwd=g, capture_output=True)
+            subprocess.run(["git", "commit", "-q", "--allow-empty", "-m", msg],
+                           cwd=g, capture_output=True)
+        floor = subprocess.run(["git", "rev-parse", "HEAD~%d" % (len(subjects) - 1)],
+                               cwd=g, capture_output=True, text=True).stdout.strip()
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=g,
+                              capture_output=True, text=True).stdout.strip()
+        return g, floor, head
+
+    def run(subjects, hook_text=fixture_hook, argv=None):
+        g, floor, head = mkrepo(subjects, hook_text)
+        call = list(argv) if argv is not None else ["--range", f"{floor}..{head}"]
+        out, err = io.StringIO(), io.StringIO()
+        rc = None
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            try:
+                rc = main(argv=call, root=g)
+            except SystemExit as exc:
+                rc = f"SystemExit({exc})"
+        return rc, out.getvalue() + err.getvalue()
+
+    # RUNG 1 -- the KILLING rung. The fixture's hook accepts `wibble`, so a
+    # correct main() passes. A root-blind main() reads this repo's hook, which
+    # has no `wibble` type, and exits 1 naming the fixture's commit.
+    rc, text = run(["chore(hooks): add the commit-msg gate", "wibble(x): only the fixture allows this"])
+    rung("rung 1: the fixture's own hook is honoured (exit 0)", rc, 0)
+    rung("rung 1: the kill is a verdict, not a refusal",
+         any(m in text for m in ("REFUSED", "cannot read", "need --range",
+                                 "Traceback", "No such file")), False)
+
+    # RUNG 2 -- the positive floor: a genuinely bad subject still fails, so an
+    # arm that always answers 0 dies here instead of passing rung 1 by accident.
+    rc, text = run(["chore(hooks): add the commit-msg gate", "bad subject here"])
+    rung("rung 2: a non-conforming subject exits 1", rc, 1)
+    rung("rung 2: the report names the offender", "bad subject here" in text, True)
+
+    # RUNG 3 -- the fixture's own hook is read, not a constant. Same corpus,
+    # two different hooks: the permissive one passes, the real one fails.
+    corpus = ["chore(hooks): add the commit-msg gate", "wibble(x): only the fixture allows this"]
+    rc_permissive, _ = run(corpus, hook_text=fixture_hook)
+    rc_strict, _ = run(corpus, hook_text=strict_hook)
+    rung("rung 3: the permissive fixture hook passes", rc_permissive, 0)
+    rung("rung 3: the real hook rejects the same corpus", rc_strict, 1)
+
+    # RUNG 4 -- exemptions are still counted, not skipped. A merge commit is
+    # exempt from the format yet must appear in the checked count. The range is
+    # floor..head, so the floor commit itself is EXCLUDED: two commits after the
+    # floor means one is checked. (Measured 2026-11-11: asserting 2 here failed,
+    # and the failure was this rung's arithmetic, not the checker's.)
+    rc, text = run(["chore(hooks): add the commit-msg gate",
+                    "chore(hooks): a conforming one",
+                    "Merge branch 'main' into x"])
+    rung("rung 4: an exempt merge commit still exits 0", rc, 0)
+    rung("rung 4: and is counted rather than skipped", "2 commit(s) checked" in text, True)
+
+    # RUNG 5 -- an unreadable corpus REFUSES with exit 2 rather than passing.
+    g, floor, _head = mkrepo(["chore(hooks): add the commit-msg gate"], fixture_hook)
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        rc = main(argv=["--range", f"{floor}..does-not-exist"], root=g)
+    text = out.getvalue() + err.getvalue()
+    rung("rung 5: an unreadable corpus exits 2", rc, 2)
+    rung("rung 5: the refusal says REFUSED", "REFUSED" in text, True)
+
+    # RUNG 6 -- no --range is a usage error, not a silent pass over nothing.
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        rc = main(argv=[], root=g)
+    rung("rung 6: a missing --range exits 2", rc, 2)
+    rung("rung 6: the report asks for --range", "need --range" in (out.getvalue() + err.getvalue()), True)
+
+    if failures:
+        print(f"verify-commit-subjects ladder: {failures}/{cases} rung(s) FAILED", file=sys.stderr)
+        return 1
+    print(f"verify-commit-subjects ladder: {cases}/{cases} rungs passed")
+    return 0
 
 
 if __name__ == "__main__":
