@@ -3,9 +3,13 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { Localized, useLocalization } from '@fluent/react';
 import { createStockCount, type StockCountDto } from '@/api/inventoryCounts';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { nextRadioValue } from '@/features/categories/categoryIcons';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import './StockCountForm.css';
+
+const COUNT_TYPES = ['full', 'cyclic', 'spot'] as const;
+type CountType = (typeof COUNT_TYPES)[number];
 
 interface Props {
   onCreated: (count: StockCountDto) => void;
@@ -14,14 +18,24 @@ interface Props {
 
 /** New stock count creation form — select count type (full, cyclic, or spot) and add optional notes before creating. */
 export default function StockCountForm({ onCreated, onCancel }: Props) {
-  const [countType, setCountType] = useState<'full' | 'cyclic' | 'spot'>('full');
+  const [countType, setCountType] = useState<CountType>('full');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const radioRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const { l10n } = useLocalization();
   const { sessionToken: rawSessionToken } = useWorkspace();
   const sessionToken = rawSessionToken ?? '';
+
+  const handleTypeKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const next = nextRadioValue(COUNT_TYPES, countType, e.key) as CountType | null;
+    if (next) {
+      e.preventDefault();
+      setCountType(next);
+      radioRefs.current[next]?.focus();
+    }
+  }, [countType]);
 
   // Re-entry guard for the count create. `setSaving(true)` is STATE -- React commits it on
   // its next render, after the second submit of a real double tap. MEASURED: two clicks in
@@ -84,13 +98,15 @@ export default function StockCountForm({ onCreated, onCancel }: Props) {
           </div>
           <div className="sc-type-options">
             {typeOptions.map((opt) => (
-               
               <button
                 key={opt.value}
+                ref={(el) => { radioRefs.current[opt.value] = el; }}
                 type="button"
                 className={`sc-type-btn ${countType === opt.value ? 'sc-type-btn--active' : ''}`}
                 onClick={() => setCountType(opt.value)}
+                onKeyDown={handleTypeKeyDown}
                 role="radio"
+                tabIndex={countType === opt.value ? 0 : -1}
                 aria-checked={countType === opt.value}
               >
                 <Localized id={`sc-type-${opt.value}`}>

@@ -442,7 +442,8 @@ and `gift-cards.ftl` / `sales.ftl`.
 1. **Hardcoded `currency: 'IDR'` + `created_by: 'staff'`** in
    `IssueGiftCardModal` — likely intentional until multi-currency gift cards and
    real operator identity land.
-2. **`gift-cards-loading` orphan** (in `sales.ftl`) — the screen uses a skeleton.
+2. ~~**`gift-cards-loading` orphan**~~ **✅ Obsolete / Verified** — key is absent
+   from both `sales.ftl` and `sales.id.ftl`; screen uses `.gift-cards-loading-skeleton`.
 
 ---
 
@@ -564,9 +565,10 @@ Audit of `src/features/inventory/` (11 screens) + `inventory.ftl` /
 
 ## Still open
 
-1. **`StockCountForm` type toggle** — the radiogroup (`role="radiogroup"`
-   + plain buttons) predates the arrow-key/roving-tabindex pattern applied
-   to tax and categories; low value since it has only 3 options.
+1. ~~**`StockCountForm` type toggle**~~ **✅ Fixed — verified 2026-11-13** — added
+   roving tabindex (`tabIndex={countType === opt.value ? 0 : -1}`) and WAI-ARIA
+   arrow-key navigation (`nextRadioValue`) to `StockCountForm.tsx`, tested in
+   `StockCountForm.test.tsx`.
 2. ~~**`stockStatus` low threshold**~~ **✅ Fixed — verified 2026-11-12** —
    updated `InventoryAdjustmentScreen.tsx` `stockStatus` helper to respect
    `product.low_stock_threshold ?? DEFAULT_LOW_STOCK_THRESHOLD` instead of
@@ -709,10 +711,11 @@ Audit of `StaffManagementScreen.tsx` + `staff.ftl` / `staff.id.ftl`.
 
 ## Still open
 
-1. **Login screen strings** — `StaffLoginScreen` still renders a couple of
-  hardcoded English strings (title fallback, "Enter your PIN", "Verifying…");
-  the dead `staff-login-*` keys were removed, so localizing it means adding
-  keys back deliberately.
+1. ~~**Login screen strings**~~ **✅ Obsolete / Resolved** — `StaffLoginScreen.tsx`
+  uses the modern minimalist PIN keypad layout (no separate step-pin/verifying
+  text labels); `staff-login-title` exists in both bundles and all active strings
+  (placeholders, aria-labels, quick login chips, copyright, last login) are
+  fully localized via `@fluent/react`.
 
 ---
 
