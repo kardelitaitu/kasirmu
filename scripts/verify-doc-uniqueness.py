@@ -52,10 +52,13 @@ Usage:
 from __future__ import annotations
 
 import io
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from collections import defaultdict
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 try:
@@ -64,6 +67,23 @@ except Exception:  # noqa: BLE001  # pragma: no cover
     pass
 
 ROOT = Path(__file__).resolve().parent.parent
+
+#: Where fixture trees are written when the host sets a temp variable (a confined
+#: host denies its default temp); unset leaves tempfile's own default in force.
+#: NEVER point these at a directory inside the checkout. This checker shells out
+#: to `git ls-files` with the root as its cwd, so a temp root under the repo would
+#: make a fixture's ls-files answer about a SUBDIRECTORY of this repository --
+#: 0 entries at exit 0 instead of the exit-128 refusal a real non-repo gives --
+#: and every no-git rung below would grade nothing while still passing.
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root this file's fixtures go under (None = system default), created."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
 
 AUTHORITY = re.compile(
     r"single source of truth|the authoritative|canonical source|"
@@ -115,11 +135,29 @@ CONVENTIONAL = {
 BASELINE: dict[tuple[str, ...], str] = {}
 
 
+def scan_base(root=None) -> Path:
+    """The tree this run grades: the checkout, or the fixture main() was handed.
+
+    Every path the scan reads AND every path it reports is derived from here.
+    `root` is threaded from main() through scan() into tracked_files() and
+    head_claims(); nothing is recorded in a module global, because a ladder on
+    a fixture would then read the real checkout back through that global and
+    grade 55 screens of the wrong tree.
+
+    The resolved base is one greppable line so scripts/prove-ladder-kills.py can
+    mutate it: smuggle it through a call and the harness reports NO APPLICABLE
+    MUTATION instead of a kill.
+    """
+    base = ROOT if root is None else Path(root).resolve()  # MUTANT-PROOF SEAM
+    return base
+
+
 def tracked_files(root=None) -> list[str]:
     # r182: the file list is an evidence source like any other -- root
     # redirects it, so a fixture repo's ls-files cannot silently become the
-    # real repository's (the r172 half-redirect class).
-    base = ROOT if root is None else Path(root).resolve()
+    # real repository's (the r172 half-redirect class). The base comes from
+    # scan_base() so ONE resolved root serves the list and the reads.
+    base = scan_base(root)
     out = subprocess.run(["git", "ls-files"], cwd=str(base),
                          shell=(sys.platform == "win32"),
                          capture_output=True, text=True)
@@ -152,17 +190,26 @@ def strip_comments(text: str) -> str:
     return HTML_COMMENT.sub(" ", text)
 
 
-def head_claims(path: Path) -> bool:
-    """True if the file's opening lines claim exclusivity."""
+def head_claims(path: Path, root=None) -> bool:
+    """True if the file's opening lines claim exclusivity.
+
+    `root` is threaded only so the read resolves against the same base the scan
+    listed; a fixture's paths are relative, so an unthreaded root would open
+    them against the PROCESS cwd instead of the tree being graded.
+    """
     try:
-        with io.open(path, encoding="utf-8", errors="replace") as fh:
+        opening = path if path.is_absolute() else scan_base(root) / path
+        with io.open(opening, encoding="utf-8", errors="replace") as fh:
             head = "".join(fh.readline() for _ in range(HEAD_LINES))
     except OSError:
         return False
     return bool(AUTHORITY.search(strip_comments(head)))
 
 
-def scan(root: Path) -> list[str]:
+def scan(root=None) -> list[str]:
+    # Resolved ONCE, at the top of the body: the tracked-file list and every
+    # document read below go through this root, never through ROOT.
+    root = scan_base(root)
     problems: list[str] = []
     baselined: list[str] = []
     by_name: dict[str, list[str]] = defaultdict(list)
@@ -191,7 +238,7 @@ def scan(root: Path) -> list[str]:
             continue
 
         identical = len(blobs) == 1
-        claiming = [p for p, a in zip(paths, abs_paths) if head_claims(a)]
+        claiming = [p for p, a in zip(paths, abs_paths) if head_claims(a, root)]
 
         # An archive copy is a deliberate duplicate: the archive holds the
         # previous version of a live document, so exactly one copy claiming
@@ -314,73 +361,195 @@ def self_test() -> int:
     print("  self-test: both directions behave")
 
     # r182: main()'s shell -- argv and root graded against throwaway fixture
-    # REPOS, the r166..r181 pattern. tracked_files() runs git ls-files under
-    # the fixture root, so each fixture is its own git repository; `git add`
-    # alone is enough because ls-files reads the index. Verdicts 0/1 and the
-    # non-repo refusal go through main, which the detector cases above never
-    # reach.
-    shell = 0
-    def _mkrepo(files):
-        d = Path(tempfile.mkdtemp())
-        subprocess.run(["git", "init", "-q"], cwd=d, shell=(sys.platform == "win32"),
-                       check=True)
+    # REPOS, the r166..r181 pattern. It lives in shell_ladder() below and is
+    # returned as the LAST thing this function does, so --self-test RUNS the
+    # ladder instead of merely defining it (the r263 shape: a ladder the census
+    # text-matches and nothing calls). The case count above stays the case
+    # COUNT; the ladder is where those cases become rungs.
+    return shell_ladder()
+
+
+#: The re-entry guard (the r228 pattern, shared with check-page-headings.py and
+#: verify-root-policy.py): rung 4 drives a nested --self-test through main(),
+#: whose self-test arm ends in shell_ladder(). Without the guard that nested run
+#: starts a SECOND ladder recursively.
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test (rung 4) must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        # SILENT, and load-bearing: anything printed here lands in the nested
+        # run's captured streams, which rung 4 reads for the nested case line.
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """
+    Grade main()'s shell on throwaway trees that live OUTSIDE this repository.
+
+    Each rung writes a fixture repository under a TemporaryDirectory beneath
+    fixture_root(), hands it to main(argv=[...], root=fixture) and reads the
+    verdict off BOTH captured streams. Nothing here reads or writes the real
+    tree, and nothing reaches into scan() directly: a rung that cannot be
+    observed from outside main() is not a rung.
+
+    Every fixture is its own git repo with a staged index, because the checker's
+    first act is `git ls-files` under the root handed to it. A fixture that is
+    NOT a repo is rung 5's subject on purpose.
+
+    WHAT IS GRADED.
+      * rung 1  the KILLING rung: two same-named docs both claiming authority,
+                and its verdict names the fixture's OWN paths in that order. A
+                main() that grades this checkout prints 'no duplicate
+                authoritative documents' at exit 0, which fails every clause.
+      * rung 2  the clean arm: the same tree with no duplicate -> exit 0 and no
+                finding line, so an arm that always answers 1 cannot pass.
+      * rung 3  the identical arm: byte-identical duplicates -> exit 1 on
+                'DUPLICATE (identical)'.
+      * rung 4  --self-test through argv: the unchanged inline cases, exit 0,
+                and the nested ladder skipped by the re-entry guard.
+      * rung 5  the SCOPE refusal: a directory that is NOT a git repository must
+                refuse through SystemExit naming 'git ls-files failed'.
+
+    WHAT IT DOES NOT PROVE -- measured, not assumed. Rung 1 kills a main() that
+    ignores root when this checkout is CLEAN, which it is today. On a checkout
+    that really carried a duplicate, a root-blind main would also exit 1, and the
+    rung's path assertions are what still catch it (the fixture's
+    'docs/guides/zz-fixdoc/tiers.md' is not a path this repository has). The
+    scan-base mutation in scripts/prove-ladder-kills.py is the proof rather than
+    this note.
+    """
+    import sys as _sys
+
+    def build(base, files):
+        """A git repo at `base` with `files` written and staged.
+
+        `git add` alone is enough: tracked_files() reads the INDEX via
+        `git ls-files`, never the worktree-only state a plain write leaves.
+        """
+        base = Path(base)
+        base.mkdir(parents=True, exist_ok=True)
+        run = ["git", "-C", str(base)]
+        subprocess.run(run + ["init", "-q"], shell=(_sys.platform == "win32"),
+                       capture_output=True, text=True)
         for rel, content in files.items():
-            dst = d / rel
+            dst = base / rel
             dst.parent.mkdir(parents=True, exist_ok=True)
-            io.open(dst, "w", encoding="utf-8").write(content)
-        subprocess.run(["git", "add", "."], cwd=d, shell=(sys.platform == "win32"),
-                       check=True)
-        return d
-    def _shell(files, argv=None):
-        d = _mkrepo(files)
+            io.open(dst, "w", encoding="utf-8", newline="\n").write(content)
+        subprocess.run(run + ["add", "."], shell=(_sys.platform == "win32"),
+                       capture_output=True, text=True)
+        return base
+
+    def grade(base, argv=()):
+        """(rc, everything main() printed to either stream).
+
+        An in-process SystemExit does NOT print its message -- the string lives
+        in se.code -- so the refusal rung inspects the code, not the streams.
+        """
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err):
             try:
-                rc = main(argv=[] if argv is None else argv, root=d)
+                rc = main(argv=list(argv), root=base)
             except SystemExit as se:
-                # in-process SystemExit does NOT print its message -- the
-                # string lives in se.code, so the caller inspects it there.
                 rc = se.code
         return rc, out.getvalue() + err.getvalue()
-    from contextlib import redirect_stdout, redirect_stderr
-    CLAIM = "# Tiers\n\n> Status: FINAL. Single source of truth for pricing.\n"
-    DISC = "# Tiers (archived snapshot)\nHistorical copy. Not maintained.\n"
-    shell += 1
-    rc, text = _shell({"docs/guides/tiers.md": CLAIM + "| a | yes |\n",
-                       "docs/records/tiers.md": CLAIM + "| a | no |\n"})
-    if rc != 1 or "CONFLICTING AUTHORITY" not in text:
-        print("  x two claiming duplicates through main() must exit 1 (rc=%d)" % rc)
-        return 1
-    shell += 1
-    rc, text = _shell({"docs/guides/tiers.md": CLAIM,
-                       "docs/records/tiers.md": DISC})
-    if rc != 0 or "no duplicate authoritative documents" not in text:
-        print("  x a disclaiming copy through main() must exit 0 (rc=%d)" % rc)
-        return 1
-    shell += 1
-    same = CLAIM + "| a | yes |\n"
-    rc, text = _shell({"docs/guides/tiers.md": same,
-                       "docs/records/tiers.md": same})
-    if rc != 1 or "DUPLICATE (identical)" not in text:
-        print("  x identical duplicates through main() must exit 1 (rc=%d)" % rc)
-        return 1
-    shell += 1
-    d = Path(tempfile.mkdtemp())   # a directory that is NOT a git repository
-    out, err = io.StringIO(), io.StringIO()
-    with redirect_stdout(out), redirect_stderr(err):
-        try:
-            rc = main(argv=[], root=d)
-        except SystemExit as se:
-            # in-process SystemExit does NOT print its message: the string
-            # lives in se.code. Coercing it to an int here threw the refusal
-            # away and graded the shell instead of the checker.
-            rc = se.code
-    refused = isinstance(rc, str) and rc.startswith("git ls-files failed")
-    if not refused:
-        print("  x a non-repo root must refuse naming ls-files (got %r)" % (rc,))
-        return 1
 
-    print("  shell: %d case(s) behave through main()" % shell)
+    # Fixture-relative docs whose basenames appear NOWHERE in this repository,
+    # so a verdict naming them cannot come from a scan of the real tree.
+    G = "docs/guides/zz-fixdoc/tiers.md"
+    R = "docs/records/zz-fixdoc/tiers.md"
+    CLAIM = "# Tiers" + chr(10) + chr(10) + "> Status: FINAL. Single source of truth for pricing." + chr(10)
+    DISC = "# Tiers (archived snapshot)" + chr(10) + chr(10) + "Historical copy. Not maintained." + chr(10)
+    OTHER = "# Notes" + chr(10) + chr(10) + "Nothing to see." + chr(10)
+
+    shell = 0
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as td:
+        base = Path(td)
+
+        # rung 1 -- the KILLING rung, and it grades a VERDICT, not a scope refusal.
+        # Both documents claim authority and differ. Both fixture paths must appear
+        # in sorted order (guides before records) and the clean line must not.
+        root = build(base / "one", {G: CLAIM + "| a | yes |" + chr(10),
+                                    R: CLAIM + "| a | no |" + chr(10)})
+        rc, said = grade(root)
+        if (rc != 1
+                or "verify-doc-uniqueness: 1 problem(s)" not in said
+                or ("CONFLICTING AUTHORITY: tiers.md at ['" + G + "', '" + R + "']") not in said
+                or "no duplicate authoritative documents" in said):
+            print("  x rung 1: two same-named docs both claiming authority in the "
+                  "FIXTURE must be VERDICTED rc 1 naming " + G + " then " + R
+                  + " (rc=%r said=%r)" % (rc, said[-400:]), file=_sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 2 -- the POSITIVE floor: no duplicate at all. An arm that always
+        # answers 1 passes rung 1 and dies here.
+        root = build(base / "two", {G: CLAIM + "| a | yes |" + chr(10),
+                                    "docs/notes.md": OTHER})
+        rc, said = grade(root)
+        if (rc != 0
+                or "no duplicate authoritative documents" not in said
+                or "problem(s)" in said):
+            print("  x rung 2: a fixture with no duplicate must exit 0 cleanly "
+                  "(rc=%r said=%r)" % (rc, said[-400:]), file=_sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 3 -- the IDENTICAL arm, which rung 1 cannot reach: two copies are
+        # byte-identical, so neither is a competing authority and the finding is
+        # reported as redundancy instead. Graded on the exact verdict prefix.
+        same = CLAIM + "| a | yes |" + chr(10)
+        root = build(base / "three", {G: same, R: same})
+        rc, said = grade(root)
+        if (rc != 1 or "DUPLICATE (identical): tiers.md" not in said
+                or "CONFLICTING AUTHORITY" in said):
+            print("  x rung 3: byte-identical duplicates in the fixture must exit 1 "
+                  "on DUPLICATE (identical) and not on CONFLICTING AUTHORITY "
+                  "(rc=%r said=%r)" % (rc, said[-400:]), file=_sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 4 -- --self-test through argv. Its own exit 0 proves the nested
+        # ladder was GUARDED: an unguarded nested run would recurse forever, and
+        # the two inline lines are what proves the case list ran unchanged.
+        root = build(base / "four", {"docs/notes.md": OTHER})
+        rc, said = grade(root, ("--self-test",))
+        if (rc != 0
+                or "self-test: both directions behave" not in said
+                or "CAUGHT  conflicting-authority duplicate" not in said):
+            print("  x rung 4: --self-test through argv must print the unchanged "
+                  "inline cases and exit 0 (rc=%r said=%r)" % (rc, said[-400:]),
+                  file=_sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 5 -- the SCOPE refusal, kept separate from every verdict rung: a
+        # directory that is not a git repository must REFUSE rather than report
+        # an empty-but-clean tree. The refusal is a SystemExit whose code is the
+        # message string, because in-process sys.exit does not print it.
+        plain = base / "five"
+        plain.mkdir(parents=True, exist_ok=True)
+        (plain / "docs").mkdir(parents=True, exist_ok=True)
+        io.open(plain / "docs" / "README.md", "w", encoding="utf-8").write("# r" + chr(10))
+        rc, said = grade(plain)
+        refused = isinstance(rc, str) and rc.startswith("git ls-files failed")
+        if not refused:
+            print("  x rung 5: a non-repo root must refuse naming git ls-files "
+                  "through SystemExit (got %r said=%r)" % (rc, said[-400:]),
+                  file=_sys.stderr)
+            return 1
+        shell += 1
+
+    print("LADDER OK (" + str(shell) + " shell rungs through main(): conflicting "
+          "authority, clean, identical duplicate, nested --self-test, scope refusal)")
     return 0
 
 
@@ -390,7 +559,7 @@ def main(argv=None, root=None) -> int:
     args = argv if argv is not None else sys.argv[1:]
     if "--self-test" in args:
         return self_test()
-    root_path = ROOT if root is None else Path(root).resolve()
+    root_path = scan_base(root)
     problems = scan(root_path)
     bl = getattr(scan, "baselined", [])
     if bl:

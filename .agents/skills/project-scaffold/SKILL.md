@@ -399,4 +399,4 @@ Drafts go straight into `_active/` (there is no `_template/` directory). Specs m
 
 ---
 
-> last audited 11-10-26 by docs-auditor
+> last audited 12-11-26 by skill-drift-guard

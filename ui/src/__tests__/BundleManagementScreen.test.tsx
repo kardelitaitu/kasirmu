@@ -372,5 +372,20 @@ describe('BundleManagementScreen', () => {
     releaseCreate?.(makeBundleWithItems());
     await waitFor(() => expect(mockCreateBundle).toHaveBeenCalledTimes(1));
   });
+
+  it('surfaces an inline alert when toggling bundle active status fails', async () => {
+    mockListBundles.mockResolvedValue([makeBundleWithItems()]);
+    mockUpdateBundle.mockRejectedValueOnce(new Error('network error'));
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Gift Box')).toBeDefined());
+
+    const toggleBtn = document.querySelector('.bundle-mgmt-toggle--on') as HTMLButtonElement;
+    await userEvent.click(toggleBtn);
+
+    await waitFor(() => {
+      const alert = screen.getByRole('alert');
+      expect(alert.textContent).toBe('Failed to save bundle');
+    });
+  });
 });
 

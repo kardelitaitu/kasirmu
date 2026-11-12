@@ -563,6 +563,196 @@ def self_test() -> int:
         print(f"verify-core-size --self-test: {failures}/{cases} FAILED", file=sys.stderr)
         return 1
     print(f"verify-core-size --self-test: {cases}/{cases} passed")
+    # r276: the ladder must be CALLED, not merely defined. r263 measured the
+    # failure this guards against -- a ladder that existed, satisfied a reader
+    # grepping for it, and never ran. The rule cases above are unchanged; this
+    # line is where they become rungs.
+    return shell_ladder()
+
+
+#: Re-entry guard: a rung that drives a nested --self-test must not start a
+#: second ladder recursively.
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """The rung ladder: every rung drives main() over a synthetic root.
+
+    WHY A LADDER AND NOT MORE RULE CASES. The cases in self_test() grade
+    helpers -- mask_comments_and_strings, strip_test_modules, is_test_file,
+    measure, fail. Not one of them grades the thing this gate is FOR: that
+    main(), handed a root, grades THAT root and answers with a verdict about
+    it. A checker whose main() ignores its root passes every rule case above
+    and then grades the developer's own checkout in production -- the exact
+    defect rounds r265..r275 found in five sibling checkers.
+
+    RUNG 1 IS THE KILLING RUNG, and it must kill on a VERDICT rather than on a
+    refusal (the r274 lesson). The fixture sits one line OVER its ceiling, so a
+    correct main() exits 1 naming the fixture's own delta. A root-blind main()
+    reads this checkout instead, which sits exactly at its own ceiling, and
+    exits 0 -- so the rung fails because the ANSWER is wrong, not because the
+    mutant could not start. Rung 1 asserts the absence of refusal text as well
+    as the presence of the verdict, so a future edit cannot quietly convert the
+    kill back into a scope refusal.
+
+    Rung 2 is the positive floor: a fixture AT its ceiling must exit 0, so an
+    arm that always answers 1 dies here instead of passing rung 1 by accident.
+    """
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _ladder_body() -> int:
+    import io
+    import tempfile
+    from contextlib import redirect_stderr, redirect_stdout
+
+    cases = 0
+    failures = 0
+
+    def rung(name: str, got, want) -> None:
+        nonlocal cases, failures
+        cases += 1
+        if got != want:
+            failures += 1
+            print(f"  x {name}: got {got!r}, want {want!r}", file=sys.stderr)
+
+    PROD = "crates/kasirmu-core/src/prod.rs"
+    DBF = "crates/kasirmu-core/src/db/store.rs"
+
+    def budget(ceiling, db_ceiling=0, non_db_ceiling=None):
+        return json.dumps({
+            "schema_version": 1,
+            "ceiling": ceiling,
+            "db_ceiling": db_ceiling,
+            "non_db_ceiling": ceiling if non_db_ceiling is None else non_db_ceiling,
+            "measured_files": 1,
+        })
+
+    def run(files, argv=None):
+        """Drive main() over a tempdir fixture; return (rc, combined output).
+
+        THE BASELINE IS PASSED AS AN ABSOLUTE --baseline-file, and that is the
+        whole mechanism of rung 1. Measured 2026-11-11: with the baseline left
+        at its default (root / scripts / BASELINE_NAME), a root-blind main()
+        resolves root to the MUTANT's own parent directory -- a temp dir with no
+        scripts/ in it -- and main() then CRASHES on write_text instead of
+        returning a verdict. A rung that kills on a crash has not shown that it
+        detects the defect (the r274 rule). An absolute baseline path is read
+        the same way by a correct main and by a root-blind one, so the mutant
+        still reaches the grading code and answers about the WRONG TREE.
+
+        The root PARAMETER is the redirect under test, so --root is never passed
+        in argv. Everything the caller asserts on is returned as text, because
+        the tempdir is gone once this returns (the r180 lesson).
+        """
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            for rel, content in files.items():
+                dst = base / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_text(content, encoding="utf-8")
+            baseline = base / "scripts" / BASELINE_NAME
+            if not baseline.is_file():
+                baseline.parent.mkdir(parents=True, exist_ok=True)
+                baseline.write_text(budget(0), encoding="utf-8")
+            call = ["--baseline-file", str(baseline)] + ([] if argv is None else argv)
+            out, err = io.StringIO(), io.StringIO()
+            with redirect_stderr(err), redirect_stdout(out):
+                rc = main(argv=call, root=base)
+            return rc, out.getvalue() + err.getvalue()
+
+    # RUNG 1 -- the KILLING rung, and it must kill on a VERDICT (the r274 rule).
+    # The fixture sits one line OVER its ceiling, so a correct main() exits 1
+    # naming the fixture's own delta. A root-blind main() grades THIS checkout
+    # instead, which sits exactly at its own ceiling, and exits 0 -- so the rung
+    # fails because the ANSWER is wrong, not because the mutant could not start.
+    # The refusal assertions below keep a future edit from quietly converting
+    # the kill back into a crash or a scope refusal.
+    rc, text = run({PROD: "pub fn a() {}\npub fn b() {}\npub fn c() {}\npub fn d() {}\n",
+                    "scripts/core-size-baseline.json": budget(3)})
+    rung("rung 1: an over-ceiling fixture exits 1", rc, 1)
+    rung("rung 1: the verdict names the fixture's delta", "+1 lines" in text, True)
+    rung("rung 1: the kill is a verdict, not a refusal",
+         any(m in text for m in ("baseline missing", "cannot read", "No such file",
+                                 "Traceback")), False)
+
+    # RUNG 2 -- the positive floor. At the ceiling, exit 0. An arm that always
+    # answers 1 dies here instead of passing rung 1 by accident.
+    rc, text = run({PROD: "pub fn a() {}\npub fn b() {}\npub fn c() {}\n",
+                    "scripts/core-size-baseline.json": budget(3)})
+    rung("rung 2: a fixture at its ceiling exits 0", rc, 0)
+    rung("rung 2: the report says headroom 0", "headroom 0" in text, True)
+
+    # RUNG 3 -- the fixture's own ceiling is honoured. Same tree, two different
+    # ceilings: 2 passes, 1 fails. A main() reading a constant baseline would
+    # answer the same way both times.
+    tree = {PROD: "pub fn a() {}\npub fn b() {}\n"}
+    rc_pass, _ = run({**tree, "scripts/core-size-baseline.json": budget(2)})
+    rc_fail, _ = run({**tree, "scripts/core-size-baseline.json": budget(1)})
+    rung("rung 3: the fixture's own ceiling is honoured (at)", rc_pass, 0)
+    rung("rung 3: the fixture's own ceiling is honoured (over)", rc_fail, 1)
+
+    # RUNG 4 -- the db/ budget fires its OWN message. The whole-crate ceiling is
+    # raised so only the db arm can fire; ADR-67 says a db rise is SQL debt and
+    # must not be reported as a modularity regression.
+    rc, text = run({DBF: "pub fn a() {}\npub fn b() {}\npub fn c() {}\npub fn d() {}\n",
+                    "scripts/core-size-baseline.json": budget(4, db_ceiling=3, non_db_ceiling=0)})
+    rung("rung 4: a db/ rise exits 1", rc, 1)
+    rung("rung 4: the db report says it cannot be extracted",
+         "cannot be extracted" in text, True)
+
+    # RUNG 5 -- the MODULARITY budget, the population Phase 3 P3.4 polices.
+    # Perturbing non_db_ceiling by 1 was measured to pass this gate before the
+    # branch existed, which would have made the whole split decorative.
+    rc, text = run({PROD: "pub fn a() {}\npub fn b() {}\npub fn c() {}\n",
+                    "scripts/core-size-baseline.json": budget(3, db_ceiling=0, non_db_ceiling=2)})
+    rung("rung 5: a non-db rise exits 1", rc, 1)
+    rung("rung 5: the report names the modularity population",
+         "could live in a module" in text, True)
+
+    # RUNG 6 -- a missing baseline fails with the fix, not a traceback.
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        dst = base / PROD
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text("pub fn a() {}\n", encoding="utf-8")
+        missing = base / "scripts" / BASELINE_NAME
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stderr(err), redirect_stdout(out):
+            rc = main(argv=["--baseline-file", str(missing)], root=base)
+        text = out.getvalue() + err.getvalue()
+    rung("rung 6: a missing baseline exits 1", rc, 1)
+    rung("rung 6: the report names the fix", "run --emit-baseline" in text, True)
+
+    # RUNG 7 -- --emit-baseline writes the FIXTURE's baseline, not this
+    # checkout's. The post-condition runs inside the fixture's lifetime.
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        dst = base / PROD
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text("pub fn a() {}\npub fn b() {}\n", encoding="utf-8")
+        scripts = base / "scripts"
+        scripts.mkdir(parents=True, exist_ok=True)
+        written_path = scripts / BASELINE_NAME
+        written_path.write_text("{}", encoding="utf-8")
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stderr(err), redirect_stdout(out):
+            rc = main(argv=["--emit-baseline", "--baseline-file", str(written_path)], root=base)
+        written = json.loads(written_path.read_text(encoding="utf-8"))
+    rung("rung 7: --emit-baseline exits 0", rc, 0)
+    rung("rung 7: --emit-baseline writes the FIXTURE's ceiling", written.get("ceiling"), 2)
+
+    if failures:
+        print(f"verify-core-size ladder: {failures}/{cases} rung(s) FAILED", file=sys.stderr)
+        return 1
+    print(f"verify-core-size ladder: {cases}/{cases} rungs passed")
     return 0
 
 

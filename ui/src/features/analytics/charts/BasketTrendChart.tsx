@@ -40,5 +40,6 @@ export function BasketTrendChart({ data, prev, compare, expanded, getString }: B
       }] : []),
     ],
   }) : null), [data, prev, compare, getString]);
-  return <ReactEChartsCore echarts={echarts} option={option!} style={{ height: chartHeight('basket', expanded) }} notMerge />;
+  if (!option) return null;
+  return <ReactEChartsCore echarts={echarts} option={option} style={{ height: chartHeight('basket', expanded) }} notMerge />;
 }

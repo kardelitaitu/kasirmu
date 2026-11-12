@@ -1100,7 +1100,7 @@ export default function TaxConfigurationScreen({ embedded = false }: TaxConfigur
                   key={r.id}
                   className={`tax-config-cat-rate-item ${checked ? 'tax-config-cat-rate-item--checked' : ''}`}
                   htmlFor={"tax-cat-rate-" + r.id}
-                  aria-label={r.name}
+                  aria-label={`${r.name} (${r.display_rate} · ${l10n.getString(r.is_inclusive ? 'tax-config-type-inclusive' : 'tax-config-type-exclusive')})`}
                 >
                   <input
                     type="checkbox"

@@ -275,11 +275,11 @@ export function usePosCartActions({
     // silently truncating it via parseInt.
     const pct = Number(discountInput);
     if (!Number.isInteger(pct) || pct < 1 || pct > 100) return;
-    setDiscount(pct, discountName.trim() || `${pct}% Discount`);
+    setDiscount(pct, discountName.trim() || requiredLocalized(l10nRef.current, 'pos-discount-default-label', { pct }));
     setShowDiscountInput(false);
     setDiscountInput('');
     setDiscountName('');
-  }, [discountInput, discountName, setDiscount, setDiscountInput, setDiscountName, setShowDiscountInput]);
+  }, [discountInput, discountName, l10nRef, setDiscount, setDiscountInput, setDiscountName, setShowDiscountInput]);
 
   const handleClearDiscount = useCallback(() => {
     setDiscount(0, '');

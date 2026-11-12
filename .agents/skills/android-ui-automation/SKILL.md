@@ -461,4 +461,4 @@ git status --porcelain -- apps/mobile-tauri/tauri.conf.json   # must print nothi
 
 ---
 
-> last audited 11-10-26 by docs-auditor
+> last audited 12-11-26 by skill-drift-guard

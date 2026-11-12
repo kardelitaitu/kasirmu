@@ -207,4 +207,4 @@ referenced by Chrome's installability check, not by the page. The PNGs live in `
 (untracked unless the owner folds them into `assets/branding/default/web/`); add the rows in
 lockstep on both manifests.
 
-> last audited 11-10-26 by docs-auditor
+> last audited 12-11-26 by skill-drift-guard

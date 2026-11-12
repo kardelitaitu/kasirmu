@@ -204,4 +204,4 @@ to the environment is not the same as binding a bucket.
 8. **Deploying from the repo root.** No config is picked up there; the command silently targets
    the wrong project or fails.
 
-> last audited 11-10-26 by docs-auditor
+> last audited 12-11-26 by skill-drift-guard

@@ -196,4 +196,4 @@ Resolve remote shas with `git ls-remote`. A `git fetch` that prints `X..Y main -
 7. Prove what you can locally; state plainly what the sandbox prevented you from proving.
 8. Ask for the push order, then merge to `main` and poll the build to conclusion.
 
-> last audited 11-10-26 by docs-auditor
+> last audited 12-11-26 by skill-drift-guard

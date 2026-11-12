@@ -282,7 +282,7 @@
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
   gap: var(--space-2);
 }
 
@@ -290,6 +290,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -297,12 +298,16 @@
 }
 
 .dashboard-low-stock-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-size: var(--text-sm);
   font-weight: var(--font-weight-medium);
   color: var(--color-fg);
 }
 
 .dashboard-low-stock-qty {
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: var(--text-xs);
   font-family: var(--font-mono);
   color: var(--color-danger);

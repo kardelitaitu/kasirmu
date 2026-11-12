@@ -307,8 +307,9 @@ pub async fn print_sales_receipt_scoped(
     session_token: &str,
     args: PrintSalesReceiptArgs,
 ) -> Result<PrintSalesReceiptResult, BridgeError> {
-    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
-    // authenticated operator. Gating it is a product ruling, not a repair.
+    // ungated-ok: session-auth sufficient (BRIDGE-7, ruled 2026-11-10). This
+    // command prints a sale receipt which contains only data the operator
+    // already processed at the terminal; it carries no cross-customer PII.
     // The terminal id is read OUTSIDE the db lock so the guard never crosses
     // an await point — it selects the terminal-scoped layout row that has the
     // highest precedence in `effective_receipt_format`.
@@ -693,8 +694,10 @@ pub async fn print_receipt_scoped(
     args: PrintReceiptArgs,
     session_token: &str,
 ) -> Result<PrintReceiptResult, BridgeError> {
-    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
-    // authenticated operator. Gating it is a product ruling, not a repair.
+    // ungated-ok: session-auth sufficient (BRIDGE-7, ruled 2026-11-10). These
+    // commands carry no cross-customer PII; the operator already processed
+    // the data at this terminal. See print_kasbon_settlement_slip_scoped for
+    // the one command in this module that required a permission gate.
     ctx.resolve_scope(session_token)?;
     let printer = ctx
         .registry
@@ -735,8 +738,10 @@ pub async fn print_edc_settlement_slip_scoped(
     args: PrintEdcSettlementArgs,
     session_token: &str,
 ) -> Result<PrintSalesReceiptResult, BridgeError> {
-    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
-    // authenticated operator. Gating it is a product ruling, not a repair. This
+    // ungated-ok: session-auth sufficient (BRIDGE-7, ruled 2026-11-10). These
+    // commands carry no cross-customer PII; the operator already processed
+    // the data at this terminal. See print_kasbon_settlement_slip_scoped for
+    // the one command in this module that required a permission gate. This
     // is the settlement-slip printer, in the same class as print_receipt_scoped
     // and print_sales_receipt_scoped above; EDC settlement still requires a
     // session (`resolve_scope`), it simply names no permission.
@@ -824,18 +829,29 @@ pub struct PrintKasbonSettlementArgs {
 }
 
 /// Print a Kasbon (receivable) settlement slip (scoped — requires valid session).
+///
+/// # Errors
+///
+/// [`BridgeError::InvalidSession`] for an unknown or expired token;
+/// [`BridgeError::PermissionDenied`] when the session does not hold
+/// `receivables:view` — this slip discloses `customer_name`, `customer_phone`,
+/// and three money fields, so any authenticated operator should NOT be able to
+/// reprint another customer's receivable balance (BRIDGE-7 ruling: Option B,
+/// 2026-11-10). The other ten hardware commands in this module remain ungated
+/// because they carry no customer PII beyond what the operator just tendered.
 pub async fn print_kasbon_settlement_slip_scoped(
     ctx: &BridgeCtx<'_>,
     args: PrintKasbonSettlementArgs,
     session_token: &str,
 ) -> Result<PrintSalesReceiptResult, BridgeError> {
-    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
-    // authenticated operator, the same ruling that covers the other ten hardware
-    // commands in this module. Gating it is a product ruling, not a repair.
-    // Worth naming because this slip carries MORE than a sales receipt: customer
-    // name, optional phone, and the receivable balances. An operator who should not
-    // see another customer's receivable can print one today, so closing BRIDGE-7
-    // should consider this command first.
+    // BRIDGE-7 closed (Option B, 2026-11-10): gate this command on
+    // `receivables:view` because the slip carries customer_name,
+    // customer_phone, previous_balance, amount_paid, and remaining_balance —
+    // fields that disclose another customer's financial position to any
+    // authenticated operator who supplies the args.
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, permissions::RECEIVABLES_VIEW)
+        .await?;
     ctx.resolve_scope(session_token)?;
     let terminal_id = ctx.terminal_id().await;
     let (config, store_info) = {
@@ -1018,8 +1034,10 @@ pub async fn list_scanners_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<Vec<ScannerInfo>, BridgeError> {
-    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
-    // authenticated operator. Gating it is a product ruling, not a repair.
+    // ungated-ok: session-auth sufficient (BRIDGE-7, ruled 2026-11-10). These
+    // commands carry no cross-customer PII; the operator already processed
+    // the data at this terminal. See print_kasbon_settlement_slip_scoped for
+    // the one command in this module that required a permission gate.
     ctx.resolve_scope(session_token)?;
     let ids = ctx.registry.scanner_ids_ranked().await;
     let (preferred, mode) = saved_scanner_prefs(ctx).await?;
@@ -1057,8 +1075,10 @@ pub async fn start_scanner_scoped(
     scanner_id: &str,
     session_token: &str,
 ) -> Result<(), BridgeError> {
-    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
-    // authenticated operator. Gating it is a product ruling, not a repair.
+    // ungated-ok: session-auth sufficient (BRIDGE-7, ruled 2026-11-10). These
+    // commands carry no cross-customer PII; the operator already processed
+    // the data at this terminal. See print_kasbon_settlement_slip_scoped for
+    // the one command in this module that required a permission gate.
     ctx.resolve_scope(session_token)?;
     {
         let mut cancel = ctx.scanner_cancel.lock().await;
@@ -1166,8 +1186,10 @@ pub async fn stop_scanner_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<(), BridgeError> {
-    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
-    // authenticated operator. Gating it is a product ruling, not a repair.
+    // ungated-ok: session-auth sufficient (BRIDGE-7, ruled 2026-11-10). These
+    // commands carry no cross-customer PII; the operator already processed
+    // the data at this terminal. See print_kasbon_settlement_slip_scoped for
+    // the one command in this module that required a permission gate.
     ctx.resolve_scope(session_token)?;
     let mut cancel = ctx.scanner_cancel.lock().await;
     if let Some(sender) = cancel.take() {
@@ -1185,8 +1207,10 @@ pub async fn list_displays_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<Vec<String>, BridgeError> {
-    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
-    // authenticated operator. Gating it is a product ruling, not a repair.
+    // ungated-ok: session-auth sufficient (BRIDGE-7, ruled 2026-11-10). These
+    // commands carry no cross-customer PII; the operator already processed
+    // the data at this terminal. See print_kasbon_settlement_slip_scoped for
+    // the one command in this module that required a permission gate.
     ctx.resolve_scope(session_token)?;
     Ok(ctx.registry.display_ids().await)
 }
@@ -1203,8 +1227,10 @@ pub async fn display_show_scoped(
     args: DisplayShowArgs,
     session_token: &str,
 ) -> Result<(), BridgeError> {
-    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
-    // authenticated operator. Gating it is a product ruling, not a repair.
+    // ungated-ok: session-auth sufficient (BRIDGE-7, ruled 2026-11-10). These
+    // commands carry no cross-customer PII; the operator already processed
+    // the data at this terminal. See print_kasbon_settlement_slip_scoped for
+    // the one command in this module that required a permission gate.
     ctx.resolve_scope(session_token)?;
     let display = ctx
         .registry
@@ -1232,8 +1258,10 @@ pub async fn discover_hardware_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<Vec<UsbDeviceInfo>, BridgeError> {
-    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
-    // authenticated operator. Gating it is a product ruling, not a repair.
+    // ungated-ok: session-auth sufficient (BRIDGE-7, ruled 2026-11-10). These
+    // commands carry no cross-customer PII; the operator already processed
+    // the data at this terminal. See print_kasbon_settlement_slip_scoped for
+    // the one command in this module that required a permission gate.
     ctx.resolve_scope(session_token)?;
     match probe_all() {
         Ok(devices) => Ok(devices),
@@ -1255,8 +1283,10 @@ pub async fn display_clear_scoped(
     display_id: &str,
     session_token: &str,
 ) -> Result<(), BridgeError> {
-    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
-    // authenticated operator. Gating it is a product ruling, not a repair.
+    // ungated-ok: session-auth sufficient (BRIDGE-7, ruled 2026-11-10). These
+    // commands carry no cross-customer PII; the operator already processed
+    // the data at this terminal. See print_kasbon_settlement_slip_scoped for
+    // the one command in this module that required a permission gate.
     ctx.resolve_scope(session_token)?;
     let display =
         ctx.registry.display(display_id).await.ok_or_else(|| {

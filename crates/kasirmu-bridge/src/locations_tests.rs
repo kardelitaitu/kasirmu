@@ -587,6 +587,32 @@ async fn create_location_profile_refuses_when_the_store_db_cannot_be_created() {
     )
     .await;
 
+    // Release mode: without a paid tier, the quota gate refuses upstream at the
+    // Free store quota (1 store, already taken by migration seed `default`),
+    // exactly like create_location_profile_scoped_end_to_end_owner above.
+    if !seeded_row_reaches_a_paid_tier() {
+        match result {
+            Err(BridgeError::Core { sub_kind, .. }) => {
+                assert_eq!(
+                    format!("{sub_kind:?}").to_lowercase(),
+                    "subscriptionlimitexceeded",
+                    "in release profile without a paid tier, Free quota refuses before store creation"
+                );
+            }
+            other => panic!("expected Free quota rejection in release mode, got: {other:?}"),
+        }
+        assert!(
+            !tb.ctx().db_manager.store_db_exists(hostile_id),
+            "no store database was written in release mode"
+        );
+        let after = list_locations_scoped(&tb.ctx(), "owner-tok")
+            .await
+            .expect("the owner may still list locations");
+        assert_eq!(after.len(), before.len());
+        assert!(!after.iter().any(|l| l.id == hostile_id));
+        return;
+    }
+
     let err = result.expect_err(
         "a store database that could not be created must not be reported as a created location",
     );

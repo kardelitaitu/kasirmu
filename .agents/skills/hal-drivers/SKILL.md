@@ -400,4 +400,4 @@ async fn sale_completes_after_scan() {
 
 ---
 
-> last audited 11-10-26 by docs-auditor
+> last audited 12-11-26 by skill-drift-guard

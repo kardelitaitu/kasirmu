@@ -54,6 +54,12 @@ with ✅, so this file stays a live index rather than a stale backlog.
   blindly into `T`. `CARD_PAYLOAD_VALIDATORS` (colocated with
   `CARD_LOADERS`) supplies a loose structural guard per card, and the heatmap
   query passes its own.
+- **2026-11-11 live Chromium pass (`/#/analytics` + `/#/reports`):** Fixed portaled
+  `.analytics-card-menu` token scoping (`AnalyticsScreen.css`), expanded
+  `.analytics-kpi-tiles` wrap overlap on `RefundsCard`, ECharts `option`
+  null-guards across 7 chart components, `GraphicComponent` registration &
+  low-stock badge wrapping in `DashboardScreen`, and `mountedRef` cleanup in
+  `useAnalyticsQuery.ts` (0 console errors/warnings).
 
 ---
 
@@ -91,12 +97,12 @@ NodeTopologyEditor). Fixed items are committed; the rest remain open.
 
 ### Dashboard
 
-1. **Eager loading** — `loadData` fetches all 8 datasets (daily/weekly/monthly
-   revenue, top products, low stock, category, heatmap, prev-daily) regardless
-   of the selected granularity; `getLowStockAlerts(10)` also ignores the date
-   range (same non-time-bounded snapshot as the analytics low-stock card).
-2. **`fmtDelta` edge case** — returns `+∞` / `−` when the previous period is
-   zero; these are math symbols and arguably fine, but not localized.
+1. ~~**Eager loading**~~ **✅ Fixed** — `DashboardScreen.tsx` fetches by active
+   granularity (`fetchPeriodDatasets`) and skips redundant prev-daily loads when not on
+   daily view; `getLowStockAlerts(10)` remains an intentional non-time-bounded current
+   inventory snapshot.
+2. ~~**`fmtDelta` edge case**~~ **✅ Fixed** — `fmtDelta` already uses localized
+   zero-baseline / neutral dash formatting in `DashboardScreen.tsx`.
 
 ### AnalyticsScreen
 
@@ -304,9 +310,11 @@ Audit of `TaxConfigurationScreen.tsx` + `tax.ftl` / `tax.id.ftl`.
 2. ✅ **Category modal no-op save fixed** — `SettingsPopup` now receives
    `saveDisabled` (a sorted-id diff against `catTaxRates.get(editingCatId)`), so
    an untouched assignment can't round-trip the IPC write.
-3. **Redundant `aria-label` on picker labels** — the category rate `<label>`s
-   set `aria-label={r.name}`, which may override the richer label text (rate % +
-   type). Confirm whether the bare name is the intended accessible name.
+3. ~~**Redundant `aria-label` on picker labels**~~ **✅ Fixed — verified 2026-11-11** —
+   updated `TaxConfigurationScreen.tsx` category rate `<label>` `aria-label` to
+   `` `${r.name} (${r.display_rate} · ${l10n.getString(r.is_inclusive ? 'tax-config-type-inclusive' : 'tax-config-type-exclusive')})` ``
+   so `jsx-a11y/label-has-associated-control` is satisfied while exposing rate % and
+   tax type to assistive technology.
 
 ---
 
@@ -452,16 +460,12 @@ Audit of `PromotionManagementScreen.tsx` + `promotions.ftl` / `promotions.id.ftl
 
 ## Still open
 
-1. **`parseInt` truncation in numeric fields** — `value_minor`,
-   `min_order_minor` (via `parseInt(e.target.value) || 0`) and `min_qty` /
-   `reward_qty` (via `parseInt(e.target.value)`) silently truncate decimals
-   like `500.5` → `500`. Number inputs with default `step=1` usually prevent
-   this, but the truncation is silent if a decimal is typed.
-2. **`datetime-local` timezone round-trip** — the Starts/Ends pickers write
-   `new Date(value).toISOString()` (UTC) and read back
-   `iso.substring(0, 16)` (treated as local), so an operator in UTC+7 sees the
-   stored time shifted by the offset on reopen. Needs a deliberate decision on
-   whether promotions store local wall-clock time.
+1. ~~**`parseInt` truncation in numeric fields**~~ **✅ Fixed** — resolved in
+   `PromotionManagementScreen.tsx`.
+2. ~~**`datetime-local` timezone round-trip**~~ **✅ Fixed — verified 2026-11-11**
+   — added `toDatetimeLocalValue` helper in `PromotionManagementScreen.tsx` for
+   local wall-clock round-tripping of `starts_at` / `ends_at` in
+   `<input type="datetime-local">`.
 3. **`value` column display** — for `fixed_amount` / `buy_x_get_y` the raw
    `value_minor` integer is shown without currency formatting; for
    `percentage` it renders `{n}%`. Confirm the intended display for non-
@@ -497,7 +501,8 @@ Audit of `LoyaltyManagementScreen.tsx` + `loyalty.ftl` / `loyalty.id.ftl`.
    `role="button" tabIndex={0}` with an expand handler, AND contains a real
    `<button>` doing the same toggle. Screen readers and keyboard users see two
    controls for one action. Needs a design decision (drop the row role, or the
-   inner chevron button).
+   inner chevron button). *(Note 2026-11-11: currently pinned intentional by the
+   `LOY-10` contract test in `LoyaltyManagementScreen.test.tsx`.)*
 2. **Dynamic `loyalty-${txn.txn_type}` keys** — covered for the known types
    (`earn`/`redeem`/`adjust`); an unknown backend type falls back to the
    capitalized raw value.
@@ -564,9 +569,9 @@ Audit of `src/features/inventory/` (11 screens) + `inventory.ftl` /
    to tax and categories; low value since it has only 3 options.
 2. **`stockStatus` low threshold** — hardcoded `< 10` in
    `InventoryAdjustmentScreen` while thresholds are configurable elsewhere.
-3. **`ShiftBar` note field** — `inv-shift-notes-label` was orphan because
-   the visible label isn't localized (the `<label>` renders raw English
-   "Notes"); the placeholder is localized. Worth a visual check.
+3. ~~**`ShiftBar` note field**~~ **✅ Fixed — verified 2026-11-11** — checked
+   `ShiftBar.tsx`: it uses `<Localized id="inv-shift-notes-placeholder">` and
+   `inv-shift-notes-aria` with no raw `"Notes"` `<label>`.
 
 ---
 
@@ -601,9 +606,10 @@ Audit of `src/features/products/` (4 screens) + `products.ftl` /
 
 ## Still open
 
-1. **`BundleManagementScreen` `toggleActive`** — update failures are still
-   silent (no toast/alert) and the toggle is optimistic; a failed toggle
-   leaves the UI showing the flipped state until the next load.
+1. ~~**`BundleManagementScreen` `toggleActive`**~~ **✅ Fixed — verified 2026-11-11**
+   — `toggleActive` in `BundleManagementScreen.tsx` now catches update failures and
+   surfaces `bundles-error-save` inline (`role="alert"`), covered by a unit test in
+   `BundleManagementScreen.test.tsx`.
 2. **`ProductManagementScreen` delete confirm** — uses an inline `ConfirmDialog`
    but the `product-mgmt-deleting` plural key was dead (never read), so the
    deleting state renders nothing; harmless but dead code removed.
@@ -768,11 +774,12 @@ PaymentModal, PriceOverrideModal, StockShortfallDialog).
 
 ## Still open
 
-1. **Hardcoded 'Failed to delete held cart' toast** — PosScreen line ~826
-  uses a raw English toast string (unlocalized). Needs an FTL key.
-2. **`discountName` fallback** — `handleApplyDiscount` builds the label as
-  `` `${pct}% Discount` `` when the optional name is blank — raw English
-  string in the cart.
+1. ~~**Hardcoded 'Failed to delete held cart' toast**~~ **✅ Fixed** — `PosScreen.tsx`
+   uses `pos-toast-held-cart-delete-failed`.
+2. ~~**`discountName` fallback**~~ **✅ Fixed — verified 2026-11-11** — replaced raw
+   `` `${pct}% Discount` `` in `usePosCartActions.ts` with
+   `pos-discount-default-label` (`{ $pct }% Discount` / `Diskon { $pct }%`) in
+   `sales.ftl` and `sales.id.ftl`.
 3. **PaymentModal receipt dates** — lines 467/771 use `toLocaleDateString('en-US')`
   for the printable receipt artifact — intentional, consistent with EOD print.
 

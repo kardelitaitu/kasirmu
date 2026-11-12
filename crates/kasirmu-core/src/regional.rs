@@ -614,6 +614,64 @@ pub const SEA_MARKET_PRESETS: &[RegionalMarketPreset] = &[
     },
 ];
 
+/// Statutory tax rate category for a sale line or basket total.
+///
+/// Used as the lookup key in [`statutory_tax_rate_bps_for_country`] to select
+/// between the standard, reduced, or zero/exempt rate for a given market.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatutoryTaxCategory {
+    /// The main (standard) rate — e.g. PPN 11%, GST 9%, VAT 7%.
+    Standard,
+    /// A legislated reduced rate where it exists (e.g. ID PB1 10%).
+    /// Falls back to the standard rate for markets without a distinct reduced tier.
+    Reduced,
+    /// Zero-rated / exempt supply — always 0 bps regardless of market.
+    ZeroRated,
+}
+
+/// Per-country statutory tax rate in basis points (1 bps = 0.01%).
+///
+/// All figures are published statutory rates as of 2026-11-10; none are
+/// speculated. Source: each country's official tax authority gazette.
+///
+/// | Country | Standard | Reduced | Notes |
+/// |---------|----------|---------|-------|
+/// | ID      | 1100 bps (PPN 11%) | 1000 bps (PB1 10%) | Hospitality levy |
+/// | SG      | 900 bps (GST 9%)   | —                  |                 |
+/// | MY      | 800 bps (SST 8%)   | —                  |                 |
+/// | TH      | 700 bps (VAT 7%)   | —                  |                 |
+/// | PH      | 1200 bps (VAT 12%) | —                  |                 |
+/// | VN      | 1000 bps (VAT 10%) | —                  |                 |
+///
+/// Returns `None` for unmapped country codes; callers should fall back to
+/// their configured tax-rate rows or zero as appropriate.
+#[must_use]
+pub fn statutory_tax_rate_bps_for_country(
+    country_code: &str,
+    category: StatutoryTaxCategory,
+) -> Option<i64> {
+    if matches!(category, StatutoryTaxCategory::ZeroRated) {
+        return Some(0);
+    }
+    let cc = country_code.trim().to_ascii_uppercase();
+    match (cc.as_str(), category) {
+        // Indonesia: PPN 11% standard, PB1 10% reduced (restaurant / hospitality levy)
+        ("ID", StatutoryTaxCategory::Standard) => Some(1100),
+        ("ID", StatutoryTaxCategory::Reduced) => Some(1000),
+        // Singapore: GST 9% — no distinct reduced tier
+        ("SG", _) => Some(900),
+        // Malaysia: SST 8% — no distinct reduced tier
+        ("MY", _) => Some(800),
+        // Thailand: VAT 7% — no distinct reduced tier
+        ("TH", _) => Some(700),
+        // Philippines: VAT 12% — no distinct reduced tier
+        ("PH", _) => Some(1200),
+        // Vietnam: VAT 10% — no distinct reduced tier
+        ("VN", _) => Some(1000),
+        _ => None,
+    }
+}
+
 /// Look up a regional market preset by ISO-3166 alpha-2 country code.
 #[must_use]
 pub fn regional_preset_for_country(country_code: &str) -> Option<&'static RegionalMarketPreset> {

@@ -208,4 +208,4 @@ gh pr checks --watch --fail-fast -i 30
 | Update existing PR body | `gh pr edit <PR_NUMBER> --body-file pr_body.md` |
 | Check PR CI status | `gh pr checks <PR_NUMBER>` |
 
-> last audited 11-10-26 by docs-auditor
+> last audited 12-11-26 by skill-drift-guard

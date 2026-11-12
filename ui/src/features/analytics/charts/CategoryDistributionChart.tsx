@@ -24,5 +24,6 @@ export function CategoryDistributionChart({ names, pcts, expanded }: CategoryDis
       data: names.map((n, i) => ({ value: pcts[i], name: n, itemStyle: { color: PALETTE[i % PALETTE.length] } })),
     }],
   }) : null), [names, pcts]);
-  return <ReactEChartsCore echarts={echarts} option={option!} style={{ height: chartHeight('category', expanded) }} notMerge />;
+  if (!option) return null;
+  return <ReactEChartsCore echarts={echarts} option={option} style={{ height: chartHeight('category', expanded) }} notMerge />;
 }

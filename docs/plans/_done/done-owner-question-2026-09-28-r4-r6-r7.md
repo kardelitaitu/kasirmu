@@ -1,3 +1,10 @@
+<!-- ARCHIVED 2026-11-11 — moved from docs/plans/_active/ to docs/plans/_done/ with the done- prefix.
+     EARNING: the file's own acceptance is that all four questions were answered, and they were,
+     recorded in the file's own "Answers — recorded 2026-09-29" section (Q1 -> option (a), executed
+     same day; Q2/R6 -> declined; Q3/R7 -> "none yet", loopback simulator is the active
+     implementation; Q4 recorded, not asked). Nothing in this file is still awaiting an answer,
+     so the prefix is earned rather than merely applied. The 2026-10-11 audit stamp above and the
+     2026-10-11 verification section below are the document's own content and are unchanged. -->
 <!-- Audit stamp: 2026-10-11 · docs-auditor · status: ACCURATE AFTER REPAIR (2 minor) · Re-audit. Every anchor in this file resolves at HEAD: the R4 execution (register_loopback_terminal, the loopback:// scheme, register_card_terminals) is real, 20260824_media_edc.sql still carries NO is_default so option (a) is correctly the shipped shape, and the Q2 credential anchor is EXACT (MIDTRANS_SERVER_KEY at qris.rs:306, STRIPE_SECRET_KEY at stripe.rs:192, PADDLE_API_KEY at paddle.rs:91). TWO MINOR REPAIRS: the integration file was cited without its tests/ directory (crates/kasirmu-payment/tests/qris_integration.rs, 21 cases, 0 #[ignore] — the trap this file describes holds), and the R7 stub line counts had drifted (wired.rs 112->125, wireless.rs 132->145, protocol/*.rs 46->47 at HEAD); both are recorded with the old reading kept. The 2026-09-29 answers section is the document's own content and was left as written. NOT re-measured: whether the owner has since supplied the R6 credential or named an R7 terminal model — that is the owner's answer, and this file is the record that the question was put.
 
      --- prior stamp, preserved as plain text (delimiters stripped) ---

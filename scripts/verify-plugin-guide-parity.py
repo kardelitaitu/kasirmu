@@ -60,11 +60,30 @@ LIMITATIONS
 """
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+#: Where fixture trees are written when the host sets a temp variable (a confined
+#: host denies its default temp); unset leaves tempfile's own default in force
+#: (the r166 contract, shared with verify-runner-claims.py and check-raw-key-assertions.py).
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root this file's fixtures go under (None = system default), created.
+
+    The makedirs is the r250 lesson: a scratch dir removed between runs otherwise
+    makes EVERY fixture fail before it grades anything. exist_ok keeps the common
+    case a no-op.
+    """
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
 
 
 def _paths(root=None) -> dict:
@@ -164,7 +183,9 @@ def self_test() -> int:
     # r178: main()'s shell -- argv and root graded against a tempdir fixture
     # carrying all five evidence sources, the r166..r177 pattern. main's exit
     # mapping (0 / 1 / 2 and --report-only) is what the parser cases above
-    # never reach.
+    # never reach. r279: the fixtures nest under fixture_root() and the ladder
+    # below grades the same shell from its own tree, so a parser whose root seam
+    # is broken fails in two places rather than passing quietly.
     import contextlib as _ctxlib
     import io as _io
     import tempfile as _tempfile
@@ -220,6 +241,205 @@ def self_test() -> int:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
     print("SELF-TEST OK (6 parser cases + 5 shell cases, no repo files touched)")
+    # r279: the ladder must be CALLED, not merely defined. r263 found a ladder
+    # that existed, satisfied the census TEXT match, and never ran -- measured,
+    # --self-test printed this very line and no ladder line at all. The cases
+    # above are the case count; this is where the shell cases become rungs.
+    return shell_ladder()
+
+
+#: The re-entry guard (the r228 pattern): rung 5 drives a nested --self-test
+#: through main(), whose self-test arm ends in the call above. Without the guard
+#: that nested run starts a SECOND ladder recursively.
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test (rung 5) must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """Grade main()'s shell on fixture trees outside this repository.
+
+    Every rung writes a GUIDE / manager.rs / lib.rs / cli.rs / README corpus under
+    a TemporaryDirectory beneath fixture_root(), hands it to
+    main(argv=[...], root=fixture), and reads the verdict from both captured
+    streams. Nothing here reads or writes the real tree.
+
+    Names are SYNTHETIC. The two deliberate borrows are the guide's oz.log and
+    lib.rs's legacy_hook_alpha: a root-dropping mutant grades THIS checkout, and a
+    fixture of wholly-invented names would let it pass rung 1 by accident, because
+    the real guide names neither. This tree's own bindings (get_time,
+    apply_discount, register_hook, on, off) are deliberately absent.
+
+    Each assertion is chosen so an unrelated line cannot satisfy it:
+
+      * rung 1 anchors on the MISSING block AND its bulleted oz.<name> line, not on
+        the heading word alone -- that word also appears in the informational note
+        the same run prints.
+      * rung 3 anchors on kasirmu-cli obsolete-cmd, the EXACT form the MISSING CLI
+        loop writes, in a fixture whose GUIDE is clean: only the README names the
+        command, so a main() that read only the guide passes it at rc 0.
+      * rung 6 requires the refusal to name the FIXTURE's path. A main() that
+        ignored its root would name THIS checkout and still exit 2.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    GUIDE = str(Path("docs") / "guides" / "developer" / "plugin-guide.md")
+    MANAGER = str(Path("crates") / "kasirmu-plugin" / "src" / "manager.rs")
+    LUA = str(Path("crates") / "kasirmu-lua" / "src" / "lib.rs")
+    CLI = str(Path("crates") / "kasirmu-cli" / "src" / "cli.rs")
+    README = str(Path("crates") / "kasirmu-cli" / "README.md")
+
+    NL = chr(10)
+    GUIDE_HEAD = "oz.log is documented." + NL + "legacy_hook_alpha runs on checkout." + NL
+    FULL = {
+        GUIDE: GUIDE_HEAD + "cargo run -p kasirmu-cli -- fixture-cmd" + NL,
+        MANAGER: 'oz.set("log", "k");' + NL,
+        LUA: 'const LEGACY_HOOK_NAMES: &[&str] = &["legacy_hook_alpha"];' + NL,
+        CLI: "enum Command {" + NL + "    FixtureCmd," + NL + "}" + NL,
+        README: "| kasir fixture-cmd | run it |" + NL,
+    }
+    # Full parity with NO command documented at all: the guide's CLI line and the
+    # README row leave together. Used by the rungs that must not depend on CLI docs.
+    GUIDE_CLEAN = {**FULL, GUIDE: GUIDE_HEAD,
+                   README: "| command | what it does |" + NL}
+
+    def build(base, files):
+        for rel, content in files.items():
+            dst = Path(base) / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_text(content, encoding="utf-8")
+
+    def grade(base, argv=()):
+        out, err = io.StringIO(), io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = main(argv=list(argv), root=base)
+        except SystemExit as se:            # argparse refuses the argv
+            rc = se.code
+        return rc, out.getvalue() + err.getvalue()
+
+    shell = 0
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as td:
+        base = Path(td)
+
+        # rung 1 -- the KILLING rung, and it grades a VERDICT, not a scope refusal.
+        # The fixture's guide documents oz.probe_missing_binding, which manager.rs
+        # does not register, so main() must exit 1 and name it under MISSING. A
+        # main() that ignores its root grades THIS checkout (6 table bindings, no
+        # probe_missing_binding) and exits 0 with no MISSING block at all.
+        root = base / "one"
+        build(root, {**FULL, GUIDE: FULL[GUIDE] + "oz.probe_missing_binding" + NL})
+        rc, said = grade(root)
+        if (rc != 1
+                or "MISSING (documented but not implemented) — 1:" not in said
+                or "    oz.probe_missing_binding" not in said
+                or "0 drift item(s)" in said):
+            print("  x rung 1: a fixture guide naming an unregistered binding must be "
+                  "VERDICTED rc 1 with MISSING naming oz.probe_missing_binding "
+                  "(rc=%r said=%r)" % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 2 -- the INFORMATIONAL arm is not a verdict. lib.rs declares a second
+        # legacy hook the guide never mentions; "implemented but not documented" is
+        # reported and must NOT fail the gate. Requiring the note AND the zero
+        # verdict means an arm that silently dropped the informational leg
+        # (cleaner output, same rc) fails here.
+        root = base / "two"
+        build(root, {**GUIDE_CLEAN,
+                     LUA: 'const LEGACY_HOOK_NAMES: &[&str] = &["legacy_hook_alpha", '
+                          '"legacy_hook_zeta"];' + NL})
+        rc, said = grade(root)
+        if (rc != 0
+                or "note: 1 binding(s) implemented but not mentioned" not in said
+                or "    oz.legacy_hook_zeta" not in said
+                or "0 drift item(s)" not in said):
+            print("  x rung 2: an undocumented implemented hook must be a NOTE and "
+                  "exit 0, not drift (rc=%r said=%r)" % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 3 -- the SECOND evidence source. The GUIDE is clean; only
+        # kasirmu-cli/README.md names a command cli.rs does not define. A main()
+        # that read only the guide passes this fixture at rc 0. The anchor is the
+        # exact "kasirmu-cli <name>" form the MISSING CLI loop prints.
+        root = base / "three"
+        build(root, {**GUIDE_CLEAN, README: "| kasir obsolete-cmd | gone |" + NL})
+        rc, said = grade(root)
+        if (rc != 1
+                or "MISSING CLI (documented but not implemented) — 1:" not in said
+                or "kasirmu-cli obsolete-cmd" not in said):
+            print("  x rung 3: a README row naming an undefined subcommand must exit 1 "
+                  "under MISSING CLI (rc=%r said=%r)" % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 4 -- --report-only, graded over rung 3's OWN drift: the same missing
+        # command must be reported and the exit must still be 0. rung 3 proves the
+        # drift is really there, so this arm grades the mapping and nothing else.
+        rc, said = grade(root, ("--report-only",))
+        if rc != 0 or "kasirmu-cli obsolete-cmd" not in said:
+            print("  x rung 4: --report-only must report the same drift yet exit 0 "
+                  "(rc=%r said=%r)" % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 5 -- the PHANTOM arm, and the one rung that drives a nested
+        # --self-test through argv. The re-entry guard is what stops that nested run
+        # starting a second ladder; without it this rung never returns. Both verbs
+        # are graded: the nested self-test prints its OK line with nothing wrong,
+        # and the phantom line is a verdict of its own.
+        root = base / "five"
+        build(root, {**FULL,
+                     GUIDE: FULL[GUIDE] + "cargo run -p kasirmu-cli -- run-script" + NL})
+        rc, said = grade(root, ("--self-test",))
+        if (rc != 0
+                or "SELF-TEST OK" not in said
+                or "SELF-TEST WRONG" in said
+                or "Traceback" in said):
+            print("  x rung 5: a nested --self-test through argv must pass with the "
+                  "re-entry guard active (rc=%r said=%r)" % (rc, said[-400:]),
+                  file=sys.stderr)
+            return 1
+        rc, said = grade(root)
+        if (rc != 1
+                or "PHANTOM CLI (documented but must never exist) — 1:" not in said
+                or "kasirmu-cli run-script" not in said):
+            print("  x rung 5: a documented phantom command must exit 1 under PHANTOM "
+                  "CLI (rc=%r said=%r)" % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 6 -- the SCOPE REFUSAL, kept separate from the verdict rungs on
+        # purpose: it grades exit 2 and the message, and requires the message to
+        # name the FIXTURE's path, so a main() that ignored its root -- and would
+        # name this checkout and still exit 2 -- cannot satisfy it.
+        root = base / "six"
+        build(root, {k: v for k, v in FULL.items() if k != GUIDE})
+        rc, said = grade(root)
+        if rc != 2 or "guide not found" not in said or str(root) not in said:
+            print("  x rung 6: a fixture with no guide must refuse rc 2 naming the "
+                  "FIXTURE's path, not this checkout's (rc=%r said=%r)"
+                  % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("LADDER OK (%d shell rungs through main(): verdict, informational, "
+          "second source, report-only, phantom + nested --self-test, scope refusal)"
+          % shell)
     return 0
 
 

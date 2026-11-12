@@ -271,4 +271,4 @@ cargo test --workspace --all-features
 
 ---
 
-> last audited 11-10-26 by docs-auditor
+> last audited 12-11-26 by skill-drift-guard

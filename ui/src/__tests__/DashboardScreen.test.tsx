@@ -30,7 +30,7 @@ vi.mock('echarts/core', () => ({
 }));
 
 vi.mock('echarts/charts', () => ({ BarChart: {}, LineChart: {}, PieChart: {}, HeatmapChart: {} }));
-vi.mock('echarts/components', () => ({ GridComponent: {}, TooltipComponent: {}, LegendComponent: {}, VisualMapComponent: {} }));
+vi.mock('echarts/components', () => ({ GridComponent: {}, TooltipComponent: {}, LegendComponent: {}, VisualMapComponent: {}, GraphicComponent: {} }));
 vi.mock('echarts/renderers', () => ({ CanvasRenderer: {} }));
 
 // ── FTL bundles ────────────────────────────────────────────────────────

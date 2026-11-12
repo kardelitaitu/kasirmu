@@ -344,4 +344,4 @@ When the next polish pass lands, the contributor should be able to point at this
 5. **In-flight async dismiss handlers.** If the dismiss triggers an IPC call (`holdCart`, `pay` etc.), the in-flight promise may still resolve after the element unmounts. The IPC wrappers under `@/api/*` already handle this — don't add an additional guard inside the pattern.
 6. **React strict-mode double-mount.** React 18 strict mode mounts components twice in dev. Without unmount cleanup, the first timer survives the second mount and you see duplicate unmounts in dev only. Always clear on unmount.
 
-> last audited 11-10-26 by docs-auditor
+> last audited 12-11-26 by skill-drift-guard

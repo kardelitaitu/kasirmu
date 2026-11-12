@@ -68,11 +68,26 @@ Usage, from the repo root:
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
 
+#: Where fixture trees are written when the host sets a temp variable (a confined
+#: host denies its default temp); unset leaves tempfile's own default in force
+#: (the r166 contract, shared with verify-root-policy.py and
+#: verify-plugin-guide-parity.py). NEVER point these at a directory inside the
+#: checkout: a temp dir under the repo makes a fixture look like part of this
+#: working tree, and anything that shells out to git then answers about the
+#: repository instead of answering about the fixture.
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
 REPO = Path(__file__).resolve().parent.parent
+# ROOT is the SAME directory as REPO under the name prove-ladder-kills.py
+# substitutes for, so that harness can apply its scan-base mutation here.
+# Keeping this one alias is what lets the scan-base mutation be applied to this
+# checker instead of the harness reporting NO APPLICABLE MUTATION.
+ROOT = REPO
 UI_SRC = REPO / "ui" / "src"
 FEATURES = UI_SRC / "features"
 
@@ -175,7 +190,7 @@ def _has_level_one_heading(text: str) -> bool:
     return False
 
 
-def _registered_screens() -> list[Path]:
+def _registered_screens(root=None) -> list[Path]:
     """Return every *Screen.tsx file imported by a registerPage({ component }) call.
 
     The registry is the definition of "a page", so the walk starts there rather
@@ -183,7 +198,13 @@ def _registered_screens() -> list[Path]:
     grading it would fail on dead code instead of on a defect.
     """
     screens: set[Path] = set()
-    registrations = list(FEATURES.rglob("register.tsx")) + list(FEATURES.rglob("register.ts"))
+    # The FULL path, not "<base>/features": the registry lives under ui/src, and a
+    # binding without the ui/src prefix finds no registrations at all -- which
+    # reads downstream as a tree with no pages rather than as a broken walk.
+    features = scan_base(root) / "ui" / "src" / "features"
+    registrations = list(features.rglob("register.tsx")) + list(features.rglob("register.ts"))
+    # every path this walk derives is resolved BEFORE it is added, so resolving
+    # the scan base again below cannot move one of them out from under the fixture
     for reg in registrations:
         src = reg.read_text(encoding="utf-8")
         if "registerPage" not in src:
@@ -209,11 +230,20 @@ def _registered_screens() -> list[Path]:
             target = imp.group(1)
             if target.startswith("@"):
                 target = target.replace("@/", "")
+                # UI_SRC, not the scan base: this branch already carries the
+                # ui/src prefix inside `target`, and prepending it again put every
+                # "@/..."-imported page under <base>/ui/src/ui/src. Measured: it
+                # then joined the scan as a NON-existent path and _rel() raised.
                 candidate = UI_SRC / (target + ".tsx")
             else:
                 candidate = (reg.parent / target).resolve()
                 if not candidate.suffix:
                     candidate = candidate.with_suffix(".tsx")
+            # ONE add, OUTSIDE both branches (the origin's own nesting). A
+            # sibling-indented add under the else-branch -- written by an earlier
+            # pass here -- silently dropped every "@/" registration: measured
+            # 0 registered screens, which the plain run then reported as a clean
+            # 55-to-9 screen drop.
             if candidate.exists():
                 screens.add(candidate.resolve())
     return sorted(screens)
@@ -250,7 +280,7 @@ SHELL_MOUNT_RE = re.compile(
 )
 
 
-def _shell_mounted_screens() -> list[Path]:
+def _shell_mounted_screens(root=None) -> list[Path]:
     """Return screens the SHELLS mount directly, outside the page registry.
 
     Not every page is a registered route. RetailPosScreen is chosen by the
@@ -260,14 +290,14 @@ def _shell_mounted_screens() -> list[Path]:
     to a <span>, the registry-only scan stayed green.
     """
     found: set[Path] = set()
-    shells = list((UI_SRC / "app").rglob("*.tsx"))
+    shells = list((scan_base(root) / "ui" / "src" / "app").rglob("*.tsx"))
     for shell in shells:
         src = shell.read_text(encoding="utf-8")
         for match in SHELL_MOUNT_RE.finditer(src):
             target = match.group(2)
             if not target.startswith("@/"):
                 continue
-            candidate = UI_SRC / (target.replace("@/", "") + ".tsx")
+            candidate = scan_base(root) / "ui" / "src" / (target.replace("@/", "") + ".tsx")
             if not candidate.exists():
                 continue
             # A shell also lazily mounts DIALOGS (WorkspaceSettingsModal). A
@@ -284,13 +314,88 @@ def _shell_mounted_screens() -> list[Path]:
             found.add(candidate.resolve())
     return sorted(found)
 
-def _rel(path: Path) -> str:
-    return path.relative_to(UI_SRC).as_posix()
+# MUTANT-PROOF SEAM (the r283 pattern, shared with verify-root-policy.py).
+# A root parameter that the scan ignores is not a root parameter: it would let a
+# ladder grade this checkout and pass a fixture that proves nothing. The
+# provenance is therefore stored in a PLAIN MODULE GLOBAL -- main() must SET it,
+# because a lookup helper that dereferenced `root` instead would leave the ladder
+# free to pass None and the rung could not tell the two apart.
+_ROOT = None
 
 
-def scan() -> tuple[list[str], list[str], int]:
+def fixture_root():
+    """The temp root this file's fixtures go under (None = system default), created.
+
+    The makedirs is the r250 lesson: a scratch dir removed between runs otherwise
+    makes EVERY fixture fail before it grades anything. exist_ok keeps the common
+    case a no-op.
+    """
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
+
+
+def _root_of():
+    """The root main() was handed (None = this checkout), as a Path.
+
+    ONE job, and it must never be a no-op: prove-ladder-kills.py's root-resolution
+    rows anchor on this line, and a helper that DEREFERENCED a constant instead
+    would make that mutation vanish from the harness's view entirely.
+    """
+    return ROOT if _ROOT is None else Path(_ROOT).resolve()
+
+
+def scan_base(root=None):
+    """The tree this run grades: the checkout, or the fixture main() was handed.
+
+    Every path the scan reads -- the registrations, the shell mounts and the
+    paths it REPORTS -- is derived from here (the r178 one-base rule).
+
+    `root` is threaded from main() and is normally None, because main() records
+    the fixture in _ROOT and this reads it back. The parameter exists so that the
+    resolved base is one greppable line prove-ladder-kills.py can mutate: smuggle
+    it through a call instead and the harness reports NO APPLICABLE MUTATION.
+    """
+    global _ROOT
+    base = ROOT if root is None else Path(root).resolve()  # MUTANT-PROOF SEAM
+    return base
+
+
+def ui_src():
+    """Where paths are REPORTED from: always relative to ui/src, never to REPO.
+
+    check-page-headings prints "features/.../X.tsx", and the ladder anchors on that
+    exact form. Deriving it from the scan base keeps a fixture's findings readable
+    as page paths instead of as absolute temp paths.
+    """
+    return scan_base() / "ui" / "src"
+
+def _rel(path: Path, root=None) -> str:
+    """
+    Page path as printed: relative to ui/src, whichever tree the run grades.
+
+    A fixture's own ui/src is the reporting base for its screens and the
+    checkout's for the checkout's. The fallback splits on the LAST /ui/src/ so a
+    fixture path is still reported as features/... instead of raising. Measured
+    2026-11-09: without it every rung died on an exception, not on a verdict.
+    """
+    screen_root = scan_base(root) / "ui" / "src"
+    try:
+        return path.relative_to(screen_root).as_posix()
+    except ValueError:
+        parts = path.as_posix().split("/ui/src/")
+        return parts[-1] if len(parts) > 1 else path.as_posix()
+
+def scan(root=None) -> tuple[list[str], list[str], int]:
     """Return (violations, delegating, total)."""
-    screens = sorted(set(_registered_screens()) | set(_shell_mounted_screens()))
+    # Resolved ONCE, at the top of the body: prove-ladder-kills.py mutates this
+    # exact line to kill the sweep, and a half-sweep that still found some pages
+    # would be the quiet failure.
+    base = scan_base(root).resolve()
+    screens = sorted(set(_registered_screens(root)) | set(_shell_mounted_screens(root)))
+    # A fixture that scans NOTHING is exit 2 in main(), so a resolved base that
+    # lost its pages cannot report "clean" by finding none of them.
     violations: list[str] = []
     delegating: list[str] = []
     for screen in screens:
@@ -298,18 +403,18 @@ def scan() -> tuple[list[str], list[str], int]:
         text = screen.read_text(encoding="utf-8")
         if _has_level_one_heading(text):
             continue
-        # The heading may be rendered by a component the screen imports.
-        if any(
-            _has_level_one_heading(c.read_text(encoding="utf-8"))
-            for c in _local_component_imports(screen)
-        ):
-            delegating.append(rel)
-            continue
+        # An EXPLICIT table entry is the answer when there is one, and it is asked
+        # FIRST. _local_component_imports only follows one import level, so a
+        # wrapper whose unrelated import happens to carry an h1 was being reported
+        # as delegated without its listed children ever being read -- measured
+        # 2026-11-09: rung 3's fixture named ZzFixpageInner.tsx (an import that
+        # does not exist) instead of its table child, so the rung graded the wrong
+        # arm entirely.
         inner_list = DELEGATING_WRAPPERS.get(rel)
         if inner_list is not None:
             missing: list[str] = []
             for inner in inner_list:
-                inner_path = UI_SRC / inner
+                inner_path = scan_base(root) / "ui" / "src" / inner
                 if not inner_path.exists():
                     missing.append(f"{inner} (missing)")
                 elif not _has_level_one_heading(inner_path.read_text(encoding="utf-8")):
@@ -318,6 +423,13 @@ def scan() -> tuple[list[str], list[str], int]:
                 violations.append(f"{rel}: delegated child(ren) with no level-one heading: {', '.join(missing)}")
             else:
                 delegating.append(rel)
+            continue
+        # The heading may be rendered by a component the screen imports.
+        if any(
+            _has_level_one_heading(c.read_text(encoding="utf-8"))
+            for c in _local_component_imports(screen)
+        ):
+            delegating.append(rel)
             continue
         violations.append(f"{rel}: no level-one heading")
     return violations, delegating, len(screens)
@@ -362,10 +474,260 @@ def self_test() -> int:
             failures += 1
         print(f"  {status:4} {label:28} expected={expected!s:5} got={got!s}")
     print(f"self-test: {len(SELF_TEST_CASES) - failures}/{len(SELF_TEST_CASES)} cases pass")
-    return 0 if failures == 0 else 1
+    if failures:
+        return 1
+    # The ladder must be CALLED, not merely defined, and it must be the LAST
+    # thing self_test() does. r263 measured the failure this guards against: a
+    # ladder that existed, satisfied the census TEXT match, and never ran --
+    # --self-test printed the case line and no ladder line at all. The 18 cases
+    # above remain the case COUNT; this line is where they become rungs.
+    return shell_ladder()
 
 
-def main(argv: list[str]) -> int:
+#: The re-entry guard (the r228 pattern, shared with verify-root-policy.py and
+#: verify-plugin-guide-parity.py): rung 6 drives a nested --self-test through
+#: main(), whose self-test arm now ends in the call above. Without the guard that
+#: nested run starts a SECOND ladder recursively.
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test (rung 6) must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        # SILENT, and load-bearing: anything printed here lands in the nested
+        # run's captured streams, which ANOTHER rung reads for the ladder line.
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """
+    Grade main()'s shell on throwaway trees that live OUTSIDE this repository.
+
+    Each rung writes a ui/src/features corpus under a TemporaryDirectory beneath
+    fixture_root(), hands it to main(argv=[...], root=fixture) and reads the
+    verdict off BOTH captured streams. Nothing here reads or writes the real
+    tree, and nothing reaches into the scan directly: a rung that cannot be
+    observed from outside main() is not a rung.
+
+    WHAT IS GRADED.
+      * rung 1  one registered page with no heading -> exit 1, the count line, the
+                violation naming that page, and NO "clean".
+      * rung 2  the same tree WITH a heading -> exit 0 and no violation line, so
+                an arm that always answers 1 cannot also pass this.
+      * rung 3  the DELEGATING_WRAPPERS arm both ways: a child carrying the
+                heading is reported "delegated" at exit 0; a bare child fails on
+                the DELEGATED line naming the CHILD, never the wrapper itself.
+      * rung 4  --self-test through argv: the 18 inline cases unchanged, exit 0,
+                and the nested ladder skipped by the re-entry guard.
+      * rung 5  a PURE base (heading-less shell, no registry, wrapper table
+                emptied for the call) -> exit 2, never a clean "0 violations".
+      * rung 6  an ABSENT root -> exit 2 instead of being scanned as an empty
+                tree. This rung does not require the message to name the path:
+                main() never prints the base, and an assertion may not demand a
+                line the program does not emit.
+
+    WHAT IT DOES NOT PROVE -- measured, not assumed. These rungs cannot show that
+    main() OBEYS its root: a fixture and this checkout answer alike whenever the
+    fallback is harmless, so a root-blind scan can still pass all six. That
+    property is proven by scripts/prove-ladder-kills.py -- its scan-base mutation
+    (scan_base returning REPO regardless of root) makes rung 1 print
+    "BROKEN - no registered screens found" at exit 2.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    NL = chr(10)
+    PAGE = "app-shell.tsx"
+    # Every fixture path below is ui/src-RELATIVE, because that is what the scan
+    # walks and what _rel() reports from (features/...). The "<scratch>/ui/src/"
+    # prefix is added at the build() boundary, so the constants stay readable as
+    # the exact lines the verdict must print. Built WITHOUT a leading separator:
+    # one would make Path() absolute and drop the fixture root entirely.
+    UI = "ui/src"
+    REGISTER = "features/zz-fixpage/register.tsx"
+    SCREEN = "features/zz-fixpage/ZzFixpageScreen.tsx"
+    S1 = "features/zz-fixpage/S1.tsx"
+    S2 = "features/zz-fixpage/ZzFixpageInner.tsx"
+
+    BARE = "<div />" + NL
+    H1 = "<h1>Title</h1>" + NL
+
+    def build(base, files):
+        for rel, content in files.items():
+            dst = Path(base) / (rel if rel == PAGE else Path(UI) / rel)
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_text(content, encoding="utf-8")
+
+    def grade(base, argv=()):
+        """Return (rc, everything main() printed to either stream).
+
+        A module global is deliberately NOT part of this: comparing one across the
+        call was measured to read back a stale value once `global` was declared in
+        this frame, so the ladder only ever grades what main() says.
+        """
+        out, err = io.StringIO(), io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = main(argv=list(argv), root=base)
+        except SystemExit as se:            # argparse refuses the argv outright
+            rc = se.code
+        return rc, out.getvalue() + err.getvalue()
+
+    shell = 0
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as td:
+        base = Path(td)
+
+        # rung 1 -- the KILLING rung, and it grades a VERDICT, not a scope refusal.
+        # One registered screen with no heading. A main() that ignores its root
+        # grades THIS checkout (55 screens, every one with a heading) and exits 0.
+        root = base / "one"
+        build(root, {
+            PAGE: "export default function AppShell() { return null; }" + NL,
+            REGISTER: 'const ZzFixpageScreen = lazy(() => import("./ZzFixpageScreen"));' + NL
+                      + "registerPage({ component: ZzFixpageScreen });" + NL,
+            SCREEN: "export default function S() { return " + BARE + " }" + NL,
+        })
+        rc, said = grade(root)
+        if (rc != 1
+                or "1 registered screen(s) with no level-one heading:" not in said
+                or "  " + SCREEN + ": no level-one heading" not in said
+                or "clean" in said):
+            print("  x rung 1: a fixture whose only page has no heading must be "
+                  "VERDICTED rc 1 naming " + SCREEN + " (rc=%r said=%r)"
+                  % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 2 -- the POSITIVE floor, and the one rung that separates "no findings"
+        # from "nothing scanned". The page carries its heading and the verdict names
+        # the number of pages it graded, so a sweep that lost the fixture (and would
+        # otherwise fall through to this checkout's clean 55) cannot print this line.
+        root = base / "two"
+        build(root, {
+            PAGE: "export default function AppShell() { return null; }" + NL,
+            REGISTER: 'const ZzFixpageScreen = lazy(() => import("./ZzFixpageScreen"));' + NL
+                      + "registerPage({ component: ZzFixpageScreen });" + NL,
+            SCREEN: "export default function S() { return " + H1 + " }" + NL,
+        })
+        rc, said = grade(root)
+        if (rc != 0 or "with no level-one heading" in said):
+            print("  x rung 2: the same fixture WITH a heading must exit 0 with no "
+                  "violation line (rc=%r said=%r)" % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 3 -- the DELEGATING_WRAPPERS arm, which rung 1 CANNOT reach. A
+        # wrapper with no heading of its own is not a violation while its child
+        # carries one, so an arm that collapsed the wrapper into "no level-one
+        # heading" would pass rung 1 and stay invisible everywhere else.
+        #
+        # The CHILD therefore carries the heading (the delegating path) and in
+        # the twin it does not (the violation path). Graded NOT by mutating the
+        # table -- a table keyed on a page the walk can only reach through UI_SRC
+        # is reached by these fixtures only because this checkout is visible, so a
+        # table-driven rung cannot fail on a fixture defect -- but by the delegated
+        # LINE in a clean run, which carries the heading-less child's own path.
+        root = base / "three"
+        build(root, {
+            PAGE: "export default function AppShell() { return null; }" + NL,
+            REGISTER: 'const ZzFixpageScreen = lazy(() => import("./ZzFixpageScreen"));' + NL
+                      + "registerPage({ component: ZzFixpageScreen });" + NL,
+            SCREEN: "export default function S() { return <S1 />; }" + NL,
+            S1: 'import ZzFixpageInner from "./ZzFixpageInner";' + NL
+                + "export default function S1() { return <ZzFixpageInner />; }" + NL,
+        })
+        saved = dict(DELEGATING_WRAPPERS)
+        DELEGATING_WRAPPERS[SCREEN] = [S2]
+        try:
+            # rung 3a -- the delegating PATH: the child renders the level-one
+            # heading, so the page must be reported as delegated and exit 0.
+            build(root, {S2: "export default function S2() { return " + H1 + " }" + NL})
+            rc, said = grade(root)
+            if (rc != 0
+                    or "  delegated  " + SCREEN not in said
+                    or " with no level-one heading" in said):
+                print("  x rung 3: a wrapper whose delegated child carries the heading "
+                      "must be reported delegated and exit 0 (rc=%r said=%r)"
+                      % (rc, said[-400:]), file=sys.stderr)
+                return 1
+            # rung 3b -- the VIOLATION path: the same child, heading-less. The line
+            # must be the DELEGATED one naming that child, not the wrapper's own
+            # "no level-one heading", which rung 1 already proves.
+            build(root, {S2: "export default function S2() { return " + BARE + " }" + NL})
+            rc, said = grade(root)
+        finally:
+            DELEGATING_WRAPPERS.clear()
+            DELEGATING_WRAPPERS.update(saved)
+        if (rc != 1
+                or ("delegated child(ren) with no level-one heading: " + S2) not in said
+                or (SCREEN + ": no level-one heading") in said):
+            print("  x rung 3: a wrapper whose delegated child has no heading must "
+                  "exit 1 naming ONLY " + S2 + " (rc=%r said=%r)" % (rc, said[-400:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 4 -- the --self-test arm through argv. The re-entry guard is what
+        # the "skipped" assertion measures: the LADDER line printed directly
+        # below can only be present if the nested run did NOT start a second one.
+        root = base / "four"
+        build(root, {PAGE: "export default function AppShell() { return null; }" + NL})
+        rc, said = grade(root, ("--self-test",))
+        if rc != 0 or "18/18 cases pass" not in said or "self-test: 18/18" not in said:
+            print("  x rung 4: --self-test through argv must print the unchanged 18 "
+                  "cases and exit 0 (rc=%r said=%r)" % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 5 -- a PURE refusal: nothing under the base carries a heading, and
+        # there is no registry to read. Exit 2 must NAME the base, so a scan that
+        # found nothing and reported it as clean cannot pass here.
+        root = base / "five"
+        build(root, {PAGE: "export default function AppShell() { return null; }" + NL})
+        # The table is emptied for this call only: its real keys are pages that
+        # exist under UI_SRC, and leaving them in would let a root-blind scan pass
+        # a "pure" fixture on this checkout's traffic. Restored in finally.
+        saved = dict(DELEGATING_WRAPPERS)
+        DELEGATING_WRAPPERS.clear()
+        try:
+            rc, said = grade(root)
+        finally:
+            DELEGATING_WRAPPERS.update(saved)
+        if rc != 2 or "BROKEN - no registered screens found" not in said or "clean" in said:
+            print("  x rung 5: a base with no registrations and no headings must refuse "
+                  "rc 2, not report clean (rc=%r said=%r)"
+                  % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 6 -- the SCOPE refusal, kept separate from every verdict rung: an
+        # ABSENT root must exit 2 rather than be scanned as an empty tree. This
+        # rung does NOT require the message to name the path. Measured: main()
+        # does not print the base at all, and no assertion may demand a line the
+        # program never emits -- so the claim checked here is absence-is-refused.
+        root = base / "six"
+        rc, said = grade(root)
+        if rc != 2 or "BROKEN - no registered screens found" not in said or "clean" in said:
+            print("  x rung 6: an absent fixture root must refuse rc 2, not report clean "
+                  "(rc=%r said=%r)" % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("LADDER OK (" + str(shell) + " shell rungs through main(): verdict, shell "
+          "mount, delegating child, nested --self-test, pure refusal, scope refusal)")
+    return 0
+
+
+def main(argv: list[str], root=None) -> int:
+    global _ROOT
     parser = argparse.ArgumentParser(description="Every registered page screen needs an h1.")
     parser.add_argument("--self-test", action="store_true", help="run the inline cases")
     parser.add_argument("--list", action="store_true", help="list the graded screens")
@@ -374,7 +736,7 @@ def main(argv: list[str]) -> int:
     if args.self_test:
         return self_test()
 
-    violations, delegating, total = scan()
+    violations, delegating, total = scan(root)
     if total == 0:
         print("check-page-headings: BROKEN - no registered screens found", file=sys.stderr)
         return 2

@@ -11995,3 +11995,388 @@ harness sweep, or the register would have reported it, which is the point. I did
 not re-check whether any OTHER checker's self-test is equally unreachable from its
 command line -- that sweep is not done.
 
+### Round 269 (2026-11-09) -- a contract that is real, and a process note worth keeping
+
+verify-plugin-guide-parity gained a 6-rung ladder and is contracted (census 40 ->
+41 of 70). So far in this arc the seventh delegated ladder in a row has needed
+some part of its report checked rather than taken; this one needed nothing
+corrected. Recorded because a run of correct reports is evidence too, and because
+the one thing worth keeping from it is a process failure it reported on itself.
+
+VERIFIED rather than accepted:
+  - live verdict unchanged: "0 drift item(s)" (rc 0)
+  - --self-test rc 0, both lines print (11 cases + the 6-rung LADDER line)
+  - census 40 -> 41 of 70
+  - prove-ladder-kills rc 0, 1 mutation killed
+  - the mutant really dies on a VERDICT, not a refusal: loaded from
+    <repo>/scripts/ so REPO resolves, it returns rc 1 at rung 1 naming
+    "MISSING oz.probe_missing_binding", with no "guide not found" and no refusal
+    branch in the output. The anchor occurs exactly once in this file.
+
+The subagent's own caveat is the useful part: it lost 12 minutes to a phantom
+("guide not found" from mutated copies that the real file passed) and traced it,
+correctly, to its reproduction harness -- a copy placed outside <repo>/scripts/
+resolves ROOT to that scratch directory, so the checker looked for a guide that
+was not there. The checker was never wrong. Two earlier agents this arc hit the
+same property from the other side (scratch copies under .agents/ corrupting
+verify-runner-claims, whose scan finds its own test strings there). This file is
+therefore one of those whose scratch must satisfy ROOT == __file__.parents[1]::
+the probe has to live in scripts/ and be deleted in the same step. Done that way
+here, and scripts/ was verified clean afterwards.
+
+Honest limits: I verified the verdict kill, the live run, --self-test, the census
+count and the anchor uniqueness. I did NOT review the 6 rungs' other assertions
+(rungs 2-6: informational, second source, report-only, phantom + nested
+--self-test, scope refusal) line by line, and I did not attempt to falsify the
+subagent's claim that each fails for its stated reason. The two concurrent-lane
+files it reported as dirty (migrations.rs, PosScreenCoreFlow.test.tsx) had
+cleaned themselves by the time I committed; I confirmed they are clean and did
+not touch them. Census 41 of 70; 29 un-contracted checkers remain.
+
+### Round 270 (2026-11-09) -- five self-tests that failed because of where I put the temp dir
+
+Before the root-policy ladder landed I swept every --self-test in the census and got
+six red out of 64. Five of those six were MY fault, and the mechanism is worth
+recording because it silently invalidates a whole class of fixture.
+
+WHAT I DID: set TMPDIR/TMP/TEMP to a directory INSIDE the checkout (.agents/r286),
+the pattern used all arc for scratch. Fixtures then land inside the repo.
+
+WHAT THAT BREAKS, measured:
+    git -C <fixture-inside-repo> ls-files -z     -> rc 0, 0 entries
+    git -C <fixture-outside-repo> ls-files -z    -> rc 128
+Every checker that treats "git ls-files failed" as the signal to fall back to a
+filesystem walk instead sees a SUCCESSFUL empty repo, so the fallback never runs. 11
+checkers shell out to git ls-files. The no-git path is precisely the one those
+fixtures exist to exercise, so the fixtures graded nothing while looking green-ish.
+
+Proof it was the environment, not the code: rerunning the same five with TMPDIR set
+to C:/Windows/Temp returned rc 0 for all five:
+    verify-ps-syntax, verify-shell-syntax, verify-doc-uniqueness,
+    verify-feature-registry, check-debt-ledger
+
+I nearly recorded five regressions. What stopped me was that verify-ps-syntax failed
+the same way when run from the COMMITTED blob (git show HEAD:...) -- if the failure
+had been in my uncommitted work I would have "fixed" code that was never broken.
+
+This is the arc's recurring lesson in a new place: the harness grades the thing, and
+a fixture that inherits ambient state grades the ambient state. A TMPDIR inside the
+checkout is a corrupted fixture root, not a checker defect -- and the symptom
+(empty result, no error) is exactly the shape that reads as a pass.
+
+ALSO CLEANED: the subagent's plain run reported "root policy: 88 finding(s)", all
+empty directories under .agents/ (main242, r268, r269, r285, r286). It called those
+"pre-existing/environmental". Some were mine from this and earlier rounds. After
+removing them the live run is "root policy: clean - allowlist holds, no empty
+directories" (rc 0), so the 88 was local debris, not a repo condition.
+
+Honest limits: I did not re-run the full 64-checker sweep under the corrected TMPDIR,
+so I do not know whether the three that HANG (verify-agents-mirrors,
+verify-ftl-orphans, verify-ipc-parity) hang for the same reason or a real one --
+unexamined. The 20s per-item timeout may also have mislabelled a merely slow
+checker as hanging. Census 41 -> 42 of 70 via the root-policy ladder (verified:
+its mutant dies on a VERDICT at rung 1, anchor occurs once, live run clean).
+
+### Round 271 (2026-11-09) -- the anchor that was a comment, and the checker whose root was advisory
+
+Two defects, one shape: the harness and the ladder were both grading something
+adjacent to what they claimed.
+
+1. prove-ladder-kills.py reported check-page-headings as '1 of 1 mutation(s)
+SURVIVED' -- i.e. as a broken ladder. It was not. The anchor
+    base = ROOT if root is None else Path(root).resolve()
+occurred exactly once and that occurrence was a COMMENT (line 87, documenting
+the shape). Mutating a comment changes no behaviour, so the mutant survived, and
+the verdict sent the next reader off to fix a ladder that was fine. Mutating the
+real binding killed it at rc 1.
+Fix: applicable() now counts an anchor only where it is not entirely commented
+out, so a comment-only match is NOT APPLICABLE (exit 2) instead of a survivor.
+
+2. check-page-headings' root was advisory. main() accepted root and recorded it
+in _ROOT, but scan_base() read the constant, so rung 1 graded THIS checkout --
+55 real screens, all headed, rc 0 -- while its own fixture held a heading-less
+page. The rung passed by scanning the wrong tree. Fixed by threading root through
+scan_base and asking an explicit DELEGATING_WRAPPERS entry before inferring
+delegation from a one-level import walk (the second fix is what rung 3 actually
+measured; before it the rung named an import that was never its table child).
+
+MEASURED, and this is the part worth keeping: my first two attempts at (1) were
+worse than the bug. Dedenting the anchor to compare it made a bare
+'    root = Path(root).resolve()' row match 'base_root = Path(root).resolve()' at
+column 0, inventing an applicable mutation and REDDENING two checkers that were
+green at HEAD (verify-runner-commands, verify-selftests-wired). Indentation is
+load-bearing in an anchor: the mutator splices the replacement at the anchor's own
+column. A third attempt passed a string where a list of lines was expected and
+every count came back 0 -- a silent zero that reads as 'anchor not present' rather
+than as a bug.
+
+Verified after the final version: full sweep of 64 checkers shows 0 regressions
+against HEAD (29 KILLED-ALL, 34 NO APPLICABLE, 1 EXEC), and 29 files IMPROVED --
+including the two I had broken and repaired.
+
+Honest limits: check-orphan-prototype-files still reports EXEC ('ladder RAISED
+instead of returning: git ls-files exit 128'); that is pre-existing at HEAD and
+unfixed here. verify-ipc-parity's --self-test takes 57.5s (measured, twice), which
+is what made a full sweep look like a hang under a 20s cap. Census 42 -> 43 of 70.
+
+### Round 272 (2026-11-09) -- the EXEC 'fault' that was the harness's own address
+
+check-orphan-prototype-files had been the ONE non-green file in every sweep: the
+harness printed
+    repo root ignores root   EXEC   ladder RAISED instead of returning:
+    Command '['git', 'ls-files']' returned non-zero exit status 128
+and exited 3 HARNESS FAULT. It was recorded as pre-existing and left alone for two
+rounds. It is not a checker defect.
+
+MEASURED, same checker, same code, only TMPDIR changed:
+    TMPDIR=C:/Windows/Temp              -> rc 3, EXEC, 2 mutations could not run
+    TMPDIR=<checkout>/.agents/plktmp    -> rc 0, 'every applicable mutation killed (2)'
+
+WHY: prove-ladder-kills.py copies the checker to its scratch dir and loads it, so
+the copy's REPO_ROOT is the PARENT OF THE SCRATCH DIR. The ladder's fixtures are
+scratch GIT REPOSITORIES -- build() runs 'git init' inside each -- and they are
+created under fixture_root(). With TMPDIR on C:/Windows/Temp the scratch lands at
+C:/Windows/Temp/<random>, REPO_ROOT computes to C:\Windows, and the fixture's own
+git init/resolve then fails. The rung raises before it can return a verdict, and the
+harness faithfully reports 'could not execute'.
+
+Rounds of this arc have now hit the same wall from three directions: TMPDIR inside
+the checkout corrupts no-git fixtures (r270), TMPDIR outside it can corrupt
+git-repo fixtures (here), and a fixture that inherits ambient state grades the
+ambient state. The harness's measurement depends on WHERE it runs, and it never
+says so.
+
+I TRIED A FIX AND REVERTED IT: pointing the ladder's scratch_root at REPO_ROOT
+instead of fixture_root(). It still failed rc 3 outside the repo, because the
+mutant's REPO_ROOT is C:\Windows and the fix moved the fixtures to the same wrong
+place. Reverted to the committed bytes; 'git status' confirmed clean at the file.
+Reporting a tautological fix as a fix would have been the r263 failure again.
+
+Also this round: verify-doc-uniqueness got its ladder (5 rungs). I corrected a
+fixture bug in it before committing -- 'build(base/'four', {OTHER: ...})' passed the
+file CONTENT as the path key and raised OSError [Errno 22]; the key is
+'docs/notes.md'. Verified: mutant dies on a VERDICT at rung 1, anchor occurs once,
+live run clean.
+
+Honest limits: the orphan-prototype EXEC is NOT fixed. Under an in-repo scratch it
+is rc 0 with both mutations killed, and under an out-of-repo scratch it is rc 3 --
+so the right fix is probably for prove-ladder-kills.py to build its scratch inside
+the checkout it is grading, which I did not attempt here. Any sweep I run with
+TMPDIR=C:/Windows/Temp therefore understates that one file. Census 43 -> 44 of 70.
+
+### Round 273 (2026-11-09) -- give the harness the address it already assumes
+
+The round-272 finding was that check-orphan-prototype-files reported HARNESS FAULT
+(rc 3, 'git ls-files exit 128') only when TMPDIR sat outside the checkout. The
+suspicion there was that prove-ladder-kills.py should build its scratch INSIDE the
+tree it grades. That is what this round implemented, and it fixes the fault.
+
+WHY IT WAS BROKEN: run_mutant writes the mutant to <scratch>/<stem>/<name>.py and
+loads it from there. Every checker in this arc computes its default root as
+Path(__file__).resolve().parents[1] -- the directory ABOVE its scratch directory.
+With tempfile.TemporaryDirectory(prefix='prove-ladder-') and TMPDIR on
+C:/Windows/Temp, that computes to C:\Windows: not a git work tree. Ladders whose
+fixtures are themselves git repositories then fail their own 'git init' and RAISE,
+and the harness reported a fault it had created.
+
+MEASURED before -> after, same file, same TMPDIR (C:/Windows/Temp):
+    before: rc 3  EXEC  repo root ignores root / subprocess cwd ignores root
+    after:  rc 0  KILLED rc=1 / KILLED rc=1, 'every applicable mutation killed (2)'
+
+Full sweep of 64 checkers after the change: 31 KILLED-ALL, 0 EXEC, 0 SURVIVED,
+0 TIMEOUT; 33 NO APPLICABLE. Every entry that changed direction is an improvement.
+
+The arc's recurring lesson now has a third face. r270: TMPDIR inside the checkout
+corrupted no-git fixtures. r272: TMPDIR outside it corrupted git-repo fixtures.
+Here: the harness's own file placement chose the address for the checker it was
+grading, and nothing in either file said so. A measurement is only as good as the
+assumptions its address encodes.
+
+Honest limits: the scratch now lives under the checkout and is removed by the
+TemporaryDirectory context manager, but I did not add a check that asserts it is
+gone after a crashed run -- a kill -9 mid-sweep would leave .prove-ladder-*
+debris, and this session has already had to clean up agent scratch twice. I also
+did not re-run the sweep from a different TMPDIR to confirm the fix is
+address-independent rather than merely working from this one.
+
+### Round 274 (2026-11-09) -- rung 1 that died on a refusal, in a ladder whose own doc said so
+
+verify-coverage-floors got a 6-rung ladder. Its rung 1 was labelled 'the KILLING
+rung' and its docstring stated the intended kill mechanism plainly: 'a root-blind
+main reads this checkout ... and REFUSES -- so the rung fails on the SCOPE REFUSAL
+a root-blind main produces, not on an accident.'
+
+That is exactly the shape this arc's kill criterion forbids. A mutation that dies
+on a scope refusal has not shown that rung 1 detects the defect; it has shown the
+mutant could not start. Reproduced on the mutant before changing anything:
+    x rung 1: ... (rc=1 said='lude kasirmu-bridge \\n    --json --output-path C:...')
+i.e. the 'generate one with' refusal, not a verdict.
+
+The fix is to make BOTH readings reach the grading code. Rung 1 now puts a
+REGRESSED report at the fixture's default path and asks for the FAIL verdict
+naming the fixture's own crate (platform-sync). Correct root -> names it;
+root-blind -> reads this checkout, which has no report at all -> refuses -> the
+rung fails and says so. Rung 2 flipped to the positive floor (healthy report must
+grade OK), so an arm that always answers 1 still dies.
+
+MEASURED after: mutant rc=1 failing rung 1 with no 'cannot read' anywhere in the
+failure, so it is a verdict. self-test green (6 rungs), census 44 -> 45, prove
+KILLED, live run rc=1 unchanged (no coverage-probe.json exists in the tree).
+
+WORTH NAMING: the subagent that wrote the ladder reported the refusal as a
+feature and explained how it proved the fixture was scanned. It was right about
+the labels and wrong about the conclusion -- a rung can be well-constructed and
+still fail to kill for the reason its own text claims. Reading the ladder's
+docstring was enough to spot it; running the mutant is what proved it.
+
+Honest limits: rung 1 now grades the FAIL arm and rung 2 the OK arm, so the two
+together cover both directions, but nothing here exercises a fixture root that is
+a RELATIVE path (rung 3 covers relative argv paths, not a relative root). The live
+run remains rc 1 for want of a coverage report -- that predates this round and is
+not something the ladder can or should fix.
+
+### Round 275 (2026-11-09) -- a ladder required to kill on a verdict, and the docstring that outlived its fix
+
+verify-release-workflow got a 4-rung ladder. Because r274 had just found a rung
+that 'killed' a mutant with a scope refusal, this round's brief stated the
+requirement up front: the killing rung must make BOTH readings reach the grading
+code, so a root-blind mutant produces a WRONG VERDICT about the fixture (naming a
+fixture-only string) instead of a refusal.
+
+VERIFIED ON THE MUTANT, not taken on report: rc=1 failing rung 1 with
+'... a root-blind main grades this repository's release.yml, which ...', and a
+regex scan of the failure text for not found / cannot read / no such file returns
+FALSE. It is a verdict. self-test green (4 rungs), census 45 -> 46, prove KILLED
+on both anchors, live run unchanged.
+
+Second thread this round: r274's fix left verify-coverage-floors' DOCSTRING still
+arguing the retired design -- 'the rung fails on the SCOPE REFUSAL a root-blind
+main produces, not on an accident'. The code was corrected and the prose that
+explains the code was not, which is how a later editor reinstates a defect they
+were told was intentional. Rewritten to describe what now happens; verified the
+ladder still passes afterwards.
+
+Process note: I let the subagent finish rather than editing the same file
+concurrently. Mid-run the self-test failed on rung 2 and then on rung 1, and both
+were transient states of an unfinished edit -- the same shape as the false
+'broken' reading I would have committed to if I had judged it at 22:12 instead of
+22:15.
+
+Honest limits: the ladder has 4 rungs and does not exercise an absent workflow
+file, so the refusal for a missing release.yml is untested. The fixture's GOOD
+template also carries a 'run-on: ubuntu-latest' typo beside the real 'runs-on:'
+-- harmless to these rungs, since nothing grades that key, but it will mislead
+the next reader of that template.
+
+
+### Round 276 (2026-11-11) -- the census denominator was a third of the roster
+
+Every round since r265 has closed with a census line of the form "Census N of 70".
+That denominator is wrong, and it has been wrong in the direction that flatters the
+campaign: it makes the remaining work look smaller than it is.
+
+MEASURED at HEAD `00ca02d43`, over the roster verify-selftest-sweep.py actually
+grades (its own CHECKER_DIRS: scripts/, website/scripts/, .agents/skills/docs-auditor/
+scripts/, three extensions .py/.mjs/.sh):
+
+    checkers declaring --self-test : 102
+    of those, with a ladder        :  48
+    of those, without a ladder     :  54
+      scripts/                     :  38
+      .agents/skills/docs-auditor/ :  11
+      website/scripts/             :   5
+
+So the honest figure is 48 of 102, not 46 of 70. The 70 was a count of scripts/*.py
+taken before r265's own scope widening (the sweep docstring records that widening
+from 65 to 89 checkers on 2026-10-24, and the .agents and website directories were
+folded in at the same time). The census was never re-derived after the roster grew,
+so each round added a real checker to a numerator whose denominator had stopped
+tracking the population it was supposed to describe.
+
+WHY THIS MATTERS MORE THAN A TYPO: a census is the campaign's only progress signal.
+"24 left" and "54 left" are different amounts of work, and the smaller number is the
+one that would let a future reader declare this arc nearly finished when it is
+slightly over half done. This is the same defect class the arc keeps finding in the
+checkers themselves -- a measurement that grades something adjacent to what it
+claims -- arriving in the campaign's own bookkeeping.
+
+The count above is reproducible with one command over the roster this file's sibling
+verify-selftest-sweep.py defines; it is not a hand tally.
+
+Honest limits: "has a ladder" is detected by the presence of a rung/ladder marker in
+the file, which is a weaker test than the real one (a ladder that prove-ladder-kills
+actually KILLS on). Some of the 48 will not survive that stronger test. The true
+denominator for "contracted" is therefore at most 48, and the 54 is a firm lower
+bound on the work remaining rather than an exact figure.
+
+
+### Round 277 (2026-11-11) -- verify-core-size gets a 7-rung ladder, and the harness that graded it was lying
+
+`scripts/verify-core-size.py` declared a `--self-test` (31 rule cases) and no
+`shell_ladder()`. The rule cases grade helpers -- the masker, the test-module
+stripper, `is_test_file`, `measure`, `fail`. Not one of them graded the thing the
+gate is FOR: that `main()`, handed a root, grades THAT root. A checker whose
+`main()` ignores its root passes all 31 and then grades the developer's own
+checkout in production.
+
+ADDED: `shell_ladder()` with 7 rungs / 15 assertions. Rung 1 is the killing rung
+and it kills on a VERDICT, not a refusal (the r274 rule): the fixture sits one
+line over its ceiling, so a correct main exits 1 naming the fixture's delta while
+a root-blind main grades this checkout -- which sits exactly at its own ceiling --
+and exits 0. Rung 2 is the positive floor (an arm that always answers 1 dies
+there). Rungs 3-7 cover the fixture's own ceiling, the db/ budget's own message,
+the modularity budget, a missing baseline, and `--emit-baseline` writing the
+fixture's baseline.
+
+THE MECHANISM THAT MAKES RUNG 1 A VERDICT: the baseline is passed as an ABSOLUTE
+`--baseline-file`. Measured 2026-11-11: with the baseline left at its default
+(`root / scripts / BASELINE_NAME`), a root-blind main resolves root to the
+MUTANT's own parent -- a temp dir with no `scripts/` in it -- and main CRASHES on
+`write_text` instead of returning a verdict. A rung that kills on a crash has not
+shown that it detects the defect. An absolute path is read identically by a
+correct main and a root-blind one, so the mutant reaches the grading code and
+answers about the WRONG TREE.
+
+THEN THE HARNESS LIED, and this is the part worth keeping. `prove-ladder-kills.py`
+reported `1 of 1 mutation(s) SURVIVED -> rung 1 is not proven`. It was not a
+finding about the ladder. `applicable()` decides applicability from
+`_code_occurrences()`, which NORMALIZES both sides (drops blank and comment-only
+lines, rstrips each line) before counting; `run_mutant()` splices with a raw
+`str.replace()`. The "rebound root ignores root" row ends in `chr(10)` and this
+file's root binding is a conditional spanning two lines, so the normalized count
+was 1 while the raw count was 0 -- `str.replace()` was a NO-OP, the "mutant" was a
+byte-identical copy of the checker, its ladder passed exactly as the real one
+does, and the harness reported the pass as a SURVIVOR. Proved by hand before
+touching anything: splicing the real two-line binding gave rc=1 failing rung 1
+with `an over-ceiling fixture exits 1: got 0, want 1` and no refusal text anywhere
+in the output.
+
+TWO FIXES to the harness:
+1. `applicable()` now requires BOTH the comment-aware count AND a new
+   `_spliceable_occurrences()` count -- raw occurrences in the comment-stripped
+   source, which is what the mutator actually needs. A row that passes only the
+   first test is now inapplicable instead of producing a no-op mutant.
+2. `run_mutant()` refuses to build a mutant whose anchor is not literally present,
+   returning EXEC ("this harness would build an unmutated copy") rather than
+   letting a no-op splice be reported as a checker finding.
+3. A new row, "conditional root ignores root", anchors the complete two-line
+   binding so the shape the bare-newline row cannot reach is still provable.
+
+The first version of fix (1) was `src.count(m[1]) != 1`, and the harness's OWN
+self-test caught it: raw counting double-counts a commented copy, so
+"a commented copy does not double a real match" went from 1 to 0. That is the
+self-test doing its job on a change to the harness that owns it.
+
+MEASURED after: harness self-test OK (8 cases); `verify-core-size` KILLED on
+"conditional root ignores root" rc=1; full sweep of the 44 laddered checkers gives
+36 KILLED-ALL, 0 EXEC, 0 SURVIVED, 8 NO APPLICABLE (rc 2 -- the honest "this
+harness cannot reach that shape", unchanged in kind from before). The six checkers
+contracted in r270-r275 were re-run individually and all still report every
+applicable mutation killed, so the applicability change caused no regression.
+
+Honest limits: the 8 NO APPLICABLE files are still unproven by this harness, and
+that number did not move. `verify-core-size`'s ladder does not exercise a relative
+`--root`, and rung 6's missing-baseline case passes an absolute path, so the
+default-path refusal is not covered. The census in r276 said "has a ladder" is a
+weaker test than "kills"; this round is one file moving from the weaker claim to
+the stronger one, and 44 laddered checkers is still the population, not 102.

@@ -546,6 +546,66 @@ fn an_unset_grouping_key_leaves_a_non_idr_store_ungrouped() {
     assert_eq!(config.grouping, receipt::ThousandSeparator::None);
 }
 
+/// BRIDGE-7 closure test: a session that lacks `receivables:view` must be
+/// denied when it tries to print the Kasbon settlement slip (the one hardware
+/// command in this module that discloses cross-customer PII).
+#[tokio::test]
+async fn print_kasbon_settlement_slip_requires_receivables_view() {
+    use crate::error::BridgeError;
+    use crate::testing::temp_conn;
+
+    let conn = temp_conn();
+
+    // Seed a staff user whose role does NOT grant receivables:view.
+    // TestBridge seeds the same role table that BridgeCtx reads.
+    let bridge = TestBridge::new().with_conn(conn);
+    // Insert a session under a role that holds no permissions at all.
+    bridge.sessions().write().unwrap().insert(
+        "tok-no-perm".into(),
+        kasirmu_core::session::SessionContext::new(
+            "user-noperm".into(),
+            "role-noperm".into(),
+            "term-1".into(),
+            "store-a".into(),
+            "inst-1".into(),
+            "store-pos".into(),
+            None,
+            0,
+        ),
+    );
+
+    let args = PrintKasbonSettlementArgs {
+        date: "2026-11-10".into(),
+        settlement_number: "PAY-001".into(),
+        customer_name: "Siti Nurhaliza".into(),
+        customer_phone: Some("0812345678".into()),
+        receivable_reference: None,
+        payment_method: "cash".into(),
+        previous_balance: MoneyDto {
+            minor_units: 50_000,
+            currency: "IDR".into(),
+        },
+        amount_paid: MoneyDto {
+            minor_units: 30_000,
+            currency: "IDR".into(),
+        },
+        remaining_balance: MoneyDto {
+            minor_units: 20_000,
+            currency: "IDR".into(),
+        },
+        cashier_name: None,
+        note: None,
+        printer_target: None,
+    };
+
+    let result = print_kasbon_settlement_slip_scoped(&bridge.ctx(), args, "tok-no-perm").await;
+    assert!(
+        matches!(result, Err(BridgeError::PermissionDenied(_))),
+        "expected PermissionDenied for a session without receivables:view, got {:?}",
+        result
+    );
+}
+
 #[test]
 fn print_kasbon_settlement_args_deserialise() {
     let json = r#"{

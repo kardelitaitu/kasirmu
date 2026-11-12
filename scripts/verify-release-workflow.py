@@ -53,8 +53,11 @@ Usage:
 from __future__ import annotations
 
 import io
+import os
 import re
 import sys
+import tempfile
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 try:
@@ -64,6 +67,24 @@ except ImportError:  # pragma: no cover
     sys.exit(2)
 
 ROOT = Path(__file__).resolve().parent.parent
+
+#: Where fixture trees are written when the host sets a temp variable (a confined
+#: host denies its default temp); unset leaves tempfile's own default in force.
+#: NEVER point these at a directory inside the checkout. A temp root under this
+#: repository makes a fixture a subdirectory OF it, so a subprocess or a
+#: `git -C <fixture> ls-files` answers for this checkout instead of refusing, and
+#: a rung that grades resolution silently grades the real tree. This ladder leaves
+#: no repository-shaped evidence for a fixture to inherit, but the rule is stated
+#: for everyone who adds a rung, not only for the rungs that exist today.
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root this file's fixtures go under (None = system default), created."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
 WF = ROOT / ".github" / "workflows" / "release.yml"
 
 
@@ -73,7 +94,7 @@ def validate(text: str, root=None) -> list[str]:
     r171: `root` redirects the cross-reference scan, the git-log evidence and the
     referenced-path existence checks together (the r166 contract); None keeps
     this repository's own ROOT."""
-    root = ROOT if root is None else Path(root).resolve()
+    base = ROOT if root is None else Path(root).resolve()
     problems: list[str] = []
 
     try:
@@ -102,9 +123,10 @@ def validate(text: str, root=None) -> list[str]:
     # Retired workflows moved to attic/ (P4) still count as cross-references:
     # a pin appearing only in a retired copy is weak evidence but not a typo
     # invented out of thin air, which is what this check exists to catch.
-    workflow_dir = root / ".github" / "workflows"
+    workflow_dir = base / ".github" / "workflows"
+    here = workflow_dir / "release.yml"
     for p in sorted(workflow_dir.glob("*")) + sorted(workflow_dir.glob("attic/*")):
-        if p == WF or not p.is_file():
+        if p == here or not p.is_file():
             continue
         other = io.open(p, encoding="utf-8", errors="replace").read()
         known.update(re.findall(r"([A-Za-z0-9_.\-/]+)@([0-9a-f]{40})", other))
@@ -118,7 +140,7 @@ def validate(text: str, root=None) -> list[str]:
             ["git", "log", "--grep=dependabot", "--grep=chore(deps)", "-n", "5", "-p", "--", ".github/workflows"],
             capture_output=True,
             text=True,
-            cwd=str(root),
+            cwd=str(base),
         ).stdout
         known.update(re.findall(r"([A-Za-z0-9_.\-/]+)@([0-9a-f]{40})", log_out))
     except Exception:
@@ -143,7 +165,7 @@ def validate(text: str, root=None) -> list[str]:
                 r"(?<![\w./-])(?:ops/)?install/[A-Za-z0-9_./\-]+",
                 r"(?<![\w./-])apps/[A-Za-z0-9_.\-/]+\.json"):
         for ref in sorted(set(re.findall(pat, text))):
-            if not (root / ref).exists():
+            if not (base / ref).exists():
                 problems.append(f"referenced path missing: {ref}")
 
     # ── Docker residue ────────────────────────────────────────────────
@@ -249,7 +271,16 @@ MUTATIONS: list[tuple[str, str, str]] = [
 ]
 
 
-def self_test() -> int:
+def self_test(*, _ladder_owner=None) -> int:
+    """Prove every mutated release.yml is caught, then run the rung ladder.
+
+    _ladder_owner=None (the default) means "I do not know who my caller is", and
+    then the GUARD decides: if a ladder is already running this call is the nested
+    one and hands its tail back, otherwise it owns the ladder. main() states True
+    explicitly, because main() is never inside a ladder.
+    """
+    if _ladder_owner is None:
+        _ladder_owner = not _LADDER_RUNNING
     if not WF.is_file():
         print(f"FAIL: {WF} not found")
         return 1
@@ -401,7 +432,263 @@ def self_test() -> int:
               "6 shell cases green")
     else:
         print("\n  self-test: a mutation slipped through -- the gate is weaker than claimed")
-    return rc
+    # The ladder is DEFINED below and RUN here, as the last thing this function
+    # does: a ladder that is only defined is one nothing runs (the r263 shape).
+    # Only the OWNER runs it -- see shell_ladder() for why the nested --self-test
+    # in rung 5 must hand its tail back rather than start a second ladder.
+    return shell_ladder() if _ladder_owner else rc
+
+
+#: Re-entry guard (the r228 pattern): rung 5 drives a nested --self-test through
+#: main(), whose self-test arm ends in shell_ladder(). Without the guard that
+#: nested run would start a SECOND ladder recursively.
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test (rung 5) must not run a second ladder.
+
+    The guard lives HERE and not in self_test(), measured on the coverage-floors
+    sibling: rung 5 runs --self-test from inside the OUTER ladder, so the flag the
+    outer call set is still set when the nested one arrives. The guard therefore
+    answers BEFORE self_test() decides ownership -- the owner flag is never
+    consulted -- and the nested run prints no "LADDER OK". That is the convention,
+    not a defect: rung 5 asserts rc 0 and no traceback, never the ladder line.
+    """
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        # SILENT, and load-bearing: anything printed here lands in the nested
+        # run's captured streams.
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """Grade main()'s ROOT seam on throwaway trees that live OUTSIDE this repo.
+
+    validate() turns `root` into one binding, the root seam, and every base it
+    resolves -- the workflow directory, the git-log evidence cwd, every
+    referenced path -- reads from that binding. Every rung hands main() a
+    fixture root and reads the verdict off both captured streams; nothing here
+    reaches into validate() directly, so what is graded is the seam main() uses.
+
+    THE KILLING RUNG IS RUNG 1, AND IT MUST DIE ON A VERDICT. The fixtures hold
+    NONE of the repository-shaped evidence a root-blind main would inherit: no
+    .git anywhere under the this checkout's temp root, no release.yml,
+    ops/install/, apps/desktop-tauri/tauri.conf.json, scripts/generate-latest-json.mjs
+    or scripts/verify-windows-config.py. A main() that resolves against ROOT
+    therefore reads THIS repository's release.yml in both rungs, and both readings
+    reach the grading code: rung 1 asks for the WRONG verdict that
+    scripts/fx-release-probe.mjs is missing, rung 2 for the silent pass that lists
+    exactly the fixture's one stale token. A refusal ("FAIL: ... not found") is
+    explicitly not a pass -- that is the scope-refusal defect this rung was
+    written to make impossible, not to repeat.
+
+    WHAT IT DOES NOT PROVE. That a real tagged build ships working installers;
+    nothing here runs a runner. scripts/prove-ladder-kills.py runs the root-blind
+    mutant; this note is not the proof.
+    """
+    shell = 0
+    # Fixture-only names: nothing in this repository is called either, so a
+    # verdict that NAMES one cannot have come from reading the real workflow.
+    # A script name, a residue word and an inventory extension the repository does
+    # not have, in no other fixture either. The residue check is a plain substring test, so the
+    # word is carried as the middle field of the token and FX_RESIDUE is derived
+    # from it rather than sliced by hand -- a hand slice ("fx-"[3:9]) was measured
+    # to produce "triry", a token nothing matches, and the rung then accepted an
+    # rc 0 "validates" line as a finding.
+    FX_SCRIPT = "scripts/fx-release-probe.mjs"
+    FX_TOKEN = "fx-trivy-probe"
+    FX_RESIDUE = FX_TOKEN.split("-")[1]
+    FX_EXT = "zst"
+
+    def build(base, files):
+        """A fixture at `base`: {relative PATH -> CONTENT}, parents created."""
+        base = Path(base)
+        base.mkdir(parents=True, exist_ok=True)
+        for rel, content in files.items():
+            dst = base / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            io.open(dst, "w", encoding="utf-8", newline="\n").write(content)
+        return base
+
+    def grade(base, argv=()):
+        """(rc, everything main() printed to either stream)."""
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            try:
+                rc = main(argv=list(argv), root=base)
+            except SystemExit as se:
+                rc = se.code
+        return rc, out.getvalue() + err.getvalue()
+
+    # A release.yml that is sound on every OTHER family: rungs 1-3 derive their
+    # workflow from this one by exactly one fact each.
+    GOOD = (
+        "name: fx-release\n"
+        "on:\n"
+        "  push:\n"
+        "    tags: ['v*']\n"
+        "permissions:\n"
+        "  contents: read\n"
+        "jobs:\n"
+        "  release-validate:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - run: node scripts/fx-release-probe.mjs\n"
+        "  release-build:\n"
+        "    needs: release-validate\n"
+        "    run-on: ubuntu-latest\n"
+        "    runs-on: ubuntu-latest\n"
+        "    strategy:\n"
+        "      matrix:\n"
+        "        include:\n"
+        "          - bundle_ext: 'AppImage exe'\n"
+        "    steps:\n"
+        "      - run: |\n"
+        "          if [ -z \"$UPDATER_PRIVATE_KEY\" ]; then\n"
+        "            exit 1\n"
+        "          fi\n"
+        "  release-publish:\n"
+        "    needs: release-build\n"
+        "    runs-on: ubuntu-latest\n"
+        "    permissions:\n"
+        "      contents: write\n"
+        "      id-token: write\n"
+        "      attestations: write\n"
+        "    steps:\n"
+        "      - run: |\n"
+        "          for ext in AppImage exe; do\n"
+        "            echo \"$ext\"\n"
+        "          done\n")
+
+    with tempfile.TemporaryDirectory(dir=fixture_root(),
+                                     ignore_cleanup_errors=True) as td:
+        base = Path(td)
+
+        # NEITHER FIXTURE WRITES A `.git`. That is load-bearing, and measured in two
+        # rounds. A draft of rung 1 was the fixture workflow plus the one file that
+        # made it fail; a root-blind mutant found this checkout's own release.yml
+        # CLEAN and reported that one problem -- a verdict about a DIFFERENT tree
+        # that the rung could not tell apart from the fixture's. A second draft put
+        # the separator in an action PIN whose evidence comes from `git log`; a
+        # fixture with no HEAD of its own answers from the ENCLOSING checkout
+        # ("fatal: ... does not have any commits yet"), so the evidence a fixture
+        # needs is the absence of the enclosing checkout -- which a rung cannot
+        # arrange. What a rung CAN arrange is a fact that exists ONLY in the
+        # fixture's WORKFLOW TEXT: the literal inventory. This repository's
+        # release.yml demands AppImage/exe/dmg; a fixture that demands `zst` is
+        # fined for it iff its own text is what was graded.
+
+        def with_step(fragment):
+            """GOOD with one extra step under release-validate (after its script run)."""
+            anchor = "      - run: node scripts/fx-release-probe.mjs\n"
+            return GOOD.replace(anchor, anchor + fragment)
+
+        def findings(said):
+            """The `- ` finding lines a verdict printed, in order."""
+            return [l.strip() for l in said.splitlines() if l.strip().startswith("- ")]
+
+        # rung 1 -- the KILLING rung, and it must die on a VERDICT.
+        #
+        # The fixture's workflow is GOOD with its inventory demanding one extension
+        # no matrix entry can build. That finding is a function of the WORKFLOW TEXT
+        # and names the fixture-only extension, and it is not possible for a
+        # root-blind main: this repository's release.yml demands AppImage/exe/dmg
+        # and has no such word at all, so that reading answers rc 0 "validates".
+        # Both readings reach the grading code; only the correct root produces the
+        # named finding.
+        one = build(base / "one", {
+            FX_SCRIPT: "ok\n",
+            ".github/workflows/release.yml":
+                GOOD.replace("for ext in AppImage exe; do",
+                             "for ext in AppImage exe " + FX_EXT + "; do"),
+        })
+        rc, said = grade(one)
+        if "not found" in said:
+            print("  x rung 1: SCOPE REFUSAL -- main() could not read the fixture's "
+                  "workflow at all, which grades nothing (rc=%r said=%r)"
+                  % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        if (rc != 1
+                or len(findings(said)) != 1
+                or FX_EXT not in findings(said)[0]
+                or "no matrix target builds" not in said):
+            print("  x rung 1: the FIXTURE must be VERDICTED rc 1 for exactly ONE "
+                  "finding naming its own %r inventory demand -- a root-blind read "
+                  "cannot produce that word at all (rc=%r findings=%r)"
+                  % (FX_EXT, rc, findings(said)), file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 2 -- the second, independent fact: the same fixture with a stale
+        # residue word and NO inventory demand must be verdicted for the word ALONE.
+        # A root-blind main reads this checkout's release.yml and answers its own
+        # stale-token set, never the empty one this fixture deserves.
+        two = build(base / "two", {
+            FX_SCRIPT: "ok\n",
+            ".github/workflows/release.yml": with_step("      - run: " + FX_TOKEN + "\n"),
+        })
+        rc, said = grade(two)
+        if "not found" in said:
+            print("  x rung 2: SCOPE REFUSAL -- the fixture's workflow was not read "
+                  "(rc=%r said=%r)" % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        if (rc != 1
+                or len(findings(said)) != 1
+                or "stale docker-era reference '" + FX_RESIDUE + "'" not in findings(said)[0]):
+            print("  x rung 2: the FIXTURE must be VERDICTED for its stale word ALONE -- "
+                  "a root-blind main reads this checkout's release.yml instead and "
+                  "reports that tree's stale-token set (rc=%r findings=%r)"
+                  % (rc, findings(said)), file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 3 -- A CLEAN FIXTURE MUST PASS. Rungs 1 and 2 both demand rc 1, so an
+        # arm that always answers rc 1 would satisfy them; GOOD, unchanged, must
+        # exit 0 on the pass line. A root-blind main cannot: this repository's
+        # release.yml carries the release-validate/build/publish chain and the stale
+        # -era references of its own, so it fails there.
+        three = build(base / "three", {
+            FX_SCRIPT: "ok\n",
+            ".github/workflows/release.yml": GOOD,
+        })
+        rc, said = grade(three)
+        if "not found" in said:
+            print("  x rung 3: SCOPE REFUSAL -- the fixture's workflow was not read "
+                  "(rc=%r said=%r)" % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        if rc != 0 or "release.yml validates" not in said:
+            print("  x rung 3: a CLEAN fixture must be the silent pass an always-rc-1 "
+                  "arm cannot fake (rc=%r said=%r)" % (rc, said[-400:]),
+                  file=sys.stderr)
+            return 1
+        shell += 1
+
+        # rung 4 -- --self-test through argv, run INSIDE this ladder. The guard
+        # answers BEFORE self_test() decides ownership, so the nested run holds its
+        # ladder back and prints NO "LADDER OK" -- measured, not assumed. What it
+        # must do is exit 0 with every inline case passing and no traceback.
+        # Requiring the ladder line here would fail a correct run.
+        rc, said = grade(one, ("--self-test",))
+        if (rc != 0
+                or "self-test: all 8 mutations caught" not in said
+                or "FAIL" in said
+                or "Traceback" in said
+                or "LADDER OK" in said):
+            print("  x rung 4: --self-test through argv must exit 0, pass every inline "
+                  "case, print no traceback and (guard) no nested ladder line "
+                  "(rc=%r said=%r)" % (rc, said[-400:]), file=sys.stderr)
+            return 1
+        shell += 1
+
+    print("LADDER OK (%d shell rungs through main(): fixture-only inventory verdict, "
+          "fixture-only stale-word verdict, clean fixture, nested --self-test)" % shell)
+    return 0
 
 
 def main(argv: list[str] | None = None, root: str | Path | None = None) -> int:
@@ -409,10 +696,11 @@ def main(argv: list[str] | None = None, root: str | Path | None = None) -> int:
     redirects BOTH the release.yml read and every evidence source inside
     validate(), so a fixture cannot half-run against the real repository."""
     root_path = None if root is None else Path(root).resolve()
+    base = ROOT if root_path is None else root_path
     wf = WF if root_path is None else root_path / ".github" / "workflows" / "release.yml"
     args = sys.argv[1:] if argv is None else argv
     if "--self-test" in args:
-        return self_test()
+        return self_test(_ladder_owner=True)
     if not wf.is_file():
         print(f"FAIL: {wf} not found")
         return 1

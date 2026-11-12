@@ -354,8 +354,10 @@ pub use rate_limiter::LoginRateLimiter;
 pub use recipe::RecipeItem;
 pub use refund::{Refund, RefundLine};
 pub use regional::{
-    ActiveMarketProfile, ConfigScope, RegionalConfig, RegionalLayer, RegionalValue,
-    load_active_market_profile, verify_regional_mutation_allowed,
+    ActiveMarketProfile, ConfigScope, RegionalConfig, RegionalLayer, RegionalMarketPreset,
+    RegionalValue, StatutoryTaxCategory, load_active_market_profile, regional_preset_for_country,
+    regional_tax_regime_for_country, statutory_tax_rate_bps_for_country,
+    verify_regional_mutation_allowed,
 };
 pub use sale::{Sale, SaleLine};
 pub use sale_deduction::{
