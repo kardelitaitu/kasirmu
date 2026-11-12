@@ -567,8 +567,10 @@ Audit of `src/features/inventory/` (11 screens) + `inventory.ftl` /
 1. **`StockCountForm` type toggle** — the radiogroup (`role="radiogroup"`
    + plain buttons) predates the arrow-key/roving-tabindex pattern applied
    to tax and categories; low value since it has only 3 options.
-2. **`stockStatus` low threshold** — hardcoded `< 10` in
-   `InventoryAdjustmentScreen` while thresholds are configurable elsewhere.
+2. ~~**`stockStatus` low threshold**~~ **✅ Fixed — verified 2026-11-12** —
+   updated `InventoryAdjustmentScreen.tsx` `stockStatus` helper to respect
+   `product.low_stock_threshold ?? DEFAULT_LOW_STOCK_THRESHOLD` instead of
+   a hardcoded `< 10`.
 3. ~~**`ShiftBar` note field**~~ **✅ Fixed — verified 2026-11-11** — checked
    `ShiftBar.tsx`: it uses `<Localized id="inv-shift-notes-placeholder">` and
    `inv-shift-notes-aria` with no raw `"Notes"` `<label>`.
