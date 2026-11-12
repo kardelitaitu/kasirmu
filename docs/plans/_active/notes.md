@@ -612,12 +612,12 @@ Audit of `src/features/products/` (4 screens) + `products.ftl` /
    — `toggleActive` in `BundleManagementScreen.tsx` now catches update failures and
    surfaces `bundles-error-save` inline (`role="alert"`), covered by a unit test in
    `BundleManagementScreen.test.tsx`.
-2. **`ProductManagementScreen` delete confirm** — uses an inline `ConfirmDialog`
-   but the `product-mgmt-deleting` plural key was dead (never read), so the
-   deleting state renders nothing; harmless but dead code removed.
-3. **`formatVariantPrice`** — hardcodes `Intl.NumberFormat('en-US', ...)`
-   instead of the active Fluent locale; the domain `formatMoney` already
-   handles IDR minor-unit exponents, so this could reuse it.
+2. ~~**`ProductManagementScreen` delete confirm**~~ **✅ Obsolete — verified 2026-11-12**
+   — `ProductManagementScreen` and orphan keys (`product-mgmt-deleting` etc.) were
+   removed in product lookup refactor (`4a981d85e`).
+3. ~~**`formatVariantPrice`**~~ **✅ Obsolete — verified 2026-11-12** —
+   `VariantManagementScreen` and its price formatting were retired in
+   `2078454cb` (`refactor(products): delete VariantManagementScreen`).
 
 ---
 
