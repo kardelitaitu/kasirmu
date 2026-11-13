@@ -1,250 +1,208 @@
-# Weekly Development Plan — kasir.mu `0.0.41`
+# Weekly Development Plan — kasir.mu `0.0.41` (Pre-Beta Freeze & Verification)
 
-> Generated: 2026-11-10. Branch locked at `0.0.41`. Never create or switch branches.
+> Generated: 2026-11-13. Branch locked at `0.0.41`. Never create or switch branches.
+> v0.0.41 Code & Scope Freeze is active (declared 2026-11-13 in `docs/operations/freeze-declaration-0.0.41.md`).
 > Every item below was verified against the live tree before writing. Cross-references include
 > exact file paths and commands so any reader can re-derive without reading this document first.
 
 ---
 
-## Week of 2026-11-10 → 2026-11-16
+## Week of 2026-11-17 → 2026-11-23
 
 ### Status entering this week
 
 | Area | Status |
 |---|---|
-| Last PR merged | #127 — SEA Phase 2 tax tables, BRIDGE-7 fix, analytics UI backlog, and gate ladders |
-| CI on `main` | ✅ All dev-ci gates pass. Northflank deploy failed HTTP 401 (credential stale). |
-| `docs/plans/_active/` | `website_carousel.md` (blocked on video assets), `notes.md` (Items 1–2 ✅ done). `owner-question-2026-09-28-r4-r6-r7.md` **archived 2026-11-11** → `_done/done-owner-question-2026-09-28-r4-r6-r7.md` (`00ca02d43`). |
-| Open security finding | **BRIDGE-7** — `print_kasbon_settlement_slip_scoped` closed in `d46119269` (gated on `receivables:view`). |
+| Release Milestone | `v0.0.41` pre-beta stabilization; code freeze active (`fa5927e98`) |
+| CI on `main` / dev-ci | ✅ All gates pass (`check:all` 9 passed, 1 skipped). Northflank deploy blocked on token rotation. |
+| Reliability Ladder Campaign | ✅ 100% contracted (70 of 70 gate checkers with full ladder contract) |
+| Active Plans | `docs/plans/_active/website_carousel.md` (waiting for 5x10s video clips), `notes.md` |
+| Security & Invariants | 5 core invariants active (0 new schema migrations, Money `i64`, transaction writes, IPC parity, ladder contracts) |
 
 ---
 
-## Day 1–2 · Mon–Tue · Security & Permission Hardening (BRIDGE-7) — ✅ COMPLETED 2026-11-10
+## Day 1 · Mon 11-17 · Release Artifact Build & SHA-256 Digest Verification
 
-> Highest-priority item this week. `print_kasbon_settlement_slip_scoped` takes
-> `customer_name`, `customer_phone`, `previous_balance`, `amount_paid`, `remaining_balance`
-> and prints them with no permission check beyond session validity.
-> Finding: `docs/decisions/2026-10-23-bridge7-hardware-permission-gap.md`
+> Satisfies `plan-next-30-days.md` §4.3: rebuild signed installers from a clean tree and record digests.
 
-**Adopted: Option B — gate only the Kasbon settlement slip**
-
-- [x] Adopted Option B: gated `print_kasbon_settlement_slip_scoped` on `permissions::RECEIVABLES_VIEW`
-- [x] Updated comments on the other 10 hardware commands to record why session-auth is sufficient (`// ungated-ok: session-auth sufficient...`)
-- [x] Added bridge test `print_kasbon_settlement_slip_requires_receivables_view` in `crates/kasirmu-bridge/src/hardware_tests.rs`
-- [x] Updated `docs/decisions/2026-10-23-bridge7-hardware-permission-gap.md` status to `CLOSED`
-- [x] Verified: `cargo test -p kasirmu-bridge hardware` (45/45 passed), `verify-scoped-authorization.sh` (0 unreasoned)
-- [x] Committed: `d46119269`
-
----
-
-## Day 3 · Wed · Course Firing Architecture Decision — ✅ COMPLETED 2026-11-13 (Option 1 Adopted)
-
-> `fireCourse` / `fireAllCourses` in `ui/src/features/sales/usePosState.ts:247,260`
-> mutated local state only — they never reached the backend before checkout.
-> ADR-68 proposed two options; owner adopted Option 1 (Cart-Level State Persistence).
-
-**Adopted: Option 1 — Cart-Level State Persistence**
-
-- [x] Formulated both architectural options with trade-off comparison matrix
-- [x] Drafted `docs/decisions/2026-11-10-adr68-course-firing-architecture.md` (ADR-68)
-- [x] Owner ruling: Option 1 adopted
-- [x] Added `coursing_status: Option<String>` to `CartLine` in `foundation/src/cart.rs` with `#[serde(default)]` and `set_coursing_status` helper
-- [x] Added unit tests in `foundation/src/cart_tests.rs` (610/610 passing)
-- [x] Extended `SetLineCourseArgs` and `run_set_line_course_unchecked` in `crates/kasirmu-bridge/src/pos/cart.rs` and `apps/mobile-tauri/src/commands/pos.rs` to persist coursing status
-- [x] Added bridge unit tests in `crates/kasirmu-bridge/src/pos_tests.rs` (159/159 passing)
-- [x] Extended `setLineCourseScoped` in `ui/src/api/sales.ts` and dev-mock handler in `ui/src/dev-mock/handlers/sales.ts`
-- [x] Updated `syncLineCourse` in `usePosCartActions.ts` and `fireCourseAndSync` / `fireAllCoursesAndSync` in `PosScreen.tsx`
-- [x] Updated `docs/decisions/README.md` and `docs/records/README.md` indices (0 drift)
-- [x] Verified: `check-adr-status.py` (0 drift), `cargo test -p foundation`, `cargo test -p kasirmu-bridge pos::tests`, UI vitest (54/54 passing)
+- [ ] Run release version and windows config verifications:
+  ```bash
+  node scripts/check-release-version.mjs --self-test
+  python scripts/verify-windows-config.py
+  python scripts/verify-release-workflow.py
+  ```
+- [ ] Build desktop production release installer:
+  ```bash
+  cargo tauri build --bundles nsis,msi
+  ```
+- [ ] Compute and record SHA-256 digests of generated installer binaries:
+  ```powershell
+  Get-FileHash -Algorithm SHA256 target\release\bundle\nsis\*.exe
+  Get-FileHash -Algorithm SHA256 target\release\bundle\msi\*.msi
+  ```
+- [ ] Verify installer matches Minisign updater manifest signature:
+  ```bash
+  node scripts/verify-updater-signature.mjs latest.json windows-x86_64 target\release\bundle\nsis\*.exe
+  ```
 
 ---
 
-## Day 4 · Thu · Analytics Cards Visual Backlog (`notes.md`) — ✅ COMPLETED 2026-11-11 (`e2d536346`)
+## Day 2 · Tue 11-18 · Pilot Merchant First-Run Provisioning Simulation
 
-> `docs/plans/_active/notes.md` — audited remaining open items, verified `#/analytics`
-> and `#/reports` in live Chromium, resolved code/CSS/i18n bugs, and pruned confirmed items.
+> Exercises the 5-minute onboarding flow defined in `docs/operations/pilot-merchant-onboarding.md` §2.
 
-- [x] Start Vite dev server: `cd ui && npm run dev` → open `http://localhost:1420/#/analytics` (and `#/reports`, 0 console errors/warnings)
-- [x] Walk each "Still open" section in `notes.md` with the running app visible
-- [x] For each confirmed: updated `notes.md` with verified findings and fixes
-- [x] For each needing a code fix: fixed `.analytics-card-menu` portal token scoping, `.analytics-kpi-tiles` wrap, 7 chart `option` guards, `mountedRef` cleanup, `DashboardScreen` `GraphicComponent` & low-stock layout, `BundleManagementScreen` `toggleActive` error alert, `PromotionManagementScreen` local datetime round-trip, `pos-discount-default-label`, and `TaxConfigurationScreen` category aria-label
-- [x] Run `npm run lint && npm run typecheck && npm run test` (`828` suites / `13,131` passed) + i18n/docs/parity gates
-- [x] Commit on `0.0.41` at `e2d536346` (`fix(ui): resolve analytics portal/chart/layout issues and Day 4 notes backlog`)
-
----
-
-## Day 5 · Fri · SEA Market Tax Rate Tables (ADR-59 Phase 2) — ✅ COMPLETED 2026-11-10
-
-> `crates/kasirmu-core/src/regional.rs` already has `SEA_MARKET_PRESETS` for 6 markets
-> and `regional_preset_for_country()` (shipped week prior, 53 tests passing).
-> Phase 2 of ADR-59 needs per-country statutory tax *rate tables*, not just regime names.
-
-- [x] Added `StatutoryTaxCategory` enum (`Standard`, `Reduced`, `ZeroRated`)
-- [x] Populated statutory rates in basis points for 6 SEA markets (ID: 1100 standard / 1000 reduced, SG: 900, MY: 800, TH: 700, PH: 1200, VN: 1000)
-- [x] Added `statutory_tax_rate_bps_for_country(country_code, category) -> Option<i64>`
-- [x] Re-exported types in `crates/kasirmu-core/src/lib.rs`
-- [x] Added comprehensive unit tests in `crates/kasirmu-core/src/regional_tests.rs`
-- [x] Verified: `cargo check -p kasirmu-core && cargo test -p kasirmu-core regional::` (58/58 passed)
-- [x] Committed: `67d563c04`
+- [ ] Walk the 5-step provisioning sequence in local standalone mode:
+  1. Profile initialization: trade name (*Warung Kopi Nusantara*) + timezone (`Asia/Jakarta`).
+  2. Currency validation: locked `IDR` minor units.
+  3. Tax preset activation: verify `ppn11` (1100 bps) and `ppn11_service5` (1100 + 500 bps).
+  4. Hardware pairing: test thermal printer receipt formatting (`Rp` glyph, line feed).
+  5. Test transaction: multi-tender checkout (Split Cash + QRIS 0% MDR).
+- [ ] Confirm zero errors in dev console and app log (`%LOCALAPPDATA%\kasirmu\logs\app.log`).
+- [ ] Validate EOD reconciliation: perform shift close and verify Z-report receipt totals.
 
 ---
 
-## Day 6 · Sat · Housekeeping & Docs
+## Day 3 · Wed 11-19 · Tab Leases & Multi-Terminal Concurrency Stress Testing
 
-### 6a — Northflank Credential Rotation (HTTP 401)
+> Validates dining operations and optimistic concurrency leases (`pilot-merchant-onboarding.md` §3).
 
-> CI job `Deploy Backend (Northflank)` failed with HTTP 401 on the `main` merge run.
-> See: `.agents/skills/deploy-northflank/SKILL.md` for the rotation procedure.
-
-- [ ] Rotate the Northflank API token in the Northflank dashboard
-- [ ] Update GitHub Actions secret: `gh secret set KASIRMU_NORTHFLANK_API_TOKEN --body "<token>"`
-- [ ] Re-trigger the deploy job and confirm it reaches the "Wait for build to conclude" step
-
-### 6b — Plans Folder Housekeeping — ✅ COMPLETED 2026-11-11
-
-- [x] Archive `docs/plans/_active/owner-question-2026-09-28-r4-r6-r7.md` to `docs/plans/_done/done-owner-question-2026-09-28-r4-r6-r7.md` — all answers recorded 2026-09-29, file is now purely historical. Moved with `git mv`; an ARCHIVED note naming the earning (all four questions answered, Q1 option (a) executed, Q2/R6 declined, Q3/R7 "none yet", Q4 recorded) was prepended so the `done-` prefix is earned rather than merely applied (AGENTS.md §7.4).
-- [x] Ran `python scripts/verify-doc-uniqueness.py` → rc 0, "no duplicate authoritative documents"; `python scripts/verify-agents-mirrors.py` → rc 0, "every policed mirror (1) agrees with the repo"
-- [x] Committed: `00ca02d43` — `docs(plans): archive answered owner-question r4-r6-r7` (1 file changed, 7 insertions, R095 rename)
-
-### 6d — Ladder Campaign Census Correction — ✅ MEASURED 2026-11-11
-
-> Every round since r265 closed with "Census N of 70". That denominator was a
-> count of `scripts/*.py` taken before r265's own scope widening, and was never
-> re-derived after the roster grew to include `website/scripts/` and
-> `.agents/skills/docs-auditor/scripts/` plus the `.mjs`/`.sh` checkers.
-
-- [x] Re-measured the real roster at HEAD: **102** checkers declare `--self-test`, of which **48** carry a ladder marker (38 in `scripts/`, 11 in `.agents/skills/docs-auditor/`, 5 in `website/scripts/`). Recorded as round 276 in `docs/records/findings/audit-open-findings.md`.
-- [x] Committed with the round-277 batch: `d87bbd4e3`
-
-### 6e — `verify-core-size` Ladder (round 277) — ✅ CONTRACTED & PROVEN 2026-11-11
-
-> `scripts/verify-core-size.py` had 31 rule cases and no `shell_ladder()`. The
-> rule cases grade helpers; none graded that `main()` grades the root it is
-> handed — the exact defect r265–r275 found in five sibling checkers.
-
-- [x] Added `shell_ladder()`: 7 rungs / 15 assertions. Rung 1 kills on a VERDICT (fixture one line over its ceiling → correct main exits 1 naming the fixture's delta; root-blind main grades this checkout, which sits at its own ceiling, and exits 0). Rung 2 is the positive floor. Rungs 3–7 cover the fixture's own ceiling, the db/ budget message, the modularity budget, a missing baseline, and `--emit-baseline`.
-- [x] Fixed `scripts/prove-ladder-kills.py`: `applicable()` normalized its match while `run_mutant()` spliced raw, so a no-op `str.replace()` built an unmutated copy and reported it as SURVIVED. Added `_spliceable_occurrences()` (raw count over comment-stripped source), an EXEC refusal in `run_mutant()`, and a "conditional root ignores root" row for the two-line binding.
-- [x] Verified: `python scripts/verify-core-size.py --self-test` → 31/31 rule cases + 15/15 rungs, rc 0; live run rc 0 (measured 40900 = ceiling 40900, headroom 0)
-- [x] Verified the kill: `python scripts/prove-ladder-kills.py scripts/verify-core-size.py` → "every applicable mutation killed (1)", "conditional root ignores root KILLED rc=1"
-- [x] Verified no regression: full sweep of the 44 laddered checkers → 36 KILLED-ALL, 0 EXEC, 0 SURVIVED, 8 NO APPLICABLE (rc 2, honest "cannot reach that shape"); the six checkers contracted in r270–r275 re-run individually, all still fully killed
-- [x] Committed: `d87bbd4e3` — `test(gates): contract verify-core-size with a seven-rung ladder` (3 files, 375 insertions)
-
-### 6f — Contract Ladder Campaign 100% Completion (Rounds 278-299) — ✅ COMPLETED 2026-11-13 (70 of 70)
-
-> Advanced the contract ladder campaign across all remaining uncontracted gate checkers in
-> `scripts/census-checker-contracts.py` from 48 to 70 of 70 (100% contracted). Every checker
-> in scope now declares `self_test`, `shell_ladder`, `root_param`, and is wired to runners.
-
-- [x] Completed rounds 278–299:
-  - `check-rbac-citations.py` (round 278)
-  - `verify-ps-syntax.py` (round 279)
-  - `verify-exhaustive-deps.py` (round 280)
-  - `verify-flaky-quarantine.py` (round 281)
-  - `verify-dockerfile-workspace.py` (round 282)
-  - `check-hardcoded-copy.py` (round 283)
-  - `check-client-type-drift.py` (round 284)
-  - `check-tz-invariance.py` (round 285)
-  - `verify-windows-config.py` (round 286)
-  - `verify-invoke-parity.py` (round 287)
-  - `check-rust-doc-paths.py` (round 288)
-  - `verify-topology-parity.py` (round 289)
-  - `check-mapper-alignment.py` (round 290)
-  - `verify-no-hardcoded-money-format.py` (round 291)
-  - `check-query-plans.py` (round 292)
-  - `verify-migration-column-types.py` (round 293)
-  - `verify-debt-markers.py` (round 294)
-  - `check-gate-runners.py` (round 295)
-  - `check-l10n-test-maps.py` (round 296)
-  - `verify-pg-tests-ran.py` (round 297)
-  - `verify-ci-docs-drift.py` (round 298)
-  - `verify-agents-mirrors.py` (round 299)
-- [x] Verified: `python scripts/census-checker-contracts.py` → 70 of 70 (100%) checker(s) contracted ("nothing owed -- every checker in scope is contracted").
-- [x] Proved ladder kills on all contracted checkers with `python scripts/prove-ladder-kills.py`.
-
-### 6c — Website Carousel Video Asset Reminder
-
-> Only remaining blocker: owner must supply 5 × 10 s calm UI screen recordings.
-> Encode specs (VP9/H.264, 1280×720 desktop, 960×540 mobile, 15 fps) are in
-> `docs/plans/_active/website_carousel.md` §6. Integration steps are in §7.
-
-- [ ] Remind owner: drop 5 × 10 s clips into hero videos folder when ready (specs in `docs/plans/_active/website_carousel.md` §6)
+- [ ] Verify optimistic tab lease broadcast (`tabs:changed`) across simulated multi-terminal sessions.
+- [ ] Test table merge flow: source held cart appended to destination cart, source table released (`tables-merge-confirm-btn`).
+- [ ] Verify 60-second lease expiration timeout: ensure inactive tab lock releases without deadlocking other tills.
+- [ ] Validate automated "86 / Habis" menu badge when component ingredient inventory reaches 0.
 
 ---
 
-## Day 7 · Sun · Buffer + Stretch Goals
+## Day 4 · Thu 11-20 · Hardware Fault Injection & Printer Offline Fallback
 
-> Absorb any day 5–6 overflow, write next week's todo, or pick a stretch item.
+> Tests cash drawer and thermal printer disconnection handling during mid-shift retail checkout.
 
-### Stretch A — `Release Bridge Tests` Hardening — ✅ FIXED 2026-11-10
+- [ ] Simulate printer disconnection mid-checkout: verify receipt spooling to local queue without crashing the checkout modal.
+- [ ] Verify cash drawer kick fallback: manual drawer release prompt displayed when ESC/POS kick pulse is unacknowledged.
+- [ ] Test barcode scanner rapid-fire input: ensure input buffer handles rapid scans without dropping keystrokes or double-adding items.
+- [ ] Confirm no raw hardware driver exceptions escape to the cashier UI.
 
-> Job failed on `main` push with exit code 100 (`create_location_profile_refuses_when_the_store_db_cannot_be_created`).
-> Root cause: in release profile without a paid tier, the subscription quota gate refuses with `SubscriptionLimitExceeded`
-> before store database creation, because debug's bootstrap Premium upgrade shim does not run in release.
+---
 
-- [x] Diagnosed failure: test asserted `BridgeError::Internal(_)` while release profile legitimately returns `SubscriptionLimitExceeded`
-- [x] Added `if !seeded_row_reaches_a_paid_tier()` branch in `crates/kasirmu-bridge/src/locations_tests.rs`
-- [x] Verified debug pass and release expectation alignment
-- [x] Committed: `48ea38f5a`
+## Day 5 · Fri 11-21 · Quarantine Audit & Static Gate Health Sweep
 
-### Stretch B — ADR-67 Core Size Ratchet — ✅ MEASURED & ALIGNED 2026-11-10
+> Ensures quarantine cleanliness and gate parity maintenance under freeze.
 
-> `docs/decisions/2026-10-24-adr67-core-size-ratchet-measurement.md` defines a size ceiling for `kasirmu-core`.
+- [ ] Audit test quarantine manifest:
+  ```bash
+  python scripts/verify-flaky-quarantine.py
+  ```
+  Confirm 0 expired entries and 0 unowned tests.
+- [ ] Verify AGENTS mirrors and IPC parity:
+  ```bash
+  python scripts/verify-agents-mirrors.py
+  python scripts/verify-ipc-parity.py
+  ```
+- [ ] Run full UI validation suite:
+  ```bash
+  cd ui && npm run check:all
+  ```
 
-- [x] Measured `kasirmu-core` compiled production lines via `scripts/verify-core-size.py` (measured 40900)
-- [x] Updated `scripts/core-size-baseline.json` ceiling (non-db 13203 -> 13230) with exact attribution for SEA statutory tax tables (+27 lines)
-- [x] Verified: `python scripts/verify-core-size.py` passes cleanly (exit 0, headroom 0)
-- [x] Committed: `scripts/core-size-baseline.json`
+---
 
-### Stretch C — Android APK Smoke Test
+## Day 6 · Sat 11-22 · Documentation Portal Synchronization & Runbook Audit
 
-- [ ] `android-apk-build` skill → build debug APK *(blocked in non-Win32k agent shell: `tsc -b` + `dist-mobile` Vite bundle succeeded and `23073RPBFG` connected over wireless ADB, but `cargo tauri android build` build scripts failed with `0xc0000142` / `STATUS_DLL_INIT_FAILED` on `USER32.dll`/`win32u.dll`; run APK build from host terminal)*
-- [ ] Install on tablet over wireless ADB
-- [ ] Confirm WebView serves POS screen at LAN IP
+> Keeps mdBook portal and operational guides aligned with HEAD.
+
+- [ ] Audit docs portal links and build:
+  ```bash
+  python scripts/gen-summary.py
+  mdbook build docs
+  ```
+- [ ] Verify doc uniqueness:
+  ```bash
+  python scripts/verify-doc-uniqueness.py
+  ```
+- [ ] Cross-check runbook procedures with latest freeze declaration:
+  - [upgrade-and-rollback-procedure.md](file:///c:/dev/kasirmu/docs/operations/upgrade-and-rollback-procedure.md)
+  - [freeze-declaration-0.0.41.md](file:///c:/dev/kasirmu/docs/operations/freeze-declaration-0.0.41.md)
+
+---
+
+## Day 7 · Sun 11-23 · Weekly Bug Triage & Beta Readiness Review
+
+> Weekly retrospective and bug backlog review against P0–P3 triage criteria.
+
+- [ ] Triage any logged issues using [.github/ISSUE_TEMPLATE/bug_report.md](file:///c:/dev/kasirmu/.github/ISSUE_TEMPLATE/bug_report.md).
+- [ ] Review carry-forward operational blockers:
+  - Northflank API deployment token rotation (Owner: Infrastructure).
+  - 5 × 10 s hero carousel screen recordings (Owner: Product / Media).
+  - Docker Desktop daemon status for PG-gated receipts (Owner: Platform).
+- [ ] Compile Week 2026-11-17 retrospective log and formulate next sprint roadmap.
 
 ---
 
 ## Blocked / Carry-Forward
 
-| Item | Blocker |
-|---|---|
-| Hero carousel video assets | Owner must supply 5 × 10 s clips |
-| Course firing architecture (ADR-68) | ✅ Resolved 2026-11-13 (Option 1 adopted & implemented) |
-| MIDTRANS sandbox credential (R6) | Owner declined; re-open only if credential arrives |
-| Physical EDC terminal model (R7) | Owner "none yet"; loopback is the active implementation |
-| Phase 3 India / Brazil expansion | ADR-59 Invariant 1: no code without a commercial sponsor |
+| Item | Blocker | Owner |
+|---|---|---|
+| Hero carousel video assets | Owner must supply 5 × 10 s clips (`website_carousel.md` §6) | Product / Media |
+| Northflank API token (HTTP 401) | Owner must refresh secret in Northflank console & GitHub secrets | Infrastructure |
+| PostgreSQL-gated receipts (§1.1) | Requires Docker Desktop daemon running on host (`localhost:15432`) | Platform / DevOps |
+| Android physical tablet timings (§3.1) | Requires wireless ADB connection to physical device (`23073RPBFG`) | QA / Hardware |
+| MIDTRANS sandbox credential (R6) | Owner declined; wiremock offline tests run cleanly | Product |
+| Physical EDC terminal model (R7) | Owner "none yet"; loopback simulator is active implementation | Hardware |
 
 ---
 
-## Reference — Gate Commands Cheatsheet
+## Completed — Week of 2026-11-10 → 2026-11-16 (Sprint 0.0.41 Milestone)
 
-```powershell
-# UI gates (always from ui/)
-cd ui && npm run lint && npm run typecheck
-cd ui && npm run test
+<details>
+<summary>14 completed items — click to expand</summary>
 
-# Rust per-crate (iteration)
-cargo check -p kasirmu-bridge
-cargo test -p kasirmu-bridge
+### 1. Hardware Permission Gap (BRIDGE-7) — ✅ 2026-11-10
+- Gated `print_kasbon_settlement_slip_scoped` on `permissions::RECEIVABLES_VIEW`.
+- Verified 10 other hardware commands session-auth sufficiency; 45/45 bridge tests pass. Committed `d46119269`.
 
-# Gate scripts
-python scripts/verify-agents-mirrors.py       # AGENTS.md mirrors
-python scripts/verify-ipc-parity.py           # IPC allowlist
-python scripts/verify-doc-uniqueness.py       # plan uniqueness
-python scripts/verify-ftl-orphans.py --census # i18n orphan count
+### 2. Course Firing Architecture (ADR-68) — ✅ 2026-11-13
+- Adopted Option 1 (Cart-Level State Persistence). Added `coursing_status` to `CartLine` in foundation.
+- Persisted line coursing in mobile/desktop Tauri commands and POS UI. 610/610 foundation tests pass.
 
-# Docs portal
-mdbook build docs
+### 3. Analytics Cards Visual Backlog (`notes.md`) — ✅ 2026-11-11
+- Audited and resolved analytics cards issues in live Chromium: portaled menu tokens, KPI tiles wrap, 7 chart option guards, low-stock layout. Committed `e2d536346`.
 
-# Commit form (ALWAYS explicit pathspec)
-git commit -m "type(area): subject" -- path/one path/two
-git show --stat
-```
+### 4. SEA Market Tax Tables (ADR-59 Phase 2) — ✅ 2026-11-10
+- Added statutory rate tables in basis points for 6 SEA markets (ID, SG, MY, TH, PH, VN) in `regional.rs`. 58/58 tests pass. Committed `67d563c04`.
 
-> **Never** `git push` without explicit user order.
-> **Never** modify version numbers (`0.0.41` locked).
-> **Never** `git clean -x...` (would delete `.env` — 82 files at risk).
-> **Never** `git commit -a` or bare `git add` except for new-file staging.
-> **Always** commit with explicit pathspec.
+### 5. Plans Folder Housekeeping — ✅ 2026-11-11
+- Archived `owner-question-2026-09-28-r4-r6-r7.md` to `_done/`. Committed `00ca02d43`.
+
+### 6. Core-Size Ratchet Ladder (Round 277) — ✅ 2026-11-11
+- Added 7-rung shell ladder to `verify-core-size.py` (15 assertions); verified mutant kill. Committed `d87bbd4e3`.
+
+### 7. Contract Ladder Campaign 100% Completion (Rounds 278–299) — ✅ 2026-11-13
+- Contracted all remaining checkers in `scripts/census-checker-contracts.py` (70 of 70, 100% complete).
+
+### 8. Backup / Restore Rehearsal Asserting Ledger Equality — ✅ 2026-11-13
+- Added `recovery_midshift_backup_restore_rehearsal_asserts_ledger_equality` in `recovery_inline_tests.rs`.
+- Proved exact equality of shift float, active status, stock (`70`), completed sale (`3,000`), gift card balance (`3,500`), and audit log hash continuity (`is_valid: true`, 4 checked). Committed `e03d0bc12`.
+
+### 9. Two-Tablet Sync Convergence Under Hostile Clocks — ✅ 2026-11-13
+- Added `two_tablets_sync_convergence_under_hostile_clock_skew_and_equal_timestamps` in `daemon_tests.rs`.
+- Skewed clocks (14 days past vs 14 days future + timestamp collision). Drained queues in 4 cycles; asserted exact stock convergence (`117`), zero duplicate sales, deduplication keys applied. Committed `5a34a5b39`.
+
+### 10. Upgrade Round-Trip & Emergency Rollback Procedure — ✅ 2026-11-13
+- Verified Minisign updater crypto self-test. Authored `docs/operations/upgrade-and-rollback-procedure.md` covering pre-upgrade snapshotting, forward migration, and 4-step emergency rollback. Committed `284fbc319`.
+
+### 11. Security Posture Table & i18n Cleanup Debt Decision — ✅ 2026-11-13
+- Verified IPC parity. Formulated fail-closed (`OZ_ADMIN_KEY`, `OZ_API_SECRET`, `OZ_LICENSE_PRIVATE_KEY`) vs fail-open (`OZ_ENFORCE_PLANS`) posture. Preserved 55 Indonesian-only keys (`I18N-01`) as permanent fixtures. Committed `2cd7606ef`.
+
+### 12. Offline Error-Message Path Audit — ✅ 2026-11-13
+- Audited offline user paths (checkout, KDS, inventory, kasbon, QRIS gateway, sync reconciliation). Verified no raw Rust leaks or false cloud promises. UI lint and typecheck clean. Committed `ba4494605`.
+
+### 13. Full Acceptance Dry Run & Environment Hardening — ✅ 2026-11-13
+- Hardened `check-ui.mjs` for Windows Git Bash and `target/mstmp`. Ran `npm run check:all` with 9 passed, 1 skipped (Docker), 0 failed. Committed `a24e947e1`.
+
+### 14. v0.0.41 Code Freeze Declaration & Bug Triage Workflow — ✅ 2026-11-13
+- Formally declared v0.0.41 code freeze in `docs/operations/freeze-declaration-0.0.41.md`.
+- Published bug report template in `.github/ISSUE_TEMPLATE/bug_report.md` and updated `plan-next-30-days.md`. Committed `fa5927e98`.
+
+</details>
 
 ---
 
