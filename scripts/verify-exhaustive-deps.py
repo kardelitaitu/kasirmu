@@ -40,9 +40,19 @@ import sys
 import tempfile
 from pathlib import Path
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-UI = os.path.join(REPO, "ui")
-STATE = os.path.join(REPO, "scripts", "exhaustive-deps-baseline.json")
+REPO = Path(__file__).resolve().parents[1]
+UI = REPO / "ui"
+STATE = REPO / "scripts" / "exhaustive-deps-baseline.json"
+
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root fixtures go under (None = system default), created if missing."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
 
 SUMMARY_RE = re.compile(r"(\d+)\s+problems?\s+\((\d+)\s+errors?,\s*(\d+)\s+warnings?\)")
 RULE_RE = re.compile(r"react-hooks/exhaustive-deps")
@@ -265,14 +275,33 @@ def self_test() -> int:
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 
-    # r194: main()'s shell -- argv and root graded against a tempdir fixture
-    # carrying a ui/ tree with a FAKE project-local eslint, the r166..r193
-    # pattern. The over-cap and missing-eslint cases kill a root-dropping
-    # main: the real tree runs its real eslint clean under the real cap, so
-    # it returns 0 where the fixture demands 1 or the refusal.
+    if bad:
+        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
+        return 2
+    print("SELF-TEST OK (10 cases: 6 pure + 4 through a fake eslint, one scratch tree removed)")
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """Grade main()'s shell on fixture trees outside this repository."""
     import contextlib as _ctx
     import io as _io
-    from pathlib import Path  # r194: this module is os.path-native otherwise
+
     shell = 0
     STUB = ("#!/bin/sh" + chr(10)
             + "echo \"c.tsx 1:7 warning Hook has a missing dependency react-hooks/exhaustive-deps\"" + chr(10)
@@ -281,9 +310,6 @@ def self_test() -> int:
     STUB2 = ("#!/bin/sh" + chr(10)
              + "echo \"eslint: config error\"" + chr(10)
              + "exit 2" + chr(10))
-    # the .cmd twin needs BATCH syntax -- an sh body under a .cmd name prints
-    # its quotes and mangles the summary line (the fixture must speak the
-    # language of the file name the runner will actually execute)
     STUB_CMD = ("@echo off\r\n"
                 + "echo c.tsx 1:7 warning Hook has a missing dependency react-hooks/exhaustive-deps\r\n"
                 + "echo 1 problem (0 errors, 1 warnings)\r\n"
@@ -291,14 +317,15 @@ def self_test() -> int:
     STUB2_CMD = ("@echo off\r\n"
                  + "echo eslint: config error\r\n"
                  + "exit /b 2\r\n")
+
     def _shell(files, argv=()):
-        with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
+        with tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+            base = Path(td).resolve()
             for rel, content in files.items():
                 dst = base / rel
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 dst.write_text(content, encoding="utf-8")
-            (base / "scripts").mkdir(parents=True, exist_ok=True)  # the gate writes here
+            (base / "scripts").mkdir(parents=True, exist_ok=True)
             bin_eslint = base / "ui" / "node_modules" / ".bin" / ("eslint.cmd" if os.name == "nt" else "eslint")
             bin_eslint.parent.mkdir(parents=True, exist_ok=True)
             if os.name == "nt":
@@ -319,32 +346,38 @@ def self_test() -> int:
             except SystemExit as se:
                 return se.code, out.getvalue() + err.getvalue()
             return rc, out.getvalue() + err.getvalue()
+
+    # rung 1 -- the KILLING rung: an over-cap count fails with rc=1 naming the cap
     shell += 1
     rc, text = _shell({"ui/src/c.tsx": "// linted\n"}, argv=("cap0",))
     if rc != 1 or "exceed the cap of 0" not in text:
-        print("  x an over-cap count must fail naming the cap (rc=%r text=%r)" % (rc, text[-90:]),
+        print("  x rung 1: an over-cap count must fail naming the cap (rc=%r text=%r)" % (rc, text[-90:]),
               file=sys.stderr)
         return 1
+
+    # rung 2 -- below-cap count reads ok with lowering suggestion
     shell += 1
     rc, text = _shell({"ui/src/c.tsx": "// linted\n"})
     if rc != 0 or "below cap -- consider lowering it to 1" not in text:
-        print("  x a below-cap count must read ok with the suggestion (rc=%r text=%r)"
+        print("  x rung 2: a below-cap count must read ok with the suggestion (rc=%r text=%r)"
               % (rc, text[-90:]), file=sys.stderr)
         return 1
+
+    # rung 3 -- --set-baseline records the measured count
     shell += 1
     rc, text = _shell({"ui/src/c.tsx": "// linted\n"}, argv=("--set-baseline",))
     if rc != 0 or "baseline set to 1" not in text:
-        print("  x --set-baseline must record the current count (rc=%r text=%r)"
+        print("  x rung 3: --set-baseline must record the current count (rc=%r text=%r)"
               % (rc, text[-90:]), file=sys.stderr)
         return 1
+
+    # rung 4 -- the baseline file on disk actually carries the new count
     shell += 1
-    # the post-condition lives INSIDE the tempdir with, per the fixture rules
-    with tempfile.TemporaryDirectory() as td:
-        base = Path(td)
-        for rel, content in {"ui/src/c.tsx": "// linted\n"}.items():
-            dst = base / rel
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            dst.write_text(content, encoding="utf-8")
+    with tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+        base = Path(td).resolve()
+        dst = base / "ui" / "src" / "c.tsx"
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text("// linted\n", encoding="utf-8")
         bin_eslint = base / "ui" / "node_modules" / ".bin" / ("eslint.cmd" if os.name == "nt" else "eslint")
         bin_eslint.parent.mkdir(parents=True, exist_ok=True)
         bin_eslint.write_text(STUB_CMD if os.name == "nt" else STUB, encoding="utf-8")
@@ -352,43 +385,59 @@ def self_test() -> int:
             os.chmod(bin_eslint, 0o755)
         except OSError:
             pass
-        # main() LOADS the cap before --set-baseline can write one: the fixture
-        # must already carry a baseline, exactly like the real tree does
         (base / "scripts").mkdir(parents=True, exist_ok=True)
         (base / "scripts" / "exhaustive-deps-baseline.json").write_text(
             '{"max_exhaustive_deps": 5}', encoding="utf-8")
-        rc = main(argv=["--set-baseline"], root=base)
+        out, err = _io.StringIO(), _io.StringIO()
+        with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+            rc = main(argv=["--set-baseline"], root=base)
         written = json.loads((base / "scripts" / "exhaustive-deps-baseline.json").read_text(encoding="utf-8"))
-        if written.get("max_exhaustive_deps") != 1:
-            print("  x the baseline file must carry the measured count, got %r" % (written,),
+        if rc != 0 or written.get("max_exhaustive_deps") != 1:
+            print("  x rung 4: the baseline file must carry the measured count, got %r" % (written,),
                   file=sys.stderr)
             return 1
+
+    # rung 5 -- usage / config error (eslint exit 2) fails closed
     shell += 1
     rc, text = _shell({}, argv=("usage",))
     if not (isinstance(rc, str) and rc.startswith("eslint exited 2")):
-        print("  x a usage-error lint must fail closed on the run itself (rc=%r)" % (rc,),
+        print("  x rung 5: a usage-error lint must fail closed on the run itself (rc=%r)" % (rc,),
               file=sys.stderr)
         return 1
+
+    # rung 6 -- missing eslint binary refuses with SystemExit naming the path
     shell += 1
-    with tempfile.TemporaryDirectory() as td:
-        base = Path(td)  # a ui/ with NO eslint binary at all
+    with tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+        base = Path(td).resolve()
         (base / "scripts").mkdir(parents=True, exist_ok=True)
         (base / "scripts" / "exhaustive-deps-baseline.json").write_text(
             '{"max_exhaustive_deps": 2}', encoding="utf-8")
         try:
-            main(argv=[], root=base)
-            print("  x a missing linter must refuse, not pass", file=sys.stderr)
+            out, err = _io.StringIO(), _io.StringIO()
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                main(argv=[], root=base)
+            print("  x rung 6: a missing linter must refuse, not pass", file=sys.stderr)
             return 1
         except SystemExit as se:
             if "eslint not found" not in str(se.code):
-                print("  x the missing-linter refusal must name the path (rc=%r)" % (se.code,),
+                print("  x rung 6: the missing-linter refusal must name the path (rc=%r)" % (se.code,),
                       file=sys.stderr)
                 return 1
-    if bad:
-        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
-        return 2
-    print("SELF-TEST OK (10 cases: 6 pure + 4 through a fake eslint + %d shell cases, "
-          "one scratch tree removed)" % shell)
+
+    # rung 7 -- nested --self-test passes through argv under re-entry guard
+    shell += 1
+    with tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+        base = Path(td).resolve()
+        out, err = _io.StringIO(), _io.StringIO()
+        with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+            rc = main(argv=["--self-test"], root=base)
+        text = out.getvalue() + err.getvalue()
+        if rc != 0 or "SELF-TEST OK" not in text or "LADDER OK" in text:
+            print("  x rung 7: nested --self-test must exit 0 without running duplicate ladder (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
+    print("LADDER OK (%d rungs: over-cap, below-cap, set-baseline, file-written, config-error, missing-bin, nested-selftest)" % shell)
     return 0
 
 
@@ -403,7 +452,7 @@ def main(argv=None, root=None) -> int:
 
     if args.self_test:
         return self_test()
-    base = Path(REPO) if root is None else Path(root).resolve()
+    base = REPO if root is None else Path(root).resolve()
 
     code, output = run_eslint(base / "ui")
     # eslint exits 1 when there are problems and 2 on a usage/config error; both mean the number

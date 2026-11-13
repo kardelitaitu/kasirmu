@@ -12425,3 +12425,25 @@ MEASURED:
 - `python scripts/verify-ps-syntax.py --self-test` -> OK (9 pure + 6 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/verify-ps-syntax.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 49 -> 50 of 70 (20 un-contracted remaining, next target `verify-exhaustive-deps.py`).
+
+
+### Round 280 (2026-11-13) -- verify-exhaustive-deps gains a 7-rung ladder and proves against repo base mutation
+
+`scripts/verify-exhaustive-deps.py` had 10 test cases in `self_test()` (6 pure + 4 through a fake eslint) and an inline shell block lacking a dedicated `shell_ladder()` and re-entry guard.
+
+ADDED:
+- `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 7 rungs:
+  Rung 1 (killing rung): over-cap count fails rc 1 naming the cap ("exceed the cap of 0").
+  Rung 2: below-cap count reads ok with lowering suggestion ("below cap -- consider lowering it to 1").
+  Rung 3: `--set-baseline` records the measured count ("baseline set to 1").
+  Rung 4: baseline file on disk actually carries the new count.
+  Rung 5: usage/config error from eslint (exit code 2) fails closed.
+  Rung 6: missing eslint binary refuses with SystemExit naming the path.
+  Rung 7: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+- Standardized `base = REPO if root is None else Path(root).resolve()` in `main()` as the unique spliceable anchor for mutation testing.
+
+MEASURED:
+- `python scripts/verify-exhaustive-deps.py --self-test` -> OK (10 cases: 6 pure + 4 through fake eslint; 7 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-exhaustive-deps.py` -> "repo base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 50 -> 51 of 70 (19 un-contracted remaining, next target `verify-flaky-quarantine.py`).
