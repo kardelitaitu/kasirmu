@@ -12779,26 +12779,27 @@ MEASURED:
 - `python scripts/census-checker-contracts.py` -> contracted moves 65 -> 66 of 70 (4 un-contracted remaining, next target `check-l10n-test-maps.py`).
 
 
-### Round 298 (2026-11-13) -- verify-ci-docs-drift gains a 6-rung ladder and proves against scan base mutation
+### Round 299 (2026-11-13) -- verify-agents-mirrors gains a 6-rung ladder, reaching 100% census contract completion (70 of 70)
 
-`scripts/verify-ci-docs-drift.py` had comprehensive pure cases and 5 inline shell checks in `self_test()` and lacked a formal `shell_ladder()` contract and `_LADDER_RUNNING` re-entry guard.
+`scripts/verify-agents-mirrors.py` (3083 lines) had 40 pure in-memory mutation test cases in `self_test()` and lacked `main()`, `root` parameterization, and a formal `shell_ladder()` contract with `_LADDER_RUNNING` re-entry guard.
 
 ADDED:
-- Standardized `base = ROOT if root is None else Path(root).resolve()` and globals update in `main()`.
-- Added mutant-path parent resolution fallback for `ROOT = Path(__file__).resolve().parent.parent` so `ROOT / "scripts"` is found when running in `.prove-ladder-` tempdirs.
-- Formalized `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
-  Rung 1 (killing rung): dangling workflow inventory fails rc 1 ("2 drift item(s)").
-  Rung 2: coherent mini-corpus grades clean with exit 0 ("0 drift item(s)").
-  Rung 3: report-only prints items and exits 0 ("2 drift item(s)").
-  Rung 4: missing ci-pipeline.md refuses with exit 2 ("docs not found").
-  Rung 5: unparseable manifest refuses with exit 2 ("gate manifest invalid JSON").
-  Rung 6: nested `--self-test` passes rc 0 through argv under re-entry guard ("all self-test cases passed").
+- Defined `main(argv=None, root=None)` with standard `base = ROOT if root is None else Path(root).resolve()` resolution.
+- Added `ROOT = DEFAULT_ROOT` and positional CLI root argument support.
+- Defined `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
+  Rung 1 (killing rung): planted gate count drift in `AGENTS.md` fails rc 1 ("claims 6 pre-commit steps").
+  Rung 2: clean fixture tree passes with exit 0 ("every policed mirror (1) agrees with the repo").
+  Rung 3: missing `.githooks/pre-commit` fails rc 1 ("1 of 4 policed paths missing [.githooks/pre-commit]").
+  Rung 4: stale skill claim fails rc 1 ("pre-commit steps").
+  Rung 5: missing `Cargo.toml` refuses with exit code != 0 ("cannot determine the current version from Cargo.toml").
+  Rung 6: nested `--self-test` passes rc 0 through argv under re-entry guard ("self-test: all mutations caught").
 - Added `TMP_ENV = ("TMPDIR", "TMP", "TEMP")` and `fixture_root()` canonical tempdir handling with automatic fixture cleanup.
 
 MEASURED:
-- `python scripts/verify-ci-docs-drift.py --self-test` -> OK (pure cases + 6 shell rungs).
-- `python scripts/prove-ladder-kills.py scripts/verify-ci-docs-drift.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
-- `python scripts/census-checker-contracts.py` -> contracted moves 68 -> 69 of 70 (1 un-contracted remaining, next target `verify-agents-mirrors.py`).
+- `python scripts/verify-agents-mirrors.py --self-test` -> OK (40 pure cases + 6 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-agents-mirrors.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> 70 of 70 (100%) checker(s) contracted! "nothing owed -- every checker in scope is contracted."
+
 
 
 
