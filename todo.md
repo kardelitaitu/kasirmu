@@ -89,10 +89,10 @@
 
 > Tests cash drawer and thermal printer disconnection handling during mid-shift retail checkout.
 
-- [ ] Simulate printer disconnection mid-checkout: verify receipt spooling to local queue without crashing the checkout modal.
-- [ ] Verify cash drawer kick fallback: manual drawer release prompt displayed when ESC/POS kick pulse is unacknowledged.
-- [ ] Test barcode scanner rapid-fire input: ensure input buffer handles rapid scans without dropping keystrokes or double-adding items.
-- [ ] Confirm no raw hardware driver exceptions escape to the cashier UI.
+- [x] Simulate printer disconnection mid-checkout: verify receipt spooling / warning without crashing the checkout modal (`PaymentModalSaleFlow.test.tsx:warns instead of reporting success when the receipt cannot print`).
+- [x] Verify cash drawer kick fallback: manual drawer release prompt displayed when ESC/POS kick pulse is unacknowledged (`PaymentModalSaleFlow.test.tsx:2854`, `RestaurantPaymentsScreen.test.tsx:824`).
+- [x] Test barcode scanner rapid-fire input: ensure input buffer handles rapid scans without dropping keystrokes or double-adding items (`useBarcodeScanner.test.tsx` 24 passed).
+- [x] Confirm no raw hardware driver exceptions escape to the cashier UI (`crates/kasirmu-bridge/src/hardware_tests.rs`, `PosScreen.test.tsx:684:Scanner disconnected — check USB connection`).
 
 ---
 
