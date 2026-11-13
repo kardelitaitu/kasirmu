@@ -12712,3 +12712,28 @@ MEASURED:
 - `python scripts/census-checker-contracts.py` -> contracted moves 62 -> 63 of 70 (7 un-contracted remaining, next target `verify-migration-column-types.py`).
 
 
+### Round 293 (2026-11-13) -- verify-migration-column-types gains a 7-rung ladder and proves against scan base mutation
+
+`scripts/verify-migration-column-types.py` had 8 pure cases in `self_test()` and lacked `root` parameterization on `main()` and a `shell_ladder()` contract.
+
+ADDED:
+- Parameterized `main(argv=None, root=None)` with standard `base = ROOT if root is None else Path(root).resolve()` resolution.
+- Plumbed `base` and `migrations` through `classify_roots`, `refuse_roots`, `refuse`, and `staged_migration_paths`.
+- Added module registration workaround `if __name__ not in sys.modules: sys.modules[__name__] = types.ModuleType(__name__)` for Python 3.14 dataclasses compatibility under isolated `importlib` execution.
+- Defined `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 7 rungs:
+  Rung 1 (killing rung): planted unwhitelisted float column fails rc 1 ("bad_col is float-typed").
+  Rung 2: clean fixture tree with 4 whitelist files passes clean and exits 0 ("ok: no unwhitelisted float columns").
+  Rung 3: missing whitelist file triggers stale whitelist entry, failing rc 1 ("stale whitelist entry").
+  Rung 4: empty migration directory refuses with exit 2 ("REFUSED", "scanned no migration files").
+  Rung 5: unknown flag refuses with exit 2 ("REFUSED", "unrecognised argument --no-such-flag").
+  Rung 6: positional root refuses with exit 2 ("named no directory").
+  Rung 7: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `TMP_ENV = ("TMPDIR", "TMP", "TEMP")` and `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+
+MEASURED:
+- `python scripts/verify-migration-column-types.py --self-test` -> OK (8 pure cases; 7 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-migration-column-types.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 63 -> 64 of 70 (6 un-contracted remaining, next target `verify-debt-markers.py`).
+
+
+

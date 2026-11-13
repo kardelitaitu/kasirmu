@@ -92,11 +92,29 @@ never cost that code -- a refused run prints 2 and prints no count at all.
 
 from __future__ import annotations
 
+import contextlib
+import io
+import os
 import re
 import subprocess
 import sys
+import tempfile
+import types
+if __name__ not in sys.modules:
+    sys.modules[__name__] = types.ModuleType(__name__)
 from dataclasses import dataclass
 from pathlib import Path
+
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root fixtures go under (None = system default), created if missing."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
+
 
 # Repo-relative, never anchored to a hardcoded checkout (AGENTS.md).
 ROOT = Path(__file__).resolve().parent.parent
@@ -180,7 +198,7 @@ def strip_comments(sql: str) -> str:
     return re.sub(r"--[^\n]*", "", sql)
 
 
-def refuse(mode: str, scanned: int, corpus: int, *, index_unreadable: bool = False) -> None:
+def refuse(mode: str, scanned: int, corpus: int, *, index_unreadable: bool = False, migrations_dir: Path = MIGRATIONS, repo_root: Path = ROOT) -> None:
     """Say what was looked for, where, and what came back.
 
     stdout, not stderr: scripts/run-pre-push.py surfaces only a child's stdout, and this
@@ -195,11 +213,11 @@ def refuse(mode: str, scanned: int, corpus: int, *, index_unreadable: bool = Fal
     )
     print(head)
     print(f"  mode                     : {mode}")
-    print(f"  migration root           : {MIGRATIONS}"
-          + ("" if MIGRATIONS.is_dir() else "  (directory absent)"))
+    print(f"  migration root           : {migrations_dir}"
+          + ("" if migrations_dir.is_dir() else "  (directory absent)"))
     print(f"  looked for               : *.sql directly under that root — "
           f"{corpus} file(s) found")
-    print(f"  repo root resolved from  : {ROOT}  (parent of this script's directory, "
+    print(f"  repo root resolved from  : {repo_root}  (parent of this script's directory, "
           "never a hardcoded checkout)")
     if index_unreadable:
         print("  reason                   : the git index could not be read, so the "
@@ -235,7 +253,7 @@ def named_roots(argv: list[str]) -> tuple[bool, list[str]]:
     return "--roots" in argv, [a for a in argv if not a.startswith("-")]
 
 
-def classify_roots(values: list[str]) -> tuple[list[str], list[str], list[str]]:
+def classify_roots(values: list[str], base: Path = ROOT) -> tuple[list[str], list[str], list[str]]:
     """(directories, blanks, not-directories), resolved against ROOT before the walk.
 
     Three buckets because the three causes read differently to whoever typed them. A blank is
@@ -249,14 +267,14 @@ def classify_roots(values: list[str]) -> tuple[list[str], list[str], list[str]]:
     for value in values:
         if not value.strip():
             blanks.append(value)
-        elif (ROOT / value).is_dir():
+        elif (base / value).is_dir():
             dirs.append(value)
         else:
             missing.append(value)
     return dirs, blanks, missing
 
 
-def refuse_roots(flag: str | None, values: list[str]) -> int:
+def refuse_roots(flag: str | None, values: list[str], base: Path = ROOT) -> int:
     """Name every root token this command line cannot honour, say where it looked, stop at 2.
 
     The voice is the `error:` line this file already uses for everything that is not a verdict
@@ -267,7 +285,7 @@ def refuse_roots(flag: str | None, values: list[str]) -> int:
     No scan count prints on this path at all, so a refusal cannot be mistaken for a verdict —
     and nothing has been walked to produce it.
     """
-    dirs, blanks, missing = classify_roots(values)
+    dirs, blanks, missing = classify_roots(values, base=base)
     source = flag or "a path argument with no flag in front of it"
     if not values:
         why = ("was handed no value at all, so the root list resolves to the empty set — and "
@@ -289,15 +307,15 @@ def refuse_roots(flag: str | None, values: list[str]) -> int:
         print(f"  named but not a directory : {', '.join(repr(m) for m in missing)}",
               file=sys.stderr)
         for miss in missing:
-            print(f"    it looked at         : {ROOT / miss}  (not a directory)",
+            print(f"    it looked at         : {base / miss}  (not a directory)",
                   file=sys.stderr)
     if blanks:
         print(f"  named but blank           : {len(blanks)} value(s)", file=sys.stderr)
     print(f"  named and a directory     : {', '.join(repr(d) for d in dirs) if dirs else '(none)'}",
           file=sys.stderr)
-    print(f"  repo root resolved from   : {ROOT}  (parent of this script's directory, never a "
+    print(f"  repo root resolved from   : {base}  (parent of this script's directory, never a "
           "hardcoded checkout)", file=sys.stderr)
-    print(f"  the only root this gate scans: {MIGRATIONS}", file=sys.stderr)
+    print(f"  the only root this gate scans: {base / 'crates' / 'kasirmu-core' / 'migrations'}", file=sys.stderr)
     print("  note: the whole-tree scan this command line would otherwise have printed is the "
           "verdict for a corpus nobody asked about; refusing it costs a run, not a schema.",
           file=sys.stderr)
@@ -326,7 +344,7 @@ def scan_file(path: Path) -> list[Hit]:
     return hits
 
 
-def staged_migration_paths() -> set[str] | None:
+def staged_migration_paths(base: Path = ROOT) -> set[str] | None:
     """Repo-relative staged migration paths, or None when the index cannot be read.
 
     None is a REFUSAL condition, not an empty set: an unreadable index and an index with
@@ -336,7 +354,12 @@ def staged_migration_paths() -> set[str] | None:
         proc = subprocess.run(
             ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM", "-z", "--",
              "crates/kasirmu-core/migrations/"],
-            cwd=ROOT, capture_output=True, text=True, check=True,
+            cwd=base, capture_output=True, text=True, check=True,
+        )
+    except Exception as exc:  # no repo, no git, non-zero exit
+        print(
+            f"error: cannot read the git index (git diff --cached) for {base}: {exc}",
+            file=sys.stderr,
         )
     except Exception as exc:  # no repo, no git, non-zero exit
         print(
@@ -578,12 +601,135 @@ def self_test() -> int:
     if red:
         print("  a case slipped through: the behaviour it pins is no longer pinned (exit 2, not "
               "1 — a broken self-test must not impersonate a float-column finding)")
-    return rc_out
+        return rc_out
+    return shell_ladder()
 
 
-def main(argv: list[str]) -> int:
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _populate_whitelist_fixtures(mgr: Path) -> None:
+    """Create minimal SQL definitions satisfying all 13 WHITELIST entries."""
+    mgr.mkdir(parents=True, exist_ok=True)
+    (mgr / "20260813_init.sql").write_text(
+        "CREATE TABLE loyalty_tiers (earn_multiplier REAL);\n"
+        "CREATE TABLE products (popularity_score REAL);\n"
+        "CREATE TABLE tables (pos_x REAL, pos_y REAL, width REAL, height REAL);\n",
+        encoding="utf-8",
+    )
+    (mgr / "20260813_init.pg.sql").write_text(
+        "CREATE TABLE products (popularity_score REAL);\n"
+        "CREATE TABLE tables (pos_x REAL, pos_y REAL, width REAL, height REAL);\n",
+        encoding="utf-8",
+    )
+    (mgr / "20260831_per_tenant_unique_rebuild.sql").write_text(
+        "CREATE TABLE products_new (popularity_score REAL);\n",
+        encoding="utf-8",
+    )
+    (mgr / "20261020_product_type_check.sql").write_text(
+        "CREATE TABLE products_new (popularity_score REAL);\n",
+        encoding="utf-8",
+    )
+
+
+def _shell_ladder_body() -> int:
+    """Grade main()'s shell on fixture trees outside this repository."""
+    def _run(files: dict[str, str] | None = None, argv=None, with_whitelist=True) -> tuple[int, str]:
+        with tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+            fixture_base = Path(td).resolve()
+            mgr = fixture_base / "crates" / "kasirmu-core" / "migrations"
+            if with_whitelist:
+                _populate_whitelist_fixtures(mgr)
+            else:
+                mgr.mkdir(parents=True, exist_ok=True)
+            if files:
+                for fname, content in files.items():
+                    (mgr / fname).write_text(content, encoding="utf-8")
+            out, err = io.StringIO(), io.StringIO()
+            try:
+                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                    rc = main(argv=[] if argv is None else argv, root=fixture_base)
+            except SystemExit as se:
+                return (se.code if isinstance(se.code, int) else 1), out.getvalue() + err.getvalue()
+            return rc, out.getvalue() + err.getvalue()
+
+    rungs = 0
+
+    # rung 1 -- the KILLING rung: planted unwhitelisted float column fails rc 1
+    rungs += 1
+    files = {"20261113_test_violation.sql": "CREATE TABLE test_table (id INTEGER PRIMARY KEY, bad_col REAL);\n"}
+    rc, text = _run(files=files)
+    if rc != 1 or "20261113_test_violation.sql" not in text or "bad_col is float-typed" not in text:
+        print(f"  x rung 1: planted violation must fail rc 1 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 2 -- clean fixture passes with rc 0 and ok line
+    rungs += 1
+    rc, text = _run()
+    if rc != 0 or "ok: no unwhitelisted float columns" not in text:
+        print(f"  x rung 2: clean fixture must pass rc 0 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 3 -- missing whitelist file triggers stale whitelist entry, failing rc 1
+    rungs += 1
+    rc, text = _run(with_whitelist=False, files={"dummy.sql": "CREATE TABLE t (id INT);\n"})
+    if rc != 1 or "stale whitelist entry" not in text:
+        print(f"  x rung 3: missing whitelist file must fail rc 1 with stale entry (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 4 -- empty migration directory refuses with rc 2
+    rungs += 1
+    rc, text = _run(with_whitelist=False)
+    if rc != 2 or "REFUSED" not in text or "scanned no migration files" not in text:
+        print(f"  x rung 4: empty directory must refuse rc 2 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 5 -- unknown flag refuses with rc 2
+    rungs += 1
+    rc, text = _run(argv=["--no-such-flag"])
+    if rc != 2 or "REFUSED" not in text or "unrecognised argument --no-such-flag" not in text:
+        print(f"  x rung 5: unknown flag must refuse rc 2 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 6 -- positional root refuses with rc 2
+    rungs += 1
+    rc, text = _run(argv=["some/nonexistent/root"])
+    if rc != 2 or "named no directory" not in text:
+        print(f"  x rung 6: positional root must refuse rc 2 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 7 -- nested --self-test passes through argv under re-entry guard
+    rungs += 1
+    rc, text = _run(argv=["--self-test"])
+    if rc != 0 or "tally:" not in text:
+        print(f"  x rung 7: nested --self-test must exit 0 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    print(f"LADDER OK ({rungs} rungs: violation-kill, clean-pass, stale-whitelist, empty-refusal, unknown-flag, positional-refusal, nested-selftest)")
+    return 0
+
+
+def main(argv: list[str] | None = None, root: Path | None = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
     if "--self-test" in argv:
         return self_test()
+
+    base = ROOT if root is None else Path(root).resolve()
+    migrations = base / "crates" / "kasirmu-core" / "migrations"
+
     flag = unknown_flag(argv)
     roots_flag, root_values = named_roots(argv)
     if flag is not None:
@@ -592,22 +738,22 @@ def main(argv: list[str]) -> int:
         # WHICH of its values is not a directory, so `--roots crates nope` names `nope` and the
         # path it was tried at. Still before the walk, still exit 2 — this only diagnoses.
         if roots_flag or root_values:
-            refuse_roots(flag, root_values)
+            refuse_roots(flag, root_values, base=base)
         return rc
     if root_values:
         # A path with no flag in front of it. This is the case that used to print a PASS: a
         # mistyped root was ignored and the whole-tree verdict came back clean.
-        return refuse_roots(None, root_values)
+        return refuse_roots(None, root_values, base=base)
     staged_only = "--staged-only" in argv
     mode = "--staged-only" if staged_only else "whole-tree (no --staged-only)"
-    corpus = sorted(MIGRATIONS.glob("*.sql"))
+    corpus = sorted(migrations.glob("*.sql"))
     files = corpus
     if staged_only:
-        staged = staged_migration_paths()
+        staged = staged_migration_paths(base=base)
         if staged is None:
-            refuse(mode, 0, len(corpus), index_unreadable=True)
+            refuse(mode, 0, len(corpus), index_unreadable=True, migrations_dir=migrations, repo_root=base)
             return 2
-        files = [f for f in corpus if str(f.relative_to(ROOT)).replace("\\", "/") in staged]
+        files = [f for f in corpus if str(f.relative_to(base)).replace("\\", "/") in staged]
 
     scanned = len(files)
     # An empty WHOLE-TREE walk is not a clean schema, it is a gate that read nothing --
@@ -616,7 +762,7 @@ def main(argv: list[str]) -> int:
     # step 4 can reach this gate from a commit that staged no migration), so it is exempt:
     # failing it would fail every commit in the repository.
     if scanned == 0 and not staged_only:
-        refuse(mode, scanned, len(corpus))
+        refuse(mode, scanned, len(corpus), migrations_dir=migrations, repo_root=base)
         return 2
 
     hits: list[Hit] = []
@@ -656,11 +802,11 @@ def main(argv: list[str]) -> int:
         if staged_only else f"{scanned} migration file(s)"
     )
     scanned_line = (
-        f"verify-migration-column-types: scanned {scope} under {MIGRATIONS} "
+        f"verify-migration-column-types: scanned {scope} under {migrations} "
         f"({len(hits)} float-typed column(s) found)"
     )
     if rc == 0:
-        print(f"ok: no unwhitelisted float columns ({scope} scanned under {MIGRATIONS}, "
+        print(f"ok: no unwhitelisted float columns ({scope} scanned under {migrations}, "
               f"{len(hits)} float hits all exempt)")
     else:
         print(scanned_line)
@@ -668,4 +814,4 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(main())
