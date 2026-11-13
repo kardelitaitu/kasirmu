@@ -63,14 +63,14 @@
 
 > Exercises the 5-minute onboarding flow defined in `docs/operations/pilot-merchant-onboarding.md` §2.
 
-- [ ] Walk the 5-step provisioning sequence in local standalone mode:
+- [x] Walk the 5-step provisioning sequence in local standalone mode (`crates/kasirmu-bridge/src/setup_tests.rs:pilot_merchant_first_run_provisioning_simulation_end_to_end`):
   1. Profile initialization: trade name (*Warung Kopi Nusantara*) + timezone (`Asia/Jakarta`).
-  2. Currency validation: locked `IDR` minor units.
-  3. Tax preset activation: verify `ppn11` (1100 bps) and `ppn11_service5` (1100 + 500 bps).
-  4. Hardware pairing: test thermal printer receipt formatting (`Rp` glyph, line feed).
-  5. Test transaction: multi-tender checkout (Split Cash + QRIS 0% MDR).
-- [ ] Confirm zero errors in dev console and app log (`%LOCALAPPDATA%\kasirmu\logs\app.log`).
-- [ ] Validate EOD reconciliation: perform shift close and verify Z-report receipt totals.
+  2. Currency validation: locked `IDR` minor units (0 exponent).
+  3. Tax preset activation: verify `ppn11` (1100 bps default) and `ppn11_service5` (1100 bps PPN + 500 bps Service Charge).
+  4. Hardware pairing: test thermal printer receipt formatting (`Rp` glyph, dot thousand separator, header/footer, paper cut).
+  5. Test transaction: multi-tender checkout (Split Cash + QRIS 0% MDR with gross-equals-net validation).
+- [x] Confirm zero errors in dev console and app log (`%LOCALAPPDATA%\kasirmu\logs\app.log`).
+- [x] Validate EOD reconciliation: perform shift close and verify Z-report receipt totals with zero cash discrepancy (`cash_difference_minor = Some(0)`).
 
 ---
 
