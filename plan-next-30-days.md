@@ -185,7 +185,17 @@ sees — the part no unit test can certify.*
   no silent failure, and no "success" toast for an operation that was queued rather
   than applied. Queued work must say so.
 - **Acceptance:** a table of (path, what it says, what it should say) with the resolved
-  rows marked; `cd ui && npm run lint` and `npm run typecheck` clean.
+  rows marked; `cd ui && npm run lint` and `npm run typecheck` clean:
+
+| Path / Component | Trigger Condition | What It Says | What It Should Say (Audited Contract) | Status |
+|---|---|---|---|---|
+| POS Checkout (`PaymentModal.tsx`) | Sale completed while offline | "Sale completed — queued for sync" | Clearly flags local persistence and pending cloud queue; does not claim cloud settlement. | ✅ Resolved |
+| KDS Order Update (`KdsScreen.tsx`) | Order status change offline | "Update queued — will sync when online" (`kds-offline-queued-update`) | Promises reconnection retry for orders; suppresses false retry promises on unsupported item updates (`kdsItemStatusFailureIsReported`). | ✅ Resolved |
+| Stock Adjustment (`AdjustStockModal.tsx`) | Inventory delta written offline | "Stock adjustment recorded locally" | Confirms local transaction write and pending sync delta; no false immediate server confirmation. | ✅ Resolved |
+| Kasbon Receivable (`CustomerReceivablesModal.tsx`) | Credit transaction offline | "Credit transaction saved locally" | Confirms local store write and queued sync item; wraps DB errors in human-readable Fluent messages. | ✅ Resolved |
+| Dynamic QRIS / Card (`useAutoQr.ts`) | Gateway charge attempted offline | "Network unreachable — switch to cash or offline tender" | Actionable cashier guidance; raw transport/hyper connection refused errors suppressed. | ✅ Resolved |
+| Sync Reconciliation (`SyncConflictsPanel.tsx`) | Concurrent conflicting writes | "Some conflicts could not be requeued" / "Conflict detected" | Surfaces conflict state and resolution options; never silently drops or overwrites without user notice. | ✅ Resolved |
+
 
 ### 3.3 Decide the i18n cleanup debt
 
@@ -296,7 +306,7 @@ cd ui && npm run check:all
 
 ### Week 3
 - [ ] 3.1 Five-minute timings (desktop / tablet):
-- [ ] 3.2 Error-path table complete
+- [x] 3.2 Error-path table complete — **audited 2026-11-13**: user-visible offline error and status paths audited across POS checkout, KDS orders, inventory adjustments, receivables/kasbon, gateway charges, and sync conflict panels. All paths provide actionable human-readable messages without exposing raw Rust/transport errors, never claim cloud application when queued, and prevent silent failures. Verified: `cd ui && npm run lint && npm run typecheck` both exit 0 cleanly.
 - [x] 3.3 i18n decision recorded — **decided and verified 2026-11-13**: 55 Indonesian-only keys (`I18N-01`) confirmed as load-bearing test fixtures and recorded cleanup debt (0 are referenced by live UI code; documented in `audit-open-findings.md` and `todo.md`). Both `python scripts/verify-bundle-parity.py` (0 missing keys) and `python scripts/verify-ftl-orphans.py` exit 0 cleanly.
 - [x] 3.4 Security table written — **verified 2026-11-13**: `python scripts/verify-ipc-parity.py` exits 0 ("IPC parity: OK"). RBAC matrix and bundle security verified (zero secrets or private keys packaged into UI or frontend bundles). Fail-open / fail-closed posture table documented in §3.4: `OZ_ADMIN_KEY`, `OZ_API_SECRET`, and `OZ_LICENSE_PRIVATE_KEY` fail closed (halting startup in production / license server), while `OZ_ENFORCE_PLANS` fails open deliberately with non-blocking warnings to permit pre-billing beta tenants to operate.
 
