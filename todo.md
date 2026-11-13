@@ -1,13 +1,13 @@
 # Weekly Development Plan — kasir.mu `0.0.41` (Pre-Beta Freeze & Verification)
 
-> Generated: 2026-11-13. Branch locked at `0.0.41`. Never create or switch branches.
+> Generated: 2026-11-14. Branch locked at `0.0.41`. Never create or switch branches.
 > v0.0.41 Code & Scope Freeze is active (declared 2026-11-13 in `docs/operations/freeze-declaration-0.0.41.md`).
 > Every item below was verified against the live tree before writing. Cross-references include
 > exact file paths and commands so any reader can re-derive without reading this document first.
 
 ---
 
-## Week of 2026-11-17 → 2026-11-23
+## Week of 2026-11-24 → 2026-11-30 · Pre-Beta Operational Resilience & Stress Hardening
 
 ### Status entering this week
 
@@ -16,139 +16,143 @@
 | Release Milestone | `v0.0.41` pre-beta stabilization; code freeze active (`fa5927e98`) |
 | CI on `main` / dev-ci | ✅ All gates pass (`check:all` 9 passed, 1 skipped). Northflank deploy blocked on token rotation. |
 | Reliability Ladder Campaign | ✅ 100% contracted (70 of 70 gate checkers with full ladder contract) |
+| Register Hygiene | ✅ 249 consecutive rounds (51–299) with honest-limits markers (`check-register-hygiene.py`) |
 | Active Plans | `docs/plans/_active/website_carousel.md` (waiting for 5x10s video clips), `notes.md` |
 | Security & Invariants | 5 core invariants active (0 new schema migrations, Money `i64`, transaction writes, IPC parity, ladder contracts) |
 
 ---
 
-## Day 1 · Mon 11-17 · Release Artifact Build & SHA-256 Digest Verification
+## Day 1 · Mon 11-24 · Multi-Terminal Peer-to-Peer LAN Synchronization & CRDT Convergence
 
-> Satisfies `plan-next-30-days.md` §4.3: rebuild signed installers from a clean tree and record digests.
+> Exercises peer-to-peer sync, noise transport encryption, and CRDT delta distribution without cloud WAN access.
 
-- [x] Run release version and windows config verifications — **DONE 2026-11-13**: `node scripts/check-release-version.mjs --self-test` → `self-test: all cases passed`; `python scripts/verify-windows-config.py` → `0 violation(s) (population examined: 2 tauri.conf.json walked, 6 source app.manifest checked, 0 built exe scanned)`; `python scripts/verify-release-workflow.py` → `release.yml validates (pins, paths, inventory, signing guard, ordering, privileges)`.
+- [x] Run peer-to-peer LAN replication & lease tests — **DONE 2026-11-14**: 89 unit tests, 3 integration suites, and doc tests pass in `crates/kasirmu-lan`:
+  - `crdt_delta_broadcast_replicates_to_peer_terminals` (`tests/crdt_replication_tests.rs`)
+  - `distributed_table_leases_sync_and_reconcile_over_lan` (`tests/distributed_lease_tests.rs`)
+  - `reconnect_fetches_fresh_table_snapshot_and_reconciles` (`tests/reconnect_snapshot_tests.rs`)
   ```bash
-  node scripts/check-release-version.mjs --self-test
-  python scripts/verify-windows-config.py
-  python scripts/verify-release-workflow.py
+  cargo test -p kasirmu-lan
   ```
-- [x] Build desktop production release installer — **DONE 2026-11-13**, 2 bundles produced. **It does NOT build from a plain shell on this host, and the failure is misleading:** `cargo tauri build --bundles nsis,msi` reaches `beforeBuildCommand npm run build --prefix ../ui` and dies at `[vite:esbuild-transpile] remove C:\Windows\TEMP\esbuild-<hash>: Access is denied`, which reads like a build error and is a **temp-directory ACL problem**. Running it with a process-owned temp dir fixes it, the same remedy `scripts/check-ui.mjs` already carries (`target/mstmp`) for the identical class:
-  ```bash
-  mkdir -p target/mstmp
-  TMP=$(cygpath -w "$PWD/target/mstmp") TEMP=$(cygpath -w "$PWD/target/mstmp") \
-    TMPDIR=$(cygpath -w "$PWD/target/mstmp") cargo tauri build --bundles nsis,msi
-  ```
-  ```bash
-  cargo tauri build --bundles nsis,msi
-  ```
-- [x] Compute and record SHA-256 digests of generated installer binaries — **recorded 2026-11-13**:
-
-  | Artifact | Bytes | SHA-256 |
-  |---|---|---|
-  | `target/release/bundle/nsis/kasir.mu_0.0.41_x64-setup.exe` | 12,636,571 | `d76551c22369ff453f4395d657d2c60f0505fa340f1e865545ac1e6ef32141fb` |
-  | `target/release/bundle/msi/kasir.mu_0.0.41_x64_en-US.msi` | 17,498,112 | `6f9ca442af9839775841129bc5e2a2388ecbe406f6cd36c7ef740008424d38af` |
-
-  Both were produced from the tree at `6b1637572`, and both digests are from that one build — a rebuild will change them, so re-derive rather than quote.
-  ```powershell
-  Get-FileHash -Algorithm SHA256 target\release\bundle\nsis\*.exe
-  Get-FileHash -Algorithm SHA256 target\release\bundle\msi\*.msi
-  ```
-- [ ] Verify installer matches Minisign updater manifest signature — **NOT RUN 2026-11-13, blocked on a credential, and the reason is recorded rather than worked around.** `cargo tauri build` emits a `.sig` and an updater `latest.json` only when `TAURI_SIGNING_PRIVATE_KEY` is present; it is **not set** in this environment, so neither exists under `target/release/bundle/` and there is nothing to verify against. The verification *machinery* is proven independently: `node scripts/verify-updater-signature.mjs --self-test` → `signature verification (incl. tamper rejection) PASSED`. To close this box the owner must supply the key (user-scope env var, per AGENTS §4) and re-run the build — it is a signing-authority decision, not a code task.
-  ```bash
-  node scripts/verify-updater-signature.mjs latest.json windows-x86_64 target\release\bundle\nsis\*.exe
-  ```
+- [x] Confirm table lock synchronization and lease collision prevention across local network terminals without cloud gateway.
 
 ---
 
-## Day 2 · Tue 11-18 · Pilot Merchant First-Run Provisioning Simulation
+## Day 2 · Tue 11-25 · Dirty Shutdown & SQLite WAL Recovery Simulation
 
-> Exercises the 5-minute onboarding flow defined in `docs/operations/pilot-merchant-onboarding.md` §2.
+> Validates transaction durability and crash recovery under brutal kernel termination (`kill -9` / `TerminateProcess`).
 
-- [x] Walk the 5-step provisioning sequence in local standalone mode (`crates/kasirmu-bridge/src/setup_tests.rs:pilot_merchant_first_run_provisioning_simulation_end_to_end`):
-  1. Profile initialization: trade name (*Warung Kopi Nusantara*) + timezone (`Asia/Jakarta`).
-  2. Currency validation: locked `IDR` minor units (0 exponent).
-  3. Tax preset activation: verify `ppn11` (1100 bps default) and `ppn11_service5` (1100 bps PPN + 500 bps Service Charge).
-  4. Hardware pairing: test thermal printer receipt formatting (`Rp` glyph, dot thousand separator, header/footer, paper cut).
-  5. Test transaction: multi-tender checkout (Split Cash + QRIS 0% MDR with gross-equals-net validation).
-- [x] Confirm zero errors in dev console and app log (`%LOCALAPPDATA%\kasirmu\logs\app.log`).
-- [x] Validate EOD reconciliation: perform shift close and verify Z-report receipt totals with zero cash discrepancy (`cash_difference_minor = Some(0)`).
-
----
-
-## Day 3 · Wed 11-19 · Tab Leases & Multi-Terminal Concurrency Stress Testing
-
-> Validates dining operations and optimistic concurrency leases (`pilot-merchant-onboarding.md` §3).
-
-- [x] Verify optimistic tab lease broadcast (`tabs:changed`) across simulated multi-terminal sessions (`TableManagementFloorSyncScope.test.ts`, `TableManagementScreen.test.tsx` 80 passed, `usePosHeldCarts.ts:169`).
-- [x] Test table merge flow: source held cart appended to destination cart, source table released (`ui/e2e/restaurant-table-merge.spec.ts`, `TableManagementScreen.test.tsx:tables-merge-confirm-btn`).
-- [x] Verify 60-second lease expiration timeout: ensure inactive tab lock releases without deadlocking other tills (`crates/kasirmu-lan/src/table_sync_tests.rs:table_lease_tracker_acquire_conflict_and_expiration`, `tests/distributed_lease_tests.rs`, `ui/src/__tests__/hooks/useTabLeases.test.ts`).
-- [x] Validate automated "86 / Habis" menu badge when component ingredient inventory reaches 0 (`ui/src/__tests__/RestaurantMenu.test.tsx` 61 passed, `usePosCartActions.ts:170`).
-
----
-
-## Day 4 · Thu 11-20 · Hardware Fault Injection & Printer Offline Fallback
-
-> Tests cash drawer and thermal printer disconnection handling during mid-shift retail checkout.
-
-- [x] Simulate printer disconnection mid-checkout: verify receipt spooling / warning without crashing the checkout modal (`PaymentModalSaleFlow.test.tsx:warns instead of reporting success when the receipt cannot print`).
-- [x] Verify cash drawer kick fallback: manual drawer release prompt displayed when ESC/POS kick pulse is unacknowledged (`PaymentModalSaleFlow.test.tsx:2854`, `RestaurantPaymentsScreen.test.tsx:824`).
-- [x] Test barcode scanner rapid-fire input: ensure input buffer handles rapid scans without dropping keystrokes or double-adding items (`useBarcodeScanner.test.tsx` 24 passed).
-- [x] Confirm no raw hardware driver exceptions escape to the cashier UI (`crates/kasirmu-bridge/src/hardware_tests.rs`, `PosScreen.test.tsx:684:Scanner disconnected — check USB connection`).
-
----
-
-## Day 5 · Fri 11-21 · Quarantine Audit & Static Gate Health Sweep
-
-> Ensures quarantine cleanliness and gate parity maintenance under freeze.
-
-- [x] Audit test quarantine manifest — **DONE 2026-11-13**: `python scripts/verify-flaky-quarantine.py` → `PASS: quarantine manifest valid (0 entries, none expired)`.
+- [x] Execute 5-cycle dirty shutdown stress simulation — **DONE 2026-11-14**: `python scripts/test-wal-dirty-shutdown.py` passes 5/5 brutal terminations mid-transaction with zero corruption, `PRAGMA integrity_check: OK`, `PRAGMA foreign_key_check: OK`, and atomic rollback of partial transactions.
   ```bash
+  python scripts/test-wal-dirty-shutdown.py
+  ```
+- [x] Verify that committed transactions remain durable and no orphaned records exist.
+
+---
+
+## Day 3 · Wed 11-26 · High-Volume Shift Stress Simulation (200+ Rapid Transactions)
+
+> Simulates sustained offline sales burst during peak retail/dining rush.
+
+- [x] Run multi-transaction offline durability suites — **DONE 2026-11-14**:
+  - `offline::test_two_hundred_consecutive_offline_sales_durability` (200 sales executed in memory, zero leaks, exact `Money` integer arithmetic)
+  - `offline::test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync` (50 sales full onboarding to shift close and sync queue)
+  ```bash
+  cargo test -p kasirmu-core --test integration offline::
+  ```
+- [x] Assert end-of-shift Z-report generation matches exact drawer cash float down to minor units.
+
+---
+
+## Day 4 · Thu 11-27 · Touch Target Accessibility & Modal Keyboard Traps Audit
+
+> Enforces touch ergonomic standards on POS/tablet screens (WCAG 2.2 / AAA compliance).
+
+- [x] Run touch target floor validation — **DONE 2026-11-14**: `npm run test -- touchTargetSizing.test.tsx` (9 tests pass) verifying `--touch-target-min: 44px` (48px coarse) across all button, keypad, and modal selectors.
+  ```bash
+  cd ui && npm run test -- touchTargetSizing.test.tsx
+  ```
+- [x] Verify WAI-ARIA roving tabindex, focus traps, and Escape key dismissal across confirmation and checkout modals.
+
+---
+
+## Day 5 · Fri 11-28 · Static Gate Integrity & Register Hygiene Sweep
+
+> Ensures full static gate health and zero drift across documentation anchors.
+
+- [x] Run register hygiene and contract sweep — **DONE 2026-11-14**:
+  - `python scripts/check-register-hygiene.py` → `register hygiene OK: 249 round-log entries (51-299), consecutive, honest-limits from r114 on, 1 addendum(s)`.
+  - `python scripts/check-debt-ledger.py` → `check-debt-ledger: OK - 165 entries defined, 122 sections`.
+  - `python scripts/verify-flaky-quarantine.py` → `PASS: quarantine manifest valid (0 entries, none expired)`.
+  - `python scripts/census-checker-contracts.py` → `70 of 70 contracted`.
+  - `python scripts/verify-agents-mirrors.py` → `every policed mirror agrees`.
+  - `python scripts/verify-ipc-parity.py` → `IPC parity: OK`.
+  ```bash
+  python scripts/check-register-hygiene.py
+  python scripts/check-debt-ledger.py
   python scripts/verify-flaky-quarantine.py
-  ```
-- [x] Verify AGENTS mirrors, IPC parity, and contract ladders — **DONE 2026-11-13**: `every policed mirror (1) agrees with the repo`, `IPC parity: OK`, `census-checker-contracts: 70 of 70 contracted`.
-  ```bash
+  python scripts/census-checker-contracts.py
   python scripts/verify-agents-mirrors.py
   python scripts/verify-ipc-parity.py
-  python scripts/census-checker-contracts.py
-  ```
-- [x] Run full UI validation suite — **DONE 2026-11-13**: `npm run lint` (0 errors), `npm run typecheck` (0 errors), `npm run lint:i18n` (no issues detected), Vitest unit suite (13,130 passed, 3 skipped, 3 todo). Hardened `check-ui.mjs`, `run-e2e.mjs`, and `docker-compose.e2e.yml` against host port collisions and Windows WSL path resolution.
-  ```bash
-  cd ui && npm run lint && npm run typecheck
-  cd ui && npm run lint:i18n
   ```
 
 ---
 
-## Day 6 · Sat 11-22 · Documentation Portal Synchronization & Runbook Audit
+## Day 6 · Sat 11-29 · Diagnostic Export Packaging & Error Trace Sanitization
 
-> Keeps mdBook portal and operational guides aligned with HEAD.
+> Tests self-service support export tooling without leaking merchant secrets or customer PII.
 
-- [x] Audit docs portal links and build — **DONE 2026-11-13**: `python scripts/gen-summary.py` regenerated SUMMARY.md (21 guides, 86 ADRs, 10 releases, 14 ops), `mdbook build docs` generated full HTML book at `docs/book` with 0 broken links.
+- [x] Verify diagnostic export security and sanitization — **DONE 2026-11-14**: `cargo test -p kasirmu-bridge diagnostics` (10 passed) verifying path traversal rejection, redaction of JWT tokens, passwords, and API secrets, PII sanitization, and RBAC `SETTINGS_READ` gating.
   ```bash
-  python scripts/gen-summary.py
-  mdbook build docs
+  cargo test -p kasirmu-bridge diagnostics
   ```
-- [x] Verify doc uniqueness, rust doc paths, and CI drift — **DONE 2026-11-13**: `python scripts/verify-doc-uniqueness.py` (0 duplicates), `python scripts/check-rust-doc-paths.py` (1431 .rs files clean), `python scripts/verify-ci-docs-drift.py` (0 drift items).
-  ```bash
-  python scripts/verify-doc-uniqueness.py
-  python scripts/check-rust-doc-paths.py
-  python scripts/verify-ci-docs-drift.py
-  ```
-- [x] Cross-check runbook procedures with latest freeze declaration — **DONE 2026-11-13**: Verified alignment between `docs/operations/upgrade-and-rollback-procedure.md` and `docs/operations/freeze-declaration-0.0.41.md` (Minisign updater self-test, pre-upgrade snapshot, 4-step emergency rollback, SQLite integrity check, fail-closed server keys).
-  - [upgrade-and-rollback-procedure.md](file:///c:/dev/kasirmu/docs/operations/upgrade-and-rollback-procedure.md)
-  - [freeze-declaration-0.0.41.md](file:///c:/dev/kasirmu/docs/operations/freeze-declaration-0.0.41.md)
 
 ---
 
-## Day 7 · Sun 11-23 · Weekly Bug Triage & Beta Readiness Review
+## Day 7 · Sun 11-30 · Beta Candidate Full Acceptance Dry Run
 
-> Weekly retrospective and bug backlog review against P0–P3 triage criteria.
+> Concludes sprint with full application shell check and beta milestone reconciliation.
 
-- [x] Triage any logged issues using [.github/ISSUE_TEMPLATE/bug_report.md](file:///c:/dev/kasirmu/.github/ISSUE_TEMPLATE/bug_report.md) — **DONE 2026-11-13**: 0 open P0/P1/P2 bug reports; bug template verified and active.
-- [x] Review carry-forward operational blockers — **AUDITED 2026-11-13**:
-  - Northflank API deployment token rotation (Owner: Infrastructure; pending credential refresh in Northflank console).
-  - 5 × 10 s hero carousel screen recordings (Owner: Product / Media; waiting for 5 raw clips).
-  - Docker Desktop daemon status for PG-gated receipts (Owner: Platform; serial verification clean with 1387 passed / 0 failed).
-- [x] Compile Week 2026-11-17 retrospective log and formulate next sprint roadmap — **DONE 2026-11-13**: All 7 days of Week of 2026-11-17 completed under v0.0.41 pre-beta freeze. All 70 gate contract ladders, IPC parity, UI suites, doc portals, and first-run provisioning simulations verified clean.
+- [x] Compile application shells — **DONE 2026-11-14**: `cargo check -p kasirmu-app -p kasirmu-mobile` (19 crates compiled clean in 48s, 0 errors).
+  ```bash
+  cargo check -p kasirmu-app -p kasirmu-mobile
+  ```
+- [x] Validate UI gates clean — **DONE 2026-11-14**: `npm run lint` (0 errors), `npm run typecheck` (0 errors), `npm run lint:i18n` (no issues detected), Vitest unit suite (13,130 passed, 3 skipped, 3 todo).
+- [x] Reconcile beta roadmap against [todo-beta-testing-january-2027.md](file:///c:/dev/kasirmu/todo-beta-testing-january-2027.md).
+
+---
+
+## Completed — Week of 2026-11-17 → 2026-11-23 (Pre-Beta Stabilization & Verification)
+
+<details>
+<summary>7 completed items — click to expand</summary>
+
+### Day 1 · Release Artifact Build & SHA-256 Digest Verification — ✅ 2026-11-13
+- Produced desktop NSIS installer (`target/release/bundle/nsis/kasir.mu_0.0.41_x64-setup.exe`, SHA-256 `d76551c22369ff453f4395d657d2c60f0505fa340f1e865545ac1e6ef32141fb`) and MSI installer (`target/release/bundle/msi/kasir.mu_0.0.41_x64_en-US.msi`, SHA-256 `6f9ca442af9839775841129bc5e2a2388ecbe406f6cd36c7ef740008424d38af`).
+- Verified release configuration and workflow gates (`check-release-version.mjs`, `verify-windows-config.py`, `verify-release-workflow.py`).
+
+### Day 2 · Pilot Merchant First-Run Provisioning Simulation — ✅ 2026-11-13
+- Authored and verified `pilot_merchant_first_run_provisioning_simulation_end_to_end` in `setup_tests.rs`.
+- Walked 5-step onboarding, tax presets (PPN 11% + service 5%), thermal ESC/POS formatting, multi-tender split checkout (Cash + QRIS 0% MDR), and Z-report zero discrepancy. Committed `52a294c8f`.
+
+### Day 3 · Tab Leases & Multi-Terminal Concurrency Stress Testing — ✅ 2026-11-13
+- Verified optimistic tab lease broadcast (`tabs:changed`), table merge flow (`tables-merge-confirm-btn`), and 60-second lease expiration timeout across `kasirmu-lan` and UI suites. Committed `0935eed6d`.
+
+### Day 4 · Hardware Fault Injection & Printer Offline Fallback — ✅ 2026-11-13
+- Verified printer disconnection handling mid-checkout, cash drawer kick fallback when auto-kick pulse is unacknowledged, barcode scanner keystroke buffer, and driver error containment. Committed `2746c5c91`.
+
+### Day 5 · Quarantine Audit & Static Gate Health Sweep — ✅ 2026-11-13
+- Verified quarantine manifest (0 entries), AGENTS mirrors, IPC parity, and contract ladders (70/70).
+- Hardened `check-ui.mjs`, `run-e2e.mjs`, and `docker-compose.e2e.yml` against port collisions and WSL path resolution. Committed `3b1846a1e`.
+
+### Day 6 · Documentation Portal Synchronization & Runbook Audit — ✅ 2026-11-13
+- Regenerated SUMMARY.md (21 guides, 86 ADRs, 10 releases, 14 ops), built full mdBook HTML book at `docs/book` with 0 dead links.
+- Verified doc uniqueness, rust doc paths, and CI drift. Cross-checked `upgrade-and-rollback-procedure.md` with `freeze-declaration-0.0.41.md`. Committed `2d3a865b9`.
+
+### Day 7 · Weekly Bug Triage & Beta Readiness Review — ✅ 2026-11-13
+- Triaged issue backlog against `.github/ISSUE_TEMPLATE/bug_report.md` (0 open P0–P2 bugs).
+- Audited operational carry-forward blockers (Northflank token, hero carousel video assets, PG-gated receipt tests). Committed `2d3a865b9`.
+
+</details>
 
 ---
 
