@@ -37,10 +37,25 @@ Exit codes
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
+
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root fixtures go under (None = system default), created if missing."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
+
+
+ROOT = Path(__file__).resolve().parent.parent
 
 # Directories that hold first-party source. The list below IS typed, contrary to what
 # this comment used to say -- it claimed the roots were "derived from the workspace",
@@ -620,73 +635,121 @@ def self_test() -> int:
 
     bad = [name for name, ok in cases if not ok]
 
-    # r183: main()'s shell -- argv and root graded against throwaway fixture
-    # REPOS, the r166..r182 pattern. Each fixture is its own git repository
-    # (git init + add; ls-files reads the index). The default ROOTS do not
-    # exist in a fixture, so every case names its roots explicitly -- which
-    # also exercises the --roots path the live run never passes.
-    shell = 0
-    import io as _io  # self_test's cases are pure strings; the shell block needs streams
-    import tempfile  # ...and fixture directories
+    if bad:
+        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
+        return 2
+    print("SELF-TEST OK (%d corpus cases)" % len(cases))
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """r183/r294: main()'s shell -- argv and root graded against throwaway fixture
+    REPOS, the r166..r182 pattern. Each fixture is its own git repository
+    (git init + add; ls-files reads the index). The default ROOTS do not
+    exist in a fixture, so every case names its roots explicitly -- which
+    also exercises the --roots path the live run never passes."""
+    import contextlib as _c
+    import io as _io
+    import shutil as _shutil
+
     def _mkrepo(files):
-        d = Path(tempfile.mkdtemp())
+        d = Path(tempfile.mkdtemp(dir=fixture_root()))
         subprocess.run(["git", "init", "-q"], cwd=d, check=True)
         for rel, content in files.items():
             dst = d / rel
             dst.parent.mkdir(parents=True, exist_ok=True)
-            _io.open(dst, "w", encoding="utf-8").write(content)
+            dst.write_text(content, encoding="utf-8")
         subprocess.run(["git", "add", "."], cwd=d, check=True)
         return d
+
     def _shell(files, argv=None):
         d = _mkrepo(files)
-        import contextlib as _c
-        buf_out, buf_err = _io.StringIO(), _io.StringIO()
-        with _c.redirect_stdout(buf_out), _c.redirect_stderr(buf_err):
-            try:
-                rc = main(argv=[] if argv is None else argv, root=d)
-            except SystemExit as se:
-                # refusal strings live in se.code in-process, never on stderr
-                rc = se.code
-        return rc, buf_out.getvalue() + buf_err.getvalue()
+        try:
+            buf_out, buf_err = _io.StringIO(), _io.StringIO()
+            with _c.redirect_stdout(buf_out), _c.redirect_stderr(buf_err):
+                try:
+                    rc = main(argv=[] if argv is None else argv, root=d)
+                except SystemExit as se:
+                    rc = se.code if isinstance(se.code, int) else 1
+            return rc, buf_out.getvalue() + buf_err.getvalue()
+        finally:
+            _shutil.rmtree(d, ignore_errors=True)
+
     PLAN = "### 2a. enrich sale lines\n"
     MARK = "// wire the fanout (TODO 2a).\n"
-    shell += 1
+
+    rungs = 0
+
+    # rung 1 -- resolved marker in fixture tree exits 0
+    rungs += 1
     rc, text = _shell({"fixture-plan/p.md": PLAN, "fixture-src/a.rs": MARK},
                       argv=["--roots", "fixture-src", "fixture-plan"])
     if rc != 0 or "0 unresolvable debt ID(s)" not in text:
-        bad.append(f"a resolved marker must exit 0 (rc={rc} text={text[-90:]!r})")
-    shell += 1
+        print(f"  x rung 1: resolved marker must exit 0 (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 2 -- the KILLING rung: orphan marker in fixture tree fails rc 1
+    rungs += 1
     rc, text = _shell({"fixture-src/a.rs": MARK},
                       argv=["--roots", "fixture-src"])
     if rc != 1 or "DEBT IDS THAT RESOLVE TO NOTHING" not in text:
-        bad.append(f"an orphan marker must exit 1 (rc={rc} text={text[-90:]!r})")
-    shell += 1
+        print(f"  x rung 2: orphan marker must exit 1 (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 3 -- non-scannable files refuse with exit 2
+    rungs += 1
     rc, text = _shell({"fixture-src/readme.png": "not source"},
                       argv=["--roots", "fixture-src"])
     if rc != 2 or "REFUSED" not in text:
-        bad.append(f"a corpus with no scannable file must refuse rc 2 (rc={rc} text={text[-90:]!r})")
-    shell += 1
+        print(f"  x rung 3: empty scannable corpus must refuse rc 2 (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 4 -- missing named root refuses with exit 2
+    rungs += 1
     rc, text = _shell({"fixture-src/a.rs": MARK},
                       argv=["--roots", "fixture-src", "fixture-nope"])
     if rc != 2 or "named root(s) not present" not in text:
-        bad.append(f"a missing named root must refuse rc 2 (rc={rc} text={text[-90:]!r})")
-    shell += 1
-    d = _mkrepo({"fixture-plan/p.md": PLAN, "fixture-src/a.rs": MARK})
-    # a tracked file absent from the working tree is skipped and counted,
-    # not raised -- the parallel-session case the live run hits routinely.
-    (d / "fixture-src" / "a.rs").unlink()
-    import contextlib as _c2
-    buf_out, buf_err = _io.StringIO(), _io.StringIO()
-    with _c2.redirect_stdout(buf_out), _c2.redirect_stderr(buf_err):
-        rc = main(argv=["--roots", "fixture-src", "fixture-plan"], root=d)
-    text = buf_out.getvalue() + buf_err.getvalue()
-    if rc != 0 or "absent from the working tree" not in text:
-        bad.append(f"an index-ahead file is skipped, exit 0 (rc={rc} text={text[-90:]!r})")
+        print(f"  x rung 4: missing named root must refuse rc 2 (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+        return 1
 
-    if bad:
-        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
-        return 2
-    print("SELF-TEST OK (%d corpus cases + %d shell cases)" % (len(cases), shell))
+    # rung 5 -- index-ahead file is skipped and exits 0
+    rungs += 1
+    d = _mkrepo({"fixture-plan/p.md": PLAN, "fixture-src/a.rs": MARK})
+    try:
+        (d / "fixture-src" / "a.rs").unlink()
+        buf_out, buf_err = _io.StringIO(), _io.StringIO()
+        with _c.redirect_stdout(buf_out), _c.redirect_stderr(buf_err):
+            rc = main(argv=["--roots", "fixture-src", "fixture-plan"], root=d)
+        text = buf_out.getvalue() + buf_err.getvalue()
+        if rc != 0 or "absent from the working tree" not in text:
+            print(f"  x rung 5: index-ahead file must exit 0 (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+            return 1
+    finally:
+        _shutil.rmtree(d, ignore_errors=True)
+
+    # rung 6 -- nested --self-test passes through argv under re-entry guard
+    rungs += 1
+    rc, text = _shell({"fixture-src/a.rs": MARK}, argv=["--self-test"])
+    if rc != 0 or "SELF-TEST OK" not in text:
+        print(f"  x rung 6: nested --self-test must exit 0 (rc={rc} text={text[-90:]!r})", file=sys.stderr)
+        return 1
+
+    print(f"LADDER OK ({rungs} rungs: resolved-pass, orphan-kill, empty-refusal, missing-root-refusal, index-ahead-pass, nested-selftest)")
     return 0
 
 
@@ -699,7 +762,8 @@ def main(argv=None, root=None) -> int:
     if args.self_test:
         return self_test()
 
-    repo = Path(root).resolve() if root is not None else Path(__file__).resolve().parent.parent
+    base = ROOT if root is None else Path(root).resolve()
+    repo = base
     named = args.roots if args.roots is not None else ROOTS
     starved = refuse_starved_roots(repo, named)
     if starved is not None:

@@ -12736,4 +12736,26 @@ MEASURED:
 - `python scripts/census-checker-contracts.py` -> contracted moves 63 -> 64 of 70 (6 un-contracted remaining, next target `verify-debt-markers.py`).
 
 
+### Round 294 (2026-11-13) -- verify-debt-markers gains a 6-rung ladder and proves against scan base mutation
+
+`scripts/verify-debt-markers.py` had 11 corpus cases and inline shell checks in `self_test()` and lacked a formal `shell_ladder()` contract and `_LADDER_RUNNING` re-entry guard.
+
+ADDED:
+- Standardized `base = ROOT if root is None else Path(root).resolve()` resolution in `main()`.
+- Extracted and formalized `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
+  Rung 1: resolved marker in fixture tree exits 0 ("0 unresolvable debt ID(s)").
+  Rung 2 (killing rung): orphan marker in fixture tree fails rc 1 ("DEBT IDS THAT RESOLVE TO NOTHING").
+  Rung 3: non-scannable files refuse with exit 2 ("REFUSED").
+  Rung 4: missing named root refuses with exit 2 ("named root(s) not present").
+  Rung 5: index-ahead file is skipped and exits 0 ("absent from the working tree").
+  Rung 6: nested `--self-test` passes rc 0 through argv under re-entry guard ("SELF-TEST OK").
+- Added `TMP_ENV = ("TMPDIR", "TMP", "TEMP")` and `fixture_root()` canonical tempdir handling with automatic fixture cleanup.
+
+MEASURED:
+- `python scripts/verify-debt-markers.py --self-test` -> OK (11 corpus cases; 6 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-debt-markers.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 64 -> 65 of 70 (5 un-contracted remaining, next target `check-gate-runners.py`).
+
+
+
 
