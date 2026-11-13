@@ -12516,3 +12516,24 @@ MEASURED:
 - `python scripts/check-hardcoded-copy.py --self-test` -> OK (14 pure cases; 6 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/check-hardcoded-copy.py` -> "repo base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 53 -> 54 of 70 (16 un-contracted remaining, next target `check-client-type-drift.py`).
+
+
+### Round 284 (2026-11-13) -- check-client-type-drift gains a 6-rung ladder and proves against repo base mutation
+
+`scripts/check-client-type-drift.py` had 11 pure test cases in `self_test()` and lacked `root` parameterization on `main()` and a `shell_ladder()` contract.
+
+ADDED:
+- Parameterized `main(argv=None, root=None)` with standard `base = REPO if root is None else Path(root).resolve()` resolution.
+- `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
+  Rung 1 (killing rung): wire has member missing from TS -> fails rc 1 with DRIFT ("DRIFT: 1 discrepancy", "TestItem", "name").
+  Rung 2: matching schema and types exits 0 CLEAN ("CLEAN: every shared type matches the published schema").
+  Rung 3: invented member in TS fails rc 1 with DRIFT ("DRIFT: 1 discrepancy", "extra").
+  Rung 4: clean --json reports clean: true.
+  Rung 5: missing types.ts refuses with exit 2 ("cannot parse inputs").
+  Rung 6: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+
+MEASURED:
+- `python scripts/check-client-type-drift.py --self-test` -> OK (11 pure cases; 6 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/check-client-type-drift.py` -> "repo base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 54 -> 55 of 70 (15 un-contracted remaining, next target `check-tz-invariance.py`).
