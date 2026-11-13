@@ -78,10 +78,10 @@
 
 > Validates dining operations and optimistic concurrency leases (`pilot-merchant-onboarding.md` §3).
 
-- [ ] Verify optimistic tab lease broadcast (`tabs:changed`) across simulated multi-terminal sessions.
-- [ ] Test table merge flow: source held cart appended to destination cart, source table released (`tables-merge-confirm-btn`).
-- [ ] Verify 60-second lease expiration timeout: ensure inactive tab lock releases without deadlocking other tills.
-- [ ] Validate automated "86 / Habis" menu badge when component ingredient inventory reaches 0.
+- [x] Verify optimistic tab lease broadcast (`tabs:changed`) across simulated multi-terminal sessions (`TableManagementFloorSyncScope.test.ts`, `TableManagementScreen.test.tsx` 80 passed, `usePosHeldCarts.ts:169`).
+- [x] Test table merge flow: source held cart appended to destination cart, source table released (`ui/e2e/restaurant-table-merge.spec.ts`, `TableManagementScreen.test.tsx:tables-merge-confirm-btn`).
+- [x] Verify 60-second lease expiration timeout: ensure inactive tab lock releases without deadlocking other tills (`crates/kasirmu-lan/src/table_sync_tests.rs:table_lease_tracker_acquire_conflict_and_expiration`, `tests/distributed_lease_tests.rs`, `ui/src/__tests__/hooks/useTabLeases.test.ts`).
+- [x] Validate automated "86 / Habis" menu badge when component ingredient inventory reaches 0 (`ui/src/__tests__/RestaurantMenu.test.tsx` 61 passed, `usePosCartActions.ts:170`).
 
 ---
 
