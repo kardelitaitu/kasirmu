@@ -202,7 +202,17 @@ sees — the part no unit test can certify.*
   meant to (`OZ_ADMIN_KEY`, `OZ_API_SECRET`, `OZ_LICENSE_PRIVATE_KEY`) and that the
   one fail-open knob (`OZ_ENFORCE_PLANS`) is deliberate.
 - **Acceptance:** `python scripts/verify-ipc-parity.py` clean plus a written
-  fail-open/fail-closed table naming each variable and its direction.
+  fail-open/fail-closed table naming each variable and its direction:
+
+| Variable | Reader / Proof | Direction | Unset / Missing Behavior | Security Boundary |
+|---|---|---|---|---|
+| `OZ_ADMIN_KEY` | `apps/cloud-server/src/config.rs:494` | **Fails CLOSED** | Under `OZ_PRODUCTION=1`, returns `Err("OZ_PRODUCTION=1 requires OZ_ADMIN_KEY to be set")` halting startup. | Closes open token minting and admin endpoints. |
+| `OZ_API_SECRET` | `apps/cloud-server/src/config.rs:489` | **Fails CLOSED** | Under `OZ_PRODUCTION=1`, returns `Err("OZ_PRODUCTION=1 requires OZ_API_SECRET to be set")` halting startup. | Prevents dev-secret JWT forgery in production. |
+| `OZ_LICENSE_PRIVATE_KEY` | `apps/license-server/main.go:76` | **Fails CLOSED** | Halts startup with `log.Fatal("OZ_LICENSE_PRIVATE_KEY environment variable is required")`. | Refuses unsigned/unverifiable license generation. |
+| `KASIRMU_MASTER_KEY` | `crates/kasirmu-crypto/src/lib.rs:122` | **Fails CLOSED** | Returns `KeyResolutionError` if unset or invalid 64 hex; halts crypto engine. | Protects at-rest database encryption. |
+| `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` | `scripts/wrangler-deploy.sh:67` | **Fails CLOSED** | Exits 1 immediately if either bare variable is unset. | Prevents unauthenticated marketing site deploys. |
+| `OZ_ENFORCE_PLANS` | `apps/cloud-server/src/config.rs:445` | **Fails OPEN** | Defaults to `false` (`env_bool`). If `OZ_PRODUCTION=1`, emits `tracing::warn!` but allows startup. | **Deliberate**: Self-hosted or pre-billing beta tenants operate without plan lockouts. |
+
 
 ---
 
@@ -287,8 +297,8 @@ cd ui && npm run check:all
 ### Week 3
 - [ ] 3.1 Five-minute timings (desktop / tablet):
 - [ ] 3.2 Error-path table complete
-- [ ] 3.3 i18n decision recorded
-- [ ] 3.4 Security table written
+- [x] 3.3 i18n decision recorded — **decided and verified 2026-11-13**: 55 Indonesian-only keys (`I18N-01`) confirmed as load-bearing test fixtures and recorded cleanup debt (0 are referenced by live UI code; documented in `audit-open-findings.md` and `todo.md`). Both `python scripts/verify-bundle-parity.py` (0 missing keys) and `python scripts/verify-ftl-orphans.py` exit 0 cleanly.
+- [x] 3.4 Security table written — **verified 2026-11-13**: `python scripts/verify-ipc-parity.py` exits 0 ("IPC parity: OK"). RBAC matrix and bundle security verified (zero secrets or private keys packaged into UI or frontend bundles). Fail-open / fail-closed posture table documented in §3.4: `OZ_ADMIN_KEY`, `OZ_API_SECRET`, and `OZ_LICENSE_PRIVATE_KEY` fail closed (halting startup in production / license server), while `OZ_ENFORCE_PLANS` fails open deliberately with non-blocking warnings to permit pre-billing beta tenants to operate.
 
 ### Week 4
 - [ ] 4.1 Full acceptance run — step exit codes recorded
