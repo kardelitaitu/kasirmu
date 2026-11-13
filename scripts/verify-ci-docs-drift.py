@@ -83,11 +83,26 @@ EXIT CODES
 
 import argparse
 import json
+import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root fixtures go under (None = system default), created if missing."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
+
+
 ROOT = Path(__file__).resolve().parent.parent
+if not (ROOT / "scripts").is_dir() and (Path(__file__).resolve().parents[2] / "scripts").is_dir():
+    ROOT = Path(__file__).resolve().parents[2]
 # CICD-05 fix: the canonical CI dashboard lives under docs/operations/ —
 # the old docs/ci-pipeline.md path made this gate exit 2 ("docs not found")
 # on every run after the doc was moved.
@@ -134,6 +149,7 @@ def drift_paths(root: Path) -> dict[str, Path]:
     }
 
 
+_PATH_NAMES = list(drift_paths(ROOT).keys())
 for _name, _path in drift_paths(ROOT).items():
     globals()[_name] = _path
 
@@ -943,49 +959,74 @@ def self_test() -> int:
     check("the shared live-workflow rule grades its own module",
           _live_workflows_module.self_test(), [])
 
-    # r166: main()'s shell -- argv= and root= graded end to end against a
-    # coherent mini-corpus in a tempdir. The module constants are saved and
-    # restored around every run: main(root=...) rebinds them, and nothing may
-    # leak into the cases after. sys.argv is not patched; the argv parameter
-    # carries the flags.
-    _PATH_NAMES = ["DOCS", "RELEASE_CHECKLIST", "WORKFLOWS_DIR", "RETIREMENT_DIR",
-                   "GATES_MANIFEST", "CHECK_SH", "PRE_COMMIT_HOOK", "CHECK_UI"]
+    print()
+    if failed:
+        print(f"  {len(failed)} self-test case(s) FAILED:")
+        for f in failed:
+            print(f"    {f}")
+        return 1
+    print("  all self-test cases passed")
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """r166/r298: main()'s shell -- argv= and root= graded against throwaway fixture repos."""
+    import contextlib
+    import io as _io
+    import shutil
 
     def _shell_drift(gates_text, docs_text, extra=(), omit_docs=False):
-        import contextlib
-        import io as _io
         def run():
             saved = {n: globals()[n] for n in _PATH_NAMES}
+            td = tempfile.mkdtemp(dir=fixture_root())
             try:
-                with tempfile.TemporaryDirectory() as td:
-                    root = Path(td)
-                    (root / "scripts").mkdir()
-                    (root / ".github" / "workflows" / "attic").mkdir(parents=True)
-                    (root / ".githooks").mkdir()
-                    (root / "docs" / "operations").mkdir(parents=True)
-                    (root / "docs" / "records" / "releases").mkdir(parents=True)
-                    (root / "scripts" / "gates.json").write_text(gates_text, encoding="utf-8")
-                    (root / "scripts" / "check.sh").write_text(
-                        'step "alpha" "echo hi"' + chr(10), encoding="utf-8")
-                    (root / "scripts" / "check-ui.mjs").write_text("", encoding="utf-8")
-                    (root / ".githooks" / "pre-commit").write_text(
-                        "# pre-commit" + chr(10) + "step alpha something" + chr(10),
-                        encoding="utf-8")
-                    (root / "docs" / "records" / "releases" / "checklist.md").write_text(
-                        "- [ ] All CI jobs pass " + chr(8212) + " " + _BT + "dev-ci.yml" + _BT
-                        + " jobs are " + _BT + "alpha" + _BT + "." + chr(10), encoding="utf-8")
-                    (root / ".github" / "workflows" / "dev-ci.yml").write_text(
-                        "on: push" + chr(10) + "jobs:" + chr(10) + "  alpha:" + chr(10)
-                        + "    runs-on: ubuntu-latest" + chr(10), encoding="utf-8")
-                    if not omit_docs:
-                        (root / "docs" / "operations" / "ci-pipeline.md").write_text(
-                            docs_text, encoding="utf-8")
-                    out, err = _io.StringIO(), _io.StringIO()
-                    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                root = Path(td)
+                (root / "scripts").mkdir()
+                (root / ".github" / "workflows" / "attic").mkdir(parents=True)
+                (root / ".githooks").mkdir()
+                (root / "docs" / "operations").mkdir(parents=True)
+                (root / "docs" / "records" / "releases").mkdir(parents=True)
+                (root / "scripts" / "gates.json").write_text(gates_text, encoding="utf-8")
+                (root / "scripts" / "check.sh").write_text(
+                    'step "alpha" "echo hi"' + chr(10), encoding="utf-8")
+                (root / "scripts" / "check-ui.mjs").write_text("", encoding="utf-8")
+                (root / ".githooks" / "pre-commit").write_text(
+                    "# pre-commit" + chr(10) + "step alpha something" + chr(10),
+                    encoding="utf-8")
+                (root / "docs" / "records" / "releases" / "checklist.md").write_text(
+                    "- [ ] All CI jobs pass " + chr(8212) + " " + _BT + "dev-ci.yml" + _BT
+                    + " jobs are " + _BT + "alpha" + _BT + "." + chr(10), encoding="utf-8")
+                (root / ".github" / "workflows" / "dev-ci.yml").write_text(
+                    "on: push" + chr(10) + "jobs:" + chr(10) + "  alpha:" + chr(10)
+                    + "    runs-on: ubuntu-latest" + chr(10), encoding="utf-8")
+                if not omit_docs:
+                    (root / "docs" / "operations" / "ci-pipeline.md").write_text(
+                        docs_text, encoding="utf-8")
+                out, err = _io.StringIO(), _io.StringIO()
+                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                    try:
                         rc = main(argv=list(extra), root=root)
-                    return rc, out.getvalue() + err.getvalue()
+                    except SystemExit as se:
+                        rc = se.code if isinstance(se.code, int) else 1
+                return rc, out.getvalue() + err.getvalue()
             finally:
                 globals().update(saved)
+                shutil.rmtree(td, ignore_errors=True)
         return run
 
     _BT = chr(96)
@@ -1003,30 +1044,77 @@ def self_test() -> int:
     _DOCS_GHOST = _DOCS.replace("- .github/workflows/" + _BT + "dev-ci.yml" + _BT,
                                 "- .github/workflows/" + _BT + "ghost.yml" + _BT)
 
-    def _sh(gates_text, docs_text, extra=(), omit_docs=False, needle=""):
-        rc, text = _shell_drift(gates_text, docs_text, extra, omit_docs)()
-        return rc, needle in text
+    def _sh(gates_text, docs_text, extra=(), omit_docs=False):
+        return _shell_drift(gates_text, docs_text, extra, omit_docs)()
 
-    check("the shell grades a coherent mini-corpus clean",
-          _sh(_GATES, _DOCS, needle="0 drift item(s)"), (0, True))
-    check("the shell grades a dangling workflow inventory red",
-          _sh(_GATES, _DOCS_GHOST, needle="2 drift item(s)"), (1, True))
-    check("report-only prints the item and exits zero",
-          _sh(_GATES, _DOCS_GHOST, extra=["--report-only"],
-              needle="2 drift item(s)"), (0, True))
-    check("the shell refuses a missing ci-pipeline.md",
-          _sh(_GATES, _DOCS, omit_docs=True, needle="docs not found"), (2, True))
-    check("the shell refuses an unparseable manifest",
-          _sh("{not json", _DOCS, needle="gate manifest invalid JSON"), (2, True))
+    rungs = []
 
-    print()
-    if failed:
-        print(f"  {len(failed)} self-test case(s) FAILED:")
-        for f in failed:
-            print(f"    {f}")
-        return 1
-    print("  all self-test cases passed")
-    return 0
+    # 1. Killing rung: dangling workflow inventory fails rc 1.
+    #    Under mutant (base = ROOT), it reads the real repo docs (0 drift items, rc 0)
+    #    and fails this check.
+    rc1, out1 = _sh(_GATES, _DOCS_GHOST)
+    rungs.append((
+        "rung 1 (killing): dangling workflow inventory fails rc 1",
+        rc1 == 1 and "2 drift item(s)" in out1,
+        f"rc={rc1} text={out1!r}",
+    ))
+
+    # 2. Coherent mini-corpus grades clean with exit 0.
+    rc2, out2 = _sh(_GATES, _DOCS)
+    rungs.append((
+        "coherent mini-corpus clean",
+        rc2 == 0 and "0 drift item(s)" in out2,
+        f"rc={rc2} text={out2!r}",
+    ))
+
+    # 3. Report-only prints items and exits 0.
+    rc3, out3 = _sh(_GATES, _DOCS_GHOST, extra=["--report-only"])
+    rungs.append((
+        "report-only exits 0",
+        rc3 == 0 and "2 drift item(s)" in out3,
+        f"rc={rc3} text={out3!r}",
+    ))
+
+    # 4. Missing ci-pipeline.md refuses with exit 2.
+    rc4, out4 = _sh(_GATES, _DOCS, omit_docs=True)
+    rungs.append((
+        "missing ci-pipeline refuses rc 2",
+        rc4 == 2 and "docs not found" in out4,
+        f"rc={rc4} text={out4!r}",
+    ))
+
+    # 5. Unparseable manifest refuses with exit 2.
+    rc5, out5 = _sh("{not json", _DOCS)
+    rungs.append((
+        "unparseable manifest refuses rc 2",
+        rc5 == 2 and "gate manifest invalid JSON" in out5,
+        f"rc={rc5} text={out5!r}",
+    ))
+
+    # 6. Nested --self-test passes rc 0 through argv under re-entry guard.
+    out6, err6 = _io.StringIO(), _io.StringIO()
+    with contextlib.redirect_stdout(out6), contextlib.redirect_stderr(err6):
+        try:
+            rc6 = main(argv=["--self-test"])
+        except SystemExit as se:
+            rc6 = se.code if isinstance(se.code, int) else 1
+    out6_str = out6.getvalue() + err6.getvalue()
+    rungs.append((
+        "nested self-test exits 0",
+        rc6 == 0 and "all self-test cases passed" in out6_str,
+        f"rc={rc6} text={out6_str!r}",
+    ))
+
+    fails = 0
+    print("shell_ladder:")
+    for name, ok, detail in rungs:
+        status = "ok  " if ok else "FAIL"
+        print(f"  {status}  {name}")
+        if not ok:
+            print(f"        {detail}")
+            fails += 1
+    print(f"ladder: {'PASS' if fails == 0 else f'FAIL ({fails})'}")
+    return 0 if fails == 0 else 1
 
 
 def main(argv: list[str] | None = None, root: str | Path | None = None) -> int:
@@ -1038,10 +1126,8 @@ def main(argv: list[str] | None = None, root: str | Path | None = None) -> int:
     except (AttributeError, ValueError):
         pass  # non-reconfigurable stream (e.g. some embedded runners)
 
-    if root is not None:
-        # r166: re-derive every path constant from the caller's root -- the same
-        # globals()-rebind pattern the self-test already uses for GATES_MANIFEST.
-        globals().update(drift_paths(Path(root).resolve()))
+    base = ROOT if root is None else Path(root).resolve()
+    globals().update(drift_paths(base))
 
     parser = argparse.ArgumentParser(
         description=(
