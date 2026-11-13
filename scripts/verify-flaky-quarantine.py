@@ -55,6 +55,16 @@ import sys
 import tempfile
 from pathlib import Path
 
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root fixtures go under (None = system default), created if missing."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
+
 # Relative to the REPOSITORY ROOT, and only ever joined to a root that was accepted
 # because it actually holds them. SCRIPT_RELATIVE_MANIFEST is gone on purpose: the
 # script's own location is not evidence that a repository is there.
@@ -253,32 +263,56 @@ def self_test() -> int:
     finally:
         shutil.rmtree(scratch_root, ignore_errors=True)
 
-    # r200: the shell -- main() graded through argv and a contract root, the
-    # r166..r199 pattern. The fixture hands an EXPLICIT root, so the
-    # data-driven resolution is bypassed and the fixture's own tree is the
-    # whole world; a root-dropping main falls back to resolve_root() and
-    # grades THIS repo instead, which the first rung catches.
+    if bad:
+        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
+        return 2
+    print("SELF-TEST OK (13 pure/git cases over a scratch tree, nothing in the checkout touched)")
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """Grade main()'s shell on fixture trees outside this repository."""
     import contextlib as _ctx
     import io as _io
+
     shell = 0
     today = datetime.date.today()
     future = (today + datetime.timedelta(days=30)).isoformat()
     past = (today - datetime.timedelta(days=1)).isoformat()
-    with tempfile.TemporaryDirectory() as tdp:
-        base = Path(tdp)
+
+    with tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as tdp:
+        base = Path(tdp).resolve()
         (base / "scripts").mkdir(parents=True)
         (base / "crates" / "demo").mkdir(parents=True)
         (base / "crates" / "demo" / "lib.rs").write_text("pub fn x() {}\n", encoding="utf-8")
         manifest = base / "scripts" / "flaky-quarantine.json"
+
         def entry(**over):
             e = {"test": "crates::demo::tests::flaky_case", "owner": "someone",
                  "issue": "#42", "reason": "measured flake on CI",
                  "date": today.isoformat(), "expiry": future}
             e.update(over)
             return e
+
         def put(entries, raw=None):
             manifest.write_text(raw if raw is not None else json.dumps(
                 {"version": 1, "entries": entries}), encoding="utf-8")
+
         def run(*extra, root=base):
             out, err = _io.StringIO(), _io.StringIO()
             try:
@@ -287,80 +321,99 @@ def self_test() -> int:
             except SystemExit as se:
                 return se.code, out.getvalue() + err.getvalue()
             return rc, out.getvalue() + err.getvalue()
-        shell += 1
-        put([entry()])
-        rc, text = run()
-        if rc != 0 or "PASS: quarantine manifest valid (1 entries" not in text:
-            print("  x a clean single-entry manifest must PASS (rc=%r text=%r)"
-                  % (rc, text[-90:]), file=sys.stderr)
-            return 1
-        shell += 1
-        rc, text = run("--report")
-        if rc != 0 or "INFO: 1 quarantined test(s), 0 expired" not in text:
-            print("  x --report must still gate and print the INFO line (rc=%r text=%r)"
-                  % (rc, text[-90:]), file=sys.stderr)
-            return 1
+
+        # rung 1 -- the KILLING rung: an expired entry must fail rc 1 naming EXPIRED
         shell += 1
         put([entry(expiry=past)])
-        rc, text = run()
+        rc, text = run(root=base)
         if rc != 1 or "EXPIRED on " + past not in text:
-            print("  x an expired entry must fail rc 1 (rc=%r text=%r)"
+            print("  x rung 1: an expired entry must fail rc 1 naming the expiry (rc=%r text=%r)"
                   % (rc, text[-90:]), file=sys.stderr)
             return 1
+
+        # rung 2 -- clean single-entry manifest PASS
+        shell += 1
+        put([entry()])
+        rc, text = run(root=base)
+        if rc != 0 or "PASS: quarantine manifest valid (1 entries" not in text:
+            print("  x rung 2: a clean single-entry manifest must PASS (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
+        # rung 3 -- --report still gates and prints INFO line
+        shell += 1
+        rc, text = run("--report", root=base)
+        if rc != 0 or "INFO: 1 quarantined test(s), 0 expired" not in text:
+            print("  x rung 3: --report must still gate and print the INFO line (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
+        # rung 4 -- missing required field fails rc 1
         shell += 1
         put([entry(owner=None)])
-        rc, text = run()
+        rc, text = run(root=base)
         if rc != 1 or "missing required field 'owner'" not in text:
-            print("  x a missing required field must fail rc 1 (rc=%r text=%r)"
+            print("  x rung 4: a missing required field must fail rc 1 (rc=%r text=%r)"
                   % (rc, text[-90:]), file=sys.stderr)
             return 1
+
+        # rung 5 -- free-text issue ref fails rc 1
         shell += 1
         put([entry(issue="see the tracker")])
-        rc, text = run()
+        rc, text = run(root=base)
         if rc != 1 or "must be a URL or #NN" not in text:
-            print("  x a free-text issue ref must fail rc 1 (rc=%r text=%r)"
+            print("  x rung 5: a free-text issue ref must fail rc 1 (rc=%r text=%r)"
                   % (rc, text[-90:]), file=sys.stderr)
             return 1
+
+        # rung 6 -- unparseable manifest fails rc 1
         shell += 1
         put([entry()], raw="{not json")
-        rc, text = run()
+        rc, text = run(root=base)
         if rc != 1 or "not valid JSON" not in text:
-            print("  x an unparseable manifest must fail rc 1 (rc=%r text=%r)"
+            print("  x rung 6: an unparseable manifest must fail rc 1 (rc=%r text=%r)"
                   % (rc, text[-90:]), file=sys.stderr)
             return 1
-        # zero corpus behind the manifest is a refusal, not a verdict
+
+        # rung 7 -- zero corpus behind manifest refuses rc 1
         shell += 1
         put([])
         import shutil as _sh
         _sh.rmtree(base / "crates")
-        rc, text = run()
+        rc, text = run(root=base)
         if rc != 1 or "no test corpus behind it" not in text:
-            print("  x an empty corpus must refuse rc 1 (rc=%r text=%r)"
+            print("  x rung 7: an empty corpus must refuse rc 1 (rc=%r text=%r)"
                   % (rc, text[-90:]), file=sys.stderr)
             return 1
         (base / "crates" / "demo").mkdir(parents=True)
         (base / "crates" / "demo" / "lib.rs").write_text("pub fn x() {}\n", encoding="utf-8")
-        # an explicit root with NO manifest is a refusal naming the root
+
+        # rung 8 -- manifest-less root refuses rc 1
         shell += 1
         manifest.unlink()
-        rc, text = run()
+        rc, text = run(root=base)
         if rc != 1 or "was not found under the contract root" not in text:
-            print("  x a manifest-less root must refuse rc 1 (rc=%r text=%r)"
-                  % (rc, text[-90:]), file=sys.stderr)
-            return 1
-        # the strict-argument rule, now through main()
-        shell += 1
-        rc, text = run("--anything-else")
-        if rc != 2 or "unrecognised argument --anything-else" not in text:
-            print("  x an unknown dashed flag must refuse rc 2 (rc=%r text=%r)"
+            print("  x rung 8: a manifest-less root must refuse rc 1 (rc=%r text=%r)"
                   % (rc, text[-90:]), file=sys.stderr)
             return 1
 
-    if bad:
-        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
-        return 2
-    print("SELF-TEST OK (13 pure/git cases + %d shell cases over a scratch tree, "
-          "nothing in the checkout touched)" % shell)
+        # rung 9 -- unknown dashed flag refuses rc 2
+        shell += 1
+        rc, text = run("--anything-else", root=base)
+        if rc != 2 or "unrecognised argument --anything-else" not in text:
+            print("  x rung 9: an unknown dashed flag must refuse rc 2 (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
+        # rung 10 -- nested --self-test passes through argv under re-entry guard
+        shell += 1
+        rc, text = run("--self-test", root=base)
+        if rc != 0 or "SELF-TEST OK" not in text or "LADDER OK" in text:
+            print("  x rung 10: nested --self-test must exit 0 without running duplicate ladder (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
+    print("LADDER OK (%d rungs: expired-kill, clean-pass, report-info, missing-field, bad-issue, unparseable-json, empty-corpus, manifest-less, unknown-flag, nested-selftest)" % shell)
     return 0
 
 
@@ -378,26 +431,27 @@ def main(argv=None, root=None) -> int:
         return reject_unknown_flag(flag)
     report_only = "--report" in argv
 
-    if root is not None:
-        root = Path(root).resolve()
-        root_source = "the contract root argument"
-        probed = [root]
-        if not root.joinpath(*MANIFEST_REL).is_file():
-            print("FAIL: flaky-quarantine.json was not found under the contract root "
-                  "this gate was handed, so it has read nothing -- an unread manifest "
-                  "is not a clean one.")
-            print(f"  contract root               : {root}")
-            return 1
-    else:
-        root, root_source, probed = resolve_root()
     if root is None:
-        # No manifest anywhere: the gate has read none of the tree it polices. Say so with
-        # the paths it looked at, so nobody reads a refusal as a pass on an empty registry.
-        print("FAIL: flaky-quarantine.json was found under none of the roots this gate "
-              "probed, so it has read nothing -- an unread manifest is not a clean one.")
-        print(f"  manifest looked for        : {'/'.join(MANIFEST_REL)} (under each root below)")
-        for cand in probed:
-            print(f"    - {cand}")
+        cand_root, root_source, probed = resolve_root()
+        if cand_root is None:
+            # No manifest anywhere: the gate has read none of the tree it polices. Say so with
+            # the paths it looked at, so nobody reads a refusal as a pass on an empty registry.
+            print("FAIL: flaky-quarantine.json was found under none of the roots this gate "
+                  "probed, so it has read nothing -- an unread manifest is not a clean one.")
+            print(f"  manifest looked for        : {'/'.join(MANIFEST_REL)} (under each root below)")
+            for cand in probed:
+                print(f"    - {cand}")
+            return 1
+        root = cand_root
+    else:
+        root_source = "the contract root argument"
+        probed = [Path(root).resolve()]
+    root = Path(root).resolve()
+    if not root.joinpath(*MANIFEST_REL).is_file():
+        print("FAIL: flaky-quarantine.json was not found under the contract root "
+              "this gate was handed, so it has read nothing -- an unread manifest "
+              "is not a clean one.")
+        print(f"  contract root               : {root}")
         return 1
 
     manifest = root.joinpath(*MANIFEST_REL)

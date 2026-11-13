@@ -12447,3 +12447,28 @@ MEASURED:
 - `python scripts/verify-exhaustive-deps.py --self-test` -> OK (10 cases: 6 pure + 4 through fake eslint; 7 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/verify-exhaustive-deps.py` -> "repo base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 50 -> 51 of 70 (19 un-contracted remaining, next target `verify-flaky-quarantine.py`).
+
+
+### Round 281 (2026-11-13) -- verify-flaky-quarantine gains a 10-rung ladder and proves against rebound root mutation
+
+`scripts/verify-flaky-quarantine.py` had 13 pure/git test cases in `self_test()` and an inline 9-case shell block lacking a dedicated `shell_ladder()` and re-entry guard.
+
+ADDED:
+- `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 10 rungs:
+  Rung 1 (killing rung): expired entry fails rc 1 naming EXPIRED ("EXPIRED on <date>").
+  Rung 2: clean single-entry manifest passes rc 0 ("PASS: quarantine manifest valid").
+  Rung 3: `--report` still gates and prints INFO line rc 0.
+  Rung 4: missing required field fails rc 1.
+  Rung 5: free-text issue ref fails rc 1.
+  Rung 6: unparseable manifest fails rc 1.
+  Rung 7: empty corpus behind manifest refuses rc 1.
+  Rung 8: manifest-less root refuses rc 1.
+  Rung 9: unknown dashed flag refuses rc 2.
+  Rung 10: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+- Rebound `root = Path(root).resolve()` in `main()` as the unique spliceable anchor for mutation testing.
+
+MEASURED:
+- `python scripts/verify-flaky-quarantine.py --self-test` -> OK (13 pure/git cases; 10 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-flaky-quarantine.py` -> "rebound root ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 51 -> 52 of 70 (18 un-contracted remaining, next target `verify-dockerfile-workspace.py`).
