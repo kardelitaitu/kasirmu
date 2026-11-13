@@ -178,3 +178,15 @@ All 670 UI test files pass (11,306 tests, 24 skipped, 3 todo).
 - Master architecture boundaries verified: 41 crates, 596 dependency edges, 630 UI files, 0 violations (`verify-architecture-boundaries.py --strict`).
 - IPC command parity verified: 510 registered desktop commands, 437 tablet commands, 0 missing (`verify-ipc-parity.py`).
 - Pre-commit mirrors & root allowlist clean (`verify-agents-mirrors.py`, `verify-root-policy.py`).
+
+### Verification pass (2026-11-14)
+- Pre-beta scope and code freeze active under `docs/operations/freeze-declaration-0.0.41.md` (0 new schema migrations, Money `i64`, transaction writes).
+- Acceptance baseline re-verified: `cargo check -p kasirmu-app -p kasirmu-mobile` compiles cleanly (0 errors).
+- UI static verification clean: `npm run lint` (0 errors), `npm run typecheck` (0 errors), `npm run bundle:check` (all budgets satisfied: entry JS 251 KB ≤ 500 KB, total JS 1249 KB ≤ 3500 KB, CSS 189 KB ≤ 1000 KB), `npm run testid:check` (467 unique pairs, 0 cross-file collisions), `npm run dedupe:ftl` (0 duplicates).
+- Master architecture boundaries verified: 41 crates, 603 dependency edges followed, 626 UI files scanned, 0 violations (`verify-architecture-boundaries.py --strict`).
+- Query plan regression probe verified: 27 probed queries, none reading LARGE tables in full (`check-query-plans.py --check`).
+- Reliability ladder contracts verified: 70 of 70 contracted (`census-checker-contracts.py`).
+- Register hygiene verified: 249 consecutive rounds (51–299) with honest-limits markers (`check-register-hygiene.py`).
+- Test quarantine manifest verified: 0 entries, none expired (`verify-flaky-quarantine.py`).
+- Environment variable documentation verified: all 38 code-read variables documented (`check-env-docs.py`).
+- Root policy and core size ratchets clean (`verify-root-policy.py`, `verify-core-size.py`).
