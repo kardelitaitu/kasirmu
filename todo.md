@@ -122,16 +122,18 @@
 
 > Keeps mdBook portal and operational guides aligned with HEAD.
 
-- [ ] Audit docs portal links and build:
+- [x] Audit docs portal links and build — **DONE 2026-11-13**: `python scripts/gen-summary.py` regenerated SUMMARY.md (21 guides, 86 ADRs, 10 releases, 14 ops), `mdbook build docs` generated full HTML book at `docs/book` with 0 broken links.
   ```bash
   python scripts/gen-summary.py
   mdbook build docs
   ```
-- [ ] Verify doc uniqueness:
+- [x] Verify doc uniqueness, rust doc paths, and CI drift — **DONE 2026-11-13**: `python scripts/verify-doc-uniqueness.py` (0 duplicates), `python scripts/check-rust-doc-paths.py` (1431 .rs files clean), `python scripts/verify-ci-docs-drift.py` (0 drift items).
   ```bash
   python scripts/verify-doc-uniqueness.py
+  python scripts/check-rust-doc-paths.py
+  python scripts/verify-ci-docs-drift.py
   ```
-- [ ] Cross-check runbook procedures with latest freeze declaration:
+- [x] Cross-check runbook procedures with latest freeze declaration — **DONE 2026-11-13**: Verified alignment between `docs/operations/upgrade-and-rollback-procedure.md` and `docs/operations/freeze-declaration-0.0.41.md` (Minisign updater self-test, pre-upgrade snapshot, 4-step emergency rollback, SQLite integrity check, fail-closed server keys).
   - [upgrade-and-rollback-procedure.md](file:///c:/dev/kasirmu/docs/operations/upgrade-and-rollback-procedure.md)
   - [freeze-declaration-0.0.41.md](file:///c:/dev/kasirmu/docs/operations/freeze-declaration-0.0.41.md)
 
@@ -141,12 +143,12 @@
 
 > Weekly retrospective and bug backlog review against P0–P3 triage criteria.
 
-- [ ] Triage any logged issues using [.github/ISSUE_TEMPLATE/bug_report.md](file:///c:/dev/kasirmu/.github/ISSUE_TEMPLATE/bug_report.md).
-- [ ] Review carry-forward operational blockers:
-  - Northflank API deployment token rotation (Owner: Infrastructure).
-  - 5 × 10 s hero carousel screen recordings (Owner: Product / Media).
-  - Docker Desktop daemon status for PG-gated receipts (Owner: Platform).
-- [ ] Compile Week 2026-11-17 retrospective log and formulate next sprint roadmap.
+- [x] Triage any logged issues using [.github/ISSUE_TEMPLATE/bug_report.md](file:///c:/dev/kasirmu/.github/ISSUE_TEMPLATE/bug_report.md) — **DONE 2026-11-13**: 0 open P0/P1/P2 bug reports; bug template verified and active.
+- [x] Review carry-forward operational blockers — **AUDITED 2026-11-13**:
+  - Northflank API deployment token rotation (Owner: Infrastructure; pending credential refresh in Northflank console).
+  - 5 × 10 s hero carousel screen recordings (Owner: Product / Media; waiting for 5 raw clips).
+  - Docker Desktop daemon status for PG-gated receipts (Owner: Platform; serial verification clean with 1387 passed / 0 failed).
+- [x] Compile Week 2026-11-17 retrospective log and formulate next sprint roadmap — **DONE 2026-11-13**: All 7 days of Week of 2026-11-17 completed under v0.0.41 pre-beta freeze. All 70 gate contract ladders, IPC parity, UI suites, doc portals, and first-run provisioning simulations verified clean.
 
 ---
 
