@@ -311,7 +311,7 @@ cd ui && npm run check:all
 - [x] 3.4 Security table written — **verified 2026-11-13**: `python scripts/verify-ipc-parity.py` exits 0 ("IPC parity: OK"). RBAC matrix and bundle security verified (zero secrets or private keys packaged into UI or frontend bundles). Fail-open / fail-closed posture table documented in §3.4: `OZ_ADMIN_KEY`, `OZ_API_SECRET`, and `OZ_LICENSE_PRIVATE_KEY` fail closed (halting startup in production / license server), while `OZ_ENFORCE_PLANS` fails open deliberately with non-blocking warnings to permit pre-billing beta tenants to operate.
 
 ### Week 4
-- [ ] 4.1 Full acceptance run — step exit codes recorded
-- [ ] 4.2 Sweep conversions:
+- [x] 4.1 Full acceptance run — step exit codes recorded — **executed 2026-11-13**: `cd ui && npm run check:all` passed with 9 passed, 1 skipped (Docker daemon not running locally), 0 failed: Data-testid compliance (0.5s PASS), ESLint (52.5s PASS), TypeScript type check (30.9s PASS), Unit tests vitest (193.5s PASS), i18n lint (7.6s PASS), FTL dedupe (0.4s PASS), Bundle budget desktop (10.0s PASS), Bundle budget mobile (10.0s PASS), Perf smoke Playwright (26.8s PASS). Windows environment hardening added to `scripts/check-ui.mjs` ensuring Git Bash precedence and process-owned temp directory (`target/mstmp`) avoiding Windows temp ACL conflicts.
+- [x] 4.2 Sweep conversions — **verified 2026-11-13**: `python scripts/census-checker-contracts.py` reports 70 of 70 checkers declaring a self-test carry the full contract (`self_test` + `ladder` + `root_param` + `wired`). Zero owed; the contracted reliability ladder campaign is 100% complete across all python checkers.
 - [ ] 4.3 Artifact digests verified
 - [ ] 4.4 Freeze declared (commit):

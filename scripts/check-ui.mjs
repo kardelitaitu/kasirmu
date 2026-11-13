@@ -25,12 +25,27 @@
  */
 
 import { execSync } from 'child_process';
-import { readFileSync } from 'fs';
+import { mkdirSync, readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 
-// ── Change to ui/ directory so we can run from anywhere ─────────────
+// ── Windows environment hardening (AGENTS.md §5, agent-gates.md:2260) ──
 const __dirname = dirname(fileURLToPath(import.meta.url));
+if (process.platform === 'win32') {
+  if (!process.env.PATH?.toLowerCase().includes('git\\bin')) {
+    process.env.PATH = 'C:\\Program Files\\Git\\bin;' + (process.env.PATH ?? '');
+  }
+  const mstmp = resolve(__dirname, '..', 'target', 'mstmp');
+  try {
+    mkdirSync(mstmp, { recursive: true });
+    process.env.TEMP = mstmp;
+    process.env.TMP = mstmp;
+  } catch {
+    // ignore
+  }
+}
+
+// ── Change to ui/ directory so we can run from anywhere ─────────────
 const uiDir = resolve(__dirname, '..', 'ui');
 process.chdir(uiDir);
 
