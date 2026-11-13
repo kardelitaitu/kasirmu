@@ -86,7 +86,7 @@ The following items are explicit known exceptions permitted under this freeze:
 
 | Item | Description | Current Status | Owner |
 |---|---|---|---|
-| **PG-gated receipts** (§1.1) | PostgreSQL-gated receipt test runs | Gated on Docker Desktop daemon availability on host; SQLite source of truth is 100% verified. | DevOps / Platform |
+| **PG-gated receipts** (§1.1) | PostgreSQL-gated receipt test runs | **RECORDED 2026-11-13** — `verify-pg-tests-ran.py --serialize` PASS: 1387 passed / 0 failed / 4 ignored, zero skip events, 95 skip arms. Needs Docker Desktop + `oz-pg-test-15432`; the default parallel harness on one shared cluster flakes at throwaway `CREATE DATABASE` (alternating victims), which is why the serialized form is the local acceptance. | DevOps / Platform |
 | **Tablet 5-minute audit** (§3.1) | Onboarding timing on real Android hardware | Requires attached wireless ADB device (`23073RPBFG`); desktop flows are verified. | QA / Mobile |
 | **Hero carousel video** (§6c) | 5 × 10 s screen recordings for website | Blocked on marketing asset capture from product owner. | Product / Media |
 | **Northflank token rotation** (§6a) | Backend deploy token refresh (HTTP 401 on CI) | Requires credential refresh in Northflank console. | Infrastructure |
