@@ -12404,6 +12404,8 @@ MEASURED:
 - `python scripts/prove-ladder-kills.py scripts/check-rbac-citations.py` -> "repo base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 48 -> 49 of 70 (21 un-contracted remaining, next target `verify-ps-syntax.py`).
 
+Honest limits: the 7-rung ladder exercises synthetic fixture trees in temporary directories; it does not scan live external documentation repositories outside the checked-out tree.
+
 
 ### Round 279 (2026-11-13) -- verify-ps-syntax gains a 6-rung ladder and proves against scan base mutation
 
@@ -12426,6 +12428,8 @@ MEASURED:
 - `python scripts/prove-ladder-kills.py scripts/verify-ps-syntax.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 49 -> 50 of 70 (20 un-contracted remaining, next target `verify-exhaustive-deps.py`).
 
+Honest limits: the 6-rung ladder tests parsing of synthetic .ps1 files; it does not execute full PowerShell scripts or validate runtime cmdlet dependencies on non-Windows hosts.
+
 
 ### Round 280 (2026-11-13) -- verify-exhaustive-deps gains a 7-rung ladder and proves against repo base mutation
 
@@ -12447,6 +12451,8 @@ MEASURED:
 - `python scripts/verify-exhaustive-deps.py --self-test` -> OK (10 cases: 6 pure + 4 through fake eslint; 7 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/verify-exhaustive-deps.py` -> "repo base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 50 -> 51 of 70 (19 un-contracted remaining, next target `verify-flaky-quarantine.py`).
+
+Honest limits: the 7-rung ladder mocks eslint output through a fake executable; it proves the threshold classifier and parser rather than running a full ESLint analysis across all components.
 
 
 ### Round 281 (2026-11-13) -- verify-flaky-quarantine gains a 10-rung ladder and proves against rebound root mutation
@@ -12473,6 +12479,8 @@ MEASURED:
 - `python scripts/prove-ladder-kills.py scripts/verify-flaky-quarantine.py` -> "rebound root ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 51 -> 52 of 70 (18 un-contracted remaining, next target `verify-dockerfile-workspace.py`).
 
+Honest limits: the 10-rung ladder proves quarantine manifest schema parsing and expiration gating against temporary fixtures; it does not execute the quarantined tests themselves.
+
 
 ### Round 282 (2026-11-13) -- verify-dockerfile-workspace gains an 8-rung ladder and proves against scan base mutation
 
@@ -12496,6 +12504,8 @@ MEASURED:
 - `python scripts/prove-ladder-kills.py scripts/verify-dockerfile-workspace.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 52 -> 53 of 70 (17 un-contracted remaining, next target `check-hardcoded-copy.py`).
 
+Honest limits: the 8-rung ladder checks Dockerfile member copy declarations against synthetic workspace Cargo.tomls; it does not execute Docker container builds or pull remote base images.
+
 
 ### Round 283 (2026-11-13) -- check-hardcoded-copy gains a 6-rung ladder and proves against repo base mutation
 
@@ -12516,6 +12526,8 @@ MEASURED:
 - `python scripts/check-hardcoded-copy.py --self-test` -> OK (14 pure cases; 6 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/check-hardcoded-copy.py` -> "repo base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 53 -> 54 of 70 (16 un-contracted remaining, next target `check-client-type-drift.py`).
+
+Honest limits: the 6-rung ladder validates hardcoded copy string detection and budget counting on isolated fixture files; it does not replace the full l10n bundle parity gate.
 
 
 ### Round 284 (2026-11-13) -- check-client-type-drift gains a 6-rung ladder and proves against repo base mutation
@@ -12538,6 +12550,8 @@ MEASURED:
 - `python scripts/prove-ladder-kills.py scripts/check-client-type-drift.py` -> "repo base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 54 -> 55 of 70 (15 un-contracted remaining, next target `check-tz-invariance.py`).
 
+Honest limits: the 6-rung ladder validates TypeScript and Rust wire type discrepancy detection on synthetic schemas; it does not validate runtime network serialization.
+
 
 ### Round 285 (2026-11-13) -- check-tz-invariance wraps execution in main(argv, root) with a 5-rung ladder and proves against scan base mutation
 
@@ -12557,6 +12571,8 @@ MEASURED:
 - `python scripts/check-tz-invariance.py --self-test` -> OK (8 sensitivity cases; 5 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/check-tz-invariance.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 55 -> 56 of 70 (14 un-contracted remaining, next target `verify-windows-config.py`).
+
+Honest limits: the 5-rung ladder tests timezone sensitivity handling and fast test runner dispatch; it does not spin up all system timezones simultaneously on live test runs.
 
 
 ### Round 286 (2026-11-13) -- verify-windows-config gains a 7-rung ladder and proves against scan base mutation
@@ -12581,6 +12597,8 @@ MEASURED:
 - `python scripts/prove-ladder-kills.py scripts/verify-windows-config.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 56 -> 57 of 70 (13 un-contracted remaining, next target `verify-invoke-parity.py`).
 
+Honest limits: the 7-rung ladder tests Windows manifest elevation and installMode verification on synthetic XML/JSON files; it does not test binary signature validation.
+
 
 ### Round 287 (2026-11-13) -- verify-invoke-parity extracts 7-rung ladder and proves against repo root mutation
 
@@ -12601,6 +12619,8 @@ MEASURED:
 - `python scripts/verify-invoke-parity.py --self-test` -> OK (11 pure cases; 7 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/verify-invoke-parity.py` -> "repo root ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 57 -> 58 of 70 (12 un-contracted remaining, next target `check-rust-doc-paths.py`).
+
+Honest limits: the 7-rung ladder verifies sessionToken requirement extraction on synthetic invoke call sites; it does not execute live Tauri IPC invocations.
 
 
 ### Round 288 (2026-11-13) -- check-rust-doc-paths extracts 8-rung ladder and proves against scan base mutation
@@ -12624,6 +12644,8 @@ MEASURED:
 - `python scripts/prove-ladder-kills.py scripts/check-rust-doc-paths.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 58 -> 59 of 70 (11 un-contracted remaining, next target `verify-topology-parity.py`).
 
+Honest limits: the 8-rung ladder validates doc path and line citation existence against synthetic .rs trees; it does not inspect comments inside binary crates or external dependencies.
+
 
 ### Round 289 (2026-11-13) -- verify-topology-parity extracts 7-rung ladder and proves against scan base mutation
 
@@ -12645,6 +12667,8 @@ MEASURED:
 - `python scripts/verify-topology-parity.py --self-test` -> OK (23 pure cases; 7 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/verify-topology-parity.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 59 -> 60 of 70 (10 un-contracted remaining, next target `check-mapper-alignment.py`).
+
+Honest limits: the 7-rung ladder tests topology contract byte-parity and schema version checks on synthetic trees; it does not test network topology deployment.
 
 
 ### Round 290 (2026-11-13) -- check-mapper-alignment gains a 6-rung ladder and proves against scan base mutation
@@ -12668,6 +12692,8 @@ MEASURED:
 - `python scripts/prove-ladder-kills.py scripts/check-mapper-alignment.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 60 -> 61 of 70 (9 un-contracted remaining, next target `verify-no-hardcoded-money-format.py`).
 
+Honest limits: the 6-rung ladder checks mapper SQL column name alignment on synthetic mapper modules; it does not execute SQL against a live SQLite or PostgreSQL instance.
+
 
 ### Round 291 (2026-11-13) -- verify-no-hardcoded-money-format gains a 6-rung ladder and proves against scan base mutation
 
@@ -12688,6 +12714,8 @@ MEASURED:
 - `python scripts/verify-no-hardcoded-money-format.py --self-test` -> OK (3 subprocess cases; 6 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/verify-no-hardcoded-money-format.py` -> "base resolves root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 61 -> 62 of 70 (8 un-contracted remaining, next target `check-query-plans.py`).
+
+Honest limits: the 6-rung ladder checks floating-point money pattern detection on synthetic .rs files; it does not prove the absence of logical financial bugs outside regex patterns.
 
 
 ### Round 292 (2026-11-13) -- check-query-plans gains a 6-rung ladder and proves against repo base mutation
@@ -12710,6 +12738,8 @@ MEASURED:
 - `python scripts/check-query-plans.py --self-test` -> OK (28 pure cases; 6 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/check-query-plans.py` -> "repo base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 62 -> 63 of 70 (7 un-contracted remaining, next target `verify-migration-column-types.py`).
+
+Honest limits: the 6-rung ladder validates query probe definitions and classifications on fixture probe files; it does not execute SQLite EXPLAIN QUERY PLAN against a live database.
 
 
 ### Round 293 (2026-11-13) -- verify-migration-column-types gains a 7-rung ladder and proves against scan base mutation
@@ -12735,6 +12765,8 @@ MEASURED:
 - `python scripts/prove-ladder-kills.py scripts/verify-migration-column-types.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 63 -> 64 of 70 (6 un-contracted remaining, next target `verify-debt-markers.py`).
 
+Honest limits: the 7-rung ladder tests float-type migration column detection against synthetic migration files; it does not execute SQLite or PostgreSQL migrations.
+
 
 ### Round 294 (2026-11-13) -- verify-debt-markers gains a 6-rung ladder and proves against scan base mutation
 
@@ -12755,6 +12787,8 @@ MEASURED:
 - `python scripts/verify-debt-markers.py --self-test` -> OK (11 corpus cases; 6 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/verify-debt-markers.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 64 -> 65 of 70 (5 un-contracted remaining, next target `check-gate-runners.py`).
+
+Honest limits: the 6-rung ladder checks debt ID resolution against synthetic repo trees; it does not verify the operational accuracy of the underlying debt records.
 
 
 ### Round 295 (2026-11-13) -- check-gate-runners gains a 6-rung ladder and proves against scan base mutation
@@ -12778,6 +12812,8 @@ MEASURED:
 - `python scripts/prove-ladder-kills.py scripts/check-gate-runners.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 65 -> 66 of 70 (4 un-contracted remaining, next target `check-l10n-test-maps.py`).
 
+Honest limits: the 6-rung ladder tests gate runner label resolution against synthetic dev-ci workflows; it does not trigger GitHub Actions runner workflows.
+
 
 ### Round 296 (2026-11-13) -- check-l10n-test-maps gains a 6-rung ladder and proves against repo base mutation
 
@@ -12799,6 +12835,8 @@ MEASURED:
 - `python scripts/check-l10n-test-maps.py --self-test` -> OK (4 cases; 6 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/check-l10n-test-maps.py` -> "repo base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 66 -> 67 of 70 (3 un-contracted remaining, next target `verify-pg-tests-ran.py`).
+
+Honest limits: the 6-rung ladder validates l10n test map coverage on synthetic test and locale files; it does not test runtime translation rendering in React components.
 
 
 ### Round 297 (2026-11-13) -- verify-pg-tests-ran gains a 6-rung ladder and proves against scan base mutation
@@ -12822,6 +12860,8 @@ MEASURED:
 - `python scripts/prove-ladder-kills.py scripts/verify-pg-tests-ran.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 67 -> 68 of 70 (2 un-contracted remaining, next target `verify-ci-docs-drift.py`).
 
+Honest limits: the 6-rung ladder checks PG skip arm counting and nextest junit parsing on synthetic trees and reports; it does not spin up a live PostgreSQL cluster.
+
 
 ### Round 298 (2026-11-13) -- verify-ci-docs-drift gains a 6-rung ladder and proves against scan base mutation
 
@@ -12844,6 +12884,8 @@ MEASURED:
 - `python scripts/prove-ladder-kills.py scripts/verify-ci-docs-drift.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 68 -> 69 of 70 (1 un-contracted remaining, next target `verify-agents-mirrors.py`).
 
+Honest limits: the 6-rung ladder checks CI workflow documentation drift against synthetic manifests; it does not test CI execution.
+
 
 ### Round 299 (2026-11-13) -- verify-agents-mirrors gains a 6-rung ladder, reaching 100% census contract completion (70 of 70)
 
@@ -12865,6 +12907,8 @@ MEASURED:
 - `python scripts/verify-agents-mirrors.py --self-test` -> OK (40 pure cases + 6 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/verify-agents-mirrors.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> 70 of 70 (100%) checker(s) contracted! "nothing owed -- every checker in scope is contracted."
+
+Honest limits: the 6-rung ladder proves pre-commit hook and gate count drift detection against synthetic mirrors; it does not execute the pre-commit hook in a live git repository.
 
 
 
