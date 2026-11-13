@@ -25,22 +25,34 @@
 
 > Satisfies `plan-next-30-days.md` §4.3: rebuild signed installers from a clean tree and record digests.
 
-- [ ] Run release version and windows config verifications:
+- [x] Run release version and windows config verifications — **DONE 2026-11-13**: `node scripts/check-release-version.mjs --self-test` → `self-test: all cases passed`; `python scripts/verify-windows-config.py` → `0 violation(s) (population examined: 2 tauri.conf.json walked, 6 source app.manifest checked, 0 built exe scanned)`; `python scripts/verify-release-workflow.py` → `release.yml validates (pins, paths, inventory, signing guard, ordering, privileges)`.
   ```bash
   node scripts/check-release-version.mjs --self-test
   python scripts/verify-windows-config.py
   python scripts/verify-release-workflow.py
   ```
-- [ ] Build desktop production release installer:
+- [x] Build desktop production release installer — **DONE 2026-11-13**, 2 bundles produced. **It does NOT build from a plain shell on this host, and the failure is misleading:** `cargo tauri build --bundles nsis,msi` reaches `beforeBuildCommand npm run build --prefix ../ui` and dies at `[vite:esbuild-transpile] remove C:\Windows\TEMP\esbuild-<hash>: Access is denied`, which reads like a build error and is a **temp-directory ACL problem**. Running it with a process-owned temp dir fixes it, the same remedy `scripts/check-ui.mjs` already carries (`target/mstmp`) for the identical class:
+  ```bash
+  mkdir -p target/mstmp
+  TMP=$(cygpath -w "$PWD/target/mstmp") TEMP=$(cygpath -w "$PWD/target/mstmp") \
+    TMPDIR=$(cygpath -w "$PWD/target/mstmp") cargo tauri build --bundles nsis,msi
+  ```
   ```bash
   cargo tauri build --bundles nsis,msi
   ```
-- [ ] Compute and record SHA-256 digests of generated installer binaries:
+- [x] Compute and record SHA-256 digests of generated installer binaries — **recorded 2026-11-13**:
+
+  | Artifact | Bytes | SHA-256 |
+  |---|---|---|
+  | `target/release/bundle/nsis/kasir.mu_0.0.41_x64-setup.exe` | 12,636,571 | `d76551c22369ff453f4395d657d2c60f0505fa340f1e865545ac1e6ef32141fb` |
+  | `target/release/bundle/msi/kasir.mu_0.0.41_x64_en-US.msi` | 17,498,112 | `6f9ca442af9839775841129bc5e2a2388ecbe406f6cd36c7ef740008424d38af` |
+
+  Both were produced from the tree at `6b1637572`, and both digests are from that one build — a rebuild will change them, so re-derive rather than quote.
   ```powershell
   Get-FileHash -Algorithm SHA256 target\release\bundle\nsis\*.exe
   Get-FileHash -Algorithm SHA256 target\release\bundle\msi\*.msi
   ```
-- [ ] Verify installer matches Minisign updater manifest signature:
+- [ ] Verify installer matches Minisign updater manifest signature — **NOT RUN 2026-11-13, blocked on a credential, and the reason is recorded rather than worked around.** `cargo tauri build` emits a `.sig` and an updater `latest.json` only when `TAURI_SIGNING_PRIVATE_KEY` is present; it is **not set** in this environment, so neither exists under `target/release/bundle/` and there is nothing to verify against. The verification *machinery* is proven independently: `node scripts/verify-updater-signature.mjs --self-test` → `signature verification (incl. tamper rejection) PASSED`. To close this box the owner must supply the key (user-scope env var, per AGENTS §4) and re-run the build — it is a signing-authority decision, not a code task.
   ```bash
   node scripts/verify-updater-signature.mjs latest.json windows-x86_64 target\release\bundle\nsis\*.exe
   ```
