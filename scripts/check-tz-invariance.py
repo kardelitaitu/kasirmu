@@ -42,6 +42,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 UI = ROOT / "ui"
+
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root fixtures go under (None = system default), created if missing."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
 # R36-01's pure anchor test, plus R36-05's component-level one: the dashboard
 # renders its default range into <input type=date>, so asserting on the DOM is
 # the only way to prove the whole plumbing (fetch -> state -> re-seed -> render)
@@ -317,6 +327,103 @@ def self_test() -> int:
     skipped = "" if hasattr(time, "tzset") else \
         " (preflight cases SKIPPED: no time.tzset on this host)"
     print(f"SELF-TEST OK ({ran} cases{skipped}, no files touched, vitest never run)")
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """Grade main()'s shell on fixture trees outside this repository."""
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+
+    shell = 0
+
+    with _tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+        base = Path(td).resolve()
+        ui_dir = base / "ui"
+        ui_dir.mkdir(parents=True, exist_ok=True)
+        (ui_dir / "marker.txt").write_text("FIXTURE-TZ-MARKER", encoding="utf-8")
+
+        def run(*extra, runner=None, root=base):
+            out, err = _io.StringIO(), _io.StringIO()
+            try:
+                with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                    rc = main(argv=list(extra), root=root, _runner=runner)
+            except SystemExit as se:
+                return se.code, out.getvalue() + err.getvalue()
+            return rc, out.getvalue() + err.getvalue()
+
+        def fake_runner_disagree(tz, cwd):
+            if not (cwd / "marker.txt").is_file():
+                return (tz, "10 passed, 0 failed", False)
+            if tz == "Pacific/Honolulu":
+                return (tz, "9 passed, 1 failed | FAIL: timezone regression", True)
+            return (tz, "10 passed, 0 failed", False)
+
+        def fake_runner_pass(tz, cwd):
+            return (tz, "10 passed, 0 failed", False)
+
+        def fake_runner_fail_identical(tz, cwd):
+            return (tz, "9 passed, 1 failed | FAIL: syntax error", True)
+
+        # rung 1 -- the KILLING rung: differing results across zones fails rc 1 with FAIL: anchored range depends on host timezone
+        shell += 1
+        rc, text = run(runner=fake_runner_disagree)
+        if rc != 1 or "FAIL: the anchored range depends on the host timezone." not in text:
+            print("  x rung 1: zone disagreement must fail rc 1 (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
+        # rung 2 -- clean arm: identical pass across all zones passes rc 0
+        shell += 1
+        rc, text = run(runner=fake_runner_pass)
+        if rc != 0 or "PASS: identical result under 5 host zones" not in text:
+            print("  x rung 2: identical pass must exit 0 (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
+        # rung 3 -- identical failure across all zones fails rc 1 with FAIL: every zone failed IDENTICALLY
+        shell += 1
+        rc, text = run(runner=fake_runner_fail_identical)
+        if rc != 1 or "FAIL: every zone failed IDENTICALLY" not in text:
+            print("  x rung 3: identical failure must name not the variable (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
+        # rung 4 -- missing UI directory under root refuses with rc 2
+        shell += 1
+        empty = base / "empty_root"
+        empty.mkdir(parents=True, exist_ok=True)
+        rc, text = run(root=empty, runner=fake_runner_pass)
+        if rc != 2 or "UI directory missing" not in text:
+            print("  x rung 4: missing UI directory must refuse rc 2 (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
+        # rung 5 -- nested --self-test passes through argv under re-entry guard
+        shell += 1
+        rc, text = run("--self-test")
+        if rc != 0 or "SELF-TEST OK" not in text or "LADDER OK" in text:
+            print("  x rung 5: nested --self-test must exit 0 without running duplicate ladder (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
+    print("LADDER OK (%d rungs: disagree-kill, identical-pass, identical-fail, missing-ui, nested-selftest)" % shell)
     return 0
 
 
@@ -390,20 +497,7 @@ def zone_probe() -> int:
     print(f"check-tz-invariance: zone preflight OK -- {len(ZONES)} zone(s) honoured.")
     return 0
 
-# Dispatch ABOVE the module-level vitest run further down this file. Placing it there
-# rather than at the bottom is the whole reason --self-test is safe here: every other
-# checker dispatches from main(), and this file has no main(), because one vitest
-# invocation per zone executes on import. Five zones, not four: Pacific/Honolulu was
-# added 2026-09-29 to close a 07:00-10:00 blind spot the original four left open.
-if "--self-test" in sys.argv:
-    sys.exit(self_test())
-
-from concurrent.futures import ThreadPoolExecutor
-
-results: dict[str, str] = {}
-failed = False
-
-def check_zone(tz: str) -> tuple[str, str, bool]:
+def check_zone(tz: str, ui_dir: Path = UI) -> tuple[str, str, bool]:
     env = {**os.environ, "TZ": tz}
     # `text=True` with NO encoding decodes with the locale codec (cp1252 on this host) and
     # makes the reader thread die on the first byte it cannot map, leaving `stdout=None` with
@@ -413,7 +507,7 @@ def check_zone(tz: str) -> tuple[str, str, bool]:
     # not a theoretical one -- same fix, same reason, as check-chokepoints.py (round 198).
     r = subprocess.run(
         [NPMX, "exec", "--silent", "--", "vitest", "run", *TESTS, "--reporter=json"],
-        cwd=UI, env=env, capture_output=True, text=True,
+        cwd=ui_dir, env=env, capture_output=True, text=True,
         encoding="utf-8", errors="replace",
     )
     out = r.stdout
@@ -442,78 +536,80 @@ def check_zone(tz: str) -> tuple[str, str, bool]:
         summary = f"NO JSON (exit {r.returncode}) :: " + (r.stderr or out)[-200:]
     return (tz, summary, zone_failed)
 
-is_ci = os.environ.get("CI") is not None
-max_concurrency = 1 if is_ci else 2
 
-# Preflight BEFORE the expensive loop: a dead zone name must be caught here, not
-# after one vitest invocation per zone has already been spent.
-#
-# sys.exit(zone_probe()), NOT a bare call: zone_probe returns 1 to mean "stop", and a
-# discarded return value would print the failure and then run the expensive loop anyway
-# -- a preflight that warns and proceeds is not a preflight. Exiting here is also the
-# only place a non-zero code can reach the caller, since this file has no main().
-if zone_probe() != 0:
-    sys.exit(1)
+def main(argv=None, root=None, _runner=None) -> int:
+    """Run timezone invariance check or self-test."""
+    if argv is None:
+        argv = sys.argv[1:]
+    if "--self-test" in argv:
+        return self_test()
 
-# And the SENSITIVITY check at gate time, not only in --self-test. Until 2026-09-29 this
-# ran nowhere except the self-test, which a static audit found by asking which of a
-# self-test's callees are referenced nowhere else. The consequence was specific: someone
-# could trim ZONES to the zones that pass right now, every gate run would stay green,
-# and the blind hours would reopen -- because zone_probe() asks whether the host
-# HONOURS a zone, which is a different question from whether the chosen set is SENSITIVE.
-# Cost is arithmetic on a five-entry dict, so there is no reason for the gate's own run
-# to stay silent about the property the whole file exists to provide.
-_gap = sensitivity_gap(ZONE_OFFSETS)
-if _gap:
-    print("check-tz-invariance: SENSITIVITY FAILURE — no zone disagrees with UTC "
-          "during: " + ", ".join(f"{a:02d}:00-{b:02d}:00" for a, b in _gap))
-    print("  The gate runs, passes, and cannot see a host-date bug in those hours. "
-          "Add a zone whose window covers the gap, or widen an existing one.")
-    sys.exit(1)
-print(f"check-tz-invariance: sensitivity OK — {len(ZONES)} zone(s) cover all 24 hours.")
+    base = ROOT if root is None else Path(root).resolve()
+    ui_dir = UI if root is None else base / "ui"
+    if not ui_dir.is_dir():
+        print(f"check-tz-invariance: UI directory missing: {ui_dir}", file=sys.stderr)
+        return 2
 
-print(f"=== timezone invariance ({len(TESTS)} file(s) x {len(ZONES)} zones, concurrency={max_concurrency}) ===")
-with ThreadPoolExecutor(max_workers=max_concurrency) as pool:
-    for tz, summary, zone_failed in pool.map(check_zone, ZONES):
-        results[tz] = summary
-        if zone_failed:
-            failed = True
-        print(f"  TZ={tz:22s} {summary}")
+    # Preflight BEFORE the expensive loop: a dead zone name must be caught here, not
+    # after one vitest invocation per zone has already been spent.
+    if zone_probe() != 0:
+        return 1
+
+    # Sensitivity check: the union of zone offsets must cover all 24 hours.
+    _gap = sensitivity_gap(ZONE_OFFSETS)
+    if _gap:
+        print("check-tz-invariance: SENSITIVITY FAILURE — no zone disagrees with UTC "
+              "during: " + ", ".join(f"{a:02d}:00-{b:02d}:00" for a, b in _gap))
+        print("  The gate runs, passes, and cannot see a host-date bug in those hours. "
+              "Add a zone whose window covers the gap, or widen an existing one.")
+        return 1
+    print(f"check-tz-invariance: sensitivity OK — {len(ZONES)} zone(s) cover all 24 hours.")
+
+    is_ci = os.environ.get("CI") is not None
+    max_concurrency = 1 if is_ci else 2
+
+    results: dict[str, str] = {}
+    failed = False
+
+    def _run_one(tz: str) -> tuple[str, str, bool]:
+        if _runner is not None:
+            return _runner(tz, ui_dir)
+        return check_zone(tz, ui_dir)
+
+    print(f"=== timezone invariance ({len(TESTS)} file(s) x {len(ZONES)} zones, concurrency={max_concurrency}) ===")
+    if _runner is not None:
+        for tz in ZONES:
+            tz_out, summary, zone_failed = _run_one(tz)
+            results[tz_out] = summary
+            if zone_failed:
+                failed = True
+            print(f"  TZ={tz_out:22s} {summary}")
+    else:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=max_concurrency) as pool:
+            for tz, summary, zone_failed in pool.map(_run_one, ZONES):
+                results[tz] = summary
+                if zone_failed:
+                    failed = True
+                print(f"  TZ={tz:22s} {summary}")
+
+    print()
+    distinct = set(results.values())
+    if len(distinct) == 1 and not failed:
+        print(f"PASS: identical result under {len(ZONES)} host zones -> {distinct.pop()}")
+        return 0
+
+    if len(distinct) > 1:
+        print("FAIL: the anchored range depends on the host timezone.")
+    else:
+        print("FAIL: every zone failed IDENTICALLY, so the host timezone is not the variable.")
+        print("      This is a red run, but not the regression this gate exists to catch: read the")
+        print("      failures below as an ordinary test failure, or as a run that did not complete.")
+        print("      Only DIFFERING results across zones indicate timezone dependence.")
+    for tz, s in results.items():
+        print(f"  {tz:22s} {s}")
+    return 1
 
 
-
-print()
-distinct = set(results.values())
-if len(distinct) == 1 and not failed:
-    print(f"PASS: identical result under {len(ZONES)} host zones -> {distinct.pop()}")
-    sys.exit(0)
-
-# Two different findings used to print the same headline, and only one of them is
-# about the host zone. If every zone failed IDENTICALLY, the zone cannot be the
-# variable: the same cases failed under UTC+14, UTC-7, UTC+7 and UTC. That is an
-# ordinary red (or a run that did not finish), and calling it timezone dependence
-# sends the next reader after a bug that is not there.
-#
-# Measured 2026-09-20, in a checkout where several lanes commit every few minutes.
-# This tool printed "194 passed, 51 failed" in all four zones at once and the
-# headline named the host timezone. The truth was a neighbour's in-flight file:
-# `ui/src/__tests__/SalesReportScreen.test.tsx` was being edited in the same
-# working tree. The failing run finished at ~13:12:05, that file's next write
-# landed at 13:12:26, and the identical suite passed 51/51 at 13:12:48 -- so the
-# failing window is exactly the peer's broken intermediate, and the file has been
-# dirty ever since. Eleven later runs of these six files returned 245 passed /
-# 0 failed in every zone, and four back-to-back concurrent-pair experiments (two
-# zones in parallel, which is exactly what the local concurrency=2 path does)
-# reproduced nothing -- so the parallelism is not the cause either. Zone
-# dependence is the DISAGREEMENT between zones, which is what `distinct` measures;
-# that is the case this gate exists for.
-if len(distinct) > 1:
-    print("FAIL: the anchored range depends on the host timezone.")
-else:
-    print("FAIL: every zone failed IDENTICALLY, so the host timezone is not the variable.")
-    print("      This is a red run, but not the regression this gate exists to catch: read the")
-    print("      failures below as an ordinary test failure, or as a run that did not complete.")
-    print("      Only DIFFERING results across zones indicate timezone dependence.")
-for tz, s in results.items():
-    print(f"  {tz:22s} {s}")
-sys.exit(1)
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

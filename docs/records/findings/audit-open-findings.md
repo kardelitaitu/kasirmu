@@ -12537,3 +12537,23 @@ MEASURED:
 - `python scripts/check-client-type-drift.py --self-test` -> OK (11 pure cases; 6 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/check-client-type-drift.py` -> "repo base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 54 -> 55 of 70 (15 un-contracted remaining, next target `check-tz-invariance.py`).
+
+
+### Round 285 (2026-11-13) -- check-tz-invariance wraps execution in main(argv, root) with a 5-rung ladder and proves against scan base mutation
+
+`scripts/check-tz-invariance.py` had 8 sensitivity arithmetic / zone preflight cases in `self_test()` and ran vitest sweeps at top-level on import, lacking both `main(argv, root)` parameterization and a `shell_ladder()` contract.
+
+ADDED:
+- Wrapped module execution in `main(argv=None, root=None, _runner=None)` accepting root redirection and a fast test runner override.
+- `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 5 rungs:
+  Rung 1 (killing rung): differing results across zones fails rc 1 with FAIL: anchored range depends on host timezone.
+  Rung 2: identical pass across all zones passes rc 0 with PASS: identical result.
+  Rung 3: identical failure across all zones fails rc 1 with FAIL: every zone failed IDENTICALLY.
+  Rung 4: missing UI directory under root refuses with rc 2.
+  Rung 5: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+
+MEASURED:
+- `python scripts/check-tz-invariance.py --self-test` -> OK (8 sensitivity cases; 5 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/check-tz-invariance.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 55 -> 56 of 70 (14 un-contracted remaining, next target `verify-windows-config.py`).
