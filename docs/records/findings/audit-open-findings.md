@@ -12472,3 +12472,26 @@ MEASURED:
 - `python scripts/verify-flaky-quarantine.py --self-test` -> OK (13 pure/git cases; 10 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/verify-flaky-quarantine.py` -> "rebound root ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 51 -> 52 of 70 (18 un-contracted remaining, next target `verify-dockerfile-workspace.py`).
+
+
+### Round 282 (2026-11-13) -- verify-dockerfile-workspace gains an 8-rung ladder and proves against scan base mutation
+
+`scripts/verify-dockerfile-workspace.py` had pure test cases in `self_test()` and an inline 7-case shell block lacking a dedicated `shell_ladder()` and re-entry guard.
+
+ADDED:
+- `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 8 rungs:
+  Rung 1 (killing rung): missing member manifest fails rc 1 naming missing COPY ("missing 'COPY crates/beta/Cargo.toml'").
+  Rung 2: fully covered fixture reads OK over 4 members ("OK: all 4 workspace members").
+  Rung 3: stale dummy version fails naming the bump ("inline dummy version must be '0.0.41'").
+  Rung 4: missing dummy src fails ("expected inline dummy src").
+  Rung 5: apt asymmetry fails naming the package ("DOCKER-10 drift" and "ripgrep").
+  Rung 6: exempted asymmetry reads OK with a NOTE ("deliberate apt asymmetry").
+  Rung 7: missing Dockerfile fails rc 1 ("Dockerfile not found").
+  Rung 8: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+- Disambiguated `ws_root` in `workspace_members()` and `df_root` in `check_dockerfile()` so `base = ROOT if root is None else Path(root).resolve()` in `main()` is the unique spliceable anchor for mutation testing.
+
+MEASURED:
+- `python scripts/verify-dockerfile-workspace.py --self-test` -> OK (apt-divergence + workspace reader cases; 8 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-dockerfile-workspace.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 52 -> 53 of 70 (17 un-contracted remaining, next target `check-hardcoded-copy.py`).

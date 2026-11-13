@@ -30,12 +30,23 @@ Usage:
     python scripts/verify-dockerfile-workspace.py
 """
 
+import os
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CARGO_TOML = ROOT / "Cargo.toml"
+
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root fixtures go under (None = system default), created if missing."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
 
 # Dockerfiles to validate, with members they are ALLOWED to omit. Both images
 # build `kasirmu-cloud`; currently both carry the full member list so the
@@ -58,8 +69,8 @@ SKIP_MEMBERS = {"tools/fuzz", "tools/fuzz/hfuzz"}
 
 def workspace_members(root=None) -> list[str]:
     """r199: the workspace reader follows the contract root."""
-    base = ROOT if root is None else Path(root).resolve()
-    toml = CARGO_TOML if root is None else base / "Cargo.toml"
+    ws_root = ROOT if root is None else Path(root).resolve()
+    toml = CARGO_TOML if root is None else ws_root / "Cargo.toml"
     text = toml.read_text(encoding="utf-8")
     m = re.search(r"\[workspace\]\s*(.*?)(?:\n\[|\Z)", text, re.S)
     if not m:
@@ -76,8 +87,8 @@ def workspace_members(root=None) -> list[str]:
         if '*' in pat or '?' in pat:
             # Use Path.glob on the workspace root to resolve the pattern.
             hits = sorted(
-                p.relative_to(base).as_posix()
-                for p in base.glob(pat)
+                p.relative_to(ws_root).as_posix()
+                for p in ws_root.glob(pat)
                 if p.is_dir()
             )
             if hits:
@@ -113,8 +124,8 @@ def dockerfile_text(path: Path) -> str:
 
 def check_dockerfile(name: str, members: list[str], root=None,
                      ws_version: str = "", ws_edition: str = "") -> list[str]:
-    base = ROOT if root is None else Path(root).resolve()
-    path = base / name
+    df_root = ROOT if root is None else Path(root).resolve()
+    path = df_root / name
     if not path.exists():
         return [f"{name}: Dockerfile not found"]
     dockerfile = dockerfile_text(path)
@@ -258,6 +269,8 @@ def main(argv=None, root=None) -> int:
     workspace manifest, the glob expansion and both Dockerfiles resolve
     under the contract root; the version/edition the inline dummies are
     graded against come from THAT manifest, not this checkout's."""
+    if argv and "--self-test" in argv:
+        return self_test()
     members = workspace_members(root)
     ws_version = workspace_package_value("version", root)
     ws_edition = workspace_package_value("edition", root)
@@ -362,13 +375,35 @@ def self_test() -> int:
         finally:
             ROOT, CARGO_TOML = _saved_root, _saved_toml
 
-    # r199: the shell -- main() graded through argv and a contract root, the
-    # r166..r198 pattern. The fixture is a throwaway workspace (two globbed
-    # crates, one inline-dummy app, one skipped fuzz workspace) plus both
-    # Dockerfiles; the graded dummy version comes from THAT manifest.
+    for f in failures:
+        print(f"SELFTEST FAIL: {f}")
+    if failures:
+        return 1
+    print("SELF-TEST OK (apt-divergence and workspace-reader cases passed)")
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """Grade main()'s shell on fixture trees outside this repository."""
     import contextlib as _ctx
     import io as _io
     import tempfile as _tempfile
+
     shell = 0
     NL = chr(10)
     BSN = chr(92) + "n"          # the two-character backslash-n a printf carries
@@ -383,6 +418,7 @@ def self_test() -> int:
         + "version = " + chr(34) + "0.0.41" + chr(34) + NL
         + "edition = " + chr(34) + "2021" + chr(34) + NL
     )
+
     def make_df(extra_apt=(), cover_all=True, dummy_version="0.0.41", with_main=True):
         lines = ["FROM debian:bookworm-slim AS builder"]
         lines.append("RUN apt-get install -y --no-install-recommends " + chr(92))
@@ -402,87 +438,107 @@ def self_test() -> int:
             if with_main:
                 lines.append("RUN printf 'fn main() {}' > apps/desktop-tauri/src/main.rs")
         return NL.join(lines) + NL
-    def write_tree(**kw):
-        (base / "ops" / "docker").mkdir(parents=True, exist_ok=True)
-        for member in ("crates/alpha", "crates/beta", "apps/desktop-tauri"):
-            (base / member).mkdir(parents=True, exist_ok=True)
-        (base / "tools" / "fuzz").mkdir(parents=True, exist_ok=True)
-        (base / "Cargo.toml").write_text(MANIFEST, encoding="utf-8")
-        (base / "ops" / "docker" / "Dockerfile.server").write_text(make_df(**kw), encoding="utf-8")
-        (base / "ops" / "docker" / "Dockerfile.unified").write_text(make_df(**kw), encoding="utf-8")
-    def run():
-        out, err = _io.StringIO(), _io.StringIO()
-        try:
-            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
-                rc = main(root=base)
-        except SystemExit as se:
-            return se.code, out.getvalue() + err.getvalue()
-        return rc, out.getvalue() + err.getvalue()
-    with _tempfile.TemporaryDirectory() as td:
-        base = Path(td)
-        shell += 1
-        write_tree()
-        rc, text = run()
-        if rc != 0 or "OK: all 4 workspace members" not in text:
-            print("  x a fully covered fixture must read OK over 4 members (rc=%r text=%r)"
-                  % (rc, text[-90:]), file=sys.stderr)
-            return 1
+
+    with _tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+        base = Path(td).resolve()
+
+        def write_tree(**kw):
+            (base / "ops" / "docker").mkdir(parents=True, exist_ok=True)
+            for member in ("crates/alpha", "crates/beta", "apps/desktop-tauri"):
+                (base / member).mkdir(parents=True, exist_ok=True)
+            (base / "tools" / "fuzz").mkdir(parents=True, exist_ok=True)
+            (base / "Cargo.toml").write_text(MANIFEST, encoding="utf-8")
+            (base / "ops" / "docker" / "Dockerfile.server").write_text(make_df(**kw), encoding="utf-8")
+            (base / "ops" / "docker" / "Dockerfile.unified").write_text(make_df(**kw), encoding="utf-8")
+
+        def run(*extra):
+            out, err = _io.StringIO(), _io.StringIO()
+            try:
+                with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                    rc = main(argv=list(extra), root=base)
+            except SystemExit as se:
+                return se.code, out.getvalue() + err.getvalue()
+            return rc, out.getvalue() + err.getvalue()
+
+        # rung 1 -- the KILLING rung: a forgotten member must fail as DOCKER-09 drift
         shell += 1
         write_tree(cover_all=False)
         rc, text = run()
         if rc != 1 or "missing 'COPY crates/beta/Cargo.toml'" not in text:
-            print("  x a forgotten member must fail as DOCKER-09 drift (rc=%r text=%r)"
+            print("  x rung 1: a forgotten member must fail as DOCKER-09 drift (rc=%r text=%r)"
                   % (rc, text[-90:]), file=sys.stderr)
             return 1
+
+        # rung 2 -- a fully covered fixture must read OK over 4 members
+        shell += 1
+        write_tree()
+        rc, text = run()
+        if rc != 0 or "OK: all 4 workspace members" not in text:
+            print("  x rung 2: a fully covered fixture must read OK over 4 members (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
+        # rung 3 -- a stale dummy version must fail naming the bump
         shell += 1
         write_tree(dummy_version="0.0.34")
         rc, text = run()
         if rc != 1 or "inline dummy version must be '0.0.41'" not in text:
-            print("  x a stale dummy version must fail naming the bump (rc=%r text=%r)"
+            print("  x rung 3: a stale dummy version must fail naming the bump (rc=%r text=%r)"
                   % (rc, text[-90:]), file=sys.stderr)
             return 1
+
+        # rung 4 -- a missing dummy src must fail
         shell += 1
         write_tree(with_main=False)
         rc, text = run()
         if rc != 1 or "expected inline dummy src" not in text:
-            print("  x a missing dummy src must fail (rc=%r text=%r)"
+            print("  x rung 4: a missing dummy src must fail (rc=%r text=%r)"
                   % (rc, text[-90:]), file=sys.stderr)
             return 1
+
+        # rung 5 -- an apt asymmetry must fail naming the package
         shell += 1
         write_tree()
         (base / "ops" / "docker" / "Dockerfile.server").write_text(
             make_df(extra_apt=("ripgrep",)), encoding="utf-8")
         rc, text = run()
         if rc != 1 or "DOCKER-10 drift" not in text or "ripgrep" not in text:
-            print("  x an apt asymmetry must fail naming the package (rc=%r text=%r)"
+            print("  x rung 5: an apt asymmetry must fail naming the package (rc=%r text=%r)"
                   % (rc, text[-90:]), file=sys.stderr)
             return 1
+
+        # rung 6 -- an exempted asymmetry must read OK with a NOTE
         shell += 1
         write_tree()
         (base / "ops" / "docker" / "Dockerfile.server").write_text(
             make_df(extra_apt=("libudev-dev",)), encoding="utf-8")
         rc, text = run()
         if rc != 0 or "deliberate apt asymmetry" not in text:
-            print("  x an exempted asymmetry must read OK with a NOTE (rc=%r text=%r)"
+            print("  x rung 6: an exempted asymmetry must read OK with a NOTE (rc=%r text=%r)"
                   % (rc, text[-90:]), file=sys.stderr)
             return 1
+
+        # rung 7 -- a missing Dockerfile must fail rc 1
         shell += 1
         write_tree()
         (base / "ops" / "docker" / "Dockerfile.server").unlink()
         rc, text = run()
         if rc != 1 or "Dockerfile not found" not in text:
-            print("  x a missing Dockerfile must fail rc 1 (rc=%r text=%r)"
+            print("  x rung 7: a missing Dockerfile must fail rc 1 (rc=%r text=%r)"
                   % (rc, text[-90:]), file=sys.stderr)
             return 1
 
-    for f in failures:
-        print(f"SELFTEST FAIL: {f}")
-    if failures:
-        return 1
-    print("OK: apt-divergence self-test passed; main() shell graded "
-          "(%d cases through argv and root)" % shell)
+        # rung 8 -- nested --self-test passes through argv under re-entry guard
+        shell += 1
+        rc, text = run("--self-test")
+        if rc != 0 or "SELF-TEST OK" not in text or "LADDER OK" in text:
+            print("  x rung 8: nested --self-test must exit 0 without running duplicate ladder (rc=%r text=%r)"
+                  % (rc, text[-90:]), file=sys.stderr)
+            return 1
+
+    print("LADDER OK (%d rungs: missing-copy-kill, clean-coverage, stale-dummy-version, missing-dummy-src, apt-drift, apt-exempt, missing-dockerfile, nested-selftest)" % shell)
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(self_test() if "--self-test" in sys.argv[1:] else main())
+    sys.exit(main(sys.argv[1:]))
