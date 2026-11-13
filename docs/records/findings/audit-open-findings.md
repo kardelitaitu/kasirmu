@@ -12623,3 +12623,25 @@ MEASURED:
 - `python scripts/check-rust-doc-paths.py --self-test` -> OK (25 pure cases; 8 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/check-rust-doc-paths.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 58 -> 59 of 70 (11 un-contracted remaining, next target `verify-topology-parity.py`).
+
+
+### Round 289 (2026-11-13) -- verify-topology-parity extracts 7-rung ladder and proves against scan base mutation
+
+`scripts/verify-topology-parity.py` had 23 pure cases in `self_test()` and inline unisolated shell assertions lacking a dedicated `shell_ladder()` contract and re-entry guard.
+
+ADDED:
+- Parameterized `main(argv=None, root=None)` with standard `base = ROOT if root is None else Path(root).resolve()` resolution and dispatch for `--self-test`.
+- Extracted `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 7 rungs:
+  Rung 1 (killing rung): differing contract copies fails rc 1 with DRIFT.
+  Rung 2: parity-clean tree passes both phases and exits 0 ("byte-identical", "corpus covers 1 pairings").
+  Rung 3: UI tree with missing contract fails rc 1 ("compared NOTHING").
+  Rung 4: server-only checkout skips declaredly with rc 0 ("NOT FULLY VERIFIED").
+  Rung 5: missing corpus fails rc 1 ("missing corpus").
+  Rung 6: stale corpus schemaVersion fails rc 1 ("the corpus is stale").
+  Rung 7: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+
+MEASURED:
+- `python scripts/verify-topology-parity.py --self-test` -> OK (23 pure cases; 7 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-topology-parity.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 59 -> 60 of 70 (10 un-contracted remaining, next target `check-mapper-alignment.py`).
