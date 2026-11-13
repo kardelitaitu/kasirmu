@@ -88,11 +88,22 @@ import argparse
 import contextlib
 import io
 import json
+import os
 import struct
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root fixtures go under (None = system default), created if missing."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
 
 # Every Tauri app config under apps/ — a future app that adds a Windows
 # NSIS target is picked up automatically. Apps with no `bundle.windows.nsis`
@@ -131,7 +142,7 @@ DESCRIPTION = (
 
 # ── Static config + source manifest checks ─────────────────────────────
 
-def check_tauri_configs(verbose: bool, configs: list[Path] | None = None) -> list[str]:
+def check_tauri_configs(verbose: bool, configs: list[Path] | None = None, root: Path | None = None) -> list[str]:
     """Fail if any tauri.conf.json sets NSIS installMode to perMachine.
 
     `configs` is a parameter (defaulting to the module-level walk) so the
@@ -139,12 +150,13 @@ def check_tauri_configs(verbose: bool, configs: list[Path] | None = None) -> lis
     empty list without deleting anything under apps/.
     """
     errors: list[str] = []
-    for path in TAURI_CONFIGS if configs is None else configs:
+    target_configs = TAURI_CONFIGS if configs is None else configs
+    for path in target_configs:
         if not path.is_file():
-            errors.append(f"{rel(path)}: missing tauri.conf.json")
+            errors.append(f"{rel(path, root)}: missing tauri.conf.json")
             continue
         data = json.loads(path.read_text(encoding="utf-8"))
-        label = rel(path)
+        label = rel(path, root)
         nsis = (data.get("bundle") or {}).get("windows", {}).get("nsis")
         if not nsis:
             # No NSIS target configured (e.g. the tablet app is Android/iOS
@@ -169,11 +181,12 @@ def check_tauri_configs(verbose: bool, configs: list[Path] | None = None) -> lis
     return errors
 
 
-def check_source_manifests(verbose: bool, manifests: list[Path] | None = None) -> list[str]:
+def check_source_manifests(verbose: bool, manifests: list[Path] | None = None, root: Path | None = None) -> list[str]:
     """Fail if any source app.manifest lacks an asInvoker execution level."""
     errors: list[str] = []
-    for path in SOURCE_MANIFESTS if manifests is None else manifests:
-        label = rel(path)
+    target_manifests = SOURCE_MANIFESTS if manifests is None else manifests
+    for path in target_manifests:
+        label = rel(path, root)
         if not path.is_file():
             errors.append(f"{label}: missing app.manifest")
             continue
@@ -331,17 +344,18 @@ def find_manifest_xml(data: bytes) -> tuple[bytes | None, list[str]]:
     return numeric_manifest, diag
 
 
-def rel(path: Path) -> str:
+def rel(path: Path, root: Path | None = None) -> str:
     """Best-effort repo-relative label; falls back to the raw path."""
+    target_root = ROOT if root is None else Path(root).resolve()
     try:
-        return str(path.resolve().relative_to(ROOT.resolve()))
+        return str(path.resolve().relative_to(target_root))
     except ValueError:
         return str(path)
 
 
-def check_exe(path: Path, verbose: bool) -> list[str]:
+def check_exe(path: Path, verbose: bool, root: Path | None = None) -> list[str]:
     """Assert a built exe embeds a loadable asInvoker manifest."""
-    label = rel(path)
+    label = rel(path, root)
     data = path.read_bytes()
     xml, diag = find_manifest_xml(data)
     if verbose:
@@ -464,10 +478,125 @@ def self_test() -> int:
               file=sys.stderr)
         return 2
     print("self-test: OK — the empty walk refuses to certify and the populated one does not")
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """Grade main()'s shell on fixture trees outside this repository."""
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+
+    ALL_MANIFESTS = [
+        "apps/cloud-server/app.manifest",
+        "apps/desktop-tauri/app.manifest",
+        "apps/license-server/app.manifest",
+        "apps/mobile-tauri/app.manifest",
+        "crates/kasirmu-cli/app.manifest",
+        "scripts/updater-compat-check/app.manifest",
+    ]
+    MANIFEST_OK = '<assembly><trustInfo><security><requestedPrivileges><requestedExecutionLevel level="asInvoker"/></requestedPrivileges></security></trustInfo></assembly>'
+    MANIFEST_ADMIN = '<assembly><trustInfo><security><requestedPrivileges><requestedExecutionLevel level="requireAdministrator"/></requestedPrivileges></security></trustInfo></assembly>'
+    TAURI_USER = json.dumps({"bundle": {"windows": {"nsis": {"installMode": "currentUser"}}}})
+    TAURI_MACHINE = json.dumps({"bundle": {"windows": {"nsis": {"installMode": "perMachine"}}}})
+
+    def _run(files: dict[str, str], argv: list[str] | None = None) -> tuple[int, str]:
+        with _tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+            fixture_base = Path(td).resolve()
+            for rel_path, content in files.items():
+                dst = fixture_base / rel_path
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_text(content, encoding="utf-8")
+            out, err = _io.StringIO(), _io.StringIO()
+            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                rc = main(argv=[] if argv is None else argv, root=fixture_base)
+            return rc, out.getvalue() + err.getvalue()
+
+    rungs = 0
+
+    # rung 1 -- the KILLING rung: perMachine installer config must exit 1 naming the violation
+    rungs += 1
+    files_r1 = {m: MANIFEST_OK for m in ALL_MANIFESTS}
+    files_r1["apps/desktop-tauri/tauri.conf.json"] = TAURI_MACHINE
+    rc, text = _run(files_r1)
+    if rc != 1 or "NSIS installMode is 'perMachine'" not in text or "desktop-tauri" not in text:
+        print(f"  x rung 1: perMachine config must exit 1 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 2 -- clean currentUser configs and valid manifests must exit 0
+    rungs += 1
+    files_r2 = {m: MANIFEST_OK for m in ALL_MANIFESTS}
+    files_r2["apps/desktop-tauri/tauri.conf.json"] = TAURI_USER
+    rc, text = _run(files_r2)
+    if rc != 0 or "0 violation(s)" not in text:
+        print(f"  x rung 2: clean configs and manifests must exit 0 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 3 -- manifest requesting elevation must exit 1 naming the violation
+    rungs += 1
+    files_r3 = {m: MANIFEST_OK for m in ALL_MANIFESTS}
+    files_r3["apps/desktop-tauri/tauri.conf.json"] = TAURI_USER
+    files_r3["apps/cloud-server/app.manifest"] = MANIFEST_ADMIN
+    rc, text = _run(files_r3)
+    if rc != 1 or "manifest requests elevation" not in text:
+        print(f"  x rung 3: elevation manifest must exit 1 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 4 -- missing manifest file must exit 1
+    rungs += 1
+    files_r4 = {m: MANIFEST_OK for m in ALL_MANIFESTS if "license-server" not in m}
+    files_r4["apps/desktop-tauri/tauri.conf.json"] = TAURI_USER
+    rc, text = _run(files_r4)
+    if rc != 1 or "missing app.manifest" not in text:
+        print(f"  x rung 4: missing manifest file must exit 1 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 5 -- empty population (no tauri.conf.json) must exit 2 with EMPTY POPULATION refusal
+    rungs += 1
+    files_r5 = {m: MANIFEST_OK for m in ALL_MANIFESTS}
+    rc, text = _run(files_r5)
+    if rc != 2 or "EMPTY POPULATION" not in text:
+        print(f"  x rung 5: empty population must exit 2 with EMPTY POPULATION (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 6 -- --report-only flag suppresses exit 1 on violation but still reports finding
+    rungs += 1
+    files_r6 = {m: MANIFEST_OK for m in ALL_MANIFESTS}
+    files_r6["apps/desktop-tauri/tauri.conf.json"] = TAURI_MACHINE
+    rc, text = _run(files_r6, argv=["--report-only"])
+    if rc != 0 or "1 violation(s)" not in text or "NSIS installMode" not in text:
+        print(f"  x rung 6: --report-only must exit 0 and report violation (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 7 -- nested --self-test passes through argv under re-entry guard
+    rungs += 1
+    files_r7 = {m: MANIFEST_OK for m in ALL_MANIFESTS}
+    files_r7["apps/desktop-tauri/tauri.conf.json"] = TAURI_USER
+    rc, text = _run(files_r7, argv=["--self-test"])
+    if rc != 0 or "self-test: OK" not in text:
+        print(f"  x rung 7: nested --self-test must exit 0 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    print(f"LADDER OK ({rungs} rungs: permachine-kill, clean-pass, elevation-flag, missing-manifest, empty-refusal, report-only, nested-selftest)")
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, root: Path | None = None) -> int:
     parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument(
         "--verbose",
@@ -503,20 +632,29 @@ def main(argv: list[str] | None = None) -> int:
     if args.self_test:
         return self_test()
 
+    base = ROOT if root is None else Path(root).resolve()
+
     # Bound up front: the lists below ARE the population, and the population is
     # what the final line reports and the floor refuses on.
-    configs = list(TAURI_CONFIGS)
-    manifests = list(SOURCE_MANIFESTS)
+    configs = sorted((base / "apps").glob("*/tauri.conf.json"))
+    manifests = [
+        base / "apps" / "cloud-server" / "app.manifest",
+        base / "apps" / "desktop-tauri" / "app.manifest",
+        base / "apps" / "license-server" / "app.manifest",
+        base / "apps" / "mobile-tauri" / "app.manifest",
+        base / "crates" / "kasirmu-cli" / "app.manifest",
+        base / "scripts" / "updater-compat-check" / "app.manifest",
+    ]
     exe_paths: list[Path] = []
     errors: list[str] = []
 
     print("verify-windows-config: NSIS installMode + asInvoker manifest gate")
     if args.verbose:
         print("  tauri.conf.json checks:")
-    errors += check_tauri_configs(args.verbose, configs)
+    errors += check_tauri_configs(args.verbose, configs, base)
     if args.verbose:
         print("  source app.manifest checks:")
-    errors += check_source_manifests(args.verbose, manifests)
+    errors += check_source_manifests(args.verbose, manifests, base)
 
     if args.exe:
         print("  --exe PE resource checks:")
@@ -526,7 +664,7 @@ def main(argv: list[str] | None = None) -> int:
             errors.append(f"{p}: exe file not found")
         for p in (p for p in exe_paths if p.is_file()):
             try:
-                errors += check_exe(p, args.verbose)
+                errors += check_exe(p, args.verbose, base)
             except (OSError, struct.error, ValueError) as e:
                 errors.append(f"{p}: could not parse exe — {e}")
 

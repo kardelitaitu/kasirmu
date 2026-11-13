@@ -12557,3 +12557,26 @@ MEASURED:
 - `python scripts/check-tz-invariance.py --self-test` -> OK (8 sensitivity cases; 5 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/check-tz-invariance.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 55 -> 56 of 70 (14 un-contracted remaining, next target `verify-windows-config.py`).
+
+
+### Round 286 (2026-11-13) -- verify-windows-config gains a 7-rung ladder and proves against scan base mutation
+
+`scripts/verify-windows-config.py` had 11 pure/plant assertions in `self_test()` and lacked `root` parameterization on `main()` and a `shell_ladder()` contract.
+
+ADDED:
+- Parameterized `main(argv=None, root=None)` with standard `base = ROOT if root is None else Path(root).resolve()` resolution.
+- Threaded `root` through `check_tauri_configs`, `check_source_manifests`, `check_exe`, and `rel(path, root)`.
+- `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 7 rungs:
+  Rung 1 (killing rung): perMachine NSIS installMode exits 1 naming the violation ("NSIS installMode is 'perMachine'" and "desktop-tauri").
+  Rung 2: clean currentUser configs and valid manifests exit 0 ("0 violation(s)").
+  Rung 3: manifest requesting elevation exits 1 naming the violation ("manifest requests elevation").
+  Rung 4: missing manifest file exits 1 ("missing app.manifest").
+  Rung 5: empty population (no tauri.conf.json) refuses with exit 2 ("EMPTY POPULATION").
+  Rung 6: `--report-only` flag with perMachine exits 0 while reporting the violation ("1 violation(s)").
+  Rung 7: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+
+MEASURED:
+- `python scripts/verify-windows-config.py --self-test` -> OK (11 pure cases; 7 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-windows-config.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 56 -> 57 of 70 (13 un-contracted remaining, next target `verify-invoke-parity.py`).
