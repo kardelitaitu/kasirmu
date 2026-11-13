@@ -73,9 +73,22 @@ Exit code 2 = a REFUSED command line: a named root resolved to no directory, so 
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root fixtures go under (None = system default), created if missing."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
 
 # The SELECT list ends at the FIRST top-level FROM -- not at the first FROM token,
 # which is what a naive non-greedy match finds: `SELECT ... FROM (SELECT ... FROM x)`
@@ -549,10 +562,142 @@ def _self_test() -> int:
     graded = (len(cases) + len(alias_cases) + 6 + 5 + 5 + 4)
     print("SELF-TEST %s (%d cases, no files touched)"
           % ("FAILED" if bad else "OK", graded))
-    return 1 if bad else 0
+    if bad:
+        return 1
+    return shell_ladder()
 
 
-def main() -> int:
+def self_test() -> int:
+    return _self_test()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """Grade main()'s shell on fixture trees outside this repository."""
+    import contextlib as _ctx
+    import io as _io
+    import tempfile as _tempfile
+
+    MISALIGNED_CODE = """fn query_users() {
+    let sql =
+        "SELECT id, name, email FROM users";
+    User {
+        id: row.get(0)?,
+        email: row.get(1)?,
+        name: row.get(2)?,
+    };
+}
+"""
+    ALIGNED_CODE = """fn query_users() {
+    let sql =
+        "SELECT id, name, email FROM users";
+    User {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        email: row.get(2)?,
+    };
+}
+"""
+    ALIASED_MISMATCH_CODE = """fn query_users() {
+    let sql =
+        "SELECT id, COALESCE(s.name, '') AS receipt_total, email FROM users";
+    User {
+        id: row.get(0)?,
+        user_name: row.get(1)?,
+        email: row.get(2)?,
+    };
+}
+"""
+    ALIASED_CODE = """fn query_users() {
+    let sql =
+        "SELECT id, COALESCE(s.name, '') AS user_name, email FROM users";
+    User {
+        id: row.get(0)?,
+        user_name: row.get(1)?,
+        email: row.get(2)?,
+    };
+}
+"""
+
+    def _run(code: str, argv=None) -> tuple[int, str]:
+        with _tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+            fixture_base = Path(td).resolve()
+            for root_dir in ("crates", "apps", "platform", "modules"):
+                (fixture_base / root_dir).mkdir(parents=True, exist_ok=True)
+            src = fixture_base / "crates" / "fixture-crate" / "src"
+            src.mkdir(parents=True, exist_ok=True)
+            (src / "lib.rs").write_text(code, encoding="utf-8")
+            out, err = _io.StringIO(), _io.StringIO()
+            try:
+                with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                    rc = main(argv=[] if argv is None else argv, root=fixture_base)
+            except SystemExit as se:
+                return se.code, out.getvalue() + err.getvalue()
+            return rc, out.getvalue() + err.getvalue()
+
+    rungs = 0
+
+    # rung 1 -- the KILLING rung: misaligned mapper must exit 1 naming the disagreement
+    rungs += 1
+    rc, text = _run(MISALIGNED_CODE)
+    if rc != 1 or "mapper(s) read a column whose name does not match the field" not in text:
+        print(f"  x rung 1: misaligned mapper must fail rc 1 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 2 -- aligned mapper passes clean with rc 0
+    rungs += 1
+    rc, text = _run(ALIGNED_CODE)
+    if rc != 0 or "no UNacknowledged positional mapper disagrees" not in text:
+        print(f"  x rung 2: aligned mapper must exit 0 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 3 -- aliased column with different words fails rc 1
+    rungs += 1
+    rc, text = _run(ALIASED_MISMATCH_CODE)
+    if rc != 1 or "mapper(s) read a column whose name does not match the field" not in text:
+        print(f"  x rung 3: aliased mismatch must fail rc 1 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 4 -- aliased column with related words passes clean with rc 0
+    rungs += 1
+    rc, text = _run(ALIASED_CODE)
+    if rc != 0 or "no UNacknowledged positional mapper disagrees" not in text:
+        print(f"  x rung 4: aliased column must exit 0 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 5 -- non-existent root directory refuses with rc 2
+    rungs += 1
+    rc, text = _run(ALIGNED_CODE, argv=["--roots", "nonexistent_dir"])
+    if rc != 2 or "refused: no such root(s)" not in text:
+        print(f"  x rung 5: non-existent root must refuse rc 2 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 6 -- nested --self-test passes through argv under re-entry guard
+    rungs += 1
+    rc, text = _run(ALIGNED_CODE, argv=["--self-test"])
+    if rc != 0 or "SELF-TEST OK" not in text:
+        print(f"  x rung 6: nested --self-test must exit 0 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    print(f"LADDER OK ({rungs} rungs: misaligned-kill, aligned-pass, past-projection, aliased-pass, refused-root, nested-selftest)")
+    return 0
+
+
+def main(argv: list[str] | None = None, root: Path | None = None) -> int:
     ap = argparse.ArgumentParser(description="Check positional row-mapper alignment")
     ap.add_argument(
         "--self-test",
@@ -572,17 +717,19 @@ def main() -> int:
         # mappers belongs here; `tests/` dirs are excluded by the file walk below.
         default=["crates", "apps", "platform", "modules"],
     )
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     if args.self_test:
-        return _self_test()
+        return self_test()
+
+    base = ROOT if root is None else Path(root).resolve()
 
     files: list[Path] = []
     missing: list[str] = []
-    for root in args.roots:
-        p = Path(root)
+    for r in args.roots:
+        p = Path(r) if Path(r).is_absolute() else base / r
         if not p.is_dir():
-            missing.append(root)
+            missing.append(r)
             continue
         files.extend(sorted(f for f in p.rglob("*.rs") if not f.name.endswith("_tests.rs")))
     if missing:
@@ -612,4 +759,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

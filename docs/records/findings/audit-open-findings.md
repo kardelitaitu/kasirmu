@@ -12645,3 +12645,25 @@ MEASURED:
 - `python scripts/verify-topology-parity.py --self-test` -> OK (23 pure cases; 7 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/verify-topology-parity.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 59 -> 60 of 70 (10 un-contracted remaining, next target `check-mapper-alignment.py`).
+
+
+### Round 290 (2026-11-13) -- check-mapper-alignment gains a 6-rung ladder and proves against scan base mutation
+
+`scripts/check-mapper-alignment.py` had 26 pure cases in `_self_test()` and lacked `root` parameterization on `main()` and a `shell_ladder()` contract.
+
+ADDED:
+- Parameterized `main(argv=None, root=None)` with standard `base = ROOT if root is None else Path(root).resolve()` resolution.
+- Defined `self_test()` wrapping `_self_test()` and `shell_ladder()`.
+- `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
+  Rung 1 (killing rung): misaligned mapper fails rc 1 naming the disagreement ("mapper(s) read a column whose name does not match the field").
+  Rung 2: aligned mapper passes clean and exits 0 ("no UNacknowledged positional mapper disagrees").
+  Rung 3: aliased column with different words fails rc 1 ("mapper(s) read a column whose name does not match the field").
+  Rung 4: aliased column with related words passes clean and exits 0 ("no UNacknowledged positional mapper disagrees").
+  Rung 5: non-existent root directory refuses with exit 2 ("refused: no such root(s)").
+  Rung 6: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+
+MEASURED:
+- `python scripts/check-mapper-alignment.py --self-test` -> OK (26 pure cases; 6 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/check-mapper-alignment.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 60 -> 61 of 70 (9 un-contracted remaining, next target `verify-no-hardcoded-money-format.py`).
