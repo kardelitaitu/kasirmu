@@ -17,6 +17,8 @@
  *   cd ui && npm run e2e -- e2e/auth.spec.ts  # single spec
  *   cd ui && npm run e2e -- --project=desktop # one Playwright project only
  *   cd ui && npm run e2e -- --build         # rebuild stale E2E images first
+ *   cd ui && E2E_LICENSE_PORT=8090 npm run e2e   # publish the license server on 8090
+ *                                             (use when 8080 is already taken)
  *
  * Server isolation: the runner starts its OWN Vite dev server on its own
  * port (E2E_PORT, default 1421 — NOT the Tauri devUrl port 1420) and kills
@@ -109,6 +111,33 @@ if (!process.env.E2E_BASE_URL) process.env.E2E_BASE_URL = E2E_BASE_URL;
 // found our server, adopted it, then tore it down mid-run, and every test
 // after the first batch died with `page.goto: Could not connect to server`.
 process.env.E2E_SERVER_EXTERNAL = '1';
+
+/* ── E2E license-server HOST port ───────────────────────────────────────
+ * docker-compose.e2e.yml publishes the license server on the host at this
+ * port and keeps 8080 inside the container, so only the host side is
+ * configurable. It exists so an unrelated stack holding 8080 cannot block the
+ * suite: measured 2026-11-13, a foreign container listening on
+ * 0.0.0.0:8080 made `compose up` fail with "Bind for 0.0.0.0:8080 failed:
+ * port is already allocated" and the run exited 3 having executed nothing.
+ *
+ * 8080 stays the default, so every existing invocation, doc and CI workflow
+ * keeps working unchanged. The same value is exported as LICENSE_SERVER_URL
+ * for ui/e2e/api.spec.ts (which already reads that variable and otherwise
+ * defaults to localhost:8080), so the published port and the URL the specs
+ * dial come from ONE source and cannot drift apart.
+ */
+const E2E_LICENSE_PORT = Number(process.env.E2E_LICENSE_PORT || 8080);
+if (!Number.isInteger(E2E_LICENSE_PORT) || E2E_LICENSE_PORT < 1 || E2E_LICENSE_PORT > 65535) {
+  console.error(`E2E_LICENSE_PORT must be a TCP port number (got "${process.env.E2E_LICENSE_PORT}").`);
+  process.exit(3);
+}
+// Exported for two children: `docker compose`, which interpolates the
+// publishing side, and the Playwright process, whose api.spec.ts reads
+// LICENSE_SERVER_URL. execSync/spawn both inherit process.env.
+process.env.E2E_LICENSE_PORT = String(E2E_LICENSE_PORT);
+if (!process.env.LICENSE_SERVER_URL) {
+  process.env.LICENSE_SERVER_URL = `http://localhost:${E2E_LICENSE_PORT}`;
+}
 
 /* ── ANSI helpers ───────────────────────────────────────────────────── */
 const GREEN  = '\x1b[32m';
@@ -482,7 +511,20 @@ function dumpContainerLogs() {
 }
 
 /** Start Docker E2E services. */
-function startDocker() {
+async function startDocker() {
+  // Refuse before `compose up` when the published license port is taken.
+  // Compose's own message names the endpoint and the port but not the cause
+  // or the remedy, and on a cold machine it arrives after a multi-minute
+  // image build. Checked here so the failure costs seconds and says what to
+  // do. --no-docker never reaches this function, so a caller supplying its
+  // own servers is unaffected.
+  if (await portInUse(E2E_LICENSE_PORT)) {
+    throw new Error(
+      `License-server host port ${E2E_LICENSE_PORT} is already in use by another ` +
+      `process, so the E2E stack cannot be published. Pick a free port: ` +
+      `E2E_LICENSE_PORT=8090 npm run e2e`
+    );
+  }
   log('Docker', 'Starting E2E services...');
   // Pre-flight: compose auto-reads the repo-root .env and dies with a
   // terse "key cannot contain a space" on a poisoned line (2026-08-31
@@ -821,7 +863,7 @@ async function main() {
       const plan = dockerPlan({ noDocker: NO_DOCKER, uiOnly: UI_ONLY, available: dockerAvailable() });
       if (plan === 'available') {
         ensureLicenseKey();
-        startDocker();
+        await startDocker();
       } else if (plan === 'unavailable-ui-only') {
         log('Docker', `${YELLOW}Not running — continuing because --ui-only needs no backend.${NC}`);
       } else {

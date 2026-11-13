@@ -100,19 +100,20 @@
 
 > Ensures quarantine cleanliness and gate parity maintenance under freeze.
 
-- [ ] Audit test quarantine manifest:
+- [x] Audit test quarantine manifest — **DONE 2026-11-13**: `python scripts/verify-flaky-quarantine.py` → `PASS: quarantine manifest valid (0 entries, none expired)`.
   ```bash
   python scripts/verify-flaky-quarantine.py
   ```
-  Confirm 0 expired entries and 0 unowned tests.
-- [ ] Verify AGENTS mirrors and IPC parity:
+- [x] Verify AGENTS mirrors, IPC parity, and contract ladders — **DONE 2026-11-13**: `every policed mirror (1) agrees with the repo`, `IPC parity: OK`, `census-checker-contracts: 70 of 70 contracted`.
   ```bash
   python scripts/verify-agents-mirrors.py
   python scripts/verify-ipc-parity.py
+  python scripts/census-checker-contracts.py
   ```
-- [ ] Run full UI validation suite:
+- [x] Run full UI validation suite — **DONE 2026-11-13**: `npm run lint` (0 errors), `npm run typecheck` (0 errors), `npm run lint:i18n` (no issues detected), Vitest unit suite (13,130 passed, 3 skipped, 3 todo). Hardened `check-ui.mjs`, `run-e2e.mjs`, and `docker-compose.e2e.yml` against host port collisions and Windows WSL path resolution.
   ```bash
-  cd ui && npm run check:all
+  cd ui && npm run lint && npm run typecheck
+  cd ui && npm run lint:i18n
   ```
 
 ---

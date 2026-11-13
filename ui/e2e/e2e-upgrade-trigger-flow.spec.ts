@@ -68,18 +68,31 @@ test.describe('E2E: Subscription Upgrade Trigger Flow', () => {
       .toContainEqual(expect.stringContaining('/pricing/#plus'));
 
     // ── Step 6: Verify teaser is hidden when not capped ─────────────
+    //
+    // WHY THIS RE-ENTERS THE SCREEN INSTEAD OF RE-CLICKING A FILTER CHIP.
+    // The status/cashier/date filters run CLIENT-SIDE over the array that was
+    // already fetched (SalesHistoryScreen.tsx:50-59), and `load` is memoized on
+    // [sessionToken, l10n] only -- so a chip click re-derives `filteredSales`
+    // from memory and never refetches. `salesHistoryCapped` is set ONLY by
+    // `load` (SalesHistoryScreen.tsx:423). The previous form of this step
+    // clicked a chip and waited for the teaser to vanish, which could not
+    // happen: the mock still reported the cap because no request was made.
+    // Leaving the sub-view and re-entering it remounts the screen, so
+    // `load()` runs again against the uncapped mock. F6 is a TOGGLE here
+    // (RetailPosScreen.tsx:1901 `goToSubView(setShowSalesHistory)`), and this
+    // route renders SalesHistoryScreen without `onBack` (RetailSubViews.tsx:28),
+    // so there is deliberately no Back button to click. The assertion below is
+    // unchanged.
     await page.evaluate(() => {
       (window as unknown as { __MOCK_SALES_CAPPED?: boolean }).__MOCK_SALES_CAPPED = false;
     });
 
-    // Toggle filter chip to trigger sales reload without full page re-login
-    const allChip = page.locator('.sales-history-filter-chip').filter({ hasText: /all/i }).first();
-    if (await allChip.isVisible()) {
-      await allChip.click();
-      await page.waitForTimeout(500);
-    }
+    await page.keyboard.press('F6');
+    await expect(historyContainer).toHaveCount(0, { timeout: 10_000 });
+    await page.keyboard.press('F6');
+    await expect(historyContainer).toBeVisible({ timeout: 10_000 });
 
     // Teaser should now be removed from the view
-    await expect(teaser).toHaveCount(0, { timeout: 5_000 });
+    await expect(teaser).toHaveCount(0, { timeout: 8_000 });
   });
 });

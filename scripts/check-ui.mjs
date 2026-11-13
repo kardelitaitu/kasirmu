@@ -32,9 +32,8 @@ import { dirname, resolve } from 'path';
 // ── Windows environment hardening (AGENTS.md §5, agent-gates.md:2260) ──
 const __dirname = dirname(fileURLToPath(import.meta.url));
 if (process.platform === 'win32') {
-  if (!process.env.PATH?.toLowerCase().includes('git\\bin')) {
-    process.env.PATH = 'C:\\Program Files\\Git\\bin;' + (process.env.PATH ?? '');
-  }
+  // Prepend Git\bin to ensure Git Bash takes precedence over System32 WSL bash (AGENTS §5)
+  process.env.PATH = 'C:\\Program Files\\Git\\bin;' + (process.env.PATH ?? '');
   const mstmp = resolve(__dirname, '..', 'target', 'mstmp');
   try {
     mkdirSync(mstmp, { recursive: true });
@@ -312,7 +311,8 @@ function main() {
   // runs Playwright, and cleans up — rather than bare `playwright test`
   // which would run against whatever happens to be on port 1420/3099.
   if (dockerAvailable()) {
-    gate('E2E tests (Playwright, provisioned)', 'npm run e2e', { timeout: 900_000 });
+    const e2eCmd = process.argv.includes('--build') ? 'npm run e2e -- --build' : 'npm run e2e';
+    gate('E2E tests (Playwright, provisioned)', e2eCmd, { timeout: 900_000 });
   } else {
     console.log(`  ${YELLOW}SKIP (Docker not available)${NC}`);
     results.push({ gate: 'E2E tests (Playwright)', status: 'skip', duration: '0.0' });

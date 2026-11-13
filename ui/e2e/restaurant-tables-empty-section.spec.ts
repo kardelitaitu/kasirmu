@@ -24,12 +24,34 @@ import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
 
 const TIMEOUT = 20_000;
 
+/**
+ * Acknowledge the workspace memo toasts.
+ *
+ * WHY: on the tablet project (1024x1366) the floor plan is tall enough that its
+ * lower tiles sit behind the two memo banners, which are fixed to the bottom of
+ * the viewport. A click aimed at one of those tiles is intercepted by the toast
+ * and Playwright retries it until the 90s test timeout -- observed exactly here,
+ * where desktop (1366x768, short floor plan) passed in 21s and tablet burned
+ * 1.5m and failed. Dismissing the memos is what an operator does before working
+ * the floor, and it removes the obstruction instead of tolerating it.
+ */
+async function acknowledgeMemos(page: Page): Promise<void> {
+  const ack = page.getByRole('button', { name: /acknowledge this memo/i });
+  for (let i = 0; i < 5 && (await ack.count()) > 0; i++) {
+    await ack.first().click({ timeout: 5_000 }).catch(() => undefined);
+  }
+  await expect(ack, 'memo banners must not cover the floor plan').toHaveCount(0, {
+    timeout: 10_000,
+  });
+}
+
 async function openTables(page: Page): Promise<void> {
   await loginAs(page, 'owner', '1234');
   await selectWorkspace(page, WORKSPACES.RESTAURANT_POS);
   await expect(page.locator('.restaurant-card').first()).toBeVisible({ timeout: TIMEOUT });
   await page.keyboard.press('Shift+L');
   await expect(page.locator('.tables-table').first()).toBeVisible({ timeout: TIMEOUT });
+  await acknowledgeMemos(page);
 }
 
 /** The detail panel's own Close control - Escape does not dismiss it. */

@@ -13,6 +13,14 @@
 # Environment:
 #   OZ_API_SECRET    — JWT secret (default: e2e-test-secret)
 #   OZ_API_PORT      — Cloud server port (default: 3099)
+#   E2E_LICENSE_PORT — HOST port the license server is published on (default: 8080).
+#                      The CONTAINER port stays 8080; only the host side moves,
+#                      so the healthcheck above and every in-container URL are
+#                      unaffected. Set it when 8080 is already taken by another
+#                      stack — the suite must not be blocked by an unrelated
+#                      process. scripts/run-e2e.mjs reads the same variable and
+#                      derives LICENSE_SERVER_URL from it, so the specs and the
+#                      published port can never disagree.
 
 services:
 
@@ -53,7 +61,7 @@ services:
       context: ./apps/license-server
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "${E2E_LICENSE_PORT:-8080}:8080"
     environment:
       OZ_LICENSE_PRIVATE_KEY: "${OZ_LICENSE_PRIVATE_KEY:-}"
       # Paddle webhook boot-gates: verifyPaddleConfig fails fast when these
