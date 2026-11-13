@@ -250,6 +250,17 @@ def count_source_arms(root: Path | None = None) -> tuple[int, dict[str, int]]:
 # would be a permanently-red tool, which is the failure mode "a gate people
 # learn to ignore". What it buys is visibility: the number is printed every
 # run, next to the census that cannot see it.
+#
+# CORRECTION 2026-11-13: the note this channel printed was FALSE on this tree,
+# and the fault was the detector's, not the tests'. It read only a 60-line
+# window per test, so a test that abandons through a SHARED helper -- where the
+# `eprintln!` lives in the helper's body, tens of lines above -- counted as
+# silent even though the run prints the reason. All eight sites the note named
+# (`pg_trigger_ports.rs` 6 via `harness`, `sync_api_tests.rs` 2 via
+# `pg_router_with_pool_size`) are loud that way: each helper prints a `SKIP:` /
+# `skipped:` line before returning `None`. The window is kept (it is what makes
+# the per-test case provable) and the detector now RESOLVES the PG helper the
+# test calls and looks for the skip print in that helper's own body.
 PG_HELPER_RE = re.compile(
     r"\b(harness|throwaway_db|throwaway_test_pool|empty_throwaway_db|admin_client"
     r"|pg_router_with_pool_size|raw_pool|connect_postgres|test_pool|pg_state)\s*\("
@@ -261,6 +272,32 @@ TEST_FN_RE = re.compile(r"^\s*#\[(?:tokio::)?test")
 SKIP_PRINT_RE = re.compile(r'eprintln!\s*\(\s*"[^"]*skip', re.IGNORECASE)
 # R13 (owner, 2026-09-20): the two Redis arms are left as they are by ruling.
 SILENT_EXCLUDE = ("redis_backend_tests.rs",)
+FUNC_DEF_RE = re.compile(
+    r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+(\w+)\s*[(<]"
+)
+
+
+def _function_bodies(lines: list[str]) -> dict[str, str]:
+    """Map every `fn` name in the file to its body text.
+
+    Sliced to the first following line that is exactly `}` in column 0, which is
+    how every helper in these test files closes. A nested block's brace is
+    indented, so this cannot stop early -- and if a file ever formats one at
+    column 0 the slice just runs long, which can only make a helper look LOUDER,
+    never quieter, so the failure direction is the safe one.
+    """
+    bodies: dict[str, str] = {}
+    for i, line in enumerate(lines):
+        m = FUNC_DEF_RE.match(line)
+        if not m:
+            continue
+        end = len(lines)
+        for j in range(i + 1, len(lines)):
+            if lines[j].rstrip() == "}":
+                end = j + 1
+                break
+        bodies.setdefault(m.group(1), "\n".join(lines[i:end]))
+    return bodies
 
 
 def silent_abandons_in(lines: list[str]) -> int:
@@ -270,6 +307,7 @@ def silent_abandons_in(lines: list[str]) -> int:
     directions as fixtures, the same way `counts_as_arm` is shared between the
     tree walk and the self-test.
     """
+    bodies = _function_bodies(lines)
     total = 0
     for i, line in enumerate(lines):
         if not TEST_FN_RE.match(line):
@@ -279,6 +317,14 @@ def silent_abandons_in(lines: list[str]) -> int:
             continue
         if SKIP_PRINT_RE.search(body):
             continue  # the arm census can see this one
+        # A shared helper that prints the reason IS loud, even though the
+        # message lies outside this test's 60-line window. Resolve each PG
+        # helper the test calls against its definition in the same file.
+        if any(
+            SKIP_PRINT_RE.search(bodies.get(m.group(1), ""))
+            for m in PG_HELPER_RE.finditer(body)
+        ):
+            continue
         total += 1
     return total
 
@@ -736,9 +782,32 @@ def self_test() -> int:
                      '        eprintln!("PG test skipped");\n'
                      '        return;\n'
                      '    };\n}') == 0)
+    # The helper is declared ABOVE the test on purpose: below it, it would land
+    # inside the test's 60-line window and the fixture would pass for the wrong
+    # reason (the window match), proving nothing about helper resolution.
+    expect("silent: a helper that PRINTS the skip is NOT counted (2026-11-13)",
+           silent_in('async fn harness(n: &str) -> Option<u32> {\n'
+                     '    eprintln!("SKIP: PostgreSQL unreachable for {n}");\n'
+                     '    return None;\n'
+                     '}\n'
+                     '#[tokio::test]\n'
+                     'async fn t() {\n'
+                     '    let Some(x) = harness("1").await else { return; };\n'
+                     '}') == 0)
+    expect("silent: a helper that gives up QUIETLY is still counted",
+           silent_in('async fn harness(n: &str) -> Option<u32> {\n'
+                     '    return None;\n'
+                     '}\n'
+                     '#[tokio::test]\n'
+                     'async fn t() {\n'
+                     '    let Some(x) = harness("1").await else { return; };\n'
+                     '}') == 1)
     silent_tree, silent_files = count_silent_abandons()
-    expect(f"silent channel is non-vacuous on this tree (measured {silent_tree})",
-           silent_tree > 0)
+    expect(f"silent channel reports no site on this tree (measured {silent_tree})",
+           silent_tree == 0)
+    expect("silent channel no longer mislabels the shared-helper callers",
+           not any("pg_trigger_ports" in p or "sync_api_tests" in p
+                   for p in silent_files))
     expect("silent channel leaves the Redis arms R13 parked alone",
            not any(p.endswith("redis_backend_tests.rs") for p in silent_files))
 
