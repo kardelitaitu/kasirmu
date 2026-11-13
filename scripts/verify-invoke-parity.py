@@ -22,12 +22,23 @@ tree covering both shells and both failure directions).
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root fixtures go under (None = system default), created if missing."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
 SHELLS = {
     "desktop": (
         REPO_ROOT / "apps" / "desktop-tauri" / "src" / "lib.rs",
@@ -407,93 +418,123 @@ def self_test() -> int:
     check("a command under commands/<subdir>/ is scanned",
           any("alpha_scoped" in x and "session_token" in x for x in v), True)
 
-    print()
-    # r202: the shell -- main() graded through argv and a contract root, the
-    # r166..r201 pattern. The fixture is the same two-shell tree the pure
-    # cases build, now graded THROUGH main() so the SHELLS/API_DIR rebuild
-    # and the summary line are exercised, not just run_check().
+    if failed:
+        print(f"  {len(failed)} self-test case(s) FAILED:")
+        for f in failed:
+            print(f"    {f}")
+        return 1
+    print("  all self-test cases passed")
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """Grade main()'s shell on fixture trees outside this repository."""
     import contextlib as _ctx
     import io as _io
-    shell = 0
-    def run2(arglist):
-        out, err = _io.StringIO(), _io.StringIO()
-        try:
-            with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
-                rc = main(argv=list(arglist), root=td)
-        except SystemExit as se:
-            return se.code, out.getvalue() + err.getvalue()
-        return rc, out.getvalue() + err.getvalue()
-    def build2(api_ts, lib=None, drop_lib=False, drop_api=False, lib_empty=False):
-        t2 = Path(tempfile.mkdtemp())
-        for side in ("desktop-tauri", "mobile-tauri"):
-            (t2 / "apps" / side / "src" / "commands").mkdir(parents=True)
-            if not drop_lib:
-                (t2 / "apps" / side / "src" / "lib.rs").write_text(
-                    lib if lib is not None else lib_text, encoding="utf-8")
-            (t2 / "apps" / side / "src" / "commands" / "alpha.rs").write_text(
-                alpha_rs, encoding="utf-8")
-        if not drop_api:
-            api2 = t2 / "ui" / "src" / "api"
-            api2.mkdir(parents=True)
-            (api2 / "f.ts").write_text(api_ts, encoding="utf-8")
-        return t2
+    import tempfile as _tempfile
+
+    alpha_rs = "pub async fn alpha_scoped(\n    session_token: String,\n) -> Result<(), AppError> { Ok(()) }"
+    good_ts = (
+        "const a = loggedInvoke<X>('alpha_scoped', { sessionToken, args: { nested: 1 } });\n"
+        "const b = loggedInvoke('beta_plain');\n"
+    )
+    no_token_ts = "const a = loggedInvoke('alpha_scoped', { amount: 1 });\n"
     lib_text = (
         "tauri::generate_handler![\n"
         "  commands::alpha::alpha_scoped,\n"
         "]"
     )
     empty_lib = "tauri::generate_handler![\n]"
-    shell += 1
-    td = build2(good_ts)
-    rc, text = run2([])
-    if rc != 0 or "2 invoke(s)" not in text or "0 violation(s)" not in text:
-        print("  x a clean fixture must report 2 invokes, 0 violations (rc=%r text=%r)"
-              % (rc, text[-90:]), file=sys.stderr)
-        return 1
-    shell += 1
-    td = build2(good_ts + no_token_ts)
-    rc, text = run2([])
+
+    def _run(api_ts, argv=None, lib=None, drop_lib=False, drop_api=False):
+        with _tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+            fixture_base = Path(td).resolve()
+            for side in ("desktop-tauri", "mobile-tauri"):
+                (fixture_base / "apps" / side / "src" / "commands").mkdir(parents=True)
+                if not drop_lib:
+                    (fixture_base / "apps" / side / "src" / "lib.rs").write_text(
+                        lib if lib is not None else lib_text, encoding="utf-8")
+                (fixture_base / "apps" / side / "src" / "commands" / "alpha.rs").write_text(
+                    alpha_rs, encoding="utf-8")
+            if not drop_api:
+                api2 = fixture_base / "ui" / "src" / "api"
+                api2.mkdir(parents=True)
+                (api2 / "f.ts").write_text(api_ts, encoding="utf-8")
+            out, err = _io.StringIO(), _io.StringIO()
+            try:
+                with _ctx.redirect_stdout(out), _ctx.redirect_stderr(err):
+                    rc = main(argv=[] if argv is None else argv, root=fixture_base)
+            except SystemExit as se:
+                return se.code, out.getvalue() + err.getvalue()
+            return rc, out.getvalue() + err.getvalue()
+
+    rungs = 0
+
+    # rung 1 -- the KILLING rung: missing sessionToken must fail rc 1 naming the violation
+    rungs += 1
+    rc, text = _run(good_ts + no_token_ts)
     if rc != 1 or "payload carries no sessionToken" not in text:
-        print("  x a missing sessionToken must fail rc 1 (rc=%r text=%r)"
-              % (rc, text[-90:]), file=sys.stderr)
-        return 1
-    shell += 1
-    td = build2(good_ts + no_token_ts, lib=empty_lib)
-    rc, text = run2([])
-    if rc != 1 or "parsed as empty" not in text:
-        print("  x an empty handler list must fail rc 1 (rc=%r text=%r)"
-              % (rc, text[-90:]), file=sys.stderr)
-        return 1
-    shell += 1
-    td = build2(good_ts, drop_lib=True)
-    rc, text = run2([])
-    if rc != 1 or "lib.rs not found for shell" not in text:
-        print("  x a missing lib.rs must fail rc 1 (rc=%r text=%r)"
-              % (rc, text[-90:]), file=sys.stderr)
-        return 1
-    shell += 1
-    td = build2(good_ts, drop_api=True)
-    rc, text = run2([])
-    if rc != 1 or "api dir not found" not in text:
-        print("  x a missing api dir must fail rc 1 (rc=%r text=%r)"
-              % (rc, text[-90:]), file=sys.stderr)
-        return 1
-    shell += 1
-    # the self-test refusal must survive main() too
-    shell += 1
-    rc, text = run2(["--anything-else"])
-    if rc != 2 or "unrecognized arguments" not in text and "unrecognized" not in text:
-        print("  x an unknown flag must refuse rc 2 (rc=%r text=%r)"
-              % (rc, text[-90:]), file=sys.stderr)
+        print(f"  x rung 1: missing sessionToken must fail rc 1 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
         return 1
 
-    if failed:
-        print(f"  {len(failed)} self-test case(s) FAILED:")
-        for f in failed:
-            print(f"    {f}")
+    # rung 2 -- clean fixture must report 0 violations and exit 0
+    rungs += 1
+    rc, text = _run(good_ts)
+    if rc != 0 or "2 invoke(s)" not in text or "0 violation(s)" not in text:
+        print(f"  x rung 2: clean fixture must exit 0 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
         return 1
-    print(f"  all self-test cases passed; main() shell graded "
-          f"({shell} cases through argv and root)")
+
+    # rung 3 -- empty handler list must fail rc 1
+    rungs += 1
+    rc, text = _run(good_ts + no_token_ts, lib=empty_lib)
+    if rc != 1 or "parsed as empty" not in text:
+        print(f"  x rung 3: empty handler list must fail rc 1 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 4 -- missing lib.rs must fail rc 1
+    rungs += 1
+    rc, text = _run(good_ts, drop_lib=True)
+    if rc != 1 or "lib.rs not found for shell" not in text:
+        print(f"  x rung 4: missing lib.rs must fail rc 1 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 5 -- missing api dir must fail rc 1
+    rungs += 1
+    rc, text = _run(good_ts, drop_api=True)
+    if rc != 1 or "api dir not found" not in text:
+        print(f"  x rung 5: missing api dir must fail rc 1 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 6 -- unrecognized arguments refuse with rc 2
+    rungs += 1
+    rc, text = _run(good_ts, argv=["--anything-else"])
+    if rc != 2 or ("unrecognized arguments" not in text and "unrecognized" not in text):
+        print(f"  x rung 6: unrecognized argument must refuse rc 2 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 7 -- nested --self-test passes through argv under re-entry guard
+    rungs += 1
+    rc, text = _run(good_ts, argv=["--self-test"])
+    if rc != 0 or "all self-test cases passed" not in text:
+        print(f"  x rung 7: nested --self-test must exit 0 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    print(f"LADDER OK ({rungs} rungs: missing-token-kill, clean-pass, empty-handlers, missing-lib, missing-api, unknown-flag, nested-selftest)")
     return 0
 
 

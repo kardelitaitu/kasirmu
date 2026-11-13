@@ -12580,3 +12580,24 @@ MEASURED:
 - `python scripts/verify-windows-config.py --self-test` -> OK (11 pure cases; 7 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/verify-windows-config.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 56 -> 57 of 70 (13 un-contracted remaining, next target `verify-invoke-parity.py`).
+
+
+### Round 287 (2026-11-13) -- verify-invoke-parity extracts 7-rung ladder and proves against repo root mutation
+
+`scripts/verify-invoke-parity.py` had 11 pure cases in `self_test()` and inline unisolated shell assertions lacking a dedicated `shell_ladder()` contract and re-entry guard.
+
+ADDED:
+- Extracted `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 7 rungs:
+  Rung 1 (killing rung): missing sessionToken fails rc 1 naming the violation ("payload carries no sessionToken").
+  Rung 2: clean fixture reports 0 violations and exits 0 ("2 invoke(s)", "0 violation(s)").
+  Rung 3: empty handler list fails rc 1 ("parsed as empty").
+  Rung 4: missing lib.rs fails rc 1 ("lib.rs not found for shell").
+  Rung 5: missing api dir fails rc 1 ("api dir not found").
+  Rung 6: unrecognized argument refuses with rc 2.
+  Rung 7: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+
+MEASURED:
+- `python scripts/verify-invoke-parity.py --self-test` -> OK (11 pure cases; 7 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-invoke-parity.py` -> "repo root ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 57 -> 58 of 70 (12 un-contracted remaining, next target `check-rust-doc-paths.py`).
