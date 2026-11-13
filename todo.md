@@ -129,6 +129,38 @@
 - [x] Verified no regression: full sweep of the 44 laddered checkers → 36 KILLED-ALL, 0 EXEC, 0 SURVIVED, 8 NO APPLICABLE (rc 2, honest "cannot reach that shape"); the six checkers contracted in r270–r275 re-run individually, all still fully killed
 - [x] Committed: `d87bbd4e3` — `test(gates): contract verify-core-size with a seven-rung ladder` (3 files, 375 insertions)
 
+### 6f — Contract Ladder Campaign 100% Completion (Rounds 278-299) — ✅ COMPLETED 2026-11-13 (70 of 70)
+
+> Advanced the contract ladder campaign across all remaining uncontracted gate checkers in
+> `scripts/census-checker-contracts.py` from 48 to 70 of 70 (100% contracted). Every checker
+> in scope now declares `self_test`, `shell_ladder`, `root_param`, and is wired to runners.
+
+- [x] Completed rounds 278–299:
+  - `check-rbac-citations.py` (round 278)
+  - `verify-ps-syntax.py` (round 279)
+  - `verify-exhaustive-deps.py` (round 280)
+  - `verify-flaky-quarantine.py` (round 281)
+  - `verify-dockerfile-workspace.py` (round 282)
+  - `check-hardcoded-copy.py` (round 283)
+  - `check-client-type-drift.py` (round 284)
+  - `check-tz-invariance.py` (round 285)
+  - `verify-windows-config.py` (round 286)
+  - `verify-invoke-parity.py` (round 287)
+  - `check-rust-doc-paths.py` (round 288)
+  - `verify-topology-parity.py` (round 289)
+  - `check-mapper-alignment.py` (round 290)
+  - `verify-no-hardcoded-money-format.py` (round 291)
+  - `check-query-plans.py` (round 292)
+  - `verify-migration-column-types.py` (round 293)
+  - `verify-debt-markers.py` (round 294)
+  - `check-gate-runners.py` (round 295)
+  - `check-l10n-test-maps.py` (round 296)
+  - `verify-pg-tests-ran.py` (round 297)
+  - `verify-ci-docs-drift.py` (round 298)
+  - `verify-agents-mirrors.py` (round 299)
+- [x] Verified: `python scripts/census-checker-contracts.py` → 70 of 70 (100%) checker(s) contracted ("nothing owed -- every checker in scope is contracted").
+- [x] Proved ladder kills on all contracted checkers with `python scripts/prove-ladder-kills.py`.
+
 ### 6c — Website Carousel Video Asset Reminder
 
 > Only remaining blocker: owner must supply 5 × 10 s calm UI screen recordings.
