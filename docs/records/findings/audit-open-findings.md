@@ -12667,3 +12667,25 @@ MEASURED:
 - `python scripts/check-mapper-alignment.py --self-test` -> OK (26 pure cases; 6 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/check-mapper-alignment.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 60 -> 61 of 70 (9 un-contracted remaining, next target `verify-no-hardcoded-money-format.py`).
+
+
+### Round 291 (2026-11-13) -- verify-no-hardcoded-money-format gains a 6-rung ladder and proves against scan base mutation
+
+`scripts/verify-no-hardcoded-money-format.py` had 3 pure cases in `self_test()` running subprocesses against dynamic temporary fixture trees and lacked `root` parameterization on `main()` and a `shell_ladder()` contract.
+
+ADDED:
+- Parameterized `main(argv=None, root=None)` with standard `base = Path(root).resolve() if root is not None else ROOT` resolution and dynamic `ROOT = resolve_source_root(ROOTS)[0]`.
+- Defined `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
+  Rung 1 (killing rung): planted `minor_units / 100` finding fails rc 1 naming the pattern.
+  Rung 2: clean tree with all 5 roots passes clean and exits 0 ("PASS").
+  Rung 3: empty tree (0 .rs files) refuses with exit 2 ("REFUSED", "walked none of the tree").
+  Rung 4: partial coverage refuses with exit 2 ("REFUSED", "walked only part").
+  Rung 5: explicit `--roots` passes on partial tree with exit 0 ("PASS").
+  Rung 6: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `TMP_ENV = ("TMPDIR", "TMP", "TEMP")` and `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+
+MEASURED:
+- `python scripts/verify-no-hardcoded-money-format.py --self-test` -> OK (3 subprocess cases; 6 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-no-hardcoded-money-format.py` -> "base resolves root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 61 -> 62 of 70 (8 un-contracted remaining, next target `check-query-plans.py`).
+
