@@ -12601,3 +12601,25 @@ MEASURED:
 - `python scripts/verify-invoke-parity.py --self-test` -> OK (11 pure cases; 7 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/verify-invoke-parity.py` -> "repo root ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 57 -> 58 of 70 (12 un-contracted remaining, next target `check-rust-doc-paths.py`).
+
+
+### Round 288 (2026-11-13) -- check-rust-doc-paths extracts 8-rung ladder and proves against scan base mutation
+
+`scripts/check-rust-doc-paths.py` had 25 pure cases in `self_test()` and inline unisolated shell assertions lacking a dedicated `shell_ladder()` contract and re-entry guard.
+
+ADDED:
+- Extracted `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 8 rungs:
+  Rung 1 (killing rung): absent path citation fails rc 1 naming the violation ("names a path that does not exist").
+  Rung 2: tracked path citation reads clean and exits 0 ("clean - 3 .rs file(s) scanned").
+  Rung 3: full path line citation past EOF fails rc 1 ("cites line 99 but the file has 2").
+  Rung 4: bare basename line citation past EOF fails rc 1 ("cites line 99 but the file has 2").
+  Rung 5: real historical move is exempt and exits 0 ("clean - 3 .rs file(s)").
+  Rung 6: rule 2 invented historical path fails rc 1 ("NEVER existed").
+  Rung 7: sub-floor corpus refuses with exit 2 ("REFUSED - only").
+  Rung 8: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+
+MEASURED:
+- `python scripts/check-rust-doc-paths.py --self-test` -> OK (25 pure cases; 8 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/check-rust-doc-paths.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 58 -> 59 of 70 (11 un-contracted remaining, next target `verify-topology-parity.py`).
