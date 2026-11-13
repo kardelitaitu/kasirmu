@@ -12779,26 +12779,27 @@ MEASURED:
 - `python scripts/census-checker-contracts.py` -> contracted moves 65 -> 66 of 70 (4 un-contracted remaining, next target `check-l10n-test-maps.py`).
 
 
-### Round 296 (2026-11-13) -- check-l10n-test-maps gains a 6-rung ladder and proves against repo base mutation
+### Round 297 (2026-11-13) -- verify-pg-tests-ran gains a 6-rung ladder and proves against scan base mutation
 
-`scripts/check-l10n-test-maps.py` had 4 pure/liveness cases in `self_test()` and lacked `root` parameterization on `main()` and a dedicated `shell_ladder()` contract with `_LADDER_RUNNING` re-entry guard.
+`scripts/verify-pg-tests-ran.py` had comprehensive pure cases and junit parsing cases in `self_test()` and lacked `root` parameterization on `main()` and a dedicated `shell_ladder()` contract with `_LADDER_RUNNING` re-entry guard.
 
 ADDED:
-- Parameterized `main(argv=None, root=None)` with standard `base = REPO if root is None else Path(root).resolve()` resolution.
-- Re-scoped `REPO`, `UI_SRC`, `LOCALES`, and `BASELINE_PATH` in `main()` with environment preservation in `try ... finally`.
+- Parameterized `main(argv=None, root=None)` with standard `base = ROOT if root is None else Path(root).resolve()` resolution.
+- Plumbed `root=base` through `count_source_arms(root=base)`, `count_silent_abandons(root=base)`, and `grade(..., root=base)`.
 - Defined `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
-  Rung 1 (killing rung): unbaselined map hole fails rc 1 ("A HAND-MAINTAINED l10n MAP GAINED A HOLE:").
-  Rung 2: clean fixture passes with rc 0 ("OK: no new l10n map holes").
-  Rung 3: stale baseline entry fails rc 1 ("BASELINE IS STALE").
-  Rung 4: empty test suite refuses with exit 2 ("SCAN READ NOTHING").
-  Rung 5: missing locales directory refuses with exit 2 ("SCAN BROKE").
-  Rung 6: nested `--self-test` passes rc 0 through argv under re-entry guard ("SELF-TEST OK").
+  Rung 1 (killing rung): single-arm fixture tree under `apps/cloud-server` with `--census-only` verifies that `root` is respected and single arm is reported (rc 0, "1  TOTAL skip arms across 1 test files").
+  Rung 2: missing log file path exits 1 ("FAIL  LOG: no captured log at").
+  Rung 3: missing junit report path exits 1 ("FAIL  JUNIT: no report at").
+  Rung 4: clean nextest junit report passes with exit 0 ("no <flakyFailure>").
+  Rung 5: flaky nextest junit report fails with exit 1 ("flaky_on_first_attempt").
+  Rung 6: nested `--self-test` passes rc 0 through argv under re-entry guard ("self-test: PASS").
 - Added `TMP_ENV = ("TMPDIR", "TMP", "TEMP")` and `fixture_root()` canonical tempdir handling with automatic fixture cleanup.
 
 MEASURED:
-- `python scripts/check-l10n-test-maps.py --self-test` -> OK (4 cases; 6 shell rungs).
-- `python scripts/prove-ladder-kills.py scripts/check-l10n-test-maps.py` -> "repo base ignores root KILLED rc=1", every applicable mutation killed (1).
-- `python scripts/census-checker-contracts.py` -> contracted moves 66 -> 67 of 70 (3 un-contracted remaining, next target `verify-pg-tests-ran.py`).
+- `python scripts/verify-pg-tests-ran.py --self-test` -> OK (pure cases + 6 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/verify-pg-tests-ran.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 67 -> 68 of 70 (2 un-contracted remaining, next target `verify-ci-docs-drift.py`).
+
 
 
 

@@ -46,11 +46,24 @@ Exit 0 = clean, 1 = findings or unprovable run.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
+import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root fixtures go under (None = system default), created if missing."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
+
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -182,7 +195,7 @@ def arm_abandons(lines: list[str], start: int) -> bool:
     return bool(ABANDON_RE.search(joined) or PROPAGATE_RE.search(joined))
 
 
-def count_source_arms() -> tuple[int, dict[str, int]]:
+def count_source_arms(root: Path | None = None) -> tuple[int, dict[str, int]]:
     """Return (arm_count, per_file) for print-then-abandon skip arms in test files.
 
     Two shape rules, not a filename allowlist, so the census cannot silently
@@ -196,13 +209,14 @@ def count_source_arms() -> tuple[int, dict[str, int]]:
         apps/cloud-server/src/redis_backend_tests.rs:85/:89 are that shape, and
         their callers then do `let Some(..) = helper() else { return }`).
     """
+    base_root = root if root is not None else ROOT
     per_file: dict[str, int] = {}
     for tree in SRC_TREES:
-        base = ROOT / tree
+        base = base_root / tree
         if not base.is_dir():
             continue
         for path in base.rglob("*.rs"):
-            rel = path.relative_to(ROOT).as_posix()
+            rel = path.relative_to(base_root).as_posix()
             if "_tests" not in rel and "/tests/" not in rel:
                 continue
             try:
@@ -269,15 +283,16 @@ def silent_abandons_in(lines: list[str]) -> int:
     return total
 
 
-def count_silent_abandons() -> tuple[int, dict[str, int]]:
+def count_silent_abandons(root: Path | None = None) -> tuple[int, dict[str, int]]:
     """Tree-wide counterpart to `count_source_arms`, over the same files."""
+    base_root = root if root is not None else ROOT
     per_file: dict[str, int] = {}
     for tree in SRC_TREES:
-        base = ROOT / tree
+        base = base_root / tree
         if not base.is_dir():
             continue
         for path in base.rglob("*.rs"):
-            rel = path.relative_to(ROOT).as_posix()
+            rel = path.relative_to(base_root).as_posix()
             if "_tests" not in rel and "/tests/" not in rel:
                 continue
             if rel.endswith(SILENT_EXCLUDE):
@@ -379,7 +394,7 @@ def source_findings(arms: int, per_file: dict[str, int]) -> list[str]:
 
 
 def grade(text: str, arms: int, per_file: dict[str, int], *, proven: bool,
-          harness: str = "parallel (default harness)") -> int:
+          harness: str = "parallel (default harness)", root: Path | None = None) -> int:
     report = parse_log(text)
     ok = True
     print(f"      harness: {harness}")
@@ -398,7 +413,7 @@ def grade(text: str, arms: int, per_file: dict[str, int], *, proven: bool,
     # The SILENT channel. Informational by design -- see its block above for
     # why it is never a FAIL. Printed unconditionally, because a number nobody
     # sees is the same as no number.
-    silent, silent_files = count_silent_abandons()
+    silent, silent_files = count_silent_abandons(root=root)
     if silent:
         worst = sorted(silent_files.items(), key=lambda kv: -kv[1])[:3]
         where = ", ".join(f"{k.split('/')[-1]} {v}" for k, v in worst)
@@ -1024,10 +1039,130 @@ def self_test() -> int:
            "Traceback" not in _out2)
 
     print(f"\nself-test: {'PASS' if fails == 0 else f'FAIL ({fails})'}")
+    if fails != 0:
+        return 1
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """r297: main()'s shell -- argv and root graded against throwaway fixture trees."""
+    import contextlib as _c
+    import io as _io
+    import shutil as _shutil
+
+    def _shell(files, argv=None):
+        d = Path(tempfile.mkdtemp(dir=fixture_root()))
+        try:
+            for rel, content in files.items():
+                dst = d / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_text(content, encoding="utf-8")
+            buf_out, buf_err = _io.StringIO(), _io.StringIO()
+            with _c.redirect_stdout(buf_out), _c.redirect_stderr(buf_err):
+                try:
+                    rc = main(argv=[] if argv is None else argv, root=d)
+                except SystemExit as se:
+                    rc = se.code if isinstance(se.code, int) else 1
+            out = buf_out.getvalue() + buf_err.getvalue()
+            return rc, out
+        finally:
+            _shutil.rmtree(d, ignore_errors=True)
+
+    rungs = []
+
+    # 1. Killing rung: single-arm fixture tree under apps/cloud-server.
+    #    Under the mutant (base = ROOT), it sees the real repo's 95 arms
+    #    and fails the arm count check.
+    sample_arm = (
+        'fn t() {\n'
+        '    eprintln!("PG test skipped");\n'
+        '    return;\n'
+        '}\n'
+    )
+    rc1, out1 = _shell(
+        {"apps/cloud-server/src/sample_tests.rs": sample_arm},
+        argv=["--census-only"],
+    )
+    rungs.append((
+        "rung 1 (killing): census-only single arm",
+        rc1 == 0 and "1  TOTAL skip arms across 1 test files" in out1,
+        f"rc={rc1} text={out1!r}",
+    ))
+
+    # 2. Missing --log file path exits 1 with standard refusal.
+    rc2, out2 = _shell({}, argv=["--log", "nonexistent.log"])
+    rungs.append((
+        "missing log file path exits 1",
+        rc2 == 1 and "FAIL  LOG: no captured log at" in out2,
+        f"rc={rc2} text={out2!r}",
+    ))
+
+    # 3. Missing --nextest-junit file path exits 1 with standard refusal.
+    rc3, out3 = _shell({}, argv=["--nextest-junit", "nonexistent.xml"])
+    rungs.append((
+        "missing junit report path exits 1",
+        rc3 == 1 and "FAIL  JUNIT: no report at" in out3,
+        f"rc={rc3} text={out3!r}",
+    ))
+
+    # 4. Clean nextest junit report passes with exit 0.
+    rc4, out4 = _shell(
+        {"target/junit.xml": CLEAN_JUNIT},
+        argv=["--nextest-junit", "target/junit.xml"],
+    )
+    rungs.append((
+        "clean junit passes",
+        rc4 == 0 and "no <flakyFailure>" in out4,
+        f"rc={rc4} text={out4!r}",
+    ))
+
+    # 5. Flaky nextest junit report fails with exit 1.
+    rc5, out5 = _shell(
+        {"target/junit.xml": FLAKY_JUNIT},
+        argv=["--nextest-junit", "target/junit.xml"],
+    )
+    rungs.append((
+        "flaky junit fails",
+        rc5 == 1 and "flaky_on_first_attempt" in out5,
+        f"rc={rc5} text={out5!r}",
+    ))
+
+    # 6. Nested --self-test exits 0 under re-entry guard.
+    rc6, out6 = _shell({}, argv=["--self-test"])
+    rungs.append((
+        "nested self-test exits 0",
+        rc6 == 0 and "self-test: PASS" in out6,
+        f"rc={rc6} text={out6!r}",
+    ))
+
+    fails = 0
+    print("shell_ladder:")
+    for name, ok, detail in rungs:
+        status = "ok  " if ok else "FAIL"
+        print(f"  {status}  {name}")
+        if not ok:
+            print(f"        {detail}")
+            fails += 1
+    print(f"ladder: {'PASS' if fails == 0 else f'FAIL ({fails})'}")
     return 0 if fails == 0 else 1
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, root: Path | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--log", type=Path, help="grade an existing captured log instead of running cargo")
     ap.add_argument("--crate", action="append", dest="crates", help="crate to run (repeatable)")
@@ -1054,6 +1189,8 @@ def main(argv: list[str] | None = None) -> int:
     if ns.self_test:
         return self_test()
 
+    base = ROOT if root is None else Path(root).resolve()
+
     if ns.nextest_junit:
         if ns.log:
             print("note  --nextest-junit takes precedence; --log was ignored")
@@ -1065,21 +1202,18 @@ def main(argv: list[str] | None = None) -> int:
         # traceback. The comment above the `else` branch already states the rule --
         # "a missing report must not be able to read as a clean one" -- so the refusal
         # belongs here too, in words, and with the two usual causes named.
-        if not ns.nextest_junit.is_file():
-            print("FAIL  JUNIT: no report at %s" % ns.nextest_junit)
-            print("      Nothing was graded. Either `cargo nextest` has not run since the",
-                  )
-            print("      artifact directory was cleaned, or it wrote its JUnit file",
-                  )
-            print("      somewhere else (the configured `path` resolves relative to the",
-                  )
-            print("      PROFILE's own artifact dir, not the workspace root).",
-                  )
+        junit_path = ns.nextest_junit if ns.nextest_junit.is_absolute() else base / ns.nextest_junit
+        if not junit_path.is_file():
+            print("FAIL  JUNIT: no report at %s" % junit_path)
+            print("      Nothing was graded. Either `cargo nextest` has not run since the")
+            print("      artifact directory was cleaned, or it wrote its JUnit file")
+            print("      somewhere else (the configured `path` resolves relative to the")
+            print("      PROFILE's own artifact dir, not the workspace root).")
             return 1
-        return grade_junit(ns.nextest_junit.read_text(encoding="utf-8", errors="replace"),
-                           source=str(ns.nextest_junit))
+        return grade_junit(junit_path.read_text(encoding="utf-8", errors="replace"),
+                           source=str(junit_path))
 
-    arms, per_file = count_source_arms()
+    arms, per_file = count_source_arms(root=base)
     if ns.census_only:
         for rel, n in sorted(per_file.items(), key=lambda kv: (-kv[1], kv[0])):
             print(f"{n:3d}  {rel}")
@@ -1087,23 +1221,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if ns.log:
-        # THE SAME REFUSAL THE --nextest-junit BRANCH GOT, one path over. That branch was
-        # fixed 2026-10-24 after `--nextest-junit target/mstmp/nope.xml` printed a
-        # FileNotFoundError traceback; this read was left as it was, so `--log` with an
-        # absent path still exited 1 by accident of Python's exception handling, with a
-        # stdlib path instead of the sentence that says what went wrong. Measured
-        # 2026-10-26: `--log target/nonexistent.log` printed
-        # "FileNotFoundError: [Errno 2] No such file or directory". The direction was
-        # right and the message was not -- a reader who sees a traceback learns that the
-        # tool broke, not that their log was missing.
-        if not ns.log.is_file():
-            print("FAIL  LOG: no captured log at %s" % ns.log)
+        log_path = ns.log if ns.log.is_absolute() else base / ns.log
+        if not log_path.is_file():
+            print("FAIL  LOG: no captured log at %s" % log_path)
             print("      Nothing was graded. --log grades an ALREADY captured run; it")
             print("      does not run cargo. Point it at the file you captured with")
             print("      `cargo test ... -- --nocapture > LOG 2>&1`, or drop --log to")
             print("      have this script run cargo itself.")
             return 1
-        text = ns.log.read_text(encoding="utf-8", errors="replace")
+        text = log_path.read_text(encoding="utf-8", errors="replace")
         harness = "unknown (log supplied with --log; the harness that made it is not visible here)"
         # The flag's own text only counts if whoever captured the log echoed the
         # command; it is a hint, so it is reported, never silently trusted.
@@ -1120,10 +1246,11 @@ def main(argv: list[str] | None = None) -> int:
                    else "parallel (default harness)")
 
     if ns.emit_log:
-        ns.emit_log.write_text(text, encoding="utf-8")
-        print(f"note  raw cargo output written to {ns.emit_log}")
+        emit_path = ns.emit_log if ns.emit_log.is_absolute() else base / ns.emit_log
+        emit_path.write_text(text, encoding="utf-8")
+        print(f"note  raw cargo output written to {emit_path}")
 
-    return grade(text, arms, per_file, proven=proven, harness=harness)
+    return grade(text, arms, per_file, proven=proven, harness=harness, root=base)
 
 
 if __name__ == "__main__":
