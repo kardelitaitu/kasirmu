@@ -12689,3 +12689,26 @@ MEASURED:
 - `python scripts/prove-ladder-kills.py scripts/verify-no-hardcoded-money-format.py` -> "base resolves root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 61 -> 62 of 70 (8 un-contracted remaining, next target `check-query-plans.py`).
 
+
+### Round 292 (2026-11-13) -- check-query-plans gains a 6-rung ladder and proves against repo base mutation
+
+`scripts/check-query-plans.py` had 28 pure cases in `self_test()` and lacked `root` parameterization on `main()` and a `shell_ladder()` contract.
+
+ADDED:
+- Parameterized `main(argv=None, root=None)` with standard `base = REPO if root is None else Path(root).resolve()` resolution.
+- Updated `probe_source(path=None)` to inspect `path` (defaulting to `PROBE_FILE`), and plumbed `repo=base` to `run_probe` / `run_unit_plan_gate`.
+- `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
+  Rung 1 (killing rung): planted probe file with `--list` verifies that `root` is respected and custom table/probe names are reported (rc 0, "plant_probe", "plant_table").
+  Rung 2: missing probe file in fixture root refuses with exit 2 ("probe file not found:", fixture path named).
+  Rung 3: empty probe file with `--list` exits 0 ("0 probed queries").
+  Rung 4: multi-probe probe file with constant and copied origins accurately classifies and lists them (rc 0, "2 probed queries", "[CONSTANT]", "[copied]").
+  Rung 5: invalid CLI flag exits 2 ("unrecognized arguments").
+  Rung 6: nested `--self-test` passes rc 0 through argv under re-entry guard ("SELF-TEST OK").
+- Added `TMP_ENV = ("TMPDIR", "TMP", "TEMP")` and `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+
+MEASURED:
+- `python scripts/check-query-plans.py --self-test` -> OK (28 pure cases; 6 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/check-query-plans.py` -> "repo base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 62 -> 63 of 70 (7 un-contracted remaining, next target `verify-migration-column-types.py`).
+
+
