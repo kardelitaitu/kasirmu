@@ -12495,3 +12495,24 @@ MEASURED:
 - `python scripts/verify-dockerfile-workspace.py --self-test` -> OK (apt-divergence + workspace reader cases; 8 shell rungs).
 - `python scripts/prove-ladder-kills.py scripts/verify-dockerfile-workspace.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
 - `python scripts/census-checker-contracts.py` -> contracted moves 52 -> 53 of 70 (17 un-contracted remaining, next target `check-hardcoded-copy.py`).
+
+
+### Round 283 (2026-11-13) -- check-hardcoded-copy gains a 6-rung ladder and proves against repo base mutation
+
+`scripts/check-hardcoded-copy.py` had pure test cases in `self_test()` (12 graded shapes + census floor + live read) and an inline 5-case shell block lacking a dedicated `shell_ladder()` and re-entry guard.
+
+ADDED:
+- `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
+  Rung 1 (killing rung): unbudgeted copy exits 1 naming the file ("NEW HARDCODED COPY" and "ui/src/x/A.tsx").
+  Rung 2: budgeted copy string exits 0 ("no file exceeds", "1 across 1").
+  Rung 3: missing budget file refuses with exit 2 ("budget file missing").
+  Rung 4: `--update` writes fixture's budget and exits 0 ("budget written").
+  Rung 5: corpus with no sources refuses with exit 2 ("SCAN READ NOTHING").
+  Rung 6: nested `--self-test` passes rc 0 through argv under re-entry guard.
+- Added `fixture_root()` canonical tempdir handling with `Path(td).resolve()`.
+- Disambiguated `scan_root` in `scan()` so `base = REPO if root is None else Path(root).resolve()` in `main()` is the unique spliceable anchor for mutation testing.
+
+MEASURED:
+- `python scripts/check-hardcoded-copy.py --self-test` -> OK (14 pure cases; 6 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/check-hardcoded-copy.py` -> "repo base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 53 -> 54 of 70 (16 un-contracted remaining, next target `check-client-type-drift.py`).
