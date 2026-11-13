@@ -168,7 +168,7 @@ Promoting a stub, in order:
 | `terminal` | Active | — |
 | `currency` | Active | — |
 | `sales` | Active | `inventory` |
-| `reporting` | Active | `inventory`, `sales` |
+| `reporting` | Stub | `inventory`, `sales` |
 | `loyalty` | Active | `crm` |
 | `purchasing` | Stub | `inventory` |
 | `promotions` | Stub | `sales` |
