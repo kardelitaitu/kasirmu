@@ -93,9 +93,24 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
+import tempfile
 from pathlib import Path
+
+TMP_ENV = ("TMPDIR", "TMP", "TEMP")
+
+
+def fixture_root():
+    """The temp root fixtures go under (None = system default), created if missing."""
+    root = next((os.environ[k] for k in TMP_ENV if os.environ.get(k)), None)
+    if root:
+        os.makedirs(root, exist_ok=True)
+    return root
+
+
+ROOT = Path(__file__).resolve().parent.parent
 
 STEP_RE = re.compile(r'^\s*-\s+name:s*(.+?)\s*$', re.M)
 # Line-anchored, the same shape as verify-gate-completeness.py's STEP_RE: one
@@ -411,40 +426,6 @@ def gate_findings(gates, job_steps: dict[str, list[str]], sh_steps: list[str],
 def _self_test() -> int:
     """Prove the matcher on both directions. A checker that cannot fail is worse than
     none, so each case states what must NOT match as well as what must."""
-    def _shell_case(rows, needle, starve=False):
-        # r163: the shell was parameterized all along (--root); these cases
-        # grade it end to end against a mini-repo OUTSIDE the tree. sys.argv
-        # is patched, stdout captured, and the tree stays untouched.
-        import contextlib
-        import io as _io
-        import json as _json
-        import sys
-        import tempfile
-        def run():
-            with tempfile.TemporaryDirectory() as td:
-                root = Path(td)
-                (root / "scripts").mkdir()
-                (root / ".github" / "workflows").mkdir(parents=True)
-                (root / "scripts" / "gates.json").write_text(
-                    _json.dumps({"gates": rows}), encoding="utf-8")
-                (root / ".github" / "workflows" / "nightly.yml").write_text(
-                    "", encoding="utf-8")
-                (root / "scripts" / "check.sh").write_text(
-                    'step "x" "echo hi"' + chr(10), encoding="utf-8")
-                if not starve:
-                    (root / ".github" / "workflows" / "dev-ci.yml").write_text(
-                        "", encoding="utf-8")
-                old_argv = sys.argv
-                sys.argv = ["check-gate-runners.py", "--root", str(root)]
-                try:
-                    out, err = _io.StringIO(), _io.StringIO()
-                    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                        rc = main()
-                finally:
-                    sys.argv = old_argv
-                return rc, needle in (out.getvalue() + err.getvalue())
-        return run
-
     cases = [
         ("exact name resolves",
          resolves("Coverage report", ["Coverage report"]), True),
@@ -628,27 +609,6 @@ def _self_test() -> int:
          duplicate_report("ci", [("s", ["a", "b"])]),
          (False, ["  note: 1 runner label(s) declared by more than one gate (ci axis):",
                   "    's' <- a, b"])),
-        ("the shell grades a clean mini-repo end to end",
-         _shell_case([{"id": "a", "runners": {"check.sh": ["x"]}}],
-                     "every declared runner resolves"),
-         (0, True)),
-        ("the shell grades an unresolved label fail-closed",
-         _shell_case([{"id": "a", "runners": {"check.sh": ["ghost"]}}],
-                     "do not resolve"),
-         (1, True)),
-        ("the shell grades a duplicate label fail-closed",
-         _shell_case([{"id": "a", "runners": {"check.sh": ["x"]}},
-                      {"id": "b", "runners": {"check.sh": ["x"]}}],
-                     "declared by more than one gate"),
-         (1, True)),
-        ("the shell refuses a starved corpus",
-         _shell_case([{"id": "a", "runners": {"check.sh": ["x"]}}],
-                     "REFUSED", starve=True),
-         (2, True)),
-        ("the shell refuses a gate naming a non-dev-ci workflow",
-         _shell_case([{"id": "a", "ci": {"workflow": "nightly.yml"}}],
-                     "REFUSED"),
-         (2, True)),
     ]
     bad = 0
     for name, fn, want in cases:
@@ -656,22 +616,128 @@ def _self_test() -> int:
         ok = got == want
         bad += 0 if ok else 1
         print("  %-48s %s" % (name, "ok" if ok else "FAIL (got %r, want %r)" % (got, want)))
-    print("SELF-TEST %s (%d cases, incl. %d shell cases; no repo files touched)"
-          % ("FAILED" if bad else "OK", len(cases), 5))
+    print("SELF-TEST %s (%d pure cases; no repo files touched)"
+          % ("FAILED" if bad else "OK", len(cases)))
     return 1 if bad else 0
 
 
-def main() -> int:
+def self_test() -> int:
+    rc = _self_test()
+    if rc != 0:
+        return rc
+    return shell_ladder()
+
+
+_LADDER_RUNNING = False
+
+
+def shell_ladder() -> int:
+    """Re-entry guard: a nested self-test must not run a second ladder."""
+    global _LADDER_RUNNING
+    if _LADDER_RUNNING:
+        return 0
+    _LADDER_RUNNING = True
+    try:
+        return _shell_ladder_body()
+    finally:
+        _LADDER_RUNNING = False
+
+
+def _shell_ladder_body() -> int:
+    """Grade main()'s shell on fixture trees outside this repository."""
+    import contextlib
+    import io as _io
+    import json as _json
+
+    def _shell_run(rows, argv=None, starve=False) -> tuple[int, str]:
+        with tempfile.TemporaryDirectory(dir=fixture_root(), ignore_cleanup_errors=True) as td:
+            fixture_root_dir = Path(td).resolve()
+            (fixture_root_dir / "scripts").mkdir(parents=True)
+            (fixture_root_dir / ".github" / "workflows").mkdir(parents=True)
+            (fixture_root_dir / "scripts" / "gates.json").write_text(
+                _json.dumps({"gates": rows}), encoding="utf-8"
+            )
+            (fixture_root_dir / ".github" / "workflows" / "nightly.yml").write_text(
+                "", encoding="utf-8"
+            )
+            (fixture_root_dir / "scripts" / "check.sh").write_text(
+                'step "x" "echo hi"\n', encoding="utf-8"
+            )
+            if not starve:
+                (fixture_root_dir / ".github" / "workflows" / "dev-ci.yml").write_text(
+                    "", encoding="utf-8"
+                )
+            out, err = _io.StringIO(), _io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                try:
+                    rc = main(argv=[] if argv is None else argv, root=fixture_root_dir)
+                except SystemExit as se:
+                    rc = se.code if isinstance(se.code, int) else 1
+            return rc, out.getvalue() + err.getvalue()
+
+    rungs = 0
+
+    # rung 1 -- the KILLING rung: unresolved runner label fails rc 1
+    rungs += 1
+    rc, text = _shell_run([{"id": "a", "runners": {"check.sh": ["ghost_runner"]}}])
+    if rc != 1 or "do not resolve" not in text:
+        print(f"  x rung 1: unresolved label must fail rc 1 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 2 -- clean fixture passes with rc 0
+    rungs += 1
+    rc, text = _shell_run([{"id": "a", "runners": {"check.sh": ["x"]}}])
+    if rc != 0 or "every declared runner resolves" not in text:
+        print(f"  x rung 2: clean fixture must pass rc 0 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 3 -- duplicate runner label fails rc 1
+    rungs += 1
+    rc, text = _shell_run([{"id": "a", "runners": {"check.sh": ["x"]}},
+                           {"id": "b", "runners": {"check.sh": ["x"]}}])
+    if rc != 1 or "declared by more than one gate" not in text:
+        print(f"  x rung 3: duplicate label must fail rc 1 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 4 -- starved corpus (missing dev-ci.yml) refuses with rc 2
+    rungs += 1
+    rc, text = _shell_run([{"id": "a", "runners": {"check.sh": ["x"]}}], starve=True)
+    if rc != 2 or "REFUSED" not in text:
+        print(f"  x rung 4: starved corpus must refuse rc 2 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 5 -- non-dev-ci workflow refuses with rc 2
+    rungs += 1
+    rc, text = _shell_run([{"id": "a", "ci": {"workflow": "nightly.yml"}}])
+    if rc != 2 or "REFUSED" not in text:
+        print(f"  x rung 5: non-devci workflow must refuse rc 2 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    # rung 6 -- nested --self-test passes through argv under re-entry guard
+    rungs += 1
+    rc, text = _shell_run([{"id": "a", "runners": {"check.sh": ["x"]}}], argv=["--self-test"])
+    if rc != 0 or "SELF-TEST OK" not in text:
+        print(f"  x rung 6: nested --self-test must exit 0 (rc={rc} text={text[-100:]!r})", file=sys.stderr)
+        return 1
+
+    print(f"LADDER OK ({rungs} rungs: unresolved-kill, clean-pass, duplicate-fail, starved-refusal, non-devci-refusal, nested-selftest)")
+    return 0
+
+
+def main(argv: list[str] | None = None, root: Path | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--root", default=".", help="repository root")
+    ap.add_argument("--root", default=None, help="repository root")
     ap.add_argument("--self-test", action="store_true", help="prove the matcher, touch no files")
     ap.add_argument("--quiet", action="store_true", help="only report findings")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     if args.self_test:
-        return _self_test()
+        return self_test()
 
-    root = Path(args.root).resolve()
+    base = ROOT if root is None else Path(root).resolve()
+    if args.root is not None:
+        base = Path(args.root).resolve()
+    root = base
     roster = root / "scripts/gates.json"
     workflow = root / ".github/workflows/dev-ci.yml"
     check_sh = root / "scripts/check.sh"

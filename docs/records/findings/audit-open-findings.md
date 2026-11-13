@@ -12757,5 +12757,28 @@ MEASURED:
 - `python scripts/census-checker-contracts.py` -> contracted moves 64 -> 65 of 70 (5 un-contracted remaining, next target `check-gate-runners.py`).
 
 
+### Round 295 (2026-11-13) -- check-gate-runners gains a 6-rung ladder and proves against scan base mutation
+
+`scripts/check-gate-runners.py` had 47 pure cases and 5 shell cases inside `_self_test()` and lacked `root` parameterization on `main()` and a dedicated `shell_ladder()` contract with `_LADDER_RUNNING` re-entry guard.
+
+ADDED:
+- Parameterized `main(argv=None, root=None)` with standard `base = ROOT if root is None else Path(root).resolve()` resolution.
+- Defined `self_test()` wrapping `_self_test()` and `shell_ladder()`.
+- Extracted and formalized `shell_ladder()` with `_LADDER_RUNNING` re-entry guard and 6 rungs:
+  Rung 1 (killing rung): unresolved runner label fails rc 1 ("do not resolve").
+  Rung 2: clean fixture passes with rc 0 ("every declared runner resolves").
+  Rung 3: duplicate runner label fails rc 1 ("declared by more than one gate").
+  Rung 4: starved corpus (missing `dev-ci.yml`) refuses with exit 2 ("REFUSED").
+  Rung 5: non-dev-ci workflow refuses with exit 2 ("REFUSED").
+  Rung 6: nested `--self-test` passes rc 0 through argv under re-entry guard ("SELF-TEST OK").
+- Added `TMP_ENV = ("TMPDIR", "TMP", "TEMP")` and `fixture_root()` canonical tempdir handling with automatic fixture cleanup.
+
+MEASURED:
+- `python scripts/check-gate-runners.py --self-test` -> OK (47 pure cases; 6 shell rungs).
+- `python scripts/prove-ladder-kills.py scripts/check-gate-runners.py` -> "scan base ignores root KILLED rc=1", every applicable mutation killed (1).
+- `python scripts/census-checker-contracts.py` -> contracted moves 65 -> 66 of 70 (4 un-contracted remaining, next target `check-l10n-test-maps.py`).
+
+
+
 
 
