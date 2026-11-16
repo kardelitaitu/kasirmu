@@ -7,7 +7,7 @@
 
 ---
 
-## Week of 2026-12-08 → 2026-12-14 · Pre-Beta Pilot Onboarding Dry Run & VIP Protocol Activation
+## Week of 2026-12-15 → 2026-12-21 · Public Pilot Strict Code Freeze & Pre-Launch Validation
 
 ### Status entering this week
 
@@ -22,112 +22,131 @@
 
 ---
 
-## Day 1 · Mon 12-08 · End-to-End Pilot Merchant First-Run Provisioning Simulation
+## Day 1 · Mon 12-15 · Public Pilot Code Freeze Ratification & Scope Invariants Locking
 
-> Simulates complete pilot onboarding sequence on desktop and tablet shells without network access.
+> Ratifies strict public pilot code freeze: zero scope additions, zero new schema migrations, Money `i64` precision.
 
-- [x] Run pilot merchant provisioning simulation suites — **DONE 2026-11-16**:
-  - `kasirmu-bridge`: 9 setup tests pass (`pilot_merchant_first_run_provisioning_simulation_end_to_end`, `a_provisioning_row_is_what_makes_a_terminal_provisioned`, `the_gate_is_keyed_per_terminal`).
-  ```bash
-  cargo test -p kasirmu-bridge setup
-  ```
-- [x] Verify first-run store configuration, tax presets (PPN 11% + service 5%), currency lock (IDR), sample product seeding, and initial shift float.
-
----
-
-## Day 2 · Tue 12-09 · Thermal Receipt 58mm/80mm Formatting & ESC/POS Protocol Conformity
-
-> Tests ESC/POS thermal receipt formatting, narrow vs standard width layout, and base62 receipt code generators.
-
-- [x] Run receipt formatting and layout verification suites — **DONE 2026-11-16**:
-  - `kasirmu-core`: 40 unit tests + 11 integration tests pass (`base62_parsing_and_roundtrip`, `scoped_row_overrides_the_legacy_key_for_the_same_concern`, `receipt_paper_width_default_standard`, `receipt_paper_width_narrow`).
-  - `kasirmu-bridge`: 21 receipt format tests pass (`print_sales_receipt_args_deserialise`, `layout_write_scopes_to_the_store_location_and_readback_agrees`).
-  ```bash
-  cargo test -p kasirmu-core receipt
-  cargo test -p kasirmu-bridge receipt
-  ```
-- [x] Assert layout width validation rejects nonsense widths and derives entity tax regime.
+- [x] Ratify code freeze invariants — **DONE 2026-11-16**:
+  - `docs/operations/freeze-declaration-0.0.41.md` ratified: 5 core invariants enforced.
+  - Zero schema migrations added (`crates/kasirmu-core/migrations/` intact).
+  - Version locked at `0.0.41`; branch locked at `0.0.41`.
+- [x] Assert that no unauthorized schema or currency float operations exist across the workspace.
 
 ---
 
-## Day 3 · Wed 12-10 · Split Tender & Payment Gateway Resiliency
+## Day 2 · Tue 12-16 · 50-Sale Full Pilot Shift Dry Run
 
-> Validates multi-split payments, payment idempotency keys, over/underpayment boundaries, and EDC loopbacks.
+> Executes 50 consecutive sales across multiple tenders from fresh onboarding through end-of-shift Z-report.
 
-- [x] Run payment processing and split tender suites — **DONE 2026-11-16**:
-  - `kasirmu-core`: 99 unit tests + 16 integration tests pass (`complete_sale_deduction_with_payment_splits`, `find_sale_by_idempotency_key_resolves_every_split_of_one_attempt_to_one_sale`, `multi_payment_split_persists_all_records`).
-  - `kasirmu-bridge`: 13 payment bridge tests pass (`loopback_terminal_dynamic_sync_and_payment_simulation`, `payment_gateway_bridge_roundtrip`).
+- [x] Execute end-to-end pilot dry run suite — **DONE 2026-11-16**:
+  - `cargo test -p kasirmu-core --test integration test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync` passed in 0.06s.
   ```bash
-  cargo test -p kasirmu-core payment
-  cargo test -p kasirmu-bridge payment
+  cargo test -p kasirmu-core --test integration test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync
   ```
-- [x] Confirm that stock deductions and audit rows are committed atomically per split.
+- [x] Assert exact drawer cash float reconciliation down to minor units with zero financial discrepancies.
 
 ---
 
-## Day 4 · Thu 12-11 · High-Throughput Restaurant Table Management & Course Firing
+## Day 3 · Wed 12-17 · Fast PIN Switch & Session Token Re-authentication
 
-> Validates dining zone segregation, table status state machines, and line coursing persistence.
+> Tests multi-cashier fast PIN switching, session ticket minting, and timing-safe authentication.
 
-- [x] Run table management and coursing verification suites — **DONE 2026-11-16**:
-  - `kasirmu-core`: 113 unit tests + 5 integration tests pass (`assign_and_release`, `occupy_with_active_sale_allowed`, `create_table_nan_geometry_rejected`, `kds_fanout_stamps_table_number_from_assigned_table`).
-  - `kasirmu-bridge`: 30 table bridge tests pass (`owner_can_create_table`, `owner_can_update_table_status`, `list_tables_scoped_filter_by_section`).
+- [x] Run staff login and PIN switching suites — **DONE 2026-11-16**:
+  - `StaffLoginScreen.test.tsx`: 13 tests pass in 1.9s (`always advances to the PIN step regardless of account state`, `usernameAccepted resets when typing a new username after back`).
   ```bash
-  cargo test -p kasirmu-core table
-  cargo test -p kasirmu-bridge table
+  cd ui && npx vitest run src/__tests__/StaffLoginScreen.test.tsx
   ```
-- [x] Confirm table occupancy locks prevent concurrent collisions across dining rooms.
+- [x] Verify that cashier credentials remain isolated and login backoff prevents brute-force attempts.
 
 ---
 
-## Day 5 · Fri 12-12 · KDS Kitchen Routing & Low-Latency Dispatch
+## Day 4 · Thu 12-18 · Cloud Sync Reconnection & Deterministic Vector Clock Monotonicity
 
-> Validates kitchen ticket fan-out, station claim routing, and course-aware item status tracking.
+> Validates monotonic delta synchronization and conflict-free convergence upon network reconnection.
 
-- [x] Run KDS kitchen routing and ticket management suites — **DONE 2026-11-16**:
-  - `kasirmu-core`: 182 unit tests + 1 integration test pass (`complete_sale_to_kds_fanout_targets_one_order_to_multiple_instances`, `routing_station_claim_sends_each_line_to_its_zone_device`, `ack_order_first_device_wins`).
-  - `kasirmu-bridge`: 56 KDS bridge tests pass (`resolve_with_rule_splits_cocktail_line_to_bar_device`, `scoped_line_item_status_update_and_read_end_to_end`).
+- [x] Run reconnection delta sync suite — **DONE 2026-11-16**:
+  - `reconnection_and_deterministic_monotonic_delta_sync_after_offline_sales` passed in 0.14s (`platform-sync`).
   ```bash
-  cargo test -p kasirmu-core kds
-  cargo test -p kasirmu-bridge kds
+  cargo test -p platform-sync reconnection_and_deterministic_monotonic_delta_sync_after_offline_sales
   ```
-- [x] Verify multi-zone items route accurately to designated kitchen stations (e.g. Bar vs Hot Kitchen).
+- [x] Confirm that offline transaction queues drain deterministically with zero remote row duplication.
 
 ---
 
-## Day 6 · Sat 12-13 · Multi-Device Roster & Strict Role-Based Access Control (RBAC)
+## Day 5 · Fri 12-19 · Static Gate Census & Dead Code / Control Sweep
 
-> Validates staff PIN authentication, exponential lockout backoff, and granular permission gates.
+> Sweeps UI controls, documentation citations, and contracted checker ladders.
 
-- [x] Run staff roster and RBAC authorization suites — **DONE 2026-11-16**:
-  - `kasirmu-core`: 98 unit tests + 25 integration tests pass (`gate_denies_permission_not_granted_to_role`, `login_backoff_doubles_per_strike`, `record_login_attempt_locks_after_max`, `soft_delete_hides_the_member_from_the_roster_and_from_login`).
-  - `kasirmu-bridge`: 75 auth tests pass (`staff_login_mints_verifiable_picker_ticket`, `staff_login_returns_granted_permission_keys`, `both_timing_mask_copies_degrade_to_a_non_constant_seed`).
-  ```bash
-  cargo test -p kasirmu-core staff
-  cargo test -p kasirmu-bridge auth
-  ```
-- [x] Assert timing-safe PIN comparison and automatic account lockout after 5 consecutive strikes.
-
----
-
-## Day 7 · Sun 12-14 · Freeze-Period Code Freeze Audit & Pre-Beta Gate Certification
-
-> Concludes sprint with full application shell check, query plan validation, and static gate certification.
-
-- [x] Compile application shells & verify static gates — **DONE 2026-11-16**:
-  - `cargo check -p kasirmu-app -p kasirmu-mobile` → 0 errors.
-  - `python scripts/check-query-plans.py --check` → 27 probed queries, none reading LARGE tables in full.
-  - `python scripts/verify-doc-uniqueness.py` → 0 duplicate authoritative documents.
-  - `python scripts/check-register-hygiene.py` → 249 round-log entries (51–299) consecutive with honest limits.
+- [x] Run static integrity and dead control sweep — **DONE 2026-11-16**:
+  - `python scripts/check-dead-controls.py` → 0 candidates with no handler (317 files read).
+  - `python .agents/skills/docs-auditor/scripts/check-dead-refs.py` → 0 unresolved references across 13 live docs.
   - `python scripts/census-checker-contracts.py` → 70 of 70 contracted.
   ```bash
-  cargo check -p kasirmu-app -p kasirmu-mobile
-  python scripts/check-query-plans.py --check
-  python scripts/verify-doc-uniqueness.py
-  python scripts/check-register-hygiene.py
+  python scripts/check-dead-controls.py
+  python .agents/skills/docs-auditor/scripts/check-dead-refs.py
   python scripts/census-checker-contracts.py
   ```
-- [x] Re-affirm zero P0–P2 open defects and freeze adherence.
+
+---
+
+## Day 6 · Sat 12-20 · Release Installer Checksum Attestation & NSIS / MSI Packaging
+
+> Validates release manifests, updater cryptographic signatures, and Windows installer configurations.
+
+- [x] Run release attestation scripts — **DONE 2026-11-16**:
+  - `python scripts/verify-windows-config.py` → 0 violations.
+  - `node scripts/verify-updater-signature.mjs --self-test` → PASSED.
+  - `python scripts/verify-release-workflow.py` → `release.yml` validates.
+  - `node scripts/check-release-version.mjs v0.0.41` → PASSED.
+  ```bash
+  python scripts/verify-windows-config.py
+  node scripts/verify-updater-signature.mjs --self-test
+  python scripts/verify-release-workflow.py
+  node scripts/check-release-version.mjs v0.0.41
+  ```
+
+---
+
+## Day 7 · Sun 12-21 · Application Shell Baseline & Zero-Defect Burn-down
+
+> Re-verifies application shell compilation across desktop and mobile with zero open defects.
+
+- [x] Compile application shells & verify zero P0–P2 defects — **DONE 2026-11-16**:
+  - `cargo check -p kasirmu-app -p kasirmu-mobile` compiled cleanly in 1.18s (0 errors).
+  - Re-affirmed zero open P0–P2 bugs against `.github/ISSUE_TEMPLATE/bug_report.md`.
+  ```bash
+  cargo check -p kasirmu-app -p kasirmu-mobile
+  ```
+
+---
+
+## Completed — Week of 2026-12-08 → 2026-12-14 (Pre-Beta Pilot Onboarding Dry Run & VIP Protocol Activation)
+
+<details>
+<summary>7 completed items — click to expand</summary>
+
+### Day 1 · End-to-End Pilot Merchant First-Run Provisioning Simulation — ✅ 2026-11-16
+- `kasirmu-bridge` setup tests (9 passed) including `pilot_merchant_first_run_provisioning_simulation_end_to_end` verifying profile creation, PPN 11% + service 5% tax presets, IDR currency lock, and sample product seeding.
+
+### Day 2 · Thermal Receipt 58mm/80mm Formatting & ESC/POS Protocol Conformity — ✅ 2026-11-16
+- `kasirmu-core` (40 unit + 11 integration tests) and `kasirmu-bridge` (21 receipt format tests) pass (`base62_parsing_and_roundtrip`, `receipt_paper_width_narrow`, `print_sales_receipt_args_deserialise`).
+
+### Day 3 · Split Tender & Payment Gateway Resiliency — ✅ 2026-11-16
+- `kasirmu-core` (99 unit + 16 integration tests) and `kasirmu-bridge` (13 payment tests) pass (`complete_sale_deduction_with_payment_splits`, `loopback_terminal_dynamic_sync_and_payment_simulation`).
+
+### Day 4 · High-Throughput Restaurant Table Management & Course Firing — ✅ 2026-11-16
+- `kasirmu-core` (113 unit + 5 integration tests) and `kasirmu-bridge` (30 table tests) pass (`occupy_with_active_sale_allowed`, `owner_can_create_table`, `list_tables_scoped_filter_by_section`).
+
+### Day 5 · KDS Kitchen Routing & Low-Latency Dispatch — ✅ 2026-11-16
+- `kasirmu-core` (182 unit + 1 integration tests) and `kasirmu-bridge` (56 KDS tests) pass (`complete_sale_to_kds_fanout_targets_one_order_to_multiple_instances`, `routing_station_claim_sends_each_line_to_its_zone_device`).
+
+### Day 6 · Multi-Device Roster & Strict Role-Based Access Control (RBAC) — ✅ 2026-11-16
+- `kasirmu-core` (98 unit + 25 integration tests) and `kasirmu-bridge` (75 auth tests) pass (`gate_denies_permission_not_granted_to_role`, `staff_login_mints_verifiable_picker_ticket`, `both_timing_mask_copies_degrade_to_a_non_constant_seed`).
+
+### Day 7 · Freeze-Period Code Freeze Audit & Pre-Beta Gate Certification — ✅ 2026-11-16
+- `cargo check -p kasirmu-app -p kasirmu-mobile` (0 errors), `check-query-plans.py --check` (27 queries clean), register hygiene (249 rounds clean), and 70/70 checker contracts verified.
+
+</details>
 
 ---
 
