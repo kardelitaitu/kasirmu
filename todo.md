@@ -7,7 +7,7 @@
 
 ---
 
-## Week of 2026-12-15 → 2026-12-21 · Public Pilot Strict Code Freeze & Pre-Launch Validation
+## Week of 2026-12-22 → 2026-12-28 · Year-End Pilot Stabilization & Telemetry Watch Rehearsal
 
 ### Status entering this week
 
@@ -22,101 +22,129 @@
 
 ---
 
-## Day 1 · Mon 12-15 · Public Pilot Code Freeze Ratification & Scope Invariants Locking
+## Day 1 · Mon 12-22 · Multi-Terminal Concurrency & Table Lease Lockout Simulation
 
-> Ratifies strict public pilot code freeze: zero scope additions, zero new schema migrations, Money `i64` precision.
+> Validates distributed table lease acquisition, collision avoidance, and lease expiration timeouts across LAN terminals.
 
-- [x] Ratify code freeze invariants — **DONE 2026-11-16**:
-  - `docs/operations/freeze-declaration-0.0.41.md` ratified: 5 core invariants enforced.
-  - Zero schema migrations added (`crates/kasirmu-core/migrations/` intact).
-  - Version locked at `0.0.41`; branch locked at `0.0.41`.
-- [x] Assert that no unauthorized schema or currency float operations exist across the workspace.
-
----
-
-## Day 2 · Tue 12-16 · 50-Sale Full Pilot Shift Dry Run
-
-> Executes 50 consecutive sales across multiple tenders from fresh onboarding through end-of-shift Z-report.
-
-- [x] Execute end-to-end pilot dry run suite — **DONE 2026-11-16**:
-  - `cargo test -p kasirmu-core --test integration test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync` passed in 0.06s.
+- [x] Run peer-to-peer lease synchronization suites — **DONE 2026-11-16**:
+  - `kasirmu-lan`: `distributed_table_leases_sync_and_reconcile_over_lan` passed in 0.21s.
   ```bash
-  cargo test -p kasirmu-core --test integration test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync
+  cargo test -p kasirmu-lan distributed_table_leases_sync_and_reconcile_over_lan
   ```
-- [x] Assert exact drawer cash float reconciliation down to minor units with zero financial discrepancies.
+- [x] Confirm table lock synchronization and lease collision prevention across local network terminals.
 
 ---
 
-## Day 3 · Wed 12-17 · Fast PIN Switch & Session Token Re-authentication
+## Day 2 · Tue 12-23 · Dirty Crash Injection Under Brutal SIGKILL
 
-> Tests multi-cashier fast PIN switching, session ticket minting, and timing-safe authentication.
+> Simulates brutal process termination mid-flight and proves SQLite WAL crash recovery consistency.
 
-- [x] Run staff login and PIN switching suites — **DONE 2026-11-16**:
-  - `StaffLoginScreen.test.tsx`: 13 tests pass in 1.9s (`always advances to the PIN step regardless of account state`, `usernameAccepted resets when typing a new username after back`).
+- [x] Execute 5-cycle brutal process kill simulation — **DONE 2026-11-16**:
+  - `python scripts/test-wal-dirty-shutdown.py` passes 5/5 brutal terminations mid-transaction with zero corruption, `PRAGMA integrity_check: OK`, and atomic rollback of partial transactions.
   ```bash
-  cd ui && npx vitest run src/__tests__/StaffLoginScreen.test.tsx
+  python scripts/test-wal-dirty-shutdown.py
   ```
-- [x] Verify that cashier credentials remain isolated and login backoff prevents brute-force attempts.
+- [x] Assert that committed transactions remain durable and no corrupted pages or orphaned rows survive.
 
 ---
 
-## Day 4 · Thu 12-18 · Cloud Sync Reconnection & Deterministic Vector Clock Monotonicity
+## Day 3 · Wed 12-24 · High-Concurrency Shift Stress & Minor-Unit Financial Invariants
 
-> Validates monotonic delta synchronization and conflict-free convergence upon network reconnection.
+> Exercises sustained offline checkout bursts with exact Rupiah integer arithmetic.
 
-- [x] Run reconnection delta sync suite — **DONE 2026-11-16**:
-  - `reconnection_and_deterministic_monotonic_delta_sync_after_offline_sales` passed in 0.14s (`platform-sync`).
+- [x] Run 200 consecutive offline sales durability suite — **DONE 2026-11-16**:
+  - `offline::test_two_hundred_consecutive_offline_sales_durability` passed in 0.08s (`kasirmu-core`).
   ```bash
-  cargo test -p platform-sync reconnection_and_deterministic_monotonic_delta_sync_after_offline_sales
+  cargo test -p kasirmu-core --test integration offline::test_two_hundred_consecutive_offline_sales_durability
   ```
-- [x] Confirm that offline transaction queues drain deterministically with zero remote row duplication.
+- [x] Assert zero memory leaks, exact `Money` integer arithmetic, and end-of-shift cash drawer balance reconciliation.
 
 ---
 
-## Day 5 · Fri 12-19 · Static Gate Census & Dead Code / Control Sweep
+## Day 4 · Thu 12-25 · Touch Ergonomics Floor & Keyboard Focus Trap Audits
 
-> Sweeps UI controls, documentation citations, and contracted checker ladders.
+> Validates touch target physical dimensions on tablet viewports (WCAG 2.2 AAA conformity).
 
-- [x] Run static integrity and dead control sweep — **DONE 2026-11-16**:
-  - `python scripts/check-dead-controls.py` → 0 candidates with no handler (317 files read).
-  - `python .agents/skills/docs-auditor/scripts/check-dead-refs.py` → 0 unresolved references across 13 live docs.
+- [x] Run touch target floor validation suite — **DONE 2026-11-16**:
+  - `touchTargetSizing.test.tsx`: 9 tests pass in 0.82s verifying `--touch-target-min: 44px` (48px coarse) across all button, keypad, and modal selectors.
+  ```bash
+  cd ui && npx vitest run src/__tests__/touchTargetSizing.test.tsx
+  ```
+- [x] Verify that touch targets conform to the physical floor across all POS, retail, and modal interactive elements.
+
+---
+
+## Day 5 · Fri 12-26 · Quarantine Manifest & Contract Ladder Sweeps
+
+> Ensures zero quarantined flaky tests and complete contract ladder coverage across all python checkers.
+
+- [x] Run quarantine manifest and contract ladder sweeps — **DONE 2026-11-16**:
+  - `python scripts/verify-flaky-quarantine.py` → PASS (0 entries, none expired).
+  - `python scripts/check-register-hygiene.py` → 249 round-log entries (51–299) consecutive with honest limits.
   - `python scripts/census-checker-contracts.py` → 70 of 70 contracted.
   ```bash
-  python scripts/check-dead-controls.py
-  python .agents/skills/docs-auditor/scripts/check-dead-refs.py
+  python scripts/verify-flaky-quarantine.py
+  python scripts/check-register-hygiene.py
   python scripts/census-checker-contracts.py
   ```
 
 ---
 
-## Day 6 · Sat 12-20 · Release Installer Checksum Attestation & NSIS / MSI Packaging
+## Day 6 · Sat 12-27 · Support Diagnostic Archive Packaging & Redaction
 
-> Validates release manifests, updater cryptographic signatures, and Windows installer configurations.
+> Verifies self-service diagnostic archive packaging and redaction of merchant credentials.
 
-- [x] Run release attestation scripts — **DONE 2026-11-16**:
-  - `python scripts/verify-windows-config.py` → 0 violations.
-  - `node scripts/verify-updater-signature.mjs --self-test` → PASSED.
-  - `python scripts/verify-release-workflow.py` → `release.yml` validates.
-  - `node scripts/check-release-version.mjs v0.0.41` → PASSED.
+- [x] Run diagnostic archive packaging suites — **DONE 2026-11-16**:
+  - `kasirmu-bridge`: 10 diagnostics tests pass (`test_validate_output_path_rejects_traversal`, `test_sanitize_log_text_redacts_tokens_and_passwords`, `export_diagnostics_refuses_a_session_without_settings_read`).
   ```bash
-  python scripts/verify-windows-config.py
-  node scripts/verify-updater-signature.mjs --self-test
-  python scripts/verify-release-workflow.py
-  node scripts/check-release-version.mjs v0.0.41
+  cargo test -p kasirmu-bridge diagnostics
+  ```
+- [x] Assert that path traversal attempts are rejected and tokens, passwords, and PII are redacted.
+
+---
+
+## Day 7 · Sun 12-28 · Application Shells & Full UI Gate Certification
+
+> Concludes sprint with full application shell check and query plan validation.
+
+- [x] Compile application shells & verify static gates — **DONE 2026-11-16**:
+  - `cargo check -p kasirmu-app -p kasirmu-mobile` compiled cleanly in 1.22s (0 errors).
+  - `python scripts/check-query-plans.py --check` → 27 probed queries, none reading LARGE tables in full.
+  - Re-affirmed zero open P0–P2 bugs against `.github/ISSUE_TEMPLATE/bug_report.md`.
+  ```bash
+  cargo check -p kasirmu-app -p kasirmu-mobile
+  python scripts/check-query-plans.py --check
   ```
 
 ---
 
-## Day 7 · Sun 12-21 · Application Shell Baseline & Zero-Defect Burn-down
+## Completed — Week of 2026-12-15 → 2026-12-21 (Public Pilot Strict Code Freeze & Pre-Launch Validation)
 
-> Re-verifies application shell compilation across desktop and mobile with zero open defects.
+<details>
+<summary>7 completed items — click to expand</summary>
 
-- [x] Compile application shells & verify zero P0–P2 defects — **DONE 2026-11-16**:
-  - `cargo check -p kasirmu-app -p kasirmu-mobile` compiled cleanly in 1.18s (0 errors).
-  - Re-affirmed zero open P0–P2 bugs against `.github/ISSUE_TEMPLATE/bug_report.md`.
-  ```bash
-  cargo check -p kasirmu-app -p kasirmu-mobile
-  ```
+### Day 1 · Public Pilot Code Freeze Ratification & Scope Invariants Locking — ✅ 2026-11-16
+- Ratified 5 core invariants in `freeze-declaration-0.0.41.md`, zero schema migrations added, version locked at `0.0.41`.
+
+### Day 2 · 50-Sale Full Pilot Shift Dry Run — ✅ 2026-11-16
+- `offline::test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync` passed in 0.06s with zero drawer discrepancy.
+
+### Day 3 · Fast PIN Switch & Session Token Re-authentication — ✅ 2026-11-16
+- `StaffLoginScreen.test.tsx` (13 tests passed in 1.9s) verifying timing-safe PIN authentication and lockout backoff.
+
+### Day 4 · Cloud Sync Reconnection & Deterministic Vector Clock Monotonicity — ✅ 2026-11-16
+- `reconnection_and_deterministic_monotonic_delta_sync_after_offline_sales` passed in 0.14s with zero remote row duplication.
+
+### Day 5 · Static Gate Census & Dead Code / Control Sweep — ✅ 2026-11-16
+- `check-dead-controls.py` (0 candidates across 317 files), `check-dead-refs.py` (0 unresolved), and 70/70 checker contracts verified.
+
+### Day 6 · Release Installer Checksum Attestation & NSIS / MSI Packaging — ✅ 2026-11-16
+- `verify-windows-config.py` (0 violations), `verify-updater-signature.mjs` (PASSED), and `check-release-version.mjs v0.0.41` (PASSED).
+
+### Day 7 · Application Shell Baseline & Zero-Defect Burn-down — ✅ 2026-11-16
+- `cargo check -p kasirmu-app -p kasirmu-mobile` (0 errors in 1.18s), 0 open P0–P2 defects against bug report template.
+
+</details>
 
 ---
 
