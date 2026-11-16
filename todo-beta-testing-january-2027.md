@@ -190,3 +190,11 @@ All 670 UI test files pass (11,306 tests, 24 skipped, 3 todo).
 - Test quarantine manifest verified: 0 entries, none expired (`verify-flaky-quarantine.py`).
 - Environment variable documentation verified: all 38 code-read variables documented (`check-env-docs.py`).
 - Root policy and core size ratchets clean (`verify-root-policy.py`, `verify-core-size.py`).
+
+### Verification pass (2026-11-16)
+- Cryptographic audit chains & at-rest key lifecycle: 139 unit + 17 integration in `kasirmu-core` and 42 unit + 1 integration in `kasirmu-crypto` pass (`audit_chain_verification_detects_field_tampering`, `corrupted_ciphertext_fails`, `the_installed_key_governs_writes_and_the_previous_rows_still_read`).
+- Multi-tenant isolation: 67 core + 4 integration + 8 bridge tests pass (`check_tenant_integrity_rejects_foreign_user`, `tenant_isolation`, `cross_tenant_revision_is_rejected`).
+- Hardware HAL & peripherals: 435 unit + 21 mock integration + 1 TCP reconnect + 6 custom scanner + 45 bridge hardware tests pass (`print_receipt_reconnects_after_connection_drop`, `open_cash_drawer_scoped_resolves_companion_drawer_when_default`).
+- Storage health & offline queue priority: 10 offline bridge tests pass and `get_storage_health` contract verified on both desktop and mobile shells (`api-system-contract.test.ts`, `StorageBanner.tsx`).
+- Release package integrity & crypto rehearsal: `verify-updater-signature.mjs --self-test` passed (tamper rejection, Ed25519 signature checking), `verify-windows-config.py` clean (NSIS `installMode` + `asInvoker`), `check-release-version.mjs v0.0.41` passed.
+- Pre-beta RC acceptance: `cargo check -p kasirmu-app -p kasirmu-mobile` (0 errors), `check-query-plans.py --check` (27 queries clean), zero P0–P2 bugs.
