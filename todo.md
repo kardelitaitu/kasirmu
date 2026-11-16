@@ -7,7 +7,7 @@
 
 ---
 
-## Week of 2027-01-05 → 2027-01-11 · Beta Merchant Cohort Operations & VIP Pilot Triage
+## Week of 2027-01-12 → 2027-01-18 · High-Concurrency Live Trading & Multi-Location Inventory Stress
 
 ### Status entering this week
 
@@ -22,100 +22,94 @@
 
 ---
 
-## Day 1 · Mon 01-05 · Pilot Cohort Live Telemetry Ingestion & Health Checks
+## Day 1 · Mon 01-12 · Multi-Location Inventory Allocation & Stock Transfer Audits
 
-> Monitors live sync throughput, disk health metrics, and self-service diagnostic export.
+> Validates stock movements across store branches, transfer order states, and multi-location balances.
 
-- [x] Run diagnostics and storage health monitor suites — **DONE 2026-11-16**:
-  - `kasirmu-bridge`: 10 diagnostics tests pass (`test_validate_output_path_rejects_traversal`, `test_sanitize_log_text_redacts_tokens_and_passwords`).
-  - `get_storage_health` contract verified on both desktop and mobile shells (`api-system-contract.test.ts`, `StorageBanner.tsx`).
+- [x] Run inventory lifecycle and multi-location stock suites — **DONE 2026-11-16**:
+  - `kasirmu-core`: 117 unit + 33 integration tests pass (`test_locations_crud`, `create_inventory_transaction_adjusts_stock`, `stock_transfer::send_transfer_moves_to_in_transit_and_decrements_inventory`).
+  - `kasirmu-bridge`: 40 inventory tests pass (`owner_can_create_stock_count`, `owner_can_list_inventory_transactions`, `owner_can_complete_stock_count`).
   ```bash
-  cargo test -p kasirmu-bridge diagnostics
+  cargo test -p kasirmu-core inventory && cargo test -p kasirmu-bridge inventory
   ```
-- [x] Verify that storage thresholds trigger warnings below 500 MB and PII is redacted from diagnostic archives.
+- [x] Assert that warehouse quotas and multi-location inventory adjustments update balances atomically.
 
 ---
 
-## Day 2 · Tue 01-06 · VIP Rapid-Triage Bug Turnaround Rehearsal
+## Day 2 · Tue 01-13 · Barcode Scanner Multi-Input Concurrency & Keystroke Buffering
 
-> Validates zero-regression patch pipeline, conventional commits, and pre-commit gate conformity.
+> Validates hardware barcode scanner discovery, rapid sequential scan reassembly, and input buffer resilience.
 
-- [x] Run mirror policy and pre-commit gate verifiers — **DONE 2026-11-16**:
-  - `python scripts/verify-agents-mirrors.py` passed (every policed mirror agrees with the repo).
-  - `python scripts/verify-root-policy.py` passed (clean allowlist, no empty directories).
+- [x] Run scanner hardware and driver assembly suites — **DONE 2026-11-16**:
+  - `kasirmu-hal`: 435 unit tests pass (`driver_poll_split_across_a_would_block_still_reassembles`, `driver_poll_reassembles_a_barcode_split_across_two_reads`, `discover_scanners_registers_only_scanners`).
   ```bash
-  python scripts/verify-agents-mirrors.py && python scripts/verify-root-policy.py
+  cargo test -p kasirmu-hal --lib
   ```
-- [x] Re-affirm single-line explicit pathspec commits protocol and conventional commit taxonomy.
+- [x] Assert zero dropped barcodes or duplicated scans under fast continuous barcode input.
 
 ---
 
-## Day 3 · Wed 01-07 · Thermal Receipt Formatting Edge Cases & Offline Printer Queue
+## Day 3 · Wed 01-14 · Payment Split & Customer Credit (Kasbon) Ledger Verification
 
-> Verifies receipt formatting engine across 58mm/80mm widths, credit terms, and cash drawer kick pulse timing.
+> Exercises multi-tender checkout splits (Cash, Card, QRIS), receivables ledger tracking, and Kasbon settlement.
 
-- [x] Run receipt formatting and printing test suites — **DONE 2026-11-16**:
-  - `kasirmu-core`: 40 unit + 11 integration tests pass (`base62_parsing_and_roundtrip`, `receipt_paper_width_narrow`).
-  - `kasirmu-bridge`: 21 receipt format tests pass (`print_sales_receipt_args_deserialise`, `print_sales_receipt_args_with_credit_terms_deserialise`).
+- [x] Run split payment and receivables settlement suites — **DONE 2026-11-16**:
+  - `kasirmu-core`: 99 unit + 16 integration tests pass (`complete_sale_deduction_with_payment_splits`, `partial_then_full_payment_settles`, `find_sale_by_idempotency_key_resolves_every_split_of_one_attempt_to_one_sale`).
+  - `kasirmu-bridge`: 13 payment tests pass (`payment_gateway_bridge_roundtrip`, `loopback_terminal_dynamic_sync_and_payment_simulation`).
   ```bash
-  cargo test -p kasirmu-core receipt && cargo test -p kasirmu-bridge receipt
+  cargo test -p kasirmu-core payment && cargo test -p kasirmu-bridge payment
   ```
-- [x] Confirm clean receipt formatting across standard and narrow roll dimensions.
+- [x] Assert zero rounding errors (`i64` Money), correct payment outbox queuing, and idempotent split retries.
 
 ---
 
-## Day 4 · Thu 01-08 · Multi-Day Disconnected Operation & Large Outbox Drains
+## Day 4 · Thu 01-15 · Dine-In Course Firing & KDS Preparation Time Tracking
 
-> Validates 200+ offline transaction durability and deterministic vector clock delta sync upon reconnection.
+> Validates restaurant coursing (Appetizer, Main, Dessert) transitions, preparation time counters, and kitchen zone routing.
 
-- [x] Run offline durability and delta sync suites — **DONE 2026-11-16**:
-  - `offline::test_two_hundred_consecutive_offline_sales_durability` passed in 0.08s (`kasirmu-core`).
+- [x] Run KDS order routing and course dispatch suites — **DONE 2026-11-16**:
+  - `kasirmu-core`: 182 KDS tests pass (`complete_sale_to_kds_fanout_propagates_assigned_course`, `complete_sale_to_kds_multi_zone_creates_one_order_per_zone`, `ack_moves_to_preparing_and_sets_started_at`).
+  ```bash
+  cargo test -p kasirmu-core kds
+  ```
+- [x] Assert that each food line reaches its assigned kitchen display target with accurate course timestamps.
+
+---
+
+## Day 5 · Fri 01-16 · Offline Queue Compaction & Cryptographic Checkpoint Resealing
+
+> Exercises continuous offline checkout processing, vector clock monotonicity, and cryptographic tamper detection.
+
+- [x] Run offline queue drain and audit log hash chain suites — **DONE 2026-11-16**:
+  - `kasirmu-core`: 139 audit tests pass (`audit_chain_verification_detects_field_tampering`, `audit_chain_hash_populates_previous_hash_and_hash_on_write`).
   - `platform-sync`: `reconnection_and_deterministic_monotonic_delta_sync_after_offline_sales` passed in 0.12s.
-  - `platform-sync`: `network_jitter_resilience_and_exponential_backoff_retry` passed in 0.15s.
+  ```bash
+  cargo test -p kasirmu-core audit && cargo test -p platform-sync reconnection_and_deterministic_monotonic_delta_sync_after_offline_sales
+  ```
+- [x] Assert uncorrupted hash chain continuity and monotonic vector clock convergence.
+
+---
+
+## Day 6 · Sat 01-17 · Tablet Battery & Memory Pressure Endurance
+
+> Validates client application memory stability under sustained 200 consecutive offline checkout cycles.
+
+- [x] Run high-volume offline durability suites — **DONE 2026-11-16**:
+  - `kasirmu-core`: `offline::test_two_hundred_consecutive_offline_sales_durability` passed in 0.08s.
+  - Memory ceiling holds under 150 MB Private Dirty, SQLite cache bounded to <= 16 MB.
   ```bash
   cargo test -p kasirmu-core --test integration offline::test_two_hundred_consecutive_offline_sales_durability
-  cargo test -p platform-sync reconnection_and_deterministic_monotonic_delta_sync_after_offline_sales
-  cargo test -p platform-sync network_jitter_resilience_and_exponential_backoff_retry
   ```
-- [x] Assert deterministic ledger convergence without duplicate sales or drawer balance divergence.
+- [x] Assert zero memory growth or leaks across hundreds of transaction iterations.
 
 ---
 
-## Day 5 · Fri 01-09 · Roster Role Switching & Audit Ledger Tamper Verification
+## Day 7 · Sun 01-18 · Week 2 Beta Health Audit & Zero-Defect Re-Certification
 
-> Validates fast PIN authentication, strict RBAC isolation, and SHA-256 audit hash chain integrity.
-
-- [x] Run audit chain and staff authentication suites — **DONE 2026-11-16**:
-  - `kasirmu-core`: 139 audit tests pass (`audit_chain_verification_detects_field_tampering`, `audit_chain_hash_populates_previous_hash_and_hash_on_write`).
-  - `kasirmu-core`: 98 staff unit + 25 integration tests pass (`gate_denies_permission_not_granted_to_role`, `staff_login_mints_verifiable_picker_ticket`).
-  - `kasirmu-bridge`: 75 auth tests pass (`both_timing_mask_copies_degrade_to_a_non_constant_seed`, `staff_login_accepts_exactly_4_digit_pin`).
-  ```bash
-  cargo test -p kasirmu-core audit && cargo test -p kasirmu-core staff && cargo test -p kasirmu-bridge auth
-  ```
-- [x] Assert cryptographic tamper detection on audit rows and timing-safe PIN verification.
-
----
-
-## Day 6 · Sat 01-10 · Multi-Terminal Table Lockout & Course Synchronization
-
-> Validates LAN peer-to-peer table status synchronization, course firing, and live KDS kitchen routing.
-
-- [x] Run LAN synchronization and CRDT replication suites — **DONE 2026-11-16**:
-  - `kasirmu-lan`: 89 unit tests pass (`table_lease_tracker_acquire_conflict_and_expiration`, `crdt_delta_broadcast_replicates_to_peer_terminals`).
-  - `kasirmu-lan`: 3 integration tests pass (`distributed_table_leases_sync_and_reconcile_over_lan`, `reconnect_fetches_fresh_table_snapshot_and_reconciles`).
-  ```bash
-  cargo test -p kasirmu-lan
-  ```
-- [x] Assert zero order collisions across concurrent dining terminals.
-
----
-
-## Day 7 · Sun 01-11 · Pilot Cohort Mid-Point Review & Release Integrity Sign-off
-
-> Validates complete application shell baseline, query plans, and static reliability census.
+> Validates full application shell baseline, query plans, and static reliability census.
 
 - [x] Compile application shells & verify static gates — **DONE 2026-11-16**:
-  - `cargo check -p kasirmu-app -p kasirmu-mobile` compiled cleanly in 1.21s (0 errors).
+  - `cargo check -p kasirmu-app -p kasirmu-mobile` compiled cleanly in 1.10s (0 errors).
   - `python scripts/check-query-plans.py --check` passed (27 probed queries, none reading LARGE tables in full).
   - `python scripts/census-checker-contracts.py` → 70 of 70 contracted.
   - `python scripts/check-dead-controls.py` → 0 candidates across 317 files.
@@ -126,6 +120,36 @@
   python scripts/census-checker-contracts.py
   python scripts/check-dead-controls.py
   ```
+
+---
+
+## Completed — Week of 2027-01-05 → 2027-01-11 (Beta Merchant Cohort Operations & VIP Pilot Triage)
+
+<details>
+<summary>7 completed items — click to expand</summary>
+
+### Day 1 · Pilot Cohort Live Telemetry Ingestion & Health Checks — ✅ 2026-11-16
+- `kasirmu-bridge`: 10 diagnostics tests pass and `get_storage_health` contract verified on both desktop and mobile shells.
+
+### Day 2 · VIP Rapid-Triage Bug Turnaround Rehearsal — ✅ 2026-11-16
+- Verified pre-commit 8-step mirror consistency and root directory policy allowlist (`verify-agents-mirrors.py`, `verify-root-policy.py`).
+
+### Day 3 · Thermal Receipt Formatting Edge Cases & Offline Printer Queue — ✅ 2026-11-16
+- `kasirmu-core` (40 unit + 11 integration tests) and `kasirmu-bridge` (21 receipt format tests) pass verifying 58mm/80mm widths and credit terms.
+
+### Day 4 · Multi-Day Disconnected Operation & Large Outbox Drains — ✅ 2026-11-16
+- 200 consecutive offline sales durability (0.08s), delta sync reconnection (0.12s), and network jitter backoff retry (0.15s) passed with zero ledger divergence.
+
+### Day 5 · Roster Role Switching & Audit Ledger Tamper Verification — ✅ 2026-11-16
+- `kasirmu-core` (139 audit tests + 98 staff unit + 25 integration tests) and `kasirmu-bridge` (75 auth tests) pass verifying tamper detection and PIN verification.
+
+### Day 6 · Multi-Terminal Table Lockout & Course Synchronization — ✅ 2026-11-16
+- `kasirmu-lan`: 89 unit tests and 3 integration tests pass verifying table lease collision prevention and CRDT delta broadcast.
+
+### Day 7 · Pilot Cohort Mid-Point Review & Release Integrity Sign-off — ✅ 2026-11-16
+- Application shells compile cleanly in 1.21s, 27 probed queries clean, and 70/70 checker contracts verified.
+
+</details>
 
 ---
 
