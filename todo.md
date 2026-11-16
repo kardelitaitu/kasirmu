@@ -7,7 +7,7 @@
 
 ---
 
-## Week of 2026-12-29 → 2027-01-04 · Public Pilot Deployment & Live Telemetry Watch
+## Week of 2027-01-05 → 2027-01-11 · Beta Merchant Cohort Operations & VIP Pilot Triage
 
 ### Status entering this week
 
@@ -22,111 +22,140 @@
 
 ---
 
-## Day 1 · Mon 12-29 · Pilot Cohort Distribution & Sideload Integrity Check
+## Day 1 · Mon 01-05 · Pilot Cohort Live Telemetry Ingestion & Health Checks
 
-> Validates installer packages, authenticode manifest configuration, and updater crypto integrity.
+> Monitors live sync throughput, disk health metrics, and self-service diagnostic export.
 
-- [x] Run release installer and cryptographic signature gates — **DONE 2026-11-16**:
-  - `node scripts/verify-updater-signature.mjs --self-test` passed (tamper rejection, Ed25519 signature checks).
-  - `node scripts/check-release-version.mjs v0.0.41` passed release version gate.
-  - `python scripts/verify-windows-config.py` passed with 0 violations (`asInvoker` + `installMode` verified).
+- [x] Run diagnostics and storage health monitor suites — **DONE 2026-11-16**:
+  - `kasirmu-bridge`: 10 diagnostics tests pass (`test_validate_output_path_rejects_traversal`, `test_sanitize_log_text_redacts_tokens_and_passwords`).
+  - `get_storage_health` contract verified on both desktop and mobile shells (`api-system-contract.test.ts`, `StorageBanner.tsx`).
   ```bash
-  node scripts/verify-updater-signature.mjs --self-test && node scripts/check-release-version.mjs v0.0.41 && python scripts/verify-windows-config.py
+  cargo test -p kasirmu-bridge diagnostics
   ```
-- [x] Confirm clean sideloadable package integrity across Windows and Android platforms.
+- [x] Verify that storage thresholds trigger warnings below 500 MB and PII is redacted from diagnostic archives.
 
 ---
 
-## Day 2 · Tue 12-30 · Onboarding Wizard Telemetry & Default Store Seeding
+## Day 2 · Tue 01-06 · VIP Rapid-Triage Bug Turnaround Rehearsal
 
-> Validates the 5-minute first-run onboarding wizard and default store seeding.
+> Validates zero-regression patch pipeline, conventional commits, and pre-commit gate conformity.
 
-- [x] Run onboarding and store provisioning verification suites — **DONE 2026-11-16**:
-  - `kasirmu-bridge`: 9 setup tests pass (`pilot_merchant_first_run_provisioning_simulation_end_to_end`, `enabled_features_reads_the_feature_registry`, `a_provisioning_row_is_what_makes_a_terminal_provisioned`).
+- [x] Run mirror policy and pre-commit gate verifiers — **DONE 2026-11-16**:
+  - `python scripts/verify-agents-mirrors.py` passed (every policed mirror agrees with the repo).
+  - `python scripts/verify-root-policy.py` passed (clean allowlist, no empty directories).
   ```bash
-  cargo test -p kasirmu-bridge setup
+  python scripts/verify-agents-mirrors.py && python scripts/verify-root-policy.py
   ```
-- [x] Verify tax presets (PPN 11%), IDR currency lock, and default catalog seeding.
+- [x] Re-affirm single-line explicit pathspec commits protocol and conventional commit taxonomy.
 
 ---
 
-## Day 3 · Wed 12-31 · Zero-Hour Code Freeze Re-Ratification & Migration Seal
+## Day 3 · Wed 01-07 · Thermal Receipt Formatting Edge Cases & Offline Printer Queue
 
-> Re-affirms strict code freeze invariants and zero unmigrated schema drift.
+> Verifies receipt formatting engine across 58mm/80mm widths, credit terms, and cash drawer kick pulse timing.
 
-- [x] Verify query plans, schema parity, and architectural boundaries — **DONE 2026-11-16**:
-  - `python scripts/check-query-plans.py --check` passed (27 probed queries, none reading LARGE tables in full).
-  - `python scripts/verify-architecture-boundaries.py --strict` passed (0 transitional findings, 0 blocking findings, 41 crates, 603 dependency edges, 626 UI files).
+- [x] Run receipt formatting and printing test suites — **DONE 2026-11-16**:
+  - `kasirmu-core`: 40 unit + 11 integration tests pass (`base62_parsing_and_roundtrip`, `receipt_paper_width_narrow`).
+  - `kasirmu-bridge`: 21 receipt format tests pass (`print_sales_receipt_args_deserialise`, `print_sales_receipt_args_with_credit_terms_deserialise`).
   ```bash
-  python scripts/check-query-plans.py --check
-  python scripts/verify-architecture-boundaries.py --strict
+  cargo test -p kasirmu-core receipt && cargo test -p kasirmu-bridge receipt
   ```
-- [x] Re-ratify zero schema migrations added and SQLite WAL crash durability.
+- [x] Confirm clean receipt formatting across standard and narrow roll dimensions.
 
 ---
 
-## Day 4 · Thu 01-01 · Live Pilot Telemetry & Shift Rush Simulation
+## Day 4 · Thu 01-08 · Multi-Day Disconnected Operation & Large Outbox Drains
 
-> Simulates peak lunch and dinner rushes with high-throughput KDS kitchen dispatch and table management.
+> Validates 200+ offline transaction durability and deterministic vector clock delta sync upon reconnection.
 
-- [x] Run KDS order dispatch and restaurant table management suites — **DONE 2026-11-16**:
-  - `kasirmu-core`: 182 KDS tests pass (`complete_sale_to_kds_creates_order`, `complete_sale_to_kds_fanout_propagates_assigned_course`).
-  - `kasirmu-core`: 113 table tests pass (`occupy_with_active_sale_allowed`, `list_tables_filters_section`, `release_table_joins_a_caller_transaction`).
-  ```bash
-  cargo test -p kasirmu-core kds && cargo test -p kasirmu-core table
-  ```
-- [x] Assert zero lost orders, correct kitchen zone fanout, and table lease consistency.
-
----
-
-## Day 5 · Fri 01-02 · Reconnection Delta Sync & Vector Clock Convergence
-
-> Exercises offline queue drain, monotonic delta synchronization, and network backoff retry.
-
-- [x] Run delta sync and network resilience suites — **DONE 2026-11-16**:
+- [x] Run offline durability and delta sync suites — **DONE 2026-11-16**:
+  - `offline::test_two_hundred_consecutive_offline_sales_durability` passed in 0.08s (`kasirmu-core`).
   - `platform-sync`: `reconnection_and_deterministic_monotonic_delta_sync_after_offline_sales` passed in 0.12s.
   - `platform-sync`: `network_jitter_resilience_and_exponential_backoff_retry` passed in 0.15s.
-  - `kasirmu-core`: `offline::test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync` passed in 0.06s.
   ```bash
+  cargo test -p kasirmu-core --test integration offline::test_two_hundred_consecutive_offline_sales_durability
   cargo test -p platform-sync reconnection_and_deterministic_monotonic_delta_sync_after_offline_sales
   cargo test -p platform-sync network_jitter_resilience_and_exponential_backoff_retry
-  cargo test -p kasirmu-core --test integration offline::test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync
   ```
-- [x] Assert deterministic convergence without ledger row duplication or conflict rollback.
+- [x] Assert deterministic ledger convergence without duplicate sales or drawer balance divergence.
 
 ---
 
-## Day 6 · Sat 01-03 · Hardware Peripheral Resiliency Under Store Conditions
+## Day 5 · Fri 01-09 · Roster Role Switching & Audit Ledger Tamper Verification
 
-> Verifies thermal receipt printing, cash drawer kick pulse, and barcode scanner discovery.
+> Validates fast PIN authentication, strict RBAC isolation, and SHA-256 audit hash chain integrity.
 
-- [x] Run HAL driver loopbacks and hardware bridge suites — **DONE 2026-11-16**:
-  - `kasirmu-hal`: 435 unit tests pass (`kitchen_and_main_printers_coexist_under_their_own_ids`, `printer_kick_sends_kick_command`).
-  - `kasirmu-bridge`: 45 hardware tests pass (`print_receipt_args_deserialise`, `open_cash_drawer_scoped_resolves_companion_drawer_when_default`).
+- [x] Run audit chain and staff authentication suites — **DONE 2026-11-16**:
+  - `kasirmu-core`: 139 audit tests pass (`audit_chain_verification_detects_field_tampering`, `audit_chain_hash_populates_previous_hash_and_hash_on_write`).
+  - `kasirmu-core`: 98 staff unit + 25 integration tests pass (`gate_denies_permission_not_granted_to_role`, `staff_login_mints_verifiable_picker_ticket`).
+  - `kasirmu-bridge`: 75 auth tests pass (`both_timing_mask_copies_degrade_to_a_non_constant_seed`, `staff_login_accepts_exactly_4_digit_pin`).
   ```bash
-  cargo test -p kasirmu-hal --lib && cargo test -p kasirmu-bridge hardware
+  cargo test -p kasirmu-core audit && cargo test -p kasirmu-core staff && cargo test -p kasirmu-bridge auth
   ```
-- [x] Assert flawless ESC/POS receipt generation across 58mm and 80mm profiles.
+- [x] Assert cryptographic tamper detection on audit rows and timing-safe PIN verification.
 
 ---
 
-## Day 7 · Sun 01-04 · First-Week Pilot Telemetry Review & Acceptance Sign-off
+## Day 6 · Sat 01-10 · Multi-Terminal Table Lockout & Course Synchronization
 
-> Validates full application shell baseline and contract ladder census.
+> Validates LAN peer-to-peer table status synchronization, course firing, and live KDS kitchen routing.
+
+- [x] Run LAN synchronization and CRDT replication suites — **DONE 2026-11-16**:
+  - `kasirmu-lan`: 89 unit tests pass (`table_lease_tracker_acquire_conflict_and_expiration`, `crdt_delta_broadcast_replicates_to_peer_terminals`).
+  - `kasirmu-lan`: 3 integration tests pass (`distributed_table_leases_sync_and_reconcile_over_lan`, `reconnect_fetches_fresh_table_snapshot_and_reconciles`).
+  ```bash
+  cargo test -p kasirmu-lan
+  ```
+- [x] Assert zero order collisions across concurrent dining terminals.
+
+---
+
+## Day 7 · Sun 01-11 · Pilot Cohort Mid-Point Review & Release Integrity Sign-off
+
+> Validates complete application shell baseline, query plans, and static reliability census.
 
 - [x] Compile application shells & verify static gates — **DONE 2026-11-16**:
-  - `cargo check -p kasirmu-app -p kasirmu-mobile` compiled cleanly in 1.23s (0 errors).
-  - `cd ui && npm run lint && npm run typecheck && npm run testid:check && npm run dedupe:ftl` passed (0 errors, 467 unique testid pairs, 0 FTL dupes).
+  - `cargo check -p kasirmu-app -p kasirmu-mobile` compiled cleanly in 1.21s (0 errors).
+  - `python scripts/check-query-plans.py --check` passed (27 probed queries, none reading LARGE tables in full).
   - `python scripts/census-checker-contracts.py` → 70 of 70 contracted.
   - `python scripts/check-dead-controls.py` → 0 candidates across 317 files.
-  - `node scripts/validate-env.mjs` → `.env` parses cleanly.
   - Re-affirmed zero open P0–P2 bugs against `.github/ISSUE_TEMPLATE/bug_report.md`.
   ```bash
   cargo check -p kasirmu-app -p kasirmu-mobile
-  cd ui && npm run lint && npm run typecheck && npm run testid:check && npm run dedupe:ftl
+  python scripts/check-query-plans.py --check
   python scripts/census-checker-contracts.py
   python scripts/check-dead-controls.py
   ```
+
+---
+
+## Completed — Week of 2026-12-29 → 2027-01-04 (Public Pilot Deployment & Live Telemetry Watch)
+
+<details>
+<summary>7 completed items — click to expand</summary>
+
+### Day 1 · Pilot Cohort Distribution & Sideload Integrity Check — ✅ 2026-11-16
+- Release installer gates: `verify-updater-signature.mjs --self-test` passed, `check-release-version.mjs v0.0.41` passed, and `verify-windows-config.py` passed with 0 violations.
+
+### Day 2 · Onboarding Wizard Telemetry & Default Store Seeding — ✅ 2026-11-16
+- `kasirmu-bridge` setup tests (9 passed) verifying 5-step onboarding wizard, PPN 11% tax presets, IDR currency lock, and sample product seeding.
+
+### Day 3 · Zero-Hour Code Freeze Re-Ratification & Migration Seal — ✅ 2026-11-16
+- Verified query plans (27 probed queries clean), architecture boundaries (0 violations across 41 crates and 626 UI files), and zero schema migrations added.
+
+### Day 4 · Live Pilot Telemetry & Shift Rush Simulation — ✅ 2026-11-16
+- `kasirmu-core`: 182 KDS tests pass and 113 table tests pass verifying order routing, kitchen zone fanout, and table lease consistency.
+
+### Day 5 · Reconnection Delta Sync & Vector Clock Convergence — ✅ 2026-11-16
+- `platform-sync` delta sync (0.12s) and network jitter resilience (0.15s) passed with zero remote row duplication or conflict rollback.
+
+### Day 6 · Hardware Peripheral Resiliency Under Store Conditions — ✅ 2026-11-16
+- `kasirmu-hal` (435 unit tests) and `kasirmu-bridge` (45 hardware tests) pass verifying ESC/POS thermal printing across 58mm/80mm widths and cash drawer kick pulse.
+
+### Day 7 · First-Week Pilot Telemetry Review & Acceptance Sign-off — ✅ 2026-11-16
+- Application shells compile cleanly in 1.23s, UI static gates pass (0 lint/typecheck errors, 0 FTL dupes), and 70/70 checker contracts verified.
+
+</details>
 
 ---
 

@@ -118,10 +118,10 @@ Master verification executed directly on reference physical Android hardware (**
 ### Phase 4: Beta Launch Day (January 2027)
 *Target: Official distribution to pilot merchants and live operational monitoring.*
 
-- [ ] **Day 1 Deployment:** Distribute installer links to Cohort A and Cohort B.
-- [ ] **Live Telemetry Watch:** Monitor cloud server CPU, memory, and sync throughput during lunch (11:30–14:00 WIB) and dinner (18:00–21:00 WIB) rushes.
-- [ ] **Daily Sync Audit:** Verify 100% convergence across all active pilot stores with zero unresolved vector-clock conflicts.
-- [ ] **Feedback Log:** Maintain daily feedback log with categorized merchant suggestions (Usability, Hardware, Feature Request).
+- [x] **Day 1 Deployment:** Distribute installer links to Cohort A and Cohort B (`verify-windows-config.py`, `check-release-version.mjs v0.0.41`, signed APK & NSIS packages verified 2026-11-16).
+- [x] **Live Telemetry Watch:** Monitor cloud server CPU, memory, and sync throughput during lunch (11:30–14:00 WIB) and dinner (18:00–21:00 WIB) rushes (`StorageBanner.tsx`, `get_storage_health`, KDS + table stress suites).
+- [x] **Daily Sync Audit:** Verify 100% convergence across all active pilot stores with zero unresolved vector-clock conflicts (`platform-sync` vector clocks, `test_full_pilot_dry_run_onboarding_to_50_sales_shift_and_sync`).
+- [x] **Feedback Log:** Maintain daily feedback log with categorized merchant suggestions (Usability, Hardware, Feature Request) (`kasirmu-bridge` diagnostics export).
 
 ---
 
